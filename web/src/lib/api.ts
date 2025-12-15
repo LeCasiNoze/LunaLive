@@ -108,3 +108,27 @@ export async function adminDeleteStreamer(adminKey: string, slug: string) {
     headers: { "x-admin-key": adminKey },
   });
 }
+
+export type AdminUserRow = {
+  id: number;
+  username: string;
+  role: "viewer" | "streamer" | "admin";
+  rubis: number;
+  createdAt: string;
+  requestStatus: string | null;
+  streamerSlug: string | null;
+};
+
+export async function adminListUsers(adminKey: string) {
+  return j<{ ok: true; users: AdminUserRow[] }>("/admin/users", {
+    headers: { "x-admin-key": adminKey },
+  });
+}
+
+export async function adminSetUserRole(adminKey: string, id: number, role: AdminUserRow["role"]) {
+  return j<{ ok: true }>(`/admin/users/${id}`, {
+    method: "PATCH",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+}

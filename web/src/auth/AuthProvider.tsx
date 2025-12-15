@@ -42,6 +42,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     refreshMe();
   }, [refreshMe]);
+  
+React.useEffect(() => {
+  if (!token) return;
+
+  const id = window.setInterval(() => {
+    refreshMe();
+  }, 30_000);
+
+  const onFocus = () => refreshMe();
+  window.addEventListener("focus", onFocus);
+
+  return () => {
+    window.clearInterval(id);
+    window.removeEventListener("focus", onFocus);
+  };
+}, [token, refreshMe]);
 
   return <Ctx.Provider value={{ token, user, setAuth, logout, refreshMe }}>{children}</Ctx.Provider>;
 }
