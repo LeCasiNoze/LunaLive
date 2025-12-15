@@ -1,68 +1,140 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+:root{
+  --bg: #1D1125;
+  --panel: rgba(255,255,255,0.05);
+  --panel2: rgba(255,255,255,0.08);
+  --text: rgba(255,255,255,0.92);
+  --muted: rgba(255,255,255,0.62);
+  --purple: #7E4CB3;
+  --blue: #3F56CB;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
+*{ box-sizing: border-box; }
+html, body { height: 100%; }
+body{
   margin: 0;
+  background: radial-gradient(900px 500px at 15% 0%, rgba(126,76,179,0.25), transparent 60%),
+              radial-gradient(900px 500px at 90% 10%, rgba(63,86,203,0.22), transparent 55%),
+              var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+.app{ min-height: 100vh; }
+
+.topbar{
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(17, 10, 23, 0.62);
+  backdrop-filter: blur(10px);
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+.brand{ display:flex; align-items:center; gap:10px; }
+.brandMark{
+  width: 14px; height: 14px; border-radius: 999px;
+  background: linear-gradient(135deg, var(--purple), var(--blue));
+  box-shadow: 0 0 18px rgba(126,76,179,0.4);
 }
+.brandName{ font-weight: 800; letter-spacing: 0.2px; }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
+.nav{ display:flex; gap: 10px; }
+.navItem{
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 12px;
   cursor: pointer;
-  transition: border-color 0.25s;
 }
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+.navItem.active{
+  border-color: rgba(126,76,179,0.55);
+  box-shadow: 0 0 0 2px rgba(126,76,179,0.15);
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+.right{ display:flex; align-items:center; gap: 10px; }
+.pill{
+  display:flex; align-items:center; gap:8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: var(--text);
+  font-weight: 700;
 }
+.btn{
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: linear-gradient(135deg, rgba(126,76,179,0.35), rgba(63,86,203,0.25));
+  color: var(--text);
+  cursor: pointer;
+}
+
+.container{ padding: 18px; max-width: 1200px; margin: 0 auto; }
+.pageTitle h1{ margin: 10px 0 4px; font-size: 28px; }
+.muted{ margin: 0; color: var(--muted); font-size: 14px; }
+
+.grid{
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.card{
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.03);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+}
+
+.thumb{
+  position: relative;
+  height: 170px;
+  background-size: cover;
+  background-position: center;
+  transform: translateZ(0);
+}
+.card:hover .thumb{
+  filter: brightness(1.05);
+}
+
+.liveBadge{
+  position:absolute;
+  top: 10px; left: 10px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  background: rgba(255, 48, 88, 0.18);
+  border: 1px solid rgba(255, 48, 88, 0.35);
+}
+
+.viewerBadge{
+  position:absolute;
+  right: 10px; bottom: 10px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 12px;
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.overlay{
+  position:absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 10px 12px;
+  background: linear-gradient(to top, rgba(0,0,0,0.62), rgba(0,0,0,0));
+}
+
+.streamer{ font-weight: 900; }
+.title{ color: rgba(255,255,255,0.78); font-size: 13px; margin-top: 2px; }
