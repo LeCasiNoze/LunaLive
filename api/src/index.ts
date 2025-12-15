@@ -3,14 +3,15 @@ import cors from "cors";
 import { pool, migrate, seedIfEmpty } from "./db.js";
 import { hashPassword, verifyPassword, signToken, requireAuth, requireAdminKey } from "./auth.js";
 import { slugify } from "./slug.js";
+import type { Request, Response, NextFunction } from "express";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const a =
-  (fn: any) =>
-  (req: any, res: any, next: any) =>
+  (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
+  (req: Request, res: Response, next: NextFunction) =>
     Promise.resolve(fn(req, res, next)).catch(next);
 
 /* Health */
