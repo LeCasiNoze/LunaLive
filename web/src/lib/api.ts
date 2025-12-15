@@ -13,3 +13,9 @@ export async function getLives(): Promise<ApiLive[]> {
   if (!r.ok) throw new Error(`API ${r.status}`);
   return (await r.json()) as ApiLive[];
 }
+
+export async function getStreamer(slug: string): Promise<ApiLive> {
+  const r = await fetch(`${BASE}/streamers/${encodeURIComponent(slug)}`);
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  return (await r.json()) as ApiLive;
+}
