@@ -216,13 +216,24 @@ app.post(
   requireAdminKey,
   a(async (req, res) => {
     const id = Number(req.params.id);
+
     const { rows } = await pool.query(
-      `UPDATE streamer_requests SET status='rejected', updated_at=NOW()
+      `UPDATE streamer_requests
+       SET status='rejected', updated_at=NOW()
        WHERE id = $1
-       RETURNING id`,
+       RETURNING user_id`,
       [id]
     );
     if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+
+    const userId = rows[0].user_id;
+
+    // 🔻 repasse le user en viewer
+    await pool.query(`UPDATE users SET role='viewer' WHERE id=$1`, [userId]);
+
+    // 🔻 supprime le streamer profile lié à ce user (s’il existe)
+    await pool.query(`DELETE FROM streamers WHERE user_id=$1`, [userId]);
+
     res.json({ ok: true });
   })
 );
@@ -250,10 +261,24 @@ app.delete(
   requireAdminKey,
   a(async (req, res) => {
     const slug = String(req.params.slug || "");
+
+    const r = await pool.query(`SELECT user_id FROM streamers WHERE slug=$1 LIMIT 1`, [slug]);
+    const userId = r.rows[0]?.user_id ?? null;
+
     await pool.query(`DELETE FROM streamers WHERE slug=$1`, [slug]);
+
+    if (userId) {
+      await pool.query(`UPDATE users SET role='viewer' WHERE id=$1`, [userId]);
+      await pool.query(
+        `UPDATE streamer_requests SET status='rejected', updated_at=NOW() WHERE user_id=$1`,
+        [userId]
+      );
+    }
+
     res.json({ ok: true });
   })
 );
+
 
 app.use((err: any, _req: any, res: any, _next: any) => {
   console.error(err);
