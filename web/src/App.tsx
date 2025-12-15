@@ -1,63 +1,57 @@
 import * as React from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 
-import type { User } from "./lib/types";
-import { loadUser, saveUser } from "./lib/storage";
 import { useIsMobile } from "./hooks/useIsMobile";
-
 import { Topbar } from "./layout/Topbar";
 import { BottomTabs } from "./layout/BottomTabs";
-import { LoginModal } from "./components/LoginModal";
 
 import LivesPage from "./pages/LivesPage";
 import BrowsePage from "./pages/BrowsePage";
 import StreamerPage from "./pages/StreamerPage";
 import ProfilePage from "./pages/ProfilePage";
+import AdminPage from "./pages/AdminPage";
 
-export default function App() {
+import { AuthProvider, useAuth } from "./auth/AuthProvider";
+import { LoginModal } from "./components/LoginModal";
+
+function AppInner() {
   const location = useLocation();
   const isMobile = useIsMobile();
+  const { user, logout } = useAuth();
 
-  const [user, setUser] = React.useState<User | null>(() => loadUser());
   const [loginOpen, setLoginOpen] = React.useState(false);
 
   React.useEffect(() => {
     setLoginOpen(false);
   }, [location.pathname]);
 
-  const onLogin = (u: User) => {
-    setUser(u);
-    saveUser(u);
-    setLoginOpen(false);
-  };
-
-  const onLogout = () => {
-    setUser(null);
-    saveUser(null);
-  };
-
   return (
     <div className="app">
       <Topbar
-        user={user}
+        user={user as any}
         onOpenLogin={() => setLoginOpen(true)}
-        onLogout={onLogout}
+        onLogout={logout}
       />
 
       <Routes>
         <Route path="/" element={<LivesPage />} />
         <Route path="/browse" element={<BrowsePage />} />
         <Route path="/s/:slug" element={<StreamerPage />} />
-        <Route path="/profile" element={<ProfilePage user={user} />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/admin" element={<AdminPage />} />
       </Routes>
 
       {isMobile && <BottomTabs />}
 
-      <LoginModal
-        open={loginOpen}
-        onClose={() => setLoginOpen(false)}
-        onLogin={onLogin}
-      />
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppInner />
+    </AuthProvider>
   );
 }

@@ -1,20 +1,17 @@
-import type { User } from "./types";
+const LS_TOKEN = "lunalive_token_v1";
 
-const LS_KEY = "lunalive_user_v1";
-
-export function loadUser(): User | null {
+export function loadToken(): string | null {
   try {
-    const raw = localStorage.getItem(LS_KEY);
-    return raw ? (JSON.parse(raw) as User) : null;
+    return localStorage.getItem(LS_TOKEN);
   } catch {
     return null;
   }
 }
 
-export function saveUser(u: User | null) {
+export function saveToken(t: string | null) {
   try {
-    if (!u) localStorage.removeItem(LS_KEY);
-    else localStorage.setItem(LS_KEY, JSON.stringify(u));
+    if (!t) localStorage.removeItem(LS_TOKEN);
+    else localStorage.setItem(LS_TOKEN, t);
   } catch {
     // ignore
   }
