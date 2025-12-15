@@ -1,25 +1,70 @@
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
-import { MOCK_LIVES } from "../data/mockLives";
+import { getStreamer } from "../lib/api";
 import { formatViewers, initialOf } from "../lib/format";
+import { svgThumb } from "../lib/thumb";
+
+type StreamerData = {
+  id: string;
+  slug: string;
+  displayName: string;
+  title: string;
+  viewers: number;
+};
 
 export default function StreamerPage() {
   const { slug } = useParams();
-  const live = React.useMemo(
-    () => MOCK_LIVES.find((l) => l.slug === slug),
-    [slug]
-  );
+  const [live, setLive] = React.useState<(StreamerData & { thumb: string }) | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [notFound, setNotFound] = React.useState(false);
 
-  if (!live) {
+  React.useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setNotFound(false);
+    setLive(null);
+
+    (async () => {
+      try {
+        if (!slug) throw new Error("no slug");
+        const data = await getStreamer(slug);
+        const withThumb = { ...data, thumb: svgThumb(data.displayName) };
+        if (!alive) return;
+        setLive(withThumb);
+      } catch (e: any) {
+        console.error(e);
+        if (!alive) return;
+        if (String(e?.message || "").includes("404")) setNotFound(true);
+        else setNotFound(true);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [slug]);
+
+  if (loading) {
+    return (
+      <main className="container">
+        <div className="pageTitle">
+          <h1>Chargement…</h1>
+          <p className="muted">{slug ? `/${slug}` : ""}</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (notFound || !live) {
     return (
       <main className="container">
         <div className="pageTitle">
           <h1>Streamer introuvable</h1>
           <p className="muted">Slug: {slug}</p>
         </div>
-        <Link to="/" className="btnGhostInline">
-          ← Retour aux lives
-        </Link>
+        <Link to="/" className="btnGhostInline">← Retour aux lives</Link>
       </main>
     );
   }
@@ -32,9 +77,7 @@ export default function StreamerPage() {
           <div className="streamerNameRow">
             <h1 className="streamerName">{live.displayName}</h1>
             <span className="chipLive">LIVE</span>
-            <span className="chipViewers">
-              {formatViewers(live.viewers)} viewers
-            </span>
+            <span className="chipViewers">{formatViewers(live.viewers)} viewers</span>
           </div>
           <div className="muted">{live.title}</div>
         </div>
@@ -48,10 +91,7 @@ export default function StreamerPage() {
               Ouvrir sur DLive
             </button>
           </div>
-          <div
-            className="playerBox"
-            style={{ backgroundImage: `url("${live.thumb}")` }}
-          >
+          <div className="playerBox" style={{ backgroundImage: `url("${live.thumb}")` }}>
             <div className="playerOverlay">
               <div className="playerOverlayTitle">Player DLive (placeholder)</div>
               <div className="playerOverlaySub">
@@ -68,22 +108,14 @@ export default function StreamerPage() {
           </div>
 
           <div className="chatBox">
-            <div className="chatMsg">
-              <b>System</b> — Chat à venir
-            </div>
-            <div className="chatMsg">
-              <b>{live.displayName}</b> — Merci d’être là ✨
-            </div>
-            <div className="chatMsg">
-              <b>Viewer</b> — gooo
-            </div>
+            <div className="chatMsg"><b>System</b> — Chat à venir</div>
+            <div className="chatMsg"><b>{live.displayName}</b> — Merci d’être là ✨</div>
+            <div className="chatMsg"><b>Viewer</b> — gooo</div>
           </div>
 
           <div className="chatInputRow">
             <input disabled placeholder="Écrire un message (bientôt)" />
-            <button className="btnPrimarySmall" disabled>
-              Send
-            </button>
+            <button className="btnPrimarySmall" disabled>Send</button>
           </div>
         </aside>
       </div>
