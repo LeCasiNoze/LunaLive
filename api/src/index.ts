@@ -211,6 +211,88 @@ app.post(
   })
 );
 
+app.get(
+  "/admin/users",
+  requireAdminKey,
+  a(async (_req, res) => {
+    const { rows } = await pool.query(`
+      SELECT
+        u.id,
+        u.username,
+        u.role,
+        u.rubis,
+        u.created_at AS "createdAt",
+        sr.status AS "requestStatus",
+        s.slug AS "streamerSlug"
+      FROM users u
+      LEFT JOIN streamer_requests sr ON sr.user_id = u.id
+      LEFT JOIN streamers s ON s.user_id = u.id
+      ORDER BY u.created_at DESC
+    `);
+    res.json({ ok: true, users: rows });
+  })
+);
+
+app.patch(
+  "/admin/users/:id",
+  requireAdminKey,
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    const role = req.body.role ? String(req.body.role) : null;
+
+    if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
+    if (role && !["viewer", "streamer", "admin"].includes(role)) {
+      return res.status(400).json({ ok: false, error: "bad_role" });
+    }
+
+    // update role si fourni
+    if (role) {
+      await pool.query(`UPDATE users SET role=$1 WHERE id=$2`, [role, id]);
+
+      if (role === "streamer") {
+        // marque la demande comme approved (crée si absent)
+        await pool.query(
+          `INSERT INTO streamer_requests (user_id, status)
+           VALUES ($1,'approved')
+           ON CONFLICT (user_id) DO UPDATE SET status='approved', updated_at=NOW()`,
+          [id]
+        );
+
+        // ensure streamer profile exists
+        const u = await pool.query(`SELECT username FROM users WHERE id=$1`, [id]);
+        const username = String(u.rows[0]?.username || `user-${id}`);
+        let slug = slugify(username);
+
+        const exists = await pool.query(`SELECT 1 FROM streamers WHERE slug=$1`, [slug]);
+        if (exists.rows[0]) slug = `${slug}-${id}`;
+
+        await pool.query(
+          `INSERT INTO streamers (slug, display_name, user_id, title, viewers, is_live)
+           VALUES ($1,$2,$3,'',0,false)
+           ON CONFLICT (user_id) DO NOTHING`,
+          [slug, username, id]
+        );
+      }
+
+      if (role === "viewer") {
+        // rejette la demande si existe + supprime streamer lié
+        await pool.query(
+          `UPDATE streamer_requests SET status='rejected', updated_at=NOW() WHERE user_id=$1`,
+          [id]
+        );
+        await pool.query(`DELETE FROM streamers WHERE user_id=$1`, [id]);
+      }
+    }
+
+    const out = await pool.query(
+      `SELECT id, username, role, rubis, created_at AS "createdAt" FROM users WHERE id=$1 LIMIT 1`,
+      [id]
+    );
+    if (!out.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+    res.json({ ok: true, user: out.rows[0] });
+  })
+);
+
 app.post(
   "/admin/requests/:id/reject",
   requireAdminKey,
