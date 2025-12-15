@@ -1,23 +1,51 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { MOCK_LIVES } from "../data/mockLives";
 import { formatViewers } from "../lib/format";
+import { getLives } from "../lib/api";
+import { svgThumb } from "../lib/thumb";
+import type { LiveCard } from "../lib/types";
 
 export default function LivesPage() {
-  const lives = React.useMemo(
-    () => [...MOCK_LIVES].sort((a, b) => b.viewers - a.viewers),
-    []
+  const [lives, setLives] = React.useState<LiveCard[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const data = await getLives();
+        const withThumbs: LiveCard[] = data.map((x) => ({
+          ...x,
+          thumb: svgThumb(x.displayName),
+        }));
+        if (alive) setLives(withThumbs);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const sorted = React.useMemo(
+    () => [...lives].sort((a, b) => b.viewers - a.viewers),
+    [lives]
   );
 
   return (
     <main className="container">
       <div className="pageTitle">
         <h1>Lives</h1>
-        <p className="muted">Mock trié par viewers. Clic = page streamer.</p>
+        <p className="muted">
+          {loading ? "Chargement…" : "Données depuis l’API."}
+        </p>
       </div>
 
       <section className="grid">
-        {lives.map((live) => (
+        {sorted.map((live) => (
           <Link key={live.id} to={`/s/${live.slug}`} className="cardLink">
             <article className="card">
               <div
