@@ -32,28 +32,45 @@ export function AvatarMenu({
         {initialOf(user.username)}
       </button>
 
-      {open && (
+        {open && (
         <div ref={menuRef} className="dropdown">
-          <div className="dropdownTop">
+            <div className="dropdownTop">
             <div className="dropdownName">{user.username}</div>
-            <div className="dropdownSub">Compte (mock)</div>
-          </div>
+            <div className="dropdownSub">Compte</div>
+            </div>
 
-          <div className="dropdownSep" />
+            <div className="dropdownSep" />
 
-          <Link
+            {user.role === "streamer" && (
+            <Link
+                to="/dashboard"
+                className="dropdownItem"
+                onClick={() => setOpen(false)}
+            >
+                Dashboard
+            </Link>
+            )}
+
+            <Link
             to="/profile"
             className="dropdownItem"
             onClick={() => setOpen(false)}
-          >
+            >
             Profil
-          </Link>
+            </Link>
 
-          <button className="dropdownItem danger" onClick={onLogout}>
+            <button
+            className="dropdownItem danger"
+            onClick={() => {
+                setOpen(false);
+                onLogout();
+            }}
+            >
             Déconnexion
-          </button>
+            </button>
         </div>
-      )}
+        )}
+
     </div>
   );
 }

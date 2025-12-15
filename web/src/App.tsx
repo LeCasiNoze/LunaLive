@@ -10,9 +10,11 @@ import BrowsePage from "./pages/BrowsePage";
 import StreamerPage from "./pages/StreamerPage";
 import ProfilePage from "./pages/ProfilePage";
 import AdminPage from "./pages/AdminPage";
+import DashboardPage from "./pages/DashboardPage";
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
+
 
 function AppInner() {
   const location = useLocation();
@@ -39,6 +41,7 @@ function AppInner() {
         <Route path="/s/:slug" element={<StreamerPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
       </Routes>
 
       {isMobile && <BottomTabs />}
