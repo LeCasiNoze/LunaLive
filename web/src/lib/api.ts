@@ -6,7 +6,7 @@ export type ApiLive = {
   viewers: number;
 };
 
-const BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
 export async function getLives(): Promise<ApiLive[]> {
   const r = await fetch(`${BASE}/lives`);
