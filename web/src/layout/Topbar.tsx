@@ -1,4 +1,3 @@
-import * as React from "react";
 import { NavLink } from "react-router-dom";
 import type { User } from "../lib/types";
 import { useIsMobile } from "../hooks/useIsMobile";
