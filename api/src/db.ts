@@ -52,17 +52,19 @@ export async function migrate() {
       created_ip INET NULL
     );
 
-    CREATE TABLE IF NOT EXISTS provider_accounts (
-      id SERIAL PRIMARY KEY,
-      provider TEXT NOT NULL DEFAULT 'dlive',
-      channel_slug TEXT NOT NULL,
-      rtmp_url TEXT NOT NULL,
-      stream_key TEXT NOT NULL,
-      assigned_to_streamer_id INT NULL REFERENCES streamers(id) ON DELETE SET NULL,
-      assigned_at TIMESTAMPTZ NULL,
-      released_at TIMESTAMPTZ NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
+  CREATE TABLE IF NOT EXISTS provider_accounts (
+    id SERIAL PRIMARY KEY,
+    provider TEXT NOT NULL DEFAULT 'dlive',
+    channel_slug TEXT NOT NULL,          -- displayname (URL dlive.tv/{displayname})
+    channel_username TEXT NULL,          -- username (HLS)
+    rtmp_url TEXT NOT NULL,
+    stream_key TEXT NOT NULL,
+    assigned_to_streamer_id INT NULL REFERENCES streamers(id) ON DELETE SET NULL,
+    assigned_at TIMESTAMPTZ NULL,
+    released_at TIMESTAMPTZ NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
   `);
 
   // 2) Upgrade users (ajout de colonnes si elles n'existent pas)
@@ -73,6 +75,7 @@ export async function migrate() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ NULL;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_ip INET NULL;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip INET NULL;`);
+  await pool.query(`ALTER TABLE provider_accounts ADD COLUMN IF NOT EXISTS channel_username TEXT;`);
 
   // On garde username/password_hash non null pour la logique auth
   await pool.query(`ALTER TABLE users ALTER COLUMN username SET NOT NULL;`);

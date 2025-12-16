@@ -71,10 +71,12 @@ app.get(
          s.title,
          s.viewers,
          s.is_live AS "isLive",
-         pa.channel_slug AS "channelSlug"
+         pa.channel_slug AS "channelSlug",
+         pa.channel_username AS "channelUsername"
        FROM streamers s
        LEFT JOIN provider_accounts pa
          ON pa.assigned_to_streamer_id = s.id
+        AND pa.provider='dlive'
        WHERE s.slug = $1
          AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
        LIMIT 1`,

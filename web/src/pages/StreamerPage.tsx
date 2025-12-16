@@ -34,7 +34,11 @@ export default function StreamerPage() {
         {err && <p className="hint">⚠️ {err}</p>}
       </div>
 
-      {s && <DlivePlayer channelSlug={s.channelSlug ?? null} isLive={s.isLive} />}
+      {s && <DlivePlayer
+        channelSlug={s.channelSlug ?? null}
+        channelUsername={s.channelUsername ?? null}
+        isLive={s.isLive}
+      />}
 
       <div className="panel" style={{ marginTop: 14 }}>
         <div className="panelTitle">Chat</div>

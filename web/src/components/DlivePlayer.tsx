@@ -3,9 +3,11 @@ import Hls from "hls.js";
 
 export function DlivePlayer({
   channelSlug,
+  channelUsername,
   isLive,
 }: {
   channelSlug: string | null | undefined;
+  channelUsername: string | null | undefined;
   isLive: boolean | undefined;
 }) {
   const videoRef = React.useRef<HTMLVideoElement>(null);
@@ -20,7 +22,8 @@ export function DlivePlayer({
 
     if (!channelSlug || !isLive) return;
 
-    const hlsUrl = `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(channelSlug)}.m3u8`;
+    const username = (channelUsername || channelSlug || "").trim();
+    const hlsUrl = `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(username)}.m3u8?mobileweb`;
 
     // Safari / iOS support natif HLS
     if (video.canPlayType("application/vnd.apple.mpegurl")) {

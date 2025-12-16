@@ -34,37 +34,45 @@ export function startDlivePoller() {
     running = true;
 
     try {
-      const { rows } = await pool.query(
-        `SELECT pa.id,
-                pa.channel_slug AS "channelSlug",
-                pa.assigned_to_streamer_id AS "streamerId"
-         FROM provider_accounts pa
-         WHERE pa.provider='dlive'
-           AND pa.assigned_to_streamer_id IS NOT NULL`
-      );
+    const { rows } = await pool.query(
+    `SELECT pa.id,
+            pa.channel_slug AS "channelSlug",
+            pa.assigned_to_streamer_id AS "streamerId"
+    FROM provider_accounts pa
+    WHERE pa.provider='dlive'
+        AND pa.assigned_to_streamer_id IS NOT NULL`
+    );
 
-      await runWithConcurrency(
-        rows,
-        async (r: { channelSlug: string; streamerId: number }) => {
-          try {
-            const info = await fetchDliveLiveInfo(r.channelSlug);
+    await runWithConcurrency(
+    rows,
+    async (r: { id: number; channelSlug: string; streamerId: number }) => {
+        try {
+        const info = await fetchDliveLiveInfo(r.channelSlug);
 
-            const isLive = info.isLive;
-            const viewers = isLive ? (info.watchingCount ?? 0) : 0;
-
-            // MVP: on met à jour is_live + viewers (on ne force pas title)
+        if (info.username) {
             await pool.query(
-              `UPDATE streamers
-               SET is_live=$1, viewers=$2, updated_at=NOW()
-               WHERE id=$3`,
-              [isLive, viewers, r.streamerId]
+            `UPDATE provider_accounts
+            SET channel_username=$1
+            WHERE id=$2`,
+            [info.username, r.id]
             );
-          } catch (e) {
-            console.warn("[dlive] poll failed", r.channelSlug, e);
-          }
-        },
-        CONCURRENCY
-      );
+        }
+
+        const isLive = info.isLive;
+        const viewers = isLive ? (info.watchingCount ?? 0) : 0;
+
+        await pool.query(
+            `UPDATE streamers
+            SET is_live=$1, viewers=$2, updated_at=NOW()
+            WHERE id=$3`,
+            [isLive, viewers, r.streamerId]
+        );
+        } catch (e) {
+        console.warn("[dlive] poll failed", r.channelSlug, e);
+        }
+    },
+    CONCURRENCY
+    );
 
       console.log(`[dlive] poll tick ok (${rows.length} accounts)`);
     } finally {

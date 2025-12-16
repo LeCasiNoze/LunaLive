@@ -144,7 +144,8 @@ export type ApiStreamerPage = {
   title: string;
   viewers: number;
   isLive: boolean;
-  channelSlug?: string | null;
+  channelSlug?: string | null;       // displayname
+  channelUsername?: string | null;   // username (HLS)
 };
 
 /* Public */

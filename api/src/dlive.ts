@@ -1,5 +1,6 @@
 // api/src/dlive.ts
 type DliveLiveInfo = {
+  username: string | null;
   isLive: boolean;
   watchingCount: number | null;
   title: string | null;
@@ -51,11 +52,12 @@ export async function fetchDliveLiveInfo(displayname: string): Promise<DliveLive
     const u = j?.data?.userByDisplayName;
     const ls = u?.livestream || null;
 
-    return {
-      isLive: !!ls,
-      watchingCount: typeof ls?.watchingCount === "number" ? ls.watchingCount : null,
-      title: typeof ls?.title === "string" ? ls.title : null,
-      thumbnailUrl: typeof ls?.thumbnailUrl === "string" ? ls.thumbnailUrl : null,
+  return {
+    username: typeof u?.username === "string" ? u.username : null,
+    isLive: !!ls,
+    watchingCount: typeof ls?.watchingCount === "number" ? ls.watchingCount : null,
+    title: typeof ls?.title === "string" ? ls.title : null,
+    thumbnailUrl: typeof ls?.thumbnailUrl === "string" ? ls.thumbnailUrl : null,
     };
   } catch (e) {
     // Fallback minimal (juste live/not live) — inspiré des impls publiques :contentReference[oaicite:1]{index=1}
@@ -67,6 +69,14 @@ export async function fetchDliveLiveInfo(displayname: string): Promise<DliveLive
     const j = await gql(queryLite);
     const ls = j?.data?.userByDisplayName?.livestream || null;
 
-    return { isLive: !!ls, watchingCount: null, title: null, thumbnailUrl: null };
+    return {
+    username: typeof j?.data?.userByDisplayName?.username === "string"
+        ? j.data.userByDisplayName.username
+        : null,
+    isLive: !!ls,
+    watchingCount: null,
+    title: null,
+    thumbnailUrl: null,
+    };
   }
 }
