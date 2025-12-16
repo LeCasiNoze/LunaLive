@@ -1,4 +1,10 @@
-export type ApiUser = { id: number; username: string; rubis: number; role: string };
+export type ApiUser = {
+  id: number;
+  username: string;
+  rubis: number;
+  role: string;
+  emailVerified?: boolean;
+};
 
 export type ApiLive = {
   id: string;
@@ -38,11 +44,19 @@ export const getStreamer = (slug: string) => j<ApiLive>(`/streamers/${encodeURIC
 export const getStreamers = () => j<ApiStreamer[]>("/streamers");
 
 /* Auth */
-export async function register(username: string, password: string) {
-  return j<{ ok: true; token: string; user: ApiUser }>("/auth/register", {
+export async function register(username: string, email: string, password: string) {
+  return j<{ ok: true; needsVerify: true }>("/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, email, password }),
+  });
+}
+
+export async function registerVerify(username: string, code: string) {
+  return j<{ ok: true; token: string; user: ApiUser }>("/auth/register/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, code }),
   });
 }
 
