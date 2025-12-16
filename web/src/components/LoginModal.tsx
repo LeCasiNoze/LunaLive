@@ -1,11 +1,27 @@
 import * as React from "react";
 import { useOnClickOutside, asHTMLElementRef } from "../hooks/useOnClickOutside";
-import { login, register, registerVerify } from "../lib/api";
+import { login, register, registerVerify, registerResend } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
 
 type Step = "login" | "register_form" | "register_code";
 
-export function LoginModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+// ✅ Types attendus côté API
+type RegisterResp = {
+  ok: boolean;
+  needsVerify?: boolean;
+  devCode?: string;
+  error?: string;
+  token?: string;
+  user?: any;
+};
+
+export function LoginModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const boxRef = React.useRef<HTMLDivElement>(null);
   useOnClickOutside([asHTMLElementRef(boxRef)], onClose, open);
 
@@ -44,7 +60,8 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     try {
       const u = username.trim();
       if (!u) throw new Error("Pseudo requis");
-      if (password.length < 6) throw new Error("Mot de passe min 6 caractères");
+      if (password.length < 6)
+        throw new Error("Mot de passe min 6 caractères");
 
       const r = await login(u, password);
       setAuth(r.token, r.user);
@@ -66,10 +83,42 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       if (!u) throw new Error("Pseudo requis");
       if (u.length < 3) throw new Error("Pseudo min 3 caractères");
       if (!isValidEmail(em)) throw new Error("Email invalide");
-      if (password.length < 6) throw new Error("Mot de passe min 6 caractères");
+      if (password.length < 6)
+        throw new Error("Mot de passe min 6 caractères");
 
-      await register(u, em, password);
-      setStep("register_code");
+      // 👇 cast côté front pour accepter devCode/needsVerify
+      const r = (await register(u, em, password)) as unknown as RegisterResp;
+
+      if (r?.needsVerify) {
+        setStep("register_code");
+        if (r.devCode) setCode(String(r.devCode)); // DEV: auto-fill
+        return;
+      }
+
+      // si API renvoie une erreur structurée
+      if (r?.ok === false && r.error) {
+        throw new Error(r.error);
+      }
+
+      throw new Error("Réponse register invalide");
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resendRegisterCode() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const u = username.trim();
+      if (!u) throw new Error("Pseudo requis");
+
+      const r = (await registerResend(u)) as unknown as RegisterResp;
+
+      if (r?.ok === false && r.error) throw new Error(r.error);
+      if (r?.devCode) setCode(String(r.devCode)); // DEV: auto-fill
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
     } finally {
@@ -98,16 +147,20 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   }
 
   const title =
-    step === "login" ? "Connexion" :
-    step === "register_form" ? "Créer un compte" :
-    "Vérification email";
+    step === "login"
+      ? "Connexion"
+      : step === "register_form"
+      ? "Créer un compte"
+      : "Vérification email";
 
   return (
     <div className="modalBackdrop" role="dialog" aria-modal="true">
       <div className="modalBox" ref={boxRef}>
         <div className="modalHeader">
           <div className="modalTitle">{title}</div>
-          <button className="iconBtn" onClick={onClose} aria-label="Fermer">✕</button>
+          <button className="iconBtn" onClick={onClose} aria-label="Fermer">
+            ✕
+          </button>
         </div>
 
         <div className="modalBody">
@@ -132,17 +185,29 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                 />
               </div>
 
-              {err && <div className="hint" style={{ opacity: 0.9 }}>⚠️ {err}</div>}
+              {err && (
+                <div className="hint" style={{ opacity: 0.9 }}>
+                  ⚠️ {err}
+                </div>
+              )}
 
               <div className="modalActions">
                 <button
                   className="btnGhost"
-                  onClick={() => { setErr(null); setPassword(""); setStep("register_form"); }}
+                  onClick={() => {
+                    setErr(null);
+                    setPassword("");
+                    setStep("register_form");
+                  }}
                   disabled={busy}
                 >
                   Créer un compte
                 </button>
-                <button className="btnPrimary" onClick={submitLogin} disabled={busy}>
+                <button
+                  className="btnPrimary"
+                  onClick={submitLogin}
+                  disabled={busy}
+                >
                   {busy ? "…" : "Se connecter"}
                 </button>
               </div>
@@ -180,17 +245,30 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                 />
               </div>
 
-              {err && <div className="hint" style={{ opacity: 0.9 }}>⚠️ {err}</div>}
+              {err && (
+                <div className="hint" style={{ opacity: 0.9 }}>
+                  ⚠️ {err}
+                </div>
+              )}
 
               <div className="modalActions">
                 <button
                   className="btnGhost"
-                  onClick={() => { setErr(null); setPassword(""); setEmail(""); setStep("login"); }}
+                  onClick={() => {
+                    setErr(null);
+                    setPassword("");
+                    setEmail("");
+                    setStep("login");
+                  }}
                   disabled={busy}
                 >
                   J’ai déjà un compte
                 </button>
-                <button className="btnPrimary" onClick={submitRegisterForm} disabled={busy}>
+                <button
+                  className="btnPrimary"
+                  onClick={submitRegisterForm}
+                  disabled={busy}
+                >
                   {busy ? "…" : "Envoyer le code"}
                 </button>
               </div>
@@ -200,7 +278,8 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
           {step === "register_code" && (
             <>
               <div className="hint" style={{ opacity: 0.9, marginBottom: 10 }}>
-                On t’a envoyé un code par email. Saisis-le pour finaliser la création du compte.
+                On t’a envoyé un code par email. Saisis-le pour finaliser la
+                création du compte.
               </div>
 
               <div className="field">
@@ -219,17 +298,38 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                 />
               </div>
 
-              {err && <div className="hint" style={{ opacity: 0.9 }}>⚠️ {err}</div>}
+              {err && (
+                <div className="hint" style={{ opacity: 0.9 }}>
+                  ⚠️ {err}
+                </div>
+              )}
 
               <div className="modalActions">
                 <button
                   className="btnGhost"
-                  onClick={() => { setErr(null); setCode(""); setStep("register_form"); }}
+                  onClick={() => {
+                    setErr(null);
+                    setCode("");
+                    setStep("register_form");
+                  }}
                   disabled={busy}
                 >
                   Retour
                 </button>
-                <button className="btnPrimary" onClick={submitRegisterCode} disabled={busy}>
+
+                <button
+                  className="btnGhost"
+                  onClick={resendRegisterCode}
+                  disabled={busy}
+                >
+                  Renvoyer le code
+                </button>
+
+                <button
+                  className="btnPrimary"
+                  onClick={submitRegisterCode}
+                  disabled={busy}
+                >
                   {busy ? "…" : "Valider"}
                 </button>
               </div>

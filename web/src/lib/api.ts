@@ -146,3 +146,14 @@ export async function adminSetUserRole(adminKey: string, id: number, role: Admin
     body: JSON.stringify({ role }),
   });
 }
+
+export async function registerResend(username: string) {
+  return j<{ ok: boolean; needsVerify?: boolean; devCode?: string; error?: string }>(
+    "/auth/register/resend",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username }),
+    }
+  );
+}
