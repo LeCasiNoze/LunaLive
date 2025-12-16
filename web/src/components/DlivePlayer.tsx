@@ -11,62 +11,77 @@ export function DlivePlayer({
   isLive: boolean | undefined;
 }) {
   const videoRef = React.useRef<HTMLVideoElement>(null);
+  const [dbg, setDbg] = React.useState<string>("");
 
   React.useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    // reset src on changes
+    // reset
+    video.pause();
     video.removeAttribute("src");
     video.load();
 
-    if (!channelSlug || !isLive) return;
-
     const username = (channelUsername || channelSlug || "").trim();
-    const hlsUrl = `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(username)}.m3u8?mobileweb`;
-
-    // Safari / iOS support natif HLS
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = hlsUrl;
+    if (!username || !isLive) {
+      setDbg(!username ? "no_username" : "offline");
       return;
     }
 
-    // Chrome/Firefox/Edge => hls.js
-    if (Hls.isSupported()) {
-      const hls = new Hls({
-        lowLatencyMode: true,
-      });
-      hls.loadSource(hlsUrl);
-      hls.attachMedia(video);
+    const hlsUrl = `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(
+      username
+    )}.m3u8?mobileweb`;
 
-      return () => {
+    const nativeHls =
+      video.canPlayType("application/vnd.apple.mpegurl") !== "";
+
+    setDbg(
+      `nativeHls=${nativeHls} hlsSupported=${Hls.isSupported()} url=${hlsUrl}`
+    );
+
+    // ✅ Safari / iOS : natif OK
+    if (nativeHls) {
+      video.src = hlsUrl;
+      video.play().catch(() => {});
+      return;
+    }
+
+    // ✅ Chrome/Brave : on FORCE hls.js (sinon écran noir)
+    if (!Hls.isSupported()) {
+      setDbg((s) => s + " | HLS_NOT_SUPPORTED");
+      return;
+    }
+
+    const hls = new Hls({ lowLatencyMode: true });
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+      hls.loadSource(hlsUrl);
+    });
+
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      video.play().catch(() => {});
+    });
+
+    hls.on(Hls.Events.ERROR, (_evt, data) => {
+      setDbg(
+        `HLS_ERROR fatal=${data.fatal} type=${data.type} details=${data.details}`
+      );
+      if (data.fatal) {
         try {
           hls.destroy();
         } catch {}
-      };
-    } else {
-      // fallback best-effort
-      video.src = hlsUrl;
-    }
-  }, [channelSlug, isLive]);
+      }
+    });
 
-  if (!channelSlug) {
-    return (
-      <div className="panel">
-        <div className="muted">Aucun compte DLive assigné à ce streamer.</div>
-      </div>
-    );
-  }
+    return () => {
+      try {
+        hls.destroy();
+      } catch {}
+    };
+  }, [channelSlug, channelUsername, isLive]);
 
-  if (!isLive) {
-    return (
-      <div className="panel">
-        <div className="muted">Offline pour le moment.</div>
-        <a className="btnGhostInline" href={`https://dlive.tv/${channelSlug}`} target="_blank" rel="noreferrer">
-          Ouvrir sur DLive →
-        </a>
-      </div>
-    );
+  if (!channelSlug && !channelUsername) {
+    return <div className="panel"><div className="muted">Aucun compte DLive assigné.</div></div>;
   }
 
   return (
@@ -77,8 +92,17 @@ export function DlivePlayer({
         playsInline
         autoPlay
         muted
-        style={{ width: "100%", display: "block", background: "rgba(0,0,0,0.25)" }}
+        crossOrigin="anonymous"
+        style={{
+          width: "100%",
+          display: "block",
+          background: "rgba(0,0,0,0.25)",
+        }}
       />
+      {/* debug MVP (tu pourras enlever après) */}
+      <div className="mutedSmall" style={{ padding: 10 }}>
+        {dbg}
+      </div>
     </div>
   );
 }
