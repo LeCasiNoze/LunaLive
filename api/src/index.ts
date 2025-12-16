@@ -135,13 +135,18 @@ app.post(
     } catch (e) {
       console.warn("[auth/register] mail failed:", e);
 
-      // si le mail ne part pas, on supprime le pending (sinon user bloqué)
-      await pool.query(`DELETE FROM pending_registrations WHERE lower(username)=lower($1)`, [username]);
-
-      // en dev, on peut retourner le code pour debug
+      // ✅ DEV: on garde le pending, sinon /verify => no_pending
       if (IS_DEV) {
         return res.json({ ok: true, needsVerify: true, devCode: code });
       }
+
+      // ✅ PROD: on supprime le pending pour permettre de réessayer
+      await pool.query(
+        `DELETE FROM pending_registrations
+        WHERE lower(username)=lower($1) OR lower(email)=lower($2)`,
+        [username, email]
+      );
+
       return res.status(500).json({ ok: false, error: "mail_failed" });
     }
 
@@ -204,6 +209,52 @@ app.post(
     });
 
     res.json({ ok: true, token, user });
+  })
+);
+
+app.post(
+  "/auth/register/resend",
+  a(async (req, res) => {
+    const username = String(req.body.username || "").trim();
+    if (!username) return res.status(400).json({ ok: false, error: "username_required" });
+
+    // Nettoie les pending expirés
+    await pool.query(`DELETE FROM pending_registrations WHERE expires_at < NOW()`);
+
+    const { rows } = await pool.query(
+      `SELECT id, email FROM pending_registrations
+       WHERE lower(username)=lower($1)
+       LIMIT 1`,
+      [username]
+    );
+
+    const p = rows[0];
+    if (!p) return res.status(400).json({ ok: false, error: "no_pending" });
+
+    const code = genCode6();
+    const codeHash = await hashPassword(code);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await pool.query(
+      `UPDATE pending_registrations
+       SET code_hash=$1, expires_at=$2
+       WHERE id=$3`,
+      [codeHash, expiresAt, p.id]
+    );
+
+    const NODE_ENV = process.env.NODE_ENV || "development";
+    const IS_DEV = NODE_ENV !== "production";
+
+    try {
+      if (!isSmtpReady()) throw new Error("SMTP_NOT_CONFIGURED");
+      await sendVerifyCode(p.email, code, 15);
+    } catch (e) {
+      console.warn("[auth/resend] mail failed:", e);
+      if (IS_DEV) return res.json({ ok: true, needsVerify: true, devCode: code });
+      return res.status(500).json({ ok: false, error: "mail_failed" });
+    }
+
+    res.json({ ok: true, needsVerify: true });
   })
 );
 
