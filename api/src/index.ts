@@ -10,7 +10,7 @@ import {
 } from "./auth.js";
 import { slugify } from "./slug.js";
 import type { Request, Response, NextFunction } from "express";
-import { isSmtpReady, sendVerifyCode } from "./utils/mailer.js";
+import { sendVerifyCode } from "./utils/mailer.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -130,7 +130,6 @@ app.post(
     const IS_DEV = NODE_ENV !== "production";
 
     try {
-      if (!isSmtpReady()) throw new Error("SMTP_NOT_CONFIGURED");
       await sendVerifyCode(email, code, 15);
     } catch (e) {
       console.warn("[auth/register] mail failed:", e);
@@ -246,7 +245,6 @@ app.post(
     const IS_DEV = NODE_ENV !== "production";
 
     try {
-      if (!isSmtpReady()) throw new Error("SMTP_NOT_CONFIGURED");
       await sendVerifyCode(p.email, code, 15);
     } catch (e) {
       console.warn("[auth/resend] mail failed:", e);
