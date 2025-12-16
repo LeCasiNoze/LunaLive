@@ -36,6 +36,10 @@ function rewriteM3u8(text: string, base: URL) {
 
 export function registerHlsProxy(app: Express) {
   app.get("/hls", async (req: Request, res: Response) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    res.setHeader("Access-Control-Expose-Headers", "content-type,content-length,accept-ranges,content-range");
+
     const raw = String(req.query.u || "");
     if (!raw) return res.status(400).send("missing_u");
 

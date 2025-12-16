@@ -24,6 +24,7 @@ app.use(cors());
 app.use(express.json());
 
 registerHlsProxy(app);
+app.options("/hls", (_req, res) => res.sendStatus(204));
 
 const a =
   (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
