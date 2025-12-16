@@ -135,7 +135,7 @@ app.post(
     } catch (e) {
       console.warn("[auth/register] mail failed:", e);
 
-      // ✅ DEV: on garde le pending, sinon /verify => no_pending
+      // ✅ DEV: on garde le pending (sinon /verify => no_pending)
       if (IS_DEV) {
         return res.json({ ok: true, needsVerify: true, devCode: code });
       }

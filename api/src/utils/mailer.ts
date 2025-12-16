@@ -49,6 +49,11 @@ export function getTransport(): nodemailer.Transporter {
     port: conf.port,
     secure: conf.secure,
     auth: { user: conf.user, pass: conf.pass },
+
+    // ✅ évite que la requête /auth/register reste bloquée
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
   });
 
   cachedKey = key;
