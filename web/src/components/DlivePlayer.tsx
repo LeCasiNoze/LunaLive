@@ -6,6 +6,14 @@ const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrende
   ""
 );
 
+function isAppleSafari(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const isIOS = /iP(hone|ad|od)/i.test(ua);
+  const isSafari = /Safari/i.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Brave/i.test(ua);
+  return isIOS || isSafari;
+}
+
 export function DlivePlayer({
   channelSlug,
   channelUsername,
@@ -16,7 +24,7 @@ export function DlivePlayer({
   isLive: boolean | undefined;
 }) {
   const videoRef = React.useRef<HTMLVideoElement>(null);
-  const [dbg, setDbg] = React.useState<string>("init");
+  const [dbg, setDbg] = React.useState("init");
 
   React.useEffect(() => {
     const video = videoRef.current;
@@ -30,39 +38,47 @@ export function DlivePlayer({
     video.load();
 
     const username = String(channelUsername || channelSlug || "").trim();
-    const nativeHls = video.canPlayType("application/vnd.apple.mpegurl") !== "";
-    const hlsSupported = Hls.isSupported();
+    if (!username) {
+      setDbg(`username=∅`);
+      return;
+    }
 
-    // ✅ debug visible (on veut savoir POURQUOI ça ne fetch pas)
-    setDbg(
-      `username=${username || "∅"} | isLive=${String(isLive)} | nativeHls=${nativeHls} | hls.js=${hlsSupported} | api=${API_BASE}`
-    );
-
-    if (!username) return;
-
-    // ⚠️ IMPORTANT : on tente même si offline (debug). Tu pourras remettre le check après.
-    // if (!isLive) return;
+    // (debug) on peut laisser le stream tenter même si offline, mais ici on respecte le flag
+    if (!isLive) {
+      setDbg(`username=${username} | isLive=false (skip)`);
+      return;
+    }
 
     const upstream = `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(
       username
     )}.m3u8?mobileweb`;
     const proxied = `${API_BASE}/hls?u=${encodeURIComponent(upstream)}`;
 
-    // Safari/iOS : natif
-    if (nativeHls) {
+    const nativeHls = video.canPlayType("application/vnd.apple.mpegurl") !== "";
+    const hlsJsSupported = Hls.isSupported();
+    const safari = isAppleSafari();
+
+    // ✅ on force hls.js (proxy) partout sauf Safari Apple
+    const mode = safari && nativeHls ? "native" : hlsJsSupported ? "hlsjs-proxy" : "unsupported";
+
+    setDbg(
+      `username=${username} | isLive=${String(isLive)} | nativeHls=${String(
+        nativeHls
+      )} | hls.js=${String(hlsJsSupported)} | safari=${String(safari)} | mode=${mode}`
+    );
+
+    if (mode === "native") {
       video.src = upstream;
       video.play().catch(() => {});
       return;
     }
 
-    // Desktop : hls.js via proxy
-    if (!hlsSupported) return;
+    if (mode !== "hlsjs-proxy") return;
 
     const hls = new Hls({ lowLatencyMode: true });
     hls.attachMedia(video);
 
     hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-      setDbg((s) => `${s} | load=${proxied}`);
       hls.loadSource(proxied);
     });
 
@@ -76,11 +92,6 @@ export function DlivePlayer({
           data?.details
         )}`
       );
-      if (data?.fatal) {
-        try {
-          hls.destroy();
-        } catch {}
-      }
     });
 
     return () => {
