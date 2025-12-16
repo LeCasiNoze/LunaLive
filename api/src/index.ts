@@ -16,11 +16,14 @@ import {
   releaseAccountForStreamerId,
 } from "./provider_accounts.js";
 import { startDlivePoller } from "./dlive_poller.js";
+import { registerHlsProxy } from "./hls_proxy.js";
 
 const app = express();
 app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json());
+
+registerHlsProxy(app);
 
 const a =
   (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
