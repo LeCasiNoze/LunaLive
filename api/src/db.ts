@@ -52,23 +52,24 @@ export async function migrate() {
       created_ip INET NULL
     );
 
-  CREATE TABLE IF NOT EXISTS provider_accounts (
-    id SERIAL PRIMARY KEY,
-    provider TEXT NOT NULL DEFAULT 'dlive',
-    channel_slug TEXT NOT NULL,
-    rtmp_url TEXT NOT NULL,
-    stream_key TEXT NOT NULL,
-    assigned_to_streamer_id INT NULL REFERENCES streamers(id) ON DELETE SET NULL,
-    assigned_at TIMESTAMPTZ NULL,
-    released_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-
+    CREATE TABLE IF NOT EXISTS provider_accounts (
+      id SERIAL PRIMARY KEY,
+      provider TEXT NOT NULL DEFAULT 'dlive',
+      channel_slug TEXT NOT NULL,
+      rtmp_url TEXT NOT NULL,
+      stream_key TEXT NOT NULL,
+      assigned_to_streamer_id INT NULL REFERENCES streamers(id) ON DELETE SET NULL,
+      assigned_at TIMESTAMPTZ NULL,
+      released_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 
   // 2) Upgrade users (ajout de colonnes si elles n'existent pas)
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await pool.query(
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;`
+  );
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ NULL;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_ip INET NULL;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip INET NULL;`);
@@ -78,7 +79,6 @@ export async function migrate() {
   await pool.query(`ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL;`);
 
   // 3) Backfill pour les users déjà existants (sinon ils bloquent tout)
-  // On met un email "placeholder" unique (domaine .invalid = jamais réel)
   await pool.query(`
     UPDATE users
     SET email = COALESCE(email, ('legacy+' || id::text || '@lunalive.invalid')),
@@ -105,6 +105,16 @@ export async function migrate() {
   await pool.query(`ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
 
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS streamers_user_id_uq ON streamers(user_id);`);
+
+  // 6) Provider accounts indexes
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS provider_accounts_provider_slug_uq
+     ON provider_accounts (provider, lower(channel_slug));`
+  );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS provider_accounts_assigned_idx
+     ON provider_accounts (assigned_to_streamer_id);`
+  );
 }
 
 export async function seedIfEmpty() {
@@ -119,14 +129,4 @@ export async function seedIfEmpty() {
     ('teoman','Teoman','Community picks — let’s go',205,true),
     ('bryan-cars','BryanCars','Late session — last shots',96,true);
   `);
-
-  await pool.query(
-    `CREATE UNIQUE INDEX IF NOT EXISTS provider_accounts_provider_slug_uq
-     ON provider_accounts (provider, lower(channel_slug));`
-  );
-  await pool.query(
-    `CREATE INDEX IF NOT EXISTS provider_accounts_assigned_idx
-     ON provider_accounts (assigned_to_streamer_id);`
-  );
-
 }
