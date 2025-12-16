@@ -137,10 +137,21 @@ async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await r.json()) as T;
 }
 
+export type ApiStreamerPage = {
+  id: string;
+  slug: string;
+  displayName: string;
+  title: string;
+  viewers: number;
+  isLive: boolean;
+  channelSlug?: string | null;
+};
+
 /* Public */
 export const getLives = () => j<ApiLive[]>("/lives");
 export const getStreamer = (slug: string) =>
-  j<ApiPublicStreamer>(`/streamers/${encodeURIComponent(slug)}`);
+  j<ApiStreamerPage>(`/streamers/${encodeURIComponent(slug)}`);
+
 export const getStreamers = () => j<ApiStreamer[]>("/streamers");
 
 /* Auth */

@@ -62,24 +62,25 @@ app.get(
   "/streamers/:slug",
   a(async (req, res) => {
     const slug = String(req.params.slug || "");
+
     const { rows } = await pool.query(
-      `SELECT s.id::text AS id,
-              s.slug,
-              s.display_name AS "displayName",
-              s.title,
-              s.viewers,
-              s.is_live AS "isLive",
-              pa.provider AS "provider",
-              pa.channel_slug AS "providerChannelSlug"
+      `SELECT
+         s.id::text AS id,
+         s.slug,
+         s.display_name AS "displayName",
+         s.title,
+         s.viewers,
+         s.is_live AS "isLive",
+         pa.channel_slug AS "channelSlug"
        FROM streamers s
        LEFT JOIN provider_accounts pa
          ON pa.assigned_to_streamer_id = s.id
-        AND pa.provider = 'dlive'
        WHERE s.slug = $1
          AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
        LIMIT 1`,
       [slug]
     );
+
     if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
     res.json(rows[0]);
   })
