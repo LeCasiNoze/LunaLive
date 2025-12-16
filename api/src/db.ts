@@ -1,33 +1,28 @@
+// api/src/db.ts
 import { Pool } from "pg";
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes("sslmode=require")
-    ? { rejectUnauthorized: false }
-    : undefined,
+  // Render Postgres est quasi toujours en TLS en prod
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
 });
 
 export async function migrate() {
-  // 1) Créations (si absent)
+  // 1) Tables de base (version minimale, safe si déjà existant)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
-      username TEXT NOT NULL,
-      email TEXT NOT NULL,
-      email_verified BOOLEAN NOT NULL DEFAULT FALSE,
-      password_hash TEXT NOT NULL,
+      username TEXT,
+      password_hash TEXT,
       role TEXT NOT NULL DEFAULT 'viewer',
       rubis INT NOT NULL DEFAULT 0,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_login_at TIMESTAMPTZ NULL,
-      created_ip INET NULL,
-      last_login_ip INET NULL
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS streamer_requests (
       id SERIAL PRIMARY KEY,
       user_id INT UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      status TEXT NOT NULL DEFAULT 'pending', -- pending/approved/rejected
+      status TEXT NOT NULL DEFAULT 'pending',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -46,7 +41,6 @@ export async function migrate() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
-    -- Inscriptions en attente (code email)
     CREATE TABLE IF NOT EXISTS pending_registrations (
       id SERIAL PRIMARY KEY,
       username TEXT NOT NULL,
@@ -57,33 +51,46 @@ export async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_ip INET NULL
     );
-
-    -- Uniques case-insensitive (users)
-    CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_uq ON users (lower(username));
-    CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_uq ON users (lower(email));
-
-    -- Uniques case-insensitive (pending)
-    CREATE UNIQUE INDEX IF NOT EXISTS pending_username_lower_uq ON pending_registrations (lower(username));
-    CREATE UNIQUE INDEX IF NOT EXISTS pending_email_lower_uq ON pending_registrations (lower(email));
   `);
 
-  // 2) Upgrades si la table existait déjà (important si tu avais l’ancien schema)
+  // 2) Upgrade users (ajout de colonnes si elles n'existent pas)
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ NULL;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_ip INET NULL;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip INET NULL;`);
+
+  // On garde username/password_hash non null pour la logique auth
+  await pool.query(`ALTER TABLE users ALTER COLUMN username SET NOT NULL;`);
+  await pool.query(`ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL;`);
+
+  // 3) Backfill pour les users déjà existants (sinon ils bloquent tout)
+  // On met un email "placeholder" unique (domaine .invalid = jamais réel)
   await pool.query(`
-    ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS email TEXT;
-    ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
-    ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ NULL;
-    ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS created_ip INET NULL;
-    ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS last_login_ip INET NULL;
+    UPDATE users
+    SET email = COALESCE(email, ('legacy+' || id::text || '@lunalive.invalid')),
+        email_verified = TRUE
+    WHERE email IS NULL OR email = '';
   `);
 
-  // 3) Upgrades streamers (tu avais déjà ça)
+  // 4) Index uniques case-insensitive (après ajout colonnes)
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_uq ON users (lower(username));`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_uq ON users (lower(email));`);
+
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS pending_username_lower_uq ON pending_registrations (lower(username));`
+  );
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS pending_email_lower_uq ON pending_registrations (lower(email));`
+  );
+
+  // 5) Streamers upgrades + index
   await pool.query(`ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS user_id INT;`);
   await pool.query(`ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT FALSE;`);
   await pool.query(`ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
   await pool.query(`ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
 
-  // Requis pour ton ON CONFLICT (user_id)
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS streamers_user_id_uq ON streamers(user_id);`);
 }
 
