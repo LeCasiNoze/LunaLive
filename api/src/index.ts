@@ -15,6 +15,7 @@ import {
   ensureAssignedDliveAccount,
   releaseAccountForStreamerId,
 } from "./provider_accounts.js";
+import { startDlivePoller } from "./dlive_poller.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -62,10 +63,20 @@ app.get(
   a(async (req, res) => {
     const slug = String(req.params.slug || "");
     const { rows } = await pool.query(
-      `SELECT id::text AS id, slug, display_name AS "displayName", title, viewers
-       FROM streamers
-       WHERE slug = $1
-         AND (suspended_until IS NULL OR suspended_until < NOW())
+      `SELECT s.id::text AS id,
+              s.slug,
+              s.display_name AS "displayName",
+              s.title,
+              s.viewers,
+              s.is_live AS "isLive",
+              pa.provider AS "provider",
+              pa.channel_slug AS "providerChannelSlug"
+       FROM streamers s
+       LEFT JOIN provider_accounts pa
+         ON pa.assigned_to_streamer_id = s.id
+        AND pa.provider = 'dlive'
+       WHERE s.slug = $1
+         AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
        LIMIT 1`,
       [slug]
     );
@@ -867,5 +878,6 @@ const port = Number(process.env.PORT || 3001);
 (async () => {
   await migrate();
   await seedIfEmpty();
+  startDlivePoller();
   app.listen(port, () => console.log(`[api] listening on :${port}`));
 })();

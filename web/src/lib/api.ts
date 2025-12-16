@@ -79,6 +79,17 @@ export type AdminProviderAccountRow = {
   assignedUsername: string | null;
 };
 
+export type ApiPublicStreamer = {
+  id: string;
+  slug: string;
+  displayName: string;
+  title: string;
+  viewers: number;
+  isLive: boolean;
+  provider?: string | null;
+  providerChannelSlug?: string | null;
+};
+
 export async function adminListProviderAccounts(adminKey: string) {
   return j<{ ok: true; accounts: AdminProviderAccountRow[] }>("/admin/provider-accounts", {
     headers: { "x-admin-key": adminKey },
@@ -128,7 +139,8 @@ async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 /* Public */
 export const getLives = () => j<ApiLive[]>("/lives");
-export const getStreamer = (slug: string) => j<ApiLive>(`/streamers/${encodeURIComponent(slug)}`);
+export const getStreamer = (slug: string) =>
+  j<ApiPublicStreamer>(`/streamers/${encodeURIComponent(slug)}`);
 export const getStreamers = () => j<ApiStreamer[]>("/streamers");
 
 /* Auth */
