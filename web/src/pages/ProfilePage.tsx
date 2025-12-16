@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Link } from "react-router-dom";
 import { applyStreamer, myStreamerRequest } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
 
@@ -37,21 +38,49 @@ export default function ProfilePage() {
         ) : (
           <>
             <p className="muted">
-              Connecté en tant que <b>{user.username}</b> — rubis: <b>{user.rubis.toLocaleString("fr-FR")}</b> — rôle: <b>{user.role}</b>
+              Connecté en tant que <b>{user.username}</b> — rubis:{" "}
+              <b>{user.rubis.toLocaleString("fr-FR")}</b> — rôle:{" "}
+              <b>{user.role}</b>
             </p>
 
-            {user.role !== "streamer" && (
+            {(user.role === "streamer" || user.role === "admin") && (
+              <div className="panel" style={{ marginTop: 14 }}>
+                <div className="panelTitle">Espace streamer</div>
+                <div className="muted" style={{ marginBottom: 10 }}>
+                  Accède à ton dashboard streamer.
+                </div>
+                <Link to="/dashboard" className="btnPrimary">
+                  Ouvrir le Dashboard
+                </Link>
+              </div>
+            )}
+
+            {user.role !== "streamer" && user.role !== "admin" && (
               <div className="panel" style={{ marginTop: 14 }}>
                 <div className="panelTitle">Devenir streamer</div>
                 <div className="muted" style={{ marginBottom: 10 }}>
-                  {reqStatus === "pending" && "Demande envoyée : en attente de validation."}
+                  {reqStatus === "pending" &&
+                    "Demande envoyée : en attente de validation."}
                   {reqStatus === "approved" && "Demande acceptée ✅"}
                   {reqStatus === "rejected" && "Demande refusée."}
-                  {!reqStatus && "Tu peux envoyer une demande pour devenir streamer."}
+                  {!reqStatus &&
+                    "Tu peux envoyer une demande pour devenir streamer."}
                 </div>
 
-                <button className="btnPrimary" onClick={onApply} disabled={busy || reqStatus === "pending" || reqStatus === "approved"}>
-                  {busy ? "…" : reqStatus === "pending" ? "En attente" : reqStatus === "approved" ? "Déjà streamer" : "Faire une demande"}
+                <button
+                  className="btnPrimary"
+                  onClick={onApply}
+                  disabled={
+                    busy || reqStatus === "pending" || reqStatus === "approved"
+                  }
+                >
+                  {busy
+                    ? "…"
+                    : reqStatus === "pending"
+                    ? "En attente"
+                    : reqStatus === "approved"
+                    ? "Déjà streamer"
+                    : "Faire une demande"}
                 </button>
               </div>
             )}

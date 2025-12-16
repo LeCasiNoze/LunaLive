@@ -30,6 +30,94 @@ export type AdminRequestRow = {
   username: string;
 };
 
+export type ApiMyStreamer = {
+  id: string;
+  slug: string;
+  displayName: string;
+  title: string;
+  viewers: number;
+  isLive: boolean;
+  featured: boolean;
+};
+
+export type ApiStreamConnection = {
+  provider: "dlive";
+  channelSlug: string;
+  rtmpUrl: string;
+  streamKey: string;
+};
+
+export async function getMyStreamer(token: string) {
+  return j<{ ok: true; streamer: ApiMyStreamer | null }>("/streamer/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function updateMyStreamerTitle(token: string, title: string) {
+  return j<{ ok: true; streamer: ApiMyStreamer }>("/streamer/me", {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function getMyStreamConnection(token: string) {
+  return j<{ ok: true; connection: ApiStreamConnection | null }>("/streamer/me/connection", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+export type AdminProviderAccountRow = {
+  id: number;
+  provider: string;
+  channelSlug: string;
+  rtmpUrl: string;
+  assignedAt: string | null;
+  releasedAt: string | null;
+  assignedStreamerId: string | null;
+  assignedStreamerSlug: string | null;
+  assignedStreamerName: string | null;
+  assignedUsername: string | null;
+};
+
+export async function adminListProviderAccounts(adminKey: string) {
+  return j<{ ok: true; accounts: AdminProviderAccountRow[] }>("/admin/provider-accounts", {
+    headers: { "x-admin-key": adminKey },
+  });
+}
+
+export async function adminCreateProviderAccount(
+  adminKey: string,
+  payload: { provider?: string; channelSlug: string; rtmpUrl: string; streamKey: string }
+) {
+  return j<{ ok: true }>(`/admin/provider-accounts`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminDeleteProviderAccount(adminKey: string, id: number) {
+  return j<{ ok: true }>(`/admin/provider-accounts/${id}`, {
+    method: "DELETE",
+    headers: { "x-admin-key": adminKey },
+  });
+}
+
+export async function adminAssignProviderAccount(adminKey: string, id: number, streamerId: string) {
+  return j<{ ok: true }>(`/admin/provider-accounts/${id}/assign`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ streamerId: Number(streamerId) }),
+  });
+}
+
+export async function adminReleaseProviderAccount(adminKey: string, id: number) {
+  return j<{ ok: true }>(`/admin/provider-accounts/${id}/release`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey },
+  });
+}
+
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
 async function j<T>(path: string, init: RequestInit = {}): Promise<T> {

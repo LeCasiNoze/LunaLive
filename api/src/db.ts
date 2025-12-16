@@ -51,6 +51,19 @@ export async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_ip INET NULL
     );
+
+  CREATE TABLE IF NOT EXISTS provider_accounts (
+    id SERIAL PRIMARY KEY,
+    provider TEXT NOT NULL DEFAULT 'dlive',
+    channel_slug TEXT NOT NULL,
+    rtmp_url TEXT NOT NULL,
+    stream_key TEXT NOT NULL,
+    assigned_to_streamer_id INT NULL REFERENCES streamers(id) ON DELETE SET NULL,
+    assigned_at TIMESTAMPTZ NULL,
+    released_at TIMESTAMPTZ NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
   `);
 
   // 2) Upgrade users (ajout de colonnes si elles n'existent pas)
@@ -106,4 +119,14 @@ export async function seedIfEmpty() {
     ('teoman','Teoman','Community picks — let’s go',205,true),
     ('bryan-cars','BryanCars','Late session — last shots',96,true);
   `);
+
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS provider_accounts_provider_slug_uq
+     ON provider_accounts (provider, lower(channel_slug));`
+  );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS provider_accounts_assigned_idx
+     ON provider_accounts (assigned_to_streamer_id);`
+  );
+
 }

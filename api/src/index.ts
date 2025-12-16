@@ -11,6 +11,10 @@ import {
 import { slugify } from "./slug.js";
 import type { Request, Response, NextFunction } from "express";
 import { sendVerifyCode } from "./utils/mailer.js";
+import {
+  ensureAssignedDliveAccount,
+  releaseAccountForStreamerId,
+} from "./provider_accounts.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -310,9 +314,10 @@ app.post(
 
     const { rows } = await pool.query(
       `INSERT INTO streamer_requests (user_id, status)
-       VALUES ($1, 'pending')
-       ON CONFLICT (user_id) DO UPDATE SET updated_at = NOW()
-       RETURNING id, status, created_at AS "createdAt"`,
+      VALUES ($1, 'pending')
+      ON CONFLICT (user_id) DO UPDATE
+        SET status='pending', updated_at = NOW()
+      RETURNING id, status, created_at AS "createdAt"`,
       [userId]
     );
 
@@ -333,6 +338,74 @@ app.get(
       [userId]
     );
     res.json({ ok: true, request: rows[0] || null });
+  })
+);
+
+/* Streamer (dashboard) */
+app.get(
+  "/streamer/me",
+  requireAuth,
+  a(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT id::text AS id, slug, display_name AS "displayName",
+              title, viewers, is_live AS "isLive", featured
+       FROM streamers
+       WHERE user_id = $1
+       LIMIT 1`,
+      [req.user!.id]
+    );
+    res.json({ ok: true, streamer: rows[0] || null });
+  })
+);
+
+app.patch(
+  "/streamer/me",
+  requireAuth,
+  a(async (req, res) => {
+    if (req.user!.role !== "streamer" && req.user!.role !== "admin") {
+      return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+
+    const title = String(req.body.title ?? "").trim();
+    if (title.length > 140) {
+      return res.status(400).json({ ok: false, error: "title_too_long" });
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE streamers
+       SET title = $1, updated_at = NOW()
+       WHERE user_id = $2
+       RETURNING id::text AS id, slug, display_name AS "displayName",
+                 title, viewers, is_live AS "isLive", featured`,
+      [title, req.user!.id]
+    );
+
+    if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+    res.json({ ok: true, streamer: rows[0] });
+  })
+);
+
+app.get(
+  "/streamer/me/connection",
+  requireAuth,
+  a(async (req, res) => {
+    if (req.user!.role !== "streamer" && req.user!.role !== "admin") {
+      return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT pa.provider,
+              pa.channel_slug AS "channelSlug",
+              pa.rtmp_url AS "rtmpUrl",
+              pa.stream_key AS "streamKey"
+       FROM provider_accounts pa
+       JOIN streamers s ON s.id = pa.assigned_to_streamer_id
+       WHERE s.user_id = $1
+       LIMIT 1`,
+      [req.user!.id]
+    );
+
+    res.json({ ok: true, connection: rows[0] || null });
   })
 );
 
@@ -357,33 +430,62 @@ app.post(
   requireAdminKey,
   a(async (req, res) => {
     const id = Number(req.params.id);
-    const { rows } = await pool.query(
-      `UPDATE streamer_requests SET status='approved', updated_at=NOW()
-       WHERE id = $1
-       RETURNING user_id`,
-      [id]
-    );
-    if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
 
-    const userId = rows[0].user_id;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
 
-    await pool.query(`UPDATE users SET role='streamer' WHERE id=$1`, [userId]);
+      const upd = await client.query(
+        `UPDATE streamer_requests
+         SET status='approved', updated_at=NOW()
+         WHERE id = $1
+         RETURNING user_id`,
+        [id]
+      );
+      if (!upd.rows[0]) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ ok: false, error: "not_found" });
+      }
 
-    const u = await pool.query(`SELECT username FROM users WHERE id=$1`, [userId]);
-    const username = String(u.rows[0]?.username || `user-${userId}`);
-    let slug = slugify(username);
+      const userId = upd.rows[0].user_id;
 
-    const exists = await pool.query(`SELECT 1 FROM streamers WHERE slug=$1`, [slug]);
-    if (exists.rows[0]) slug = `${slug}-${userId}`;
+      await client.query(`UPDATE users SET role='streamer' WHERE id=$1`, [userId]);
 
-    await pool.query(
-      `INSERT INTO streamers (slug, display_name, user_id, title, viewers, is_live)
-       VALUES ($1,$2,$3,'',0,false)
-       ON CONFLICT (user_id) DO NOTHING`,
-      [slug, username, userId]
-    );
+      const u = await client.query(`SELECT username FROM users WHERE id=$1`, [userId]);
+      const username = String(u.rows[0]?.username || `user-${userId}`);
+      let slug = slugify(username);
 
-    res.json({ ok: true });
+      const exists = await client.query(`SELECT 1 FROM streamers WHERE slug=$1`, [slug]);
+      if (exists.rows[0]) slug = `${slug}-${userId}`;
+
+      await client.query(
+        `INSERT INTO streamers (slug, display_name, user_id, title, viewers, is_live)
+         VALUES ($1,$2,$3,'',0,false)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [slug, username, userId]
+      );
+
+      const s = await client.query(`SELECT id FROM streamers WHERE user_id=$1 LIMIT 1`, [userId]);
+      const streamerId = Number(s.rows[0]?.id || 0);
+      if (!streamerId) {
+        await client.query("ROLLBACK");
+        return res.status(500).json({ ok: false, error: "streamer_missing" });
+      }
+
+      const conn = await ensureAssignedDliveAccount(client, streamerId);
+      if (!conn) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ ok: false, error: "no_free_provider_account" });
+      }
+
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (e) {
+      try { await client.query("ROLLBACK"); } catch {}
+      throw e;
+    } finally {
+      client.release();
+    }
   })
 );
 
@@ -392,18 +494,23 @@ app.get(
   requireAdminKey,
   a(async (_req, res) => {
     const { rows } = await pool.query(`
-      SELECT
-        u.id,
-        u.username,
-        u.role,
-        u.rubis,
-        u.created_at AS "createdAt",
-        sr.status AS "requestStatus",
-        s.slug AS "streamerSlug"
-      FROM users u
-      LEFT JOIN streamer_requests sr ON sr.user_id = u.id
-      LEFT JOIN streamers s ON s.user_id = u.id
-      ORDER BY u.created_at DESC
+    SELECT
+      u.id,
+      u.username,
+      u.email,
+      u.email_verified AS "emailVerified",
+      u.role,
+      u.rubis,
+      u.created_ip AS "createdIp",
+      u.last_login_ip AS "lastLoginIp",
+      u.last_login_at AS "lastLoginAt",
+      u.created_at AS "createdAt",
+      sr.status AS "requestStatus",
+      s.slug AS "streamerSlug"
+    FROM users u
+    LEFT JOIN streamer_requests sr ON sr.user_id = u.id
+    LEFT JOIN streamers s ON s.user_id = u.id
+    ORDER BY u.created_at DESC
     `);
     res.json({ ok: true, users: rows });
   })
@@ -445,6 +552,25 @@ app.patch(
            ON CONFLICT (user_id) DO NOTHING`,
           [slug, username, id]
         );
+
+        // Assigne un compte provider (tx simple)
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const s = await client.query(`SELECT id FROM streamers WHERE user_id=$1 LIMIT 1`, [id]);
+          const streamerId = Number(s.rows[0]?.id || 0);
+          if (!streamerId) throw new Error("streamer_missing");
+
+          const conn = await ensureAssignedDliveAccount(client, streamerId);
+          if (!conn) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({ ok: false, error: "no_free_provider_account" });
+          }
+
+          await client.query("COMMIT");
+        } finally {
+          client.release();
+        }
       }
 
       if (role === "viewer") {
@@ -452,6 +578,19 @@ app.patch(
           `UPDATE streamer_requests SET status='rejected', updated_at=NOW() WHERE user_id=$1`,
           [id]
         );
+        const s = await pool.query(`SELECT id FROM streamers WHERE user_id=$1 LIMIT 1`, [id]);
+        const streamerId = s.rows[0]?.id ? Number(s.rows[0].id) : null;
+        if (streamerId) {
+          const client = await pool.connect();
+          try {
+            await client.query("BEGIN");
+            await releaseAccountForStreamerId(client, streamerId);
+            await client.query("COMMIT");
+          } finally {
+            client.release();
+          }
+        }
+
         await pool.query(`DELETE FROM streamers WHERE user_id=$1`, [id]);
       }
     }
@@ -481,6 +620,20 @@ app.post(
     if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
 
     const userId = rows[0].user_id;
+
+    // libère le compte provider (si existe)
+    const s = await pool.query(`SELECT id FROM streamers WHERE user_id=$1 LIMIT 1`, [userId]);
+    const streamerId = s.rows[0]?.id ? Number(s.rows[0].id) : null;
+    if (streamerId) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await releaseAccountForStreamerId(client, streamerId);
+        await client.query("COMMIT");
+      } finally {
+        client.release();
+      }
+    }
 
     await pool.query(`UPDATE users SET role='viewer' WHERE id=$1`, [userId]);
     await pool.query(`DELETE FROM streamers WHERE user_id=$1`, [userId]);
@@ -513,8 +666,23 @@ app.delete(
   a(async (req, res) => {
     const slug = String(req.params.slug || "");
 
-    const r = await pool.query(`SELECT user_id FROM streamers WHERE slug=$1 LIMIT 1`, [slug]);
+    const r = await pool.query(
+      `SELECT id, user_id FROM streamers WHERE slug=$1 LIMIT 1`,
+      [slug]
+    );
+    const streamerId = r.rows[0]?.id ? Number(r.rows[0].id) : null;
     const userId = r.rows[0]?.user_id ?? null;
+
+    if (streamerId) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await releaseAccountForStreamerId(client, streamerId);
+        await client.query("COMMIT");
+      } finally {
+        client.release();
+      }
+    }
 
     await pool.query(`DELETE FROM streamers WHERE slug=$1`, [slug]);
 
@@ -527,6 +695,165 @@ app.delete(
     }
 
     res.json({ ok: true });
+  })
+);
+
+/* Admin — Provider accounts */
+app.get(
+  "/admin/provider-accounts",
+  requireAdminKey,
+  a(async (_req, res) => {
+    const { rows } = await pool.query(`
+      SELECT
+        pa.id,
+        pa.provider,
+        pa.channel_slug AS "channelSlug",
+        pa.rtmp_url AS "rtmpUrl",
+        pa.assigned_at AS "assignedAt",
+        pa.released_at AS "releasedAt",
+        s.id::text AS "assignedStreamerId",
+        s.slug AS "assignedStreamerSlug",
+        s.display_name AS "assignedStreamerName",
+        u.username AS "assignedUsername"
+      FROM provider_accounts pa
+      LEFT JOIN streamers s ON s.id = pa.assigned_to_streamer_id
+      LEFT JOIN users u ON u.id = s.user_id
+      ORDER BY pa.id ASC
+    `);
+
+    res.json({ ok: true, accounts: rows });
+  })
+);
+
+app.post(
+  "/admin/provider-accounts",
+  requireAdminKey,
+  a(async (req, res) => {
+    const provider = String(req.body.provider || "dlive").trim() || "dlive";
+    const channelSlug = String(req.body.channelSlug || "").trim();
+    const rtmpUrl = String(req.body.rtmpUrl || "").trim();
+    const streamKey = String(req.body.streamKey || "").trim();
+
+    if (!channelSlug) return res.status(400).json({ ok: false, error: "channelSlug_required" });
+    if (!rtmpUrl) return res.status(400).json({ ok: false, error: "rtmpUrl_required" });
+    if (!streamKey) return res.status(400).json({ ok: false, error: "streamKey_required" });
+
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO provider_accounts (provider, channel_slug, rtmp_url, stream_key)
+         VALUES ($1,$2,$3,$4)
+         RETURNING id, provider, channel_slug AS "channelSlug", rtmp_url AS "rtmpUrl"`,
+        [provider, channelSlug, rtmpUrl, streamKey]
+      );
+      res.json({ ok: true, account: rows[0] });
+    } catch (e: any) {
+      return res.status(400).json({ ok: false, error: "already_exists_or_bad_input" });
+    }
+  })
+);
+
+app.delete(
+  "/admin/provider-accounts/:id",
+  requireAdminKey,
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const cur = await pool.query(
+      `SELECT assigned_to_streamer_id FROM provider_accounts WHERE id=$1 LIMIT 1`,
+      [id]
+    );
+    if (!cur.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+    if (cur.rows[0].assigned_to_streamer_id) {
+      return res.status(409).json({ ok: false, error: "assigned_release_first" });
+    }
+
+    await pool.query(`DELETE FROM provider_accounts WHERE id=$1`, [id]);
+    res.json({ ok: true });
+  })
+);
+
+app.post(
+  "/admin/provider-accounts/:id/release",
+  requireAdminKey,
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const { rowCount } = await pool.query(
+      `UPDATE provider_accounts
+       SET assigned_to_streamer_id=NULL, released_at=NOW()
+       WHERE id=$1`,
+      [id]
+    );
+    if (!rowCount) return res.status(404).json({ ok: false, error: "not_found" });
+    res.json({ ok: true });
+  })
+);
+
+app.post(
+  "/admin/provider-accounts/:id/assign",
+  requireAdminKey,
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    const streamerId = Number(req.body.streamerId);
+
+    if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
+    if (!streamerId) return res.status(400).json({ ok: false, error: "streamerId_required" });
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const acc = await client.query(
+        `SELECT id, assigned_to_streamer_id
+         FROM provider_accounts
+         WHERE id=$1
+         FOR UPDATE`,
+        [id]
+      );
+      if (!acc.rows[0]) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ ok: false, error: "not_found" });
+      }
+      if (acc.rows[0].assigned_to_streamer_id) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ ok: false, error: "already_assigned" });
+      }
+
+      const s = await client.query(
+        `SELECT id FROM streamers WHERE id=$1 LIMIT 1`,
+        [streamerId]
+      );
+      if (!s.rows[0]) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ ok: false, error: "streamer_not_found" });
+      }
+
+      const already = await client.query(
+        `SELECT 1 FROM provider_accounts WHERE assigned_to_streamer_id=$1 LIMIT 1`,
+        [streamerId]
+      );
+      if (already.rows[0]) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ ok: false, error: "streamer_already_has_account" });
+      }
+
+      await client.query(
+        `UPDATE provider_accounts
+         SET assigned_to_streamer_id=$1, assigned_at=NOW(), released_at=NULL
+         WHERE id=$2`,
+        [streamerId, id]
+      );
+
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (e) {
+      try { await client.query("ROLLBACK"); } catch {}
+      throw e;
+    } finally {
+      client.release();
+    }
   })
 );
 

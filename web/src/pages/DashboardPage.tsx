@@ -1,8 +1,47 @@
+import * as React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
+import {
+  getMyStreamer,
+  getMyStreamConnection,
+  updateMyStreamerTitle,
+  type ApiMyStreamer,
+  type ApiStreamConnection,
+} from "../lib/api";
+
+import { TitleEditorCard } from "./dashboard/TitleEditorCard";
+import { StreamKeysCard } from "./dashboard/StreamKeysCard";
+import { PlaceholdersCard } from "./dashboard/PlaceholdersCard";
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
+
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+  const [streamer, setStreamer] = React.useState<ApiMyStreamer | null>(null);
+  const [connection, setConnection] = React.useState<ApiStreamConnection | null>(null);
+
+  const canAccess = !!user && (user.role === "streamer" || user.role === "admin");
+
+  async function load() {
+    if (!token || !canAccess) return;
+    setLoading(true);
+    setErr(null);
+    try {
+      const [s, c] = await Promise.all([getMyStreamer(token), getMyStreamConnection(token)]);
+      setStreamer(s.streamer);
+      setConnection(c.connection);
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  React.useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, user?.role]);
 
   if (!user) {
     return (
@@ -15,7 +54,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (user.role !== "streamer") {
+  if (!canAccess) {
     return (
       <main className="container">
         <div className="pageTitle">
@@ -31,18 +70,40 @@ export default function DashboardPage() {
     <main className="container">
       <div className="pageTitle">
         <h1>Dashboard</h1>
-        <p className="muted">MVP : ici on mettra stats, paramètres stream, mod tools, etc.</p>
+        <p className="muted">
+          Espace streamer (MVP) — titre + clés RTMP.
+        </p>
       </div>
 
-      <div className="panel">
-        <div className="panelTitle">À venir</div>
-        <ul className="bullets">
-          <li>Infos compte streamer</li>
-          <li>Lier DLive (plus tard)</li>
-          <li>Paramètres de chaîne / overlay</li>
-          <li>Stats live + historique</li>
-        </ul>
-      </div>
+      {err && <div className="hint" style={{ opacity: 0.9 }}>⚠️ {err}</div>}
+      {loading && <div className="muted">Chargement…</div>}
+
+      {!loading && !streamer ? (
+        <div className="panel">
+          <div className="panelTitle">Chaîne</div>
+          <div className="muted">
+            Aucune chaîne LunaLive liée à ton compte.
+            (Normalement créée à l’approbation admin)
+          </div>
+        </div>
+      ) : (
+        streamer && (
+          <>
+            <TitleEditorCard
+              streamer={streamer}
+              onSave={async (title) => {
+                if (!token) return;
+                const r = await updateMyStreamerTitle(token, title);
+                setStreamer(r.streamer);
+              }}
+            />
+
+            <StreamKeysCard connection={connection} />
+
+            <PlaceholdersCard />
+          </>
+        )
+      )}
     </main>
   );
 }

@@ -21,6 +21,8 @@ export function AvatarMenu({
     open
   );
 
+  const canSeeDashboard = user.role === "streamer" || user.role === "admin";
+
   return (
     <div className="avatarWrap">
       <button
@@ -32,45 +34,44 @@ export function AvatarMenu({
         {initialOf(user.username)}
       </button>
 
-        {open && (
+      {open && (
         <div ref={menuRef} className="dropdown">
-            <div className="dropdownTop">
+          <div className="dropdownTop">
             <div className="dropdownName">{user.username}</div>
             <div className="dropdownSub">Compte</div>
-            </div>
+          </div>
 
-            <div className="dropdownSep" />
+          <div className="dropdownSep" />
 
-            {user.role === "streamer" && (
+          {canSeeDashboard && (
             <Link
-                to="/dashboard"
-                className="dropdownItem"
-                onClick={() => setOpen(false)}
+              to="/dashboard"
+              className="dropdownItem"
+              onClick={() => setOpen(false)}
             >
-                Dashboard
+              Dashboard
             </Link>
-            )}
+          )}
 
-            <Link
+          <Link
             to="/profile"
             className="dropdownItem"
             onClick={() => setOpen(false)}
-            >
+          >
             Profil
-            </Link>
+          </Link>
 
-            <button
+          <button
             className="dropdownItem danger"
             onClick={() => {
-                setOpen(false);
-                onLogout();
+              setOpen(false);
+              onLogout();
             }}
-            >
+          >
             Déconnexion
-            </button>
+          </button>
         </div>
-        )}
-
+      )}
     </div>
   );
 }

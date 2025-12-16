@@ -1,6 +1,7 @@
 import * as React from "react";
 import { adminListRequests, adminApproveRequest, adminRejectRequest, adminCreateStreamer, adminDeleteStreamer, getStreamers } from "../lib/api";
 import { UsersAdminSection } from "../components/admin/UsersAdminSection";
+import { ProviderAccountsAdminSection } from "../components/admin/ProviderAccountsAdminSection";
 
 const SS_KEY = "lunalive_admin_key_v1";
 
@@ -130,6 +131,7 @@ export default function AdminPage() {
         ))}
         
         <UsersAdminSection adminKey={key} />
+        <ProviderAccountsAdminSection adminKey={key} />
 
       </div>
     </main>
