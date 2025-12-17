@@ -17,11 +17,16 @@ import {
 } from "./provider_accounts.js";
 import { startDlivePoller } from "./dlive_poller.js";
 import { registerHlsProxy } from "./hls_proxy.js";
+import http from "http";
+import { Server as IOServer } from "socket.io";
+import { registerChatRoutes } from "./chat_routes.js";
+import { attachChat } from "./chat_socket.js";
 
 const app = express();
 app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json());
+registerChatRoutes(app);
 
 registerHlsProxy(app);
 app.options("/hls", (_req, res) => res.sendStatus(204));
@@ -886,5 +891,15 @@ const port = Number(process.env.PORT || 3001);
   await migrate();
   await seedIfEmpty();
   startDlivePoller();
-  app.listen(port, () => console.log(`[api] listening on :${port}`));
+
+  const server = http.createServer(app);
+
+  const io = new IOServer(server, {
+    cors: { origin: true, credentials: true },
+  });
+
+  attachChat(io);
+
+  server.listen(port, () => console.log(`[api] listening on :${port}`));
 })();
+
