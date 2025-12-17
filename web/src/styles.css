@@ -1,0 +1,48 @@
+.streamPage {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.streamTopBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.streamGrid {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.streamMain {
+  flex: 1;
+  min-width: 0; /* important pour éviter overflow */
+}
+
+.streamChat {
+  width: 360px;
+  min-width: 360px;
+  position: sticky;
+  top: 86px; /* ajuste selon ta navbar */
+  height: calc(100vh - 110px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Mobile-first : chat dessous */
+@media (max-width: 980px) {
+  .streamGrid {
+    flex-direction: column;
+  }
+  .streamChat {
+    width: 100%;
+    min-width: 0;
+    position: static;
+    height: auto;
+  }
+}
