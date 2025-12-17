@@ -491,3 +491,50 @@ body{
   .streamerLayout{ grid-template-columns: 1fr; }
   .grid{ grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 }
+
+.streamPage {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.streamTopBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+/* ✅ Desktop: stream gauche, chat droite */
+.streamGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 14px;
+  align-items: start;
+}
+
+.streamMain {
+  min-width: 0;
+}
+
+.streamChat {
+  min-width: 0;
+  height: calc(100vh - 150px); /* ajuste si besoin */
+  position: sticky;
+  top: 86px; /* ajuste selon ta navbar */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ✅ Mobile: chat dessous */
+@media (max-width: 1100px) {
+  .streamGrid {
+    grid-template-columns: 1fr;
+  }
+  .streamChat {
+    position: static;
+    height: auto;
+  }
+}
