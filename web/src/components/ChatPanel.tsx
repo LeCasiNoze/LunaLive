@@ -1,5 +1,5 @@
 import * as React from "react";
-import { io, Socket } from "socket.io-client";
+import { io, type Socket } from "socket.io-client";
 
 // ⚠️ adapte si ton token est stocké ailleurs
 function getToken(): string | null {
@@ -37,19 +37,24 @@ type JoinAck = {
   error?: string;
 };
 
+type ChatPerms = NonNullable<JoinAck["perms"]>;
+type ChatMe = NonNullable<JoinAck["me"]>;
+
+const DEFAULT_PERMS: ChatPerms = {
+  canSend: false,
+  canDelete: false,
+  canTimeout: false,
+  canBan: false,
+  canClear: false,
+  canMod: false,
+};
+
 export function ChatPanel({ slug }: { slug: string }) {
   const [messages, setMessages] = React.useState<ChatMsg[]>([]);
   const [input, setInput] = React.useState("");
-  const [perms, setPerms] = React.useState<JoinAck["perms"]>({
-    canSend: false,
-    canDelete: false,
-    canTimeout: false,
-    canBan: false,
-    canClear: false,
-    canMod: false,
-  });
 
-  const [me, setMe] = React.useState<JoinAck["me"]>(null);
+  const [perms, setPerms] = React.useState<ChatPerms>(DEFAULT_PERMS);
+  const [me, setMe] = React.useState<ChatMe>(null);
   const [needLogin, setNeedLogin] = React.useState(false);
 
   const socketRef = React.useRef<Socket | null>(null);
@@ -77,17 +82,22 @@ export function ChatPanel({ slug }: { slug: string }) {
 
   React.useEffect(() => {
     const token = getToken();
+
     const sock = io(API_BASE, {
       transports: ["websocket"],
       auth: token ? { token } : {},
     });
+
     socketRef.current = sock;
 
     sock.on("connect", () => {
       sock.emit("chat:join", { slug }, (ack: JoinAck) => {
         if (ack?.ok) {
-          setPerms(ack.perms || perms);
-          setMe(ack.me || null);
+          setPerms(ack.perms ?? DEFAULT_PERMS);
+          setMe(ack.me ?? null);
+        } else {
+          setPerms(DEFAULT_PERMS);
+          setMe(null);
         }
       });
     });
@@ -111,7 +121,6 @@ export function ChatPanel({ slug }: { slug: string }) {
       } catch {}
       socketRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
   async function fetchMentions(prefix: string) {
@@ -129,11 +138,12 @@ export function ChatPanel({ slug }: { slug: string }) {
   function insertMention(u: string) {
     const at = input.lastIndexOf("@");
     if (at < 0) return;
+
     const before = input.slice(0, at);
-    const after = input.slice(at + 1);
-    // remplace le token après @
+    // remplace le token après @ (et ce que l'user tapait)
     const replaced = before + "@" + u + " ";
     setInput(replaced);
+
     setMentionOpen(false);
   }
 
@@ -152,7 +162,7 @@ export function ChatPanel({ slug }: { slug: string }) {
 
     // /clear MVP
     if (text === "/clear") {
-      if (!perms?.canClear) return;
+      if (!perms.canClear) return;
       sock?.emit("chat:clear", { slug }, () => {});
       setInput("");
       return;
@@ -161,18 +171,24 @@ export function ChatPanel({ slug }: { slug: string }) {
     sock?.emit("chat:send", { slug, body: text }, (ack: any) => {
       if (!ack?.ok) {
         if (ack?.error === "auth_required") setNeedLogin(true);
-        // (optionnel) afficher une petite notif
       } else {
         setInput("");
       }
     });
   }
 
+  const isLogged = !!getToken();
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* header */}
       <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <div style={{ fontWeight: 800 }}>Chat</div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
+          <div style={{ fontWeight: 800 }}>Chat</div>
+          <div className="mutedSmall" style={{ opacity: 0.9 }}>
+            {me ? `Connecté : ${me.username}` : "Invité"}
+          </div>
+        </div>
         <div className="mutedSmall">LunaLive — temps réel</div>
       </div>
 
@@ -180,7 +196,7 @@ export function ChatPanel({ slug }: { slug: string }) {
       <div style={{ padding: 12, flex: 1, overflow: "auto" }}>
         {messages.length === 0 ? (
           <div className="mutedSmall" style={{ opacity: 0.8 }}>
-            Aucun message (le chat se reset après 3 jours d’inactivité)
+            Aucun message (reset après 3 jours d’inactivité)
           </div>
         ) : (
           messages.map((m) => (
@@ -224,7 +240,6 @@ export function ChatPanel({ slug }: { slug: string }) {
                   e.preventDefault();
                   setMentionIdx((i) => Math.max(i - 1, 0));
                 } else if (e.key === "Enter") {
-                  // si mention ouverte, enter choisit la mention
                   if (mentionItems[mentionIdx]) {
                     e.preventDefault();
                     insertMention(mentionItems[mentionIdx].username);
@@ -237,7 +252,7 @@ export function ChatPanel({ slug }: { slug: string }) {
                 onSend();
               }
             }}
-            placeholder={getToken() ? "Écrire un message…" : "Écrire un message… (connexion requise pour envoyer)"}
+            placeholder={isLogged ? "Écrire un message…" : "Écrire un message… (connexion requise pour envoyer)"}
             style={{
               flex: 1,
               padding: "10px 12px",
