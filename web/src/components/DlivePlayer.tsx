@@ -6,6 +6,9 @@ const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrende
   ""
 );
 
+// ✅ Nouveau : base HLS (Cloudflare Worker)
+const HLS_BASE = (import.meta.env.VITE_HLS_BASE ?? API_BASE).replace(/\/$/, "");
+
 function isAppleSafari(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
@@ -43,7 +46,6 @@ export function DlivePlayer({
       return;
     }
 
-    // (debug) on peut laisser le stream tenter même si offline, mais ici on respecte le flag
     if (!isLive) {
       setDbg(`username=${username} | isLive=false (skip)`);
       return;
@@ -52,19 +54,20 @@ export function DlivePlayer({
     const upstream = `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(
       username
     )}.m3u8?mobileweb`;
-    const proxied = `${API_BASE}/hls?u=${encodeURIComponent(upstream)}`;
+
+    // ✅ via Cloudflare worker (ou API fallback)
+    const proxied = `${HLS_BASE}/hls?u=${encodeURIComponent(upstream)}`;
 
     const nativeHls = video.canPlayType("application/vnd.apple.mpegurl") !== "";
     const hlsJsSupported = Hls.isSupported();
     const safari = isAppleSafari();
 
-    // ✅ on force hls.js (proxy) partout sauf Safari Apple
     const mode = safari && nativeHls ? "native" : hlsJsSupported ? "hlsjs-proxy" : "unsupported";
 
     setDbg(
       `username=${username} | isLive=${String(isLive)} | nativeHls=${String(
         nativeHls
-      )} | hls.js=${String(hlsJsSupported)} | safari=${String(safari)} | mode=${mode}`
+      )} | hls.js=${String(hlsJsSupported)} | safari=${String(safari)} | mode=${mode} | hlsBase=${HLS_BASE}`
     );
 
     if (mode === "native") {

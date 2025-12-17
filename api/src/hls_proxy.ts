@@ -1,4 +1,3 @@
-// api/src/hls_proxy.ts
 import type { Express, Request, Response } from "express";
 import { Readable } from "stream";
 
@@ -19,7 +18,6 @@ function rewriteM3u8(text: string, base: URL) {
       const s = line.trim();
       if (!s) return line;
 
-      // Rewrite URI="..." in tags (keys/maps)
       if (s.startsWith("#")) {
         return line.replace(/URI="([^"]+)"/g, (_m, uri) => {
           const abs = new URL(uri, base).toString();
@@ -27,7 +25,6 @@ function rewriteM3u8(text: string, base: URL) {
         });
       }
 
-      // Segment / playlist URL line
       const abs = new URL(s, base).toString();
       return proxyUrl(abs);
     })
@@ -35,10 +32,20 @@ function rewriteM3u8(text: string, base: URL) {
 }
 
 export function registerHlsProxy(app: Express) {
+  app.options("/hls", (_req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS");
+    res.status(204).end();
+  });
+
   app.get("/hls", async (req: Request, res: Response) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
-    res.setHeader("Access-Control-Expose-Headers", "content-type,content-length,accept-ranges,content-range");
+    res.setHeader(
+      "Access-Control-Expose-Headers",
+      "content-type,content-length,accept-ranges,content-range,cache-control"
+    );
 
     const raw = String(req.query.u || "");
     if (!raw) return res.status(400).send("missing_u");
@@ -57,6 +64,7 @@ export function registerHlsProxy(app: Express) {
       accept: String(req.headers.accept || "*/*"),
       "user-agent": String(req.headers["user-agent"] || "Mozilla/5.0"),
       referer: "https://dlive.tv/",
+      origin: "https://dlive.tv"
     };
 
     const range = req.headers.range ? String(req.headers.range) : "";
@@ -65,19 +73,28 @@ export function registerHlsProxy(app: Express) {
     const upstream = await fetch(target.toString(), { headers, redirect: "follow" });
 
     res.status(upstream.status);
-    res.setHeader("cache-control", "no-store");
 
     const ct = upstream.headers.get("content-type") || "";
     if (ct) res.setHeader("content-type", ct);
 
-    // If playlist, rewrite to proxy all sub-urls
-    if (ct.includes("application/vnd.apple.mpegurl") || target.pathname.endsWith(".m3u8")) {
+    // ✅ cache-friendly (playlist court, segments long)
+    const isPlaylist = ct.includes("application/vnd.apple.mpegurl") || target.pathname.endsWith(".m3u8");
+    if (isPlaylist) {
+      res.setHeader("Cache-Control", "public, max-age=1, s-maxage=2, must-revalidate");
       const text = await upstream.text();
       const rewritten = rewriteM3u8(text, target);
       return res.send(rewritten);
     }
 
-    // Otherwise stream binary (segments)
+    res.setHeader("Cache-Control", "public, max-age=600, s-maxage=3600, immutable");
+
+    // Pass-through useful headers
+    const passthrough = ["content-length", "accept-ranges", "content-range"];
+    for (const k of passthrough) {
+      const v = upstream.headers.get(k);
+      if (v) res.setHeader(k, v);
+    }
+
     if (!upstream.body) return res.status(502).end();
 
     const nodeStream = Readable.fromWeb(upstream.body as any);
