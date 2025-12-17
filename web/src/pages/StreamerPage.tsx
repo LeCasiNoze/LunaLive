@@ -2,7 +2,7 @@ import * as React from "react";
 import { useParams } from "react-router-dom";
 import { getStreamer } from "../lib/api";
 import { DlivePlayer } from "../components/DlivePlayer";
-
+import { ChatPanel } from "../components/ChatPanel";
 function EyeIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -114,53 +114,7 @@ export default function StreamerPage() {
         </div>
 
         <aside className="panel streamChat">
-          {/* Chat MVP */}
-          <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ fontWeight: 800 }}>Chat</div>
-            <div className="mutedSmall">Bêta — bientôt en temps réel</div>
-          </div>
-
-          <div style={{ padding: 12, flex: 1, overflow: "auto" }}>
-            <div className="mutedSmall" style={{ opacity: 0.8 }}>
-              Le chat arrive. Ici on affichera les messages, mods, emotes, etc.
-            </div>
-          </div>
-
-          <div
-            style={{
-              padding: 12,
-              borderTop: "1px solid rgba(255,255,255,0.06)",
-              display: "flex",
-              gap: 10,
-            }}
-          >
-            <input
-              disabled
-              placeholder="Connexion au chat (bientôt)…"
-              style={{
-                flex: 1,
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(180, 160, 255, 0.22)",
-                background: "rgba(255,255,255,0.05)",
-                color: "rgba(255,255,255,0.9)",
-                outline: "none",
-              }}
-            />
-            <button
-              disabled
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(180, 160, 255, 0.22)",
-                background: "rgba(120, 90, 255, 0.18)",
-                color: "rgba(255,255,255,0.85)",
-                cursor: "not-allowed",
-              }}
-            >
-              Envoyer
-            </button>
-          </div>
+          <ChatPanel slug={String(slug || "")} />
         </aside>
       </div>
     </div>
