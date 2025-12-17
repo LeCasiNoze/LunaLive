@@ -15,9 +15,9 @@ function isSafariUA(): boolean {
   return /Safari/i.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Brave/i.test(ua);
 }
 
-type QualityItem = {
-  key: string;       // "auto720" | "auto" | "3" (level index)
-  label: string;     // "Auto (720 max)" | "1080p" | ...
+type LevelOpt = {
+  key: string; // "auto" or levelIndex string
+  label: string;
   levelIndex?: number;
   height?: number;
   bitrate?: number;
@@ -35,8 +35,8 @@ function uniqBy<T>(arr: T[], keyFn: (x: T) => string) {
   return out;
 }
 
-function pickCapIndex(levels: any[], maxHeight: number): number {
-  // hls.levels order is typically by bitrate; we pick the highest level <= maxHeight
+function pickBestCapIndex(levels: any[], maxHeight: number): number {
+  // pick highest height <= maxHeight
   let best = -1;
   let bestH = -1;
   for (let i = 0; i < levels.length; i++) {
@@ -47,6 +47,24 @@ function pickCapIndex(levels: any[], maxHeight: number): number {
     }
   }
   return best;
+}
+
+function GearIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M19.4 13a7.8 7.8 0 0 0 .05-2l2-1.2-2-3.4-2.3.7a8.2 8.2 0 0 0-1.7-1L15.3 3h-4L8.6 6.1a8.2 8.2 0 0 0-1.7 1l-2.3-.7-2 3.4 2 1.2a7.8 7.8 0 0 0 0 2l-2 1.2 2 3.4 2.3-.7a8.2 8.2 0 0 0 1.7 1L11.3 21h4l1.7-3.1a8.2 8.2 0 0 0 1.7-1l2.3.7 2-3.4-2-1.2Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 export function DlivePlayer({
@@ -61,48 +79,64 @@ export function DlivePlayer({
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const hlsRef = React.useRef<Hls | null>(null);
 
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
   const [dbg, setDbg] = React.useState("init");
-  const [qualities, setQualities] = React.useState<QualityItem[]>([
-    { key: "auto720", label: "Auto (720 max)" },
-    { key: "auto", label: "Auto (max)" },
-  ]);
+  const [menuOpen, setMenuOpen] = React.useState(false);
 
-  const [q, setQ] = React.useState<string>(() => {
-    return localStorage.getItem("ll_quality") || "auto720";
-  });
+  // q = "auto" ou index de level ("0", "1", ...)
+  const [q, setQ] = React.useState<string>(() => localStorage.getItem("ll_quality") || "auto");
 
-  const safari = isSafariUA();
+  const [levelsUI, setLevelsUI] = React.useState<LevelOpt[]>([{ key: "auto", label: "Auto (recommandé)" }]);
+  const [canChooseQuality, setCanChooseQuality] = React.useState(false);
+
   const ios = isIOS();
+  const safari = isSafariUA();
 
+  // Close popover on outside click / ESC
+  React.useEffect(() => {
+    if (!menuOpen) return;
+
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as any;
+      if (!menuRef.current) return;
+      if (menuRef.current.contains(t)) return;
+      setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  // Apply quality changes (hls.js only)
   React.useEffect(() => {
     localStorage.setItem("ll_quality", q);
+
     const hls = hlsRef.current;
     if (!hls) return;
 
-    // Apply quality choice live (when hls.js mode)
-    const apply = () => {
-      // Auto modes
-      if (q === "auto" || q === "auto720") {
-        hls.currentLevel = -1; // back to auto
-        if (q === "auto720") {
-          const cap = pickCapIndex(hls.levels || [], 720);
-          hls.autoLevelCapping = cap >= 0 ? cap : -1;
-        } else {
-          hls.autoLevelCapping = -1;
-        }
+    try {
+      const lvls = hls.levels || [];
+      const capIdx720 = pickBestCapIndex(lvls, 720);
+
+      if (q === "auto") {
+        hls.currentLevel = -1;
+        // cap à 720 seulement si on a réellement une 720 (ou en dessous) dans le manifest
+        hls.autoLevelCapping = capIdx720 >= 0 ? capIdx720 : -1;
         return;
       }
 
-      // Manual
       const idx = Number(q);
       if (!Number.isFinite(idx)) return;
       hls.autoLevelCapping = -1;
-      // immediate switch (flush buffer)
-      hls.currentLevel = idx; // hls.js supports this setter for immediate quality switch :contentReference[oaicite:2]{index=2}
-    };
-
-    try {
-      apply();
+      hls.currentLevel = idx;
     } catch {}
   }, [q]);
 
@@ -112,12 +146,16 @@ export function DlivePlayer({
 
     // cleanup previous
     if (hlsRef.current) {
-      try { hlsRef.current.destroy(); } catch {}
+      try {
+        hlsRef.current.destroy();
+      } catch {}
       hlsRef.current = null;
     }
 
     // reset video
-    try { video.pause(); } catch {}
+    try {
+      video.pause();
+    } catch {}
     video.removeAttribute("src");
     video.load();
 
@@ -137,32 +175,30 @@ export function DlivePlayer({
     const nativeHls = video.canPlayType("application/vnd.apple.mpegurl") !== "";
     const hlsJsSupported = Hls.isSupported();
 
-    // iOS => native only (no manual quality selection possible in Safari native HLS) :contentReference[oaicite:3]{index=3}
+    // iOS => native only (pas de choix qualité manuel côté hls.js)
     const mode = ios && nativeHls ? "native-ios" : hlsJsSupported ? "hlsjs-proxy" : nativeHls ? "native" : "unsupported";
 
     setDbg(
       `username=${username} | isLive=${String(isLive)} | nativeHls=${String(nativeHls)} | hls.js=${String(
         hlsJsSupported
-      )} | ios=${String(ios)} | safari=${String(safari)} | mode=${mode} | hlsBase=${HLS_BASE}`
+      )} | ios=${String(ios)} | safari=${String(safari)} | mode=${mode} | hlsBase=${HLS_BASE} | q=${q}`
     );
 
-    // Native (iOS / fallback)
+    // Native
     if (mode === "native-ios" || mode === "native") {
       video.src = upstream;
       video.play().catch(() => {});
-      // UI quality: disable (Safari native limitation)
-      setQualities([
-        { key: "auto720", label: "Auto (Safari)" },
-      ]);
+      setCanChooseQuality(false);
+      setLevelsUI([{ key: "auto", label: "Auto" }]);
       return;
     }
 
     if (mode !== "hlsjs-proxy") return;
 
-    // hls.js instance
     const hls = new Hls({
       lowLatencyMode: true,
-      // live edge feeling + reduced DVR
+
+      // live-edge + réduit DVR (pas une “interdiction” totale, mais beaucoup moins de backbuffer)
       liveSyncDurationCount: 2,
       liveMaxLatencyDurationCount: 6,
       maxLiveSyncPlaybackRate: 1.2,
@@ -178,48 +214,49 @@ export function DlivePlayer({
     });
 
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      // Build quality menu from available levels
       const lvls = (hls.levels || []).map((lvl: any, i: number) => ({
         key: String(i),
-        label: lvl?.height ? `${lvl.height}p` : `Level ${i}`,
+        label: lvl?.height ? `${lvl.height}p` : `Niveau ${i}`,
         levelIndex: i,
         height: typeof lvl?.height === "number" ? lvl.height : undefined,
         bitrate: typeof lvl?.bitrate === "number" ? lvl.bitrate : undefined,
       }));
 
-      // Deduplicate by label/height (some manifests have duplicates)
+      // uniq par height (sinon menu chelou)
       const unique = uniqBy(lvls, (x) => String(x.height || x.label));
 
-      // Sort by height desc if present
+      // tri desc
       unique.sort((a, b) => (b.height || 0) - (a.height || 0));
 
-      setQualities([
-        { key: "auto720", label: "Auto (720 max)" },
-        { key: "auto", label: "Auto (max)" },
-        ...unique,
-      ]);
+      // Cap 720 uniquement si possible
+      const capIdx720 = pickBestCapIndex(hls.levels || [], 720);
+      const autoLabel = capIdx720 >= 0 ? "Auto (max 720p)" : "Auto (recommandé)";
 
-      // Apply current preference (cap 720 default)
+      const opts: LevelOpt[] = [{ key: "auto", label: autoLabel }, ...unique];
+
+      setLevelsUI(opts);
+
+      // Afficher l'engrenage seulement si on a un vrai choix (au moins 2 qualités distinctes)
+      setCanChooseQuality(unique.length >= 2);
+
+      // Si la préférence stockée n'existe plus, fallback auto
+      const validKeys = new Set(opts.map((o) => o.key));
+      if (!validKeys.has(q)) setQ("auto");
+
+      // Appliquer auto par défaut (avec cap 720 si possible)
       try {
-        if (q === "auto720") {
-          const cap = pickCapIndex(hls.levels || [], 720);
-          hls.autoLevelCapping = cap >= 0 ? cap : -1; // cap max in auto mode :contentReference[oaicite:4]{index=4}
-          hls.currentLevel = -1;
-        } else if (q === "auto") {
-          hls.autoLevelCapping = -1;
-          hls.currentLevel = -1;
-        } else {
-          const idx = Number(q);
-          if (Number.isFinite(idx)) hls.currentLevel = idx;
-        }
+        hls.currentLevel = -1;
+        hls.autoLevelCapping = capIdx720 >= 0 ? capIdx720 : -1;
       } catch {}
 
       video.play().catch(() => {});
     });
 
     hls.on(Hls.Events.ERROR, (_evt, data) => {
-      setDbg(`HLS_ERROR fatal=${String(data?.fatal)} type=${String(data?.type)} details=${String(data?.details)}`);
-      // mini recovery
+      setDbg(
+        `HLS_ERROR fatal=${String(data?.fatal)} type=${String(data?.type)} details=${String(data?.details)} | q=${q}`
+      );
+
       if (data?.fatal) {
         try {
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
@@ -230,66 +267,112 @@ export function DlivePlayer({
     });
 
     return () => {
-      try { hls.destroy(); } catch {}
+      try {
+        hls.destroy();
+      } catch {}
       hlsRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelSlug, channelUsername, isLive, HLS_BASE]);
 
-  const canChooseQuality = qualities.length > 2 && !ios; // iOS native: no manual selection :contentReference[oaicite:5]{index=5}
+  const selectedLabel = React.useMemo(() => {
+    const found = levelsUI.find((o) => o.key === q);
+    return found?.label ?? "Auto";
+  }, [levelsUI, q]);
 
   return (
-    <div className="panel" style={{ padding: 0, overflow: "hidden", position: "relative" }}>
-      <video
-        ref={videoRef}
-        controls
-        playsInline
-        autoPlay
-        muted
-        style={{ width: "100%", display: "block", background: "rgba(0,0,0,0.25)" }}
-      />
+    <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+      <div style={{ position: "relative" }}>
+        <video
+          ref={videoRef}
+          controls
+          playsInline
+          autoPlay
+          muted
+          style={{ width: "100%", display: "block", background: "rgba(0,0,0,0.25)" }}
+        />
 
-      {/* Quality selector */}
-      <div
-        style={{
-          position: "absolute",
-          right: 10,
-          bottom: 10,
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          padding: "8px 10px",
-          borderRadius: 12,
-          background: "rgba(10, 10, 18, 0.65)",
-          backdropFilter: "blur(10px)",
-          border: "1px solid rgba(180, 160, 255, 0.25)"
-        }}
-      >
-        <span style={{ fontSize: 12, opacity: 0.85 }}>Qualité</span>
-        <select
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          disabled={!canChooseQuality}
-          style={{
-            fontSize: 12,
-            background: "rgba(255,255,255,0.06)",
-            color: "white",
-            border: "1px solid rgba(180, 160, 255, 0.25)",
-            borderRadius: 10,
-            padding: "6px 8px",
-            outline: "none",
-            cursor: canChooseQuality ? "pointer" : "not-allowed",
-            opacity: canChooseQuality ? 1 : 0.6
-          }}
-        >
-          {qualities.map((it) => (
-            <option key={it.key} value={it.key}>
-              {it.label}
-            </option>
-          ))}
-        </select>
+        {/* Engrenage intégré au player (overlay) */}
+        {canChooseQuality && !ios && (
+          <div ref={menuRef} style={{ position: "absolute", right: 10, bottom: 10 }}>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              title="Qualité"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 10px",
+                borderRadius: 14,
+                background: "rgba(10, 10, 18, 0.72)",
+                backdropFilter: "blur(10px)",
+                border: "1px solid rgba(180, 160, 255, 0.28)",
+                color: "rgba(235, 235, 255, 0.95)",
+                cursor: "pointer",
+                boxShadow: "0 8px 30px rgba(0,0,0,0.35)",
+              }}
+            >
+              <GearIcon />
+              <span style={{ fontSize: 12, opacity: 0.95 }}>{selectedLabel}</span>
+            </button>
+
+            {menuOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  bottom: "calc(100% + 10px)",
+                  minWidth: 180,
+                  borderRadius: 14,
+                  overflow: "hidden",
+                  background: "rgba(10, 10, 18, 0.92)",
+                  border: "1px solid rgba(180, 160, 255, 0.25)",
+                  boxShadow: "0 14px 40px rgba(0,0,0,0.55)",
+                }}
+              >
+                <div style={{ padding: "10px 12px", fontSize: 12, opacity: 0.8 }}>
+                  Qualité
+                </div>
+                <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
+
+                {levelsUI.map((opt) => {
+                  const active = opt.key === q;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => {
+                        setQ(opt.key);
+                        setMenuOpen(false);
+                      }}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        fontSize: 13,
+                        color: active ? "white" : "rgba(235,235,255,0.88)",
+                        background: active ? "rgba(120, 90, 255, 0.35)" : "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {opt.label}
+                      {opt.key !== "auto" && opt.height ? (
+                        <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.7 }}>
+                          ({opt.height}p)
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* debug (tu pourras le retirer plus tard) */}
       <div className="mutedSmall" style={{ padding: 10 }}>
         {dbg}
       </div>
