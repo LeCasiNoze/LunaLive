@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import { getStreamer } from "../lib/api";
 import { DlivePlayer } from "../components/DlivePlayer";
 import { ChatPanel } from "../components/ChatPanel";
+import { LoginModal } from "../components/LoginModal";
+
 function EyeIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -24,6 +26,9 @@ export default function StreamerPage() {
   const { slug } = useParams();
   const [data, setData] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
+
+  // ✅ modal login piloté par la page
+  const [loginOpen, setLoginOpen] = React.useState(false);
 
   React.useEffect(() => {
     let mounted = true;
@@ -74,10 +79,7 @@ export default function StreamerPage() {
             {title}
           </div>
 
-          <div
-            className="mutedSmall"
-            style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "center" }}
-          >
+          <div className="mutedSmall" style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "center" }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               <span
                 style={{
@@ -102,9 +104,7 @@ export default function StreamerPage() {
         </div>
 
         {/* zone future : follow / share / report */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {/* placeholder buttons */}
-        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>{/* placeholder */}</div>
       </div>
 
       {/* Grid: player left, chat right */}
@@ -113,10 +113,16 @@ export default function StreamerPage() {
           <DlivePlayer channelSlug={channelSlug} channelUsername={channelUsername} isLive={isLive} />
         </div>
 
-        <aside className="panel streamChat">
-          <ChatPanel slug={String(slug || "")} />
+        <aside className="panel streamChat" style={{ padding: 0 }}>
+          <ChatPanel
+            slug={String(slug || "")}
+            onRequireLogin={() => setLoginOpen(true)} // ✅ ouvre le modal au click "Envoyer" si pas connecté
+          />
         </aside>
       </div>
+
+      {/* ✅ modal rendu ici */}
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>
   );
 }

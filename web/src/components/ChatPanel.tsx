@@ -1,11 +1,12 @@
 import * as React from "react";
 import { io, type Socket } from "socket.io-client";
+import { useAuth } from "../auth/AuthProvider"; // ✅ on utilise le contexte (réactif)
 
-// ⚠️ adapte si ton token est stocké ailleurs
-function getToken(): string | null {
+// fallback si jamais ton AuthProvider ne fournit pas token (mais idéalement il le fournit)
+function getTokenFallback(): string | null {
   return (
-    localStorage.getItem("token") ||
     localStorage.getItem("ll_token") ||
+    localStorage.getItem("token") ||
     sessionStorage.getItem("token") ||
     null
   );
@@ -49,12 +50,22 @@ const DEFAULT_PERMS: ChatPerms = {
   canMod: false,
 };
 
-export function ChatPanel({ slug }: { slug: string }) {
+export function ChatPanel({
+  slug,
+  onRequireLogin,
+}: {
+  slug: string;
+  onRequireLogin?: () => void;
+}) {
+  const auth = useAuth() as any;
+  const token: string | null = auth?.token ?? getTokenFallback(); // ✅ réactif si AuthProvider expose token
+
   const [messages, setMessages] = React.useState<ChatMsg[]>([]);
   const [input, setInput] = React.useState("");
 
   const [perms, setPerms] = React.useState<ChatPerms>(DEFAULT_PERMS);
   const [me, setMe] = React.useState<ChatMe | null>(null);
+
   const [needLogin, setNeedLogin] = React.useState(false);
 
   const socketRef = React.useRef<Socket | null>(null);
@@ -64,6 +75,8 @@ export function ChatPanel({ slug }: { slug: string }) {
   const [mentionOpen, setMentionOpen] = React.useState(false);
   const [mentionItems, setMentionItems] = React.useState<{ id: number; username: string }[]>([]);
   const [mentionIdx, setMentionIdx] = React.useState(0);
+
+  const isLogged = !!token;
 
   function scrollBottom() {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -80,11 +93,16 @@ export function ChatPanel({ slug }: { slug: string }) {
     loadInitial().catch(() => {});
   }, [slug]);
 
+  // ✅ IMPORTANT: reconnect socket quand token change (login/logout)
   React.useEffect(() => {
-    const token = getToken();
+    // cleanup ancien socket
+    try {
+      socketRef.current?.disconnect();
+    } catch {}
+    socketRef.current = null;
 
     const sock = io(API_BASE, {
-      transports: ["websocket"],
+      // laisse socket.io choisir (websocket/polling) -> plus robuste en prod
       auth: token ? { token } : {},
     });
 
@@ -121,12 +139,10 @@ export function ChatPanel({ slug }: { slug: string }) {
       } catch {}
       socketRef.current = null;
     };
-  }, [slug]);
+  }, [slug, token]);
 
   async function fetchMentions(prefix: string) {
-    const r = await fetch(
-      `${API_BASE}/chat/${encodeURIComponent(slug)}/mentions?q=${encodeURIComponent(prefix)}`
-    );
+    const r = await fetch(`${API_BASE}/chat/${encodeURIComponent(slug)}/mentions?q=${encodeURIComponent(prefix)}`);
     const j = await r.json();
     if (j?.ok) {
       setMentionItems(j.users || []);
@@ -138,46 +154,47 @@ export function ChatPanel({ slug }: { slug: string }) {
   function insertMention(u: string) {
     const at = input.lastIndexOf("@");
     if (at < 0) return;
-
     const before = input.slice(0, at);
-    // remplace le token après @ (et ce que l'user tapait)
-    const replaced = before + "@" + u + " ";
-    setInput(replaced);
-
+    setInput(before + "@" + u + " ");
     setMentionOpen(false);
+  }
+
+  function triggerLogin() {
+    setNeedLogin(true);
+    onRequireLogin?.();
   }
 
   async function onSend() {
     const sock = socketRef.current;
-    const token = getToken();
-
     const text = input.trim();
     if (!text) return;
 
     if (!token) {
-      // user peut écrire, mais envoyer => modal login
-      setNeedLogin(true);
+      triggerLogin();
+      return;
+    }
+
+    if (!sock || !sock.connected) {
+      // socket pas prêt
       return;
     }
 
     // /clear MVP
     if (text === "/clear") {
       if (!perms.canClear) return;
-      sock?.emit("chat:clear", { slug }, () => {});
+      sock.emit("chat:clear", { slug }, () => {});
       setInput("");
       return;
     }
 
-    sock?.emit("chat:send", { slug, body: text }, (ack: any) => {
+    sock.emit("chat:send", { slug, body: text }, (ack: any) => {
       if (!ack?.ok) {
-        if (ack?.error === "auth_required") setNeedLogin(true);
+        if (ack?.error === "auth_required") triggerLogin();
       } else {
         setInput("");
       }
     });
   }
-
-  const isLogged = !!getToken();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -220,7 +237,6 @@ export function ChatPanel({ slug }: { slug: string }) {
               const v = e.target.value;
               setInput(v);
 
-              // autocomplete @
               const at = v.lastIndexOf("@");
               if (at >= 0) {
                 const frag = v.slice(at + 1);
@@ -280,7 +296,6 @@ export function ChatPanel({ slug }: { slug: string }) {
             Envoyer
           </button>
 
-          {/* mentions popover */}
           {mentionOpen && mentionItems.length > 0 && (
             <div
               style={{
@@ -316,7 +331,7 @@ export function ChatPanel({ slug }: { slug: string }) {
           )}
         </div>
 
-        {/* login popup MVP */}
+        {/* fallback si tu veux garder une indication */}
         {needLogin && (
           <div
             style={{
@@ -329,14 +344,14 @@ export function ChatPanel({ slug }: { slug: string }) {
           >
             <div style={{ fontWeight: 800 }}>Connexion requise</div>
             <div className="mutedSmall" style={{ marginTop: 4 }}>
-              Connecte-toi pour envoyer des messages.
+              Le pop-up de connexion devrait s’ouvrir.
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-              <a className="btn" href="/login">
-                Se connecter
-              </a>
-              <button className="btn" onClick={() => setNeedLogin(false)}>
-                Plus tard
+              <button className="btnPrimary" onClick={() => onRequireLogin?.()}>
+                Ouvrir la connexion
+              </button>
+              <button className="btnGhost" onClick={() => setNeedLogin(false)}>
+                Fermer
               </button>
             </div>
           </div>
