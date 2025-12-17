@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
-import { pool } from "./db";
-import { chatStore } from "./chat_store";
+import { pool } from "./db.js";
+import { chatStore } from "./chat_store.js";
 
 export function registerChatRoutes(app: Express) {
   // GET last messages

@@ -1,8 +1,8 @@
 import type { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
-import { pool } from "./db";
-import { chatStore } from "./chat_store";
-import type { AuthUser } from "./auth";
+import { pool } from "./db.js";
+import { chatStore } from "./chat_store.js";
+import type { AuthUser } from "./auth.js";
 
 type SocketData = {
   user?: AuthUser;
