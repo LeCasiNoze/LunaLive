@@ -38,7 +38,7 @@ type JoinAck = {
 };
 
 type ChatPerms = NonNullable<JoinAck["perms"]>;
-type ChatMe = NonNullable<JoinAck["me"]>;
+type ChatMe = { id: number; username: string; role: string };
 
 const DEFAULT_PERMS: ChatPerms = {
   canSend: false,
@@ -54,7 +54,7 @@ export function ChatPanel({ slug }: { slug: string }) {
   const [input, setInput] = React.useState("");
 
   const [perms, setPerms] = React.useState<ChatPerms>(DEFAULT_PERMS);
-  const [me, setMe] = React.useState<ChatMe>(null);
+  const [me, setMe] = React.useState<ChatMe | null>(null);
   const [needLogin, setNeedLogin] = React.useState(false);
 
   const socketRef = React.useRef<Socket | null>(null);
