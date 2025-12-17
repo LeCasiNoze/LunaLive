@@ -20,21 +20,20 @@
 
 .streamMain {
   flex: 1;
-  min-width: 0; /* important pour éviter overflow */
+  min-width: 0;
 }
 
 .streamChat {
   width: 360px;
   min-width: 360px;
   position: sticky;
-  top: 86px; /* ajuste selon ta navbar */
+  top: 86px;
   height: calc(100vh - 110px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-/* Mobile-first : chat dessous */
 @media (max-width: 980px) {
   .streamGrid {
     flex-direction: column;

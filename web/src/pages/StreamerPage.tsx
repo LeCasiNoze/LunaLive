@@ -27,6 +27,7 @@ export default function StreamerPage() {
 
   React.useEffect(() => {
     let mounted = true;
+
     (async () => {
       try {
         setLoading(true);
@@ -38,6 +39,7 @@ export default function StreamerPage() {
         if (mounted) setLoading(false);
       }
     })();
+
     return () => {
       mounted = false;
     };
@@ -59,10 +61,23 @@ export default function StreamerPage() {
       {/* Top bar */}
       <div className="panel streamTopBar">
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 800,
+              lineHeight: 1.1,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {title}
           </div>
-          <div className="mutedSmall" style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "center" }}>
+
+          <div
+            className="mutedSmall"
+            style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "center" }}
+          >
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               <span
                 style={{
@@ -78,7 +93,9 @@ export default function StreamerPage() {
             </span>
 
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span style={{ opacity: 0.9 }}><EyeIcon /></span>
+              <span style={{ opacity: 0.9 }}>
+                <EyeIcon />
+              </span>
               <span>{Number(viewers || 0).toLocaleString()}</span>
             </span>
           </div>
@@ -93,11 +110,7 @@ export default function StreamerPage() {
       {/* Grid: player left, chat right */}
       <div className="streamGrid">
         <div className="streamMain">
-          <DlivePlayer
-            channelSlug={channelSlug}
-            channelUsername={channelUsername}
-            isLive={isLive}
-          />
+          <DlivePlayer channelSlug={channelSlug} channelUsername={channelUsername} isLive={isLive} />
         </div>
 
         <aside className="panel streamChat">
@@ -113,7 +126,14 @@ export default function StreamerPage() {
             </div>
           </div>
 
-          <div style={{ padding: 12, borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", gap: 10 }}>
+          <div
+            style={{
+              padding: 12,
+              borderTop: "1px solid rgba(255,255,255,0.06)",
+              display: "flex",
+              gap: 10,
+            }}
+          >
             <input
               disabled
               placeholder="Connexion au chat (bientôt)…"
