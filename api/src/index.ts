@@ -45,7 +45,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 /* Public */
 app.get(
   "/lives",
-  a(async (req, res) => {
+  a(async (_req, res) => {
     const { rows } = await pool.query(
       `SELECT
         id::text AS id,
@@ -53,35 +53,17 @@ app.get(
         display_name AS "displayName",
         title,
         viewers,
-        thumb_url AS "thumbUrl",
+        ('/thumbs/' || slug || '.jpg') AS "thumbUrl",
         live_started_at AS "liveStartedAt"
       FROM streamers
       WHERE is_live = TRUE
         AND (suspended_until IS NULL OR suspended_until < NOW())
       ORDER BY viewers DESC`
     );
-
-    // ✅ important: URL ABSOLUE vers l’API (sinon le front tente /thumbs sur son domaine)
-    const base = `${req.protocol}://${req.get("host")}`;
-
-    const out = rows.map((row: any) => {
-      const slug = String(row.slug || "");
-      const fallback = `${base}/thumbs/${encodeURIComponent(slug)}.jpg`;
-
-      // si thumbUrl en DB existe, on l’utilise (supporte relatif "/thumbs/..." ou absolu "https://...")
-      let thumbUrl = row.thumbUrl ? String(row.thumbUrl) : "";
-      if (thumbUrl) {
-        if (thumbUrl.startsWith("/")) thumbUrl = `${base}${thumbUrl}`;
-      } else {
-        thumbUrl = fallback;
-      }
-
-      return { ...row, thumbUrl };
-    });
-
-    res.json(out);
+    res.json(rows);
   })
 );
+
 
 app.get(
   "/streamers",

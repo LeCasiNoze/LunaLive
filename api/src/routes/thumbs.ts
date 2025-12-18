@@ -1,21 +1,34 @@
-import express from "express";
+// api/src/routes/thumbs.ts
+import express, { type Request, type Response } from "express";
 import ffmpegPath from "ffmpeg-static";
 import { spawn } from "node:child_process";
 
 export const thumbsRouter = express.Router();
 
-const CACHE_MS = 60_000;
-const cache = new Map<string, { exp: number; buf: Buffer; contentType: string }>();
+type CacheEntry = { exp: number; buf: Buffer; contentType: string };
 
-function hlsUrlFor(slug: string) {
-  // ⚠️ adapte uniquement si ton worker n'est pas /<slug>/index.m3u8
+const CACHE_MS = 60_000;
+const cache = new Map<string, CacheEntry>();
+
+function hlsUrlFor(slug: string): string {
+  // base du worker HLS
   const base = (process.env.HLS_BASE || "https://lunalive-hls.lunalive.workers.dev").replace(/\/+$/, "");
+  // chemin par défaut
   const suffix = process.env.HLS_SUFFIX || "/index.m3u8";
   return `${base}/${encodeURIComponent(slug)}${suffix.startsWith("/") ? suffix : `/${suffix}`}`;
 }
 
-function svgFallback(slug: string) {
-  const text = String(slug || "live").slice(0, 20);
+function escapeXml(s: string): string {
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function svgFallback(slug: string): string {
+  const text = escapeXml(String(slug || "live").slice(0, 20));
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720">
   <defs>
@@ -31,7 +44,7 @@ function svgFallback(slug: string) {
 </svg>`;
 }
 
-thumbsRouter.get("/thumbs/:slug.jpg", async (req, res) => {
+thumbsRouter.get("/thumbs/:slug.jpg", async (req: Request, res: Response) => {
   const slug = String(req.params.slug || "").trim();
   if (!slug) return res.status(400).end();
 
@@ -53,7 +66,6 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req, res) => {
 
   const url = hlsUrlFor(slug);
 
-  // ffmpeg -> jpeg en mémoire
   const args = [
     "-hide_banner",
     "-loglevel", "error",
@@ -77,8 +89,17 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req, res) => {
     try { p.kill("SIGKILL"); } catch {}
   }, 8000);
 
-  p.stdout.on("data", (d) => chunks.push(Buffer.from(d)));
-  p.stderr.on("data", (d) => (stderr += String(d)));
+  p.stdout.on("data", (d: Buffer) => chunks.push(d));
+  p.stderr.on("data", (d: Buffer) => (stderr += d.toString("utf8")));
+
+  p.on("error", (err) => {
+    clearTimeout(killTimer);
+    console.warn("[thumbs] spawn error:", err);
+    const svg = svgFallback(slug);
+    res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=30");
+    res.end(svg);
+  });
 
   p.on("close", (code) => {
     clearTimeout(killTimer);
@@ -91,7 +112,8 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req, res) => {
       return res.end(buf);
     }
 
-    // fallback svg si ffmpeg fail
+    console.warn("[thumbs] ffmpeg fail", { slug, code, stderr: stderr.slice(0, 300) });
+
     const svg = svgFallback(slug);
     res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=30");
