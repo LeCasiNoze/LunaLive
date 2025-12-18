@@ -2,6 +2,7 @@
 import express, { type Request, type Response } from "express";
 import ffmpegPath from "ffmpeg-static";
 import { spawn } from "node:child_process";
+import { pool } from "../db.js";
 
 export const thumbsRouter = express.Router();
 
@@ -25,6 +26,26 @@ function escapeXml(s: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
+}
+
+async function resolveHlsIdFromSlug(slug: string): Promise<string> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT pa.channel_username AS "channelUsername"
+       FROM streamers s
+       LEFT JOIN provider_accounts pa
+         ON pa.assigned_to_streamer_id = s.id
+        AND pa.provider = 'dlive'
+       WHERE lower(s.slug) = lower($1)
+       LIMIT 1`,
+      [slug]
+    );
+
+    const u = String(rows[0]?.channelUsername || "").trim();
+    return u || slug; // fallback sur slug si pas de mapping
+  } catch {
+    return slug;
+  }
 }
 
 function svgFallback(slug: string): string {
@@ -64,12 +85,15 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: Request, res: Response) => {
     return res.end(svg);
   }
 
-  const url = hlsUrlFor(slug);
+  const hlsId = await resolveHlsIdFromSlug(slug);
+  const url = hlsUrlFor(hlsId);
+
 
   const args = [
     "-hide_banner",
     "-loglevel", "error",
     "-y",
+    "-user_agent", "Mozilla/5.0",
     "-i", url,
     "-an",
     "-frames:v", "1",
