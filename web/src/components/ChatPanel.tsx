@@ -1,6 +1,7 @@
 // web/src/components/ChatPanel.tsx
 import * as React from "react";
 import { io, type Socket } from "socket.io-client";
+import { useAuth } from "../auth/AuthProvider";
 
 type ChatMsg = {
   id: number;
@@ -35,16 +36,6 @@ function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
 }
 
-function readTokenLoose() {
-  return (
-    localStorage.getItem("lunalive_token") ||
-    localStorage.getItem("token") ||
-    sessionStorage.getItem("lunalive_token") ||
-    sessionStorage.getItem("token") ||
-    ""
-  );
-}
-
 function fmtRemaining(untilIso?: string | null) {
   if (!untilIso) return "";
   const t = new Date(untilIso).getTime() - Date.now();
@@ -66,8 +57,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
 
   const [join, setJoin] = React.useState<JoinAck | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-
-  const [token, setToken] = React.useState<string>(readTokenLoose());
+  const { token } = useAuth();
 
   const sockRef = React.useRef<Socket | null>(null);
   const listRef = React.useRef<HTMLDivElement | null>(null);
@@ -84,24 +74,6 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   function closeMenu() {
     setMenu({ open: false, x: 0, y: 0, msg: null, isTargetMod: null, modLoading: false });
   }
-
-  React.useEffect(() => {
-    const onFocus = () => setToken(readTokenLoose());
-    const onStorage = () => setToken(readTokenLoose());
-    window.addEventListener("focus", onFocus);
-    window.addEventListener("storage", onStorage);
-
-    const id = window.setInterval(() => {
-      const t = readTokenLoose();
-      setToken((prev) => (prev === t ? prev : t));
-    }, 800);
-
-    return () => {
-      window.removeEventListener("focus", onFocus);
-      window.removeEventListener("storage", onStorage);
-      window.clearInterval(id);
-    };
-  }, []);
 
   // load last messages
   React.useEffect(() => {
