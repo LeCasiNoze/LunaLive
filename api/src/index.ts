@@ -43,28 +43,45 @@ const a =
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 /* Public */
+/* Public */
 app.get(
   "/lives",
   a(async (req, res) => {
     const { rows } = await pool.query(
       `SELECT
-        id::text AS id,
-        slug,
-        display_name AS "displayName",
-        title,
-        viewers,
-        live_started_at AS "liveStartedAt"
-      FROM streamers
-      WHERE is_live = TRUE
-        AND (suspended_until IS NULL OR suspended_until < NOW())
-      ORDER BY viewers DESC`
+        s.id::text AS id,
+        s.slug,
+        s.display_name AS "displayName",
+        s.title,
+        s.viewers,
+        s.thumb_url AS "thumbUrlDb",
+        s.live_started_at AS "liveStartedAt"
+      FROM streamers s
+      WHERE s.is_live = TRUE
+        AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
+      ORDER BY s.viewers DESC`
     );
 
-    const base = `${req.protocol}://${req.get("host")}`; // ex https://lunalive-api.onrender.com
-    const out = rows.map((row: any) => ({
-      ...row,
-      thumbUrl: `${base}/thumbs/${row.slug}.jpg`,
-    }));
+    // Base publique de l’API (important sinon /thumbs pointe vers le site web)
+    const base = (process.env.PUBLIC_API_BASE || `${req.protocol}://${req.get("host")}`)
+      .replace(/\/$/, "");
+
+    const out = rows.map((r: any) => {
+      const slug = String(r.slug || "").trim();
+      const apiThumb = slug ? `${base}/thumbs/${encodeURIComponent(slug)}.jpg` : null;
+
+      return {
+        id: String(r.id),
+        slug,
+        displayName: String(r.displayName || ""),
+        title: String(r.title || ""),
+        viewers: Number(r.viewers || 0),
+        liveStartedAt: r.liveStartedAt ? String(r.liveStartedAt) : null,
+
+        // ✅ priorité: thumb_url si tu le remplis en DB, sinon endpoint thumbs
+        thumbUrl: r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb,
+      };
+    });
 
     res.json(out);
   })

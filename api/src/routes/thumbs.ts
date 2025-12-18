@@ -98,7 +98,8 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExpressRequest, res: ExpressRe
     "pipe:1",
   ];
 
-  const p = spawn(ffmpegPath as string, args, { stdio: ["ignore", "pipe", "pipe"] });
+  const FFMPEG_BIN = process.env.FFMPEG_PATH || "ffmpeg";
+  const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
 
   const chunks: Buffer[] = [];
   let stderr = "";
