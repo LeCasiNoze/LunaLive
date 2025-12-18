@@ -88,23 +88,17 @@ export const chatStore = {
     });
   },
 
-  deleteMessage(slug: string, messageId: number, deletedBy?: { id: number; username: string }): ChatMsg | null {
+  removeMessage(slug: string, messageId: number): boolean {
     const st = getOrCreate(slug);
     const id = Number(messageId || 0);
-    if (!id) return null;
+    if (!id) return false;
 
-    const m = st.msgs.find((x) => x.id === id);
-    if (!m) return null;
+    const i = st.msgs.findIndex((x) => x.id === id);
+    if (i < 0) return false;
 
-    if (m.deleted) return m;
-
-    m.deleted = true;
-    m.body = "";
-    m.deletedAt = new Date().toISOString();
-    m.deletedBy = deletedBy ? { id: Number(deletedBy.id), username: String(deletedBy.username) } : null;
-
+    st.msgs.splice(i, 1);
     st.lastActivity = now();
-    return m;
+    return true;
   },
 
   clear(slug: string) {

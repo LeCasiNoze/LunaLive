@@ -100,6 +100,23 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     };
   }, [slug]);
 
+  React.useEffect(() => {
+    if (!join?.state?.timeoutUntil) return;
+
+    const until = new Date(join.state.timeoutUntil).getTime();
+    const ms = until - Date.now() + 250; // petit buffer
+    if (ms <= 0) {
+      sockRef.current?.emit("chat:refresh", { slug });
+      return;
+    }
+
+    const t = window.setTimeout(() => {
+      sockRef.current?.emit("chat:refresh", { slug });
+    }, ms);
+
+    return () => window.clearTimeout(t);
+  }, [slug, join?.state?.timeoutUntil]);
+
   // socket connect + join (reconnect when token changes)
   React.useEffect(() => {
     const s = String(slug || "").trim();
@@ -139,7 +156,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     socket.on("chat:message_deleted", (payload: any) => {
       const id = Number(payload?.id || 0);
       if (!id) return;
-      setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, deleted: true, body: "" } : m)));
+      setMessages((prev) => prev.filter((m) => m.id !== id));
     });
 
     socket.on("chat:perms", (ack: JoinAck) => {

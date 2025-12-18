@@ -311,6 +311,28 @@ export function attachChat(io: Server) {
       }
     });
 
+    socket.on("chat:refresh", async ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
+      try {
+        const s = String(slug || data.slug || "").trim();
+        if (!s) return cb?.({ ok: false, error: "bad_slug" });
+
+        const meta = await getStreamerMetaBySlug(s);
+        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+
+        const rp = await computeRolePerms(meta.id, meta.ownerUserId, data.user);
+
+        data.role = rp.role;
+        data.perms = rp.perms;
+        data.state = rp.state;
+
+        // push uniquement à CE socket
+        socket.emit("chat:perms", { ok: true, role: rp.role, perms: rp.perms, state: rp.state });
+        cb?.({ ok: true });
+      } catch (e: any) {
+        cb?.({ ok: false, error: String(e?.message || "refresh_failed") });
+      }
+    });
+
     // ─────────────────────────────────────────────
     // MODERATION (delete / timeout / ban) + MODS
     // ─────────────────────────────────────────────
@@ -329,17 +351,12 @@ export function attachChat(io: Server) {
         const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
         if (!rp.perms.canDelete) return cb?.({ ok: false, error: "forbidden" });
 
-        const updated = chatStore.deleteMessage(meta.slug, Number(messageId), { id: u.id, username: u.username });
-        if (!updated) return cb?.({ ok: false, error: "message_not_found" });
+        const ok = chatStore.removeMessage(meta.slug, Number(messageId));
+        if (!ok) return cb?.({ ok: false, error: "message_not_found" });
 
-        io.to(`chat:${meta.slug}`).emit("chat:message_deleted", {
-          ok: true,
-          id: updated.id,
-          deletedAt: updated.deletedAt,
-          deletedBy: updated.deletedBy,
-        });
-
+        io.to(`chat:${meta.slug}`).emit("chat:message_deleted", { ok: true, id: Number(messageId) });
         cb?.({ ok: true });
+
       } catch (e: any) {
         cb?.({ ok: false, error: String(e?.message || "delete_failed") });
       }
