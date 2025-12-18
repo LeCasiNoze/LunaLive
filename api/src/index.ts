@@ -28,6 +28,9 @@ app.use(cors());
 app.use(express.json());
 registerChatRoutes(app);
 
+import { thumbsRouter } from "./routes/thumbs.js";
+app.use(thumbsRouter);
+
 registerHlsProxy(app);
 app.options("/hls", (_req, res) => res.sendStatus(204));
 
@@ -42,7 +45,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 /* Public */
 app.get(
   "/lives",
-  a(async (_req, res) => {
+  a(async (req, res) => {
     const { rows } = await pool.query(
       `SELECT
         id::text AS id,
@@ -57,7 +60,26 @@ app.get(
         AND (suspended_until IS NULL OR suspended_until < NOW())
       ORDER BY viewers DESC`
     );
-    res.json(rows);
+
+    // ✅ important: URL ABSOLUE vers l’API (sinon le front tente /thumbs sur son domaine)
+    const base = `${req.protocol}://${req.get("host")}`;
+
+    const out = rows.map((row: any) => {
+      const slug = String(row.slug || "");
+      const fallback = `${base}/thumbs/${encodeURIComponent(slug)}.jpg`;
+
+      // si thumbUrl en DB existe, on l’utilise (supporte relatif "/thumbs/..." ou absolu "https://...")
+      let thumbUrl = row.thumbUrl ? String(row.thumbUrl) : "";
+      if (thumbUrl) {
+        if (thumbUrl.startsWith("/")) thumbUrl = `${base}${thumbUrl}`;
+      } else {
+        thumbUrl = fallback;
+      }
+
+      return { ...row, thumbUrl };
+    });
+
+    res.json(out);
   })
 );
 

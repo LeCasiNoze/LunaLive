@@ -349,6 +349,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
 
         <div style={{ display: "flex", gap: 10 }}>
           <input
+            disabled={!canSend || sending}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
@@ -362,6 +363,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
                     : "Écrire un message…"
             }
             style={{
+              opacity: !canSend ? 0.6 : 1,
               flex: 1,
               padding: "12px 12px",
               borderRadius: 14,

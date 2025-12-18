@@ -6,10 +6,14 @@ import { svgThumb } from "../lib/thumb";
 import type { LiveCard } from "../lib/types";
 
 type LiveCardVM = LiveCard & {
-  thumbFallback: string;      // data URI svg
-  thumbFinal: string;         // url finale affichée
-  durationLabel?: string | null; // ex "2.58"
+  thumbFallback: string;          // data URI svg
+  thumbCss: string;               // background-image CSS (cascade)
+  durationLabel?: string | null;  // ex "2.58"
 };
+
+function apiBase() {
+  return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
+}
 
 function formatDurationDot(startIso: string, nowMs: number) {
   const start = Date.parse(startIso);
@@ -25,6 +29,15 @@ function withMinuteBust(url: string, nowMs: number) {
   return url.includes("?") ? `${url}&t=${t}` : `${url}?t=${t}`;
 }
 
+function resolveThumbUrl(raw: string) {
+  // supporte thumbUrl relatif "/thumbs/x.jpg" ou absolu "https://..."
+  try {
+    return new URL(raw, apiBase()).toString();
+  } catch {
+    return raw;
+  }
+}
+
 export default function LivesPage() {
   const [lives, setLives] = React.useState<LiveCardVM[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -37,21 +50,29 @@ export default function LivesPage() {
         const nowMs = Date.now();
         const data = await getLives();
 
-        const vm: LiveCardVM[] = data.map((x: any) => {
+        const vm: LiveCardVM[] = (data || []).map((x: any) => {
           const fallback = svgThumb(x.displayName);
 
-          // ✅ preview réelle si dispo, sinon thumb SVG
-          const rawThumbUrl = x.thumbUrl || x.thumb_url || null;
-          const thumbFinal = rawThumbUrl ? withMinuteBust(String(rawThumbUrl), nowMs) : fallback;
+          // ✅ preview réelle si dispo
+          const rawThumbUrl = x.thumbUrl ?? x.thumb_url ?? null;
 
-          // ✅ durée réelle si dispo (sinon rien)
-          const started = x.liveStartedAt || x.live_started_at || null;
+          const primary = rawThumbUrl
+            ? withMinuteBust(resolveThumbUrl(String(rawThumbUrl)), nowMs)
+            : null;
+
+          // ✅ cascade: si primary fail, le navigateur prend le fallback
+          const thumbCss = primary
+            ? `url("${primary}"), url("${fallback}")`
+            : `url("${fallback}")`;
+
+          // ✅ durée réelle si dispo
+          const started = x.liveStartedAt ?? x.live_started_at ?? null;
           const durationLabel = started ? formatDurationDot(String(started), nowMs) : null;
 
           return {
             ...x,
             thumbFallback: fallback,
-            thumbFinal,
+            thumbCss,
             durationLabel,
           };
         });
@@ -88,7 +109,7 @@ export default function LivesPage() {
               <div
                 className="thumb"
                 style={{
-                  backgroundImage: `url("${live.thumbFinal}")`,
+                  backgroundImage: live.thumbCss,
                   position: "relative",
                 }}
               >
@@ -119,7 +140,7 @@ export default function LivesPage() {
                 {/* viewers (bottom-right) */}
                 <div className="viewerBadge">{formatViewers(live.viewers)} viewers</div>
 
-                {/* streamer name (bottom-left via overlay existant) */}
+                {/* streamer name (bottom-left) */}
                 <div className="overlay">
                   <div className="streamer">{live.displayName}</div>
                 </div>
@@ -138,7 +159,7 @@ export default function LivesPage() {
                     WebkitLineClamp: 2,
                     WebkitBoxOrient: "vertical",
                     overflow: "hidden",
-                    minHeight: 32, // garde une hauteur stable
+                    minHeight: 32,
                   }}
                 >
                   {live.title || "—"}
