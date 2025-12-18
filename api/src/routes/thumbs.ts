@@ -8,7 +8,7 @@ import { pool } from "../db.js";
 export const thumbsRouter = express.Router();
 
 /* ───────────────────────────────────────────────────────────── */
-/* ffmpeg: utilise ffmpeg-static si dispo                         */
+/* ffmpeg: préfère le binaire système sur Render (évite SIGSEGV)   */
 /* ───────────────────────────────────────────────────────────── */
 
 const require = createRequire(import.meta.url);
@@ -20,9 +20,7 @@ const ffmpegStatic: string | null = (() => {
   }
 })();
 
-const FFMPEG_BIN = (process.env.FFMPEG_PATH || ffmpegStatic || "ffmpeg").trim();
-
-function hasFfmpeg(bin: string) {
+function canRun(bin: string) {
   try {
     const r = spawnSync(bin, ["-version"], { stdio: "ignore" });
     return r.status === 0;
@@ -31,7 +29,16 @@ function hasFfmpeg(bin: string) {
   }
 }
 
-const FFMPEG_OK = hasFfmpeg(FFMPEG_BIN);
+const candidates = [
+  (process.env.FFMPEG_PATH || "").trim() || null, // override explicite
+  "ffmpeg",                                      // binaire système (Render native)
+  ffmpegStatic,                                  // fallback local (Windows/dev)
+].filter(Boolean) as string[];
+
+const FFMPEG_BIN = (candidates.find(canRun) || candidates[0] || "ffmpeg").trim();
+const FFMPEG_OK = canRun(FFMPEG_BIN);
+
+console.log(`[thumbs] ffmpeg selected bin=${FFMPEG_BIN} ok=${FFMPEG_OK}`);
 
 /* ───────────────────────────────────────────────────────────── */
 /* cache + fallback                                                */
@@ -85,7 +92,6 @@ async function resolveDliveUsernameFromSlug(slug: string): Promise<string> {
 }
 
 function proxiedHlsUrl(dliveUsername: string) {
-  // worker : https://lunalive-hls.lunalive.workers.dev/hls?u=...
   const proxyBase = (process.env.HLS_PROXY_BASE || "https://lunalive-hls.lunalive.workers.dev/hls").replace(/\/$/, "");
 
   const manifest = `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(dliveUsername)}.m3u8?mobileweb`;
@@ -119,16 +125,15 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     return res.end(svgFallback(slug));
   }
 
-  // slug -> username HLS
   const dliveUser = await resolveDliveUsernameFromSlug(slug);
   const hlsUrl = proxiedHlsUrl(dliveUser);
 
-  // ffmpeg => jpeg en mémoire
   const args = [
     "-hide_banner",
     "-loglevel",
     "error",
     "-y",
+    "-nostdin",
 
     // évite de rester bloqué trop longtemps
     "-rw_timeout",
@@ -162,7 +167,7 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     } catch {}
   }, 9000);
 
-  // si le client coupe (changement de page, etc.), on stop ffmpeg
+  // si le client coupe, on stop ffmpeg
   req.on("close", () => {
     try {
       p.kill("SIGKILL");
@@ -194,9 +199,7 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     }
 
     console.warn(
-      `[thumbs] ffmpeg failed bin=${FFMPEG_BIN} slug=${slug} user=${dliveUser} code=${code} signal=${signal} bytes=${buf.length} err=${
-        stderr?.slice(0, 400) || ""
-      }`
+      `[thumbs] ffmpeg failed bin=${FFMPEG_BIN} slug=${slug} user=${dliveUser} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 400) || ""}`
     );
 
     res.set("Content-Type", "image/svg+xml; charset=utf-8");
