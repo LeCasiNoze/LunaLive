@@ -1,31 +1,20 @@
 import express, { type Request as ExpressRequest, type Response as ExpressResponse } from "express";
 import ffmpegPath from "ffmpeg-static";
 import { spawn } from "node:child_process";
+import { pool } from "../db.js";
 
 export const thumbsRouter = express.Router();
 
 const CACHE_MS = 60_000;
 const cache = new Map<string, { exp: number; buf: Buffer; contentType: string }>();
 
-function workerBase() {
-  return (process.env.HLS_BASE || "https://lunalive-hls.lunalive.workers.dev").replace(/\/+$/, "");
-}
-
-// DLive m3u8 (comme ton request qui marche)
 function dliveM3u8For(username: string) {
   const u = String(username || "").trim();
   return `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(u)}.m3u8?mobileweb`;
 }
 
-// Worker URL: /hls?u=<encoded m3u8>
-function hlsUrlFor(slug: string) {
-  const base = workerBase();
-  const m3u8 = dliveM3u8For(slug);
-  return `${base}/hls?u=${encodeURIComponent(m3u8)}`;
-}
-
-function svgFallback(slug: string) {
-  const text = String(slug || "live").slice(0, 20);
+function svgFallback(label: string) {
+  const text = String(label || "live").slice(0, 20);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720">
   <defs>
@@ -41,6 +30,24 @@ function svgFallback(slug: string) {
 </svg>`;
 }
 
+async function resolveHlsUsernameFromStreamerSlug(streamerSlug: string): Promise<string | null> {
+  // on tente: provider_accounts.channel_username, sinon channel_slug, sinon streamer.slug
+  const { rows } = await pool.query(
+    `SELECT
+       COALESCE(pa.channel_username, pa.channel_slug, s.slug) AS "hlsUser"
+     FROM streamers s
+     LEFT JOIN provider_accounts pa
+       ON pa.assigned_to_streamer_id = s.id
+      AND pa.provider = 'dlive'
+     WHERE lower(s.slug) = lower($1)
+     LIMIT 1`,
+    [streamerSlug]
+  );
+
+  const u = String(rows?.[0]?.hlsUser || "").trim();
+  return u ? u : null;
+}
+
 thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExpressRequest, res: ExpressResponse) => {
   const slug = String(req.params.slug || "").trim();
   if (!slug) return res.status(400).end();
@@ -53,21 +60,32 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExpressRequest, res: ExpressRe
     return res.send(hit.buf);
   }
 
-  // fallback si pas de binaire ffmpeg
   if (!ffmpegPath) {
     res.set("Cache-Control", "public, max-age=30");
     return res.type("image/svg+xml").send(svgFallback(slug));
   }
 
-  const url = hlsUrlFor(slug);
+  let hlsUser: string | null = null;
+  try {
+    hlsUser = await resolveHlsUsernameFromStreamerSlug(slug);
+  } catch (e) {
+    console.warn("[thumbs] resolve user failed", slug, e);
+  }
+
+  // si pas trouvé en DB, on tente quand même avec le slug (cas wayzebi)
+  const username = hlsUser || slug;
+  const url = dliveM3u8For(username);
 
   const args = [
     "-hide_banner",
-    "-loglevel", "error",
+    "-loglevel", "warning",
 
-    // (souvent utile sur HLS https)
+    // utile sur HLS HTTPS
     "-protocol_whitelist", "file,crypto,data,https,tcp,tls,http",
-    "-rw_timeout", "8000000",
+    "-rw_timeout", "20000000", // 20s (microseconds)
+
+    // parfois DLive est relou => user-agent
+    "-user_agent", "Mozilla/5.0",
 
     "-y",
     "-i", url,
@@ -84,15 +102,24 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExpressRequest, res: ExpressRe
 
   const chunks: Buffer[] = [];
   let stderr = "";
+  let timedOut = false;
 
   const killTimer = setTimeout(() => {
+    timedOut = true;
     try { p.kill("SIGKILL"); } catch {}
-  }, 8000);
+  }, 20_000);
+
+  p.on("error", (e) => {
+    clearTimeout(killTimer);
+    console.warn(`[thumbs] spawn error slug=${slug} user=${username}`, e);
+    res.set("Cache-Control", "public, max-age=30");
+    return res.type("image/svg+xml").send(svgFallback(slug));
+  });
 
   p.stdout.on("data", (d: Buffer) => chunks.push(d));
   p.stderr.on("data", (d: Buffer) => (stderr += d.toString("utf8")));
 
-  p.on("close", (code: number | null) => {
+  p.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
     clearTimeout(killTimer);
 
     const buf = Buffer.concat(chunks);
@@ -103,7 +130,11 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExpressRequest, res: ExpressRe
       return res.send(buf);
     }
 
-    console.warn(`[thumbs] ffmpeg failed slug=${slug} code=${code} bytes=${buf.length} err=${stderr.slice(0, 300)}`);
+    const reason = timedOut ? "timeout" : signal ? `signal:${signal}` : `code:${code}`;
+    console.warn(
+      `[thumbs] ffmpeg failed slug=${slug} user=${username} reason=${reason} bytes=${buf.length} err=${stderr.slice(0, 400)}`
+    );
+
     res.set("Cache-Control", "public, max-age=30");
     return res.type("image/svg+xml").send(svgFallback(slug));
   });
