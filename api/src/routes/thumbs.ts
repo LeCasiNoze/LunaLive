@@ -1,6 +1,6 @@
-import express, { type Request as ExpressRequest, type Response as ExpressResponse } from "express";
-import ffmpegPath from "ffmpeg-static";
-import { spawn } from "node:child_process";
+import express from "express";
+import type { Request as ExRequest, Response as ExResponse } from "express";
+import { spawn, spawnSync } from "node:child_process";
 import { pool } from "../db.js";
 
 export const thumbsRouter = express.Router();
@@ -8,13 +8,18 @@ export const thumbsRouter = express.Router();
 const CACHE_MS = 60_000;
 const cache = new Map<string, { exp: number; buf: Buffer; contentType: string }>();
 
-function dliveM3u8For(username: string) {
-  const u = String(username || "").trim();
-  return `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(u)}.m3u8?mobileweb`;
+function hasFfmpeg() {
+  try {
+    const r = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" });
+    return r.status === 0;
+  } catch {
+    return false;
+  }
 }
+const FFMPEG_OK = hasFfmpeg();
 
 function svgFallback(label: string) {
-  const text = String(label || "live").slice(0, 20);
+  const text = String(label || "live").slice(0, 24);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720">
   <defs>
@@ -30,25 +35,47 @@ function svgFallback(label: string) {
 </svg>`;
 }
 
-async function resolveHlsUsernameFromStreamerSlug(streamerSlug: string): Promise<string | null> {
-  // on tente: provider_accounts.channel_username, sinon channel_slug, sinon streamer.slug
-  const { rows } = await pool.query(
-    `SELECT
-       COALESCE(pa.channel_username, pa.channel_slug, s.slug) AS "hlsUser"
-     FROM streamers s
-     LEFT JOIN provider_accounts pa
-       ON pa.assigned_to_streamer_id = s.id
-      AND pa.provider = 'dlive'
-     WHERE lower(s.slug) = lower($1)
-     LIMIT 1`,
-    [streamerSlug]
-  );
-
-  const u = String(rows?.[0]?.hlsUser || "").trim();
-  return u ? u : null;
+/**
+ * IMPORTANT:
+ * - slug (site) != username DLive (HLS)
+ * - on récupère channel_username si dispo (provider_accounts), sinon slug.
+ */
+async function resolveDliveUsernameFromSlug(slug: string): Promise<string> {
+  try {
+    const { rows } = await pool.query(
+      `
+      SELECT
+        COALESCE(pa.channel_username, pa.channel_slug, s.slug) AS u
+      FROM streamers s
+      LEFT JOIN provider_accounts pa
+        ON pa.assigned_to_streamer_id = s.id
+       AND pa.provider = 'dlive'
+      WHERE s.slug = $1
+      LIMIT 1
+      `,
+      [slug]
+    );
+    const u = rows[0]?.u;
+    return String(u || slug).trim();
+  } catch {
+    return slug;
+  }
 }
 
-thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExpressRequest, res: ExpressResponse) => {
+function proxiedHlsUrl(dliveUsername: string) {
+  // ton worker actuel : https://lunalive-hls.lunalive.workers.dev/hls?u=...
+  const proxyBase = (process.env.HLS_PROXY_BASE || "https://lunalive-hls.lunalive.workers.dev/hls").replace(
+    /\/$/,
+    ""
+  );
+
+  const manifest = `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(dliveUsername)}.m3u8?mobileweb`;
+  const u = encodeURIComponent(manifest);
+
+  return proxyBase.includes("?") ? `${proxyBase}&u=${u}` : `${proxyBase}?u=${u}`;
+}
+
+thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) => {
   const slug = String(req.params.slug || "").trim();
   if (!slug) return res.status(400).end();
 
@@ -57,86 +84,92 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExpressRequest, res: ExpressRe
   if (hit && hit.exp > Date.now()) {
     res.set("Content-Type", hit.contentType);
     res.set("Cache-Control", "public, max-age=30");
-    return res.send(hit.buf);
+    return res.end(hit.buf);
   }
 
-  if (!ffmpegPath) {
+  // pas de ffmpeg => SVG
+  if (!FFMPEG_OK) {
+    res.set("Content-Type", "image/svg+xml; charset=utf-8");
     res.set("Cache-Control", "public, max-age=30");
-    return res.type("image/svg+xml").send(svgFallback(slug));
+    return res.end(svgFallback(slug));
   }
 
-  let hlsUser: string | null = null;
-  try {
-    hlsUser = await resolveHlsUsernameFromStreamerSlug(slug);
-  } catch (e) {
-    console.warn("[thumbs] resolve user failed", slug, e);
-  }
+  // slug -> username HLS
+  const dliveUser = await resolveDliveUsernameFromSlug(slug);
+  const hlsUrl = proxiedHlsUrl(dliveUser);
 
-  // si pas trouvé en DB, on tente quand même avec le slug (cas wayzebi)
-  const username = hlsUser || slug;
-  const url = dliveM3u8For(username);
-
+  // ffmpeg => jpeg en mémoire
   const args = [
     "-hide_banner",
-    "-loglevel", "warning",
-
-    // utile sur HLS HTTPS
-    "-protocol_whitelist", "file,crypto,data,https,tcp,tls,http",
-    "-rw_timeout", "20000000", // 20s (microseconds)
-
-    // parfois DLive est relou => user-agent
-    "-user_agent", "Mozilla/5.0",
-
+    "-loglevel",
+    "error",
     "-y",
-    "-i", url,
+
+    // évite de rester bloqué trop longtemps
+    "-rw_timeout",
+    "8000000",
+
+    "-i",
+    hlsUrl,
+
     "-an",
-    "-frames:v", "1",
-    "-vf", "scale=640:-1",
-    "-q:v", "5",
-    "-f", "image2pipe",
-    "-vcodec", "mjpeg",
+    "-frames:v",
+    "1",
+    "-vf",
+    "scale=640:-1",
+    "-q:v",
+    "5",
+    "-f",
+    "image2pipe",
+    "-vcodec",
+    "mjpeg",
     "pipe:1",
   ];
 
-  const FFMPEG_BIN = process.env.FFMPEG_PATH || "ffmpeg";
-  const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
+  const p = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
 
   const chunks: Buffer[] = [];
   let stderr = "";
-  let timedOut = false;
 
   const killTimer = setTimeout(() => {
-    timedOut = true;
-    try { p.kill("SIGKILL"); } catch {}
-  }, 20_000);
+    try {
+      p.kill("SIGKILL");
+    } catch {}
+  }, 9000);
+
+  p.stdout.on("data", (d: Buffer) => chunks.push(Buffer.from(d)));
+  p.stderr.on("data", (d: Buffer) => (stderr += String(d)));
 
   p.on("error", (e) => {
     clearTimeout(killTimer);
-    console.warn(`[thumbs] spawn error slug=${slug} user=${username}`, e);
+    console.warn(`[thumbs] ffmpeg spawn error slug=${slug} user=${dliveUser}`, e);
+    res.set("Content-Type", "image/svg+xml; charset=utf-8");
     res.set("Cache-Control", "public, max-age=30");
-    return res.type("image/svg+xml").send(svgFallback(slug));
+    return res.end(svgFallback(slug));
   });
 
-  p.stdout.on("data", (d: Buffer) => chunks.push(d));
-  p.stderr.on("data", (d: Buffer) => (stderr += d.toString("utf8")));
-
-  p.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
+  p.on("close", (code, signal) => {
     clearTimeout(killTimer);
 
     const buf = Buffer.concat(chunks);
-    if (code === 0 && buf.length > 10_000) {
+    const ok = code === 0 && buf.length > 10_000;
+
+    if (ok) {
       cache.set(key, { exp: Date.now() + CACHE_MS, buf, contentType: "image/jpeg" });
       res.set("Content-Type", "image/jpeg");
       res.set("Cache-Control", "public, max-age=30");
-      return res.send(buf);
+      return res.end(buf);
     }
 
-    const reason = timedOut ? "timeout" : signal ? `signal:${signal}` : `code:${code}`;
     console.warn(
-      `[thumbs] ffmpeg failed slug=${slug} user=${username} reason=${reason} bytes=${buf.length} err=${stderr.slice(0, 400)}`
+      `[thumbs] ffmpeg failed slug=${slug} user=${dliveUser} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(
+        0,
+        400
+      ) || ""}`
     );
 
+    res.set("Content-Type", "image/svg+xml; charset=utf-8");
     res.set("Cache-Control", "public, max-age=30");
-    return res.type("image/svg+xml").send(svgFallback(slug));
+    return res.end(svgFallback(slug));
   });
 });

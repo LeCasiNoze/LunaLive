@@ -12,6 +12,8 @@ export type ApiLive = {
   displayName: string;
   title: string;
   viewers: number;
+  thumbUrl?: string | null;
+  liveStartedAt?: string | null;
 };
 
 export type ApiStreamer = ApiLive & { isLive: boolean; featured: boolean };

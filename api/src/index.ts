@@ -62,28 +62,24 @@ app.get(
       ORDER BY s.viewers DESC`
     );
 
-    // Base publique de l’API (important sinon /thumbs pointe vers le site web)
-    const base = (process.env.PUBLIC_API_BASE || `${req.protocol}://${req.get("host")}`)
-      .replace(/\/$/, "");
+    const base = (process.env.PUBLIC_API_BASE || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
 
-    const out = rows.map((r: any) => {
-      const slug = String(r.slug || "").trim();
-      const apiThumb = slug ? `${base}/thumbs/${encodeURIComponent(slug)}.jpg` : null;
+    res.json(
+      rows.map((r: any) => {
+        const slug = String(r.slug || "").trim();
+        const apiThumb = slug ? `${base}/thumbs/${encodeURIComponent(slug)}.jpg` : null;
 
-      return {
-        id: String(r.id),
-        slug,
-        displayName: String(r.displayName || ""),
-        title: String(r.title || ""),
-        viewers: Number(r.viewers || 0),
-        liveStartedAt: r.liveStartedAt ? String(r.liveStartedAt) : null,
-
-        // ✅ priorité: thumb_url si tu le remplis en DB, sinon endpoint thumbs
-        thumbUrl: r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb,
-      };
-    });
-
-    res.json(out);
+        return {
+          id: String(r.id),
+          slug,
+          displayName: String(r.displayName || ""),
+          title: String(r.title || ""),
+          viewers: Number(r.viewers || 0),
+          liveStartedAt: r.liveStartedAt ? String(r.liveStartedAt) : null,
+          thumbUrl: r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb, // ✅ voilà ton "/thumbs/${slug}.jpg"
+        };
+      })
+    );
   })
 );
 
