@@ -1,55 +1,31 @@
-// api/src/routes/thumbs.ts
-import express, { type Request, type Response } from "express";
+import express, { type Request as ExpressRequest, type Response as ExpressResponse } from "express";
 import ffmpegPath from "ffmpeg-static";
 import { spawn } from "node:child_process";
-import { pool } from "../db.js";
 
 export const thumbsRouter = express.Router();
 
-type CacheEntry = { exp: number; buf: Buffer; contentType: string };
-
 const CACHE_MS = 60_000;
-const cache = new Map<string, CacheEntry>();
+const cache = new Map<string, { exp: number; buf: Buffer; contentType: string }>();
 
-function hlsUrlFor(slug: string): string {
-  // base du worker HLS
-  const base = (process.env.HLS_BASE || "https://lunalive-hls.lunalive.workers.dev").replace(/\/+$/, "");
-  // chemin par défaut
-  const suffix = process.env.HLS_SUFFIX || "/index.m3u8";
-  return `${base}/${encodeURIComponent(slug)}${suffix.startsWith("/") ? suffix : `/${suffix}`}`;
+function workerBase() {
+  return (process.env.HLS_BASE || "https://lunalive-hls.lunalive.workers.dev").replace(/\/+$/, "");
 }
 
-function escapeXml(s: string): string {
-  return s
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
+// DLive m3u8 (comme ton request qui marche)
+function dliveM3u8For(username: string) {
+  const u = String(username || "").trim();
+  return `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(u)}.m3u8?mobileweb`;
 }
 
-async function resolveHlsIdFromSlug(slug: string): Promise<string> {
-  try {
-    const { rows } = await pool.query(
-      `SELECT pa.channel_username AS "channelUsername"
-       FROM streamers s
-       LEFT JOIN provider_accounts pa
-         ON pa.assigned_to_streamer_id = s.id
-        AND pa.provider = 'dlive'
-       WHERE lower(s.slug) = lower($1)
-       LIMIT 1`,
-      [slug]
-    );
-
-    const u = String(rows[0]?.channelUsername || "").trim();
-    return u || slug; // fallback sur slug si pas de mapping
-  } catch {
-    return slug;
-  }
+// Worker URL: /hls?u=<encoded m3u8>
+function hlsUrlFor(slug: string) {
+  const base = workerBase();
+  const m3u8 = dliveM3u8For(slug);
+  return `${base}/hls?u=${encodeURIComponent(m3u8)}`;
 }
 
-function svgFallback(slug: string): string {
-  const text = escapeXml(String(slug || "live").slice(0, 20));
+function svgFallback(slug: string) {
+  const text = String(slug || "live").slice(0, 20);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720">
   <defs>
@@ -65,35 +41,35 @@ function svgFallback(slug: string): string {
 </svg>`;
 }
 
-thumbsRouter.get("/thumbs/:slug.jpg", async (req: Request, res: Response) => {
+thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExpressRequest, res: ExpressResponse) => {
   const slug = String(req.params.slug || "").trim();
   if (!slug) return res.status(400).end();
 
   const key = slug.toLowerCase();
   const hit = cache.get(key);
   if (hit && hit.exp > Date.now()) {
-    res.setHeader("Content-Type", hit.contentType);
-    res.setHeader("Cache-Control", "public, max-age=30");
-    return res.end(hit.buf);
+    res.set("Content-Type", hit.contentType);
+    res.set("Cache-Control", "public, max-age=30");
+    return res.send(hit.buf);
   }
 
-  // fallback si pas de binaire
+  // fallback si pas de binaire ffmpeg
   if (!ffmpegPath) {
-    const svg = svgFallback(slug);
-    res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=30");
-    return res.end(svg);
+    res.set("Cache-Control", "public, max-age=30");
+    return res.type("image/svg+xml").send(svgFallback(slug));
   }
 
-  const hlsId = await resolveHlsIdFromSlug(slug);
-  const url = hlsUrlFor(hlsId);
-
+  const url = hlsUrlFor(slug);
 
   const args = [
     "-hide_banner",
     "-loglevel", "error",
+
+    // (souvent utile sur HLS https)
+    "-protocol_whitelist", "file,crypto,data,https,tcp,tls,http",
+    "-rw_timeout", "8000000",
+
     "-y",
-    "-user_agent", "Mozilla/5.0",
     "-i", url,
     "-an",
     "-frames:v", "1",
@@ -116,31 +92,19 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: Request, res: Response) => {
   p.stdout.on("data", (d: Buffer) => chunks.push(d));
   p.stderr.on("data", (d: Buffer) => (stderr += d.toString("utf8")));
 
-  p.on("error", (err) => {
-    clearTimeout(killTimer);
-    console.warn("[thumbs] spawn error:", err);
-    const svg = svgFallback(slug);
-    res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=30");
-    res.end(svg);
-  });
-
-  p.on("close", (code) => {
+  p.on("close", (code: number | null) => {
     clearTimeout(killTimer);
 
     const buf = Buffer.concat(chunks);
     if (code === 0 && buf.length > 10_000) {
       cache.set(key, { exp: Date.now() + CACHE_MS, buf, contentType: "image/jpeg" });
-      res.setHeader("Content-Type", "image/jpeg");
-      res.setHeader("Cache-Control", "public, max-age=30");
-      return res.end(buf);
+      res.set("Content-Type", "image/jpeg");
+      res.set("Cache-Control", "public, max-age=30");
+      return res.send(buf);
     }
 
-    console.warn("[thumbs] ffmpeg fail", { slug, code, stderr: stderr.slice(0, 300) });
-
-    const svg = svgFallback(slug);
-    res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=30");
-    return res.end(svg);
+    console.warn(`[thumbs] ffmpeg failed slug=${slug} code=${code} bytes=${buf.length} err=${stderr.slice(0, 300)}`);
+    res.set("Cache-Control", "public, max-age=30");
+    return res.type("image/svg+xml").send(svgFallback(slug));
   });
 });

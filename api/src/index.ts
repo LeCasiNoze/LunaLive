@@ -45,7 +45,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 /* Public */
 app.get(
   "/lives",
-  a(async (_req, res) => {
+  a(async (req, res) => {
     const { rows } = await pool.query(
       `SELECT
         id::text AS id,
@@ -53,17 +53,22 @@ app.get(
         display_name AS "displayName",
         title,
         viewers,
-        ('/thumbs/' || slug || '.jpg') AS "thumbUrl",
         live_started_at AS "liveStartedAt"
       FROM streamers
       WHERE is_live = TRUE
         AND (suspended_until IS NULL OR suspended_until < NOW())
       ORDER BY viewers DESC`
     );
-    res.json(rows);
+
+    const base = `${req.protocol}://${req.get("host")}`; // ex https://lunalive-api.onrender.com
+    const out = rows.map((row: any) => ({
+      ...row,
+      thumbUrl: `${base}/thumbs/${row.slug}.jpg`,
+    }));
+
+    res.json(out);
   })
 );
-
 
 app.get(
   "/streamers",
