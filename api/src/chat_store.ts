@@ -1,9 +1,12 @@
+// api/src/chat_store.ts
 export type ChatMsg = {
   id: number;
   userId: number;
   username: string;
   body: string;
   deleted?: boolean;
+  deletedAt?: string | null;
+  deletedBy?: { id: number; username: string } | null;
   createdAt: string;
 };
 
@@ -16,13 +19,12 @@ type ChannelState = {
 
 const CHANNELS = new Map<string, ChannelState>();
 
-const MAX_MESSAGES = 50; // tu as dit 50 ok
+const MAX_MESSAGES = 50;
 const RESET_AFTER_MS = 3 * 24 * 60 * 60 * 1000; // 3 jours
 
 function now() {
   return Date.now();
 }
-
 function normSlug(slug: string) {
   return String(slug || "").trim().toLowerCase();
 }
@@ -34,6 +36,7 @@ function getOrCreate(slug: string): ChannelState {
     st = { msgs: [], lastActivity: now(), nextId: 1, recentUsers: new Map() };
     CHANNELS.set(key, st);
   }
+
   // reset si inactif 3 jours
   if (now() - st.lastActivity > RESET_AFTER_MS) {
     st.msgs = [];
@@ -41,6 +44,7 @@ function getOrCreate(slug: string): ChannelState {
     st.nextId = 1;
     st.lastActivity = now();
   }
+
   return st;
 }
 
@@ -58,17 +62,49 @@ export const chatStore = {
     const full: ChatMsg = {
       id: st.nextId++,
       createdAt: new Date().toISOString(),
+      deleted: false,
+      deletedAt: null,
+      deletedBy: null,
       ...msg,
     };
 
     st.msgs.push(full);
     if (st.msgs.length > MAX_MESSAGES) st.msgs.splice(0, st.msgs.length - MAX_MESSAGES);
 
-    // track users for mentions
-    const key = msg.username.toLowerCase();
-    st.recentUsers.set(key, { id: msg.userId, username: msg.username, lastSeen: now() });
+    // track users for mentions (ignore system)
+    if (full.userId > 0) {
+      const key = full.username.toLowerCase();
+      st.recentUsers.set(key, { id: full.userId, username: full.username, lastSeen: now() });
+    }
 
     return full;
+  },
+
+  addSystem(slug: string, text: string): ChatMsg {
+    return this.addMessage(slug, {
+      userId: 0,
+      username: "LunaLive",
+      body: String(text || "").slice(0, 200),
+    });
+  },
+
+  deleteMessage(slug: string, messageId: number, deletedBy?: { id: number; username: string }): ChatMsg | null {
+    const st = getOrCreate(slug);
+    const id = Number(messageId || 0);
+    if (!id) return null;
+
+    const m = st.msgs.find((x) => x.id === id);
+    if (!m) return null;
+
+    if (m.deleted) return m;
+
+    m.deleted = true;
+    m.body = "";
+    m.deletedAt = new Date().toISOString();
+    m.deletedBy = deletedBy ? { id: Number(deletedBy.id), username: String(deletedBy.username) } : null;
+
+    st.lastActivity = now();
+    return m;
   },
 
   clear(slug: string) {
@@ -80,25 +116,22 @@ export const chatStore = {
   listRecentUsers(slug: string, q: string, limit = 10) {
     const st = getOrCreate(slug);
     const qq = String(q || "").toLowerCase();
-    const items = [...st.recentUsers.values()]
+    return [...st.recentUsers.values()]
       .filter((u) => u.username.toLowerCase().startsWith(qq))
       .sort((a, b) => b.lastSeen - a.lastSeen)
       .slice(0, limit)
       .map((u) => ({ id: u.id, username: u.username }));
-    return items;
   },
 
   pruneIdle() {
     const t = now();
     for (const [slug, st] of CHANNELS) {
-      if (t - st.lastActivity > RESET_AFTER_MS) {
-        CHANNELS.delete(slug);
-      }
+      if (t - st.lastActivity > RESET_AFTER_MS) CHANNELS.delete(slug);
     }
   },
 };
 
-// prune périodique (ne bloque pas)
+// prune périodique
 setInterval(() => {
   try {
     chatStore.pruneIdle();
