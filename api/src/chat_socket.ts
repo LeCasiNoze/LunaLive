@@ -17,7 +17,8 @@ type SocketData = {
     canTimeout: boolean;
     canBan: boolean;
     canClear: boolean;
-    canMod: boolean;
+    canMod: boolean; // peut modérer (ban/timeout/delete/clear)
+    canManageMods: boolean; // peut add/remove mods (owner/admin)
   };
   state?: {
     banned: boolean;
@@ -123,9 +124,8 @@ async function computeRolePerms(
   const isAdmin = user?.role === "admin";
   const isOwner = !!user && ownerUserId != null && Number(ownerUserId) === Number(user.id);
 
-  const isMod = !user
-    ? false
-    : isAdmin || isOwner || (await isStreamerMod(streamerId, user.id));
+  const isDbMod = !user ? false : await isStreamerMod(streamerId, user.id);
+  const isMod = !!user && (isAdmin || isOwner || isDbMod);
 
   const banned = !user ? false : await isBanned(streamerId, user.id);
   const timeout = !user ? null : await getActiveTimeout(streamerId, user.id);
@@ -136,9 +136,11 @@ async function computeRolePerms(
       ? "admin"
       : isOwner
         ? "streamer"
-        : isMod
+        : isDbMod
           ? "mod"
           : "viewer";
+
+  const canManageMods = !!user && (isAdmin || isOwner);
 
   const perms = {
     canSend: !!user && !banned && !timeout,
@@ -147,6 +149,7 @@ async function computeRolePerms(
     canBan: !!isMod,
     canClear: !!isMod,
     canMod: !!isMod,
+    canManageMods,
   };
 
   return {
@@ -159,20 +162,17 @@ async function computeRolePerms(
   };
 }
 
-// Map pour push des updates perms au user ciblé (ban/timeout live)
+// Push perms live au user ciblé (multi tabs ok)
 const socketsBySlugUser = new Map<string, Set<string>>(); // key = `${slug}:${userId}` => socketIds
-
 function keySlugUser(slug: string, userId: number) {
   return `${String(slug).toLowerCase()}:${Number(userId)}`;
 }
-
 function trackSocket(slug: string, userId: number, socketId: string) {
   const key = keySlugUser(slug, userId);
   const set = socketsBySlugUser.get(key) || new Set<string>();
   set.add(socketId);
   socketsBySlugUser.set(key, set);
 }
-
 function untrackSocket(slug: string, userId: number, socketId: string) {
   const key = keySlugUser(slug, userId);
   const set = socketsBySlugUser.get(key);
@@ -186,7 +186,6 @@ async function pushPermsUpdate(io: Server, slug: string, streamerId: number, own
   const set = socketsBySlugUser.get(key);
   if (!set || set.size === 0) return;
 
-  // On reconstruit un pseudo AuthUser minimal (role depuis DB)
   const r = await pool.query(`SELECT id, username, role FROM users WHERE id=$1 LIMIT 1`, [userId]);
   const row = r.rows?.[0];
   if (!row) return;
@@ -199,6 +198,7 @@ async function pushPermsUpdate(io: Server, slug: string, streamerId: number, own
     if (!s) continue;
     (s.data as SocketData).perms = rp.perms;
     (s.data as SocketData).state = rp.state;
+    (s.data as SocketData).role = rp.role;
     s.emit("chat:perms", { ok: true, role: rp.role, perms: rp.perms, state: rp.state });
   }
 }
@@ -218,156 +218,136 @@ export function attachChat(io: Server) {
   io.on("connection", (socket: Socket) => {
     const data = socket.data as SocketData;
 
-    socket.on(
-      "chat:join",
-      async ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
-        try {
-          const s = String(slug || "").trim();
-          if (!s) return cb?.({ ok: false, error: "bad_slug" });
+    socket.on("chat:join", async ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
+      try {
+        const s = String(slug || "").trim();
+        if (!s) return cb?.({ ok: false, error: "bad_slug" });
 
-          const meta = await getStreamerMetaBySlug(s);
-          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+        const meta = await getStreamerMetaBySlug(s);
+        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
 
-          data.slug = meta.slug;
-          data.streamerId = meta.id;
+        data.slug = meta.slug;
+        data.streamerId = meta.id;
 
-          socket.join(`chat:${meta.slug}`);
+        socket.join(`chat:${meta.slug}`);
 
-          const rp = await computeRolePerms(meta.id, meta.ownerUserId, data.user);
-          data.role = rp.role;
-          data.perms = rp.perms;
-          data.state = rp.state;
+        const rp = await computeRolePerms(meta.id, meta.ownerUserId, data.user);
+        data.role = rp.role;
+        data.perms = rp.perms;
+        data.state = rp.state;
 
-          // tracking ciblé si logged
-          if (data.user) trackSocket(meta.slug, data.user.id, socket.id);
+        if (data.user) trackSocket(meta.slug, data.user.id, socket.id);
 
-          cb?.({
-            ok: true,
-            role: rp.role,
-            perms: rp.perms,
-            state: rp.state,
-            me: data.user ? { id: data.user.id, username: data.user.username, role: data.user.role } : null,
-          });
-        } catch (e: any) {
-          cb?.({ ok: false, error: String(e?.message || "join_failed") });
-        }
+        cb?.({
+          ok: true,
+          role: rp.role,
+          perms: rp.perms,
+          state: rp.state,
+          me: data.user ? { id: data.user.id, username: data.user.username, role: data.user.role } : null,
+        });
+      } catch (e: any) {
+        cb?.({ ok: false, error: String(e?.message || "join_failed") });
       }
-    );
+    });
 
-    socket.on(
-      "chat:send",
-      async ({ slug, body }: { slug: string; body: string }, cb?: (ack: any) => void) => {
-        try {
-          const u = data.user;
-          if (!u) return cb?.({ ok: false, error: "auth_required" });
+    socket.on("chat:send", async ({ slug, body }: { slug: string; body: string }, cb?: (ack: any) => void) => {
+      try {
+        const u = data.user;
+        if (!u) return cb?.({ ok: false, error: "auth_required" });
 
-          const s = String(slug || data.slug || "").trim();
-          if (!s) return cb?.({ ok: false, error: "bad_slug" });
+        const s = String(slug || data.slug || "").trim();
+        if (!s) return cb?.({ ok: false, error: "bad_slug" });
 
-          const meta = data.streamerId ? { id: data.streamerId, slug: data.slug || s, ownerUserId: null } : await getStreamerMetaBySlug(s);
-          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+        const meta = await getStreamerMetaBySlug(s);
+        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
 
-          // ban/timeout enforcement
-          const banned = await isBanned(meta.id, u.id);
-          if (banned) return cb?.({ ok: false, error: "banned" });
+        // ban/timeout enforcement
+        if (await isBanned(meta.id, u.id)) return cb?.({ ok: false, error: "banned" });
+        const timeout = await getActiveTimeout(meta.id, u.id);
+        if (timeout) return cb?.({ ok: false, error: "timed_out", expiresAt: timeout.expiresAt });
 
-          const timeout = await getActiveTimeout(meta.id, u.id);
-          if (timeout) return cb?.({ ok: false, error: "timed_out", expiresAt: timeout.expiresAt });
+        let text = String(body || "");
+        text = text.replace(/\r/g, "").trim();
+        if (!text) return cb?.({ ok: false, error: "empty" });
+        if (text.length > 200) text = text.slice(0, 200);
 
-          let text = String(body || "");
-          text = text.replace(/\r/g, "").trim();
-          if (!text) return cb?.({ ok: false, error: "empty" });
-          if (text.length > 200) text = text.slice(0, 200);
+        // anti-spam: 1 msg / 200ms
+        const t = Date.now();
+        if (data.lastSendAt && t - data.lastSendAt < 200) return cb?.({ ok: false, error: "rate_limited" });
+        data.lastSendAt = t;
 
-          // anti-spam: 1 msg / 200ms
-          const t = Date.now();
-          if (data.lastSendAt && t - data.lastSendAt < 200) {
-            return cb?.({ ok: false, error: "rate_limited" });
-          }
-          data.lastSendAt = t;
+        const msg = chatStore.addMessage(meta.slug, {
+          userId: u.id,
+          username: u.username,
+          body: text,
+        });
 
-          const msg = chatStore.addMessage(meta.slug, {
-            userId: u.id,
-            username: u.username,
-            body: text,
-          });
-
-          io.to(`chat:${meta.slug}`).emit("chat:message", msg);
-          cb?.({ ok: true });
-        } catch (e: any) {
-          cb?.({ ok: false, error: String(e?.message || "send_failed") });
-        }
+        io.to(`chat:${meta.slug}`).emit("chat:message", msg);
+        cb?.({ ok: true });
+      } catch (e: any) {
+        cb?.({ ok: false, error: String(e?.message || "send_failed") });
       }
-    );
+    });
 
-    socket.on(
-      "chat:clear",
-      async ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
-        try {
-          const u = data.user;
-          if (!u) return cb?.({ ok: false, error: "auth_required" });
+    socket.on("chat:clear", async ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
+      try {
+        const u = data.user;
+        if (!u) return cb?.({ ok: false, error: "auth_required" });
 
-          const s = String(slug || data.slug || "").trim();
-          if (!s) return cb?.({ ok: false, error: "bad_slug" });
+        const s = String(slug || data.slug || "").trim();
+        if (!s) return cb?.({ ok: false, error: "bad_slug" });
 
-          const meta = await getStreamerMetaBySlug(s);
-          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+        const meta = await getStreamerMetaBySlug(s);
+        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
 
-          const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
-          if (!rp.perms.canClear) return cb?.({ ok: false, error: "forbidden" });
+        const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+        if (!rp.perms.canClear) return cb?.({ ok: false, error: "forbidden" });
 
-          chatStore.clear(meta.slug);
-          io.to(`chat:${meta.slug}`).emit("chat:cleared");
-          cb?.({ ok: true });
-        } catch (e: any) {
-          cb?.({ ok: false, error: String(e?.message || "clear_failed") });
-        }
+        chatStore.clear(meta.slug);
+        io.to(`chat:${meta.slug}`).emit("chat:cleared");
+        cb?.({ ok: true });
+      } catch (e: any) {
+        cb?.({ ok: false, error: String(e?.message || "clear_failed") });
       }
-    );
+    });
 
     // ─────────────────────────────────────────────
-    // MODERATION
+    // MODERATION (delete / timeout / ban) + MODS
     // ─────────────────────────────────────────────
 
-    socket.on(
-      "chat:delete",
-      async ({ slug, messageId }: { slug: string; messageId: number }, cb?: (ack: any) => void) => {
-        try {
-          const u = data.user;
-          if (!u) return cb?.({ ok: false, error: "auth_required" });
+    socket.on("chat:delete", async ({ slug, messageId }: { slug: string; messageId: number }, cb?: (ack: any) => void) => {
+      try {
+        const u = data.user;
+        if (!u) return cb?.({ ok: false, error: "auth_required" });
 
-          const s = String(slug || data.slug || "").trim();
-          if (!s) return cb?.({ ok: false, error: "bad_slug" });
+        const s = String(slug || data.slug || "").trim();
+        if (!s) return cb?.({ ok: false, error: "bad_slug" });
 
-          const meta = await getStreamerMetaBySlug(s);
-          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+        const meta = await getStreamerMetaBySlug(s);
+        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
 
-          const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
-          if (!rp.perms.canDelete) return cb?.({ ok: false, error: "forbidden" });
+        const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+        if (!rp.perms.canDelete) return cb?.({ ok: false, error: "forbidden" });
 
-          const updated = chatStore.deleteMessage(meta.slug, Number(messageId), { id: u.id, username: u.username });
-          if (!updated) return cb?.({ ok: false, error: "message_not_found" });
+        const updated = chatStore.deleteMessage(meta.slug, Number(messageId), { id: u.id, username: u.username });
+        if (!updated) return cb?.({ ok: false, error: "message_not_found" });
 
-          io.to(`chat:${meta.slug}`).emit("chat:message_deleted", {
-            ok: true,
-            id: updated.id,
-            deletedAt: updated.deletedAt,
-            deletedBy: updated.deletedBy,
-          });
+        io.to(`chat:${meta.slug}`).emit("chat:message_deleted", {
+          ok: true,
+          id: updated.id,
+          deletedAt: updated.deletedAt,
+          deletedBy: updated.deletedBy,
+        });
 
-          cb?.({ ok: true });
-        } catch (e: any) {
-          cb?.({ ok: false, error: String(e?.message || "delete_failed") });
-        }
+        cb?.({ ok: true });
+      } catch (e: any) {
+        cb?.({ ok: false, error: String(e?.message || "delete_failed") });
       }
-    );
+    });
 
     socket.on(
       "chat:timeout",
-      async (
-        { slug, userId, seconds, reason }: { slug: string; userId: number; seconds: number; reason?: string },
-        cb?: (ack: any) => void
-      ) => {
+      async ({ slug, userId, seconds, reason }: { slug: string; userId: number; seconds: number; reason?: string }, cb?: (ack: any) => void) => {
         try {
           const u = data.user;
           if (!u) return cb?.({ ok: false, error: "auth_required" });
@@ -384,7 +364,7 @@ export function attachChat(io: Server) {
           const targetId = Number(userId || 0);
           if (!targetId) return cb?.({ ok: false, error: "bad_user" });
 
-          const sec = clampInt(seconds, 1, 7 * 24 * 3600); // max 7 jours
+          const sec = clampInt(seconds, 1, 7 * 24 * 3600);
           const expiresAt = new Date(Date.now() + sec * 1000);
 
           const r = String(reason || "").trim();
@@ -398,7 +378,6 @@ export function attachChat(io: Server) {
           const sys = chatStore.addSystem(meta.slug, `⏳ ${targetUsername} timeout ${sec}s${r ? ` — ${r}` : ""}`);
           io.to(`chat:${meta.slug}`).emit("chat:message", sys);
 
-          // push perms update to target (canSend false + state.timeoutUntil)
           await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
           cb?.({ ok: true, expiresAt: expiresAt.toISOString() });
@@ -408,88 +387,141 @@ export function attachChat(io: Server) {
       }
     );
 
-    socket.on(
-      "chat:ban",
-      async (
-        { slug, userId, reason }: { slug: string; userId: number; reason?: string },
-        cb?: (ack: any) => void
-      ) => {
-        try {
-          const u = data.user;
-          if (!u) return cb?.({ ok: false, error: "auth_required" });
+    socket.on("chat:ban", async ({ slug, userId, reason }: { slug: string; userId: number; reason?: string }, cb?: (ack: any) => void) => {
+      try {
+        const u = data.user;
+        if (!u) return cb?.({ ok: false, error: "auth_required" });
 
-          const s = String(slug || data.slug || "").trim();
-          if (!s) return cb?.({ ok: false, error: "bad_slug" });
+        const s = String(slug || data.slug || "").trim();
+        if (!s) return cb?.({ ok: false, error: "bad_slug" });
 
-          const meta = await getStreamerMetaBySlug(s);
-          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+        const meta = await getStreamerMetaBySlug(s);
+        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
 
-          const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
-          if (!rp.perms.canBan) return cb?.({ ok: false, error: "forbidden" });
+        const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+        if (!rp.perms.canBan) return cb?.({ ok: false, error: "forbidden" });
 
-          const targetId = Number(userId || 0);
-          if (!targetId) return cb?.({ ok: false, error: "bad_user" });
+        const targetId = Number(userId || 0);
+        if (!targetId) return cb?.({ ok: false, error: "bad_user" });
 
-          const r = String(reason || "").trim();
+        const r = String(reason || "").trim();
+        await pool.query(
+          `INSERT INTO chat_bans (streamer_id, user_id, created_by, reason)
+           VALUES ($1,$2,$3,$4)
+           ON CONFLICT (streamer_id, user_id)
+           DO UPDATE SET created_at=NOW(), created_by=EXCLUDED.created_by, reason=EXCLUDED.reason`,
+          [meta.id, targetId, u.id, r || null]
+        );
 
-          await pool.query(
-            `INSERT INTO chat_bans (streamer_id, user_id, created_by, reason)
-             VALUES ($1,$2,$3,$4)
-             ON CONFLICT (streamer_id, user_id)
-             DO UPDATE SET created_at=NOW(), created_by=EXCLUDED.created_by, reason=EXCLUDED.reason`,
-            [meta.id, targetId, u.id, r || null]
-          );
+        const targetUsername = await getUsernameById(targetId);
+        const sys = chatStore.addSystem(meta.slug, `🚫 ${targetUsername} banni${r ? ` — ${r}` : ""}`);
+        io.to(`chat:${meta.slug}`).emit("chat:message", sys);
 
-          const targetUsername = await getUsernameById(targetId);
-          const sys = chatStore.addSystem(meta.slug, `🚫 ${targetUsername} banni${r ? ` — ${r}` : ""}`);
-          io.to(`chat:${meta.slug}`).emit("chat:message", sys);
+        await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
-          await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
-
-          cb?.({ ok: true });
-        } catch (e: any) {
-          cb?.({ ok: false, error: String(e?.message || "ban_failed") });
-        }
+        cb?.({ ok: true });
+      } catch (e: any) {
+        cb?.({ ok: false, error: String(e?.message || "ban_failed") });
       }
-    );
+    });
 
-    socket.on(
-      "chat:unban",
-      async ({ slug, userId }: { slug: string; userId: number }, cb?: (ack: any) => void) => {
-        try {
-          const u = data.user;
-          if (!u) return cb?.({ ok: false, error: "auth_required" });
+    socket.on("chat:untimeout", async ({ slug, userId }: { slug: string; userId: number }, cb?: (ack: any) => void) => {
+      try {
+        const u = data.user;
+        if (!u) return cb?.({ ok: false, error: "auth_required" });
 
-          const s = String(slug || data.slug || "").trim();
-          if (!s) return cb?.({ ok: false, error: "bad_slug" });
+        const s = String(slug || data.slug || "").trim();
+        if (!s) return cb?.({ ok: false, error: "bad_slug" });
 
-          const meta = await getStreamerMetaBySlug(s);
-          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+        const meta = await getStreamerMetaBySlug(s);
+        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
 
-          const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
-          if (!rp.perms.canBan) return cb?.({ ok: false, error: "forbidden" });
+        const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+        if (!rp.perms.canTimeout) return cb?.({ ok: false, error: "forbidden" });
 
-          const targetId = Number(userId || 0);
-          if (!targetId) return cb?.({ ok: false, error: "bad_user" });
+        const targetId = Number(userId || 0);
+        if (!targetId) return cb?.({ ok: false, error: "bad_user" });
 
-          await pool.query(`DELETE FROM chat_bans WHERE streamer_id=$1 AND user_id=$2`, [meta.id, targetId]);
+        await pool.query(
+          `DELETE FROM chat_timeouts
+           WHERE streamer_id=$1 AND user_id=$2 AND expires_at > NOW()`,
+          [meta.id, targetId]
+        );
 
-          const targetUsername = await getUsernameById(targetId);
-          const sys = chatStore.addSystem(meta.slug, `✅ ${targetUsername} débanni`);
-          io.to(`chat:${meta.slug}`).emit("chat:message", sys);
+        const targetUsername = await getUsernameById(targetId);
+        const sys = chatStore.addSystem(meta.slug, `✅ ${targetUsername} untimeout`);
+        io.to(`chat:${meta.slug}`).emit("chat:message", sys);
 
-          await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
+        await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
-          cb?.({ ok: true });
-        } catch (e: any) {
-          cb?.({ ok: false, error: String(e?.message || "unban_failed") });
-        }
+        cb?.({ ok: true });
+      } catch (e: any) {
+        cb?.({ ok: false, error: String(e?.message || "untimeout_failed") });
       }
-    );
+    });
+
+    socket.on("chat:unban", async ({ slug, userId }: { slug: string; userId: number }, cb?: (ack: any) => void) => {
+      try {
+        const u = data.user;
+        if (!u) return cb?.({ ok: false, error: "auth_required" });
+
+        const s = String(slug || data.slug || "").trim();
+        if (!s) return cb?.({ ok: false, error: "bad_slug" });
+
+        const meta = await getStreamerMetaBySlug(s);
+        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+
+        const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+        if (!rp.perms.canBan) return cb?.({ ok: false, error: "forbidden" });
+
+        const targetId = Number(userId || 0);
+        if (!targetId) return cb?.({ ok: false, error: "bad_user" });
+
+        await pool.query(`DELETE FROM chat_bans WHERE streamer_id=$1 AND user_id=$2`, [meta.id, targetId]);
+
+        const targetUsername = await getUsernameById(targetId);
+        const sys = chatStore.addSystem(meta.slug, `✅ ${targetUsername} débanni`);
+        io.to(`chat:${meta.slug}`).emit("chat:message", sys);
+
+        await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
+
+        cb?.({ ok: true });
+      } catch (e: any) {
+        cb?.({ ok: false, error: String(e?.message || "unban_failed") });
+      }
+    });
+
+    // ─────────────────────────────────────────────
+    // MODS: status + set (owner/admin)
+    // ─────────────────────────────────────────────
+
+    socket.on("chat:mod_status", async ({ slug, userId }: { slug: string; userId: number }, cb?: (ack: any) => void) => {
+      try {
+        const u = data.user;
+        if (!u) return cb?.({ ok: false, error: "auth_required" });
+
+        const s = String(slug || data.slug || "").trim();
+        if (!s) return cb?.({ ok: false, error: "bad_slug" });
+
+        const meta = await getStreamerMetaBySlug(s);
+        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+
+        const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+        if (!rp.perms.canManageMods) return cb?.({ ok: false, error: "forbidden" });
+
+        const targetId = Number(userId || 0);
+        if (!targetId) return cb?.({ ok: false, error: "bad_user" });
+
+        const mod = await isStreamerMod(meta.id, targetId);
+        cb?.({ ok: true, isMod: mod });
+      } catch (e: any) {
+        cb?.({ ok: false, error: String(e?.message || "mod_status_failed") });
+      }
+    });
 
     socket.on(
-      "chat:untimeout",
-      async ({ slug, userId }: { slug: string; userId: number }, cb?: (ack: any) => void) => {
+      "chat:mod_set",
+      async ({ slug, userId, enabled }: { slug: string; userId: number; enabled: boolean }, cb?: (ack: any) => void) => {
         try {
           const u = data.user;
           if (!u) return cb?.({ ok: false, error: "auth_required" });
@@ -501,26 +533,37 @@ export function attachChat(io: Server) {
           if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
 
           const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
-          if (!rp.perms.canTimeout) return cb?.({ ok: false, error: "forbidden" });
+          if (!rp.perms.canManageMods) return cb?.({ ok: false, error: "forbidden" });
 
           const targetId = Number(userId || 0);
           if (!targetId) return cb?.({ ok: false, error: "bad_user" });
 
-          await pool.query(
-            `DELETE FROM chat_timeouts
-             WHERE streamer_id=$1 AND user_id=$2 AND expires_at > NOW()`,
-            [meta.id, targetId]
-          );
+          // (optionnel) évite de modder l'owner (ça sert à rien)
+          if (meta.ownerUserId != null && Number(targetId) === Number(meta.ownerUserId)) {
+            return cb?.({ ok: false, error: "cannot_mod_owner" });
+          }
+
+          if (enabled) {
+            await pool.query(
+              `INSERT INTO streamer_mods (streamer_id, user_id, created_by)
+               VALUES ($1,$2,$3)
+               ON CONFLICT (streamer_id, user_id) DO NOTHING`,
+              [meta.id, targetId, u.id]
+            );
+          } else {
+            await pool.query(`DELETE FROM streamer_mods WHERE streamer_id=$1 AND user_id=$2`, [meta.id, targetId]);
+          }
 
           const targetUsername = await getUsernameById(targetId);
-          const sys = chatStore.addSystem(meta.slug, `✅ ${targetUsername} untimeout`);
+          const sys = chatStore.addSystem(meta.slug, enabled ? `🛡️ ${targetUsername} est maintenant modérateur` : `🛡️ ${targetUsername} n'est plus modérateur`);
           io.to(`chat:${meta.slug}`).emit("chat:message", sys);
 
+          // ✅ effet immédiat sur ses sockets
           await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
           cb?.({ ok: true });
         } catch (e: any) {
-          cb?.({ ok: false, error: String(e?.message || "untimeout_failed") });
+          cb?.({ ok: false, error: String(e?.message || "mod_set_failed") });
         }
       }
     );

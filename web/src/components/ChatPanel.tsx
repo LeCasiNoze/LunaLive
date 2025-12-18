@@ -1,18 +1,6 @@
+// web/src/components/ChatPanel.tsx
 import * as React from "react";
 import { io, type Socket } from "socket.io-client";
-import { useAuth } from "../auth/AuthProvider"; // ✅ on utilise le contexte (réactif)
-
-// fallback si jamais ton AuthProvider ne fournit pas token (mais idéalement il le fournit)
-function getTokenFallback(): string | null {
-  return (
-    localStorage.getItem("ll_token") ||
-    localStorage.getItem("token") ||
-    sessionStorage.getItem("token") ||
-    null
-  );
-}
-
-const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
 type ChatMsg = {
   id: number;
@@ -25,6 +13,7 @@ type ChatMsg = {
 
 type JoinAck = {
   ok: boolean;
+  error?: string;
   role?: "guest" | "viewer" | "mod" | "streamer" | "admin";
   perms?: {
     canSend: boolean;
@@ -33,330 +22,495 @@ type JoinAck = {
     canBan: boolean;
     canClear: boolean;
     canMod: boolean;
+    canManageMods: boolean;
+  };
+  state?: {
+    banned: boolean;
+    timeoutUntil?: string | null;
   };
   me?: { id: number; username: string; role: string } | null;
-  error?: string;
 };
 
-type ChatPerms = NonNullable<JoinAck["perms"]>;
-type ChatMe = { id: number; username: string; role: string };
+function apiBase() {
+  return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
+}
 
-const DEFAULT_PERMS: ChatPerms = {
-  canSend: false,
-  canDelete: false,
-  canTimeout: false,
-  canBan: false,
-  canClear: false,
-  canMod: false,
-};
+function readTokenLoose() {
+  return (
+    localStorage.getItem("lunalive_token") ||
+    localStorage.getItem("token") ||
+    sessionStorage.getItem("lunalive_token") ||
+    sessionStorage.getItem("token") ||
+    ""
+  );
+}
 
-export function ChatPanel({
-  slug,
-  onRequireLogin,
-}: {
-  slug: string;
-  onRequireLogin?: () => void;
-}) {
-  const auth = useAuth() as any;
-  const token: string | null = auth?.token ?? getTokenFallback(); // ✅ réactif si AuthProvider expose token
+function fmtRemaining(untilIso?: string | null) {
+  if (!untilIso) return "";
+  const t = new Date(untilIso).getTime() - Date.now();
+  if (t <= 0) return "0s";
+  const s = Math.ceil(t / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.ceil(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.ceil(m / 60);
+  if (h < 48) return `${h}h`;
+  const d = Math.ceil(h / 24);
+  return `${d}j`;
+}
 
+export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLogin: () => void }) {
   const [messages, setMessages] = React.useState<ChatMsg[]>([]);
   const [input, setInput] = React.useState("");
+  const [sending, setSending] = React.useState(false);
 
-  const [perms, setPerms] = React.useState<ChatPerms>(DEFAULT_PERMS);
-  const [me, setMe] = React.useState<ChatMe | null>(null);
+  const [join, setJoin] = React.useState<JoinAck | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const [needLogin, setNeedLogin] = React.useState(false);
+  const [token, setToken] = React.useState<string>(readTokenLoose());
 
-  const socketRef = React.useRef<Socket | null>(null);
-  const endRef = React.useRef<HTMLDivElement>(null);
+  const sockRef = React.useRef<Socket | null>(null);
+  const listRef = React.useRef<HTMLDivElement | null>(null);
 
-  // mentions
-  const [mentionOpen, setMentionOpen] = React.useState(false);
-  const [mentionItems, setMentionItems] = React.useState<{ id: number; username: string }[]>([]);
-  const [mentionIdx, setMentionIdx] = React.useState(0);
+  const [menu, setMenu] = React.useState<{
+    open: boolean;
+    x: number;
+    y: number;
+    msg: ChatMsg | null;
+    modLoading?: boolean;
+    isTargetMod?: boolean | null;
+  }>({ open: false, x: 0, y: 0, msg: null, isTargetMod: null, modLoading: false });
 
-  const isLogged = !!token;
-
-  function scrollBottom() {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }
-
-  async function loadInitial() {
-    const r = await fetch(`${API_BASE}/chat/${encodeURIComponent(slug)}/messages?limit=50`);
-    const j = await r.json();
-    if (j?.ok) setMessages(j.messages || []);
-    setTimeout(scrollBottom, 50);
+  function closeMenu() {
+    setMenu({ open: false, x: 0, y: 0, msg: null, isTargetMod: null, modLoading: false });
   }
 
   React.useEffect(() => {
-    loadInitial().catch(() => {});
+    const onFocus = () => setToken(readTokenLoose());
+    const onStorage = () => setToken(readTokenLoose());
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("storage", onStorage);
+
+    const id = window.setInterval(() => {
+      const t = readTokenLoose();
+      setToken((prev) => (prev === t ? prev : t));
+    }, 800);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("storage", onStorage);
+      window.clearInterval(id);
+    };
+  }, []);
+
+  // load last messages
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setError(null);
+        const r = await fetch(`${apiBase()}/chat/${encodeURIComponent(slug)}/messages?limit=50`);
+        const j = await r.json();
+        if (cancelled) return;
+        if (!j?.ok) throw new Error(j?.error || "messages_failed");
+        setMessages(j.messages || []);
+        requestAnimationFrame(() => {
+          const el = listRef.current;
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      } catch (e: any) {
+        if (!cancelled) setError(String(e?.message || "messages_failed"));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [slug]);
 
-  // ✅ IMPORTANT: reconnect socket quand token change (login/logout)
+  // socket connect + join (reconnect when token changes)
   React.useEffect(() => {
-    // cleanup ancien socket
-    try {
-      socketRef.current?.disconnect();
-    } catch {}
-    socketRef.current = null;
+    const s = String(slug || "").trim();
+    if (!s) return;
 
-    const sock = io(API_BASE, {
-      // laisse socket.io choisir (websocket/polling) -> plus robuste en prod
+    try {
+      sockRef.current?.disconnect();
+    } catch {}
+    sockRef.current = null;
+
+    const socket = io(apiBase(), {
+      transports: ["websocket", "polling"],
+      withCredentials: false,
       auth: token ? { token } : {},
     });
 
-    socketRef.current = sock;
+    sockRef.current = socket;
 
-    sock.on("connect", () => {
-      sock.emit("chat:join", { slug }, (ack: JoinAck) => {
-        if (ack?.ok) {
-          setPerms(ack.perms ?? DEFAULT_PERMS);
-          setMe(ack.me ?? null);
-        } else {
-          setPerms(DEFAULT_PERMS);
-          setMe(null);
-        }
+    socket.on("connect_error", (e: any) => {
+      setError(String(e?.message || "socket_connect_error"));
+    });
+
+    socket.on("chat:message", (msg: ChatMsg) => {
+      setMessages((prev) => {
+        const next = [...prev, msg];
+        if (next.length > 50) next.splice(0, next.length - 50);
+        return next;
+      });
+      requestAnimationFrame(() => {
+        const el = listRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
       });
     });
 
-    sock.on("chat:message", (m: ChatMsg) => {
-      setMessages((prev) => [...prev, m].slice(-200));
-      setTimeout(scrollBottom, 20);
+    socket.on("chat:cleared", () => setMessages([]));
+
+    socket.on("chat:message_deleted", (payload: any) => {
+      const id = Number(payload?.id || 0);
+      if (!id) return;
+      setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, deleted: true, body: "" } : m)));
     });
 
-    sock.on("chat:deleted", ({ id }: { id: number }) => {
-      setMessages((prev) => prev.filter((x) => x.id !== Number(id)));
+    socket.on("chat:perms", (ack: JoinAck) => {
+      if (!ack?.ok) return;
+      setJoin((prev) => ({ ...(prev || {}), ...ack }));
     });
 
-    sock.on("chat:cleared", () => {
-      setMessages([]);
+    socket.emit("chat:join", { slug: s }, (ack: JoinAck) => {
+      if (!ack?.ok) {
+        setJoin(null);
+        setError(ack?.error || "join_failed");
+        return;
+      }
+      setJoin(ack);
+      setError(null);
     });
 
     return () => {
       try {
-        sock.disconnect();
+        socket.disconnect();
       } catch {}
-      socketRef.current = null;
     };
   }, [slug, token]);
 
-  async function fetchMentions(prefix: string) {
-    const r = await fetch(`${API_BASE}/chat/${encodeURIComponent(slug)}/mentions?q=${encodeURIComponent(prefix)}`);
-    const j = await r.json();
-    if (j?.ok) {
-      setMentionItems(j.users || []);
-      setMentionIdx(0);
-      setMentionOpen((j.users || []).length > 0);
-    }
-  }
+  const perms = join?.perms;
+  const state = join?.state;
 
-  function insertMention(u: string) {
-    const at = input.lastIndexOf("@");
-    if (at < 0) return;
-    const before = input.slice(0, at);
-    setInput(before + "@" + u + " ");
-    setMentionOpen(false);
-  }
+  const isAuthed = !!token;
+  const isBanned = !!state?.banned;
+  const timeoutUntil = state?.timeoutUntil || null;
+  const isTimedOut = !!timeoutUntil && new Date(timeoutUntil).getTime() > Date.now();
 
-  function triggerLogin() {
-    setNeedLogin(true);
-    onRequireLogin?.();
-  }
+  const canSend = !!perms?.canSend;
 
-  async function onSend() {
-    const sock = socketRef.current;
-    const text = input.trim();
-    if (!text) return;
-
-    if (!token) {
-      triggerLogin();
-      return;
-    }
-
-    if (!sock || !sock.connected) {
-      // socket pas prêt
-      return;
-    }
-
-    // /clear MVP
-    if (text === "/clear") {
-      if (!perms.canClear) return;
-      sock.emit("chat:clear", { slug }, () => {});
-      setInput("");
-      return;
-    }
-
-    sock.emit("chat:send", { slug, body: text }, (ack: any) => {
-      if (!ack?.ok) {
-        if (ack?.error === "auth_required") triggerLogin();
-      } else {
-        setInput("");
-      }
+  function emitSocket(event: string, payload: any) {
+    return new Promise<any>((resolve) => {
+      sockRef.current?.emit(event as any, payload, (ack: any) => resolve(ack));
     });
   }
 
+  async function send() {
+    setError(null);
+
+    if (!isAuthed) {
+      onRequireLogin();
+      return;
+    }
+    if (!canSend) {
+      if (isBanned) return setError("Tu es banni de ce chat.");
+      if (isTimedOut) return setError(`Tu es en timeout (${fmtRemaining(timeoutUntil)}).`);
+      return setError("Tu ne peux pas envoyer de message.");
+    }
+
+    const text = input.replace(/\r/g, "").trim();
+    if (!text) return;
+
+    setSending(true);
+    try {
+      await new Promise<void>((resolve) => {
+        sockRef.current?.emit("chat:send", { slug, body: text }, (ack: any) => {
+          if (!ack?.ok) {
+            if (ack?.error === "auth_required") onRequireLogin();
+            else if (ack?.error === "rate_limited") setError("Trop vite (slow mode 0.2s).");
+            else if (ack?.error === "banned") setError("Tu es banni de ce chat.");
+            else if (ack?.error === "timed_out") setError(`Tu es en timeout (${fmtRemaining(ack?.expiresAt)}).`);
+            else setError(String(ack?.error || "send_failed"));
+          } else {
+            setInput("");
+          }
+          resolve();
+        });
+      });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function openMenu(e: React.MouseEvent, msg: ChatMsg) {
+    if (!perms?.canMod) return;
+    if (msg.userId <= 0) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    setMenu({ open: true, x: e.clientX, y: e.clientY, msg, isTargetMod: null, modLoading: false });
+
+    // si owner/admin: on récupère le status mod du target
+    if (perms?.canManageMods) {
+      setMenu((m) => ({ ...m, modLoading: true }));
+      const ack = await emitSocket("chat:mod_status", { slug, userId: msg.userId });
+      if (ack?.ok) {
+        setMenu((m) => ({ ...m, modLoading: false, isTargetMod: !!ack.isMod }));
+      } else {
+        setMenu((m) => ({ ...m, modLoading: false, isTargetMod: null }));
+      }
+    }
+  }
+
+  async function doDelete(msg: ChatMsg) {
+    closeMenu();
+    const ack = await emitSocket("chat:delete", { slug, messageId: msg.id });
+    if (!ack?.ok) setError(String(ack?.error || "delete_failed"));
+  }
+
+  async function doTimeout(msg: ChatMsg, seconds: number) {
+    closeMenu();
+    const ack = await emitSocket("chat:timeout", { slug, userId: msg.userId, seconds });
+    if (!ack?.ok) setError(String(ack?.error || "timeout_failed"));
+  }
+
+  async function doBan(msg: ChatMsg) {
+    closeMenu();
+    const ok = window.confirm(`Bannir ${msg.username} ?`);
+    if (!ok) return;
+    const ack = await emitSocket("chat:ban", { slug, userId: msg.userId });
+    if (!ack?.ok) setError(String(ack?.error || "ban_failed"));
+  }
+
+  async function doSetMod(msg: ChatMsg, enabled: boolean) {
+    closeMenu();
+    const ack = await emitSocket("chat:mod_set", { slug, userId: msg.userId, enabled });
+    if (!ack?.ok) setError(String(ack?.error || "mod_set_failed"));
+  }
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }} onClick={closeMenu}>
       {/* header */}
       <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
-          <div style={{ fontWeight: 800 }}>Chat</div>
-          <div className="mutedSmall" style={{ opacity: 0.9 }}>
-            {me ? `Connecté : ${me.username}` : "Invité"}
-          </div>
+        <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: 0.2 }}>Chat</div>
+        <div style={{ opacity: 0.7, fontSize: 12, marginTop: 4 }}>
+          {join?.role ? `Rôle: ${join.role}` : "…"}
+          {isBanned ? " • banni" : isTimedOut ? ` • timeout ${fmtRemaining(timeoutUntil)}` : ""}
         </div>
-        <div className="mutedSmall">LunaLive — temps réel</div>
       </div>
 
       {/* messages */}
-      <div style={{ padding: 12, flex: 1, overflow: "auto" }}>
-        {messages.length === 0 ? (
-          <div className="mutedSmall" style={{ opacity: 0.8 }}>
-            Aucun message (reset après 3 jours d’inactivité)
-          </div>
-        ) : (
-          messages.map((m) => (
-            <div key={m.id} style={{ padding: "6px 0", display: "flex", gap: 8 }}>
-              <div style={{ fontWeight: 800, whiteSpace: "nowrap" }}>{m.username}</div>
-              <div style={{ opacity: 0.95 }}>
-                {m.deleted ? <span className="mutedSmall">message supprimé</span> : m.body}
+      <div
+        ref={listRef}
+        style={{ flex: 1, overflow: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}
+      >
+        {messages.map((m) => {
+          const isSystem = m.userId === 0;
+          const isDeleted = !!m.deleted || m.body === "";
+          return (
+            <div
+              key={m.id}
+              onContextMenu={(e) => openMenu(e, m)}
+              onClick={(e) => openMenu(e, m)} // (MVP) click = menu ; on peut passer en long-press plus tard
+              style={{
+                cursor: perms?.canMod && !isSystem ? "context-menu" : "default",
+                padding: 10,
+                borderRadius: 14,
+                background: isSystem ? "rgba(124,77,255,0.10)" : "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.06)",
+              }}
+            >
+              <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                <div style={{ fontWeight: 800, fontSize: 13, opacity: isSystem ? 0.95 : 1 }}>{m.username}</div>
+                <div style={{ fontSize: 11, opacity: 0.55 }}>
+                  {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 6, fontSize: 13, opacity: isDeleted ? 0.6 : 0.95 }}>
+                {isDeleted ? <i>message supprimé</i> : m.body}
               </div>
             </div>
-          ))
-        )}
-        <div ref={endRef} />
+          );
+        })}
       </div>
 
       {/* input */}
       <div style={{ padding: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-        <div style={{ position: "relative", display: "flex", gap: 10 }}>
+        {error ? (
+          <div style={{ marginBottom: 10, fontSize: 12, color: "rgba(255,120,150,0.95)" }}>{error}</div>
+        ) : null}
+
+        <div style={{ display: "flex", gap: 10 }}>
           <input
             value={input}
-            onChange={(e) => {
-              const v = e.target.value;
-              setInput(v);
-
-              const at = v.lastIndexOf("@");
-              if (at >= 0) {
-                const frag = v.slice(at + 1);
-                const ok = /^[a-zA-Z0-9_]{1,20}$/.test(frag);
-                if (ok) fetchMentions(frag).catch(() => {});
-                else setMentionOpen(false);
-              } else {
-                setMentionOpen(false);
-              }
-            }}
-            onKeyDown={(e) => {
-              if (mentionOpen) {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setMentionIdx((i) => Math.min(i + 1, mentionItems.length - 1));
-                } else if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setMentionIdx((i) => Math.max(i - 1, 0));
-                } else if (e.key === "Enter") {
-                  if (mentionItems[mentionIdx]) {
-                    e.preventDefault();
-                    insertMention(mentionItems[mentionIdx].username);
-                  }
-                } else if (e.key === "Escape") {
-                  setMentionOpen(false);
-                }
-              } else if (e.key === "Enter") {
-                e.preventDefault();
-                onSend();
-              }
-            }}
-            placeholder={isLogged ? "Écrire un message…" : "Écrire un message… (connexion requise pour envoyer)"}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && send()}
+            placeholder={
+              !isAuthed
+                ? "Connecte-toi pour écrire…"
+                : isBanned
+                  ? "Tu es banni…"
+                  : isTimedOut
+                    ? `Timeout (${fmtRemaining(timeoutUntil)})…`
+                    : "Écrire un message…"
+            }
             style={{
               flex: 1,
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid rgba(180, 160, 255, 0.22)",
-              background: "rgba(255,255,255,0.05)",
-              color: "rgba(255,255,255,0.92)",
+              padding: "12px 12px",
+              borderRadius: 14,
               outline: "none",
+              border: "1px solid rgba(255,255,255,0.08)",
+              background: "rgba(0,0,0,0.25)",
+              color: "white",
             }}
-            maxLength={200}
           />
 
           <button
-            onClick={onSend}
+            onClick={(e) => {
+              e.stopPropagation();
+              send();
+            }}
+            disabled={sending}
             style={{
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid rgba(180, 160, 255, 0.22)",
-              background: "rgba(120, 90, 255, 0.18)",
-              color: "rgba(255,255,255,0.9)",
+              padding: "12px 14px",
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(124,77,255,0.25)",
+              color: "white",
+              fontWeight: 800,
               cursor: "pointer",
-              whiteSpace: "nowrap",
             }}
           >
             Envoyer
           </button>
+        </div>
+      </div>
 
-          {mentionOpen && mentionItems.length > 0 && (
-            <div
+      {/* menu mod */}
+      {menu.open && menu.msg ? (
+        <div
+          style={{
+            position: "fixed",
+            left: menu.x,
+            top: menu.y,
+            transform: "translate(6px, 6px)",
+            zIndex: 50,
+            minWidth: 240,
+            padding: 10,
+            borderRadius: 14,
+            background: "rgba(20,20,30,0.98)",
+            border: "1px solid rgba(255,255,255,0.10)",
+            boxShadow: "0 12px 50px rgba(0,0,0,0.45)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ fontWeight: 900, fontSize: 13, marginBottom: 8, opacity: 0.95 }}>
+            {menu.msg.username}
+          </div>
+
+          {/* MODS (owner/admin only) */}
+          {perms?.canManageMods ? (
+            <button
+              onClick={() => doSetMod(menu.msg!, !(menu.isTargetMod === true))}
+              disabled={!!menu.modLoading || menu.isTargetMod == null}
               style={{
-                position: "absolute",
-                left: 0,
-                right: 90,
-                bottom: "calc(100% + 8px)",
-                background: "rgba(10, 10, 18, 0.92)",
-                border: "1px solid rgba(180, 160, 255, 0.22)",
+                width: "100%",
+                padding: "10px 12px",
                 borderRadius: 12,
-                overflow: "hidden",
-                boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(80,200,255,0.12)",
+                color: "white",
+                textAlign: "left",
+                fontWeight: 900,
+                cursor: "pointer",
+                marginBottom: 8,
+                opacity: menu.isTargetMod == null ? 0.7 : 1,
               }}
             >
-              {mentionItems.map((u, i) => (
-                <button
-                  key={u.id}
-                  onClick={() => insertMention(u.username)}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    padding: "10px 12px",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "rgba(255,255,255,0.92)",
-                    background: i === mentionIdx ? "rgba(120, 90, 255, 0.28)" : "transparent",
-                  }}
-                >
-                  @{u.username}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+              {menu.modLoading
+                ? "Chargement…"
+                : menu.isTargetMod
+                  ? "Retirer des modérateurs"
+                  : "Mettre modérateur"}
+            </button>
+          ) : null}
 
-        {/* fallback si tu veux garder une indication */}
-        {needLogin && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: 10,
-              borderRadius: 12,
-              border: "1px solid rgba(180, 160, 255, 0.22)",
-              background: "rgba(10,10,18,0.55)",
-            }}
-          >
-            <div style={{ fontWeight: 800 }}>Connexion requise</div>
-            <div className="mutedSmall" style={{ marginTop: 4 }}>
-              Le pop-up de connexion devrait s’ouvrir.
+          {perms?.canDelete ? (
+            <button
+              onClick={() => doDelete(menu.msg!)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(255,120,150,0.10)",
+                color: "white",
+                textAlign: "left",
+                fontWeight: 800,
+                cursor: "pointer",
+                marginBottom: 8,
+              }}
+            >
+              Supprimer le message
+            </button>
+          ) : null}
+
+          {perms?.canTimeout ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Timeout</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {[
+                  { label: "10s", sec: 10 },
+                  { label: "1m", sec: 60 },
+                  { label: "10m", sec: 600 },
+                  { label: "1h", sec: 3600 },
+                  { label: "24h", sec: 86400 },
+                ].map((x) => (
+                  <button
+                    key={x.sec}
+                    onClick={() => doTimeout(menu.msg!, x.sec)}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(124,77,255,0.14)",
+                      color: "white",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {x.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-              <button className="btnPrimary" onClick={() => onRequireLogin?.()}>
-                Ouvrir la connexion
-              </button>
-              <button className="btnGhost" onClick={() => setNeedLogin(false)}>
-                Fermer
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+          ) : null}
+
+          {perms?.canBan ? (
+            <button
+              onClick={() => doBan(menu.msg!)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(255,60,90,0.18)",
+                color: "white",
+                textAlign: "left",
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              Bannir
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
