@@ -110,9 +110,15 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
       return;
     }
 
-    const t = window.setTimeout(() => {
-      sockRef.current?.emit("chat:refresh", { slug });
-    }, ms);
+  const t = window.setTimeout(() => {
+    // ✅ UI instantanée : on enlève le timeout local
+    setJoin((prev) =>
+      prev ? { ...prev, state: { ...(prev.state || { banned: false }), timeoutUntil: null } } : prev
+    );
+
+    // ✅ resync serveur
+    sockRef.current?.emit("chat:refresh", { slug });
+  }, ms);
 
     return () => window.clearTimeout(t);
   }, [slug, join?.state?.timeoutUntil]);
@@ -189,7 +195,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   const timeoutUntil = state?.timeoutUntil || null;
   const isTimedOut = !!timeoutUntil && new Date(timeoutUntil).getTime() > Date.now();
 
-  const canSend = !!perms?.canSend;
+  const canSend = !!token && !isBanned && !isTimedOut;
 
   function emitSocket(event: string, payload: any) {
     return new Promise<any>((resolve) => {
@@ -204,11 +210,8 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
       onRequireLogin();
       return;
     }
-    if (!canSend) {
-      if (isBanned) return setError("Tu es banni de ce chat.");
-      if (isTimedOut) return setError(`Tu es en timeout (${fmtRemaining(timeoutUntil)}).`);
-      return setError("Tu ne peux pas envoyer de message.");
-    }
+    if (isBanned) return setError("Tu es banni de ce chat.");
+    if (isTimedOut) return setError(`Tu es en timeout (${fmtRemaining(timeoutUntil)}).`);
 
     const text = input.replace(/\r/g, "").trim();
     if (!text) return;
@@ -221,7 +224,16 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
             if (ack?.error === "auth_required") onRequireLogin();
             else if (ack?.error === "rate_limited") setError("Trop vite (slow mode 0.2s).");
             else if (ack?.error === "banned") setError("Tu es banni de ce chat.");
-            else if (ack?.error === "timed_out") setError(`Tu es en timeout (${fmtRemaining(ack?.expiresAt)}).`);
+            else if (ack?.error === "timed_out") {
+              const ex = String(ack?.expiresAt || "");
+              setJoin((prev) =>
+                prev
+                  ? { ...prev, state: { ...(prev.state || { banned: false }), timeoutUntil: ex } }
+                  : prev
+              );
+              setError(`Tu es en timeout (${fmtRemaining(ex)}).`);
+            }
+
             else setError(String(ack?.error || "send_failed"));
           } else {
             setInput("");
@@ -300,6 +312,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
         {messages.map((m) => {
           const isSystem = m.userId === 0;
           const isDeleted = !!m.deleted || m.body === "";
+          if (m.userId !== 0 && isDeleted) return null;
           return (
             <div
               key={m.id}
@@ -320,8 +333,8 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
                 </div>
               </div>
 
-              <div style={{ marginTop: 6, fontSize: 13, opacity: isDeleted ? 0.6 : 0.95 }}>
-                {isDeleted ? <i>message supprimé</i> : m.body}
+              <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95 }}>
+                {m.body}
               </div>
             </div>
           );
