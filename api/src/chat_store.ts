@@ -88,15 +88,13 @@ export const chatStore = {
     });
   },
 
-  removeMessage(slug: string, messageId: number): boolean {
+  removeMessage(slug: string, messageId: number) {
     const st = getOrCreate(slug);
-    const id = Number(messageId || 0);
-    if (!id) return false;
+    const id = Number(messageId);
+    const i = st.msgs.findIndex((m) => Number(m.id) === id);
+    if (i === -1) return false;
 
-    const i = st.msgs.findIndex((x) => x.id === id);
-    if (i < 0) return false;
-
-    st.msgs.splice(i, 1);
+    st.msgs.splice(i, 1); // ✅ disparition totale
     st.lastActivity = now();
     return true;
   },

@@ -4,7 +4,8 @@ export type LiveCard = {
   displayName: string;
   title: string;
   viewers: number;
-  thumb: string;
+  thumbUrl?: string | null;
+  liveStartedAt?: string | null;
 };
 
 export type User = {

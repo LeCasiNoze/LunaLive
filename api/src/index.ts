@@ -44,11 +44,18 @@ app.get(
   "/lives",
   a(async (_req, res) => {
     const { rows } = await pool.query(
-      `SELECT id::text AS id, slug, display_name AS "displayName", title, viewers
-       FROM streamers
-       WHERE is_live = TRUE
-         AND (suspended_until IS NULL OR suspended_until < NOW())
-       ORDER BY viewers DESC`
+      `SELECT
+        id::text AS id,
+        slug,
+        display_name AS "displayName",
+        title,
+        viewers,
+        thumb_url AS "thumbUrl",
+        live_started_at AS "liveStartedAt"
+      FROM streamers
+      WHERE is_live = TRUE
+        AND (suspended_until IS NULL OR suspended_until < NOW())
+      ORDER BY viewers DESC`
     );
     res.json(rows);
   })
