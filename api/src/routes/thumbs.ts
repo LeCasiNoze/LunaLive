@@ -1,22 +1,44 @@
+// api/src/routes/thumbs.ts
 import express from "express";
 import type { Request as ExRequest, Response as ExResponse } from "express";
 import { spawn, spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { pool } from "../db.js";
 
 export const thumbsRouter = express.Router();
 
-const CACHE_MS = 60_000;
-const cache = new Map<string, { exp: number; buf: Buffer; contentType: string }>();
+/* ───────────────────────────────────────────────────────────── */
+/* ffmpeg: utilise ffmpeg-static si dispo                         */
+/* ───────────────────────────────────────────────────────────── */
 
-function hasFfmpeg() {
+const require = createRequire(import.meta.url);
+const ffmpegStatic: string | null = (() => {
   try {
-    const r = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" });
+    return require("ffmpeg-static");
+  } catch {
+    return null;
+  }
+})();
+
+const FFMPEG_BIN = (process.env.FFMPEG_PATH || ffmpegStatic || "ffmpeg").trim();
+
+function hasFfmpeg(bin: string) {
+  try {
+    const r = spawnSync(bin, ["-version"], { stdio: "ignore" });
     return r.status === 0;
   } catch {
     return false;
   }
 }
-const FFMPEG_OK = hasFfmpeg();
+
+const FFMPEG_OK = hasFfmpeg(FFMPEG_BIN);
+
+/* ───────────────────────────────────────────────────────────── */
+/* cache + fallback                                                */
+/* ───────────────────────────────────────────────────────────── */
+
+const CACHE_MS = 60_000;
+const cache = new Map<string, { exp: number; buf: Buffer; contentType: string }>();
 
 function svgFallback(label: string) {
   const text = String(label || "live").slice(0, 24);
@@ -63,11 +85,8 @@ async function resolveDliveUsernameFromSlug(slug: string): Promise<string> {
 }
 
 function proxiedHlsUrl(dliveUsername: string) {
-  // ton worker actuel : https://lunalive-hls.lunalive.workers.dev/hls?u=...
-  const proxyBase = (process.env.HLS_PROXY_BASE || "https://lunalive-hls.lunalive.workers.dev/hls").replace(
-    /\/$/,
-    ""
-  );
+  // worker : https://lunalive-hls.lunalive.workers.dev/hls?u=...
+  const proxyBase = (process.env.HLS_PROXY_BASE || "https://lunalive-hls.lunalive.workers.dev/hls").replace(/\/$/, "");
 
   const manifest = `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(dliveUsername)}.m3u8?mobileweb`;
   const u = encodeURIComponent(manifest);
@@ -75,11 +94,17 @@ function proxiedHlsUrl(dliveUsername: string) {
   return proxyBase.includes("?") ? `${proxyBase}&u=${u}` : `${proxyBase}?u=${u}`;
 }
 
+/* ───────────────────────────────────────────────────────────── */
+/* route                                                          */
+/* ───────────────────────────────────────────────────────────── */
+
 thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) => {
   const slug = String(req.params.slug || "").trim();
   if (!slug) return res.status(400).end();
 
   const key = slug.toLowerCase();
+
+  // cache
   const hit = cache.get(key);
   if (hit && hit.exp > Date.now()) {
     res.set("Content-Type", hit.contentType);
@@ -126,7 +151,7 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     "pipe:1",
   ];
 
-  const p = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
+  const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
 
   const chunks: Buffer[] = [];
   let stderr = "";
@@ -137,12 +162,19 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     } catch {}
   }, 9000);
 
+  // si le client coupe (changement de page, etc.), on stop ffmpeg
+  req.on("close", () => {
+    try {
+      p.kill("SIGKILL");
+    } catch {}
+  });
+
   p.stdout.on("data", (d: Buffer) => chunks.push(Buffer.from(d)));
   p.stderr.on("data", (d: Buffer) => (stderr += String(d)));
 
   p.on("error", (e) => {
     clearTimeout(killTimer);
-    console.warn(`[thumbs] ffmpeg spawn error slug=${slug} user=${dliveUser}`, e);
+    console.warn(`[thumbs] ffmpeg spawn error bin=${FFMPEG_BIN} slug=${slug} user=${dliveUser}`, e);
     res.set("Content-Type", "image/svg+xml; charset=utf-8");
     res.set("Cache-Control", "public, max-age=30");
     return res.end(svgFallback(slug));
@@ -162,10 +194,9 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     }
 
     console.warn(
-      `[thumbs] ffmpeg failed slug=${slug} user=${dliveUser} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(
-        0,
-        400
-      ) || ""}`
+      `[thumbs] ffmpeg failed bin=${FFMPEG_BIN} slug=${slug} user=${dliveUser} code=${code} signal=${signal} bytes=${buf.length} err=${
+        stderr?.slice(0, 400) || ""
+      }`
     );
 
     res.set("Content-Type", "image/svg+xml; charset=utf-8");

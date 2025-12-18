@@ -67,7 +67,7 @@ app.get(
     res.json(
       rows.map((r: any) => {
         const slug = String(r.slug || "").trim();
-        const apiThumb = slug ? `${base}/thumbs/${encodeURIComponent(slug)}.jpg` : null;
+        const apiThumb = slug ? `/thumbs/${encodeURIComponent(slug)}.jpg` : null;
 
         return {
           id: String(r.id),
