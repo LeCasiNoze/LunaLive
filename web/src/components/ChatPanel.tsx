@@ -195,7 +195,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   const timeoutUntil = state?.timeoutUntil || null;
   const isTimedOut = !!timeoutUntil && new Date(timeoutUntil).getTime() > Date.now();
 
-  const canSend = !!token && !isBanned && !isTimedOut;
+  const canSend = isAuthed && !isBanned && !isTimedOut;
 
   function emitSocket(event: string, payload: any) {
     return new Promise<any>((resolve) => {
@@ -377,7 +377,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
               e.stopPropagation();
               send();
             }}
-            disabled={sending}
+            disabled={sending || !canSend}
             style={{
               padding: "12px 14px",
               borderRadius: 14,
@@ -385,7 +385,8 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
               background: "rgba(124,77,255,0.25)",
               color: "white",
               fontWeight: 800,
-              cursor: "pointer",
+              cursor: sending || !canSend ? "not-allowed" : "pointer",
+              opacity: sending || !canSend ? 0.6 : 1,
             }}
           >
             Envoyer
