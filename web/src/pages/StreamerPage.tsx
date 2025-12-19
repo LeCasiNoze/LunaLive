@@ -1,9 +1,10 @@
 import * as React from "react";
 import { useParams } from "react-router-dom";
-import { getStreamer } from "../lib/api";
+import { getStreamer, watchHeartbeat } from "../lib/api";
 import { DlivePlayer } from "../components/DlivePlayer";
 import { ChatPanel } from "../components/ChatPanel";
 import { LoginModal } from "../components/LoginModal";
+import { useAuth } from "../auth/AuthProvider";
 
 function EyeIcon({ size = 16 }: { size?: number }) {
   return (
@@ -22,10 +23,29 @@ function EyeIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+function getAnonId(): string {
+  const key = "ll_anon_id";
+
+  const existing = localStorage.getItem(key);
+  if (existing && existing.trim()) return existing;
+
+  const anyCrypto: any = (globalThis as any).crypto;
+  const created: string =
+    typeof anyCrypto?.randomUUID === "function"
+      ? anyCrypto.randomUUID()
+      : `a_${Math.random().toString(16).slice(2)}_${Date.now()}`;
+
+  localStorage.setItem(key, created);
+  return created;
+}
+
 export default function StreamerPage() {
   const { slug } = useParams();
   const [data, setData] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
+
+  const auth = useAuth() as any;
+  const token = auth?.token ?? null;
 
   // ✅ modal login piloté par la page
   const [loginOpen, setLoginOpen] = React.useState(false);
@@ -57,6 +77,37 @@ export default function StreamerPage() {
 
   const channelSlug = s?.channel_slug ?? s?.channelSlug;
   const channelUsername = s?.channel_username ?? s?.channelUsername;
+
+  // ✅ Heartbeat watch tracking (stats)
+  React.useEffect(() => {
+    if (!slug) return;
+    if (!isLive) return;
+
+    const anonId = getAnonId();
+    let stopped = false;
+
+    const beat = async () => {
+      if (stopped) return;
+      if (document.visibilityState === "hidden") return;
+      try {
+        await watchHeartbeat({ slug: String(slug), anonId }, token);
+      } catch {}
+    };
+
+    beat();
+    const t = window.setInterval(beat, 15_000);
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") beat();
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(t);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [slug, isLive, token]);
 
   if (loading) return <div className="panel">Chargement…</div>;
   if (!s) return <div className="panel">Streamer introuvable</div>;

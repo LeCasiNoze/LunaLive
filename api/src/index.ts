@@ -22,12 +22,14 @@ import { Server as IOServer } from "socket.io";
 import { registerChatRoutes } from "./chat_routes.js";
 import { attachChat } from "./chat_socket.js";
 import normalizeAppearance, { mergeAppearance, PRESET_COLORS } from "./appearance.js";
+import { registerStatsRoutes } from "./stats_routes.js";
 
 const app = express();
 app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json());
 registerChatRoutes(app);
+registerStatsRoutes(app);
 
 import { thumbsRouter } from "./routes/thumbs.js";
 app.use(thumbsRouter);
@@ -1078,6 +1080,35 @@ const port = Number(process.env.PORT || 3001);
   });
   app.locals.io = io;
 
+  function startStatsCleanup() {
+    const run = async () => {
+      // ferme les viewer sessions inactives
+      await pool.query(
+        `UPDATE viewer_sessions
+        SET ended_at = last_heartbeat_at
+        WHERE ended_at IS NULL
+          AND last_heartbeat_at < (NOW() - (${45} * INTERVAL '1 second'))`
+      );
+
+      // si un streamer repasse offline => clôture la live_session ouverte
+      await pool.query(
+        `UPDATE live_sessions ls
+        SET ended_at = COALESCE(s.updated_at, NOW())
+        FROM streamers s
+        WHERE s.id = ls.streamer_id
+          AND ls.ended_at IS NULL
+          AND s.is_live = FALSE`
+      );
+    };
+
+    run().catch((e) => console.warn("[stats-cleanup] first run failed", e));
+    setInterval(() => {
+      run().catch((e) => console.warn("[stats-cleanup] run failed", e));
+    }, 60_000);
+  }
+
   attachChat(io);
+  startStatsCleanup();
+
   server.listen(port, () => console.log(`[api] listening on :${port}`));
 })();

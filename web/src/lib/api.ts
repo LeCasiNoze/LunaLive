@@ -390,3 +390,70 @@ export async function banUserFromDashboard(token: string, userId: number, reason
     body: JSON.stringify({ userId, reason: reason ?? null }),
   });
 }
+
+export type StatsPeriod = "daily" | "weekly" | "monthly";
+export type StatsMetric = "viewers_avg" | "viewers_peak" | "messages" | "watch_time";
+
+export type ApiMetric = { value: number; prev: number; growthPct: number | null };
+
+export type ApiStatsSummary = {
+  ok: true;
+  period: StatsPeriod;
+  cursor: string;
+  rangeStart: string;
+  rangeEnd: string;
+  metrics: {
+    peakViewers: ApiMetric;
+    avgViewers: ApiMetric;
+
+    streamHours: ApiMetric;
+    streamDays: ApiMetric;
+
+    viewersUnique: ApiMetric;
+
+    watchHours: ApiMetric;
+    avgWatchMinutes: ApiMetric;
+
+    messages: ApiMetric;
+    messagesPerHour: ApiMetric;
+
+    chattersUnique: ApiMetric;
+    engagementRate: ApiMetric;
+  };
+};
+
+export type ApiStatsSeries = {
+  ok: true;
+  period: StatsPeriod;
+  cursor: string;
+  metric: StatsMetric;
+  points: { t: string; v: number }[];
+};
+
+export async function watchHeartbeat(
+  payload: { slug: string; anonId: string },
+  token?: string | null
+) {
+  return j<{ ok: true; isLive: boolean; viewersNow?: number }>("/watch/heartbeat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getMyStatsSummary(token: string, period: StatsPeriod, cursor: string) {
+  return j<ApiStatsSummary>(
+    `/streamer/me/stats/summary?period=${encodeURIComponent(period)}&cursor=${encodeURIComponent(cursor)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+}
+
+export async function getMyStatsSeries(token: string, period: StatsPeriod, cursor: string, metric: StatsMetric) {
+  return j<ApiStatsSeries>(
+    `/streamer/me/stats/timeseries?period=${encodeURIComponent(period)}&cursor=${encodeURIComponent(cursor)}&metric=${encodeURIComponent(metric)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+}
