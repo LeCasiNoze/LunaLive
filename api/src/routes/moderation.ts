@@ -514,3 +514,108 @@ moderationRouter.get(
     return res.status(400).json({ ok: false, error: "unknown_kind" });
   })
 );
+
+/* ───────────────────────────────────────────── */
+/* BANS (dashboard list/search/ban)              */
+/* ───────────────────────────────────────────── */
+
+moderationRouter.get(
+  "/streamer/me/bans",
+  requireAuth,
+  a(async (req, res) => {
+    if (!mustBeStreamerOrAdmin(req as any, res)) return;
+
+    const meta = await getMyStreamerMeta((req as any).user.id);
+    if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    const { rows } = await pool.query(
+      `
+      SELECT
+        u.id,
+        u.username,
+        b.created_at AS "createdAt",
+        b.reason
+      FROM chat_bans b
+      JOIN users u ON u.id = b.user_id
+      WHERE b.streamer_id = $1
+      ORDER BY lower(u.username) ASC
+      `,
+      [meta.id]
+    );
+
+    res.json({ ok: true, bans: rows });
+  })
+);
+
+moderationRouter.get(
+  "/streamer/me/bans/search",
+  requireAuth,
+  a(async (req, res) => {
+    if (!mustBeStreamerOrAdmin(req as any, res)) return;
+
+    const meta = await getMyStreamerMeta((req as any).user.id);
+    if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    const q = String(req.query.q ?? "").trim();
+    if (q.length < 2) return res.json({ ok: true, users: [] });
+
+    const limit = normLimit(req.query.limit, 8, 20);
+
+    const { rows } = await pool.query(
+      `
+      SELECT u.id, u.username
+      FROM users u
+      WHERE lower(u.username) LIKE lower($1)
+        AND u.id NOT IN (
+          SELECT b.user_id
+          FROM chat_bans b
+          WHERE b.streamer_id = $2
+        )
+      ORDER BY
+        (lower(u.username) = lower($3)) DESC,
+        position(lower($3) in lower(u.username)) ASC,
+        lower(u.username) ASC
+      LIMIT $4
+      `,
+      [`%${q}%`, meta.id, q, limit]
+    );
+
+    res.json({ ok: true, users: rows });
+  })
+);
+
+async function handleBan(req: Request, res: Response) {
+  if (!mustBeStreamerOrAdmin(req as any, res)) return;
+
+  const meta = await getMyStreamerMeta((req as any).user.id);
+  if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+  const userId = Number((req as any).body?.userId || 0);
+  const reason = (req as any).body?.reason ?? null;
+
+  if (!userId) return res.status(400).json({ ok: false, error: "userId_required" });
+
+  // ✅ nécessite idéalement une contrainte UNIQUE(streamer_id,user_id) (voir plus bas)
+  const r = await pool.query(
+    `
+    INSERT INTO chat_bans (streamer_id, user_id, reason, created_by, created_at)
+    VALUES ($1, $2, $3, $4, NOW())
+    ON CONFLICT (streamer_id, user_id) DO UPDATE
+      SET reason = EXCLUDED.reason,
+          created_by = EXCLUDED.created_by,
+          created_at = NOW()
+    `,
+    [meta.id, userId, reason, (req as any).user.id]
+  );
+
+  const io = getIO(req as any);
+  io?.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "ban", userId });
+
+  res.json({ ok: true, changed: (r.rowCount || 0) > 0 });
+}
+
+// ✅ route attendue par ton front
+moderationRouter.post("/streamer/me/moderation-actions/ban", requireAuth, a(handleBan));
+
+// (optionnel) alias “ancienne” route si jamais
+moderationRouter.post("/streamer/me/moderation/ban", requireAuth, a(handleBan));
