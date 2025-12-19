@@ -926,11 +926,13 @@ const port = Number(process.env.PORT || 3001);
   const server = http.createServer(app);
 
   const io = new IOServer(server, {
+  
     cors: { origin: true, credentials: true },
   });
+  app.locals.io = io;
 
   attachChat(io);
-
   server.listen(port, () => console.log(`[api] listening on :${port}`));
 })();
+
 

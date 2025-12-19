@@ -52,7 +52,9 @@ function tryAuth(socket: Socket) {
   }
 }
 
-async function getStreamerMetaBySlug(slug: string): Promise<{ id: number; slug: string; ownerUserId: number | null } | null> {
+async function getStreamerMetaBySlug(
+  slug: string
+): Promise<{ id: number; slug: string; ownerUserId: number | null } | null> {
   const s = String(slug || "").trim();
   if (!s) return null;
   const r = await pool.query(
@@ -72,10 +74,11 @@ async function getStreamerMetaBySlug(slug: string): Promise<{ id: number; slug: 
 }
 
 async function isStreamerMod(streamerId: number, userId: number) {
+  // ✅ IMPORTANT: ignore les mods soft-removed
   const r = await pool.query(
     `SELECT 1
      FROM streamer_mods
-     WHERE streamer_id=$1 AND user_id=$2
+     WHERE streamer_id=$1 AND user_id=$2 AND removed_at IS NULL
      LIMIT 1`,
     [streamerId, userId]
   );
@@ -93,7 +96,10 @@ async function isBanned(streamerId: number, userId: number) {
   return !!r.rows?.[0];
 }
 
-async function getActiveTimeout(streamerId: number, userId: number): Promise<{ expiresAt: string } | null> {
+async function getActiveTimeout(
+  streamerId: number,
+  userId: number
+): Promise<{ expiresAt: string } | null> {
   const r = await pool.query(
     `SELECT expires_at AS "expiresAt"
      FROM chat_timeouts
@@ -181,7 +187,13 @@ function untrackSocket(slug: string, userId: number, socketId: string) {
   if (set.size === 0) socketsBySlugUser.delete(key);
 }
 
-async function pushPermsUpdate(io: Server, slug: string, streamerId: number, ownerUserId: number | null, userId: number) {
+async function pushPermsUpdate(
+  io: Server,
+  slug: string,
+  streamerId: number,
+  ownerUserId: number | null,
+  userId: number
+) {
   const key = keySlugUser(slug, userId);
   const set = socketsBySlugUser.get(key);
   if (!set || set.size === 0) return;
@@ -276,25 +288,24 @@ export function attachChat(io: Server) {
         if (data.lastSendAt && t - data.lastSendAt < 200) return cb?.({ ok: false, error: "rate_limited" });
         data.lastSendAt = t;
 
-      const ins = await pool.query(
-        `INSERT INTO chat_messages (streamer_id, user_id, username, body)
-        VALUES ($1,$2,$3,$4)
-        RETURNING id, created_at AS "createdAt"`,
-        [meta.id, u.id, u.username, text]
-      );
+        const ins = await pool.query(
+          `INSERT INTO chat_messages (streamer_id, user_id, username, body)
+           VALUES ($1,$2,$3,$4)
+           RETURNING id, created_at AS "createdAt"`,
+          [meta.id, u.id, u.username, text]
+        );
 
-      const row = ins.rows?.[0];
-      const msg = {
-        id: Number(row.id),
-        userId: u.id,
-        username: u.username,
-        body: text,
-        createdAt: new Date(row.createdAt).toISOString(),
-      };
+        const row = ins.rows?.[0];
+        const msg = {
+          id: Number(row.id),
+          userId: u.id,
+          username: u.username,
+          body: text,
+          createdAt: new Date(row.createdAt).toISOString(),
+        };
 
-      io.to(`chat:${meta.slug}`).emit("chat:message", msg);
-      cb?.({ ok: true });
-
+        io.to(`chat:${meta.slug}`).emit("chat:message", msg);
+        cb?.({ ok: true });
       } catch (e: any) {
         cb?.({ ok: false, error: String(e?.message || "send_failed") });
       }
@@ -313,7 +324,7 @@ export function attachChat(io: Server) {
 
         const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
         if (!rp.perms.canClear) return cb?.({ ok: false, error: "forbidden" });
-        
+
         await pool.query(`DELETE FROM chat_messages WHERE streamer_id=$1`, [meta.id]);
         chatStore.clear(meta.slug);
         io.to(`chat:${meta.slug}`).emit("chat:cleared");
@@ -337,7 +348,6 @@ export function attachChat(io: Server) {
         data.perms = rp.perms;
         data.state = rp.state;
 
-        // push uniquement à CE socket
         socket.emit("chat:perms", { ok: true, role: rp.role, perms: rp.perms, state: rp.state });
         cb?.({ ok: true });
       } catch (e: any) {
@@ -351,10 +361,7 @@ export function attachChat(io: Server) {
 
     socket.on(
       "chat:delete",
-      async (
-        { slug, messageId }: { slug: string; messageId: number },
-        cb?: (ack: any) => void
-      ) => {
+      async ({ slug, messageId }: { slug: string; messageId: number }, cb?: (ack: any) => void) => {
         try {
           const u = data.user;
           if (!u) return cb?.({ ok: false, error: "auth_required" });
@@ -371,22 +378,18 @@ export function attachChat(io: Server) {
           const mid = Number(messageId || 0);
           if (!mid) return cb?.({ ok: false, error: "bad_message" });
 
-          // ✅ Soft delete DB (audit-friendly)
           const upd = await pool.query(
             `UPDATE chat_messages
-            SET deleted_at = NOW(),
-                deleted_by = $3
-            WHERE id = $1
-              AND streamer_id = $2
-              AND deleted_at IS NULL
-            RETURNING id`,
+             SET deleted_at = NOW(),
+                 deleted_by = $3
+             WHERE id = $1
+               AND streamer_id = $2
+               AND deleted_at IS NULL
+             RETURNING id`,
             [mid, meta.id, u.id]
           );
 
           if (!upd.rows?.[0]) return cb?.({ ok: false, error: "message_not_found" });
-
-          // (optionnel) si tu gardes chatStore pour afficher le "live", tu peux aussi le retirer :
-          // chatStore.removeMessage(meta.slug, mid);
 
           io.to(`chat:${meta.slug}`).emit("chat:message_deleted", { ok: true, id: mid });
           cb?.({ ok: true });
@@ -398,7 +401,10 @@ export function attachChat(io: Server) {
 
     socket.on(
       "chat:timeout",
-      async ({ slug, userId, seconds, reason }: { slug: string; userId: number; seconds: number; reason?: string }, cb?: (ack: any) => void) => {
+      async (
+        { slug, userId, seconds, reason }: { slug: string; userId: number; seconds: number; reason?: string },
+        cb?: (ack: any) => void
+      ) => {
         try {
           const u = data.user;
           if (!u) return cb?.({ ok: false, error: "auth_required" });
@@ -415,6 +421,9 @@ export function attachChat(io: Server) {
           const targetId = Number(userId || 0);
           if (!targetId) return cb?.({ ok: false, error: "bad_user" });
 
+          // ✅ règle: impossible de s'auto-mute
+          if (targetId === u.id) return cb?.({ ok: false, error: "cannot_self_timeout" });
+
           const sec = clampInt(seconds, 1, 7 * 24 * 3600);
           const expiresAt = new Date(Date.now() + sec * 1000);
 
@@ -429,6 +438,9 @@ export function attachChat(io: Server) {
           const sys = chatStore.addSystem(meta.slug, `⏳ ${targetUsername} timeout ${sec}s${r ? ` — ${r}` : ""}`);
           io.to(`chat:${meta.slug}`).emit("chat:message", sys);
 
+          // ✅ trigger refresh UI perms
+          io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "timeout", userId: targetId });
+
           await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
           cb?.({ ok: true, expiresAt: expiresAt.toISOString() });
@@ -438,43 +450,51 @@ export function attachChat(io: Server) {
       }
     );
 
-    socket.on("chat:ban", async ({ slug, userId, reason }: { slug: string; userId: number; reason?: string }, cb?: (ack: any) => void) => {
-      try {
-        const u = data.user;
-        if (!u) return cb?.({ ok: false, error: "auth_required" });
+    socket.on(
+      "chat:ban",
+      async ({ slug, userId, reason }: { slug: string; userId: number; reason?: string }, cb?: (ack: any) => void) => {
+        try {
+          const u = data.user;
+          if (!u) return cb?.({ ok: false, error: "auth_required" });
 
-        const s = String(slug || data.slug || "").trim();
-        if (!s) return cb?.({ ok: false, error: "bad_slug" });
+          const s = String(slug || data.slug || "").trim();
+          if (!s) return cb?.({ ok: false, error: "bad_slug" });
 
-        const meta = await getStreamerMetaBySlug(s);
-        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+          const meta = await getStreamerMetaBySlug(s);
+          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
 
-        const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
-        if (!rp.perms.canBan) return cb?.({ ok: false, error: "forbidden" });
+          const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+          if (!rp.perms.canBan) return cb?.({ ok: false, error: "forbidden" });
 
-        const targetId = Number(userId || 0);
-        if (!targetId) return cb?.({ ok: false, error: "bad_user" });
+          const targetId = Number(userId || 0);
+          if (!targetId) return cb?.({ ok: false, error: "bad_user" });
 
-        const r = String(reason || "").trim();
-        await pool.query(
-          `INSERT INTO chat_bans (streamer_id, user_id, created_by, reason)
-           VALUES ($1,$2,$3,$4)
-           ON CONFLICT (streamer_id, user_id)
-           DO UPDATE SET created_at=NOW(), created_by=EXCLUDED.created_by, reason=EXCLUDED.reason`,
-          [meta.id, targetId, u.id, r || null]
-        );
+          // ✅ règle: impossible de s'auto-ban
+          if (targetId === u.id) return cb?.({ ok: false, error: "cannot_self_ban" });
 
-        const targetUsername = await getUsernameById(targetId);
-        const sys = chatStore.addSystem(meta.slug, `🚫 ${targetUsername} banni${r ? ` — ${r}` : ""}`);
-        io.to(`chat:${meta.slug}`).emit("chat:message", sys);
+          const r = String(reason || "").trim();
+          await pool.query(
+            `INSERT INTO chat_bans (streamer_id, user_id, created_by, reason)
+             VALUES ($1,$2,$3,$4)
+             ON CONFLICT (streamer_id, user_id)
+             DO UPDATE SET created_at=NOW(), created_by=EXCLUDED.created_by, reason=EXCLUDED.reason`,
+            [meta.id, targetId, u.id, r || null]
+          );
 
-        await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
+          const targetUsername = await getUsernameById(targetId);
+          const sys = chatStore.addSystem(meta.slug, `🚫 ${targetUsername} banni${r ? ` — ${r}` : ""}`);
+          io.to(`chat:${meta.slug}`).emit("chat:message", sys);
 
-        cb?.({ ok: true });
-      } catch (e: any) {
-        cb?.({ ok: false, error: String(e?.message || "ban_failed") });
+          io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "ban", userId: targetId });
+
+          await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
+
+          cb?.({ ok: true });
+        } catch (e: any) {
+          cb?.({ ok: false, error: String(e?.message || "ban_failed") });
+        }
       }
-    });
+    );
 
     socket.on("chat:untimeout", async ({ slug, userId }: { slug: string; userId: number }, cb?: (ack: any) => void) => {
       try {
@@ -493,8 +513,10 @@ export function attachChat(io: Server) {
         const targetId = Number(userId || 0);
         if (!targetId) return cb?.({ ok: false, error: "bad_user" });
 
+        // ✅ on garde l'historique => on "termine" le timeout
         await pool.query(
-          `DELETE FROM chat_timeouts
+          `UPDATE chat_timeouts
+           SET expires_at = NOW()
            WHERE streamer_id=$1 AND user_id=$2 AND expires_at > NOW()`,
           [meta.id, targetId]
         );
@@ -502,6 +524,8 @@ export function attachChat(io: Server) {
         const targetUsername = await getUsernameById(targetId);
         const sys = chatStore.addSystem(meta.slug, `✅ ${targetUsername} untimeout`);
         io.to(`chat:${meta.slug}`).emit("chat:message", sys);
+
+        io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "untimeout", userId: targetId });
 
         await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
@@ -533,6 +557,8 @@ export function attachChat(io: Server) {
         const targetUsername = await getUsernameById(targetId);
         const sys = chatStore.addSystem(meta.slug, `✅ ${targetUsername} débanni`);
         io.to(`chat:${meta.slug}`).emit("chat:message", sys);
+
+        io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "unban", userId: targetId });
 
         await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
@@ -571,6 +597,37 @@ export function attachChat(io: Server) {
     });
 
     socket.on(
+      "chat:timeout_status",
+      async ({ slug, userId }: { slug: string; userId: number }, cb?: (ack: any) => void) => {
+        try {
+          const u = data.user;
+          if (!u) return cb?.({ ok: false, error: "auth_required" });
+
+          const s = String(slug || data.slug || "").trim();
+          if (!s) return cb?.({ ok: false, error: "bad_slug" });
+
+          const meta = await getStreamerMetaBySlug(s);
+          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+
+          const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+          if (!rp.perms.canTimeout) return cb?.({ ok: false, error: "forbidden" });
+
+          const targetId = Number(userId || 0);
+          if (!targetId) return cb?.({ ok: false, error: "bad_user" });
+
+          // (optionnel) pas nécessaire car UI le cache, mais on garde la règle
+          if (targetId === u.id) return cb?.({ ok: false, error: "cannot_self_timeout" });
+
+          const timeout = await getActiveTimeout(meta.id, targetId);
+          // ✅ compat : certains front attendent expiresAt, d'autres timeoutUntil
+          cb?.({ ok: true, expiresAt: timeout?.expiresAt || null, timeoutUntil: timeout?.expiresAt || null });
+        } catch (e: any) {
+          cb?.({ ok: false, error: String(e?.message || "timeout_status_failed") });
+        }
+      }
+    );
+
+    socket.on(
       "chat:mod_set",
       async ({ slug, userId, enabled }: { slug: string; userId: number; enabled: boolean }, cb?: (ack: any) => void) => {
         try {
@@ -589,27 +646,44 @@ export function attachChat(io: Server) {
           const targetId = Number(userId || 0);
           if (!targetId) return cb?.({ ok: false, error: "bad_user" });
 
-          // (optionnel) évite de modder l'owner (ça sert à rien)
           if (meta.ownerUserId != null && Number(targetId) === Number(meta.ownerUserId)) {
             return cb?.({ ok: false, error: "cannot_mod_owner" });
           }
 
           if (enabled) {
+            // ✅ upsert + re-activate si soft-removed
             await pool.query(
-              `INSERT INTO streamer_mods (streamer_id, user_id, created_by)
-               VALUES ($1,$2,$3)
-               ON CONFLICT (streamer_id, user_id) DO NOTHING`,
+              `INSERT INTO streamer_mods (streamer_id, user_id, created_by, created_at, removed_at, removed_by)
+               VALUES ($1,$2,$3,NOW(),NULL,NULL)
+               ON CONFLICT (streamer_id, user_id) DO UPDATE
+                 SET created_at = NOW(),
+                     created_by = EXCLUDED.created_by,
+                     removed_at = NULL,
+                     removed_by = NULL`,
               [meta.id, targetId, u.id]
             );
           } else {
-            await pool.query(`DELETE FROM streamer_mods WHERE streamer_id=$1 AND user_id=$2`, [meta.id, targetId]);
+            // ✅ soft remove (pour garder l'historique / events)
+            await pool.query(
+              `UPDATE streamer_mods
+               SET removed_at = NOW(),
+                   removed_by = $3
+               WHERE streamer_id=$1 AND user_id=$2 AND removed_at IS NULL`,
+              [meta.id, targetId, u.id]
+            );
           }
 
           const targetUsername = await getUsernameById(targetId);
-          const sys = chatStore.addSystem(meta.slug, enabled ? `🛡️ ${targetUsername} est maintenant modérateur` : `🛡️ ${targetUsername} n'est plus modérateur`);
+          const sys = chatStore.addSystem(
+            meta.slug,
+            enabled
+              ? `🛡️ ${targetUsername} est maintenant modérateur`
+              : `🛡️ ${targetUsername} n'est plus modérateur`
+          );
           io.to(`chat:${meta.slug}`).emit("chat:message", sys);
 
-          // ✅ effet immédiat sur ses sockets
+          io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "mod_set", userId: targetId, enabled: !!enabled });
+
           await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
           cb?.({ ok: true });

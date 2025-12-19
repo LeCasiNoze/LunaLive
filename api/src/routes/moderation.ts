@@ -1,5 +1,6 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
+import type { Server as IOServer } from "socket.io";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
 
@@ -16,9 +17,14 @@ function normLimit(v: any, def = 30, max = 100) {
   return Math.min(max, Math.floor(n));
 }
 
-async function getMyStreamerId(userId: number): Promise<number | null> {
-  const { rows } = await pool.query(`SELECT id FROM streamers WHERE user_id=$1 LIMIT 1`, [userId]);
-  return rows[0]?.id ? Number(rows[0].id) : null;
+function getIO(req: Request): IOServer | null {
+  return ((req.app as any)?.locals?.io as IOServer) || null;
+}
+
+async function getMyStreamerMeta(userId: number): Promise<{ id: number; slug: string } | null> {
+  const { rows } = await pool.query(`SELECT id, slug FROM streamers WHERE user_id=$1 LIMIT 1`, [userId]);
+  if (!rows[0]?.id) return null;
+  return { id: Number(rows[0].id), slug: String(rows[0].slug) };
 }
 
 function mustBeStreamerOrAdmin(req: any, res: Response) {
@@ -43,8 +49,8 @@ moderationRouter.get(
   a(async (req, res) => {
     if (!mustBeStreamerOrAdmin(req as any, res)) return;
 
-    const streamerId = await getMyStreamerId((req as any).user.id);
-    if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    const meta = await getMyStreamerMeta((req as any).user.id);
+    if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
     const { rows } = await pool.query(
       `
@@ -58,7 +64,7 @@ moderationRouter.get(
         AND sm.removed_at IS NULL
       ORDER BY lower(u.username) ASC
       `,
-      [streamerId]
+      [meta.id]
     );
 
     res.json({ ok: true, moderators: rows });
@@ -71,15 +77,14 @@ moderationRouter.get(
   a(async (req, res) => {
     if (!mustBeStreamerOrAdmin(req as any, res)) return;
 
-    const streamerId = await getMyStreamerId((req as any).user.id);
-    if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    const meta = await getMyStreamerMeta((req as any).user.id);
+    if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
     const q = String(req.query.q ?? "").trim();
     if (q.length < 2) return res.json({ ok: true, users: [] });
 
     const limit = normLimit(req.query.limit, 8, 20);
 
-    // Exclure les modos actifs
     const { rows } = await pool.query(
       `
       SELECT u.id, u.username
@@ -97,7 +102,7 @@ moderationRouter.get(
         lower(u.username) ASC
       LIMIT $4
       `,
-      [`%${q}%`, streamerId, q, limit]
+      [`%${q}%`, meta.id, q, limit]
     );
 
     res.json({ ok: true, users: rows });
@@ -110,13 +115,12 @@ moderationRouter.post(
   a(async (req, res) => {
     if (!mustBeStreamerOrAdmin(req as any, res)) return;
 
-    const streamerId = await getMyStreamerId((req as any).user.id);
-    if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    const meta = await getMyStreamerMeta((req as any).user.id);
+    if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
     const userId = Number(req.body?.userId || 0);
     if (!userId) return res.status(400).json({ ok: false, error: "userId_required" });
 
-    // ✅ upsert: (re)active le modo si déjà présent mais removed
     await pool.query(
       `
       INSERT INTO streamer_mods (streamer_id, user_id, created_by, created_at, removed_at, removed_by)
@@ -127,8 +131,12 @@ moderationRouter.post(
             removed_at = NULL,
             removed_by = NULL
       `,
-      [streamerId, userId, (req as any).user.id]
+      [meta.id, userId, (req as any).user.id]
     );
+
+    // (optionnel) prévenir le chat de refresh perms
+    const io = getIO(req as any);
+    io?.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "mod_add", userId });
 
     res.json({ ok: true });
   })
@@ -140,8 +148,8 @@ moderationRouter.delete(
   a(async (req, res) => {
     if (!mustBeStreamerOrAdmin(req as any, res)) return;
 
-    const streamerId = await getMyStreamerId((req as any).user.id);
-    if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    const meta = await getMyStreamerMeta((req as any).user.id);
+    if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
     const userId = Number(req.params.userId || 0);
     if (!userId) return res.status(400).json({ ok: false, error: "bad_user_id" });
@@ -155,10 +163,88 @@ moderationRouter.delete(
         AND user_id = $2
         AND removed_at IS NULL
       `,
-      [streamerId, userId, (req as any).user.id]
+      [meta.id, userId, (req as any).user.id]
     );
 
+    const io = getIO(req as any);
+    io?.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "mod_remove", userId });
+
     res.json({ ok: true });
+  })
+);
+
+/* ───────────────────────────────────────────── */
+/* ACTIONS : DEMUTE / DEBAN (dashboard)           */
+/* ───────────────────────────────────────────── */
+
+moderationRouter.post(
+  "/streamer/me/moderation/untimeout",
+  requireAuth,
+  a(async (req, res) => {
+    if (!mustBeStreamerOrAdmin(req as any, res)) return;
+
+    const meta = await getMyStreamerMeta((req as any).user.id);
+    if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    const userId = Number(req.body?.userId || 0);
+    const timeoutId = Number(req.body?.timeoutId || 0);
+
+    if (!userId && !timeoutId) return res.status(400).json({ ok: false, error: "userId_or_timeoutId_required" });
+
+    // ✅ on “termine” le timeout (on garde l’historique)
+    let rowCount = 0;
+
+    if (timeoutId) {
+      const r = await pool.query(
+        `
+        UPDATE chat_timeouts
+        SET expires_at = NOW()
+        WHERE streamer_id = $1
+          AND id = $2
+          AND expires_at > NOW()
+        `,
+        [meta.id, timeoutId]
+      );
+      rowCount = r.rowCount || 0;
+    } else {
+      const r = await pool.query(
+        `
+        UPDATE chat_timeouts
+        SET expires_at = NOW()
+        WHERE streamer_id = $1
+          AND user_id = $2
+          AND expires_at > NOW()
+        `,
+        [meta.id, userId]
+      );
+      rowCount = r.rowCount || 0;
+    }
+
+    const io = getIO(req as any);
+    io?.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "unmute", userId: userId || null, timeoutId: timeoutId || null });
+
+    res.json({ ok: true, changed: rowCount > 0 });
+  })
+);
+
+moderationRouter.post(
+  "/streamer/me/moderation/unban",
+  requireAuth,
+  a(async (req, res) => {
+    if (!mustBeStreamerOrAdmin(req as any, res)) return;
+
+    const meta = await getMyStreamerMeta((req as any).user.id);
+    if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    const userId = Number(req.body?.userId || 0);
+    if (!userId) return res.status(400).json({ ok: false, error: "userId_required" });
+
+    const r = await pool.query(`DELETE FROM chat_bans WHERE streamer_id=$1 AND user_id=$2`, [meta.id, userId]);
+
+    const io = getIO(req as any);
+    io?.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "unban", userId });
+
+    res.json({ ok: true, changed: (r.rowCount || 0) > 0 });
   })
 );
 
@@ -172,22 +258,24 @@ moderationRouter.get(
   a(async (req, res) => {
     if (!mustBeStreamerOrAdmin(req as any, res)) return;
 
-    const streamerId = await getMyStreamerId((req as any).user.id);
-    if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    const meta = await getMyStreamerMeta((req as any).user.id);
+    if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
     const limit = normLimit(req.query.limit, 40, 120);
 
     const { rows } = await pool.query(
       `
       SELECT * FROM (
-        -- ✅ mod ajouté
+        -- mod ajouté
         SELECT
           ('mod_add|' || sm.user_id::text) AS id,
           'mod_add' AS type,
           sm.created_at AS "createdAt",
           a.username AS "actorUsername",
           t.username AS "targetUsername",
-          NULL::text AS "messagePreview"
+          sm.user_id AS "targetUserId",
+          NULL::text AS "messagePreview",
+          NULL::boolean AS "isActive"
         FROM streamer_mods sm
         LEFT JOIN users a ON a.id = sm.created_by
         LEFT JOIN users t ON t.id = sm.user_id
@@ -195,14 +283,16 @@ moderationRouter.get(
 
         UNION ALL
 
-        -- ✅ mod retiré (soft remove)
+        -- mod retiré
         SELECT
           ('mod_remove|' || sm.user_id::text) AS id,
           'mod_remove' AS type,
           sm.removed_at AS "createdAt",
           a.username AS "actorUsername",
           t.username AS "targetUsername",
-          NULL::text AS "messagePreview"
+          sm.user_id AS "targetUserId",
+          NULL::text AS "messagePreview",
+          NULL::boolean AS "isActive"
         FROM streamer_mods sm
         LEFT JOIN users a ON a.id = sm.removed_by
         LEFT JOIN users t ON t.id = sm.user_id
@@ -211,14 +301,16 @@ moderationRouter.get(
 
         UNION ALL
 
-        -- ✅ message supprimé
+        -- message supprimé
         SELECT
           ('msgdel|' || cm.id::text) AS id,
           'message_delete' AS type,
           cm.deleted_at AS "createdAt",
           a.username AS "actorUsername",
           COALESCE(u.username, cm.username) AS "targetUsername",
-          left(cm.body, 140) AS "messagePreview"
+          cm.user_id AS "targetUserId",
+          left(cm.body, 140) AS "messagePreview",
+          NULL::boolean AS "isActive"
         FROM chat_messages cm
         LEFT JOIN users a ON a.id = cm.deleted_by
         LEFT JOIN users u ON u.id = cm.user_id
@@ -227,14 +319,16 @@ moderationRouter.get(
 
         UNION ALL
 
-        -- ✅ ban
+        -- ban (actif tant que la ligne existe)
         SELECT
           ('ban|' || b.user_id::text) AS id,
           'ban' AS type,
           b.created_at AS "createdAt",
           a.username AS "actorUsername",
           u.username AS "targetUsername",
-          CASE WHEN b.reason IS NULL THEN NULL ELSE left(b.reason, 140) END AS "messagePreview"
+          b.user_id AS "targetUserId",
+          CASE WHEN b.reason IS NULL THEN NULL ELSE left(b.reason, 140) END AS "messagePreview",
+          TRUE AS "isActive"
         FROM chat_bans b
         LEFT JOIN users a ON a.id = b.created_by
         LEFT JOIN users u ON u.id = b.user_id
@@ -242,14 +336,16 @@ moderationRouter.get(
 
         UNION ALL
 
-        -- ✅ mute/timeout
+        -- mute/timeout
         SELECT
           ('mute|' || t.id::text) AS id,
           'mute' AS type,
           t.created_at AS "createdAt",
           a.username AS "actorUsername",
           u.username AS "targetUsername",
-          CASE WHEN t.reason IS NULL THEN NULL ELSE left(t.reason, 140) END AS "messagePreview"
+          t.user_id AS "targetUserId",
+          CASE WHEN t.reason IS NULL THEN NULL ELSE left(t.reason, 140) END AS "messagePreview",
+          (t.expires_at > NOW()) AS "isActive"
         FROM chat_timeouts t
         LEFT JOIN users a ON a.id = t.created_by
         LEFT JOIN users u ON u.id = t.user_id
@@ -258,132 +354,9 @@ moderationRouter.get(
       ORDER BY "createdAt" DESC NULLS LAST
       LIMIT $2
       `,
-      [streamerId, limit]
+      [meta.id, limit]
     );
 
     res.json({ ok: true, events: rows });
-  })
-);
-
-moderationRouter.get(
-  "/streamer/me/moderation-events/:id",
-  requireAuth,
-  a(async (req, res) => {
-    if (!mustBeStreamerOrAdmin(req as any, res)) return;
-
-    const streamerId = await getMyStreamerId((req as any).user.id);
-    if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
-
-    const raw = String(req.params.id || "");
-    const [kind, key] = raw.split("|");
-    if (!kind || !key) return res.status(400).json({ ok: false, error: "bad_id" });
-
-    // helpers
-    const base = (event: any) => res.json({ ok: true, event });
-
-    if (kind === "msgdel") {
-      const id = Number(key);
-      const { rows } = await pool.query(
-        `
-        SELECT
-          ('msgdel|' || cm.id::text) AS id,
-          'message_delete' AS type,
-          cm.deleted_at AS "createdAt",
-          a.username AS "actorUsername",
-          COALESCE(u.username, cm.username) AS "targetUsername",
-          cm.id::text AS "messageId",
-          cm.body AS "messageContent",
-          jsonb_build_object('source','chat_messages') AS meta
-        FROM chat_messages cm
-        LEFT JOIN users a ON a.id = cm.deleted_by
-        LEFT JOIN users u ON u.id = cm.user_id
-        WHERE cm.streamer_id = $1 AND cm.id = $2 AND cm.deleted_at IS NOT NULL
-        LIMIT 1
-        `,
-        [streamerId, id]
-      );
-      if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
-      return base(rows[0]);
-    }
-
-    if (kind === "ban") {
-      const userId = Number(key);
-      const { rows } = await pool.query(
-        `
-        SELECT
-          ('ban|' || b.user_id::text) AS id,
-          'ban' AS type,
-          b.created_at AS "createdAt",
-          a.username AS "actorUsername",
-          u.username AS "targetUsername",
-          NULL::text AS "messageId",
-          NULL::text AS "messageContent",
-          jsonb_build_object('reason', b.reason, 'source','chat_bans') AS meta
-        FROM chat_bans b
-        LEFT JOIN users a ON a.id = b.created_by
-        LEFT JOIN users u ON u.id = b.user_id
-        WHERE b.streamer_id = $1 AND b.user_id = $2
-        LIMIT 1
-        `,
-        [streamerId, userId]
-      );
-      if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
-      return base(rows[0]);
-    }
-
-    if (kind === "mute") {
-      const id = Number(key);
-      const { rows } = await pool.query(
-        `
-        SELECT
-          ('mute|' || t.id::text) AS id,
-          'mute' AS type,
-          t.created_at AS "createdAt",
-          a.username AS "actorUsername",
-          u.username AS "targetUsername",
-          t.id::text AS "messageId",
-          NULL::text AS "messageContent",
-          jsonb_build_object('reason', t.reason, 'expiresAt', t.expires_at, 'source','chat_timeouts') AS meta
-        FROM chat_timeouts t
-        LEFT JOIN users a ON a.id = t.created_by
-        LEFT JOIN users u ON u.id = t.user_id
-        WHERE t.streamer_id = $1 AND t.id = $2
-        LIMIT 1
-        `,
-        [streamerId, id]
-      );
-      if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
-      return base(rows[0]);
-    }
-
-    if (kind === "mod_add" || kind === "mod_remove") {
-      const userId = Number(key);
-
-      const { rows } = await pool.query(
-        `
-        SELECT
-          ($3 || '|' || sm.user_id::text) AS id,
-          $3 AS type,
-          CASE WHEN $3='mod_add' THEN sm.created_at ELSE sm.removed_at END AS "createdAt",
-          CASE WHEN $3='mod_add' THEN a1.username ELSE a2.username END AS "actorUsername",
-          u.username AS "targetUsername",
-          NULL::text AS "messageId",
-          NULL::text AS "messageContent",
-          jsonb_build_object('source','streamer_mods') AS meta
-        FROM streamer_mods sm
-        LEFT JOIN users a1 ON a1.id = sm.created_by
-        LEFT JOIN users a2 ON a2.id = sm.removed_by
-        LEFT JOIN users u ON u.id = sm.user_id
-        WHERE sm.streamer_id = $1 AND sm.user_id = $2
-        LIMIT 1
-        `,
-        [streamerId, userId, kind]
-      );
-
-      if (!rows[0] || !rows[0].createdAt) return res.status(404).json({ ok: false, error: "not_found" });
-      return base(rows[0]);
-    }
-
-    return res.status(400).json({ ok: false, error: "unknown_kind" });
   })
 );

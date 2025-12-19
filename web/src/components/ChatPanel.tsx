@@ -64,17 +64,43 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   const listRef = React.useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
 
+  const myId = join?.me?.id != null ? Number(join.me.id) : null;
+
   const [menu, setMenu] = React.useState<{
     open: boolean;
     x: number;
     y: number;
     msg: ChatMsg | null;
+
+    // mods
     modLoading?: boolean;
     isTargetMod?: boolean | null;
-  }>({ open: false, x: 0, y: 0, msg: null, isTargetMod: null, modLoading: false });
+
+    // timeout status
+    timeoutLoading?: boolean;
+    targetTimeoutUntil?: string | null;
+  }>({
+    open: false,
+    x: 0,
+    y: 0,
+    msg: null,
+    isTargetMod: null,
+    modLoading: false,
+    timeoutLoading: false,
+    targetTimeoutUntil: null,
+  });
 
   function closeMenu() {
-    setMenu({ open: false, x: 0, y: 0, msg: null, isTargetMod: null, modLoading: false });
+    setMenu({
+      open: false,
+      x: 0,
+      y: 0,
+      msg: null,
+      isTargetMod: null,
+      modLoading: false,
+      timeoutLoading: false,
+      targetTimeoutUntil: null,
+    });
   }
 
   // load last messages
@@ -102,25 +128,23 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     };
   }, [slug]);
 
+  // auto-refresh when my timeout ends
   React.useEffect(() => {
     if (!join?.state?.timeoutUntil) return;
 
     const until = new Date(join.state.timeoutUntil).getTime();
-    const ms = until - Date.now() + 250; // petit buffer
+    const ms = until - Date.now() + 250;
     if (ms <= 0) {
       sockRef.current?.emit("chat:refresh", { slug });
       return;
     }
 
-  const t = window.setTimeout(() => {
-    // ✅ UI instantanée : on enlève le timeout local
-    setJoin((prev) =>
-      prev ? { ...prev, state: { ...(prev.state || { banned: false }), timeoutUntil: null } } : prev
-    );
-
-    // ✅ resync serveur
-    sockRef.current?.emit("chat:refresh", { slug });
-  }, ms);
+    const t = window.setTimeout(() => {
+      setJoin((prev) =>
+        prev ? { ...prev, state: { ...(prev.state || { banned: false }), timeoutUntil: null } } : prev
+      );
+      sockRef.current?.emit("chat:refresh", { slug });
+    }, ms);
 
     return () => window.clearTimeout(t);
   }, [slug, join?.state?.timeoutUntil]);
@@ -170,6 +194,12 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     socket.on("chat:perms", (ack: JoinAck) => {
       if (!ack?.ok) return;
       setJoin((prev) => ({ ...(prev || {}), ...ack }));
+    });
+
+    // ✅ Quand un modo “déban/démute” via dashboard REST,
+    // le backend émet chat:moderation_changed => on refresh nos perms.
+    socket.on("chat:moderation_changed", () => {
+      socket.emit("chat:refresh", { slug: s });
     });
 
     socket.emit("chat:join", { slug: s }, (ack: JoinAck) => {
@@ -229,14 +259,14 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
             else if (ack?.error === "timed_out") {
               const ex = String(ack?.expiresAt || "");
               setJoin((prev) =>
-                prev
-                  ? { ...prev, state: { ...(prev.state || { banned: false }), timeoutUntil: ex } }
-                  : prev
+                prev ? { ...prev, state: { ...(prev.state || { banned: false }), timeoutUntil: ex } } : prev
               );
               setError(`Tu es en timeout (${fmtRemaining(ex)}).`);
+            } else if (ack?.error === "cannot_self") {
+              setError("Action impossible sur toi-même.");
+            } else {
+              setError(String(ack?.error || "send_failed"));
             }
-
-            else setError(String(ack?.error || "send_failed"));
           } else {
             setInput("");
           }
@@ -249,29 +279,47 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   }
 
   async function openMenu(e: React.MouseEvent, msg: ChatMsg) {
-    if (msg.userId <= 0) return;
+    if (msg.userId <= 0) return; // system
 
     e.preventDefault();
     e.stopPropagation();
 
-    setMenu({ open: true, x: e.clientX, y: e.clientY, msg, isTargetMod: null, modLoading: false });
+    setMenu({
+      open: true,
+      x: e.clientX,
+      y: e.clientY,
+      msg,
+      isTargetMod: null,
+      modLoading: false,
+      timeoutLoading: false,
+      targetTimeoutUntil: null,
+    });
 
-    // si owner/admin: on récupère le status mod du target
+    const isSelf = myId != null && Number(msg.userId) === Number(myId);
+
+    // owner/admin => mod status
     if (perms?.canManageMods) {
       setMenu((m) => ({ ...m, modLoading: true }));
       const ack = await emitSocket("chat:mod_status", { slug, userId: msg.userId });
+      if (ack?.ok) setMenu((m) => ({ ...m, modLoading: false, isTargetMod: !!ack.isMod }));
+      else setMenu((m) => ({ ...m, modLoading: false, isTargetMod: null }));
+    }
+
+    // ✅ Pour afficher "Démute" seulement si la cible est vraiment mutée
+    if (perms?.canTimeout && !isSelf) {
+      setMenu((m) => ({ ...m, timeoutLoading: true }));
+      const ack = await emitSocket("chat:timeout_status", { slug, userId: msg.userId });
       if (ack?.ok) {
-        setMenu((m) => ({ ...m, modLoading: false, isTargetMod: !!ack.isMod }));
+        setMenu((m) => ({ ...m, timeoutLoading: false, targetTimeoutUntil: ack.timeoutUntil || null }));
       } else {
-        setMenu((m) => ({ ...m, modLoading: false, isTargetMod: null }));
+        setMenu((m) => ({ ...m, timeoutLoading: false, targetTimeoutUntil: null }));
       }
     }
   }
 
   function goProfile(msg: ChatMsg) {
     closeMenu();
-    // ✅ route à ajuster selon ton router (ex: /users/:username)
-    navigate(`/users/${encodeURIComponent(msg.username)}`);
+    navigate(`/users/${encodeURIComponent(msg.username)}`); // ajuste si besoin
   }
 
   async function doUnmute(msg: ChatMsg) {
@@ -289,7 +337,10 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   async function doTimeout(msg: ChatMsg, seconds: number) {
     closeMenu();
     const ack = await emitSocket("chat:timeout", { slug, userId: msg.userId, seconds });
-    if (!ack?.ok) setError(String(ack?.error || "timeout_failed"));
+    if (!ack?.ok) {
+      if (ack?.error === "cannot_self") setError("Impossible de te mute toi-même.");
+      else setError(String(ack?.error || "timeout_failed"));
+    }
   }
 
   async function doBan(msg: ChatMsg) {
@@ -297,7 +348,10 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     const ok = window.confirm(`Bannir ${msg.username} ?`);
     if (!ok) return;
     const ack = await emitSocket("chat:ban", { slug, userId: msg.userId });
-    if (!ack?.ok) setError(String(ack?.error || "ban_failed"));
+    if (!ack?.ok) {
+      if (ack?.error === "cannot_self") setError("Impossible de te ban toi-même.");
+      else setError(String(ack?.error || "ban_failed"));
+    }
   }
 
   async function doSetMod(msg: ChatMsg, enabled: boolean) {
@@ -305,6 +359,10 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     const ack = await emitSocket("chat:mod_set", { slug, userId: msg.userId, enabled });
     if (!ack?.ok) setError(String(ack?.error || "mod_set_failed"));
   }
+
+  const targetIsSelf = menu.msg && myId != null && Number(menu.msg.userId) === Number(myId);
+  const targetIsTimedOut =
+    !!menu.targetTimeoutUntil && new Date(menu.targetTimeoutUntil).getTime() > Date.now();
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }} onClick={closeMenu}>
@@ -326,13 +384,14 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
           const isSystem = m.userId === 0;
           const isDeleted = !!m.deleted || m.body === "";
           if (m.userId !== 0 && isDeleted) return null;
+
           return (
             <div
               key={m.id}
               onContextMenu={(e) => openMenu(e, m)}
-              onClick={(e) => openMenu(e, m)} // (MVP) click = menu ; on peut passer en long-press plus tard
+              onClick={(e) => openMenu(e, m)}
               style={{
-                cursor: perms?.canMod && !isSystem ? "context-menu" : "default",
+                cursor: !isSystem ? "context-menu" : "default",
                 padding: 10,
                 borderRadius: 14,
                 background: isSystem ? "rgba(124,77,255,0.10)" : "rgba(255,255,255,0.04)",
@@ -346,9 +405,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
                 </div>
               </div>
 
-              <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95 }}>
-                {m.body}
-              </div>
+              <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95 }}>{m.body}</div>
             </div>
           );
         })}
@@ -370,10 +427,10 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
               !isAuthed
                 ? "Connecte-toi pour écrire…"
                 : isBanned
-                  ? "Tu es banni…"
-                  : isTimedOut
-                    ? `Timeout (${fmtRemaining(timeoutUntil)})…`
-                    : "Écrire un message…"
+                ? "Tu es banni…"
+                : isTimedOut
+                ? `Timeout (${fmtRemaining(timeoutUntil)})…`
+                : "Écrire un message…"
             }
             style={{
               opacity: !canSend ? 0.6 : 1,
@@ -409,7 +466,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
         </div>
       </div>
 
-      {/* menu mod */}
+      {/* menu */}
       {menu.open && menu.msg ? (
         <div
           style={{
@@ -431,6 +488,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
             {menu.msg.username}
           </div>
 
+          {/* Voir profil */}
           <button
             onClick={() => goProfile(menu.msg!)}
             style={{
@@ -449,7 +507,8 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
             Voir le profil
           </button>
 
-          {perms?.canTimeout ? (
+          {/* ✅ Démute uniquement si la cible est vraiment mutée, et jamais sur soi */}
+          {perms?.canTimeout && !targetIsSelf && targetIsTimedOut ? (
             <button
               onClick={() => doUnmute(menu.msg!)}
               style={{
@@ -488,11 +547,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
                 opacity: menu.isTargetMod == null ? 0.7 : 1,
               }}
             >
-              {menu.modLoading
-                ? "Chargement…"
-                : menu.isTargetMod
-                  ? "Retirer des modérateurs"
-                  : "Mettre modérateur"}
+              {menu.modLoading ? "Chargement…" : menu.isTargetMod ? "Retirer des modérateurs" : "Mettre modérateur"}
             </button>
           ) : null}
 
@@ -516,7 +571,8 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
             </button>
           ) : null}
 
-          {perms?.canTimeout ? (
+          {/* ✅ Timeout actions : jamais sur soi */}
+          {perms?.canTimeout && !targetIsSelf ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
               <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Timeout</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -547,7 +603,8 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
             </div>
           ) : null}
 
-          {perms?.canBan ? (
+          {/* ✅ Ban : jamais sur soi */}
+          {perms?.canBan && !targetIsSelf ? (
             <button
               onClick={() => doBan(menu.msg!)}
               style={{
