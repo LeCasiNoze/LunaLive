@@ -271,16 +271,8 @@ export async function registerResend(username: string) {
     }
   );
 }
-export type ApiModeratorRow = {
-  id: number;
-  username: string;
-  createdAt: string;
-};
-
-export type ApiUserSearchRow = {
-  id: number;
-  username: string;
-};
+export type ApiModeratorRow = { id: number; username: string; createdAt: string };
+export type ApiUserSearchRow = { id: number; username: string };
 
 export type ApiModerationEventRow = {
   id: string;
@@ -330,7 +322,7 @@ export async function removeModerator(token: string, userId: number) {
   });
 }
 
-export async function getModerationEvents(token: string, limit = 30) {
+export async function getModerationEvents(token: string, limit = 40) {
   return j<{ ok: true; events: ApiModerationEventRow[] }>(
     `/streamer/me/moderation-events?limit=${limit}`,
     { headers: { Authorization: `Bearer ${token}` } }

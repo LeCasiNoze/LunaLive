@@ -25,7 +25,7 @@ function typeLabel(t: string) {
     case "ban":
       return "Ban";
     case "mute":
-      return "Mute";
+      return "Mute / Timeout";
     case "unban":
       return "Unban";
     case "unmute":

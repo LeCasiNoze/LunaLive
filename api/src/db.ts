@@ -108,6 +108,11 @@ export async function migrate() {
       user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_by INT NULL REFERENCES users(id) ON DELETE SET NULL,
+
+      -- ✅ pour pouvoir "retirer" sans perdre l'historique / events
+      removed_at TIMESTAMPTZ NULL,
+      removed_by INT NULL REFERENCES users(id) ON DELETE SET NULL,
+
       PRIMARY KEY (streamer_id, user_id)
     );
   `);
@@ -175,6 +180,23 @@ export async function migrate() {
     CREATE INDEX IF NOT EXISTS chat_timeouts_streamer_user_expires_idx
     ON chat_timeouts(streamer_id, user_id, expires_at DESC);
   `);
+  
+  // 8) streamer_mods upgrades + index (soft remove)
+  await pool.query(`ALTER TABLE streamer_mods ADD COLUMN IF NOT EXISTS removed_at TIMESTAMPTZ NULL;`);
+  await pool.query(`ALTER TABLE streamer_mods ADD COLUMN IF NOT EXISTS removed_by INT NULL REFERENCES users(id) ON DELETE SET NULL;`);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS streamer_mods_streamer_active_idx
+    ON streamer_mods(streamer_id)
+    WHERE removed_at IS NULL;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS streamer_mods_streamer_removed_idx
+    ON streamer_mods(streamer_id, removed_at DESC)
+    WHERE removed_at IS NOT NULL;
+  `);
+
 }
 
 export async function seedIfEmpty() {
