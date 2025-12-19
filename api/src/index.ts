@@ -30,6 +30,8 @@ registerChatRoutes(app);
 
 import { thumbsRouter } from "./routes/thumbs.js";
 app.use(thumbsRouter);
+import { moderationRouter } from "./routes/moderation.js";
+app.use(moderationRouter);
 
 registerHlsProxy(app);
 app.options("/hls", (_req, res) => res.sendStatus(204));
