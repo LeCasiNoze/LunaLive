@@ -368,3 +368,25 @@ export async function unmuteTimeoutFromDashboard(token: string, timeoutId: numbe
     body: JSON.stringify({ timeoutId }),
   });
 }
+export type ApiBannedRow = { id: number; username: string; createdAt: string; reason: string | null };
+
+export async function getMyBans(token: string) {
+  return j<{ ok: true; bans: ApiBannedRow[] }>("/streamer/me/bans", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function searchUsersForBan(token: string, q: string) {
+  return j<{ ok: true; users: ApiUserSearchRow[] }>(
+    `/streamer/me/bans/search?q=${encodeURIComponent(q)}&limit=8`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+}
+
+export async function banUserFromDashboard(token: string, userId: number, reason?: string) {
+  return j<{ ok: true; changed: boolean }>(`/streamer/me/moderation-actions/ban`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, reason: reason ?? null }),
+  });
+}

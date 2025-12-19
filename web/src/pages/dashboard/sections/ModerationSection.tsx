@@ -2,18 +2,28 @@ import * as React from "react";
 import type { ApiMyStreamer } from "../../../lib/api";
 import { useAuth } from "../../../auth/AuthProvider";
 import {
+  // MODS
   addModerator,
-  getModerationEventDetail,
-  getModerationEvents,
   getMyModerators,
   removeModerator,
   searchUsersForModerator,
+
+  // BANS
+  banUserFromDashboard,
+  getMyBans,
+  searchUsersForBan,
   unbanUserFromDashboard,
+
+  // EVENTS
+  getModerationEventDetail,
+  getModerationEvents,
   unmuteTimeoutFromDashboard,
+
   type ApiModerationEventDetail,
   type ApiModerationEventRow,
   type ApiModeratorRow,
   type ApiUserSearchRow,
+  type ApiBannedRow,
 } from "../../../lib/api";
 
 function typeLabel(t: string) {
@@ -45,9 +55,9 @@ function fmtDate(iso: string) {
 
 function parseEventId(id: string): { kind: string; key: string } | null {
   const raw = String(id || "");
-  const [kind, key] = raw.split("|");
-  if (!kind || !key) return null;
-  return { kind, key };
+  const m = raw.match(/^([a-z_]+)(?:\||~)(.+)$/i); // accepte "ban|6" ou "ban~6"
+  if (!m) return null;
+  return { kind: m[1], key: m[2] };
 }
 
 function AvatarPlaceholder({ name }: { name: string }) {
@@ -77,21 +87,27 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
   const { token } = useAuth();
 
   const [mods, setMods] = React.useState<ApiModeratorRow[]>([]);
+  const [bans, setBans] = React.useState<ApiBannedRow[]>([]);
   const [events, setEvents] = React.useState<ApiModerationEventRow[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
 
-  // Search
-  const [q, setQ] = React.useState("");
-  const [results, setResults] = React.useState<ApiUserSearchRow[]>([]);
-  const [searching, setSearching] = React.useState(false);
+  // Search MODS
+  const [qMod, setQMod] = React.useState("");
+  const [modResults, setModResults] = React.useState<ApiUserSearchRow[]>([]);
+  const [searchingMod, setSearchingMod] = React.useState(false);
+
+  // Search BANS
+  const [qBan, setQBan] = React.useState("");
+  const [banResults, setBanResults] = React.useState<ApiUserSearchRow[]>([]);
+  const [searchingBan, setSearchingBan] = React.useState(false);
 
   // Details modal
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [detail, setDetail] = React.useState<ApiModerationEventDetail | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
 
-  // Actions
+  // Actions (modal)
   const [actionLoading, setActionLoading] = React.useState(false);
   const [actionErr, setActionErr] = React.useState<string | null>(null);
 
@@ -100,8 +116,13 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     setLoading(true);
     setErr(null);
     try {
-      const [m, e] = await Promise.all([getMyModerators(token), getModerationEvents(token, 40)]);
+      const [m, b, e] = await Promise.all([
+        getMyModerators(token),
+        getMyBans(token),
+        getModerationEvents(token, 40),
+      ]);
       setMods(m.moderators);
+      setBans(b.bans);
       setEvents(e.events);
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -115,48 +136,97 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Debounce search
+  // Debounce search MODS
   React.useEffect(() => {
     if (!token) return;
-    const qq = q.trim();
+    const qq = qMod.trim();
     if (qq.length < 2) {
-      setResults([]);
-      setSearching(false);
+      setModResults([]);
+      setSearchingMod(false);
       return;
     }
 
-    setSearching(true);
+    setSearchingMod(true);
     const id = window.setTimeout(async () => {
       try {
         const r = await searchUsersForModerator(token, qq);
-        setResults(r.users);
+        setModResults(r.users);
       } catch {
-        setResults([]);
+        setModResults([]);
       } finally {
-        setSearching(false);
+        setSearchingMod(false);
       }
     }, 250);
 
     return () => window.clearTimeout(id);
-  }, [q, token]);
+  }, [qMod, token]);
 
-  async function onAdd(userId: number) {
+  // Debounce search BANS
+  React.useEffect(() => {
+    if (!token) return;
+    const qq = qBan.trim();
+    if (qq.length < 2) {
+      setBanResults([]);
+      setSearchingBan(false);
+      return;
+    }
+
+    setSearchingBan(true);
+    const id = window.setTimeout(async () => {
+      try {
+        const r = await searchUsersForBan(token, qq);
+        setBanResults(r.users);
+      } catch {
+        setBanResults([]);
+      } finally {
+        setSearchingBan(false);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(id);
+  }, [qBan, token]);
+
+  async function onAddMod(userId: number) {
     if (!token) return;
     try {
       await addModerator(token, userId);
-      setQ("");
-      setResults([]);
+      setQMod("");
+      setModResults([]);
       await loadAll();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
     }
   }
 
-  async function onRemove(userId: number) {
+  async function onRemoveMod(userId: number) {
     if (!token) return;
     if (!window.confirm("Retirer ce modérateur ?")) return;
     try {
       await removeModerator(token, userId);
+      await loadAll();
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur"));
+    }
+  }
+
+  async function onBan(userId: number) {
+    if (!token) return;
+    if (!window.confirm("Bannir cet utilisateur ?")) return;
+    try {
+      await banUserFromDashboard(token, userId);
+      setQBan("");
+      setBanResults([]);
+      await loadAll();
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur"));
+    }
+  }
+
+  async function onUnban(userId: number) {
+    if (!token) return;
+    if (!window.confirm("Débannir cet utilisateur ?")) return;
+    try {
+      await unbanUserFromDashboard(token, userId);
       await loadAll();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -179,7 +249,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     }
   }
 
-  async function doUnban() {
+  async function doUnbanFromModal() {
     if (!token || !openId) return;
     const parsed = parseEventId(openId);
     if (!parsed || parsed.kind !== "ban") return;
@@ -192,7 +262,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     try {
       await unbanUserFromDashboard(token, userId);
       await loadAll();
-      await openDetails(openId); // refresh meta/status
+      await openDetails(openId);
     } catch (e: any) {
       setActionErr(String(e?.message || "Erreur"));
     } finally {
@@ -200,7 +270,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     }
   }
 
-  async function doUnmute() {
+  async function doUnmuteFromModal() {
     if (!token || !openId) return;
     const parsed = parseEventId(openId);
     if (!parsed || parsed.kind !== "mute") return;
@@ -213,7 +283,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     try {
       await unmuteTimeoutFromDashboard(token, timeoutId);
       await loadAll();
-      await openDetails(openId); // refresh meta/status
+      await openDetails(openId);
     } catch (e: any) {
       setActionErr(String(e?.message || "Erreur"));
     } finally {
@@ -225,6 +295,11 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     const s = new Set(mods.map((m) => m.id));
     return (id: number) => s.has(id);
   }, [mods]);
+
+  const isAlreadyBanned = React.useMemo(() => {
+    const s = new Set(bans.map((b) => b.id));
+    return (id: number) => s.has(id);
+  }, [bans]);
 
   const layout: React.CSSProperties = {
     display: "grid",
@@ -239,9 +314,10 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     gap: 14,
   };
 
-  const useMobile = typeof window !== "undefined" && window.matchMedia?.("(max-width: 980px)")?.matches;
+  const useMobile =
+    typeof window !== "undefined" && window.matchMedia?.("(max-width: 980px)")?.matches;
 
-  // ---- Status “actif ?” pour les boutons (basé sur meta)
+  // ---- Status “actif ?” (basé sur meta du détail)
   const parsedOpen = openId ? parseEventId(openId) : null;
   const metaAny: any = detail?.meta || {};
   const banRevokedAt = metaAny?.revokedAt ? String(metaAny.revokedAt) : null;
@@ -271,20 +347,25 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
       {loading ? <div className="muted">Chargement…</div> : null}
 
       <div style={useMobile ? mobileLayout : layout}>
-        {/* MODERATORS */}
+        {/* LEFT: MODS + BANS */}
         <div className="panel">
           <div className="panelTitle">Modérateurs</div>
 
+          {/* ADD MOD */}
           <div className="field" style={{ marginTop: 10 }}>
             <label>Ajouter un modérateur</label>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un utilisateur…" />
+            <input
+              value={qMod}
+              onChange={(e) => setQMod(e.target.value)}
+              placeholder="Rechercher un utilisateur…"
+            />
           </div>
 
-          {searching ? <div className="hint">Recherche…</div> : null}
+          {searchingMod ? <div className="hint">Recherche…</div> : null}
 
-          {results.length > 0 ? (
+          {modResults.length > 0 ? (
             <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-              {results.map((u) => (
+              {modResults.map((u) => (
                 <div
                   key={u.id}
                   style={{
@@ -300,13 +381,15 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                     <AvatarPlaceholder name={u.username} />
-                    <div style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis" }}>{u.username}</div>
+                    <div style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {u.username}
+                    </div>
                   </div>
 
                   <button
                     className="btnPrimarySmall"
                     disabled={isAlreadyMod(u.id)}
-                    onClick={() => onAdd(u.id)}
+                    onClick={() => onAddMod(u.id)}
                     title={isAlreadyMod(u.id) ? "Déjà modérateur" : "Ajouter"}
                   >
                     Ajouter
@@ -314,7 +397,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                 </div>
               ))}
             </div>
-          ) : q.trim().length >= 2 && !searching ? (
+          ) : qMod.trim().length >= 2 && !searchingMod ? (
             <div className="hint">Aucun résultat.</div>
           ) : null}
 
@@ -341,13 +424,121 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                     <AvatarPlaceholder name={m.username} />
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>{m.username}</div>
+                      <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {m.username}
+                      </div>
                       <div className="mutedSmall">Ajouté le {fmtDate(m.createdAt)}</div>
                     </div>
                   </div>
 
-                  <button className="btnGhostSmall" onClick={() => onRemove(m.id)}>
+                  <button className="btnGhostSmall" onClick={() => onRemoveMod(m.id)}>
                     Retirer
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Divider */}
+          <div
+            style={{
+              marginTop: 18,
+              marginBottom: 10,
+              height: 1,
+              background: "rgba(255,255,255,0.08)",
+            }}
+          />
+
+          {/* BANS SECTION */}
+          <div className="panelTitle" style={{ fontSize: 16 }}>
+            Bannis
+          </div>
+
+          {/* ADD BAN */}
+          <div className="field" style={{ marginTop: 10 }}>
+            <label>Bannir un utilisateur</label>
+            <input
+              value={qBan}
+              onChange={(e) => setQBan(e.target.value)}
+              placeholder="Rechercher un utilisateur…"
+            />
+          </div>
+
+          {searchingBan ? <div className="hint">Recherche…</div> : null}
+
+          {banResults.length > 0 ? (
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+              {banResults.map((u) => (
+                <div
+                  key={u.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    padding: "10px 10px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "rgba(255,255,255,0.03)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <AvatarPlaceholder name={u.username} />
+                    <div style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {u.username}
+                    </div>
+                  </div>
+
+                  <button
+                    className="btnPrimarySmall"
+                    disabled={isAlreadyBanned(u.id)}
+                    onClick={() => onBan(u.id)}
+                    title={isAlreadyBanned(u.id) ? "Déjà banni" : "Bannir"}
+                  >
+                    Bannir
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : qBan.trim().length >= 2 && !searchingBan ? (
+            <div className="hint">Aucun résultat.</div>
+          ) : null}
+
+          <div style={{ marginTop: 14, fontWeight: 950 }}>Liste</div>
+
+          {bans.length === 0 ? (
+            <div className="hint">Aucun banni pour le moment.</div>
+          ) : (
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+              {bans.map((b) => (
+                <div
+                  key={b.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    padding: "10px 10px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "rgba(255,255,255,0.03)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <AvatarPlaceholder name={b.username} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {b.username}
+                      </div>
+                      <div className="mutedSmall">
+                        Banni le {fmtDate(b.createdAt)}
+                        {b.reason ? <span style={{ opacity: 0.85 }}> · “{b.reason}”</span> : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button className="btnGhostSmall" onClick={() => onUnban(b.id)}>
+                    Débannir
                   </button>
                 </div>
               ))}
@@ -355,7 +546,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
           )}
         </div>
 
-        {/* EVENTS */}
+        {/* RIGHT: EVENTS */}
         <div className="panel">
           <div className="panelTitle">Events modération</div>
 
@@ -454,7 +645,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                     </div>
                   </div>
 
-                  {/* ACTIONS */}
+                  {/* ACTIONS MODAL */}
                   {parsedOpen?.kind === "ban" || parsedOpen?.kind === "mute" ? (
                     <div className="panel" style={{ marginTop: 0 }}>
                       <div style={{ fontWeight: 950 }}>Actions</div>
@@ -469,7 +660,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                         {parsedOpen?.kind === "ban" ? (
                           <button
                             className="btnPrimarySmall"
-                            onClick={doUnban}
+                            onClick={doUnbanFromModal}
                             disabled={actionLoading || !banIsActive}
                             title={!banIsActive ? "Déjà débanni" : "Déban"}
                           >
@@ -480,7 +671,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                         {parsedOpen?.kind === "mute" ? (
                           <button
                             className="btnPrimarySmall"
-                            onClick={doUnmute}
+                            onClick={doUnmuteFromModal}
                             disabled={actionLoading || !muteIsActive}
                             title={!muteIsActive ? "Déjà démute / expiré" : "Démute"}
                           >
@@ -491,7 +682,6 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                         {actionLoading ? <div className="mutedSmall">Action en cours…</div> : null}
                       </div>
 
-                      {/* petite aide */}
                       {parsedOpen?.kind === "mute" && timeoutExpiresAt ? (
                         <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85 }}>
                           Expire : <b>{fmtDate(timeoutExpiresAt)}</b>
