@@ -135,8 +135,25 @@ const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.co
 
 async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(`${BASE}${path}`, init);
-  if (!r.ok) throw new Error(`API ${r.status}`);
-  return (await r.json()) as T;
+
+  const text = await r.text().catch(() => "");
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+
+  if (!r.ok) {
+    const msg =
+      data?.error ||
+      data?.message ||
+      (text && text.length < 200 ? text : null) ||
+      `API ${r.status}`;
+    throw new Error(String(msg));
+  }
+
+  return data as T;
 }
 
 export type ApiStreamerPage = {
@@ -334,4 +351,20 @@ export async function getModerationEventDetail(token: string, id: string) {
     `/streamer/me/moderation-events/${encodeURIComponent(id)}`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
+}
+
+export async function unbanUserFromDashboard(token: string, userId: number) {
+  return j<{ ok: true; changed: boolean }>(`/streamer/me/moderation-actions/unban`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export async function unmuteTimeoutFromDashboard(token: string, timeoutId: number) {
+  return j<{ ok: true; changed: boolean }>(`/streamer/me/moderation-actions/unmute`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ timeoutId }),
+  });
 }

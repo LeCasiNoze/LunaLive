@@ -8,6 +8,8 @@ import {
   getMyModerators,
   removeModerator,
   searchUsersForModerator,
+  unbanUserFromDashboard,
+  unmuteTimeoutFromDashboard,
   type ApiModerationEventDetail,
   type ApiModerationEventRow,
   type ApiModeratorRow,
@@ -39,6 +41,13 @@ function fmtDate(iso: string) {
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return iso;
   return d.toLocaleString();
+}
+
+function parseEventId(id: string): { kind: string; key: string } | null {
+  const raw = String(id || "");
+  const [kind, key] = raw.split("|");
+  if (!kind || !key) return null;
+  return { kind, key };
 }
 
 function AvatarPlaceholder({ name }: { name: string }) {
@@ -81,6 +90,10 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [detail, setDetail] = React.useState<ApiModerationEventDetail | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
+
+  // Actions
+  const [actionLoading, setActionLoading] = React.useState(false);
+  const [actionErr, setActionErr] = React.useState<string | null>(null);
 
   async function loadAll() {
     if (!token) return;
@@ -155,6 +168,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     setOpenId(id);
     setDetail(null);
     setDetailLoading(true);
+    setActionErr(null);
     try {
       const r = await getModerationEventDetail(token, id);
       setDetail(r.event);
@@ -162,6 +176,48 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
       setDetail(null);
     } finally {
       setDetailLoading(false);
+    }
+  }
+
+  async function doUnban() {
+    if (!token || !openId) return;
+    const parsed = parseEventId(openId);
+    if (!parsed || parsed.kind !== "ban") return;
+
+    const userId = Number(parsed.key);
+    if (!userId) return;
+
+    setActionLoading(true);
+    setActionErr(null);
+    try {
+      await unbanUserFromDashboard(token, userId);
+      await loadAll();
+      await openDetails(openId); // refresh meta/status
+    } catch (e: any) {
+      setActionErr(String(e?.message || "Erreur"));
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function doUnmute() {
+    if (!token || !openId) return;
+    const parsed = parseEventId(openId);
+    if (!parsed || parsed.kind !== "mute") return;
+
+    const timeoutId = Number(parsed.key);
+    if (!timeoutId) return;
+
+    setActionLoading(true);
+    setActionErr(null);
+    try {
+      await unmuteTimeoutFromDashboard(token, timeoutId);
+      await loadAll();
+      await openDetails(openId); // refresh meta/status
+    } catch (e: any) {
+      setActionErr(String(e?.message || "Erreur"));
+    } finally {
+      setActionLoading(false);
     }
   }
 
@@ -185,6 +241,21 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
 
   const useMobile = typeof window !== "undefined" && window.matchMedia?.("(max-width: 980px)")?.matches;
 
+  // ---- Status “actif ?” pour les boutons (basé sur meta)
+  const parsedOpen = openId ? parseEventId(openId) : null;
+  const metaAny: any = detail?.meta || {};
+  const banRevokedAt = metaAny?.revokedAt ? String(metaAny.revokedAt) : null;
+  const timeoutLiftedAt = metaAny?.liftedAt ? String(metaAny.liftedAt) : null;
+  const timeoutExpiresAt = metaAny?.expiresAt ? String(metaAny.expiresAt) : null;
+
+  const banIsActive = !!detail && parsedOpen?.kind === "ban" && !banRevokedAt;
+  const muteIsActive =
+    !!detail &&
+    parsedOpen?.kind === "mute" &&
+    !timeoutLiftedAt &&
+    !!timeoutExpiresAt &&
+    new Date(timeoutExpiresAt).getTime() > Date.now();
+
   return (
     <div>
       <div className="panel">
@@ -206,11 +277,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
 
           <div className="field" style={{ marginTop: 10 }}>
             <label>Ajouter un modérateur</label>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Rechercher un utilisateur…"
-            />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un utilisateur…" />
           </div>
 
           {searching ? <div className="hint">Recherche…</div> : null}
@@ -233,9 +300,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                     <AvatarPlaceholder name={u.username} />
-                    <div style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {u.username}
-                    </div>
+                    <div style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis" }}>{u.username}</div>
                   </div>
 
                   <button
@@ -276,9 +341,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                     <AvatarPlaceholder name={m.username} />
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {m.username}
-                      </div>
+                      <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>{m.username}</div>
                       <div className="mutedSmall">Ajouté le {fmtDate(m.createdAt)}</div>
                     </div>
                   </div>
@@ -321,8 +384,19 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                     </div>
 
                     <div className="mutedSmall" style={{ marginTop: 2 }}>
-                      {e.actorUsername ? <span><b>{e.actorUsername}</b></span> : <span>—</span>}
-                      {e.targetUsername ? <span> → <b>{e.targetUsername}</b></span> : null}
+                      {e.actorUsername ? (
+                        <span>
+                          <b>{e.actorUsername}</b>
+                        </span>
+                      ) : (
+                        <span>—</span>
+                      )}
+                      {e.targetUsername ? (
+                        <span>
+                          {" "}
+                          → <b>{e.targetUsername}</b>
+                        </span>
+                      ) : null}
                     </div>
 
                     {e.messagePreview ? (
@@ -364,10 +438,79 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                     <div style={{ fontWeight: 950 }}>{typeLabel(detail.type)}</div>
                     <div className="mutedSmall">{fmtDate(detail.createdAt)}</div>
                     <div className="mutedSmall" style={{ marginTop: 6 }}>
-                      {detail.actorUsername ? <span><b>{detail.actorUsername}</b></span> : <span>—</span>}
-                      {detail.targetUsername ? <span> → <b>{detail.targetUsername}</b></span> : null}
+                      {detail.actorUsername ? (
+                        <span>
+                          <b>{detail.actorUsername}</b>
+                        </span>
+                      ) : (
+                        <span>—</span>
+                      )}
+                      {detail.targetUsername ? (
+                        <span>
+                          {" "}
+                          → <b>{detail.targetUsername}</b>
+                        </span>
+                      ) : null}
                     </div>
                   </div>
+
+                  {/* ACTIONS */}
+                  {parsedOpen?.kind === "ban" || parsedOpen?.kind === "mute" ? (
+                    <div className="panel" style={{ marginTop: 0 }}>
+                      <div style={{ fontWeight: 950 }}>Actions</div>
+
+                      {actionErr ? (
+                        <div className="hint" style={{ opacity: 0.95, marginTop: 8 }}>
+                          ⚠️ {actionErr}
+                        </div>
+                      ) : null}
+
+                      <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+                        {parsedOpen?.kind === "ban" ? (
+                          <button
+                            className="btnPrimarySmall"
+                            onClick={doUnban}
+                            disabled={actionLoading || !banIsActive}
+                            title={!banIsActive ? "Déjà débanni" : "Déban"}
+                          >
+                            {banIsActive ? "Déban" : "Déjà débanni"}
+                          </button>
+                        ) : null}
+
+                        {parsedOpen?.kind === "mute" ? (
+                          <button
+                            className="btnPrimarySmall"
+                            onClick={doUnmute}
+                            disabled={actionLoading || !muteIsActive}
+                            title={!muteIsActive ? "Déjà démute / expiré" : "Démute"}
+                          >
+                            {muteIsActive ? "Démute" : "Déjà démute / expiré"}
+                          </button>
+                        ) : null}
+
+                        {actionLoading ? <div className="mutedSmall">Action en cours…</div> : null}
+                      </div>
+
+                      {/* petite aide */}
+                      {parsedOpen?.kind === "mute" && timeoutExpiresAt ? (
+                        <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85 }}>
+                          Expire : <b>{fmtDate(timeoutExpiresAt)}</b>
+                          {timeoutLiftedAt ? (
+                            <>
+                              {" "}
+                              · Levé : <b>{fmtDate(timeoutLiftedAt)}</b>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {parsedOpen?.kind === "ban" && banRevokedAt ? (
+                        <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85 }}>
+                          Débanni : <b>{fmtDate(banRevokedAt)}</b>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   {detail.messageContent ? (
                     <div className="panel" style={{ marginTop: 0 }}>
