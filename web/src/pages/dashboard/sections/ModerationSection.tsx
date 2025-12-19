@@ -1,3 +1,4 @@
+// ModerationSection.tsx
 import * as React from "react";
 import type { ApiMyStreamer } from "../../../lib/api";
 import { useAuth } from "../../../auth/AuthProvider";
@@ -312,6 +313,26 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
   const useMobile =
     typeof window !== "undefined" && window.matchMedia?.("(max-width: 980px)")?.matches;
 
+  // ✅ Cadre + scroll pour la liste des events
+  const eventsFrame: React.CSSProperties = {
+    marginTop: 10,
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.14)",
+    padding: 10,
+  };
+
+  const eventsScroll: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    maxHeight: useMobile ? 320 : 560, // ajuste si tu veux
+    overflowY: "auto",
+    paddingRight: 6,
+    WebkitOverflowScrolling: "touch",
+    overscrollBehavior: "contain",
+  };
+
   // ---- Status “actif ?” pour les boutons (basé sur meta)
   const parsedOpen = openId ? parseEventId(openId) : null;
   const metaAny: any = detail?.meta || {};
@@ -433,7 +454,13 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
           )}
 
           {/* ✅ BANS SECTION (copie du système mods) */}
-          <div style={{ marginTop: 18, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 14 }}>
+          <div
+            style={{
+              marginTop: 18,
+              borderTop: "1px solid rgba(255,255,255,0.08)",
+              paddingTop: 14,
+            }}
+          >
             <div className="panelTitle">Bannis</div>
 
             <div className="field" style={{ marginTop: 10 }}>
@@ -508,7 +535,13 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                       <AvatarPlaceholder name={b.username} />
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <div
+                          style={{
+                            fontWeight: 950,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
                           {b.username}
                         </div>
                         <div className="mutedSmall">Banni le {fmtDate(b.createdAt)}</div>
@@ -537,49 +570,54 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
           {events.length === 0 ? (
             <div className="hint">Aucun event pour le moment.</div>
           ) : (
-            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-              {events.map((e) => (
-                <div
-                  key={e.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    padding: "10px 10px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(255,255,255,0.03)",
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 950 }}>
-                      {typeLabel(e.type)}
-                      <span style={{ opacity: 0.6, fontWeight: 800 }}> · {fmtDate(e.createdAt)}</span>
-                    </div>
-
-                    <div className="mutedSmall" style={{ marginTop: 2 }}>
-                      {e.actorUsername ? <b>{e.actorUsername}</b> : "—"}
-                      {e.targetUsername ? (
-                        <span>
+            <div style={eventsFrame}>
+              <div style={eventsScroll}>
+                {events.map((e) => (
+                  <div
+                    key={e.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      padding: "10px 10px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(255,255,255,0.03)",
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 950 }}>
+                        {typeLabel(e.type)}
+                        <span style={{ opacity: 0.6, fontWeight: 800 }}>
                           {" "}
-                          → <b>{e.targetUsername}</b>
+                          · {fmtDate(e.createdAt)}
                         </span>
+                      </div>
+
+                      <div className="mutedSmall" style={{ marginTop: 2 }}>
+                        {e.actorUsername ? <b>{e.actorUsername}</b> : "—"}
+                        {e.targetUsername ? (
+                          <span>
+                            {" "}
+                            → <b>{e.targetUsername}</b>
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {e.messagePreview ? (
+                        <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.8 }}>
+                          “{e.messagePreview}”
+                        </div>
                       ) : null}
                     </div>
 
-                    {e.messagePreview ? (
-                      <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.8 }}>
-                        “{e.messagePreview}”
-                      </div>
-                    ) : null}
+                    <button className="btnGhostSmall" onClick={() => openDetails(e.id)}>
+                      Plus de détail
+                    </button>
                   </div>
-
-                  <button className="btnGhostSmall" onClick={() => openDetails(e.id)}>
-                    Plus de détail
-                  </button>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
         </div>
