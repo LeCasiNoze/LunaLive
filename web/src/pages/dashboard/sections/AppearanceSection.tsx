@@ -43,6 +43,13 @@ function clampBadgeText(s: string) {
   return (t || "SUB").slice(0, 8);
 }
 
+function pickAppearance(j: any): Appearance | null {
+  const ap = (j?.appearance ?? j?.streamer?.appearance) as any;
+  if (!ap) return null;
+  if (!ap.chat) return null;
+  return ap as Appearance;
+}
+
 function ColorRow({
   label,
   value,
@@ -144,7 +151,10 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
       });
       const j = await r.json();
       if (!j?.ok) throw new Error(j?.error || "appearance_failed");
-      setAppearance(j.appearance);
+
+      const ap = pickAppearance(j);
+      if (!ap) throw new Error("appearance_missing");
+      setAppearance(ap);
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
     } finally {
@@ -168,7 +178,11 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
       });
       const j = await r.json();
       if (!j?.ok) throw new Error(j?.error || "save_failed");
-      setAppearance(j.appearance);
+
+      const ap = pickAppearance(j);
+      if (!ap) throw new Error("save_ok_but_no_appearance");
+      setAppearance(ap);
+
       setOk("Enregistré ✅");
       window.setTimeout(() => setOk(null), 1400);
     } catch (e: any) {

@@ -518,7 +518,11 @@ app.patch(
       io.to(`chat:${curSlug}`).emit("chat:appearance", { ok: true, appearance: out.appearance });
     }
 
-    res.json({ ok: true, streamer: out });
+    res.json({
+      ok: true,
+      appearance: out.appearance, // ✅ top-level
+      streamer: out,              // ✅ compat si ton front utilise streamer.appearance
+    });
   })
 );
 
