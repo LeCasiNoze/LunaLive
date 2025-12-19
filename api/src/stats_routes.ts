@@ -408,91 +408,95 @@ LIMIT 1;
     })
   );
 
-  /**
-   * Timeseries pour le graphe (V1)
-   * metric: viewers_avg | viewers_peak | messages | watch_time
-   */
-  app.get(
-    "/streamer/me/stats/timeseries",
-    requireAuth,
-    a(async (req: any, res) => {
-      if (req.user!.role !== "streamer" && req.user!.role !== "admin") {
-        return res.status(403).json({ ok: false, error: "forbidden" });
-      }
+/**
+ * Timeseries pour le graphe (V1)
+ * metric: viewers_avg | viewers_peak | messages | watch_time
+ */
+app.get(
+  "/streamer/me/stats/timeseries",
+  requireAuth,
+  a(async (req: any, res) => {
+    if (req.user!.role !== "streamer" && req.user!.role !== "admin") {
+      return res.status(403).json({ ok: false, error: "forbidden" });
+    }
 
-      const period = assertPeriod(req.query.period);
-      const cursor = String(req.query.cursor || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
-      const metric = assertMetric(req.query.metric);
+    const period = assertPeriod(req.query.period);
+    const cursor =
+      String(req.query.cursor || "").slice(0, 10) ||
+      new Date().toISOString().slice(0, 10);
+    const metric = assertMetric(req.query.metric);
 
-      const streamerId = await getMyStreamerId(req.user!.id);
-      if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    const streamerId = await getMyStreamerId(req.user!.id);
+    if (!streamerId)
+      return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
-      const step = period === "daily" ? "1 hour" : "1 day";
-      const bucketSeconds = period === "daily" ? 3600 : 86400;
+    const step = period === "daily" ? "1 hour" : "1 day";
+    const bucketSeconds = period === "daily" ? 3600 : 86400;
 
-      // bucket local -> back to timestamptz
-      const bucketExprSamples =
-        period === "daily"
-          ? `date_trunc('hour', bucket_ts AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`
-          : `date_trunc('day', bucket_ts AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
+    // bucket local -> back to timestamptz
+    const bucketExprSamples =
+      period === "daily"
+        ? `date_trunc('hour', bucket_ts AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`
+        : `date_trunc('day', bucket_ts AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
 
-      const bucketExprChat =
-        period === "daily"
-          ? `date_trunc('hour', created_at AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`
-          : `date_trunc('day', created_at AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
+    const bucketExprChat =
+      period === "daily"
+        ? `date_trunc('hour', created_at AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`
+        : `date_trunc('day', created_at AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
 
-      const aggSQL =
-    metric === "messages"
+    // ✅ FIX: alias tables + qualify streamer_id to avoid ambiguity with rb.streamer_id
+    const aggSQL =
+      metric === "messages"
         ? `
-    agg AS (
-    SELECT ${bucketExprChat} AS bucket, COUNT(*)::float AS v
-    FROM chat_messages
-    CROSS JOIN rb
-    WHERE streamer_id=$1
-        AND deleted_at IS NULL
-        AND created_at >= rb.range_start
-        AND created_at < rb.range_end
-    GROUP BY 1
-    )
-    `
+agg AS (
+  SELECT ${bucketExprChat} AS bucket, COUNT(*)::float AS v
+  FROM chat_messages cm
+  CROSS JOIN rb
+  WHERE cm.streamer_id=$1
+    AND cm.deleted_at IS NULL
+    AND cm.created_at >= rb.range_start
+    AND cm.created_at < rb.range_end
+  GROUP BY 1
+)
+`
         : metric === "viewers_peak"
         ? `
-    agg AS (
-    SELECT ${bucketExprSamples} AS bucket, MAX(viewers)::float AS v
-    FROM stream_viewer_samples
-    CROSS JOIN rb
-    WHERE streamer_id=$1
-        AND bucket_ts >= rb.range_start
-        AND bucket_ts < rb.range_end
-    GROUP BY 1
-    )
-    `
+agg AS (
+  SELECT ${bucketExprSamples} AS bucket, MAX(svs.viewers)::float AS v
+  FROM stream_viewer_samples svs
+  CROSS JOIN rb
+  WHERE svs.streamer_id=$1
+    AND svs.bucket_ts >= rb.range_start
+    AND svs.bucket_ts < rb.range_end
+  GROUP BY 1
+)
+`
         : metric === "watch_time"
         ? `
-    agg AS (
-    SELECT ${bucketExprSamples} AS bucket, (AVG(viewers)::float * $4::float) AS v
-    FROM stream_viewer_samples
-    CROSS JOIN rb
-    WHERE streamer_id=$1
-        AND bucket_ts >= rb.range_start
-        AND bucket_ts < rb.range_end
-    GROUP BY 1
-    )
-    `
+agg AS (
+  SELECT ${bucketExprSamples} AS bucket, (AVG(svs.viewers)::float * $4::float) AS v
+  FROM stream_viewer_samples svs
+  CROSS JOIN rb
+  WHERE svs.streamer_id=$1
+    AND svs.bucket_ts >= rb.range_start
+    AND svs.bucket_ts < rb.range_end
+  GROUP BY 1
+)
+`
         : `
-    agg AS (
-    SELECT ${bucketExprSamples} AS bucket, AVG(viewers)::float AS v
-    FROM stream_viewer_samples
-    CROSS JOIN rb
-    WHERE streamer_id=$1
-        AND bucket_ts >= rb.range_start
-        AND bucket_ts < rb.range_end
-    GROUP BY 1
-    )
-    `;
-    
-      const r = await pool.query(
-        `
+agg AS (
+  SELECT ${bucketExprSamples} AS bucket, AVG(svs.viewers)::float AS v
+  FROM stream_viewer_samples svs
+  CROSS JOIN rb
+  WHERE svs.streamer_id=$1
+    AND svs.bucket_ts >= rb.range_start
+    AND svs.bucket_ts < rb.range_end
+  GROUP BY 1
+)
+`;
+
+    const r = await pool.query(
+      `
 WITH input AS (
   SELECT $1::int AS streamer_id, $2::text AS period, $3::date AS cursor_date
 ),
@@ -532,20 +536,20 @@ FROM series s
 CROSS JOIN rb
 LEFT JOIN agg a ON a.bucket = s.bucket
 ORDER BY s.bucket ASC
-        `,
-        [streamerId, period, cursor, bucketSeconds, step]
-      );
+      `,
+      [streamerId, period, cursor, bucketSeconds, step]
+    );
 
-      res.json({
-        ok: true,
-        period,
-        cursor,
-        metric,
-        points: (r.rows || []).map((x: any) => ({
-          t: new Date(x.t).toISOString(),
-          v: Number(x.v || 0),
-        })),
-      });
-    })
-  );
+    res.json({
+      ok: true,
+      period,
+      cursor,
+      metric,
+      points: (r.rows || []).map((x: any) => ({
+        t: new Date(x.t).toISOString(),
+        v: Number(x.v || 0),
+      })),
+    });
+  })
+);
 }
