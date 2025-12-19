@@ -427,8 +427,9 @@ app.get(
     const metric = assertMetric(req.query.metric);
 
     const streamerId = await getMyStreamerId(req.user!.id);
-    if (!streamerId)
+    if (!streamerId) {
       return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    }
 
     const step = period === "daily" ? "1 hour" : "1 day";
     const bucketSeconds = period === "daily" ? 3600 : 86400;
@@ -436,15 +437,15 @@ app.get(
     // bucket local -> back to timestamptz
     const bucketExprSamples =
       period === "daily"
-        ? `date_trunc('hour', bucket_ts AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`
-        : `date_trunc('day', bucket_ts AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
+        ? `date_trunc('hour', svs.bucket_ts AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`
+        : `date_trunc('day',  svs.bucket_ts AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
 
     const bucketExprChat =
       period === "daily"
-        ? `date_trunc('hour', created_at AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`
-        : `date_trunc('day', created_at AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
+        ? `date_trunc('hour', cm.created_at AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`
+        : `date_trunc('day',  cm.created_at AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
 
-    // ✅ FIX: alias tables + qualify streamer_id to avoid ambiguity with rb.streamer_id
+    // ✅ FIX: qualify columns + use input.bucket_seconds so $4 always has a known type
     const aggSQL =
       metric === "messages"
         ? `
@@ -474,9 +475,10 @@ agg AS (
         : metric === "watch_time"
         ? `
 agg AS (
-  SELECT ${bucketExprSamples} AS bucket, (AVG(svs.viewers)::float * $4::float) AS v
+  SELECT ${bucketExprSamples} AS bucket, (AVG(svs.viewers)::float * input.bucket_seconds) AS v
   FROM stream_viewer_samples svs
   CROSS JOIN rb
+  CROSS JOIN input
   WHERE svs.streamer_id=$1
     AND svs.bucket_ts >= rb.range_start
     AND svs.bucket_ts < rb.range_end
@@ -498,34 +500,47 @@ agg AS (
     const r = await pool.query(
       `
 WITH input AS (
-  SELECT $1::int AS streamer_id, $2::text AS period, $3::date AS cursor_date
+  SELECT
+    $1::int      AS streamer_id,
+    $2::text     AS period,
+    $3::date     AS cursor_date,
+    $4::float    AS bucket_seconds,  -- ✅ force type of $4 always
+    $5::interval AS step_interval    -- ✅ force type of $5 always
 ),
 base AS (
-  SELECT streamer_id, period, cursor_date,
+  SELECT
+    input.streamer_id,
+    input.period,
+    input.cursor_date,
+    input.bucket_seconds,
+    input.step_interval,
     CASE
-      WHEN period='daily' THEN cursor_date::timestamp
-      WHEN period='weekly' THEN date_trunc('week', cursor_date::timestamp)
-      WHEN period='monthly' THEN date_trunc('month', cursor_date::timestamp)
+      WHEN input.period='daily' THEN input.cursor_date::timestamp
+      WHEN input.period='weekly' THEN date_trunc('week', input.cursor_date::timestamp)
+      WHEN input.period='monthly' THEN date_trunc('month', input.cursor_date::timestamp)
     END AS start_local_ts
   FROM input
 ),
 rb AS (
   SELECT
-    streamer_id,
-    period,
-    (start_local_ts AT TIME ZONE '${TZ}') AS range_start,
+    base.streamer_id,
+    base.period,
+    base.bucket_seconds,
+    base.step_interval,
+    (base.start_local_ts AT TIME ZONE '${TZ}') AS range_start,
     (
       CASE
-        WHEN period='daily' THEN (start_local_ts + INTERVAL '1 day')
-        WHEN period='weekly' THEN (start_local_ts + INTERVAL '1 week')
-        WHEN period='monthly' THEN (start_local_ts + INTERVAL '1 month')
+        WHEN base.period='daily' THEN (base.start_local_ts + INTERVAL '1 day')
+        WHEN base.period='weekly' THEN (base.start_local_ts + INTERVAL '1 week')
+        WHEN base.period='monthly' THEN (base.start_local_ts + INTERVAL '1 month')
       END
       AT TIME ZONE '${TZ}'
     ) AS range_end
   FROM base
 ),
 series AS (
-  SELECT generate_series(rb.range_start, rb.range_end - ($5::interval), ($5::interval)) AS bucket
+  SELECT
+    generate_series(rb.range_start, rb.range_end - rb.step_interval, rb.step_interval) AS bucket
   FROM rb
 ),
 ${aggSQL}
