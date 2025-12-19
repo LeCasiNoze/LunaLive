@@ -271,3 +271,75 @@ export async function registerResend(username: string) {
     }
   );
 }
+export type ApiModeratorRow = {
+  id: number;
+  username: string;
+  createdAt: string;
+};
+
+export type ApiUserSearchRow = {
+  id: number;
+  username: string;
+};
+
+export type ApiModerationEventRow = {
+  id: string;
+  type: string;
+  createdAt: string;
+  actorUsername: string | null;
+  targetUsername: string | null;
+  messagePreview: string | null;
+};
+
+export type ApiModerationEventDetail = {
+  id: string;
+  type: string;
+  createdAt: string;
+  actorUsername: string | null;
+  targetUsername: string | null;
+  messageId: string | null;
+  messageContent: string | null;
+  meta: any;
+};
+
+export async function getMyModerators(token: string) {
+  return j<{ ok: true; moderators: ApiModeratorRow[] }>("/streamer/me/moderators", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function searchUsersForModerator(token: string, q: string) {
+  return j<{ ok: true; users: ApiUserSearchRow[] }>(
+    `/streamer/me/moderators/search?q=${encodeURIComponent(q)}&limit=8`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+}
+
+export async function addModerator(token: string, userId: number) {
+  return j<{ ok: true }>(`/streamer/me/moderators`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export async function removeModerator(token: string, userId: number) {
+  return j<{ ok: true }>(`/streamer/me/moderators/${userId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function getModerationEvents(token: string, limit = 30) {
+  return j<{ ok: true; events: ApiModerationEventRow[] }>(
+    `/streamer/me/moderation-events?limit=${limit}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+}
+
+export async function getModerationEventDetail(token: string, id: string) {
+  return j<{ ok: true; event: ApiModerationEventDetail }>(
+    `/streamer/me/moderation-events/${encodeURIComponent(id)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+}
