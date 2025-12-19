@@ -21,7 +21,7 @@ import http from "http";
 import { Server as IOServer } from "socket.io";
 import { registerChatRoutes } from "./chat_routes.js";
 import { attachChat } from "./chat_socket.js";
-import { mergeAppearance, normalizeAppearance } from "./appearance.js";
+import normalizeAppearance, { mergeAppearance, PRESET_COLORS } from "./appearance.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -402,17 +402,126 @@ app.get(
   a(async (req, res) => {
     const { rows } = await pool.query(
       `SELECT id::text AS id, slug, display_name AS "displayName",
-       title, viewers, is_live AS "isLive", featured,
-       appearance
-      FROM streamers
-      WHERE user_id = $1
-      LIMIT 1
-      `,
+              title, viewers, is_live AS "isLive", featured,
+              appearance
+       FROM streamers
+       WHERE user_id = $1
+       LIMIT 1`,
       [req.user!.id]
     );
-    res.json({ ok: true, streamer: rows[0] || null });
+
+    const s = rows[0] || null;
+    if (!s) return res.json({ ok: true, streamer: null });
+
+    s.appearance = normalizeAppearance(s.appearance || {});
+    res.json({ ok: true, streamer: s });
   })
 );
+
+// ✅ PATCH title (conserve ton fonctionnement existant)
+app.patch(
+  "/streamer/me",
+  requireAuth,
+  a(async (req, res) => {
+    if (req.user!.role !== "streamer" && req.user!.role !== "admin") {
+      return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+
+    const title = String(req.body.title ?? "").trim();
+    if (title.length > 140) return res.status(400).json({ ok: false, error: "title_too_long" });
+
+    const { rows } = await pool.query(
+      `UPDATE streamers
+       SET title = $1, updated_at = NOW()
+       WHERE user_id = $2
+       RETURNING id::text AS id, slug, display_name AS "displayName",
+                 title, viewers, is_live AS "isLive", featured, appearance`,
+      [title, req.user!.id]
+    );
+
+    if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+
+    rows[0].appearance = normalizeAppearance(rows[0].appearance || {});
+    res.json({ ok: true, streamer: rows[0] });
+  })
+);
+
+// ✅ GET appearance (utile pour charger presets + état)
+app.get(
+  "/streamer/me/appearance",
+  requireAuth,
+  a(async (req, res) => {
+    if (req.user!.role !== "streamer" && req.user!.role !== "admin") {
+      return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+
+    const cur = await pool.query(
+      `SELECT appearance FROM streamers WHERE user_id=$1 LIMIT 1`,
+      [req.user!.id]
+    );
+    if (!cur.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+
+    res.json({
+      ok: true,
+      appearance: normalizeAppearance(cur.rows[0].appearance || {}),
+      presets: PRESET_COLORS,
+    });
+  })
+);
+
+// ✅ PATCH appearance (c’est CETTE route que ton front appelle)
+app.patch(
+  "/streamer/me/appearance",
+  requireAuth,
+  a(async (req, res) => {
+    if (req.user!.role !== "streamer" && req.user!.role !== "admin") {
+      return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+
+    const appearancePatch = req.body?.appearance ?? req.body; // tolérant
+    if (!appearancePatch || typeof appearancePatch !== "object") {
+      return res.status(400).json({ ok: false, error: "bad_appearance" });
+    }
+
+    const cur = await pool.query(
+      `SELECT slug, appearance
+       FROM streamers
+       WHERE user_id = $1
+       LIMIT 1`,
+      [req.user!.id]
+    );
+    if (!cur.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+
+    const curSlug = String(cur.rows[0].slug || "");
+    const curAppearance = cur.rows[0].appearance || {};
+
+    const merged = mergeAppearance(curAppearance, appearancePatch); // merge + normalize
+
+    const upd = await pool.query(
+      `UPDATE streamers
+       SET appearance = $1,
+           updated_at = NOW()
+       WHERE user_id = $2
+       RETURNING id::text AS id, slug, display_name AS "displayName",
+                 title, viewers, is_live AS "isLive", featured, appearance`,
+      [merged, req.user!.id]
+    );
+
+    const out = upd.rows[0];
+    if (!out) return res.status(404).json({ ok: false, error: "not_found" });
+
+    out.appearance = normalizeAppearance(out.appearance || {});
+
+    // ✅ push live aux viewers du chat
+    const io = req.app?.locals?.io;
+    if (io && curSlug) {
+      io.to(`chat:${curSlug}`).emit("chat:appearance", { ok: true, appearance: out.appearance });
+    }
+
+    res.json({ ok: true, streamer: out });
+  })
+);
+
 
   a(async (req, res) => {
     if (req.user!.role !== "streamer" && req.user!.role !== "admin") {

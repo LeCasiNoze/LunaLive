@@ -8,8 +8,7 @@ export type SubBadge = {
 };
 
 export type SubHat = {
-  // placeholder: plus tard tu mettras "crown", "ring", etc.
-  id: string | null;
+  id: string | null; // placeholder
 };
 
 export type ChatSubAppearance = {
@@ -35,7 +34,7 @@ export const PRESET_COLORS = [
   { id: "neon_mint", name: "Neon Mint", hex: "#2EF2B3" },
   { id: "rose_nova", name: "Rose Nova", hex: "#FF4DD8" },
   { id: "sunset", name: "Sunset", hex: "#FF7A59" },
-  { id: "gold", name: "Gold", hex: "#FFD54A" },
+  { id: "gold_soft", name: "Soft Gold", hex: "#FFD54A" },
   { id: "ice", name: "Ice", hex: "#9AE6FF" },
   { id: "lime", name: "Lime", hex: "#A3FF4A" },
 ] as const;
@@ -66,21 +65,15 @@ function isHexColor(s: any): s is string {
 
 function clampBadgeText(s: any) {
   const t = String(s ?? "").trim();
-  const safe = t.replace(/[^\w\-]/g, ""); // garde simple
-  if (!safe) return "SUB";
-  return safe.slice(0, 8);
+  const safe = t.replace(/[^\w\-]/g, "");
+  return (safe || "SUB").slice(0, 8);
 }
 
 function pickHex(input: any, fallback: string) {
-  if (isHexColor(input)) return input.trim().toUpperCase();
-  return fallback;
+  return isHexColor(input) ? input.trim().toUpperCase() : fallback;
 }
 
-/**
- * Normalise n'importe quel JSON en shape valide.
- * Tolérant: si keys manquantes => defaults.
- */
-function _normalizeAppearance(raw: any): Appearance {
+export function normalizeAppearance(raw: any): Appearance {
   const base = DEFAULT_APPEARANCE;
 
   const chatRaw = raw?.chat ?? raw ?? {};
@@ -100,8 +93,7 @@ function _normalizeAppearance(raw: any): Appearance {
   const badgeTextColor = pickHex(badgeRaw?.textColor, base.chat.sub.badge.textColor);
 
   const hatRaw = subRaw?.hat ?? {};
-  const hatId =
-    hatRaw?.id === null || typeof hatRaw?.id === "string" ? hatRaw.id : base.chat.sub.hat.id;
+  const hatId = hatRaw?.id === null || typeof hatRaw?.id === "string" ? hatRaw.id : base.chat.sub.hat.id;
 
   return {
     chat: {
@@ -122,27 +114,13 @@ function _normalizeAppearance(raw: any): Appearance {
   };
 }
 
-/**
- * ✅ Export named + default-friendly:
- * - import { normalizeAppearance } from "./appearance.js"
- * - import normalizeAppearance from "./appearance.js"
- */
-function normalizeAppearance(raw: any): Appearance {
-  return _normalizeAppearance(raw);
-}
-export { normalizeAppearance };
 export default normalizeAppearance;
 
-/**
- * Merge contrôlé (deep merge sur les champs qu’on supporte),
- * puis normalisation.
- */
 export function mergeAppearance(base: any, patch: any): Appearance {
-  const b = _normalizeAppearance(base);
+  const b = normalizeAppearance(base);
   const p = patch ?? {};
 
-  const out: any = JSON.parse(JSON.stringify(b)); // safe simple clone
-
+  const out: any = JSON.parse(JSON.stringify(b));
   const chat = p?.chat ?? p;
 
   if (chat && typeof chat === "object") {
@@ -169,5 +147,5 @@ export function mergeAppearance(base: any, patch: any): Appearance {
     }
   }
 
-  return _normalizeAppearance(out);
+  return normalizeAppearance(out);
 }
