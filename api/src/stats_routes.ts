@@ -442,51 +442,55 @@ LIMIT 1;
           : `date_trunc('day', created_at AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
 
       const aggSQL =
-        metric === "messages"
-          ? `
-agg AS (
-  SELECT ${bucketExprChat} AS bucket, COUNT(*)::float AS v
-  FROM chat_messages
-  WHERE streamer_id=$1
-    AND deleted_at IS NULL
-    AND created_at >= rb.range_start
-    AND created_at < rb.range_end
-  GROUP BY 1
-)
-`
-          : metric === "viewers_peak"
-          ? `
-agg AS (
-  SELECT ${bucketExprSamples} AS bucket, MAX(viewers)::float AS v
-  FROM stream_viewer_samples
-  WHERE streamer_id=$1
-    AND bucket_ts >= rb.range_start
-    AND bucket_ts < rb.range_end
-  GROUP BY 1
-)
-`
-          : metric === "watch_time"
-          ? `
-agg AS (
-  SELECT ${bucketExprSamples} AS bucket, (AVG(viewers)::float * $4::float) AS v
-  FROM stream_viewer_samples
-  WHERE streamer_id=$1
-    AND bucket_ts >= rb.range_start
-    AND bucket_ts < rb.range_end
-  GROUP BY 1
-)
-`
-          : `
-agg AS (
-  SELECT ${bucketExprSamples} AS bucket, AVG(viewers)::float AS v
-  FROM stream_viewer_samples
-  WHERE streamer_id=$1
-    AND bucket_ts >= rb.range_start
-    AND bucket_ts < rb.range_end
-  GROUP BY 1
-)
-`;
-
+    metric === "messages"
+        ? `
+    agg AS (
+    SELECT ${bucketExprChat} AS bucket, COUNT(*)::float AS v
+    FROM chat_messages
+    CROSS JOIN rb
+    WHERE streamer_id=$1
+        AND deleted_at IS NULL
+        AND created_at >= rb.range_start
+        AND created_at < rb.range_end
+    GROUP BY 1
+    )
+    `
+        : metric === "viewers_peak"
+        ? `
+    agg AS (
+    SELECT ${bucketExprSamples} AS bucket, MAX(viewers)::float AS v
+    FROM stream_viewer_samples
+    CROSS JOIN rb
+    WHERE streamer_id=$1
+        AND bucket_ts >= rb.range_start
+        AND bucket_ts < rb.range_end
+    GROUP BY 1
+    )
+    `
+        : metric === "watch_time"
+        ? `
+    agg AS (
+    SELECT ${bucketExprSamples} AS bucket, (AVG(viewers)::float * $4::float) AS v
+    FROM stream_viewer_samples
+    CROSS JOIN rb
+    WHERE streamer_id=$1
+        AND bucket_ts >= rb.range_start
+        AND bucket_ts < rb.range_end
+    GROUP BY 1
+    )
+    `
+        : `
+    agg AS (
+    SELECT ${bucketExprSamples} AS bucket, AVG(viewers)::float AS v
+    FROM stream_viewer_samples
+    CROSS JOIN rb
+    WHERE streamer_id=$1
+        AND bucket_ts >= rb.range_start
+        AND bucket_ts < rb.range_end
+    GROUP BY 1
+    )
+    `;
+    
       const r = await pool.query(
         `
 WITH input AS (
