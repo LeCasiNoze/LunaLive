@@ -1,10 +1,11 @@
 // web/src/lib/appearance.ts
+import type React from "react";
 
 export type StreamerAppearance = {
   chat: {
-    nameColor: string; // pseudo
-    msgColor: string;  // message
-    sub?: any;         // réservé, plus tard
+    usernameColor: string; // ✅ aligné API / dashboard
+    messageColor: string;  // ✅ aligné API / dashboard
+    sub?: any;             // réservé, plus tard
   };
 };
 
@@ -30,8 +31,8 @@ export const MSG_PRESETS = [
 
 export const DEFAULT_APPEARANCE: StreamerAppearance = {
   chat: {
-    nameColor: "#FFD54A",
-    msgColor: "#FFFFFF",
+    usernameColor: "#7C4DFF",
+    messageColor: "#FFFFFF",
   },
 };
 
@@ -41,24 +42,38 @@ export function isHexColor(v: any) {
 }
 
 export function cleanHex(v: any, fallback: string) {
-  return isHexColor(v) ? String(v).trim() : fallback;
+  return isHexColor(v) ? String(v).trim().toUpperCase() : fallback;
 }
 
+/**
+ * ✅ Normalise et supporte aussi l'ancien format nameColor/msgColor (fallback).
+ */
 export function normalizeAppearance(x: any): StreamerAppearance {
   const a = x && typeof x === "object" ? x : {};
-  const chat = a.chat && typeof a.chat === "object" ? a.chat : {};
+  const chatRaw = a.chat && typeof a.chat === "object" ? a.chat : a;
+
+  const usernameColor = cleanHex(
+    chatRaw.usernameColor ?? chatRaw.nameColor,
+    DEFAULT_APPEARANCE.chat.usernameColor
+  );
+
+  const messageColor = cleanHex(
+    chatRaw.messageColor ?? chatRaw.msgColor,
+    DEFAULT_APPEARANCE.chat.messageColor
+  );
+
   return {
     chat: {
-      nameColor: cleanHex(chat.nameColor, DEFAULT_APPEARANCE.chat.nameColor),
-      msgColor: cleanHex(chat.msgColor, DEFAULT_APPEARANCE.chat.msgColor),
-      sub: chat.sub, // on touche pas
+      usernameColor,
+      messageColor,
+      sub: chatRaw.sub,
     },
   };
 }
 
 export function cssVarsFromAppearance(a: StreamerAppearance) {
   return {
-    ["--chat-name-color" as any]: a.chat.nameColor,
-    ["--chat-msg-color" as any]: a.chat.msgColor,
+    ["--chat-name-color" as any]: a.chat.usernameColor,
+    ["--chat-msg-color" as any]: a.chat.messageColor,
   } as React.CSSProperties;
 }

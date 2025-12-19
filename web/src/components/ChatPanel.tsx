@@ -4,6 +4,13 @@ import { io, type Socket } from "socket.io-client";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
 
+import {
+  DEFAULT_APPEARANCE as DEFAULT_STREAMER_APPEARANCE,
+  normalizeAppearance,
+  type StreamerAppearance,
+} from "../lib/appearance";
+
+
 type ChatMsg = {
   id: number;
   userId: number;
@@ -11,14 +18,6 @@ type ChatMsg = {
   body: string;
   deleted?: boolean;
   createdAt: string;
-};
-
-type ChatAppearance = {
-  chat: {
-    nameColor: string;
-    msgColor: string;
-    // sub/hat plus tard
-  };
 };
 
 type JoinAck = {
@@ -40,37 +39,12 @@ type JoinAck = {
   };
   me?: { id: number; username: string; role: string } | null;
 
-  // ✅ NEW
-  appearance?: ChatAppearance;
+  // ✅ Appearance streamer (DB)
+  appearance?: StreamerAppearance;
 };
 
 function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
-}
-
-function isHexColor(v: any) {
-  const s = String(v || "").trim();
-  return /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(s);
-}
-function cleanHex(v: any, fallback: string) {
-  return isHexColor(v) ? String(v).trim() : fallback;
-}
-
-const DEFAULT_APPEARANCE: ChatAppearance = {
-  chat: {
-    nameColor: "#FFD54A",
-    msgColor: "#FFFFFF",
-  },
-};
-
-function normalizeAppearance(a: any): ChatAppearance {
-  const chat = a?.chat || {};
-  return {
-    chat: {
-      nameColor: cleanHex(chat?.nameColor, DEFAULT_APPEARANCE.chat.nameColor),
-      msgColor: cleanHex(chat?.msgColor, DEFAULT_APPEARANCE.chat.msgColor),
-    },
-  };
 }
 
 function fmtRemaining(untilIso?: string | null) {
@@ -97,7 +71,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   const { token } = useAuth();
 
   // ✅ NEW
-  const [appearance, setAppearance] = React.useState<ChatAppearance>(DEFAULT_APPEARANCE);
+  const [appearance, setAppearance] = React.useState<StreamerAppearance>(DEFAULT_STREAMER_APPEARANCE);
 
   const sockRef = React.useRef<Socket | null>(null);
   const listRef = React.useRef<HTMLDivElement | null>(null);
@@ -413,8 +387,9 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   const targetIsSelf = menu.msg && myId != null && Number(menu.msg.userId) === Number(myId);
   const targetIsTimedOut = !!menu.targetTimeoutUntil && new Date(menu.targetTimeoutUntil).getTime() > Date.now();
 
-  const nameColor = appearance.chat.nameColor;
-  const msgColor = appearance.chat.msgColor;
+  const nameColor = appearance.chat.usernameColor;
+  const msgColor = appearance.chat.messageColor;
+
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }} onClick={closeMenu}>
