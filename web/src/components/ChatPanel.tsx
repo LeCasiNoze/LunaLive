@@ -2,6 +2,7 @@
 import * as React from "react";
 import { io, type Socket } from "socket.io-client";
 import { useAuth } from "../auth/AuthProvider";
+import { useNavigate } from "react-router-dom";
 
 type ChatMsg = {
   id: number;
@@ -61,6 +62,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
 
   const sockRef = React.useRef<Socket | null>(null);
   const listRef = React.useRef<HTMLDivElement | null>(null);
+  const navigate = useNavigate();
 
   const [menu, setMenu] = React.useState<{
     open: boolean;
@@ -247,7 +249,6 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   }
 
   async function openMenu(e: React.MouseEvent, msg: ChatMsg) {
-    if (!perms?.canMod) return;
     if (msg.userId <= 0) return;
 
     e.preventDefault();
@@ -265,6 +266,18 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
         setMenu((m) => ({ ...m, modLoading: false, isTargetMod: null }));
       }
     }
+  }
+
+  function goProfile(msg: ChatMsg) {
+    closeMenu();
+    // ✅ route à ajuster selon ton router (ex: /users/:username)
+    navigate(`/users/${encodeURIComponent(msg.username)}`);
+  }
+
+  async function doUnmute(msg: ChatMsg) {
+    closeMenu();
+    const ack = await emitSocket("chat:untimeout", { slug, userId: msg.userId });
+    if (!ack?.ok) setError(String(ack?.error || "untimeout_failed"));
   }
 
   async function doDelete(msg: ChatMsg) {
@@ -417,6 +430,44 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
           <div style={{ fontWeight: 900, fontSize: 13, marginBottom: 8, opacity: 0.95 }}>
             {menu.msg.username}
           </div>
+
+          <button
+            onClick={() => goProfile(menu.msg!)}
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(255,255,255,0.06)",
+              color: "white",
+              textAlign: "left",
+              fontWeight: 900,
+              cursor: "pointer",
+              marginBottom: 8,
+            }}
+          >
+            Voir le profil
+          </button>
+
+          {perms?.canTimeout ? (
+            <button
+              onClick={() => doUnmute(menu.msg!)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(124,77,255,0.14)",
+                color: "white",
+                textAlign: "left",
+                fontWeight: 900,
+                cursor: "pointer",
+                marginBottom: 8,
+              }}
+            >
+              Démute (untimeout)
+            </button>
+          ) : null}
 
           {/* MODS (owner/admin only) */}
           {perms?.canManageMods ? (

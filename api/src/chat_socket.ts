@@ -276,14 +276,25 @@ export function attachChat(io: Server) {
         if (data.lastSendAt && t - data.lastSendAt < 200) return cb?.({ ok: false, error: "rate_limited" });
         data.lastSendAt = t;
 
-        const msg = chatStore.addMessage(meta.slug, {
-          userId: u.id,
-          username: u.username,
-          body: text,
-        });
+      const ins = await pool.query(
+        `INSERT INTO chat_messages (streamer_id, user_id, username, body)
+        VALUES ($1,$2,$3,$4)
+        RETURNING id, created_at AS "createdAt"`,
+        [meta.id, u.id, u.username, text]
+      );
 
-        io.to(`chat:${meta.slug}`).emit("chat:message", msg);
-        cb?.({ ok: true });
+      const row = ins.rows?.[0];
+      const msg = {
+        id: Number(row.id),
+        userId: u.id,
+        username: u.username,
+        body: text,
+        createdAt: new Date(row.createdAt).toISOString(),
+      };
+
+      io.to(`chat:${meta.slug}`).emit("chat:message", msg);
+      cb?.({ ok: true });
+
       } catch (e: any) {
         cb?.({ ok: false, error: String(e?.message || "send_failed") });
       }
@@ -302,7 +313,8 @@ export function attachChat(io: Server) {
 
         const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
         if (!rp.perms.canClear) return cb?.({ ok: false, error: "forbidden" });
-
+        
+        await pool.query(`DELETE FROM chat_messages WHERE streamer_id=$1`, [meta.id]);
         chatStore.clear(meta.slug);
         io.to(`chat:${meta.slug}`).emit("chat:cleared");
         cb?.({ ok: true });
