@@ -349,30 +349,52 @@ export function attachChat(io: Server) {
     // MODERATION (delete / timeout / ban) + MODS
     // ─────────────────────────────────────────────
 
-    socket.on("chat:delete", async ({ slug, messageId }: { slug: string; messageId: number }, cb?: (ack: any) => void) => {
-      try {
-        const u = data.user;
-        if (!u) return cb?.({ ok: false, error: "auth_required" });
+    socket.on(
+      "chat:delete",
+      async (
+        { slug, messageId }: { slug: string; messageId: number },
+        cb?: (ack: any) => void
+      ) => {
+        try {
+          const u = data.user;
+          if (!u) return cb?.({ ok: false, error: "auth_required" });
 
-        const s = String(slug || data.slug || "").trim();
-        if (!s) return cb?.({ ok: false, error: "bad_slug" });
+          const s = String(slug || data.slug || "").trim();
+          if (!s) return cb?.({ ok: false, error: "bad_slug" });
 
-        const meta = await getStreamerMetaBySlug(s);
-        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+          const meta = await getStreamerMetaBySlug(s);
+          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
 
-        const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
-        if (!rp.perms.canDelete) return cb?.({ ok: false, error: "forbidden" });
+          const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+          if (!rp.perms.canDelete) return cb?.({ ok: false, error: "forbidden" });
 
-        const ok = chatStore.removeMessage(meta.slug, Number(messageId));
-        if (!ok) return cb?.({ ok: false, error: "message_not_found" });
+          const mid = Number(messageId || 0);
+          if (!mid) return cb?.({ ok: false, error: "bad_message" });
 
-        io.to(`chat:${meta.slug}`).emit("chat:message_deleted", { ok: true, id: Number(messageId) });
-        cb?.({ ok: true });
+          // ✅ Soft delete DB (audit-friendly)
+          const upd = await pool.query(
+            `UPDATE chat_messages
+            SET deleted_at = NOW(),
+                deleted_by = $3
+            WHERE id = $1
+              AND streamer_id = $2
+              AND deleted_at IS NULL
+            RETURNING id`,
+            [mid, meta.id, u.id]
+          );
 
-      } catch (e: any) {
-        cb?.({ ok: false, error: String(e?.message || "delete_failed") });
+          if (!upd.rows?.[0]) return cb?.({ ok: false, error: "message_not_found" });
+
+          // (optionnel) si tu gardes chatStore pour afficher le "live", tu peux aussi le retirer :
+          // chatStore.removeMessage(meta.slug, mid);
+
+          io.to(`chat:${meta.slug}`).emit("chat:message_deleted", { ok: true, id: mid });
+          cb?.({ ok: true });
+        } catch (e: any) {
+          cb?.({ ok: false, error: String(e?.message || "delete_failed") });
+        }
       }
-    });
+    );
 
     socket.on(
       "chat:timeout",
