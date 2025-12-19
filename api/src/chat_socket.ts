@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { pool } from "./db.js";
 import { chatStore } from "./chat_store.js";
 import type { AuthUser } from "./auth.js";
+import { normalizeAppearance, type Appearance } from "./appearance.js";
 
 type SocketData = {
   user?: AuthUser;
@@ -24,6 +25,7 @@ type SocketData = {
     banned: boolean;
     timeoutUntil?: string | null;
   };
+  appearance?: Appearance;
 };
 
 function getJwtSecret() {
@@ -54,11 +56,11 @@ function tryAuth(socket: Socket) {
 
 async function getStreamerMetaBySlug(
   slug: string
-): Promise<{ id: number; slug: string; ownerUserId: number | null } | null> {
+): Promise<{ id: number; slug: string; ownerUserId: number | null; appearance: any } | null> {
   const s = String(slug || "").trim();
   if (!s) return null;
   const r = await pool.query(
-    `SELECT id, slug, user_id AS "ownerUserId"
+    `SELECT id, slug, user_id AS "ownerUserId", appearance
      FROM streamers
      WHERE lower(slug)=lower($1)
      LIMIT 1`,
@@ -70,6 +72,7 @@ async function getStreamerMetaBySlug(
     id: Number(row.id),
     slug: String(row.slug),
     ownerUserId: row.ownerUserId != null ? Number(row.ownerUserId) : null,
+    appearance: row.appearance ?? {},
   };
 }
 
@@ -241,6 +244,9 @@ export function attachChat(io: Server) {
         data.slug = meta.slug;
         data.streamerId = meta.id;
 
+        // ✅ appearance normalisée (même pour guest)
+        data.appearance = normalizeAppearance(meta.appearance);
+
         socket.join(`chat:${meta.slug}`);
 
         const rp = await computeRolePerms(meta.id, meta.ownerUserId, data.user);
@@ -255,6 +261,7 @@ export function attachChat(io: Server) {
           role: rp.role,
           perms: rp.perms,
           state: rp.state,
+          appearance: data.appearance,
           me: data.user ? { id: data.user.id, username: data.user.username, role: data.user.role } : null,
         });
       } catch (e: any) {
@@ -296,12 +303,22 @@ export function attachChat(io: Server) {
         );
 
         const row = ins.rows?.[0];
+
+        // ✅ pour l’instant: pas de skins viewers => style = thème streamer
+        const appearance = data.appearance ?? normalizeAppearance(meta.appearance);
+        const style = {
+          nameColor: appearance.chat.usernameColor,
+          msgColor: appearance.chat.messageColor,
+          // plus tard: badge/hat selon sub + skins
+        };
+
         const msg = {
           id: Number(row.id),
           userId: u.id,
           username: u.username,
           body: text,
           createdAt: new Date(row.createdAt).toISOString(),
+          style,
         };
 
         io.to(`chat:${meta.slug}`).emit("chat:message", msg);
@@ -348,7 +365,10 @@ export function attachChat(io: Server) {
         data.perms = rp.perms;
         data.state = rp.state;
 
-        socket.emit("chat:perms", { ok: true, role: rp.role, perms: rp.perms, state: rp.state });
+        // ✅ refresh aussi appearance (si streamer vient de changer ses couleurs)
+        data.appearance = normalizeAppearance(meta.appearance);
+
+        socket.emit("chat:perms", { ok: true, role: rp.role, perms: rp.perms, state: rp.state, appearance: data.appearance });
         cb?.({ ok: true });
       } catch (e: any) {
         cb?.({ ok: false, error: String(e?.message || "refresh_failed") });
@@ -421,7 +441,6 @@ export function attachChat(io: Server) {
           const targetId = Number(userId || 0);
           if (!targetId) return cb?.({ ok: false, error: "bad_user" });
 
-          // ✅ règle: impossible de s'auto-mute
           if (targetId === u.id) return cb?.({ ok: false, error: "cannot_self_timeout" });
 
           const sec = clampInt(seconds, 1, 7 * 24 * 3600);
@@ -438,9 +457,7 @@ export function attachChat(io: Server) {
           const sys = chatStore.addSystem(meta.slug, `⏳ ${targetUsername} timeout ${sec}s${r ? ` — ${r}` : ""}`);
           io.to(`chat:${meta.slug}`).emit("chat:message", sys);
 
-          // ✅ trigger refresh UI perms
           io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "timeout", userId: targetId });
-
           await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
           cb?.({ ok: true, expiresAt: expiresAt.toISOString() });
@@ -469,7 +486,6 @@ export function attachChat(io: Server) {
           const targetId = Number(userId || 0);
           if (!targetId) return cb?.({ ok: false, error: "bad_user" });
 
-          // ✅ règle: impossible de s'auto-ban
           if (targetId === u.id) return cb?.({ ok: false, error: "cannot_self_ban" });
 
           const r = String(reason || "").trim();
@@ -486,7 +502,6 @@ export function attachChat(io: Server) {
           io.to(`chat:${meta.slug}`).emit("chat:message", sys);
 
           io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "ban", userId: targetId });
-
           await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
           cb?.({ ok: true });
@@ -513,7 +528,6 @@ export function attachChat(io: Server) {
         const targetId = Number(userId || 0);
         if (!targetId) return cb?.({ ok: false, error: "bad_user" });
 
-        // ✅ on garde l'historique => on "termine" le timeout
         await pool.query(
           `UPDATE chat_timeouts
            SET expires_at = NOW()
@@ -526,7 +540,6 @@ export function attachChat(io: Server) {
         io.to(`chat:${meta.slug}`).emit("chat:message", sys);
 
         io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "untimeout", userId: targetId });
-
         await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
         cb?.({ ok: true });
@@ -559,7 +572,6 @@ export function attachChat(io: Server) {
         io.to(`chat:${meta.slug}`).emit("chat:message", sys);
 
         io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "unban", userId: targetId });
-
         await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
         cb?.({ ok: true });
@@ -567,10 +579,6 @@ export function attachChat(io: Server) {
         cb?.({ ok: false, error: String(e?.message || "unban_failed") });
       }
     });
-
-    // ─────────────────────────────────────────────
-    // MODS: status + set (owner/admin)
-    // ─────────────────────────────────────────────
 
     socket.on("chat:mod_status", async ({ slug, userId }: { slug: string; userId: number }, cb?: (ack: any) => void) => {
       try {
@@ -615,11 +623,9 @@ export function attachChat(io: Server) {
           const targetId = Number(userId || 0);
           if (!targetId) return cb?.({ ok: false, error: "bad_user" });
 
-          // (optionnel) pas nécessaire car UI le cache, mais on garde la règle
           if (targetId === u.id) return cb?.({ ok: false, error: "cannot_self_timeout" });
 
           const timeout = await getActiveTimeout(meta.id, targetId);
-          // ✅ compat : certains front attendent expiresAt, d'autres timeoutUntil
           cb?.({ ok: true, expiresAt: timeout?.expiresAt || null, timeoutUntil: timeout?.expiresAt || null });
         } catch (e: any) {
           cb?.({ ok: false, error: String(e?.message || "timeout_status_failed") });
@@ -651,7 +657,6 @@ export function attachChat(io: Server) {
           }
 
           if (enabled) {
-            // ✅ upsert + re-activate si soft-removed
             await pool.query(
               `INSERT INTO streamer_mods (streamer_id, user_id, created_by, created_at, removed_at, removed_by)
                VALUES ($1,$2,$3,NOW(),NULL,NULL)
@@ -663,7 +668,6 @@ export function attachChat(io: Server) {
               [meta.id, targetId, u.id]
             );
           } else {
-            // ✅ soft remove (pour garder l'historique / events)
             await pool.query(
               `UPDATE streamer_mods
                SET removed_at = NOW(),

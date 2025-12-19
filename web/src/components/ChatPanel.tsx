@@ -13,6 +13,14 @@ type ChatMsg = {
   createdAt: string;
 };
 
+type ChatAppearance = {
+  chat: {
+    nameColor: string;
+    msgColor: string;
+    // sub/hat plus tard
+  };
+};
+
 type JoinAck = {
   ok: boolean;
   error?: string;
@@ -31,10 +39,38 @@ type JoinAck = {
     timeoutUntil?: string | null;
   };
   me?: { id: number; username: string; role: string } | null;
+
+  // ✅ NEW
+  appearance?: ChatAppearance;
 };
 
 function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
+}
+
+function isHexColor(v: any) {
+  const s = String(v || "").trim();
+  return /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(s);
+}
+function cleanHex(v: any, fallback: string) {
+  return isHexColor(v) ? String(v).trim() : fallback;
+}
+
+const DEFAULT_APPEARANCE: ChatAppearance = {
+  chat: {
+    nameColor: "#FFD54A",
+    msgColor: "#FFFFFF",
+  },
+};
+
+function normalizeAppearance(a: any): ChatAppearance {
+  const chat = a?.chat || {};
+  return {
+    chat: {
+      nameColor: cleanHex(chat?.nameColor, DEFAULT_APPEARANCE.chat.nameColor),
+      msgColor: cleanHex(chat?.msgColor, DEFAULT_APPEARANCE.chat.msgColor),
+    },
+  };
 }
 
 function fmtRemaining(untilIso?: string | null) {
@@ -60,6 +96,9 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   const [error, setError] = React.useState<string | null>(null);
   const { token } = useAuth();
 
+  // ✅ NEW
+  const [appearance, setAppearance] = React.useState<ChatAppearance>(DEFAULT_APPEARANCE);
+
   const sockRef = React.useRef<Socket | null>(null);
   const listRef = React.useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
@@ -79,16 +118,18 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     // timeout status
     timeoutLoading?: boolean;
     targetTimeoutUntil?: string | null;
-  }>({
-    open: false,
-    x: 0,
-    y: 0,
-    msg: null,
-    isTargetMod: null,
-    modLoading: false,
-    timeoutLoading: false,
-    targetTimeoutUntil: null,
-  });
+  }>(
+    {
+      open: false,
+      x: 0,
+      y: 0,
+      msg: null,
+      isTargetMod: null,
+      modLoading: false,
+      timeoutLoading: false,
+      targetTimeoutUntil: null,
+    }
+  );
 
   function closeMenu() {
     setMenu({
@@ -194,6 +235,14 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     socket.on("chat:perms", (ack: JoinAck) => {
       if (!ack?.ok) return;
       setJoin((prev) => ({ ...(prev || {}), ...ack }));
+      // (au cas où backend pousse appearance un jour via perms)
+      if (ack?.appearance) setAppearance(normalizeAppearance(ack.appearance));
+    });
+
+    // ✅ NEW: live update appearance
+    socket.on("chat:appearance", (payload: any) => {
+      if (!payload?.ok) return;
+      setAppearance(normalizeAppearance(payload.appearance));
     });
 
     // ✅ Quand un modo “déban/démute” via dashboard REST,
@@ -210,6 +259,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
       }
       setJoin(ack);
       setError(null);
+      setAppearance(normalizeAppearance(ack.appearance));
     });
 
     return () => {
@@ -361,11 +411,18 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   }
 
   const targetIsSelf = menu.msg && myId != null && Number(menu.msg.userId) === Number(myId);
-  const targetIsTimedOut =
-    !!menu.targetTimeoutUntil && new Date(menu.targetTimeoutUntil).getTime() > Date.now();
+  const targetIsTimedOut = !!menu.targetTimeoutUntil && new Date(menu.targetTimeoutUntil).getTime() > Date.now();
+
+  const nameColor = appearance.chat.nameColor;
+  const msgColor = appearance.chat.msgColor;
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }} onClick={closeMenu}>
+      {/* inline keyframes (anim fixe fade-left) */}
+      <style>
+        {`@keyframes chatFadeLeft{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}`}
+      </style>
+
       {/* header */}
       <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: 0.2 }}>Chat</div>
@@ -396,16 +453,28 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
                 borderRadius: 14,
                 background: isSystem ? "rgba(124,77,255,0.10)" : "rgba(255,255,255,0.04)",
                 border: "1px solid rgba(255,255,255,0.06)",
+                animation: "chatFadeLeft 180ms ease-out both",
               }}
             >
               <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                <div style={{ fontWeight: 800, fontSize: 13, opacity: isSystem ? 0.95 : 1 }}>{m.username}</div>
+                <div
+                  style={{
+                    fontWeight: 800,
+                    fontSize: 13,
+                    opacity: isSystem ? 0.95 : 1,
+                    color: isSystem ? "rgba(255,255,255,0.95)" : nameColor,
+                  }}
+                >
+                  {m.username}
+                </div>
                 <div style={{ fontSize: 11, opacity: 0.55 }}>
                   {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </div>
               </div>
 
-              <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95 }}>{m.body}</div>
+              <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95, color: isSystem ? "white" : msgColor }}>
+                {m.body}
+              </div>
             </div>
           );
         })}
@@ -484,9 +553,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div style={{ fontWeight: 900, fontSize: 13, marginBottom: 8, opacity: 0.95 }}>
-            {menu.msg.username}
-          </div>
+          <div style={{ fontWeight: 900, fontSize: 13, marginBottom: 8, opacity: 0.95 }}>{menu.msg.username}</div>
 
           {/* Voir profil */}
           <button

@@ -157,6 +157,12 @@ export async function migrate() {
 
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS streamers_user_id_uq ON streamers(user_id);`);
 
+  // ✅ 5bis) Appearance JSONB (thème chat streamer)
+  await pool.query(`
+    ALTER TABLE streamers
+    ADD COLUMN IF NOT EXISTS appearance JSONB NOT NULL DEFAULT '{}'::jsonb;
+  `);
+
   // 6) Provider accounts indexes
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS provider_accounts_provider_slug_uq
@@ -180,7 +186,7 @@ export async function migrate() {
     CREATE INDEX IF NOT EXISTS chat_timeouts_streamer_user_expires_idx
     ON chat_timeouts(streamer_id, user_id, expires_at DESC);
   `);
-  
+
   // 8) streamer_mods upgrades + index (soft remove)
   await pool.query(`ALTER TABLE streamer_mods ADD COLUMN IF NOT EXISTS removed_at TIMESTAMPTZ NULL;`);
   await pool.query(`ALTER TABLE streamer_mods ADD COLUMN IF NOT EXISTS removed_by INT NULL REFERENCES users(id) ON DELETE SET NULL;`);
@@ -196,7 +202,6 @@ export async function migrate() {
     ON streamer_mods(streamer_id, removed_at DESC)
     WHERE removed_at IS NOT NULL;
   `);
-
 }
 
 export async function seedIfEmpty() {

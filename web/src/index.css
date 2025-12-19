@@ -538,3 +538,29 @@ body{
     height: auto;
   }
 }
+
+/* === Chat theme variables === */
+:root{
+  --chat-name-color: #ffd54a;
+  --chat-msg-color: #ffffff;
+}
+
+.chat-username{
+  color: var(--chat-name-color);
+  font-weight: 700;
+}
+
+.chat-message{
+  color: var(--chat-msg-color);
+  font-weight: 600;
+}
+
+/* === Fixed animation for all chats: fade-left === */
+@keyframes chatFadeLeft {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.chat-fade-left{
+  animation: chatFadeLeft 180ms ease-out both;
+}

@@ -21,6 +21,7 @@ import http from "http";
 import { Server as IOServer } from "socket.io";
 import { registerChatRoutes } from "./chat_routes.js";
 import { attachChat } from "./chat_socket.js";
+import { mergeAppearance, normalizeAppearance } from "./appearance.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -44,7 +45,6 @@ const a =
 /* Health */
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-/* Public */
 /* Public */
 app.get(
   "/lives",
@@ -78,7 +78,7 @@ app.get(
           title: String(r.title || ""),
           viewers: Number(r.viewers || 0),
           liveStartedAt: r.liveStartedAt ? String(r.liveStartedAt) : null,
-          thumbUrl: r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb, // ✅ voilà ton "/thumbs/${slug}.jpg"
+          thumbUrl: r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb,
         };
       })
     );
@@ -111,6 +111,7 @@ app.get(
          s.title,
          s.viewers,
          s.is_live AS "isLive",
+         s.appearance AS "appearance",
          pa.channel_slug AS "channelSlug",
          pa.channel_username AS "channelUsername"
        FROM streamers s
@@ -208,7 +209,6 @@ app.post(
     }
 
     res.json({ ok: true, needsVerify: true });
-
   })
 );
 
@@ -402,42 +402,77 @@ app.get(
   a(async (req, res) => {
     const { rows } = await pool.query(
       `SELECT id::text AS id, slug, display_name AS "displayName",
-              title, viewers, is_live AS "isLive", featured
-       FROM streamers
-       WHERE user_id = $1
-       LIMIT 1`,
+       title, viewers, is_live AS "isLive", featured,
+       appearance
+      FROM streamers
+      WHERE user_id = $1
+      LIMIT 1
+      `,
       [req.user!.id]
     );
     res.json({ ok: true, streamer: rows[0] || null });
   })
 );
 
-app.patch(
-  "/streamer/me",
-  requireAuth,
   a(async (req, res) => {
     if (req.user!.role !== "streamer" && req.user!.role !== "admin") {
       return res.status(403).json({ ok: false, error: "forbidden" });
     }
 
-    const title = String(req.body.title ?? "").trim();
-    if (title.length > 140) {
+    // title optionnel (si undefined => on garde)
+    const titleRaw = req.body.title;
+    const title = titleRaw === undefined ? undefined : String(titleRaw ?? "").trim();
+    if (title !== undefined && title.length > 140) {
       return res.status(400).json({ ok: false, error: "title_too_long" });
     }
 
-    const { rows } = await pool.query(
-      `UPDATE streamers
-       SET title = $1, updated_at = NOW()
-       WHERE user_id = $2
-       RETURNING id::text AS id, slug, display_name AS "displayName",
-                 title, viewers, is_live AS "isLive", featured`,
-      [title, req.user!.id]
+    // appearance patch optionnel
+    const appearancePatch = req.body.appearance;
+
+    // load current
+    const cur = await pool.query(
+      `SELECT slug, title, appearance
+       FROM streamers
+       WHERE user_id = $1
+       LIMIT 1`,
+      [req.user!.id]
     );
 
-    if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
-    res.json({ ok: true, streamer: rows[0] });
+    if (!cur.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+
+    const curSlug = String(cur.rows[0].slug || "");
+    const curTitle = String(cur.rows[0].title || "");
+    const curAppearance = cur.rows[0].appearance || {};
+
+    const mergedAppearance =
+      appearancePatch !== undefined
+        ? normalizeAppearance(mergeAppearance(curAppearance, appearancePatch))
+        : normalizeAppearance(curAppearance);
+
+    const nextTitle = title !== undefined ? title : curTitle;
+
+    const upd = await pool.query(
+      `UPDATE streamers
+       SET title = $1,
+           appearance = $2,
+           updated_at = NOW()
+       WHERE user_id = $3
+       RETURNING id::text AS id, slug, display_name AS "displayName",
+                 title, viewers, is_live AS "isLive", featured, appearance`,
+      [nextTitle, mergedAppearance, req.user!.id]
+    );
+
+    const out = upd.rows[0];
+    if (!out) return res.status(404).json({ ok: false, error: "not_found" });
+
+    // ✅ live push to chat room
+    const io = req.app?.locals?.io;
+    if (io && curSlug) {
+      io.to(`chat:${curSlug}`).emit("chat:appearance", { ok: true, appearance: out.appearance });
+    }
+
+    res.json({ ok: true, streamer: out });
   })
-);
 
 app.get(
   "/streamer/me/connection",
@@ -926,7 +961,6 @@ const port = Number(process.env.PORT || 3001);
   const server = http.createServer(app);
 
   const io = new IOServer(server, {
-  
     cors: { origin: true, credentials: true },
   });
   app.locals.io = io;
@@ -934,5 +968,3 @@ const port = Number(process.env.PORT || 3001);
   attachChat(io);
   server.listen(port, () => console.log(`[api] listening on :${port}`));
 })();
-
-
