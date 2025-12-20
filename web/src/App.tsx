@@ -16,7 +16,6 @@ import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
 import { GoLiveNotifier } from "./components/GoLiveNotifier";
 
-
 function AppInner() {
   const location = useLocation();
   const isMobile = useIsMobile();
@@ -35,8 +34,10 @@ function AppInner() {
         onOpenLogin={() => setLoginOpen(true)}
         onLogout={logout}
       />
+
+      {/* ✅ ICI, hors de <Routes> */}
       <GoLiveNotifier />
-      
+
       <Routes>
         <Route path="/" element={<LivesPage />} />
         <Route path="/browse" element={<BrowsePage />} />
