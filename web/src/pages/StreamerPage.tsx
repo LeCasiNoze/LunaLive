@@ -57,6 +57,12 @@ function getAnonId(): string {
   return created;
 }
 
+/**
+ * Affichage durée:
+ * - minutes < 60 => "X min"
+ * - heures < 24 => "X h" ou "X h Y min"
+ * - jours >= 1  => "X j" ou "X j Y h"
+ */
 function formatDurationFrom(startedAtMs: number, nowMs: number) {
   const diffMs = Math.max(0, nowMs - startedAtMs);
   const totalMin = Math.floor(diffMs / 60_000);
@@ -75,6 +81,51 @@ function formatDurationFrom(startedAtMs: number, nowMs: number) {
   return `${days} j`;
 }
 
+/** ✅ Tick local uniquement pour la durée (évite de rerender toute la page) */
+function LiveDurationText({
+  isLive,
+  startedAtMs,
+}: {
+  isLive: boolean;
+  startedAtMs: number | null;
+}) {
+  const [now, setNow] = React.useState(() => Date.now());
+
+  React.useEffect(() => {
+    if (!isLive || !startedAtMs) return;
+    setNow(Date.now());
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [isLive, startedAtMs]);
+
+  if (!isLive || !startedAtMs) return <>—</>;
+  return <>{formatDurationFrom(startedAtMs, now)}</>;
+}
+
+/** ✅ Fullscreen helpers (Android/Brave/Chrome : masque la barre URL) */
+function isFullscreen() {
+  const d: any = document;
+  return !!(document.fullscreenElement || d.webkitFullscreenElement);
+}
+async function requestFullscreenSafe() {
+  try {
+    const el: any = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (typeof req === "function") await req.call(el);
+  } catch {
+    // ignore
+  }
+}
+async function exitFullscreenSafe() {
+  try {
+    const d: any = document;
+    const exit = document.exitFullscreen || d.webkitExitFullscreen;
+    if (typeof exit === "function") await exit.call(document);
+  } catch {
+    // ignore
+  }
+}
+
 type TabKey = "about" | "clips" | "vod" | "agenda";
 
 export default function StreamerPage() {
@@ -89,7 +140,6 @@ export default function StreamerPage() {
   const [loginOpen, setLoginOpen] = React.useState(false);
   const [liveViewersNow, setLiveViewersNow] = React.useState<number | null>(null);
 
-  const [nowTick, setNowTick] = React.useState(() => Date.now());
   const [tab, setTab] = React.useState<TabKey>("about");
 
   // ✅ Mobile portrait detection (pour mini chat)
@@ -100,14 +150,12 @@ export default function StreamerPage() {
     typeof window !== "undefined" ? window.matchMedia("(orientation: portrait)").matches : true
   );
 
-  // ✅ Mode cinéma (plein écran dans la page, overlay possible)
+  // ✅ Mode cinéma (plein écran dans la page) + drawer chat
   const [cinema, setCinema] = React.useState(false);
   const [chatOpen, setChatOpen] = React.useState(false);
 
-  React.useEffect(() => {
-    const t = window.setInterval(() => setNowTick(Date.now()), 30_000);
-    return () => window.clearInterval(t);
-  }, []);
+  // ✅ pour savoir si on a demandé le fullscreen (sinon on ne force pas la fermeture)
+  const fsWantedRef = React.useRef(false);
 
   React.useEffect(() => {
     const mq1 = window.matchMedia("(max-width: 820px)");
@@ -118,7 +166,6 @@ export default function StreamerPage() {
 
     mq1.addEventListener?.("change", on1);
     mq2.addEventListener?.("change", on2);
-
     window.addEventListener("resize", on1);
 
     return () => {
@@ -137,6 +184,42 @@ export default function StreamerPage() {
       document.body.style.overflow = prev;
     };
   }, [cinema, chatOpen]);
+
+  // ✅ si l’utilisateur sort du fullscreen (gesture/back), on quitte le cinéma
+  React.useEffect(() => {
+    const onFs = () => {
+      if (!cinema) return;
+      if (!fsWantedRef.current) return;
+      if (!isFullscreen()) {
+        fsWantedRef.current = false;
+        setChatOpen(false);
+        setCinema(false);
+      }
+    };
+
+    document.addEventListener("fullscreenchange", onFs);
+    document.addEventListener("webkitfullscreenchange" as any, onFs);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      document.removeEventListener("webkitfullscreenchange" as any, onFs);
+    };
+  }, [cinema]);
+
+  const enterCinema = React.useCallback(() => {
+    fsWantedRef.current = true;
+    // IMPORTANT: appelé sur click => masque la barre URL sur Android
+    void requestFullscreenSafe();
+    setChatOpen(false);
+    setCinema(true);
+  }, []);
+
+  const leaveCinema = React.useCallback(() => {
+    fsWantedRef.current = false;
+    setChatOpen(false);
+    setCinema(false);
+    void exitFullscreenSafe();
+  }, []);
 
   React.useEffect(() => {
     let mounted = true;
@@ -173,7 +256,6 @@ export default function StreamerPage() {
 
   const liveStartedAtRaw = s?.liveStartedAt ?? s?.live_started_at ?? null;
   const liveStartedAtMs = liveStartedAtRaw ? new Date(liveStartedAtRaw).getTime() : null;
-  const durationText = isLive && liveStartedAtMs ? formatDurationFrom(liveStartedAtMs, nowTick) : "—";
 
   React.useEffect(() => {
     if (!isLive) setLiveViewersNow(null);
@@ -218,7 +300,6 @@ export default function StreamerPage() {
   const followsCount = s?.followsCount ?? null;
 
   const showMiniChat = isMobile && isPortrait && !cinema; // ✅ portrait: mini chat en bas
-  const showDrawerButton = cinema; // ✅ drawer uniquement en mode cinéma
 
   const PlayerBlock = (
     <>
@@ -250,72 +331,28 @@ export default function StreamerPage() {
     </>
   );
 
-  // ✅ Mode cinéma : fullscreen “dans la page”
-  // - Desktop: chat à droite (toggle)
-  // - Mobile: drawer bottom (toggle)
+  // ✅ Mode cinéma : fullscreen (API) + bouton chat
   if (cinema) {
     return (
       <>
         <div className="cinemaRoot">
           <div className="cinemaStage">
-            <div className={`cinemaLayout ${chatOpen ? "chatOpen" : ""}`}>
-              <div className="cinemaPlayerCard">{PlayerBlock}</div>
-
-              {/* ✅ Desktop: chat à droite */}
-              {!isMobile && chatOpen ? (
-                <aside className="cinemaChatSide">
-                  <div className="cinemaChatSideTop">
-                    <div style={{ fontWeight: 950 }}>Chat</div>
-                    <button
-                      className="iconBtn"
-                      onClick={() => setChatOpen(false)}
-                      type="button"
-                      aria-label="Fermer"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <div className="cinemaChatSideBody">
-                    <ChatPanel
-                      slug={String(slug || "")}
-                      onRequireLogin={() => setLoginOpen(true)}
-                      compact
-                      autoFocus
-                    />
-                  </div>
-                </aside>
-              ) : null}
-            </div>
+            <div className="cinemaPlayerCard">{PlayerBlock}</div>
           </div>
 
-          {/* ✅ Controls */}
           <div className="cinemaTopBar">
-            <button
-              className="btnGhostSmall"
-              type="button"
-              onClick={() => {
-                setChatOpen(false);
-                setCinema(false);
-              }}
-            >
+            <button className="btnGhostSmall" type="button" onClick={leaveCinema}>
               ✕ Quitter
             </button>
 
-            <button
-              className="btnPrimarySmall"
-              type="button"
-              onClick={() => setChatOpen((v) => !v)} // ✅ toggle (pas juste open)
-              title="Afficher / masquer le chat"
-            >
+            <button className="btnPrimarySmall" type="button" onClick={() => setChatOpen(true)} title="Ouvrir le chat">
               <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                <ChatIcon /> {chatOpen ? "Fermer chat" : "Chat"}
+                <ChatIcon /> Chat
               </span>
             </button>
           </div>
 
-          {/* ✅ Mobile: drawer bottom */}
-          {isMobile && chatOpen ? (
+          {chatOpen ? (
             <div className="chatSheetBackdrop" onClick={() => setChatOpen(false)} role="presentation">
               <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
                 <div className="chatSheetTop">
@@ -326,12 +363,7 @@ export default function StreamerPage() {
                 </div>
 
                 <div className="chatSheetBody">
-                  <ChatPanel
-                    slug={String(slug || "")}
-                    onRequireLogin={() => setLoginOpen(true)}
-                    compact
-                    autoFocus
-                  />
+                  <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} compact autoFocus />
                 </div>
               </div>
             </div>
@@ -357,7 +389,9 @@ export default function StreamerPage() {
 
           <div className="streamHeaderSub mutedSmall">
             Durée du stream actuel :{" "}
-            <strong style={{ color: "rgba(255,255,255,0.9)" }}>{durationText}</strong>
+            <strong style={{ color: "rgba(255,255,255,0.9)" }}>
+              <LiveDurationText isLive={isLive} startedAtMs={liveStartedAtMs} />
+            </strong>
           </div>
         </div>
 
@@ -370,12 +404,7 @@ export default function StreamerPage() {
               </strong>
             </div>
 
-            <button
-              type="button"
-              className="btnPrimarySmall"
-              onClick={() => setLoginOpen(true)}
-              title="Follow LunaLive (V1)"
-            >
+            <button type="button" className="btnPrimarySmall" onClick={() => setLoginOpen(true)} title="Follow LunaLive (V1)">
               Suivre
             </button>
           </div>
@@ -385,21 +414,16 @@ export default function StreamerPage() {
       {/* === Stage === */}
       <div className="streamGrid">
         <div className="streamMain">
-          {/* bouton cinéma (utile mobile + desktop) */}
+          {/* bouton cinéma */}
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-            <button
-              type="button"
-              className="btnGhostSmall"
-              onClick={() => setCinema(true)}
-              title="Mode cinéma (plein écran dans la page)"
-            >
+            <button type="button" className="btnGhostSmall" onClick={enterCinema} title="Plein écran (masque la barre URL sur mobile)">
               Plein écran
             </button>
           </div>
 
           {PlayerBlock}
 
-          {/* ✅ Mobile portrait: mini chat sous le player (hauteur fixe) */}
+          {/* ✅ Mobile portrait: mini chat sous le player */}
           {showMiniChat ? (
             <div className="panel mobileMiniChat" style={{ padding: 0, marginTop: 12 }}>
               <div className="streamChatHeader">
@@ -418,20 +442,13 @@ export default function StreamerPage() {
               </div>
 
               <div className="streamChatBody">
-                <ChatPanel
-                  slug={String(slug || "")}
-                  onRequireLogin={() => setLoginOpen(true)}
-                  compact
-                />
+                <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} compact />
               </div>
-
-              {/* (drawer uniquement en cinema, donc pas de bouton ici) */}
-              {showDrawerButton ? null : null}
             </div>
           ) : null}
         </div>
 
-        {/* Desktop / tablette: chat à droite (tu gardes ton layout) */}
+        {/* Desktop: chat à droite */}
         <aside className="panel streamChat" style={{ padding: 0 }}>
           <div className="streamChatHeader">
             <div className="streamChatHeaderLeft">

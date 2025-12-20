@@ -371,11 +371,6 @@ export function DlivePlayer({
           </div>
         )}
       </div>
-
-      {/* debug (tu pourras le retirer plus tard) */}
-      <div className="mutedSmall" style={{ padding: 10 }}>
-        {dbg}
-      </div>
     </div>
   );
 }
