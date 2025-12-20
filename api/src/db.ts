@@ -234,6 +234,11 @@ export async function migrate() {
     WHERE removed_at IS NOT NULL;
   `);
 
+  await pool.query(`
+    ALTER TABLE IF EXISTS streamers
+    ADD COLUMN IF NOT EXISTS offline_bg_path TEXT;
+  `);
+
   // 9) LIVE / STATS (sessions + samples + minutes)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS live_sessions (

@@ -122,6 +122,7 @@ export default function StreamerPage() {
 
   const channelSlug = s?.channel_slug ?? s?.channelSlug;
   const channelUsername = s?.channel_username ?? s?.channelUsername;
+  const offlineBgUrl = s?.offlineBgUrl ?? null;
 
   // (optionnel) durée: nécessite liveStartedAt dans la réponse API /streamers/:slug
   const liveStartedAtRaw = s?.liveStartedAt ?? s?.live_started_at ?? null;
@@ -216,9 +217,31 @@ export default function StreamerPage() {
       {/* === Stage: player + chat === */}
       <div className="streamGrid">
         <div className="streamMain">
-          <div className="panel streamPlayerPanel" style={{ padding: 0, overflow: "hidden" }}>
+          {isLive ? (
             <DlivePlayer channelSlug={channelSlug} channelUsername={channelUsername} isLive={isLive} />
-          </div>
+          ) : (
+            <div
+              className="panel"
+              style={{
+                padding: 0,
+                overflow: "hidden",
+                borderRadius: 18,
+                aspectRatio: "16/9",
+                background: offlineBgUrl
+                  ? `linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0.25)), url(${offlineBgUrl}) center/cover no-repeat`
+                  : "rgba(255,255,255,0.04)",
+                display: "flex",
+                alignItems: "flex-end",
+              }}
+            >
+              <div style={{ padding: 16 }}>
+                <div style={{ fontWeight: 950, fontSize: 18 }}>OFFLINE</div>
+                <div className="mutedSmall" style={{ marginTop: 6 }}>
+                  {title}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <aside className="panel streamChat" style={{ padding: 0 }}>

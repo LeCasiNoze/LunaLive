@@ -31,10 +31,20 @@ app.use(express.json());
 registerChatRoutes(app);
 registerStatsRoutes(app);
 
+import path from "path";
+import { streamerUploadsRouter } from "./routes/streamer_uploads.js";
+
 import { thumbsRouter } from "./routes/thumbs.js";
 app.use(thumbsRouter);
 import { moderationRouter } from "./routes/moderation.js";
 app.use(moderationRouter);
+app.use(
+  "/uploads",
+  express.static(path.resolve(process.cwd(), "uploads"), {
+    maxAge: "7d",
+  })
+);
+app.use(streamerUploadsRouter);
 
 registerHlsProxy(app);
 app.options("/hls", (_req, res) => res.sendStatus(204));
@@ -115,6 +125,7 @@ app.get(
          s.is_live AS "isLive",
          s.live_started_at AS "liveStartedAt",
          s.appearance AS "appearance",
+         s.offline_bg_path AS "offlineBgPath",
          pa.channel_slug AS "channelSlug",
          pa.channel_username AS "channelUsername"
        FROM streamers s
@@ -128,7 +139,14 @@ app.get(
     );
 
     if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
-    res.json(rows[0]);
+    const row = rows[0];
+    const base = (process.env.PUBLIC_API_BASE || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+    const offlineBgUrl = row.offlineBgPath ? `${base}/uploads/streamers/${encodeURIComponent(row.offlineBgPath)}` : null;
+
+    res.json({
+      ...row,
+      offlineBgUrl,
+    });
   })
 );
 
@@ -459,16 +477,23 @@ app.get(
     }
 
     const cur = await pool.query(
-      `SELECT appearance FROM streamers WHERE user_id=$1 LIMIT 1`,
+      `SELECT slug, appearance, offline_bg_path
+      FROM streamers WHERE user_id=$1 LIMIT 1`,
       [req.user!.id]
     );
     if (!cur.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
 
-    res.json({
-      ok: true,
-      appearance: normalizeAppearance(cur.rows[0].appearance || {}),
-      presets: PRESET_COLORS,
-    });
+  const base = (process.env.PUBLIC_API_BASE || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+  const offlineBgUrl = cur.rows[0].offline_bg_path
+    ? `${base}/uploads/streamers/${encodeURIComponent(cur.rows[0].offline_bg_path)}`
+    : null;
+
+  res.json({
+    ok: true,
+    appearance: normalizeAppearance(cur.rows[0].appearance || {}),
+    presets: PRESET_COLORS,
+    offlineBgUrl,
+  });
   })
 );
 
