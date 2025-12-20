@@ -50,6 +50,9 @@ export default function StreamerPage() {
   // ✅ modal login piloté par la page
   const [loginOpen, setLoginOpen] = React.useState(false);
 
+  // ✅ viewers temps réel (venant du heartbeat API)
+  const [liveViewersNow, setLiveViewersNow] = React.useState<number | null>(null);
+
   React.useEffect(() => {
     let mounted = true;
 
@@ -72,11 +75,18 @@ export default function StreamerPage() {
 
   const s = data?.streamer || data; // selon ton format d’API
   const title = s?.title || "Stream";
-  const isLive = s?.is_live ?? s?.isLive;
-  const viewers = s?.viewers ?? s?.watchingCount ?? 0;
+  const isLive = !!(s?.is_live ?? s?.isLive);
+
+  const viewersFromApi = Number(s?.viewers ?? s?.watchingCount ?? 0);
+  const viewers = isLive ? (liveViewersNow ?? viewersFromApi) : 0;
 
   const channelSlug = s?.channel_slug ?? s?.channelSlug;
   const channelUsername = s?.channel_username ?? s?.channelUsername;
+
+  // reset si on repasse offline
+  React.useEffect(() => {
+    if (!isLive) setLiveViewersNow(null);
+  }, [isLive]);
 
   // ✅ Heartbeat watch tracking (stats)
   React.useEffect(() => {
@@ -89,8 +99,18 @@ export default function StreamerPage() {
     const beat = async () => {
       if (stopped) return;
       if (document.visibilityState === "hidden") return;
+
       try {
-        await watchHeartbeat({ slug: String(slug), anonId }, token);
+        // ✅ on envoie aussi isLive (même si l’API peut l’ignorer)
+        const r = await watchHeartbeat({ slug: String(slug), anonId, isLive: true }, token);
+
+        // ✅ on récup le compteur temps réel
+        if (r?.isLive && typeof r.viewersNow === "number") {
+          setLiveViewersNow(r.viewersNow);
+        }
+        if (r?.isLive === false) {
+          setLiveViewersNow(0);
+        }
       } catch {}
     };
 

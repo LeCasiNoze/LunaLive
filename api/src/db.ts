@@ -4,7 +4,10 @@ import { Pool, type QueryResult } from "pg";
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   // Render Postgres est quasi toujours en TLS en prod
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
+  ssl:
+    process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : undefined,
 });
 
 // Petit alias pratique (si tu veux faire: db.query(...) ailleurs)
@@ -71,7 +74,7 @@ export async function migrate() {
     );
   `);
 
-  // 1bis) CHAT TABLES (rétention fonctionnelle = nettoyage après 3 jours d’inactivité)
+  // 1bis) CHAT TABLES
   await pool.query(`
     CREATE TABLE IF NOT EXISTS chat_messages (
       id BIGSERIAL PRIMARY KEY,
@@ -109,7 +112,7 @@ export async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_by INT NULL REFERENCES users(id) ON DELETE SET NULL,
 
-      -- ✅ pour pouvoir "retirer" sans perdre l'historique / events
+      -- ✅ pour pouvoir "retirer" sans perdre l'historique
       removed_at TIMESTAMPTZ NULL,
       removed_by INT NULL REFERENCES users(id) ON DELETE SET NULL,
 
@@ -119,13 +122,21 @@ export async function migrate() {
 
   // 2) Upgrade users (ajout de colonnes si elles n'existent pas)
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ NULL;`);
+  await pool.query(
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;`
+  );
+  await pool.query(
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ NULL;`
+  );
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_ip INET NULL;`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip INET NULL;`);
+  await pool.query(
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip INET NULL;`
+  );
 
   // provider_accounts upgrade (si existait avant)
-  await pool.query(`ALTER TABLE provider_accounts ADD COLUMN IF NOT EXISTS channel_username TEXT;`);
+  await pool.query(
+    `ALTER TABLE provider_accounts ADD COLUMN IF NOT EXISTS channel_username TEXT;`
+  );
 
   // On garde username/password_hash non null pour la logique auth
   await pool.query(`ALTER TABLE users ALTER COLUMN username SET NOT NULL;`);
@@ -140,18 +151,34 @@ export async function migrate() {
   `);
 
   // 4) Index uniques case-insensitive (après ajout colonnes)
-  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_uq ON users (lower(username));`);
-  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_uq ON users (lower(email));`);
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_uq ON users (lower(username));`
+  );
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_uq ON users (lower(email));`
+  );
 
-  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS pending_username_lower_uq ON pending_registrations (lower(username));`);
-  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS pending_email_lower_uq ON pending_registrations (lower(email));`);
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS pending_username_lower_uq ON pending_registrations (lower(username));`
+  );
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS pending_email_lower_uq ON pending_registrations (lower(email));`
+  );
 
   // 5) Streamers upgrades + index
   await pool.query(`ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS user_id INT;`);
-  await pool.query(`ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT FALSE;`);
-  await pool.query(`ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ;`);
-  await pool.query(`ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
-  await pool.query(`ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+  await pool.query(
+    `ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT FALSE;`
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ;`
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`
+  );
   await pool.query(`ALTER TABLE streamers ADD COLUMN IF NOT EXISTS thumb_url TEXT;`);
   await pool.query(`ALTER TABLE streamers ADD COLUMN IF NOT EXISTS live_started_at TIMESTAMPTZ;`);
 
@@ -188,8 +215,12 @@ export async function migrate() {
   `);
 
   // 8) streamer_mods upgrades + index (soft remove)
-  await pool.query(`ALTER TABLE streamer_mods ADD COLUMN IF NOT EXISTS removed_at TIMESTAMPTZ NULL;`);
-  await pool.query(`ALTER TABLE streamer_mods ADD COLUMN IF NOT EXISTS removed_by INT NULL REFERENCES users(id) ON DELETE SET NULL;`);
+  await pool.query(
+    `ALTER TABLE streamer_mods ADD COLUMN IF NOT EXISTS removed_at TIMESTAMPTZ NULL;`
+  );
+  await pool.query(
+    `ALTER TABLE streamer_mods ADD COLUMN IF NOT EXISTS removed_by INT NULL REFERENCES users(id) ON DELETE SET NULL;`
+  );
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS streamer_mods_streamer_active_idx
@@ -202,8 +233,8 @@ export async function migrate() {
     ON streamer_mods(streamer_id, removed_at DESC)
     WHERE removed_at IS NOT NULL;
   `);
-  
-  // 9) LIVE / STATS (sessions + viewers samples)
+
+  // 9) LIVE / STATS (sessions + samples + minutes)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS live_sessions (
       id BIGSERIAL PRIMARY KEY,
@@ -256,8 +287,27 @@ export async function migrate() {
 
     CREATE INDEX IF NOT EXISTS stream_viewer_samples_bucket_idx
     ON stream_viewer_samples(bucket_ts DESC);
-  `);
 
+    -- ✅ 1 ligne / viewer / minute (source de vérité watchtime "A")
+    CREATE TABLE IF NOT EXISTS stream_viewer_minutes (
+      live_session_id BIGINT NOT NULL REFERENCES live_sessions(id) ON DELETE CASCADE,
+      streamer_id INT NOT NULL REFERENCES streamers(id) ON DELETE CASCADE,
+      bucket_ts TIMESTAMPTZ NOT NULL,       -- date_trunc('minute', now())
+      viewer_key TEXT NOT NULL,             -- u:123 ou a:uuid
+      user_id INT NULL REFERENCES users(id) ON DELETE SET NULL,
+      anon_id TEXT NULL,
+      PRIMARY KEY (live_session_id, bucket_ts, viewer_key)
+    );
+
+    CREATE INDEX IF NOT EXISTS stream_viewer_minutes_streamer_bucket_idx
+    ON stream_viewer_minutes(streamer_id, bucket_ts DESC);
+
+    CREATE INDEX IF NOT EXISTS stream_viewer_minutes_streamer_viewer_idx
+    ON stream_viewer_minutes(streamer_id, viewer_key);
+
+    CREATE INDEX IF NOT EXISTS stream_viewer_minutes_live_bucket_idx
+    ON stream_viewer_minutes(live_session_id, bucket_ts DESC);
+  `);
 }
 
 export async function seedIfEmpty() {

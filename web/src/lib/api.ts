@@ -431,17 +431,20 @@ export type ApiStatsSeries = {
 };
 
 export async function watchHeartbeat(
-  payload: { slug: string; anonId: string },
+  payload: { slug: string; anonId: string; isLive?: boolean },
   token?: string | null
 ) {
-  return j<{ ok: true; isLive: boolean; viewersNow?: number }>("/watch/heartbeat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(payload),
-  });
+  return j<{ ok: true; isLive: boolean; viewersNow?: number; self?: boolean }>(
+    "/watch/heartbeat",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    }
+  );
 }
 
 export async function getMyStatsSummary(token: string, period: StatsPeriod, cursor: string) {

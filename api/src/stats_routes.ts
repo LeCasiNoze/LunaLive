@@ -134,75 +134,138 @@ export function registerStatsRoutes(app: Express) {
   app.post(
     "/watch/heartbeat",
     a(async (req, res) => {
-      const slug = String(req.body?.slug || "").trim();
-      const anonId = cleanAnonId(req.body?.anonId);
+    const slug = String(req.body?.slug || "").trim();
+    const anonId = cleanAnonId(req.body?.anonId);
 
-      const user = decodeOptionalUser(req);
+    // ✅ hint côté client (optionnel)
+    const isLiveRaw = req.body?.isLive;
+    const isLiveHint =
+        isLiveRaw === undefined ? undefined : !!isLiveRaw;
 
-      // si pas user => anonId obligatoire
-      if (!user && !anonId) {
+    const user = decodeOptionalUser(req);
+
+    // si pas user => anonId obligatoire
+    if (!user && !anonId) {
         return res.status(400).json({ ok: false, error: "anon_required" });
-      }
+    }
 
-      const meta = await getStreamerBySlug(slug);
-      if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    const meta = await getStreamerBySlug(slug);
+    if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
-      // Si OFFLINE => on ne crée rien, mais on répond ok (utile front)
-      if (!meta.isLive) {
-        return res.json({ ok: true, isLive: false });
-      }
+    // ✅ source de vérité "live"
+    // - si le client nous dit quelque chose => on suit le client
+    // - sinon fallback DB
+    const shouldTrackLive = (isLiveHint !== undefined) ? isLiveHint : meta.isLive;
 
-      const liveSessionId = await ensureOpenLiveSession(meta.id);
+    // Si OFFLINE => on ne crée rien, mais on répond ok (utile front)
+    if (!shouldTrackLive) {
+        return res.json({ ok: true, isLive: false, viewersNow: 0 });
+    }
 
-      const viewerKey = user ? `u:${user.id}` : `a:${anonId}`;
-      const ua = String(req.headers["user-agent"] || "").slice(0, 300) || null;
-      const ip = (req.ip || null) as any;
+    // ✅ garantit une live_session ouverte (utile pour "heures streamées")
+    const liveSessionId = await ensureOpenLiveSession(meta.id);
 
-      await pool.query(
+    // ✅ streamer lui-même non compté
+    if (user) {
+        const own = await pool.query(
+        `SELECT 1
+        FROM streamers
+        WHERE id=$1 AND user_id=$2
+        LIMIT 1`,
+        [meta.id, user.id]
+        );
+
+        if (own.rows?.[0]) {
+        // au cas où il existait déjà une session viewer ouverte, on la ferme
+        await pool.query(
+            `UPDATE viewer_sessions
+            SET ended_at=NOW()
+            WHERE live_session_id=$1
+            AND viewer_key=$2
+            AND ended_at IS NULL`,
+            [liveSessionId, `u:${user.id}`]
+        );
+
+        const viewersNow = await countActiveViewers(liveSessionId);
+
+        // sample / minute (même si 0 viewer : ça trace l'état)
+        await pool.query(
+            `INSERT INTO stream_viewer_samples (streamer_id, live_session_id, bucket_ts, viewers)
+            VALUES ($1,$2,date_trunc('minute', NOW()),$3)
+            ON CONFLICT (streamer_id, bucket_ts)
+            DO UPDATE SET viewers=EXCLUDED.viewers, live_session_id=EXCLUDED.live_session_id`,
+            [meta.id, liveSessionId, viewersNow]
+        );
+
+        return res.json({ ok: true, isLive: true, viewersNow, self: true });
+        }
+    }
+
+    // viewer normal
+    const viewerKey = user ? `u:${user.id}` : `a:${anonId}`;
+    const ua = String(req.headers["user-agent"] || "").slice(0, 300) || null;
+    const ip = (req.ip || null) as any;
+
+    // ✅ session active (TTL)
+    await pool.query(
         `INSERT INTO viewer_sessions
-           (live_session_id, streamer_id, viewer_key, user_id, anon_id, started_at, last_heartbeat_at, ended_at, user_agent, ip)
-         VALUES
-           ($1,$2,$3,$4,$5,NOW(),NOW(),NULL,$6,$7)
-         ON CONFLICT (live_session_id, viewer_key)
-         DO UPDATE SET last_heartbeat_at=NOW(), ended_at=NULL`,
+        (live_session_id, streamer_id, viewer_key, user_id, anon_id, started_at, last_heartbeat_at, ended_at, user_agent, ip)
+        VALUES
+        ($1,$2,$3,$4,$5,NOW(),NOW(),NULL,$6,$7)
+        ON CONFLICT (live_session_id, viewer_key)
+        DO UPDATE SET last_heartbeat_at=NOW(), ended_at=NULL`,
         [liveSessionId, meta.id, viewerKey, user ? user.id : null, user ? null : anonId, ua, ip]
-      );
+    );
 
-      // sample / minute
-      const viewersNow = await countActiveViewers(liveSessionId);
+    // ✅ minute-based watchtime (A) : 1 ligne max / viewer / minute
+    await pool.query(
+        `INSERT INTO stream_viewer_minutes
+        (live_session_id, streamer_id, bucket_ts, viewer_key, user_id, anon_id)
+        VALUES
+        ($1,$2,date_trunc('minute', NOW()),$3,$4,$5)
+        ON CONFLICT DO NOTHING`,
+        [liveSessionId, meta.id, viewerKey, user ? user.id : null, user ? null : anonId]
+    );
 
-      await pool.query(
+    const viewersNow = await countActiveViewers(liveSessionId);
+
+    // sample / minute (pour peak/avg + chart viewers)
+    await pool.query(
         `INSERT INTO stream_viewer_samples (streamer_id, live_session_id, bucket_ts, viewers)
-         VALUES ($1,$2,date_trunc('minute', NOW()),$3)
-         ON CONFLICT (streamer_id, bucket_ts)
-         DO UPDATE SET viewers=EXCLUDED.viewers, live_session_id=EXCLUDED.live_session_id`,
+        VALUES ($1,$2,date_trunc('minute', NOW()),$3)
+        ON CONFLICT (streamer_id, bucket_ts)
+        DO UPDATE SET viewers=EXCLUDED.viewers, live_session_id=EXCLUDED.live_session_id`,
         [meta.id, liveSessionId, viewersNow]
-      );
+    );
 
-      res.json({ ok: true, isLive: true, viewersNow });
+    res.json({ ok: true, isLive: true, viewersNow });
     })
+
   );
 
   /**
    * Streamer dashboard: summary stats (current period + prev period)
    * query: period=daily|weekly|monthly, cursor=YYYY-MM-DD
    */
-  app.get(
-    "/streamer/me/stats/summary",
-    requireAuth,
-    a(async (req: any, res) => {
-      if (req.user!.role !== "streamer" && req.user!.role !== "admin") {
-        return res.status(403).json({ ok: false, error: "forbidden" });
-      }
+app.get(
+  "/streamer/me/stats/summary",
+  requireAuth,
+  a(async (req: any, res) => {
+    if (req.user!.role !== "streamer" && req.user!.role !== "admin") {
+      return res.status(403).json({ ok: false, error: "forbidden" });
+    }
 
-      const period = assertPeriod(req.query.period);
-      const cursor = String(req.query.cursor || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+    const period = assertPeriod(req.query.period);
+    const cursor =
+      String(req.query.cursor || "").slice(0, 10) ||
+      new Date().toISOString().slice(0, 10);
 
-      const streamerId = await getMyStreamerId(req.user!.id);
-      if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    const streamerId = await getMyStreamerId(req.user!.id);
+    if (!streamerId)
+      return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
-      const q = await pool.query(
-        `
+    const q = await pool.query(
+      `
 WITH input AS (
   SELECT
     $1::int AS streamer_id,
@@ -279,17 +342,20 @@ days AS (
   ) d ON TRUE
   GROUP BY r.k
 ),
+
+/* ✅ watchtime "A" : 1 ligne / viewer / minute */
 viewers AS (
   SELECT r.k,
-    COALESCE(COUNT(DISTINCT vs.viewer_key),0)::int AS viewers_unique,
-    COALESCE(SUM(GREATEST(0, EXTRACT(EPOCH FROM LEAST(COALESCE(vs.ended_at, vs.last_heartbeat_at), r.end_at) - GREATEST(vs.started_at, r.start_at)))),0)::float AS watch_seconds
+    COALESCE(COUNT(DISTINCT svm.viewer_key),0)::int AS viewers_unique,
+    (COALESCE(COUNT(svm.viewer_key),0)::float * 60.0) AS watch_seconds
   FROM ranges r
-  LEFT JOIN viewer_sessions vs
-    ON vs.streamer_id=r.streamer_id
-   AND vs.started_at < r.end_at
-   AND COALESCE(vs.ended_at, vs.last_heartbeat_at) > r.start_at
+  LEFT JOIN stream_viewer_minutes svm
+    ON svm.streamer_id = r.streamer_id
+   AND svm.bucket_ts >= r.start_at
+   AND svm.bucket_ts < r.end_at
   GROUP BY r.k
 ),
+
 chat AS (
   SELECT r.k,
     COALESCE(COUNT(*) FILTER (WHERE cm.deleted_at IS NULL),0)::int AS messages,
@@ -336,12 +402,12 @@ SELECT
   (SELECT avg_viewers FROM samples WHERE k='prev') AS "prevAvgViewers"
 FROM rangebase rb
 LIMIT 1;
-        `,
-        [streamerId, period, cursor]
-      );
+      `,
+      [streamerId, period, cursor]
+    );
 
-      const row = q.rows?.[0];
-      if (!row) return res.json({ ok: true, period, cursor, metrics: {} });
+    const row = q.rows?.[0];
+    if (!row) return res.json({ ok: true, period, cursor, metrics: {} });
 
       const streamSeconds = Number(row.streamSeconds || 0);
       const streamHours = streamSeconds / 3600;
@@ -445,6 +511,11 @@ app.get(
         ? `date_trunc('hour', cm.created_at AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`
         : `date_trunc('day',  cm.created_at AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
 
+    const bucketExprMinutes =
+        period === "daily"
+            ? `date_trunc('hour', svm.bucket_ts AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`
+            : `date_trunc('day',  svm.bucket_ts AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
+
     // ✅ FIX: qualify columns + use input.bucket_seconds so $4 always has a known type
     const aggSQL =
       metric === "messages"
@@ -475,17 +546,17 @@ agg AS (
 : metric === "watch_time"
 ? `
 agg AS (
-  SELECT ${bucketExprSamples} AS bucket,
-         (AVG(svs.viewers)::float * MAX(input.bucket_seconds)) AS v
-  FROM stream_viewer_samples svs
+  SELECT ${bucketExprMinutes} AS bucket,
+         (COUNT(svm.viewer_key)::float / 60.0) AS v   -- ✅ heures de watchtime dans le bucket
+  FROM stream_viewer_minutes svm
   CROSS JOIN rb
-  CROSS JOIN input
-  WHERE svs.streamer_id=$1
-    AND svs.bucket_ts >= rb.range_start
-    AND svs.bucket_ts < rb.range_end
+  WHERE svm.streamer_id=$1
+    AND svm.bucket_ts >= rb.range_start
+    AND svm.bucket_ts < rb.range_end
   GROUP BY 1
 )
 `
+
         : `
 agg AS (
   SELECT ${bucketExprSamples} AS bucket, AVG(svs.viewers)::float AS v
