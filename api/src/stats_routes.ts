@@ -472,10 +472,11 @@ agg AS (
   GROUP BY 1
 )
 `
-        : metric === "watch_time"
-        ? `
+: metric === "watch_time"
+? `
 agg AS (
-  SELECT ${bucketExprSamples} AS bucket, (AVG(svs.viewers)::float * input.bucket_seconds) AS v
+  SELECT ${bucketExprSamples} AS bucket,
+         (AVG(svs.viewers)::float * MAX(input.bucket_seconds)) AS v
   FROM stream_viewer_samples svs
   CROSS JOIN rb
   CROSS JOIN input

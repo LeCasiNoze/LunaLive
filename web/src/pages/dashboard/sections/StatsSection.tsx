@@ -1,7 +1,58 @@
 import * as React from "react";
-import type { ApiMyStreamer, ApiStatsSummary, StatsMetric, StatsPeriod } from "../../../lib/api";
+import type {
+  ApiMyStreamer,
+  ApiStatsSummary,
+  StatsMetric,
+  StatsPeriod,
+} from "../../../lib/api";
 import { getMyStatsSeries, getMyStatsSummary } from "../../../lib/api";
 import { useAuth } from "../../../auth/AuthProvider";
+
+/**
+ * ✅ ICI : timezone UI
+ * Si tu es en France => Europe/Paris
+ * (Oslo/Paris ont le même offset la plupart du temps, mais ça évite les bugs de "jour qui saute")
+ */
+const UI_TZ = "Europe/Paris";
+
+function isoTodayInTZ(tz: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const y = parts.find((p) => p.type === "year")?.value ?? "1970";
+  const m = parts.find((p) => p.type === "month")?.value ?? "01";
+  const d = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${y}-${m}-${d}`; // YYYY-MM-DD
+}
+
+/** Ajoute des jours à un YYYY-MM-DD sans subir les décalages timezone. */
+function addDaysISO(iso: string, days: number) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Ajoute des mois à un YYYY-MM-DD sans toISOString locale (gère les fins de mois). */
+function addMonthsISO(iso: string, months: number) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const day = d.getUTCDate();
+
+  // se mettre au 1er pour éviter les sauts bizarres (31 -> mois suivant)
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + months);
+
+  // clamp au dernier jour du mois
+  const lastDay = new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)
+  ).getUTCDate();
+  d.setUTCDate(Math.min(day, lastDay));
+
+  return d.toISOString().slice(0, 10);
+}
 
 function fmtPct(x: number | null) {
   if (x === null) return "—";
@@ -26,7 +77,8 @@ function MiniLine({ points }: { points: { t: string; v: number }[] }) {
   const min = Math.min(0, ...vals);
   const max = Math.max(1, ...vals);
 
-  const X = (i: number) => pad + (i * (w - pad * 2)) / Math.max(1, points.length - 1);
+  const X = (i: number) =>
+    pad + (i * (w - pad * 2)) / Math.max(1, points.length - 1);
   const Y = (v: number) => {
     const t = (v - min) / (max - min || 1);
     return h - pad - t * (h - pad * 2);
@@ -55,19 +107,23 @@ export function StatsSection({ streamer }: { streamer: ApiMyStreamer }) {
   const token = auth?.token as string | undefined;
 
   const [period, setPeriod] = React.useState<StatsPeriod>("daily");
-  const [cursor, setCursor] = React.useState<string>(() => new Date().toISOString().slice(0, 10));
+
+  // ✅ IMPORTANT: "aujourd'hui" calculé dans le TZ choisi (France/Paris)
+  const [cursor, setCursor] = React.useState<string>(() => isoTodayInTZ(UI_TZ));
+
   const [metric, setMetric] = React.useState<StatsMetric>("viewers_avg");
 
   const [sum, setSum] = React.useState<ApiStatsSummary | null>(null);
   const [series, setSeries] = React.useState<{ t: string; v: number }[]>([]);
   const [loading, setLoading] = React.useState(false);
 
+  // ✅ Fix navigation : pas de toISOString sur une date locale
   const move = (dir: -1 | 1) => {
-    const d = new Date(cursor + "T00:00:00");
-    if (period === "daily") d.setDate(d.getDate() + dir);
-    if (period === "weekly") d.setDate(d.getDate() + dir * 7);
-    if (period === "monthly") d.setMonth(d.getMonth() + dir);
-    setCursor(d.toISOString().slice(0, 10));
+    setCursor((c) => {
+      if (period === "daily") return addDaysISO(c, dir);
+      if (period === "weekly") return addDaysISO(c, dir * 7);
+      return addMonthsISO(c, dir); // monthly
+    });
   };
 
   React.useEffect(() => {
@@ -122,17 +178,24 @@ export function StatsSection({ streamer }: { streamer: ApiMyStreamer }) {
         border: active ? "1px solid rgba(180,160,255,0.45)" : undefined,
       }}
     >
-      <div className="mutedSmall" style={{ marginBottom: 6 }}>{title}</div>
+      <div className="mutedSmall" style={{ marginBottom: 6 }}>
+        {title}
+      </div>
       <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>{value}</div>
       {growth !== undefined ? (
-        <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.85 }}>{growth}</div>
+        <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.85 }}>
+          {growth}
+        </div>
       ) : null}
     </button>
   );
 
   return (
     <div className="panel">
-      <div className="panelTitle" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div
+        className="panelTitle"
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+      >
         <span>Stats</span>
         <span className="mutedSmall">@{streamer.slug}</span>
       </div>
@@ -152,9 +215,15 @@ export function StatsSection({ streamer }: { streamer: ApiMyStreamer }) {
 
         <div style={{ flex: 1 }} />
 
-        <button type="button" className="btn" onClick={() => move(-1)}>◀</button>
-        <div className="mutedSmall" style={{ padding: "6px 10px" }}>{cursor}</div>
-        <button type="button" className="btn" onClick={() => move(1)}>▶</button>
+        <button type="button" className="btn" onClick={() => move(-1)}>
+          ◀
+        </button>
+        <div className="mutedSmall" style={{ padding: "6px 10px" }}>
+          {cursor}
+        </div>
+        <button type="button" className="btn" onClick={() => move(1)}>
+          ▶
+        </button>
       </div>
 
       <div style={{ marginTop: 12 }}>
@@ -243,7 +312,9 @@ export function StatsSection({ streamer }: { streamer: ApiMyStreamer }) {
         <div className="panel" style={{ opacity: 0.6 }}>
           <div className="mutedSmall">V2</div>
           <div style={{ fontWeight: 800, marginTop: 6 }}>Follows / Subs / Dons</div>
-          <div className="mutedSmall" style={{ marginTop: 8 }}>à brancher plus tard</div>
+          <div className="mutedSmall" style={{ marginTop: 8 }}>
+            à brancher plus tard
+          </div>
         </div>
       </div>
     </div>
