@@ -32,7 +32,7 @@ body{
   padding: 18px;
   max-width: 1200px;
   margin: 0 auto;
-  padding-bottom: 96px; /* place pour bottom tabs */
+  padding-bottom: 18px; /* place pour bottom tabs */
 }
 .pageTitle h1{ margin: 10px 0 4px; font-size: 28px; }
 .muted{ margin: 0; color: var(--muted); font-size: 14px; }
@@ -558,14 +558,15 @@ body{
 
 /* chat sticky à droite */
 .streamChat{
-  min-width: 0;
-  height: calc(100vh - 170px);
+  height: calc(100dvh - 86px - 18px); /* topbar + padding */
   position: sticky;
   top: 86px;
   display:flex;
   flex-direction: column;
-  overflow:hidden;
+  overflow: hidden;
+  min-height: 520px;
 }
+
 
 .streamChatHeader{
   display:flex;
@@ -661,4 +662,89 @@ body{
 
 .chat-fade-left{
   animation: chatFadeLeft 180ms ease-out both;
+}
+
+/* ===========================
+   Mobile Chat Drawer (Option 1)
+   =========================== */
+
+/* scrollbar invisible mais scroll OK */
+.chatScroll{
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.chatScroll::-webkit-scrollbar{
+  width: 0;
+  height: 0;
+}
+
+/* FAB chat (mobile) */
+.chatFab{
+  position: fixed;
+  right: 14px;
+  bottom: calc(72px + env(safe-area-inset-bottom)); /* au-dessus des bottomTabs */
+  z-index: 55;
+
+  display: none; /* activé en mobile */
+  align-items: center;
+  gap: 10px;
+
+  padding: 12px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(17, 10, 23, 0.78);
+  backdrop-filter: blur(10px);
+  color: rgba(255,255,255,0.95);
+  font-weight: 950;
+
+  box-shadow: 0 16px 50px rgba(0,0,0,0.45);
+}
+.chatFab:active{ transform: translateY(1px); }
+.chatFabLabel{ font-size: 13px; opacity: 0.95; }
+
+/* backdrop + sheet */
+.chatSheetBackdrop{
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 10px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+}
+
+.chatSheet{
+  width: min(720px, 100%);
+  height: min(82dvh, 720px);
+  border-radius: 20px 20px 0 0;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(17, 10, 23, 0.96);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.55);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.chatSheetTop{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.chatSheetBody{
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Mobile rules: on cache le chat inline (sinon ça ruine la page) */
+@media (max-width: 820px){
+  .streamChat{ display:none !important; } /* chat inline off */
+  .chatFab{ display:flex; }              /* FAB on */
 }

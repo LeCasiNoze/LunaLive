@@ -1,4 +1,3 @@
-// web/src/components/ChatPanel.tsx
 import * as React from "react";
 import { io, type Socket } from "socket.io-client";
 import { useAuth } from "../auth/AuthProvider";
@@ -38,7 +37,6 @@ type JoinAck = {
   };
   me?: { id: number; username: string; role: string } | null;
 
-  // ✅ Appearance streamer (DB)
   appearance?: StreamerAppearance;
 };
 
@@ -60,27 +58,17 @@ function fmtRemaining(untilIso?: string | null) {
   return `${d}j`;
 }
 
-function DownArrowIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 5v12"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M7 13l5 5 5-5"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLogin: () => void }) {
+export function ChatPanel({
+  slug,
+  onRequireLogin,
+  compact = false,
+  autoFocus = false,
+}: {
+  slug: string;
+  onRequireLogin: () => void;
+  compact?: boolean;
+  autoFocus?: boolean;
+}) {
   const [messages, setMessages] = React.useState<ChatMsg[]>([]);
   const [input, setInput] = React.useState("");
   const [sending, setSending] = React.useState(false);
@@ -89,17 +77,19 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   const [error, setError] = React.useState<string | null>(null);
   const { token } = useAuth();
 
-  // ✅ appearance
   const [appearance, setAppearance] = React.useState<StreamerAppearance>(DEFAULT_STREAMER_APPEARANCE);
 
-  // ✅ évite le flash: on affiche les messages seulement quand on a l'apparence (ou join fail)
-  const [appearanceReady, setAppearanceReady] = React.useState(false);
-  const [initialMessagesLoaded, setInitialMessagesLoaded] = React.useState(false);
+  const [initialLoading, setInitialLoading] = React.useState(true);
 
   const sockRef = React.useRef<Socket | null>(null);
   const listRef = React.useRef<HTMLDivElement | null>(null);
-  const endRef = React.useRef<HTMLDivElement | null>(null);
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
+
   const navigate = useNavigate();
+
+  // autoscroll intelligent
+  const atBottomRef = React.useRef(true);
+  const [showJump, setShowJump] = React.useState(false);
 
   const myId = join?.me?.id != null ? Number(join.me.id) : null;
 
@@ -109,14 +99,12 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     y: number;
     msg: ChatMsg | null;
 
-    // mods
     modLoading?: boolean;
     isTargetMod?: boolean | null;
 
-    // timeout status
     timeoutLoading?: boolean;
     targetTimeoutUntil?: string | null;
-  }>(() => ({
+  }>({
     open: false,
     x: 0,
     y: 0,
@@ -125,7 +113,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     modLoading: false,
     timeoutLoading: false,
     targetTimeoutUntil: null,
-  }));
+  });
 
   function closeMenu() {
     setMenu({
@@ -140,76 +128,35 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     });
   }
 
-  // ======== Auto-scroll intelligent ========
-  const wasAtBottomRef = React.useRef(true);
-  const [showJumpToBottom, setShowJumpToBottom] = React.useState(false);
+  const perms = join?.perms;
+  const state = join?.state;
 
-  function isAtBottom(el: HTMLDivElement) {
-    const threshold = 36; // px
-    const dist = el.scrollHeight - (el.scrollTop + el.clientHeight);
-    return dist <= threshold;
+  const isAuthed = !!token;
+  const isBanned = !!state?.banned;
+  const timeoutUntil = state?.timeoutUntil || null;
+  const isTimedOut = !!timeoutUntil && new Date(timeoutUntil).getTime() > Date.now();
+
+  const canSend = isAuthed && !isBanned && !isTimedOut;
+
+  function scrollToBottom(behavior: ScrollBehavior = "auto") {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+    atBottomRef.current = true;
+    setShowJump(false);
   }
 
-  function scrollToBottom(behavior: "auto" | "smooth" = "auto") {
+  function onScrollList() {
     const el = listRef.current;
     if (!el) return;
 
-    // meilleure stabilité avec un sentinel
-    if (endRef.current) {
-      endRef.current.scrollIntoView({ block: "end", behavior });
-    } else {
-      el.scrollTo({ top: el.scrollHeight, behavior });
-    }
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const atBottom = dist < 40; // seuil
+    atBottomRef.current = atBottom;
 
-    wasAtBottomRef.current = true;
-    setShowJumpToBottom(false);
+    if (atBottom) setShowJump(false);
+    else setShowJump(true);
   }
-
-  function onListScroll() {
-    const el = listRef.current;
-    if (!el) return;
-    const atBottom = isAtBottom(el);
-    wasAtBottomRef.current = atBottom;
-    setShowJumpToBottom(!atBottom);
-  }
-
-  // load last messages
-  React.useEffect(() => {
-    let cancelled = false;
-    setInitialMessagesLoaded(false);
-
-    (async () => {
-      try {
-        setError(null);
-        const r = await fetch(`${apiBase()}/chat/${encodeURIComponent(slug)}/messages?limit=50`);
-        const j = await r.json();
-        if (cancelled) return;
-        if (!j?.ok) throw new Error(j?.error || "messages_failed");
-
-        setMessages(j.messages || []);
-        setInitialMessagesLoaded(true);
-
-        // On scroll en bas seulement quand on est prêt à afficher (appearanceReady),
-        // sinon on attend l'autre effect plus bas.
-      } catch (e: any) {
-        if (!cancelled) setError(String(e?.message || "messages_failed"));
-        setInitialMessagesLoaded(true);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [slug]);
-
-  // Quand appearance + messages sont prêts => on arrive en bas direct
-  React.useEffect(() => {
-    if (!appearanceReady) return;
-    if (!initialMessagesLoaded) return;
-
-    requestAnimationFrame(() => scrollToBottom("auto"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appearanceReady, initialMessagesLoaded]);
 
   // auto-refresh when my timeout ends
   React.useEffect(() => {
@@ -232,12 +179,34 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     return () => window.clearTimeout(t);
   }, [slug, join?.state?.timeoutUntil]);
 
-  // socket connect + join (reconnect when token changes)
+  function emitSocket(event: string, payload: any) {
+    return new Promise<any>((resolve) => {
+      sockRef.current?.emit(event as any, payload, (ack: any) => resolve(ack));
+    });
+  }
+
+  async function loadLastMessages(s: string) {
+    try {
+      setInitialLoading(true);
+      const r = await fetch(`${apiBase()}/chat/${encodeURIComponent(s)}/messages?limit=50`);
+      const j = await r.json();
+      if (!j?.ok) throw new Error(j?.error || "messages_failed");
+      setMessages(j.messages || []);
+      requestAnimationFrame(() => scrollToBottom("auto"));
+    } finally {
+      setInitialLoading(false);
+    }
+  }
+
+  // socket connect + join (et on charge les messages APRES avoir l'appearance)
   React.useEffect(() => {
     const s = String(slug || "").trim();
     if (!s) return;
 
-    setAppearanceReady(false); // on repart propre à chaque slug/token
+    setMessages([]);
+    setShowJump(false);
+    atBottomRef.current = true;
+    setInitialLoading(true);
 
     try {
       sockRef.current?.disconnect();
@@ -254,25 +223,19 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
 
     socket.on("connect_error", (e: any) => {
       setError(String(e?.message || "socket_connect_error"));
-      // pour ne pas bloquer l'affichage indéfiniment si join foire
-      setAppearanceReady(true);
     });
 
     socket.on("chat:message", (msg: ChatMsg) => {
-      const shouldStick = wasAtBottomRef.current;
-
       setMessages((prev) => {
         const next = [...prev, msg];
         if (next.length > 50) next.splice(0, next.length - 50);
         return next;
       });
 
-      // Auto-scroll seulement si l'utilisateur était déjà en bas
-      if (shouldStick) {
-        requestAnimationFrame(() => scrollToBottom("auto"));
-      } else {
-        setShowJumpToBottom(true);
-      }
+      requestAnimationFrame(() => {
+        if (atBottomRef.current) scrollToBottom("auto");
+        else setShowJump(true);
+      });
     });
 
     socket.on("chat:cleared", () => {
@@ -289,39 +252,36 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     socket.on("chat:perms", (ack: JoinAck) => {
       if (!ack?.ok) return;
       setJoin((prev) => ({ ...(prev || {}), ...ack }));
-      if (ack?.appearance) {
-        setAppearance(normalizeAppearance(ack.appearance));
-        setAppearanceReady(true);
-      } else {
-        // si pas d'apparence, on considère prêt quand même
-        setAppearanceReady(true);
-      }
+      if (ack?.appearance) setAppearance(normalizeAppearance(ack.appearance));
     });
 
-    // ✅ live update appearance
     socket.on("chat:appearance", (payload: any) => {
       if (!payload?.ok) return;
       setAppearance(normalizeAppearance(payload.appearance));
-      setAppearanceReady(true);
     });
 
     socket.on("chat:moderation_changed", () => {
       socket.emit("chat:refresh", { slug: s });
     });
 
-    socket.emit("chat:join", { slug: s }, (ack: JoinAck) => {
+    socket.emit("chat:join", { slug: s }, async (ack: JoinAck) => {
       if (!ack?.ok) {
         setJoin(null);
         setError(ack?.error || "join_failed");
-        setAppearanceReady(true); // ne bloque pas l'UI
+        setInitialLoading(false);
         return;
       }
 
       setJoin(ack);
       setError(null);
 
-      if (ack?.appearance) setAppearance(normalizeAppearance(ack.appearance));
-      setAppearanceReady(true);
+      // ✅ appearance AVANT messages (anti-flash)
+      setAppearance(normalizeAppearance(ack.appearance));
+      await loadLastMessages(s);
+
+      if (autoFocus) {
+        window.setTimeout(() => inputRef.current?.focus(), 50);
+      }
     });
 
     return () => {
@@ -329,23 +289,8 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
         socket.disconnect();
       } catch {}
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, token]);
-
-  const perms = join?.perms;
-  const state = join?.state;
-
-  const isAuthed = !!token;
-  const isBanned = !!state?.banned;
-  const timeoutUntil = state?.timeoutUntil || null;
-  const isTimedOut = !!timeoutUntil && new Date(timeoutUntil).getTime() > Date.now();
-
-  const canSend = isAuthed && !isBanned && !isTimedOut;
-
-  function emitSocket(event: string, payload: any) {
-    return new Promise<any>((resolve) => {
-      sockRef.current?.emit(event as any, payload, (ack: any) => resolve(ack));
-    });
-  }
 
   async function send() {
     setError(null);
@@ -381,6 +326,8 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
             }
           } else {
             setInput("");
+            // ✅ garde le focus (desktop surtout)
+            window.setTimeout(() => inputRef.current?.focus(), 0);
           }
           resolve();
         });
@@ -390,16 +337,13 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     }
   }
 
-  async function openMenu(e: React.MouseEvent, msg: ChatMsg) {
+  async function openMenuAt(x: number, y: number, msg: ChatMsg) {
     if (msg.userId <= 0) return; // system
-
-    e.preventDefault();
-    e.stopPropagation();
 
     setMenu({
       open: true,
-      x: e.clientX,
-      y: e.clientY,
+      x,
+      y,
       msg,
       isTargetMod: null,
       modLoading: false,
@@ -409,7 +353,6 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
 
     const isSelf = myId != null && Number(msg.userId) === Number(myId);
 
-    // owner/admin => mod status
     if (perms?.canManageMods) {
       setMenu((m) => ({ ...m, modLoading: true }));
       const ack = await emitSocket("chat:mod_status", { slug, userId: msg.userId });
@@ -417,21 +360,39 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
       else setMenu((m) => ({ ...m, modLoading: false, isTargetMod: null }));
     }
 
-    // ✅ Pour afficher "Démute" seulement si la cible est vraiment mutée
     if (perms?.canTimeout && !isSelf) {
       setMenu((m) => ({ ...m, timeoutLoading: true }));
       const ack = await emitSocket("chat:timeout_status", { slug, userId: msg.userId });
-      if (ack?.ok) {
-        setMenu((m) => ({ ...m, timeoutLoading: false, targetTimeoutUntil: ack.timeoutUntil || null }));
-      } else {
-        setMenu((m) => ({ ...m, timeoutLoading: false, targetTimeoutUntil: null }));
-      }
+      if (ack?.ok) setMenu((m) => ({ ...m, timeoutLoading: false, targetTimeoutUntil: ack.timeoutUntil || null }));
+      else setMenu((m) => ({ ...m, timeoutLoading: false, targetTimeoutUntil: null }));
     }
+  }
+
+  function openMenuMouse(e: React.MouseEvent, msg: ChatMsg) {
+    e.preventDefault();
+    e.stopPropagation();
+    openMenuAt(e.clientX, e.clientY, msg);
+  }
+
+  const longPressTimer = React.useRef<number | null>(null);
+  function onTouchStartMsg(e: React.TouchEvent, msg: ChatMsg) {
+    if (msg.userId <= 0) return;
+    const t = e.touches?.[0];
+    if (!t) return;
+
+    if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+    longPressTimer.current = window.setTimeout(() => {
+      openMenuAt(t.clientX, t.clientY, msg);
+    }, 450);
+  }
+  function cancelLongPress() {
+    if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+    longPressTimer.current = null;
   }
 
   function goProfile(msg: ChatMsg) {
     closeMenu();
-    navigate(`/users/${encodeURIComponent(msg.username)}`); // ajuste si besoin
+    navigate(`/users/${encodeURIComponent(msg.username)}`);
   }
 
   async function doUnmute(msg: ChatMsg) {
@@ -478,42 +439,29 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   const nameColor = appearance.chat.usernameColor;
   const msgColor = appearance.chat.messageColor;
 
-  const readyToShowMessages = appearanceReady && initialMessagesLoaded;
-
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }} onClick={closeMenu}>
-      {/* CSS (scrollbar hidden + anim) */}
       <style>
-        {`
-          @keyframes chatFadeLeft{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
-
-          .llChatList {
-            scrollbar-width: none;            /* Firefox */
-            -ms-overflow-style: none;         /* IE/Edge old */
-          }
-          .llChatList::-webkit-scrollbar {
-            width: 0;
-            height: 0;
-          }
-        `}
+        {`@keyframes chatFadeLeft{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}`}
       </style>
 
-      {/* header */}
-      <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: 0.2 }}>Chat</div>
-        <div style={{ opacity: 0.7, fontSize: 12, marginTop: 4 }}>
-          {join?.role ? `Rôle: ${join.role}` : "…"}
-          {isBanned ? " • banni" : isTimedOut ? ` • timeout ${fmtRemaining(timeoutUntil)}` : ""}
+      {/* header (optionnel) */}
+      {!compact ? (
+        <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: 0.2 }}>Chat</div>
+          <div style={{ opacity: 0.7, fontSize: 12, marginTop: 4 }}>
+            {join?.role ? `Rôle: ${join.role}` : "…"}
+            {isBanned ? " • banni" : isTimedOut ? ` • timeout ${fmtRemaining(timeoutUntil)}` : ""}
+          </div>
         </div>
-      </div>
+      ) : null}
 
-      {/* messages wrapper (relative for jump button) */}
-      <div style={{ position: "relative", flex: 1, minHeight: 0 }}>
-        {/* messages */}
+      {/* zone scroll + jump */}
+      <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
         <div
           ref={listRef}
-          className="llChatList"
-          onScroll={onListScroll}
+          onScroll={onScrollList}
+          className="chatScroll"
           style={{
             height: "100%",
             overflow: "auto",
@@ -521,99 +469,87 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
             display: "flex",
             flexDirection: "column",
             gap: 10,
-            // petit confort tactile
-            overscrollBehavior: "contain",
+            WebkitOverflowScrolling: "touch",
           }}
         >
-          {!readyToShowMessages ? (
-            <div
-              style={{
-                padding: 12,
-                borderRadius: 14,
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.06)",
-                opacity: 0.85,
-              }}
-            >
-              Chargement du chat…
-            </div>
-          ) : (
-            <>
-              {messages.map((m) => {
-                const isSystem = m.userId === 0;
-                const isDeleted = !!m.deleted || m.body === "";
-                if (m.userId !== 0 && isDeleted) return null;
+          {initialLoading ? (
+            <div style={{ opacity: 0.7, fontSize: 13 }}>Chargement…</div>
+          ) : messages.length === 0 ? (
+            <div style={{ opacity: 0.7, fontSize: 13 }}>Aucun message</div>
+          ) : null}
 
-                return (
+          {messages.map((m) => {
+            const isSystem = m.userId === 0;
+            const isDeleted = !!m.deleted || m.body === "";
+            if (m.userId !== 0 && isDeleted) return null;
+
+            return (
+              <div
+                key={m.id}
+                onContextMenu={(e) => openMenuMouse(e, m)} // desktop
+                onTouchStart={(e) => onTouchStartMsg(e, m)} // mobile long-press
+                onTouchEnd={cancelLongPress}
+                onTouchCancel={cancelLongPress}
+                onTouchMove={cancelLongPress}
+                style={{
+                  cursor: !isSystem ? "context-menu" : "default",
+                  padding: 10,
+                  borderRadius: 14,
+                  background: isSystem ? "rgba(124,77,255,0.10)" : "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  animation: "chatFadeLeft 180ms ease-out both",
+                }}
+              >
+                <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
                   <div
-                    key={m.id}
-                    onContextMenu={(e) => openMenu(e, m)}
-                    onClick={(e) => openMenu(e, m)}
                     style={{
-                      cursor: !isSystem ? "context-menu" : "default",
-                      padding: 10,
-                      borderRadius: 14,
-                      background: isSystem ? "rgba(124,77,255,0.10)" : "rgba(255,255,255,0.04)",
-                      border: "1px solid rgba(255,255,255,0.06)",
-                      animation: "chatFadeLeft 180ms ease-out both",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      opacity: isSystem ? 0.95 : 1,
+                      color: isSystem ? "rgba(255,255,255,0.95)" : nameColor,
                     }}
                   >
-                    <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                      <div
-                        style={{
-                          fontWeight: 800,
-                          fontSize: 13,
-                          opacity: isSystem ? 0.95 : 1,
-                          color: isSystem ? "rgba(255,255,255,0.95)" : nameColor,
-                        }}
-                      >
-                        {m.username}
-                      </div>
-                      <div style={{ fontSize: 11, opacity: 0.55 }}>
-                        {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </div>
-                    </div>
-
-                    <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95, color: isSystem ? "white" : msgColor }}>
-                      {m.body}
-                    </div>
+                    {m.username}
                   </div>
-                );
-              })}
+                  <div style={{ fontSize: 11, opacity: 0.55 }}>
+                    {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </div>
+                </div>
 
-              {/* sentinel */}
-              <div ref={endRef} style={{ height: 1 }} />
-            </>
-          )}
+                <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95, color: isSystem ? "white" : msgColor }}>
+                  {m.body}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Jump-to-bottom button */}
-        {readyToShowMessages && showJumpToBottom ? (
+        {showJump ? (
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               scrollToBottom("smooth");
+              window.setTimeout(() => inputRef.current?.focus(), 0);
             }}
-            title="Aller au dernier message"
             style={{
               position: "absolute",
               right: 12,
               bottom: 12,
-              width: 42,
-              height: 42,
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(20,20,30,0.88)",
+              zIndex: 5,
+              padding: "10px 12px",
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(17,10,23,0.85)",
               color: "white",
-              boxShadow: "0 14px 40px rgba(0,0,0,0.45)",
+              fontWeight: 900,
               cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              backdropFilter: "blur(8px)",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
             }}
+            aria-label="Aller au dernier message"
+            title="Aller au dernier message"
           >
-            <DownArrowIcon />
+            ↓
           </button>
         ) : null}
       </div>
@@ -626,10 +562,16 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
 
         <div style={{ display: "flex", gap: 10 }}>
           <input
+            ref={inputRef}
             disabled={!canSend || sending}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                send();
+              }
+            }}
             placeholder={
               !isAuthed
                 ? "Connecte-toi pour écrire…"
@@ -681,7 +623,7 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
             left: menu.x,
             top: menu.y,
             transform: "translate(6px, 6px)",
-            zIndex: 50,
+            zIndex: 90,
             minWidth: 240,
             padding: 10,
             borderRadius: 14,
@@ -693,7 +635,6 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
         >
           <div style={{ fontWeight: 900, fontSize: 13, marginBottom: 8, opacity: 0.95 }}>{menu.msg.username}</div>
 
-          {/* Voir profil */}
           <button
             onClick={() => goProfile(menu.msg!)}
             style={{
@@ -712,7 +653,6 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
             Voir le profil
           </button>
 
-          {/* ✅ Démute uniquement si la cible est vraiment mutée, et jamais sur soi */}
           {perms?.canTimeout && !targetIsSelf && targetIsTimedOut ? (
             <button
               onClick={() => doUnmute(menu.msg!)}
@@ -733,7 +673,6 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
             </button>
           ) : null}
 
-          {/* MODS (owner/admin only) */}
           {perms?.canManageMods ? (
             <button
               onClick={() => doSetMod(menu.msg!, !(menu.isTargetMod === true))}
@@ -776,7 +715,6 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
             </button>
           ) : null}
 
-          {/* ✅ Timeout actions : jamais sur soi */}
           {perms?.canTimeout && !targetIsSelf ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
               <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Timeout</div>
@@ -808,7 +746,6 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
             </div>
           ) : null}
 
-          {/* ✅ Ban : jamais sur soi */}
           {perms?.canBan && !targetIsSelf ? (
             <button
               onClick={() => doBan(menu.msg!)}

@@ -23,9 +23,27 @@ function EyeIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+function ChatIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M20 13.5c0 1.4-.6 2.7-1.6 3.6-1.4 1.3-3.6 2.1-6.1 2.1-.7 0-1.5-.1-2.2-.2L5 20l1-2.8c-1.3-1-2-2.3-2-3.7 0-3.5 3.6-6.3 8-6.3s8 2.8 8 6.3Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.2 13.3h.01M12 13.3h.01M15.8 13.3h.01"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function getAnonId(): string {
   const key = "ll_anon_id";
-
   const existing = localStorage.getItem(key);
   if (existing && existing.trim()) return existing;
 
@@ -39,32 +57,6 @@ function getAnonId(): string {
   return created;
 }
 
-/**
- * Affichage durée:
- * - minutes < 60 => "X min"
- * - heures < 24 => "X h" ou "X h Y min"
- * - jours >= 1  => "X j" ou "X j Y h"
- */
-function formatDurationFrom(startedAtMs: number, nowMs: number) {
-  const diffMs = Math.max(0, nowMs - startedAtMs);
-  const totalMin = Math.floor(diffMs / 60_000);
-
-  if (totalMin < 60) return `${totalMin} min`;
-
-  const totalH = Math.floor(totalMin / 60);
-  const min = totalMin % 60;
-
-  if (totalH < 24) return min > 0 ? `${totalH} h ${min} min` : `${totalH} h`;
-
-  const days = Math.floor(totalH / 24);
-  const h = totalH % 24;
-
-  if (h > 0) return `${days} j ${h} h`;
-  return `${days} j`;
-}
-
-type TabKey = "about" | "clips" | "vod" | "agenda";
-
 export default function StreamerPage() {
   const { slug } = useParams();
   const [data, setData] = React.useState<any>(null);
@@ -72,24 +64,15 @@ export default function StreamerPage() {
 
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
-  const myRole = auth?.user?.role ?? "guest";
 
   // modal login piloté par la page
   const [loginOpen, setLoginOpen] = React.useState(false);
 
-  // viewers temps réel (venant du heartbeat API)
+  // viewers temps réel (heartbeat API)
   const [liveViewersNow, setLiveViewersNow] = React.useState<number | null>(null);
 
-  // tick pour la durée
-  const [nowTick, setNowTick] = React.useState(() => Date.now());
-
-  // tabs bas
-  const [tab, setTab] = React.useState<TabKey>("about");
-
-  React.useEffect(() => {
-    const t = window.setInterval(() => setNowTick(Date.now()), 30_000);
-    return () => window.clearInterval(t);
-  }, []);
+  // ✅ Mobile: chat en bottom-sheet
+  const [chatOpen, setChatOpen] = React.useState(false);
 
   React.useEffect(() => {
     let mounted = true;
@@ -112,9 +95,7 @@ export default function StreamerPage() {
   }, [slug]);
 
   const s = data?.streamer || data;
-
-  const displayName = String(s?.display_name ?? s?.displayName ?? "");
-  const title = String(s?.title || "Stream");
+  const title = s?.title || "Stream";
   const isLive = !!(s?.is_live ?? s?.isLive);
 
   const viewersFromApi = Number(s?.viewers ?? s?.watchingCount ?? 0);
@@ -122,20 +103,13 @@ export default function StreamerPage() {
 
   const channelSlug = s?.channel_slug ?? s?.channelSlug;
   const channelUsername = s?.channel_username ?? s?.channelUsername;
-  const offlineBgUrl = s?.offlineBgUrl ?? null;
 
-  // (optionnel) durée: nécessite liveStartedAt dans la réponse API /streamers/:slug
-  const liveStartedAtRaw = s?.liveStartedAt ?? s?.live_started_at ?? null;
-  const liveStartedAtMs = liveStartedAtRaw ? new Date(liveStartedAtRaw).getTime() : null;
-  const durationText =
-    isLive && liveStartedAtMs ? formatDurationFrom(liveStartedAtMs, nowTick) : "—";
-
-  // reset si on repasse offline
+  // reset si offline
   React.useEffect(() => {
     if (!isLive) setLiveViewersNow(null);
   }, [isLive]);
 
-  // Heartbeat watch tracking (stats)
+  // Heartbeat watch tracking
   React.useEffect(() => {
     if (!slug) return;
     if (!isLive) return;
@@ -148,10 +122,14 @@ export default function StreamerPage() {
       if (document.visibilityState === "hidden") return;
 
       try {
-        const r = await watchHeartbeat({ slug: String(slug), anonId }, token);
+        const r = await watchHeartbeat({ slug: String(slug), anonId, isLive: true }, token);
 
-        if (r?.isLive && typeof r.viewersNow === "number") setLiveViewersNow(r.viewersNow);
-        if (r?.isLive === false) setLiveViewersNow(0);
+        if (r?.isLive && typeof r.viewersNow === "number") {
+          setLiveViewersNow(r.viewersNow);
+        }
+        if (r?.isLive === false) {
+          setLiveViewersNow(0);
+        }
       } catch {}
     };
 
@@ -170,174 +148,113 @@ export default function StreamerPage() {
     };
   }, [slug, isLive, token]);
 
+  // ✅ Bloque le scroll du body quand le drawer est ouvert
+  React.useEffect(() => {
+    if (!chatOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [chatOpen]);
+
   if (loading) return <div className="panel">Chargement…</div>;
   if (!s) return <div className="panel">Streamer introuvable</div>;
 
-  // Follows V1: UI only (placeholder)
-  const followsCount = s?.followsCount ?? null;
-
   return (
     <div className="streamPage">
-      {/* === Header (comme ton croquis) === */}
-      <div className="panel streamHeaderBar">
-        <div className="streamHeaderLeft">
-          <div className="streamHeaderTitle">
-            <span className="streamHeaderTitleText">
-              {title}
-              {displayName ? ` — ${displayName}` : ""}
-            </span>
+      {/* Top bar */}
+      <div className="panel streamTopBar">
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 800,
+              lineHeight: 1.1,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {title}
           </div>
 
-          <div className="streamHeaderSub mutedSmall">
-            Durée du stream actuel : <strong style={{ color: "rgba(255,255,255,0.9)" }}>{durationText}</strong>
+          <div className="mutedSmall" style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "center" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  width: 9,
+                  height: 9,
+                  borderRadius: 99,
+                  background: isLive ? "rgba(255,80,120,0.95)" : "rgba(180,180,200,0.7)",
+                  boxShadow: isLive ? "0 0 18px rgba(255,80,120,0.45)" : "none",
+                  display: "inline-block",
+                }}
+              />
+              {isLive ? "LIVE" : "OFFLINE"}
+            </span>
+
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ opacity: 0.9 }}>
+                <EyeIcon />
+              </span>
+              <span>{Number(viewers || 0).toLocaleString()}</span>
+            </span>
           </div>
         </div>
 
-        <div className="streamHeaderRight">
-          <div className="streamFollowBox">
-            <div className="mutedSmall">
-              Nombre de follow :{" "}
-              <strong style={{ color: "rgba(255,255,255,0.9)" }}>
-                {followsCount === null ? "—" : Number(followsCount).toLocaleString()}
-              </strong>
-            </div>
-
-            <button
-              type="button"
-              className="btnPrimarySmall"
-              onClick={() => setLoginOpen(true)} // pour l’instant: on branchera la logique follow ensuite
-              title="Follow LunaLive (V1)"
-            >
-              Suivre
-            </button>
-          </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {/* placeholder future: follow/share */}
         </div>
       </div>
 
-      {/* === Stage: player + chat === */}
+      {/* Grid: player left, chat right (desktop) */}
       <div className="streamGrid">
         <div className="streamMain">
-          {isLive ? (
-            <DlivePlayer channelSlug={channelSlug} channelUsername={channelUsername} isLive={isLive} />
-          ) : (
-            <div
-              className="panel"
-              style={{
-                padding: 0,
-                overflow: "hidden",
-                borderRadius: 18,
-                aspectRatio: "16/9",
-                background: offlineBgUrl
-                  ? `linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0.25)), url(${offlineBgUrl}) center/cover no-repeat`
-                  : "rgba(255,255,255,0.04)",
-                display: "flex",
-                alignItems: "flex-end",
-              }}
-            >
-              <div style={{ padding: 16 }}>
-                <div style={{ fontWeight: 950, fontSize: 18 }}>OFFLINE</div>
-                <div className="mutedSmall" style={{ marginTop: 6 }}>
-                  {title}
-                </div>
-              </div>
-            </div>
-          )}
+          <DlivePlayer channelSlug={channelSlug} channelUsername={channelUsername} isLive={isLive} />
         </div>
 
+        {/* ✅ Desktop chat : visible ; Mobile: caché via CSS (display:none) */}
         <aside className="panel streamChat" style={{ padding: 0 }}>
-          {/* mini header chat (comme ton croquis) */}
-          <div className="streamChatHeader">
-            <div className="streamChatHeaderLeft">
-              <div className="mutedSmall" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <span style={{ opacity: 0.9 }}>
-                  <EyeIcon />
-                </span>
-                <span>{Number(viewers || 0).toLocaleString()} viewer</span>
-              </div>
-            </div>
-
-            <div className="mutedSmall">
-              rôle : <strong style={{ color: "rgba(255,255,255,0.9)" }}>{String(myRole)}</strong>
-            </div>
-          </div>
-
-          <div className="streamChatBody">
-            <ChatPanel
-              slug={String(slug || "")}
-              onRequireLogin={() => setLoginOpen(true)}
-            />
-          </div>
+          <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} />
         </aside>
       </div>
 
-      {/* === Bottom tabs === */}
-      <div className="panel streamBottomPanel">
-        <div className="streamTabsRow">
-          <button
-            type="button"
-            className={`streamTabBtn ${tab === "about" ? "active" : ""}`}
-            onClick={() => setTab("about")}
-          >
-            À propos
-          </button>
-          <button
-            type="button"
-            className={`streamTabBtn ${tab === "clips" ? "active" : ""}`}
-            onClick={() => setTab("clips")}
-          >
-            Clip
-          </button>
-          <button
-            type="button"
-            className={`streamTabBtn ${tab === "vod" ? "active" : ""}`}
-            onClick={() => setTab("vod")}
-          >
-            VOD
-          </button>
-          <button
-            type="button"
-            className={`streamTabBtn ${tab === "agenda" ? "active" : ""}`}
-            onClick={() => setTab("agenda")}
-          >
-            Agenda
-          </button>
+      {/* ✅ FAB mobile (visible via CSS seulement en mobile) */}
+      <button
+        className="chatFab"
+        onClick={() => setChatOpen(true)}
+        aria-label="Ouvrir le chat"
+        type="button"
+      >
+        <ChatIcon />
+        <span className="chatFabLabel">Chat</span>
+      </button>
+
+      {/* ✅ Bottom sheet chat (mobile) */}
+      {chatOpen ? (
+        <div className="chatSheetBackdrop" onClick={() => setChatOpen(false)} role="presentation">
+          <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="chatSheetTop">
+              <div style={{ fontWeight: 950 }}>Chat</div>
+              <button className="iconBtn" onClick={() => setChatOpen(false)} type="button" aria-label="Fermer">
+                ✕
+              </button>
+            </div>
+
+            <div className="chatSheetBody">
+              <ChatPanel
+                slug={String(slug || "")}
+                onRequireLogin={() => setLoginOpen(true)}
+                compact
+                autoFocus
+              />
+            </div>
+          </div>
         </div>
+      ) : null}
 
-        <div className="streamTabContent">
-          {tab === "about" && (
-            <div>
-              <div className="panelTitle">À propos</div>
-              <div className="mutedSmall">
-                (On mettra ici bio + liens casinos + images + siteweb, etc.)
-              </div>
-            </div>
-          )}
-
-          {tab === "clips" && (
-            <div>
-              <div className="panelTitle">Clips</div>
-              <div className="mutedSmall">(placeholder)</div>
-            </div>
-          )}
-
-          {tab === "vod" && (
-            <div>
-              <div className="panelTitle">VOD</div>
-              <div className="mutedSmall">
-                (plus tard : récupération DLive si faisable, sinon on voit un plan propre)
-              </div>
-            </div>
-          )}
-
-          {tab === "agenda" && (
-            <div>
-              <div className="panelTitle">Agenda</div>
-              <div className="mutedSmall">(placeholder)</div>
-            </div>
-          )}
-        </div>
-      </div>
-
+      {/* modal login */}
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>
   );
