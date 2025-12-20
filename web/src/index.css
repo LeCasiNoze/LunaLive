@@ -748,3 +748,117 @@ body{
   .streamChat{ display:none !important; } /* chat inline off */
   .chatFab{ display:flex; }              /* FAB on */
 }
+/* ===========================
+   Mini Chat (mobile portrait)
+   =========================== */
+
+.mobileMiniChat{
+  display: none;          /* activé via media query */
+  flex-direction: column;
+  overflow: hidden;
+  height: 320px;          /* ≈ 5/6 messages + input */
+}
+
+/* important: pour que ChatPanel puisse scroller à l'intérieur */
+.mobileMiniChat .streamChatBody{
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* show mini chat only in portrait mobile */
+@media (max-width: 820px) and (orientation: portrait){
+  .mobileMiniChat{ display:flex; }
+  /* optionnel: tu peux cacher le chat à droite en mobile */
+  .streamChat{ display:none !important; }
+}
+
+/* ===========================
+   Scrollbar invisible (chat)
+   =========================== */
+.chatScroll{
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.chatScroll::-webkit-scrollbar{
+  width: 0;
+  height: 0;
+}
+
+/* ===========================
+   Cinema mode (fullscreen in-page)
+   =========================== */
+.cinemaRoot{
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: #000;
+}
+
+.cinemaStage{
+  position: absolute;
+  inset: 0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 12px;
+}
+
+.cinemaPlayerCard{
+  width: min(1100px, 100%);
+}
+
+/* barre contrôles */
+.cinemaTopBar{
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 12px;
+  display:flex;
+  justify-content: space-between;
+  gap: 10px;
+  z-index: 140;
+}
+
+/* ===========================
+   Chat sheet (drawer)
+   =========================== */
+.chatSheetBackdrop{
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 10px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+}
+
+.chatSheet{
+  width: min(720px, 100%);
+  height: min(82dvh, 720px);
+  border-radius: 20px 20px 0 0;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(17, 10, 23, 0.96);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.55);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.chatSheetTop{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.chatSheetBody{
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
