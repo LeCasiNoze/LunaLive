@@ -107,24 +107,39 @@ function isFullscreen() {
   const d: any = document;
   return !!(document.fullscreenElement || d.webkitFullscreenElement);
 }
-async function requestFullscreenSafe() {
+
+/** ✅ Toujours appelé depuis un CLICK (gesture). Pas async => plus fiable sur mobile. */
+function requestFullscreenSafe(el?: HTMLElement) {
   try {
-    const el: any = document.documentElement;
-    const req = el.requestFullscreen || el.webkitRequestFullscreen;
-    if (typeof req === "function") await req.call(el);
+    const target: any = el || document.documentElement;
+    const req = target.requestFullscreen || target.webkitRequestFullscreen;
+    if (typeof req !== "function") return;
+
+    // Certains navigateurs supportent navigationUI:'hide'
+    try {
+      const p = req.call(target, { navigationUI: "hide" as any });
+      if (p?.catch) p.catch(() => {});
+    } catch {
+      const p = req.call(target);
+      if (p?.catch) p.catch(() => {});
+    }
   } catch {
     // ignore
   }
 }
-async function exitFullscreenSafe() {
+
+function exitFullscreenSafe() {
   try {
     const d: any = document;
     const exit = document.exitFullscreen || d.webkitExitFullscreen;
-    if (typeof exit === "function") await exit.call(document);
+    if (typeof exit !== "function") return;
+    const p = exit.call(document);
+    if (p?.catch) p.catch(() => {});
   } catch {
     // ignore
   }
 }
+
 
 type TabKey = "about" | "clips" | "vod" | "agenda";
 
@@ -190,6 +205,10 @@ export default function StreamerPage() {
     const onFs = () => {
       if (!cinema) return;
       if (!fsWantedRef.current) return;
+
+      // ✅ Si le chat est ouvert, on tolère la sortie fullscreen (clavier mobile)
+      if (chatOpen) return;
+
       if (!isFullscreen()) {
         fsWantedRef.current = false;
         setChatOpen(false);
@@ -204,12 +223,14 @@ export default function StreamerPage() {
       document.removeEventListener("fullscreenchange", onFs);
       document.removeEventListener("webkitfullscreenchange" as any, onFs);
     };
-  }, [cinema]);
+  }, [cinema, chatOpen]);
 
   const enterCinema = React.useCallback(() => {
     fsWantedRef.current = true;
-    // IMPORTANT: appelé sur click => masque la barre URL sur Android
-    void requestFullscreenSafe();
+
+    // ✅ On demande fullscreen sur le document (persistant, même si le player rerender)
+    requestFullscreenSafe(document.documentElement);
+
     setChatOpen(false);
     setCinema(true);
   }, []);
@@ -218,8 +239,20 @@ export default function StreamerPage() {
     fsWantedRef.current = false;
     setChatOpen(false);
     setCinema(false);
-    void exitFullscreenSafe();
+    exitFullscreenSafe();
   }, []);
+
+  // ✅ Mobile: ouvrir chat => on sort du fullscreen (sinon le clavier le fait sauter et casse tout)
+  const openCinemaChat = React.useCallback(() => {
+    if (isMobile) exitFullscreenSafe();
+    setChatOpen(true);
+  }, [isMobile]);
+
+  // ✅ Fermer chat => on re-demande fullscreen (clic user => OK)
+  const closeCinemaChat = React.useCallback(() => {
+    setChatOpen(false);
+    if (isMobile && fsWantedRef.current) requestFullscreenSafe(document.documentElement);
+  }, [isMobile]);
 
   React.useEffect(() => {
     let mounted = true;
@@ -345,7 +378,7 @@ export default function StreamerPage() {
               ✕ Quitter
             </button>
 
-            <button className="btnPrimarySmall" type="button" onClick={() => setChatOpen(true)} title="Ouvrir le chat">
+            <button className="btnPrimarySmall" type="button" onClick={openCinemaChat} title="Ouvrir le chat">
               <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                 <ChatIcon /> Chat
               </span>
@@ -353,17 +386,22 @@ export default function StreamerPage() {
           </div>
 
           {chatOpen ? (
-            <div className="chatSheetBackdrop" onClick={() => setChatOpen(false)} role="presentation">
+            <div className="chatSheetBackdrop" onClick={closeCinemaChat} role="presentation">
               <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
                 <div className="chatSheetTop">
                   <div style={{ fontWeight: 950 }}>Chat</div>
-                  <button className="iconBtn" onClick={() => setChatOpen(false)} type="button" aria-label="Fermer">
+                  <button className="iconBtn" onClick={closeCinemaChat} type="button" aria-label="Fermer">
                     ✕
                   </button>
                 </div>
 
                 <div className="chatSheetBody">
-                  <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} compact autoFocus />
+                  <ChatPanel
+                    slug={String(slug || "")}
+                    onRequireLogin={() => setLoginOpen(true)}
+                    compact
+                    autoFocus={!isMobile}  // ✅ pas d'autofocus sur mobile (évite le clavier => exit fullscreen)
+                  />
                 </div>
               </div>
             </div>
