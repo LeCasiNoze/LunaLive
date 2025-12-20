@@ -10,7 +10,6 @@ import {
   type StreamerAppearance,
 } from "../lib/appearance";
 
-
 type ChatMsg = {
   id: number;
   userId: number;
@@ -61,6 +60,26 @@ function fmtRemaining(untilIso?: string | null) {
   return `${d}j`;
 }
 
+function DownArrowIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 5v12"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M7 13l5 5 5-5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLogin: () => void }) {
   const [messages, setMessages] = React.useState<ChatMsg[]>([]);
   const [input, setInput] = React.useState("");
@@ -70,11 +89,16 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   const [error, setError] = React.useState<string | null>(null);
   const { token } = useAuth();
 
-  // ✅ NEW
+  // ✅ appearance
   const [appearance, setAppearance] = React.useState<StreamerAppearance>(DEFAULT_STREAMER_APPEARANCE);
+
+  // ✅ évite le flash: on affiche les messages seulement quand on a l'apparence (ou join fail)
+  const [appearanceReady, setAppearanceReady] = React.useState(false);
+  const [initialMessagesLoaded, setInitialMessagesLoaded] = React.useState(false);
 
   const sockRef = React.useRef<Socket | null>(null);
   const listRef = React.useRef<HTMLDivElement | null>(null);
+  const endRef = React.useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
 
   const myId = join?.me?.id != null ? Number(join.me.id) : null;
@@ -92,18 +116,16 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     // timeout status
     timeoutLoading?: boolean;
     targetTimeoutUntil?: string | null;
-  }>(
-    {
-      open: false,
-      x: 0,
-      y: 0,
-      msg: null,
-      isTargetMod: null,
-      modLoading: false,
-      timeoutLoading: false,
-      targetTimeoutUntil: null,
-    }
-  );
+  }>(() => ({
+    open: false,
+    x: 0,
+    y: 0,
+    msg: null,
+    isTargetMod: null,
+    modLoading: false,
+    timeoutLoading: false,
+    targetTimeoutUntil: null,
+  }));
 
   function closeMenu() {
     setMenu({
@@ -118,9 +140,44 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     });
   }
 
+  // ======== Auto-scroll intelligent ========
+  const wasAtBottomRef = React.useRef(true);
+  const [showJumpToBottom, setShowJumpToBottom] = React.useState(false);
+
+  function isAtBottom(el: HTMLDivElement) {
+    const threshold = 36; // px
+    const dist = el.scrollHeight - (el.scrollTop + el.clientHeight);
+    return dist <= threshold;
+  }
+
+  function scrollToBottom(behavior: "auto" | "smooth" = "auto") {
+    const el = listRef.current;
+    if (!el) return;
+
+    // meilleure stabilité avec un sentinel
+    if (endRef.current) {
+      endRef.current.scrollIntoView({ block: "end", behavior });
+    } else {
+      el.scrollTo({ top: el.scrollHeight, behavior });
+    }
+
+    wasAtBottomRef.current = true;
+    setShowJumpToBottom(false);
+  }
+
+  function onListScroll() {
+    const el = listRef.current;
+    if (!el) return;
+    const atBottom = isAtBottom(el);
+    wasAtBottomRef.current = atBottom;
+    setShowJumpToBottom(!atBottom);
+  }
+
   // load last messages
   React.useEffect(() => {
     let cancelled = false;
+    setInitialMessagesLoaded(false);
+
     (async () => {
       try {
         setError(null);
@@ -128,13 +185,15 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
         const j = await r.json();
         if (cancelled) return;
         if (!j?.ok) throw new Error(j?.error || "messages_failed");
+
         setMessages(j.messages || []);
-        requestAnimationFrame(() => {
-          const el = listRef.current;
-          if (el) el.scrollTop = el.scrollHeight;
-        });
+        setInitialMessagesLoaded(true);
+
+        // On scroll en bas seulement quand on est prêt à afficher (appearanceReady),
+        // sinon on attend l'autre effect plus bas.
       } catch (e: any) {
         if (!cancelled) setError(String(e?.message || "messages_failed"));
+        setInitialMessagesLoaded(true);
       }
     })();
 
@@ -142,6 +201,15 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
       cancelled = true;
     };
   }, [slug]);
+
+  // Quand appearance + messages sont prêts => on arrive en bas direct
+  React.useEffect(() => {
+    if (!appearanceReady) return;
+    if (!initialMessagesLoaded) return;
+
+    requestAnimationFrame(() => scrollToBottom("auto"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appearanceReady, initialMessagesLoaded]);
 
   // auto-refresh when my timeout ends
   React.useEffect(() => {
@@ -169,6 +237,8 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     const s = String(slug || "").trim();
     if (!s) return;
 
+    setAppearanceReady(false); // on repart propre à chaque slug/token
+
     try {
       sockRef.current?.disconnect();
     } catch {}
@@ -184,21 +254,31 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
 
     socket.on("connect_error", (e: any) => {
       setError(String(e?.message || "socket_connect_error"));
+      // pour ne pas bloquer l'affichage indéfiniment si join foire
+      setAppearanceReady(true);
     });
 
     socket.on("chat:message", (msg: ChatMsg) => {
+      const shouldStick = wasAtBottomRef.current;
+
       setMessages((prev) => {
         const next = [...prev, msg];
         if (next.length > 50) next.splice(0, next.length - 50);
         return next;
       });
-      requestAnimationFrame(() => {
-        const el = listRef.current;
-        if (el) el.scrollTop = el.scrollHeight;
-      });
+
+      // Auto-scroll seulement si l'utilisateur était déjà en bas
+      if (shouldStick) {
+        requestAnimationFrame(() => scrollToBottom("auto"));
+      } else {
+        setShowJumpToBottom(true);
+      }
     });
 
-    socket.on("chat:cleared", () => setMessages([]));
+    socket.on("chat:cleared", () => {
+      setMessages([]);
+      requestAnimationFrame(() => scrollToBottom("auto"));
+    });
 
     socket.on("chat:message_deleted", (payload: any) => {
       const id = Number(payload?.id || 0);
@@ -209,18 +289,22 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
     socket.on("chat:perms", (ack: JoinAck) => {
       if (!ack?.ok) return;
       setJoin((prev) => ({ ...(prev || {}), ...ack }));
-      // (au cas où backend pousse appearance un jour via perms)
-      if (ack?.appearance) setAppearance(normalizeAppearance(ack.appearance));
+      if (ack?.appearance) {
+        setAppearance(normalizeAppearance(ack.appearance));
+        setAppearanceReady(true);
+      } else {
+        // si pas d'apparence, on considère prêt quand même
+        setAppearanceReady(true);
+      }
     });
 
-    // ✅ NEW: live update appearance
+    // ✅ live update appearance
     socket.on("chat:appearance", (payload: any) => {
       if (!payload?.ok) return;
       setAppearance(normalizeAppearance(payload.appearance));
+      setAppearanceReady(true);
     });
 
-    // ✅ Quand un modo “déban/démute” via dashboard REST,
-    // le backend émet chat:moderation_changed => on refresh nos perms.
     socket.on("chat:moderation_changed", () => {
       socket.emit("chat:refresh", { slug: s });
     });
@@ -229,11 +313,15 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
       if (!ack?.ok) {
         setJoin(null);
         setError(ack?.error || "join_failed");
+        setAppearanceReady(true); // ne bloque pas l'UI
         return;
       }
+
       setJoin(ack);
       setError(null);
-      setAppearance(normalizeAppearance(ack.appearance));
+
+      if (ack?.appearance) setAppearance(normalizeAppearance(ack.appearance));
+      setAppearanceReady(true);
     });
 
     return () => {
@@ -390,12 +478,24 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
   const nameColor = appearance.chat.usernameColor;
   const msgColor = appearance.chat.messageColor;
 
+  const readyToShowMessages = appearanceReady && initialMessagesLoaded;
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }} onClick={closeMenu}>
-      {/* inline keyframes (anim fixe fade-left) */}
+      {/* CSS (scrollbar hidden + anim) */}
       <style>
-        {`@keyframes chatFadeLeft{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}`}
+        {`
+          @keyframes chatFadeLeft{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+
+          .llChatList {
+            scrollbar-width: none;            /* Firefox */
+            -ms-overflow-style: none;         /* IE/Edge old */
+          }
+          .llChatList::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+          }
+        `}
       </style>
 
       {/* header */}
@@ -407,52 +507,115 @@ export function ChatPanel({ slug, onRequireLogin }: { slug: string; onRequireLog
         </div>
       </div>
 
-      {/* messages */}
-      <div
-        ref={listRef}
-        style={{ flex: 1, overflow: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}
-      >
-        {messages.map((m) => {
-          const isSystem = m.userId === 0;
-          const isDeleted = !!m.deleted || m.body === "";
-          if (m.userId !== 0 && isDeleted) return null;
-
-          return (
+      {/* messages wrapper (relative for jump button) */}
+      <div style={{ position: "relative", flex: 1, minHeight: 0 }}>
+        {/* messages */}
+        <div
+          ref={listRef}
+          className="llChatList"
+          onScroll={onListScroll}
+          style={{
+            height: "100%",
+            overflow: "auto",
+            padding: 12,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            // petit confort tactile
+            overscrollBehavior: "contain",
+          }}
+        >
+          {!readyToShowMessages ? (
             <div
-              key={m.id}
-              onContextMenu={(e) => openMenu(e, m)}
-              onClick={(e) => openMenu(e, m)}
               style={{
-                cursor: !isSystem ? "context-menu" : "default",
-                padding: 10,
+                padding: 12,
                 borderRadius: 14,
-                background: isSystem ? "rgba(124,77,255,0.10)" : "rgba(255,255,255,0.04)",
+                background: "rgba(255,255,255,0.04)",
                 border: "1px solid rgba(255,255,255,0.06)",
-                animation: "chatFadeLeft 180ms ease-out both",
+                opacity: 0.85,
               }}
             >
-              <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                <div
-                  style={{
-                    fontWeight: 800,
-                    fontSize: 13,
-                    opacity: isSystem ? 0.95 : 1,
-                    color: isSystem ? "rgba(255,255,255,0.95)" : nameColor,
-                  }}
-                >
-                  {m.username}
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.55 }}>
-                  {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                </div>
-              </div>
-
-              <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95, color: isSystem ? "white" : msgColor }}>
-                {m.body}
-              </div>
+              Chargement du chat…
             </div>
-          );
-        })}
+          ) : (
+            <>
+              {messages.map((m) => {
+                const isSystem = m.userId === 0;
+                const isDeleted = !!m.deleted || m.body === "";
+                if (m.userId !== 0 && isDeleted) return null;
+
+                return (
+                  <div
+                    key={m.id}
+                    onContextMenu={(e) => openMenu(e, m)}
+                    onClick={(e) => openMenu(e, m)}
+                    style={{
+                      cursor: !isSystem ? "context-menu" : "default",
+                      padding: 10,
+                      borderRadius: 14,
+                      background: isSystem ? "rgba(124,77,255,0.10)" : "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.06)",
+                      animation: "chatFadeLeft 180ms ease-out both",
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          fontSize: 13,
+                          opacity: isSystem ? 0.95 : 1,
+                          color: isSystem ? "rgba(255,255,255,0.95)" : nameColor,
+                        }}
+                      >
+                        {m.username}
+                      </div>
+                      <div style={{ fontSize: 11, opacity: 0.55 }}>
+                        {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95, color: isSystem ? "white" : msgColor }}>
+                      {m.body}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* sentinel */}
+              <div ref={endRef} style={{ height: 1 }} />
+            </>
+          )}
+        </div>
+
+        {/* Jump-to-bottom button */}
+        {readyToShowMessages && showJumpToBottom ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              scrollToBottom("smooth");
+            }}
+            title="Aller au dernier message"
+            style={{
+              position: "absolute",
+              right: 12,
+              bottom: 12,
+              width: 42,
+              height: 42,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(20,20,30,0.88)",
+              color: "white",
+              boxShadow: "0 14px 40px rgba(0,0,0,0.45)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            <DownArrowIcon />
+          </button>
+        ) : null}
       </div>
 
       {/* input */}
