@@ -1,12 +1,6 @@
 import * as React from "react";
 import { useParams } from "react-router-dom";
-import {
-  getStreamer,
-  watchHeartbeat,
-  followStreamer,
-  unfollowStreamer,
-  setFollowNotify,
-} from "../lib/api";
+import { getStreamer, watchHeartbeat, followStreamer, unfollowStreamer, setFollowNotify } from "../lib/api";
 import { enablePushNotifications } from "../lib/push";
 import { DlivePlayer } from "../components/DlivePlayer";
 import { ChatPanel } from "../components/ChatPanel";
@@ -519,27 +513,23 @@ export default function StreamerPage() {
                   }
                   if (!slug) return;
 
-                  const next = !notifyEnabled;
-
-                  // ✅ Si on active -> on s'assure que le téléphone est abonné au Web Push
-                  if (next) {
-                    try {
-                      await enablePushNotifications(token);
-                    } catch (err) {
-                      // pas de permission => on n'active pas la cloche côté app
-                      setNotifyEnabled(false);
-                      console.warn("enablePushNotifications failed", err);
-                      return;
-                    }
-                  }
-
-                  // ✅ ensuite seulement on toggle la cloche streamer
-                  setNotifyEnabled(next); // optimiste
+                  setFollowLoading(true);
                   try {
-                    const r = await setFollowNotify(String(slug), next, token);
-                    if (typeof r?.notifyEnabled === "boolean") setNotifyEnabled(Boolean(r.notifyEnabled));
-                  } catch {
-                    setNotifyEnabled((x) => !x);
+                    const r = isFollowing
+                      ? await unfollowStreamer(String(slug), token)
+                      : await followStreamer(String(slug), token);
+
+                    if (r?.ok) {
+                      const followingNow = !!r.following;
+                      setIsFollowing(followingNow);
+                      setFollowsCountLocal(Number(r.followsCount));
+
+                      // ✅ cloche: ON par défaut quand follow, OFF quand unfollow
+                      if (typeof r.notifyEnabled === "boolean") setNotifyEnabled(Boolean(r.notifyEnabled));
+                      else setNotifyEnabled(followingNow ? true : false);
+                    }
+                  } finally {
+                    setFollowLoading(false);
                   }
                 }}
                 title={isFollowing ? "Ne plus suivre" : "Suivre"}
@@ -554,7 +544,7 @@ export default function StreamerPage() {
                   className="btnGhostSmall"
                   disabled={followLoading}
                   onClick={async (e) => {
-                    e.stopPropagation();
+                  e.stopPropagation();
 
                     if (!token) {
                       setLoginOpen(true);
@@ -563,15 +553,28 @@ export default function StreamerPage() {
                     if (!slug) return;
 
                     const next = !notifyEnabled;
+
+                    // ✅ si on ACTIVE la cloche -> demander permission + enregistrer la subscription
+                    if (next) {
+                      try {
+                        await enablePushNotifications(token);
+                      } catch (err) {
+                        // permission refusée => on n'active pas
+                        console.warn("enablePushNotifications failed", err);
+                        setNotifyEnabled(false);
+                        return;
+                      }
+                    }
+
                     setNotifyEnabled(next); // optimiste
                     try {
                       const r = await setFollowNotify(String(slug), next, token);
                       if (typeof r?.notifyEnabled === "boolean") setNotifyEnabled(Boolean(r.notifyEnabled));
                     } catch {
-                      // rollback
                       setNotifyEnabled((x) => !x);
                     }
                   }}
+
                   title={
                     notifyEnabled
                       ? "Notifications activées (cliquer pour désactiver)"
