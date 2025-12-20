@@ -9,7 +9,7 @@ self.addEventListener("push", (event) => {
   const title = `${data.displayName} est en stream !`;
   const body = data.title ? `"${data.title}" — clique pour rejoindre` : "Clique pour rejoindre";
 
-  const url = data.url || `/streamers/${encodeURIComponent(data.slug || "")}`;
+  const url = data.url || `/s/${encodeURIComponent(data.slug || "")}`;
 
   event.waitUntil(
     self.registration.showNotification(title, {

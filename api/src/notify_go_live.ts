@@ -51,7 +51,9 @@ export async function notifyFollowersGoLive(io: IOServer | undefined, streamerId
 
   // URL vers le site (à adapter à ton routing front)
   const baseWeb = String(process.env.PUBLIC_WEB_BASE || "").replace(/\/$/, "");
-  const url = baseWeb ? `${baseWeb}/watch/${encodeURIComponent(slug)}` : `/watch/${encodeURIComponent(slug)}`;
+    const url = baseWeb
+    ? `${baseWeb}/s/${encodeURIComponent(slug)}`
+    : `/s/${encodeURIComponent(slug)}`;
 
   const payload: GoLivePayload = {
     type: "go_live",

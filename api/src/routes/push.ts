@@ -23,16 +23,17 @@ pushRouter.post("/push/subscribe", requireAuth, async (req, res) => {
 
   const ua = String(req.headers["user-agent"] || "").slice(0, 500);
 
-  await pool.query(
+    await pool.query(
     `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent)
-     VALUES ($1,$2,$3,$4,$5)
-     ON CONFLICT (user_id, endpoint)
-     DO UPDATE SET p256dh=EXCLUDED.p256dh,
-                   auth=EXCLUDED.auth,
-                   user_agent=EXCLUDED.user_agent,
-                   updated_at=NOW()`,
+    VALUES ($1,$2,$3,$4,$5)
+    ON CONFLICT (endpoint)
+    DO UPDATE SET user_id=EXCLUDED.user_id,
+                    p256dh=EXCLUDED.p256dh,
+                    auth=EXCLUDED.auth,
+                    user_agent=EXCLUDED.user_agent,
+                    updated_at=NOW()`,
     [Number(req.user!.id), endpoint, p256dh, auth, ua]
-  );
+    );
 
   res.json({ ok: true });
 });

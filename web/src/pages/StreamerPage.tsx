@@ -7,6 +7,7 @@ import {
   unfollowStreamer,
   setFollowNotify,
 } from "../lib/api";
+import { enablePushNotifications } from "../lib/push";
 import { DlivePlayer } from "../components/DlivePlayer";
 import { ChatPanel } from "../components/ChatPanel";
 import { LoginModal } from "../components/LoginModal";
@@ -518,26 +519,27 @@ export default function StreamerPage() {
                   }
                   if (!slug) return;
 
-                  setFollowLoading(true);
-                  try {
-                    const r = isFollowing
-                      ? await unfollowStreamer(String(slug), token)
-                      : await followStreamer(String(slug), token);
+                  const next = !notifyEnabled;
 
-                    if (r?.ok) {
-                      const followingNow = !!r.following;
-                      setIsFollowing(followingNow);
-                      setFollowsCountLocal(Number(r.followsCount));
-
-                      // ✅ cloche: ON par défaut quand on follow, OFF quand on unfollow
-                      if (typeof r.notifyEnabled === "boolean") {
-                        setNotifyEnabled(Boolean(r.notifyEnabled));
-                      } else {
-                        setNotifyEnabled(followingNow ? true : false);
-                      }
+                  // ✅ Si on active -> on s'assure que le téléphone est abonné au Web Push
+                  if (next) {
+                    try {
+                      await enablePushNotifications(token);
+                    } catch (err) {
+                      // pas de permission => on n'active pas la cloche côté app
+                      setNotifyEnabled(false);
+                      console.warn("enablePushNotifications failed", err);
+                      return;
                     }
-                  } finally {
-                    setFollowLoading(false);
+                  }
+
+                  // ✅ ensuite seulement on toggle la cloche streamer
+                  setNotifyEnabled(next); // optimiste
+                  try {
+                    const r = await setFollowNotify(String(slug), next, token);
+                    if (typeof r?.notifyEnabled === "boolean") setNotifyEnabled(Boolean(r.notifyEnabled));
+                  } catch {
+                    setNotifyEnabled((x) => !x);
                   }
                 }}
                 title={isFollowing ? "Ne plus suivre" : "Suivre"}

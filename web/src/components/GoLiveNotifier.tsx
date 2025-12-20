@@ -91,12 +91,22 @@ export function GoLiveNotifier() {
         tabIndex={0}
         onClick={() => {
           hide();
-          nav(toast.url || `/streamers/${encodeURIComponent(toast.slug)}`);
+          const fallback = `/s/${encodeURIComponent(toast.slug)}`;
+            const target = toast.url || fallback;
+
+            if (/^https?:\/\//i.test(target)) window.location.href = target;
+            else nav(target);
+
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             hide();
-            nav(toast.url || `/streamers/${encodeURIComponent(toast.slug)}`);
+            const fallback = `/s/${encodeURIComponent(toast.slug)}`;
+            const target = toast.url || fallback;
+
+            if (/^https?:\/\//i.test(target)) window.location.href = target;
+            else nav(target);
+
           }
         }}
         style={{
