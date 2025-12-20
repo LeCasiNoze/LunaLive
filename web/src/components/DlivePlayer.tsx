@@ -81,7 +81,13 @@ export function DlivePlayer({
 
   const menuRef = React.useRef<HTMLDivElement>(null);
 
-  const [dbg, setDbg] = React.useState("init");
+  // ✅ Debug uniquement en DEV + ?debug=1 (aucun texte UI)
+  const debugEnabled =
+    !!import.meta.env.DEV && new URLSearchParams(window.location.search).has("debug");
+  const dbgLog = (...args: any[]) => {
+    if (debugEnabled) console.debug("[DlivePlayer]", ...args);
+  };
+
   const [menuOpen, setMenuOpen] = React.useState(false);
 
   // q = "auto" ou index de level ("0", "1", ...)
@@ -161,11 +167,11 @@ export function DlivePlayer({
 
     const username = String(channelUsername || channelSlug || "").trim();
     if (!username) {
-      setDbg(`username=∅`);
+      dbgLog("username=∅");
       return;
     }
     if (!isLive) {
-      setDbg(`username=${username} | isLive=false (skip)`);
+      dbgLog("skip (offline)", { username });
       return;
     }
 
@@ -178,11 +184,17 @@ export function DlivePlayer({
     // iOS => native only (pas de choix qualité manuel côté hls.js)
     const mode = ios && nativeHls ? "native-ios" : hlsJsSupported ? "hlsjs-proxy" : nativeHls ? "native" : "unsupported";
 
-    setDbg(
-      `username=${username} | isLive=${String(isLive)} | nativeHls=${String(nativeHls)} | hls.js=${String(
-        hlsJsSupported
-      )} | ios=${String(ios)} | safari=${String(safari)} | mode=${mode} | hlsBase=${HLS_BASE} | q=${q}`
-    );
+    dbgLog("init", {
+      username,
+      isLive: String(isLive),
+      nativeHls: String(nativeHls),
+      hlsJsSupported: String(hlsJsSupported),
+      ios: String(ios),
+      safari: String(safari),
+      mode,
+      hlsBase: HLS_BASE,
+      q,
+    });
 
     // Native
     if (mode === "native-ios" || mode === "native") {
@@ -253,18 +265,14 @@ export function DlivePlayer({
     });
 
     hls.on(Hls.Events.ERROR, (_evt, data) => {
-      setDbg(
-        `HLS_ERROR fatal=${String(data?.fatal)} type=${String(data?.type)} details=${String(data?.details)} | q=${q}`
-      );
-
-      if (data?.fatal) {
-        try {
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-          else hls.destroy();
-        } catch {}
-      }
-    });
+          if (data?.fatal) {
+            try {
+              if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+              else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+              else hls.destroy();
+            } catch {}
+          }
+        });
 
     return () => {
       try {
