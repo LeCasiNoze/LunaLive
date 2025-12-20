@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useParams } from "react-router-dom";
-import { getStreamer, watchHeartbeat } from "../lib/api";
+import { getStreamer, watchHeartbeat, followStreamer, unfollowStreamer } from "../lib/api";
 import { DlivePlayer } from "../components/DlivePlayer";
 import { ChatPanel } from "../components/ChatPanel";
 import { LoginModal } from "../components/LoginModal";
@@ -157,6 +157,10 @@ export default function StreamerPage() {
 
   const [tab, setTab] = React.useState<TabKey>("about");
 
+  const [isFollowing, setIsFollowing] = React.useState(false);
+  const [followsCountLocal, setFollowsCountLocal] = React.useState<number | null>(null);
+  const [followLoading, setFollowLoading] = React.useState(false);
+
   // ✅ Mobile portrait detection (pour mini chat)
   const [isMobile, setIsMobile] = React.useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 820px)").matches : false
@@ -261,9 +265,15 @@ export default function StreamerPage() {
       try {
         setLoading(true);
         if (!slug) return;
-        const r = await getStreamer(slug);
+        const r = await getStreamer(slug, token);
         if (!mounted) return;
         setData(r);
+
+        // ✅ follow info
+        setIsFollowing(!!(r?.isFollowing ?? false));
+        setFollowsCountLocal(
+          typeof (r as any)?.followsCount === "number" ? Number((r as any).followsCount) : null
+        );
       } finally {
         if (mounted) setLoading(false);
       }
@@ -272,7 +282,8 @@ export default function StreamerPage() {
     return () => {
       mounted = false;
     };
-  }, [slug]);
+  }, [slug, token]);
+
 
   const s = data?.streamer || data;
 
@@ -330,7 +341,7 @@ export default function StreamerPage() {
   if (loading) return <div className="panel">Chargement…</div>;
   if (!s) return <div className="panel">Streamer introuvable</div>;
 
-  const followsCount = s?.followsCount ?? null;
+  const followsCount = followsCountLocal;
 
   const showMiniChat = isMobile && isPortrait && !cinema; // ✅ portrait: mini chat en bas
 
@@ -442,8 +453,36 @@ export default function StreamerPage() {
               </strong>
             </div>
 
-            <button type="button" className="btnPrimarySmall" onClick={() => setLoginOpen(true)} title="Follow LunaLive (V1)">
-              Suivre
+            <button
+              type="button"
+              className="btnPrimarySmall"
+              disabled={followLoading}
+              onClick={async (e) => {
+                e.stopPropagation();
+
+                if (!token) {
+                  setLoginOpen(true);
+                  return;
+                }
+                if (!slug) return;
+
+                setFollowLoading(true);
+                try {
+                  const r = isFollowing
+                    ? await unfollowStreamer(String(slug), token)
+                    : await followStreamer(String(slug), token);
+
+                  if (r?.ok) {
+                    setIsFollowing(!!r.following);
+                    setFollowsCountLocal(Number(r.followsCount));
+                  }
+                } finally {
+                  setFollowLoading(false);
+                }
+              }}
+              title={isFollowing ? "Ne plus suivre" : "Suivre"}
+            >
+              {followLoading ? "…" : isFollowing ? "Suivi" : "Suivre"}
             </button>
           </div>
         </div>

@@ -313,6 +313,25 @@ export async function migrate() {
     CREATE INDEX IF NOT EXISTS stream_viewer_minutes_live_bucket_idx
     ON stream_viewer_minutes(live_session_id, bucket_ts DESC);
   `);
+  
+  // ──────────────────────────────────────────────────────────
+  // FOLLOWS (abonnements)
+  // ──────────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS streamer_follows (
+      streamer_id INT NOT NULL REFERENCES streamers(id) ON DELETE CASCADE,
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (streamer_id, user_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS streamer_follows_streamer_idx
+      ON streamer_follows(streamer_id, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS streamer_follows_user_idx
+      ON streamer_follows(user_id, created_at DESC);
+  `);
+
 }
 
 export async function seedIfEmpty() {

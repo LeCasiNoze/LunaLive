@@ -23,6 +23,9 @@ import { registerChatRoutes } from "./chat_routes.js";
 import { attachChat } from "./chat_socket.js";
 import normalizeAppearance, { mergeAppearance, PRESET_COLORS } from "./appearance.js";
 import { registerStatsRoutes } from "./stats_routes.js";
+import jwt from "jsonwebtoken";
+import type { AuthUser } from "./auth.js";
+import { chatStore } from "./chat_store.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -126,6 +129,7 @@ app.get(
          s.live_started_at AS "liveStartedAt",
          s.appearance AS "appearance",
          s.offline_bg_path AS "offlineBgPath",
+         s.user_id AS "ownerUserId",
          pa.channel_slug AS "channelSlug",
          pa.channel_username AS "channelUsername"
        FROM streamers s
@@ -139,14 +143,137 @@ app.get(
     );
 
     if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+
     const row = rows[0];
+
+    // ✅ follow count
+    const c = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id = $1`,
+      [Number(row.id)]
+    );
+    const followsCount = Number(c.rows?.[0]?.n ?? 0);
+
+    // ✅ isFollowing (si token présent)
+    const me = tryGetAuthUser(req);
+    let isFollowing = false;
+    if (me?.id) {
+      const f = await pool.query(
+        `SELECT 1 FROM streamer_follows WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`,
+        [Number(row.id), Number(me.id)]
+      );
+      isFollowing = !!f.rows?.[0];
+    }
+
     const base = (process.env.PUBLIC_API_BASE || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
-    const offlineBgUrl = row.offlineBgPath ? `${base}/uploads/streamers/${encodeURIComponent(row.offlineBgPath)}` : null;
+    const offlineBgUrl = row.offlineBgPath
+      ? `${base}/uploads/streamers/${encodeURIComponent(row.offlineBgPath)}`
+      : null;
 
     res.json({
       ...row,
       offlineBgUrl,
+
+      // ✅ follow info
+      followsCount,
+      isFollowing,
     });
+  })
+);
+
+app.post(
+  "/streamers/:slug/follow",
+  requireAuth,
+  a(async (req, res) => {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
+
+    // streamer meta
+    const s = await pool.query(
+      `SELECT id, slug, display_name AS "displayName", user_id AS "ownerUserId", appearance
+       FROM streamers
+       WHERE lower(slug)=lower($1)
+         AND (suspended_until IS NULL OR suspended_until < NOW())
+       LIMIT 1`,
+      [slug]
+    );
+
+    const streamer = s.rows?.[0];
+    if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    // pas follow soi-même (si streamer lié à user)
+    if (streamer.ownerUserId != null && Number(streamer.ownerUserId) === Number(req.user!.id)) {
+      return res.status(400).json({ ok: false, error: "cannot_self_follow" });
+    }
+
+    // insert idempotent
+    const ins = await pool.query(
+      `INSERT INTO streamer_follows (streamer_id, user_id)
+       VALUES ($1,$2)
+       ON CONFLICT DO NOTHING`,
+      [Number(streamer.id), Number(req.user!.id)]
+    );
+
+    // count
+    const c = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id=$1`,
+      [Number(streamer.id)]
+    );
+    const followsCount = Number(c.rows?.[0]?.n ?? 0);
+
+    // ✅ message chat (uniquement si nouveau follow)
+    if ((ins.rowCount ?? 0) > 0) {
+      // message personnalisable plus tard via appearance.chat.followMessageTemplate
+      const tpl =
+        (streamer.appearance?.chat?.followMessageTemplate &&
+          String(streamer.appearance.chat.followMessageTemplate)) ||
+        "💜 {user} suit {streamer} !";
+
+      const body = tpl
+        .replaceAll("{user}", String(req.user!.username))
+        .replaceAll("{streamer}", String(streamer.displayName || streamer.slug));
+
+      const io = req.app.locals.io;
+      if (io) {
+        const msg = chatStore.addSystem(String(streamer.slug), body);
+        io.to(`chat:${streamer.slug}`).emit("chat:message", msg);
+      }
+    }
+
+    return res.json({ ok: true, following: true, followsCount });
+  })
+);
+
+app.delete(
+  "/streamers/:slug/follow",
+  requireAuth,
+  a(async (req, res) => {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
+
+    const s = await pool.query(
+      `SELECT id, slug
+       FROM streamers
+       WHERE lower(slug)=lower($1)
+         AND (suspended_until IS NULL OR suspended_until < NOW())
+       LIMIT 1`,
+      [slug]
+    );
+
+    const streamer = s.rows?.[0];
+    if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    await pool.query(
+      `DELETE FROM streamer_follows WHERE streamer_id=$1 AND user_id=$2`,
+      [Number(streamer.id), Number(req.user!.id)]
+    );
+
+    const c = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id=$1`,
+      [Number(streamer.id)]
+    );
+    const followsCount = Number(c.rows?.[0]?.n ?? 0);
+
+    return res.json({ ok: true, following: false, followsCount });
   })
 );
 
@@ -159,6 +286,20 @@ function isValidEmail(s: string) {
 }
 function genCode6() {
   return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function tryGetAuthUser(req: Request): AuthUser | null {
+  const h = String(req.headers.authorization || "");
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  if (!m) return null;
+
+  try {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return null;
+    return jwt.verify(m[1], secret) as AuthUser;
+  } catch {
+    return null;
+  }
 }
 
 app.post(

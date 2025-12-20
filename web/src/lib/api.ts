@@ -163,16 +163,37 @@ export type ApiStreamerPage = {
   title: string;
   viewers: number;
   isLive: boolean;
-  channelSlug?: string | null;       // displayname
-  channelUsername?: string | null;   // username (HLS)
+
+  channelSlug?: string | null;
+  channelUsername?: string | null;
+
+  // ✅ follows
+  followsCount?: number;
+  isFollowing?: boolean;
 };
 
 /* Public */
 export const getLives = () => j<ApiLive[]>("/lives");
-export const getStreamer = (slug: string) =>
-  j<ApiStreamerPage>(`/streamers/${encodeURIComponent(slug)}`);
+export const getStreamer = (slug: string, token?: string | null) =>
+  j<ApiStreamerPage>(`/streamers/${encodeURIComponent(slug)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
 
 export const getStreamers = () => j<ApiStreamer[]>("/streamers");
+
+export async function followStreamer(slug: string, token: string) {
+  return j<{ ok: true; following: boolean; followsCount: number }>(
+    `/streamers/${encodeURIComponent(slug)}/follow`,
+    { method: "POST", headers: { Authorization: `Bearer ${token}` } }
+  );
+}
+
+export async function unfollowStreamer(slug: string, token: string) {
+  return j<{ ok: true; following: boolean; followsCount: number }>(
+    `/streamers/${encodeURIComponent(slug)}/follow`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+  );
+}
 
 /* Auth */
 export async function register(username: string, email: string, password: string) {
