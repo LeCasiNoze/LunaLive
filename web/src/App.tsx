@@ -35,9 +35,9 @@ function AppInner() {
         onOpenLogin={() => setLoginOpen(true)}
         onLogout={logout}
       />
-
+      <GoLiveNotifier />
+      
       <Routes>
-        <GoLiveNotifier />
         <Route path="/" element={<LivesPage />} />
         <Route path="/browse" element={<BrowsePage />} />
         <Route path="/s/:slug" element={<StreamerPage />} />

@@ -233,7 +233,7 @@ export function attachChat(io: Server) {
   io.on("connection", (socket: Socket) => {
     const data = socket.data as SocketData;
 
-    // ✅ 3.A : room user pour notifications (multi tabs / pages)
+    // 3.A — room perso (pour notif A + multi-tabs)
     if (data.user?.id) {
       socket.join(`user:${data.user.id}`);
     }

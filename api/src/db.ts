@@ -179,9 +179,6 @@ export async function migrate() {
   await pool.query(
     `ALTER TABLE IF EXISTS streamers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`
   );
-  await pool.query(`ALTER TABLE streamers ADD COLUMN IF NOT EXISTS thumb_url TEXT;`);
-  await pool.query(`ALTER TABLE streamers ADD COLUMN IF NOT EXISTS live_started_at TIMESTAMPTZ;`);
-
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS streamers_user_id_uq ON streamers(user_id);`);
 
   // ✅ 5bis) Appearance JSONB (thème chat streamer)
@@ -331,31 +328,36 @@ export async function migrate() {
     CREATE INDEX IF NOT EXISTS streamer_follows_user_idx
       ON streamer_follows(user_id, created_at DESC);
   `);
-  
+
   await pool.query(`
     ALTER TABLE streamer_follows
     ADD COLUMN IF NOT EXISTS notify_enabled BOOLEAN NOT NULL DEFAULT TRUE;
   `);
-  
+
   // ──────────────────────────────────────────────────────────
-  // PUSH NOTIFS (Web Push subscriptions)
+  // PUSH NOTIFS (Web Push subscriptions) — utilisé par routes/push.ts + notify_go_live.ts
   // ──────────────────────────────────────────────────────────
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS user_push_subscriptions (
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
       id BIGSERIAL PRIMARY KEY,
       user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       endpoint TEXT NOT NULL,
-      subscription JSONB NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      user_agent TEXT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(endpoint)
     );
 
-    CREATE INDEX IF NOT EXISTS user_push_subscriptions_user_idx
-      ON user_push_subscriptions(user_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx
+      ON push_subscriptions(user_id, updated_at DESC);
   `);
-
 }
+
+await pool.query(`ALTER TABLE streamers ADD COLUMN IF NOT EXISTS thumb_url TEXT;`);
+await pool.query(`ALTER TABLE streamers ADD COLUMN IF NOT EXISTS live_started_at TIMESTAMPTZ;`);
+
 await pool.query(`
   ALTER TABLE streamer_follows
   ADD COLUMN IF NOT EXISTS notify_enabled BOOLEAN NOT NULL DEFAULT TRUE;
