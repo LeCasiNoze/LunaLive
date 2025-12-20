@@ -225,7 +225,6 @@ export default function StreamerPage() {
           {/* mini header chat (comme ton croquis) */}
           <div className="streamChatHeader">
             <div className="streamChatHeaderLeft">
-              <div style={{ fontWeight: 950 }}>chat</div>
               <div className="mutedSmall" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <span style={{ opacity: 0.9 }}>
                   <EyeIcon />
