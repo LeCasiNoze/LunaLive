@@ -39,6 +39,32 @@ function getAnonId(): string {
   return created;
 }
 
+/**
+ * Affichage durée:
+ * - minutes < 60 => "X min"
+ * - heures < 24 => "X h" ou "X h Y min"
+ * - jours >= 1  => "X j" ou "X j Y h"
+ */
+function formatDurationFrom(startedAtMs: number, nowMs: number) {
+  const diffMs = Math.max(0, nowMs - startedAtMs);
+  const totalMin = Math.floor(diffMs / 60_000);
+
+  if (totalMin < 60) return `${totalMin} min`;
+
+  const totalH = Math.floor(totalMin / 60);
+  const min = totalMin % 60;
+
+  if (totalH < 24) return min > 0 ? `${totalH} h ${min} min` : `${totalH} h`;
+
+  const days = Math.floor(totalH / 24);
+  const h = totalH % 24;
+
+  if (h > 0) return `${days} j ${h} h`;
+  return `${days} j`;
+}
+
+type TabKey = "about" | "clips" | "vod" | "agenda";
+
 export default function StreamerPage() {
   const { slug } = useParams();
   const [data, setData] = React.useState<any>(null);
@@ -46,12 +72,24 @@ export default function StreamerPage() {
 
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
+  const myRole = auth?.user?.role ?? "guest";
 
-  // ✅ modal login piloté par la page
+  // modal login piloté par la page
   const [loginOpen, setLoginOpen] = React.useState(false);
 
-  // ✅ viewers temps réel (venant du heartbeat API)
+  // viewers temps réel (venant du heartbeat API)
   const [liveViewersNow, setLiveViewersNow] = React.useState<number | null>(null);
+
+  // tick pour la durée
+  const [nowTick, setNowTick] = React.useState(() => Date.now());
+
+  // tabs bas
+  const [tab, setTab] = React.useState<TabKey>("about");
+
+  React.useEffect(() => {
+    const t = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(t);
+  }, []);
 
   React.useEffect(() => {
     let mounted = true;
@@ -73,8 +111,10 @@ export default function StreamerPage() {
     };
   }, [slug]);
 
-  const s = data?.streamer || data; // selon ton format d’API
-  const title = s?.title || "Stream";
+  const s = data?.streamer || data;
+
+  const displayName = String(s?.display_name ?? s?.displayName ?? "");
+  const title = String(s?.title || "Stream");
   const isLive = !!(s?.is_live ?? s?.isLive);
 
   const viewersFromApi = Number(s?.viewers ?? s?.watchingCount ?? 0);
@@ -83,12 +123,18 @@ export default function StreamerPage() {
   const channelSlug = s?.channel_slug ?? s?.channelSlug;
   const channelUsername = s?.channel_username ?? s?.channelUsername;
 
+  // (optionnel) durée: nécessite liveStartedAt dans la réponse API /streamers/:slug
+  const liveStartedAtRaw = s?.liveStartedAt ?? s?.live_started_at ?? null;
+  const liveStartedAtMs = liveStartedAtRaw ? new Date(liveStartedAtRaw).getTime() : null;
+  const durationText =
+    isLive && liveStartedAtMs ? formatDurationFrom(liveStartedAtMs, nowTick) : "—";
+
   // reset si on repasse offline
   React.useEffect(() => {
     if (!isLive) setLiveViewersNow(null);
   }, [isLive]);
 
-  // ✅ Heartbeat watch tracking (stats)
+  // Heartbeat watch tracking (stats)
   React.useEffect(() => {
     if (!slug) return;
     if (!isLive) return;
@@ -101,16 +147,10 @@ export default function StreamerPage() {
       if (document.visibilityState === "hidden") return;
 
       try {
-        // ✅ on envoie aussi isLive (même si l’API peut l’ignorer)
-        const r = await watchHeartbeat({ slug: String(slug), anonId, isLive: true }, token);
+        const r = await watchHeartbeat({ slug: String(slug), anonId }, token);
 
-        // ✅ on récup le compteur temps réel
-        if (r?.isLive && typeof r.viewersNow === "number") {
-          setLiveViewersNow(r.viewersNow);
-        }
-        if (r?.isLive === false) {
-          setLiveViewersNow(0);
-        }
+        if (r?.isLive && typeof r.viewersNow === "number") setLiveViewersNow(r.viewersNow);
+        if (r?.isLive === false) setLiveViewersNow(0);
       } catch {}
     };
 
@@ -132,67 +172,150 @@ export default function StreamerPage() {
   if (loading) return <div className="panel">Chargement…</div>;
   if (!s) return <div className="panel">Streamer introuvable</div>;
 
+  // Follows V1: UI only (placeholder)
+  const followsCount = s?.followsCount ?? null;
+
   return (
     <div className="streamPage">
-      {/* Top bar */}
-      <div className="panel streamTopBar">
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 20,
-              fontWeight: 800,
-              lineHeight: 1.1,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {title}
+      {/* === Header (comme ton croquis) === */}
+      <div className="panel streamHeaderBar">
+        <div className="streamHeaderLeft">
+          <div className="streamHeaderTitle">
+            <span className="streamHeaderTitleText">
+              {title}
+              {displayName ? ` — ${displayName}` : ""}
+            </span>
           </div>
 
-          <div className="mutedSmall" style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "center" }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  width: 9,
-                  height: 9,
-                  borderRadius: 99,
-                  background: isLive ? "rgba(255,80,120,0.95)" : "rgba(180,180,200,0.7)",
-                  boxShadow: isLive ? "0 0 18px rgba(255,80,120,0.45)" : "none",
-                  display: "inline-block",
-                }}
-              />
-              {isLive ? "LIVE" : "OFFLINE"}
-            </span>
-
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span style={{ opacity: 0.9 }}>
-                <EyeIcon />
-              </span>
-              <span>{Number(viewers || 0).toLocaleString()}</span>
-            </span>
+          <div className="streamHeaderSub mutedSmall">
+            Durée du stream actuel : <strong style={{ color: "rgba(255,255,255,0.9)" }}>{durationText}</strong>
           </div>
         </div>
 
-        {/* zone future : follow / share / report */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>{/* placeholder */}</div>
+        <div className="streamHeaderRight">
+          <div className="streamFollowBox">
+            <div className="mutedSmall">
+              Nombre de follow :{" "}
+              <strong style={{ color: "rgba(255,255,255,0.9)" }}>
+                {followsCount === null ? "—" : Number(followsCount).toLocaleString()}
+              </strong>
+            </div>
+
+            <button
+              type="button"
+              className="btnPrimarySmall"
+              onClick={() => setLoginOpen(true)} // pour l’instant: on branchera la logique follow ensuite
+              title="Follow LunaLive (V1)"
+            >
+              Suivre
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Grid: player left, chat right */}
+      {/* === Stage: player + chat === */}
       <div className="streamGrid">
         <div className="streamMain">
-          <DlivePlayer channelSlug={channelSlug} channelUsername={channelUsername} isLive={isLive} />
+          <div className="panel streamPlayerPanel" style={{ padding: 0, overflow: "hidden" }}>
+            <DlivePlayer channelSlug={channelSlug} channelUsername={channelUsername} isLive={isLive} />
+          </div>
         </div>
 
         <aside className="panel streamChat" style={{ padding: 0 }}>
-          <ChatPanel
-            slug={String(slug || "")}
-            onRequireLogin={() => setLoginOpen(true)} // ✅ ouvre le modal au click "Envoyer" si pas connecté
-          />
+          {/* mini header chat (comme ton croquis) */}
+          <div className="streamChatHeader">
+            <div className="streamChatHeaderLeft">
+              <div style={{ fontWeight: 950 }}>chat</div>
+              <div className="mutedSmall" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span style={{ opacity: 0.9 }}>
+                  <EyeIcon />
+                </span>
+                <span>{Number(viewers || 0).toLocaleString()} viewer</span>
+              </div>
+            </div>
+
+            <div className="mutedSmall">
+              rôle : <strong style={{ color: "rgba(255,255,255,0.9)" }}>{String(myRole)}</strong>
+            </div>
+          </div>
+
+          <div className="streamChatBody">
+            <ChatPanel
+              slug={String(slug || "")}
+              onRequireLogin={() => setLoginOpen(true)}
+            />
+          </div>
         </aside>
       </div>
 
-      {/* ✅ modal rendu ici */}
+      {/* === Bottom tabs === */}
+      <div className="panel streamBottomPanel">
+        <div className="streamTabsRow">
+          <button
+            type="button"
+            className={`streamTabBtn ${tab === "about" ? "active" : ""}`}
+            onClick={() => setTab("about")}
+          >
+            À propos
+          </button>
+          <button
+            type="button"
+            className={`streamTabBtn ${tab === "clips" ? "active" : ""}`}
+            onClick={() => setTab("clips")}
+          >
+            Clip
+          </button>
+          <button
+            type="button"
+            className={`streamTabBtn ${tab === "vod" ? "active" : ""}`}
+            onClick={() => setTab("vod")}
+          >
+            VOD
+          </button>
+          <button
+            type="button"
+            className={`streamTabBtn ${tab === "agenda" ? "active" : ""}`}
+            onClick={() => setTab("agenda")}
+          >
+            Agenda
+          </button>
+        </div>
+
+        <div className="streamTabContent">
+          {tab === "about" && (
+            <div>
+              <div className="panelTitle">À propos</div>
+              <div className="mutedSmall">
+                (On mettra ici bio + liens casinos + images + siteweb, etc.)
+              </div>
+            </div>
+          )}
+
+          {tab === "clips" && (
+            <div>
+              <div className="panelTitle">Clips</div>
+              <div className="mutedSmall">(placeholder)</div>
+            </div>
+          )}
+
+          {tab === "vod" && (
+            <div>
+              <div className="panelTitle">VOD</div>
+              <div className="mutedSmall">
+                (plus tard : récupération DLive si faisable, sinon on voit un plan propre)
+              </div>
+            </div>
+          )}
+
+          {tab === "agenda" && (
+            <div>
+              <div className="panelTitle">Agenda</div>
+              <div className="mutedSmall">(placeholder)</div>
+            </div>
+          )}
+        </div>
+      </div>
+
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>
   );

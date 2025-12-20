@@ -492,51 +492,149 @@ body{
   .grid{ grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 }
 
-.streamPage {
-  display: flex;
-  flex-direction: column;
+/* ===========================
+   Streamer page (rework v1)
+   =========================== */
+
+.streamPage{
+  display:flex;
+  flex-direction:column;
   gap: 14px;
 }
 
-.streamTopBar {
-  display: flex;
-  align-items: center;
+/* header comme croquis */
+.streamHeaderBar{
+  display:flex;
+  align-items:center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
   padding: 12px 14px;
 }
 
-/* ✅ Desktop: stream gauche, chat droite */
-.streamGrid {
-  display: grid;
+.streamHeaderLeft{
+  min-width: 0;
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.streamHeaderTitle{
+  font-size: 20px;
+  font-weight: 950;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.streamHeaderRight{
+  display:flex;
+  align-items:center;
+  justify-content: flex-end;
+}
+
+.streamFollowBox{
+  display:flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* layout player + chat */
+.streamGrid{
+  display:grid;
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 14px;
   align-items: start;
 }
 
-.streamMain {
-  min-width: 0;
+.streamMain{ min-width: 0; }
+
+.streamPlayerPanel{
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255,255,255,0.04);
 }
 
-.streamChat {
+/* chat sticky à droite */
+.streamChat{
   min-width: 0;
-  height: calc(100vh - 150px); /* ajuste si besoin */
+  height: calc(100vh - 170px);
   position: sticky;
-  top: 86px; /* ajuste selon ta navbar */
-  display: flex;
+  top: 86px;
+  display:flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow:hidden;
 }
 
-/* ✅ Mobile: chat dessous */
-@media (max-width: 1100px) {
-  .streamGrid {
-    grid-template-columns: 1fr;
-  }
-  .streamChat {
+.streamChatHeader{
+  display:flex;
+  align-items:flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+}
+
+.streamChatHeaderLeft{
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.streamChatBody{
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display:flex;
+  flex-direction: column;
+}
+
+/* bottom tabs */
+.streamBottomPanel{
+  padding: 12px 14px;
+}
+
+.streamTabsRow{
+  display:flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 12px;
+}
+
+.streamTabBtn{
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 900;
+  opacity: 0.75;
+}
+
+.streamTabBtn.active{
+  opacity: 1;
+  border-color: rgba(126,76,179,0.55);
+  box-shadow: 0 0 0 2px rgba(126,76,179,0.12);
+}
+
+.streamTabContent{
+  min-height: 80px;
+}
+
+/* responsive */
+@media (max-width: 1100px){
+  .streamGrid{ grid-template-columns: 1fr; }
+  .streamChat{
     position: static;
     height: auto;
   }
+  .streamFollowBox{ align-items: flex-start; }
+  .streamHeaderBar{ align-items:flex-start; }
 }
 
 /* === Chat theme variables === */
