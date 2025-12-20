@@ -170,6 +170,9 @@ export type ApiStreamerPage = {
   // ✅ follows
   followsCount?: number;
   isFollowing?: boolean;
+
+  // ✅ notif bell (si user connecté + follow)
+  notifyEnabled?: boolean;
 };
 
 /* Public */
@@ -182,16 +185,27 @@ export const getStreamer = (slug: string, token?: string | null) =>
 export const getStreamers = () => j<ApiStreamer[]>("/streamers");
 
 export async function followStreamer(slug: string, token: string) {
-  return j<{ ok: true; following: boolean; followsCount: number }>(
+  return j<{ ok: true; following: boolean; followsCount: number; notifyEnabled?: boolean }>(
     `/streamers/${encodeURIComponent(slug)}/follow`,
     { method: "POST", headers: { Authorization: `Bearer ${token}` } }
   );
 }
 
 export async function unfollowStreamer(slug: string, token: string) {
-  return j<{ ok: true; following: boolean; followsCount: number }>(
+  return j<{ ok: true; following: boolean; followsCount: number; notifyEnabled?: boolean }>(
     `/streamers/${encodeURIComponent(slug)}/follow`,
     { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+  );
+}
+
+export async function setFollowNotify(slug: string, notifyEnabled: boolean, token: string) {
+  return j<{ ok: true; notifyEnabled: boolean }>(
+    `/streamers/${encodeURIComponent(slug)}/follow/notify`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ notifyEnabled }),
+    }
   );
 }
 

@@ -313,7 +313,7 @@ export async function migrate() {
     CREATE INDEX IF NOT EXISTS stream_viewer_minutes_live_bucket_idx
     ON stream_viewer_minutes(live_session_id, bucket_ts DESC);
   `);
-  
+
   // ──────────────────────────────────────────────────────────
   // FOLLOWS (abonnements)
   // ──────────────────────────────────────────────────────────
@@ -330,6 +330,11 @@ export async function migrate() {
 
     CREATE INDEX IF NOT EXISTS streamer_follows_user_idx
       ON streamer_follows(user_id, created_at DESC);
+  `);
+  
+  await pool.query(`
+    ALTER TABLE streamer_follows
+    ADD COLUMN IF NOT EXISTS notify_enabled BOOLEAN NOT NULL DEFAULT TRUE;
   `);
 
 }

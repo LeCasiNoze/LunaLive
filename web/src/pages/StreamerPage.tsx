@@ -1,6 +1,12 @@
 import * as React from "react";
 import { useParams } from "react-router-dom";
-import { getStreamer, watchHeartbeat, followStreamer, unfollowStreamer } from "../lib/api";
+import {
+  getStreamer,
+  watchHeartbeat,
+  followStreamer,
+  unfollowStreamer,
+  setFollowNotify,
+} from "../lib/api";
 import { DlivePlayer } from "../components/DlivePlayer";
 import { ChatPanel } from "../components/ChatPanel";
 import { LoginModal } from "../components/LoginModal";
@@ -38,6 +44,40 @@ function ChatIcon({ size = 18 }: { size?: number }) {
         strokeWidth="2.2"
         strokeLinecap="round"
       />
+    </svg>
+  );
+}
+
+function BellIcon({ size = 18, on = true }: { size?: number; on?: boolean }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 22c1.2 0 2.1-.9 2.1-2.1H9.9C9.9 21.1 10.8 22 12 22Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+      <path
+        d="M18 8.8c0-3.3-2.1-5.8-6-5.8s-6 2.5-6 5.8c0 3.8-1.4 5.1-2.3 6.1-.5.6-.1 1.6.7 1.6h15.2c.8 0 1.2-1 .7-1.6-.9-1-2.3-2.3-2.3-6.1Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+      {on ? (
+        <path
+          d="M19.2 4.8c1.1 1 1.8 2.4 1.8 4"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+        />
+      ) : (
+        <path
+          d="M4 4l16 16"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+        />
+      )}
     </svg>
   );
 }
@@ -140,7 +180,6 @@ function exitFullscreenSafe() {
   }
 }
 
-
 type TabKey = "about" | "clips" | "vod" | "agenda";
 
 export default function StreamerPage() {
@@ -158,6 +197,7 @@ export default function StreamerPage() {
   const [tab, setTab] = React.useState<TabKey>("about");
 
   const [isFollowing, setIsFollowing] = React.useState(false);
+  const [notifyEnabled, setNotifyEnabled] = React.useState(false); // ✅ cloche
   const [followsCountLocal, setFollowsCountLocal] = React.useState<number | null>(null);
   const [followLoading, setFollowLoading] = React.useState(false);
 
@@ -231,10 +271,7 @@ export default function StreamerPage() {
 
   const enterCinema = React.useCallback(() => {
     fsWantedRef.current = true;
-
-    // ✅ On demande fullscreen sur le document (persistant, même si le player rerender)
     requestFullscreenSafe(document.documentElement);
-
     setChatOpen(false);
     setCinema(true);
   }, []);
@@ -258,6 +295,11 @@ export default function StreamerPage() {
     if (isMobile && fsWantedRef.current) requestFullscreenSafe(document.documentElement);
   }, [isMobile]);
 
+  // ✅ callback: reçoit le compteur live depuis socket (via ChatPanel)
+  const onFollowsCount = React.useCallback((n: number) => {
+    setFollowsCountLocal(Number(n));
+  }, []);
+
   React.useEffect(() => {
     let mounted = true;
 
@@ -265,15 +307,25 @@ export default function StreamerPage() {
       try {
         setLoading(true);
         if (!slug) return;
-        const r = await getStreamer(slug, token);
+
+        const r = await getStreamer(String(slug), token);
         if (!mounted) return;
+
         setData(r);
 
-        // ✅ follow info
-        setIsFollowing(!!(r?.isFollowing ?? false));
+        const following = !!(r?.isFollowing ?? false);
+        setIsFollowing(following);
+
         setFollowsCountLocal(
           typeof (r as any)?.followsCount === "number" ? Number((r as any).followsCount) : null
         );
+
+        // ✅ cloche: si API renvoie notifyEnabled, on prend. Sinon: ON par défaut si follow
+        if (typeof (r as any)?.notifyEnabled === "boolean") {
+          setNotifyEnabled(Boolean((r as any).notifyEnabled));
+        } else {
+          setNotifyEnabled(following ? true : false);
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -283,7 +335,6 @@ export default function StreamerPage() {
       mounted = false;
     };
   }, [slug, token]);
-
 
   const s = data?.streamer || data;
 
@@ -343,7 +394,7 @@ export default function StreamerPage() {
 
   const followsCount = followsCountLocal;
 
-  const showMiniChat = isMobile && isPortrait && !cinema; // ✅ portrait: mini chat en bas
+  const showMiniChat = isMobile && isPortrait && !cinema;
 
   const PlayerBlock = (
     <>
@@ -375,7 +426,6 @@ export default function StreamerPage() {
     </>
   );
 
-  // ✅ Mode cinéma : fullscreen (API) + bouton chat
   if (cinema) {
     return (
       <>
@@ -411,7 +461,8 @@ export default function StreamerPage() {
                     slug={String(slug || "")}
                     onRequireLogin={() => setLoginOpen(true)}
                     compact
-                    autoFocus={!isMobile}  // ✅ pas d'autofocus sur mobile (évite le clavier => exit fullscreen)
+                    autoFocus={!isMobile}
+                    onFollowsCount={onFollowsCount}
                   />
                 </div>
               </div>
@@ -453,37 +504,83 @@ export default function StreamerPage() {
               </strong>
             </div>
 
-            <button
-              type="button"
-              className="btnPrimarySmall"
-              disabled={followLoading}
-              onClick={async (e) => {
-                e.stopPropagation();
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                type="button"
+                className="btnPrimarySmall"
+                disabled={followLoading}
+                onClick={async (e) => {
+                  e.stopPropagation();
 
-                if (!token) {
-                  setLoginOpen(true);
-                  return;
-                }
-                if (!slug) return;
-
-                setFollowLoading(true);
-                try {
-                  const r = isFollowing
-                    ? await unfollowStreamer(String(slug), token)
-                    : await followStreamer(String(slug), token);
-
-                  if (r?.ok) {
-                    setIsFollowing(!!r.following);
-                    setFollowsCountLocal(Number(r.followsCount));
+                  if (!token) {
+                    setLoginOpen(true);
+                    return;
                   }
-                } finally {
-                  setFollowLoading(false);
-                }
-              }}
-              title={isFollowing ? "Ne plus suivre" : "Suivre"}
-            >
-              {followLoading ? "…" : isFollowing ? "Suivi" : "Suivre"}
-            </button>
+                  if (!slug) return;
+
+                  setFollowLoading(true);
+                  try {
+                    const r = isFollowing
+                      ? await unfollowStreamer(String(slug), token)
+                      : await followStreamer(String(slug), token);
+
+                    if (r?.ok) {
+                      const followingNow = !!r.following;
+                      setIsFollowing(followingNow);
+                      setFollowsCountLocal(Number(r.followsCount));
+
+                      // ✅ cloche: ON par défaut quand on follow, OFF quand on unfollow
+                      if (typeof r.notifyEnabled === "boolean") {
+                        setNotifyEnabled(Boolean(r.notifyEnabled));
+                      } else {
+                        setNotifyEnabled(followingNow ? true : false);
+                      }
+                    }
+                  } finally {
+                    setFollowLoading(false);
+                  }
+                }}
+                title={isFollowing ? "Ne plus suivre" : "Suivre"}
+              >
+                {followLoading ? "…" : isFollowing ? "Suivi" : "Suivre"}
+              </button>
+
+              {/* ✅ cloche uniquement si follow */}
+              {isFollowing ? (
+                <button
+                  type="button"
+                  className="btnGhostSmall"
+                  disabled={followLoading}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+
+                    if (!token) {
+                      setLoginOpen(true);
+                      return;
+                    }
+                    if (!slug) return;
+
+                    const next = !notifyEnabled;
+                    setNotifyEnabled(next); // optimiste
+                    try {
+                      const r = await setFollowNotify(String(slug), next, token);
+                      if (typeof r?.notifyEnabled === "boolean") setNotifyEnabled(Boolean(r.notifyEnabled));
+                    } catch {
+                      // rollback
+                      setNotifyEnabled((x) => !x);
+                    }
+                  }}
+                  title={
+                    notifyEnabled
+                      ? "Notifications activées (cliquer pour désactiver)"
+                      : "Notifications désactivées (cliquer pour activer)"
+                  }
+                  style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+                >
+                  <BellIcon on={notifyEnabled} /> {notifyEnabled ? "Notif" : "Muet"}
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
@@ -491,16 +588,19 @@ export default function StreamerPage() {
       {/* === Stage === */}
       <div className="streamGrid">
         <div className="streamMain">
-          {/* bouton cinéma */}
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-            <button type="button" className="btnGhostSmall" onClick={enterCinema} title="Plein écran (masque la barre URL sur mobile)">
+            <button
+              type="button"
+              className="btnGhostSmall"
+              onClick={enterCinema}
+              title="Plein écran (masque la barre URL sur mobile)"
+            >
               Plein écran
             </button>
           </div>
 
           {PlayerBlock}
 
-          {/* ✅ Mobile portrait: mini chat sous le player */}
           {showMiniChat ? (
             <div className="panel mobileMiniChat" style={{ padding: 0, marginTop: 12 }}>
               <div className="streamChatHeader">
@@ -519,7 +619,12 @@ export default function StreamerPage() {
               </div>
 
               <div className="streamChatBody">
-                <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} compact />
+                <ChatPanel
+                  slug={String(slug || "")}
+                  onRequireLogin={() => setLoginOpen(true)}
+                  compact
+                  onFollowsCount={onFollowsCount}
+                />
               </div>
             </div>
           ) : null}
@@ -543,7 +648,11 @@ export default function StreamerPage() {
           </div>
 
           <div className="streamChatBody">
-            <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} />
+            <ChatPanel
+              slug={String(slug || "")}
+              onRequireLogin={() => setLoginOpen(true)}
+              onFollowsCount={onFollowsCount}
+            />
           </div>
         </aside>
       </div>
@@ -551,16 +660,32 @@ export default function StreamerPage() {
       {/* === Bottom tabs === */}
       <div className="panel streamBottomPanel">
         <div className="streamTabsRow">
-          <button type="button" className={`streamTabBtn ${tab === "about" ? "active" : ""}`} onClick={() => setTab("about")}>
+          <button
+            type="button"
+            className={`streamTabBtn ${tab === "about" ? "active" : ""}`}
+            onClick={() => setTab("about")}
+          >
             À propos
           </button>
-          <button type="button" className={`streamTabBtn ${tab === "clips" ? "active" : ""}`} onClick={() => setTab("clips")}>
+          <button
+            type="button"
+            className={`streamTabBtn ${tab === "clips" ? "active" : ""}`}
+            onClick={() => setTab("clips")}
+          >
             Clip
           </button>
-          <button type="button" className={`streamTabBtn ${tab === "vod" ? "active" : ""}`} onClick={() => setTab("vod")}>
+          <button
+            type="button"
+            className={`streamTabBtn ${tab === "vod" ? "active" : ""}`}
+            onClick={() => setTab("vod")}
+          >
             VOD
           </button>
-          <button type="button" className={`streamTabBtn ${tab === "agenda" ? "active" : ""}`} onClick={() => setTab("agenda")}>
+          <button
+            type="button"
+            className={`streamTabBtn ${tab === "agenda" ? "active" : ""}`}
+            onClick={() => setTab("agenda")}
+          >
             Agenda
           </button>
         </div>

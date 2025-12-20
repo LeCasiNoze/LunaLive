@@ -153,15 +153,24 @@ app.get(
     );
     const followsCount = Number(c.rows?.[0]?.n ?? 0);
 
-    // ✅ isFollowing (si token présent)
+    // ✅ isFollowing + notifyEnabled (si token présent)
     const me = tryGetAuthUser(req);
     let isFollowing = false;
+    let notifyEnabled = true;
+
     if (me?.id) {
       const f = await pool.query(
-        `SELECT 1 FROM streamer_follows WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`,
+        `SELECT notify_enabled
+        FROM streamer_follows
+        WHERE streamer_id=$1 AND user_id=$2
+        LIMIT 1`,
         [Number(row.id), Number(me.id)]
       );
-      isFollowing = !!f.rows?.[0];
+
+      if (f.rows?.[0]) {
+        isFollowing = true;
+        notifyEnabled = !!f.rows[0].notify_enabled;
+      }
     }
 
     const base = (process.env.PUBLIC_API_BASE || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
@@ -176,6 +185,7 @@ app.get(
       // ✅ follow info
       followsCount,
       isFollowing,
+      ...(me?.id ? { notifyEnabled: isFollowing ? notifyEnabled : false } : {}),
     });
   })
 );
@@ -219,6 +229,13 @@ app.post(
       [Number(streamer.id)]
     );
     const followsCount = Number(c.rows?.[0]?.n ?? 0);
+    const io = req.app.locals.io;
+    if (io) {
+      io.to(`chat:${streamer.slug}`).emit("stream:follows", {
+        slug: streamer.slug,
+        followsCount,
+      });
+    }
 
     // ✅ message chat (uniquement si nouveau follow)
     if ((ins.rowCount ?? 0) > 0) {
@@ -239,7 +256,16 @@ app.post(
       }
     }
 
-    return res.json({ ok: true, following: true, followsCount });
+    const nf = await pool.query(
+      `SELECT notify_enabled
+      FROM streamer_follows
+      WHERE streamer_id=$1 AND user_id=$2
+      LIMIT 1`,
+      [Number(streamer.id), Number(req.user!.id)]
+    );
+    const notifyEnabled = nf.rows?.[0] ? !!nf.rows[0].notify_enabled : true;
+
+    return res.json({ ok: true, following: true, followsCount, notifyEnabled });
   })
 );
 
@@ -272,8 +298,57 @@ app.delete(
       [Number(streamer.id)]
     );
     const followsCount = Number(c.rows?.[0]?.n ?? 0);
+    const io = req.app.locals.io;
+    if (io) {
+      io.to(`chat:${streamer.slug}`).emit("stream:follows", {
+        slug: streamer.slug,
+        followsCount,
+      });
+    }
 
-    return res.json({ ok: true, following: false, followsCount });
+    return res.json({ ok: true, following: false, followsCount, notifyEnabled: false });
+  })
+);
+
+app.patch(
+  "/streamers/:slug/follow/notify",
+  requireAuth,
+  a(async (req, res) => {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
+
+    const raw = req.body?.notifyEnabled;
+    if (typeof raw !== "boolean") {
+      return res.status(400).json({ ok: false, error: "notifyEnabled_required" });
+    }
+    const notifyEnabled = raw;
+
+    const s = await pool.query(
+      `SELECT id, slug
+       FROM streamers
+       WHERE lower(slug)=lower($1)
+         AND (suspended_until IS NULL OR suspended_until < NOW())
+       LIMIT 1`,
+      [slug]
+    );
+
+    const streamer = s.rows?.[0];
+    if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    const upd = await pool.query(
+      `UPDATE streamer_follows
+       SET notify_enabled = $3
+       WHERE streamer_id = $1 AND user_id = $2
+       RETURNING notify_enabled`,
+      [Number(streamer.id), Number(req.user!.id), notifyEnabled]
+    );
+
+    if (!upd.rows?.[0]) {
+      // pas follow => pas de cloche
+      return res.status(404).json({ ok: false, error: "not_following" });
+    }
+
+    return res.json({ ok: true, notifyEnabled: !!upd.rows[0].notify_enabled });
   })
 );
 

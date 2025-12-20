@@ -63,12 +63,21 @@ export function ChatPanel({
   onRequireLogin,
   compact = false,
   autoFocus = false,
+  onFollowsCount, // ✅
 }: {
   slug: string;
   onRequireLogin: () => void;
   compact?: boolean;
   autoFocus?: boolean;
+  onFollowsCount?: (n: number) => void; // ✅
 }) {
+  const onFollowsCountRef = React.useRef<((n: number) => void) | undefined>(undefined);
+
+  React.useEffect(() => {
+    onFollowsCountRef.current = onFollowsCount;
+  }, [onFollowsCount]);
+
+
   const [messages, setMessages] = React.useState<ChatMsg[]>([]);
   const [input, setInput] = React.useState("");
   const [sending, setSending] = React.useState(false);
@@ -245,6 +254,7 @@ export function ChatPanel({
   // socket connect + join (et on charge les messages APRES avoir l'appearance)
   React.useEffect(() => {
     const s = String(slug || "").trim();
+    const slugLower = s.toLowerCase();
     if (!s) return;
 
     setMessages([]);
@@ -280,6 +290,16 @@ export function ChatPanel({
         if (atBottomRef.current) scrollToBottom("auto");
         else setShowJump(true);
       });
+    });
+    
+    socket.on("stream:follows", (payload: any) => {
+      const evSlug = String(payload?.slug || "").trim().toLowerCase();
+      if (!evSlug || evSlug !== slugLower) return;
+
+      const n = Number(payload?.followsCount);
+      if (!Number.isFinite(n)) return;
+
+      onFollowsCountRef.current?.(n);
     });
 
     socket.on("chat:cleared", () => {
@@ -330,6 +350,9 @@ export function ChatPanel({
 
     return () => {
       try {
+        try {
+          socket.off("stream:follows");
+        } catch {}
         socket.disconnect();
       } catch {}
     };
