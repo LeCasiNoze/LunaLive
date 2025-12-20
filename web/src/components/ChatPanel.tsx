@@ -84,6 +84,50 @@ export function ChatPanel({
   const sockRef = React.useRef<Socket | null>(null);
   const listRef = React.useRef<HTMLDivElement | null>(null);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
+  
+  // ✅ Mobile keyboard handling (visualViewport)
+  const [kbInset, setKbInset] = React.useState(0);
+  const isCoarse = React.useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return (
+      window.matchMedia?.("(pointer: coarse)")?.matches ||
+      window.matchMedia?.("(max-width: 820px)")?.matches
+    );
+  }, []);
+
+  const focusedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!isCoarse) return;
+
+    const vv: any = (window as any).visualViewport;
+    if (!vv) return;
+
+    const compute = () => {
+      // keyboard height approximation
+      const inset = Math.max(0, Math.round(window.innerHeight - vv.height - (vv.offsetTop || 0)));
+      setKbInset(inset);
+    };
+
+    compute();
+    vv.addEventListener?.("resize", compute);
+    vv.addEventListener?.("scroll", compute);
+
+    return () => {
+      vv.removeEventListener?.("resize", compute);
+      vv.removeEventListener?.("scroll", compute);
+    };
+  }, [isCoarse]);
+
+  // ✅ si on est en bas, on reste en bas quand le clavier change la hauteur
+  React.useEffect(() => {
+    if (!isCoarse) return;
+    if (!kbInset) return;
+    requestAnimationFrame(() => {
+      if (atBottomRef.current) scrollToBottom("auto");
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kbInset, isCoarse]);
 
   const navigate = useNavigate();
 
@@ -325,9 +369,11 @@ export function ChatPanel({
               setError(String(ack?.error || "send_failed"));
             }
           } else {
-            setInput("");
-            // ✅ garde le focus (desktop surtout)
+          setInput("");
+          // ✅ garde le focus uniquement si on était déjà en train d'écrire
+          if (focusedRef.current) {
             window.setTimeout(() => inputRef.current?.focus(), 0);
+          }
           }
           resolve();
         });
@@ -555,7 +601,13 @@ export function ChatPanel({
       </div>
 
       {/* input */}
-      <div style={{ padding: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <div
+        style={{
+          padding: 12,
+          paddingBottom: 12 + (isCoarse ? kbInset : 0),
+          borderTop: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
         {error ? (
           <div style={{ marginBottom: 10, fontSize: 12, color: "rgba(255,120,150,0.95)" }}>{error}</div>
         ) : null}
@@ -566,6 +618,18 @@ export function ChatPanel({
             disabled={!canSend || sending}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onFocus={() => {
+              focusedRef.current = true;
+              // si on était en bas, on recolle en bas (utile quand le clavier apparaît)
+              requestAnimationFrame(() => {
+                if (atBottomRef.current) scrollToBottom("auto");
+              });
+            }}
+            onBlur={() => {
+              focusedRef.current = false;
+            }}
+            enterKeyHint="send"
+            inputMode="text"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
