@@ -250,33 +250,72 @@ export default function StreamerPage() {
     </>
   );
 
-  // ✅ Mode cinéma : fullscreen “dans la page” + bouton chat + drawer
+  // ✅ Mode cinéma : fullscreen “dans la page”
+  // - Desktop: chat à droite (toggle)
+  // - Mobile: drawer bottom (toggle)
   if (cinema) {
     return (
       <>
         <div className="cinemaRoot">
           <div className="cinemaStage">
-            <div className="cinemaPlayerCard">{PlayerBlock}</div>
+            <div className={`cinemaLayout ${chatOpen ? "chatOpen" : ""}`}>
+              <div className="cinemaPlayerCard">{PlayerBlock}</div>
+
+              {/* ✅ Desktop: chat à droite */}
+              {!isMobile && chatOpen ? (
+                <aside className="cinemaChatSide">
+                  <div className="cinemaChatSideTop">
+                    <div style={{ fontWeight: 950 }}>Chat</div>
+                    <button
+                      className="iconBtn"
+                      onClick={() => setChatOpen(false)}
+                      type="button"
+                      aria-label="Fermer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="cinemaChatSideBody">
+                    <ChatPanel
+                      slug={String(slug || "")}
+                      onRequireLogin={() => setLoginOpen(true)}
+                      compact
+                      autoFocus
+                    />
+                  </div>
+                </aside>
+              ) : null}
+            </div>
           </div>
 
+          {/* ✅ Controls */}
           <div className="cinemaTopBar">
-            <button className="btnGhostSmall" type="button" onClick={() => { setChatOpen(false); setCinema(false); }}>
+            <button
+              className="btnGhostSmall"
+              type="button"
+              onClick={() => {
+                setChatOpen(false);
+                setCinema(false);
+              }}
+            >
               ✕ Quitter
             </button>
 
             <button
               className="btnPrimarySmall"
               type="button"
-              onClick={() => setChatOpen(true)}
-              title="Ouvrir le chat"
+              onClick={() => setChatOpen((v) => !v)} // ✅ toggle (pas juste open)
+              title="Afficher / masquer le chat"
             >
               <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                <ChatIcon /> Chat
+                <ChatIcon /> {chatOpen ? "Fermer chat" : "Chat"}
               </span>
             </button>
           </div>
 
-          {chatOpen ? (
+          {/* ✅ Mobile: drawer bottom */}
+          {isMobile && chatOpen ? (
             <div className="chatSheetBackdrop" onClick={() => setChatOpen(false)} role="presentation">
               <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
                 <div className="chatSheetTop">

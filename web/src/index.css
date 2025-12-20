@@ -703,46 +703,6 @@ body{
 .chatFabLabel{ font-size: 13px; opacity: 0.95; }
 
 /* backdrop + sheet */
-.chatSheetBackdrop{
-  position: fixed;
-  inset: 0;
-  z-index: 70;
-  background: rgba(0,0,0,0.55);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 10px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom));
-}
-
-.chatSheet{
-  width: min(720px, 100%);
-  height: min(82dvh, 720px);
-  border-radius: 20px 20px 0 0;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(17, 10, 23, 0.96);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 24px 80px rgba(0,0,0,0.55);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.chatSheetTop{
-  display:flex;
-  align-items:center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 12px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-}
-
-.chatSheetBody{
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
 /* Mobile rules: on cache le chat inline (sinon ça ruine la page) */
 @media (max-width: 820px){
   .streamChat{ display:none !important; } /* chat inline off */
@@ -787,6 +747,7 @@ body{
 
 /* ===========================
    Cinema mode (fullscreen in-page)
+   + Desktop right chat
    =========================== */
 .cinemaRoot{
   position: fixed;
@@ -795,6 +756,7 @@ body{
   background: #000;
 }
 
+/* zone centrale */
 .cinemaStage{
   position: absolute;
   inset: 0;
@@ -804,8 +766,23 @@ body{
   padding: 12px;
 }
 
+/* layout player + chat */
+.cinemaLayout{
+  width: min(1400px, 100%);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.cinemaLayout.chatOpen{
+  grid-template-columns: 1fr 360px;
+}
+
 .cinemaPlayerCard{
-  width: min(1100px, 100%);
+  width: 100%;
+  min-width: 0;
 }
 
 /* barre contrôles */
@@ -820,8 +797,43 @@ body{
   z-index: 140;
 }
 
+/* right chat panel (desktop) */
+.cinemaChatSide{
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(17, 10, 23, 0.92);
+  backdrop-filter: blur(14px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.cinemaChatSideTop{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.cinemaChatSideBody{
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* mobile: on force 1 colonne (le chat passe en drawer) */
+@media (max-width: 820px){
+  .cinemaLayout,
+  .cinemaLayout.chatOpen{
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ===========================
-   Chat sheet (drawer)
+   Chat sheet (drawer mobile)
    =========================== */
 .chatSheetBackdrop{
   position: fixed;
