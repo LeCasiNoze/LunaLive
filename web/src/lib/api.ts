@@ -495,3 +495,23 @@ export async function getMyStatsSeries(token: string, period: StatsPeriod, curso
     { headers: { Authorization: `Bearer ${token}` } }
   );
 }
+
+export async function getVapidPublicKey() {
+  return j<{ ok: true; publicKey: string }>("/push/vapid-public-key");
+}
+
+export async function pushSubscribe(token: string, subscription: any) {
+  return j<{ ok: true }>("/push/subscribe", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ subscription }),
+  });
+}
+
+export async function pushUnsubscribe(token: string, endpoint: string) {
+  return j<{ ok: true }>("/push/unsubscribe", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint }),
+  });
+}

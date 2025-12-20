@@ -233,6 +233,17 @@ export function attachChat(io: Server) {
   io.on("connection", (socket: Socket) => {
     const data = socket.data as SocketData;
 
+    // ✅ 3.A : room user pour notifications (multi tabs / pages)
+    if (data.user?.id) {
+      socket.join(`user:${data.user.id}`);
+    }
+
+    // ✅ 3.A — Room "user:{id}" pour envoyer des notifs (go-live) à l'utilisateur
+    // tryAuth() a déjà rempli data.user si token OK (via io.use)
+    if (data.user?.id) {
+      socket.join(`user:${data.user.id}`);
+    }
+
     socket.on("chat:join", async ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
       try {
         const s = String(slug || "").trim();

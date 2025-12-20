@@ -14,6 +14,7 @@ import DashboardPage from "./pages/DashboardPage";
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
+import { GoLiveNotifier } from "./components/GoLiveNotifier";
 
 
 function AppInner() {
@@ -36,6 +37,7 @@ function AppInner() {
       />
 
       <Routes>
+        <GoLiveNotifier />
         <Route path="/" element={<LivesPage />} />
         <Route path="/browse" element={<BrowsePage />} />
         <Route path="/s/:slug" element={<StreamerPage />} />

@@ -1,6 +1,8 @@
 // api/src/dlive_poller.ts
 import { pool } from "./db.js";
 import { fetchDliveLiveInfo } from "./dlive.js";
+import type { Server as IOServer } from "socket.io";
+import { notifyFollowersGoLive } from "./notify_go_live.js";
 
 const INTERVAL_MS = Number(process.env.DLIVE_POLL_INTERVAL_MS || 30_000);
 const CONCURRENCY = Math.max(1, Number(process.env.DLIVE_POLL_CONCURRENCY || 5));
@@ -21,7 +23,12 @@ async function runWithConcurrency<T>(
   await Promise.all(workers);
 }
 
-async function applyLiveState(streamerId: number, isLiveNow: boolean, viewersNow: number) {
+async function applyLiveState(
+  streamerId: number,
+  isLiveNow: boolean,
+  viewersNow: number,
+  io?: IOServer
+) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -40,24 +47,28 @@ async function applyLiveState(streamerId: number, isLiveNow: boolean, viewersNow
     if (isLiveNow && !wasLive) {
       await client.query(
         `UPDATE streamers
-         SET is_live=TRUE,
-             viewers=$2,
-             live_started_at=NOW(),
-             updated_at=NOW()
-         WHERE id=$1`,
+        SET is_live=TRUE,
+            viewers=$2,
+            live_started_at=NOW(),
+            updated_at=NOW()
+        WHERE id=$1`,
         [streamerId, viewersNow]
       );
 
       // 1 live ouvert max / streamer
       await client.query(
         `INSERT INTO live_sessions (streamer_id, started_at)
-         VALUES ($1, NOW())
-         ON CONFLICT (streamer_id) WHERE ended_at IS NULL
-         DO NOTHING`,
+        VALUES ($1, NOW())
+        ON CONFLICT (streamer_id) WHERE ended_at IS NULL
+        DO NOTHING`,
         [streamerId]
       );
 
       await client.query("COMMIT");
+
+      // ✅ NOTIF A (toast socket) + B (push) déclenchées ici (hors transaction)
+      notifyFollowersGoLive(io, streamerId).catch(() => {});
+
       return;
     }
 
@@ -125,7 +136,7 @@ async function applyLiveState(streamerId: number, isLiveNow: boolean, viewersNow
   }
 }
 
-export function startDlivePoller() {
+export function startDlivePoller(io?: IOServer) {
   if (process.env.DLIVE_POLL_DISABLED === "1") {
     console.log("[dlive] poller disabled");
     return;
@@ -166,7 +177,7 @@ export function startDlivePoller() {
             const viewers = isLive ? Number(info.watchingCount ?? 0) : 0;
 
             // ✅ la logique ON/OFF est ici maintenant
-            await applyLiveState(r.streamerId, isLive, viewers);
+            await applyLiveState(r.streamerId, isLive, viewers, io);
           } catch (e) {
             console.warn("[dlive] poll failed", r.channelSlug, e);
             // Option “safe” : si tu veux éviter les LIVE fantômes en cas d’erreur réseau,

@@ -26,6 +26,7 @@ import { registerStatsRoutes } from "./stats_routes.js";
 import jwt from "jsonwebtoken";
 import type { AuthUser } from "./auth.js";
 import { chatStore } from "./chat_store.js";
+import { pushRouter } from "./routes/push.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -36,6 +37,7 @@ registerStatsRoutes(app);
 
 import path from "path";
 import { streamerUploadsRouter } from "./routes/streamer_uploads.js";
+app.use(pushRouter);
 
 import { thumbsRouter } from "./routes/thumbs.js";
 app.use(thumbsRouter);
@@ -1310,10 +1312,36 @@ app.use((err: any, _req: any, res: any, _next: any) => {
 
 const port = Number(process.env.PORT || 3001);
 
+function startStatsCleanup() {
+  const run = async () => {
+    // ferme les viewer sessions inactives
+    await pool.query(
+      `UPDATE viewer_sessions
+       SET ended_at = last_heartbeat_at
+       WHERE ended_at IS NULL
+         AND last_heartbeat_at < (NOW() - (${45} * INTERVAL '1 second'))`
+    );
+
+    // si un streamer repasse offline => clôture la live_session ouverte
+    await pool.query(
+      `UPDATE live_sessions ls
+       SET ended_at = COALESCE(s.updated_at, NOW())
+       FROM streamers s
+       WHERE s.id = ls.streamer_id
+         AND ls.ended_at IS NULL
+         AND s.is_live = FALSE`
+    );
+  };
+
+  run().catch((e) => console.warn("[stats-cleanup] first run failed", e));
+  setInterval(() => {
+    run().catch((e) => console.warn("[stats-cleanup] run failed", e));
+  }, 60_000);
+}
+
 (async () => {
   await migrate();
   await seedIfEmpty();
-  startDlivePoller();
 
   const server = http.createServer(app);
 
@@ -1322,35 +1350,11 @@ const port = Number(process.env.PORT || 3001);
   });
   app.locals.io = io;
 
-  function startStatsCleanup() {
-    const run = async () => {
-      // ferme les viewer sessions inactives
-      await pool.query(
-        `UPDATE viewer_sessions
-        SET ended_at = last_heartbeat_at
-        WHERE ended_at IS NULL
-          AND last_heartbeat_at < (NOW() - (${45} * INTERVAL '1 second'))`
-      );
-
-      // si un streamer repasse offline => clôture la live_session ouverte
-      await pool.query(
-        `UPDATE live_sessions ls
-        SET ended_at = COALESCE(s.updated_at, NOW())
-        FROM streamers s
-        WHERE s.id = ls.streamer_id
-          AND ls.ended_at IS NULL
-          AND s.is_live = FALSE`
-      );
-    };
-
-    run().catch((e) => console.warn("[stats-cleanup] first run failed", e));
-    setInterval(() => {
-      run().catch((e) => console.warn("[stats-cleanup] run failed", e));
-    }, 60_000);
-  }
-
   attachChat(io);
   startStatsCleanup();
+
+  // ✅ IMPORTANT: poller APRES io, et on lui passe io
+  startDlivePoller(io);
 
   server.listen(port, () => console.log(`[api] listening on :${port}`));
 })();

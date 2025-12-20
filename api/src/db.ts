@@ -336,8 +336,46 @@ export async function migrate() {
     ALTER TABLE streamer_follows
     ADD COLUMN IF NOT EXISTS notify_enabled BOOLEAN NOT NULL DEFAULT TRUE;
   `);
+  
+  // ──────────────────────────────────────────────────────────
+  // PUSH NOTIFS (Web Push subscriptions)
+  // ──────────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_push_subscriptions (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL,
+      subscription JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(endpoint)
+    );
+
+    CREATE INDEX IF NOT EXISTS user_push_subscriptions_user_idx
+      ON user_push_subscriptions(user_id, updated_at DESC);
+  `);
 
 }
+await pool.query(`
+  ALTER TABLE streamer_follows
+  ADD COLUMN IF NOT EXISTS notify_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+`);
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint TEXT NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    user_agent TEXT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(endpoint)
+  );
+
+  CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx
+    ON push_subscriptions(user_id, updated_at DESC);
+`);
 
 export async function seedIfEmpty() {
   const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM streamers;`);
