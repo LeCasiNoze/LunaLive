@@ -113,6 +113,7 @@ app.get(
          s.title,
          s.viewers,
          s.is_live AS "isLive",
+         s.live_started_at AS "liveStartedAt",
          s.appearance AS "appearance",
          pa.channel_slug AS "channelSlug",
          pa.channel_username AS "channelUsername"
