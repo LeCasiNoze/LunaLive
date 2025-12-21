@@ -1,4 +1,9 @@
-/* web/src/sw.js */
+// web/src/sw.js
+import { precacheAndRoute, cleanupOutdatedCaches } from "workbox-precaching";
+
+// ✅ garde l'injection (Workbox va remplacer self.__WB_MANIFEST)
+cleanupOutdatedCaches();
+precacheAndRoute(self.__WB_MANIFEST);
 
 // (optionnel, juste pour que vite-plugin-pwa puisse injecter la precache list)
 self.__WB_MANIFEST;
