@@ -1,21 +1,28 @@
 self.addEventListener("push", (event) => {
   let data = {};
+
   try {
     data = event.data ? event.data.json() : {};
-  } catch {}
+  } catch (e) {}
 
-  if (!data || data.type !== "go_live") return;
+  const title = data.displayName
+    ? `${data.displayName} est en stream !`
+    : "Un streamer est en live !";
 
-  const title = `${data.displayName} est en stream !`;
-  const body = data.title ? `"${data.title}" — clique pour rejoindre` : "Clique pour rejoindre";
+  const body = data.title
+    ? `"${data.title}" — clique pour rejoindre`
+    : "Clique pour rejoindre le stream";
 
-  const url = data.url || `/s/${encodeURIComponent(data.slug || "")}`;
+  const url = data.url || "/";
 
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      tag: `go-live:${data.slug || ""}`,
+      icon: "/pwa-192.png",
+      badge: "/pwa-192.png",
+      tag: `go-live:${data.slug || "unknown"}`,
       renotify: false,
+      requireInteraction: false,
       data: { url },
     })
   );
