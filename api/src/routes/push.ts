@@ -51,3 +51,62 @@ pushRouter.post("/push/unsubscribe", requireAuth, async (req, res) => {
 
   res.json({ ok: true });
 });
+
+import webpush from "web-push";
+
+let vapidReady = false;
+function ensureVapid() {
+  if (vapidReady) return;
+  vapidReady = true;
+
+  const pub = process.env.VAPID_PUBLIC_KEY;
+  const priv = process.env.VAPID_PRIVATE_KEY;
+  if (!pub || !priv) throw new Error("VAPID_KEYS_MISSING");
+
+  const subject =
+    process.env.VAPID_SUBJECT ||
+    (process.env.MAIL_FROM ? `mailto:${process.env.MAIL_FROM}` : "mailto:admin@localhost");
+
+  webpush.setVapidDetails(subject, pub, priv);
+}
+
+pushRouter.post("/push/test", requireAuth, async (req, res) => {
+  try {
+    ensureVapid();
+
+    const uid = Number(req.user!.id);
+    const { rows } = await pool.query(
+      `SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id=$1 ORDER BY updated_at DESC`,
+      [uid]
+    );
+
+    const baseWeb = String(process.env.PUBLIC_WEB_BASE || "").replace(/\/$/, "");
+    const payload = {
+      type: "go_live",
+      streamerId: 0,
+      slug: "test",
+      displayName: "TEST",
+      title: "Notif de test (site fermé)",
+      url: baseWeb ? `${baseWeb}/s/test` : "/s/test",
+      ts: new Date().toISOString(),
+    };
+
+    const errors: any[] = [];
+    for (const row of rows) {
+      const subscription = {
+        endpoint: String(row.endpoint),
+        keys: { p256dh: String(row.p256dh), auth: String(row.auth) },
+      };
+
+      try {
+        await webpush.sendNotification(subscription as any, JSON.stringify(payload), { TTL: 300 });
+      } catch (e: any) {
+        errors.push({ id: row.id, status: e?.statusCode ?? e?.status, msg: e?.message || String(e) });
+      }
+    }
+
+    return res.json({ ok: true, subs: rows.length, errors });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
