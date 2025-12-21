@@ -101,7 +101,16 @@ pushRouter.post("/push/test", requireAuth, async (req, res) => {
       try {
         await webpush.sendNotification(subscription as any, JSON.stringify(payload), { TTL: 300 });
       } catch (e: any) {
-        errors.push({ id: row.id, status: e?.statusCode ?? e?.status, msg: e?.message || String(e) });
+        const status = e?.statusCode ?? e?.status;
+        const msg = e?.message || String(e);
+
+        // ✅ 404/410 => subscription morte => on la supprime direct
+        if (status === 404 || status === 410) {
+          await pool.query(`DELETE FROM push_subscriptions WHERE id=$1`, [row.id]);
+          errors.push({ id: row.id, status, msg: "deleted_dead_subscription" });
+        } else {
+          errors.push({ id: row.id, status, msg });
+        }
       }
     }
 

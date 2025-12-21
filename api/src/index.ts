@@ -27,6 +27,9 @@ import jwt from "jsonwebtoken";
 import type { AuthUser } from "./auth.js";
 import { chatStore } from "./chat_store.js";
 import { pushRouter } from "./routes/push.js";
+import { walletRouter } from "./routes/wallet.js";
+import { supportRouter } from "./routes/support.js";
+import { earningsRouter } from "./routes/earnings.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -38,6 +41,9 @@ registerStatsRoutes(app);
 import path from "path";
 import { streamerUploadsRouter } from "./routes/streamer_uploads.js";
 app.use(pushRouter);
+app.use(walletRouter);
+app.use(supportRouter);
+app.use(earningsRouter);
 
 import { thumbsRouter } from "./routes/thumbs.js";
 app.use(thumbsRouter);
