@@ -6,9 +6,16 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.js",
+
+      // tu peux laisser auto, MAIS comme tu registers aussi à la main,
+      // je te conseille de couper l'auto-register :
+      injectRegister: null,
       registerType: "autoUpdate",
-      injectRegister: "auto",
-      includeAssets: ["favicon.png", "logo.png"],
+
+      includeAssets: ["favicon.png", "logo.png", "pwa-192.png", "pwa-512.png"],
       manifest: {
         name: "LunaLive",
         short_name: "LunaLive",

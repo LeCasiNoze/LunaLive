@@ -13,14 +13,18 @@ export async function enablePushNotifications(token: string) {
   if (!("Notification" in window)) throw new Error("notifications_not_supported");
   if (!("serviceWorker" in navigator)) throw new Error("sw_not_supported");
 
-  // permission (doit être déclenché par un click user)
   const perm = await Notification.requestPermission();
   if (perm !== "granted") throw new Error("permission_denied");
 
-  // register sw
-  const reg = await navigator.serviceWorker.register("/sw.js");
+  // Si déjà enregistré, on réutilise la registration
+  let reg = await navigator.serviceWorker.getRegistration("/");
+  if (!reg) {
+    reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  }
 
   const { publicKey } = await getVapidPublicKey();
+  if (!publicKey) throw new Error("vapid_public_key_missing");
+
   const appServerKey = urlBase64ToUint8Array(publicKey);
 
   let sub = await reg.pushManager.getSubscription();
