@@ -1,5 +1,4 @@
 // web/src/pages/streamer/components/ChestModal.tsx
-import * as React from "react";
 import type { ChestState } from "../hooks/useChest";
 
 export function ChestModal(props: {

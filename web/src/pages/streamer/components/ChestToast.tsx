@@ -1,6 +1,4 @@
 // web/src/pages/streamer/components/ChestToast.tsx
-import * as React from "react";
-
 export function ChestToast(props: {
   toast: null | { openingId: string; minWatchMinutes?: number };
   isOwner: boolean;

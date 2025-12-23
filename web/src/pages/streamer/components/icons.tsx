@@ -1,6 +1,4 @@
 // web/src/pages/streamer/components/icons.tsx
-import * as React from "react";
-
 export function EyeIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">

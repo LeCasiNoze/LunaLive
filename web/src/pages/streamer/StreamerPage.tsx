@@ -1,7 +1,6 @@
 // web/src/pages/streamer/StreamerPage.tsx
 import * as React from "react";
 import { useParams } from "react-router-dom";
-import { io, type Socket } from "socket.io-client";
 
 import { watchHeartbeat, subscribeStreamer } from "../../lib/api";
 import { DlivePlayer } from "../../components/DlivePlayer";
