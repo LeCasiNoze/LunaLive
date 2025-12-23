@@ -22,6 +22,20 @@ function normalizeStreamer(response: any): StreamerNormalized {
   const liveStartedAtRaw = s?.liveStartedAt ?? s?.live_started_at ?? null;
   const liveStartedAtMs = liveStartedAtRaw ? new Date(liveStartedAtRaw).getTime() : null;
 
+  // ✅ owner id robuste (c’est ça qui débloque le bouton "Ouvrir coffre")
+  const ownerRaw =
+    s?.ownerUserId ??
+    s?.owner_user_id ??
+    s?.user_id ??
+    s?.userId ??
+    s?.user?.id ??
+    s?.owner?.id ??
+    response?.ownerUserId ??
+    response?.owner_user_id ??
+    response?.user_id ??
+    response?.userId ??
+    0;
+
   return {
     raw: s,
     title: String(s?.title || "Stream"),
@@ -30,9 +44,9 @@ function normalizeStreamer(response: any): StreamerNormalized {
     viewers: Number(s?.viewers ?? s?.watchingCount ?? 0),
     channelSlug: (s?.channel_slug ?? s?.channelSlug) || null,
     channelUsername: (s?.channel_username ?? s?.channelUsername) || null,
-    offlineBgUrl: s?.offlineBgUrl ?? null,
+    offlineBgUrl: (s?.offlineBgUrl ?? s?.offline_bg_url) || null,
     liveStartedAtMs,
-    ownerUserId: Number(s?.user_id ?? s?.userId ?? 0),
+    ownerUserId: Number(ownerRaw || 0),
   };
 }
 

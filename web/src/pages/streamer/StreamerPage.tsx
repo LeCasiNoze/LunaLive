@@ -35,7 +35,7 @@ export default function StreamerPage() {
   const [tab, setTab] = React.useState<TabKey>("about");
   const [liveViewersNow, setLiveViewersNow] = React.useState<number | null>(null);
 
-  // ✅ Sub modal state (correct, sans hack)
+  // ✅ Sub modal state (fix)
   const [subOpen, setSubOpen] = React.useState(false);
   const [subLoading, setSubLoading] = React.useState(false);
   const [subError, setSubError] = React.useState<string | null>(null);
@@ -55,7 +55,7 @@ export default function StreamerPage() {
     toggleNotify,
   } = useStreamerData(slug ?? null, token, () => setLoginOpen(true));
 
-  const isOwner = !!(myUserId && streamer?.ownerUserId && myUserId === streamer.ownerUserId);
+  const isOwner = !!(myUserId != null && streamer?.ownerUserId != null && Number(streamer.ownerUserId) === Number(myUserId));
 
   const chest = useChest({
     slug: slug ?? null,
@@ -246,6 +246,7 @@ export default function StreamerPage() {
                 disabled={followLoading}
                 onClick={() => {
                   if (!token) return setLoginOpen(true);
+                  setSubError(null);
                   setSubOpen(true);
                 }}
               >
@@ -375,32 +376,16 @@ export default function StreamerPage() {
       {/* Bottom tabs */}
       <div className="panel streamBottomPanel">
         <div className="streamTabsRow">
-          <button
-            type="button"
-            className={`streamTabBtn ${tab === "about" ? "active" : ""}`}
-            onClick={() => setTab("about")}
-          >
+          <button type="button" className={`streamTabBtn ${tab === "about" ? "active" : ""}`} onClick={() => setTab("about")}>
             À propos
           </button>
-          <button
-            type="button"
-            className={`streamTabBtn ${tab === "clips" ? "active" : ""}`}
-            onClick={() => setTab("clips")}
-          >
+          <button type="button" className={`streamTabBtn ${tab === "clips" ? "active" : ""}`} onClick={() => setTab("clips")}>
             Clip
           </button>
-          <button
-            type="button"
-            className={`streamTabBtn ${tab === "vod" ? "active" : ""}`}
-            onClick={() => setTab("vod")}
-          >
+          <button type="button" className={`streamTabBtn ${tab === "vod" ? "active" : ""}`} onClick={() => setTab("vod")}>
             VOD
           </button>
-          <button
-            type="button"
-            className={`streamTabBtn ${tab === "agenda" ? "active" : ""}`}
-            onClick={() => setTab("agenda")}
-          >
+          <button type="button" className={`streamTabBtn ${tab === "agenda" ? "active" : ""}`} onClick={() => setTab("agenda")}>
             Agenda
           </button>
         </div>
