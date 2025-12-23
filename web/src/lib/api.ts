@@ -619,3 +619,60 @@ export async function spinWheel(token: string) {
 
 // (optionnel) alias si tu as déjà du code qui appelle getWheelState()
 export const getWheelState = getMyWheel;
+
+export type ApiChest = {
+  ok: true;
+  streamerId: number;
+  capOutWeightBp: number;
+  balance: number;
+  breakdown: Record<string, number>;
+  opening: null | {
+    id: string;
+    status: "open" | "closed" | "canceled";
+    opensAt: string;
+    closesAt: string;
+    minWatchMinutes: number;
+    participantsCount: number;
+    joined: boolean;
+  };
+};
+
+export async function getStreamerChest(slug: string) {
+  return j<ApiChest>(`/streamers/${encodeURIComponent(slug)}/chest`);
+}
+
+export async function chestDeposit(slug: string, token: string, amount: number, note?: string | null) {
+  return j<{ ok: true; txId: string; balance: number }>(
+    `/streamers/${encodeURIComponent(slug)}/chest/deposit`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ amount, note: note ?? null }),
+    }
+  );
+}
+
+export async function chestOpen(slug: string, token: string, durationSec = 30, minWatchMinutes = 5) {
+  return j<{ ok: true; opening: { id: string; opensAt: string; closesAt: string; minWatchMinutes: number } }>(
+    `/streamers/${encodeURIComponent(slug)}/chest/open`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ durationSec, minWatchMinutes }),
+    }
+  );
+}
+
+export async function chestJoin(slug: string, token: string) {
+  return j<{ ok: true; openingId: string }>(`/streamers/${encodeURIComponent(slug)}/chest/join`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function chestClose(slug: string, token: string) {
+  return j<{ ok: true; openingId: string; payouts?: any[] }>(`/streamers/${encodeURIComponent(slug)}/chest/close`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

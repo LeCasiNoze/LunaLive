@@ -50,8 +50,16 @@ wheelRouter.get("/wheel/me", requireAuth, async (req, res) => {
     [Number(req.user!.id), day]
   );
 
-  const usedToday = ((check.rowCount ?? 0) > 0);
-  return res.json({ ok: true, canSpin: true, usedToday: false, day, segments: SEGMENTS.map(({label,amount})=>({label,amount})) });
+  const usedToday = (check.rowCount ?? 0) > 0;
+  const canSpin = !usedToday;
+
+  return res.json({
+    ok: true,
+    canSpin,
+    usedToday,
+    day,
+    segments: SEGMENTS.map(({ label, amount }) => ({ label, amount })),
+  });
 });
 
 wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
@@ -132,7 +140,9 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
       user: { id: Number(u.rows[0].id), username: String(u.rows[0].username), rubis: Number(u.rows[0].rubis) },
     });
   } catch (e: any) {
-    try { await client.query("ROLLBACK"); } catch {}
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
 
     if (String(e?.code) === "23505") {
       return res.status(409).json({ ok: false, error: "already_used" });

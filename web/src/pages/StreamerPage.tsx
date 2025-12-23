@@ -1,13 +1,31 @@
 import * as React from "react";
 import { useParams } from "react-router-dom";
-import { getStreamer, watchHeartbeat, followStreamer, unfollowStreamer, setFollowNotify } from "../lib/api";
+import {
+  getStreamer,
+  watchHeartbeat,
+  followStreamer,
+  unfollowStreamer,
+  setFollowNotify,
+  subscribeStreamer,
+  // ✅ CHEST API (à ajouter dans web/src/lib/api)
+  getStreamerChest,
+  chestJoin,
+  chestOpen,
+  chestClose,
+} from "../lib/api";
 import { enablePushNotifications } from "../lib/push";
 import { DlivePlayer } from "../components/DlivePlayer";
 import { ChatPanel } from "../components/ChatPanel";
 import { LoginModal } from "../components/LoginModal";
 import { useAuth } from "../auth/AuthProvider";
-import { subscribeStreamer } from "../lib/api";
 import { SubModal } from "../components/SubModal";
+
+// ✅ socket (pour popup coffre)
+import { io, type Socket } from "socket.io-client";
+
+function apiBase() {
+  return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
+}
 
 function EyeIcon({ size = 16 }: { size?: number }) {
   return (
@@ -68,12 +86,7 @@ function BellIcon({ size = 18, on = true }: { size?: number; on?: boolean }) {
           strokeLinecap="round"
         />
       ) : (
-        <path
-          d="M4 4l16 16"
-          stroke="currentColor"
-          strokeWidth="1.7"
-          strokeLinecap="round"
-        />
+        <path d="M4 4l16 16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
       )}
     </svg>
   );
@@ -152,7 +165,6 @@ function requestFullscreenSafe(el?: HTMLElement) {
     const req = target.requestFullscreen || target.webkitRequestFullscreen;
     if (typeof req !== "function") return;
 
-    // Certains navigateurs supportent navigationUI:'hide'
     try {
       const p = req.call(target, { navigationUI: "hide" as any });
       if (p?.catch) p.catch(() => {});
@@ -160,9 +172,7 @@ function requestFullscreenSafe(el?: HTMLElement) {
       const p = req.call(target);
       if (p?.catch) p.catch(() => {});
     }
-  } catch {
-    // ignore
-  }
+  } catch {}
 }
 
 function exitFullscreenSafe() {
@@ -172,12 +182,46 @@ function exitFullscreenSafe() {
     if (typeof exit !== "function") return;
     const p = exit.call(document);
     if (p?.catch) p.catch(() => {});
-  } catch {
-    // ignore
-  }
+  } catch {}
 }
 
 type TabKey = "about" | "clips" | "vod" | "agenda";
+
+// ✅ Types coffre (minimal)
+type ChestState = {
+  ok: true;
+  streamerId: number;
+  balance: number;
+  breakdown: Record<string, number>;
+  opening: null | {
+    id: string;
+    status: "open" | "closed" | "canceled";
+    opensAt: string;
+    closesAt: string;
+    minWatchMinutes: number;
+    participantsCount: number;
+    joined?: boolean;
+  };
+};
+
+function humanChestError(code: string, extra?: any) {
+  switch (code) {
+    case "owner_forbidden":
+      return "Le streamer ne peut pas participer à son propre coffre.";
+    case "no_opening":
+      return "Aucun coffre n'est ouvert actuellement.";
+    case "opening_closed":
+      return "Trop tard : le coffre est déjà fermé.";
+    case "stream_offline":
+      return "Le stream est offline.";
+    case "not_watching":
+      return "Tu dois être sur le stream (en direct) pour participer.";
+    case "need_watchtime":
+      return `Watchtime insuffisant (${extra?.watchedMinutes ?? "?"}/${extra?.minWatchMinutes ?? "?"} min).`;
+    default:
+      return code || "Erreur";
+  }
+}
 
 export default function StreamerPage() {
   const { slug } = useParams();
@@ -187,6 +231,7 @@ export default function StreamerPage() {
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
   const myRole = auth?.user?.role ?? "guest";
+  const myUserId = auth?.user?.id != null ? Number(auth.user.id) : null;
 
   const [loginOpen, setLoginOpen] = React.useState(false);
   const [liveViewersNow, setLiveViewersNow] = React.useState<number | null>(null);
@@ -194,7 +239,7 @@ export default function StreamerPage() {
   const [tab, setTab] = React.useState<TabKey>("about");
 
   const [isFollowing, setIsFollowing] = React.useState(false);
-  const [notifyEnabled, setNotifyEnabled] = React.useState(false); // ✅ cloche
+  const [notifyEnabled, setNotifyEnabled] = React.useState(false);
   const [followsCountLocal, setFollowsCountLocal] = React.useState<number | null>(null);
 
   const [followLoading, setFollowLoading] = React.useState(false);
@@ -202,10 +247,28 @@ export default function StreamerPage() {
   const [subLoading, setSubLoading] = React.useState(false);
   const [subError, setSubError] = React.useState<string | null>(null);
 
+  // ✅ Coffre state
+  const [chest, setChest] = React.useState<ChestState | null>(null);
+  const [chestLoading, setChestLoading] = React.useState(false);
+  const [chestModalOpen, setChestModalOpen] = React.useState(false);
+  const [chestJoinLoading, setChestJoinLoading] = React.useState(false);
+  const [chestOwnerLoading, setChestOwnerLoading] = React.useState(false);
+  const [chestError, setChestError] = React.useState<string | null>(null);
+
+  // joined local (le GET /chest ne renvoie pas joined actuellement)
+  const [joinedOpeningId, setJoinedOpeningId] = React.useState<string | null>(null);
+
+  // Toast popup quand coffre s’ouvre
+  const [chestToast, setChestToast] = React.useState<null | {
+    openingId: string;
+    closesAt?: string | null;
+    minWatchMinutes?: number;
+  }>(null);
+  const lastOpeningSeenRef = React.useRef<string | null>(null);
+
   const SUB_PRICE_RUBIS = 500;
   const myRubis = Number(auth?.user?.rubis ?? 0);
 
-  // ✅ Mobile portrait detection (pour mini chat)
   const [isMobile, setIsMobile] = React.useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 820px)").matches : false
   );
@@ -213,11 +276,9 @@ export default function StreamerPage() {
     typeof window !== "undefined" ? window.matchMedia("(orientation: portrait)").matches : true
   );
 
-  // ✅ Mode cinéma (plein écran dans la page) + drawer chat
   const [cinema, setCinema] = React.useState(false);
   const [chatOpen, setChatOpen] = React.useState(false);
 
-  // ✅ pour savoir si on a demandé le fullscreen (sinon on ne force pas la fermeture)
   const fsWantedRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -238,7 +299,6 @@ export default function StreamerPage() {
     };
   }, []);
 
-  // ✅ lock scroll quand cinema ou drawer ouvert
   React.useEffect(() => {
     if (!cinema && !chatOpen) return;
     const prev = document.body.style.overflow;
@@ -248,13 +308,10 @@ export default function StreamerPage() {
     };
   }, [cinema, chatOpen]);
 
-  // ✅ si l’utilisateur sort du fullscreen (gesture/back), on quitte le cinéma
   React.useEffect(() => {
     const onFs = () => {
       if (!cinema) return;
       if (!fsWantedRef.current) return;
-
-      // ✅ Si le chat est ouvert, on tolère la sortie fullscreen (clavier mobile)
       if (chatOpen) return;
 
       if (!isFullscreen()) {
@@ -287,22 +344,43 @@ export default function StreamerPage() {
     exitFullscreenSafe();
   }, []);
 
-  // ✅ Mobile: ouvrir chat => on sort du fullscreen (sinon le clavier le fait sauter et casse tout)
   const openCinemaChat = React.useCallback(() => {
     if (isMobile) exitFullscreenSafe();
     setChatOpen(true);
   }, [isMobile]);
 
-  // ✅ Fermer chat => on re-demande fullscreen (clic user => OK)
   const closeCinemaChat = React.useCallback(() => {
     setChatOpen(false);
     if (isMobile && fsWantedRef.current) requestFullscreenSafe(document.documentElement);
   }, [isMobile]);
 
-  // ✅ callback: reçoit le compteur live depuis socket (via ChatPanel)
   const onFollowsCount = React.useCallback((n: number) => {
     setFollowsCountLocal(Number(n));
   }, []);
+
+  const refreshChest = React.useCallback(async () => {
+    if (!slug) return;
+    setChestError(null);
+    try {
+      setChestLoading(true);
+      const r = (await getStreamerChest(String(slug))) as any;
+      if (r?.ok) {
+        setChest(r as ChestState);
+
+        // reset joined state when opening changes / closes
+        const oid = r?.opening?.id ? String(r.opening.id) : null;
+        setJoinedOpeningId((prev) => {
+          if (!oid) return null;
+          if (prev && prev !== oid) return null;
+          return prev;
+        });
+      }
+    } catch (e: any) {
+      setChestError(String(e?.message || "chest_failed"));
+    } finally {
+      setChestLoading(false);
+    }
+  }, [slug]);
 
   React.useEffect(() => {
     let mounted = true;
@@ -324,7 +402,6 @@ export default function StreamerPage() {
           typeof (r as any)?.followsCount === "number" ? Number((r as any).followsCount) : null
         );
 
-        // ✅ cloche: si API renvoie notifyEnabled, on prend. Sinon: ON par défaut si follow
         if (typeof (r as any)?.notifyEnabled === "boolean") {
           setNotifyEnabled(Boolean((r as any).notifyEnabled));
         } else {
@@ -339,6 +416,12 @@ export default function StreamerPage() {
       mounted = false;
     };
   }, [slug, token]);
+
+  // ✅ initial chest load
+  React.useEffect(() => {
+    if (!slug) return;
+    refreshChest();
+  }, [slug, refreshChest]);
 
   const s = data?.streamer || data;
 
@@ -356,10 +439,18 @@ export default function StreamerPage() {
   const liveStartedAtRaw = s?.liveStartedAt ?? s?.live_started_at ?? null;
   const liveStartedAtMs = liveStartedAtRaw ? new Date(liveStartedAtRaw).getTime() : null;
 
+  const ownerUserId = Number(s?.user_id ?? s?.userId ?? 0);
+  const isOwner = myUserId != null && ownerUserId > 0 && myUserId === ownerUserId;
+
+  const opening = chest?.opening ?? null;
+  const openingId = opening?.id ? String(opening.id) : null;
+  const canJoinNow = !!openingId && !isOwner;
+
   React.useEffect(() => {
     if (!isLive) setLiveViewersNow(null);
   }, [isLive]);
 
+  // ✅ heartbeat (déjà existant)
   React.useEffect(() => {
     if (!slug) return;
     if (!isLive) return;
@@ -393,11 +484,140 @@ export default function StreamerPage() {
     };
   }, [slug, isLive, token]);
 
+  // ✅ socket coffre (popup + refresh)
+  React.useEffect(() => {
+    const sSlug = String(slug || "").trim();
+    if (!sSlug) return;
+
+    const slugLower = sSlug.toLowerCase();
+
+    let socket: Socket | null = null;
+    try {
+      socket = io(apiBase(), {
+        transports: ["websocket", "polling"],
+        withCredentials: false,
+        auth: token ? { token } : {},
+      });
+
+      socket.on("chest:open", (payload: any) => {
+        const evSlug = String(payload?.slug || "").trim().toLowerCase();
+        if (!evSlug || evSlug !== slugLower) return;
+
+        refreshChest();
+
+        const oid = String(payload?.openingId || payload?.opening?.id || "");
+        if (oid && lastOpeningSeenRef.current !== oid) {
+          lastOpeningSeenRef.current = oid;
+          setChestToast({
+            openingId: oid,
+            closesAt: payload?.closesAt ? String(payload.closesAt) : null,
+            minWatchMinutes: Number(payload?.minWatchMinutes || 5),
+          });
+        }
+      });
+
+      socket.on("chest:close", (payload: any) => {
+        const evSlug = String(payload?.slug || "").trim().toLowerCase();
+        if (!evSlug || evSlug !== slugLower) return;
+        refreshChest();
+        setChestToast(null);
+        setJoinedOpeningId(null);
+      });
+    } catch {}
+
+    return () => {
+      try {
+        socket?.disconnect();
+      } catch {}
+    };
+  }, [slug, token, refreshChest]);
+
+  // auto-hide toast
+  React.useEffect(() => {
+    if (!chestToast) return;
+    const t = window.setTimeout(() => setChestToast(null), 12_000);
+    return () => window.clearTimeout(t);
+  }, [chestToast?.openingId]);
+
+  async function doJoinChest() {
+    setChestError(null);
+
+    if (!token) {
+      setLoginOpen(true);
+      return;
+    }
+    if (!slug) return;
+
+    setChestJoinLoading(true);
+    try {
+      const r: any = await chestJoin(String(slug), token);
+      if (r?.ok) {
+        setJoinedOpeningId(openingId || r.openingId || null);
+        setChestToast(null);
+        await refreshChest();
+        return;
+      }
+      setChestError(humanChestError(String(r?.error || "join_failed"), r));
+    } catch (e: any) {
+      const msg = String(e?.message || "join_failed");
+      setChestError(humanChestError(msg, e));
+    } finally {
+      setChestJoinLoading(false);
+    }
+  }
+
+  async function doOpenChest() {
+    setChestError(null);
+    if (!token) {
+      setLoginOpen(true);
+      return;
+    }
+    if (!slug) return;
+
+    setChestOwnerLoading(true);
+    try {
+      const r: any = await chestOpen(String(slug), token, 30, 5);
+      if (r?.ok) {
+        await refreshChest();
+        setChestModalOpen(false);
+      } else {
+        setChestError(humanChestError(String(r?.error || "open_failed")));
+      }
+    } catch (e: any) {
+      setChestError(String(e?.message || "open_failed"));
+    } finally {
+      setChestOwnerLoading(false);
+    }
+  }
+
+  async function doCloseChest() {
+    setChestError(null);
+    if (!token) {
+      setLoginOpen(true);
+      return;
+    }
+    if (!slug) return;
+
+    setChestOwnerLoading(true);
+    try {
+      const r: any = await chestClose(String(slug), token);
+      if (r?.ok) {
+        await refreshChest();
+        setChestModalOpen(false);
+      } else {
+        setChestError(humanChestError(String(r?.error || "close_failed")));
+      }
+    } catch (e: any) {
+      setChestError(String(e?.message || "close_failed"));
+    } finally {
+      setChestOwnerLoading(false);
+    }
+  }
+
   if (loading) return <div className="panel">Chargement…</div>;
   if (!s) return <div className="panel">Streamer introuvable</div>;
 
   const followsCount = followsCountLocal;
-
   const showMiniChat = isMobile && isPortrait && !cinema;
 
   const PlayerBlock = (
@@ -479,8 +699,83 @@ export default function StreamerPage() {
     );
   }
 
+  const chestBalance = Number(chest?.balance ?? 0);
+  const chestHasOpen = !!openingId;
+  const alreadyJoined = !!(openingId && joinedOpeningId && joinedOpeningId === openingId);
+
   return (
     <div className="streamPage">
+      {/* ✅ toast coffre */}
+      {chestToast && !isOwner ? (
+        <div
+          style={{
+            position: "fixed",
+            right: 16,
+            bottom: 16,
+            zIndex: 999,
+            width: 320,
+            maxWidth: "calc(100vw - 32px)",
+            padding: 12,
+            borderRadius: 16,
+            background: "rgba(17,10,23,0.92)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: "0 18px 60px rgba(0,0,0,0.45)",
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+            <div style={{ fontWeight: 950 }}>🎁 Coffre ouvert !</div>
+            <button
+              className="iconBtn"
+              type="button"
+              onClick={() => setChestToast(null)}
+              aria-label="Fermer"
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "rgba(255,255,255,0.75)",
+                cursor: "pointer",
+                fontWeight: 900,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div style={{ marginTop: 6, opacity: 0.8, fontSize: 12 }}>
+            Conditions : être sur le live + {chestToast.minWatchMinutes ?? 5} min de watchtime.
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+            <button
+              type="button"
+              className="btnPrimarySmall"
+              disabled={chestJoinLoading || alreadyJoined || !canJoinNow}
+              onClick={(e) => {
+                e.stopPropagation();
+                doJoinChest();
+              }}
+              style={{ flex: 1 }}
+            >
+              {alreadyJoined ? "Déjà inscrit" : chestJoinLoading ? "…" : "Participer"}
+            </button>
+            <button
+              type="button"
+              className="btnGhostSmall"
+              onClick={() => setChestModalOpen(true)}
+              style={{ whiteSpace: "nowrap" }}
+              title="Voir le coffre"
+            >
+              Voir
+            </button>
+          </div>
+
+          {chestError ? (
+            <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,120,150,0.95)" }}>{chestError}</div>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* === Header === */}
       <div className="panel streamHeaderBar">
         <div className="streamHeaderLeft">
@@ -508,7 +803,7 @@ export default function StreamerPage() {
               </strong>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <button
                 type="button"
                 className="btnPrimarySmall"
@@ -533,7 +828,6 @@ export default function StreamerPage() {
                       setIsFollowing(followingNow);
                       setFollowsCountLocal(Number(r.followsCount));
 
-                      // ✅ cloche: ON par défaut quand follow, OFF quand unfollow
                       if (typeof r.notifyEnabled === "boolean") setNotifyEnabled(Boolean(r.notifyEnabled));
                       else setNotifyEnabled(followingNow ? true : false);
                     }
@@ -545,7 +839,7 @@ export default function StreamerPage() {
               >
                 {followLoading ? "…" : isFollowing ? "Suivi" : "Suivre"}
               </button>
-              
+
               <button
                 type="button"
                 className="btnGhostSmall"
@@ -564,6 +858,63 @@ export default function StreamerPage() {
                 Sub
               </button>
 
+              {/* ✅ Coffre : bouton "Coffre" + action contextuelle */}
+              <button
+                type="button"
+                className="btnGhostSmall"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setChestError(null);
+                  setChestModalOpen(true);
+                }}
+                title="Voir le coffre"
+              >
+                🎁 Coffre{chestLoading ? "…" : chestBalance > 0 ? ` (${chestBalance})` : ""}
+              </button>
+
+              {isOwner ? (
+                chestHasOpen ? (
+                  <button
+                    type="button"
+                    className="btnPrimarySmall"
+                    disabled={chestOwnerLoading}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      doCloseChest();
+                    }}
+                    title="Fermer et distribuer maintenant"
+                  >
+                    {chestOwnerLoading ? "…" : "Fermer coffre"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btnPrimarySmall"
+                    disabled={chestOwnerLoading}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      doOpenChest();
+                    }}
+                    title="Ouvrir le coffre (30s)"
+                  >
+                    {chestOwnerLoading ? "…" : "Ouvrir coffre"}
+                  </button>
+                )
+              ) : chestHasOpen ? (
+                <button
+                  type="button"
+                  className="btnPrimarySmall"
+                  disabled={chestJoinLoading || alreadyJoined}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    doJoinChest();
+                  }}
+                  title="Participer au coffre"
+                >
+                  {alreadyJoined ? "Inscrit" : chestJoinLoading ? "…" : "Participer"}
+                </button>
+              ) : null}
+
               {/* ✅ cloche uniquement si follow */}
               {isFollowing ? (
                 <button
@@ -571,7 +922,7 @@ export default function StreamerPage() {
                   className="btnGhostSmall"
                   disabled={followLoading}
                   onClick={async (e) => {
-                  e.stopPropagation();
+                    e.stopPropagation();
 
                     if (!token) {
                       setLoginOpen(true);
@@ -581,19 +932,17 @@ export default function StreamerPage() {
 
                     const next = !notifyEnabled;
 
-                    // ✅ si on ACTIVE la cloche -> demander permission + enregistrer la subscription
                     if (next) {
                       try {
                         await enablePushNotifications(token);
                       } catch (err) {
-                        // permission refusée => on n'active pas
                         console.warn("enablePushNotifications failed", err);
                         setNotifyEnabled(false);
                         return;
                       }
                     }
 
-                    setNotifyEnabled(next); // optimiste
+                    setNotifyEnabled(next);
                     try {
                       const r = await setFollowNotify(String(slug), next, token);
                       if (typeof r?.notifyEnabled === "boolean") setNotifyEnabled(Boolean(r.notifyEnabled));
@@ -601,7 +950,6 @@ export default function StreamerPage() {
                       setNotifyEnabled((x) => !x);
                     }
                   }}
-
                   title={
                     notifyEnabled
                       ? "Notifications activées (cliquer pour désactiver)"
@@ -749,7 +1097,157 @@ export default function StreamerPage() {
           )}
         </div>
       </div>
-      
+
+      {/* ✅ Modal Coffre */}
+      {chestModalOpen ? (
+        <div
+          role="presentation"
+          onClick={() => setChestModalOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 998,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 520,
+              maxWidth: "100%",
+              borderRadius: 18,
+              background: "rgba(17,10,23,0.96)",
+              border: "1px solid rgba(255,255,255,0.10)",
+              boxShadow: "0 18px 80px rgba(0,0,0,0.55)",
+              padding: 16,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ fontWeight: 950, fontSize: 16 }}>🎁 Coffre du streamer</div>
+              <button className="iconBtn" type="button" onClick={() => setChestModalOpen(false)}>
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10, display: "flex", gap: 12, alignItems: "baseline" }}>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>Montant :</div>
+              <div style={{ fontWeight: 950, fontSize: 22 }}>{chestLoading ? "…" : chestBalance}</div>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>rubis</div>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
+              Sortie max du coffre : <strong>0.20</strong> (cap sécurité).
+            </div>
+
+            {opening ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 14,
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <div style={{ fontWeight: 900 }}>Coffre ouvert</div>
+                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
+                  Participants : <strong>{Number(opening.participantsCount || 0)}</strong> • Watch min :{" "}
+                  <strong>{Number(opening.minWatchMinutes || 5)} min</strong>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
+                  Ferme à : <strong>{new Date(opening.closesAt).toLocaleTimeString()}</strong>
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: 12, fontSize: 13, opacity: 0.75 }}>Aucun coffre ouvert actuellement.</div>
+            )}
+
+            {/* breakdown */}
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontWeight: 900, fontSize: 13, opacity: 0.9 }}>Répartition (poids → rubis)</div>
+              <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {chest?.breakdown && Object.keys(chest.breakdown).length ? (
+                  Object.entries(chest.breakdown)
+                    .sort((a, b) => Number(b[0]) - Number(a[0]))
+                    .map(([w, a]) => (
+                      <div
+                        key={w}
+                        style={{
+                          padding: "8px 10px",
+                          borderRadius: 999,
+                          background: "rgba(255,255,255,0.05)",
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          fontSize: 12,
+                        }}
+                      >
+                        <strong>{(Number(w) / 10_000).toFixed(2)}</strong> → {Number(a)}
+                      </div>
+                    ))
+                ) : (
+                  <div style={{ fontSize: 12, opacity: 0.75 }}>—</div>
+                )}
+              </div>
+            </div>
+
+            {chestError ? (
+              <div style={{ marginTop: 12, fontSize: 12, color: "rgba(255,120,150,0.95)" }}>{chestError}</div>
+            ) : null}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btnGhostSmall"
+                onClick={() => refreshChest()}
+                disabled={chestLoading}
+              >
+                {chestLoading ? "…" : "Rafraîchir"}
+              </button>
+
+              {!isOwner && openingId ? (
+                <button
+                  type="button"
+                  className="btnPrimarySmall"
+                  onClick={doJoinChest}
+                  disabled={chestJoinLoading || alreadyJoined}
+                >
+                  {alreadyJoined ? "Déjà inscrit" : chestJoinLoading ? "…" : "Participer"}
+                </button>
+              ) : null}
+
+              {isOwner ? (
+                openingId ? (
+                  <button
+                    type="button"
+                    className="btnPrimarySmall"
+                    onClick={doCloseChest}
+                    disabled={chestOwnerLoading}
+                    title="Fermer et distribuer"
+                  >
+                    {chestOwnerLoading ? "…" : "Fermer coffre"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btnPrimarySmall"
+                    onClick={doOpenChest}
+                    disabled={chestOwnerLoading}
+                    title="Ouvrir 30s"
+                  >
+                    {chestOwnerLoading ? "…" : "Ouvrir coffre"}
+                  </button>
+                )
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <SubModal
         open={subOpen}
         onClose={() => setSubOpen(false)}
@@ -760,7 +1258,6 @@ export default function StreamerPage() {
         error={subError}
         onGoShop={() => {
           setSubOpen(false);
-          // shop à brancher plus tard, on met un lien simple
           window.location.href = "/shop";
         }}
         onPayRubis={async () => {
@@ -772,15 +1269,7 @@ export default function StreamerPage() {
           try {
             const r = await subscribeStreamer(String(slug), token);
             if (r?.ok) {
-              // ✅ si l’API renvoie newBalance, on peut MAJ local (sinon: tu relies à me() plus tard)
-              if (typeof r.newBalance === "number") {
-                // si ton AuthProvider expose un setter, on le branchera.
-                // pour l’instant on refresh la page pour refléter le solde.
-                // (simple + efficace pour test)
-                window.location.reload();
-              } else {
-                window.location.reload();
-              }
+              window.location.reload();
             }
           } catch (e: any) {
             setSubError(String(e?.message || "Erreur"));

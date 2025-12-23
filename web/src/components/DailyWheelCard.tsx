@@ -23,6 +23,29 @@ export function DailyWheelCard() {
   const [loginOpen, setLoginOpen] = React.useState(false);
   const [wheelOpen, setWheelOpen] = React.useState(false);
 
+  // ✅ solde "live" (mis à jour via l'event rubis:update)
+  const [rubisLive, setRubisLive] = React.useState<number | null>(null);
+
+  // init/reset quand user change
+  React.useEffect(() => {
+    if (!token) {
+      setRubisLive(null);
+      return;
+    }
+    const v = Number(user?.rubis ?? 0);
+    if (Number.isFinite(v)) setRubisLive(v);
+  }, [token, user?.rubis]);
+
+  // écoute l'event global dispatché par DailyWheelModal
+  React.useEffect(() => {
+    const onRubisUpdate = (ev: any) => {
+      const v = Number(ev?.detail?.rubis);
+      if (Number.isFinite(v)) setRubisLive(v);
+    };
+    window.addEventListener("rubis:update", onRubisUpdate as any);
+    return () => window.removeEventListener("rubis:update", onRubisUpdate as any);
+  }, []);
+
   const refresh = React.useCallback(async () => {
     if (!token) {
       setCanSpin(false);
@@ -54,6 +77,8 @@ export function DailyWheelCard() {
         ? "Prête"
         : "Déjà utilisée aujourd’hui";
 
+  const displayRubis = Number(rubisLive ?? user?.rubis ?? 0);
+
   return (
     <>
       <div className="panel" style={{ marginTop: 0 }}>
@@ -67,7 +92,7 @@ export function DailyWheelCard() {
 
           {token ? (
             <div className="pill" title="Solde rubis">
-              💎 {Number(user?.rubis ?? 0).toLocaleString()}
+              💎 {displayRubis.toLocaleString()}
             </div>
           ) : null}
         </div>

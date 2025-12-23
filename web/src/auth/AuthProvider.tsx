@@ -1,3 +1,4 @@
+// web/src/auth/AuthProvider.tsx
 import * as React from "react";
 import type { ApiUser } from "../lib/api";
 import { loadToken, saveToken } from "../lib/storage";
@@ -68,6 +69,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("focus", onFocus);
     };
   }, [token, refreshMe]);
+
+  // ✅ écoute globale: mise à jour instant du solde rubis partout
+  React.useEffect(() => {
+    const onRubisUpdate = (ev: any) => {
+      const v = Number(ev?.detail?.rubis);
+      if (!Number.isFinite(v)) return;
+      patchUser({ rubis: v } as any);
+    };
+
+    window.addEventListener("rubis:update", onRubisUpdate as any);
+    return () => window.removeEventListener("rubis:update", onRubisUpdate as any);
+  }, [patchUser]);
 
   return (
     <Ctx.Provider value={{ token, user, setAuth, logout, refreshMe, patchUser }}>

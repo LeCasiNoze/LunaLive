@@ -26,6 +26,7 @@ import { subscriptionsRouter } from "./routes/subscriptions.js";
 // ✅ NEW
 import { adminRubisRouter } from "./routes/admin_rubis.js";
 import { wheelRouter } from "./routes/wheel.js";
+import { chestRouter } from "./routes/chest.js";
 
 export function createApp() {
   const app = express();
@@ -64,6 +65,7 @@ export function createApp() {
   app.use(subscriptionsRouter);
 
   app.use(wheelRouter);
+  app.use(chestRouter);
 
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));

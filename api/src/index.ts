@@ -6,6 +6,7 @@ import { migrate, seedIfEmpty, pool } from "./db.js";
 import { createApp } from "./app.js";
 import { attachChat } from "./chat_socket.js";
 import { startDlivePoller } from "./dlive_poller.js";
+import { startChestJobs } from "./chest_jobs.js";
 
 const port = Number(process.env.PORT || 3001);
 
@@ -60,6 +61,7 @@ function startStatsCleanup() {
   attachChat(io);
   startStatsCleanup();
   startDlivePoller(io);
+  startChestJobs(io);
 
   server.listen(port, () => console.log(`[api] listening on :${port}`));
 })();

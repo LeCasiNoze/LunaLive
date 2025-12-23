@@ -140,20 +140,14 @@ export function DailyWheelModal({
     try {
       const r = (await spinWheel(token)) as ApiWheelSpinResult;
       setResult(r);
-      
+
       const newRubis = Number((r as any)?.user?.rubis);
       if (Number.isFinite(newRubis)) {
-        // 1) update auth user si possible
+        // 1) update auth user (AuthProvider expose patchUser)
         try {
-          if (typeof (auth as any)?.setUser === "function") {
-            // support callback OU valeur directe selon ton AuthProvider
-            try {
-              (auth as any).setUser((prev: any) => (prev ? { ...prev, rubis: newRubis } : prev));
-            } catch {
-              const prev = (auth as any)?.user ?? {};
-              (auth as any).setUser({ ...prev, rubis: newRubis });
-            }
-          }
+        if (typeof (auth as any)?.patchUser === "function") {
+            (auth as any).patchUser({ rubis: newRubis });
+        }
         } catch {}
 
         // 2) event global (si d’autres composants veulent écouter)
