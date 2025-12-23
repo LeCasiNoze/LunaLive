@@ -581,10 +581,41 @@ export type ApiWheelSpin = {
   cap: { capNormal: number; capLow: number };
 };
 
-export async function getWheelState(token: string) {
-  return j<ApiWheelState>("/wheel/me", { headers: { Authorization: `Bearer ${token}` } });
+// ──────────────────────────────────────────
+// 🎡 DAILY WHEEL (API v1)
+// ──────────────────────────────────────────
+export type ApiWheelMe = {
+  ok: true;
+  day: string; // "YYYY-MM-DD"
+  canSpin: boolean;
+  usedToday: boolean;
+  segments: { label: string; amount: number }[];
+};
+
+export type ApiWheelSpinResult = {
+  ok: true;
+  day: string;
+  segmentIndex: number;
+  reward: number;
+  label: string;
+  txId: string;
+  user: { id: string; username: string; rubis: number };
+};
+
+export async function getMyWheel(token: string) {
+  return j<ApiWheelMe>("/wheel/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 export async function spinWheel(token: string) {
-  return j<ApiWheelSpin>("/wheel/me/spin", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  // si déjà utilisé, ton backend renvoie 409 + { error:"already_used" }
+  // j() va throw Error("already_used") -> on gère côté UI via message.
+  return j<ApiWheelSpinResult>("/wheel/spin", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
+
+// (optionnel) alias si tu as déjà du code qui appelle getWheelState()
+export const getWheelState = getMyWheel;

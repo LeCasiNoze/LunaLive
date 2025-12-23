@@ -529,6 +529,27 @@ export async function migrate() {
       ON wheel_spins(day DESC);
   `);
 
+  // ──────────────────────────────────────────
+  // 🎡 DAILY WHEEL
+  // ──────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS daily_wheel_spins (
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      day DATE NOT NULL, -- jour Europe/Paris
+      segment_index INT NOT NULL,
+      reward_rubis INT NOT NULL,
+      tx_id BIGINT NULL REFERENCES rubis_tx(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, day)
+    );
+
+    CREATE INDEX IF NOT EXISTS daily_wheel_spins_day_idx
+      ON daily_wheel_spins(day DESC);
+
+    CREATE INDEX IF NOT EXISTS daily_wheel_spins_user_idx
+      ON daily_wheel_spins(user_id, created_at DESC);
+  `);
+
   // Backfill: si un user a déjà rubis > 0 mais aucun lot, on met tout en "legacy"
   await pool.query(`
     INSERT INTO rubis_lots (user_id, origin, weight_bp, amount_total, amount_remaining, meta)

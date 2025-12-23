@@ -1,96 +1,98 @@
 import * as React from "react";
-import { getWheelState, spinWheel } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
+import { getMyWheel, type ApiWheelMe } from "../lib/api";
+import { LoginModal } from "./LoginModal";
+import { DailyWheelModal } from "./DailyWheelModal";
+
+function isLeCasinoze(username?: string | null) {
+  return String(username || "").trim().toLowerCase() === "lecasinoze";
+}
 
 export function DailyWheelCard() {
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
+  const user = auth?.user ?? null;
+  const refreshMe = auth?.refreshMe as undefined | (() => Promise<void>);
+
+  const god = isLeCasinoze(user?.username);
 
   const [loading, setLoading] = React.useState(false);
-  const [state, setState] = React.useState<any>(null);
-  const [msg, setMsg] = React.useState<string | null>(null);
-  const [err, setErr] = React.useState<string | null>(null);
+  const [canSpin, setCanSpin] = React.useState(false);
+  const [segments, setSegments] = React.useState<ApiWheelMe["segments"]>([]);
 
-  async function refresh() {
-    if (!token) return;
-    const s = await getWheelState(token);
-    setState(s);
-  }
+  const [loginOpen, setLoginOpen] = React.useState(false);
+  const [wheelOpen, setWheelOpen] = React.useState(false);
 
-  React.useEffect(() => {
-    setMsg(null);
-    setErr(null);
-    refresh().catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
-
-  async function onSpin() {
-    if (!token) return;
-    setErr(null);
-    setMsg(null);
-
+  const refresh = React.useCallback(async () => {
+    if (!token) {
+      setCanSpin(false);
+      setSegments([]);
+      return;
+    }
+    setLoading(true);
     try {
-      setLoading(true);
-      const r = await spinWheel(token);
-
-      const { raw, mintedTotal, mintedLow, dropped } = r.reward;
-
-      let line = `🎡 Gain: ${raw} → +${mintedTotal} rubis`;
-      if (mintedLow > 0) line += ` (dont ${mintedLow} en w=0.10)`;
-      if (dropped > 0) line += ` — ${dropped} perdus (cap hard)`;
-
-      setMsg(line);
-
-      // refresh state + user
-      await refresh().catch(() => {});
-      await auth.refreshMe?.().catch(() => {});
-    } catch (e: any) {
-      const m = String(e?.message || e);
-      setErr(m === "already_spun" ? "Déjà fait aujourd’hui." : m);
-      await refresh().catch(() => {});
+      const r = await getMyWheel(token);
+      setSegments(Array.isArray((r as any)?.segments) ? (r as any).segments : []);
+      setCanSpin(god ? true : !!(r as any)?.canSpin);
+    } catch {
+      setCanSpin(god ? true : false);
+      setSegments([]);
     } finally {
       setLoading(false);
     }
-  }
+  }, [token, god]);
 
-  if (!token) {
-    return (
-      <div className="panel">
-        <div className="panelTitle">Daily Wheel</div>
-        <div className="mutedSmall">Connecte-toi pour tourner la roue.</div>
-      </div>
-    );
-  }
-
-  const canSpin = !!state?.canSpin;
+  React.useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   return (
-    <div className="panel">
-      <div className="panelTitle">Daily Wheel</div>
-      <div className="mutedSmall" style={{ marginTop: 6 }}>
-        1 spin / jour. Au-delà du cap journalier, les gains passent en <b>w=0.10</b>, puis stop.
+    <>
+      <div className="panel" style={{ marginTop: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div>
+            <div className="panelTitle" style={{ marginBottom: 4 }}>
+              🎡 Daily Wheel
+            </div>
+            <div className="mutedSmall">{loading ? "…" : canSpin ? "Prête" : "Déjà utilisée aujourd’hui"}</div>
+          </div>
+
+          <div className="pill" title="Solde rubis">
+            💎 {Number(user?.rubis ?? 0).toLocaleString()}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <button
+            className="btnPrimary"
+            type="button"
+            onClick={() => {
+              if (!token) return setLoginOpen(true);
+              if (!god && !canSpin) return;
+              setWheelOpen(true);
+            }}
+            disabled={loading || (!god && token && !canSpin)}
+          >
+            {!token ? "Se connecter" : !god && !canSpin ? "Roue déjà utilisée" : "Faire tourner la roue"}
+          </button>
+        </div>
       </div>
 
-      {state?.cap ? (
-        <div className="mutedSmall" style={{ marginTop: 10 }}>
-          Cap: <b>{state.cap.freeAwarded}</b> / {state.cap.capNormal} (normal) —{" "}
-          <b>{state.cap.freeLowAwarded}</b> / {state.cap.capLow} (w=0.10)
-        </div>
-      ) : null}
+      <DailyWheelModal
+        open={wheelOpen}
+        onClose={() => setWheelOpen(false)}
+        canSpin={canSpin}
+        segments={segments}
+        onAfterSpin={async () => {
+          // ✅ update le solde rubis tout de suite
+          try {
+            await refreshMe?.();
+          } catch {}
+          await refresh();
+        }}
+      />
 
-      {state?.lastSpin ? (
-        <div className="mutedSmall" style={{ marginTop: 10 }}>
-          Déjà tourné aujourd’hui ✅ (gain brut: <b>{state.lastSpin.raw_reward}</b>, mint:{" "}
-          <b>{state.lastSpin.minted_total}</b>)
-        </div>
-      ) : null}
-
-      {err ? <div className="hint">⚠️ {err}</div> : null}
-      {msg ? <div className="hint">{msg}</div> : null}
-
-      <button className="btnPrimary" disabled={loading || !canSpin} onClick={onSpin} style={{ marginTop: 10 }}>
-        {loading ? "…" : canSpin ? "Tourner la roue" : "Roue déjà utilisée"}
-      </button>
-    </div>
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+    </>
   );
 }

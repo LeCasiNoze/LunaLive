@@ -874,3 +874,111 @@ body{
   min-height: 0;
   overflow: hidden;
 }
+
+/* ===========================
+   Home (Lives) layout + Wheel
+   =========================== */
+
+.homeLayout{
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 14px;
+  align-items: start;
+  margin-top: 14px;
+}
+
+/* Sidebar sticky sous la topbar */
+.homeSidebar{
+  position: sticky;
+  top: 86px; /* cohérent avec ton streamChat sticky */
+}
+
+/* évite le margin-top auto du 1er panel dans la sidebar */
+.homeSidebar .panel:first-child{
+  margin-top: 0;
+}
+
+.homeMain{ min-width: 0; }
+
+/* sous ~1100px on stack (petits laptops/tablettes) */
+@media (max-width: 1100px){
+  .homeLayout{ grid-template-columns: 1fr; }
+  .homeSidebar{ position: static; }
+}
+
+/* Wheel preview */
+.wheelCardTop{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.wheelPreviewWrap{
+  position: relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin: 10px 0 12px;
+}
+
+.wheelPreview{
+  width: min(240px, 100%);
+  aspect-ratio: 1 / 1;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background:
+    conic-gradient(
+      rgba(126,76,179,0.95),
+      rgba(63,86,203,0.95),
+      rgba(126,76,179,0.75),
+      rgba(63,86,203,0.75),
+      rgba(126,76,179,0.95)
+    );
+  box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+}
+
+.wheelPreviewInner{
+  position:absolute;
+  width: 56%;
+  aspect-ratio: 1 / 1;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(17, 10, 23, 0.82);
+  backdrop-filter: blur(10px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight: 950;
+}
+
+.wheelPointer{
+  position:absolute;
+  top: -6px;
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 16px solid rgba(255,255,255,0.85);
+  filter: drop-shadow(0 8px 18px rgba(0,0,0,0.45));
+}
+
+.wheelActions{
+  display:flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.wheelActions .btnPrimarySmall,
+.wheelActions .btnGhostSmall{
+  flex: 1;
+  min-width: 140px;
+}
+
+/* Mobile: roue plus compacte */
+@media (max-width: 820px){
+  .wheelPreview{ width: min(220px, 100%); }
+}

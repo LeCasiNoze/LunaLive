@@ -24,7 +24,7 @@ function formatDurationDot(startIso: string, nowMs: number) {
 }
 
 function withMinuteBust(url: string, nowMs: number) {
-  const t = Math.floor(nowMs / 60000); // change seulement à la minute
+  const t = Math.floor(nowMs / 60000);
   return url.includes("?") ? `${url}&t=${t}` : `${url}?t=${t}`;
 }
 
@@ -119,16 +119,6 @@ export default function LivesPage() {
         {/* Sidebar (desktop gauche / mobile en haut) */}
         <aside className="livesSidebar">
           <DailyWheelCard />
-
-          {/* Bonus : petit bloc teasing (tu peux le virer si tu veux) */}
-          <div className="panel" style={{ marginTop: 12 }}>
-            <div className="panelTitle">Récompenses</div>
-            <div className="mutedSmall">
-              Tous les gains “gratuits” sont capés par jour.
-              <br />
-              Si tu dépasses le cap : gains en <b>w=0.10</b>, puis stop.
-            </div>
-          </div>
         </aside>
 
         {/* Main */}
