@@ -493,6 +493,42 @@ export async function migrate() {
       ON rubis_tx_entries(tx_id);
   `);
 
+  // ──────────────────────────────────────────────────────────
+  // 🎡 DAILY CAPS + DAILY WHEEL
+  // ──────────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_daily_caps (
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      day DATE NOT NULL,
+      free_awarded INT NOT NULL DEFAULT 0,
+      free_low_awarded INT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, day)
+    );
+
+    CREATE INDEX IF NOT EXISTS user_daily_caps_day_idx
+      ON user_daily_caps(day DESC);
+
+    CREATE TABLE IF NOT EXISTS wheel_spins (
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      day DATE NOT NULL,
+      spun_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+      raw_reward INT NOT NULL,
+      minted_total INT NOT NULL,
+      minted_normal INT NOT NULL,
+      minted_low INT NOT NULL,
+      dropped INT NOT NULL,
+
+      tx_id BIGINT NULL REFERENCES rubis_tx(id) ON DELETE SET NULL,
+
+      PRIMARY KEY (user_id, day)
+    );
+
+    CREATE INDEX IF NOT EXISTS wheel_spins_day_idx
+      ON wheel_spins(day DESC);
+  `);
+
   // Backfill: si un user a déjà rubis > 0 mais aucun lot, on met tout en "legacy"
   await pool.query(`
     INSERT INTO rubis_lots (user_id, origin, weight_bp, amount_total, amount_remaining, meta)
@@ -501,7 +537,7 @@ export async function migrate() {
     WHERE u.rubis > 0
       AND NOT EXISTS (SELECT 1 FROM rubis_lots l WHERE l.user_id = u.id);
   `);
-  
+
   // ✅ Compat: rubis_tx manquait de streamer_id (utilisé par /streamer/me/earnings et par le moteur support)
   await pool.query(`
     ALTER TABLE rubis_tx

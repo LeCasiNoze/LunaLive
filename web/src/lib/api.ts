@@ -549,3 +549,42 @@ export async function adminMintRubis(
     }
   );
 }
+
+export type ApiWheelState = {
+  ok: true;
+  day: string;
+  canSpin: boolean;
+  lastSpin: null | {
+    day: string;
+    spun_at: string;
+    raw_reward: number;
+    minted_total: number;
+    minted_normal: number;
+    minted_low: number;
+    dropped: number;
+  };
+  cap: { freeAwarded: number; freeLowAwarded: number; capNormal: number; capLow: number };
+};
+
+export type ApiWheelSpin = {
+  ok: true;
+  day: string;
+  txId: string;
+  reward: {
+    raw: number;
+    mintedTotal: number;
+    mintedNormal: number;
+    mintedLow: number;
+    dropped: number;
+  };
+  user: { id: number; rubis: number };
+  cap: { capNormal: number; capLow: number };
+};
+
+export async function getWheelState(token: string) {
+  return j<ApiWheelState>("/wheel/me", { headers: { Authorization: `Bearer ${token}` } });
+}
+
+export async function spinWheel(token: string) {
+  return j<ApiWheelSpin>("/wheel/me/spin", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+}
