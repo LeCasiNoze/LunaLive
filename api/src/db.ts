@@ -501,6 +501,17 @@ export async function migrate() {
     WHERE u.rubis > 0
       AND NOT EXISTS (SELECT 1 FROM rubis_lots l WHERE l.user_id = u.id);
   `);
+  
+  // ✅ Compat: rubis_tx manquait de streamer_id (utilisé par /streamer/me/earnings et par le moteur support)
+  await pool.query(`
+    ALTER TABLE rubis_tx
+    ADD COLUMN IF NOT EXISTS streamer_id INT NULL REFERENCES streamers(id) ON DELETE SET NULL;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS rubis_tx_streamer_idx
+    ON rubis_tx(streamer_id, created_at DESC);
+  `);
 
   // Backfill: si des users ont déjà rubis>0, on les met en lot "legacy"
   await pool.query(`
@@ -510,7 +521,7 @@ export async function migrate() {
     WHERE u.rubis > 0
       AND NOT EXISTS (SELECT 1 FROM wallet_lots wl WHERE wl.user_id = u.id)
   `);
-  
+
     await pool.query(`
     ALTER TABLE streamers
     ADD COLUMN IF NOT EXISTS mods_percent_bp INT NOT NULL DEFAULT 0;
