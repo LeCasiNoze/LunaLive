@@ -982,3 +982,23 @@ body{
 @media (max-width: 820px){
   .wheelPreview{ width: min(220px, 100%); }
 }
+
+.dailyWheelModal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000; /* au-dessus des cartes */
+}
+.dailyWheelBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(8px);
+  z-index: 999;
+}
+.wheelSegment {
+  position: absolute;
+  width: 50%;
+  height: 50%;
+  background: conic-gradient(var(--color1) 0deg 30deg, transparent 30deg 31deg);
+  transform-origin: bottom right;
+}

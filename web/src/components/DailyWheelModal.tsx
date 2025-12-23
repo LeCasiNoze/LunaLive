@@ -1,20 +1,10 @@
 // web/src/components/DailyWheelModal.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { spinWheel } from "../lib/api";
+import { useAuth } from "../auth/AuthProvider";
+import { spinWheel, type ApiWheelMe, type ApiWheelSpinResult } from "../lib/api";
 
-type WheelSegment = { label: string; amount: number };
-
-type SpinResult = {
-  ok: boolean;
-  day: string;
-  segmentIndex: number;
-  reward: number;
-  label?: string;
-  txId?: string;
-};
-
-const FALLBACK_SEGMENTS: WheelSegment[] = [
+const FALLBACK_SEGMENTS: ApiWheelMe["segments"] = [
   { label: "+5", amount: 5 },
   { label: "+10", amount: 10 },
   { label: "+15", amount: 15 },
@@ -79,29 +69,30 @@ export function DailyWheelModal({
   onClose,
   canSpin,
   segments,
-  token,
   onAfterSpin,
 }: {
   open: boolean;
   onClose: () => void;
   canSpin: boolean;
-  token: string | null;
-  segments?: WheelSegment[];
+  segments?: ApiWheelMe["segments"];
   onAfterSpin?: () => void | Promise<void>;
 }) {
-  const segs = (segments && segments.length ? segments : FALLBACK_SEGMENTS) as WheelSegment[];
+  const auth = useAuth() as any;
+  const token = auth?.token ?? null;
+
+  const segs = (segments && segments.length ? segments : FALLBACK_SEGMENTS) as ApiWheelMe["segments"];
   const n = Math.max(1, segs.length);
   const slice = 360 / n;
 
+  // ✅ ref sur LE CONTENEUR QUI TOURNE (fond + séparateurs + labels)
   const wheelRef = React.useRef<HTMLDivElement | null>(null);
 
   const [phase, setPhase] = React.useState<"idle" | "spinning" | "done" | "error">("idle");
   const [msg, setMsg] = React.useState<string | null>(null);
-  const [result, setResult] = React.useState<SpinResult | null>(null);
+  const [result, setResult] = React.useState<ApiWheelSpinResult | null>(null);
 
   const { tick, ding } = useAudioFx();
 
-  // lock scroll + reset à l’ouverture
   React.useEffect(() => {
     if (!open) return;
 
@@ -146,12 +137,16 @@ export function DailyWheelModal({
     await new Promise((r) => requestAnimationFrame(() => r(null)));
 
     try {
-      const r = (await spinWheel(token)) as SpinResult;
+      const r = (await spinWheel(token)) as ApiWheelSpinResult;
       setResult(r);
 
-      const idx = Number(r.segmentIndex || 0);
+      const idx = Number((r as any).segmentIndex ?? 0);
       const spins = 6 + Math.floor(Math.random() * 3); // 6..8 tours
+
+      // centre du segment idx (en degrés depuis le haut)
       const centerAngle = (idx + 0.5) * slice;
+
+      // on veut centreAngle + rotation = 0 (mod 360) => rotation = 360 - centerAngle
       const finalDeg = spins * 360 + (360 - centerAngle);
 
       const el = wheelRef.current;
@@ -160,7 +155,8 @@ export function DailyWheelModal({
         el.style.transition = `transform ${durationMs}ms cubic-bezier(0.12, 0.8, 0.12, 1)`;
         el.style.transform = `rotate(${finalDeg}deg)`;
 
-        const totalTicks = Math.max(12, spins * n + idx);
+        // ticks
+        const totalTicks = Math.max(12, spins * n);
         const interval = Math.max(18, Math.floor(durationMs / totalTicks));
         let c = 0;
         const id = window.setInterval(() => {
@@ -184,28 +180,28 @@ export function DailyWheelModal({
       } catch {}
     } catch (e: any) {
       const m = String(e?.message || e);
-      setMsg(m === "already_used" ? "Déjà utilisée aujourd’hui." : "Erreur roue.");
+      if (m === "already_used") setMsg("Déjà utilisée aujourd’hui.");
+      else setMsg("Erreur roue.");
       setPhase("error");
     }
   }
 
   if (!open) return null;
 
-  const rewardText =
-    phase === "done" && result ? `🎉 Tu as gagné ${Number(result.reward || 0).toLocaleString()} rubis !` : null;
+  const rewardValue =
+    result && (result as any).reward && typeof (result as any).reward === "object"
+      ? Number((result as any).reward.raw || 0)
+      : Number((result as any).reward || 0);
+
+  const rewardText = phase === "done" && result ? `🎉 Tu as gagné ${rewardValue.toLocaleString()} rubis !` : null;
 
   const modal = (
-    <div
-      className="modalBackdrop"
-      role="presentation"
-      onClick={onClose}
-      style={{ zIndex: 2000 }} // ✅ au-dessus de tout
-    >
+    <div className="modalBackdrop" role="presentation" onClick={onClose} style={{ zIndex: 2000 }}>
       <div className="modalBox" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <style>{`
           .wheelStage{
             display:flex;
-            flex-direction:column;
+            flex-direction: column;
             align-items:center;
             gap: 14px;
             padding: 6px 0 4px;
@@ -224,12 +220,21 @@ export function DailyWheelModal({
             box-shadow: 0 18px 60px rgba(0,0,0,0.45);
           }
 
-          .wheel{
+          /* ✅ l'élément qui TOURNE */
+          .wheelRot{
             position:absolute;
             inset: 18px;
             border-radius: 999px;
-            border: 1px solid rgba(255,255,255,0.12);
+            will-change: transform;
+            transform: rotate(0deg);
+          }
+
+          .wheelDisk{
+            position:absolute;
+            inset: 0;
+            border-radius: 999px;
             overflow:hidden;
+            border: 1px solid rgba(255,255,255,0.12);
             background: conic-gradient(
               from -90deg,
               rgba(126,76,179,0.58),
@@ -240,19 +245,39 @@ export function DailyWheelModal({
             );
           }
 
-          /* ✅ séparateurs de segments (dessinés AU-DESSUS de la roue) */
-          .wheel::before{
+          /* ✅ séparateurs (ils tournent aussi car dans wheelRot) */
+          .wheelDisk::before{
             content:"";
             position:absolute;
             inset:0;
             border-radius:999px;
             background: repeating-conic-gradient(
               from -90deg,
-              rgba(255,255,255,0.20) 0 1deg,
+              rgba(255,255,255,0.22) 0 1deg,
               rgba(255,255,255,0.00) 1deg var(--slice)
             );
-            opacity: 0.9;
             pointer-events:none;
+            opacity: 0.9;
+          }
+
+          .wheelLabels{
+            position:absolute;
+            inset:0;
+            border-radius:999px;
+            pointer-events:none;
+          }
+
+          .wheelLabel{
+            position:absolute;
+            left: 50%;
+            top: 50%;
+            font-weight: 950;
+            font-size: 12px;
+            letter-spacing: 0.2px;
+            color: rgba(255,255,255,0.92);
+            text-shadow: 0 2px 10px rgba(0,0,0,0.55);
+            white-space: nowrap;
+            transform-origin: 0 0;
           }
 
           .wheelRing{
@@ -264,26 +289,6 @@ export function DailyWheelModal({
             pointer-events:none;
           }
 
-          .wheelLabels{
-            position:absolute;
-            inset: 18px;
-            border-radius: 999px;
-            pointer-events:none;
-          }
-
-          .wheelLabel{
-            position:absolute;
-            left: 50%;
-            top: 50%;
-            transform-origin: 0 0;
-            font-weight: 950;
-            font-size: 12px;
-            letter-spacing: 0.2px;
-            color: rgba(255,255,255,0.92);
-            text-shadow: 0 2px 10px rgba(0,0,0,0.55);
-            white-space: nowrap;
-          }
-
           .wheelCenter{
             position:absolute;
             inset: 0;
@@ -291,6 +296,7 @@ export function DailyWheelModal({
             align-items:center;
             justify-content:center;
             pointer-events:none;
+            z-index: 5;
           }
 
           .wheelHub{
@@ -320,6 +326,7 @@ export function DailyWheelModal({
             border-right: 12px solid transparent;
             border-bottom: 18px solid rgba(255,255,255,0.9);
             filter: drop-shadow(0 6px 10px rgba(0,0,0,0.45));
+            z-index: 6;
           }
 
           .wheelPointerDot{
@@ -332,6 +339,7 @@ export function DailyWheelModal({
             border-radius: 999px;
             background: rgba(255,255,255,0.9);
             box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+            z-index: 6;
           }
         `}</style>
 
@@ -348,32 +356,32 @@ export function DailyWheelModal({
               <div className="wheelPointer" />
               <div className="wheelPointerDot" />
 
+              {/* ✅ TOUT ce qui doit tourner est ici */}
               <div
                 ref={wheelRef}
-                className="wheel"
-                style={{ ["--slice" as any]: `${slice}deg` }} // ✅ utilisé par repeating-conic-gradient
-              />
+                className="wheelRot"
+                style={{ ["--slice" as any]: `${slice}deg` }}
+              >
+                <div className="wheelDisk" style={{ ["--slice" as any]: `${slice}deg` }} />
+                <div className="wheelLabels">
+                  {segs.map((s, i) => {
+                    const a = i * slice; // deg depuis le haut
+                    const radiusPx = 132; // ajustable (distance du centre)
 
-              <div className="wheelLabels">
-                {segs.map((s, i) => {
-                  const a = i * slice; // deg
-                  const r = 128;
-                  const rad = ((a - 90) * Math.PI) / 180;
-                  const x = Math.cos(rad) * r;
-                  const y = Math.sin(rad) * r;
-
-                  return (
-                    <div
-                      key={`${s.label}-${i}`}
-                      className="wheelLabel"
-                      style={{
-                        transform: `translate(${x}px, ${y}px) translate(-50%, -50%) rotate(${a}deg)`,
-                      }}
-                    >
-                      {s.label}
-                    </div>
-                  );
-                })}
+                    // ✅ placement "à la CSS": rotate(a) -> translate vers le bord -> rotate(-a) pour garder le texte lisible
+                    return (
+                      <div
+                        key={`${s.label}-${i}`}
+                        className="wheelLabel"
+                        style={{
+                          transform: `translate(-50%,-50%) rotate(${a}deg) translate(0,-${radiusPx}px) rotate(${-a}deg)`,
+                        }}
+                      >
+                        {s.label}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="wheelRing" />
@@ -386,11 +394,7 @@ export function DailyWheelModal({
               </div>
             </div>
 
-            {rewardText ? (
-              <div className="hint" style={{ marginTop: 2 }}>
-                {rewardText}
-              </div>
-            ) : null}
+            {rewardText ? <div className="hint" style={{ marginTop: 2 }}>{rewardText}</div> : null}
             {msg ? <div className="hint">⚠️ {msg}</div> : null}
 
             <div className="modalActions" style={{ justifyContent: "space-between" }}>
