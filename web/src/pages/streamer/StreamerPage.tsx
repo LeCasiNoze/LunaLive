@@ -35,6 +35,11 @@ export default function StreamerPage() {
   const [tab, setTab] = React.useState<TabKey>("about");
   const [liveViewersNow, setLiveViewersNow] = React.useState<number | null>(null);
 
+  // ✅ Sub modal state (correct, sans hack)
+  const [subOpen, setSubOpen] = React.useState(false);
+  const [subLoading, setSubLoading] = React.useState(false);
+  const [subError, setSubError] = React.useState<string | null>(null);
+
   const { isMobile, isPortrait } = useResponsive();
   const { cinema, chatOpen, enterCinema, leaveCinema, openCinemaChat, closeCinemaChat } = useCinema(isMobile);
 
@@ -241,7 +246,6 @@ export default function StreamerPage() {
                 disabled={followLoading}
                 onClick={() => {
                   if (!token) return setLoginOpen(true);
-                  // open sub modal handled below (simple: on)
                   setSubOpen(true);
                 }}
               >
@@ -359,7 +363,11 @@ export default function StreamerPage() {
           </div>
 
           <div className="streamChatBody">
-            <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} onFollowsCount={(n) => setFollowsCount(Number(n))} />
+            <ChatPanel
+              slug={String(slug || "")}
+              onRequireLogin={() => setLoginOpen(true)}
+              onFollowsCount={(n) => setFollowsCount(Number(n))}
+            />
           </div>
         </aside>
       </div>
@@ -367,16 +375,32 @@ export default function StreamerPage() {
       {/* Bottom tabs */}
       <div className="panel streamBottomPanel">
         <div className="streamTabsRow">
-          <button type="button" className={`streamTabBtn ${tab === "about" ? "active" : ""}`} onClick={() => setTab("about")}>
+          <button
+            type="button"
+            className={`streamTabBtn ${tab === "about" ? "active" : ""}`}
+            onClick={() => setTab("about")}
+          >
             À propos
           </button>
-          <button type="button" className={`streamTabBtn ${tab === "clips" ? "active" : ""}`} onClick={() => setTab("clips")}>
+          <button
+            type="button"
+            className={`streamTabBtn ${tab === "clips" ? "active" : ""}`}
+            onClick={() => setTab("clips")}
+          >
             Clip
           </button>
-          <button type="button" className={`streamTabBtn ${tab === "vod" ? "active" : ""}`} onClick={() => setTab("vod")}>
+          <button
+            type="button"
+            className={`streamTabBtn ${tab === "vod" ? "active" : ""}`}
+            onClick={() => setTab("vod")}
+          >
             VOD
           </button>
-          <button type="button" className={`streamTabBtn ${tab === "agenda" ? "active" : ""}`} onClick={() => setTab("agenda")}>
+          <button
+            type="button"
+            className={`streamTabBtn ${tab === "agenda" ? "active" : ""}`}
+            onClick={() => setTab("agenda")}
+          >
             Agenda
           </button>
         </div>
@@ -467,16 +491,4 @@ export default function StreamerPage() {
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>
   );
-
-  // --- sub modal state (petit) ---
-  function useSubState() {
-    const [subOpen, setSubOpen] = React.useState(false);
-    const [subLoading, setSubLoading] = React.useState(false);
-    const [subError, setSubError] = React.useState<string | null>(null);
-    return { subOpen, setSubOpen, subLoading, setSubLoading, subError, setSubError };
-  }
 }
-
-// petit hack: TSX ne permet pas de déclarer un hook après return dans la vraie vie,
-// donc on le met au top via destructuring :
-const { subOpen, setSubOpen, subLoading, setSubLoading, subError, setSubError } = (null as any);
