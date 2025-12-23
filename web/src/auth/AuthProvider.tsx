@@ -9,6 +9,9 @@ type AuthCtx = {
   setAuth: (token: string, user: ApiUser) => void;
   logout: () => void;
   refreshMe: () => Promise<void>;
+
+  // ✅ Nouveau: patch local du user (ex: rubis)
+  patchUser: (patch: Partial<ApiUser>) => void;
 };
 
 const Ctx = React.createContext<AuthCtx | null>(null);
@@ -29,6 +32,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     saveToken(t);
   }, []);
 
+  const patchUser = React.useCallback((patch: Partial<ApiUser>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      return { ...prev, ...patch };
+    });
+  }, []);
+
   const refreshMe = React.useCallback(async () => {
     if (!token) return;
     try {
@@ -42,24 +52,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     refreshMe();
   }, [refreshMe]);
-  
-React.useEffect(() => {
-  if (!token) return;
 
-  const id = window.setInterval(() => {
-    refreshMe();
-  }, 30_000);
+  React.useEffect(() => {
+    if (!token) return;
 
-  const onFocus = () => refreshMe();
-  window.addEventListener("focus", onFocus);
+    const id = window.setInterval(() => {
+      refreshMe();
+    }, 30_000);
 
-  return () => {
-    window.clearInterval(id);
-    window.removeEventListener("focus", onFocus);
-  };
-}, [token, refreshMe]);
+    const onFocus = () => refreshMe();
+    window.addEventListener("focus", onFocus);
 
-  return <Ctx.Provider value={{ token, user, setAuth, logout, refreshMe }}>{children}</Ctx.Provider>;
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [token, refreshMe]);
+
+  return (
+    <Ctx.Provider value={{ token, user, setAuth, logout, refreshMe, patchUser }}>
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export function useAuth() {
