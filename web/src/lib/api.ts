@@ -515,3 +515,10 @@ export async function pushUnsubscribe(token: string, endpoint: string) {
     body: JSON.stringify({ endpoint }),
   });
 }
+
+export async function subscribeStreamer(slug: string, token: string) {
+  return j<{ ok: true; newBalance?: number }>(`/streamers/${encodeURIComponent(slug)}/subscribe`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

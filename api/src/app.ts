@@ -21,6 +21,7 @@ import { walletRouter } from "./routes/wallet.js";
 import { supportRouter } from "./routes/support.js";
 import { earningsRouter } from "./routes/earnings.js";
 import { cashoutRouter } from "./routes/cashout.js";
+import { subscriptionsRouter } from "./routes/subscriptions.js";
 
 export function createApp() {
   const app = express();
@@ -56,6 +57,7 @@ export function createApp() {
   app.use(supportRouter);
   app.use(earningsRouter);
   app.use(cashoutRouter);
+  app.use(subscriptionsRouter);
   
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));

@@ -6,6 +6,8 @@ import { DlivePlayer } from "../components/DlivePlayer";
 import { ChatPanel } from "../components/ChatPanel";
 import { LoginModal } from "../components/LoginModal";
 import { useAuth } from "../auth/AuthProvider";
+import { subscribeStreamer } from "../lib/api";
+import { SubModal } from "../components/SubModal";
 
 function EyeIcon({ size = 16 }: { size?: number }) {
   return (
@@ -194,7 +196,14 @@ export default function StreamerPage() {
   const [isFollowing, setIsFollowing] = React.useState(false);
   const [notifyEnabled, setNotifyEnabled] = React.useState(false); // ✅ cloche
   const [followsCountLocal, setFollowsCountLocal] = React.useState<number | null>(null);
+
   const [followLoading, setFollowLoading] = React.useState(false);
+  const [subOpen, setSubOpen] = React.useState(false);
+  const [subLoading, setSubLoading] = React.useState(false);
+  const [subError, setSubError] = React.useState<string | null>(null);
+
+  const SUB_PRICE_RUBIS = 500;
+  const myRubis = Number(auth?.user?.rubis ?? 0);
 
   // ✅ Mobile portrait detection (pour mini chat)
   const [isMobile, setIsMobile] = React.useState(() =>
@@ -536,6 +545,24 @@ export default function StreamerPage() {
               >
                 {followLoading ? "…" : isFollowing ? "Suivi" : "Suivre"}
               </button>
+              
+              <button
+                type="button"
+                className="btnGhostSmall"
+                disabled={followLoading}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!token) {
+                    setLoginOpen(true);
+                    return;
+                  }
+                  setSubError(null);
+                  setSubOpen(true);
+                }}
+                title="S’abonner"
+              >
+                Sub
+              </button>
 
               {/* ✅ cloche uniquement si follow */}
               {isFollowing ? (
@@ -722,6 +749,46 @@ export default function StreamerPage() {
           )}
         </div>
       </div>
+      
+      <SubModal
+        open={subOpen}
+        onClose={() => setSubOpen(false)}
+        streamerName={displayName ? displayName : `@${String(slug || "")}`}
+        priceRubis={SUB_PRICE_RUBIS}
+        myRubis={myRubis}
+        loading={subLoading}
+        error={subError}
+        onGoShop={() => {
+          setSubOpen(false);
+          // shop à brancher plus tard, on met un lien simple
+          window.location.href = "/shop";
+        }}
+        onPayRubis={async () => {
+          if (!token) return;
+          if (!slug) return;
+
+          setSubLoading(true);
+          setSubError(null);
+          try {
+            const r = await subscribeStreamer(String(slug), token);
+            if (r?.ok) {
+              // ✅ si l’API renvoie newBalance, on peut MAJ local (sinon: tu relies à me() plus tard)
+              if (typeof r.newBalance === "number") {
+                // si ton AuthProvider expose un setter, on le branchera.
+                // pour l’instant on refresh la page pour refléter le solde.
+                // (simple + efficace pour test)
+                window.location.reload();
+              } else {
+                window.location.reload();
+              }
+            }
+          } catch (e: any) {
+            setSubError(String(e?.message || "Erreur"));
+          } finally {
+            setSubLoading(false);
+          }
+        }}
+      />
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>
