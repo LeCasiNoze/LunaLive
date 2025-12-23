@@ -4,10 +4,11 @@ import { formatViewers } from "../lib/format";
 import { getLives } from "../lib/api";
 import { svgThumb } from "../lib/thumb";
 import type { LiveCard } from "../lib/types";
+import { DailyWheelCard } from "../components/DailyWheelCard";
 
 type LiveCardVM = LiveCard & {
-  thumbFallback: string;         // data URI svg
-  thumbFinal: string;            // url finale affichée
+  thumbFallback: string; // data URI svg
+  thumbFinal: string; // url finale affichée
   durationLabel?: string | null; // ex "2.58"
 };
 
@@ -84,74 +85,119 @@ export default function LivesPage() {
 
   return (
     <main className="container">
+      {/* CSS local (responsive) */}
+      <style>{`
+        .livesLayout {
+          display: grid;
+          grid-template-columns: 320px 1fr;
+          gap: 16px;
+          align-items: start;
+        }
+        .livesSidebar {
+          position: sticky;
+          top: 14px;
+        }
+        .livesMain { min-width: 0; }
+
+        /* Mobile */
+        @media (max-width: 980px) {
+          .livesLayout {
+            grid-template-columns: 1fr;
+          }
+          .livesSidebar {
+            position: static;
+          }
+        }
+      `}</style>
+
       <div className="pageTitle">
         <h1>Lives</h1>
         <p className="muted">{loading ? "Chargement…" : "Données depuis l’API."}</p>
       </div>
 
-      <section className="grid">
-        {sorted.map((live) => (
-          <Link key={live.id} to={`/s/${live.slug}`} className="cardLink">
-            <article className="card">
-              <div
-                className="thumb"
-                style={{
-                  backgroundImage: `url("${live.thumbFinal}")`,
-                  position: "relative",
-                }}
-              >
-                <div className="liveBadge">LIVE</div>
+      <div className="livesLayout">
+        {/* Sidebar (desktop gauche / mobile en haut) */}
+        <aside className="livesSidebar">
+          <DailyWheelCard />
 
-                {live.durationLabel ? (
+          {/* Bonus : petit bloc teasing (tu peux le virer si tu veux) */}
+          <div className="panel" style={{ marginTop: 12 }}>
+            <div className="panelTitle">Récompenses</div>
+            <div className="mutedSmall">
+              Tous les gains “gratuits” sont capés par jour.
+              <br />
+              Si tu dépasses le cap : gains en <b>w=0.10</b>, puis stop.
+            </div>
+          </div>
+        </aside>
+
+        {/* Main */}
+        <section className="livesMain">
+          <section className="grid">
+            {sorted.map((live) => (
+              <Link key={live.id} to={`/s/${live.slug}`} className="cardLink">
+                <article className="card">
                   <div
+                    className="thumb"
                     style={{
-                      position: "absolute",
-                      top: 10,
-                      right: 10,
-                      padding: "6px 10px",
-                      borderRadius: 999,
-                      fontSize: 12,
-                      fontWeight: 800,
-                      letterSpacing: 0.2,
-                      background: "rgba(0,0,0,0.55)",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      backdropFilter: "blur(8px)",
+                      backgroundImage: `url("${live.thumbFinal}")`,
+                      position: "relative",
                     }}
-                    title="Durée du live"
                   >
-                    {live.durationLabel}
+                    <div className="liveBadge">LIVE</div>
+
+                    {live.durationLabel ? (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 10,
+                          right: 10,
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          fontSize: 12,
+                          fontWeight: 800,
+                          letterSpacing: 0.2,
+                          background: "rgba(0,0,0,0.55)",
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          backdropFilter: "blur(8px)",
+                        }}
+                        title="Durée du live"
+                      >
+                        {live.durationLabel}
+                      </div>
+                    ) : null}
+
+                    <div className="viewerBadge">{formatViewers(live.viewers)} viewers</div>
+
+                    <div className="overlay">
+                      <div className="streamer">{live.displayName}</div>
+                    </div>
                   </div>
-                ) : null}
 
-                <div className="viewerBadge">{formatViewers(live.viewers)} viewers</div>
-
-                <div className="overlay">
-                  <div className="streamer">{live.displayName}</div>
-                </div>
-              </div>
-
-              <div style={{ padding: "10px 12px" }}>
-                <div
-                  title={live.title || ""}
-                  style={{
-                    fontWeight: 800,
-                    fontSize: 13,
-                    lineHeight: 1.2,
-                    opacity: 0.95,
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
-                    minHeight: 32,
-                  }}
-                >
-                  {live.title || "—"}
-                </div>
-              </div>
-            </article>
-          </Link>
-        ))}
-      </section>
+                  <div style={{ padding: "10px 12px" }}>
+                    <div
+                      title={live.title || ""}
+                      style={{
+                        fontWeight: 800,
+                        fontSize: 13,
+                        lineHeight: 1.2,
+                        opacity: 0.95,
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                        minHeight: 32,
+                      }}
+                    >
+                      {live.title || "—"}
+                    </div>
+                  </div>
+                </article>
+              </Link>
+            ))}
+          </section>
+        </section>
+      </div>
     </main>
   );
 }
