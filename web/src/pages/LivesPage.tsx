@@ -7,9 +7,9 @@ import type { LiveCard } from "../lib/types";
 import { DailyWheelCard } from "../components/DailyWheelCard";
 
 type LiveCardVM = LiveCard & {
-  thumbFallback: string; // data URI svg
-  thumbFinal: string; // url finale affichée
-  durationLabel?: string | null; // ex "2.58"
+  thumbFallback: string;
+  thumbFinal: string;
+  durationLabel?: string | null;
 };
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
@@ -57,12 +57,7 @@ export default function LivesPage() {
           const started = x.liveStartedAt || x.live_started_at || null;
           const durationLabel = started ? formatDurationDot(String(started), nowMs) : null;
 
-          return {
-            ...x,
-            thumbFallback: fallback,
-            thumbFinal,
-            durationLabel,
-          };
+          return { ...x, thumbFallback: fallback, thumbFinal, durationLabel };
         });
 
         if (alive) setLives(vm);
@@ -85,7 +80,6 @@ export default function LivesPage() {
 
   return (
     <main className="container">
-      {/* CSS local (responsive) */}
       <style>{`
         .livesLayout {
           display: grid;
@@ -99,14 +93,9 @@ export default function LivesPage() {
         }
         .livesMain { min-width: 0; }
 
-        /* Mobile */
         @media (max-width: 980px) {
-          .livesLayout {
-            grid-template-columns: 1fr;
-          }
-          .livesSidebar {
-            position: static;
-          }
+          .livesLayout { grid-template-columns: 1fr; }
+          .livesSidebar { position: static; }
         }
       `}</style>
 
@@ -116,24 +105,16 @@ export default function LivesPage() {
       </div>
 
       <div className="livesLayout">
-        {/* Sidebar (desktop gauche / mobile en haut) */}
         <aside className="livesSidebar">
           <DailyWheelCard />
         </aside>
 
-        {/* Main */}
         <section className="livesMain">
           <section className="grid">
             {sorted.map((live) => (
               <Link key={live.id} to={`/s/${live.slug}`} className="cardLink">
                 <article className="card">
-                  <div
-                    className="thumb"
-                    style={{
-                      backgroundImage: `url("${live.thumbFinal}")`,
-                      position: "relative",
-                    }}
-                  >
+                  <div className="thumb" style={{ backgroundImage: `url("${live.thumbFinal}")` }}>
                     <div className="liveBadge">LIVE</div>
 
                     {live.durationLabel ? (

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useAuth } from "../auth/AuthProvider";
-import { getMyWheel, type ApiWheelMe } from "../lib/api";
+import { getWheelState } from "../lib/api";
 import { LoginModal } from "./LoginModal";
 import { DailyWheelModal } from "./DailyWheelModal";
 
@@ -12,13 +12,11 @@ export function DailyWheelCard() {
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
   const user = auth?.user ?? null;
-  const refreshMe = auth?.refreshMe as undefined | (() => Promise<void>);
 
   const god = isLeCasinoze(user?.username);
 
   const [loading, setLoading] = React.useState(false);
   const [canSpin, setCanSpin] = React.useState(false);
-  const [segments, setSegments] = React.useState<ApiWheelMe["segments"]>([]);
 
   const [loginOpen, setLoginOpen] = React.useState(false);
   const [wheelOpen, setWheelOpen] = React.useState(false);
@@ -26,17 +24,14 @@ export function DailyWheelCard() {
   const refresh = React.useCallback(async () => {
     if (!token) {
       setCanSpin(false);
-      setSegments([]);
       return;
     }
     setLoading(true);
     try {
-      const r = await getMyWheel(token);
-      setSegments(Array.isArray((r as any)?.segments) ? (r as any).segments : []);
+      const r = await getWheelState(token);
       setCanSpin(god ? true : !!(r as any)?.canSpin);
     } catch {
       setCanSpin(god ? true : false);
-      setSegments([]);
     } finally {
       setLoading(false);
     }
@@ -46,6 +41,14 @@ export function DailyWheelCard() {
     refresh();
   }, [refresh]);
 
+  const subtitle = !token
+    ? "Connecte-toi pour tourner"
+    : loading
+      ? "Chargement…"
+      : canSpin
+        ? "Prête"
+        : "Déjà utilisée aujourd’hui";
+
   return (
     <>
       <div className="panel" style={{ marginTop: 0 }}>
@@ -54,12 +57,14 @@ export function DailyWheelCard() {
             <div className="panelTitle" style={{ marginBottom: 4 }}>
               🎡 Daily Wheel
             </div>
-            <div className="mutedSmall">{loading ? "…" : canSpin ? "Prête" : "Déjà utilisée aujourd’hui"}</div>
+            <div className="mutedSmall">{subtitle}</div>
           </div>
 
-          <div className="pill" title="Solde rubis">
-            💎 {Number(user?.rubis ?? 0).toLocaleString()}
-          </div>
+          {token ? (
+            <div className="pill" title="Solde rubis">
+              💎 {Number(user?.rubis ?? 0).toLocaleString()}
+            </div>
+          ) : null}
         </div>
 
         <div style={{ marginTop: 12 }}>
@@ -82,14 +87,7 @@ export function DailyWheelCard() {
         open={wheelOpen}
         onClose={() => setWheelOpen(false)}
         canSpin={canSpin}
-        segments={segments}
-        onAfterSpin={async () => {
-          // ✅ update le solde rubis tout de suite
-          try {
-            await refreshMe?.();
-          } catch {}
-          await refresh();
-        }}
+        onAfterSpin={refresh}
       />
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
