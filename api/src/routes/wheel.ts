@@ -24,10 +24,9 @@ function isTestGod(req: any) {
   return u === "lecasinoze"; // ✅ always allowed for you
 }
 
-async function todayParisDate() {
-  // date "jour" en Europe/Paris côté SQL (Render est souvent en UTC)
+async function todayParisDate(): Promise<string> {
   const r = await pool.query(`SELECT (NOW() AT TIME ZONE 'Europe/Paris')::date AS d;`);
-  return r.rows?.[0]?.d; // Date (string-like) côté pg
+  return String(r.rows?.[0]?.d);
 }
 
 wheelRouter.get("/wheel/me", requireAuth, async (req, res) => {
@@ -43,7 +42,7 @@ wheelRouter.get("/wheel/me", requireAuth, async (req, res) => {
     [req.user!.id, day]
   );
 
-  const usedToday = check.rowCount > 0;
+  const usedToday = check.rows.length > 0; // ✅ no TS warning
   res.json({ ok: true, canSpin: !usedToday, usedToday, day, segments: SEGMENTS });
 });
 
@@ -52,10 +51,6 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
   const userId = Number(req.user!.id);
   const day = await todayParisDate();
 
-  // (optionnel) tu peux limiter aux viewers + streamers + admin
-  // si tu veux interdire aux guests (mais requireAuth => ok)
-
-  // pick random segment
   const segmentIndex = Math.floor(Math.random() * SEGMENTS.length);
   const seg = SEGMENTS[segmentIndex];
   const reward = Number(seg.amount);
@@ -65,21 +60,19 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
     await client.query("BEGIN");
 
     if (!god) {
-      // lock check (anti double spin)
       const exists = await client.query(
         `SELECT 1 FROM daily_wheel_spins WHERE user_id=$1 AND day=$2 LIMIT 1`,
         [userId, day]
       );
-      if (exists.rowCount > 0) {
+
+      if (exists.rows.length > 0) { // ✅ no TS warning
         await client.query("ROLLBACK");
         return res.status(409).json({ ok: false, error: "already_used" });
       }
     }
 
-    // ✅ mint rubis: origin wheel_daily, weight 0.30
     const weightBp = 3000;
 
-    // rubis_tx (mint)
     const tx = await client.query(
       `INSERT INTO rubis_tx (kind, purpose, status, to_user_id, amount, meta)
        VALUES ('mint','wheel_daily','succeeded',$1,$2,jsonb_build_object('segmentIndex',$3,'label',$4))
@@ -88,27 +81,23 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
     );
     const txId = Number(tx.rows[0].id);
 
-    // entries (visible balance)
     await client.query(
       `INSERT INTO rubis_tx_entries (tx_id, entity, user_id, delta)
        VALUES ($1,'user',$2,$3)`,
       [txId, userId, reward]
     );
 
-    // lot
     await client.query(
       `INSERT INTO rubis_lots (user_id, origin, weight_bp, amount_total, amount_remaining, meta)
        VALUES ($1,'wheel_daily',$2,$3,$3,jsonb_build_object('txId',$4,'segmentIndex',$5))`,
       [userId, weightBp, reward, txId, segmentIndex]
     );
 
-    // update users.rubis
     const u = await client.query(
       `UPDATE users SET rubis = rubis + $1 WHERE id=$2 RETURNING id, username, rubis`,
       [reward, userId]
     );
 
-    // record spin (skip uniqueness if god)
     if (!god) {
       await client.query(
         `INSERT INTO daily_wheel_spins (user_id, day, segment_index, reward_rubis, tx_id)
@@ -126,14 +115,15 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
       reward,
       label: seg.label,
       txId: String(txId),
-      user: { id: String(u.rows[0].id), username: String(u.rows[0].username), rubis: Number(u.rows[0].rubis) },
+      user: {
+        id: String(u.rows[0].id),
+        username: String(u.rows[0].username),
+        rubis: Number(u.rows[0].rubis),
+      },
     });
   } catch (e: any) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
+    try { await client.query("ROLLBACK"); } catch {}
 
-    // si collision PK (rare race), renvoyer already_used
     if (String(e?.code) === "23505") {
       return res.status(409).json({ ok: false, error: "already_used" });
     }
