@@ -1,8 +1,20 @@
+// web/src/components/DailyWheelModal.tsx
 import * as React from "react";
-import { useAuth } from "../auth/AuthProvider";
-import { spinWheel, type ApiWheelSpinResult, type ApiWheelMe } from "../lib/api";
+import { createPortal } from "react-dom";
+import { spinWheel } from "../lib/api";
 
-const FALLBACK_SEGMENTS: ApiWheelMe["segments"] = [
+type WheelSegment = { label: string; amount: number };
+
+type SpinResult = {
+  ok: boolean;
+  day: string;
+  segmentIndex: number;
+  reward: number;
+  label?: string;
+  txId?: string;
+};
+
+const FALLBACK_SEGMENTS: WheelSegment[] = [
   { label: "+5", amount: 5 },
   { label: "+10", amount: 10 },
   { label: "+15", amount: 15 },
@@ -28,28 +40,30 @@ function useAudioFx() {
     return ctxRef.current;
   }, []);
 
-  const beep = React.useCallback((freq: number, ms: number, gain = 0.06) => {
-    const ctx = ensure();
-    if (!ctx) return;
-    try {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = "square";
-      o.frequency.value = freq;
-      g.gain.value = gain;
+  const beep = React.useCallback(
+    (freq: number, ms: number, gain = 0.06) => {
+      const ctx = ensure();
+      if (!ctx) return;
+      try {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = "square";
+        o.frequency.value = freq;
+        g.gain.value = gain;
 
-      o.connect(g);
-      g.connect(ctx.destination);
+        o.connect(g);
+        g.connect(ctx.destination);
 
-      const now = ctx.currentTime;
-      o.start(now);
-      o.stop(now + ms / 1000);
+        const now = ctx.currentTime;
+        o.start(now);
+        o.stop(now + ms / 1000);
 
-      // petit fade out
-      g.gain.setValueAtTime(gain, now);
-      g.gain.exponentialRampToValueAtTime(0.0001, now + ms / 1000);
-    } catch {}
-  }, [ensure]);
+        g.gain.setValueAtTime(gain, now);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + ms / 1000);
+      } catch {}
+    },
+    [ensure]
+  );
 
   const tick = React.useCallback(() => beep(900, 18, 0.045), [beep]);
   const ding = React.useCallback(() => {
@@ -65,18 +79,17 @@ export function DailyWheelModal({
   onClose,
   canSpin,
   segments,
+  token,
   onAfterSpin,
 }: {
   open: boolean;
   onClose: () => void;
   canSpin: boolean;
-  segments?: ApiWheelMe["segments"];
+  token: string | null;
+  segments?: WheelSegment[];
   onAfterSpin?: () => void | Promise<void>;
 }) {
-  const auth = useAuth() as any;
-  const token = auth?.token ?? null;
-
-  const segs = (segments && segments.length ? segments : FALLBACK_SEGMENTS) as ApiWheelMe["segments"];
+  const segs = (segments && segments.length ? segments : FALLBACK_SEGMENTS) as WheelSegment[];
   const n = Math.max(1, segs.length);
   const slice = 360 / n;
 
@@ -84,18 +97,21 @@ export function DailyWheelModal({
 
   const [phase, setPhase] = React.useState<"idle" | "spinning" | "done" | "error">("idle");
   const [msg, setMsg] = React.useState<string | null>(null);
-  const [result, setResult] = React.useState<ApiWheelSpinResult | null>(null);
+  const [result, setResult] = React.useState<SpinResult | null>(null);
 
   const { tick, ding } = useAudioFx();
 
-  // reset à l’ouverture
+  // lock scroll + reset à l’ouverture
   React.useEffect(() => {
     if (!open) return;
+
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     setPhase("idle");
     setMsg(null);
     setResult(null);
 
-    // reset rotation sans transition
     const el = wheelRef.current;
     if (el) {
       el.style.transition = "none";
@@ -104,6 +120,10 @@ export function DailyWheelModal({
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       el.offsetHeight;
     }
+
+    return () => {
+      document.body.style.overflow = prev;
+    };
   }, [open]);
 
   async function onSpin() {
@@ -123,11 +143,10 @@ export function DailyWheelModal({
 
     setPhase("spinning");
 
-    // petite “attente” pour être sûr que le DOM est prêt
     await new Promise((r) => requestAnimationFrame(() => r(null)));
 
     try {
-      const r = await spinWheel(token);
+      const r = (await spinWheel(token)) as SpinResult;
       setResult(r);
 
       const idx = Number(r.segmentIndex || 0);
@@ -141,8 +160,7 @@ export function DailyWheelModal({
         el.style.transition = `transform ${durationMs}ms cubic-bezier(0.12, 0.8, 0.12, 1)`;
         el.style.transform = `rotate(${finalDeg}deg)`;
 
-        // ticks : approx en fonction du nb de “slices”
-        const totalTicks = Math.max(10, spins * n + idx);
+        const totalTicks = Math.max(12, spins * n + idx);
         const interval = Math.max(18, Math.floor(durationMs / totalTicks));
         let c = 0;
         const id = window.setInterval(() => {
@@ -151,29 +169,22 @@ export function DailyWheelModal({
           if (c >= totalTicks) window.clearInterval(id);
         }, interval);
 
-        // fin
         window.setTimeout(() => {
           window.clearInterval(id);
           ding();
           setPhase("done");
         }, durationMs + 40);
       } else {
-        // fallback sans anim
         ding();
         setPhase("done");
       }
 
-      // refresh balance / state
       try {
         await onAfterSpin?.();
       } catch {}
     } catch (e: any) {
       const m = String(e?.message || e);
-      if (m === "already_used") {
-        setMsg("Déjà utilisée aujourd’hui.");
-      } else {
-        setMsg("Erreur roue.");
-      }
+      setMsg(m === "already_used" ? "Déjà utilisée aujourd’hui." : "Erreur roue.");
       setPhase("error");
     }
   }
@@ -183,31 +194,68 @@ export function DailyWheelModal({
   const rewardText =
     phase === "done" && result ? `🎉 Tu as gagné ${Number(result.reward || 0).toLocaleString()} rubis !` : null;
 
-  return (
-    <div className="modalBackdrop" role="presentation" onClick={onClose}>
+  const modal = (
+    <div
+      className="modalBackdrop"
+      role="presentation"
+      onClick={onClose}
+      style={{ zIndex: 2000 }} // ✅ au-dessus de tout
+    >
       <div className="modalBox" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <style>{`
-          .wheelStage {
+          .wheelStage{
             display:flex;
-            flex-direction: column;
+            flex-direction:column;
             align-items:center;
             gap: 14px;
             padding: 6px 0 4px;
           }
 
-          .wheelWrap {
+          .wheelWrap{
             position: relative;
             width: min(360px, 84vw);
             aspect-ratio: 1/1;
             border-radius: 999px;
             padding: 10px;
-            background: radial-gradient(circle at 30% 25%, rgba(126,76,179,0.30), rgba(0,0,0,0.1) 55%),
-                        rgba(255,255,255,0.04);
+            background:
+              radial-gradient(circle at 30% 25%, rgba(126,76,179,0.30), rgba(0,0,0,0.1) 55%),
+              rgba(255,255,255,0.04);
             border: 1px solid rgba(255,255,255,0.12);
             box-shadow: 0 18px 60px rgba(0,0,0,0.45);
           }
 
-          .wheelRing {
+          .wheel{
+            position:absolute;
+            inset: 18px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.12);
+            overflow:hidden;
+            background: conic-gradient(
+              from -90deg,
+              rgba(126,76,179,0.58),
+              rgba(63,86,203,0.48),
+              rgba(126,76,179,0.58),
+              rgba(63,86,203,0.48),
+              rgba(126,76,179,0.58)
+            );
+          }
+
+          /* ✅ séparateurs de segments (dessinés AU-DESSUS de la roue) */
+          .wheel::before{
+            content:"";
+            position:absolute;
+            inset:0;
+            border-radius:999px;
+            background: repeating-conic-gradient(
+              from -90deg,
+              rgba(255,255,255,0.20) 0 1deg,
+              rgba(255,255,255,0.00) 1deg var(--slice)
+            );
+            opacity: 0.9;
+            pointer-events:none;
+          }
+
+          .wheelRing{
             position:absolute;
             inset: 10px;
             border-radius: 999px;
@@ -216,31 +264,14 @@ export function DailyWheelModal({
             pointer-events:none;
           }
 
-          .wheel {
-            position:absolute;
-            inset: 18px;
-            border-radius: 999px;
-            border: 1px solid rgba(255,255,255,0.12);
-            overflow:hidden;
-            background: conic-gradient(
-              from -90deg,
-              rgba(126,76,179,0.55),
-              rgba(63,86,203,0.45),
-              rgba(126,76,179,0.55),
-              rgba(63,86,203,0.45),
-              rgba(126,76,179,0.55)
-            );
-          }
-
-          /* overlay slices + labels */
-          .wheelLabels {
+          .wheelLabels{
             position:absolute;
             inset: 18px;
             border-radius: 999px;
             pointer-events:none;
           }
 
-          .wheelLabel {
+          .wheelLabel{
             position:absolute;
             left: 50%;
             top: 50%;
@@ -250,9 +281,10 @@ export function DailyWheelModal({
             letter-spacing: 0.2px;
             color: rgba(255,255,255,0.92);
             text-shadow: 0 2px 10px rgba(0,0,0,0.55);
+            white-space: nowrap;
           }
 
-          .wheelCenter {
+          .wheelCenter{
             position:absolute;
             inset: 0;
             display:flex;
@@ -261,7 +293,7 @@ export function DailyWheelModal({
             pointer-events:none;
           }
 
-          .wheelHub {
+          .wheelHub{
             width: 92px;
             height: 92px;
             border-radius: 999px;
@@ -274,10 +306,10 @@ export function DailyWheelModal({
             flex-direction: column;
             gap: 2px;
           }
-          .wheelHubTop { font-weight: 950; font-size: 14px; }
-          .wheelHubSub { font-size: 11px; color: rgba(255,255,255,0.65); font-weight: 800; }
+          .wheelHubTop{ font-weight: 950; font-size: 14px; }
+          .wheelHubSub{ font-size: 11px; color: rgba(255,255,255,0.65); font-weight: 800; }
 
-          .wheelPointer {
+          .wheelPointer{
             position:absolute;
             left: 50%;
             top: 6px;
@@ -290,7 +322,7 @@ export function DailyWheelModal({
             filter: drop-shadow(0 6px 10px rgba(0,0,0,0.45));
           }
 
-          .wheelPointerDot {
+          .wheelPointerDot{
             position:absolute;
             left: 50%;
             top: 22px;
@@ -316,22 +348,26 @@ export function DailyWheelModal({
               <div className="wheelPointer" />
               <div className="wheelPointerDot" />
 
-              <div ref={wheelRef} className="wheel" />
+              <div
+                ref={wheelRef}
+                className="wheel"
+                style={{ ["--slice" as any]: `${slice}deg` }} // ✅ utilisé par repeating-conic-gradient
+              />
 
               <div className="wheelLabels">
                 {segs.map((s, i) => {
                   const a = i * slice; // deg
-                  // place label proche du bord
-                  const r = 125;
-                  const x = Math.cos(((a - 90) * Math.PI) / 180) * r;
-                  const y = Math.sin(((a - 90) * Math.PI) / 180) * r;
+                  const r = 128;
+                  const rad = ((a - 90) * Math.PI) / 180;
+                  const x = Math.cos(rad) * r;
+                  const y = Math.sin(rad) * r;
 
                   return (
                     <div
                       key={`${s.label}-${i}`}
                       className="wheelLabel"
                       style={{
-                        transform: `translate(${x}px, ${y}px) rotate(${a}deg)`,
+                        transform: `translate(${x}px, ${y}px) translate(-50%, -50%) rotate(${a}deg)`,
                       }}
                     >
                       {s.label}
@@ -350,7 +386,11 @@ export function DailyWheelModal({
               </div>
             </div>
 
-            {rewardText ? <div className="hint" style={{ marginTop: 2 }}>{rewardText}</div> : null}
+            {rewardText ? (
+              <div className="hint" style={{ marginTop: 2 }}>
+                {rewardText}
+              </div>
+            ) : null}
             {msg ? <div className="hint">⚠️ {msg}</div> : null}
 
             <div className="modalActions" style={{ justifyContent: "space-between" }}>
@@ -367,4 +407,6 @@ export function DailyWheelModal({
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 }

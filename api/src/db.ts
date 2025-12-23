@@ -549,6 +549,18 @@ export async function migrate() {
     CREATE INDEX IF NOT EXISTS daily_wheel_spins_user_idx
       ON daily_wheel_spins(user_id, created_at DESC);
   `);
+  
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS daily_wheel_spins (
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      day DATE NOT NULL,
+      segment_index INT NOT NULL,
+      reward_rubis INT NOT NULL,
+      tx_id BIGINT NULL REFERENCES rubis_tx(id) ON DELETE SET NULL,
+      spun_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, day)
+    );
+  `);
 
   // Backfill: si un user a déjà rubis > 0 mais aucun lot, on met tout en "legacy"
   await pool.query(`

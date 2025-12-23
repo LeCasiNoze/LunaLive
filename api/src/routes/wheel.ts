@@ -1,3 +1,4 @@
+// api/src/routes/wheel.ts
 import express from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
@@ -17,16 +18,16 @@ const SEGMENTS = [
   { label: "+100", amount: 100 },
   { label: "+150", amount: 150 },
   { label: "+250", amount: 250 },
-];
+] as const;
 
 function isTestGod(req: any) {
   const u = String(req.user?.username || "").trim().toLowerCase();
-  return u === "lecasinoze"; // ✅ always allowed for you
+  return u === "lecasinoze";
 }
 
 async function todayParisDate(): Promise<string> {
-  const r = await pool.query(`SELECT (NOW() AT TIME ZONE 'Europe/Paris')::date AS d;`);
-  return String(r.rows?.[0]?.d);
+  const r = await pool.query(`SELECT (NOW() AT TIME ZONE 'Europe/Paris')::date::text AS d;`);
+  return String(r.rows?.[0]?.d || "");
 }
 
 wheelRouter.get("/wheel/me", requireAuth, async (req, res) => {
@@ -38,12 +39,12 @@ wheelRouter.get("/wheel/me", requireAuth, async (req, res) => {
   }
 
   const check = await pool.query(
-    `SELECT 1 FROM daily_wheel_spins WHERE user_id=$1 AND day=$2 LIMIT 1`,
-    [req.user!.id, day]
+    `SELECT 1 FROM daily_wheel_spins WHERE user_id=$1 AND day=$2::date LIMIT 1`,
+    [Number(req.user!.id), day]
   );
 
-  const usedToday = check.rows.length > 0; // ✅ no TS warning
-  res.json({ ok: true, canSpin: !usedToday, usedToday, day, segments: SEGMENTS });
+  const usedToday = ((check.rowCount ?? 0) > 0);
+  return res.json({ ok: true, canSpin: !usedToday, usedToday, day, segments: SEGMENTS });
 });
 
 wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
@@ -61,24 +62,28 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
 
     if (!god) {
       const exists = await client.query(
-        `SELECT 1 FROM daily_wheel_spins WHERE user_id=$1 AND day=$2 LIMIT 1`,
+        `SELECT 1 FROM daily_wheel_spins WHERE user_id=$1 AND day=$2::date LIMIT 1`,
         [userId, day]
       );
-
-      if (exists.rows.length > 0) { // ✅ no TS warning
+      if ((exists.rowCount ?? 0) > 0) {
         await client.query("ROLLBACK");
         return res.status(409).json({ ok: false, error: "already_used" });
       }
     }
 
+    // ✅ mint rubis: origin wheel_daily, weight 0.30
     const weightBp = 3000;
+
+    // IMPORTANT: jsonb param typé => plus de 42P18
+    const txMeta = { segmentIndex, label: seg.label, day };
 
     const tx = await client.query(
       `INSERT INTO rubis_tx (kind, purpose, status, to_user_id, amount, meta)
-       VALUES ('mint','wheel_daily','succeeded',$1,$2,jsonb_build_object('segmentIndex',$3,'label',$4))
+       VALUES ('mint','wheel_daily','succeeded',$1,$2,$3::jsonb)
        RETURNING id`,
-      [userId, reward, segmentIndex, seg.label]
+      [userId, reward, JSON.stringify(txMeta)]
     );
+
     const txId = Number(tx.rows[0].id);
 
     await client.query(
@@ -87,10 +92,12 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
       [txId, userId, reward]
     );
 
+    const lotMeta = { txId, segmentIndex, label: seg.label, day };
+
     await client.query(
       `INSERT INTO rubis_lots (user_id, origin, weight_bp, amount_total, amount_remaining, meta)
-       VALUES ($1,'wheel_daily',$2,$3,$3,jsonb_build_object('txId',$4,'segmentIndex',$5))`,
-      [userId, weightBp, reward, txId, segmentIndex]
+       VALUES ($1,'wheel_daily',$2,$3,$3,$4::jsonb)`,
+      [userId, weightBp, reward, JSON.stringify(lotMeta)]
     );
 
     const u = await client.query(
@@ -101,25 +108,21 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
     if (!god) {
       await client.query(
         `INSERT INTO daily_wheel_spins (user_id, day, segment_index, reward_rubis, tx_id)
-         VALUES ($1,$2,$3,$4,$5)`,
+         VALUES ($1,$2::date,$3,$4,$5)`,
         [userId, day, segmentIndex, reward, txId]
       );
     }
 
     await client.query("COMMIT");
 
-    res.json({
+    return res.json({
       ok: true,
       day,
       segmentIndex,
       reward,
       label: seg.label,
       txId: String(txId),
-      user: {
-        id: String(u.rows[0].id),
-        username: String(u.rows[0].username),
-        rubis: Number(u.rows[0].rubis),
-      },
+      user: { id: Number(u.rows[0].id), username: String(u.rows[0].username), rubis: Number(u.rows[0].rubis) },
     });
   } catch (e: any) {
     try { await client.query("ROLLBACK"); } catch {}
@@ -129,7 +132,7 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
     }
 
     console.error("[wheel] spin failed", e);
-    res.status(500).json({ ok: false, error: "server_error" });
+    return res.status(500).json({ ok: false, error: "server_error" });
   } finally {
     client.release();
   }

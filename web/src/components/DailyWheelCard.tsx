@@ -1,8 +1,11 @@
+// web/src/components/DailyWheelCard.tsx
 import * as React from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { getWheelState } from "../lib/api";
 import { LoginModal } from "./LoginModal";
 import { DailyWheelModal } from "./DailyWheelModal";
+
+type WheelSegment = { label: string; amount: number };
 
 function isLeCasinoze(username?: string | null) {
   return String(username || "").trim().toLowerCase() === "lecasinoze";
@@ -17,6 +20,7 @@ export function DailyWheelCard() {
 
   const [loading, setLoading] = React.useState(false);
   const [canSpin, setCanSpin] = React.useState(false);
+  const [segments, setSegments] = React.useState<WheelSegment[] | undefined>(undefined);
 
   const [loginOpen, setLoginOpen] = React.useState(false);
   const [wheelOpen, setWheelOpen] = React.useState(false);
@@ -24,14 +28,17 @@ export function DailyWheelCard() {
   const refresh = React.useCallback(async () => {
     if (!token) {
       setCanSpin(false);
+      setSegments(undefined);
       return;
     }
     setLoading(true);
     try {
-      const r = await getWheelState(token);
-      setCanSpin(god ? true : !!(r as any)?.canSpin);
+      const r: any = await getWheelState(token);
+      setCanSpin(god ? true : !!r?.canSpin);
+      setSegments(Array.isArray(r?.segments) ? r.segments : undefined);
     } catch {
       setCanSpin(god ? true : false);
+      setSegments(undefined);
     } finally {
       setLoading(false);
     }
@@ -87,6 +94,8 @@ export function DailyWheelCard() {
         open={wheelOpen}
         onClose={() => setWheelOpen(false)}
         canSpin={canSpin}
+        token={token}
+        segments={segments}
         onAfterSpin={refresh}
       />
 
