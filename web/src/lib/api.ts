@@ -522,3 +522,30 @@ export async function subscribeStreamer(slug: string, token: string) {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
+export type AdminUserSearchRow = {
+  id: number;
+  username: string;
+  role: string;
+  rubis: number;
+};
+
+export async function adminSearchUsers(adminKey: string, q: string, limit = 8) {
+  return j<{ ok: true; users: AdminUserSearchRow[] }>(
+    `/admin/users/search?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(String(limit))}`,
+    { headers: { "x-admin-key": adminKey } }
+  );
+}
+
+export async function adminMintRubis(
+  adminKey: string,
+  payload: { userId: number; amount: number; weightBp: number; note?: string | null }
+) {
+  return j<{ ok: true; txId: string; lotId: string; user: { id: number; username: string; rubis: number } }>(
+    `/admin/rubis/mint`,
+    {
+      method: "POST",
+      headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  );
+}

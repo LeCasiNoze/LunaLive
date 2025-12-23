@@ -1,15 +1,29 @@
 import * as React from "react";
-import { adminListRequests, adminApproveRequest, adminRejectRequest, adminCreateStreamer, adminDeleteStreamer, getStreamers } from "../lib/api";
+import {
+  adminListRequests,
+  adminApproveRequest,
+  adminRejectRequest,
+  adminCreateStreamer,
+  adminDeleteStreamer,
+  getStreamers,
+} from "../lib/api";
 import { UsersAdminSection } from "../components/admin/UsersAdminSection";
 import { ProviderAccountsAdminSection } from "../components/admin/ProviderAccountsAdminSection";
+import { RubisMintAdminSection } from "../components/admin/RubisMintAdminSection";
 
 const SS_KEY = "lunalive_admin_key_v1";
 
 function loadAdminKey() {
-  try { return sessionStorage.getItem(SS_KEY) || ""; } catch { return ""; }
+  try {
+    return sessionStorage.getItem(SS_KEY) || "";
+  } catch {
+    return "";
+  }
 }
 function saveAdminKey(k: string) {
-  try { sessionStorage.setItem(SS_KEY, k); } catch {}
+  try {
+    sessionStorage.setItem(SS_KEY, k);
+  } catch {}
 }
 
 export default function AdminPage() {
@@ -40,7 +54,6 @@ export default function AdminPage() {
     const k = input.trim();
     if (!k) return;
     try {
-      // test rapide
       await adminListRequests(k);
       setKey(k);
       saveAdminKey(k);
@@ -64,7 +77,9 @@ export default function AdminPage() {
             <input type="password" value={input} onChange={(e) => setInput(e.target.value)} />
           </div>
           {err && <div className="hint">⚠️ {err}</div>}
-          <button className="btnPrimary" onClick={onLogin}>Entrer</button>
+          <button className="btnPrimary" onClick={onLogin}>
+            Entrer
+          </button>
         </div>
       </main>
     );
@@ -84,14 +99,35 @@ export default function AdminPage() {
         </div>
 
         {requests.map((r) => (
-          <div key={r.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 0", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <div
+            key={r.id}
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              padding: "10px 0",
+              borderTop: "1px solid rgba(255,255,255,0.06)",
+            }}
+          >
             <div style={{ flex: 1 }}>
               <b>{r.username}</b> — <span className="mutedSmall">{r.status}</span>
             </div>
-            <button className="btnGhostSmall" onClick={async () => { await adminApproveRequest(key, r.id); await refresh(); }}>
+            <button
+              className="btnGhostSmall"
+              onClick={async () => {
+                await adminApproveRequest(key, r.id);
+                await refresh();
+              }}
+            >
               Approve
             </button>
-            <button className="btnGhostSmall" onClick={async () => { await adminRejectRequest(key, r.id); await refresh(); }}>
+            <button
+              className="btnGhostSmall"
+              onClick={async () => {
+                await adminRejectRequest(key, r.id);
+                await refresh();
+              }}
+            >
               Reject
             </button>
           </div>
@@ -111,7 +147,15 @@ export default function AdminPage() {
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="ex: Wayzebi" />
         </div>
 
-        <button className="btnPrimary" onClick={async () => { await adminCreateStreamer(key, newSlug, newName); setNewSlug(""); setNewName(""); await refresh(); }}>
+        <button
+          className="btnPrimary"
+          onClick={async () => {
+            await adminCreateStreamer(key, newSlug, newName);
+            setNewSlug("");
+            setNewName("");
+            await refresh();
+          }}
+        >
           Créer
         </button>
       </div>
@@ -120,20 +164,37 @@ export default function AdminPage() {
         <div className="panelTitle">Streamers</div>
 
         {streamers.map((s) => (
-          <div key={s.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 0", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <div
+            key={s.id}
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              padding: "10px 0",
+              borderTop: "1px solid rgba(255,255,255,0.06)",
+            }}
+          >
             <div style={{ flex: 1 }}>
               <b>{s.displayName}</b> <span className="mutedSmall">({s.slug})</span>
             </div>
-            <button className="btnGhostSmall" onClick={async () => { await adminDeleteStreamer(key, s.slug); await refresh(); }}>
+            <button
+              className="btnGhostSmall"
+              onClick={async () => {
+                await adminDeleteStreamer(key, s.slug);
+                await refresh();
+              }}
+            >
               Supprimer
             </button>
           </div>
         ))}
-        
+
         <UsersAdminSection adminKey={key} />
         <ProviderAccountsAdminSection adminKey={key} />
-
       </div>
+
+      {/* ✅ NEW: mint rubis */}
+      <RubisMintAdminSection adminKey={key} />
     </main>
   );
 }
