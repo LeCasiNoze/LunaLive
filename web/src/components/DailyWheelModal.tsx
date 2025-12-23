@@ -188,12 +188,14 @@ export function DailyWheelModal({
 
   if (!open) return null;
 
+  const rw: any = (result as any)?.reward;
   const rewardValue =
-    result && (result as any).reward && typeof (result as any).reward === "object"
-      ? Number((result as any).reward.raw || 0)
-      : Number((result as any).reward || 0);
+    rw && typeof rw === "object" ? Number(rw.raw ?? 0) : Number(rw ?? 0);
 
-  const rewardText = phase === "done" && result ? `🎉 Tu as gagné ${rewardValue.toLocaleString()} rubis !` : null;
+  const rewardText =
+    phase === "done" && result
+      ? `🎉 Tu as gagné ${rewardValue.toLocaleString()} rubis !`
+      : null;
 
   const modal = (
     <div className="modalBackdrop" role="presentation" onClick={onClose} style={{ zIndex: 2000 }}>
