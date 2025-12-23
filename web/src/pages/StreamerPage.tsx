@@ -7,11 +7,12 @@ import {
   unfollowStreamer,
   setFollowNotify,
   subscribeStreamer,
-  // ✅ CHEST API (à ajouter dans web/src/lib/api)
   getStreamerChest,
   chestJoin,
   chestOpen,
   chestClose,
+  chestDeposit, // ✅ AJOUTE ÇA
+  // me, // (optionnel si tu veux refresh le solde user)
 } from "../lib/api";
 import { enablePushNotifications } from "../lib/push";
 import { DlivePlayer } from "../components/DlivePlayer";
@@ -246,6 +247,10 @@ export default function StreamerPage() {
   const [subOpen, setSubOpen] = React.useState(false);
   const [subLoading, setSubLoading] = React.useState(false);
   const [subError, setSubError] = React.useState<string | null>(null);
+
+  const [depositAmount, setDepositAmount] = React.useState<string>("100");
+  const [depositNote, setDepositNote] = React.useState<string>("");
+  const [depositLoading, setDepositLoading] = React.useState(false);
 
   // ✅ Coffre state
   const [chest, setChest] = React.useState<ChestState | null>(null);
@@ -589,6 +594,53 @@ export default function StreamerPage() {
       setChestOwnerLoading(false);
     }
   }
+
+  function humanDepositError(code: string) {
+  switch (code) {
+    case "bad_amount":
+      return "Montant invalide.";
+    case "insufficient_funds":
+      return "Solde insuffisant.";
+    case "lots_missing":
+      return "Aucun lot de rubis disponible (rubis_lots).";
+    case "forbidden":
+      return "Interdit (tu n'es pas owner du streamer côté API).";
+    default:
+      return code || "Erreur dépôt";
+  }
+}
+
+async function doDepositChest() {
+  setChestError(null);
+
+  if (!token) {
+    setLoginOpen(true);
+    return;
+  }
+  if (!slug) return;
+
+  const amt = Math.floor(Number(depositAmount));
+  if (!Number.isFinite(amt) || amt <= 0) {
+    setChestError("Montant invalide.");
+    return;
+  }
+
+  setDepositLoading(true);
+  try {
+    await chestDeposit(String(slug), token, amt, depositNote.trim() || null);
+
+    // ✅ refresh coffre
+    await refreshChest();
+
+    // (optionnel) si tu veux voir le nouveau solde rubis direct :
+    // window.location.reload();
+  } catch (e: any) {
+    const msg = String(e?.message || "deposit_failed");
+    setChestError(humanDepositError(msg));
+  } finally {
+    setDepositLoading(false);
+  }
+}
 
   async function doCloseChest() {
     setChestError(null);
@@ -1221,27 +1273,67 @@ export default function StreamerPage() {
               ) : null}
 
               {isOwner ? (
-                openingId ? (
-                  <button
-                    type="button"
-                    className="btnPrimarySmall"
-                    onClick={doCloseChest}
-                    disabled={chestOwnerLoading}
-                    title="Fermer et distribuer"
-                  >
-                    {chestOwnerLoading ? "…" : "Fermer coffre"}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="btnPrimarySmall"
-                    onClick={doOpenChest}
-                    disabled={chestOwnerLoading}
-                    title="Ouvrir 30s"
-                  >
-                    {chestOwnerLoading ? "…" : "Ouvrir coffre"}
-                  </button>
-                )
+                <div
+                  style={{
+                    marginTop: 14,
+                    padding: 12,
+                    borderRadius: 14,
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <div style={{ fontWeight: 900 }}>Déposer des rubis dans le coffre</div>
+
+                  <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                      value={depositAmount}
+                      onChange={(e) => setDepositAmount(e.target.value)}
+                      inputMode="numeric"
+                      placeholder="Montant"
+                      style={{
+                        width: 140,
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        background: "rgba(0,0,0,0.25)",
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        color: "white",
+                        outline: "none",
+                      }}
+                    />
+
+                    <button type="button" className="btnGhostSmall" onClick={() => setDepositAmount("50")}>+50</button>
+                    <button type="button" className="btnGhostSmall" onClick={() => setDepositAmount("100")}>+100</button>
+                    <button type="button" className="btnGhostSmall" onClick={() => setDepositAmount("250")}>+250</button>
+                    <button type="button" className="btnGhostSmall" onClick={() => setDepositAmount("500")}>+500</button>
+                  </div>
+
+                  <input
+                    value={depositNote}
+                    onChange={(e) => setDepositNote(e.target.value)}
+                    placeholder="Note (optionnel)"
+                    style={{
+                      marginTop: 10,
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      background: "rgba(0,0,0,0.25)",
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      color: "white",
+                      outline: "none",
+                    }}
+                  />
+
+                  <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                    <button
+                      type="button"
+                      className="btnPrimarySmall"
+                      onClick={doDepositChest}
+                      disabled={depositLoading}
+                    >
+                      {depositLoading ? "…" : "Déposer"}
+                    </button>
+                  </div>
+                </div>
               ) : null}
             </div>
           </div>
