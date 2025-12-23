@@ -47,3 +47,17 @@ export function requireAdminKey(req: Request, res: Response, next: NextFunction)
   }
   return next();
 }
+
+export function tryGetAuthUser(req: Request): AuthUser | null {
+  const h = String(req.headers.authorization || "");
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  if (!m) return null;
+
+  try {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return null;
+    return jwt.verify(m[1], secret) as AuthUser;
+  } catch {
+    return null;
+  }
+}
