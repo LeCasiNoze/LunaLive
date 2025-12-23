@@ -107,6 +107,7 @@ export function DailyWheelModal({
     if (el) {
       el.style.transition = "none";
       el.style.transform = "rotate(0deg)";
+      el.style.setProperty("--wheel-rot", "0deg");
       // force reflow
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       el.offsetHeight;
@@ -146,7 +147,7 @@ export function DailyWheelModal({
       // centre du segment idx (en degrés depuis le haut)
       const centerAngle = (idx + 0.5) * slice;
 
-      // on veut centreAngle + rotation = 0 (mod 360) => rotation = 360 - centerAngle
+      // on veut centerAngle + rotation = 0 (mod 360) => rotation = 360 - centerAngle
       const finalDeg = spins * 360 + (360 - centerAngle);
 
       const el = wheelRef.current;
@@ -154,6 +155,7 @@ export function DailyWheelModal({
         const durationMs = 4200;
         el.style.transition = `transform ${durationMs}ms cubic-bezier(0.12, 0.8, 0.12, 1)`;
         el.style.transform = `rotate(${finalDeg}deg)`;
+        el.style.setProperty("--wheel-rot", `${finalDeg}deg`);
 
         // ticks
         const totalTicks = Math.max(12, spins * n);
@@ -189,13 +191,10 @@ export function DailyWheelModal({
   if (!open) return null;
 
   const rw: any = (result as any)?.reward;
-  const rewardValue =
-    rw && typeof rw === "object" ? Number(rw.raw ?? 0) : Number(rw ?? 0);
+  const rewardValue = rw && typeof rw === "object" ? Number(rw.raw ?? 0) : Number(rw ?? 0);
 
   const rewardText =
-    phase === "done" && result
-      ? `🎉 Tu as gagné ${rewardValue.toLocaleString()} rubis !`
-      : null;
+    phase === "done" && result ? `🎉 Tu as gagné ${rewardValue.toLocaleString()} rubis !` : null;
 
   const modal = (
     <div className="modalBackdrop" role="presentation" onClick={onClose} style={{ zIndex: 2000 }}>
@@ -227,59 +226,87 @@ export function DailyWheelModal({
             position:absolute;
             inset: 18px;
             border-radius: 999px;
+            overflow:hidden;
+            border: 1px solid rgba(255,255,255,0.12);
             will-change: transform;
-            transform: rotate(0deg);
+
+            /* rayon labels (tweak ici) */
+            --label-r: 118px;
+
+            /* rotation courante pour garder les textes droits */
+            --wheel-rot: 0deg;
           }
 
-          .wheelDisk{
+          /* fond */
+          .wheelBg{
             position:absolute;
             inset: 0;
             border-radius: 999px;
-            overflow:hidden;
-            border: 1px solid rgba(255,255,255,0.12);
             background: conic-gradient(
               from -90deg,
-              rgba(126,76,179,0.58),
-              rgba(63,86,203,0.48),
-              rgba(126,76,179,0.58),
-              rgba(63,86,203,0.48),
-              rgba(126,76,179,0.58)
+              rgba(126,76,179,0.55),
+              rgba(63,86,203,0.45),
+              rgba(126,76,179,0.55),
+              rgba(63,86,203,0.45),
+              rgba(126,76,179,0.55)
             );
           }
 
-          /* ✅ séparateurs (ils tournent aussi car dans wheelRot) */
-          .wheelDisk::before{
-            content:"";
+          /* séparateurs (lignes entre segments) */
+          .wheelSep{
             position:absolute;
-            inset:0;
-            border-radius:999px;
+            inset: 0;
+            border-radius: 999px;
             background: repeating-conic-gradient(
               from -90deg,
-              rgba(255,255,255,0.22) 0 1deg,
-              rgba(255,255,255,0.00) 1deg var(--slice)
+              rgba(255,255,255,0.22) 0deg 1deg,
+              transparent 1deg var(--slice)
             );
+            opacity: 0.45;
+            mix-blend-mode: overlay;
             pointer-events:none;
-            opacity: 0.9;
           }
 
           .wheelLabels{
             position:absolute;
-            inset:0;
-            border-radius:999px;
+            inset: 0;
+            border-radius: 999px;
             pointer-events:none;
           }
 
+          /* ✅ label au CENTRE du segment */
           .wheelLabel{
             position:absolute;
             left: 50%;
             top: 50%;
+            transform:
+              translate(-50%, -50%)
+              rotate(var(--a))
+              translate(0, calc(-1 * var(--label-r)));
+            transform-origin: center;
             font-weight: 950;
             font-size: 12px;
             letter-spacing: 0.2px;
             color: rgba(255,255,255,0.92);
             text-shadow: 0 2px 10px rgba(0,0,0,0.55);
-            white-space: nowrap;
-            transform-origin: 0 0;
+            padding: 2px 6px;
+            border-radius: 10px;
+          }
+
+          /* ✅ texte TOUJOURS DROIT,
+             - on annule la rotation du wheelRot
+             - et on annule la rotation du placement angulaire */
+          .wheelLabelText{
+            display:inline-block;
+            transform:
+              rotate(calc(-1 * var(--wheel-rot)))
+              rotate(var(--invA));
+          }
+
+          /* mobile: on rapproche un peu les labels */
+          @media (max-width: 420px){
+            .wheelRot{ --label-r: 102px; }
+            .wheelLabel{ font-size: 11px; }
           }
 
           .wheelRing{
@@ -362,24 +389,26 @@ export function DailyWheelModal({
               <div
                 ref={wheelRef}
                 className="wheelRot"
-                style={{ ["--slice" as any]: `${slice}deg` }}
+                style={{ ["--slice" as any]: `${slice}deg` } as React.CSSProperties}
               >
-                <div className="wheelDisk" style={{ ["--slice" as any]: `${slice}deg` }} />
+                <div className="wheelBg" />
+                <div className="wheelSep" />
+
                 <div className="wheelLabels">
                   {segs.map((s, i) => {
-                    const a = i * slice; // deg depuis le haut
-                    const radiusPx = 132; // ajustable (distance du centre)
-
-                    // ✅ placement "à la CSS": rotate(a) -> translate vers le bord -> rotate(-a) pour garder le texte lisible
+                    const a = (i + 0.5) * slice; // centre du segment (en degrés, 0 = haut)
                     return (
                       <div
                         key={`${s.label}-${i}`}
                         className="wheelLabel"
-                        style={{
-                          transform: `translate(-50%,-50%) rotate(${a}deg) translate(0,-${radiusPx}px) rotate(${-a}deg)`,
-                        }}
+                        style={
+                          {
+                            ["--a" as any]: `${a}deg`,
+                            ["--invA" as any]: `${-a}deg`,
+                          } as React.CSSProperties
+                        }
                       >
-                        {s.label}
+                        <span className="wheelLabelText">{s.label}</span>
                       </div>
                     );
                   })}
@@ -396,7 +425,11 @@ export function DailyWheelModal({
               </div>
             </div>
 
-            {rewardText ? <div className="hint" style={{ marginTop: 2 }}>{rewardText}</div> : null}
+            {rewardText ? (
+              <div className="hint" style={{ marginTop: 2 }}>
+                {rewardText}
+              </div>
+            ) : null}
             {msg ? <div className="hint">⚠️ {msg}</div> : null}
 
             <div className="modalActions" style={{ justifyContent: "space-between" }}>
