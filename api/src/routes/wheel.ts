@@ -6,19 +6,26 @@ import { requireAuth } from "../auth.js";
 export const wheelRouter = express.Router();
 
 const SEGMENTS = [
-  { label: "+5", amount: 5 },
-  { label: "+10", amount: 10 },
-  { label: "+15", amount: 15 },
-  { label: "+20", amount: 20 },
-  { label: "+25", amount: 25 },
-  { label: "+30", amount: 30 },
-  { label: "+40", amount: 40 },
-  { label: "+50", amount: 50 },
-  { label: "+75", amount: 75 },
-  { label: "+100", amount: 100 },
-  { label: "+150", amount: 150 },
-  { label: "+250", amount: 250 },
-] as const;
+  { label: "+1", amount: 1, weight: 0.315 },
+  { label: "+3", amount: 3, weight: 0.24 },
+  { label: "+5", amount: 5, weight: 0.18 },
+  { label: "+10", amount: 10, weight: 0.14 },
+  { label: "+25", amount: 25, weight: 0.07 },
+  { label: "+50", amount: 50, weight: 0.025 },
+  { label: "+100", amount: 100, weight: 0.015 },
+  { label: "+250", amount: 250, weight: 0.005 },
+  { label: "+500", amount: 500, weight: 0.01 },
+];
+
+function pickWeightedIndex() {
+  const total = SEGMENTS.reduce((s, x) => s + x.weight, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < SEGMENTS.length; i++) {
+    r -= SEGMENTS[i].weight;
+    if (r <= 0) return i;
+  }
+  return SEGMENTS.length - 1;
+}
 
 function isTestGod(req: any) {
   const u = String(req.user?.username || "").trim().toLowerCase();
@@ -44,7 +51,7 @@ wheelRouter.get("/wheel/me", requireAuth, async (req, res) => {
   );
 
   const usedToday = ((check.rowCount ?? 0) > 0);
-  return res.json({ ok: true, canSpin: !usedToday, usedToday, day, segments: SEGMENTS });
+  return res.json({ ok: true, canSpin: true, usedToday: false, day, segments: SEGMENTS.map(({label,amount})=>({label,amount})) });
 });
 
 wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
@@ -52,7 +59,7 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
   const userId = Number(req.user!.id);
   const day = await todayParisDate();
 
-  const segmentIndex = Math.floor(Math.random() * SEGMENTS.length);
+  const segmentIndex = pickWeightedIndex();
   const seg = SEGMENTS[segmentIndex];
   const reward = Number(seg.amount);
 

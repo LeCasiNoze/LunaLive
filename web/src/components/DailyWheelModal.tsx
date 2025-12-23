@@ -140,6 +140,27 @@ export function DailyWheelModal({
     try {
       const r = (await spinWheel(token)) as ApiWheelSpinResult;
       setResult(r);
+      
+      const newRubis = Number((r as any)?.user?.rubis);
+      if (Number.isFinite(newRubis)) {
+        // 1) update auth user si possible
+        try {
+          if (typeof (auth as any)?.setUser === "function") {
+            // support callback OU valeur directe selon ton AuthProvider
+            try {
+              (auth as any).setUser((prev: any) => (prev ? { ...prev, rubis: newRubis } : prev));
+            } catch {
+              const prev = (auth as any)?.user ?? {};
+              (auth as any).setUser({ ...prev, rubis: newRubis });
+            }
+          }
+        } catch {}
+
+        // 2) event global (si d’autres composants veulent écouter)
+        try {
+          window.dispatchEvent(new CustomEvent("rubis:update", { detail: { rubis: newRubis } }));
+        } catch {}
+      }
 
       const idx = Number((r as any).segmentIndex ?? 0);
       const spins = 6 + Math.floor(Math.random() * 3); // 6..8 tours
