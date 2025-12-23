@@ -1,5 +1,6 @@
-import { pool } from "./db.js";
+// api/src/chest_jobs.ts
 import type { Server as IOServer } from "socket.io";
+import { pool } from "./db.js";
 
 const OUT_WEIGHT_BP = 2000; // 0.20
 const RULE_MINUTES = 5;
@@ -15,7 +16,7 @@ async function ensureChest(client: any, streamerId: number) {
 }
 
 async function autoMintTick() {
-  // on crédite uniquement des minutes "finies" => up to (now rounded) - 1 minute
+  // On crédite uniquement des minutes "finies" => up to (now rounded) - 1 minute
   const toTsRes = await pool.query(`SELECT (date_trunc('minute', NOW()) - INTERVAL '1 minute') AS t`);
   const toTs = toTsRes.rows?.[0]?.t ? new Date(toTsRes.rows[0].t).toISOString() : null;
   if (!toTs) return;
@@ -29,6 +30,7 @@ async function autoMintTick() {
   for (const row of live.rows || []) {
     const streamerId = Number(row.id);
     const client = await pool.connect();
+
     try {
       await client.query("BEGIN");
       await ensureChest(client, streamerId);
@@ -41,9 +43,6 @@ async function autoMintTick() {
         [streamerId]
       );
 
-      const lastBucketTs = st.rows?.[0]?.lastBucketTs ? new Date(st.rows[0].lastBucketTs).toISOString() : null;
-      const carry = Number(st.rows?.[0]?.carryMinutes || 0);
-
       // init state if missing
       if (!st.rows?.[0]) {
         await client.query(
@@ -55,6 +54,9 @@ async function autoMintTick() {
         await client.query("COMMIT");
         continue;
       }
+
+      const lastBucketTs = st.rows?.[0]?.lastBucketTs ? new Date(st.rows[0].lastBucketTs).toISOString() : null;
+      const carry = Number(st.rows?.[0]?.carryMinutes || 0);
 
       // nothing new
       if (lastBucketTs && new Date(toTs).getTime() <= new Date(lastBucketTs).getTime()) {
@@ -116,7 +118,6 @@ async function autoMintTick() {
 }
 
 async function closeExpiredOpenings(io?: IOServer) {
-  // prend une liste d'openings expirés (petites batch)
   const r = await pool.query(
     `SELECT o.id, s.slug
      FROM streamer_chest_openings o
@@ -151,10 +152,10 @@ async function closeExpiredOpenings(io?: IOServer) {
 }
 
 export function startChestJobs(io?: IOServer) {
-  // auto-close rapide
+  // Auto-close rapide (fermeture auto = streamer ne ferme pas)
   setInterval(() => closeExpiredOpenings(io).catch(() => {}), 5_000);
 
-  // auto-mint par minute
+  // Auto-mint par minute
   autoMintTick().catch(() => {});
   setInterval(() => autoMintTick().catch(() => {}), 60_000);
 }
