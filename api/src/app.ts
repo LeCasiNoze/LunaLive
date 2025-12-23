@@ -23,12 +23,50 @@ import { earningsRouter } from "./routes/earnings.js";
 import { cashoutRouter } from "./routes/cashout.js";
 import { subscriptionsRouter } from "./routes/subscriptions.js";
 
+// ✅ Origines autorisées
+const ALLOWED_ORIGINS = new Set([
+  "https://lunalive.onrender.com",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+]);
+
+function corsOptionsDelegate(req: any, cb: any) {
+  const origin = req.header("Origin");
+
+  // si pas d'Origin (curl, server-to-server), on autorise
+  if (!origin) {
+    cb(null, {
+      origin: true,
+      credentials: true,
+      methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization", "x-admin-key"],
+      maxAge: 86400,
+    });
+    return;
+  }
+
+  const ok = ALLOWED_ORIGINS.has(origin);
+  cb(null, {
+    // IMPORTANT : renvoyer l’origin exacte (pas "*") quand credentials/authorization
+    origin: ok ? origin : false,
+    credentials: true,
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-admin-key"],
+    maxAge: 86400,
+  });
+}
+
 export function createApp() {
   const app = express();
   app.set("trust proxy", 1);
 
-  app.use(cors());
-  app.use(express.json());
+  // ✅ CORS tout en haut, AVANT les routes
+  app.use(cors(corsOptionsDelegate));
+
+  // ✅ Répond aux preflights pour TOUTES les routes
+  app.options("*", cors(corsOptionsDelegate));
+
+  app.use(express.json({ limit: "1mb" }));
 
   // legacy modules
   registerChatRoutes(app);
@@ -58,10 +96,14 @@ export function createApp() {
   app.use(earningsRouter);
   app.use(cashoutRouter);
   app.use(subscriptionsRouter);
-  
+
+  // HLS proxy
   registerHlsProxy(app);
+
+  // (optionnel) ta route spécifique hls OPTIONS peut rester, mais plus nécessaire
   app.options("/hls", (_req, res) => res.sendStatus(204));
 
+  // error handler
   app.use((err: any, _req: any, res: any, _next: any) => {
     console.error(err);
     res.status(500).json({ ok: false, error: "server_error" });

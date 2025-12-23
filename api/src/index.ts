@@ -41,7 +41,20 @@ function startStatsCleanup() {
   const app = createApp();
 
   const server = http.createServer(app);
-  const io = new IOServer(server, { cors: { origin: true, credentials: true } });
+
+  // ✅ Socket.IO CORS aligné avec le front
+  const io = new IOServer(server, {
+    cors: {
+      origin: [
+        "https://lunalive.onrender.com",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+      ],
+      credentials: true,
+      methods: ["GET", "POST"],
+    },
+  });
+
   app.locals.io = io;
 
   attachChat(io);
