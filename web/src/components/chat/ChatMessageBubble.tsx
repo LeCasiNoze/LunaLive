@@ -18,6 +18,10 @@ export type ChatMsgLike = {
   username: string;
   body: string;
   createdAt: string;
+
+  // ✅ si tu passes l’URL d’avatar depuis l’API
+  avatarUrl?: string | null;
+
   cosmetics?: ChatCosmetics | null;
 };
 
@@ -29,7 +33,6 @@ export function ChatMessageBubble({
   streamerAppearance: StreamerAppearance;
 }) {
   const c = msg.cosmetics ?? null;
-
   const lvl = (streamerAppearance?.chat?.viewerSkinsLevel ?? 1) as 1 | 2 | 3;
 
   const avatar = c?.avatar ?? {};
@@ -40,15 +43,30 @@ export function ChatMessageBubble({
   const unameEffect = c?.username?.effect ?? "none";
   const skinUnameColor = c?.username?.color ?? null;
 
+  // ✅ règles streamer:
+  // lvl 1: viewers skinnés gardent leur skin, sinon fallback streamer
+  // lvl 2: bloque couleurs pseudo (tout le monde = streamer)
+  // lvl 3: bloque couleurs pseudo + cadrans
   const allowViewerNameColor = lvl < 2;
   const effectiveUnameColor = allowViewerNameColor ? skinUnameColor : null;
 
-  // ✅ avatar image url (si fourni par l'API)
-  const avatarUrl = (avatar as any)?.url ? String((avatar as any).url) : null;
+  // ✅ avatar image: on essaie plusieurs champs (tolérant)
+  const avatarUrl =
+    (msg as any)?.avatarUrl ??
+    (c as any)?.avatarUrl ??
+    (c as any)?.avatar?.url ??
+    (c as any)?.avatar?.imageUrl ??
+    null;
+
+  const [imgErr, setImgErr] = React.useState(false);
+  React.useEffect(() => setImgErr(false), [avatarUrl]);
+
+  // ✅ hat: supporte "hat_carton_crown" ET "carton_crown"
+  const hatIdNorm = avatar?.hatId ? String(avatar.hatId).replace(/^hat_/, "") : null;
 
   const hatEmoji =
     avatar.hatEmoji ||
-    (avatar.hatId
+    (hatIdNorm
       ? ({
           luna_cap: "🧢",
           carton_crown: "👑",
@@ -56,21 +74,32 @@ export function ChatMessageBubble({
           eclipse_halo: "⭕",
           astral_helmet: "🪖",
           lotus_aureole: "🪷",
-        } as Record<string, string>)[avatar.hatId] || null
+        } as Record<string, string>)[hatIdNorm] || null
       : null);
 
   return (
     <div className={`chatMsgRow ${frameClass(frame?.frameId)}`}>
       <div className="chatMsgInner">
         {/* Avatar */}
-        <div className={`chatAvatarBorder ${avatarBorderClass(avatar.borderId)}`}>
-          {/* ✅ l’image si présente */}
-          {avatarUrl ? <img className="chatAvatarImg" src={avatarUrl} alt="" loading="lazy" /> : null}
+        <div className={`chatAvatarBorder ${avatarBorderClass((avatar as any).borderId)}`}>
+          {/* ✅ 1 seul "circle" → soit IMG soit initiales */}
+          <div className="chatAvatarCircle">
+            {avatarUrl && !imgErr ? (
+              <img
+                className="chatAvatarImg"
+                src={avatarUrl}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
+                onError={() => setImgErr(true)}
+              />
+            ) : (
+              getInitials(msg.username)
+            )}
+          </div>
 
-          {/* ✅ fallback initials (reste présent) */}
-          <div className="chatAvatarCircle">{getInitials(msg.username)}</div>
-
-          {/* ✅ hat TOUJOURS par-dessus */}
+          {/* Hat par-dessus */}
           {hatEmoji ? (
             <div className="chatHatEmoji" aria-hidden="true">
               {hatEmoji}
@@ -113,8 +142,8 @@ export function ChatMessageBubble({
 
           {/* Title UNDER username */}
           {title ? (
-            <div className={`chatTitle ${titleTierClass(title.tier as any)} ${titleEffectClass(title.effect as any)}`}>
-              « {title.text} »
+            <div className={`chatTitle ${titleTierClass((title as any).tier)} ${titleEffectClass((title as any).effect)}`}>
+              « {(title as any).text} »
             </div>
           ) : null}
 
