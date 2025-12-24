@@ -10,7 +10,14 @@ import {
 export const dailyBonusRoutes = Router();
 
 function getUserId(req: any) {
-  return Number(req?.user?.id ?? 0);
+  return Number(
+    req?.user?.id ??
+    req?.userId ??
+    req?.auth?.user?.id ??
+    req?.auth?.userId ??
+    req?.me?.id ??
+    0
+  );
 }
 
 // GET state (agenda)
