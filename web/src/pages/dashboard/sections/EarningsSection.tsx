@@ -3,7 +3,6 @@ import type { ApiMyStreamer } from "../../../lib/api";
 import { useAuth } from "../../../auth/AuthProvider";
 
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
-const RUBIS_PER_EUR = 100;
 
 type EarningsResp = {
   ok: true;
@@ -45,8 +44,21 @@ async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-function eurFromRubisValue(rubisValue: number) {
-  return rubisValue / RUBIS_PER_EUR;
+// ✅ valeur € pondérée (1 rubis @ weight=1.00 => 0.01€)
+function computeWeightedValue(breakdownByWeight: Record<string, number> | null | undefined) {
+  let totalRubis = 0;
+  let valueCents = 0;
+
+  for (const [wStr, amtRaw] of Object.entries(breakdownByWeight || {})) {
+    const weightBp = Number(wStr);
+    const amt = Number(amtRaw);
+    if (!Number.isFinite(weightBp) || !Number.isFinite(amt) || amt <= 0) continue;
+
+    totalRubis += amt;
+    valueCents += Math.floor((amt * weightBp) / 10000);
+  }
+
+  return { totalRubis, valueCents, valueEur: valueCents / 100 };
 }
 
 export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
@@ -58,6 +70,10 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
   const [error, setError] = React.useState<string | null>(null);
 
   const [cashoutEur, setCashoutEur] = React.useState<string>("");
+  
+  // ✅ validation cashout input
+  const eurWanted = Number(String(cashoutEur).replace(",", "."));
+  const isEurValid = Number.isFinite(eurWanted) && eurWanted > 0;
 
   // mods %
   const [modsPct, setModsPct] = React.useState<string>("0");
@@ -108,16 +124,26 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
 
   const maxBucket = Math.max(1, ...Object.values(buckets));
 
-  const available = Number(data?.wallet?.availableRubis ?? 0);
+  const breakdownByWeight = data?.wallet?.breakdownByWeight ?? {};
+  const weighted = React.useMemo(
+    () => computeWeightedValue(breakdownByWeight),
+    // breakdownByWeight est souvent recréé => on stabilise cheap
+    // (si tu veux mieux: fais renvoyer un array trié côté API)
+    [JSON.stringify(breakdownByWeight)]
+  );
+
+  // ✅ solde dispo : priorité API, sinon fallback sur le user (pour afficher tes 957 même si l’API bug)
+  const available =
+    Number(data?.wallet?.availableRubis ?? 0) > 0
+      ? Number(data?.wallet?.availableRubis ?? 0)
+      : Number(auth?.user?.rubis ?? 0);
+
+  // ✅ € : priorité au calcul pondéré (lots), sinon fallback “1.00”
+  const approxEur = weighted.valueCents > 0 ? weighted.valueEur : available / 100;
+
   const lifetime = Number(data?.wallet?.lifetimeRubis ?? 0);
   const reserved = Number(data?.wallet?.reservedRubis ?? 0);
 
-  const approxEur = eurFromRubisValue(available);
-
-  const eurWanted = Number(String(cashoutEur).replace(",", "."));
-  const isEurValid = Number.isFinite(eurWanted) && eurWanted > 0;
-
-  const breakdownByWeight = data?.wallet?.breakdownByWeight ?? {};
   const weightEntries = Object.entries(breakdownByWeight)
     .map(([w, v]) => [Number(w), Number(v)] as const)
     .filter(([w, v]) => Number.isFinite(w) && Number.isFinite(v) && v > 0)
