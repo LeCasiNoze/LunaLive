@@ -24,6 +24,7 @@ function cardStyle(unlocked: boolean): React.CSSProperties {
     display: "flex",
     gap: 10,
     alignItems: "flex-start",
+    minWidth: 0,
   };
 }
 
@@ -54,8 +55,10 @@ export function AchievementsModal({ open, onClose }: { open: boolean; onClose: (
   const [error, setError] = React.useState<string | null>(null);
   const [items, setItems] = React.useState<ApiAchievement[]>([]);
 
+  // ✅ fetch à l’ouverture
   React.useEffect(() => {
     if (!open) return;
+
     if (!token) {
       setItems([]);
       setError("Connecte-toi pour voir tes succès.");
@@ -83,6 +86,16 @@ export function AchievementsModal({ open, onClose }: { open: boolean; onClose: (
     };
   }, [open, token]);
 
+  // ✅ ESC pour fermer
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   const grouped = React.useMemo(() => {
     const byTier: Record<string, ApiAchievement[]> = {};
     for (const t of TIER_ORDER) byTier[t] = [];
@@ -99,8 +112,9 @@ export function AchievementsModal({ open, onClose }: { open: boolean; onClose: (
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 100000,
-        background: "rgba(0,0,0,0.70)",
+        zIndex: 2147483647,
+        background: "rgba(0,0,0,0.78)",
+        backdropFilter: "blur(6px)",
         display: "grid",
         placeItems: "center",
         padding: 16,
@@ -109,15 +123,22 @@ export function AchievementsModal({ open, onClose }: { open: boolean; onClose: (
         if (e.target === e.currentTarget) onClose();
       }}
     >
+      {/* ✅ Carte OPAQUE + layout scroll correct */}
       <div
-        className="panel"
         style={{
           width: "min(980px, 96vw)",
-          maxHeight: "min(780px, 90vh)",
+          height: "min(780px, 90vh)", // ✅ hauteur fixe pour que le scroll marche
+          display: "flex",
+          flexDirection: "column",
           overflow: "hidden",
-          padding: 0,
+
+          background: "#0b0b10", // ✅ OPAQUE
+          border: "1px solid rgba(255,255,255,0.10)",
+          borderRadius: 18,
+          boxShadow: "0 18px 60px rgba(0,0,0,0.60)",
         }}
       >
+        {/* Header (fixe) */}
         <div
           style={{
             padding: 12,
@@ -125,9 +146,10 @@ export function AchievementsModal({ open, onClose }: { open: boolean; onClose: (
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            gap: 12,
           }}
         >
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 950, fontSize: 16 }}>Succès</div>
             <div className="mutedSmall" style={{ opacity: 0.8 }}>
               Les Master peuvent contenir des récompenses cosmétiques plus tard.
@@ -139,7 +161,8 @@ export function AchievementsModal({ open, onClose }: { open: boolean; onClose: (
           </button>
         </div>
 
-        <div style={{ padding: 14, overflow: "auto" }}>
+        {/* Body (scroll) */}
+        <div style={{ padding: 14, overflow: "auto", flex: 1, minHeight: 0 }}>
           {loading ? <div className="muted">Chargement…</div> : null}
           {error ? <div className="mutedSmall" style={{ color: "rgba(255,90,90,0.95)" }}>{error}</div> : null}
 
@@ -155,14 +178,28 @@ export function AchievementsModal({ open, onClose }: { open: boolean; onClose: (
                       {tierTitle(t)}
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                        gap: 10,
+                      }}
+                    >
                       {list.map((a) => (
                         <div key={a.id} style={cardStyle(a.unlocked)}>
                           <div style={{ fontSize: 22, lineHeight: 1, marginTop: 2 }}>{a.icon}</div>
 
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                              <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              <div
+                                style={{
+                                  fontWeight: 950,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                                title={a.name}
+                              >
                                 {a.name}
                               </div>
                               <div className="mutedSmall" style={{ opacity: 0.8 }}>
@@ -170,21 +207,18 @@ export function AchievementsModal({ open, onClose }: { open: boolean; onClose: (
                               </div>
                             </div>
 
-                            {/* Bronze: comment l'obtenir */}
                             {a.desc ? (
                               <div className="mutedSmall" style={{ opacity: 0.85, marginTop: 4, lineHeight: 1.35 }}>
                                 {a.desc}
                               </div>
                             ) : null}
 
-                            {/* Gold: hint */}
                             {a.hint ? (
                               <div className="mutedSmall" style={{ opacity: 0.85, marginTop: 4, lineHeight: 1.35 }}>
                                 {a.hint}
                               </div>
                             ) : null}
 
-                            {/* Master: reward preview */}
                             {a.rewardPreview ? (
                               <div className="mutedSmall" style={{ opacity: 0.85, marginTop: 4 }}>
                                 🎁 {a.rewardPreview}
@@ -196,6 +230,8 @@ export function AchievementsModal({ open, onClose }: { open: boolean; onClose: (
                         </div>
                       ))}
                     </div>
+
+                    {/* mini note responsive : si tu veux, on pourra passer à 1 colonne <820px via un style tag */}
                   </div>
                 );
               })}
