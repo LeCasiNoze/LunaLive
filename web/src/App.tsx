@@ -15,6 +15,7 @@ import DashboardPage from "./pages/DashboardPage";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
 import { GoLiveNotifier } from "./components/GoLiveNotifier";
+import { DailyBonusToast } from "./components/DailyBonusToast";
 
 function AppInner() {
   const location = useLocation();
@@ -37,7 +38,8 @@ function AppInner() {
 
       {/* ✅ ICI, hors de <Routes> */}
       <GoLiveNotifier />
-
+      <DailyBonusToast />
+      
       <Routes>
         <Route path="/" element={<LivesPage />} />
         <Route path="/browse" element={<BrowsePage />} />

@@ -341,7 +341,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       sessionStorage.setItem(attemptKey, day);
 
       // Event global (si tu veux écouter ailleurs)
-      window.dispatchEvent(new CustomEvent("dailyBonus:result", { detail: r }));
+      window.dispatchEvent(new CustomEvent("dailyBonus:result", { detail: { ...r, source: "auto" } }));
 
       // Ouvrir le popup seulement si on a des gains, et seulement 1 fois / jour / onglet
       //const granted = Array.isArray((r as any)?.granted) ? (r as any).granted : [];
