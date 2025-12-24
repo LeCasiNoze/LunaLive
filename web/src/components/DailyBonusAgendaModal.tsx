@@ -254,23 +254,23 @@ export function DailyBonusAgendaModal({
         </div>
       ) : null}
 
-      <div
-        className="panel"
+        <div
         style={{
-          width: "min(920px, 96vw)",
-          maxHeight: "min(760px, 90vh)",
-          overflow: "hidden",
-          display: "grid",
-          gridTemplateColumns: "240px 1fr",
-          gap: 0,
-          padding: 0,
+            width: "min(920px, 96vw)",
+            maxHeight: "min(760px, 90vh)",
+            overflow: "hidden",
+            display: "grid",
+            gridTemplateColumns: "240px 1fr",
+            gap: 0,
+            padding: 0,
 
-          // ✅ panneau opaque
-          background: "rgba(10,10,16,0.98)",
-          border: "1px solid rgba(255,255,255,0.10)",
-          boxShadow: "0 26px 90px rgba(0,0,0,0.70)",
+            // ✅ OPAQUE
+            background: "#0b0b10",
+            border: "1px solid rgba(255,255,255,0.10)",
+            borderRadius: 18,
+            boxShadow: "0 18px 60px rgba(0,0,0,0.60)",
         }}
-      >
+        >
         {/* Sidebar */}
         <div
           style={{

@@ -1002,3 +1002,19 @@ body{
   background: conic-gradient(var(--color1) 0deg 30deg, transparent 30deg 31deg);
   transform-origin: bottom right;
 }
+.modalOverlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.78);
+  display: grid;
+  place-items: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.modalCard{
+  background: #0b0b10;           /* ✅ opaque */
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 18px;
+  box-shadow: 0 18px 60px rgba(0,0,0,.60);
+}
