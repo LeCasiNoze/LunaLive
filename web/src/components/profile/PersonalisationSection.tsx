@@ -1,6 +1,7 @@
+// web/src/components/profile/PersonalisationSection.tsx
 import * as React from "react";
 import { useAuth } from "../../auth/AuthProvider";
-import { equipCosmetic, myCosmetics } from "../../lib/api";
+import { cosmeticsCatalog, equipCosmetic, myCosmetics } from "../../lib/api";
 import { ChatMessageBubble } from "../chat/ChatMessageBubble";
 import type { ChatCosmetics } from "../../lib/cosmetics";
 import {
@@ -10,202 +11,154 @@ import {
 
 type Kind = "username" | "badge" | "title" | "frame" | "hat";
 
-type CatalogItem = {
+type ApiCatalogItem = {
   kind: Kind;
   code: string;
   name: string;
-  icon: string;
-  desc?: string;
-  free?: boolean;
-  // pour construire un ChatCosmetics preview
-  apply?: (c: any) => void;
+  rarity: string;
+  unlock: string;
+  priceRubis: number | null;
+  active: boolean;
+  meta?: any;
 };
 
-const CATALOG: CatalogItem[] = [
-  // ===== USERNAME (skins pseudo)
-  {
-    kind: "username",
-    code: "default",
-    name: "Par défaut",
-    icon: "🙂",
-    free: true,
-    desc: "Aucun skin pseudo.",
-    apply: (c) => {
-      if (!c.username) c.username = {};
-      c.username.color = null;
-      c.username.effect = "none";
-    },
-  },
-  {
-    kind: "username",
-    code: "ghost_purple",
-    name: "Ghost Purple",
-    icon: "🟣",
-    desc: "Couleur pseudo.",
-    apply: (c) => {
-      if (!c.username) c.username = {};
-      c.username.color = "#7C4DFF";
-      c.username.effect = "none";
-    },
-  },
-  {
-    kind: "username",
-    code: "blue_lotus",
-    name: "Blue Lotus",
-    icon: "🔵",
-    desc: "Couleur pseudo.",
-    apply: (c) => {
-      if (!c.username) c.username = {};
-      c.username.color = "#3B82F6";
-      c.username.effect = "none";
-    },
-  },
-
-  // ===== BADGES (1 seul)
-  { kind: "badge", code: "none", name: "Aucun badge", icon: "🚫", free: true, apply: (c) => (c.badges = []) },
-  {
-    kind: "badge",
-    code: "diamant",
-    name: "Diamant",
-    icon: "💎",
-    apply: (c) => {
-      c.badges = [{ id: "diamant", label: "Diamant", icon: "💎", tier: "gold" }];
-    },
-  },
-  {
-    kind: "badge",
-    code: "voleur",
-    name: "Voleur",
-    icon: "🥷",
-    apply: (c) => {
-      c.badges = [{ id: "voleur", label: "Voleur", icon: "🥷", tier: "silver" }];
-    },
-  },
-  {
-    kind: "badge",
-    code: "machine_a_sous",
-    name: "Machine à sous",
-    icon: "🎰",
-    apply: (c) => {
-      c.badges = [{ id: "machine_a_sous", label: "Slot", icon: "🎰", tier: "silver" }];
-    },
-  },
-  {
-    kind: "badge",
-    code: "dollar",
-    name: "Dollar",
-    icon: "💵",
-    apply: (c) => {
-      c.badges = [{ id: "dollar", label: "Dollar", icon: "💵", tier: "silver" }];
-    },
-  },
-  {
-    kind: "badge",
-    code: "narine",
-    name: "Narine",
-    icon: "👃",
-    apply: (c) => {
-      c.badges = [{ id: "narine", label: "Narine", icon: "👃", tier: "silver" }];
-    },
-  },
-
-  // ===== TITLES (1 seul)
-  { kind: "title", code: "none", name: "Aucun titre", icon: "🚫", free: true, apply: (c) => (c.title = null) },
-  {
-    kind: "title",
-    code: "card_shark",
-    name: "Card Shark",
-    icon: "🃏",
-    apply: (c) => {
-      c.title = { text: "Card Shark", tier: "silver", effect: "none" };
-    },
-  },
-  {
-    kind: "title",
-    code: "luna_pioneer",
-    name: "Luna Pioneer",
-    icon: "🌙",
-    apply: (c) => {
-      c.title = { text: "Luna Pioneer", tier: "gold", effect: "none" };
-    },
-  },
-
-  // ===== FRAME (cadran)
-  { kind: "frame", code: "none", name: "Aucun cadran", icon: "🚫", free: true, apply: (c) => (c.frame = null) },
-  {
-    kind: "frame",
-    code: "ghost_purple",
-    name: "Ghost Frame",
-    icon: "🟪",
-    apply: (c) => {
-      c.frame = { frameId: "ghost_purple" };
-    },
-  },
-  {
-    kind: "frame",
-    code: "blue_lotus",
-    name: "Lotus Frame",
-    icon: "🟦",
-    apply: (c) => {
-      c.frame = { frameId: "blue_lotus" };
-    },
-  },
-
-  // ===== HAT
-  { kind: "hat", code: "none", name: "Aucun chapeau", icon: "🚫", free: true, apply: (c) => (c.avatar = { ...(c.avatar||{}), hatId: null }) },
-  {
-    kind: "hat",
-    code: "luna_cap",
-    name: "Luna Cap",
-    icon: "🧢",
-    apply: (c) => {
-      if (!c.avatar) c.avatar = {};
-      c.avatar.hatId = "luna_cap";
-      c.avatar.hatEmoji = "🧢";
-    },
-  },
-];
+type UiItem = {
+  kind: Kind;
+  code: string | null; // null = retirer
+  name: string;
+  desc?: string;
+  icon: string;
+  free?: boolean;
+  priceRubis?: number | null;
+  rarity?: string;
+  unlock?: string;
+};
 
 const CATS: Array<{ id: Kind; label: string }> = [
   { id: "username", label: "Pseudo" },
   { id: "badge", label: "Badges" },
-  { id: "title", label: "Titres" },
-  { id: "frame", label: "Cadrans" },
   { id: "hat", label: "Chapeaux" },
+  { id: "frame", label: "Cadrans message" },
+  // Titres: tu as dit "via succès" → on l'affiche mais souvent vide au début
+  { id: "title", label: "Titres" },
 ];
 
-function byOwnedFirst(ownedSet: Set<string>) {
-  return (a: CatalogItem, b: CatalogItem) => {
-    const ao = a.free || ownedSet.has(a.code);
-    const bo = b.free || ownedSet.has(b.code);
-    if (ao !== bo) return ao ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  };
+function iconFor(kind: Kind, code: string | null) {
+  if (code == null) return "🚫";
+  if (kind === "badge") return "🏷️";
+  if (kind === "hat") return "🧢";
+  if (kind === "username") return "✨";
+  if (kind === "frame") return "🖼️";
+  return "🔖";
 }
 
-function buildCosmeticsPreview(equipped: any): ChatCosmetics | null {
-  const c: any = {};
+function niceUnlock(u?: string) {
+  if (!u) return "";
+  if (u === "shop") return "Shop";
+  if (u === "achievement") return "Succès";
+  if (u === "role") return "Rôle";
+  if (u === "event") return "Event";
+  if (u === "system") return "Système";
+  return u;
+}
 
-  // start clean
-  c.badges = [];
-  c.title = null;
-  c.frame = null;
-  c.avatar = { hatId: null };
+/**
+ * Preview mapping : on traduit tes codes (DB/catalogue)
+ * -> en cosmetics compréhensibles par ChatMessageBubble.
+ *
+ * IMPORTANT:
+ * - Ici on ne cherche pas la perfection, juste un rendu "ok".
+ * - Le vrai rendu en chat viendra quand le backend enverra cosmetics sur les messages.
+ */
+function applyPreview(kind: Kind, code: string | null, c: any) {
+  if (!code) return;
 
-  const applyOne = (kind: Kind, code: string | null) => {
-    if (!code) return;
-    const item = CATALOG.find((x) => x.kind === kind && x.code === code);
-    if (!item?.apply) return;
-    item.apply(c);
+  // init safe
+  if (!c.avatar) c.avatar = {};
+  if (!c.username) c.username = {};
+  if (!Array.isArray(c.badges)) c.badges = [];
+  if (c.title === undefined) c.title = null;
+
+  // BADGES: tu veux rectangles lettres -> on envoie juste un token simple
+  if (kind === "badge") {
+    if (code === "badge_luna") c.badges = ["LUNA"];
+    else if (code === "badge_777") c.badges = ["777"];
+    else c.badges = [code];
+    return;
+  }
+
+  // HATS: on mappe vers des ids "assets" simplifiés (ce que ton bubble connaît déjà souvent)
+  if (kind === "hat") {
+    const map: Record<string, string> = {
+      hat_luna_cap: "luna_cap",
+      hat_carton_crown: "carton_crown",
+      hat_demon_horn: "demon_horn",
+      hat_eclipse_halo: "eclipse_halo",
+      hat_astral_helmet: "astral_helmet",
+      hat_lotus_aureole: "lotus_aureole",
+    };
+    c.avatar.hatId = map[code] ?? code;
+    return;
+  }
+
+  // USERNAME: tu as 2 shop (chroma toggle + gold toggle),
+  // et 2 succès (rainbow_scroll + neon_underline)
+  if (kind === "username") {
+    const map: Record<string, string> = {
+      uanim_chroma_toggle: "chroma",
+      uanim_gold_toggle: "gold",
+      uanim_rainbow_scroll: "rainbow_scroll",
+      uanim_neon_underline: "neon_underline",
+    };
+    c.username.animId = map[code] ?? code;
+    return;
+  }
+
+  // FRAME (cadran message)
+  if (kind === "frame") {
+    // on garde le code brut, ça laisse le mapping côté bubble/ CSS plus tard
+    c.frame = { frameId: code };
+    // compat si un jour tu utilises un autre champ
+    (c as any).messageFrameId = code;
+    return;
+  }
+
+  // TITLE (tu as dit: via succès, pas shop)
+  if (kind === "title") {
+    c.title = { text: code };
+    return;
+  }
+}
+
+function buildCosmeticsPreview(equipped: {
+  username: string | null;
+  badge: string | null;
+  title: string | null;
+  frame: string | null;
+  hat: string | null;
+}): ChatCosmetics | null {
+  const c: any = {
+    badges: [],
+    title: null,
+    frame: null,
+    avatar: { hatId: null },
+    username: {},
   };
 
-  applyOne("username", equipped?.username ?? null);
-  applyOne("badge", equipped?.badge ?? null);
-  applyOne("title", equipped?.title ?? null);
-  applyOne("frame", equipped?.frame ?? null);
-  applyOne("hat", equipped?.hat ?? null);
+  applyPreview("username", equipped?.username ?? null, c);
+  applyPreview("badge", equipped?.badge ?? null, c);
+  applyPreview("title", equipped?.title ?? null, c);
+  applyPreview("frame", equipped?.frame ?? null, c);
+  applyPreview("hat", equipped?.hat ?? null, c);
 
   return c as ChatCosmetics;
+}
+
+function byOwnedFirst(ownedSet: Set<string>, a: UiItem, b: UiItem) {
+  const ao = a.free || (a.code != null && ownedSet.has(a.code));
+  const bo = b.free || (b.code != null && ownedSet.has(b.code));
+  if (ao !== bo) return ao ? -1 : 1;
+  return a.name.localeCompare(b.name);
 }
 
 export function PersonalisationSection({
@@ -218,18 +171,25 @@ export function PersonalisationSection({
   const { token } = useAuth();
 
   const [tab, setTab] = React.useState<Kind>("username");
-
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
+  const [catalog, setCatalog] = React.useState<ApiCatalogItem[]>([]);
   const [owned, setOwned] = React.useState<Record<string, string[]>>({});
-  const [equipped, setEquipped] = React.useState<any>({
-    username: "default",
-    badge: "none",
-    title: "none",
-    frame: "none",
-    hat: "none",
+  const [free, setFree] = React.useState<Record<string, string[]>>({});
+  const [equipped, setEquipped] = React.useState<{
+    username: string | null;
+    badge: string | null;
+    title: string | null;
+    frame: string | null;
+    hat: string | null;
+  }>({
+    username: null,
+    badge: null,
+    title: null,
+    frame: null,
+    hat: null,
   });
 
   async function load() {
@@ -237,10 +197,14 @@ export function PersonalisationSection({
     setLoading(true);
     setErr(null);
     try {
-      const j = await myCosmetics(token);
-      if (!j?.ok) throw new Error((j as any)?.error || "load_failed");
-      setOwned(j.owned || {});
-      setEquipped(j.equipped || {});
+      const [c, m] = await Promise.all([cosmeticsCatalog(), myCosmetics(token)]);
+      if (!c?.ok) throw new Error("catalog_failed");
+      if (!m?.ok) throw new Error((m as any)?.error || "load_failed");
+
+      setCatalog((c.items || []).filter((x: any) => x && x.active));
+      setOwned(m.owned || {});
+      setFree(m.free || {});
+      setEquipped(m.equipped || {});
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
     } finally {
@@ -248,18 +212,18 @@ export function PersonalisationSection({
     }
   }
 
-  async function doEquip(kind: Kind, code: string) {
+  async function doEquip(kind: Kind, code: string | null) {
     if (!token) return;
     setSaving(true);
     setErr(null);
     try {
-      // si déjà équipé => toggle off
-      const cur = String(equipped?.[kind] ?? "");
+      const cur = equipped?.[kind] ?? null;
       const next = cur === code ? null : code;
 
       const j = await equipCosmetic(token, kind, next);
       if (!j?.ok) throw new Error(j?.error || "equip_failed");
-      setEquipped((prev: any) => ({ ...(prev || {}), ...(j.equipped || {}) }));
+
+      setEquipped((prev) => ({ ...(prev || {}), ...(j.equipped || {}) }));
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
     } finally {
@@ -272,8 +236,34 @@ export function PersonalisationSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const ownedSet = new Set<string>([...(owned?.[tab] || [])]);
-  const items = CATALOG.filter((x) => x.kind === tab).sort(byOwnedFirst(ownedSet));
+  const ownedSet = new Set<string>([...(owned?.[tab] || []), ...(free?.[tab] || [])]);
+
+  // UI items = (un "retirer") + items du catalog pour cette catégorie
+  const items: UiItem[] = [
+    {
+      kind: tab,
+      code: null,
+      name: tab === "username" ? "Par défaut" : "Aucun",
+      icon: iconFor(tab, null),
+      free: true,
+      desc: "Retirer l’élément équipé.",
+    },
+    ...catalog
+      .filter((x) => x.kind === tab)
+      .map((x) => ({
+        kind: x.kind,
+        code: x.code,
+        name: x.name,
+        icon: iconFor(x.kind, x.code),
+        desc:
+          x.unlock === "shop" && x.priceRubis
+            ? `${niceUnlock(x.unlock)} — ${Number(x.priceRubis).toLocaleString("fr-FR")} rubis`
+            : `${niceUnlock(x.unlock)}${x.rarity ? ` — ${x.rarity}` : ""}`,
+        priceRubis: x.priceRubis,
+        rarity: x.rarity,
+        unlock: x.unlock,
+      })),
+  ].sort((a, b) => byOwnedFirst(ownedSet, a, b));
 
   const previewCosmetics = buildCosmeticsPreview(equipped);
 
@@ -281,12 +271,10 @@ export function PersonalisationSection({
     <div className="panel" style={{ marginTop: 14 }}>
       <div className="panelTitle">Personnalisation</div>
       <div className="muted" style={{ marginBottom: 10 }}>
-        Équipe tes skins (1 badge + 1 titre). Les items non possédés sont verrouillés.
+        Équipe tes cosmétiques. Les items non possédés sont verrouillés (sauf “Par défaut / Aucun”).
       </div>
 
-      {!token ? (
-        <div className="muted">Connecte-toi pour gérer tes skins.</div>
-      ) : null}
+      {!token ? <div className="muted">Connecte-toi pour gérer tes skins.</div> : null}
 
       {err ? (
         <div className="hint" style={{ opacity: 0.95 }}>
@@ -302,7 +290,10 @@ export function PersonalisationSection({
           borderRadius: 16,
           border: "1px solid rgba(255,255,255,0.08)",
           background: "rgba(0,0,0,0.18)",
-          ...( { ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor, ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor } as any ),
+          ...({
+            ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
+            ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
+          } as any),
         }}
       >
         <div style={{ fontWeight: 950, marginBottom: 10 }}>Aperçu</div>
@@ -319,7 +310,7 @@ export function PersonalisationSection({
         />
       </div>
 
-      {/* Layout: sidebar + grid */}
+      {/* Layout */}
       <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 14, marginTop: 14 }}>
         {/* Sidebar */}
         <div
@@ -376,19 +367,28 @@ export function PersonalisationSection({
             }}
           >
             {items.map((it) => {
-              const isOwned = !!it.free || (owned?.[tab] || []).includes(it.code);
-              const isEquipped = String(equipped?.[tab] ?? "") === it.code;
+              const isEquipped = (equipped as any)?.[tab] === it.code;
+              const isOwned =
+                !!it.free || (it.code != null && ownedSet.has(it.code));
 
               return (
                 <button
-                  key={`${it.kind}:${it.code}`}
-                  onClick={() => isOwned && doEquip(it.kind, it.code)}
+                  key={`${it.kind}:${String(it.code)}`}
+                  onClick={() => (isOwned ? doEquip(it.kind, it.code) : null)}
                   disabled={!token || loading || saving || !isOwned}
-                  title={!isOwned ? "Non possédé" : isEquipped ? "Cliquer pour retirer" : "Cliquer pour équiper"}
+                  title={
+                    !isOwned
+                      ? "Non possédé"
+                      : isEquipped
+                      ? "Cliquer pour retirer"
+                      : "Cliquer pour équiper"
+                  }
                   style={{
                     textAlign: "left",
                     borderRadius: 16,
-                    border: isEquipped ? "1px solid rgba(255,255,255,0.22)" : "1px solid rgba(255,255,255,0.08)",
+                    border: isEquipped
+                      ? "1px solid rgba(255,255,255,0.22)"
+                      : "1px solid rgba(255,255,255,0.08)",
                     background: isOwned ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.45)",
                     color: "white",
                     padding: 12,

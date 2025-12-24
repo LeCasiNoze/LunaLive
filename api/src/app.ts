@@ -31,6 +31,7 @@ import { dailyBonusRoutes } from "./routes/daily_bonus_routes.js";
 import { requireAuth } from "./auth.js";
 import { achievementsRouter } from "./routes/achievements.js";
 import { cosmeticsRouter } from "./routes/cosmetics.js";
+import { cosmeticsCatalogRoutes } from "./routes/cosmetics_catalog_routes.js";
 
 export function createApp() {
   const app = express();
@@ -73,6 +74,7 @@ export function createApp() {
   app.use("/me/daily-bonus", requireAuth, dailyBonusRoutes);
   app.use("/me/achievements", requireAuth, achievementsRouter);
   app.use(cosmeticsRouter);
+  app.use(cosmeticsCatalogRoutes);
 
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));

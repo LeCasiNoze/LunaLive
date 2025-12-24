@@ -49,6 +49,21 @@ export type ApiStreamConnection = {
   streamKey: string;
 };
 
+export type CosmeticItem = {
+  kind: "username" | "badge" | "title" | "frame" | "hat";
+  code: string;
+  name: string;
+  rarity: string;
+  unlock: string;
+  priceRubis: number | null;
+  active: boolean;
+  meta?: any;
+};
+
+export async function cosmeticsCatalog(): Promise<{ ok: true; items: CosmeticItem[] }> {
+  return j<{ ok: true; items: CosmeticItem[] }>("/cosmetics/catalog");
+}
+
 export async function getMyStreamer(token: string) {
   return j<{ ok: true; streamer: ApiMyStreamer | null }>("/streamer/me", {
     headers: { Authorization: `Bearer ${token}` },
