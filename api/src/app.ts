@@ -27,7 +27,7 @@ import { subscriptionsRouter } from "./routes/subscriptions.js";
 import { adminRubisRouter } from "./routes/admin_rubis.js";
 import { wheelRouter } from "./routes/wheel.js";
 import { chestRouter } from "./routes/chest.js";
-
+import { dailyBonusRoutes } from "./routes/daily_bonus_routes";
 export function createApp() {
   const app = express();
   app.set("trust proxy", 1);
@@ -66,7 +66,8 @@ export function createApp() {
 
   app.use(wheelRouter);
   app.use(chestRouter);
-
+  app.use("/me/daily-bonus", dailyBonusRoutes);
+  
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
 

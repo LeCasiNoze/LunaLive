@@ -676,3 +676,24 @@ export async function chestClose(slug: string, token: string) {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
+
+export type ApiDailyBonusGranted =
+  | { type: "rubis"; amount: number; origin: string; weight_bp: number; tx_id?: number }
+  | { type: "token"; token: "wheel_ticket" | "prestige_token"; amount: number }
+  | { type: "entitlement"; kind: "skin" | "title"; code: string; fallback?: boolean };
+
+export type ApiDailyBonusClaim = {
+  ok: true;
+  alreadyClaimed: boolean;
+  day: string;        // "YYYY-MM-DD" (Europe/Paris)
+  monthStart: string; // "YYYY-MM-DD"
+  claimedDays: number;
+  granted: ApiDailyBonusGranted[];
+};
+
+export async function claimDailyBonus(token: string) {
+  return j<ApiDailyBonusClaim>("/me/daily-bonus/claim", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
