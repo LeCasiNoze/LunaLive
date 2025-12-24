@@ -1,7 +1,7 @@
 // api/src/routes/daily_bonus_routes.ts
 import { Router } from "express";
 import { pool } from "../db";
-import { claimDailyBonus } from "../services/dailyBonus";
+import { claimDailyBonus } from "../services/dailyBonus.js";
 
 // ⚠️ suppose que tu as déjà un middleware auth qui met req.user
 // adapte la ligne userId si ton projet utilise req.user.id / req.auth.userId etc.
