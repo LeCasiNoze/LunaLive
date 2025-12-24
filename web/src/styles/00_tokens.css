@@ -1,0 +1,19 @@
+:root{
+  --bg: #1D1125;
+  --text: rgba(255,255,255,0.92);
+  --muted: rgba(255,255,255,0.62);
+
+  --purple: #7E4CB3;
+  --blue: #3F56CB;
+
+  --line: rgba(255,255,255,0.10);
+  --panel: rgba(255,255,255,0.05);
+  --panel2: rgba(255,255,255,0.08);
+
+  --radius: 18px;
+  --sideW: 260px;
+
+  /* Chat theme */
+  --chat-name-color: #ffd54a;
+  --chat-msg-color: #ffffff;
+}

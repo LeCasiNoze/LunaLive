@@ -1,0 +1,212 @@
+/* streamer header (legacy) */
+.streamerHeader{
+  display:flex;
+  gap: 12px;
+  align-items:center;
+  margin-top: 6px;
+}
+.streamerAvatar{
+  width: 54px; height: 54px;
+  border-radius: 999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight: 950;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.06);
+}
+.streamerMeta{ min-width: 0; }
+.streamerNameRow{
+  display:flex;
+  gap: 8px;
+  align-items:center;
+  flex-wrap: wrap;
+}
+.streamerName{ margin: 0; font-size: 26px; }
+
+.chipLive{
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-weight: 950;
+  font-size: 12px;
+  background: rgba(255, 48, 88, 0.18);
+  border: 1px solid rgba(255, 48, 88, 0.35);
+}
+.chipViewers{
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-weight: 950;
+  font-size: 12px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+/* streamer page (rework v1) */
+.streamPage{ display:flex; flex-direction:column; gap: 14px; }
+
+.streamHeaderBar{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+}
+.streamHeaderLeft{
+  min-width: 0;
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.streamHeaderTitle{
+  font-size: 20px;
+  font-weight: 950;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.streamHeaderRight{ display:flex; align-items:center; justify-content: flex-end; }
+.streamFollowBox{
+  display:flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* layout player + chat */
+.streamGrid{
+  display:grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 14px;
+  align-items: start;
+}
+.streamMain{ min-width: 0; }
+
+.streamPlayerPanel{
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255,255,255,0.04);
+}
+
+/* chat sticky à droite */
+.streamChat{
+  height: calc(100dvh - 86px - 18px);
+  position: sticky;
+  top: 86px;
+  display:flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 520px;
+}
+
+.streamChatHeader{
+  display:flex;
+  align-items:flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+}
+.streamChatHeaderLeft{
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.streamChatBody{
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display:flex;
+  flex-direction: column;
+}
+
+/* bottom panel */
+.streamBottomPanel{ padding: 12px 14px; }
+
+.streamTabsRow{
+  display:flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 12px;
+}
+.streamTabBtn{
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 900;
+  opacity: 0.75;
+}
+.streamTabBtn.active{
+  opacity: 1;
+  border-color: rgba(126,76,179,0.55);
+  box-shadow: 0 0 0 2px rgba(126,76,179,0.12);
+}
+.streamTabContent{ min-height: 80px; }
+
+/* responsive */
+@media (max-width: 1100px){
+  .streamGrid{ grid-template-columns: 1fr; }
+  .streamChat{ position: static; height: auto; }
+  .streamFollowBox{ align-items: flex-start; }
+  .streamHeaderBar{ align-items:flex-start; }
+}
+
+/* cinema mode */
+.cinemaRoot{ position: fixed; inset: 0; z-index: 120; background: #000; }
+.cinemaStage{
+  position: absolute; inset: 0;
+  display:flex; align-items:center; justify-content:center;
+  padding: 12px;
+}
+.cinemaLayout{
+  width: min(1400px, 100%);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  align-items: stretch;
+  min-height: 0;
+}
+.cinemaLayout.chatOpen{ grid-template-columns: 1fr 360px; }
+.cinemaPlayerCard{ width: 100%; min-width: 0; }
+
+.cinemaTopBar{
+  position: absolute;
+  left: 12px; right: 12px; top: 12px;
+  display:flex;
+  justify-content: space-between;
+  gap: 10px;
+  z-index: 140;
+}
+
+.cinemaChatSide{
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(17, 10, 23, 0.92);
+  backdrop-filter: blur(14px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.cinemaChatSideTop{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.cinemaChatSideBody{ flex: 1; min-height: 0; overflow: hidden; }
+
+@media (max-width: 820px){
+  .cinemaLayout,
+  .cinemaLayout.chatOpen{
+    grid-template-columns: 1fr;
+  }
+}

@@ -349,18 +349,29 @@ export function PersonalisationSection({
       })),
   ].sort((a, b) => byOwnedFirst(ownedSet, a, b));
 
-  const previewCosmetics = buildCosmeticsPreview(equipped);
 
-  function previewForItem(it: UiItem): ChatCosmetics | null {
+    const effectiveAvatar = avatarPreview || avatarUrl; // preview local > avatar serveur
+
+    function withAvatar<C extends ChatCosmetics | null>(c: C): C {
+    if (!c) return c;
+    return ({
+        ...(c as any),
+        avatar: { ...((c as any).avatar || {}), url: effectiveAvatar || undefined },
+    } as any) as C;
+    }
+
+    const previewCosmetics = withAvatar(buildCosmeticsPreview(equipped));
+
+    function previewForItem(it: UiItem): ChatCosmetics | null {
     const simulated = {
-      username: tab === "username" ? it.code : equipped.username,
-      badge: tab === "badge" ? it.code : equipped.badge,
-      title: tab === "title" ? it.code : equipped.title,
-      frame: tab === "frame" ? it.code : equipped.frame,
-      hat: tab === "hat" ? it.code : equipped.hat,
+        username: tab === "username" ? it.code : equipped.username,
+        badge: tab === "badge" ? it.code : equipped.badge,
+        title: tab === "title" ? it.code : equipped.title,
+        frame: tab === "frame" ? it.code : equipped.frame,
+        hat: tab === "hat" ? it.code : equipped.hat,
     };
-    return buildCosmeticsPreview(simulated);
-  }
+    return withAvatar(buildCosmeticsPreview(simulated));
+    }
 
   return (
     <div className="panel" style={{ marginTop: 14 }}>
@@ -393,15 +404,15 @@ export function PersonalisationSection({
       >
         <div style={{ fontWeight: 950, marginBottom: 10 }}>Aperçu</div>
         <ChatMessageBubble
-          streamerAppearance={streamerAppearance}
-          msg={{
+        streamerAppearance={streamerAppearance}
+        msg={{
             id: "preview",
-            userId: 999999,
+            userId: myUserId || 0, // ✅ au lieu de 999999
             username,
             body: "Exemple de message — “ça rend comment ?”",
             createdAt: new Date().toISOString(),
             cosmetics: previewCosmetics,
-          }}
+        }}
         />
       </div>
 
@@ -658,7 +669,7 @@ export function PersonalisationSection({
                       streamerAppearance={streamerAppearance}
                       msg={{
                         id: `cardpreview:${it.kind}:${String(it.code)}`,
-                        userId: 999999,
+                        userId: myUserId || 0,
                         username,
                         body: "…",
                         createdAt: new Date().toISOString(),

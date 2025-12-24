@@ -1,0 +1,25 @@
+*{ box-sizing: border-box; }
+html, body { height: 100%; }
+
+body{
+  margin: 0;
+  background:
+    radial-gradient(900px 500px at 15% 0%, rgba(126,76,179,0.25), transparent 60%),
+    radial-gradient(900px 500px at 90% 10%, rgba(63,86,203,0.22), transparent 55%),
+    var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+/* layout base */
+.app{ min-height: 100vh; }
+.container{
+  padding: 18px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-bottom: 18px;
+}
+
+.pageTitle h1{ margin: 10px 0 4px; font-size: 28px; }
+.muted{ margin: 0; color: var(--muted); font-size: 14px; }
+.mutedSmall{ color: var(--muted); font-size: 12px; }

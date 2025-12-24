@@ -1,0 +1,269 @@
+/* Titles under username */
+.chatTitle{
+  margin-top: 4px;
+  font-weight: 900;
+  font-size: 12px;
+  opacity: 0.92;
+  width: fit-content;
+  max-width: 100%;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title--bronze{ color: rgba(255,255,255,0.70); }
+.title--silver{
+  color: transparent;
+  background-image: linear-gradient(90deg, rgba(126,76,179,0.95), rgba(63,86,203,0.90));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+.title--gold{
+  color: transparent;
+  background-image: linear-gradient(90deg, rgba(255,210,120,0.95), rgba(126,76,179,0.95), rgba(63,86,203,0.95));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+.title--master{
+  color: transparent;
+  background-image: linear-gradient(90deg, rgba(190,240,255,0.95), rgba(126,76,179,0.95), rgba(63,86,203,0.95));
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: 0 0 18px rgba(190,240,255,0.10);
+}
+
+@keyframes titleShimmer {
+  0%{ background-position: 0% 50%; }
+  100%{ background-position: 100% 50%; }
+}
+.titleFx--shimmer{
+  background-size: 260% 100%;
+  animation: titleShimmer 3.0s linear infinite;
+}
+@keyframes titleAurora {
+  0%{ filter: brightness(1); }
+  50%{ filter: brightness(1.15); }
+  100%{ filter: brightness(1); }
+}
+.titleFx--aurora{
+  background-size: 280% 100%;
+  animation: titleShimmer 3.4s linear infinite, titleAurora 2.6s ease-in-out infinite;
+}
+
+/* Frames */
+.chatFrame--lunaPetals{
+  position: relative;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(10, 8, 14, 0.94), rgba(10, 8, 14, 0.94)) padding-box,
+    linear-gradient(135deg, rgba(126,76,179,0.55), rgba(63,86,203,0.35)) border-box;
+  box-shadow: 0 0 0 1px rgba(126,76,179,0.10), 0 18px 50px rgba(0,0,0,0.35);
+}
+.chatFrame--lunaPetals::after{
+  content:"";
+  position:absolute;
+  inset: 0;
+  border-radius: 14px;
+  background:
+    radial-gradient(220px 120px at 15% 0%, rgba(126,76,179,0.18), transparent 65%),
+    radial-gradient(220px 120px at 90% 10%, rgba(63,86,203,0.14), transparent 60%);
+  pointer-events:none;
+  opacity: 0.9;
+}
+
+.chatFrame--gold{
+  position: relative;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(10, 8, 14, 0.94), rgba(10, 8, 14, 0.94)) padding-box,
+    linear-gradient(135deg, rgba(255,210,120,0.45), rgba(126,76,179,0.30)) border-box;
+  box-shadow: 0 0 0 1px rgba(255,210,120,0.08), 0 18px 50px rgba(0,0,0,0.35);
+}
+.chatFrame--gold::after{
+  content:"";
+  position:absolute;
+  inset: 0;
+  border-radius: 14px;
+  background:
+    radial-gradient(220px 120px at 15% 0%, rgba(255,210,120,0.10), transparent 65%),
+    radial-gradient(220px 120px at 90% 10%, rgba(126,76,179,0.10), transparent 60%);
+  pointer-events:none;
+  opacity: 0.9;
+}
+
+.chatFrame--eclipse{
+  position: relative;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(10, 8, 14, 0.94), rgba(10, 8, 14, 0.94)) padding-box,
+    linear-gradient(135deg, rgba(126,76,179,0.55), rgba(63,86,203,0.42)) border-box;
+  box-shadow: 0 0 0 1px rgba(126,76,179,0.10), 0 18px 50px rgba(0,0,0,0.35);
+}
+.chatFrame--eclipse::after{
+  content:"";
+  position:absolute;
+  inset: 0;
+  border-radius: 14px;
+  background:
+    radial-gradient(220px 120px at 15% 0%, rgba(126,76,179,0.14), transparent 65%),
+    radial-gradient(220px 120px at 90% 10%, rgba(63,86,203,0.12), transparent 60%);
+  pointer-events:none;
+  opacity: 0.9;
+}
+
+.chatFrame--lotusCrown{
+  position: relative;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(10, 8, 14, 0.94), rgba(10, 8, 14, 0.94)) padding-box,
+    linear-gradient(135deg, rgba(63,86,203,0.50), rgba(190,240,255,0.20)) border-box;
+  box-shadow: 0 0 0 1px rgba(63,86,203,0.10), 0 18px 50px rgba(0,0,0,0.35);
+}
+.chatFrame--lotusCrown::after{
+  content:"";
+  position:absolute;
+  inset: 0;
+  border-radius: 14px;
+  background:
+    radial-gradient(220px 120px at 15% 0%, rgba(63,86,203,0.12), transparent 65%),
+    radial-gradient(220px 120px at 90% 10%, rgba(190,240,255,0.10), transparent 60%);
+  pointer-events:none;
+  opacity: 0.9;
+}
+
+/* ===========================
+   Username effects (UNIQUE)
+   =========================== */
+
+/* reduced motion */
+@media (prefers-reduced-motion: reduce){
+  .username--rainbow,
+  .username--neon,
+  .username--chroma,
+  .username--gold{
+    animation: none !important;
+  }
+  .username--neon::after,
+  .username--neon::before{
+    animation: none !important;
+  }
+}
+
+/* RAINBOW */
+@keyframes unameRainbowMove {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 220% 50%; }
+}
+.username--rainbow{
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    #ff4d6d 0%,
+    #ff9f1c 14%,
+    #ffd54a 28%,
+    #2de2a6 42%,
+    #3F56CB 56%,
+    #7E4CB3 70%,
+    #ff4d6d 84%,
+    #ffd54a 100%
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: unameRainbowMove 3.2s linear infinite;
+}
+
+/* CHROMA (brand shimmer) */
+@keyframes chromaShimmer {
+  0%   { background-position: 0% 50%, -120% 50%; }
+  100% { background-position: 180% 50%, 220% 50%; }
+}
+.username--chroma{
+  color: transparent;
+  background-image:
+    linear-gradient(
+      90deg,
+      rgba(126,76,179,1) 0%,
+      rgba(63,86,203,1) 40%,
+      rgba(126,76,179,1) 80%,
+      rgba(63,86,203,1) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255,255,255,0.00) 0%,
+      rgba(255,255,255,0.55) 45%,
+      rgba(255,255,255,0.00) 60%
+    );
+  background-size: 220% 100%, 140% 100%;
+  background-blend-mode: screen;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: chromaShimmer 2.4s linear infinite;
+  text-shadow: 0 0 14px rgba(126,76,179,0.10);
+}
+
+/* GOLD (luxe) */
+@keyframes goldMetalMove {
+  0%   { background-position: 0% 50%, -140% 50%, 0% 50%; }
+  100% { background-position: 220% 50%, 240% 50%, 220% 50%; }
+}
+/* GOLD (look "pseudo-gold" + glow, avec glint animé) */
+@keyframes goldGlintMove {
+  0%   { background-position: 0% 50%, -120% 50%; }
+  100% { background-position: 140% 50%, 220% 50%; }
+}
+
+/* GOLD (champagne metal, glint discret) */
+@keyframes goldGlintMove {
+  0%   { background-position: 0% 50%, -120% 50%; }
+  100% { background-position: 140% 50%, 220% 50%; }
+}
+
+.username--gold{
+  color: transparent;
+
+  /* 1) base champagne (moins saturé, plus métal)
+     2) glint très soft qui traverse */
+  background-image:
+    linear-gradient(
+      90deg,
+      #4b3516 0%,
+      #8c6a2a 14%,
+      #caa25a 28%,
+      #efd9a8 45%,
+      #fff2d2 52%,
+      #e4c784 66%,
+      #b38a3f 82%,
+      #4b3516 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,.55) 48%,
+      rgba(255,255,255,0) 60%
+    );
+
+  background-size: 170% 100%, 70% 100%;
+  background-blend-mode: normal, screen;
+
+  -webkit-background-clip: text;
+  background-clip: text;
+
+  /* moins de "brillant": glow réduit + stroke plus soft */
+  -webkit-text-stroke: 0.30px rgba(255, 226, 160, 0.22);
+  text-shadow:
+    0 0 2px rgba(255, 215, 150, 0.25),
+    0 0 6px rgba(255, 220, 160, 0.18);
+
+  animation: goldGlintMove 3.6s ease-in-out infinite;
+}
+
+/* ✅ NEON (surbrillance) */
+.username--neon{
+  color: #e4d9ff;
+  -webkit-text-stroke: 0.5px rgba(168, 85, 247, 0.85);
+  text-shadow:
+    0 0 3px rgba(168, 85, 247, 0.95),
+    0 0 7px rgba(139, 92, 246, 0.8),
+    0 0 12px rgba(129, 140, 248, 0.7);
+}
