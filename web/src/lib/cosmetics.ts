@@ -1,31 +1,62 @@
 // web/src/lib/cosmetics.ts
+
 export type Tier = "bronze" | "silver" | "gold" | "master";
 
-export type UsernameEffect = "none" | "rainbow" | "neon_underline";
+/**
+ * Username effects (chat)
+ * - "rainbow" : existant
+ * - "rainbow_scroll" : alias (catalog V1)
+ * - "neon_underline" : existant
+ * - "chroma" / "gold" : shop toggles
+ */
+export type UsernameEffect =
+  | "none"
+  | "rainbow"
+  | "rainbow_scroll"
+  | "neon_underline"
+  | "chroma"
+  | "gold";
+
 export type TitleEffect = "none" | "shimmer" | "aurora";
 
 export type ChatBadge = {
   id: string;
-  label: string;      // ex: "SUB", "LUNA"
-  icon?: string;      // ex: "🌙"
+  label: string; // ex: "777", "LUNA"
+  icon?: string; // ex: "🌙"
   tier?: Tier;
 };
 
 export type TitleCosmetic = {
-  text: string;       // ex: Card Shark
+  text: string; // ex: Card Shark
   tier: Tier;
   effect?: TitleEffect;
 };
 
+export type HatId =
+  | "none"
+  | "luna_cap"
+  | "carton_crown"
+  | "demon_horn"
+  | "eclipse_halo"
+  | "astral_helmet"
+  | "lotus_aureole";
+
 export type AvatarCosmetic = {
   borderId?: "none" | "luna" | "diamond" | "ghost";
-  hatId?: "none" | "luna_cap";
+  hatId?: HatId;
   // plus tard: url image
   hatEmoji?: string; // ex: "🧢"
 };
 
+export type FrameId =
+  | "none"
+  | "luna_petals"
+  | "gold"
+  | "eclipse"
+  | "lotus_crown";
+
 export type FrameCosmetic = {
-  frameId?: "none" | "luna_petals";
+  frameId?: FrameId;
   tier?: Tier; // généralement master/prestige
 };
 
@@ -35,8 +66,8 @@ export type ChatCosmetics = {
   title?: TitleCosmetic | null;
 
   username?: {
-    color?: string | null;       // override (optionnel)
-    effect?: UsernameEffect;     // anim/effet
+    color?: string | null; // override (optionnel)
+    effect?: UsernameEffect; // anim/effet
   };
 
   frame?: FrameCosmetic | null;
@@ -58,8 +89,10 @@ export function formatHHMM(iso: string) {
 }
 
 export function usernameEffectClass(effect: UsernameEffect | undefined) {
-  if (effect === "rainbow") return "username--rainbow";
+  if (effect === "rainbow" || effect === "rainbow_scroll") return "username--rainbow";
   if (effect === "neon_underline") return "username--neon";
+  if (effect === "chroma") return "username--chroma";
+  if (effect === "gold") return "username--gold";
   return "";
 }
 
@@ -75,6 +108,9 @@ export function titleEffectClass(effect: TitleEffect | undefined) {
 
 export function frameClass(frameId: FrameCosmetic["frameId"] | undefined) {
   if (frameId === "luna_petals") return "chatFrame--lunaPetals";
+  if (frameId === "gold") return "chatFrame--gold";
+  if (frameId === "eclipse") return "chatFrame--eclipse";
+  if (frameId === "lotus_crown") return "chatFrame--lotusCrown";
   return "";
 }
 

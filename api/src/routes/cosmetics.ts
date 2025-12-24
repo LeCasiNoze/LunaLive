@@ -1,7 +1,9 @@
+// api/src/routes/cosmetics.ts (ou cosmetics_routes.ts)
 import { Router } from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
 import { a } from "../utils/async.js";
+import { COSMETICS_CATALOG } from "../cosmetics_catalog.js"; // ✅ ton catalogue v1 (celui que tu as montré)
 
 export const cosmeticsRouter = Router();
 
@@ -18,6 +20,58 @@ const FREE: Record<Kind, string[]> = {
   hat: ["none"],
 };
 
+// ──────────────────────────────────────────
+// DEV: unlock all
+// ──────────────────────────────────────────
+const DEV_UNLOCK_ALL_SET = new Set(
+  String(process.env.DEV_UNLOCK_ALL_FOR || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+);
+
+function devUnlockAll(username: string | null | undefined) {
+  if (!username) return false;
+  return DEV_UNLOCK_ALL_SET.has(username.trim().toLowerCase());
+}
+
+async function getReqUsername(req: any): Promise<string | null> {
+  // si ton auth met déjà username => pas de query
+  const u = req.user?.username;
+  if (typeof u === "string" && u.trim()) return u;
+
+  // fallback (au cas où req.user n'a que id)
+  const userId = req.user?.id;
+  if (!userId) return null;
+
+  const r = await pool.query(`SELECT username FROM users WHERE id=$1 LIMIT 1`, [userId]);
+  return r.rows?.[0]?.username ?? null;
+}
+
+function buildOwnedAllActive(): Record<string, string[]> {
+  const owned: Record<string, string[]> = {
+    username: [],
+    badge: [],
+    title: [],
+    frame: [],
+    hat: [],
+  };
+
+  for (const it of COSMETICS_CATALOG) {
+    if (!it?.active) continue;
+    if (!ALLOWED_KINDS.includes(it.kind as Kind)) continue;
+    (owned[it.kind] ??= []).push(it.code);
+  }
+  return owned;
+}
+
+function catalogHas(kind: Kind, code: string) {
+  return COSMETICS_CATALOG.some((x) => x.active && x.kind === kind && x.code === code);
+}
+
+// ──────────────────────────────────────────
+// DB helpers
+// ──────────────────────────────────────────
 async function ensureRow(userId: number) {
   await pool.query(
     `INSERT INTO user_equipped_cosmetics (user_id)
@@ -27,11 +81,16 @@ async function ensureRow(userId: number) {
   );
 }
 
+// ──────────────────────────────────────────
+// GET /me/cosmetics
+// ──────────────────────────────────────────
 cosmeticsRouter.get(
   "/me/cosmetics",
   requireAuth,
-  a(async (req, res) => {
-    const userId = req.user!.id;
+  a(async (req: any, res) => {
+    const userId = req.user!.id as number;
+    const username = await getReqUsername(req);
+    const unlockAll = devUnlockAll(username);
 
     await ensureRow(userId);
 
@@ -47,6 +106,7 @@ cosmeticsRouter.get(
       [userId]
     );
 
+    // owned via entitlements
     const ent = await pool.query(
       `SELECT kind, code
        FROM user_entitlements
@@ -63,20 +123,36 @@ cosmeticsRouter.get(
       owned[k].push(c);
     }
 
+    // ✅ DEV unlock-all: merge “owned” avec tout le catalogue actif
+    if (unlockAll) {
+      const all = buildOwnedAllActive();
+      for (const k of Object.keys(all)) {
+        const cur = new Set<string>(owned[k] || []);
+        for (const code of all[k] || []) cur.add(code);
+        owned[k] = Array.from(cur);
+      }
+    }
+
     res.json({
       ok: true,
       owned, // { badge:[...], title:[...], ... }
       equipped: eq.rows[0] || { username: null, badge: null, title: null, frame: null, hat: null },
       free: FREE,
+      unlockAll, // debug (front peut ignorer)
     });
   })
 );
 
+// ──────────────────────────────────────────
+// PATCH /me/cosmetics/equip
+// ──────────────────────────────────────────
 cosmeticsRouter.patch(
   "/me/cosmetics/equip",
   requireAuth,
-  a(async (req, res) => {
-    const userId = req.user!.id;
+  a(async (req: any, res) => {
+    const userId = req.user!.id as number;
+    const username = await getReqUsername(req);
+    const unlockAll = devUnlockAll(username);
 
     const kind = String(req.body?.kind || "") as Kind;
     const codeRaw = req.body?.code;
@@ -118,8 +194,15 @@ cosmeticsRouter.patch(
     // autorisé si free
     const isFree = (FREE[kind] || []).includes(code);
 
-    // sinon il faut un entitlement
+    // ✅ validation: si pas free => doit exister dans le catalogue (sinon typos/cheat)
     if (!isFree) {
+      if (!catalogHas(kind, code)) {
+        return res.status(400).json({ ok: false, error: "unknown_code" });
+      }
+    }
+
+    // sinon il faut un entitlement (sauf unlockAll)
+    if (!isFree && !unlockAll) {
       const check = await pool.query(
         `SELECT 1
          FROM user_entitlements

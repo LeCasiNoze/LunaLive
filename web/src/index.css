@@ -1265,3 +1265,117 @@ body{
   opacity: 0.9;
 }
 
+/* ===========================
+   Username effects (shop)
+   =========================== */
+
+/* Reuse a single keyframe for chroma/gold */
+@keyframes unameMove {
+  0%{ background-position: 0% 50%; }
+  100%{ background-position: 100% 50%; }
+}
+
+.username--chroma{
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    rgba(126,76,179,0.98),
+    rgba(63,86,203,0.98),
+    rgba(255,213,74,0.90),
+    rgba(63,86,203,0.98),
+    rgba(126,76,179,0.98)
+  );
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: unameMove 2.2s linear infinite;
+}
+
+.username--gold{
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    rgba(255,210,120,0.98),
+    rgba(255,240,200,0.98),
+    rgba(255,210,120,0.98),
+    rgba(126,76,179,0.75)
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: unameMove 2.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce){
+  .username--chroma,
+  .username--gold{
+    animation: none !important;
+  }
+}
+
+/* ===========================
+   Frames (cadrans) v1
+   =========================== */
+
+/* Gold frame: léger, cohérent avec ton style */
+.chatFrame--gold{
+  position: relative;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(10, 8, 14, 0.94), rgba(10, 8, 14, 0.94)) padding-box,
+    linear-gradient(135deg, rgba(255,210,120,0.45), rgba(126,76,179,0.30)) border-box;
+  box-shadow: 0 0 0 1px rgba(255,210,120,0.08), 0 18px 50px rgba(0,0,0,0.35);
+}
+.chatFrame--gold::after{
+  content:"";
+  position:absolute;
+  inset: 0;
+  border-radius: 14px;
+  background:
+    radial-gradient(220px 120px at 15% 0%, rgba(255,210,120,0.10), transparent 65%),
+    radial-gradient(220px 120px at 90% 10%, rgba(126,76,179,0.10), transparent 60%);
+  pointer-events:none;
+  opacity: 0.9;
+}
+
+/* Eclipse frame: violet/bleu plus “dur” */
+.chatFrame--eclipse{
+  position: relative;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(10, 8, 14, 0.94), rgba(10, 8, 14, 0.94)) padding-box,
+    linear-gradient(135deg, rgba(126,76,179,0.55), rgba(63,86,203,0.42)) border-box;
+  box-shadow: 0 0 0 1px rgba(126,76,179,0.10), 0 18px 50px rgba(0,0,0,0.35);
+}
+.chatFrame--eclipse::after{
+  content:"";
+  position:absolute;
+  inset: 0;
+  border-radius: 14px;
+  background:
+    radial-gradient(220px 120px at 15% 0%, rgba(126,76,179,0.14), transparent 65%),
+    radial-gradient(220px 120px at 90% 10%, rgba(63,86,203,0.12), transparent 60%);
+  pointer-events:none;
+  opacity: 0.9;
+}
+
+/* Lotus crown: plus “blue lotus” */
+.chatFrame--lotusCrown{
+  position: relative;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(10, 8, 14, 0.94), rgba(10, 8, 14, 0.94)) padding-box,
+    linear-gradient(135deg, rgba(63,86,203,0.50), rgba(190,240,255,0.20)) border-box;
+  box-shadow: 0 0 0 1px rgba(63,86,203,0.10), 0 18px 50px rgba(0,0,0,0.35);
+}
+.chatFrame--lotusCrown::after{
+  content:"";
+  position:absolute;
+  inset: 0;
+  border-radius: 14px;
+  background:
+    radial-gradient(220px 120px at 15% 0%, rgba(63,86,203,0.12), transparent 65%),
+    radial-gradient(220px 120px at 90% 10%, rgba(190,240,255,0.10), transparent 60%);
+  pointer-events:none;
+  opacity: 0.9;
+}

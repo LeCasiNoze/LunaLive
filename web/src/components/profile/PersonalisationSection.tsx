@@ -81,9 +81,15 @@ function applyPreview(kind: Kind, code: string | null, c: any) {
 
   // BADGES: tu veux rectangles lettres -> on envoie juste un token simple
   if (kind === "badge") {
-    if (code === "badge_luna") c.badges = ["LUNA"];
-    else if (code === "badge_777") c.badges = ["777"];
-    else c.badges = [code];
+    const txt = code === "badge_luna" ? "LUNA" : code === "badge_777" ? "777" : code;
+
+    // Certains renderers attendent un objet (text/label), pas une string
+    c.badges = [{ id: txt, code: txt, text: txt, label: txt }];
+
+    // Compat bonus si jamais le bubble lit ailleurs
+    (c as any).badge = txt;
+    (c as any).badgeText = txt;
+    (c as any).badgeLabel = txt;
     return;
   }
 
@@ -97,7 +103,20 @@ function applyPreview(kind: Kind, code: string | null, c: any) {
       hat_astral_helmet: "astral_helmet",
       hat_lotus_aureole: "lotus_aureole",
     };
-    c.avatar.hatId = map[code] ?? code;
+    const hatId = map[code] ?? code;
+
+    c.avatar.hatId = hatId;
+
+    // ✅ on force un emoji pour la preview (en attendant les assets)
+    const EMOJI: Record<string, string> = {
+      luna_cap: "🧢",
+      carton_crown: "👑",
+      demon_horn: "😈",
+      eclipse_halo: "⭕",
+      astral_helmet: "🪖",
+      lotus_aureole: "🪷",
+    };
+    c.avatar.hatEmoji = EMOJI[hatId] ?? "🧢";
     return;
   }
 
@@ -110,22 +129,32 @@ function applyPreview(kind: Kind, code: string | null, c: any) {
       uanim_rainbow_scroll: "rainbow_scroll",
       uanim_neon_underline: "neon_underline",
     };
-    c.username.animId = map[code] ?? code;
+    const effect = map[code] ?? code;
+
+    // ✅ c’est CE champ que ChatMessageBubble lit
+    c.username.effect = effect;
+
+    // compat (au cas où)
+    c.username.animId = effect;
+    c.username.anim = effect;
     return;
   }
 
   // FRAME (cadran message)
   if (kind === "frame") {
-    // on garde le code brut, ça laisse le mapping côté bubble/ CSS plus tard
-    c.frame = { frameId: code };
-    // compat si un jour tu utilises un autre champ
-    (c as any).messageFrameId = code;
+    // normalisation simple: frame_gold_shop -> gold, frame_eclipse_master -> eclipse, frame_lotus_event -> lotus
+    const frameId = code
+      .replace(/^frame_/, "")
+      .replace(/_(shop|event|master)$/, "");
+
+    c.frame = { frameId };
     return;
   }
 
   // TITLE (tu as dit: via succès, pas shop)
   if (kind === "title") {
-    c.title = { text: code };
+    c.title = { text: code, label: code };
+    (c as any).titleText = code;
     return;
   }
 }
@@ -267,6 +296,19 @@ export function PersonalisationSection({
 
   const previewCosmetics = buildCosmeticsPreview(equipped);
 
+  function previewForItem(it: UiItem): ChatCosmetics | null {
+    // On simule "it équipé" en remplaçant juste la catégorie courante,
+    // tout en gardant les autres équipements actuels.
+    const simulated = {
+      username: tab === "username" ? it.code : equipped.username,
+      badge: tab === "badge" ? it.code : equipped.badge,
+      title: tab === "title" ? it.code : equipped.title,
+      frame: tab === "frame" ? it.code : equipped.frame,
+      hat: tab === "hat" ? it.code : equipped.hat,
+    };
+    return buildCosmeticsPreview(simulated);
+  }
+
   return (
     <div className="panel" style={{ marginTop: 14 }}>
       <div className="panelTitle">Personnalisation</div>
@@ -370,6 +412,7 @@ export function PersonalisationSection({
               const isEquipped = (equipped as any)?.[tab] === it.code;
               const isOwned =
                 !!it.free || (it.code != null && ownedSet.has(it.code));
+              const cardPreviewCosmetics = previewForItem(it);
 
               return (
                 <button
@@ -408,6 +451,32 @@ export function PersonalisationSection({
                   <div style={{ marginTop: 8, fontWeight: 950 }}>{it.name}</div>
                   <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
                     {it.desc || (isOwned ? "Cliquer pour équiper" : "À débloquer")}
+                  </div>
+                  {/* Mini preview "comme en chat" */}
+                    <div
+                    style={{
+                        marginTop: 10,
+                        pointerEvents: "none",
+                        opacity: !isOwned ? 0.8 : 0.95,
+                        transform: "scale(0.92)",
+                        transformOrigin: "top left",
+                        ...({
+                        ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
+                        ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
+                        } as any),
+                    }}
+                    >
+                    <ChatMessageBubble
+                      streamerAppearance={streamerAppearance}
+                      msg={{
+                        id: `cardpreview:${it.kind}:${String(it.code)}`,
+                        userId: 999999,
+                        username,
+                        body: "…",
+                        createdAt: new Date().toISOString(),
+                        cosmetics: cardPreviewCosmetics,
+                      }}
+                    />
                   </div>
 
                   {isOwned ? (

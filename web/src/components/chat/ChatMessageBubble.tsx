@@ -44,7 +44,18 @@ export function ChatMessageBubble({ msg, streamerAppearance }: { msg: ChatMsgLik
 
   const effectiveUnameColor = allowViewerNameColor ? skinUnameColor : null;
 
-  const hatEmoji = avatar.hatId === "luna_cap" ? (avatar.hatEmoji || "🧢") : null;
+    const hatEmoji =
+    avatar.hatEmoji ||
+    (avatar.hatId
+      ? ({
+          luna_cap: "🧢",
+          carton_crown: "👑",
+          demon_horn: "😈",
+          eclipse_halo: "⭕",
+          astral_helmet: "🪖",
+          lotus_aureole: "🪷",
+        } as Record<string, string>)[avatar.hatId] || null
+      : null);
 
   return (
     <div className={`chatMsgRow ${frameClass(frame?.frameId)}`}>
