@@ -1,3 +1,4 @@
+// api/src/db/migrations/mig015_cosmetics_equipped.ts
 import type { Pool } from "pg";
 
 export async function mig015_cosmetics_equipped(pool: Pool) {

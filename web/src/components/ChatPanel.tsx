@@ -12,7 +12,7 @@ import {
   type StreamerAppearance,
 } from "../lib/appearance";
 
-const DEBUG_FORCE_COSMETICS = true; // mets false quand fini
+const DEBUG_FORCE_COSMETICS = false; // mets false quand fini
 const DEBUG_USER = "LeCasiNoze";
 
 // ⚠️ on caste en any pour pas se battre avec le type exact maintenant

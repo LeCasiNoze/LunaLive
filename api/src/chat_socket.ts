@@ -5,6 +5,7 @@ import { pool } from "./db.js";
 import { chatStore } from "./chat_store.js";
 import type { AuthUser } from "./auth.js";
 import { normalizeAppearance, type Appearance } from "./appearance.js";
+import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
 
 type SocketData = {
   user?: AuthUser;
@@ -318,13 +319,16 @@ export function attachChat(io: Server) {
           // plus tard: badge/hat selon sub + skins
         };
 
+        const cosmeticsByUser = await getChatCosmeticsForUsers([u.id]);
+        const cosmetics = cosmeticsByUser.get(u.id) ?? null;
+
         const msg = {
           id: Number(row.id),
           userId: u.id,
           username: u.username,
           body: text,
           createdAt: new Date(row.createdAt).toISOString(),
-          style,
+          cosmetics, // ✅ IMPORTANT
         };
 
         io.to(`chat:${meta.slug}`).emit("chat:message", msg);
