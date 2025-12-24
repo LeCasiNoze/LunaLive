@@ -29,13 +29,16 @@ function rewardByIsoDow(isodow: number): WeekDayReward {
 async function getParisNow(client: PoolClient) {
   const r = await client.query(`
     SELECT
-      (NOW() AT TIME ZONE 'Europe/Paris')::date AS day,
-      date_trunc('month', (NOW() AT TIME ZONE 'Europe/Paris'))::date AS month_start,
+      (NOW() AT TIME ZONE 'Europe/Paris')::date::text AS day,
+      date_trunc('month', (NOW() AT TIME ZONE 'Europe/Paris'))::date::text AS month_start,
       EXTRACT(ISODOW FROM (NOW() AT TIME ZONE 'Europe/Paris'))::int AS isodow,
-      ((NOW() AT TIME ZONE 'Europe/Paris')::date - (EXTRACT(ISODOW FROM (NOW() AT TIME ZONE 'Europe/Paris'))::int - 1))::date AS week_start
+      ((NOW() AT TIME ZONE 'Europe/Paris')::date
+        - (EXTRACT(ISODOW FROM (NOW() AT TIME ZONE 'Europe/Paris'))::int - 1)
+      )::date::text AS week_start
   `);
+
   return {
-    day: String(r.rows[0].day),
+    day: String(r.rows[0].day),              // "YYYY-MM-DD"
     monthStart: String(r.rows[0].month_start),
     isodow: Number(r.rows[0].isodow),
     weekStart: String(r.rows[0].week_start),
