@@ -54,6 +54,7 @@ export function DailyBonusHomeCard() {
   const [loading, setLoading] = React.useState(true);
   const [state, setState] = React.useState<DailyBonusState | null>(null);
   const [open, setOpen] = React.useState(false);
+  const [opening, setOpening] = React.useState(false);
 
   const reload = React.useCallback(async () => {
     if (!token) {
@@ -76,7 +77,7 @@ export function DailyBonusHomeCard() {
     reload();
   }, [reload]);
 
-  // si AuthProvider fait un claim et dispatch un event, on refresh
+  // si AuthProvider fait un claim et dispatch un event, on refresh state
   React.useEffect(() => {
     const onAny = (ev: any) => {
       const detail = ev?.detail;
@@ -87,40 +88,67 @@ export function DailyBonusHomeCard() {
     return () => window.removeEventListener("dailyBonus:result", onAny as any);
   }, [reload]);
 
+  const openAgenda = React.useCallback(async () => {
+    if (!token) return;
+
+    // si on a déjà le state -> open direct
+    if (state?.ok) {
+      setOpen(true);
+      return;
+    }
+
+    // sinon on fetch puis open (pour éviter un modal vide)
+    setOpening(true);
+    try {
+      const s = await getDailyBonusState(token);
+      if (s?.ok) setState(s as any);
+      setOpen(true);
+    } catch (e) {
+      console.error(e);
+      // même si ça fail, on peut ouvrir un modal "erreur" plus tard
+      // pour l’instant: on n’ouvre pas
+    } finally {
+      setOpening(false);
+    }
+  }, [token, state]);
+
   return (
     <div className="panel" style={{ marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div>
-          <div className="panelTitle" style={{ marginBottom: 0 }}>Bonus quotidien</div>
+          <div className="panelTitle" style={{ marginBottom: 0 }}>
+            Bonus quotidien
+          </div>
           <div className="mutedSmall" style={{ opacity: 0.8 }}>
-            {loading ? "Chargement…" : token ? "Agenda hebdo + paliers mensuels" : "Connecte-toi pour récupérer"}
+            {token ? (loading ? "Chargement…" : "Agenda hebdo + paliers mensuels") : "Connecte-toi pour voir l’agenda"}
           </div>
         </div>
 
+        {/* ✅ Toujours cliquable si connecté (même si déjà claim / tout grisé) */}
         <button
           type="button"
           className="btnPrimarySmall"
-          onClick={() => setOpen(true)}
-          disabled={!token || !state?.ok}
+          onClick={openAgenda}
+          disabled={!token || opening}
+          title={!token ? "Connecte-toi pour accéder à l’agenda" : undefined}
         >
-          Ouvrir
+          {opening ? "…" : "Ouvrir"}
         </button>
       </div>
 
+      {/* Preview seulement si state chargé */}
       {token && state?.ok ? (
         <>
-          {/* Preview 2 colonnes => 4 lignes pour 7 jours */}
           <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {state.week.map((d) => (
               <div
                 key={d.date}
                 style={smallCellStyle(d.status)}
                 onClick={() => {
-                  // on ne claim pas direct depuis preview: on ouvre le modal
-                  // (comme un "bouton agenda")
-                  if (d.status === "today_claimable") setOpen(true);
+                  // Preview = ouvre l’agenda (pas de claim direct ici)
+                  openAgenda();
                 }}
-                title={d.status === "today_claimable" ? "Cliquer pour ouvrir et récupérer" : undefined}
+                title="Ouvrir l’agenda"
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                   <div style={{ fontWeight: 950 }}>{d.label}</div>
@@ -133,14 +161,13 @@ export function DailyBonusHomeCard() {
             ))}
           </div>
 
-          {/* Milestones preview */}
           <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
             {state.milestones.map((m) => {
               const claimable = m.status === "claimable";
               return (
                 <div
                   key={m.milestone}
-                  onClick={() => setOpen(true)}
+                  onClick={openAgenda}
                   style={{
                     padding: "8px 10px",
                     borderRadius: 999,
@@ -166,11 +193,7 @@ export function DailyBonusHomeCard() {
       ) : null}
 
       {open && state?.ok ? (
-        <DailyBonusAgendaModal
-          state={state}
-          onState={(s) => setState(s)}
-          onClose={() => setOpen(false)}
-        />
+        <DailyBonusAgendaModal state={state} onState={(s) => setState(s)} onClose={() => setOpen(false)} />
       ) : null}
     </div>
   );
