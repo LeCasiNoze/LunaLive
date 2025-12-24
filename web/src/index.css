@@ -1037,36 +1037,30 @@ body{
 }
 
 .chatAvatarBorder{
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.06);
-  display:grid;
-  place-items:center;
-  position: relative;
-  flex: 0 0 auto;
+  position: relative; /* ✅ important pour l’absolute du hat */
 }
 
-.chatAvatarCircle{
+/* ✅ l’image dans le cercle */
+.chatAvatarImg{
+  position: absolute;
+  inset: 3px;                 /* = padding visuel dans la bordure */
   width: 38px;
   height: 38px;
   border-radius: 999px;
-  display:grid;
-  place-items:center;
-  font-weight: 950;
-  font-size: 13px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(0,0,0,0.25);
+  object-fit: cover;
+  z-index: 1;                 /* image au milieu */
 }
 
+/* ✅ fallback initials sous l’image si elle charge pas */
+.chatAvatarCircle{
+  position: relative;
+  z-index: 0;
+}
+
+/* ✅ le chapeau TOUJOURS au-dessus */
 .chatHatEmoji{
-  position:absolute;
-  top: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 16px;
-  filter: drop-shadow(0 8px 16px rgba(0,0,0,0.55));
+  z-index: 2;
+  pointer-events: none;
 }
 
 .avatarBorder--luna{

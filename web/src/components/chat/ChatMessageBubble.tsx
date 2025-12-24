@@ -1,3 +1,4 @@
+// web/src/components/chat/ChatMessageBubble.tsx
 import * as React from "react";
 import type { ChatCosmetics } from "../../lib/cosmetics";
 import {
@@ -42,6 +43,9 @@ export function ChatMessageBubble({
   const allowViewerNameColor = lvl < 2;
   const effectiveUnameColor = allowViewerNameColor ? skinUnameColor : null;
 
+  // ✅ avatar image url (si fourni par l'API)
+  const avatarUrl = (avatar as any)?.url ? String((avatar as any).url) : null;
+
   const hatEmoji =
     avatar.hatEmoji ||
     (avatar.hatId
@@ -60,27 +64,18 @@ export function ChatMessageBubble({
       <div className="chatMsgInner">
         {/* Avatar */}
         <div className={`chatAvatarBorder ${avatarBorderClass(avatar.borderId)}`}>
-          {avatar.url ? (
-            <img
-              className="chatAvatarImg"
-              src={avatar.url}
-              alt=""
-              loading="lazy"
-              onError={(e) => {
-                // fallback auto : si 404, on affiche initials
-                (e.currentTarget as HTMLImageElement).style.display = "none";
-                const sib = e.currentTarget.nextElementSibling as HTMLElement | null;
-                if (sib) sib.style.display = "grid";
-              }}
-            />
+          {/* ✅ l’image si présente */}
+          {avatarUrl ? <img className="chatAvatarImg" src={avatarUrl} alt="" loading="lazy" /> : null}
+
+          {/* ✅ fallback initials (reste présent) */}
+          <div className="chatAvatarCircle">{getInitials(msg.username)}</div>
+
+          {/* ✅ hat TOUJOURS par-dessus */}
+          {hatEmoji ? (
+            <div className="chatHatEmoji" aria-hidden="true">
+              {hatEmoji}
+            </div>
           ) : null}
-
-          {/* fallback initials */}
-          <div className="chatAvatarCircle" style={{ display: avatar.url ? "none" : "grid" }}>
-            {getInitials(msg.username)}
-          </div>
-
-          {hatEmoji ? <div className="chatHatEmoji" aria-hidden="true">{hatEmoji}</div> : null}
         </div>
 
         {/* Content */}
@@ -90,25 +85,18 @@ export function ChatMessageBubble({
               {/* Badges */}
               {badges.length ? (
                 <div className="chatBadges">
-                  {badges.map((b) => {
-                    const raw = String(b.label || b.id || "");
-                    const prettyLabel = raw.startsWith("badge_")
-                      ? raw.slice("badge_".length).toUpperCase()
-                      : raw;
-
-                    return (
-                      <span key={b.id} className={`chatBadge badge--${b.tier || "silver"}`}>
-                        {b.icon ? <span className="chatBadgeIcon">{b.icon}</span> : null}
-                        {prettyLabel}
-                      </span>
-                    );
-                  })}
+                  {badges.map((b) => (
+                    <span key={b.id} className={`chatBadge badge--${b.tier || "silver"}`}>
+                      {b.icon ? <span className="chatBadgeIcon">{b.icon}</span> : null}
+                      {b.label}
+                    </span>
+                  ))}
                 </div>
               ) : null}
 
               {/* Username */}
               <div
-                className={`chatUsername ${usernameEffectClass(unameEffect)}`}
+                className={`chatUsername ${usernameEffectClass(unameEffect as any)}`}
                 style={
                   ({
                     ["--uname-color" as any]: effectiveUnameColor ?? "var(--chat-name-color)",
@@ -125,7 +113,7 @@ export function ChatMessageBubble({
 
           {/* Title UNDER username */}
           {title ? (
-            <div className={`chatTitle ${titleTierClass(title.tier)} ${titleEffectClass(title.effect)}`}>
+            <div className={`chatTitle ${titleTierClass(title.tier as any)} ${titleEffectClass(title.effect as any)}`}>
               « {title.text} »
             </div>
           ) : null}
