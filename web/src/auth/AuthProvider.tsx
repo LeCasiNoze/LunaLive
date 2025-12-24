@@ -344,11 +344,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.dispatchEvent(new CustomEvent("dailyBonus:result", { detail: r }));
 
       // Ouvrir le popup seulement si on a des gains, et seulement 1 fois / jour / onglet
-      const granted = Array.isArray((r as any)?.granted) ? (r as any).granted : [];
-      if (granted.length && sessionStorage.getItem(shownKey) !== "1") {
+      //const granted = Array.isArray((r as any)?.granted) ? (r as any).granted : [];
+      if (sessionStorage.getItem(shownKey) !== "1") {
         sessionStorage.setItem(shownKey, "1");
         setDailyBonusPopup(r as any);
       }
+
 
       // update solde (simple & safe)
       await refreshMe();
