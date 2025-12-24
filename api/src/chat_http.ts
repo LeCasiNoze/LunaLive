@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { db } from "./db"; // ⚠️ doit exposer db.query(sql, params)
+import { db } from "./db.js"; // ⚠️ doit exposer db.query(sql, params)
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));

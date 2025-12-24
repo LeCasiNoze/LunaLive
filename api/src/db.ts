@@ -1,14 +1,12 @@
 // api/src/db.ts
-import { Pool, type QueryResult } from "pg";
-import { migrateAll } from "./db/migrations";
+import { Pool } from "pg";
+import { migrateAll } from "./db/migrations/index.js";
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // Render Postgres est quasi toujours en TLS en prod
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
 });
 
-// Petit alias pratique (si tu veux faire: db.query(...) ailleurs)
 export const db = {
   query: (text: string, params?: any[]) => pool.query(text, params),
 };

@@ -1,23 +1,22 @@
 // api/src/db/migrations/index.ts
 import type { Pool } from "pg";
 
-import { mig001_core } from "./mig001_core";
-import { mig002_chat_tables } from "./mig002_chat_tables";
-import { mig003_users_upgrade } from "./mig003_users_upgrade";
-import { mig004_streamers_upgrade } from "./mig004_streamers_upgrade";
-import { mig005_provider_indexes } from "./mig005_provider_indexes";
-import { mig006_chat_indexes } from "./mig006_chat_indexes";
-import { mig007_live_stats } from "./mig007_live_stats";
-import { mig008_follows } from "./mig008_follows";
-import { mig009_push } from "./mig009_push";
-import { mig010_wallet_economy } from "./mig010_wallet_economy";
-import { mig011_rubis_ledger } from "./mig011_rubis_ledger";
-import { mig012_streamer_chest } from "./mig012_streamer_chest";
-import { mig013_daily_caps_wheels } from "./mig013_daily_caps_wheels";
-import { mig014_daily_bonus } from "./mig014_daily_bonus";
+import { mig001_core } from "./mig001_core.js";
+import { mig002_chat_tables } from "./mig002_chat_tables.js";
+import { mig003_users_upgrade } from "./mig003_users_upgrade.js";
+import { mig004_streamers_upgrade } from "./mig004_streamers_upgrade.js";
+import { mig005_provider_indexes } from "./mig005_provider_indexes.js";
+import { mig006_chat_indexes } from "./mig006_chat_indexes.js";
+import { mig007_live_stats } from "./mig007_live_stats.js";
+import { mig008_follows } from "./mig008_follows.js";
+import { mig009_push } from "./mig009_push.js";
+import { mig010_wallet_economy } from "./mig010_wallet_economy.js";
+import { mig011_rubis_ledger } from "./mig011_rubis_ledger.js";
+import { mig012_streamer_chest } from "./mig012_streamer_chest.js";
+import { mig013_daily_caps_wheels } from "./mig013_daily_caps_wheels.js";
+import { mig014_daily_bonus } from "./mig014_daily_bonus.js";
 
 export async function migrateAll(pool: Pool) {
-  // Ordre important (FK + backfills)
   await mig001_core(pool);
   await mig002_chat_tables(pool);
 
@@ -36,5 +35,6 @@ export async function migrateAll(pool: Pool) {
 
   await mig012_streamer_chest(pool);
   await mig013_daily_caps_wheels(pool);
+
   await mig014_daily_bonus(pool);
 }
