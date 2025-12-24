@@ -41,10 +41,8 @@ export function ChatMessageBubble({ msg, streamerAppearance }: { msg: ChatMsgLik
   // lvl 2: bloque couleurs pseudo (tout le monde = streamer)
   // lvl 3: bloque couleurs pseudo + cadrans
   const allowViewerNameColor = lvl < 2;
-  const allowViewerFrame = lvl < 3;
 
   const effectiveUnameColor = allowViewerNameColor ? skinUnameColor : null;
-  const effectiveFrameId = allowViewerFrame ? frame?.frameId : null;
 
   const hatEmoji = avatar.hatId === "luna_cap" ? (avatar.hatEmoji || "🧢") : null;
 
