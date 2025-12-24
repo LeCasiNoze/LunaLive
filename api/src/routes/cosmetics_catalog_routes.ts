@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { COSMETICS_CATALOG } from "../cosmetics_catalog";
+import { COSMETICS_CATALOG } from "../cosmetics_catalog.js";
 
 export const cosmeticsCatalogRoutes = Router();
 
