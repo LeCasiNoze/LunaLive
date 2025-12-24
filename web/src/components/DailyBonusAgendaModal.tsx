@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { claimDailyBonusToday, claimDailyBonusMilestone } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
 
@@ -85,7 +86,6 @@ function milestoneStyle(status: Milestone["status"]) {
   if (status === "claimed") return { ...base, opacity: 0.75 };
   if (status === "locked") return { ...base, opacity: 0.55, filter: "grayscale(1)" };
 
-  // claimable
   return {
     ...base,
     cursor: "pointer",
@@ -144,7 +144,16 @@ export function DailyBonusAgendaModal({
     }
   }
 
-  return (
+  // ✅ Escape pour fermer
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -154,7 +163,7 @@ export function DailyBonusAgendaModal({
         background: "rgba(0,0,0,0.65)",
         display: "grid",
         placeItems: "center",
-        zIndex: 9999,
+        zIndex: 2147483647, // ✅ au-dessus de tout
         padding: 16,
       }}
       onMouseDown={(e) => {
@@ -261,7 +270,11 @@ export function DailyBonusAgendaModal({
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                       <div style={{ fontWeight: 950 }}>{d.label}</div>
                       <div className="mutedSmall" style={{ opacity: 0.75 }}>
-                        {d.status === "claimed" || d.status === "today_claimed" ? "✓" : d.status === "missed" ? "×" : ""}
+                        {d.status === "claimed" || d.status === "today_claimed"
+                          ? "✓"
+                          : d.status === "missed"
+                            ? "×"
+                            : ""}
                       </div>
                     </div>
                     <div style={{ fontWeight: 900, fontSize: 14 }}>{rewardLabel(d.reward)}</div>
@@ -294,13 +307,20 @@ export function DailyBonusAgendaModal({
                       title={m.status === "claimable" ? "Cliquer pour récupérer" : undefined}
                     >
                       {m.milestone} jours{" "}
-                      {m.status === "claimed" ? "✓" : m.status === "claimable" ? (busy === `m${m.milestone}` ? "…" : "★") : "🔒"}
+                      {m.status === "claimed"
+                        ? "✓"
+                        : m.status === "claimable"
+                          ? busy === `m${m.milestone}`
+                            ? "…"
+                            : "★"
+                          : "🔒"}
                     </div>
                   ))}
                 </div>
 
                 <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.8, lineHeight: 1.5 }}>
-                  • 20j = Skin (unique, sinon +20 rubis)<br />
+                  • 20j = Skin (unique, sinon +20 rubis)
+                  <br />
                   • 30j = Titre (unique, sinon +1 jeton prestige)
                 </div>
               </div>
@@ -312,9 +332,12 @@ export function DailyBonusAgendaModal({
               <div className="panelTitle">Informations</div>
               <div className="panel" style={{ marginTop: 12 }}>
                 <div className="mutedSmall" style={{ opacity: 0.85, lineHeight: 1.55 }}>
-                  • 1 récupération par jour (timezone Europe/Paris).<br />
-                  • Cycle hebdo qui se répète : Lun 3 / Mar 3 / Mer 🎡 / Jeu 5 / Ven 5 / Sam 🎡 / Dim 10.<br />
-                  • Les paliers 5/10/20/30 se débloquent selon le nombre de jours claimés dans le mois (pas forcément en streak).<br />
+                  • 1 récupération par jour (timezone Europe/Paris).
+                  <br />
+                  • Cycle hebdo qui se répète : Lun 3 / Mar 3 / Mer 🎡 / Jeu 5 / Ven 5 / Sam 🎡 / Dim 10.
+                  <br />
+                  • Les paliers 5/10/20/30 se débloquent selon le nombre de jours claimés dans le mois (pas forcément en streak).
+                  <br />
                   • Skins/titres seront visibles plus tard (shop/collections). Pour l’instant, on les stocke comme récompenses.
                 </div>
               </div>
@@ -333,6 +356,7 @@ export function DailyBonusAgendaModal({
           ) : null}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

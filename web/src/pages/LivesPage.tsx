@@ -5,7 +5,7 @@ import { getLives } from "../lib/api";
 import { svgThumb } from "../lib/thumb";
 import type { LiveCard } from "../lib/types";
 import { DailyWheelCard } from "../components/DailyWheelCard";
-import { DailyBonusHomeCard } from "../components/DailyBonusHomeCard";
+import { DailyBonusAccessCard } from "../components/DailyBonusAccessCard";
 
 type LiveCardVM = LiveCard & {
   thumbFallback: string;
@@ -108,7 +108,7 @@ export default function LivesPage() {
       <div className="livesLayout">
         <aside className="livesSidebar">
           <DailyWheelCard />
-          <DailyBonusHomeCard />
+          <DailyBonusAccessCard />
         </aside>
 
         <section className="livesMain">
