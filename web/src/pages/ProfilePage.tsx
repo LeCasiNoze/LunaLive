@@ -2,11 +2,14 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { applyStreamer, myStreamerRequest } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
+import { AchievementsModal } from "../components/AchievementsModal";
 
 export default function ProfilePage() {
   const { user, token, refreshMe } = useAuth();
   const [reqStatus, setReqStatus] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+
+  const [achOpen, setAchOpen] = React.useState(false);
 
   React.useEffect(() => {
     (async () => {
@@ -42,6 +45,18 @@ export default function ProfilePage() {
               <b>{user.rubis.toLocaleString("fr-FR")}</b> — rôle:{" "}
               <b>{user.role}</b>
             </p>
+
+            {/* ✅ Achievements */}
+            <div className="panel" style={{ marginTop: 14 }}>
+              <div className="panelTitle">Succès</div>
+              <div className="muted" style={{ marginBottom: 10 }}>
+                Consulte tes succès (Bronze / Silver / Gold / Master).
+              </div>
+
+              <button className="btnPrimary" onClick={() => setAchOpen(true)}>
+                Ouvrir les succès
+              </button>
+            </div>
 
             {(user.role === "streamer" || user.role === "admin") && (
               <div className="panel" style={{ marginTop: 14 }}>
@@ -87,6 +102,9 @@ export default function ProfilePage() {
           </>
         )}
       </div>
+
+      {/* Modal */}
+      <AchievementsModal open={achOpen} onClose={() => setAchOpen(false)} />
     </main>
   );
 }

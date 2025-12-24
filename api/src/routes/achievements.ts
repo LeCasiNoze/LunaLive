@@ -1,0 +1,701 @@
+// api/src/routes/achievements.ts
+import { Router } from "express";
+import { pool } from "../db.js";
+
+export const achievementsRouter = Router();
+
+type Tier = "bronze" | "silver" | "gold" | "master";
+
+type Metrics = {
+  userId: number;
+  lastLoginAt: string | null;
+
+  // month bounds (Paris)
+  monthStartIso: string;
+  monthEndIso: string;
+
+  // tracked
+  watchMinutesTotal: number;
+  watchMinutesMonth: number;
+  distinctLivesTotal: number;
+
+  chatMessagesTotal: number;
+
+  followsCount: number;
+  hasNotifyEnabled: boolean;
+  hasFollowQuick: boolean;
+
+  wheelSpinsTotal: number;
+
+  dailyBonusDaysMonth: number;
+
+  chestJoinsTotal: number;
+  chestWinningsTotal: number;
+
+  hasAnySub: boolean;
+  supportedStreamersDistinct: number;
+  supportSpentRubis: number;
+
+  noctambuleOk: boolean;
+  earlyBirdOk: boolean;
+};
+
+type AchievementDef = {
+  id: string;
+  tier: Tier;
+  category: string;
+  icon: string;
+
+  // visibilité
+  name: string;
+  desc?: string;
+  hint?: string;
+  hidden?: boolean;
+
+  // évaluation
+  eval: (m: Metrics, unlockedCountExceptCollector: number) => {
+    unlocked: boolean;
+    progress?: { current: number; target: number } | null;
+  };
+
+  rewardPreview?: string;
+};
+
+// helper query typé (db.query n’est pas générique chez toi)
+const q = <T extends Record<string, any> = any>(text: string, params: any[] = []) =>
+  pool.query<T>(text, params);
+
+async function tableExists(table: string) {
+  const r = await q<{ reg: string | null }>(`SELECT to_regclass($1) AS reg`, [`public.${table}`]);
+  return !!r.rows?.[0]?.reg;
+}
+
+async function getParisBounds() {
+  const r = await q<{ month_start: string; month_end: string }>(`
+    SELECT
+      (date_trunc('month', (now() AT TIME ZONE 'Europe/Paris')) AT TIME ZONE 'Europe/Paris')::timestamptz AS month_start,
+      ((date_trunc('month', (now() AT TIME ZONE 'Europe/Paris')) + interval '1 month') AT TIME ZONE 'Europe/Paris')::timestamptz AS month_end
+  `);
+
+  const monthStart = r.rows?.[0]?.month_start;
+  const monthEnd = r.rows?.[0]?.month_end;
+
+  return {
+    monthStartIso: monthStart ? new Date(monthStart).toISOString() : new Date().toISOString(),
+    monthEndIso: monthEnd ? new Date(monthEnd).toISOString() : new Date().toISOString(),
+  };
+}
+
+async function safeCount(sql: string, params: any[] = [], fallback = 0) {
+  try {
+    const r = await q<{ n: string | number | null }>(sql, params);
+    const v = Number(r.rows?.[0]?.n ?? fallback);
+    return Number.isFinite(v) ? v : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function safeSum(sql: string, params: any[] = [], fallback = 0) {
+  try {
+    const r = await q<{ s: string | number | null }>(sql, params);
+    const v = Number(r.rows?.[0]?.s ?? fallback);
+    return Number.isFinite(v) ? v : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function getMetrics(userId: number): Promise<Metrics> {
+  const { monthStartIso, monthEndIso } = await getParisBounds();
+
+  // users.last_login_at
+  const u = await q<{ last_login_at: string | null }>(
+    `SELECT last_login_at FROM users WHERE id=$1 LIMIT 1`,
+    [userId]
+  );
+  const lastLoginAt = u.rows?.[0]?.last_login_at ?? null;
+
+  const hasStreamViewerMinutes = await tableExists("stream_viewer_minutes");
+  const hasChatMessages = await tableExists("chat_messages");
+  const hasFollows = await tableExists("streamer_follows");
+  const hasWheel = await tableExists("daily_wheel_spins");
+  const hasChestParticipants = await tableExists("streamer_chest_participants");
+  const hasChestPayouts = await tableExists("streamer_chest_payouts");
+  const hasSubs = await tableExists("streamer_subscriptions");
+  const hasRubisTx = await tableExists("rubis_tx");
+
+  // daily bonus: supporte plusieurs noms possibles
+  const dailyBonusTables = ["daily_bonus_claims", "user_daily_bonus_claims", "daily_bonus_days"];
+  let dailyBonusTable: string | null = null;
+  for (const t of dailyBonusTables) {
+    if (await tableExists(t)) {
+      dailyBonusTable = t;
+      break;
+    }
+  }
+
+  const watchMinutesTotal = hasStreamViewerMinutes
+    ? await safeCount(`SELECT COUNT(*)::int AS n FROM stream_viewer_minutes WHERE user_id=$1`, [userId])
+    : 0;
+
+  const watchMinutesMonth = hasStreamViewerMinutes
+    ? await safeCount(
+        `
+        SELECT COUNT(*)::int AS n
+        FROM stream_viewer_minutes
+        WHERE user_id=$1
+          AND bucket_ts >= $2::timestamptz
+          AND bucket_ts <  $3::timestamptz
+        `,
+        [userId, monthStartIso, monthEndIso]
+      )
+    : 0;
+
+  const distinctLivesTotal = hasStreamViewerMinutes
+    ? await safeCount(
+        `
+        SELECT COUNT(DISTINCT live_session_id)::int AS n
+        FROM stream_viewer_minutes
+        WHERE user_id=$1
+        `,
+        [userId]
+      )
+    : 0;
+
+  const chatMessagesTotal = hasChatMessages
+    ? await safeCount(
+        `SELECT COUNT(*)::int AS n FROM chat_messages WHERE user_id=$1 AND deleted_at IS NULL`,
+        [userId]
+      )
+    : 0;
+
+  const followsCount = hasFollows
+    ? await safeCount(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE user_id=$1`, [userId])
+    : 0;
+
+  const hasNotifyEnabled = hasFollows
+    ? (await safeCount(
+        `SELECT COUNT(*)::int AS n FROM streamer_follows WHERE user_id=$1 AND notify_enabled=TRUE`,
+        [userId]
+      )) > 0
+    : false;
+
+  const hasFollowQuick = hasFollows
+    ? (await safeCount(
+        `
+        SELECT COUNT(*)::int AS n
+        FROM streamer_follows f
+        JOIN streamers s ON s.id = f.streamer_id
+        WHERE f.user_id=$1
+          AND s.live_started_at IS NOT NULL
+          AND f.created_at >= s.live_started_at
+          AND f.created_at <= s.live_started_at + interval '5 minutes'
+        `,
+        [userId]
+      )) > 0
+    : false;
+
+  const wheelSpinsTotal = hasWheel
+    ? await safeCount(`SELECT COUNT(*)::int AS n FROM daily_wheel_spins WHERE user_id=$1`, [userId])
+    : 0;
+
+  const dailyBonusDaysMonth = dailyBonusTable
+    ? await safeCount(
+        `
+        SELECT COUNT(*)::int AS n
+        FROM ${dailyBonusTable}
+        WHERE user_id=$1
+          AND day >= (date_trunc('month', (now() AT TIME ZONE 'Europe/Paris'))::date)
+          AND day <  ((date_trunc('month', (now() AT TIME ZONE 'Europe/Paris')) + interval '1 month')::date)
+        `,
+        [userId]
+      )
+    : 0;
+
+  const chestJoinsTotal = hasChestParticipants
+    ? await safeCount(`SELECT COUNT(*)::int AS n FROM streamer_chest_participants WHERE user_id=$1`, [userId])
+    : 0;
+
+  const chestWinningsTotal = hasChestPayouts
+    ? await safeSum(`SELECT COALESCE(SUM(amount),0)::int AS s FROM streamer_chest_payouts WHERE user_id=$1`, [userId])
+    : 0;
+
+  const hasAnySub = hasSubs
+    ? (await safeCount(`SELECT COUNT(*)::int AS n FROM streamer_subscriptions WHERE user_id=$1`, [userId])) > 0
+    : false;
+
+  const supportedFromSubs = hasSubs
+    ? await safeCount(`SELECT COUNT(DISTINCT streamer_id)::int AS n FROM streamer_subscriptions WHERE user_id=$1`, [userId])
+    : 0;
+
+  const supportedFromSupportTx = hasRubisTx
+    ? await safeCount(
+        `
+        SELECT COUNT(DISTINCT streamer_id)::int AS n
+        FROM rubis_tx
+        WHERE from_user_id=$1
+          AND kind='support'
+          AND status='succeeded'
+          AND streamer_id IS NOT NULL
+        `,
+        [userId]
+      )
+    : 0;
+
+  const supportedStreamersDistinct = Math.max(supportedFromSubs, supportedFromSupportTx);
+
+  const supportSpentRubis = hasRubisTx
+    ? await safeSum(
+        `
+        SELECT COALESCE(SUM(amount),0)::int AS s
+        FROM rubis_tx
+        WHERE from_user_id=$1
+          AND kind='support'
+          AND status='succeeded'
+        `,
+        [userId]
+      )
+    : 0;
+
+  // Noctambule / Early Bird : 30 minutes watch + 1 msg dans la fenêtre
+  async function windowOk(startHour: number, endHour: number) {
+    if (!hasStreamViewerMinutes || !hasChatMessages) return false;
+
+    const ok = await safeCount(
+      `
+      WITH w AS (
+        SELECT date_trunc('day', (bucket_ts AT TIME ZONE 'Europe/Paris')) AS d,
+               COUNT(*)::int AS minutes
+        FROM stream_viewer_minutes
+        WHERE user_id=$1
+          AND bucket_ts >= $2::timestamptz AND bucket_ts < $3::timestamptz
+          AND EXTRACT(HOUR FROM (bucket_ts AT TIME ZONE 'Europe/Paris')) >= $4
+          AND EXTRACT(HOUR FROM (bucket_ts AT TIME ZONE 'Europe/Paris')) <  $5
+        GROUP BY 1
+      ),
+      c AS (
+        SELECT date_trunc('day', (created_at AT TIME ZONE 'Europe/Paris')) AS d,
+               COUNT(*)::int AS msgs
+        FROM chat_messages
+        WHERE user_id=$1 AND deleted_at IS NULL
+          AND created_at >= $2::timestamptz AND created_at < $3::timestamptz
+          AND EXTRACT(HOUR FROM (created_at AT TIME ZONE 'Europe/Paris')) >= $4
+          AND EXTRACT(HOUR FROM (created_at AT TIME ZONE 'Europe/Paris')) <  $5
+        GROUP BY 1
+      )
+      SELECT COUNT(*)::int AS n
+      FROM w
+      JOIN c USING (d)
+      WHERE w.minutes >= 30 AND c.msgs >= 1
+      `,
+      [userId, monthStartIso, monthEndIso, startHour, endHour]
+    );
+
+    return ok > 0;
+  }
+
+  const noctambuleOk = await windowOk(2, 6); // 02:00 - 05:59
+  const earlyBirdOk = await windowOk(5, 7); // 05:00 - 06:59
+
+  return {
+    userId,
+    lastLoginAt,
+    monthStartIso,
+    monthEndIso,
+
+    watchMinutesTotal,
+    watchMinutesMonth,
+    distinctLivesTotal,
+
+    chatMessagesTotal,
+
+    followsCount,
+    hasNotifyEnabled,
+    hasFollowQuick,
+
+    wheelSpinsTotal,
+
+    dailyBonusDaysMonth,
+
+    chestJoinsTotal,
+    chestWinningsTotal,
+
+    hasAnySub,
+    supportedStreamersDistinct,
+    supportSpentRubis,
+
+    noctambuleOk,
+    earlyBirdOk,
+  };
+}
+
+const defs: AchievementDef[] = [
+  // ───────────────── Bronze (tuto)
+  {
+    id: "bronze_welcome",
+    tier: "bronze",
+    category: "Découverte",
+    icon: "🌙",
+    name: "Bienvenue sur LunaLive",
+    desc: "Créer un compte.",
+    eval: (m) => ({ unlocked: true }),
+  },
+  {
+    id: "bronze_first_login",
+    tier: "bronze",
+    category: "Découverte",
+    icon: "🔑",
+    name: "Premier pas",
+    desc: "Se connecter une fois.",
+    eval: (m) => ({ unlocked: !!m.lastLoginAt }),
+  },
+  {
+    id: "bronze_first_live",
+    tier: "bronze",
+    category: "Watch & Lives",
+    icon: "📺",
+    name: "Premier live",
+    desc: "Regarder un live (5 minutes).",
+    eval: (m) => ({ unlocked: m.watchMinutesTotal >= 5, progress: { current: m.watchMinutesTotal, target: 5 } }),
+  },
+  {
+    id: "bronze_first_message",
+    tier: "bronze",
+    category: "Chat & Social",
+    icon: "💬",
+    name: "Premier message",
+    desc: "Envoyer 1 message dans le chat.",
+    eval: (m) => ({ unlocked: m.chatMessagesTotal >= 1, progress: { current: m.chatMessagesTotal, target: 1 } }),
+  },
+  {
+    id: "bronze_first_follow",
+    tier: "bronze",
+    category: "Chat & Social",
+    icon: "⭐",
+    name: "Premier follow",
+    desc: "Suivre un streamer.",
+    eval: (m) => ({ unlocked: m.followsCount >= 1, progress: { current: m.followsCount, target: 1 } }),
+  },
+  {
+    id: "bronze_notify_on",
+    tier: "bronze",
+    category: "Chat & Social",
+    icon: "🔔",
+    name: "Cloche activée",
+    desc: "Activer la notification d’un follow.",
+    eval: (m) => ({ unlocked: m.hasNotifyEnabled }),
+  },
+  {
+    id: "bronze_first_spin",
+    tier: "bronze",
+    category: "Roue & Bonus",
+    icon: "🎡",
+    name: "Premier tour",
+    desc: "Faire tourner la roue 1 fois.",
+    eval: (m) => ({ unlocked: m.wheelSpinsTotal >= 1, progress: { current: m.wheelSpinsTotal, target: 1 } }),
+  },
+  {
+    id: "bronze_first_daily_bonus",
+    tier: "bronze",
+    category: "Roue & Bonus",
+    icon: "🗓️",
+    name: "Premier bonus",
+    desc: "Récupérer un bonus quotidien 1 fois.",
+    eval: (m) => ({ unlocked: m.dailyBonusDaysMonth >= 1, progress: { current: m.dailyBonusDaysMonth, target: 1 } }),
+  },
+  {
+    id: "bronze_first_support",
+    tier: "bronze",
+    category: "Support",
+    icon: "💎",
+    name: "Premier soutien",
+    desc: "S’abonner (ou tip) une fois.",
+    eval: (m) => ({ unlocked: m.hasAnySub || m.supportSpentRubis > 0 }),
+  },
+  {
+    id: "bronze_first_chest",
+    tier: "bronze",
+    category: "Coffre",
+    icon: "🎁",
+    name: "Premier coffre",
+    desc: "Participer à un coffre streamer.",
+    eval: (m) => ({ unlocked: m.chestJoinsTotal >= 1, progress: { current: m.chestJoinsTotal, target: 1 } }),
+  },
+
+  // ───────────────── Silver (actif chill)
+  {
+    id: "silver_habitue",
+    tier: "silver",
+    category: "Roue & Bonus",
+    icon: "📅",
+    name: "Habitué",
+    eval: (m) => ({ unlocked: m.dailyBonusDaysMonth >= 10, progress: { current: m.dailyBonusDaysMonth, target: 10 } }),
+  },
+  {
+    id: "silver_rituel_roue",
+    tier: "silver",
+    category: "Roue & Bonus",
+    icon: "🎡",
+    name: "Rituel de la roue",
+    eval: (m) => ({ unlocked: m.wheelSpinsTotal >= 10, progress: { current: m.wheelSpinsTotal, target: 10 } }),
+  },
+  {
+    id: "silver_discussion",
+    tier: "silver",
+    category: "Chat & Social",
+    icon: "💬",
+    name: "Discussion",
+    eval: (m) => ({ unlocked: m.chatMessagesTotal >= 250, progress: { current: m.chatMessagesTotal, target: 250 } }),
+  },
+  {
+    id: "silver_fidele",
+    tier: "silver",
+    category: "Watch & Lives",
+    icon: "📺",
+    name: "Fidèle",
+    eval: (m) => ({ unlocked: m.distinctLivesTotal >= 10, progress: { current: m.distinctLivesTotal, target: 10 } }),
+  },
+  {
+    id: "silver_curieux",
+    tier: "silver",
+    category: "Chat & Social",
+    icon: "⭐",
+    name: "Curieux",
+    eval: (m) => ({ unlocked: m.followsCount >= 15, progress: { current: m.followsCount, target: 15 } }),
+  },
+  {
+    id: "silver_coffres",
+    tier: "silver",
+    category: "Coffre",
+    icon: "🎁",
+    name: "Coffres & compagnie",
+    eval: (m) => ({ unlocked: m.chestJoinsTotal >= 10, progress: { current: m.chestJoinsTotal, target: 10 } }),
+  },
+  {
+    id: "silver_supporter",
+    tier: "silver",
+    category: "Support",
+    icon: "💎",
+    name: "Supporter",
+    eval: (m) => ({ unlocked: m.supportSpentRubis >= 1000, progress: { current: m.supportSpentRubis, target: 1000 } }),
+  },
+  {
+    id: "silver_affut",
+    tier: "silver",
+    category: "Chat & Social",
+    icon: "⏱️",
+    name: "À l’affût",
+    eval: (m) => ({ unlocked: m.hasFollowQuick }),
+  },
+
+  // ───────────────── Gold (très actif)
+  {
+    id: "gold_assidu",
+    tier: "gold",
+    category: "Roue & Bonus",
+    icon: "📅",
+    name: "Assidu",
+    hint: "On te voit souvent par ici…",
+    eval: (m) => ({ unlocked: m.dailyBonusDaysMonth >= 20, progress: { current: m.dailyBonusDaysMonth, target: 20 } }),
+  },
+  {
+    id: "gold_roulette",
+    tier: "gold",
+    category: "Roue & Bonus",
+    icon: "🎡",
+    name: "Roulette",
+    hint: "La roue n’a plus de secrets.",
+    eval: (m) => ({ unlocked: m.wheelSpinsTotal >= 50, progress: { current: m.wheelSpinsTotal, target: 50 } }),
+  },
+  {
+    id: "gold_grande_discussion",
+    tier: "gold",
+    category: "Chat & Social",
+    icon: "💬",
+    name: "Grande discussion",
+    hint: "Ça parle beaucoup ici…",
+    eval: (m) => ({ unlocked: m.chatMessagesTotal >= 2000, progress: { current: m.chatMessagesTotal, target: 2000 } }),
+  },
+  {
+    id: "gold_marathon",
+    tier: "gold",
+    category: "Watch & Lives",
+    icon: "⏳",
+    name: "Marathon",
+    hint: "Une présence qui commence à peser.",
+    eval: (m) => ({ unlocked: m.watchMinutesMonth >= 600, progress: { current: m.watchMinutesMonth, target: 600 } }), // 10h
+  },
+  {
+    id: "gold_explorateur",
+    tier: "gold",
+    category: "Watch & Lives",
+    icon: "🧭",
+    name: "Explorateur",
+    hint: "Tu aimes varier les lives.",
+    eval: (m) => ({ unlocked: m.distinctLivesTotal >= 15, progress: { current: m.distinctLivesTotal, target: 15 } }),
+  },
+  {
+    id: "gold_super_follow",
+    tier: "gold",
+    category: "Chat & Social",
+    icon: "🌟",
+    name: "Super-follow",
+    hint: "Ton feed doit être chargé…",
+    eval: (m) => ({ unlocked: m.followsCount >= 20, progress: { current: m.followsCount, target: 20 } }),
+  },
+  {
+    id: "gold_mecene",
+    tier: "gold",
+    category: "Support",
+    icon: "🤝",
+    name: "Mécène",
+    hint: "Soutenir, encore et encore.",
+    eval: (m) => ({ unlocked: m.supportedStreamersDistinct >= 10, progress: { current: m.supportedStreamersDistinct, target: 10 } }),
+  },
+  {
+    id: "gold_coffre_fort",
+    tier: "gold",
+    category: "Coffre",
+    icon: "🧰",
+    name: "Coffre-fort",
+    hint: "Le coffre t’aime bien.",
+    eval: (m) => ({ unlocked: m.chestWinningsTotal >= 200, progress: { current: m.chestWinningsTotal, target: 200 } }),
+  },
+  {
+    id: "gold_noctambule",
+    tier: "gold",
+    category: "Watch & Lives",
+    icon: "🌙",
+    name: "Noctambule",
+    hint: "Tu traînes tard…",
+    eval: (m) => ({ unlocked: m.noctambuleOk }),
+  },
+  {
+    id: "gold_early_bird",
+    tier: "gold",
+    category: "Watch & Lives",
+    icon: "🌅",
+    name: "Early Bird",
+    hint: "Debout avant tout le monde…",
+    eval: (m) => ({ unlocked: m.earlyBirdOk }),
+  },
+
+  // ───────────────── Master (rare / tryhard)
+  {
+    id: "master_sous_la_lune",
+    tier: "master",
+    category: "Master",
+    icon: "🌕",
+    name: "Sous la lune",
+    hidden: true,
+    rewardPreview: "Badge rare (à venir)",
+    eval: (m) => ({ unlocked: m.watchMinutesMonth >= 1800, progress: { current: m.watchMinutesMonth, target: 1800 } }), // 30h
+  },
+  {
+    id: "master_pretre_roue",
+    tier: "master",
+    category: "Master",
+    icon: "🎡",
+    name: "Prêtre de la roue",
+    hidden: true,
+    rewardPreview: "Badge rare (à venir)",
+    eval: (m) => ({ unlocked: m.wheelSpinsTotal >= 200, progress: { current: m.wheelSpinsTotal, target: 200 } }),
+  },
+  {
+    id: "master_archiviste",
+    tier: "master",
+    category: "Master",
+    icon: "📜",
+    name: "Archiviste",
+    hidden: true,
+    rewardPreview: "Titre animé (à venir)",
+    eval: (m) => ({ unlocked: m.chatMessagesTotal >= 10000, progress: { current: m.chatMessagesTotal, target: 10000 } }),
+  },
+  {
+    id: "master_pilier",
+    tier: "master",
+    category: "Master",
+    icon: "🛡️",
+    name: "Pilier",
+    hidden: true,
+    rewardPreview: "Badge ultra rare (à venir)",
+    eval: (m) => ({ unlocked: m.supportedStreamersDistinct >= 20, progress: { current: m.supportedStreamersDistinct, target: 20 } }),
+  },
+  {
+    id: "master_parfait",
+    tier: "master",
+    category: "Master",
+    icon: "👑",
+    name: "Parfait",
+    hidden: true,
+    rewardPreview: "Titre unique (à venir)",
+    eval: (m) => ({ unlocked: m.dailyBonusDaysMonth >= 30, progress: { current: m.dailyBonusDaysMonth, target: 30 } }),
+  },
+  {
+    id: "master_collectionneur",
+    tier: "master",
+    category: "Meta",
+    icon: "🏆",
+    name: "Collectionneur",
+    hidden: false,
+    rewardPreview: "Cosmétique (à venir)",
+    eval: (_m, unlockedCountExceptCollector) => ({
+      unlocked: unlockedCountExceptCollector >= 20,
+      progress: { current: unlockedCountExceptCollector, target: 20 },
+    }),
+  },
+];
+
+achievementsRouter.get("/", async (req, res) => {
+  const userIdRaw = (req as any)?.user?.id ?? (req as any)?.userId ?? null;
+  const userId = Number(userIdRaw);
+
+  if (!Number.isFinite(userId) || userId <= 0) {
+    return res.status(401).json({ ok: false, error: "unauthorized" });
+  }
+
+  const m = await getMetrics(userId);
+
+  // 1) calc unlocked sans le collectionneur
+  const prelim = defs.map((d) => {
+    const r = d.eval(m, 0);
+    return { id: d.id, unlocked: !!r.unlocked };
+  });
+
+  const unlockedCountExceptCollector = prelim.filter((x) => x.unlocked && x.id !== "master_collectionneur").length;
+
+  // 2) build final payload
+  const achievements = defs.map((d) => {
+    const r = d.eval(m, unlockedCountExceptCollector);
+    const unlocked = !!r.unlocked;
+
+    // visibilité: bronze => desc, silver => nom only, gold => nom + hint, master => caché si locked
+    const isHiddenLocked = !!d.hidden && !unlocked;
+    const displayName = isHiddenLocked ? "???" : d.name;
+
+    return {
+      id: d.id,
+      tier: d.tier,
+      category: d.category,
+      icon: isHiddenLocked ? "❔" : d.icon,
+      name: displayName,
+
+      desc: d.tier === "bronze" ? d.desc ?? null : null,
+      hint: d.tier === "gold" ? d.hint ?? null : null,
+
+      rewardPreview: d.tier === "master" ? d.rewardPreview ?? null : null,
+
+      unlocked,
+      progress: r.progress ?? null,
+    };
+  });
+
+  res.json({
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    monthStart: m.monthStartIso,
+    monthEnd: m.monthEndIso,
+    achievements,
+  });
+});

@@ -744,3 +744,34 @@ export async function claimDailyBonusMilestone(token: string, milestone: 5 | 10 
     }
   );
 }
+
+// web/src/lib/api.ts
+
+export type ApiAchievement = {
+  id: string;
+  tier: "bronze" | "silver" | "gold" | "master";
+  category: string;
+  icon: string;
+  name: string;
+
+  desc: string | null;
+  hint: string | null;
+  rewardPreview: string | null;
+
+  unlocked: boolean;
+  progress: null | { current: number; target: number };
+};
+
+export type ApiMyAchievementsResp = {
+  ok: true;
+  generatedAt: string;
+  monthStart: string;
+  monthEnd: string;
+  achievements: ApiAchievement[];
+};
+
+export async function getMyAchievements(token: string) {
+  return j<ApiMyAchievementsResp>("/me/achievements", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

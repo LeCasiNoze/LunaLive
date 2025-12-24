@@ -29,6 +29,7 @@ import { wheelRouter } from "./routes/wheel.js";
 import { chestRouter } from "./routes/chest.js";
 import { dailyBonusRoutes } from "./routes/daily_bonus_routes.js";
 import { requireAuth } from "./auth.js";
+import { achievementsRouter } from "./routes/achievements.js";
 
 export function createApp() {
   const app = express();
@@ -69,7 +70,8 @@ export function createApp() {
   app.use(wheelRouter);
   app.use(chestRouter);
   app.use("/me/daily-bonus", requireAuth, dailyBonusRoutes);
-
+  app.use("/me/achievements", requireAuth, achievementsRouter);
+  
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
 
