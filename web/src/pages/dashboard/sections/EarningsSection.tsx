@@ -7,8 +7,18 @@ const RUBIS_PER_EUR = 100;
 
 type EarningsResp = {
   ok: true;
-  streamer: { id: string; slug: string } | null;
-  wallet: { availableRubis: number; lifetimeRubis: number };
+  streamer: null | {
+    id: string;
+    slug: string;
+    modsPercentBp: number;
+    modsPercent: number; // ex: 12.5
+  };
+  wallet: {
+    availableRubis: number;
+    lifetimeRubis: number;
+    reservedRubis: number;
+    breakdownByWeight: Record<string, number>; // { "10000": 123, "3500": 45 }
+  };
   last: Array<{
     spend_type: string;
     spent_rubis: number;
@@ -49,31 +59,40 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
 
   const [cashoutEur, setCashoutEur] = React.useState<string>("");
 
+  // mods %
+  const [modsPct, setModsPct] = React.useState<string>("0");
+  const [modsSaving, setModsSaving] = React.useState(false);
+  const [modsError, setModsError] = React.useState<string | null>(null);
+
+  const reload = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const r = await j<EarningsResp>("/streamer/me/earnings", {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      setData(r);
+
+      const pct = Number(r?.streamer?.modsPercent ?? 0);
+      setModsPct(String(Number.isFinite(pct) ? pct : 0));
+    } catch (e: any) {
+      setError(String(e?.message || "Erreur"));
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
   React.useEffect(() => {
     let mounted = true;
     (async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const r = await j<EarningsResp>("/streamer/me/earnings", {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        });
-        if (!mounted) return;
-        setData(r);
-      } catch (e: any) {
-        if (!mounted) return;
-        setError(String(e?.message || "Erreur"));
-      } finally {
-        if (mounted) setLoading(false);
-      }
+      if (!mounted) return;
+      await reload();
     })();
-
     return () => {
       mounted = false;
     };
-  }, [token]);
+  }, [reload]);
 
-  // mini “graph” par types (sub / tip / event / other) basé sur last[]
   const buckets = React.useMemo(() => {
     const out = { sub: 0, tip: 0, event: 0, other: 0 };
     for (const row of data?.last ?? []) {
@@ -90,10 +109,19 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
   const maxBucket = Math.max(1, ...Object.values(buckets));
 
   const available = Number(data?.wallet?.availableRubis ?? 0);
-  const approxEur = eurFromRubisValue(available); // ⚠️ approximation: vrai cashout = pondération par lots (backend cashout à venir)
+  const lifetime = Number(data?.wallet?.lifetimeRubis ?? 0);
+  const reserved = Number(data?.wallet?.reservedRubis ?? 0);
+
+  const approxEur = eurFromRubisValue(available);
 
   const eurWanted = Number(String(cashoutEur).replace(",", "."));
   const isEurValid = Number.isFinite(eurWanted) && eurWanted > 0;
+
+  const breakdownByWeight = data?.wallet?.breakdownByWeight ?? {};
+  const weightEntries = Object.entries(breakdownByWeight)
+    .map(([w, v]) => [Number(w), Number(v)] as const)
+    .filter(([w, v]) => Number.isFinite(w) && Number.isFinite(v) && v > 0)
+    .sort((a, b) => b[0] - a[0]);
 
   return (
     <div className="panel">
@@ -112,17 +140,110 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
           <div className="panel" style={{ marginTop: 12 }}>
             <div className="mutedSmall">Solde dispo</div>
             <div style={{ fontWeight: 950, fontSize: 22 }}>{available.toLocaleString()} rubis</div>
+
             <div className="mutedSmall" style={{ marginTop: 6 }}>
               Équivalence affichée (indicative) :{" "}
-              <strong style={{ color: "rgba(255,255,255,0.9)" }}>
-                {approxEur.toFixed(2)} €
-              </strong>
+              <strong style={{ color: "rgba(255,255,255,0.9)" }}>{approxEur.toFixed(2)} €</strong>
             </div>
-            <div className="mutedSmall" style={{ marginTop: 6 }}>
-              (Le vrai cashout dépend des poids de lots, on le branche juste après côté API cashout.)
+
+            <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.8 }}>
+              Lifetime: <strong style={{ color: "rgba(255,255,255,0.9)" }}>{lifetime.toLocaleString()}</strong> •
+              Réservé cashout: <strong style={{ color: "rgba(255,255,255,0.9)" }}>{reserved.toLocaleString()}</strong>
             </div>
           </div>
 
+          {/* ✅ Répartition du solde (poids -> rubis) */}
+          <div className="panel" style={{ marginTop: 12 }}>
+            <div className="mutedSmall" style={{ marginBottom: 8 }}>Répartition du solde (poids → rubis)</div>
+
+            {weightEntries.length ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {weightEntries.map(([w, v]) => (
+                  <div
+                    key={String(w)}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 999,
+                      background: "rgba(255,255,255,0.05)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      fontSize: 12,
+                    }}
+                    title={`weight_bp=${w}`}
+                  >
+                    <strong>{(w / 10000).toFixed(2)}</strong> → {v.toLocaleString()}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mutedSmall" style={{ opacity: 0.75 }}>—</div>
+            )}
+          </div>
+
+          {/* ✅ % modos */}
+          <div className="panel" style={{ marginTop: 12 }}>
+            <div className="mutedSmall" style={{ marginBottom: 6 }}>Part des modos (%)</div>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                value={modsPct}
+                onChange={(e) => setModsPct(e.target.value)}
+                className="input"
+                inputMode="decimal"
+                placeholder="ex: 12.5"
+                style={{ width: 140 }}
+              />
+
+              <button
+                type="button"
+                className="btnPrimarySmall"
+                disabled={modsSaving}
+                onClick={async () => {
+                  if (!token) return;
+
+                  setModsError(null);
+                  const pct = Number(String(modsPct).replace(",", "."));
+                  if (!Number.isFinite(pct) || pct < 0) {
+                    setModsError("Montant invalide.");
+                    return;
+                  }
+
+                  setModsSaving(true);
+                  try {
+                    await j("/streamer/me/mods-percent", {
+                      method: "POST",
+                      headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({ percent: pct }),
+                    });
+                    await reload();
+                  } catch (e: any) {
+                    setModsError(String(e?.message || "Erreur"));
+                  } finally {
+                    setModsSaving(false);
+                  }
+                }}
+              >
+                {modsSaving ? "…" : "Enregistrer"}
+              </button>
+
+              <div className="mutedSmall" style={{ opacity: 0.8 }}>
+                Actuel:{" "}
+                <strong style={{ color: "rgba(255,255,255,0.9)" }}>
+                  {Number(data?.streamer?.modsPercent ?? 0).toLocaleString()}%
+                </strong>
+              </div>
+            </div>
+
+            {modsError ? (
+              <div className="mutedSmall" style={{ marginTop: 8, color: "rgba(255,90,90,0.95)" }}>
+                {modsError}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Répartition 30 dernières entrées (déjà ok) */}
           <div className="panel" style={{ marginTop: 12 }}>
             <div className="mutedSmall" style={{ marginBottom: 8 }}>Répartition (30 dernières entrées)</div>
 
@@ -162,16 +283,11 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
                 className="btnPrimarySmall"
                 disabled={!isEurValid}
                 onClick={() => {
-                  // ✅ on branchera l’API cashout (déduction lots w élevé en premier + cashout_requests)
-                  alert("Cashout API à brancher: on envoie une demande et on déduit par poids décroissant.");
+                  alert("Cashout API à brancher (tu l'as déjà côté backend).");
                 }}
               >
                 Demander
               </button>
-            </div>
-
-            <div className="mutedSmall" style={{ marginTop: 8 }}>
-              Ici on fera : conversion € → “valeur rubis pondérée”, puis déduction des lots à poids élevé en premier.
             </div>
           </div>
 

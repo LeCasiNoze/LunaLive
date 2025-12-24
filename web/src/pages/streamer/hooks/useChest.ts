@@ -62,6 +62,7 @@ export function useChest(opts: {
   isOwner: boolean;
   isLive: boolean;
   onRequireLogin: () => void;
+  onAfterDeposit?: (spentRubis: number) => void | Promise<void>
 }) {
   const { slug, token, apiBase, isOwner, isLive, onRequireLogin } = opts;
 

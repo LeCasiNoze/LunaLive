@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useParams } from "react-router-dom";
 
-import { watchHeartbeat, subscribeStreamer } from "../../lib/api";
+import { watchHeartbeat, subscribeStreamer, me } from "../../lib/api";
 import { DlivePlayer } from "../../components/DlivePlayer";
 import { ChatPanel } from "../../components/ChatPanel";
 import { LoginModal } from "../../components/LoginModal";
@@ -57,14 +57,33 @@ export default function StreamerPage() {
 
   const isOwner = !!(myUserId != null && streamer?.ownerUserId != null && Number(streamer.ownerUserId) === Number(myUserId));
 
-  const chest = useChest({
+    const chest = useChest({
     slug: slug ?? null,
     token,
     apiBase: apiBase(),
     isOwner,
     isLive: !!streamer?.isLive,
     onRequireLogin: () => setLoginOpen(true),
-  });
+
+    // ✅ AJOUT
+    onAfterDeposit: async () => {
+        if (!token) return;
+        try {
+        const r: any = await me(token);
+        if (r?.ok && r?.user) {
+            // adapte selon ton AuthProvider
+            if (typeof (auth as any)?.setUser === "function") {
+            (auth as any).setUser(r.user);
+            } else if (typeof (auth as any)?.setAuth === "function") {
+            (auth as any).setAuth((prev: any) => ({ ...(prev || {}), user: r.user }));
+            } else {
+            // fallback simple si ton provider n’expose rien :
+            // window.location.reload();
+            }
+        }
+        } catch {}
+    },
+    });
 
   // heartbeat viewers
   React.useEffect(() => {
