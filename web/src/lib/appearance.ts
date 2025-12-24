@@ -3,9 +3,10 @@ import type React from "react";
 
 export type StreamerAppearance = {
   chat: {
-    usernameColor: string; // ✅ aligné API / dashboard
-    messageColor: string;  // ✅ aligné API / dashboard
-    sub?: any;             // réservé, plus tard
+    viewerSkinsLevel?: 1 | 2 | 3; // ✅ NEW
+    usernameColor: string;
+    messageColor: string;
+    sub?: any;
   };
 };
 
@@ -31,6 +32,7 @@ export const MSG_PRESETS = [
 
 export const DEFAULT_APPEARANCE: StreamerAppearance = {
   chat: {
+    viewerSkinsLevel: 1, // ✅ NEW
     usernameColor: "#7C4DFF",
     messageColor: "#FFFFFF",
   },
@@ -43,6 +45,13 @@ export function isHexColor(v: any) {
 
 export function cleanHex(v: any, fallback: string) {
   return isHexColor(v) ? String(v).trim().toUpperCase() : fallback;
+}
+
+function clampViewerSkinsLevel(v: any): 1 | 2 | 3 {
+  const n = Number(v);
+  if (n === 2) return 2;
+  if (n === 3) return 3;
+  return 1;
 }
 
 /**
@@ -62,8 +71,11 @@ export function normalizeAppearance(x: any): StreamerAppearance {
     DEFAULT_APPEARANCE.chat.messageColor
   );
 
+  const viewerSkinsLevel = clampViewerSkinsLevel(chatRaw.viewerSkinsLevel ?? 1);
+
   return {
     chat: {
+      viewerSkinsLevel,
       usernameColor,
       messageColor,
       sub: chatRaw.sub,

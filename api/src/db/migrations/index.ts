@@ -15,6 +15,7 @@ import { mig011_rubis_ledger } from "./mig011_rubis_ledger.js";
 import { mig012_streamer_chest } from "./mig012_streamer_chest.js";
 import { mig013_daily_caps_wheels } from "./mig013_daily_caps_wheels.js";
 import { mig014_daily_bonus } from "./mig014_daily_bonus.js";
+import { mig015_cosmetics_equipped } from "./mig015_cosmetics_equipped.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -37,4 +38,5 @@ export async function migrateAll(pool: Pool) {
   await mig013_daily_caps_wheels(pool);
 
   await mig014_daily_bonus(pool);
+  await mig015_cosmetics_equipped(pool);
 }

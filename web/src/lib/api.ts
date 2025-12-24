@@ -156,6 +156,42 @@ async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+export type MyCosmeticsResp = {
+  ok: true;
+  owned: Record<string, string[]>;
+  equipped: {
+    username: string | null;
+    badge: string | null;
+    title: string | null;
+    frame: string | null;
+    hat: string | null;
+  };
+  free?: Record<string, string[]>;
+};
+
+export async function myCosmetics(token: string): Promise<MyCosmeticsResp> {
+  const r = await fetch(`${BASE}/me/cosmetics`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return await r.json();
+}
+
+export async function equipCosmetic(
+  token: string,
+  kind: "username" | "badge" | "title" | "frame" | "hat",
+  code: string | null
+): Promise<{ ok: boolean; equipped?: any; error?: string }> {
+  const r = await fetch(`${BASE}/me/cosmetics/equip`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ kind, code }),
+  });
+  return await r.json();
+}
+
 export type ApiStreamerPage = {
   id: string;
   slug: string;

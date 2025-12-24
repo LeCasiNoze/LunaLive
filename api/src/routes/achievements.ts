@@ -678,19 +678,25 @@ achievementsRouter.get("/", async (req, res) => {
     const displayName = isHiddenLocked ? "???" : d.name;
 
     return {
-      id: d.id,
-      tier: d.tier,
-      category: d.category,
-      icon: isHiddenLocked ? "❔" : d.icon,
-      name: displayName,
+    id: d.id,
+    tier: d.tier,
+    category: d.category,
+    icon: isHiddenLocked ? "❔" : d.icon,
+    name: isHiddenLocked ? "???" : d.name,
 
-      desc: d.tier === "bronze" ? d.desc ?? null : null,
-      hint: d.tier === "gold" ? d.hint ?? null : null,
+    // ✅ NOUVELLE RÈGLE :
+    // - si unlocked => on révèle la desc pour tout le monde
+    // - sinon => bronze only
+    desc: unlocked ? (d.desc ?? null) : (d.tier === "bronze" ? (d.desc ?? null) : null),
 
-      rewardPreview: d.tier === "master" ? d.rewardPreview ?? null : null,
+    // hint: tu peux le laisser même quand unlocked (ça fait “lore”),
+    // ou le garder seulement quand locked, à toi :
+    hint: !unlocked && d.tier === "gold" ? (d.hint ?? null) : null,
 
-      unlocked,
-      progress: r.progress ?? null,
+    rewardPreview: d.tier === "master" ? d.rewardPreview ?? null : null,
+
+    unlocked,
+    progress: r.progress ?? null,
     };
   });
 

@@ -19,6 +19,7 @@ export type ChatSubAppearance = {
 };
 
 export type ChatAppearance = {
+  viewerSkinsLevel?: 1 | 2 | 3; // ✅ NEW
   usernameColor: string;
   messageColor: string;
   sub: ChatSubAppearance;
@@ -41,6 +42,7 @@ export const PRESET_COLORS = [
 
 export const DEFAULT_APPEARANCE: Appearance = {
   chat: {
+    viewerSkinsLevel: 1, // ✅ NEW
     usernameColor: "#7C4DFF",
     messageColor: "#FFFFFF",
     sub: {
@@ -57,10 +59,18 @@ export const DEFAULT_APPEARANCE: Appearance = {
   },
 };
 
+function clampViewerSkinsLevel(v: any): 1 | 2 | 3 {
+  const n = Number(v);
+  if (n === 2) return 2;
+  if (n === 3) return 3;
+  return 1;
+}
+
+// ✅ aligné avec le front (6 ou 8 hex)
 function isHexColor(s: any): s is string {
   if (typeof s !== "string") return false;
   const v = s.trim();
-  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v);
+  return /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v);
 }
 
 function clampBadgeText(s: any) {
@@ -77,6 +87,8 @@ export function normalizeAppearance(raw: any): Appearance {
   const base = DEFAULT_APPEARANCE;
 
   const chatRaw = raw?.chat ?? raw ?? {};
+
+  const viewerSkinsLevel = clampViewerSkinsLevel(chatRaw?.viewerSkinsLevel ?? base.chat.viewerSkinsLevel);
 
   const usernameColor = pickHex(chatRaw?.usernameColor, base.chat.usernameColor);
   const messageColor = pickHex(chatRaw?.messageColor, base.chat.messageColor);
@@ -97,6 +109,7 @@ export function normalizeAppearance(raw: any): Appearance {
 
   return {
     chat: {
+      viewerSkinsLevel,
       usernameColor,
       messageColor,
       sub: {
@@ -124,6 +137,8 @@ export function mergeAppearance(base: any, patch: any): Appearance {
   const chat = p?.chat ?? p;
 
   if (chat && typeof chat === "object") {
+    if (chat.viewerSkinsLevel !== undefined) out.chat.viewerSkinsLevel = chat.viewerSkinsLevel;
+
     if (chat.usernameColor !== undefined) out.chat.usernameColor = chat.usernameColor;
     if (chat.messageColor !== undefined) out.chat.messageColor = chat.messageColor;
 

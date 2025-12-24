@@ -1,7 +1,10 @@
+// web/src/components/ChatPanel.tsx
 import * as React from "react";
 import { io, type Socket } from "socket.io-client";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
+import { ChatMessageBubble } from "./chat/ChatMessageBubble";
+import type { ChatCosmetics } from "../lib/cosmetics";
 
 import {
   DEFAULT_APPEARANCE as DEFAULT_STREAMER_APPEARANCE,
@@ -9,6 +12,23 @@ import {
   type StreamerAppearance,
 } from "../lib/appearance";
 
+const DEBUG_FORCE_COSMETICS = true; // mets false quand fini
+const DEBUG_USER = "LeCasiNoze";
+
+// ⚠️ on caste en any pour pas se battre avec le type exact maintenant
+const DEBUG_COSMETICS: any = {
+  // exemples (adapte aux clés que ton ChatMessageBubble attend)
+  avatar: { frameId: "ghost_purple", hatId: "luna_cap" },
+  badges: ["SUB", "LUNA"],
+  title: { text: "Card Shark", style: "colored", color: "#a64cff" },
+
+  // pseudo skin (couleur/anim)
+  username: { colorId: "ghost_purple", animId: "rainbow_scroll" },
+};
+
+/* =========================================================
+   Types
+   ========================================================= */
 type ChatMsg = {
   id: number;
   userId: number;
@@ -16,6 +36,8 @@ type ChatMsg = {
   body: string;
   deleted?: boolean;
   createdAt: string;
+
+  cosmetics?: ChatCosmetics | null;
 };
 
 type JoinAck = {
@@ -38,8 +60,14 @@ type JoinAck = {
   me?: { id: number; username: string; role: string } | null;
 
   appearance?: StreamerAppearance;
+
+  // (optionnel, si tu veux le mettre dans le join ack un jour)
+  // chatPolicy?: { forceViewerNameColor?: boolean };
 };
 
+/* =========================================================
+   Helpers
+   ========================================================= */
 function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
 }
@@ -58,43 +86,59 @@ function fmtRemaining(untilIso?: string | null) {
   return `${d}j`;
 }
 
+/* =========================================================
+   Component
+   ========================================================= */
 export function ChatPanel({
   slug,
   onRequireLogin,
   compact = false,
   autoFocus = false,
-  onFollowsCount, // ✅
+  onFollowsCount,
 }: {
   slug: string;
   onRequireLogin: () => void;
   compact?: boolean;
   autoFocus?: boolean;
-  onFollowsCount?: (n: number) => void; // ✅
+  onFollowsCount?: (n: number) => void;
 }) {
+  /* -------------------------
+     Refs / callbacks
+     ------------------------- */
   const onFollowsCountRef = React.useRef<((n: number) => void) | undefined>(undefined);
-
   React.useEffect(() => {
     onFollowsCountRef.current = onFollowsCount;
   }, [onFollowsCount]);
 
+  const sockRef = React.useRef<Socket | null>(null);
+  const listRef = React.useRef<HTMLDivElement | null>(null);
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
 
+  /* -------------------------
+     State
+     ------------------------- */
   const [messages, setMessages] = React.useState<ChatMsg[]>([]);
   const [input, setInput] = React.useState("");
   const [sending, setSending] = React.useState(false);
 
   const [join, setJoin] = React.useState<JoinAck | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+
   const { token } = useAuth();
+  const navigate = useNavigate();
 
   const [appearance, setAppearance] = React.useState<StreamerAppearance>(DEFAULT_STREAMER_APPEARANCE);
-
   const [initialLoading, setInitialLoading] = React.useState(true);
 
-  const sockRef = React.useRef<Socket | null>(null);
-  const listRef = React.useRef<HTMLDivElement | null>(null);
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
-  
-  // ✅ Mobile keyboard handling (visualViewport)
+  // autoscroll intelligent
+  const atBottomRef = React.useRef(true);
+  const [showJump, setShowJump] = React.useState(false);
+
+  const myId = join?.me?.id != null ? Number(join.me.id) : null;
+
+  /* -------------------------
+     Mobile keyboard handling (visualViewport)
+     ------------------------- */
   const [kbInset, setKbInset] = React.useState(0);
   const isCoarse = React.useMemo(() => {
     if (typeof window === "undefined") return false;
@@ -113,7 +157,6 @@ export function ChatPanel({
     if (!vv) return;
 
     const compute = () => {
-      // keyboard height approximation
       const inset = Math.max(0, Math.round(window.innerHeight - vv.height - (vv.offsetTop || 0)));
       setKbInset(inset);
     };
@@ -128,7 +171,6 @@ export function ChatPanel({
     };
   }, [isCoarse]);
 
-  // ✅ si on est en bas, on reste en bas quand le clavier change la hauteur
   React.useEffect(() => {
     if (!isCoarse) return;
     if (!kbInset) return;
@@ -138,14 +180,9 @@ export function ChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbInset, isCoarse]);
 
-  const navigate = useNavigate();
-
-  // autoscroll intelligent
-  const atBottomRef = React.useRef(true);
-  const [showJump, setShowJump] = React.useState(false);
-
-  const myId = join?.me?.id != null ? Number(join.me.id) : null;
-
+  /* -------------------------
+     Menu (context)
+     ------------------------- */
   const [menu, setMenu] = React.useState<{
     open: boolean;
     x: number;
@@ -181,6 +218,93 @@ export function ChatPanel({
     });
   }
 
+  function cloneCosmetics<T>(x: T): T {
+  try {
+    // @ts-ignore
+    if (typeof structuredClone === "function") return structuredClone(x);
+  } catch {}
+  return JSON.parse(JSON.stringify(x));
+}
+
+function applyViewerPolicy(cos: any, level: 1 | 2 | 3) {
+  if (!cos) return null;
+  const c = cloneCosmetics(cos);
+
+  // helpers local (permissifs)
+  const hasUsernameSkinLocal = (x: any) => {
+    const u = x?.username ?? x?.user ?? x?.name ?? x?.pseudo ?? null;
+    const color = u?.color ?? u?.hex ?? u?.colorId ?? x?.usernameColorId ?? x?.nameColorId ?? x?.pseudoColorId ?? null;
+    const effect =
+      u?.effect ?? u?.animId ?? u?.animationId ?? x?.usernameAnimId ?? x?.nameAnimId ?? x?.pseudoAnimId ?? null;
+    return color != null || (effect != null && effect !== "none");
+  };
+
+  const stripUsernameLocal = (x: any) => {
+    if (!x) return null;
+    const out: any = { ...x };
+
+    delete out.usernameColorId;
+    delete out.nameColorId;
+    delete out.pseudoColorId;
+    delete out.usernameAnimId;
+    delete out.nameAnimId;
+    delete out.pseudoAnimId;
+
+    if (out.username && typeof out.username === "object") {
+      out.username = { ...out.username };
+      delete out.username.color;
+      delete out.username.hex;
+      delete out.username.colorId;
+      delete out.username.effect;
+      delete out.username.animId;
+      delete out.username.animationId;
+    }
+    if (out.name && typeof out.name === "object") {
+      out.name = { ...out.name };
+      delete out.name.color;
+      delete out.name.hex;
+      delete out.name.colorId;
+      delete out.name.effect;
+      delete out.name.animId;
+      delete out.name.animationId;
+    }
+    if (out.pseudo && typeof out.pseudo === "object") {
+      out.pseudo = { ...out.pseudo };
+      delete out.pseudo.color;
+      delete out.pseudo.hex;
+      delete out.pseudo.colorId;
+      delete out.pseudo.effect;
+      delete out.pseudo.animId;
+      delete out.pseudo.animationId;
+    }
+
+    return out;
+  };
+
+  // Niveau 1 : libre, MAIS si pas de skin pseudo => fallback streamer (donc on strip le pseudo)
+  if (level === 1) {
+    return hasUsernameSkinLocal(c) ? c : stripUsernameLocal(c);
+  }
+
+  // Niveau 2 : on bloque tout le skin pseudo (couleur + effet)
+  const noUsername = stripUsernameLocal(c);
+
+  // Niveau 3 : + on bloque les cadrans (frame)
+  if (level >= 3 && noUsername) {
+    // covers plusieurs shapes possibles
+    (noUsername as any).frame = null;
+    (noUsername as any).frameId = null;
+
+    if ((noUsername as any).avatar && typeof (noUsername as any).avatar === "object") {
+      (noUsername as any).avatar = { ...(noUsername as any).avatar, frame: null, frameId: null };
+    }
+  }
+
+  return noUsername;
+}
+  /* -------------------------
+     Derived values
+     ------------------------- */
   const perms = join?.perms;
   const state = join?.state;
 
@@ -188,9 +312,20 @@ export function ChatPanel({
   const isBanned = !!state?.banned;
   const timeoutUntil = state?.timeoutUntil || null;
   const isTimedOut = !!timeoutUntil && new Date(timeoutUntil).getTime() > Date.now();
-
   const canSend = isAuthed && !isBanned && !isTimedOut;
 
+  const targetIsSelf = menu.msg && myId != null && Number(menu.msg.userId) === Number(myId);
+  const targetIsTimedOut =
+    !!menu.targetTimeoutUntil && new Date(menu.targetTimeoutUntil).getTime() > Date.now();
+
+  // couleurs du streamer (fallback)
+  const nameColor = appearance.chat.usernameColor;
+  const msgColor = appearance.chat.messageColor;
+  const viewerSkinsLevel = (appearance.chat.viewerSkinsLevel ?? 1) as 1 | 2 | 3;
+
+  /* =========================================================
+     Scroll
+     ========================================================= */
   function scrollToBottom(behavior: ScrollBehavior = "auto") {
     const el = listRef.current;
     if (!el) return;
@@ -204,14 +339,38 @@ export function ChatPanel({
     if (!el) return;
 
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const atBottom = dist < 40; // seuil
+    const atBottom = dist < 40;
     atBottomRef.current = atBottom;
 
     if (atBottom) setShowJump(false);
     else setShowJump(true);
   }
 
-  // auto-refresh when my timeout ends
+  /* =========================================================
+     Socket helpers
+     ========================================================= */
+  function emitSocket(event: string, payload: any) {
+    return new Promise<any>((resolve) => {
+      sockRef.current?.emit(event as any, payload, (ack: any) => resolve(ack));
+    });
+  }
+
+  async function loadLastMessages(s: string) {
+    try {
+      setInitialLoading(true);
+      const r = await fetch(`${apiBase()}/chat/${encodeURIComponent(s)}/messages?limit=50`);
+      const j = await r.json();
+      if (!j?.ok) throw new Error(j?.error || "messages_failed");
+      setMessages(j.messages || []);
+      requestAnimationFrame(() => scrollToBottom("auto"));
+    } finally {
+      setInitialLoading(false);
+    }
+  }
+
+  /* =========================================================
+     Auto-refresh when my timeout ends
+     ========================================================= */
   React.useEffect(() => {
     if (!join?.state?.timeoutUntil) return;
 
@@ -232,26 +391,9 @@ export function ChatPanel({
     return () => window.clearTimeout(t);
   }, [slug, join?.state?.timeoutUntil]);
 
-  function emitSocket(event: string, payload: any) {
-    return new Promise<any>((resolve) => {
-      sockRef.current?.emit(event as any, payload, (ack: any) => resolve(ack));
-    });
-  }
-
-  async function loadLastMessages(s: string) {
-    try {
-      setInitialLoading(true);
-      const r = await fetch(`${apiBase()}/chat/${encodeURIComponent(s)}/messages?limit=50`);
-      const j = await r.json();
-      if (!j?.ok) throw new Error(j?.error || "messages_failed");
-      setMessages(j.messages || []);
-      requestAnimationFrame(() => scrollToBottom("auto"));
-    } finally {
-      setInitialLoading(false);
-    }
-  }
-
-  // socket connect + join (et on charge les messages APRES avoir l'appearance)
+  /* =========================================================
+     Socket connect + join
+     ========================================================= */
   React.useEffect(() => {
     const s = String(slug || "").trim();
     const slugLower = s.toLowerCase();
@@ -291,7 +433,7 @@ export function ChatPanel({
         else setShowJump(true);
       });
     });
-    
+
     socket.on("stream:follows", (payload: any) => {
       const evSlug = String(payload?.slug || "").trim().toLowerCase();
       if (!evSlug || evSlug !== slugLower) return;
@@ -339,7 +481,7 @@ export function ChatPanel({
       setJoin(ack);
       setError(null);
 
-      // ✅ appearance AVANT messages (anti-flash)
+      // appearance AVANT messages (anti-flash)
       setAppearance(normalizeAppearance(ack.appearance));
       await loadLastMessages(s);
 
@@ -359,6 +501,9 @@ export function ChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, token]);
 
+  /* =========================================================
+     Send message
+     ========================================================= */
   async function send() {
     setError(null);
 
@@ -392,11 +537,10 @@ export function ChatPanel({
               setError(String(ack?.error || "send_failed"));
             }
           } else {
-          setInput("");
-          // ✅ garde le focus uniquement si on était déjà en train d'écrire
-          if (focusedRef.current) {
-            window.setTimeout(() => inputRef.current?.focus(), 0);
-          }
+            setInput("");
+            if (focusedRef.current) {
+              window.setTimeout(() => inputRef.current?.focus(), 0);
+            }
           }
           resolve();
         });
@@ -406,8 +550,11 @@ export function ChatPanel({
     }
   }
 
+  /* =========================================================
+     Menu actions
+     ========================================================= */
   async function openMenuAt(x: number, y: number, msg: ChatMsg) {
-    if (msg.userId <= 0) return; // system
+    if (msg.userId <= 0) return;
 
     setMenu({
       open: true,
@@ -432,7 +579,8 @@ export function ChatPanel({
     if (perms?.canTimeout && !isSelf) {
       setMenu((m) => ({ ...m, timeoutLoading: true }));
       const ack = await emitSocket("chat:timeout_status", { slug, userId: msg.userId });
-      if (ack?.ok) setMenu((m) => ({ ...m, timeoutLoading: false, targetTimeoutUntil: ack.timeoutUntil || null }));
+      if (ack?.ok)
+        setMenu((m) => ({ ...m, timeoutLoading: false, targetTimeoutUntil: ack.timeoutUntil || null }));
       else setMenu((m) => ({ ...m, timeoutLoading: false, targetTimeoutUntil: null }));
     }
   }
@@ -502,19 +650,15 @@ export function ChatPanel({
     if (!ack?.ok) setError(String(ack?.error || "mod_set_failed"));
   }
 
-  const targetIsSelf = menu.msg && myId != null && Number(menu.msg.userId) === Number(myId);
-  const targetIsTimedOut = !!menu.targetTimeoutUntil && new Date(menu.targetTimeoutUntil).getTime() > Date.now();
-
-  const nameColor = appearance.chat.usernameColor;
-  const msgColor = appearance.chat.messageColor;
-
+  /* =========================================================
+     Render
+     ========================================================= */
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }} onClick={closeMenu}>
       <style>
         {`@keyframes chatFadeLeft{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}`}
       </style>
 
-      {/* header (optionnel) */}
       {!compact ? (
         <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: 0.2 }}>Chat</div>
@@ -539,6 +683,9 @@ export function ChatPanel({
             flexDirection: "column",
             gap: 10,
             WebkitOverflowScrolling: "touch",
+
+            // fallback streamer (utilisé quand viewer n'a pas de skin pseudo OU impose)
+            ...( { ["--chat-name-color" as any]: nameColor, ["--chat-msg-color" as any]: msgColor } as any ),
           }}
         >
           {initialLoading ? (
@@ -552,44 +699,60 @@ export function ChatPanel({
             const isDeleted = !!m.deleted || m.body === "";
             if (m.userId !== 0 && isDeleted) return null;
 
-            return (
-              <div
-                key={m.id}
-                onContextMenu={(e) => openMenuMouse(e, m)} // desktop
-                onTouchStart={(e) => onTouchStartMsg(e, m)} // mobile long-press
-                onTouchEnd={cancelLongPress}
-                onTouchCancel={cancelLongPress}
-                onTouchMove={cancelLongPress}
-                style={{
-                  cursor: !isSystem ? "context-menu" : "default",
-                  padding: 10,
-                  borderRadius: 14,
-                  background: isSystem ? "rgba(124,77,255,0.10)" : "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  animation: "chatFadeLeft 180ms ease-out both",
-                }}
-              >
-                <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                  <div
-                    style={{
-                      fontWeight: 800,
-                      fontSize: 13,
-                      opacity: isSystem ? 0.95 : 1,
-                      color: isSystem ? "rgba(255,255,255,0.95)" : nameColor,
-                    }}
-                  >
-                    {m.username}
+            // system : rendu simple (pas de cosmetics)
+            if (isSystem) {
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    cursor: "default",
+                    padding: 10,
+                    borderRadius: 14,
+                    background: "rgba(124,77,255,0.10)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    animation: "chatFadeLeft 180ms ease-out both",
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: "rgba(255,255,255,0.95)" }}>
+                      {m.username}
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.55 }}>
+                      {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11, opacity: 0.55 }}>
-                    {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </div>
+                  <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95, color: "white" }}>{m.body}</div>
                 </div>
+              );
+            }
 
-                <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95, color: isSystem ? "white" : msgColor }}>
-                  {m.body}
-                </div>
-              </div>
-            );
+          // APPLY POLICY (impose vs non impose + fallback streamer si pas de skin pseudo)
+          const baseCosmetics =
+            DEBUG_FORCE_COSMETICS && m.username === DEBUG_USER
+              ? (DEBUG_COSMETICS as ChatCosmetics)
+              : (m.cosmetics ?? null);
+
+          const effectiveCosmetics = applyViewerPolicy(baseCosmetics, viewerSkinsLevel);
+
+          return (
+            <div
+              key={m.id}
+              onContextMenu={(e) => openMenuMouse(e, m)}
+              onTouchStart={(e) => onTouchStartMsg(e, m)}
+              onTouchEnd={cancelLongPress}
+              onTouchCancel={cancelLongPress}
+              onTouchMove={cancelLongPress}
+              style={{ cursor: "context-menu" }}
+            >
+              <ChatMessageBubble
+                streamerAppearance={appearance}  // ✅ FIX TS (il le demande)
+                msg={{
+                  ...m,
+                  cosmetics: effectiveCosmetics, // ✅ plus d’unused var + bonne policy
+                }}
+              />
+            </div>
+          );
           })}
         </div>
 
@@ -643,7 +806,6 @@ export function ChatPanel({
             onChange={(e) => setInput(e.target.value)}
             onFocus={() => {
               focusedRef.current = true;
-              // si on était en bas, on recolle en bas (utile quand le clavier apparaît)
               requestAnimationFrame(() => {
                 if (atBottomRef.current) scrollToBottom("auto");
               });

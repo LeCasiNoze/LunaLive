@@ -12,6 +12,7 @@ type SubBadge = {
 
 type Appearance = {
   chat: {
+    viewerSkinsLevel?: 1 | 2 | 3; // ✅ NEW
     usernameColor: string;
     messageColor: string;
     sub: {
@@ -232,6 +233,7 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
 
   const [appearance, setAppearance] = React.useState<Appearance>({
     chat: {
+      viewerSkinsLevel: 1,
       usernameColor: "#7C4DFF",
       messageColor: "#FFFFFF",
       sub: {
@@ -509,6 +511,68 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
             <div style={{ fontWeight: 950 }}>Apparence — Chat</div>
             <div className="muted" style={{ marginTop: 6 }}>
               Animation : fade-left (globale, non configurable).
+            </div>
+          </div>
+          
+          {/* ================= VIEWERS SKINS POLICY ================= */}
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 16, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.18)" }}>
+            <div style={{ fontWeight: 950 }}>Skins des viewers</div>
+            <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+              Choisis si tu laisses les viewers afficher leurs cosmétiques (couleur pseudo / cadrans) ou si tu imposes ton style.
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+              {([
+                {
+                  v: 1,
+                  title: "Niveau 1 — Libre",
+                  desc: "Les viewers avec skin gardent leur skin. Les viewers sans skin prennent ta couleur de pseudo / ton style.",
+                },
+                {
+                  v: 2,
+                  title: "Niveau 2 — Bloquer couleurs de pseudo",
+                  desc: "Tout le monde a la couleur de pseudo définie par le streamer (skins pseudo ignorés).",
+                },
+                {
+                  v: 3,
+                  title: "Niveau 3 — Bloquer couleurs + cadrans",
+                  desc: "Couleurs de pseudo + cadrans viewers ignorés. Le chat reste homogène au style streamer.",
+                },
+              ] as const).map((o) => (
+                <label
+                  key={o.v}
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "flex-start",
+                    padding: 10,
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "rgba(255,255,255,0.03)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="viewerSkinsLevel"
+                    checked={Number(appearance.chat.viewerSkinsLevel ?? 1) === o.v}
+                    onChange={() =>
+                      setAppearance((a) => ({
+                        ...a,
+                        chat: { ...a.chat, viewerSkinsLevel: o.v },
+                      }))
+                    }
+                    style={{ marginTop: 3 }}
+                  />
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <div style={{ fontWeight: 950 }}>{o.title}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {o.desc}
+                    </div>
+                  </div>
+                </label>
+              ))}
             </div>
           </div>
 
