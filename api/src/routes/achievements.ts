@@ -486,8 +486,11 @@ const defs: AchievementDef[] = [
     category: "Chat & Social",
     icon: "⏱️",
     name: "À l’affût",
-    eval: (m) => ({ unlocked: m.hasFollowQuick }),
-  },
+    eval: (m) => ({
+        unlocked: m.hasFollowQuick,
+        progress: { current: m.hasFollowQuick ? 1 : 0, target: 1 },
+    }),
+    },
 
   // ───────────────── Gold (très actif)
   {

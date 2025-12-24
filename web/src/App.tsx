@@ -16,7 +16,7 @@ import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
 import { GoLiveNotifier } from "./components/GoLiveNotifier";
 import { DailyBonusToast } from "./components/DailyBonusToast";
-
+import { AchievementsToast } from "./components/AchievementsToast";
 function AppInner() {
   const location = useLocation();
   const isMobile = useIsMobile();
@@ -39,6 +39,7 @@ function AppInner() {
       {/* ✅ ICI, hors de <Routes> */}
       <GoLiveNotifier />
       <DailyBonusToast />
+      <AchievementsToast />
       
       <Routes>
         <Route path="/" element={<LivesPage />} />
