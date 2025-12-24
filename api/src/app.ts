@@ -32,7 +32,7 @@ import { requireAuth } from "./auth.js";
 import { achievementsRouter } from "./routes/achievements.js";
 import { cosmeticsRouter } from "./routes/cosmetics.js";
 import { cosmeticsCatalogRoutes } from "./routes/cosmetics_catalog_routes.js";
-
+import { avatarRouter } from "./routes/avatar.js";
 export function createApp() {
   const app = express();
   app.set("trust proxy", 1);
@@ -75,6 +75,8 @@ export function createApp() {
   app.use("/me/achievements", requireAuth, achievementsRouter);
   app.use(cosmeticsRouter);
   app.use(cosmeticsCatalogRoutes);
+  app.use(avatarRouter);
+  app.use(express.json({ limit: "300kb" }));
 
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));

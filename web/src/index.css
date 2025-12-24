@@ -1379,3 +1379,11 @@ body{
   pointer-events:none;
   opacity: 0.9;
 }
+.chatAvatarImg{
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  object-fit: cover;
+  display: block;
+  border: 1px solid rgba(255,255,255,0.10);
+}

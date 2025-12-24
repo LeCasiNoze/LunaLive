@@ -5,7 +5,12 @@ import { pool } from "./db.js";
 export type ChatCosmetics = {
   username?: { color?: string | null; effect?: string | null };
   frame?: { frameId?: string | null } | null;
-  avatar?: { hatId?: string | null; hatEmoji?: string | null; borderId?: string | null };
+  avatar?: {
+    hatId?: string | null;
+    hatEmoji?: string | null;
+    borderId?: string | null;
+    url?: string | null; // ✅ NEW (avatar upload)
+  };
   badges?: Array<{ id: string; label: string; tier?: string; icon?: string | null }>;
   title?: { text: string; tier?: string; effect?: string } | null;
 };
@@ -22,25 +27,46 @@ function isUsernameEffectCode(code: string) {
   );
 }
 
+function prettyBadgeLabel(code: string) {
+  if (!code) return code;
+  if (code === "badge_luna") return "LUNA";
+  if (code === "badge_777") return "777";
+  // fallback : badge_xxx -> XXX
+  if (code.startsWith("badge_")) return code.slice("badge_".length).toUpperCase();
+  return code;
+}
+
+// on a besoin d'un BASE public pour construire les URLs avatar
+const PUBLIC_API_BASE = String(
+  process.env.PUBLIC_API_BASE ||
+    process.env.RENDER_EXTERNAL_URL ||
+    "https://lunalive-api.onrender.com"
+).replace(/\/$/, "");
+
 export async function getChatCosmeticsForUsers(userIds: number[]) {
   const ids = Array.from(new Set((userIds || []).map((x) => Number(x)).filter((x) => x > 0)));
   const out = new Map<number, ChatCosmetics>();
   if (!ids.length) return out;
 
+  // ✅ on joint user_avatars pour savoir si l’avatar existe + version cache-bust
   const r = await pool.query(
-    `SELECT user_id,
-            username_code,
-            badge_code,
-            title_code,
-            frame_code,
-            hat_code
-     FROM user_equipped_cosmetics
-     WHERE user_id = ANY($1::int[])`,
+    `SELECT
+        ue.user_id,
+        ue.username_code,
+        ue.badge_code,
+        ue.title_code,
+        ue.frame_code,
+        ue.hat_code,
+        ua.updated_at AS avatar_updated_at
+     FROM user_equipped_cosmetics ue
+     LEFT JOIN user_avatars ua ON ua.user_id = ue.user_id
+     WHERE ue.user_id = ANY($1::int[])`,
     [ids]
   );
 
   for (const row of r.rows || []) {
     const userId = Number(row.user_id);
+
     const usernameCode = row.username_code ? String(row.username_code) : null;
     const badgeCode = row.badge_code ? String(row.badge_code) : null;
     const titleCode = row.title_code ? String(row.title_code) : null;
@@ -49,7 +75,7 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
 
     const cosmetics: ChatCosmetics = {};
 
-    // username: on ne peut stocker qu’un seul code dans ta table -> on le map soit en color soit en effect
+    // username: 1 seul code -> soit color soit effect
     if (usernameCode && usernameCode !== "default") {
       cosmetics.username = isUsernameEffectCode(usernameCode)
         ? { effect: usernameCode, color: null }
@@ -64,8 +90,21 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
       cosmetics.avatar = { hatId: hatCode };
     }
 
+    // ✅ avatar url (si avatar en DB)
+    if (row.avatar_updated_at) {
+      const v = new Date(row.avatar_updated_at).getTime();
+      cosmetics.avatar = cosmetics.avatar || {};
+      cosmetics.avatar.url = `${PUBLIC_API_BASE}/avatars/u/${userId}?v=${v}`;
+    }
+
     if (badgeCode && badgeCode !== "none") {
-      cosmetics.badges = [{ id: badgeCode, label: badgeCode, tier: "silver" }];
+      cosmetics.badges = [
+        {
+          id: badgeCode,
+          label: prettyBadgeLabel(badgeCode), // ✅ LUNA au lieu de badge_luna
+          tier: "silver",
+        },
+      ];
     }
 
     if (titleCode && titleCode !== "none") {

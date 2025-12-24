@@ -8,6 +8,7 @@ import {
   DEFAULT_APPEARANCE as DEFAULT_STREAMER_APPEARANCE,
   type StreamerAppearance,
 } from "../../lib/appearance";
+import { getInitials } from "../../lib/cosmetics";
 
 type Kind = "username" | "badge" | "title" | "frame" | "hat";
 
@@ -34,12 +35,13 @@ type UiItem = {
   unlock?: string;
 };
 
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+
 const CATS: Array<{ id: Kind; label: string }> = [
   { id: "username", label: "Pseudo" },
   { id: "badge", label: "Badges" },
   { id: "hat", label: "Chapeaux" },
   { id: "frame", label: "Cadrans message" },
-  // Titres: tu as dit "via succès" → on l'affiche mais souvent vide au début
   { id: "title", label: "Titres" },
 ];
 
@@ -62,13 +64,71 @@ function niceUnlock(u?: string) {
   return u;
 }
 
+// ─────────────────────────────────────────────
+// Avatar helpers (compact upload)
+// ─────────────────────────────────────────────
+function parseJwt(token: string): any | null {
+  try {
+    const p = token.split(".")[1];
+    const b64 = p.replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(b64);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const ab = await blob.arrayBuffer();
+  const bytes = new Uint8Array(ab);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+async function makeSquareAvatar(file: File, size = 128): Promise<{ mime: string; b64: string; previewUrl: string }> {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.src = url;
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("image_load_failed"));
+  });
+
+  const s = Math.min(img.width, img.height);
+  const sx = Math.floor((img.width - s) / 2);
+  const sy = Math.floor((img.height - s) / 2);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(img, sx, sy, s, s, 0, 0, size, size);
+
+  const blob: Blob = await new Promise((resolve) => {
+    canvas.toBlob((b) => resolve(b || new Blob()), "image/webp", 0.82);
+  });
+
+  const finalBlob =
+    blob && blob.size > 0
+      ? blob
+      : await new Promise<Blob>((resolve) => {
+          canvas.toBlob((b) => resolve(b || new Blob()), "image/jpeg", 0.85);
+        });
+
+  URL.revokeObjectURL(url);
+
+  const mime = finalBlob.type || "image/webp";
+  const b64 = await blobToBase64(finalBlob);
+  const previewUrl = URL.createObjectURL(finalBlob);
+
+  return { mime, b64, previewUrl };
+}
+
 /**
  * Preview mapping : on traduit tes codes (DB/catalogue)
  * -> en cosmetics compréhensibles par ChatMessageBubble.
- *
- * IMPORTANT:
- * - Ici on ne cherche pas la perfection, juste un rendu "ok".
- * - Le vrai rendu en chat viendra quand le backend enverra cosmetics sur les messages.
  */
 function applyPreview(kind: Kind, code: string | null, c: any) {
   if (!code) return;
@@ -79,21 +139,15 @@ function applyPreview(kind: Kind, code: string | null, c: any) {
   if (!Array.isArray(c.badges)) c.badges = [];
   if (c.title === undefined) c.title = null;
 
-  // BADGES: tu veux rectangles lettres -> on envoie juste un token simple
   if (kind === "badge") {
     const txt = code === "badge_luna" ? "LUNA" : code === "badge_777" ? "777" : code;
-
-    // Certains renderers attendent un objet (text/label), pas une string
     c.badges = [{ id: txt, code: txt, text: txt, label: txt }];
-
-    // Compat bonus si jamais le bubble lit ailleurs
     (c as any).badge = txt;
     (c as any).badgeText = txt;
     (c as any).badgeLabel = txt;
     return;
   }
 
-  // HATS: on mappe vers des ids "assets" simplifiés (ce que ton bubble connaît déjà souvent)
   if (kind === "hat") {
     const map: Record<string, string> = {
       hat_luna_cap: "luna_cap",
@@ -107,7 +161,6 @@ function applyPreview(kind: Kind, code: string | null, c: any) {
 
     c.avatar.hatId = hatId;
 
-    // ✅ on force un emoji pour la preview (en attendant les assets)
     const EMOJI: Record<string, string> = {
       luna_cap: "🧢",
       carton_crown: "👑",
@@ -120,8 +173,6 @@ function applyPreview(kind: Kind, code: string | null, c: any) {
     return;
   }
 
-  // USERNAME: tu as 2 shop (chroma toggle + gold toggle),
-  // et 2 succès (rainbow_scroll + neon_underline)
   if (kind === "username") {
     const map: Record<string, string> = {
       uanim_chroma_toggle: "chroma",
@@ -130,28 +181,18 @@ function applyPreview(kind: Kind, code: string | null, c: any) {
       uanim_neon_underline: "neon_underline",
     };
     const effect = map[code] ?? code;
-
-    // ✅ c’est CE champ que ChatMessageBubble lit
     c.username.effect = effect;
-
-    // compat (au cas où)
     c.username.animId = effect;
     c.username.anim = effect;
     return;
   }
 
-  // FRAME (cadran message)
   if (kind === "frame") {
-    // normalisation simple: frame_gold_shop -> gold, frame_eclipse_master -> eclipse, frame_lotus_event -> lotus
-    const frameId = code
-      .replace(/^frame_/, "")
-      .replace(/_(shop|event|master)$/, "");
-
+    const frameId = code.replace(/^frame_/, "").replace(/_(shop|event|master)$/, "");
     c.frame = { frameId };
     return;
   }
 
-  // TITLE (tu as dit: via succès, pas shop)
   if (kind === "title") {
     c.title = { text: code, label: code };
     (c as any).titleText = code;
@@ -199,6 +240,15 @@ export function PersonalisationSection({
 }) {
   const { token } = useAuth();
 
+  const me = React.useMemo(() => (token ? parseJwt(token) : null), [token]);
+  const myUserId = Number(me?.id || 0);
+
+  const fileRef = React.useRef<HTMLInputElement | null>(null);
+  const [avatarUrl, setAvatarUrl] = React.useState<string | null>(null);
+  const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null);
+  const [avatarPayload, setAvatarPayload] = React.useState<{ mime: string; b64: string } | null>(null);
+  const [avatarBusy, setAvatarBusy] = React.useState(false);
+
   const [tab, setTab] = React.useState<Kind>("username");
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -220,6 +270,12 @@ export function PersonalisationSection({
     frame: null,
     hat: null,
   });
+
+  React.useEffect(() => {
+    if (!myUserId) return;
+    // on affiche direct l’endpoint public (si 404 => ça sera juste les initiales dans l’UI)
+    setAvatarUrl(`${API_BASE}/avatars/u/${myUserId}`);
+  }, [myUserId]);
 
   async function load() {
     if (!token) return;
@@ -246,7 +302,7 @@ export function PersonalisationSection({
     setSaving(true);
     setErr(null);
     try {
-      const cur = equipped?.[kind] ?? null;
+      const cur = (equipped as any)?.[kind] ?? null;
       const next = cur === code ? null : code;
 
       const j = await equipCosmetic(token, kind, next);
@@ -267,7 +323,6 @@ export function PersonalisationSection({
 
   const ownedSet = new Set<string>([...(owned?.[tab] || []), ...(free?.[tab] || [])]);
 
-  // UI items = (un "retirer") + items du catalog pour cette catégorie
   const items: UiItem[] = [
     {
       kind: tab,
@@ -297,8 +352,6 @@ export function PersonalisationSection({
   const previewCosmetics = buildCosmeticsPreview(equipped);
 
   function previewForItem(it: UiItem): ChatCosmetics | null {
-    // On simule "it équipé" en remplaçant juste la catégorie courante,
-    // tout en gardant les autres équipements actuels.
     const simulated = {
       username: tab === "username" ? it.code : equipped.username,
       badge: tab === "badge" ? it.code : equipped.badge,
@@ -363,6 +416,147 @@ export function PersonalisationSection({
             padding: 10,
           }}
         >
+          {/* ✅ Avatar section (compact) */}
+          <div
+            style={{
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.08)",
+              background: "rgba(255,255,255,0.03)",
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <div style={{ fontWeight: 950, marginBottom: 8 }}>Avatar</div>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <div className="chatAvatarBorder" style={{ width: 44, height: 44 }}>
+                {(avatarPreview || avatarUrl) ? (
+                  <img
+                    className="chatAvatarImg"
+                    src={avatarPreview || `${avatarUrl}`}
+                    alt=""
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                ) : null}
+                <div className="chatAvatarCircle" style={{ width: 38, height: 38 }}>
+                  {getInitials(username)}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0, flex: 1 }}>
+                <button
+                  className="btnGhostSmall"
+                  disabled={!token || avatarBusy}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {avatarPayload ? "Changer l’image" : "Uploader une image"}
+                </button>
+
+                {avatarPayload ? (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      className="btnPrimarySmall"
+                      disabled={!token || avatarBusy}
+                      onClick={async () => {
+                        if (!token || !avatarPayload) return;
+                        setAvatarBusy(true);
+                        setErr(null);
+                        try {
+                          const r = await fetch(`${API_BASE}/me/avatar`, {
+                            method: "PUT",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${token}`,
+                            },
+                            body: JSON.stringify({ mime: avatarPayload.mime, data: avatarPayload.b64 }),
+                          });
+                          const j = await r.json();
+                          if (!j?.ok) throw new Error(j?.error || "upload_failed");
+
+                          const bust = Date.now();
+                          setAvatarUrl(`${API_BASE}/avatars/u/${myUserId}?v=${bust}`);
+
+                          setAvatarPayload(null);
+                          if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+                          setAvatarPreview(null);
+                        } catch (e: any) {
+                          setErr(String(e?.message || "Erreur"));
+                        } finally {
+                          setAvatarBusy(false);
+                        }
+                      }}
+                    >
+                      {avatarBusy ? "Upload…" : "Valider"}
+                    </button>
+
+                    <button
+                      className="btnGhostSmall"
+                      disabled={avatarBusy}
+                      onClick={() => {
+                        setAvatarPayload(null);
+                        if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+                        setAvatarPreview(null);
+                      }}
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="btnGhostSmall"
+                    disabled={!token || avatarBusy}
+                    onClick={async () => {
+                      if (!token) return;
+                      setAvatarBusy(true);
+                      setErr(null);
+                      try {
+                        const r = await fetch(`${API_BASE}/me/avatar`, {
+                          method: "DELETE",
+                          headers: { Authorization: `Bearer ${token}` },
+                        });
+                        const j = await r.json().catch(() => ({}));
+                        if (j?.ok !== true) throw new Error(j?.error || "delete_failed");
+
+                        setAvatarUrl(null);
+                      } catch (e: any) {
+                        setErr(String(e?.message || "Erreur"));
+                      } finally {
+                        setAvatarBusy(false);
+                      }
+                    }}
+                  >
+                    Supprimer
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                setErr(null);
+                setAvatarBusy(true);
+                try {
+                  const { mime, b64, previewUrl } = await makeSquareAvatar(f, 128);
+                  setAvatarPayload({ mime, b64 });
+                  if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+                  setAvatarPreview(previewUrl);
+                } catch (err: any) {
+                  setErr(String(err?.message || "avatar_prepare_failed"));
+                } finally {
+                  setAvatarBusy(false);
+                }
+              }}
+            />
+          </div>
+
           <div style={{ fontWeight: 950, marginBottom: 8 }}>Catégories</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {CATS.map((c) => (
@@ -410,8 +604,7 @@ export function PersonalisationSection({
           >
             {items.map((it) => {
               const isEquipped = (equipped as any)?.[tab] === it.code;
-              const isOwned =
-                !!it.free || (it.code != null && ownedSet.has(it.code));
+              const isOwned = !!it.free || (it.code != null && ownedSet.has(it.code));
               const cardPreviewCosmetics = previewForItem(it);
 
               return (
@@ -420,18 +613,12 @@ export function PersonalisationSection({
                   onClick={() => (isOwned ? doEquip(it.kind, it.code) : null)}
                   disabled={!token || loading || saving || !isOwned}
                   title={
-                    !isOwned
-                      ? "Non possédé"
-                      : isEquipped
-                      ? "Cliquer pour retirer"
-                      : "Cliquer pour équiper"
+                    !isOwned ? "Non possédé" : isEquipped ? "Cliquer pour retirer" : "Cliquer pour équiper"
                   }
                   style={{
                     textAlign: "left",
                     borderRadius: 16,
-                    border: isEquipped
-                      ? "1px solid rgba(255,255,255,0.22)"
-                      : "1px solid rgba(255,255,255,0.08)",
+                    border: isEquipped ? "1px solid rgba(255,255,255,0.22)" : "1px solid rgba(255,255,255,0.08)",
                     background: isOwned ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.45)",
                     color: "white",
                     padding: 12,
@@ -452,20 +639,21 @@ export function PersonalisationSection({
                   <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
                     {it.desc || (isOwned ? "Cliquer pour équiper" : "À débloquer")}
                   </div>
+
                   {/* Mini preview "comme en chat" */}
-                    <div
+                  <div
                     style={{
-                        marginTop: 10,
-                        pointerEvents: "none",
-                        opacity: !isOwned ? 0.8 : 0.95,
-                        transform: "scale(0.92)",
-                        transformOrigin: "top left",
-                        ...({
+                      marginTop: 10,
+                      pointerEvents: "none",
+                      opacity: !isOwned ? 0.8 : 0.95,
+                      transform: "scale(0.92)",
+                      transformOrigin: "top left",
+                      ...({
                         ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
                         ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
-                        } as any),
+                      } as any),
                     }}
-                    >
+                  >
                     <ChatMessageBubble
                       streamerAppearance={streamerAppearance}
                       msg={{

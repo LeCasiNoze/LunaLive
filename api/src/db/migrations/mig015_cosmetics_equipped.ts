@@ -15,4 +15,14 @@ export async function mig015_cosmetics_equipped(pool: Pool) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+  // Avatars (stockés en DB, 1 par user)
+    await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_avatars (
+        user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        mime TEXT NOT NULL,
+        bytes BYTEA NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    `);
+
 }

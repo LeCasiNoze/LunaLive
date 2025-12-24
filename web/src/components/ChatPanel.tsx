@@ -733,6 +733,10 @@ function applyViewerPolicy(cos: any, level: 1 | 2 | 3) {
               : (m.cosmetics ?? null);
 
           const effectiveCosmetics = applyViewerPolicy(baseCosmetics, viewerSkinsLevel);
+          console.log("[chat msg]", m.username, {
+            viewerSkinsLevel,
+            cosmetics: m.cosmetics,
+          });
 
           return (
             <div

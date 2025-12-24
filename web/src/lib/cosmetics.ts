@@ -44,8 +44,8 @@ export type HatId =
 export type AvatarCosmetic = {
   borderId?: "none" | "luna" | "diamond" | "ghost";
   hatId?: HatId;
-  // plus tard: url image
-  hatEmoji?: string; // ex: "🧢"
+  hatEmoji?: string;
+  url?: string; // ✅ NEW (avatar upload)
 };
 
 export type FrameId =
@@ -88,11 +88,16 @@ export function formatHHMM(iso: string) {
   return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
 
-export function usernameEffectClass(effect: UsernameEffect | undefined) {
-  if (effect === "rainbow" || effect === "rainbow_scroll") return "username--rainbow";
-  if (effect === "neon_underline") return "username--neon";
-  if (effect === "chroma") return "username--chroma";
-  if (effect === "gold") return "username--gold";
+export function usernameEffectClass(effect: any) {
+  const e = String(effect || "").trim();
+  if (!e || e === "none" || e === "default") return "";
+
+  // compat codes catalog (uanim_*)
+  if (e === "rainbow" || e === "rainbow_scroll" || e === "uanim_rainbow_scroll") return "username--rainbow";
+  if (e === "neon_underline" || e === "uanim_neon_underline") return "username--neon";
+  if (e === "chroma" || e === "uanim_chroma_toggle") return "username--chroma";
+  if (e === "gold" || e === "uanim_gold_toggle") return "username--gold";
+
   return "";
 }
 
@@ -106,11 +111,18 @@ export function titleEffectClass(effect: TitleEffect | undefined) {
   return "";
 }
 
-export function frameClass(frameId: FrameCosmetic["frameId"] | undefined) {
-  if (frameId === "luna_petals") return "chatFrame--lunaPetals";
-  if (frameId === "gold") return "chatFrame--gold";
-  if (frameId === "eclipse") return "chatFrame--eclipse";
-  if (frameId === "lotus_crown") return "chatFrame--lotusCrown";
+export function frameClass(frameId: any) {
+  const raw = String(frameId || "").trim();
+  if (!raw || raw === "none") return "";
+
+  // support "frame_xxx"
+  const k = raw.startsWith("frame_") ? raw.slice(6) : raw;
+
+  if (k === "luna_petals") return "chatFrame--lunaPetals";
+  if (k === "gold" || k === "gold_shop") return "chatFrame--gold";
+  if (k === "eclipse" || k === "eclipse_master") return "chatFrame--eclipse";
+  if (k === "lotus_crown" || k === "lotus_event") return "chatFrame--lotusCrown";
+
   return "";
 }
 
