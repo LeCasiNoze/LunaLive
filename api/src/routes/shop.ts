@@ -192,11 +192,7 @@ function isVisibleItem(it: CosmeticItem) {
 
 function isBuyableShopItem(it: CosmeticItem) {
   const rub = typeof it.priceRubis === "number" && Number.isFinite(it.priceRubis) && it.priceRubis > 0;
-  const pre =
-    typeof (it as any).pricePrestige === "number" &&
-    Number.isFinite((it as any).pricePrestige) &&
-    (it as any).pricePrestige > 0;
-
+  const pre = typeof (it as any).pricePrestige === "number" && Number.isFinite((it as any).pricePrestige) && (it as any).pricePrestige > 0;
   return it.active && it.unlock === "shop" && (rub || pre);
 }
 
@@ -286,7 +282,11 @@ shopRouter.get(
       }
     }
 
-    const items = COSMETICS_CATALOG.filter(isVisibleItem).slice().sort(shopSort);
+    const items = COSMETICS_CATALOG
+      .filter(isBuyableShopItem)   // <= IMPORTANT : uniquement shop + (priceRubis||pricePrestige)
+      .slice()
+      .sort(shopSort);
+      
     res.json({ ok: true, debug: "shopRouter_v2_titles", availableRubis, availablePrestige, owned, equipped, items });
 
     res.json({ ok: true, availableRubis, availablePrestige, owned, equipped, items });
