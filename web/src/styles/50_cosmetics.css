@@ -377,3 +377,42 @@
 .cosPreview .chatMsgRow{
   padding: 9px 10px;
 }
+/* =========================================================
+   HARD FIX — Un titre ne doit JAMAIS récupérer l'anim du pseudo
+   (même si une classe foireuse se retrouve sur lui)
+   ========================================================= */
+
+.chatTitle{
+  animation: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+  transform: none !important;
+
+  /* ton style souhaité */
+  margin-top: 2px;
+  font-size: 12px;
+  font-style: italic;
+  text-decoration: underline;
+}
+
+/* Si par bug le titre se retrouve avec une classe username--... */
+.chatTitle.username--rainbow,
+.chatTitle.username--chroma,
+.chatTitle.username--gold,
+.chatTitle.username--neon{
+  animation: none !important;
+  background-image: none !important;
+  background-size: auto !important;
+  background-position: 0% 50% !important;
+  color: rgba(255,255,255,0.92) !important;
+  -webkit-background-clip: initial !important;
+  background-clip: initial !important;
+  -webkit-text-stroke: 0 !important;
+  text-shadow: none !important;
+}
+
+/* Si par bug le titre a reçu un effet titleFx */
+.chatTitle.titleFx--shimmer,
+.chatTitle.titleFx--aurora{
+  animation: none !important;
+}
