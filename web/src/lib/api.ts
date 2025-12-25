@@ -841,7 +841,6 @@ export type ShopCosmeticItem = {
 export type ShopCosmeticsResp = {
   ok: true;
   availableRubis: number;
-  items: ShopCosmeticItem[];
   owned: Record<string, string[]>;
   equipped: {
     username: string | null;
@@ -850,29 +849,33 @@ export type ShopCosmeticsResp = {
     frame: string | null;
     hat: string | null;
   };
-};
-
-export type BuyShopCosmeticResp = {
-  ok: true;
-  availableRubis: number;
-  owned: Record<string, string[]>;
-  user?: { id: number; rubis: number };
+  items: ShopCosmeticItem[];
 };
 
 export async function shopCosmetics(token: string): Promise<ShopCosmeticsResp> {
-  return j<ShopCosmeticsResp>("/shop/cosmetics", {
+  const r = await fetch(`${BASE}/shop/cosmetics`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  return r.json();
 }
 
-export async function buyShopCosmetic(
-  token: string,
-  kind: "username" | "badge" | "title" | "frame" | "hat",
-  code: string
-): Promise<BuyShopCosmeticResp> {
-  return j<BuyShopCosmeticResp>("/shop/cosmetics/buy", {
+export type BuyShopCosmeticResp = {
+  ok: true;
+  alreadyOwned: boolean;
+  availableRubis: number;
+  owned: Record<string, string[]>;
+  user: { id: number; username: string; rubis: number } | null;
+  item?: ShopCosmeticItem;
+};
+
+export async function buyShopCosmetic(token: string, kind: string, code: string): Promise<BuyShopCosmeticResp> {
+  const r = await fetch(`${BASE}/shop/cosmetics/buy`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ kind, code }),
   });
+  return r.json();
 }

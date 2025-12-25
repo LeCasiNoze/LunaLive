@@ -8,7 +8,8 @@ export type CosmeticItem = {
   name: string;
   rarity: "common" | "uncommon" | "rare" | "epic" | "legendary" | "mythic" | "exclusive";
   unlock: CosmeticUnlock;
-  priceRubis: number | null; // null si non-shop
+  priceRubis: number | null; // null si non-shop rubis
+  pricePrestige?: number | null; // ✅ null/undefined si pas achetable prestige
   active: boolean;
   meta?: any;
 };
@@ -95,5 +96,23 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
   { kind: "frame", code: "mframe_lotus_crown", name: "Cadran Lotus Crown", rarity: "mythic", unlock: "achievement", priceRubis: null, active: true },
   { kind: "frame", code: "mframe_eclipse", name: "Cadran Eclipse", rarity: "mythic", unlock: "achievement", priceRubis: null, active: true },
 
-  // TITLES: plus tard (achievements / shop)
+  // ─────────────────────────────────────────────
+  // TITLES
+  // - Ratus / Ça tourne / Vrai Viewer / No Life / Batman => ACHIEVEMENTS
+  // - BigMoula => SHOP (rubis)
+  // - LunaKing / All-in Man => SHOP (prestige)
+  // ─────────────────────────────────────────────
+  { kind: "title", code: "title_ratus", name: "Ratus", rarity: "uncommon", unlock: "achievement", priceRubis: null, active: true },
+  { kind: "title", code: "title_ca_tourne", name: "Ça tourne !", rarity: "rare", unlock: "achievement", priceRubis: null, active: true },
+  { kind: "title", code: "title_vrai_viewer", name: "Vrai Viewer", rarity: "rare", unlock: "achievement", priceRubis: null, active: true },
+  { kind: "title", code: "title_no_life", name: "No Life", rarity: "epic", unlock: "achievement", priceRubis: null, active: true },
+  { kind: "title", code: "title_batman", name: "Batman", rarity: "epic", unlock: "achievement", priceRubis: null, active: true },
+
+  // Shop rubis
+  { kind: "title", code: "title_bigmoula", name: "BigMoula", rarity: "legendary", unlock: "shop", priceRubis: 60000, active: true },
+
+  // Shop prestige
+  { kind: "title", code: "title_lunaking", name: "LunaKing", rarity: "mythic", unlock: "shop", priceRubis: null, pricePrestige: 25, active: true, meta: { currency: "prestige" } },
+  { kind: "title", code: "title_allin_man", name: "All-in Man", rarity: "mythic", unlock: "shop", priceRubis: null, pricePrestige: 40, active: true, meta: { currency: "prestige" } },
+
 ];

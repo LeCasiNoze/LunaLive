@@ -28,7 +28,6 @@ type UiItem = {
   code: string | null; // null = retirer
   name: string;
   desc?: string;
-  icon: string;
   free?: boolean;
   priceRubis?: number | null;
   rarity?: string;
@@ -44,15 +43,6 @@ const CATS: Array<{ id: Kind; label: string }> = [
   { id: "frame", label: "Cadrans message" },
   { id: "title", label: "Titres" },
 ];
-
-function iconFor(kind: Kind, code: string | null) {
-  if (code == null) return "🚫";
-  if (kind === "badge") return "🏷️";
-  if (kind === "hat") return "🧢";
-  if (kind === "username") return "✨";
-  if (kind === "frame") return "🖼️";
-  return "🔖";
-}
 
 function niceUnlock(u?: string) {
   if (!u) return "";
@@ -231,6 +221,48 @@ function byOwnedFirst(ownedSet: Set<string>, a: UiItem, b: UiItem) {
   return a.name.localeCompare(b.name);
 }
 
+/* ─────────────────────────────────────────────
+   UI helpers (mêmes intentions que ShopPage)
+───────────────────────────────────────────── */
+function rarityToTier(rarity: string) {
+  const s = String(rarity || "").toLowerCase();
+  if (s.includes("bronze")) return "bronze";
+  if (s.includes("gold")) return "gold";
+  if (s.includes("master") || s.includes("diamond")) return "master";
+  return "silver";
+}
+
+function badgeTextFromCode(code: string) {
+  if (code === "badge_luna") return "LUNA";
+  if (code === "badge_777") return "777";
+  return code.replace(/^badge_/, "").toUpperCase();
+}
+
+function renderItemTitle(it: UiItem) {
+  if (it.kind === "badge" && it.code) {
+    const tier = rarityToTier(it.rarity || "");
+    return (
+      <span className="shopTitleBadgeRow">
+        <span className="shopTitleKind">Badge</span>
+        <span className={`chatBadge badge--${tier}`}>{badgeTextFromCode(it.code)}</span>
+      </span>
+    );
+  }
+  return <span className="shopTitleText">{it.name}</span>;
+}
+
+function kindBorder(kind: Kind) {
+  // contours légers par catégorie (subtil)
+  const map: Record<Kind, string> = {
+    username: "rgba(255, 213, 74, 0.20)", // doré doux
+    badge: "rgba(190, 240, 255, 0.20)", // ice
+    hat: "rgba(126, 76, 179, 0.20)", // luna purple
+    frame: "rgba(63, 86, 203, 0.20)", // ghost blue
+    title: "rgba(180, 140, 255, 0.20)", // violet clair
+  };
+  return map[kind] || "rgba(255,255,255,0.10)";
+}
+
 export function PersonalisationSection({
   username,
   streamerAppearance = DEFAULT_STREAMER_APPEARANCE,
@@ -328,7 +360,6 @@ export function PersonalisationSection({
       kind: tab,
       code: null,
       name: tab === "username" ? "Par défaut" : "Aucun",
-      icon: iconFor(tab, null),
       free: true,
       desc: "Retirer l’élément équipé.",
     },
@@ -338,7 +369,6 @@ export function PersonalisationSection({
         kind: x.kind,
         code: x.code,
         name: x.name,
-        icon: iconFor(x.kind, x.code),
         desc:
           x.unlock === "shop" && x.priceRubis
             ? `${niceUnlock(x.unlock)} — ${Number(x.priceRubis).toLocaleString("fr-FR")} rubis`
@@ -349,29 +379,28 @@ export function PersonalisationSection({
       })),
   ].sort((a, b) => byOwnedFirst(ownedSet, a, b));
 
+  const effectiveAvatar = avatarPreview || avatarUrl; // preview local > avatar serveur
 
-    const effectiveAvatar = avatarPreview || avatarUrl; // preview local > avatar serveur
-
-    function withAvatar<C extends ChatCosmetics | null>(c: C): C {
+  function withAvatar<C extends ChatCosmetics | null>(c: C): C {
     if (!c) return c;
     return ({
-        ...(c as any),
-        avatar: { ...((c as any).avatar || {}), url: effectiveAvatar || undefined },
+      ...(c as any),
+      avatar: { ...((c as any).avatar || {}), url: effectiveAvatar || undefined },
     } as any) as C;
-    }
+  }
 
-    const previewCosmetics = withAvatar(buildCosmeticsPreview(equipped));
+  const previewCosmetics = withAvatar(buildCosmeticsPreview(equipped));
 
-    function previewForItem(it: UiItem): ChatCosmetics | null {
+  function previewForItem(it: UiItem): ChatCosmetics | null {
     const simulated = {
-        username: tab === "username" ? it.code : equipped.username,
-        badge: tab === "badge" ? it.code : equipped.badge,
-        title: tab === "title" ? it.code : equipped.title,
-        frame: tab === "frame" ? it.code : equipped.frame,
-        hat: tab === "hat" ? it.code : equipped.hat,
+      username: tab === "username" ? it.code : equipped.username,
+      badge: tab === "badge" ? it.code : equipped.badge,
+      title: tab === "title" ? it.code : equipped.title,
+      frame: tab === "frame" ? it.code : equipped.frame,
+      hat: tab === "hat" ? it.code : equipped.hat,
     };
     return withAvatar(buildCosmeticsPreview(simulated));
-    }
+  }
 
   return (
     <div className="panel" style={{ marginTop: 14 }}>
@@ -390,6 +419,7 @@ export function PersonalisationSection({
 
       {/* Preview */}
       <div
+        className="cosPreview"
         style={{
           marginTop: 10,
           padding: 12,
@@ -404,15 +434,15 @@ export function PersonalisationSection({
       >
         <div style={{ fontWeight: 950, marginBottom: 10 }}>Aperçu</div>
         <ChatMessageBubble
-        streamerAppearance={streamerAppearance}
-        msg={{
+          streamerAppearance={streamerAppearance}
+          msg={{
             id: "preview",
-            userId: myUserId || 0, // ✅ au lieu de 999999
+            userId: myUserId || 0,
             username,
             body: "Exemple de message — “ça rend comment ?”",
             createdAt: new Date().toISOString(),
             cosmetics: previewCosmetics,
-        }}
+          }}
         />
       </div>
 
@@ -427,7 +457,7 @@ export function PersonalisationSection({
             padding: 10,
           }}
         >
-          {/* ✅ Avatar section (compact) */}
+          {/* Avatar section (compact) */}
           <div
             style={{
               borderRadius: 14,
@@ -606,59 +636,102 @@ export function PersonalisationSection({
           </div>
 
           <div
+            className="cosGrid"
             style={{
               marginTop: 12,
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))",
               gap: 12,
+              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 420px))",
+              justifyContent: "start",
+              alignItems: "start",
             }}
           >
             {items.map((it) => {
               const isEquipped = (equipped as any)?.[tab] === it.code;
               const isOwned = !!it.free || (it.code != null && ownedSet.has(it.code));
+              const locked = !isOwned;
               const cardPreviewCosmetics = previewForItem(it);
+
+              const baseBorder = kindBorder(it.kind);
+
+              const border = isEquipped
+                ? `1px solid rgba(255,255,255,0.24)`
+                : `1px solid ${baseBorder}`;
+
+              const bg = locked ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.04)";
 
               return (
                 <button
                   key={`${it.kind}:${String(it.code)}`}
+                  className={[
+                    "cosCard",
+                    `cosCard--${it.kind}`,
+                    isEquipped ? "isSelected" : "",
+                    isOwned ? "isOwned" : "",
+                    locked ? "isLocked" : "",
+                  ].join(" ")}
                   onClick={() => (isOwned ? doEquip(it.kind, it.code) : null)}
                   disabled={!token || loading || saving || !isOwned}
-                  title={
-                    !isOwned ? "Non possédé" : isEquipped ? "Cliquer pour retirer" : "Cliquer pour équiper"
-                  }
+                  title={!isOwned ? "Non possédé" : isEquipped ? "Cliquer pour retirer" : "Cliquer pour équiper"}
                   style={{
                     textAlign: "left",
                     borderRadius: 16,
-                    border: isEquipped ? "1px solid rgba(255,255,255,0.22)" : "1px solid rgba(255,255,255,0.08)",
-                    background: isOwned ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.45)",
+                    border,
+                    background: bg,
                     color: "white",
                     padding: 12,
                     cursor: !isOwned ? "not-allowed" : "pointer",
-                    opacity: !isOwned ? 0.55 : 1,
+                    opacity: locked ? 0.55 : 1,
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ fontSize: 22 }}>{it.icon}</div>
-                    {isEquipped ? (
-                      <span style={{ fontSize: 11, fontWeight: 900, opacity: 0.95 }}>Équipé</span>
-                    ) : !isOwned ? (
-                      <span style={{ fontSize: 11, fontWeight: 900, opacity: 0.75 }}>🔒</span>
-                    ) : null}
+                  {/* head (compact) */}
+                  <div className="cosCardHead" style={{ marginBottom: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="cosCardTitle">{renderItemTitle(it)}</div>
+
+                      <div className="cosCardMeta" style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <span
+                          className={`cosPill ${isEquipped ? "cosPillOwned" : ""}`}
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 950,
+                            padding: "4px 8px",
+                            borderRadius: 999,
+                            border: "1px solid rgba(255,255,255,0.14)",
+                            background: isEquipped ? "rgba(124,77,255,0.18)" : "rgba(255,255,255,0.06)",
+                          }}
+                        >
+                          {isEquipped ? "Équipé" : it.free ? "Gratuit" : isOwned ? "Possédé" : "Verrouillé"}
+                        </span>
+
+                        {!it.free ? (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 900,
+                              opacity: 0.9,
+                            }}
+                          >
+                            {niceUnlock(it.unlock)}
+                            {it.unlock === "shop" && it.priceRubis != null
+                              ? ` — ${Number(it.priceRubis).toLocaleString("fr-FR")} rubis`
+                              : it.rarity
+                              ? ` — ${it.rarity}`
+                              : ""}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 11, fontWeight: 900, opacity: 0.8 }}>Retirer l’élément</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
-                  <div style={{ marginTop: 8, fontWeight: 950 }}>{it.name}</div>
-                  <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-                    {it.desc || (isOwned ? "Cliquer pour équiper" : "À débloquer")}
-                  </div>
-
-                  {/* Mini preview "comme en chat" */}
+                  {/* preview (plus de place) */}
                   <div
+                    className="cosPreview"
                     style={{
-                      marginTop: 10,
                       pointerEvents: "none",
-                      opacity: !isOwned ? 0.8 : 0.95,
-                      transform: "scale(0.92)",
-                      transformOrigin: "top left",
+                      opacity: locked ? 0.8 : 0.95,
                       ...({
                         ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
                         ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
@@ -678,12 +751,13 @@ export function PersonalisationSection({
                     />
                   </div>
 
+                  {/* CTA */}
                   {isOwned ? (
                     <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
                       <span
                         style={{
                           fontSize: 11,
-                          fontWeight: 900,
+                          fontWeight: 950,
                           padding: "4px 8px",
                           borderRadius: 999,
                           border: "1px solid rgba(255,255,255,0.12)",

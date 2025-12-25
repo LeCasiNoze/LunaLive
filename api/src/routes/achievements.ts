@@ -342,6 +342,13 @@ const ACH_REWARD_ENTITLEMENTS: Record<string, Array<{ kind: Kind; code: string }
   master_pilier: [{ kind: "hat", code: "hat_eclipse_halo" }],
   master_archiviste: [{ kind: "frame", code: "mframe_lotus_crown" }],
   master_sous_la_lune: [{ kind: "frame", code: "mframe_eclipse" }],
+
+  // ✅ TITLES (nouveaux)
+  bronze_first_chest: [{ kind: "title", code: "title_ratus" }],
+  silver_rituel_roue: [{ kind: "title", code: "title_ca_tourne" }],
+  silver_supporter: [{ kind: "title", code: "title_vrai_viewer" }],
+  gold_assidu: [{ kind: "title", code: "title_no_life" }],
+  gold_noctambule: [{ kind: "title", code: "title_batman" }],
 };
 
 let entitlementsEnsured = false;
@@ -484,6 +491,7 @@ const defs: AchievementDef[] = [
     icon: "🎁",
     name: "Premier coffre",
     desc: "Participer à un coffre streamer.",
+    rewardPreview: "Titre : Ratus",
     eval: (m) => ({ unlocked: m.chestJoinsTotal >= 1, progress: { current: m.chestJoinsTotal, target: 1 } }),
   },
 
@@ -502,6 +510,7 @@ const defs: AchievementDef[] = [
     category: "Roue & Bonus",
     icon: "🎡",
     name: "Rituel de la roue",
+    rewardPreview: "Titre : Ça tourne !",
     eval: (m) => ({ unlocked: m.wheelSpinsTotal >= 10, progress: { current: m.wheelSpinsTotal, target: 10 } }),
   },
   {
@@ -542,6 +551,7 @@ const defs: AchievementDef[] = [
     category: "Support",
     icon: "💎",
     name: "Supporter",
+    rewardPreview: "Titre : Vrai Viewer",
     eval: (m) => ({ unlocked: m.supportSpentRubis >= 1000, progress: { current: m.supportSpentRubis, target: 1000 } }),
   },
   {
@@ -564,6 +574,7 @@ const defs: AchievementDef[] = [
     icon: "📅",
     name: "Assidu",
     hint: "On te voit souvent par ici…",
+    rewardPreview: "Titre : No Life",
     eval: (m) => ({ unlocked: m.dailyBonusDaysMonth >= 20, progress: { current: m.dailyBonusDaysMonth, target: 20 } }),
   },
   {
@@ -637,6 +648,7 @@ const defs: AchievementDef[] = [
     icon: "🌙",
     name: "Noctambule",
     hint: "Tu traînes tard…",
+    rewardPreview: "Titre : Batman",
     eval: (m) => ({ unlocked: m.noctambuleOk }),
   },
   {

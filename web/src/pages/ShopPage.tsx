@@ -1,3 +1,4 @@
+// web/src/pages/ShopPage.tsx
 import * as React from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { ChatMessageBubble } from "../components/chat/ChatMessageBubble";
@@ -13,6 +14,8 @@ type Kind = "username" | "badge" | "title" | "frame" | "hat";
 const TOP_TABS = [
   { id: "skins", label: "Skins" },
   { id: "upgrades", label: "Améliorations" },
+  { id: "subs", label: "Abonnements" },
+  { id: "rubis", label: "Rubis" },
 ] as const;
 
 const SKIN_CATS: Array<{ id: Kind; label: string }> = [
@@ -23,12 +26,21 @@ const SKIN_CATS: Array<{ id: Kind; label: string }> = [
   { id: "title", label: "Titres" },
 ];
 
-function iconFor(kind: Kind) {
-  if (kind === "badge") return "🏷️";
-  if (kind === "hat") return "🧢";
-  if (kind === "username") return "✨";
-  if (kind === "frame") return "🖼️";
-  return "🔖";
+const TITLE_LABELS: Record<string, string> = {
+  title_ratus: "Ratus",
+  title_ca_tourne: "Ça tourne !",
+  title_vrai_viewer: "Vrai Viewer",
+  title_no_life: "No Life",
+  title_batman: "Batman",
+  title_bigmoula: "BigMoula",
+  title_lunaking: "LunaKing",
+  title_allin_man: "All-in Man",
+};
+
+function titleLabelFromCode(code: string) {
+  if (TITLE_LABELS[code]) return TITLE_LABELS[code];
+  if (code.startsWith("title_")) return code.replace(/^title_/, "").replace(/_/g, " ");
+  return code;
 }
 
 /** mêmes mappings que PersonalisationSection (v1) */
@@ -94,10 +106,40 @@ function applyPreview(kind: Kind, code: string | null, c: any) {
   }
 
   if (kind === "title") {
-    c.title = { text: code, label: code };
-    (c as any).titleText = code;
+    const label = titleLabelFromCode(code);
+    c.title = { text: label, label };
+    (c as any).titleText = label;
     return;
   }
+}
+
+function rarityToTier(rarity: string) {
+  const s = String(rarity || "").toLowerCase();
+  if (s.includes("bronze")) return "bronze";
+  if (s.includes("gold")) return "gold";
+  if (s.includes("master") || s.includes("diamond")) return "master";
+  return "silver";
+}
+
+function badgeTextFromCode(code: string) {
+  if (code === "badge_luna") return "LUNA";
+  if (code === "badge_777") return "777";
+  return code.replace(/^badge_/, "").toUpperCase();
+}
+
+function renderItemTitle(it: ShopCosmeticItem) {
+  if (it.kind === "badge") {
+    const tier = rarityToTier((it as any).rarity);
+    return (
+      <span className="shopTitleBadgeRow">
+        <span className="shopTitleKind">Badge</span>
+        <span className={`chatBadge badge--${tier}`}>{badgeTextFromCode(it.code)}</span>
+      </span>
+    );
+  }
+
+  // default (pseudo / hat / frame / title)
+  return <span className="shopTitleText">{it.name}</span>;
 }
 
 function buildCosmeticsPreview(equipped: {
@@ -117,10 +159,28 @@ function buildCosmeticsPreview(equipped: {
 }
 
 function sortByPriceAsc(a: ShopCosmeticItem, b: ShopCosmeticItem) {
-  const pa = a.priceRubis == null ? Number.POSITIVE_INFINITY : Number(a.priceRubis);
-  const pb = b.priceRubis == null ? Number.POSITIVE_INFINITY : Number(b.priceRubis);
-  if (pa !== pb) return pa - pb;
+  const ar = a.priceRubis == null ? Number.POSITIVE_INFINITY : Number(a.priceRubis);
+  const br = b.priceRubis == null ? Number.POSITIVE_INFINITY : Number(b.priceRubis);
+
+  const ap = (a as any).pricePrestige == null ? Number.POSITIVE_INFINITY : Number((a as any).pricePrestige);
+  const bp = (b as any).pricePrestige == null ? Number.POSITIVE_INFINITY : Number((b as any).pricePrestige);
+
+  const aGroup = ar !== Number.POSITIVE_INFINITY ? 0 : ap !== Number.POSITIVE_INFINITY ? 1 : 2;
+  const bGroup = br !== Number.POSITIVE_INFINITY ? 0 : bp !== Number.POSITIVE_INFINITY ? 1 : 2;
+
+  if (aGroup !== bGroup) return aGroup - bGroup;
+
+  const aPrice = aGroup === 0 ? ar : aGroup === 1 ? ap : Number.POSITIVE_INFINITY;
+  const bPrice = bGroup === 0 ? br : bGroup === 1 ? bp : Number.POSITIVE_INFINITY;
+
+  if (aPrice !== bPrice) return aPrice - bPrice;
   return a.name.localeCompare(b.name);
+}
+
+function normalizeOwnedRecord(x: any): Record<string, string[]> {
+  if (!x) return {};
+  if (typeof x === "object" && !Array.isArray(x)) return x as Record<string, string[]>;
+  return {};
 }
 
 export function ShopPage({
@@ -139,7 +199,9 @@ export function ShopPage({
   const [buying, setBuying] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
-  const [availableRubis, setAvailableRubis] = React.useState(0);
+  const [availableRubis, setAvailableRubis] = React.useState<number>(user?.rubis ?? 0);
+  const [availablePrestige, setAvailablePrestige] = React.useState<number>(0);
+
   const [items, setItems] = React.useState<ShopCosmeticItem[]>([]);
   const [owned, setOwned] = React.useState<Record<string, string[]>>({});
   const [equipped, setEquipped] = React.useState<{
@@ -159,10 +221,22 @@ export function ShopPage({
     try {
       const j = await shopCosmetics(token);
       if (!j?.ok) throw new Error((j as any)?.error || "load_failed");
-      setAvailableRubis(Number(j.availableRubis || 0));
-      setOwned(j.owned || {});
-      setEquipped(j.equipped || { username: null, badge: null, title: null, frame: null, hat: null });
-      setItems((j.items || []).filter((x: any) => x && x.active));
+
+      const rub =
+        Number((j as any).availableRubis) ||
+        Number((j as any).user?.rubis) ||
+        Number(user?.rubis ?? 0);
+
+      setAvailableRubis(Number.isFinite(rub) ? rub : 0);
+
+      const pre = Number((j as any).availablePrestige) || 0;
+      setAvailablePrestige(Number.isFinite(pre) ? pre : 0);
+
+      setOwned(normalizeOwnedRecord((j as any).owned));
+      setEquipped((j as any).equipped || { username: null, badge: null, title: null, frame: null, hat: null });
+
+      const arr = Array.isArray((j as any).items) ? (j as any).items : [];
+      setItems(arr.filter((x: any) => x && x.active));
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
     } finally {
@@ -171,15 +245,19 @@ export function ShopPage({
   }
 
   React.useEffect(() => {
+    if (user?.rubis != null) setAvailableRubis(user.rubis);
+  }, [user?.rubis]);
+
+  React.useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  const effectiveRubis = Number.isFinite(availableRubis) ? availableRubis : 0;
+  const effectivePrestige = Number.isFinite(availablePrestige) ? availablePrestige : 0;
+
   const visible = React.useMemo(() => {
-    return items
-      .filter((x) => x.kind === cat)
-      .slice()
-      .sort(sortByPriceAsc);
+    return items.filter((x) => x.kind === cat).slice().sort(sortByPriceAsc);
   }, [items, cat]);
 
   const selectedPreviewCosmetics = React.useMemo(() => {
@@ -194,10 +272,37 @@ export function ShopPage({
     return buildCosmeticsPreview(base);
   }
 
+  function isOwnedItem(it: ShopCosmeticItem) {
+    const ownedByBool = (it as any).owned === true;
+    const ownedByMap = (owned?.[it.kind] || []).includes(it.code);
+    return ownedByBool || ownedByMap;
+  }
+
+  function addOwnedLocal(kind: string, code: string) {
+    setOwned((prev) => {
+      const next = { ...(prev || {}) };
+      const arr = Array.isArray(next[kind]) ? next[kind].slice() : [];
+      if (!arr.includes(code)) arr.push(code);
+      next[kind] = arr;
+      return next;
+    });
+
+    setItems((prev) =>
+      prev.map((x) => ((x.kind === kind && x.code === code) ? ({ ...(x as any), owned: true } as any) : x))
+    );
+  }
+
   async function buy(it: ShopCosmeticItem) {
     if (!token) return;
     if (it.unlock !== "shop") return;
-    if (!it.priceRubis || it.priceRubis <= 0) return;
+
+    const pr = Number(it.priceRubis ?? 0);
+    const pp = Number((it as any).pricePrestige ?? 0);
+
+    const isRubis = Number.isFinite(pr) && pr > 0;
+    const isPrestige = Number.isFinite(pp) && pp > 0;
+
+    if (!isRubis && !isPrestige) return;
 
     setBuying(true);
     setErr(null);
@@ -205,12 +310,24 @@ export function ShopPage({
       const j = await buyShopCosmetic(token, it.kind, it.code);
       if (!j?.ok) throw new Error((j as any)?.error || "buy_failed");
 
-      setAvailableRubis(Number(j.availableRubis || 0));
-      setOwned(j.owned || {});
+      const rub =
+        Number((j as any).availableRubis) ||
+        Number((j as any).user?.rubis) ||
+        (isPrestige ? effectiveRubis : Math.max(0, effectiveRubis - pr));
 
-      // ✅ si ton AuthProvider expose setUser/refreshMe, on le prend sans casser ton typage
-      if (j.user && typeof authAny.setUser === "function" && user) {
-        authAny.setUser({ ...user, rubis: Number(j.user.rubis) });
+      setAvailableRubis(Number.isFinite(rub) ? rub : 0);
+
+      const pre = Number((j as any).availablePrestige);
+      if (Number.isFinite(pre)) setAvailablePrestige(pre);
+
+      if ((j as any).owned) {
+        setOwned(normalizeOwnedRecord((j as any).owned));
+      } else {
+        addOwnedLocal(it.kind, it.code);
+      }
+
+      if ((j as any).user && typeof authAny.setUser === "function" && user) {
+        authAny.setUser({ ...user, rubis: Number((j as any).user.rubis) });
       } else if (typeof authAny.refreshMe === "function") {
         authAny.refreshMe();
       }
@@ -222,20 +339,22 @@ export function ShopPage({
   }
 
   const username = user?.username ?? "Invité";
-  const previewUserId = user?.id ?? 999999; // ✅ important: permet à ChatMessageBubble d’afficher ton avatar custom
+  const previewUserId = user?.id ?? 999999;
 
   return (
     <div className="panel" style={{ marginTop: 14 }}>
       <div className="panelTitle">Shop</div>
 
       {!token ? <div className="muted">Connecte-toi pour accéder au shop.</div> : null}
+
       {err ? (
         <div className="hint" style={{ opacity: 0.95 }}>
           ⚠️ {err}
         </div>
       ) : null}
 
-      <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+      {/* Top Tabs */}
+      <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center" }}>
         {TOP_TABS.map((t) => (
           <button
             key={t.id}
@@ -246,22 +365,40 @@ export function ShopPage({
             {t.label}
           </button>
         ))}
-        <div style={{ marginLeft: "auto", opacity: 0.9, fontWeight: 900 }}>
-          💎 {Number(availableRubis).toLocaleString("fr-FR")} rubis
+
+        <div style={{ marginLeft: "auto", opacity: 0.9, fontWeight: 900, display: "flex", gap: 14 }}>
+          <span>💎 {Number(effectiveRubis).toLocaleString("fr-FR")} rubis</span>
+          <span>🏆 {Number(effectivePrestige).toLocaleString("fr-FR")} prestige</span>
         </div>
       </div>
 
+      {/* UPGRADES */}
       {topTab === "upgrades" ? (
-        <div style={{ marginTop: 14 }} className="muted">
-          Bientôt : améliorations (boosts, features, etc.).
+        <div style={{ marginTop: 14 }}>
+          <div className="muted">Bientôt : améliorations (boosts, features, etc.).</div>
         </div>
       ) : null}
 
+      {/* SUBS */}
+      {topTab === "subs" ? (
+        <div style={{ marginTop: 14 }}>
+          <div className="muted">Bientôt : abonnements (packs, avantages, etc.).</div>
+        </div>
+      ) : null}
+
+      {/* RUBIS */}
+      {topTab === "rubis" ? (
+        <div style={{ marginTop: 14 }}>
+          <div className="muted">Bientôt : achat de rubis (packs / top-up).</div>
+        </div>
+      ) : null}
+
+      {/* SKINS */}
       {topTab === "skins" ? (
         <>
-          {/* ✅ Preview global (pas tronqué) */}
+          {/* Preview global */}
           <div
-            className="shopPreviewNoTruncate"
+            className="shopPreviewNoTruncate cosPreview"
             style={{
               marginTop: 12,
               padding: 12,
@@ -291,7 +428,7 @@ export function ShopPage({
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 14, marginTop: 14 }}>
-            {/* Menu catégories */}
+            {/* Catégories */}
             <div
               style={{
                 borderRadius: 16,
@@ -337,74 +474,80 @@ export function ShopPage({
               </div>
 
               <div
+                className="cosGrid"
                 style={{
                   marginTop: 12,
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))",
                   gap: 12,
+                  gridTemplateColumns: "repeat(auto-fill, minmax(300px, 420px))",
+                  justifyContent: "start",
+                  alignItems: "start",
                 }}
               >
                 {visible.map((it) => {
-                  const isOwned = (owned?.[it.kind] || []).includes(it.code);
-                  const buyable = it.unlock === "shop" && (it.priceRubis ?? 0) > 0;
-                  const price = Number(it.priceRubis || 0);
-                  const canAfford = price <= availableRubis;
+                  const ownedNow = isOwnedItem(it);
+
+                  const pr = Number(it.priceRubis ?? 0);
+                  const pp = Number((it as any).pricePrestige ?? 0);
+
+                  const isRubis = Number.isFinite(pr) && pr > 0;
+                  const isPrestige = Number.isFinite(pp) && pp > 0;
+
+                  const buyable = it.unlock === "shop" && (isRubis || isPrestige);
+                  const canAfford = isPrestige ? pp <= effectivePrestige : pr <= effectiveRubis;
+
+                  const selectedNow = selected?.kind === it.kind && selected?.code === it.code;
 
                   return (
                     <div
                       key={`${it.kind}:${it.code}`}
+                      className={[
+                        "cosCard",
+                        `cosCard--${it.kind}`,
+                        selectedNow ? "isSelected" : "",
+                        ownedNow ? "isOwned" : "",
+                      ].join(" ")}
+                      onClick={() => setSelected({ kind: it.kind as Kind, code: it.code })}
                       style={{
-                        borderRadius: 16,
-                        border:
-                          selected?.kind === it.kind && selected?.code === it.code
-                            ? "1px solid rgba(255,255,255,0.24)"
-                            : "1px solid rgba(255,255,255,0.08)",
-                        background: "rgba(255,255,255,0.04)",
-                        padding: 12,
+                        cursor: "pointer",
+                        border: selectedNow
+                          ? "1px solid rgba(255,255,255,0.24)"
+                          : "1px solid rgba(255,255,255,0.08)",
                       }}
+                      title="Cliquer pour prévisualiser"
                     >
-                      <button
-                        className="btnGhostSmall"
-                        style={{ width: "100%", textAlign: "left" }}
-                        onClick={() => setSelected({ kind: it.kind, code: it.code })}
-                        disabled={loading || buying}
-                        title="Cliquer pour prévisualiser"
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <div style={{ fontSize: 18 }}>{iconFor(it.kind)}</div>
-                          <div style={{ fontSize: 11, fontWeight: 900, opacity: 0.9 }}>
-                            {isOwned
-                              ? "Possédé"
-                              : it.unlock === "shop"
-                              ? "Shop"
-                              : it.unlock === "achievement"
-                              ? "Succès"
-                              : it.unlock === "system"
-                              ? "Agenda"
-                              : it.unlock}
+                      <div className="cosCardHead">
+                        <div style={{ minWidth: 0 }}>
+                          <div className="cosCardTitle">{renderItemTitle(it)}</div>
+
+                          <div className="cosCardMeta">
+                            <span className={`cosPill ${ownedNow ? "cosPillOwned" : ""}`}>
+                              {ownedNow
+                                ? "Possédé"
+                                : it.unlock === "shop"
+                                ? "Shop"
+                                : it.unlock === "achievement"
+                                ? "Succès"
+                                : it.unlock === "system"
+                                ? "Agenda"
+                                : it.unlock}
+                            </span>
+
+                            {it.unlock === "shop" && isRubis ? (
+                              <span className="cosPrice">{pr.toLocaleString("fr-FR")} rubis</span>
+                            ) : null}
+
+                            {it.unlock === "shop" && isPrestige ? (
+                              <span className="cosPrice">🏆 {pp.toLocaleString("fr-FR")} prestige</span>
+                            ) : null}
                           </div>
                         </div>
+                      </div>
 
-                        <div style={{ marginTop: 8, fontWeight: 950 }}>{it.name}</div>
-                        <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-                          {it.unlock === "shop" && it.priceRubis != null
-                            ? `${price.toLocaleString("fr-FR")} rubis`
-                            : it.unlock === "achievement"
-                            ? "Débloqué via succès"
-                            : it.unlock === "system"
-                            ? "Débloqué via agenda"
-                            : "Non achetable"}
-                        </div>
-                      </button>
-
-                      {/* mini preview */}
+                      {/* preview */}
                       <div
+                        className="cosPreview"
                         style={{
-                          marginTop: 10,
-                          pointerEvents: "none",
-                          opacity: 0.95,
-                          transform: "scale(0.92)",
-                          transformOrigin: "top left",
                           ...({
                             ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
                             ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
@@ -425,14 +568,21 @@ export function ShopPage({
                       </div>
 
                       {/* buy */}
-                      <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                      <div style={{ display: "flex", gap: 8 }}>
                         {buyable ? (
                           <button
-                            className={(!token || buying || loading || isOwned || !canAfford) ? "btnGhostSmall" : "btnPrimarySmall"}
-                            disabled={!token || buying || loading || isOwned || !canAfford}
-                            onClick={() => buy(it)}
+                            className={
+                              !token || buying || loading || ownedNow || !canAfford
+                                ? "btnGhostSmall"
+                                : "btnPrimarySmall"
+                            }
+                            disabled={!token || buying || loading || ownedNow || !canAfford}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              buy(it);
+                            }}
                           >
-                            {isOwned ? "Déjà possédé" : !canAfford ? "Pas assez" : "Acheter"}
+                            {ownedNow ? "Possédé" : !canAfford ? "Pas assez" : "Acheter"}
                           </button>
                         ) : (
                           <button className="btnGhostSmall" disabled>

@@ -24,7 +24,7 @@ export async function mig015_cosmetics_equipped(pool: Pool) {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     `);
-    
+
     await pool.query(`
     CREATE TABLE IF NOT EXISTS user_achievements (
         user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -34,4 +34,5 @@ export async function mig015_cosmetics_equipped(pool: Pool) {
     );
     `);
 
+    
 }

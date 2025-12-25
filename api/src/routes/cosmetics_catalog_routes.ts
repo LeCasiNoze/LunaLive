@@ -1,6 +1,6 @@
 //api/src/routes/cosmetics_catalog_routes.ts
 import { Router } from "express";
-import { COSMETICS_CATALOG } from "../cosmetics_catalog.js";
+import { COSMETICS_CATALOG } from "../cosmetics/catalog.js";
 
 export const cosmeticsCatalogRoutes = Router();
 

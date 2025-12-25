@@ -78,10 +78,10 @@ export function createApp() {
   app.use("/me/daily-bonus", requireAuth, dailyBonusRoutes);
   app.use("/me/achievements", requireAuth, achievementsRouter);
   app.use(cosmeticsRouter);
-  app.use(cosmeticsCatalogRoutes);
+
   app.use(avatarRouter);
   app.use(shopRouter);
-  
+  app.use(cosmeticsCatalogRoutes);
   app.use(express.json({ limit: "300kb" }));
 
 
