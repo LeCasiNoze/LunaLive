@@ -11,12 +11,14 @@ import StreamerPage from "./pages/StreamerPage";
 import ProfilePage from "./pages/ProfilePage";
 import AdminPage from "./pages/AdminPage";
 import DashboardPage from "./pages/DashboardPage";
+import { ShopPage } from "./pages/ShopPage";
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
 import { GoLiveNotifier } from "./components/GoLiveNotifier";
 import { DailyBonusToast } from "./components/DailyBonusToast";
 import { AchievementsToast } from "./components/AchievementsToast";
+
 function AppInner() {
   const location = useLocation();
   const isMobile = useIsMobile();
@@ -40,10 +42,11 @@ function AppInner() {
       <GoLiveNotifier />
       <DailyBonusToast />
       <AchievementsToast />
-      
+
       <Routes>
         <Route path="/" element={<LivesPage />} />
         <Route path="/browse" element={<BrowsePage />} />
+        <Route path="/shop" element={<ShopPage />} />
         <Route path="/s/:slug" element={<StreamerPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/admin" element={<AdminPage />} />

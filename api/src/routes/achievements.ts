@@ -5,6 +5,7 @@ import { pool } from "../db.js";
 export const achievementsRouter = Router();
 
 type Tier = "bronze" | "silver" | "gold" | "master";
+type Kind = "username" | "badge" | "title" | "frame" | "hat";
 
 type Metrics = {
   userId: number;
@@ -58,12 +59,12 @@ type AchievementDef = {
     progress?: { current: number; target: number } | null;
   };
 
+  // optionnel: “récompense” affichable côté UI
   rewardPreview?: string;
 };
 
 // helper query typé (db.query n’est pas générique chez toi)
-const q = <T extends Record<string, any> = any>(text: string, params: any[] = []) =>
-  pool.query<T>(text, params);
+const q = <T extends Record<string, any> = any>(text: string, params: any[] = []) => pool.query<T>(text, params);
 
 async function tableExists(table: string) {
   const r = await q<{ reg: string | null }>(`SELECT to_regclass($1) AS reg`, [`public.${table}`]);
@@ -110,10 +111,7 @@ async function getMetrics(userId: number): Promise<Metrics> {
   const { monthStartIso, monthEndIso } = await getParisBounds();
 
   // users.last_login_at
-  const u = await q<{ last_login_at: string | null }>(
-    `SELECT last_login_at FROM users WHERE id=$1 LIMIT 1`,
-    [userId]
-  );
+  const u = await q<{ last_login_at: string | null }>(`SELECT last_login_at FROM users WHERE id=$1 LIMIT 1`, [userId]);
   const lastLoginAt = u.rows?.[0]?.last_login_at ?? null;
 
   const hasStreamViewerMinutes = await tableExists("stream_viewer_minutes");
@@ -164,21 +162,13 @@ async function getMetrics(userId: number): Promise<Metrics> {
     : 0;
 
   const chatMessagesTotal = hasChatMessages
-    ? await safeCount(
-        `SELECT COUNT(*)::int AS n FROM chat_messages WHERE user_id=$1 AND deleted_at IS NULL`,
-        [userId]
-      )
+    ? await safeCount(`SELECT COUNT(*)::int AS n FROM chat_messages WHERE user_id=$1 AND deleted_at IS NULL`, [userId])
     : 0;
 
-  const followsCount = hasFollows
-    ? await safeCount(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE user_id=$1`, [userId])
-    : 0;
+  const followsCount = hasFollows ? await safeCount(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE user_id=$1`, [userId]) : 0;
 
   const hasNotifyEnabled = hasFollows
-    ? (await safeCount(
-        `SELECT COUNT(*)::int AS n FROM streamer_follows WHERE user_id=$1 AND notify_enabled=TRUE`,
-        [userId]
-      )) > 0
+    ? (await safeCount(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE user_id=$1 AND notify_enabled=TRUE`, [userId])) > 0
     : false;
 
   const hasFollowQuick = hasFollows
@@ -196,9 +186,7 @@ async function getMetrics(userId: number): Promise<Metrics> {
       )) > 0
     : false;
 
-  const wheelSpinsTotal = hasWheel
-    ? await safeCount(`SELECT COUNT(*)::int AS n FROM daily_wheel_spins WHERE user_id=$1`, [userId])
-    : 0;
+  const wheelSpinsTotal = hasWheel ? await safeCount(`SELECT COUNT(*)::int AS n FROM daily_wheel_spins WHERE user_id=$1`, [userId]) : 0;
 
   const dailyBonusDaysMonth = dailyBonusTable
     ? await safeCount(
@@ -330,6 +318,82 @@ async function getMetrics(userId: number): Promise<Metrics> {
   };
 }
 
+// ─────────────────────────────────────────────
+// ✅ Rewards -> entitlements mapping (succès => cosmétiques)
+// Tu as donné :
+// - Arc-en-ciel : master_collectionneur
+// - Chroma toggle : master_parfait
+// - Demon : master_roulette (chez toi c’est master_pretre_roue)
+// - Couronne : gold_marathon
+// - Halo : master_pilier
+// - Lotus crown : master_archiviste
+// - Eclipse : master_sous_la_lune
+// (le néon = agenda 30j => on le fera après)
+// ─────────────────────────────────────────────
+const ACH_REWARD_ENTITLEMENTS: Record<string, Array<{ kind: Kind; code: string }>> = {
+  master_collectionneur: [{ kind: "username", code: "uanim_rainbow_scroll" }],
+  master_parfait: [{ kind: "username", code: "uanim_chroma_toggle" }],
+
+  // alias “master_roulette” => ton id actuel = master_pretre_roue
+  master_pretre_roue: [{ kind: "hat", code: "hat_demon_horn" }],
+  master_roulette: [{ kind: "hat", code: "hat_demon_horn" }],
+
+  gold_marathon: [{ kind: "hat", code: "hat_carton_crown" }],
+  master_pilier: [{ kind: "hat", code: "hat_eclipse_halo" }],
+  master_archiviste: [{ kind: "frame", code: "mframe_lotus_crown" }],
+  master_sous_la_lune: [{ kind: "frame", code: "mframe_eclipse" }],
+};
+
+let entitlementsEnsured = false;
+async function ensureEntitlementsTable() {
+  if (entitlementsEnsured) return;
+
+  // si la table existe déjà, CREATE IF NOT EXISTS ne casse rien
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_entitlements (
+      user_id INT NOT NULL,
+      kind TEXT NOT NULL,
+      code TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, kind, code)
+    );
+  `);
+
+  entitlementsEnsured = true;
+}
+
+async function grantEntitlementsForUnlocked(userId: number, unlockedIds: string[]) {
+  const rewards: Array<{ kind: Kind; code: string }> = [];
+
+  for (const id of unlockedIds) {
+    const r = ACH_REWARD_ENTITLEMENTS[id];
+    if (r && r.length) rewards.push(...r);
+  }
+
+  if (!rewards.length) return { granted: 0 };
+
+  await ensureEntitlementsTable();
+
+  // insert en batch
+  const values: any[] = [];
+  const rowsSql: string[] = [];
+  let i = 1;
+
+  for (const r of rewards) {
+    rowsSql.push(`($${i++}, $${i++}, $${i++})`);
+    values.push(userId, r.kind, r.code);
+  }
+
+  const sql = `
+    INSERT INTO user_entitlements (user_id, kind, code)
+    VALUES ${rowsSql.join(",")}
+    ON CONFLICT (user_id, kind, code) DO NOTHING
+  `;
+
+  const r = await pool.query(sql, values);
+  return { granted: r.rowCount || 0 };
+}
+
 const defs: AchievementDef[] = [
   // ───────────────── Bronze (tuto)
   {
@@ -339,7 +403,7 @@ const defs: AchievementDef[] = [
     icon: "🌙",
     name: "Bienvenue sur LunaLive",
     desc: "Créer un compte.",
-    eval: (m) => ({ unlocked: true }),
+    eval: () => ({ unlocked: true }),
   },
   {
     id: "bronze_first_login",
@@ -487,10 +551,10 @@ const defs: AchievementDef[] = [
     icon: "⏱️",
     name: "À l’affût",
     eval: (m) => ({
-        unlocked: m.hasFollowQuick,
-        progress: { current: m.hasFollowQuick ? 1 : 0, target: 1 },
+      unlocked: m.hasFollowQuick,
+      progress: { current: m.hasFollowQuick ? 1 : 0, target: 1 },
     }),
-    },
+  },
 
   // ───────────────── Gold (très actif)
   {
@@ -527,6 +591,7 @@ const defs: AchievementDef[] = [
     icon: "⏳",
     name: "Marathon",
     hint: "Une présence qui commence à peser.",
+    rewardPreview: "Chapeau : Carton Crown",
     eval: (m) => ({ unlocked: m.watchMinutesMonth >= 600, progress: { current: m.watchMinutesMonth, target: 600 } }), // 10h
   },
   {
@@ -592,7 +657,7 @@ const defs: AchievementDef[] = [
     icon: "🌕",
     name: "Sous la lune",
     hidden: true,
-    rewardPreview: "Badge rare (à venir)",
+    rewardPreview: "Cadran : Eclipse",
     eval: (m) => ({ unlocked: m.watchMinutesMonth >= 1800, progress: { current: m.watchMinutesMonth, target: 1800 } }), // 30h
   },
   {
@@ -602,7 +667,7 @@ const defs: AchievementDef[] = [
     icon: "🎡",
     name: "Prêtre de la roue",
     hidden: true,
-    rewardPreview: "Badge rare (à venir)",
+    rewardPreview: "Chapeau : Demon Horn",
     eval: (m) => ({ unlocked: m.wheelSpinsTotal >= 200, progress: { current: m.wheelSpinsTotal, target: 200 } }),
   },
   {
@@ -612,7 +677,7 @@ const defs: AchievementDef[] = [
     icon: "📜",
     name: "Archiviste",
     hidden: true,
-    rewardPreview: "Titre animé (à venir)",
+    rewardPreview: "Cadran : Lotus Crown",
     eval: (m) => ({ unlocked: m.chatMessagesTotal >= 10000, progress: { current: m.chatMessagesTotal, target: 10000 } }),
   },
   {
@@ -622,7 +687,7 @@ const defs: AchievementDef[] = [
     icon: "🛡️",
     name: "Pilier",
     hidden: true,
-    rewardPreview: "Badge ultra rare (à venir)",
+    rewardPreview: "Chapeau : Eclipse Halo",
     eval: (m) => ({ unlocked: m.supportedStreamersDistinct >= 20, progress: { current: m.supportedStreamersDistinct, target: 20 } }),
   },
   {
@@ -632,7 +697,7 @@ const defs: AchievementDef[] = [
     icon: "👑",
     name: "Parfait",
     hidden: true,
-    rewardPreview: "Titre unique (à venir)",
+    rewardPreview: "Pseudo : Chroma (toggle)",
     eval: (m) => ({ unlocked: m.dailyBonusDaysMonth >= 30, progress: { current: m.dailyBonusDaysMonth, target: 30 } }),
   },
   {
@@ -642,7 +707,7 @@ const defs: AchievementDef[] = [
     icon: "🏆",
     name: "Collectionneur",
     hidden: false,
-    rewardPreview: "Cosmétique (à venir)",
+    rewardPreview: "Pseudo : Arc-en-ciel défilant",
     eval: (_m, unlockedCountExceptCollector) => ({
       unlocked: unlockedCountExceptCollector >= 20,
       progress: { current: unlockedCountExceptCollector, target: 20 },
@@ -673,32 +738,42 @@ achievementsRouter.get("/", async (req, res) => {
     const r = d.eval(m, unlockedCountExceptCollector);
     const unlocked = !!r.unlocked;
 
-    // visibilité: bronze => desc, silver => nom only, gold => nom + hint, master => caché si locked
     const isHiddenLocked = !!d.hidden && !unlocked;
-    const displayName = isHiddenLocked ? "???" : d.name;
 
     return {
-    id: d.id,
-    tier: d.tier,
-    category: d.category,
-    icon: isHiddenLocked ? "❔" : d.icon,
-    name: isHiddenLocked ? "???" : d.name,
+      id: d.id,
+      tier: d.tier,
+      category: d.category,
+      icon: isHiddenLocked ? "❔" : d.icon,
+      name: isHiddenLocked ? "???" : d.name,
 
-    // ✅ NOUVELLE RÈGLE :
-    // - si unlocked => on révèle la desc pour tout le monde
-    // - sinon => bronze only
-    desc: unlocked ? (d.desc ?? null) : (d.tier === "bronze" ? (d.desc ?? null) : null),
+      // ✅ règle:
+      // - si unlocked => on révèle la desc pour tout le monde
+      // - sinon => bronze only
+      desc: unlocked ? (d.desc ?? null) : d.tier === "bronze" ? (d.desc ?? null) : null,
 
-    // hint: tu peux le laisser même quand unlocked (ça fait “lore”),
-    // ou le garder seulement quand locked, à toi :
-    hint: !unlocked && d.tier === "gold" ? (d.hint ?? null) : null,
+      // hint: seulement quand locked sur gold (comme avant)
+      hint: !unlocked && d.tier === "gold" ? (d.hint ?? null) : null,
 
-    rewardPreview: d.tier === "master" ? d.rewardPreview ?? null : null,
+      // rewardPreview: on renvoie si défini (même hors master)
+      rewardPreview: d.rewardPreview ?? null,
 
-    unlocked,
-    progress: r.progress ?? null,
+      unlocked,
+      progress: r.progress ?? null,
     };
   });
+
+  // ✅ 3) Grant entitlements (cosmétiques) pour les succès débloqués
+  // (idempotent grâce à ON CONFLICT DO NOTHING)
+  const unlockedIds = achievements.filter((a) => a.unlocked).map((a) => a.id);
+  let granted = 0;
+  try {
+    const r = await grantEntitlementsForUnlocked(userId, unlockedIds);
+    granted = r.granted;
+  } catch {
+    // on ne casse pas la route achievements si la DB est down ou autre
+    granted = 0;
+  }
 
   res.json({
     ok: true,
@@ -706,5 +781,6 @@ achievementsRouter.get("/", async (req, res) => {
     monthStart: m.monthStartIso,
     monthEnd: m.monthEndIso,
     achievements,
+    grantedEntitlements: granted, // debug (front peut ignorer)
   });
 });

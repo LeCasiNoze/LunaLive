@@ -826,3 +826,53 @@ export async function getMyAchievements(token: string) {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
+
+export type ShopCosmeticItem = {
+  kind: "username" | "badge" | "title" | "frame" | "hat";
+  code: string;
+  name: string;
+  rarity: string;
+  unlock: "shop" | "achievement" | "role" | "event" | "system";
+  priceRubis: number | null;
+  active: boolean;
+  meta?: any;
+};
+
+export type ShopCosmeticsResp = {
+  ok: true;
+  availableRubis: number;
+  items: ShopCosmeticItem[];
+  owned: Record<string, string[]>;
+  equipped: {
+    username: string | null;
+    badge: string | null;
+    title: string | null;
+    frame: string | null;
+    hat: string | null;
+  };
+};
+
+export type BuyShopCosmeticResp = {
+  ok: true;
+  availableRubis: number;
+  owned: Record<string, string[]>;
+  user?: { id: number; rubis: number };
+};
+
+export async function shopCosmetics(token: string): Promise<ShopCosmeticsResp> {
+  return j<ShopCosmeticsResp>("/shop/cosmetics", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function buyShopCosmetic(
+  token: string,
+  kind: "username" | "badge" | "title" | "frame" | "hat",
+  code: string
+): Promise<BuyShopCosmeticResp> {
+  return j<BuyShopCosmeticResp>("/shop/cosmetics/buy", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ kind, code }),
+  });
+}
