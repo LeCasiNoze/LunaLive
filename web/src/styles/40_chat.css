@@ -219,6 +219,21 @@
   display: inline-block; /* ✅ nécessaire pour le neon glow */
 }
 
+/* ✅ Base title style (le reste est surtout dans le JSX, mais on garde une base propre) */
+.chatTitle{
+  display: inline-block;
+  max-width: 100%;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* (optionnel) tiers si tu n’as pas déjà ces classes ailleurs */
+.title--bronze{ opacity: 0.9; }
+.title--silver{ color: rgba(180,140,255,0.95); }
+.title--gold{ color: rgba(255,210,120,0.95); }
+.title--master{ color: rgba(190,240,255,0.95); }
+
 .chatBodyText{
   margin-top: 6px;
   color: var(--chat-msg-color, rgba(255,255,255,0.92));
@@ -228,3 +243,18 @@
   word-break: break-word;
 }
 
+/* ✅ FIX: empêcher le titre de récupérer une anim/gradient/filter du pseudo (même si CSS avec !important) */
+.chatTitle,
+.chatTitle *{
+  animation: none !important;
+  transition: none !important;
+
+  background-image: none !important;
+  background: none !important;
+  -webkit-text-fill-color: currentColor !important;
+  -webkit-background-clip: initial !important;
+  background-clip: initial !important;
+
+  filter: none !important;
+  text-shadow: none !important;
+}
