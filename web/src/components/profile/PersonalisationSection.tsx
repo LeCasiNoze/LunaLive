@@ -19,6 +19,7 @@ type ApiCatalogItem = {
   rarity: string;
   unlock: string;
   priceRubis: number | null;
+  pricePrestige?: number | null; // ✅ possible depuis le catalogue
   active: boolean;
   meta?: any;
 };
@@ -30,6 +31,7 @@ type UiItem = {
   desc?: string;
   free?: boolean;
   priceRubis?: number | null;
+  pricePrestige?: number | null; // ✅ NEW
   rarity?: string;
   unlock?: string;
 };
@@ -116,21 +118,76 @@ async function makeSquareAvatar(file: File, size = 128): Promise<{ mime: string;
   return { mime, b64, previewUrl };
 }
 
+/* ─────────────────────────────────────────────
+   UI helpers
+───────────────────────────────────────────── */
+function rarityToTier(rarity: string) {
+  const s = String(rarity || "").toLowerCase();
+  if (s.includes("bronze")) return "bronze";
+  if (s.includes("gold")) return "gold";
+  if (s.includes("master") || s.includes("diamond")) return "master";
+  return "silver";
+}
+
+function badgeTextFromCode(code: string) {
+  if (code === "badge_luna") return "LUNA";
+  if (code === "badge_777") return "777";
+  return code.replace(/^badge_/, "").toUpperCase();
+}
+
+function renderItemTitle(it: UiItem) {
+  if (it.kind === "badge" && it.code) {
+    const tier = rarityToTier(it.rarity || "");
+    return (
+      <span className="shopTitleBadgeRow">
+        <span className="shopTitleKind">Badge</span>
+        <span className={`chatBadge badge--${tier}`}>{badgeTextFromCode(it.code)}</span>
+      </span>
+    );
+  }
+  return <span className="shopTitleText">{it.name}</span>;
+}
+
+function kindBorder(kind: Kind) {
+  const map: Record<Kind, string> = {
+    username: "rgba(255, 213, 74, 0.20)",
+    badge: "rgba(190, 240, 255, 0.20)",
+    hat: "rgba(126, 76, 179, 0.20)",
+    frame: "rgba(63, 86, 203, 0.20)",
+    title: "rgba(180, 140, 255, 0.20)",
+  };
+  return map[kind] || "rgba(255,255,255,0.10)";
+}
+
+function titleLabelFallback(code: string) {
+  const raw = code.replace(/^title_/, "").replace(/_/g, " ").trim();
+  if (!raw) return code;
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function frameIdFromCode(code: string) {
+  return code.replace(/^m?frame_/, "").replace(/_(shop|event|master)$/, "");
+}
+
 /**
  * Preview mapping : on traduit tes codes (DB/catalogue)
  * -> en cosmetics compréhensibles par ChatMessageBubble.
  */
-function applyPreview(kind: Kind, code: string | null, c: any) {
+function applyPreview(
+  kind: Kind,
+  code: string | null,
+  c: any,
+  opts?: { titleNames?: Record<string, string> }
+) {
   if (!code) return;
 
-  // init safe
   if (!c.avatar) c.avatar = {};
   if (!c.username) c.username = {};
   if (!Array.isArray(c.badges)) c.badges = [];
   if (c.title === undefined) c.title = null;
 
   if (kind === "badge") {
-    const txt = code === "badge_luna" ? "LUNA" : code === "badge_777" ? "777" : code;
+    const txt = badgeTextFromCode(code);
     c.badges = [{ id: txt, code: txt, text: txt, label: txt }];
     (c as any).badge = txt;
     (c as any).badgeText = txt;
@@ -178,25 +235,31 @@ function applyPreview(kind: Kind, code: string | null, c: any) {
   }
 
   if (kind === "frame") {
-    const frameId = code.replace(/^frame_/, "").replace(/_(shop|event|master)$/, "");
+    const frameId = frameIdFromCode(code);
     c.frame = { frameId };
     return;
   }
 
   if (kind === "title") {
-    c.title = { text: code, label: code };
-    (c as any).titleText = code;
+    const label = opts?.titleNames?.[code] ?? titleLabelFallback(code);
+    c.title = { text: label, label };
+    (c as any).titleText = label;
+    (c as any).titleLabel = label;
+    (c as any).titleCode = code; // debug
     return;
   }
 }
 
-function buildCosmeticsPreview(equipped: {
-  username: string | null;
-  badge: string | null;
-  title: string | null;
-  frame: string | null;
-  hat: string | null;
-}): ChatCosmetics | null {
+function buildCosmeticsPreview(
+  equipped: {
+    username: string | null;
+    badge: string | null;
+    title: string | null;
+    frame: string | null;
+    hat: string | null;
+  },
+  opts?: { titleNames?: Record<string, string> }
+): ChatCosmetics | null {
   const c: any = {
     badges: [],
     title: null,
@@ -205,11 +268,11 @@ function buildCosmeticsPreview(equipped: {
     username: {},
   };
 
-  applyPreview("username", equipped?.username ?? null, c);
-  applyPreview("badge", equipped?.badge ?? null, c);
-  applyPreview("title", equipped?.title ?? null, c);
-  applyPreview("frame", equipped?.frame ?? null, c);
-  applyPreview("hat", equipped?.hat ?? null, c);
+  applyPreview("username", equipped?.username ?? null, c, opts);
+  applyPreview("badge", equipped?.badge ?? null, c, opts);
+  applyPreview("title", equipped?.title ?? null, c, opts);
+  applyPreview("frame", equipped?.frame ?? null, c, opts);
+  applyPreview("hat", equipped?.hat ?? null, c, opts);
 
   return c as ChatCosmetics;
 }
@@ -219,48 +282,6 @@ function byOwnedFirst(ownedSet: Set<string>, a: UiItem, b: UiItem) {
   const bo = b.free || (b.code != null && ownedSet.has(b.code));
   if (ao !== bo) return ao ? -1 : 1;
   return a.name.localeCompare(b.name);
-}
-
-/* ─────────────────────────────────────────────
-   UI helpers (mêmes intentions que ShopPage)
-───────────────────────────────────────────── */
-function rarityToTier(rarity: string) {
-  const s = String(rarity || "").toLowerCase();
-  if (s.includes("bronze")) return "bronze";
-  if (s.includes("gold")) return "gold";
-  if (s.includes("master") || s.includes("diamond")) return "master";
-  return "silver";
-}
-
-function badgeTextFromCode(code: string) {
-  if (code === "badge_luna") return "LUNA";
-  if (code === "badge_777") return "777";
-  return code.replace(/^badge_/, "").toUpperCase();
-}
-
-function renderItemTitle(it: UiItem) {
-  if (it.kind === "badge" && it.code) {
-    const tier = rarityToTier(it.rarity || "");
-    return (
-      <span className="shopTitleBadgeRow">
-        <span className="shopTitleKind">Badge</span>
-        <span className={`chatBadge badge--${tier}`}>{badgeTextFromCode(it.code)}</span>
-      </span>
-    );
-  }
-  return <span className="shopTitleText">{it.name}</span>;
-}
-
-function kindBorder(kind: Kind) {
-  // contours légers par catégorie (subtil)
-  const map: Record<Kind, string> = {
-    username: "rgba(255, 213, 74, 0.20)", // doré doux
-    badge: "rgba(190, 240, 255, 0.20)", // ice
-    hat: "rgba(126, 76, 179, 0.20)", // luna purple
-    frame: "rgba(63, 86, 203, 0.20)", // ghost blue
-    title: "rgba(180, 140, 255, 0.20)", // violet clair
-  };
-  return map[kind] || "rgba(255,255,255,0.10)";
 }
 
 export function PersonalisationSection({
@@ -305,7 +326,6 @@ export function PersonalisationSection({
 
   React.useEffect(() => {
     if (!myUserId) return;
-    // on affiche direct l’endpoint public (si 404 => ça sera juste les initiales dans l’UI)
     setAvatarUrl(`${API_BASE}/avatars/u/${myUserId}`);
   }, [myUserId]);
 
@@ -318,7 +338,7 @@ export function PersonalisationSection({
       if (!c?.ok) throw new Error("catalog_failed");
       if (!m?.ok) throw new Error((m as any)?.error || "load_failed");
 
-      setCatalog((c.items || []).filter((x: any) => x && x.active));
+      setCatalog(((c as any).items || []).filter((x: any) => x && x.active));
       setOwned(m.owned || {});
       setFree(m.free || {});
       setEquipped(m.equipped || {});
@@ -353,6 +373,14 @@ export function PersonalisationSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  const titleNames = React.useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const it of catalog) {
+      if (it?.kind === "title" && it.code && it.name) m[it.code] = it.name;
+    }
+    return m;
+  }, [catalog]);
+
   const ownedSet = new Set<string>([...(owned?.[tab] || []), ...(free?.[tab] || [])]);
 
   const items: UiItem[] = [
@@ -365,21 +393,32 @@ export function PersonalisationSection({
     },
     ...catalog
       .filter((x) => x.kind === tab)
-      .map((x) => ({
-        kind: x.kind,
-        code: x.code,
-        name: x.name,
-        desc:
-          x.unlock === "shop" && x.priceRubis
-            ? `${niceUnlock(x.unlock)} — ${Number(x.priceRubis).toLocaleString("fr-FR")} rubis`
-            : `${niceUnlock(x.unlock)}${x.rarity ? ` — ${x.rarity}` : ""}`,
-        priceRubis: x.priceRubis,
-        rarity: x.rarity,
-        unlock: x.unlock,
-      })),
+      .map((x) => {
+        const pricePrestige = Number((x as any).pricePrestige ?? 0) || null;
+
+        const desc =
+          x.unlock === "shop"
+            ? x.priceRubis
+              ? `Shop — ${Number(x.priceRubis).toLocaleString("fr-FR")} rubis`
+              : pricePrestige
+              ? `Shop — ${Number(pricePrestige).toLocaleString("fr-FR")} prestige`
+              : "Shop"
+            : `${niceUnlock(x.unlock)}${x.rarity ? ` — ${x.rarity}` : ""}`;
+
+        return {
+          kind: x.kind,
+          code: x.code,
+          name: x.name,
+          desc,
+          priceRubis: x.priceRubis,
+          pricePrestige,
+          rarity: x.rarity,
+          unlock: x.unlock,
+        };
+      }),
   ].sort((a, b) => byOwnedFirst(ownedSet, a, b));
 
-  const effectiveAvatar = avatarPreview || avatarUrl; // preview local > avatar serveur
+  const effectiveAvatar = avatarPreview || avatarUrl;
 
   function withAvatar<C extends ChatCosmetics | null>(c: C): C {
     if (!c) return c;
@@ -389,7 +428,7 @@ export function PersonalisationSection({
     } as any) as C;
   }
 
-  const previewCosmetics = withAvatar(buildCosmeticsPreview(equipped));
+  const previewCosmetics = withAvatar(buildCosmeticsPreview(equipped, { titleNames }));
 
   function previewForItem(it: UiItem): ChatCosmetics | null {
     const simulated = {
@@ -399,7 +438,7 @@ export function PersonalisationSection({
       frame: tab === "frame" ? it.code : equipped.frame,
       hat: tab === "hat" ? it.code : equipped.hat,
     };
-    return withAvatar(buildCosmeticsPreview(simulated));
+    return withAvatar(buildCosmeticsPreview(simulated, { titleNames }));
   }
 
   return (
@@ -654,9 +693,7 @@ export function PersonalisationSection({
 
               const baseBorder = kindBorder(it.kind);
 
-              const border = isEquipped
-                ? `1px solid rgba(255,255,255,0.24)`
-                : `1px solid ${baseBorder}`;
+              const border = isEquipped ? `1px solid rgba(255,255,255,0.24)` : `1px solid ${baseBorder}`;
 
               const bg = locked ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.04)";
 
@@ -705,16 +742,14 @@ export function PersonalisationSection({
                         </span>
 
                         {!it.free ? (
-                          <span
-                            style={{
-                              fontSize: 11,
-                              fontWeight: 900,
-                              opacity: 0.9,
-                            }}
-                          >
+                          <span style={{ fontSize: 11, fontWeight: 900, opacity: 0.9 }}>
                             {niceUnlock(it.unlock)}
-                            {it.unlock === "shop" && it.priceRubis != null
-                              ? ` — ${Number(it.priceRubis).toLocaleString("fr-FR")} rubis`
+                            {it.unlock === "shop"
+                              ? it.priceRubis != null
+                                ? ` — ${Number(it.priceRubis).toLocaleString("fr-FR")} rubis`
+                                : it.pricePrestige != null
+                                ? ` — ${Number(it.pricePrestige).toLocaleString("fr-FR")} prestige`
+                                : ""
                               : it.rarity
                               ? ` — ${it.rarity}`
                               : ""}
@@ -726,7 +761,7 @@ export function PersonalisationSection({
                     </div>
                   </div>
 
-                  {/* preview (plus de place) */}
+                  {/* preview */}
                   <div
                     className="cosPreview"
                     style={{
