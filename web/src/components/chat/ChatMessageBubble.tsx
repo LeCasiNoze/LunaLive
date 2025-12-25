@@ -6,7 +6,6 @@ import {
   frameClass,
   formatHHMM,
   getInitials,
-  titleEffectClass,
   titleTierClass,
   usernameEffectClass,
 } from "../../lib/cosmetics";
@@ -25,6 +24,44 @@ export type ChatMsgLike = {
   cosmetics?: ChatCosmetics | null;
 };
 
+function normalizeTitle(title: any): { code: string; text: string; tier?: string | null } | null {
+  if (!title) return null;
+
+  const codeRaw =
+    (typeof title === "string" ? title : null) ||
+    (typeof title?.code === "string" ? title.code : null) ||
+    (typeof title?.id === "string" ? title.id : null) ||
+    (typeof title?.text === "string" ? title.text : null) ||
+    (typeof title?.label === "string" ? title.label : null);
+
+  if (!codeRaw) return null;
+
+  const code = String(codeRaw).trim();
+  if (!code || code === "none") return null;
+
+  const TITLE_LABELS: Record<string, string> = {
+    title_ratus: "Ratus",
+    title_ca_tourne: "Ça tourne !",
+    title_vrai_viewer: "Vrai Viewer",
+    title_no_life: "No Life",
+    title_batman: "Batman",
+    title_bigmoula: "BigMoula",
+    title_lunaking: "LunaKing",
+    title_allin_man: "All-in Man",
+  };
+
+  const text =
+    TITLE_LABELS[code] ??
+    code
+      .replace(/^title_/, "")
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (m) => m.toUpperCase());
+
+  const tier = typeof title?.tier === "string" ? title.tier : null;
+
+  return { code, text, tier };
+}
+
 export function ChatMessageBubble({
   msg,
   streamerAppearance,
@@ -37,7 +74,7 @@ export function ChatMessageBubble({
 
   const avatar = c?.avatar ?? {};
   const badges = Array.isArray(c?.badges) ? c!.badges! : [];
-  const title = c?.title ?? null;
+  const titleInfo = normalizeTitle(c?.title ?? null);
   const frame = c?.frame ?? null;
 
   const unameEffect = c?.username?.effect ?? "none";
@@ -140,10 +177,26 @@ export function ChatMessageBubble({
             <div className="chatTimestamp">{formatHHMM(msg.createdAt)}</div>
           </div>
 
-          {/* Title UNDER username */}
-          {title ? (
-            <div className={`chatTitle ${titleTierClass((title as any).tier)} ${titleEffectClass((title as any).effect)}`}>
-              « {(title as any).text} »
+          {/* ✅ Title UNDER username (no username animation, no titleEffectClass) */}
+          {titleInfo ? (
+            <div
+              className={`chatTitle ${titleTierClass(titleInfo.tier as any)}`}
+              data-title-code={titleInfo.code}
+              style={{
+                marginTop: 2,
+                fontSize: "0.92em",
+                fontStyle: "italic",
+                textDecoration: "underline",
+                opacity: 0.95,
+
+                // ✅ coupe net toute anim héritée / appliquée par erreur
+                animation: "none",
+                textShadow: "none",
+                filter: "none",
+              }}
+              title={titleInfo.code}
+            >
+              {titleInfo.text}
             </div>
           ) : null}
 
