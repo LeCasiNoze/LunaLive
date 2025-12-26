@@ -10,6 +10,7 @@ import {
 import { UsersAdminSection } from "../components/admin/UsersAdminSection";
 import { ProviderAccountsAdminSection } from "../components/admin/ProviderAccountsAdminSection";
 import { RubisMintAdminSection } from "../components/admin/RubisMintAdminSection";
+import { CasinosAdminSection } from "../components/admin/CasinosAdminSection";
 
 const SS_KEY = "lunalive_admin_key_v1";
 
@@ -36,6 +37,7 @@ export default function AdminPage() {
 
   const [newSlug, setNewSlug] = React.useState("");
   const [newName, setNewName] = React.useState("");
+  const [showCasinos, setShowCasinos] = React.useState(false);
 
   async function refresh() {
     const r = await adminListRequests(key);
@@ -91,6 +93,15 @@ export default function AdminPage() {
         <h1>Admin</h1>
         <p className="muted">Demandes streamer + gestion streamers</p>
       </div>
+<button
+  className="btnPrimary"
+  style={{ marginBottom: 14 }}
+  onClick={() => setShowCasinos((v) => !v)}
+>
+  {showCasinos ? "Fermer gestion Casinos" : "Gérer Casinos (TrustPilot)"}
+</button>
+
+{showCasinos && <CasinosAdminSection adminKey={key} />}
 
       <div className="panel">
         <div className="panelTitle">Demandes “Devenir streamer”</div>

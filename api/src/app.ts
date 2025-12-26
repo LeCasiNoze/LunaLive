@@ -35,6 +35,11 @@ import { cosmeticsCatalogRoutes } from "./routes/cosmetics_catalog_routes.js";
 import { avatarRouter } from "./routes/avatar.js";
 import { shopRouter } from "./routes/shop.js";
 
+// api/src/app.ts
+import { casinosPublicRouter } from "./routes/casinos_public.js";
+import { casinosMeRouter } from "./routes/casinos_me.js";
+import { adminCasinosRouter } from "./routes/admin_casinos.js";
+import { adminCasinosSetupRouter } from "./routes/admin_casinos_setup.js";
 
 
 export function createApp() {
@@ -84,6 +89,10 @@ export function createApp() {
   app.use(cosmeticsCatalogRoutes);
   app.use(express.json({ limit: "300kb" }));
 
+  app.use(casinosPublicRouter);
+  app.use("/me/casinos", requireAuth, casinosMeRouter);
+  app.use("/admin/casinos", requireAuth, adminCasinosRouter);
+  app.use(adminCasinosSetupRouter);
 
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));

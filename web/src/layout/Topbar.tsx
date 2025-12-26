@@ -34,6 +34,9 @@ export function Topbar({
             <NavLink to="/browse" className={linkClass}>
               Browse
             </NavLink>
+            <NavLink to="/casinos" className={linkClass}>
+              Casinos
+            </NavLink>
             <NavLink to="/shop" className={linkClass}>
               Shop
             </NavLink>

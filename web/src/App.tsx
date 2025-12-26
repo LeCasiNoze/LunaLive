@@ -4,7 +4,8 @@ import { Route, Routes, useLocation } from "react-router-dom";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { Topbar } from "./layout/Topbar";
 import { BottomTabs } from "./layout/BottomTabs";
-
+import CasinosPage from "./pages/CasinosPage";
+import CasinoPage from "./pages/CasinoPage";
 import LivesPage from "./pages/LivesPage";
 import BrowsePage from "./pages/BrowsePage";
 import StreamerPage from "./pages/StreamerPage";
@@ -47,6 +48,10 @@ function AppInner() {
         <Route path="/" element={<LivesPage />} />
         <Route path="/browse" element={<BrowsePage />} />
         <Route path="/shop" element={<ShopPage />} />
+
+        <Route path="/casinos" element={<CasinosPage />} />
+        <Route path="/casinos/:slug" element={<CasinoPage />} />
+
         <Route path="/s/:slug" element={<StreamerPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/admin" element={<AdminPage />} />

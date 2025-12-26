@@ -16,6 +16,7 @@ import { mig012_streamer_chest } from "./mig012_streamer_chest.js";
 import { mig013_daily_caps_wheels } from "./mig013_daily_caps_wheels.js";
 import { mig014_daily_bonus } from "./mig014_daily_bonus.js";
 import { mig015_cosmetics_equipped } from "./mig015_cosmetics_equipped.js";
+import { mig016_trust_pilot } from "./mig016_trust_pilot.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -39,4 +40,6 @@ export async function migrateAll(pool: Pool) {
 
   await mig014_daily_bonus(pool);
   await mig015_cosmetics_equipped(pool);
+
+   await mig016_trust_pilot(pool);
 }

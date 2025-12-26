@@ -258,3 +258,48 @@
   filter: none !important;
   text-shadow: none !important;
 }
+
+/* ─────────────────────────────────────────────
+   TITLES — style par défaut (non-rare)
+   - pro, lisible, discret
+   - italic + underline + petite teinte violette (DA)
+   - jamais d’animation / gradient / glow
+───────────────────────────────────────────── */
+
+.chatTitle{
+  /* layout */
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  /* style */
+  margin-top: 2px;
+  font-size: 12.5px;         /* petit, mais lisible */
+  font-weight: 800;          /* un peu “premium” sans être énorme */
+  font-style: italic;
+
+  color: rgba(180,140,255,0.92);  /* violet soft (DA) */
+  opacity: 0.95;
+
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(180,140,255,0.55);
+}
+
+/* ✅ pare-feu : le titre ne doit JAMAIS récupérer les effets du pseudo */
+.chatTitle,
+.chatTitle *{
+  background-image: none !important;
+  background: none !important;
+  -webkit-background-clip: initial !important;
+  background-clip: initial !important;
+
+  /* important si un effet pseudo mettait le text en transparent */
+  -webkit-text-fill-color: currentColor !important;
+
+  filter: none !important;
+  text-shadow: none !important;
+}

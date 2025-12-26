@@ -1,53 +1,47 @@
-/* Titles under username */
+/* Titles under username — DEFAULT (pro, lisible, DA)
+   Objectif: aucun gradient/transparent pour l’instant.
+*/
 .chatTitle{
   margin-top: 4px;
-  font-weight: 900;
-  font-size: 12px;
-  opacity: 0.92;
+  font-weight: 850;
+  font-size: 12.5px;
+  opacity: 0.95;
+
   width: fit-content;
   max-width: 100%;
   overflow:hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+
+  font-style: italic;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+
+  /* base DA (violet doux) */
+  color: rgba(142,197,255,0.92);                 /* ✅ bleu default */
+  text-decoration-color: rgba(142,197,255,0.55); /* ✅ underline bleu */
 }
 
-.title--bronze{ color: rgba(255,255,255,0.70); }
+/* si tu veux que “silver” = le même bleu (par défaut) */
 .title--silver{
-  color: transparent;
-  background-image: linear-gradient(90deg, rgba(126,76,179,0.95), rgba(63,86,203,0.90));
-  -webkit-background-clip: text;
-  background-clip: text;
+  color: rgba(142,197,255,0.92);
+  text-decoration-color: rgba(142,197,255,0.55);
+}
+
+/* (optionnel) bronze un peu plus discret mais bleu quand même */
+.title--bronze{
+  color: rgba(142,197,255,0.72);
+  text-decoration-color: rgba(142,197,255,0.35);
 }
 .title--gold{
-  color: transparent;
-  background-image: linear-gradient(90deg, rgba(255,210,120,0.95), rgba(126,76,179,0.95), rgba(63,86,203,0.95));
-  -webkit-background-clip: text;
-  background-clip: text;
+  color: rgba(255,210,120,0.92);
+  text-decoration-color: rgba(255,210,120,0.55);
 }
 .title--master{
-  color: transparent;
-  background-image: linear-gradient(90deg, rgba(190,240,255,0.95), rgba(126,76,179,0.95), rgba(63,86,203,0.95));
-  -webkit-background-clip: text;
-  background-clip: text;
-  text-shadow: 0 0 18px rgba(190,240,255,0.10);
-}
-
-@keyframes titleShimmer {
-  0%{ background-position: 0% 50%; }
-  100%{ background-position: 100% 50%; }
-}
-.titleFx--shimmer{
-  background-size: 260% 100%;
-  animation: titleShimmer 3.0s linear infinite;
-}
-@keyframes titleAurora {
-  0%{ filter: brightness(1); }
-  50%{ filter: brightness(1.15); }
-  100%{ filter: brightness(1); }
-}
-.titleFx--aurora{
-  background-size: 280% 100%;
-  animation: titleShimmer 3.4s linear infinite, titleAurora 2.6s ease-in-out infinite;
+  color: rgba(190,240,255,0.92);
+  text-decoration-color: rgba(190,240,255,0.55);
+  text-shadow: 0 0 10px rgba(190,240,255,0.08);
 }
 
 /* Frames */
@@ -378,22 +372,23 @@
   padding: 9px 10px;
 }
 /* =========================================================
-   HARD FIX — Un titre ne doit JAMAIS récupérer l'anim du pseudo
-   (même si une classe foireuse se retrouve sur lui)
-   ========================================================= */
-
+/* HARD FIX — Un titre ne doit JAMAIS récupérer l'effet du pseudo
+   MAIS on laisse vivre les animations des titres */
 .chatTitle{
-  animation: none !important;
+  /* ❌ surtout pas: animation:none !important; */
+  /* ❌ surtout pas: transform:none !important; */
+
   filter: none !important;
   text-shadow: none !important;
-  transform: none !important;
+  -webkit-text-fill-color: currentColor !important;
 
-  /* ton style souhaité */
+  /* ton style de base */
   margin-top: 2px;
   font-size: 12px;
   font-style: italic;
   text-decoration: underline;
 }
+
 
 /* Si par bug le titre se retrouve avec une classe username--... */
 .chatTitle.username--rainbow,
@@ -404,7 +399,11 @@
   background-image: none !important;
   background-size: auto !important;
   background-position: 0% 50% !important;
-  color: rgba(255,255,255,0.92) !important;
+
+  /* ✅ fallback DA (au lieu du blanc) */
+  color: rgba(142,197,255,0.92) !important; /* ✅ bleu default */
+  -webkit-text-fill-color: currentColor !important;
+
   -webkit-background-clip: initial !important;
   background-clip: initial !important;
   -webkit-text-stroke: 0 !important;
@@ -415,4 +414,206 @@
 .chatTitle.titleFx--shimmer,
 .chatTitle.titleFx--aurora{
   animation: none !important;
+}
+
+/* ─────────────────────────────────────────────
+   TITLES (succès) — couleur + animation
+   Utilise: data-title-code="title_..."
+   À coller EN BAS de 50_cosmetics.css
+───────────────────────────────────────────── */
+
+.chatTitle[data-title-code]{
+  position: relative;
+  display: inline-block;
+  will-change: transform, opacity;
+  -webkit-text-fill-color: currentColor !important; /* sécurité si un style mettait transparent */
+}
+
+/* Accessibilité */
+@media (prefers-reduced-motion: reduce){
+  .chatTitle[data-title-code],
+  .chatTitle[data-title-code]::before,
+  .chatTitle[data-title-code]::after{
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Helpers: underline cohérent */
+.chatTitle[data-title-code]{
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+/* ───────────── Ratus (uncommon) — gris “rat” + twitch rare ───────────── */
+@keyframes titleRatusTwitch{
+  0%, 92%, 100% { transform: translateX(0) rotate(0deg); }
+  93% { transform: translateX(-1px) rotate(-0.4deg); }
+  94% { transform: translateX( 1px) rotate( 0.4deg); }
+  95% { transform: translateX(-1px) rotate(-0.2deg); }
+  96% { transform: translateX(0) rotate(0deg); }
+}
+.chatTitle[data-title-code="title_ratus"]{
+  color: rgba(190, 198, 210, 0.92) !important;               /* gris bleuté */
+  text-decoration-color: rgba(190, 198, 210, 0.55) !important;
+  animation: titleRatusTwitch 7.5s ease-in-out infinite !important;
+}
+
+/* ───────────── Ça tourne ! (rare) — cyan “roulette” + sweep sous le texte ───────────── */
+@keyframes titleTourneSweep{
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+.chatTitle[data-title-code="title_ca_tourne"]{
+  color: rgba(120, 224, 255, 0.92) !important;              /* cyan doux */
+  text-decoration-color: rgba(120, 224, 255, 0.55) !important;
+}
+.chatTitle[data-title-code="title_ca_tourne"]::after{
+  content:"";
+  position:absolute;
+  left: 0; right: 0;
+  bottom: -2px;
+  height: 2px;
+  border-radius: 999px;
+  opacity: 0.80;
+  pointer-events:none;
+
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255,255,255,0.16) 35%,
+    rgba(120,224,255,0.80) 50%,
+    rgba(255,255,255,0.16) 65%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  animation: titleTourneSweep 2.8s linear infinite !important;
+}
+
+/* ───────────── Vrai Viewer (rare) — bleu “scan” + highlight qui traverse ───────────── */
+@keyframes titleViewerScan{
+  0%, 70%   { transform: translateX(-130%); opacity: 0; }
+  78%       { opacity: 0.30; }
+  92%       { transform: translateX(130%); opacity: 0.30; }
+  100%      { transform: translateX(130%); opacity: 0; }
+}
+.chatTitle[data-title-code="title_vrai_viewer"]{
+  color: rgba(142,197,255,0.92) !important;                 /* bleu default */
+  text-decoration-color: rgba(142,197,255,0.55) !important;
+}
+.chatTitle[data-title-code="title_vrai_viewer"]::before{
+  content:"";
+  position:absolute;
+  inset: 0;
+  pointer-events:none;
+  border-radius: 8px;
+  mix-blend-mode: screen;
+
+  background: linear-gradient(120deg,
+    transparent 0%,
+    rgba(255,255,255,0.22) 45%,
+    rgba(142,197,255,0.18) 52%,
+    rgba(255,255,255,0.22) 58%,
+    transparent 100%
+  );
+  transform: translateX(-130%);
+  animation: titleViewerScan 5.2s ease-in-out infinite !important;
+}
+
+/* ───────────── No Life (epic) — violet “nuit” + respiration lente ───────────── */
+@keyframes titleNoLifeBreathe{
+  0%, 100% { opacity: 0.78; transform: translateY(0); }
+  50%      { opacity: 1;    transform: translateY(0.6px); }
+}
+.chatTitle[data-title-code="title_no_life"]{
+  color: rgba(168, 140, 255, 0.92) !important;              /* violet doux */
+  text-decoration-color: rgba(168, 140, 255, 0.55) !important;
+  animation: titleNoLifeBreathe 3.2s ease-in-out infinite !important;
+}
+
+/* ───────────── Batman (epic) — jaune “bat-signal” + spotlight subtil ───────────── */
+@keyframes titleBatSignal{
+  0%, 74%   { transform: translateX(-140%); opacity: 0; }
+  80%       { opacity: 0.28; }
+  95%       { transform: translateX(140%);  opacity: 0.28; }
+  100%      { transform: translateX(140%);  opacity: 0; }
+}
+.chatTitle[data-title-code="title_batman"]{
+  color: rgba(255, 211, 90, 0.92) !important;               /* jaune doux */
+  text-decoration-color: rgba(255, 211, 90, 0.55) !important;
+}
+.chatTitle[data-title-code="title_batman"]::before{
+  content:"";
+  position:absolute;
+  inset: -2px -8px;
+  pointer-events:none;
+  border-radius: 10px;
+  mix-blend-mode: screen;
+
+  background: radial-gradient(circle at 30% 50%,
+    rgba(255,255,255,0.22) 0%,
+    rgba(255,255,255,0.10) 28%,
+    transparent 60%
+  );
+  transform: translateX(-140%);
+  animation: titleBatSignal 6.2s ease-in-out infinite !important;
+}
+
+/* ─────────────────────────────────────────────
+   (Optionnel) si tu veux AUSSI color+anim pour les titres shop :
+───────────────────────────────────────────── */
+
+/* BigMoula — vert “cash” + sheen diagonal rare */
+@keyframes titleMoulaSheen{
+  0%, 78%   { transform: translateX(-140%) rotate(12deg); opacity: 0; }
+  82%       { opacity: 0.22; }
+  96%       { transform: translateX(140%)  rotate(12deg); opacity: 0.22; }
+  100%      { transform: translateX(140%)  rotate(12deg); opacity: 0; }
+}
+.chatTitle[data-title-code="title_bigmoula"]{
+  color: rgba(110, 235, 170, 0.92) !important;
+  text-decoration-color: rgba(110, 235, 170, 0.55) !important;
+}
+.chatTitle[data-title-code="title_bigmoula"]::before{
+  content:"";
+  position:absolute;
+  top: -6px; bottom: -6px;
+  left: -25%;
+  width: 55%;
+  pointer-events:none;
+  border-radius: 12px;
+  mix-blend-mode: screen;
+
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255,255,255,0.22) 45%,
+    rgba(255,255,255,0.08) 55%,
+    transparent 100%
+  );
+  transform: translateX(-140%) rotate(12deg);
+  animation: titleMoulaSheen 7.2s ease-in-out infinite !important;
+}
+
+/* LunaKing — bleu “lunaire” + glow doux */
+@keyframes titleLunaGlow{
+  0%, 100% { text-shadow: 0 0 0 rgba(142,197,255,0.0); }
+  50%      { text-shadow: 0 0 10px rgba(142,197,255,0.14); }
+}
+.chatTitle[data-title-code="title_lunaking"]{
+  color: rgba(190, 240, 255, 0.92) !important;
+  text-decoration-color: rgba(190, 240, 255, 0.55) !important;
+  animation: titleLunaGlow 2.9s ease-in-out infinite !important;
+}
+
+/* All-in Man — orange “risque” + double pulse */
+@keyframes titleAllInPulse{
+  0%, 78%, 100% { transform: scale(1); }
+  82%           { transform: scale(1.06); }
+  86%           { transform: scale(1); }
+  90%           { transform: scale(1.035); }
+  94%           { transform: scale(1); }
+}
+.chatTitle[data-title-code="title_allin_man"]{
+  color: rgba(255, 140, 105, 0.92) !important;
+  text-decoration-color: rgba(255, 140, 105, 0.55) !important;
+  animation: titleAllInPulse 4.0s ease-in-out infinite !important;
 }
