@@ -2,44 +2,12 @@
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 export const API_BASE = BASE;
 
-export function absApiUrl(u: string | null): string | null {
-  if (!u) return null;
-  if (/^https?:\/\//i.test(u)) return u;
-  if (u.startsWith("/")) return `${BASE}${u}`;
-  return `${BASE}/${u}`;
-}
-
-function getToken(): string | null {
-  // adapte si ton AuthProvider stocke le token ailleurs
-  return (
-    localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("jwt") ||
-    null
-  );
-}
-
 async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const url = `${BASE}${path.startsWith("/") ? "" : "/"}${path}`;
-  const headers = new Headers(init.headers || {});
-  if (!headers.has("Content-Type") && !(init.body instanceof FormData)) {
-    headers.set("Content-Type", "application/json");
-  }
-
-  const token = getToken();
-  if (token && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  const res = await fetch(url, { ...init, headers });
-  const text = await res.text();
+  const r = await fetch(`${BASE}${path}`, init);
+  const text = await r.text().catch(() => "");
   let data: any = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
-  }
-  if (!res.ok) throw new Error(data?.error || `http_${res.status}`);
+  try { data = text ? JSON.parse(text) : null; } catch {}
+  if (!r.ok) throw new Error(String(data?.error || data?.message || text || `API ${r.status}`));
   return data as T;
 }
 
@@ -48,15 +16,35 @@ export type CasinoListItem = {
   slug: string;
   name: string;
   logoUrl: string | null;
+  status: string;
   createdAt: string;
   featuredRank: number | null;
   bonusHeadline: string | null;
   watchLevel: "none" | "watch" | "avoid";
   watchReason: string | null;
-  watchUpdatedAt: string | null;
   avgRating: number;
   ratingsCount: number;
 };
+
+export type CasinoListResp = {
+  ok: true;
+  podium: CasinoListItem[];
+  watchlist: CasinoListItem[];
+  casinos: CasinoListItem[];
+};
+
+export async function listCasinos(opts: { sort: "top" | "newest"; q: string | null }): Promise<CasinoListResp> {
+  const qs = new URLSearchParams();
+  qs.set("sort", opts.sort);
+  if (opts.q) qs.set("q", opts.q);
+  return j<CasinoListResp>(`/casinos?${qs.toString()}`);
+}
+export function absApiUrl(u: string | null): string | null {
+  if (!u) return null;
+  if (/^https?:\/\//i.test(u)) return u;
+  if (u.startsWith("/")) return `${BASE}${u}`;
+  return `${BASE}/${u}`;
+}
 
 export type CasinosListResp = {
   ok: true;
