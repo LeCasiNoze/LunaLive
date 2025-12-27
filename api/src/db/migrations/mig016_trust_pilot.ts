@@ -125,5 +125,28 @@ export async function mig016_trust_pilot(pool: Pool) {
         WHERE slug IN ('brutalcasino','hypebet')
         ON CONFLICT DO NOTHING;
 
+    ALTER TABLE streamers
+    ADD COLUMN IF NOT EXISTS dlive_use_linked BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS dlive_link_displayname TEXT,
+    ADD COLUMN IF NOT EXISTS dlive_link_username TEXT,
+    ADD COLUMN IF NOT EXISTS dlive_linked_at TIMESTAMPTZ;
+
+    CREATE TABLE IF NOT EXISTS streamer_dlive_link_requests (
+    id SERIAL PRIMARY KEY,
+    streamer_id INT NOT NULL REFERENCES streamers(id) ON DELETE CASCADE,
+    requested_displayname TEXT NOT NULL,
+    requested_username TEXT,
+    code TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', -- pending|verified|expired
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    verified_at TIMESTAMPTZ
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_sdlr_pending
+    ON streamer_dlive_link_requests(streamer_id)
+    WHERE status='pending';
+
     `);
+    
 }

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { ApiMyStreamer, ApiStreamConnection } from "../../../lib/api";
+import { DliveLinkPanel } from "./DliveLinkPanel";
 
 export function OverviewSection({
   streamer,
@@ -31,7 +32,7 @@ export function OverviewSection({
             <b>Viewers :</b> {Number(streamer.viewers || 0).toLocaleString()}
           </div>
         </div>
-
+        <DliveLinkPanel />
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
           <button className="btnGhostInline" onClick={onGoStream}>⚙️ Modifier titre / clés</button>
           <button className="btnGhostInline" onClick={onGoModeration}>🛡️ Gérer la modération</button>

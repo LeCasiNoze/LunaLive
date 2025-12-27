@@ -879,3 +879,60 @@ export async function buyShopCosmetic(token: string, kind: string, code: string)
   });
   return r.json();
 }
+
+export type ApiDliveLinkMe = {
+  ok: true;
+  useLinked: boolean;
+  linkedDisplayname: string | null;
+  linkedUsername: string | null;
+  linkedAt: string | null;
+  pending: null | {
+    id: number;
+    requestedDisplayname: string;
+    requestedUsername: string | null;
+    code: string;
+    createdAt: string;
+    expiresAt: string;
+  };
+};
+
+export async function dliveLinkMe(token: string) {
+  return j<ApiDliveLinkMe>("/streamer/me/dlive-link", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function dliveLinkRequest(token: string, channel: string) {
+  return j<{ ok: true; code: string; requestedDisplayname: string; requestedUsername: string }>(
+    "/streamer/me/dlive-link/request",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ channel }),
+    }
+  );
+}
+
+export async function dliveLinkVerify(token: string) {
+  return j<{ ok: true }>("/streamer/me/dlive-link/verify", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: "{}",
+  });
+}
+
+export async function dliveLinkToggle(token: string, useLinked: boolean) {
+  return j<{ ok: true }>("/streamer/me/dlive-link/toggle", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ useLinked }),
+  });
+}
+
+export async function dliveLinkUnlink(token: string) {
+  return j<{ ok: true }>("/streamer/me/dlive-link/unlink", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: "{}",
+  });
+}

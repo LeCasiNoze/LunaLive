@@ -40,7 +40,7 @@ import { casinosPublicRouter } from "./routes/casinos_public.js";
 import { casinosMeRouter } from "./routes/casinos_me.js";
 import { adminCasinosRouter } from "./routes/admin_casinos.js";
 import { adminCasinosSetupRouter } from "./routes/admin_casinos_setup.js";
-
+import { streamerDliveLinkRouter } from "./routes/streamer_dlive_link.js";
 
 export function createApp() {
   const app = express();
@@ -93,7 +93,8 @@ export function createApp() {
   app.use("/me/casinos", requireAuth, casinosMeRouter);
   app.use("/admin/casinos", requireAuth, adminCasinosRouter);
   app.use(adminCasinosSetupRouter);
-
+  app.use("/api/streamer/dlive-link", streamerDliveLinkRouter);
+  
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
 
