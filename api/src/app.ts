@@ -93,7 +93,7 @@ export function createApp() {
   app.use("/me/casinos", requireAuth, casinosMeRouter);
   app.use("/admin/casinos", requireAuth, adminCasinosRouter);
   app.use(adminCasinosSetupRouter);
-  app.use("/api/streamer/dlive-link", streamerDliveLinkRouter);
+  app.use("/streamer/me/dlive-link", streamerDliveLinkRouter);
   
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
