@@ -147,9 +147,12 @@ streamerDliveLinkRouter.post("/verify", requireAuth, requireStreamer, async (req
   }
 
   // ✅ vérif websocket (chat)
+  if (!row.requestedUsername) {
+    return res.status(400).json({ ok: false, error: "missing_requested_username" });
+  }
+
   const wait = await waitForDliveChatCode({
-    streamerUsername: row.requestedUsername,          // username DLive (immutable)
-    expectedSenderDisplayname: row.requestedDisplayname, // doit matcher le nom de chaîne
+    streamerUsername: row.requestedUsername, // dlive-xxxx
     code: row.code,
     timeoutMs: 25_000,
   });
@@ -195,7 +198,12 @@ streamerDliveLinkRouter.post("/toggle", requireAuth, requireStreamer, async (req
 
   if (useLinked) {
     const s = await pool.query(
-      `SELECT dlive_link_displayname AS d FROM streamers WHERE id=$1`,
+      `SELECT
+        dlive_use_linked AS "useLinked",
+        dlive_link_displayname AS "linkedDisplayname",
+        dlive_linked_at AS "linkedAt"
+      FROM streamers
+      WHERE id=$1`,
       [streamerId]
     );
     if (!s.rows?.[0]?.d) return res.status(400).json({ ok: false, error: "no_linked_channel" });

@@ -66,7 +66,7 @@ async function applyLiveState(
 
       await client.query("COMMIT");
 
-      // ✅ NOTIF A (toast socket) + B (push) déclenchées ici (hors transaction)
+      // notif followers (socket + push)
       notifyFollowersGoLive(io, streamerId).catch(() => {});
       return;
     }
@@ -104,7 +104,7 @@ async function applyLiveState(
       return;
     }
 
-    // Pas de transition (ON->ON ou OFF->OFF)
+    // Pas de transition
     if (isLiveNow) {
       await client.query(
         `UPDATE streamers
@@ -126,28 +126,12 @@ async function applyLiveState(
 
     await client.query("COMMIT");
   } catch (e) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
+    try { await client.query("ROLLBACK"); } catch {}
     throw e;
   } finally {
     client.release();
   }
 }
-
-type PollRow = {
-  streamerId: number;
-
-  // Provider assigné (peut être null si streamer utilise une chaîne liée sans provider assigné)
-  providerAccountId: number | null;
-  providerChannelSlug: string | null;
-
-  // Chaîne effectivement pollée
-  channelSlug: string;
-
-  // "assigned" => provider_accounts ; "linked" => streamers.dlive_link_*
-  source: "assigned" | "linked";
-};
 
 export function startDlivePoller(io?: IOServer) {
   if (process.env.DLIVE_POLL_DISABLED === "1") {
@@ -162,70 +146,61 @@ export function startDlivePoller(io?: IOServer) {
     running = true;
 
     try {
-      // ✅ IMPORTANT:
-      // - Si dlive_use_linked + dlive_link_displayname => on poll la chaîne liée
-      // - Sinon => on poll le provider account assigné
-      // - On inclut aussi les streamers qui n'ont PAS de provider account mais utilisent une chaîne liée
-      const { rows } = await pool.query<PollRow>(
+      // ✅ on choisit la chaîne à poll par streamer
+      const { rows } = await pool.query(
         `SELECT
            s.id AS "streamerId",
+           s.dlive_use_linked AS "useLinked",
+           s.dlive_link_displayname AS "linkedDisplayname",
+           s.dlive_link_username AS "linkedUsername",
            pa.id AS "providerAccountId",
-           pa.channel_slug AS "providerChannelSlug",
-           CASE
-             WHEN s.dlive_use_linked IS TRUE
-              AND s.dlive_link_displayname IS NOT NULL
-              AND LENGTH(TRIM(s.dlive_link_displayname)) > 0
-             THEN s.dlive_link_displayname
-             ELSE pa.channel_slug
-           END AS "channelSlug",
-           CASE
-             WHEN s.dlive_use_linked IS TRUE
-              AND s.dlive_link_displayname IS NOT NULL
-              AND LENGTH(TRIM(s.dlive_link_displayname)) > 0
-             THEN 'linked'
-             ELSE 'assigned'
-           END AS "source"
+           pa.channel_slug AS "providerChannelSlug"
          FROM streamers s
          LEFT JOIN provider_accounts pa
            ON pa.provider='dlive'
           AND pa.assigned_to_streamer_id = s.id
          WHERE
-           pa.assigned_to_streamer_id IS NOT NULL
-           OR (
-             s.dlive_use_linked IS TRUE
-             AND s.dlive_link_displayname IS NOT NULL
-             AND LENGTH(TRIM(s.dlive_link_displayname)) > 0
-           )`
+           (s.dlive_use_linked = TRUE AND s.dlive_link_displayname IS NOT NULL)
+           OR (pa.id IS NOT NULL)`
       );
 
-      // Safety: si channelSlug null/empty (au cas où)
-      const items = rows.filter((r) => r.channelSlug && String(r.channelSlug).trim().length > 0);
-
       await runWithConcurrency(
-        items,
-        async (r) => {
+        rows,
+        async (r: {
+          streamerId: number;
+          useLinked: boolean;
+          linkedDisplayname: string | null;
+          linkedUsername: string | null;
+          providerAccountId: number | null;
+          providerChannelSlug: string | null;
+        }) => {
+          const channelSlug = (r.useLinked && r.linkedDisplayname)
+            ? r.linkedDisplayname
+            : (r.providerChannelSlug || "");
+
+          if (!channelSlug) return;
+
           try {
-            const info = await fetchDliveLiveInfo(r.channelSlug);
+            const info = await fetchDliveLiveInfo(channelSlug);
 
-            // ✅ On update le username au bon endroit selon la source
-            if (info.username) {
-              if (r.source === "assigned" && r.providerAccountId) {
-                await pool.query(
-                  `UPDATE provider_accounts
-                   SET channel_username=$1
-                   WHERE id=$2`,
-                  [info.username, r.providerAccountId]
-                );
-              }
+            // si on poll le provider assigné → garde channel_username à jour
+            if (!r.useLinked && r.providerAccountId && info.username) {
+              await pool.query(
+                `UPDATE provider_accounts
+                 SET channel_username=$1
+                 WHERE id=$2`,
+                [info.username, r.providerAccountId]
+              );
+            }
 
-              if (r.source === "linked") {
-                await pool.query(
-                  `UPDATE streamers
-                   SET dlive_link_username=$2
-                   WHERE id=$1`,
-                  [r.streamerId, info.username]
-                );
-              }
+            // si on poll la linked → optionnel: remettre à jour dlive_link_username si jamais null
+            if (r.useLinked && info.username && !r.linkedUsername) {
+              await pool.query(
+                `UPDATE streamers
+                 SET dlive_link_username=$2
+                 WHERE id=$1`,
+                [r.streamerId, info.username]
+              );
             }
 
             const isLive = !!info.isLive;
@@ -233,15 +208,13 @@ export function startDlivePoller(io?: IOServer) {
 
             await applyLiveState(r.streamerId, isLive, viewers, io);
           } catch (e) {
-            console.warn("[dlive] poll failed", r.channelSlug, e);
-            // Option “safe” : si tu veux éviter les LIVE fantômes en cas d’erreur réseau :
-            // await applyLiveState(r.streamerId, false, 0).catch(() => {});
+            console.warn("[dlive] poll failed", channelSlug, e);
           }
         },
         CONCURRENCY
       );
 
-      console.log(`[dlive] poll tick ok (${items.length} channels)`);
+      console.log(`[dlive] poll tick ok (${rows.length} streamers)`);
     } finally {
       running = false;
     }

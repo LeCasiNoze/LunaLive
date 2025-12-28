@@ -154,7 +154,7 @@ export function DliveLinkPanel() {
       <div style={{ marginTop: 10 }}>
         {linked ? (
           <div className="muted">
-            Liée : <b>{me.linkedDisplayname}</b>{" "}
+            Liée : <b>{me.linkedDisplayname}</b>
             <span className="muted">({me.linkedUsername || "username inconnu"})</span>
             <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button className="btnGhostInline" onClick={onUnlink} disabled={loading}>

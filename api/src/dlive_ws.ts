@@ -1,86 +1,126 @@
+// api/src/dlive_ws.ts
 import WebSocket from "ws";
-import { getDliveAppAccessToken } from "./dlive_oauth.js";
+
+const GRAPHIGOSTREAM_WS =
+  process.env.DLIVE_GRAPHIGOSTREAM_WS || "wss://graphigostream.prd.dlive.tv";
+
+function escGqlString(s: string) {
+  return String(s || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').trim();
+}
 
 function norm(s: string) {
-  return String(s || "").trim().toLowerCase();
+  return String(s || "").trim();
 }
 
 export async function waitForDliveChatCode(opts: {
-  streamerUsername: string;              // IMPORTANT: DLive "username" (immutable)
-  expectedSenderDisplayname: string;     // ex "LeCasinoze"
-  code: string;                          // ex "LL-AB12CD34"
-  timeoutMs?: number;                    // default 25s
+  streamerUsername: string; // DLive username immutable (dlive-xxxx)
+  code: string;             // ex: LL-AB12CD34
+  timeoutMs?: number;       // default 25s
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const timeoutMs = Math.max(3_000, opts.timeoutMs ?? 25_000);
 
-  const token = await getDliveAppAccessToken();
-  if (!token) {
-    return { ok: false, error: "DLIVE_APP_TOKEN_MISSING" };
+  const streamerUsername = norm(opts.streamerUsername);
+  const wantCode = norm(opts.code);
+
+  if (!streamerUsername || !wantCode) {
+    return { ok: false, error: "bad_request" };
   }
 
-  const ws = new WebSocket("wss://api-ws.dlive.tv");
-
-  const wantSender = norm(opts.expectedSenderDisplayname);
-  const wantCode = String(opts.code || "").trim();
+  const ws = new WebSocket(
+    GRAPHIGOSTREAM_WS,
+    "graphql-ws", // 👈 legacy subprotocol utilisé par DLive
+    {
+      headers: {
+        Origin: "https://dlive.tv",
+        Referer: `https://dlive.tv/`,
+        "User-Agent": "Mozilla/5.0",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      },
+    }
+  );
 
   let settled = false;
+  let subSent = false;
+
   const finish = (v: { ok: true } | { ok: false; error: string }) => {
-    if (settled) return;
+    if (settled) return v;
     settled = true;
     try { ws.close(); } catch {}
     return v;
   };
 
+  const sendSub = () => {
+    if (subSent) return;
+    subSent = true;
+
+    const streamer = escGqlString(streamerUsername);
+    const query = `
+      subscription {
+        streamMessageReceived(streamer: "${streamer}") {
+          __typename
+          ... on ChatText {
+            id
+            content
+            createdAt
+            sender { username displayname }
+          }
+        }
+      }
+    `;
+
+    // DLive accepte "start" (legacy)
+    ws.send(JSON.stringify({ id: "1", type: "start", payload: { query } }));
+  };
+
   return await new Promise((resolve) => {
-    const to = setTimeout(() => resolve(finish({ ok: false, error: "TIMEOUT" })!), timeoutMs);
+    const to = setTimeout(() => resolve(finish({ ok: false, error: "TIMEOUT" })), timeoutMs);
 
     ws.on("open", () => {
-      ws.send(
-        JSON.stringify({
-          type: "connection_init",
-          payload: { authorization: token },
-        })
-      );
+      // init (pas d'auth)
+      ws.send(JSON.stringify({ type: "connection_init" }));
+
+      // fallback “simple” : si jamais on ne reçoit pas ack, on envoie la sub quand même
+      setTimeout(() => {
+        if (!settled) sendSub();
+      }, 350);
     });
 
-    ws.on("message", (buf) => {
+    ws.on("message", (buf: any) => {
       try {
-        const msg = JSON.parse(buf.toString("utf8"));
+        const msg = JSON.parse(Buffer.isBuffer(buf) ? buf.toString("utf8") : String(buf));
 
-        if (msg?.type === "connection_ack") {
-          // Subscribe streamMessageReceived(streamer:"<username>")
-          ws.send(
-            JSON.stringify({
-              id: "1",
-              type: "start",
-              payload: {
-                query: `subscription{streamMessageReceived(streamer:"${opts.streamerUsername}"){__typename}}`,
-              },
-            })
-          );
+        const t = msg?.type;
+
+        if (t === "connection_ack") {
+          sendSub();
           return;
         }
 
-        if (msg?.type === "data") {
-          const arr = msg?.payload?.data?.streamMessageReceived;
-          if (!Array.isArray(arr)) return;
+        if (t === "connection_error") {
+          clearTimeout(to);
+          resolve(finish({ ok: false, error: "WS_CONNECTION_ERROR" }));
+          return;
+        }
 
-          for (const ev of arr) {
-            // Chat text message
-            if (ev?.__typename !== "ChatText") continue;
-            const content = typeof ev?.content === "string" ? ev.content.trim() : "";
-            if (content !== wantCode) continue;
+        if (t !== "data") return;
 
-            const senderDisplay = typeof ev?.sender?.displayname === "string" ? ev.sender.displayname : "";
-            const senderUser = typeof ev?.sender?.username === "string" ? ev.sender.username : "";
-            const senderOk = norm(senderDisplay) === wantSender || norm(senderUser) === wantSender;
+        let payloads = msg?.payload?.data?.streamMessageReceived;
+        if (!Array.isArray(payloads)) payloads = payloads ? [payloads] : [];
+        if (!payloads.length) return;
 
-            if (!senderOk) continue;
+        for (const ev of payloads) {
+          if (ev?.__typename !== "ChatText") continue;
 
-            clearTimeout(to);
-            resolve(finish({ ok: true })!);
-            return;
-          }
+          const content = norm(ev?.content);
+          if (content !== wantCode) continue;
+
+          const senderUser = norm(ev?.sender?.username);
+          if (senderUser !== streamerUsername) continue;
+
+          clearTimeout(to);
+          resolve(finish({ ok: true }));
+          return;
         }
       } catch {
         // ignore parse errors
@@ -89,13 +129,13 @@ export async function waitForDliveChatCode(opts: {
 
     ws.on("error", () => {
       clearTimeout(to);
-      resolve(finish({ ok: false, error: "WS_ERROR" })!);
+      resolve(finish({ ok: false, error: "WS_ERROR" }));
     });
 
     ws.on("close", () => {
       if (settled) return;
       clearTimeout(to);
-      resolve(finish({ ok: false, error: "WS_CLOSED" })!);
+      resolve(finish({ ok: false, error: "WS_CLOSED" }));
     });
   });
 }

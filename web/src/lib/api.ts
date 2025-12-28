@@ -884,12 +884,10 @@ export type ApiDliveLinkMe = {
   ok: true;
   useLinked: boolean;
   linkedDisplayname: string | null;
-  linkedUsername: string | null;
   linkedAt: string | null;
   pending: null | {
     id: number;
     requestedDisplayname: string;
-    requestedUsername: string | null;
     code: string;
     createdAt: string;
     expiresAt: string;
@@ -903,7 +901,7 @@ export async function dliveLinkMe(token: string) {
 }
 
 export async function dliveLinkRequest(token: string, channel: string) {
-  return j<{ ok: true; code: string; requestedDisplayname: string; requestedUsername: string }>(
+  return j<{ ok: true; code: string; requestedDisplayname: string; expiresAt: string }>(
     "/streamer/me/dlive-link/request",
     {
       method: "POST",
