@@ -165,7 +165,11 @@ export function DlivePlayer({
     video.removeAttribute("src");
     video.load();
 
-    const username = String(channelUsername || channelSlug || "").trim();
+    const username = String(channelUsername || "").trim();
+    if (!username) {
+      dbgLog("missing channelUsername (cannot play)", { channelSlug });
+      return;
+    }
     if (!username) {
       dbgLog("username=∅");
       return;

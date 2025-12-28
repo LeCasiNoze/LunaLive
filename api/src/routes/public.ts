@@ -97,20 +97,23 @@ publicRouter.get(
         s.offline_bg_path AS "offlineBgPath",
         s.user_id AS "ownerUserId",
 
-        -- ✅ DLive linked (ne pas exposer username)
+        -- ✅ DLive linked
         s.dlive_use_linked AS "dliveUseLinked",
         s.dlive_link_displayname AS "dliveLinkedDisplayname",
+        s.dlive_link_username AS "dliveLinkedUsername",
 
-        -- provider assigné (displayname)
-        pa.channel_slug AS "providerChannelSlug"
+        -- provider assigné
+        pa.channel_slug AS "providerChannelSlug",
+        pa.channel_username AS "providerChannelUsername"
 
       FROM streamers s
       LEFT JOIN provider_accounts pa
         ON pa.assigned_to_streamer_id = s.id
-        AND pa.provider='dlive'
+      AND pa.provider='dlive'
       WHERE s.slug = $1
         AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
-      LIMIT 1`,
+      LIMIT 1
+      `,
       [slug]
     );
 
@@ -118,22 +121,25 @@ publicRouter.get(
 
     const row = rows[0];
     row.appearance = normalizeAppearance(row.appearance || {});
-    // ✅ choisir la chaîne DLive à afficher/poller côté public (TOUJOURS displayname)
-    const linkedSlug =
-      row.dliveUseLinked && row.dliveLinkedDisplayname ? String(row.dliveLinkedDisplayname) : null;
+
+    // ✅ choisir la chaîne DLive effective
+    const useLinked = !!row.dliveUseLinked;
+
+    const linkedSlug = useLinked && row.dliveLinkedDisplayname ? String(row.dliveLinkedDisplayname) : null;
+    const linkedUsername = useLinked && row.dliveLinkedUsername ? String(row.dliveLinkedUsername) : null;
 
     const providerSlug = row.providerChannelSlug ? String(row.providerChannelSlug) : null;
+    const providerUsername = row.providerChannelUsername ? String(row.providerChannelUsername) : null;
 
-    const effectiveChannelSlug = linkedSlug || providerSlug || null;
+    row.channelSlug = linkedSlug || providerSlug || null;
+    row.channelUsername = (useLinked ? linkedUsername : providerUsername) || null;
 
-    // On expose seulement le displayname (channelSlug) + jamais le dlive-****
-    row.channelSlug = effectiveChannelSlug;
-    row.channelUsername = null;
-
-    // Ne pas leak des infos internes
+    // cleanup (ne pas leak les champs internes)
     delete row.dliveUseLinked;
     delete row.dliveLinkedDisplayname;
+    delete row.dliveLinkedUsername;
     delete row.providerChannelSlug;
+    delete row.providerChannelUsername;
 
     const c = await pool.query(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id = $1`, [
       Number(row.id),
