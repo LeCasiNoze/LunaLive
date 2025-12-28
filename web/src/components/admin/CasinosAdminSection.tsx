@@ -1,73 +1,71 @@
-// web/src/components/admin/CasinosAdminSection.tsx
 import * as React from "react";
 import { getStreamers } from "../../lib/api";
 import {
-  adminCasinosList,
-  adminCasinosCreate,
-  adminCasinosUpdate,
-  adminCasinoLinksList,
-  adminCasinoLinksCreate,
-  adminCasinoLinksUpdate,
+  adminListCasinos,
+  adminCreateCasino,
+  adminUpdateCasino,
+  adminListCasinoLinks,
+  adminCreateCasinoLink,
+  adminUpdateCasinoLink,
   type AdminCasino,
   type AdminCasinoLink,
 } from "../../lib/api_admin_casinos";
 
-function toLines(v: any): string {
-  if (!v) return "";
-  if (Array.isArray(v)) return v.map((x) => String(x)).join("\n");
-  try {
-    const j = JSON.parse(String(v));
-    if (Array.isArray(j)) return j.map((x) => String(x)).join("\n");
-  } catch {}
-  return String(v);
+type Props = { adminKey: string };
+
+type StreamerRow = { id: number; slug: string; displayName: string };
+
+function linesToList(s: string) {
+  return s
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+function listToLines(arr: string[] | null | undefined) {
+  return (arr || []).join("\n");
 }
 
-export function CasinosAdminSection({ adminKey }: { adminKey: string }) {
+function slugify(s: string) {
+  return String(s || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 40);
+}
+
+export function CasinosAdminSection({ adminKey }: Props) {
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
 
-  const [casinos, setCasinos] = React.useState<AdminCasino[]>([]);
+  const [q, setQ] = React.useState("");
+  const [items, setItems] = React.useState<AdminCasino[]>([]);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
+  const [streamers, setStreamers] = React.useState<StreamerRow[]>([]);
   const [links, setLinks] = React.useState<AdminCasinoLink[]>([]);
   const [loadingLinks, setLoadingLinks] = React.useState(false);
 
-  const [streamers, setStreamers] = React.useState<any[]>([]);
+  // create form
+  const [newSlug, setNewSlug] = React.useState("");
+  const [newName, setNewName] = React.useState("");
 
-  const selected = React.useMemo(
-    () => casinos.find((c) => c.id === selectedId) || null,
-    [casinos, selectedId]
-  );
+  // add streamer link form
+  const [addStreamerId, setAddStreamerId] = React.useState<number | "">("");
+  const [addUrl, setAddUrl] = React.useState("");
+  const [addLabel, setAddLabel] = React.useState("");
+  const [addPinned, setAddPinned] = React.useState<number | "">("");
 
-  const [form, setForm] = React.useState<any>({});
-  React.useEffect(() => {
-    if (!selected) return;
-    setForm({
-      slug: selected.slug,
-      name: selected.name,
-      logoUrl: selected.logoUrl ?? "",
-      status: selected.status,
-      featuredRank: selected.featuredRank ?? "",
-      bonusHeadline: selected.bonusHeadline ?? "",
-      description: selected.description ?? "",
-      pros: toLines(selected.pros),
-      cons: toLines(selected.cons),
-      teamRating: selected.teamRating ?? "",
-      teamReview: selected.teamReview ?? "",
-      watchLevel: selected.watchLevel,
-      watchReason: selected.watchReason ?? "",
-    });
-  }, [selectedId]); // eslint-disable-line
-
-  async function refresh() {
-    setLoading(true);
+  async function refreshList() {
     setErr(null);
+    setLoading(true);
     try {
-      const r = await adminCasinosList(adminKey);
-      setCasinos(r.casinos);
-      if (!selectedId && r.casinos[0]) setSelectedId(r.casinos[0].id);
+      const r = await adminListCasinos(adminKey, { q });
+      setItems(r.items);
+      if (!selectedId && r.items[0]) setSelectedId(r.items[0].id);
     } catch (e: any) {
-      setErr(e?.message || "error");
+      setErr(String(e?.message || e));
     } finally {
       setLoading(false);
     }
@@ -76,415 +74,592 @@ export function CasinosAdminSection({ adminKey }: { adminKey: string }) {
   async function refreshLinks(casinoId: string) {
     setLoadingLinks(true);
     try {
-      const r = await adminCasinoLinksList(adminKey, casinoId);
-      setLinks(r.links);
+      const r = await adminListCasinoLinks(adminKey, casinoId);
+      setLinks(r.items);
     } finally {
       setLoadingLinks(false);
     }
   }
 
   React.useEffect(() => {
-    refresh();
-    getStreamers().then(setStreamers).catch(() => {});
+    refreshList();
+    getStreamers()
+      .then((s: any) => setStreamers((s || []) as StreamerRow[]))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   React.useEffect(() => {
     if (!selectedId) return;
-    refreshLinks(selectedId);
+    refreshLinks(selectedId).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
-  // create
-  const [newSlug, setNewSlug] = React.useState("");
-  const [newName, setNewName] = React.useState("");
+  const selected = items.find((x) => x.id === selectedId) || null;
 
-  // add link
-  const [linkKind, setLinkKind] = React.useState<"bonus" | "streamer">("bonus");
-  const [linkUrl, setLinkUrl] = React.useState("");
-  const [linkLabel, setLinkLabel] = React.useState("");
-  const [linkPinned, setLinkPinned] = React.useState<string>("");
-  const [linkStreamer, setLinkStreamer] = React.useState<string>("");
+  function setSelectedPatch(patch: Partial<AdminCasino>) {
+    if (!selected) return;
+    setItems((prev) => prev.map((c) => (c.id === selected.id ? ({ ...c, ...patch } as any) : c)));
+  }
+
+  const bonusLink = links.find((l) => l.kind === "bonus") || null;
+  const streamerLinks = links.filter((l) => l.kind === "streamer");
 
   return (
-    <div className="panel" style={{ marginTop: 14 }}>
+    <div className="panel" style={{ marginBottom: 14 }}>
       <div className="panelTitle">Gestion Casinos (TrustPilot)</div>
       {err && <div className="hint">⚠️ {err}</div>}
-      {loading && <div className="mutedSmall">Chargement…</div>}
 
-      {!loading && (
-        <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 14 }}>
-          {/* LEFT LIST */}
-          <div>
-            <div className="mutedSmall" style={{ marginBottom: 8 }}>
-              Casinos ({casinos.length})
-            </div>
-
-            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              <input
-                value={newSlug}
-                onChange={(e) => setNewSlug(e.target.value)}
-                placeholder="slug (brutalcasino)"
-                style={{ flex: 1 }}
-              />
-              <input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Nom"
-                style={{ flex: 1 }}
-              />
-            </div>
-            <button
-              className="btnPrimary"
-              onClick={async () => {
-                const slug = newSlug.trim().toLowerCase();
-                const name = newName.trim();
-                if (!slug || !name) return;
-                await adminCasinosCreate(adminKey, { slug, name, status: "published" });
-                setNewSlug("");
-                setNewName("");
-                await refresh();
-              }}
-            >
-              + Ajouter casino
+      <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 12, marginTop: 12 }}>
+        {/* LEFT */}
+        <div className="panel" style={{ padding: 12 }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              className="input"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Rechercher casino…"
+            />
+            <button className="btnPrimary" onClick={refreshList} disabled={loading}>
+              OK
             </button>
-
-            <div style={{ marginTop: 10 }}>
-              {casinos.map((c) => (
-                <button
-                  key={c.id}
-                  className="btnGhostSmall"
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    marginTop: 8,
-                    border:
-                      c.id === selectedId
-                        ? "1px solid rgba(126,76,179,0.55)"
-                        : "1px solid rgba(255,255,255,0.08)",
-                  }}
-                  onClick={() => setSelectedId(c.id)}
-                >
-                  <b>{c.name}</b>{" "}
-                  <span className="mutedSmall">
-                    ({c.slug}) • {c.avgRating.toFixed(1)}/5 • {c.ratingsCount} avis
-                  </span>
-                </button>
-              ))}
-              {!casinos.length && <div className="mutedSmall">Aucun casino</div>}
-            </div>
           </div>
 
-          {/* RIGHT EDIT */}
-          <div>
-            {!selected ? (
-              <div className="mutedSmall">Sélectionne un casino</div>
-            ) : (
-              <>
-                <div className="panelTitle" style={{ marginBottom: 8 }}>
-                  Édition — {selected.name}
+          <div style={{ marginTop: 10, opacity: 0.9, fontWeight: 900 }}>Créer un casino</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <input className="input" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} placeholder="slug" />
+            <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="name" />
+          </div>
+          <button
+            className="btnSecondary"
+            style={{ marginTop: 8, width: "100%" }}
+            onClick={async () => {
+              setErr(null);
+              try {
+                const r = await adminCreateCasino(adminKey, newSlug, newName);
+                setNewSlug("");
+                setNewName("");
+                await refreshList();
+                setSelectedId(r.id);
+              } catch (e: any) {
+                setErr(String(e?.message || e));
+              }
+            }}
+          >
+            + Créer
+          </button>
+
+          <div style={{ marginTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 10 }}>
+            {items.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setSelectedId(c.id)}
+                className="btnGhostSmall"
+                style={{
+                  width: "100%",
+                  justifyContent: "space-between",
+                  marginBottom: 6,
+                  borderColor: c.id === selectedId ? "rgba(126,76,179,0.55)" : undefined,
+                }}
+              >
+                <span style={{ textAlign: "left" }}>
+                  <b>{c.name}</b> <span className="mutedSmall">({c.slug})</span>
+                  <div className="mutedSmall" style={{ marginTop: 2 }}>
+                    {c.status} {c.featuredRank != null ? `• #${c.featuredRank}` : ""}{" "}
+                    {c.watchLevel !== "none" ? `• ${c.watchLevel}` : ""}
+                  </div>
+                </span>
+                <span style={{ opacity: 0.8 }}>→</span>
+              </button>
+            ))}
+            {!items.length && !loading && <div className="mutedSmall">Aucun résultat</div>}
+          </div>
+        </div>
+
+        {/* RIGHT */}
+        <div className="panel" style={{ padding: 12 }}>
+          {!selected ? (
+            <div className="mutedSmall">Sélectionne un casino.</div>
+          ) : (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 1000, fontSize: 16 }}>{selected.name}</div>
+                  <div className="mutedSmall">{selected.slug} • id {selected.id}</div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    className="btnSecondary"
+                    onClick={async () => {
+                      const next = selected.status === "published" ? "hidden" : "published";
+                      setSelectedPatch({ status: next as any });
+                      await adminUpdateCasino(adminKey, selected.id, { status: next as any });
+                      await refreshList();
+                    }}
+                  >
+                    {selected.status === "published" ? "Masquer" : "Publier"}
+                  </button>
+
+                  <button
+                    className="btnPrimary"
+                    onClick={async () => {
+                      setErr(null);
+                      try {
+                        await adminUpdateCasino(adminKey, selected.id, selected);
+                        await refreshList();
+                        await refreshLinks(selected.id);
+                      } catch (e: any) {
+                        setErr(String(e?.message || e));
+                      }
+                    }}
+                  >
+                    Enregistrer
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 12, paddingTop: 12 }}>
+                <div className="panelTitle">Identité</div>
+
+                <div className="field">
+                  <label>Nom</label>
+                  <input className="input" value={selected.name} onChange={(e) => setSelectedPatch({ name: e.target.value })} />
                 </div>
 
                 <div className="field">
                   <label>Slug</label>
-                  <input
-                    value={form.slug ?? ""}
-                    onChange={(e) => setForm((p: any) => ({ ...p, slug: e.target.value }))}
-                  />
+                  <input className="input" value={selected.slug} onChange={(e) => setSelectedPatch({ slug: e.target.value })} />
                 </div>
 
                 <div className="field">
-                  <label>Nom</label>
-                  <input
-                    value={form.name ?? ""}
-                    onChange={(e) => setForm((p: any) => ({ ...p, name: e.target.value }))}
-                  />
+                  <label>Logo URL</label>
+                  <input className="input" value={selected.logoUrl || ""} onChange={(e) => setSelectedPatch({ logoUrl: e.target.value || null })} />
                 </div>
 
-                <div className="field">
-                  <label>Logo URL (optionnel)</label>
-                  <input
-                    value={form.logoUrl ?? ""}
-                    onChange={(e) => setForm((p: any) => ({ ...p, logoUrl: e.target.value }))}
-                  />
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-                  <div className="field">
+                <div style={{ display: "flex", gap: 10 }}>
+                  <div className="field" style={{ flex: 1 }}>
                     <label>Status</label>
-                    <select
-                      value={form.status ?? "published"}
-                      onChange={(e) => setForm((p: any) => ({ ...p, status: e.target.value }))}
-                    >
+                    <select className="select" value={selected.status} onChange={(e) => setSelectedPatch({ status: e.target.value as any })}>
                       <option value="published">published</option>
                       <option value="hidden">hidden</option>
                       <option value="disabled">disabled</option>
                     </select>
                   </div>
-
-                  <div className="field">
+                  <div className="field" style={{ width: 140 }}>
                     <label>Featured rank</label>
                     <input
-                      value={form.featuredRank ?? ""}
-                      onChange={(e) => setForm((p: any) => ({ ...p, featuredRank: e.target.value }))}
+                      className="input"
+                      value={selected.featuredRank ?? ""}
+                      onChange={(e) => setSelectedPatch({ featuredRank: e.target.value === "" ? null : Number(e.target.value) })}
                       placeholder="1,2,3…"
                     />
                   </div>
+                </div>
 
-                  <div className="field">
-                    <label>Watch</label>
-                    <select
-                      value={form.watchLevel ?? "none"}
-                      onChange={(e) => setForm((p: any) => ({ ...p, watchLevel: e.target.value }))}
-                    >
+                <div style={{ display: "flex", gap: 10 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Watch level</label>
+                    <select className="select" value={selected.watchLevel} onChange={(e) => setSelectedPatch({ watchLevel: e.target.value as any })}>
                       <option value="none">none</option>
                       <option value="watch">watch</option>
                       <option value="avoid">avoid</option>
                     </select>
                   </div>
+                  <div className="field" style={{ flex: 2 }}>
+                    <label>Watch reason</label>
+                    <input className="input" value={selected.watchReason || ""} onChange={(e) => setSelectedPatch({ watchReason: e.target.value || null })} />
+                  </div>
                 </div>
+              </div>
 
-                <div className="field">
-                  <label>Watch reason</label>
-                  <input
-                    value={form.watchReason ?? ""}
-                    onChange={(e) => setForm((p: any) => ({ ...p, watchReason: e.target.value }))}
-                    placeholder="raison courte"
-                  />
-                </div>
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 12, paddingTop: 12 }}>
+                <div className="panelTitle">Présentation</div>
 
                 <div className="field">
                   <label>Bonus headline</label>
-                  <input
-                    value={form.bonusHeadline ?? ""}
-                    onChange={(e) => setForm((p: any) => ({ ...p, bonusHeadline: e.target.value }))}
-                    placeholder="ex: 200% jusqu’à 300€"
-                  />
+                  <input className="input" value={selected.bonusHeadline || ""} onChange={(e) => setSelectedPatch({ bonusHeadline: e.target.value || null })} />
                 </div>
 
                 <div className="field">
                   <label>Description</label>
-                  <textarea
-                    value={form.description ?? ""}
-                    onChange={(e) => setForm((p: any) => ({ ...p, description: e.target.value }))}
-                  />
+                  <textarea className="textarea" value={selected.description || ""} onChange={(e) => setSelectedPatch({ description: e.target.value || null })} />
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div className="field">
-                    <label>Pros (1 par ligne)</label>
+                    <label>Pros (1 ligne = 1 point)</label>
                     <textarea
-                      value={form.pros ?? ""}
-                      onChange={(e) => setForm((p: any) => ({ ...p, pros: e.target.value }))}
+                      className="textarea"
+                      value={listToLines(selected.pros)}
+                      onChange={(e) => setSelectedPatch({ pros: linesToList(e.target.value) })}
                     />
                   </div>
                   <div className="field">
-                    <label>Cons (1 par ligne)</label>
+                    <label>Cons (1 ligne = 1 point)</label>
                     <textarea
-                      value={form.cons ?? ""}
-                      onChange={(e) => setForm((p: any) => ({ ...p, cons: e.target.value }))}
+                      className="textarea"
+                      value={listToLines(selected.cons)}
+                      onChange={(e) => setSelectedPatch({ cons: linesToList(e.target.value) })}
                     />
                   </div>
                 </div>
+              </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 10 }}>
-                  <div className="field">
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 12, paddingTop: 12 }}>
+                <div className="panelTitle">Avis LunaLive</div>
+
+                <div style={{ display: "flex", gap: 10 }}>
+                  <div className="field" style={{ width: 160 }}>
                     <label>Team rating</label>
                     <input
-                      value={form.teamRating ?? ""}
-                      onChange={(e) => setForm((p: any) => ({ ...p, teamRating: e.target.value }))}
-                      placeholder="4.2"
+                      className="input"
+                      value={selected.teamRating ?? ""}
+                      onChange={(e) => setSelectedPatch({ teamRating: e.target.value === "" ? null : Number(e.target.value) })}
+                      placeholder="ex: 4.2"
                     />
                   </div>
-                  <div className="field">
+                  <div className="field" style={{ flex: 1 }}>
                     <label>Team review</label>
-                    <input
-                      value={form.teamReview ?? ""}
-                      onChange={(e) => setForm((p: any) => ({ ...p, teamReview: e.target.value }))}
-                    />
+                    <textarea className="textarea" value={selected.teamReview || ""} onChange={(e) => setSelectedPatch({ teamReview: e.target.value || null })} />
                   </div>
                 </div>
+              </div>
+
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 12, paddingTop: 12 }}>
+                <div className="panelTitle">Sections libres</div>
 
                 <button
-                  className="btnPrimary"
-                  onClick={async () => {
-                    await adminCasinosUpdate(adminKey, selected.id, {
-                      slug: form.slug,
-                      name: form.name,
-                      logoUrl: form.logoUrl || null,
-                      status: form.status,
-                      featuredRank: form.featuredRank === "" ? null : Number(form.featuredRank),
-                      bonusHeadline: form.bonusHeadline || null,
-                      description: form.description || null,
-                      pros: form.pros,
-                      cons: form.cons,
-                      teamRating: form.teamRating === "" ? null : Number(form.teamRating),
-                      teamReview: form.teamReview || null,
-                      watchLevel: form.watchLevel,
-                      watchReason: form.watchReason || null,
-                    });
-                    await refresh();
+                  className="btnSecondary"
+                  onClick={() => {
+                    const next = [
+                      ...(selected.sections || []),
+                      { key: "new", title: "Nouvelle section", body: "", order: (selected.sections?.length || 0) + 1, isVisible: true },
+                    ];
+                    setSelectedPatch({ sections: next as any });
                   }}
                 >
-                  Sauvegarder
+                  + Ajouter une section
                 </button>
 
-                {/* LINKS */}
-                <div className="panelTitle" style={{ marginTop: 16 }}>
-                  Liens affiliés
+                <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+                  {(selected.sections || []).map((sec: any, idx: number) => (
+                    <div key={idx} style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 10 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input
+                          className="input"
+                          value={sec.title || ""}
+                          onChange={(e) => {
+                            const title = e.target.value;
+                            const key = sec.key && sec.key !== "new" ? sec.key : slugify(title) || "section";
+                            const next = [...(selected.sections || [])];
+                            next[idx] = { ...sec, title, key };
+                            setSelectedPatch({ sections: next as any });
+                          }}
+                          placeholder="Titre"
+                        />
+                        <input
+                          className="input"
+                          value={sec.key || ""}
+                          onChange={(e) => {
+                            const next = [...(selected.sections || [])];
+                            next[idx] = { ...sec, key: slugify(e.target.value) };
+                            setSelectedPatch({ sections: next as any });
+                          }}
+                          placeholder="key"
+                          style={{ width: 220 }}
+                        />
+                        <label style={{ display: "flex", gap: 6, alignItems: "center", fontWeight: 900 }}>
+                          <input
+                            type="checkbox"
+                            checked={sec.isVisible !== false}
+                            onChange={(e) => {
+                              const next = [...(selected.sections || [])];
+                              next[idx] = { ...sec, isVisible: e.target.checked };
+                              setSelectedPatch({ sections: next as any });
+                            }}
+                          />
+                          visible
+                        </label>
+
+                        <button
+                          className="btnGhostSmall"
+                          onClick={() => {
+                            const next = [...(selected.sections || [])];
+                            if (idx > 0) {
+                              const tmp = next[idx - 1];
+                              next[idx - 1] = next[idx];
+                              next[idx] = tmp;
+                            }
+                            setSelectedPatch({ sections: next as any });
+                          }}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          className="btnGhostSmall"
+                          onClick={() => {
+                            const next = [...(selected.sections || [])];
+                            if (idx < next.length - 1) {
+                              const tmp = next[idx + 1];
+                              next[idx + 1] = next[idx];
+                              next[idx] = tmp;
+                            }
+                            setSelectedPatch({ sections: next as any });
+                          }}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          className="btnGhostSmall"
+                          onClick={() => {
+                            const next = [...(selected.sections || [])];
+                            next.splice(idx, 1);
+                            setSelectedPatch({ sections: next as any });
+                          }}
+                        >
+                          Suppr
+                        </button>
+                      </div>
+
+                      <textarea
+                        className="textarea"
+                        value={sec.body || ""}
+                        onChange={(e) => {
+                          const next = [...(selected.sections || [])];
+                          next[idx] = { ...sec, body: e.target.value };
+                          setSelectedPatch({ sections: next as any });
+                        }}
+                        placeholder="Contenu (texte/markdown simple)…"
+                        style={{ marginTop: 8 }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 12, paddingTop: 12 }}>
+                <div className="panelTitle">Liens</div>
+                {loadingLinks && <div className="mutedSmall">Chargement liens…</div>}
+
+                {/* BONUS */}
+                <div style={{ marginTop: 8, fontWeight: 1000 }}>Lien bonus (CTA principal)</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 220px 120px", gap: 8, marginTop: 8 }}>
+                  <input
+                    className="input"
+                    value={bonusLink?.targetUrl || ""}
+                    placeholder="https://..."
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setLinks((prev) =>
+                        prev.map((l) => (l.id === bonusLink?.id ? { ...l, targetUrl: v } : l))
+                      );
+                    }}
+                  />
+                  <input
+                    className="input"
+                    value={bonusLink?.label || ""}
+                    placeholder="Label (optionnel)"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setLinks((prev) =>
+                        prev.map((l) => (l.id === bonusLink?.id ? { ...l, label: v } : l))
+                      );
+                    }}
+                  />
+                  <button
+                    className="btnSecondary"
+                    onClick={async () => {
+                      if (!selected) return;
+                      if (!bonusLink) {
+                        // create
+                        const r = await adminCreateCasinoLink(adminKey, selected.id, {
+                          kind: "bonus",
+                          targetUrl: "https://example.com",
+                          enabled: true,
+                          pinnedRank: 1,
+                          label: "Bonus LunaLive",
+                        } as any);
+                        await refreshLinks(selected.id);
+                        return;
+                      }
+                      await adminUpdateCasinoLink(adminKey, bonusLink.id, {
+                        targetUrl: bonusLink.targetUrl,
+                        label: bonusLink.label,
+                      } as any);
+                      await refreshLinks(selected.id);
+                    }}
+                  >
+                    {bonusLink ? "Sauver" : "Créer"}
+                  </button>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10, marginBottom: 10 }}>
-                  <div className="field">
-                    <label>Type</label>
-                    <select value={linkKind} onChange={(e) => setLinkKind(e.target.value as any)}>
-                      <option value="bonus">Bonus (plateforme)</option>
-                      <option value="streamer">Streamer</option>
-                    </select>
-                  </div>
-
-                  <div className="field">
-                    <label>Target URL</label>
-                    <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://..." />
-                  </div>
-                </div>
-
-                {linkKind === "streamer" && (
-                  <div className="field">
-                    <label>Streamer</label>
-                    <select value={linkStreamer} onChange={(e) => setLinkStreamer(e.target.value)}>
-                      <option value="">— choisir —</option>
-                      {streamers.map((s: any) => (
-                        <option key={s.id} value={s.slug}>
-                          {s.displayName} ({s.slug})
-                        </option>
-                      ))}
-                    </select>
+                {bonusLink && (
+                  <div style={{ display: "flex", gap: 10, marginTop: 8, alignItems: "center" }}>
+                    <label style={{ display: "flex", gap: 6, alignItems: "center", fontWeight: 900 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!bonusLink.enabled}
+                        onChange={async (e) => {
+                          await adminUpdateCasinoLink(adminKey, bonusLink.id, { enabled: e.target.checked } as any);
+                          await refreshLinks(selected!.id);
+                        }}
+                      />
+                      enabled
+                    </label>
+                    <div className="mutedSmall">Astuce : 1 seul lien bonus actif recommandé.</div>
                   </div>
                 )}
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 180px", gap: 10 }}>
-                  <div className="field">
-                    <label>Label (optionnel)</label>
-                    <input value={linkLabel} onChange={(e) => setLinkLabel(e.target.value)} placeholder="LeCasiNoze" />
-                  </div>
-                  <div className="field">
-                    <label>Pinned rank</label>
-                    <input value={linkPinned} onChange={(e) => setLinkPinned(e.target.value)} placeholder="0,1,2…" />
-                  </div>
+                {/* STREAMERS */}
+                <div style={{ marginTop: 14, fontWeight: 1000 }}>Liens créateurs</div>
+
+                <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "220px 1fr 180px 110px 120px", gap: 8 }}>
+                  <select className="select" value={addStreamerId} onChange={(e) => setAddStreamerId(e.target.value ? Number(e.target.value) : "")}>
+                    <option value="">Streamer…</option>
+                    {streamers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.displayName}
+                      </option>
+                    ))}
+                  </select>
+                  <input className="input" value={addUrl} onChange={(e) => setAddUrl(e.target.value)} placeholder="https://..." />
+                  <input className="input" value={addLabel} onChange={(e) => setAddLabel(e.target.value)} placeholder="Label" />
+                  <input className="input" value={addPinned} onChange={(e) => setAddPinned(e.target.value === "" ? "" : Number(e.target.value))} placeholder="pin" />
+                  <button
+                    className="btnSecondary"
+                    onClick={async () => {
+                      if (!selected) return;
+                      if (!addStreamerId || !addUrl.trim()) return;
+                      await adminCreateCasinoLink(adminKey, selected.id, {
+                        kind: "streamer",
+                        streamerId: addStreamerId,
+                        targetUrl: addUrl.trim(),
+                        label: addLabel.trim() || null,
+                        enabled: true,
+                        pinnedRank: addPinned === "" ? null : Number(addPinned),
+                      } as any);
+                      setAddStreamerId("");
+                      setAddUrl("");
+                      setAddLabel("");
+                      setAddPinned("");
+                      await refreshLinks(selected.id);
+                    }}
+                  >
+                    + Ajouter
+                  </button>
                 </div>
 
-                <button
-                  className="btnPrimary"
-                  onClick={async () => {
-                    if (!selectedId) return;
-                    if (!linkUrl.trim()) return;
-                    if (linkKind === "streamer" && !linkStreamer) return;
-
-                    await adminCasinoLinksCreate(adminKey, selectedId, {
-                      kind: linkKind,
-                      targetUrl: linkUrl.trim(),
-                      label: linkLabel.trim() || null,
-                      pinnedRank: linkPinned === "" ? null : Number(linkPinned),
-                      streamerSlug: linkKind === "streamer" ? linkStreamer : null,
-                    });
-
-                    setLinkUrl("");
-                    setLinkLabel("");
-                    setLinkPinned("");
-                    setLinkStreamer("");
-                    await refreshLinks(selectedId);
-                  }}
-                >
-                  + Ajouter lien
-                </button>
-
-                <div style={{ marginTop: 10 }}>
-                  {loadingLinks && <div className="mutedSmall">Chargement liens…</div>}
-                  {!loadingLinks &&
-                    links.map((l) => (
-                      <div
-                        key={l.id}
-                        style={{
-                          borderTop: "1px solid rgba(255,255,255,0.06)",
-                          padding: "10px 0",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 8,
-                        }}
-                      >
-                        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                          <div style={{ flex: 1 }}>
-                            <b>
-                              {l.ownerUserId == null
-                                ? "BONUS (plateforme)"
-                                : l.streamerDisplayName
-                                ? `${l.streamerDisplayName} (${l.streamerSlug})`
-                                : l.ownerUsername || "Streamer"}
-                            </b>{" "}
-                            <span className="mutedSmall">#{l.pinnedRank ?? "—"}</span>
-                          </div>
-
-                          <label className="mutedSmall" style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                            <input
-                              type="checkbox"
-                              checked={!!l.enabled}
-                              onChange={async (e) => {
-                                await adminCasinoLinksUpdate(adminKey, l.id, { enabled: e.target.checked });
-                                await refreshLinks(selectedId!);
-                              }}
-                            />
-                            enabled
-                          </label>
-                        </div>
+                <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                  {streamerLinks.map((l) => (
+                    <div key={l.id} style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 10 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 160px 110px", gap: 8, alignItems: "center" }}>
+                        <select
+                          className="select"
+                          value={l.streamerId ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value ? Number(e.target.value) : null;
+                            setLinks((prev) => prev.map((x) => (x.id === l.id ? { ...x, streamerId: v } : x)));
+                          }}
+                        >
+                          <option value="">—</option>
+                          {streamers.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.displayName}
+                            </option>
+                          ))}
+                        </select>
 
                         <input
-                          value={l.label ?? ""}
-                          onChange={(e) => setLinks((prev) => prev.map((x) => (x.id === l.id ? { ...x, label: e.target.value } : x)))}
-                          placeholder="label"
-                        />
-                        <input
-                          value={l.targetUrl}
-                          onChange={(e) => setLinks((prev) => prev.map((x) => (x.id === l.id ? { ...x, targetUrl: e.target.value } : x)))}
-                          placeholder="target url"
+                          className="input"
+                          value={l.targetUrl || ""}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setLinks((prev) => prev.map((x) => (x.id === l.id ? { ...x, targetUrl: v } : x)));
+                          }}
+                          placeholder="https://..."
                         />
 
-                        <div style={{ display: "flex", gap: 10 }}>
-                          <input
-                            style={{ width: 140 }}
-                            value={l.pinnedRank ?? ""}
-                            onChange={(e) =>
-                              setLinks((prev) =>
-                                prev.map((x) => (x.id === l.id ? { ...x, pinnedRank: e.target.value === "" ? null : Number(e.target.value) } : x))
-                              )
-                            }
-                            placeholder="pinned"
-                          />
+                        <input
+                          className="input"
+                          value={l.label || ""}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setLinks((prev) => prev.map((x) => (x.id === l.id ? { ...x, label: v } : x)));
+                          }}
+                          placeholder="Label"
+                        />
+
+                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                           <button
                             className="btnGhostSmall"
                             onClick={async () => {
-                              await adminCasinoLinksUpdate(adminKey, l.id, {
-                                label: l.label ?? null,
+                              await adminUpdateCasinoLink(adminKey, l.id, {
                                 targetUrl: l.targetUrl,
-                                pinnedRank: l.pinnedRank ?? null,
-                                enabled: !!l.enabled,
-                              });
-                              await refreshLinks(selectedId!);
+                                label: l.label,
+                                streamerId: l.streamerId,
+                              } as any);
+                              await refreshLinks(selected!.id);
                             }}
                           >
-                            Save lien
+                            Save
+                          </button>
+
+                          <button
+                            className="btnGhostSmall"
+                            onClick={async () => {
+                              await adminUpdateCasinoLink(adminKey, l.id, { enabled: !l.enabled } as any);
+                              await refreshLinks(selected!.id);
+                            }}
+                          >
+                            {l.enabled ? "Disable" : "Enable"}
                           </button>
                         </div>
                       </div>
-                    ))}
 
-                  {!loadingLinks && links.length === 0 && <div className="mutedSmall">Aucun lien</div>}
+                      <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center" }}>
+                        <label style={{ display: "flex", gap: 6, alignItems: "center", fontWeight: 900 }}>
+                          <input
+                            type="checkbox"
+                            checked={!!l.enabled}
+                            onChange={(e) => {
+                              const v = e.target.checked;
+                              setLinks((prev) => prev.map((x) => (x.id === l.id ? { ...x, enabled: v } : x)));
+                            }}
+                          />
+                          enabled
+                        </label>
+
+                        <span className="mutedSmall">pinnedRank</span>
+                        <input
+                          className="input"
+                          style={{ width: 110 }}
+                          value={l.pinnedRank ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value === "" ? null : Number(e.target.value);
+                            setLinks((prev) => prev.map((x) => (x.id === l.id ? { ...x, pinnedRank: v } : x)));
+                          }}
+                        />
+                        <button
+                          className="btnGhostSmall"
+                          onClick={async () => {
+                            await adminUpdateCasinoLink(adminKey, l.id, { pinnedRank: l.pinnedRank } as any);
+                            await refreshLinks(selected!.id);
+                          }}
+                        >
+                          Save pin
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {streamerLinks.length === 0 && <div className="mutedSmall">Aucun lien créateur.</div>}
                 </div>
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
