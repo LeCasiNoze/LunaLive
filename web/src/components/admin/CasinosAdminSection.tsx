@@ -327,7 +327,13 @@ export function CasinosAdminSection({ adminKey }: Props) {
                     <input
                       className="input"
                       value={selected.teamRating ?? ""}
-                      onChange={(e) => setSelectedPatch({ teamRating: e.target.value === "" ? null : Number(e.target.value) })}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === "") return setSelectedPatch({ teamRating: null });
+
+                        const n = Number(String(raw).replace(",", "."));
+                        setSelectedPatch({ teamRating: Number.isFinite(n) ? n : (raw as any) });
+                      }}
                       placeholder="ex: 4.2"
                     />
                   </div>

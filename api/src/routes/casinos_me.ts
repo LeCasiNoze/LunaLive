@@ -33,14 +33,30 @@ function ensureDir(p: string) {
   fs.mkdirSync(p, { recursive: true });
 }
 
-// PUT /casinos/:casinoId/rating
+function toInt(v: any): number | null {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+}
+
+/**
+ * Compat routes:
+ * - If mounted at /me/casinos:   PUT  /:casinoId/rating
+ * - If mounted at /me:          PUT  /casinos/:casinoId/rating
+ */
+const RATING_PATHS = ["/:casinoId/rating", "/casinos/:casinoId/rating"];
+const COMMENTS_PATHS = ["/:casinoId/comments", "/casinos/:casinoId/comments"];
+const REACT_PATHS = ["/comments/:commentId/reaction", "/casinos/comments/:commentId/reaction"];
+
+// PUT rating
 casinosMeRouter.put(
-  "/casinos/:casinoId/rating",
+  RATING_PATHS,
   requireAuth,
   a(async (req, res) => {
-    const casinoId = Number(req.params.casinoId);
-    const rating = Number(req.body?.rating);
+    const casinoId = toInt(req.params.casinoId);
+    if (casinoId == null) return res.status(400).json({ ok: false, error: "bad_casino_id" });
 
+    const rating = Number(req.body?.rating);
     if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
       return res.status(400).json({ ok: false, error: "bad_rating" });
     }
@@ -59,13 +75,15 @@ casinosMeRouter.put(
   })
 );
 
-// POST /casinos/:casinoId/comments  (multipart: body + images[])
+// POST comment (multipart)
 casinosMeRouter.post(
-  "/casinos/:casinoId/comments",
+  COMMENTS_PATHS,
   requireAuth,
   upload.array("images", 3),
   a(async (req: any, res) => {
-    const casinoId = Number(req.params.casinoId);
+    const casinoId = toInt(req.params.casinoId);
+    if (casinoId == null) return res.status(400).json({ ok: false, error: "bad_casino_id" });
+
     const body = String(req.body?.body ?? "").trim();
     const files = (req.files ?? []) as Array<{ buffer: Buffer; mimetype: string }>;
 
@@ -137,12 +155,14 @@ casinosMeRouter.post(
   })
 );
 
-// POST /casinos/comments/:commentId/reaction { kind: "up"|"down"|null }
+// POST reaction
 casinosMeRouter.post(
-  "/casinos/comments/:commentId/reaction",
+  REACT_PATHS,
   requireAuth,
   a(async (req, res) => {
-    const commentId = Number(req.params.commentId);
+    const commentId = toInt(req.params.commentId);
+    if (commentId == null) return res.status(400).json({ ok: false, error: "bad_comment_id" });
+
     const kind = req.body?.kind ?? null;
 
     if (kind === null) {

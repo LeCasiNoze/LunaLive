@@ -567,3 +567,13 @@
 .watchPill.avoid{ border-color: rgba(255,82,82,0.35); background: rgba(255,82,82,0.10); }
 .watchPill.watch{ border-color: rgba(255,193,7,0.35); background: rgba(255,193,7,0.10); }
 
+/* Affiche correctement les retours à la ligne saisis dans l’admin */
+.casinoDesc,
+.pcList li,
+.teamBox .mutedSmall,
+.watchBanner .mutedSmall{
+  white-space: pre-wrap;
+}
+
+/* Un peu plus lisible */
+.pcList li{ margin: 6px 0; line-height: 1.35; }

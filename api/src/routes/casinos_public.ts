@@ -10,6 +10,12 @@ function topScore(R: number, v: number, C: number, m = 25) {
   return (v / (v + m)) * R + (m / (v + m)) * C;
 }
 
+function apiBaseFromReq(req: Request) {
+  const host = req.get("host");
+  const proto = (req as any).protocol || "https";
+  return `${proto}://${host}`;
+}
+
 // GET /casinos?search=&sort=top|rating|reviews|new|featured
 casinosPublicRouter.get(
   "/casinos",
@@ -78,7 +84,6 @@ casinosPublicRouter.get(
         const br = b.featuredRank ?? 999999;
         return ar - br;
       }
-      // top
       return topScore(b.avgRating, b.ratingsCount, C) - topScore(a.avgRating, a.ratingsCount, C);
     });
 
@@ -131,46 +136,69 @@ casinosPublicRouter.get(
       [Number(casino.id)]
     );
 
-    // Liens (owner_user_id null = bonus/platform)
-    // + join streamers via streamers.user_id = owner_user_id pour afficher slug/displayName + followsCount
+    const apiBase = apiBaseFromReq(req);
+
+    // Liens:
+    // - bonus via kind='bonus' (ou fallback owner_user_id NULL)
+    // - streamers via l.streamer_id (nouveau) + fallback via owner_user_id (ancien)
     const linksRows = await pool.query(
       `
       SELECT
         l.id::text AS id,
+        l.kind,
+        l.target_url AS "targetUrl",
         l.owner_user_id AS "ownerUserId",
+        l.streamer_id AS "streamerId",
         l.label,
         l.pinned_rank AS "pinnedRank",
         l.enabled,
         l.casino_id::text AS "casinoId",
         u.username AS "ownerUsername",
+
         s.slug AS "streamerSlug",
         s.display_name AS "streamerDisplayName",
         (SELECT COUNT(*)::int FROM streamer_follows sf WHERE sf.streamer_id = s.id) AS "streamerFollows"
+
       FROM casino_affiliate_links l
       LEFT JOIN users u ON u.id = l.owner_user_id
-      LEFT JOIN streamers s ON s.user_id = l.owner_user_id
+
+      LEFT JOIN streamers s ON
+        (l.streamer_id IS NOT NULL AND s.id = l.streamer_id)
+        OR
+        (l.streamer_id IS NULL AND l.owner_user_id IS NOT NULL AND s.user_id = l.owner_user_id)
+
       WHERE l.casino_id = $1 AND l.enabled = TRUE
       `,
       [Number(casino.id)]
     );
 
-    const links = linksRows.rows.map((l: any) => ({
-      id: String(l.id),
-      ownerUserId: l.ownerUserId == null ? null : Number(l.ownerUserId),
-      label: l.label ? String(l.label) : null,
-      pinnedRank: l.pinnedRank == null ? null : Number(l.pinnedRank),
-      ownerUsername: l.ownerUsername ? String(l.ownerUsername) : null,
-      streamer: l.streamerSlug
-        ? {
-            slug: String(l.streamerSlug),
-            displayName: String(l.streamerDisplayName || l.streamerSlug),
-            followsCount: Number(l.streamerFollows || 0),
-          }
-        : null,
-      goUrl: `/go/casino/${casino.id}/link/${l.id}`,
-    }));
+    const links = linksRows.rows.map((l: any) => {
+      const kind = (l.kind === "bonus" || l.kind === "streamer")
+        ? l.kind
+        : (l.ownerUserId == null ? "bonus" : "streamer");
+
+      return {
+        id: String(l.id),
+        kind,
+        ownerUserId: l.ownerUserId == null ? null : Number(l.ownerUserId),
+        label: l.label ? String(l.label) : null,
+        pinnedRank: l.pinnedRank == null ? null : Number(l.pinnedRank),
+        ownerUsername: l.ownerUsername ? String(l.ownerUsername) : null,
+        streamer: l.streamerSlug
+          ? {
+              slug: String(l.streamerSlug),
+              displayName: String(l.streamerDisplayName || l.streamerSlug),
+              followsCount: Number(l.streamerFollows || 0),
+            }
+          : null,
+        // ✅ ABSOLU => cliquable depuis ton front
+        goUrl: `${apiBase}/go/casino/${casino.id}/link/${l.id}`,
+        targetUrl: String(l.targetUrl || ""),
+      };
+    });
 
     const bonusLink =
+      links.find((x: any) => x.kind === "bonus") ??
       links.find((x: any) => x.ownerUserId == null) ??
       [...links].sort((a: any, b: any) => (a.pinnedRank ?? 999999) - (b.pinnedRank ?? 999999))[0] ??
       null;
@@ -256,7 +284,6 @@ casinosPublicRouter.get(
       }
     }
 
-    // myReaction (si connecté)
     const myBy: Record<string, "up" | "down"> = {};
     if (me?.id && ids.length) {
       const r = await pool.query(

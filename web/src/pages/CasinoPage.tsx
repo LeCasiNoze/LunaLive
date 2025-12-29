@@ -7,6 +7,7 @@ import {
   postCasinoComment,
   reactToCasinoComment,
   setCasinoRating,
+  absApiUrl,
   type CasinoComment,
   type CasinoLink,
   type CasinoDetailResp,
@@ -15,6 +16,14 @@ import { useAuth } from "../auth/AuthProvider";
 
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
+}
+
+function numFromAny(v: any): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  const s = String(v).trim().replace(",", ".");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
 }
 
 function StarPicker({
@@ -50,11 +59,10 @@ function StarPicker({
 
 function splitList(v: any): string[] {
   if (!v) return [];
-  if (Array.isArray(v)) return v.map((x) => String(x)).filter(Boolean);
-  // au cas où c'est stocké en string json
+  if (Array.isArray(v)) return v.map((x) => String(x)).filter((x) => x != null && String(x).trim() !== "");
   try {
     const j = JSON.parse(String(v));
-    if (Array.isArray(j)) return j.map((x) => String(x)).filter(Boolean);
+    if (Array.isArray(j)) return j.map((x) => String(x)).filter((x) => x != null && String(x).trim() !== "");
   } catch {}
   return [];
 }
@@ -68,6 +76,12 @@ function sortLinks(links: CasinoLink[]) {
     const bf = b.streamer?.followsCount ?? 0;
     return bf - af;
   });
+}
+
+function linkHref(l: any): string {
+  const raw = (l?.goUrl || l?.targetUrl || "").trim();
+  const abs = absApiUrl(raw);
+  return abs || "#";
 }
 
 export default function CasinoPage() {
@@ -95,9 +109,9 @@ export default function CasinoPage() {
   const refComments = React.useRef<HTMLDivElement>(null);
   const refSupport = React.useRef<HTMLDivElement>(null);
 
-    function scrollTo(ref: { current: HTMLElement | null }) {
+  function scrollTo(ref: { current: HTMLElement | null }) {
     ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+  }
 
   async function loadCasino() {
     if (!slug) return;
@@ -106,7 +120,6 @@ export default function CasinoPage() {
     try {
       const r = await getCasino(slug);
       setData(r);
-      // V1: on ne récupère pas la note user depuis l’API -> on part à 0, puis on met à jour quand il clique
       setMyRating(0);
     } catch (e: any) {
       setError(e?.message || "error");
@@ -137,7 +150,6 @@ export default function CasinoPage() {
   }, [slug]);
 
   React.useEffect(() => {
-    // reset comments on sort change
     setComments([]);
     setNextCursor(null);
     loadComments({ reset: true });
@@ -154,7 +166,6 @@ export default function CasinoPage() {
     setSavingRating(true);
     try {
       await setCasinoRating(data.casino.id, v);
-      // refresh stats (optionnel)
       const fresh = await getCasino(data.casino.slug);
       setData(fresh);
     } catch (e: any) {
@@ -185,13 +196,11 @@ export default function CasinoPage() {
       setBody("");
       setFiles([]);
 
-      // si published => on reload en haut
       if (r.status === "published") {
         setComments([]);
         setNextCursor(null);
         await loadComments({ reset: true });
       } else {
-        // pending (images) => on affiche en local un item “En attente”
         const pending: CasinoComment = {
           id: `local_pending_${Date.now()}`,
           body: text,
@@ -221,18 +230,15 @@ export default function CasinoPage() {
     }
     const newKind: "up" | "down" | null = current === next ? null : next;
 
-    // optimistic update
     setComments((prev) =>
       prev.map((c) => {
         if (c.id !== commentId) return c;
         let up = c.upCount;
         let down = c.downCount;
 
-        // remove current
         if (c.myReaction === "up") up -= 1;
         if (c.myReaction === "down") down -= 1;
 
-        // apply new
         if (newKind === "up") up += 1;
         if (newKind === "down") down += 1;
 
@@ -244,7 +250,6 @@ export default function CasinoPage() {
       await reactToCasinoComment(commentId, newKind);
     } catch (e: any) {
       alert(e?.message || "Erreur réaction");
-      // fallback: reload comments
       setComments([]);
       setNextCursor(null);
       await loadComments({ reset: true });
@@ -274,15 +279,23 @@ export default function CasinoPage() {
   const cons = splitList(casino.cons);
 
   const linksSorted = sortLinks(data.links || []);
-  const streamerLinks = linksSorted.filter((l) => l.ownerUserId != null && l.streamer);
+  const streamerLinks = linksSorted.filter((l: any) => l.streamer);
   const bonusLink = data.bonusLink;
+
+  const avg = numFromAny(stats?.avgRating) ?? 0;
+  const rc = Number(stats?.ratingsCount ?? 0) || 0;
+
+  const team = numFromAny(casino.teamRating);
+  const teamTxt = team == null ? "—" : team.toFixed(1);
+
+  const logoSrc = absApiUrl(casino.logoUrl) || casino.logoUrl || null;
 
   return (
     <div className="container">
       <div className="casinoHeader">
         <div className="casinoHeaderLeft">
           <div className="casinoHeaderLogo">
-            {casino.logoUrl ? <img src={casino.logoUrl} alt="" /> : <div className="casinoLogoPh" />}
+            {logoSrc ? <img src={logoSrc} alt="" /> : <div className="casinoLogoPh" />}
           </div>
 
           <div className="casinoHeaderMeta">
@@ -290,10 +303,10 @@ export default function CasinoPage() {
 
             <div className="casinoHeaderRatings">
               <div className="ratingPill">
-                ⭐ {stats.avgRating.toFixed(1)}/5 <span className="mutedSmall">• {stats.ratingsCount.toLocaleString("fr-FR")} avis</span>
+                ⭐ {avg.toFixed(1)}/5 <span className="mutedSmall">• {rc.toLocaleString("fr-FR")} avis</span>
               </div>
               <div className="ratingPill team">
-                Avis LunaLive : <b>{casino.teamRating != null ? casino.teamRating.toFixed(1) : "—"}</b>/5
+                Avis LunaLive : <b>{teamTxt}</b>/5
               </div>
             </div>
 
@@ -308,7 +321,7 @@ export default function CasinoPage() {
 
         <div className="casinoHeaderRight">
           {bonusLink ? (
-            <a className="btnPrimary" href={bonusLink.goUrl} target="_blank" rel="noreferrer">
+            <a className="btnPrimary" href={linkHref(bonusLink)} target="_blank" rel="noreferrer">
               Récupérez votre bonus
             </a>
           ) : (
@@ -319,10 +332,18 @@ export default function CasinoPage() {
       </div>
 
       <div className="casinoAnchors">
-        <button className="chip" onClick={() => scrollTo(refOverview)}>Aperçu</button>
-        <button className="chip" onClick={() => scrollTo(refRate)}>Noter</button>
-        <button className="chip" onClick={() => scrollTo(refComments)}>Avis</button>
-        <button className="chip" onClick={() => scrollTo(refSupport)}>Soutenir</button>
+        <button className="chip" onClick={() => scrollTo(refOverview)}>
+          Aperçu
+        </button>
+        <button className="chip" onClick={() => scrollTo(refRate)}>
+          Noter
+        </button>
+        <button className="chip" onClick={() => scrollTo(refComments)}>
+          Avis
+        </button>
+        <button className="chip" onClick={() => scrollTo(refSupport)}>
+          Soutenir
+        </button>
       </div>
 
       <div className="casinoTwoCol">
@@ -331,17 +352,19 @@ export default function CasinoPage() {
           <div ref={refOverview} className="panel">
             <h2>Aperçu</h2>
 
-            {casino.description ? (
-              <p className="casinoDesc">{casino.description}</p>
-            ) : (
-              <p className="mutedSmall">Description à venir.</p>
-            )}
+            {casino.description ? <p className="casinoDesc">{casino.description}</p> : <p className="mutedSmall">Description à venir.</p>}
 
             <div className="prosCons">
               <div className="pcCol">
                 <div className="pcTitle">✅ Points forts</div>
                 {pros.length ? (
-                  <ul className="pcList">{pros.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                  <ul className="pcList">
+                    {pros.map((x, i) => (
+                      <li key={i} style={{ whiteSpace: "pre-wrap" }}>
+                        {x}
+                      </li>
+                    ))}
+                  </ul>
                 ) : (
                   <div className="mutedSmall">—</div>
                 )}
@@ -349,7 +372,13 @@ export default function CasinoPage() {
               <div className="pcCol">
                 <div className="pcTitle">⚠️ Points faibles</div>
                 {cons.length ? (
-                  <ul className="pcList">{cons.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                  <ul className="pcList">
+                    {cons.map((x, i) => (
+                      <li key={i} style={{ whiteSpace: "pre-wrap" }}>
+                        {x}
+                      </li>
+                    ))}
+                  </ul>
                 ) : (
                   <div className="mutedSmall">—</div>
                 )}
@@ -359,7 +388,9 @@ export default function CasinoPage() {
             {casino.teamReview && (
               <div className="teamBox">
                 <div className="pcTitle">Avis LunaLive</div>
-                <div className="mutedSmall">{casino.teamReview}</div>
+                <div className="mutedSmall" style={{ whiteSpace: "pre-wrap" }}>
+                  {casino.teamReview}
+                </div>
               </div>
             )}
           </div>
@@ -396,29 +427,17 @@ export default function CasinoPage() {
               <div className="composerRow">
                 <label className="fileBtn">
                   + Images (max 3)
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => onPickFiles(e.target.files)}
-                    style={{ display: "none" }}
-                  />
+                  <input type="file" accept="image/*" multiple onChange={(e) => onPickFiles(e.target.files)} style={{ display: "none" }} />
                 </label>
                 <button className="btnPrimary" onClick={onPost} disabled={posting || !body.trim()}>
                   Publier
                 </button>
               </div>
-              {files.length > 0 && (
-                <div className="mutedSmall">
-                  {files.length} image(s) • Les messages avec images nécessitent validation.
-                </div>
-              )}
+              {files.length > 0 && <div className="mutedSmall">{files.length} image(s) • Les messages avec images nécessitent validation.</div>}
             </div>
 
             <div className="commentsScroll">
-              {comments.length === 0 && !loadingComments && (
-                <div className="mutedSmall">Aucun message pour l’instant.</div>
-              )}
+              {comments.length === 0 && !loadingComments && <div className="mutedSmall">Aucun message pour l’instant.</div>}
 
               {comments.map((c) => (
                 <div key={c.id} className={`commentItem ${String(c.id).startsWith("local_pending_") ? "pending" : ""}`}>
@@ -426,32 +445,30 @@ export default function CasinoPage() {
                     <div className="commentUser">
                       <b>{c.username}</b>
                       <span className="mutedSmall"> • {new Date(c.createdAt).toLocaleString("fr-FR")}</span>
-                      {c.authorRating != null && (
-                        <span className="commentBadge">⭐ {c.authorRating}/5</span>
-                      )}
-                      {String(c.id).startsWith("local_pending_") && (
-                        <span className="commentBadge warn">En attente</span>
-                      )}
+                      {c.authorRating != null && <span className="commentBadge">⭐ {c.authorRating}/5</span>}
+                      {String(c.id).startsWith("local_pending_") && <span className="commentBadge warn">En attente</span>}
                     </div>
                   </div>
 
-                  <div className="commentBody">{c.body}</div>
+                  <div className="commentBody" style={{ whiteSpace: "pre-wrap" }}>
+                    {c.body}
+                  </div>
 
                   {c.images?.length > 0 && (
                     <div className="commentImgs">
-                      {c.images.map((im, i) => (
-                        <a key={i} href={im.url} target="_blank" rel="noreferrer" className="commentImg">
-                          <img src={im.url} alt="" />
-                        </a>
-                      ))}
+                      {c.images.map((im, i) => {
+                        const src = absApiUrl(im.url) || im.url;
+                        return (
+                          <a key={i} href={src} target="_blank" rel="noreferrer" className="commentImg">
+                            <img src={src} alt="" />
+                          </a>
+                        );
+                      })}
                     </div>
                   )}
 
                   <div className="reactions">
-                    <button
-                      className={`reactBtn ${c.myReaction === "up" ? "on" : ""}`}
-                      onClick={() => toggleReaction(c.id, c.myReaction, "up")}
-                    >
+                    <button className={`reactBtn ${c.myReaction === "up" ? "on" : ""}`} onClick={() => toggleReaction(c.id, c.myReaction, "up")}>
                       👍 <span>{c.upCount}</span>
                     </button>
                     <button
@@ -480,12 +497,10 @@ export default function CasinoPage() {
         <div ref={refSupport} className="casinoSide">
           <div className="sidePanel">
             <h3>Soutenir un créateur</h3>
-            <div className="mutedSmall">
-              Passe par un lien — ça aide directement le créateur 💜
-            </div>
+            <div className="mutedSmall">Passe par un lien — ça aide directement le créateur 💜</div>
 
             {bonusLink && (
-              <a className="btnPrimary full" href={bonusLink.goUrl} target="_blank" rel="noreferrer">
+              <a className="btnPrimary full" href={linkHref(bonusLink)} target="_blank" rel="noreferrer">
                 Récupérez votre bonus
               </a>
             )}
@@ -494,21 +509,29 @@ export default function CasinoPage() {
               {streamerLinks.length === 0 ? (
                 <div className="mutedSmall">Aucun créateur référencé pour ce casino.</div>
               ) : (
-                streamerLinks.map((l) => (
-                  <div key={l.id} className="sideStreamer">
-                    <div className="sideStreamerTop">
-                      <div className="sideAvatar">{l.streamer!.displayName.slice(0, 1).toUpperCase()}</div>
-                      <div className="sideInfo">
-                        <div className="sideName">{l.streamer!.displayName}</div>
-                        <div className="mutedSmall">{l.streamer!.followsCount.toLocaleString("fr-FR")} followers</div>
+                streamerLinks.map((l) => {
+                  const s = l.streamer!;
+                  const avatar = (s as any).avatarUrl ? absApiUrl((s as any).avatarUrl) : null;
+
+                  return (
+                    <div key={l.id} className="sideStreamer">
+                      <div className="sideStreamerTop">
+                        <div className="sideAvatar">
+                          {avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "999px" }} /> : s.displayName.slice(0, 1).toUpperCase()}
+                        </div>
+                        <div className="sideInfo">
+                          <div className="sideName">{s.displayName}</div>
+                          <div className="mutedSmall">{(s.followsCount ?? 0).toLocaleString("fr-FR")} followers</div>
+                        </div>
+                        {l.pinnedRank != null && <span className="badge">Pin</span>}
                       </div>
-                      {l.pinnedRank != null && <span className="badge">Pin</span>}
+
+                      <a className="btnSecondary full" href={linkHref(l)} target="_blank" rel="noreferrer">
+                        Passer par son lien
+                      </a>
                     </div>
-                    <a className="btnSecondary full" href={l.goUrl} target="_blank" rel="noreferrer">
-                      Passer par son lien
-                    </a>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

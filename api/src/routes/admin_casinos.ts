@@ -4,6 +4,13 @@ import { pool } from "../db.js";
 
 export const adminCasinosRouter = Router();
 
+function parseNullableFloat(v: any) {
+  if (v == null || v === "") return null;
+  const n = Number(String(v).replace(",", "."));
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
 function getAdminKeyFromReq(req: any) {
   const h = String(req.headers["x-admin-key"] || "");
   if (h) return h;
@@ -148,7 +155,14 @@ adminCasinosRouter.patch("/:id", async (req, res) => {
   if ("cons" in patch) fields.push({ col: "cons", val: Array.isArray(patch.cons) ? JSON.stringify(patch.cons) : JSON.stringify([]), castJsonb: true });
   if ("sections" in patch) fields.push({ col: "sections", val: Array.isArray(patch.sections) ? JSON.stringify(patch.sections) : JSON.stringify([]), castJsonb: true });
 
-  if ("teamRating" in patch) fields.push({ col: "team_rating", val: patch.teamRating === null || patch.teamRating === "" ? null : Number(patch.teamRating) });
+  if ("teamRating" in patch) {
+   const n = parseNullableFloat(patch.teamRating);
+   if (patch.teamRating !== null && patch.teamRating !== "" && n === null) {
+    return res.status(400).json({ ok: false, error: "bad teamRating" });
+   }
+   fields.push({ col: "team_rating", val: n });
+ }
+ 
   if ("teamReview" in patch) fields.push({ col: "team_review", val: patch.teamReview ? String(patch.teamReview) : null });
 
   if ("featuredRank" in patch) fields.push({ col: "featured_rank", val: patch.featuredRank === null || patch.featuredRank === "" ? null : Number(patch.featuredRank) });
