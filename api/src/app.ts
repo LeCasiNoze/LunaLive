@@ -66,7 +66,7 @@ export function createApp() {
   app.use(streamerRouter);
   app.use(adminRouter);
 
-  // ✅ admin economy tools
+  // admin economy tools
   app.use(adminRubisRouter);
 
   // economy routers
@@ -91,10 +91,14 @@ export function createApp() {
   app.use(casinosPublicRouter);
   app.use("/me/casinos", requireAuth, casinosMeRouter);
 
-  // ✅ IMPORTANT: admin casinos = admin key only (PAS requireAuth)
+  // ✅ IMPORTANT: compat legacy frontend
+  // ton build prod appelle encore /admin/casinos/listings (GET/POST)
+  app.use("/admin/casinos/listings", adminCasinosRouter);
+
+  // admin casinos = admin key only (PAS requireAuth)
   app.use("/admin/casinos", adminCasinosRouter);
 
-  // ✅ compat ancienne route vue dans ta console: /casinos/listings
+  // (optionnel mais ok)
   app.use("/casinos/listings", adminCasinosRouter);
 
   app.use(adminCasinosSetupRouter);
