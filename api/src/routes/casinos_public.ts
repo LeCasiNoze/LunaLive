@@ -105,7 +105,7 @@ casinosPublicRouter.get(
         description,
         pros,
         cons,
-        team_rating AS "teamRating",
+        team_rating::float8 AS "teamRating",
         team_review AS "teamReview",
         watch_level AS "watchLevel",
         watch_reason AS "watchReason",

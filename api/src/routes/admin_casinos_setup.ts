@@ -48,7 +48,7 @@ adminCasinosSetupRouter.get(
         c.description,
         c.pros,
         c.cons,
-        c.team_rating AS "teamRating",
+        c.team_rating::float8 AS "teamRating",
         c.team_review AS "teamReview",
         c.watch_level AS "watchLevel",
         c.watch_reason AS "watchReason",
