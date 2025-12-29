@@ -1,3 +1,4 @@
+// api/src/db/migrations/mig017_trust_pilot_admin_upgrade.ts
 import type { Pool } from "pg";
 
 export async function mig017_trust_pilot_admin_upgrade(pool: Pool) {
@@ -41,18 +42,20 @@ export async function mig017_trust_pilot_admin_upgrade(pool: Pool) {
       ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
   `);
 
-  // Backfill kind
+  // Backfill kind (owner_user_id NULL => bonus; sinon streamer)
   await pool.query(`
     UPDATE casino_affiliate_links
     SET kind = COALESCE(kind, CASE WHEN owner_user_id IS NULL THEN 'bonus' ELSE 'streamer' END)
     WHERE kind IS NULL;
   `);
 
+  // Default
   await pool.query(`
     ALTER TABLE casino_affiliate_links
       ALTER COLUMN kind SET DEFAULT 'streamer';
   `);
 
+  // Constraint kind
   await pool.query(`
     DO $$
     BEGIN
@@ -66,18 +69,20 @@ export async function mig017_trust_pilot_admin_upgrade(pool: Pool) {
     END $$;
   `);
 
-  // FK streamer_id -> streamers(id) (best-effort)
+  // ✅ FK streamer_id -> streamers(id) (best-effort) — FIXED EXCEPTION BLOCK
   await pool.query(`
     DO $$
     BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'casino_affiliate_links_streamer_fk') THEN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'casino_affiliate_links_streamer_fk'
+      ) THEN
         BEGIN
           ALTER TABLE casino_affiliate_links
             ADD CONSTRAINT casino_affiliate_links_streamer_fk
             FOREIGN KEY (streamer_id) REFERENCES streamers(id) ON DELETE SET NULL;
-        EXCEPTION WHEN undefined_table THEN
-        EXCEPTION WHEN undefined_column THEN
-        EXCEPTION WHEN datatype_mismatch THEN
+        EXCEPTION
+          WHEN undefined_table OR undefined_column OR datatype_mismatch THEN
+            NULL; -- ignore si streamers absent / colonne absente / type incompatible
         END;
       END IF;
     END $$;
