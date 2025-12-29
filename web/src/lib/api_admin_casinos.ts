@@ -7,13 +7,11 @@ async function j<T>(path: string, adminKey: string, init: RequestInit = {}): Pro
     headers: {
       "content-type": "application/json",
       "x-admin-key": adminKey,
-      // ✅ compat (au cas où tu check Bearer ailleurs)
-      authorization: `Bearer ${adminKey}`,
       ...(init.headers || {}),
     },
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || (data && (data as any).ok === false)) throw new Error((data as any)?.error || `HTTP ${res.status}`);
+  if (!res.ok || (data && data.ok === false)) throw new Error(data?.error || `HTTP ${res.status}`);
   return data as T;
 }
 
@@ -51,17 +49,30 @@ export type AdminCasinoLink = {
   updatedAt: string;
 };
 
+function pickArray<T>(obj: any, keys: string[]): T[] {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (Array.isArray(v)) return v as T[];
+  }
+  return [];
+}
+
 export async function adminListCasinos(adminKey: string, opts?: { q?: string }) {
   const q = (opts?.q || "").trim();
   const qs = q ? `?q=${encodeURIComponent(q)}` : "";
-  return j<{ ok: true; items: AdminCasino[] }>(`/admin/casinos${qs}`, adminKey);
+  const r = await j<any>(`/admin/casinos${qs}`, adminKey);
+  const items = pickArray<AdminCasino>(r, ["items", "listings", "casinos"]);
+  return { ok: true as const, items };
 }
 
 export async function adminCreateCasino(adminKey: string, slug: string, name: string) {
-  return j<{ ok: true; id: string }>(`/admin/casinos`, adminKey, {
+  const r = await j<any>(`/admin/casinos`, adminKey, {
     method: "POST",
     body: JSON.stringify({ slug, name }),
   });
+  // compat: certains back renvoient {id} ou {item:{id}}
+  const id = String(r?.id ?? r?.item?.id ?? r?.casino?.id ?? "");
+  return { ok: true as const, id };
 }
 
 export async function adminUpdateCasino(adminKey: string, id: string, patch: Partial<AdminCasino>) {
@@ -72,14 +83,18 @@ export async function adminUpdateCasino(adminKey: string, id: string, patch: Par
 }
 
 export async function adminListCasinoLinks(adminKey: string, casinoId: string) {
-  return j<{ ok: true; items: AdminCasinoLink[] }>(`/admin/casinos/${encodeURIComponent(casinoId)}/links`, adminKey);
+  const r = await j<any>(`/admin/casinos/${encodeURIComponent(casinoId)}/links`, adminKey);
+  const items = pickArray<AdminCasinoLink>(r, ["items", "links"]);
+  return { ok: true as const, items };
 }
 
 export async function adminCreateCasinoLink(adminKey: string, casinoId: string, data: Partial<AdminCasinoLink>) {
-  return j<{ ok: true; id: string }>(`/admin/casinos/${encodeURIComponent(casinoId)}/links`, adminKey, {
+  const r = await j<any>(`/admin/casinos/${encodeURIComponent(casinoId)}/links`, adminKey, {
     method: "POST",
     body: JSON.stringify(data),
   });
+  const id = String(r?.id ?? "");
+  return { ok: true as const, id };
 }
 
 export async function adminUpdateCasinoLink(adminKey: string, linkId: string, patch: Partial<AdminCasinoLink>) {

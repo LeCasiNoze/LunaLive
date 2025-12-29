@@ -1,3 +1,4 @@
+// web/src/components/admin/CasinosAdminSection.tsx
 import * as React from "react";
 import { getStreamers } from "../../lib/api";
 import {
@@ -12,7 +13,6 @@ import {
 } from "../../lib/api_admin_casinos";
 
 type Props = { adminKey: string };
-
 type StreamerRow = { id: number; slug: string; displayName: string };
 
 function linesToList(s: string) {
@@ -62,10 +62,18 @@ export function CasinosAdminSection({ adminKey }: Props) {
     setLoading(true);
     try {
       const r = await adminListCasinos(adminKey, { q });
-      setItems(r.items);
-      if (!selectedId && r.items[0]) setSelectedId(r.items[0].id);
+      const list = Array.isArray(r.items) ? r.items : [];
+      setItems(list);
+
+      // garde la sélection si possible, sinon premier item
+      setSelectedId((prev) => {
+        if (prev && list.some((x) => x.id === prev)) return prev;
+        return list[0]?.id ?? null;
+      });
     } catch (e: any) {
       setErr(String(e?.message || e));
+      setItems([]);
+      setSelectedId(null);
     } finally {
       setLoading(false);
     }
@@ -75,7 +83,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
     setLoadingLinks(true);
     try {
       const r = await adminListCasinoLinks(adminKey, casinoId);
-      setLinks(r.items);
+      setLinks(Array.isArray(r.items) ? r.items : []);
     } finally {
       setLoadingLinks(false);
     }
@@ -90,20 +98,27 @@ export function CasinosAdminSection({ adminKey }: Props) {
   }, []);
 
   React.useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId) {
+      setLinks([]);
+      return;
+    }
     refreshLinks(selectedId).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
-  const selected = items.find((x) => x.id === selectedId) || null;
+  const selected = React.useMemo(() => {
+    const list = Array.isArray(items) ? items : [];
+    return list.find((x) => x.id === selectedId) || null;
+  }, [items, selectedId]);
 
   function setSelectedPatch(patch: Partial<AdminCasino>) {
     if (!selected) return;
-    setItems((prev) => prev.map((c) => (c.id === selected.id ? ({ ...c, ...patch } as any) : c)));
+    setItems((prev) => (Array.isArray(prev) ? prev.map((c) => (c.id === selected.id ? ({ ...c, ...patch } as any) : c)) : []));
   }
 
-  const bonusLink = links.find((l) => l.kind === "bonus") || null;
-  const streamerLinks = links.filter((l) => l.kind === "streamer");
+  const safeLinks = Array.isArray(links) ? links : [];
+  const bonusLink = safeLinks.find((l) => l.kind === "bonus") || null;
+  const streamerLinks = safeLinks.filter((l) => l.kind === "streamer");
 
   return (
     <div className="panel" style={{ marginBottom: 14 }}>
@@ -114,12 +129,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
         {/* LEFT */}
         <div className="panel" style={{ padding: 12 }}>
           <div style={{ display: "flex", gap: 8 }}>
-            <input
-              className="input"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Rechercher casino…"
-            />
+            <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher casino…" />
             <button className="btnPrimary" onClick={refreshList} disabled={loading}>
               OK
             </button>
@@ -127,20 +137,26 @@ export function CasinosAdminSection({ adminKey }: Props) {
 
           <div style={{ marginTop: 10, opacity: 0.9, fontWeight: 900 }}>Créer un casino</div>
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <input className="input" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} placeholder="slug" />
+            <input className="input" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} placeholder="slug (optionnel)" />
             <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="name" />
           </div>
+
           <button
             className="btnSecondary"
             style={{ marginTop: 8, width: "100%" }}
             onClick={async () => {
               setErr(null);
               try {
-                const r = await adminCreateCasino(adminKey, newSlug, newName);
+                const name = newName.trim();
+                const slug = slugify(newSlug.trim() || name);
+                if (!name) throw new Error("Nom requis");
+                if (!slug) throw new Error("Slug invalide");
+
+                const r = await adminCreateCasino(adminKey, slug, name);
                 setNewSlug("");
                 setNewName("");
                 await refreshList();
-                setSelectedId(r.id);
+                if (r.id) setSelectedId(r.id);
               } catch (e: any) {
                 setErr(String(e?.message || e));
               }
@@ -165,8 +181,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                 <span style={{ textAlign: "left" }}>
                   <b>{c.name}</b> <span className="mutedSmall">({c.slug})</span>
                   <div className="mutedSmall" style={{ marginTop: 2 }}>
-                    {c.status} {c.featuredRank != null ? `• #${c.featuredRank}` : ""}{" "}
-                    {c.watchLevel !== "none" ? `• ${c.watchLevel}` : ""}
+                    {c.status} {c.featuredRank != null ? `• #${c.featuredRank}` : ""} {c.watchLevel !== "none" ? `• ${c.watchLevel}` : ""}
                   </div>
                 </span>
                 <span style={{ opacity: 0.8 }}>→</span>
@@ -185,7 +200,9 @@ export function CasinosAdminSection({ adminKey }: Props) {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
                 <div>
                   <div style={{ fontWeight: 1000, fontSize: 16 }}>{selected.name}</div>
-                  <div className="mutedSmall">{selected.slug} • id {selected.id}</div>
+                  <div className="mutedSmall">
+                    {selected.slug} • id {selected.id}
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", gap: 8 }}>
@@ -219,6 +236,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                 </div>
               </div>
 
+              {/* Identité */}
               <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 12, paddingTop: 12 }}>
                 <div className="panelTitle">Identité</div>
 
@@ -273,6 +291,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                 </div>
               </div>
 
+              {/* Présentation */}
               <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 12, paddingTop: 12 }}>
                 <div className="panelTitle">Présentation</div>
 
@@ -289,23 +308,16 @@ export function CasinosAdminSection({ adminKey }: Props) {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div className="field">
                     <label>Pros (1 ligne = 1 point)</label>
-                    <textarea
-                      className="textarea"
-                      value={listToLines(selected.pros)}
-                      onChange={(e) => setSelectedPatch({ pros: linesToList(e.target.value) })}
-                    />
+                    <textarea className="textarea" value={listToLines(selected.pros)} onChange={(e) => setSelectedPatch({ pros: linesToList(e.target.value) })} />
                   </div>
                   <div className="field">
                     <label>Cons (1 ligne = 1 point)</label>
-                    <textarea
-                      className="textarea"
-                      value={listToLines(selected.cons)}
-                      onChange={(e) => setSelectedPatch({ cons: linesToList(e.target.value) })}
-                    />
+                    <textarea className="textarea" value={listToLines(selected.cons)} onChange={(e) => setSelectedPatch({ cons: linesToList(e.target.value) })} />
                   </div>
                 </div>
               </div>
 
+              {/* Avis LL */}
               <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 12, paddingTop: 12 }}>
                 <div className="panelTitle">Avis LunaLive</div>
 
@@ -326,6 +338,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                 </div>
               </div>
 
+              {/* Sections */}
               <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 12, paddingTop: 12 }}>
                 <div className="panelTitle">Sections libres</div>
 
@@ -438,6 +451,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                 </div>
               </div>
 
+              {/* Liens */}
               <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 12, paddingTop: 12 }}>
                 <div className="panelTitle">Liens</div>
                 {loadingLinks && <div className="mutedSmall">Chargement liens…</div>}
@@ -451,9 +465,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                     placeholder="https://..."
                     onChange={(e) => {
                       const v = e.target.value;
-                      setLinks((prev) =>
-                        prev.map((l) => (l.id === bonusLink?.id ? { ...l, targetUrl: v } : l))
-                      );
+                      setLinks((prev) => (Array.isArray(prev) ? prev.map((l) => (l.id === bonusLink?.id ? { ...l, targetUrl: v } : l)) : []));
                     }}
                   />
                   <input
@@ -462,9 +474,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                     placeholder="Label (optionnel)"
                     onChange={(e) => {
                       const v = e.target.value;
-                      setLinks((prev) =>
-                        prev.map((l) => (l.id === bonusLink?.id ? { ...l, label: v } : l))
-                      );
+                      setLinks((prev) => (Array.isArray(prev) ? prev.map((l) => (l.id === bonusLink?.id ? { ...l, label: v } : l)) : []));
                     }}
                   />
                   <button
@@ -472,8 +482,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                     onClick={async () => {
                       if (!selected) return;
                       if (!bonusLink) {
-                        // create
-                        const r = await adminCreateCasinoLink(adminKey, selected.id, {
+                        await adminCreateCasinoLink(adminKey, selected.id, {
                           kind: "bonus",
                           targetUrl: "https://example.com",
                           enabled: true,
@@ -502,7 +511,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                         checked={!!bonusLink.enabled}
                         onChange={async (e) => {
                           await adminUpdateCasinoLink(adminKey, bonusLink.id, { enabled: e.target.checked } as any);
-                          await refreshLinks(selected!.id);
+                          await refreshLinks(selected.id);
                         }}
                       />
                       enabled
@@ -559,7 +568,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                           value={l.streamerId ?? ""}
                           onChange={(e) => {
                             const v = e.target.value ? Number(e.target.value) : null;
-                            setLinks((prev) => prev.map((x) => (x.id === l.id ? { ...x, streamerId: v } : x)));
+                            setLinks((prev) => (Array.isArray(prev) ? prev.map((x) => (x.id === l.id ? { ...x, streamerId: v } : x)) : []));
                           }}
                         >
                           <option value="">—</option>
@@ -575,7 +584,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                           value={l.targetUrl || ""}
                           onChange={(e) => {
                             const v = e.target.value;
-                            setLinks((prev) => prev.map((x) => (x.id === l.id ? { ...x, targetUrl: v } : x)));
+                            setLinks((prev) => (Array.isArray(prev) ? prev.map((x) => (x.id === l.id ? { ...x, targetUrl: v } : x)) : []));
                           }}
                           placeholder="https://..."
                         />
@@ -585,7 +594,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                           value={l.label || ""}
                           onChange={(e) => {
                             const v = e.target.value;
-                            setLinks((prev) => prev.map((x) => (x.id === l.id ? { ...x, label: v } : x)));
+                            setLinks((prev) => (Array.isArray(prev) ? prev.map((x) => (x.id === l.id ? { ...x, label: v } : x)) : []));
                           }}
                           placeholder="Label"
                         />
@@ -599,7 +608,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                                 label: l.label,
                                 streamerId: l.streamerId,
                               } as any);
-                              await refreshLinks(selected!.id);
+                              await refreshLinks(selected.id);
                             }}
                           >
                             Save
@@ -609,7 +618,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                             className="btnGhostSmall"
                             onClick={async () => {
                               await adminUpdateCasinoLink(adminKey, l.id, { enabled: !l.enabled } as any);
-                              await refreshLinks(selected!.id);
+                              await refreshLinks(selected.id);
                             }}
                           >
                             {l.enabled ? "Disable" : "Enable"}
@@ -624,7 +633,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                             checked={!!l.enabled}
                             onChange={(e) => {
                               const v = e.target.checked;
-                              setLinks((prev) => prev.map((x) => (x.id === l.id ? { ...x, enabled: v } : x)));
+                              setLinks((prev) => (Array.isArray(prev) ? prev.map((x) => (x.id === l.id ? { ...x, enabled: v } : x)) : []));
                             }}
                           />
                           enabled
@@ -637,14 +646,14 @@ export function CasinosAdminSection({ adminKey }: Props) {
                           value={l.pinnedRank ?? ""}
                           onChange={(e) => {
                             const v = e.target.value === "" ? null : Number(e.target.value);
-                            setLinks((prev) => prev.map((x) => (x.id === l.id ? { ...x, pinnedRank: v } : x)));
+                            setLinks((prev) => (Array.isArray(prev) ? prev.map((x) => (x.id === l.id ? { ...x, pinnedRank: v } : x)) : []));
                           }}
                         />
                         <button
                           className="btnGhostSmall"
                           onClick={async () => {
                             await adminUpdateCasinoLink(adminKey, l.id, { pinnedRank: l.pinnedRank } as any);
-                            await refreshLinks(selected!.id);
+                            await refreshLinks(selected.id);
                           }}
                         >
                           Save pin

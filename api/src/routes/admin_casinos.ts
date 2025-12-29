@@ -15,8 +15,6 @@ function getAdminKeyFromReq(req: any) {
 
 function requireAdminKey(req: any, res: any, next: any) {
   const provided = getAdminKeyFromReq(req);
-
-  // ✅ fallback multi-env
   const expected =
     process.env.ADMIN_KEY ||
     process.env.ADMIN_PASSWORD ||
@@ -25,12 +23,8 @@ function requireAdminKey(req: any, res: any, next: any) {
     process.env.ADMIN ||
     "";
 
-  if (!expected) {
-    return res.status(500).json({ ok: false, error: "ADMIN_KEY not configured" });
-  }
-  if (!provided || provided !== expected) {
-    return res.status(401).json({ ok: false, error: "unauthorized" });
-  }
+  if (!expected) return res.status(500).json({ ok: false, error: "ADMIN_KEY not configured" });
+  if (!provided || provided !== expected) return res.status(401).json({ ok: false, error: "unauthorized" });
   return next();
 }
 
@@ -48,7 +42,8 @@ function normWatch(v: any) {
   return null;
 }
 
-// GET /admin/casinos?q=
+// ✅ GET /admin/casinos?q=
+// (compat: renvoie items + listings + casinos)
 adminCasinosRouter.get("/", async (req, res) => {
   const q = String(req.query.q || "").trim();
   const like = q ? `%${q}%` : null;
@@ -84,38 +79,63 @@ adminCasinosRouter.get("/", async (req, res) => {
     [like]
   );
 
-  res.json({ ok: true, items: rows });
+  // ✅ compat vieux front
+  return res.json({ ok: true, items: rows, listings: rows, casinos: rows });
 });
 
-// POST /admin/casinos
+// ✅ POST /admin/casinos
+// (compat: renvoie id + item/casino)
 adminCasinosRouter.post("/", async (req, res) => {
   const slug = String(req.body?.slug || "").trim().toLowerCase();
   const name = String(req.body?.name || "").trim();
 
-  if (!slug || !name) {
-    return res.status(400).json({ ok: false, error: "slug+name required" });
-  }
+  if (!slug || !name) return res.status(400).json({ ok: false, error: "slug+name required" });
 
   try {
     const { rows } = await pool.query(
       `
       INSERT INTO casino_listings (slug, name, status)
       VALUES ($1, $2, 'published')
-      RETURNING id::text AS id
+      RETURNING
+        id::text AS id,
+        slug,
+        name,
+        status,
+        logo_url AS "logoUrl",
+        featured_rank AS "featuredRank",
+        bonus_headline AS "bonusHeadline",
+        description,
+        pros,
+        cons,
+        sections,
+        team_rating AS "teamRating",
+        team_review AS "teamReview",
+        watch_level AS "watchLevel",
+        watch_reason AS "watchReason",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
     `,
       [slug, name]
     );
-    return res.json({ ok: true, id: rows[0]?.id });
+
+    const item = rows[0];
+    return res.json({
+      ok: true,
+      id: item?.id,
+      item,
+      casino: item,   // compat
+      listing: item,  // compat
+    });
   } catch (e: any) {
     return res.status(400).json({ ok: false, error: e?.message || "insert_failed" });
   }
 });
 
-// PATCH /admin/casinos/:id
+// ✅ PATCH /admin/casinos/:id
 adminCasinosRouter.patch("/:id", async (req, res) => {
   const id = String(req.params.id);
   const patch = req.body || {};
-  const fields: Array<{ col: string; val: any }> = [];
+  const fields: Array<{ col: string; val: any; castJsonb?: boolean }> = [];
 
   if ("name" in patch) fields.push({ col: "name", val: String(patch.name || "").trim() });
   if ("slug" in patch) fields.push({ col: "slug", val: String(patch.slug || "").trim().toLowerCase() });
@@ -124,9 +144,9 @@ adminCasinosRouter.patch("/:id", async (req, res) => {
   if ("bonusHeadline" in patch) fields.push({ col: "bonus_headline", val: patch.bonusHeadline ? String(patch.bonusHeadline) : null });
   if ("description" in patch) fields.push({ col: "description", val: patch.description ? String(patch.description) : null });
 
-  if ("pros" in patch) fields.push({ col: "pros", val: Array.isArray(patch.pros) ? JSON.stringify(patch.pros) : JSON.stringify([]) });
-  if ("cons" in patch) fields.push({ col: "cons", val: Array.isArray(patch.cons) ? JSON.stringify(patch.cons) : JSON.stringify([]) });
-  if ("sections" in patch) fields.push({ col: "sections", val: Array.isArray(patch.sections) ? JSON.stringify(patch.sections) : JSON.stringify([]) });
+  if ("pros" in patch) fields.push({ col: "pros", val: Array.isArray(patch.pros) ? JSON.stringify(patch.pros) : JSON.stringify([]), castJsonb: true });
+  if ("cons" in patch) fields.push({ col: "cons", val: Array.isArray(patch.cons) ? JSON.stringify(patch.cons) : JSON.stringify([]), castJsonb: true });
+  if ("sections" in patch) fields.push({ col: "sections", val: Array.isArray(patch.sections) ? JSON.stringify(patch.sections) : JSON.stringify([]), castJsonb: true });
 
   if ("teamRating" in patch) fields.push({ col: "team_rating", val: patch.teamRating === null || patch.teamRating === "" ? null : Number(patch.teamRating) });
   if ("teamReview" in patch) fields.push({ col: "team_review", val: patch.teamReview ? String(patch.teamReview) : null });
@@ -148,7 +168,7 @@ adminCasinosRouter.patch("/:id", async (req, res) => {
 
   if (fields.length === 0) return res.json({ ok: true });
 
-  const sets = fields.map((f, i) => `${f.col} = $${i + 2}${f.col === "pros" || f.col === "cons" || f.col === "sections" ? "::jsonb" : ""}`);
+  const sets = fields.map((f, i) => `${f.col} = $${i + 2}${f.castJsonb ? "::jsonb" : ""}`);
   const values = fields.map((f) => f.val);
 
   try {
@@ -166,9 +186,11 @@ adminCasinosRouter.patch("/:id", async (req, res) => {
   }
 });
 
-// GET /admin/casinos/:id/links
+// ✅ GET /admin/casinos/:id/links
+// (compat: items + links)
 adminCasinosRouter.get("/:id/links", async (req, res) => {
   const casinoId = String(req.params.id);
+
   const { rows } = await pool.query(
     `
     SELECT
@@ -192,10 +214,11 @@ adminCasinosRouter.get("/:id/links", async (req, res) => {
   `,
     [casinoId]
   );
-  res.json({ ok: true, items: rows });
+
+  return res.json({ ok: true, items: rows, links: rows });
 });
 
-// POST /admin/casinos/:id/links
+// ✅ POST /admin/casinos/:id/links
 adminCasinosRouter.post("/:id/links", async (req, res) => {
   const casinoId = String(req.params.id);
   const kind = String(req.body?.kind || "").trim();
@@ -222,10 +245,10 @@ adminCasinosRouter.post("/:id/links", async (req, res) => {
     [casinoId, kind, ownerUserId, streamerId, label, targetUrl, enabled, pinnedRank]
   );
 
-  res.json({ ok: true, id: rows[0]?.id });
+  return res.json({ ok: true, id: rows[0]?.id });
 });
 
-// PATCH /admin/casinos/links/:linkId
+// ✅ PATCH /admin/casinos/links/:linkId
 adminCasinosRouter.patch("/links/:linkId", async (req, res) => {
   const linkId = String(req.params.linkId);
   const patch = req.body || {};
@@ -259,5 +282,5 @@ adminCasinosRouter.patch("/links/:linkId", async (req, res) => {
     [linkId, ...values]
   );
 
-  res.json({ ok: true });
+  return res.json({ ok: true });
 });
