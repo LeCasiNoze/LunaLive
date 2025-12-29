@@ -1,3 +1,4 @@
+// api/src/routes/admin_casinos.ts
 import { Router } from "express";
 import { pool } from "../db.js";
 
@@ -14,11 +15,16 @@ function getAdminKeyFromReq(req: any) {
 
 function requireAdminKey(req: any, res: any, next: any) {
   const provided = getAdminKeyFromReq(req);
+
+  // ✅ fallback multi-env
   const expected =
     process.env.ADMIN_KEY ||
     process.env.ADMIN_PASSWORD ||
     process.env.ADMIN_SECRET ||
+    process.env.ADMIN_PASS ||
+    process.env.ADMIN ||
     "";
+
   if (!expected) {
     return res.status(500).json({ ok: false, error: "ADMIN_KEY not configured" });
   }
@@ -108,9 +114,7 @@ adminCasinosRouter.post("/", async (req, res) => {
 // PATCH /admin/casinos/:id
 adminCasinosRouter.patch("/:id", async (req, res) => {
   const id = String(req.params.id);
-
   const patch = req.body || {};
-
   const fields: Array<{ col: string; val: any }> = [];
 
   if ("name" in patch) fields.push({ col: "name", val: String(patch.name || "").trim() });
@@ -225,7 +229,6 @@ adminCasinosRouter.post("/:id/links", async (req, res) => {
 adminCasinosRouter.patch("/links/:linkId", async (req, res) => {
   const linkId = String(req.params.linkId);
   const patch = req.body || {};
-
   const fields: Array<{ col: string; val: any }> = [];
 
   if ("kind" in patch) {

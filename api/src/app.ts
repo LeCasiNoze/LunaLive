@@ -23,7 +23,6 @@ import { earningsRouter } from "./routes/earnings.js";
 import { cashoutRouter } from "./routes/cashout.js";
 import { subscriptionsRouter } from "./routes/subscriptions.js";
 
-// ✅ NEW
 import { adminRubisRouter } from "./routes/admin_rubis.js";
 import { wheelRouter } from "./routes/wheel.js";
 import { chestRouter } from "./routes/chest.js";
@@ -35,7 +34,6 @@ import { cosmeticsCatalogRoutes } from "./routes/cosmetics_catalog_routes.js";
 import { avatarRouter } from "./routes/avatar.js";
 import { shopRouter } from "./routes/shop.js";
 
-// api/src/app.ts
 import { casinosPublicRouter } from "./routes/casinos_public.js";
 import { casinosMeRouter } from "./routes/casinos_me.js";
 import { adminCasinosRouter } from "./routes/admin_casinos.js";
@@ -47,7 +45,7 @@ export function createApp() {
   app.set("trust proxy", 1);
 
   app.use(cors());
-  app.use(express.json());
+  app.use(express.json({ limit: "300kb" }));
 
   // legacy modules
   registerChatRoutes(app);
@@ -68,7 +66,7 @@ export function createApp() {
   app.use(streamerRouter);
   app.use(adminRouter);
 
-  // ✅ NEW admin economy tools
+  // ✅ admin economy tools
   app.use(adminRubisRouter);
 
   // economy routers
@@ -80,21 +78,28 @@ export function createApp() {
 
   app.use(wheelRouter);
   app.use(chestRouter);
+
   app.use("/me/daily-bonus", requireAuth, dailyBonusRoutes);
   app.use("/me/achievements", requireAuth, achievementsRouter);
-  app.use(cosmeticsRouter);
 
+  app.use(cosmeticsRouter);
   app.use(avatarRouter);
   app.use(shopRouter);
   app.use(cosmeticsCatalogRoutes);
-  app.use(express.json({ limit: "300kb" }));
 
+  // casinos
   app.use(casinosPublicRouter);
   app.use("/me/casinos", requireAuth, casinosMeRouter);
-  app.use("/admin/casinos", requireAuth, adminCasinosRouter);
+
+  // ✅ IMPORTANT: admin casinos = admin key only (PAS requireAuth)
+  app.use("/admin/casinos", adminCasinosRouter);
+
+  // ✅ compat ancienne route vue dans ta console: /casinos/listings
+  app.use("/casinos/listings", adminCasinosRouter);
+
   app.use(adminCasinosSetupRouter);
   app.use("/streamer/me/dlive-link", streamerDliveLinkRouter);
-  
+
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
 

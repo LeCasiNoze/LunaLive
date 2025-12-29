@@ -1,3 +1,4 @@
+// web/src/lib/api_admin_casinos.ts
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
 async function j<T>(path: string, adminKey: string, init: RequestInit = {}): Promise<T> {
@@ -6,11 +7,13 @@ async function j<T>(path: string, adminKey: string, init: RequestInit = {}): Pro
     headers: {
       "content-type": "application/json",
       "x-admin-key": adminKey,
+      // ✅ compat (au cas où tu check Bearer ailleurs)
+      authorization: `Bearer ${adminKey}`,
       ...(init.headers || {}),
     },
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || (data && data.ok === false)) throw new Error(data?.error || `HTTP ${res.status}`);
+  if (!res.ok || (data && (data as any).ok === false)) throw new Error((data as any)?.error || `HTTP ${res.status}`);
   return data as T;
 }
 
@@ -69,18 +72,14 @@ export async function adminUpdateCasino(adminKey: string, id: string, patch: Par
 }
 
 export async function adminListCasinoLinks(adminKey: string, casinoId: string) {
-  return j<{ ok: true; items: AdminCasinoLink[] }>(
-    `/admin/casinos/${encodeURIComponent(casinoId)}/links`,
-    adminKey
-  );
+  return j<{ ok: true; items: AdminCasinoLink[] }>(`/admin/casinos/${encodeURIComponent(casinoId)}/links`, adminKey);
 }
 
 export async function adminCreateCasinoLink(adminKey: string, casinoId: string, data: Partial<AdminCasinoLink>) {
-  return j<{ ok: true; id: string }>(
-    `/admin/casinos/${encodeURIComponent(casinoId)}/links`,
-    adminKey,
-    { method: "POST", body: JSON.stringify(data) }
-  );
+  return j<{ ok: true; id: string }>(`/admin/casinos/${encodeURIComponent(casinoId)}/links`, adminKey, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function adminUpdateCasinoLink(adminKey: string, linkId: string, patch: Partial<AdminCasinoLink>) {
