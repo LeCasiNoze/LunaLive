@@ -45,5 +45,4 @@ export async function migrateAll(pool: Pool) {
 
   await mig016_trust_pilot(pool);
   await mig017_trust_pilot_admin_upgrade(pool);
-  await mig018_cleanup_trust_pilot_seed(pool);
 }
