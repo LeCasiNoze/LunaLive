@@ -57,6 +57,10 @@ export function CasinosAdminSection({ adminKey }: Props) {
   const [addLabel, setAddLabel] = React.useState("");
   const [addPinned, setAddPinned] = React.useState<number | "">("");
 
+    // drafts (textarea raw)
+  const [prosText, setProsText] = React.useState("");
+  const [consText, setConsText] = React.useState("");
+
   async function refreshList() {
     setErr(null);
     setLoading(true);
@@ -110,6 +114,18 @@ export function CasinosAdminSection({ adminKey }: Props) {
     const list = Array.isArray(items) ? items : [];
     return list.find((x) => x.id === selectedId) || null;
   }, [items, selectedId]);
+
+  React.useEffect(() => {
+    if (!selected) {
+      setProsText("");
+      setConsText("");
+      return;
+    }
+    // important: on reset uniquement quand on change de casino
+    setProsText(listToLines(selected.pros));
+    setConsText(listToLines(selected.cons));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id]);
 
   function setSelectedPatch(patch: Partial<AdminCasino>) {
     if (!selected) return;
@@ -223,7 +239,19 @@ export function CasinosAdminSection({ adminKey }: Props) {
                     onClick={async () => {
                       setErr(null);
                       try {
-                        await adminUpdateCasino(adminKey, selected.id, selected);
+                        const prosArr = linesToList(prosText);
+                        const consArr = linesToList(consText);
+
+                        // on met aussi à jour l'état local (pour rester cohérent)
+                        setSelectedPatch({ pros: prosArr as any, cons: consArr as any });
+
+                        // et on envoie au back
+                        await adminUpdateCasino(adminKey, selected.id, {
+                          ...selected,
+                          pros: prosArr,
+                          cons: consArr,
+                        } as any);
+
                         await refreshList();
                         await refreshLinks(selected.id);
                       } catch (e: any) {
@@ -308,11 +336,21 @@ export function CasinosAdminSection({ adminKey }: Props) {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div className="field">
                     <label>Pros (1 ligne = 1 point)</label>
-                    <textarea className="textarea" value={listToLines(selected.pros)} onChange={(e) => setSelectedPatch({ pros: linesToList(e.target.value) })} />
-                  </div>
+                      <textarea
+                        className="textarea"
+                        value={prosText}
+                        onChange={(e) => setProsText(e.target.value)}
+                        placeholder={"1 ligne = 1 point\nEx:\nRetraits rapides\nBon support"}
+                      />                  
+                      </div>
                   <div className="field">
                     <label>Cons (1 ligne = 1 point)</label>
-                    <textarea className="textarea" value={listToLines(selected.cons)} onChange={(e) => setSelectedPatch({ cons: linesToList(e.target.value) })} />
+                      <textarea
+                        className="textarea"
+                        value={consText}
+                        onChange={(e) => setConsText(e.target.value)}
+                        placeholder={"1 ligne = 1 point\nEx:\nWager élevé\nVérif KYC lente"}
+                      />
                   </div>
                 </div>
               </div>
