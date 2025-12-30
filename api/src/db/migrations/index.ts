@@ -18,7 +18,7 @@ import { mig014_daily_bonus } from "./mig014_daily_bonus.js";
 import { mig015_cosmetics_equipped } from "./mig015_cosmetics_equipped.js";
 import { mig016_trust_pilot } from "./mig016_trust_pilot.js";
 import { mig017_trust_pilot_admin_upgrade } from "./mig017_trust_pilot_admin_upgrade.js";
-import { mig018_cleanup_trust_pilot_seed } from "./mig018_cleanup_trust_pilot_seed.js";
+import { mig018_casino_team_rating_decimal } from "./mig018_casino_team_rating_decimal.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -45,4 +45,5 @@ export async function migrateAll(pool: Pool) {
 
   await mig016_trust_pilot(pool);
   await mig017_trust_pilot_admin_upgrade(pool);
+  mig018_casino_team_rating_decimal(pool);
 }
