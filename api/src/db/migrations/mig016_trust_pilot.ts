@@ -1,4 +1,3 @@
-// api/src/db/migrations/mig016_trust_pilot.ts
 import type { Pool } from "pg";
 
 export async function mig016_trust_pilot(pool: Pool) {
@@ -13,9 +12,9 @@ export async function mig016_trust_pilot(pool: Pool) {
       featured_rank INT,
       bonus_headline TEXT,
       description TEXT,
-      pros JSONB NOT NULL DEFAULT '[]',
-      cons JSONB NOT NULL DEFAULT '[]',
-      team_rating NUMERIC(3,2),
+      pros JSONB NOT NULL DEFAULT '[]'::jsonb,
+      cons JSONB NOT NULL DEFAULT '[]'::jsonb,
+      team_rating NUMERIC(6,3),
       team_review TEXT,
       watch_level TEXT NOT NULL DEFAULT 'none', -- none|watch|avoid
       watch_reason TEXT,
@@ -99,7 +98,6 @@ export async function mig016_trust_pilot(pool: Pool) {
       ref TEXT
     );
 
-    -- DLive link (tu l'avais mis là)
     ALTER TABLE streamers
       ADD COLUMN IF NOT EXISTS dlive_use_linked BOOLEAN NOT NULL DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS dlive_link_displayname TEXT,
