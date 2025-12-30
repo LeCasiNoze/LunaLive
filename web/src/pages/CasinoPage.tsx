@@ -273,6 +273,9 @@ export default function CasinoPage() {
   }
 
   const casino = data.casino;
+  const bonusCtaText =
+  (casino.bonusHeadline || "").trim() || "Récupérez votre bonus";
+
   const stats = data.stats;
 
   const pros = splitList(casino.pros);
@@ -306,7 +309,7 @@ export default function CasinoPage() {
                 ⭐ {avg.toFixed(1)}/5 <span className="mutedSmall">• {rc.toLocaleString("fr-FR")} avis</span>
               </div>
               <div className="ratingPill team">
-                Avis LunaLive : <b>{teamTxt}</b>/5
+                Avis LunaLive : <b>{teamTxt}/5</b>
               </div>
             </div>
 
@@ -318,7 +321,6 @@ export default function CasinoPage() {
             )}
           </div>
         </div>
-
         <div className="casinoHeaderRight">
           {bonusLink ? (
             <a className="btnPrimary" href={linkHref(bonusLink)} target="_blank" rel="noreferrer">
@@ -327,7 +329,6 @@ export default function CasinoPage() {
           ) : (
             <div className="mutedSmall">Bonus indisponible</div>
           )}
-          {casino.bonusHeadline && <div className="mutedSmall">{casino.bonusHeadline}</div>}
         </div>
       </div>
 
@@ -499,11 +500,11 @@ export default function CasinoPage() {
             <h3>Soutenir un créateur</h3>
             <div className="mutedSmall">Passe par un lien — ça aide directement le créateur 💜</div>
 
-            {bonusLink && (
-              <a className="btnPrimary full" href={linkHref(bonusLink)} target="_blank" rel="noreferrer">
-                Récupérez votre bonus
-              </a>
-            )}
+              {bonusLink && (
+                <a className="btnPrimary full" href={linkHref(bonusLink)} target="_blank" rel="noreferrer">
+                  {bonusCtaText}
+                </a>
+              )}
 
             <div className="sideList">
               {streamerLinks.length === 0 ? (
@@ -527,7 +528,7 @@ export default function CasinoPage() {
                       </div>
 
                       <a className="btnSecondary full" href={linkHref(l)} target="_blank" rel="noreferrer">
-                        Passer par son lien
+                        {(l.label || "").trim() || "Passer par son lien"}
                       </a>
                     </div>
                   );
