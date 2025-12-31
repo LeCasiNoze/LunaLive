@@ -155,10 +155,6 @@ export default function CasinoPage() {
   const refComments = React.useRef<HTMLDivElement>(null);
   const refSupport = React.useRef<HTMLDivElement>(null);
 
-  function scrollTo(ref: { current: HTMLElement | null }) {
-    ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
   async function loadCasino() {
     if (!slug) return;
     setLoading(true);
