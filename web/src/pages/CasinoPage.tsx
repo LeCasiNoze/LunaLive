@@ -512,13 +512,34 @@ export default function CasinoPage() {
               ) : (
                 streamerLinks.map((l) => {
                   const s = l.streamer!;
-                  const avatar = (s as any).avatarUrl ? absApiUrl((s as any).avatarUrl) : null;
+                  const avatar = l.ownerUserId ? absApiUrl(`/avatars/u/${l.ownerUserId}`) : null;
 
                   return (
                     <div key={l.id} className="sideStreamer">
                       <div className="sideStreamerTop">
-                        <div className="sideAvatar">
-                          {avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "999px" }} /> : s.displayName.slice(0, 1).toUpperCase()}
+                        <div className="sideAvatar" style={{ position: "relative", overflow: "hidden" }}>
+                          {/* fallback (toujours présent) */}
+                          {s.displayName.slice(0, 1).toUpperCase()}
+
+                          {/* image (si on a un ownerUserId) */}
+                          {avatar ? (
+                            <img
+                              src={avatar}
+                              alt=""
+                              style={{
+                                position: "absolute",
+                                inset: 0,
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                                borderRadius: "999px",
+                              }}
+                              onError={(e) => {
+                                // si 404 (pas d’avatar) → on masque l’image, la lettre reste visible
+                                (e.currentTarget as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                          ) : null}
                         </div>
                         <div className="sideInfo">
                           <div className="sideName">{s.displayName}</div>
