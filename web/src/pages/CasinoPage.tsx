@@ -14,6 +14,8 @@ import {
 } from "../lib/api_casinos";
 import { useAuth } from "../auth/AuthProvider";
 
+const DEV = Boolean(import.meta.env.DEV);
+
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
@@ -59,21 +61,24 @@ function StarPicker({
 
 function splitList(v: any): string[] {
   if (!v) return [];
-  if (Array.isArray(v)) return v.map((x) => String(x)).filter((x) => x != null && String(x).trim() !== "");
+  if (Array.isArray(v))
+    return v.map((x) => String(x)).filter((x) => x != null && String(x).trim() !== "");
   try {
     const j = JSON.parse(String(v));
-    if (Array.isArray(j)) return j.map((x) => String(x)).filter((x) => x != null && String(x).trim() !== "");
+    if (Array.isArray(j))
+      return j.map((x) => String(x)).filter((x) => x != null && String(x).trim() !== "");
   } catch {}
   return [];
 }
 
 function sortLinks(links: CasinoLink[]) {
-  return [...links].sort((a, b) => {
-    const ap = a.pinnedRank ?? 999999;
-    const bp = b.pinnedRank ?? 999999;
+  return [...links].sort((a: any, b: any) => {
+    const ap = a?.pinnedRank ?? 999999;
+    const bp = b?.pinnedRank ?? 999999;
     if (ap !== bp) return ap - bp;
-    const af = a.streamer?.followsCount ?? 0;
-    const bf = b.streamer?.followsCount ?? 0;
+
+    const af = a?.streamer?.followsCount ?? 0;
+    const bf = b?.streamer?.followsCount ?? 0;
     return bf - af;
   });
 }
@@ -82,6 +87,47 @@ function linkHref(l: any): string {
   const raw = (l?.goUrl || l?.targetUrl || "").trim();
   const abs = absApiUrl(raw);
   return abs || "#";
+}
+
+/**
+ * Avatar URL resolver:
+ * - priorité à streamer.avatarUrl si fourni par l’API
+ * - sinon fallback sur /avatars/u/:userId (comme PersonalisationSection)
+ * - on teste plein de champs possibles (selon ton backend actuel)
+ */
+function pickStreamerAvatarUrl(link: any) {
+  const s = link?.streamer ?? null;
+
+  const uid =
+    link?.ownerUserId ??
+    link?.userId ??
+    s?.ownerUserId ??
+    s?.userId ??
+    s?.owner_user_id ??
+    s?.user_id ??
+    null;
+
+  const direct = s?.avatarUrl ? absApiUrl(s.avatarUrl) || s.avatarUrl : null;
+
+  // cache-bust soft (1/min) pour éviter un cache agressif
+  const byUid = uid ? absApiUrl(`/avatars/u/${uid}?v=${Math.floor(Date.now() / 60000)}`) : null;
+
+  return {
+    url: direct || byUid,
+    debug: {
+      linkId: link?.id,
+      uid,
+      streamerName: s?.displayName,
+      directAvatarUrl: s?.avatarUrl ?? null,
+      computed: direct || byUid,
+      fields: {
+        link_ownerUserId: link?.ownerUserId ?? null,
+        link_userId: link?.userId ?? null,
+        streamer_ownerUserId: s?.ownerUserId ?? s?.owner_user_id ?? null,
+        streamer_userId: s?.userId ?? s?.user_id ?? null,
+      },
+    },
+  };
 }
 
 export default function CasinoPage() {
@@ -121,6 +167,8 @@ export default function CasinoPage() {
       const r = await getCasino(slug);
       setData(r);
       setMyRating(0);
+      console.log("[CasinoPage] links raw =", r?.links);
+      console.log("[CasinoPage] bonusLink raw =", r?.bonusLink);
     } catch (e: any) {
       setError(e?.message || "error");
     } finally {
@@ -156,6 +204,39 @@ export default function CasinoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commentSort, slug]);
 
+  // ✅ IMPORTANT: ce useEffect est AVANT les return (sinon crash hooks)
+  React.useEffect(() => {
+    if (!DEV) return;
+    if (!data) {
+      console.log("[CasinoPage] DEV debug: data = null");
+      return;
+    }
+
+    const linksSorted = sortLinks((data as any).links || []);
+    const streamerLinks = linksSorted.filter((l: any) => l.streamer);
+
+    const rows = streamerLinks.map((l: any) => {
+      const picked = pickStreamerAvatarUrl(l);
+      return {
+        linkId: l?.id,
+        streamerName: l?.streamer?.displayName,
+        computedAvatar: picked.url,
+        uid: picked.debug.uid,
+        link_ownerUserId: picked.debug.fields.link_ownerUserId,
+        link_userId: picked.debug.fields.link_userId,
+        streamer_ownerUserId: picked.debug.fields.streamer_ownerUserId,
+        streamer_userId: picked.debug.fields.streamer_userId,
+        streamer_avatarUrl: picked.debug.directAvatarUrl,
+      };
+    });
+
+    console.table(rows);
+
+    const casino = (data as any).casino;
+    const bonusCtaText = (casino?.bonusHeadline || "").trim() || "Récupérez votre bonus";
+    console.log("[CasinoPage] bonusCtaText =", bonusCtaText);
+  }, [data]);
+
   async function onSaveRating(v: number) {
     if (!data) return;
     if (!user) {
@@ -165,8 +246,8 @@ export default function CasinoPage() {
     setMyRating(v);
     setSavingRating(true);
     try {
-      await setCasinoRating(data.casino.id, v);
-      const fresh = await getCasino(data.casino.slug);
+      await setCasinoRating((data as any).casino.id, v);
+      const fresh = await getCasino((data as any).casino.slug);
       setData(fresh);
     } catch (e: any) {
       alert(e?.message || "Erreur note");
@@ -192,7 +273,7 @@ export default function CasinoPage() {
 
     setPosting(true);
     try {
-      const r = await postCasinoComment(data.casino.id, text, files);
+      const r = await postCasinoComment((data as any).casino.id, text, files);
       setBody("");
       setFiles([]);
 
@@ -256,6 +337,7 @@ export default function CasinoPage() {
     }
   }
 
+  // ✅ returns OK maintenant (aucun hook après)
   if (loading) {
     return (
       <div className="container">
@@ -273,20 +355,19 @@ export default function CasinoPage() {
   }
 
   const casino = data.casino;
-  const bonusCtaText =
-  (casino.bonusHeadline || "").trim() || "Récupérez votre bonus";
-
   const stats = data.stats;
 
   const pros = splitList(casino.pros);
   const cons = splitList(casino.cons);
 
-  const linksSorted = sortLinks(data.links || []);
+  const linksSorted = sortLinks((data as any).links || []);
   const streamerLinks = linksSorted.filter((l: any) => l.streamer);
-  const bonusLink = data.bonusLink;
+  const bonusLink = (data as any).bonusLink;
 
-  const avg = numFromAny(stats?.avgRating) ?? 0;
-  const rc = Number(stats?.ratingsCount ?? 0) || 0;
+  const bonusCtaText = (casino.bonusHeadline || "").trim() || "Récupérez votre bonus";
+
+  const avg = numFromAny((stats as any)?.avgRating) ?? 0;
+  const rc = Number((stats as any)?.ratingsCount ?? 0) || 0;
 
   const team = numFromAny(casino.teamRating);
   const teamTxt = team == null ? "—" : team.toFixed(1);
@@ -297,9 +378,7 @@ export default function CasinoPage() {
     <div className="container">
       <div className="casinoHeader">
         <div className="casinoHeaderLeft">
-          <div className="casinoHeaderLogo">
-            {logoSrc ? <img src={logoSrc} alt="" /> : <div className="casinoLogoPh" />}
-          </div>
+          <div className="casinoHeaderLogo">{logoSrc ? <img src={logoSrc} alt="" /> : <div className="casinoLogoPh" />}</div>
 
           <div className="casinoHeaderMeta">
             <h1 className="casinoH1">{casino.name}</h1>
@@ -321,28 +400,22 @@ export default function CasinoPage() {
             )}
           </div>
         </div>
-        <div className="casinoHeaderRight">
-          {bonusLink ? (
-            <a className="btnPrimary" href={linkHref(bonusLink)} target="_blank" rel="noreferrer">
-              Récupérez votre bonus
-            </a>
-          ) : (
-            <div className="mutedSmall">Bonus indisponible</div>
-          )}
-        </div>
+
+        {/* ✅ supprimé le bloc bouton/texte bonus en haut à droite */}
+        <div className="casinoHeaderRight" />
       </div>
 
       <div className="casinoAnchors">
-        <button className="chip" onClick={() => scrollTo(refOverview)}>
+        <button className="chip" onClick={() => refOverview.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
           Aperçu
         </button>
-        <button className="chip" onClick={() => scrollTo(refRate)}>
+        <button className="chip" onClick={() => refRate.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
           Noter
         </button>
-        <button className="chip" onClick={() => scrollTo(refComments)}>
+        <button className="chip" onClick={() => refComments.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
           Avis
         </button>
-        <button className="chip" onClick={() => scrollTo(refSupport)}>
+        <button className="chip" onClick={() => refSupport.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
           Soutenir
         </button>
       </div>
@@ -370,6 +443,7 @@ export default function CasinoPage() {
                   <div className="mutedSmall">—</div>
                 )}
               </div>
+
               <div className="pcCol">
                 <div className="pcTitle">⚠️ Points faibles</div>
                 {cons.length ? (
@@ -419,12 +493,7 @@ export default function CasinoPage() {
             </div>
 
             <div className="composer">
-              <textarea
-                className="textarea"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="Partager un avis, un retrait, un win…"
-              />
+              <textarea className="textarea" value={body} onChange={(e) => setBody(e.target.value)} placeholder="Partager un avis, un retrait, un win…" />
               <div className="composerRow">
                 <label className="fileBtn">
                   + Images (max 3)
@@ -472,10 +541,7 @@ export default function CasinoPage() {
                     <button className={`reactBtn ${c.myReaction === "up" ? "on" : ""}`} onClick={() => toggleReaction(c.id, c.myReaction, "up")}>
                       👍 <span>{c.upCount}</span>
                     </button>
-                    <button
-                      className={`reactBtn ${c.myReaction === "down" ? "on" : ""}`}
-                      onClick={() => toggleReaction(c.id, c.myReaction, "down")}
-                    >
+                    <button className={`reactBtn ${c.myReaction === "down" ? "on" : ""}`} onClick={() => toggleReaction(c.id, c.myReaction, "down")}>
                       👎 <span>{c.downCount}</span>
                     </button>
                   </div>
@@ -500,28 +566,35 @@ export default function CasinoPage() {
             <h3>Soutenir un créateur</h3>
             <div className="mutedSmall">Passe par un lien — ça aide directement le créateur 💜</div>
 
-              {bonusLink && (
-                <a className="btnPrimary full" href={linkHref(bonusLink)} target="_blank" rel="noreferrer">
-                  {bonusCtaText}
-                </a>
-              )}
+            {bonusLink ? (
+              <a className="btnPrimary full" href={linkHref(bonusLink)} target="_blank" rel="noreferrer">
+                {bonusCtaText}
+              </a>
+            ) : (
+              <div className="mutedSmall" style={{ marginTop: 8 }}>
+                Bonus indisponible
+              </div>
+            )}
 
             <div className="sideList">
               {streamerLinks.length === 0 ? (
                 <div className="mutedSmall">Aucun créateur référencé pour ce casino.</div>
               ) : (
-                streamerLinks.map((l) => {
+                streamerLinks.map((l: any) => {
                   const s = l.streamer!;
-                  const avatar = l.ownerUserId ? absApiUrl(`/avatars/u/${l.ownerUserId}`) : null;
+                  const initial = String(s.displayName || "?").slice(0, 1).toUpperCase();
+
+                  const picked = pickStreamerAvatarUrl(l);
+                  const avatar = picked.url;
 
                   return (
                     <div key={l.id} className="sideStreamer">
                       <div className="sideStreamerTop">
                         <div className="sideAvatar" style={{ position: "relative", overflow: "hidden" }}>
-                          {/* fallback (toujours présent) */}
-                          {s.displayName.slice(0, 1).toUpperCase()}
+                          {/* fallback toujours visible */}
+                          {initial}
 
-                          {/* image (si on a un ownerUserId) */}
+                          {/* image par dessus si on a une URL */}
                           {avatar ? (
                             <img
                               src={avatar}
@@ -534,17 +607,24 @@ export default function CasinoPage() {
                                 objectFit: "cover",
                                 borderRadius: "999px",
                               }}
+                              onLoad={() => {
+                                if (!DEV) return;
+                                console.log("[CasinoPage] avatar OK", picked.debug);
+                              }}
                               onError={(e) => {
-                                // si 404 (pas d’avatar) → on masque l’image, la lettre reste visible
                                 (e.currentTarget as HTMLImageElement).style.display = "none";
+                                if (!DEV) return;
+                                console.log("[CasinoPage] avatar FAIL", picked.debug);
                               }}
                             />
                           ) : null}
                         </div>
+
                         <div className="sideInfo">
                           <div className="sideName">{s.displayName}</div>
                           <div className="mutedSmall">{(s.followsCount ?? 0).toLocaleString("fr-FR")} followers</div>
                         </div>
+
                         {l.pinnedRank != null && <span className="badge">Pin</span>}
                       </div>
 
@@ -556,6 +636,12 @@ export default function CasinoPage() {
                 })
               )}
             </div>
+
+            {DEV ? (
+              <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.8 }}>
+                DEV: regarde la console (console.table + avatar OK/FAIL)
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

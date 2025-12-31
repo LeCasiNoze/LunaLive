@@ -157,6 +157,7 @@ casinosPublicRouter.get(
 
         s.slug AS "streamerSlug",
         s.display_name AS "streamerDisplayName",
+        s.user_id AS "streamerUserId",
         (SELECT COUNT(*)::int FROM streamer_follows sf WHERE sf.streamer_id = s.id) AS "streamerFollows"
 
       FROM casino_affiliate_links l
@@ -173,9 +174,15 @@ casinosPublicRouter.get(
     );
 
     const links = linksRows.rows.map((l: any) => {
-      const kind = (l.kind === "bonus" || l.kind === "streamer")
-        ? l.kind
-        : (l.ownerUserId == null ? "bonus" : "streamer");
+      const kind =
+        l.kind === "bonus" || l.kind === "streamer"
+          ? l.kind
+          : l.ownerUserId == null
+          ? "bonus"
+          : "streamer";
+
+      const streamerUserId =
+        l.streamerUserId != null ? Number(l.streamerUserId) : null;
 
       return {
         id: String(l.id),
@@ -184,14 +191,19 @@ casinosPublicRouter.get(
         label: l.label ? String(l.label) : null,
         pinnedRank: l.pinnedRank == null ? null : Number(l.pinnedRank),
         ownerUsername: l.ownerUsername ? String(l.ownerUsername) : null,
+
         streamer: l.streamerSlug
           ? {
               slug: String(l.streamerSlug),
               displayName: String(l.streamerDisplayName || l.streamerSlug),
               followsCount: Number(l.streamerFollows || 0),
+
+              // ✅ NEW
+              userId: streamerUserId,
+              avatarUrl: streamerUserId ? `${apiBase}/avatars/u/${streamerUserId}` : null,
             }
           : null,
-        // ✅ ABSOLU => cliquable depuis ton front
+
         goUrl: `${apiBase}/go/casino/${casino.id}/link/${l.id}`,
         targetUrl: String(l.targetUrl || ""),
       };
