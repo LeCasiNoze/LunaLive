@@ -24,6 +24,12 @@ function apiBase() {
 
 type TabKey = "about" | "clips" | "vod" | "agenda";
 
+type GiftStatus = {
+  remaining: number;
+  canClaim: boolean;
+  myClaimed: boolean;
+};
+
 export default function StreamerPage() {
   const { slug } = useParams();
   const auth = useAuth() as any;
@@ -35,10 +41,17 @@ export default function StreamerPage() {
   const [tab, setTab] = React.useState<TabKey>("about");
   const [liveViewersNow, setLiveViewersNow] = React.useState<number | null>(null);
 
-  // ✅ Sub modal state (fix)
+  // ✅ Sub modal state
   const [subOpen, setSubOpen] = React.useState(false);
   const [subLoading, setSubLoading] = React.useState(false);
   const [subError, setSubError] = React.useState<string | null>(null);
+
+  // ✅ Gift subs state
+  const [giftLoading, setGiftLoading] = React.useState(false);
+  const [giftError, setGiftError] = React.useState<string | null>(null);
+  const [giftStatus, setGiftStatus] = React.useState<GiftStatus | null>(null);
+  const [claimLoading, setClaimLoading] = React.useState(false);
+  const [claimError, setClaimError] = React.useState<string | null>(null);
 
   const { isMobile, isPortrait } = useResponsive();
   const { cinema, chatOpen, enterCinema, leaveCinema, openCinemaChat, closeCinemaChat } = useCinema(isMobile);
@@ -55,35 +68,59 @@ export default function StreamerPage() {
     toggleNotify,
   } = useStreamerData(slug ?? null, token, () => setLoginOpen(true));
 
-  const isOwner = !!(myUserId != null && streamer?.ownerUserId != null && Number(streamer.ownerUserId) === Number(myUserId));
+  const isOwner = !!(
+    myUserId != null &&
+    streamer?.ownerUserId != null &&
+    Number(streamer.ownerUserId) === Number(myUserId)
+  );
 
-    const chest = useChest({
+  async function refreshMeIfPossible() {
+    if (!token) return;
+    try {
+      const r: any = await me(token);
+      if (r?.ok && r?.user) {
+        if (typeof (auth as any)?.setUser === "function") {
+          (auth as any).setUser(r.user);
+        } else if (typeof (auth as any)?.setAuth === "function") {
+          (auth as any).setAuth((prev: any) => ({ ...(prev || {}), user: r.user }));
+        }
+      }
+    } catch {}
+  }
+
+  async function fetchGiftStatus() {
+    if (!slug) return;
+    try {
+      const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/status`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      }).then((x) => x.json());
+
+      if (r?.ok) {
+        setGiftStatus({
+          remaining: Number(r.remaining || 0),
+          canClaim: !!r.canClaim,
+          myClaimed: !!r.myClaimed,
+        });
+      }
+    } catch {}
+  }
+
+  React.useEffect(() => {
+    fetchGiftStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, token]);
+
+  const chest = useChest({
     slug: slug ?? null,
     token,
     apiBase: apiBase(),
     isOwner,
     isLive: !!streamer?.isLive,
     onRequireLogin: () => setLoginOpen(true),
-
-    // ✅ AJOUT
     onAfterDeposit: async () => {
-        if (!token) return;
-        try {
-        const r: any = await me(token);
-        if (r?.ok && r?.user) {
-            // adapte selon ton AuthProvider
-            if (typeof (auth as any)?.setUser === "function") {
-            (auth as any).setUser(r.user);
-            } else if (typeof (auth as any)?.setAuth === "function") {
-            (auth as any).setAuth((prev: any) => ({ ...(prev || {}), user: r.user }));
-            } else {
-            // fallback simple si ton provider n’expose rien :
-            // window.location.reload();
-            }
-        }
-        } catch {}
+      await refreshMeIfPossible();
     },
-    });
+  });
 
   // heartbeat viewers
   React.useEffect(() => {
@@ -254,6 +291,12 @@ export default function StreamerPage() {
               </strong>
             </div>
 
+            {claimError ? (
+              <div className="mutedSmall" style={{ marginTop: 6, color: "rgba(255,90,90,0.95)" }}>
+                {claimError}
+              </div>
+            ) : null}
+
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <button type="button" className="btnPrimarySmall" disabled={followLoading} onClick={toggleFollow}>
                 {followLoading ? "…" : isFollowing ? "Suivi" : "Suivre"}
@@ -266,11 +309,66 @@ export default function StreamerPage() {
                 onClick={() => {
                   if (!token) return setLoginOpen(true);
                   setSubError(null);
+                  setGiftError(null);
                   setSubOpen(true);
                 }}
               >
                 Sub
               </button>
+
+              {/* ✅ Claim button si gifts dispo */}
+              {giftStatus?.remaining ? (
+                token && giftStatus.canClaim ? (
+                  <button
+                    type="button"
+                    className="btnPrimarySmall"
+                    disabled={claimLoading}
+                    onClick={async () => {
+                      if (!token || !slug) return;
+                      setClaimLoading(true);
+                      setClaimError(null);
+                      try {
+                        const r = await fetch(
+                          `${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/claim`,
+                          {
+                            method: "POST",
+                            headers: { Authorization: `Bearer ${token}` },
+                          }
+                        ).then((x) => x.json());
+                        if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+                        await refreshMeIfPossible();
+                        await fetchGiftStatus();
+                      } catch (e: any) {
+                        setClaimError(String(e?.message || "Erreur"));
+                      } finally {
+                        setClaimLoading(false);
+                      }
+                    }}
+                    title="Claim un sub offert"
+                  >
+                    {claimLoading ? "…" : `Claim sub (${giftStatus.remaining})`}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btnGhostSmall"
+                    onClick={() => {
+                      if (!token) return setLoginOpen(true);
+                      setSubOpen(true);
+                    }}
+                    title="Des subs sont disponibles"
+                  >
+                    🎁 Subs offerts ({giftStatus.remaining})
+                  </button>
+                )
+              ) : null}
+
+              {/* petite info si déjà claim */}
+              {giftStatus?.myClaimed ? (
+                <span className="mutedSmall" style={{ opacity: 0.9 }}>
+                  ✅ Sub offert claim
+                </span>
+              ) : null}
 
               <button
                 type="button"
@@ -284,7 +382,7 @@ export default function StreamerPage() {
                 🎁 Coffre{chest.chestLoading ? "…" : chest.chestBalance > 0 ? ` (${chest.chestBalance})` : ""}
               </button>
 
-              {/* Owner: open only (fermeture auto) */}
+              {/* Owner: open only */}
               {isOwner && !chest.chestHasOpen ? (
                 <button
                   type="button"
@@ -309,7 +407,6 @@ export default function StreamerPage() {
                 </button>
               ) : null}
 
-              {/* bell only if follow */}
               {isFollowing ? (
                 <button
                   type="button"
@@ -383,11 +480,7 @@ export default function StreamerPage() {
           </div>
 
           <div className="streamChatBody">
-            <ChatPanel
-              slug={String(slug || "")}
-              onRequireLogin={() => setLoginOpen(true)}
-              onFollowsCount={(n) => setFollowsCount(Number(n))}
-            />
+            <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} onFollowsCount={(n) => setFollowsCount(Number(n))} />
           </div>
         </aside>
       </div>
@@ -482,14 +575,44 @@ export default function StreamerPage() {
           setSubLoading(true);
           setSubError(null);
           try {
-            const r = await subscribeStreamer(String(slug), token);
-            if (r?.ok) window.location.reload();
+            const r: any = await subscribeStreamer(String(slug), token);
+            if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+
+            await refreshMeIfPossible();
+            await fetchGiftStatus();
+            setSubOpen(false);
           } catch (e: any) {
             setSubError(String(e?.message || "Erreur"));
           } finally {
             setSubLoading(false);
           }
         }}
+        onPayGiftSubs={async (count) => {
+          if (!token || !slug) return;
+          setGiftLoading(true);
+          setGiftError(null);
+          try {
+            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ count }),
+            }).then((x) => x.json());
+
+            if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+            await refreshMeIfPossible();
+            await fetchGiftStatus();
+            setSubOpen(false);
+          } catch (e: any) {
+            setGiftError(String(e?.message || "Erreur"));
+          } finally {
+            setGiftLoading(false);
+          }
+        }}
+        giftLoading={giftLoading}
+        giftError={giftError}
       />
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />

@@ -123,7 +123,9 @@ export async function mintRubis(params: { userId: number; amount: number; origin
     await client.query("COMMIT");
     return { ok: true, txId: String(txId) };
   } catch (e) {
-    try { await client.query("ROLLBACK"); } catch {}
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
     throw e;
   } finally {
     client.release();
@@ -165,7 +167,9 @@ export async function spendSink(params: { userId: number; amount: number; purpos
     await client.query("COMMIT");
     return { ok: true, txId: String(txId), amount, burnAmount, alloc };
   } catch (e) {
-    try { await client.query("ROLLBACK"); } catch {}
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
     throw e;
   } finally {
     client.release();
@@ -185,13 +189,14 @@ export async function spendSink(params: { userId: number; amount: number; purpos
  */
 export async function spendSupport(params: {
   userId: number;
+  beneficiaryUserId?: number; // ✅ NEW: receveur (gift sub, etc.)
   streamerId: number;
   streamerOwnerUserId: number;
   amount: number;
   purpose: string; // "sub" / "tip" / ...
   meta?: any;
 }) {
-  const { userId, streamerId, streamerOwnerUserId, amount, purpose, meta } = params;
+  const { userId, beneficiaryUserId, streamerId, streamerOwnerUserId, amount, purpose, meta } = params;
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("bad_amount");
 
   const client = await pool.connect();
@@ -236,7 +241,11 @@ export async function spendSupport(params: {
     // credit streamer owner
     if (streamerAmount > 0) {
       await client.query(`UPDATE users SET rubis = rubis + $2 WHERE id=$1`, [streamerOwnerUserId, streamerAmount]);
-      await createLot(client, streamerOwnerUserId, "earn_support", streamerAmount, { fromTx: true, streamerId, purpose });
+      await createLot(client, streamerOwnerUserId, "earn_support", streamerAmount, {
+        fromTx: true,
+        streamerId,
+        purpose,
+      });
     }
 
     // credit mods (equal split)
@@ -268,7 +277,12 @@ export async function spendSupport(params: {
       } else {
         // aucun modo actif -> tout va au streamer
         await client.query(`UPDATE users SET rubis = rubis + $2 WHERE id=$1`, [streamerOwnerUserId, modsTotal]);
-        await createLot(client, streamerOwnerUserId, "earn_support", modsTotal, { fromTx: true, streamerId, purpose, note: "modsTotal redirected (no mods)" });
+        await createLot(client, streamerOwnerUserId, "earn_support", modsTotal, {
+          fromTx: true,
+          streamerId,
+          purpose,
+          note: "modsTotal redirected (no mods)",
+        });
         modsPaid = [];
       }
     }
@@ -287,7 +301,13 @@ export async function spendSupport(params: {
         streamerAmount + modsTotal, // ce qui part vers "gagnants"
         platformAmount,
         burnAmount,
-        JSON.stringify({ ...(meta || {}), streamerId, modsPercentBp, modsPaid }),
+        JSON.stringify({
+          ...(meta || {}),
+          streamerId,
+          modsPercentBp,
+          modsPaid,
+          ...(beneficiaryUserId && beneficiaryUserId !== userId ? { beneficiaryUserId } : {}),
+        }),
       ]
     );
     const txId = Number(tx.rows[0].id);
@@ -316,7 +336,9 @@ export async function spendSupport(params: {
       modsPaid,
     };
   } catch (e) {
-    try { await client.query("ROLLBACK"); } catch {}
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
     throw e;
   } finally {
     client.release();
@@ -390,13 +412,15 @@ export async function cashoutRequest(params: {
     await client.query(
       `INSERT INTO cashout_requests (streamer_id, amount_rubis, status, tx_id, note)
        VALUES ($1,$2,'pending',$3,$4)`,
-      [streamerId, rubisToDebit, txId, (meta?.note ? String(meta.note) : null)]
+      [streamerId, rubisToDebit, txId, meta?.note ? String(meta.note) : null]
     );
 
     await client.query("COMMIT");
     return { ok: true, txId: String(txId), eurosCents, rubisDebited: rubisToDebit, alloc };
   } catch (e) {
-    try { await client.query("ROLLBACK"); } catch {}
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
     throw e;
   } finally {
     client.release();

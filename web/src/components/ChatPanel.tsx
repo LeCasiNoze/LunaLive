@@ -86,6 +86,15 @@ function fmtRemaining(untilIso?: string | null) {
   return `${d}j`;
 }
 
+function errMessage(e: unknown) {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object" && "message" in e) {
+    const m = (e as any).message;
+    if (typeof m === "string") return m;
+  }
+  return String(e || "error");
+}
+
 /* =========================================================
    Component
    ========================================================= */
@@ -194,6 +203,11 @@ export function ChatPanel({
 
     timeoutLoading?: boolean;
     targetTimeoutUntil?: string | null;
+
+    // ✅ NEW: sub status + gift action
+    subLoading?: boolean;
+    isTargetSub?: boolean | null;
+    giftSubLoading?: boolean;
   }>({
     open: false,
     x: 0,
@@ -203,6 +217,10 @@ export function ChatPanel({
     modLoading: false,
     timeoutLoading: false,
     targetTimeoutUntil: null,
+
+    subLoading: false,
+    isTargetSub: null,
+    giftSubLoading: false,
   });
 
   function closeMenu() {
@@ -215,93 +233,111 @@ export function ChatPanel({
       modLoading: false,
       timeoutLoading: false,
       targetTimeoutUntil: null,
+
+      subLoading: false,
+      isTargetSub: null,
+      giftSubLoading: false,
     });
   }
 
   function cloneCosmetics<T>(x: T): T {
-  try {
-    // @ts-ignore
-    if (typeof structuredClone === "function") return structuredClone(x);
-  } catch {}
-  return JSON.parse(JSON.stringify(x));
-}
-
-function applyViewerPolicy(cos: any, level: 1 | 2 | 3) {
-  if (!cos) return null;
-  const c = cloneCosmetics(cos);
-
-  // helpers local (permissifs)
-  const hasUsernameSkinLocal = (x: any) => {
-    const u = x?.username ?? x?.user ?? x?.name ?? x?.pseudo ?? null;
-    const color = u?.color ?? u?.hex ?? u?.colorId ?? x?.usernameColorId ?? x?.nameColorId ?? x?.pseudoColorId ?? null;
-    const effect =
-      u?.effect ?? u?.animId ?? u?.animationId ?? x?.usernameAnimId ?? x?.nameAnimId ?? x?.pseudoAnimId ?? null;
-    return color != null || (effect != null && effect !== "none");
-  };
-
-  const stripUsernameLocal = (x: any) => {
-    if (!x) return null;
-    const out: any = { ...x };
-
-    delete out.usernameColorId;
-    delete out.nameColorId;
-    delete out.pseudoColorId;
-    delete out.usernameAnimId;
-    delete out.nameAnimId;
-    delete out.pseudoAnimId;
-
-    if (out.username && typeof out.username === "object") {
-      out.username = { ...out.username };
-      delete out.username.color;
-      delete out.username.hex;
-      delete out.username.colorId;
-      delete out.username.effect;
-      delete out.username.animId;
-      delete out.username.animationId;
-    }
-    if (out.name && typeof out.name === "object") {
-      out.name = { ...out.name };
-      delete out.name.color;
-      delete out.name.hex;
-      delete out.name.colorId;
-      delete out.name.effect;
-      delete out.name.animId;
-      delete out.name.animationId;
-    }
-    if (out.pseudo && typeof out.pseudo === "object") {
-      out.pseudo = { ...out.pseudo };
-      delete out.pseudo.color;
-      delete out.pseudo.hex;
-      delete out.pseudo.colorId;
-      delete out.pseudo.effect;
-      delete out.pseudo.animId;
-      delete out.pseudo.animationId;
-    }
-
-    return out;
-  };
-
-  // Niveau 1 : libre, MAIS si pas de skin pseudo => fallback streamer (donc on strip le pseudo)
-  if (level === 1) {
-    return hasUsernameSkinLocal(c) ? c : stripUsernameLocal(c);
+    try {
+      // @ts-ignore
+      if (typeof structuredClone === "function") return structuredClone(x);
+    } catch {}
+    return JSON.parse(JSON.stringify(x));
   }
 
-  // Niveau 2 : on bloque tout le skin pseudo (couleur + effet)
-  const noUsername = stripUsernameLocal(c);
+  function applyViewerPolicy(cos: any, level: 1 | 2 | 3) {
+    if (!cos) return null;
+    const c = cloneCosmetics(cos);
 
-  // Niveau 3 : + on bloque les cadrans (frame)
-  if (level >= 3 && noUsername) {
-    // covers plusieurs shapes possibles
-    (noUsername as any).frame = null;
-    (noUsername as any).frameId = null;
+    // helpers local (permissifs)
+    const hasUsernameSkinLocal = (x: any) => {
+      const u = x?.username ?? x?.user ?? x?.name ?? x?.pseudo ?? null;
+      const color =
+        u?.color ??
+        u?.hex ??
+        u?.colorId ??
+        x?.usernameColorId ??
+        x?.nameColorId ??
+        x?.pseudoColorId ??
+        null;
+      const effect =
+        u?.effect ??
+        u?.animId ??
+        u?.animationId ??
+        x?.usernameAnimId ??
+        x?.nameAnimId ??
+        x?.pseudoAnimId ??
+        null;
+      return color != null || (effect != null && effect !== "none");
+    };
 
-    if ((noUsername as any).avatar && typeof (noUsername as any).avatar === "object") {
-      (noUsername as any).avatar = { ...(noUsername as any).avatar, frame: null, frameId: null };
+    const stripUsernameLocal = (x: any) => {
+      if (!x) return null;
+      const out: any = { ...x };
+
+      delete out.usernameColorId;
+      delete out.nameColorId;
+      delete out.pseudoColorId;
+      delete out.usernameAnimId;
+      delete out.nameAnimId;
+      delete out.pseudoAnimId;
+
+      if (out.username && typeof out.username === "object") {
+        out.username = { ...out.username };
+        delete out.username.color;
+        delete out.username.hex;
+        delete out.username.colorId;
+        delete out.username.effect;
+        delete out.username.animId;
+        delete out.username.animationId;
+      }
+      if (out.name && typeof out.name === "object") {
+        out.name = { ...out.name };
+        delete out.name.color;
+        delete out.name.hex;
+        delete out.name.colorId;
+        delete out.name.effect;
+        delete out.name.animId;
+        delete out.name.animationId;
+      }
+      if (out.pseudo && typeof out.pseudo === "object") {
+        out.pseudo = { ...out.pseudo };
+        delete out.pseudo.color;
+        delete out.pseudo.hex;
+        delete out.pseudo.colorId;
+        delete out.pseudo.effect;
+        delete out.pseudo.animId;
+        delete out.pseudo.animationId;
+      }
+
+      return out;
+    };
+
+    // Niveau 1 : libre, MAIS si pas de skin pseudo => fallback streamer (donc on strip le pseudo)
+    if (level === 1) {
+      return hasUsernameSkinLocal(c) ? c : stripUsernameLocal(c);
     }
+
+    // Niveau 2 : on bloque tout le skin pseudo (couleur + effet)
+    const noUsername = stripUsernameLocal(c);
+
+    // Niveau 3 : + on bloque les cadrans (frame)
+    if (level >= 3 && noUsername) {
+      // covers plusieurs shapes possibles
+      (noUsername as any).frame = null;
+      (noUsername as any).frameId = null;
+
+      if ((noUsername as any).avatar && typeof (noUsername as any).avatar === "object") {
+        (noUsername as any).avatar = { ...(noUsername as any).avatar, frame: null, frameId: null };
+      }
+    }
+
+    return noUsername;
   }
 
-  return noUsername;
-}
   /* -------------------------
      Derived values
      ------------------------- */
@@ -315,8 +351,7 @@ function applyViewerPolicy(cos: any, level: 1 | 2 | 3) {
   const canSend = isAuthed && !isBanned && !isTimedOut;
 
   const targetIsSelf = menu.msg && myId != null && Number(menu.msg.userId) === Number(myId);
-  const targetIsTimedOut =
-    !!menu.targetTimeoutUntil && new Date(menu.targetTimeoutUntil).getTime() > Date.now();
+  const targetIsTimedOut = !!menu.targetTimeoutUntil && new Date(menu.targetTimeoutUntil).getTime() > Date.now();
 
   // couleurs du streamer (fallback)
   const nameColor = appearance.chat.usernameColor;
@@ -565,9 +600,30 @@ function applyViewerPolicy(cos: any, level: 1 | 2 | 3) {
       modLoading: false,
       timeoutLoading: false,
       targetTimeoutUntil: null,
+
+      subLoading: false,
+      isTargetSub: null,
+      giftSubLoading: false,
     });
 
     const isSelf = myId != null && Number(msg.userId) === Number(myId);
+
+    // ✅ NEW: check sub status (pour afficher "Offrir un sub" uniquement si pas sub)
+    if (!isSelf) {
+      setMenu((m) => ({ ...m, subLoading: true, isTargetSub: null }));
+      try {
+        const r = await fetch(
+          `${apiBase()}/streamers/${encodeURIComponent(String(slug))}/sub-status/${encodeURIComponent(
+            String(msg.userId)
+          )}`,
+          { headers: token ? { Authorization: `Bearer ${token}` } : undefined }
+        ).then((x) => x.json());
+        if (r?.ok) setMenu((m) => ({ ...m, subLoading: false, isTargetSub: !!r.isSub }));
+        else setMenu((m) => ({ ...m, subLoading: false, isTargetSub: null }));
+      } catch {
+        setMenu((m) => ({ ...m, subLoading: false, isTargetSub: null }));
+      }
+    }
 
     if (perms?.canManageMods) {
       setMenu((m) => ({ ...m, modLoading: true }));
@@ -610,6 +666,37 @@ function applyViewerPolicy(cos: any, level: 1 | 2 | 3) {
   function goProfile(msg: ChatMsg) {
     closeMenu();
     navigate(`/users/${encodeURIComponent(msg.username)}`);
+  }
+
+  async function doGiftSub(msg: ChatMsg) {
+    if (!token) {
+      closeMenu();
+      onRequireLogin();
+      return;
+    }
+
+    setError(null);
+    setMenu((m) => ({ ...m, giftSubLoading: true }));
+
+    try {
+      const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-sub`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ recipientUserId: Number(msg.userId) }),
+      }).then((x) => x.json());
+
+      if (!r?.ok) throw new Error(String(r?.error || "gift_sub_failed"));
+
+      closeMenu();
+      setError(`✅ Sub offert à ${msg.username}`);
+    } catch (e: unknown) {
+      setError(errMessage(e));
+    } finally {
+      setMenu((m) => ({ ...m, giftSubLoading: false }));
+    }
   }
 
   async function doUnmute(msg: ChatMsg) {
@@ -685,7 +772,7 @@ function applyViewerPolicy(cos: any, level: 1 | 2 | 3) {
             WebkitOverflowScrolling: "touch",
 
             // fallback streamer (utilisé quand viewer n'a pas de skin pseudo OU impose)
-            ...( { ["--chat-name-color" as any]: nameColor, ["--chat-msg-color" as any]: msgColor } as any ),
+            ...({ ["--chat-name-color" as any]: nameColor, ["--chat-msg-color" as any]: msgColor } as any),
           }}
         >
           {initialLoading ? (
@@ -726,37 +813,37 @@ function applyViewerPolicy(cos: any, level: 1 | 2 | 3) {
               );
             }
 
-          // APPLY POLICY (impose vs non impose + fallback streamer si pas de skin pseudo)
-          const baseCosmetics =
-            DEBUG_FORCE_COSMETICS && m.username === DEBUG_USER
-              ? (DEBUG_COSMETICS as ChatCosmetics)
-              : (m.cosmetics ?? null);
+            // APPLY POLICY (impose vs non impose + fallback streamer si pas de skin pseudo)
+            const baseCosmetics =
+              DEBUG_FORCE_COSMETICS && m.username === DEBUG_USER
+                ? (DEBUG_COSMETICS as ChatCosmetics)
+                : (m.cosmetics ?? null);
 
-          const effectiveCosmetics = applyViewerPolicy(baseCosmetics, viewerSkinsLevel);
-          console.log("[chat msg]", m.username, {
-            viewerSkinsLevel,
-            cosmetics: m.cosmetics,
-          });
+            const effectiveCosmetics = applyViewerPolicy(baseCosmetics, viewerSkinsLevel);
+            console.log("[chat msg]", m.username, {
+              viewerSkinsLevel,
+              cosmetics: m.cosmetics,
+            });
 
-          return (
-            <div
-              key={m.id}
-              onContextMenu={(e) => openMenuMouse(e, m)}
-              onTouchStart={(e) => onTouchStartMsg(e, m)}
-              onTouchEnd={cancelLongPress}
-              onTouchCancel={cancelLongPress}
-              onTouchMove={cancelLongPress}
-              style={{ cursor: "context-menu" }}
-            >
-              <ChatMessageBubble
-                streamerAppearance={appearance}  // ✅ FIX TS (il le demande)
-                msg={{
-                  ...m,
-                  cosmetics: effectiveCosmetics, // ✅ plus d’unused var + bonne policy
-                }}
-              />
-            </div>
-          );
+            return (
+              <div
+                key={m.id}
+                onContextMenu={(e) => openMenuMouse(e, m)}
+                onTouchStart={(e) => onTouchStartMsg(e, m)}
+                onTouchEnd={cancelLongPress}
+                onTouchCancel={cancelLongPress}
+                onTouchMove={cancelLongPress}
+                style={{ cursor: "context-menu" }}
+              >
+                <ChatMessageBubble
+                  streamerAppearance={appearance} // ✅ FIX TS (il le demande)
+                  msg={{
+                    ...m,
+                    cosmetics: effectiveCosmetics, // ✅ plus d’unused var + bonne policy
+                  }}
+                />
+              </div>
+            );
           })}
         </div>
 
@@ -886,7 +973,9 @@ function applyViewerPolicy(cos: any, level: 1 | 2 | 3) {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div style={{ fontWeight: 900, fontSize: 13, marginBottom: 8, opacity: 0.95 }}>{menu.msg.username}</div>
+          <div style={{ fontWeight: 900, fontSize: 13, marginBottom: 8, opacity: 0.95 }}>
+            {menu.msg.username}
+          </div>
 
           <button
             onClick={() => goProfile(menu.msg!)}
@@ -905,6 +994,37 @@ function applyViewerPolicy(cos: any, level: 1 | 2 | 3) {
           >
             Voir le profil
           </button>
+
+          {/* ✅ NEW: Offrir un sub (uniquement si target PAS sub) */}
+          {!targetIsSelf && isAuthed && menu.isTargetSub === false ? (
+            <button
+              onClick={() => doGiftSub(menu.msg!)}
+              disabled={!!menu.giftSubLoading}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(80,255,160,0.12)",
+                color: "white",
+                textAlign: "left",
+                fontWeight: 900,
+                cursor: "pointer",
+                marginBottom: 8,
+                opacity: menu.giftSubLoading ? 0.75 : 1,
+              }}
+              title="Offrir un sub"
+            >
+              {menu.giftSubLoading ? "Offre en cours…" : "Offrir un sub"}
+            </button>
+          ) : null}
+
+          {/* petit hint pendant vérif */}
+          {!targetIsSelf && isAuthed && menu.subLoading ? (
+            <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800, marginBottom: 8 }}>
+              Vérification sub…
+            </div>
+          ) : null}
 
           {perms?.canTimeout && !targetIsSelf && targetIsTimedOut ? (
             <button
