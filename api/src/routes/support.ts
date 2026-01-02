@@ -5,17 +5,21 @@ import { requireAuth } from "../auth.js";
 import { SUB_PRICE_RUBIS } from "../economy.js";
 import { spendRubisTx } from "../wallet_engine.js";
 
+// ✅ NEW
+import { emitSystemChat, formatSubSystemMessage } from "../chat_events.js";
+
 export const supportRouter = express.Router();
 
 supportRouter.post("/support/sub", requireAuth, async (req, res) => {
   const userId = Number(req.user!.id);
+  const username = String(req.user!.username || "Quelqu’un");
   const slug = String(req.body?.slug || "").trim();
   const qty = Math.max(1, Math.min(12, Math.floor(Number(req.body?.qty ?? 1))));
 
   if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
 
   const s = await pool.query(
-    `SELECT id, slug
+    `SELECT id, slug, display_name AS "displayName"
      FROM streamers
      WHERE lower(slug)=lower($1)
        AND (suspended_until IS NULL OR suspended_until < NOW())
@@ -26,6 +30,7 @@ supportRouter.post("/support/sub", requireAuth, async (req, res) => {
   if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
   const streamerId = Number(streamer.id);
+  const streamerName = String(streamer.displayName || streamer.slug);
   const amount = SUB_PRICE_RUBIS * qty;
 
   const client = await pool.connect();
@@ -41,7 +46,6 @@ supportRouter.post("/support/sub", requireAuth, async (req, res) => {
       meta: { slug, qty },
     });
 
-    // subscription: extends by qty*30 days from max(now, expires_at)
     const sub = await client.query(
       `INSERT INTO streamer_subscriptions (streamer_id, user_id, started_at, expires_at)
        VALUES ($1,$2,NOW(), NOW() + ($3::int * INTERVAL '30 days'))
@@ -54,6 +58,19 @@ supportRouter.post("/support/sub", requireAuth, async (req, res) => {
     );
 
     await client.query("COMMIT");
+
+    // ✅ Message système dans le chat (après commit)
+    const io = req.app.locals.io;
+    emitSystemChat(
+      io,
+      String(streamer.slug),
+      formatSubSystemMessage({
+        user: username,
+        streamer: streamerName,
+        months: qty,
+        origin: "self",
+      })
+    );
 
     res.json({
       ok: true,

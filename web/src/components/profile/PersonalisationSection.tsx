@@ -132,6 +132,7 @@ function rarityToTier(rarity: string) {
 function badgeTextFromCode(code: string) {
   if (code === "badge_luna") return "LUNA";
   if (code === "badge_777") return "777";
+  if (code.startsWith("badge_sub_")) return "SUB";
   return code.replace(/^badge_/, "").toUpperCase();
 }
 
