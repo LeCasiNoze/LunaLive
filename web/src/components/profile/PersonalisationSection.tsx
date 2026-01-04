@@ -335,7 +335,7 @@ export function PersonalisationSection({
     setLoading(true);
     setErr(null);
     try {
-      const [c, m] = await Promise.all([cosmeticsCatalog(), myCosmetics(token)]);
+      const [c, m] = await Promise.all([cosmeticsCatalog(token), myCosmetics(token)]);
       if (!c?.ok) throw new Error("catalog_failed");
       if (!m?.ok) throw new Error((m as any)?.error || "load_failed");
 

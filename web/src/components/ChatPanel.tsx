@@ -60,9 +60,6 @@ type JoinAck = {
   me?: { id: number; username: string; role: string } | null;
 
   appearance?: StreamerAppearance;
-
-  // (optionnel, si tu veux le mettre dans le join ack un jour)
-  // chatPolicy?: { forceViewerNameColor?: boolean };
 };
 
 /* =========================================================
@@ -252,7 +249,6 @@ export function ChatPanel({
     if (!cos) return null;
     const c = cloneCosmetics(cos);
 
-    // helpers local (permissifs)
     const hasUsernameSkinLocal = (x: any) => {
       const u = x?.username ?? x?.user ?? x?.name ?? x?.pseudo ?? null;
       const color =
@@ -316,17 +312,13 @@ export function ChatPanel({
       return out;
     };
 
-    // Niveau 1 : libre, MAIS si pas de skin pseudo => fallback streamer (donc on strip le pseudo)
     if (level === 1) {
       return hasUsernameSkinLocal(c) ? c : stripUsernameLocal(c);
     }
 
-    // Niveau 2 : on bloque tout le skin pseudo (couleur + effet)
     const noUsername = stripUsernameLocal(c);
 
-    // Niveau 3 : + on bloque les cadrans (frame)
     if (level >= 3 && noUsername) {
-      // covers plusieurs shapes possibles
       (noUsername as any).frame = null;
       (noUsername as any).frameId = null;
 
@@ -351,9 +343,9 @@ export function ChatPanel({
   const canSend = isAuthed && !isBanned && !isTimedOut;
 
   const targetIsSelf = menu.msg && myId != null && Number(menu.msg.userId) === Number(myId);
-  const targetIsTimedOut = !!menu.targetTimeoutUntil && new Date(menu.targetTimeoutUntil).getTime() > Date.now();
+  const targetIsTimedOut =
+    !!menu.targetTimeoutUntil && new Date(menu.targetTimeoutUntil).getTime() > Date.now();
 
-  // couleurs du streamer (fallback)
   const nameColor = appearance.chat.usernameColor;
   const msgColor = appearance.chat.messageColor;
   const viewerSkinsLevel = (appearance.chat.viewerSkinsLevel ?? 1) as 1 | 2 | 3;
@@ -516,7 +508,6 @@ export function ChatPanel({
       setJoin(ack);
       setError(null);
 
-      // appearance AVANT messages (anti-flash)
       setAppearance(normalizeAppearance(ack.appearance));
       await loadLastMessages(s);
 
@@ -608,7 +599,7 @@ export function ChatPanel({
 
     const isSelf = myId != null && Number(msg.userId) === Number(myId);
 
-    // ✅ NEW: check sub status (pour afficher "Offrir un sub" uniquement si pas sub)
+    // check sub status
     if (!isSelf) {
       setMenu((m) => ({ ...m, subLoading: true, isTargetSub: null }));
       try {
@@ -770,8 +761,6 @@ export function ChatPanel({
             flexDirection: "column",
             gap: 10,
             WebkitOverflowScrolling: "touch",
-
-            // fallback streamer (utilisé quand viewer n'a pas de skin pseudo OU impose)
             ...({ ["--chat-name-color" as any]: nameColor, ["--chat-msg-color" as any]: msgColor } as any),
           }}
         >
@@ -786,7 +775,6 @@ export function ChatPanel({
             const isDeleted = !!m.deleted || m.body === "";
             if (m.userId !== 0 && isDeleted) return null;
 
-            // system : rendu simple (pas de cosmetics)
             if (isSystem) {
               return (
                 <div
@@ -813,17 +801,12 @@ export function ChatPanel({
               );
             }
 
-            // APPLY POLICY (impose vs non impose + fallback streamer si pas de skin pseudo)
             const baseCosmetics =
               DEBUG_FORCE_COSMETICS && m.username === DEBUG_USER
                 ? (DEBUG_COSMETICS as ChatCosmetics)
                 : (m.cosmetics ?? null);
 
             const effectiveCosmetics = applyViewerPolicy(baseCosmetics, viewerSkinsLevel);
-            console.log("[chat msg]", m.username, {
-              viewerSkinsLevel,
-              cosmetics: m.cosmetics,
-            });
 
             return (
               <div
@@ -836,10 +819,10 @@ export function ChatPanel({
                 style={{ cursor: "context-menu" }}
               >
                 <ChatMessageBubble
-                  streamerAppearance={appearance} // ✅ FIX TS (il le demande)
+                  streamerAppearance={appearance}
                   msg={{
                     ...m,
-                    cosmetics: effectiveCosmetics, // ✅ plus d’unused var + bonne policy
+                    cosmetics: effectiveCosmetics,
                   }}
                 />
               </div>
@@ -995,8 +978,8 @@ export function ChatPanel({
             Voir le profil
           </button>
 
-          {/* ✅ NEW: Offrir un sub (uniquement si target PAS sub) */}
-          {!targetIsSelf && isAuthed && menu.isTargetSub === false ? (
+          {/* ✅ FIX: on affiche tant que ce n'est PAS confirmé "déjà sub" */}
+          {!targetIsSelf && isAuthed && menu.isTargetSub !== true ? (
             <button
               onClick={() => doGiftSub(menu.msg!)}
               disabled={!!menu.giftSubLoading}
@@ -1019,10 +1002,17 @@ export function ChatPanel({
             </button>
           ) : null}
 
-          {/* petit hint pendant vérif */}
+          {/* hint pendant vérif */}
           {!targetIsSelf && isAuthed && menu.subLoading ? (
             <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800, marginBottom: 8 }}>
               Vérification sub…
+            </div>
+          ) : null}
+
+          {/* hint si déjà sub */}
+          {!targetIsSelf && isAuthed && menu.isTargetSub === true ? (
+            <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800, marginBottom: 8 }}>
+              Déjà abonné ✅
             </div>
           ) : null}
 

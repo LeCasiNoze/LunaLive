@@ -1,5 +1,6 @@
 // api/src/routes/cosmetics.ts
 import { Router } from "express";
+import jwt from "jsonwebtoken";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
 import { a } from "../utils/async.js";
@@ -8,10 +9,25 @@ import { COSMETICS_CATALOG } from "../cosmetics/catalog.js";
 export const cosmeticsRouter = Router();
 
 type Kind = "username" | "badge" | "title" | "frame" | "hat";
+
+type CatalogItem = {
+  kind: Kind;
+  code: string;
+  name: string;
+  rarity: string;
+  unlock: string;
+  priceRubis: number | null;
+  pricePrestige?: number | null;
+  active: boolean;
+  meta?: any;
+};
+
+type AuthUser = { id: number; username?: string; role?: string };
+
 const ALLOWED_KINDS: Kind[] = ["username", "badge", "title", "frame", "hat"];
 
-// Items gratuits (toujours équipables même sans entitlement)
-const BASE_FREE: Record<Kind, string[]> = {
+// Items gratuits (toujours équipables)
+const FREE: Record<Kind, string[]> = {
   username: ["default"],
   badge: ["none"],
   title: ["none"],
@@ -20,7 +36,7 @@ const BASE_FREE: Record<Kind, string[]> = {
 };
 
 // ──────────────────────────────────────────
-// DEV: unlock all (comma-separated usernames)
+// DEV: unlock all (by username)
 // ──────────────────────────────────────────
 const DEV_UNLOCK_ALL_SET = new Set(
   String(process.env.DEV_UNLOCK_ALL_FOR || "")
@@ -34,9 +50,23 @@ function devUnlockAll(username: string | null | undefined) {
   return DEV_UNLOCK_ALL_SET.has(username.trim().toLowerCase());
 }
 
+function tryGetAuthUser(req: any): AuthUser | null {
+  const h = String(req.headers.authorization || "");
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  if (!m) return null;
+
+  try {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return null;
+    return jwt.verify(m[1], secret) as any;
+  } catch {
+    return null;
+  }
+}
+
 async function getReqUsername(req: any): Promise<string | null> {
   const u = req.user?.username;
-  if (typeof u === "string" && u.trim()) return u.trim();
+  if (typeof u === "string" && u.trim()) return u;
 
   const userId = Number(req.user?.id);
   if (!Number.isFinite(userId) || userId <= 0) return null;
@@ -45,28 +75,39 @@ async function getReqUsername(req: any): Promise<string | null> {
   return r.rows?.[0]?.username ?? null;
 }
 
-function buildOwnedAllActive(): Record<Kind, string[]> {
-  const owned: Record<Kind, string[]> = {
-    username: [],
-    badge: [],
-    title: [],
-    frame: [],
-    hat: [],
-  };
+function clampBadgeText(s: string) {
+  const t = String(s || "")
+    .trim()
+    .replace(/[^\w\-]/g, "");
+  const out = (t || "SUB").slice(0, 8);
+  return out.toUpperCase();
+}
 
-  for (const it of COSMETICS_CATALOG as any[]) {
+function emptyOwned(): Record<Kind, string[]> {
+  return { username: [], badge: [], title: [], frame: [], hat: [] };
+}
+
+function buildOwnedAllActive(staticItems: CatalogItem[], extraItems: CatalogItem[] = []): Record<Kind, string[]> {
+  const owned = emptyOwned();
+
+  for (const it of [...staticItems, ...extraItems]) {
     if (!it?.active) continue;
-    const k = it.kind as Kind;
-    if (!ALLOWED_KINDS.includes(k)) continue;
-    owned[k].push(String(it.code));
+    if (!ALLOWED_KINDS.includes(it.kind)) continue;
+    (owned[it.kind] ??= []).push(it.code);
   }
   return owned;
 }
 
-function catalogHas(kind: Kind, code: string) {
-  return (COSMETICS_CATALOG as any[]).some(
-    (x) => x && x.active && x.kind === kind && String(x.code) === code
-  );
+function catalogHas(staticItems: CatalogItem[], kind: Kind, code: string) {
+  return staticItems.some((x) => x && x.active && x.kind === kind && x.code === code);
+}
+
+function isSubBadgeCode(code: string) {
+  const p = "badge_sub_";
+  if (!code.startsWith(p)) return null;
+  const slug = code.slice(p.length).trim();
+  if (!slug) return null;
+  return slug;
 }
 
 // ──────────────────────────────────────────
@@ -81,16 +122,57 @@ async function ensureRow(userId: number) {
   );
 }
 
-// ──────────────────────────────────────────
-// SUB BADGES helpers
-// ──────────────────────────────────────────
-function subSlugFromBadge(code: string) {
-  const m = code.match(/^badge_sub_(.+)$/);
-  return m ? m[1] : null;
+async function getActiveSubBadgesForUser(userId: number): Promise<CatalogItem[]> {
+  const q = await pool.query(
+    `SELECT s.slug, s.display_name AS "displayName", s.appearance
+     FROM streamer_subscriptions ss
+     JOIN streamers s ON s.id = ss.streamer_id
+     WHERE ss.user_id = $1
+       AND ss.expires_at > NOW()
+       AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
+     ORDER BY lower(s.slug) ASC`,
+    [userId]
+  );
+
+  const out: CatalogItem[] = [];
+  for (const r of q.rows as any[]) {
+    const slug = String(r.slug || "").trim();
+    if (!slug) continue;
+
+    const ap = r.appearance || {};
+    const badge = ap?.chat?.sub?.badge || {};
+
+    // si le streamer a désactivé le badge sub, on ne le propose pas
+    if (badge.enabled === false) continue;
+
+    const badgeText = clampBadgeText(badge.text || "SUB");
+    const borderColor = String(badge.borderColor || "#7C4DFF");
+    const textColor = String(badge.textColor || "#FFFFFF");
+
+    const displayName = String(r.displayName || slug);
+
+    out.push({
+      kind: "badge",
+      code: `badge_sub_${slug.toLowerCase()}`,
+      name: `Badge sub ${badgeText} — ${displayName}`,
+      rarity: "sub",
+      unlock: "sub",
+      priceRubis: null,
+      active: true,
+      meta: {
+        badgeText,
+        borderColor,
+        textColor,
+        streamerSlug: slug,
+        streamerName: displayName,
+      },
+    });
+  }
+  return out;
 }
 
-async function hasActiveSubToSlug(userId: number, slug: string) {
-  const r = await pool.query(
+async function userHasActiveSubToSlug(userId: number, slug: string): Promise<boolean> {
+  const q = await pool.query(
     `SELECT 1
      FROM streamer_subscriptions ss
      JOIN streamers s ON s.id = ss.streamer_id
@@ -100,62 +182,30 @@ async function hasActiveSubToSlug(userId: number, slug: string) {
      LIMIT 1`,
     [userId, slug]
   );
-  return !!r.rows?.[0];
-}
-
-async function getActiveSubBadgeCodes(userId: number): Promise<string[]> {
-  const q = await pool.query(
-    `SELECT s.slug
-     FROM streamer_subscriptions ss
-     JOIN streamers s ON s.id = ss.streamer_id
-     WHERE ss.user_id = $1
-       AND ss.expires_at > NOW()`,
-    [userId]
-  );
-  return q.rows
-    .map((r: any) => `badge_sub_${String(r.slug || "").trim()}`)
-    .filter((x: string) => x !== "badge_sub_");
+  return !!q.rows?.[0];
 }
 
 // ──────────────────────────────────────────
-// GET /cosmetics/catalog (public)
-// -> retourne catalogue + badges sub dynamiques
+// GET /cosmetics/catalog
+// - Public : catalogue statique
+// - Si Bearer token : on ajoute les badges sub (avec meta style)
 // ──────────────────────────────────────────
 cosmeticsRouter.get(
   "/cosmetics/catalog",
-  a(async (_req, res) => {
-    const s = await pool.query(
-      `SELECT slug, display_name
-       FROM streamers
-       WHERE (suspended_until IS NULL OR suspended_until < NOW())
-       ORDER BY slug ASC`
-    );
+  a(async (req: any, res) => {
+    const staticItems = (COSMETICS_CATALOG || []).filter((x: any) => x && x.active) as CatalogItem[];
 
-    const subBadges = s.rows
-      .map((r: any) => {
-        const slug = String(r.slug || "").trim();
-        if (!slug) return null;
-        const displayName = String(r.display_name || slug).trim();
+    const au = tryGetAuthUser(req);
+    let dyn: CatalogItem[] = [];
+    if (au?.id) {
+      dyn = await getActiveSubBadgesForUser(Number(au.id));
+    }
 
-        return {
-          kind: "badge",
-          code: `badge_sub_${slug}`,
-          name: `Badge sub — ${displayName}`,
-          rarity: "silver",
-          unlock: "system",
-          priceRubis: null,
-          active: true,
-          meta: { subOf: slug },
-        };
-      })
-      .filter(Boolean);
-
-    // merge + dedupe (kind:code)
-    const map = new Map<string, any>();
-    for (const it of [...(COSMETICS_CATALOG as any[]), ...(subBadges as any[])]) {
+    // merge unique by kind+code (évite doublons)
+    const map = new Map<string, CatalogItem>();
+    for (const it of [...staticItems, ...dyn]) {
       if (!it?.active) continue;
-      const k = `${it.kind}:${it.code}`;
-      if (!map.has(k)) map.set(k, it);
+      map.set(`${it.kind}:${it.code}`, it);
     }
 
     res.json({ ok: true, items: Array.from(map.values()) });
@@ -163,17 +213,14 @@ cosmeticsRouter.get(
 );
 
 // ──────────────────────────────────────────
-// GET /me/cosmetics (auth)
-// -> owned (entitlements) + equipped + free (incl. badges sub actifs)
+// GET /me/cosmetics
 // ──────────────────────────────────────────
 cosmeticsRouter.get(
   "/me/cosmetics",
   requireAuth,
   a(async (req: any, res) => {
     const userId = Number(req.user?.id);
-    if (!Number.isFinite(userId) || userId <= 0) {
-      return res.status(401).json({ ok: false, error: "unauthorized" });
-    }
+    if (!Number.isFinite(userId) || userId <= 0) return res.status(401).json({ ok: false, error: "unauthorized" });
 
     const username = await getReqUsername(req);
     const unlockAll = devUnlockAll(username);
@@ -192,6 +239,9 @@ cosmeticsRouter.get(
       [userId]
     );
 
+    const equipped =
+      eq.rows?.[0] || ({ username: null, badge: null, title: null, frame: null, hat: null } as any);
+
     // owned via entitlements
     const ent = await pool.query(
       `SELECT kind, code
@@ -200,15 +250,7 @@ cosmeticsRouter.get(
       [userId]
     );
 
-    // ✅ IMPORTANT: owned doit exister (sinon TS18004)
-    const owned: Record<Kind, string[]> = {
-      username: [],
-      badge: [],
-      title: [],
-      frame: [],
-      hat: [],
-    };
-
+    const owned = emptyOwned();
     for (const r of ent.rows as any[]) {
       const k = String(r.kind || "") as Kind;
       const c = String(r.code || "");
@@ -217,9 +259,18 @@ cosmeticsRouter.get(
       owned[k].push(c);
     }
 
-    // DEV unlock-all: merge owned avec tout le catalogue actif
+    // ✅ owned badges via active subs
+    const subBadges = await getActiveSubBadgesForUser(userId);
+    {
+      const set = new Set<string>(owned.badge);
+      for (const it of subBadges) set.add(it.code);
+      owned.badge = Array.from(set);
+    }
+
+    // ✅ DEV unlock-all: merge avec tout le catalogue actif (statique + subBadges)
     if (unlockAll) {
-      const all = buildOwnedAllActive();
+      const staticItems = (COSMETICS_CATALOG || []).filter((x: any) => x && x.active) as CatalogItem[];
+      const all = buildOwnedAllActive(staticItems, subBadges);
       for (const k of Object.keys(all) as Kind[]) {
         const cur = new Set<string>(owned[k] || []);
         for (const code of all[k] || []) cur.add(code);
@@ -227,36 +278,25 @@ cosmeticsRouter.get(
       }
     }
 
-    // ✅ free = base + badges sub actifs
-    const subBadges = await getActiveSubBadgeCodes(userId);
-    const free: Record<Kind, string[]> = {
-      ...BASE_FREE,
-      badge: Array.from(new Set([...(BASE_FREE.badge || []), ...subBadges])),
-    };
-
     res.json({
       ok: true,
       owned,
-      equipped:
-        eq.rows?.[0] || { username: null, badge: null, title: null, frame: null, hat: null },
-      free,
-      unlockAll, // debug (front peut ignorer)
+      equipped,
+      free: FREE,
+      unlockAll,
     });
   })
 );
 
 // ──────────────────────────────────────────
-// PATCH /me/cosmetics/equip (auth)
-// -> autorise badge_sub_<slug> si sub actif (ou unlockAll)
+// PATCH /me/cosmetics/equip
 // ──────────────────────────────────────────
 cosmeticsRouter.patch(
   "/me/cosmetics/equip",
   requireAuth,
   a(async (req: any, res) => {
     const userId = Number(req.user?.id);
-    if (!Number.isFinite(userId) || userId <= 0) {
-      return res.status(401).json({ ok: false, error: "unauthorized" });
-    }
+    if (!Number.isFinite(userId) || userId <= 0) return res.status(401).json({ ok: false, error: "unauthorized" });
 
     const username = await getReqUsername(req);
     const unlockAll = devUnlockAll(username);
@@ -300,29 +340,39 @@ cosmeticsRouter.patch(
 
     if (!code) return res.status(400).json({ ok: false, error: "bad_code" });
 
-    // ✅ base free
-    let isFree = (BASE_FREE[kind] || []).includes(code);
+    const isFree = (FREE[kind] || []).includes(code);
 
-    // ✅ special: badge_sub_<slug> autorisé si sub actif
-    if (kind === "badge" && code.startsWith("badge_sub_")) {
-      const slug = subSlugFromBadge(code);
-      if (!slug) return res.status(400).json({ ok: false, error: "bad_code" });
+    // ✅ badge_sub_<slug> : autorisé si sub actif (et badge activé côté streamer)
+    if (kind === "badge") {
+      const slug = isSubBadgeCode(code);
+      if (slug && !unlockAll) {
+        const ok = await userHasActiveSubToSlug(userId, slug);
+        if (!ok) return res.status(403).json({ ok: false, error: "not_owned" });
 
-      const ok = await hasActiveSubToSlug(userId, slug);
-      if (!ok && !unlockAll) return res.status(403).json({ ok: false, error: "not_owned" });
-
-      isFree = true; // treat as free if active sub (or unlockAll)
+        const upd = await pool.query(
+          `UPDATE user_equipped_cosmetics
+           SET ${col} = $2, updated_at = NOW()
+           WHERE user_id = $1
+           RETURNING username_code AS "username",
+                     badge_code    AS "badge",
+                     title_code    AS "title",
+                     frame_code    AS "frame",
+                     hat_code      AS "hat"`,
+          [userId, code]
+        );
+        return res.json({ ok: true, equipped: upd.rows?.[0] });
+      }
     }
 
-    // ✅ validation catalogue (évite typos/cheat)
-    // (on skip pour badge_sub_ car validé via join streamer_subscriptions)
-    if (!isFree && !(kind === "badge" && code.startsWith("badge_sub_"))) {
-      if (!catalogHas(kind, code)) {
+    // ✅ validation catalogue statique (évite typos/cheat) — pour les non-sub badges
+    if (!isFree) {
+      const staticItems = (COSMETICS_CATALOG || []).filter((x: any) => x && x.active) as CatalogItem[];
+      if (!catalogHas(staticItems, kind, code)) {
         return res.status(400).json({ ok: false, error: "unknown_code" });
       }
     }
 
-    // entitlement required (sauf free / unlockAll)
+    // entitlement requis (sauf free / unlockAll)
     if (!isFree && !unlockAll) {
       const check = await pool.query(
         `SELECT 1

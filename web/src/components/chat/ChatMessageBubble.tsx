@@ -18,9 +18,7 @@ export type ChatMsgLike = {
   body: string;
   createdAt: string;
 
-  // ✅ si tu passes l’URL d’avatar depuis l’API
   avatarUrl?: string | null;
-
   cosmetics?: ChatCosmetics | null;
 };
 
@@ -62,6 +60,35 @@ function normalizeTitle(title: any): { code: string; text: string; tier?: string
   return { code, text, tier };
 }
 
+function badgeStyle(b: any): React.CSSProperties | undefined {
+  if (!b) return undefined;
+
+  // tolérant: supporte {borderColor,textColor,backgroundColor} direct
+  // ou {meta:{...}}
+  const borderColor = b.borderColor ?? b.meta?.borderColor ?? null;
+  const textColor = b.textColor ?? b.meta?.textColor ?? null;
+  const backgroundColor = b.backgroundColor ?? b.meta?.backgroundColor ?? null;
+
+  if (!borderColor && !textColor && !backgroundColor) return undefined;
+
+  return {
+    ...(borderColor ? { borderColor: String(borderColor) } : null),
+    ...(textColor ? { color: String(textColor) } : null),
+    ...(backgroundColor ? { background: String(backgroundColor) } : null),
+  } as React.CSSProperties;
+}
+
+function badgeLabel(b: any): string {
+  const v =
+    b?.label ??
+    b?.text ??
+    b?.badgeText ??
+    b?.meta?.badgeText ??
+    b?.code ??
+    "";
+  return String(v);
+}
+
 export function ChatMessageBubble({
   msg,
   streamerAppearance,
@@ -80,14 +107,12 @@ export function ChatMessageBubble({
   const unameEffect = c?.username?.effect ?? "none";
   const skinUnameColor = c?.username?.color ?? null;
 
-  // ✅ règles streamer:
   // lvl 1: viewers skinnés gardent leur skin, sinon fallback streamer
-  // lvl 2: bloque couleurs pseudo (tout le monde = streamer)
+  // lvl 2: bloque couleurs pseudo
   // lvl 3: bloque couleurs pseudo + cadrans
   const allowViewerNameColor = lvl < 2;
   const effectiveUnameColor = allowViewerNameColor ? skinUnameColor : null;
 
-  // ✅ avatar image: on essaie plusieurs champs (tolérant)
   const avatarUrl =
     (msg as any)?.avatarUrl ??
     (c as any)?.avatarUrl ??
@@ -98,7 +123,7 @@ export function ChatMessageBubble({
   const [imgErr, setImgErr] = React.useState(false);
   React.useEffect(() => setImgErr(false), [avatarUrl]);
 
-  // ✅ hat: supporte "hat_carton_crown" ET "carton_crown"
+  // hat: supporte "hat_carton_crown" ET "carton_crown"
   const hatIdNorm = avatar?.hatId ? String(avatar.hatId).replace(/^hat_/, "") : null;
 
   const hatEmoji =
@@ -119,7 +144,6 @@ export function ChatMessageBubble({
       <div className="chatMsgInner">
         {/* Avatar */}
         <div className={`chatAvatarBorder ${avatarBorderClass((avatar as any).borderId)}`}>
-          {/* ✅ 1 seul "circle" → soit IMG soit initiales */}
           <div className="chatAvatarCircle">
             {avatarUrl && !imgErr ? (
               <img
@@ -136,7 +160,6 @@ export function ChatMessageBubble({
             )}
           </div>
 
-          {/* Hat par-dessus */}
           {hatEmoji ? (
             <div className="chatHatEmoji" aria-hidden="true">
               {hatEmoji}
@@ -151,10 +174,18 @@ export function ChatMessageBubble({
               {/* Badges */}
               {badges.length ? (
                 <div className="chatBadges">
-                  {badges.map((b) => (
-                    <span key={b.id} className={`chatBadge badge--${b.tier || "silver"}`}>
+                  {badges.map((b: any) => (
+                    <span
+                      key={b.id}
+                      className={`chatBadge badge--${b.tier || "silver"}`}
+                      style={{
+                        ...(b.borderColor ? { borderColor: b.borderColor } : null),
+                        ...(b.textColor ? { color: b.textColor } : null),
+                        ...(b.backgroundColor ? { backgroundColor: b.backgroundColor } : null),
+                      }}
+                    >
                       {b.icon ? <span className="chatBadgeIcon">{b.icon}</span> : null}
-                      {b.label}
+                      {badgeLabel(b)}
                     </span>
                   ))}
                 </div>
@@ -177,7 +208,7 @@ export function ChatMessageBubble({
             <div className="chatTimestamp">{formatHHMM(msg.createdAt)}</div>
           </div>
 
-          {/* ✅ Title UNDER username (no username animation, no titleEffectClass) */}
+          {/* Title UNDER username */}
           {titleInfo ? (
             <div
               className={`chatTitle ${titleTierClass(titleInfo.tier as any)}`}
@@ -188,8 +219,6 @@ export function ChatMessageBubble({
                 fontStyle: "italic",
                 textDecoration: "underline",
                 opacity: 0.95,
-
-                // ✅ coupe net toute anim héritée / appliquée par erreur
                 animation: "none",
                 textShadow: "none",
                 filter: "none",

@@ -9,46 +9,150 @@ export type ChatCosmetics = {
     hatId?: string | null;
     hatEmoji?: string | null;
     borderId?: string | null;
-    url?: string | null; // ✅ NEW (avatar upload)
+    url?: string | null; // ✅ avatar upload
   };
-  badges?: Array<{ id: string; label: string; tier?: string; icon?: string | null }>;
-  title?: { text: string; tier?: string; effect?: string } | null;
+  badges?: Array<{
+    id: string;
+    label: string;
+    tier?: string;
+    icon?: string | null;
+
+    // ✅ NEW: couleurs badge (si support côté front)
+    borderColor?: string | null;
+    textColor?: string | null;
+    backgroundColor?: string | null;
+
+    meta?: any;
+  }>;
+  title?: any; // ton ChatMessageBubble sait normaliser string/obj
 };
 
-function isUsernameEffectCode(code: string) {
-  // adapte si tu as d’autres patterns
-  return (
-    code.startsWith("uanim_") ||
-    code.includes("neon") ||
-    code.includes("rainbow") ||
-    code.includes("chroma") ||
-    code.includes("underline") ||
-    code.includes("toggle")
-  );
+function uniqInts(arr: any[]): number[] {
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const v of arr || []) {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) continue;
+    if (seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+  }
+  return out;
+}
+
+function clampBadgeText(s: any) {
+  const t = String(s || "").trim().replace(/[^\w\-]/g, "");
+  return (t || "SUB").slice(0, 8).toUpperCase();
 }
 
 function prettyBadgeLabel(code: string) {
   if (!code) return code;
   if (code === "badge_luna") return "LUNA";
   if (code === "badge_777") return "777";
-  // fallback : badge_xxx -> XXX
   if (code.startsWith("badge_")) return code.slice("badge_".length).toUpperCase();
   return code;
 }
 
-// on a besoin d'un BASE public pour construire les URLs avatar
+// username effect mapping (important : front attend des IDs courts)
+function mapUsernameEffect(code: string | null): string | null {
+  if (!code) return null;
+  const c = String(code).trim();
+  if (!c || c === "default" || c === "none") return null;
+
+  const map: Record<string, string> = {
+    uanim_chroma_toggle: "chroma",
+    uanim_gold_toggle: "gold",
+    uanim_rainbow_scroll: "rainbow_scroll",
+    uanim_neon_underline: "neon_underline",
+  };
+
+  return map[c] ?? c; // fallback: si t’as déjà des ids "rainbow_scroll" etc
+}
+
+function isProbablyHexColor(s: string) {
+  return /^#?[0-9a-fA-F]{6}$/.test(String(s || "").trim());
+}
+
+function frameIdFromCode(code: string) {
+  return String(code || "")
+    .trim()
+    .replace(/^m?frame_/, "")
+    .replace(/_(shop|event|master)$/, "");
+}
+
+function mapHat(code: string | null): { hatId: string; hatEmoji: string } | null {
+  if (!code) return null;
+  const c = String(code).trim();
+  if (!c || c === "none") return null;
+
+  const map: Record<string, string> = {
+    hat_luna_cap: "luna_cap",
+    hat_carton_crown: "carton_crown",
+    hat_demon_horn: "demon_horn",
+    hat_eclipse_halo: "eclipse_halo",
+    hat_astral_helmet: "astral_helmet",
+    hat_lotus_aureole: "lotus_aureole",
+  };
+  const hatId = map[c] ?? c.replace(/^hat_/, "");
+
+  const EMOJI: Record<string, string> = {
+    luna_cap: "🧢",
+    carton_crown: "👑",
+    demon_horn: "😈",
+    eclipse_halo: "⭕",
+    astral_helmet: "🪖",
+    lotus_aureole: "🪷",
+  };
+
+  return { hatId, hatEmoji: EMOJI[hatId] ?? "🧢" };
+}
+
+// BASE public pour construire l’URL avatar
 const PUBLIC_API_BASE = String(
   process.env.PUBLIC_API_BASE ||
     process.env.RENDER_EXTERNAL_URL ||
     "https://lunalive-api.onrender.com"
 ).replace(/\/$/, "");
 
+type SubInfo = {
+  slugLower: string;
+  slug: string;
+  displayName: string;
+  appearance: any;
+};
+
+function buildSubBadge(code: string, info: SubInfo) {
+  const ap = info.appearance || {};
+  const b = ap?.chat?.sub?.badge || {};
+
+  if (b.enabled === false) return null;
+
+  const label = clampBadgeText(b.text);
+  const borderColor = String(b.borderColor || "#7C4DFF");
+  const textColor = String(b.textColor || "#FFFFFF");
+
+  return {
+    id: `sub:${info.slugLower}`,
+    label,
+    tier: "silver",
+    borderColor,
+    textColor,
+    backgroundColor: "transparent",
+    meta: {
+      kind: "sub_badge",
+      code,
+      streamerSlug: info.slug,
+      streamerName: info.displayName,
+    },
+  };
+}
+
 export async function getChatCosmeticsForUsers(userIds: number[]) {
-  const ids = Array.from(new Set((userIds || []).map((x) => Number(x)).filter((x) => x > 0)));
+  const ids = uniqInts(userIds);
   const out = new Map<number, ChatCosmetics>();
   if (!ids.length) return out;
 
-  // ✅ on joint user_avatars pour savoir si l’avatar existe + version cache-bust
+  // ✅ join user_avatars pour cache-bust
   const r = await pool.query(
     `SELECT
         ue.user_id,
@@ -64,6 +168,57 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
     [ids]
   );
 
+  // 1) collect needed SUB badges
+  const needSubs: Array<{ userId: number; slugLower: string; code: string }> = [];
+  const needSlugSet = new Set<string>();
+
+  for (const row of r.rows || []) {
+    const userId = Number(row.user_id);
+    const badgeCode = row.badge_code ? String(row.badge_code) : null;
+    if (badgeCode && badgeCode.startsWith("badge_sub_")) {
+      const slug = badgeCode.slice("badge_sub_".length).trim();
+      if (!slug) continue;
+      const slugLower = slug.toLowerCase();
+      needSubs.push({ userId, slugLower, code: badgeCode });
+      needSlugSet.add(slugLower);
+    }
+  }
+
+  // 2) bulk fetch active subs + streamer appearance
+  const subsByUser = new Map<number, Map<string, SubInfo>>();
+  if (needSubs.length) {
+    const slugs = Array.from(needSlugSet);
+    const sr = await pool.query(
+      `SELECT
+         ss.user_id AS user_id,
+         lower(s.slug) AS slug_lower,
+         s.slug AS slug,
+         COALESCE(s.display_name, s.slug) AS display_name,
+         s.appearance AS appearance
+       FROM streamer_subscriptions ss
+       JOIN streamers s ON s.id = ss.streamer_id
+       WHERE ss.user_id = ANY($1::int[])
+         AND ss.expires_at > NOW()
+         AND lower(s.slug) = ANY($2::text[])`,
+      [ids, slugs]
+    );
+
+    for (const row of sr.rows || []) {
+      const userId = Number(row.user_id);
+      const slugLower = String(row.slug_lower || "").toLowerCase();
+      if (!slugLower) continue;
+
+      if (!subsByUser.has(userId)) subsByUser.set(userId, new Map());
+      subsByUser.get(userId)!.set(slugLower, {
+        slugLower,
+        slug: String(row.slug || ""),
+        displayName: String(row.display_name || row.slug || ""),
+        appearance: row.appearance || {},
+      });
+    }
+  }
+
+  // 3) build cosmetics
   for (const row of r.rows || []) {
     const userId = Number(row.user_id);
 
@@ -75,40 +230,62 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
 
     const cosmetics: ChatCosmetics = {};
 
-    // username: 1 seul code -> soit color soit effect
+    // username
     if (usernameCode && usernameCode !== "default") {
-      cosmetics.username = isUsernameEffectCode(usernameCode)
-        ? { effect: usernameCode, color: null }
-        : { color: usernameCode, effect: null };
+      const eff = mapUsernameEffect(usernameCode);
+      if (eff && !isProbablyHexColor(usernameCode)) {
+        cosmetics.username = { effect: eff, color: null };
+      } else {
+        // si tu stockes une couleur "#RRGGBB" dans username_code
+        const c = usernameCode.startsWith("#") ? usernameCode : `#${usernameCode}`;
+        cosmetics.username = { color: c, effect: null };
+      }
     }
 
+    // frame
     if (frameCode && frameCode !== "none") {
-      cosmetics.frame = { frameId: frameCode };
+      cosmetics.frame = { frameId: frameIdFromCode(frameCode) };
     }
 
-    if (hatCode && hatCode !== "none") {
-      cosmetics.avatar = { hatId: hatCode };
+    // hat
+    const hat = mapHat(hatCode);
+    if (hat) {
+      cosmetics.avatar = cosmetics.avatar || {};
+      cosmetics.avatar.hatId = hat.hatId;
+      cosmetics.avatar.hatEmoji = hat.hatEmoji;
     }
 
-    // ✅ avatar url (si avatar en DB)
+    // avatar url
     if (row.avatar_updated_at) {
       const v = new Date(row.avatar_updated_at).getTime();
       cosmetics.avatar = cosmetics.avatar || {};
       cosmetics.avatar.url = `${PUBLIC_API_BASE}/avatars/u/${userId}?v=${v}`;
     }
 
+    // badge
     if (badgeCode && badgeCode !== "none") {
-      cosmetics.badges = [
-        {
-          id: badgeCode,
-          label: prettyBadgeLabel(badgeCode), // ✅ LUNA au lieu de badge_luna
-          tier: "silver",
-        },
-      ];
+      if (badgeCode.startsWith("badge_sub_")) {
+        const slugLower = badgeCode.slice("badge_sub_".length).trim().toLowerCase();
+        const info = slugLower ? subsByUser.get(userId)?.get(slugLower) : null;
+
+        // ✅ si la sub est active -> badge custom ; sinon -> rien
+        const b = info ? buildSubBadge(badgeCode, info) : null;
+        cosmetics.badges = b ? [{ id: badgeCode, ...b }] : [];
+      } else {
+        cosmetics.badges = [
+          {
+            id: badgeCode,
+            label: prettyBadgeLabel(badgeCode),
+            tier: "silver",
+          },
+        ];
+      }
     }
 
+    // title
     if (titleCode && titleCode !== "none") {
-      cosmetics.title = { text: titleCode, tier: "silver", effect: "none" };
+      // ton ChatMessageBubble normalise aussi une string direct
+      cosmetics.title = titleCode;
     }
 
     out.set(userId, cosmetics);

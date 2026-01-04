@@ -60,8 +60,10 @@ export type CosmeticItem = {
   meta?: any;
 };
 
-export async function cosmeticsCatalog(): Promise<{ ok: true; items: CosmeticItem[] }> {
-  return j<{ ok: true; items: CosmeticItem[] }>("/cosmetics/catalog");
+export async function cosmeticsCatalog(token?: string | null): Promise<{ ok: true; items: CosmeticItem[] }> {
+  return j<{ ok: true; items: CosmeticItem[] }>("/cosmetics/catalog", {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
 }
 
 export async function getMyStreamer(token: string) {
