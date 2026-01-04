@@ -145,6 +145,18 @@ export function ChatPanel({
   // ✅ init scroll flag
   const pendingInitScrollRef = React.useRef(false);
 
+  // ✅ NEW: "stick to bottom" (auto-follow) pour rester collé au dernier msg
+  const stickyUntilRef = React.useRef<number>(0);
+  const stickySeqRef = React.useRef<number>(0);
+  const pendingStickyScrollRef = React.useRef(false);
+
+  function isNearBottom(extraPx: number = 140) {
+    const el = listRef.current;
+    if (!el) return true;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    return dist < extraPx;
+  }
+
   const myId = join?.me?.id != null ? Number(join.me.id) : null;
 
   /* -------------------------
@@ -384,11 +396,20 @@ export function ChatPanel({
     if (!el) return;
 
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const atBottom = dist < 40;
+
+    // ✅ seuil plus tolérant (images/badges qui chargent)
+    const atBottom = dist < 140;
     atBottomRef.current = atBottom;
 
-    if (atBottom) setShowJump(false);
-    else setShowJump(true);
+    if (atBottom) {
+      setShowJump(false);
+    } else {
+      setShowJump(true);
+
+      // ✅ si l'utilisateur remonte, on stop le "stick"
+      stickyUntilRef.current = 0;
+      stickySeqRef.current++;
+    }
   }
 
   // ✅ init scroll en bas après rendu réel des messages
@@ -411,6 +432,37 @@ export function ChatPanel({
     }, 80);
 
     pendingInitScrollRef.current = false;
+  }, [messages.length, initialLoading]);
+
+    // ✅ NEW: si on était en bas quand un msg arrive => on force le scroll au bottom (multi-pass)
+  React.useLayoutEffect(() => {
+    if (!pendingStickyScrollRef.current) return;
+    pendingStickyScrollRef.current = false;
+    if (initialLoading) return;
+
+    const until = stickyUntilRef.current;
+    if (!until || until < Date.now()) return;
+
+    const seq = ++stickySeqRef.current;
+
+    const doScroll = () => {
+      if (seq !== stickySeqRef.current) return;
+      if (!stickyUntilRef.current || stickyUntilRef.current < Date.now()) return;
+      scrollToBottom("auto");
+    };
+
+    // plusieurs passes (rAF + timeouts) pour couvrir images/fonts/cosmétiques
+    doScroll();
+    requestAnimationFrame(doScroll);
+    const t1 = window.setTimeout(doScroll, 80);
+    const t2 = window.setTimeout(doScroll, 220);
+    const t3 = window.setTimeout(doScroll, 600);
+
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
   }, [messages.length, initialLoading]);
 
   /* =========================================================
@@ -504,16 +556,25 @@ export function ChatPanel({
     });
 
     socket.on("chat:message", (msg: ChatMsg) => {
+      // ✅ on check "vraiment" si on est proche du bottom
+      const wasAtBottom = isNearBottom(140);
+
+      if (wasAtBottom) {
+        // ✅ on active un mode "stick" pendant un court instant
+        stickyUntilRef.current = Date.now() + 1500; // 1.5s suffisent
+        pendingStickyScrollRef.current = true;
+      }
+
       setMessages((prev) => {
         const next = [...prev, msg];
         if (next.length > 50) next.splice(0, next.length - 50);
         return next;
       });
 
-      requestAnimationFrame(() => {
-        if (atBottomRef.current) scrollToBottom("auto");
-        else setShowJump(true);
-      });
+      // UX: si pas en bas => montre le bouton jump
+      if (!wasAtBottom) {
+        requestAnimationFrame(() => setShowJump(true));
+      }
     });
 
     // ✅ NEW: settings broadcast
