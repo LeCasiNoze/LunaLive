@@ -140,6 +140,9 @@ export function ChatPanel({
   const atBottomRef = React.useRef(true);
   const [showJump, setShowJump] = React.useState(false);
 
+  // ✅ NEW: init scroll flag
+  const pendingInitScrollRef = React.useRef(false);
+
   const myId = join?.me?.id != null ? Number(join.me.id) : null;
 
   /* -------------------------
@@ -373,6 +376,30 @@ export function ChatPanel({
     else setShowJump(true);
   }
 
+  // ✅ FIX: init scroll en bas après rendu réel des messages
+  React.useLayoutEffect(() => {
+    if (!pendingInitScrollRef.current) return;
+    if (initialLoading) return;
+
+    const el = listRef.current;
+    if (!el) return;
+
+    // 1 passe
+    el.scrollTop = el.scrollHeight;
+    atBottomRef.current = true;
+    setShowJump(false);
+
+    // 2e passe (fonts/images/layout)
+    requestAnimationFrame(() => {
+      if (atBottomRef.current) scrollToBottom("auto");
+    });
+    window.setTimeout(() => {
+      if (atBottomRef.current) scrollToBottom("auto");
+    }, 80);
+
+    pendingInitScrollRef.current = false;
+  }, [messages.length, initialLoading]);
+
   /* =========================================================
      Socket helpers
      ========================================================= */
@@ -389,7 +416,7 @@ export function ChatPanel({
       const j = await r.json();
       if (!j?.ok) throw new Error(j?.error || "messages_failed");
       setMessages(j.messages || []);
-      requestAnimationFrame(() => scrollToBottom("auto"));
+      pendingInitScrollRef.current = true; // ✅ init scroll en bas
     } finally {
       setInitialLoading(false);
     }
@@ -430,6 +457,7 @@ export function ChatPanel({
     setShowJump(false);
     atBottomRef.current = true;
     setInitialLoading(true);
+    pendingInitScrollRef.current = false;
 
     try {
       sockRef.current?.disconnect();
@@ -473,6 +501,7 @@ export function ChatPanel({
 
     socket.on("chat:cleared", () => {
       setMessages([]);
+      pendingInitScrollRef.current = true;
       requestAnimationFrame(() => scrollToBottom("auto"));
     });
 

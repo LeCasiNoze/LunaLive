@@ -1,8 +1,8 @@
 // web/src/pages/streamer/StreamerPage.tsx
 import * as React from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { watchHeartbeat, subscribeStreamer, me } from "../../lib/api";
+import { watchHeartbeat, subscribeStreamer, me, getLives } from "../../lib/api";
 import { DlivePlayer } from "../../components/DlivePlayer";
 import { ChatPanel } from "../../components/ChatPanel";
 import { LoginModal } from "../../components/LoginModal";
@@ -37,6 +37,10 @@ export default function StreamerPage() {
   const myRole = auth?.user?.role ?? "guest";
   const myUserId = auth?.user?.id != null ? Number(auth.user.id) : null;
 
+  const navigate = useNavigate();
+  const location = useLocation();
+  const hostedBy = React.useMemo(() => new URLSearchParams(location.search).get("hostedBy"), [location.search]);
+
   const [loginOpen, setLoginOpen] = React.useState(false);
   const [tab, setTab] = React.useState<TabKey>("about");
   const [liveViewersNow, setLiveViewersNow] = React.useState<number | null>(null);
@@ -52,6 +56,14 @@ export default function StreamerPage() {
   const [giftStatus, setGiftStatus] = React.useState<GiftStatus | null>(null);
   const [claimLoading, setClaimLoading] = React.useState(false);
   const [claimError, setClaimError] = React.useState<string | null>(null);
+
+  // ✅ HOST state (owner only)
+  const [hostOpen, setHostOpen] = React.useState(false);
+  const [hostBusy, setHostBusy] = React.useState(false);
+  const [hostError, setHostError] = React.useState<string | null>(null);
+  const [hostQuery, setHostQuery] = React.useState("");
+  const [hostLives, setHostLives] = React.useState<any[]>([]);
+  const [hostOverride, setHostOverride] = React.useState<{ slug: string | null; displayName: string | null } | null>(null);
 
   const { isMobile, isPortrait } = useResponsive();
   const { cinema, chatOpen, enterCinema, leaveCinema, openCinemaChat, closeCinemaChat } = useCinema(isMobile);
@@ -73,6 +85,34 @@ export default function StreamerPage() {
     streamer?.ownerUserId != null &&
     Number(streamer.ownerUserId) === Number(myUserId)
   );
+
+  // host target from API + override after POST
+  const hostTargetSlug = hostOverride?.slug ?? (streamer as any)?.hostTargetSlug ?? null;
+  const hostTargetDisplayName = hostOverride?.displayName ?? (streamer as any)?.hostTargetDisplayName ?? null;
+  const hostTargetIsLive = !!((streamer as any)?.hostTargetIsLive);
+
+  React.useEffect(() => {
+    setHostOverride(null);
+  }, [slug]);
+
+  // ✅ viewer redirect if host active
+  React.useEffect(() => {
+    if (!slug) return;
+    if (!streamer) return;
+    if (isOwner) return;
+    if (hostedBy) return;
+
+    if (!hostTargetSlug || !hostTargetIsLive) return;
+    if (String(hostTargetSlug).toLowerCase() === String(slug).toLowerCase()) return;
+
+    const t = window.setTimeout(() => {
+      navigate(`/s/${encodeURIComponent(String(hostTargetSlug))}?hostedBy=${encodeURIComponent(String(slug))}`, {
+        replace: true,
+      });
+    }, 900);
+
+    return () => window.clearTimeout(t);
+  }, [slug, streamer, isOwner, hostTargetSlug, hostTargetIsLive, hostedBy, navigate]);
 
   async function refreshMeIfPossible() {
     if (!token) return;
@@ -264,6 +304,31 @@ export default function StreamerPage() {
         onClose={() => chest.setToast(null)}
       />
 
+      {/* ✅ Banner si on arrive depuis un host */}
+      {hostedBy ? (
+        <div className="panel" style={{ marginBottom: 12, padding: 12 }}>
+          <div className="mutedSmall">
+            📺 Hosté par{" "}
+            <strong style={{ color: "rgba(255,255,255,0.9)" }}>
+              @{hostedBy}
+            </strong>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ✅ Si on est viewer sur une chaîne hostée : info (le redirect arrive juste après) */}
+      {!isOwner && hostTargetSlug && hostTargetIsLive ? (
+        <div className="panel" style={{ marginBottom: 12, padding: 12 }}>
+          <div className="mutedSmall">
+            📺 Chaîne hostée → redirection vers{" "}
+            <strong style={{ color: "rgba(255,255,255,0.9)" }}>
+              {hostTargetDisplayName ? hostTargetDisplayName : `@${hostTargetSlug}`}
+            </strong>
+            …
+          </div>
+        </div>
+      ) : null}
+
       {/* Header */}
       <div className="panel streamHeaderBar">
         <div className="streamHeaderLeft">
@@ -315,6 +380,22 @@ export default function StreamerPage() {
               >
                 Sub
               </button>
+
+              {/* ✅ HOST button owner */}
+              {isOwner ? (
+                <button
+                  type="button"
+                  className="btnGhostSmall"
+                  onClick={() => {
+                    if (!token) return setLoginOpen(true);
+                    setHostError(null);
+                    setHostOpen(true);
+                  }}
+                  title="Host quelqu’un"
+                >
+                  Host
+                </button>
+              ) : null}
 
               {/* ✅ Claim button si gifts dispo */}
               {giftStatus?.remaining ? (
@@ -614,6 +695,166 @@ export default function StreamerPage() {
         giftLoading={giftLoading}
         giftError={giftError}
       />
+
+      {/* ✅ HOST modal */}
+      {hostOpen ? (
+        <div className="chatSheetBackdrop" onClick={() => setHostOpen(false)} role="presentation" style={{ zIndex: 60 }}>
+          <div
+            className="chatSheet"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            style={{ maxWidth: 560 }}
+          >
+            <div className="chatSheetTop">
+              <div style={{ fontWeight: 950 }}>Host</div>
+              <button className="iconBtn" onClick={() => setHostOpen(false)} type="button" aria-label="Fermer">
+                ✕
+              </button>
+            </div>
+
+            <div className="chatSheetBody" style={{ padding: 16 }}>
+              {hostTargetSlug ? (
+                <div className="panel" style={{ marginBottom: 12 }}>
+                  <div className="mutedSmall">Host actuel</div>
+                  <div style={{ fontWeight: 950, marginTop: 4 }}>
+                    {hostTargetDisplayName ? hostTargetDisplayName : `@${hostTargetSlug}`}
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                    <button
+                      type="button"
+                      className="btnPrimarySmall"
+                      disabled={hostBusy}
+                      onClick={async () => {
+                        if (!token || !slug) return;
+                        setHostBusy(true);
+                        setHostError(null);
+                        try {
+                          const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/host`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ targetSlug: null }),
+                          }).then((x) => x.json());
+                          if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+                          setHostOverride({ slug: null, displayName: null });
+                        } catch (e: any) {
+                          setHostError(String(e?.message || "Erreur"));
+                        } finally {
+                          setHostBusy(false);
+                        }
+                      }}
+                    >
+                      {hostBusy ? "…" : "Stop host"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                <input
+                  value={hostQuery}
+                  onChange={(e) => setHostQuery(e.target.value)}
+                  placeholder="Rechercher un streamer live…"
+                  style={{
+                    flex: 1,
+                    padding: "12px 12px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "rgba(0,0,0,0.25)",
+                    color: "white",
+                    fontWeight: 800,
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btnGhostSmall"
+                  disabled={hostBusy}
+                  onClick={async () => {
+                    setHostBusy(true);
+                    setHostError(null);
+                    try {
+                      const lives = await getLives();
+                      const arr = (lives as any[]).filter(
+                        (x) => String(x.slug || "").toLowerCase() !== String(slug || "").toLowerCase()
+                      );
+                      setHostLives(arr);
+                    } catch (e: any) {
+                      setHostError(String(e?.message || "Erreur"));
+                    } finally {
+                      setHostBusy(false);
+                    }
+                  }}
+                >
+                  {hostBusy ? "…" : "Refresh"}
+                </button>
+              </div>
+
+              {hostError ? (
+                <div className="mutedSmall" style={{ marginBottom: 10, color: "rgba(255,90,90,0.95)" }}>
+                  {hostError}
+                </div>
+              ) : null}
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {(hostLives || [])
+                  .filter((x) => {
+                    const q = hostQuery.trim().toLowerCase();
+                    if (!q) return true;
+                    return (
+                      String(x.displayName || x.slug || "").toLowerCase().includes(q) ||
+                      String(x.slug || "").toLowerCase().includes(q)
+                    );
+                  })
+                  .slice(0, 30)
+                  .map((x) => (
+                    <button
+                      key={String(x.id || x.slug)}
+                      type="button"
+                      className="btnGhostSmall"
+                      disabled={hostBusy}
+                      onClick={async () => {
+                        if (!token || !slug) return;
+                        const target = String(x.slug || "").trim();
+                        if (!target) return;
+
+                        setHostBusy(true);
+                        setHostError(null);
+                        try {
+                          const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/host`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ targetSlug: target }),
+                          }).then((xx) => xx.json());
+
+                          if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+                          setHostOverride({ slug: r.hostTargetSlug, displayName: r.hostTargetDisplayName });
+                          setHostOpen(false);
+                        } catch (e: any) {
+                          setHostError(String(e?.message || "Erreur"));
+                        } finally {
+                          setHostBusy(false);
+                        }
+                      }}
+                      style={{ justifyContent: "space-between", display: "flex" }}
+                    >
+                      <span style={{ fontWeight: 950 }}>{x.displayName || `@${x.slug}`}</span>
+                      <span className="mutedSmall" style={{ opacity: 0.85 }}>
+                        {Number(x.viewers || 0)} viewers
+                      </span>
+                    </button>
+                  ))}
+              </div>
+
+              {!hostLives?.length ? (
+                <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.8 }}>
+                  Clique “Refresh” pour charger la liste des lives.
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>

@@ -104,12 +104,24 @@ publicRouter.get(
 
         -- provider assigné
         pa.channel_slug AS "providerChannelSlug",
-        pa.channel_username AS "providerChannelUsername"
+        pa.channel_username AS "providerChannelUsername",
+
+        -- ✅ HOST
+        hs.slug AS "hostTargetSlug",
+        hs.display_name AS "hostTargetDisplayName",
+        hs.is_live AS "hostTargetIsLive"
 
       FROM streamers s
       LEFT JOIN provider_accounts pa
         ON pa.assigned_to_streamer_id = s.id
       AND pa.provider='dlive'
+
+      LEFT JOIN streamer_hosts h
+        ON h.hoster_streamer_id = s.id
+      LEFT JOIN streamers hs
+        ON hs.id = h.target_streamer_id
+      AND (hs.suspended_until IS NULL OR hs.suspended_until < NOW())
+
       WHERE s.slug = $1
         AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
       LIMIT 1
@@ -134,12 +146,22 @@ publicRouter.get(
     row.channelSlug = linkedSlug || providerSlug || null;
     row.channelUsername = (useLinked ? linkedUsername : providerUsername) || null;
 
+    // ✅ host actif seulement si target live
+    const hostTargetIsLive = !!row.hostTargetIsLive;
+    const hostTargetSlug =
+      hostTargetIsLive && row.hostTargetSlug ? String(row.hostTargetSlug).trim() : null;
+    const hostTargetDisplayName =
+      hostTargetIsLive && row.hostTargetDisplayName ? String(row.hostTargetDisplayName).trim() : null;
+
     // cleanup (ne pas leak les champs internes)
     delete row.dliveUseLinked;
     delete row.dliveLinkedDisplayname;
     delete row.dliveLinkedUsername;
     delete row.providerChannelSlug;
     delete row.providerChannelUsername;
+
+    // (optionnel) tu peux delete aussi hostTargetIsLive si tu veux
+    // delete row.hostTargetIsLive;
 
     const c = await pool.query(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id = $1`, [
       Number(row.id),
@@ -176,6 +198,106 @@ publicRouter.get(
       followsCount,
       isFollowing,
       ...(me?.id ? { notifyEnabled: isFollowing ? notifyEnabled : false } : {}),
+
+      // ✅ HOST exposed
+      hostTargetSlug,
+      hostTargetDisplayName,
+      hostTargetIsLive: hostTargetIsLive && !!hostTargetSlug,
+    });
+  })
+);
+
+/**
+ * ✅ HOST (owner/admin)
+ * POST /streamers/:slug/host
+ * Body: { targetSlug: string | null }
+ */
+publicRouter.post(
+  "/streamers/:slug/host",
+  requireAuth,
+  a(async (req, res) => {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
+
+    const requesterId = Number(req.user!.id);
+    const requesterRole = String((req.user as any)?.role || "viewer");
+
+    const s = await pool.query(
+      `SELECT id, slug, display_name AS "displayName", user_id AS "ownerUserId"
+       FROM streamers
+       WHERE lower(slug)=lower($1)
+         AND (suspended_until IS NULL OR suspended_until < NOW())
+       LIMIT 1`,
+      [slug]
+    );
+    const hoster = s.rows?.[0];
+    if (!hoster) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    const isOwner = Number(hoster.ownerUserId) === requesterId;
+    const isAdmin = requesterRole === "admin";
+    if (!isOwner && !isAdmin) return res.status(403).json({ ok: false, error: "forbidden" });
+
+    const targetSlugRaw = (req.body as any)?.targetSlug;
+    const targetSlug = targetSlugRaw == null ? "" : String(targetSlugRaw).trim();
+
+    // ✅ STOP host
+    if (!targetSlug) {
+      await pool.query(
+        `INSERT INTO streamer_hosts (hoster_streamer_id, target_streamer_id, updated_at)
+         VALUES ($1, NULL, now())
+         ON CONFLICT (hoster_streamer_id) DO UPDATE
+           SET target_streamer_id=NULL, updated_at=now()`,
+        [Number(hoster.id)]
+      );
+
+      const io = req.app.locals.io;
+      if (io) {
+        const msg = chatStore.addSystem(String(hoster.slug), `🛑 Host arrêté.`);
+        io.to(`chat:${String(hoster.slug)}`).emit("chat:message", msg);
+      }
+
+      return res.json({ ok: true, hostTargetSlug: null, hostTargetDisplayName: null, hostTargetIsLive: false });
+    }
+
+    // ✅ TARGET must exist + live
+    const t = await pool.query(
+      `SELECT id, slug, display_name AS "displayName", is_live AS "isLive"
+       FROM streamers
+       WHERE lower(slug)=lower($1)
+         AND (suspended_until IS NULL OR suspended_until < NOW())
+       LIMIT 1`,
+      [targetSlug]
+    );
+    const target = t.rows?.[0];
+    if (!target) return res.status(404).json({ ok: false, error: "target_not_found" });
+    if (!target.isLive) return res.status(400).json({ ok: false, error: "target_not_live" });
+
+    if (String(target.slug).toLowerCase() === String(hoster.slug).toLowerCase()) {
+      return res.status(400).json({ ok: false, error: "cannot_host_self" });
+    }
+
+    await pool.query(
+      `INSERT INTO streamer_hosts (hoster_streamer_id, target_streamer_id, updated_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (hoster_streamer_id) DO UPDATE
+         SET target_streamer_id=EXCLUDED.target_streamer_id, updated_at=now()`,
+      [Number(hoster.id), Number(target.id)]
+    );
+
+    const io = req.app.locals.io;
+    if (io) {
+      const msg = chatStore.addSystem(
+        String(hoster.slug),
+        `📺 ${String(hoster.displayName || hoster.slug)} host ${String(target.displayName || target.slug)} !`
+      );
+      io.to(`chat:${String(hoster.slug)}`).emit("chat:message", msg);
+    }
+
+    return res.json({
+      ok: true,
+      hostTargetSlug: String(target.slug),
+      hostTargetDisplayName: String(target.displayName || target.slug),
+      hostTargetIsLive: true,
     });
   })
 );

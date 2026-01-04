@@ -14,6 +14,11 @@ export type StreamerNormalized = {
   offlineBgUrl: string | null;
   liveStartedAtMs: number | null;
   ownerUserId: number;
+
+  // ✅ HOST
+  hostTargetSlug: string | null;
+  hostTargetDisplayName: string | null;
+  hostTargetIsLive: boolean;
 };
 
 function normalizeStreamer(response: any): StreamerNormalized {
@@ -36,6 +41,11 @@ function normalizeStreamer(response: any): StreamerNormalized {
     response?.userId ??
     0;
 
+  // ✅ HOST fields (API renvoie camelCase)
+  const hostTargetSlug = (s?.hostTargetSlug ?? s?.host_target_slug) || null;
+  const hostTargetDisplayName = (s?.hostTargetDisplayName ?? s?.host_target_display_name) || null;
+  const hostTargetIsLive = !!(s?.hostTargetIsLive ?? s?.host_target_is_live);
+
   return {
     raw: s,
     title: String(s?.title || "Stream"),
@@ -47,6 +57,10 @@ function normalizeStreamer(response: any): StreamerNormalized {
     offlineBgUrl: (s?.offlineBgUrl ?? s?.offline_bg_url) || null,
     liveStartedAtMs,
     ownerUserId: Number(ownerRaw || 0),
+
+    hostTargetSlug: hostTargetSlug ? String(hostTargetSlug) : null,
+    hostTargetDisplayName: hostTargetDisplayName ? String(hostTargetDisplayName) : null,
+    hostTargetIsLive: !!hostTargetIsLive,
   };
 }
 
