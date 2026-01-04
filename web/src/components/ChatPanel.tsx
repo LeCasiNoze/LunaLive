@@ -979,7 +979,7 @@ export function ChatPanel({
           </button>
 
           {/* ✅ FIX: on affiche tant que ce n'est PAS confirmé "déjà sub" */}
-          {!targetIsSelf && isAuthed && menu.isTargetSub !== true ? (
+          {!targetIsSelf && menu.isTargetSub !== true ? (
             <button
               onClick={() => doGiftSub(menu.msg!)}
               disabled={!!menu.giftSubLoading}
