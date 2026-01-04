@@ -1,27 +1,62 @@
 // api/src/routes/streamer_tabs.ts
-import { Router, type Request, type Response, type NextFunction } from "express";
+import { Router } from "express";
 import { pool } from "../db.js";
+import { a } from "../utils/async.js";
 import { requireAuth, type AuthUser } from "../auth.js";
 
 export const streamerTabsRouter = Router();
 
-function a(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<any>
-) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
-  };
+/**
+ * On détecte le nom réel de la colonne "owner" sur streamers
+ * (ex: owner_user_id vs owneruserid vs owner_id).
+ * Cache en mémoire pour éviter de requery à chaque requête.
+ */
+let cachedOwnerCol: string | null | undefined;
+
+async function resolveOwnerCol(): Promise<string | null> {
+  if (cachedOwnerCol !== undefined) return cachedOwnerCol;
+
+  const { rows } = await pool.query(
+    `
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema='public'
+      AND table_name='streamers'
+      AND column_name IN ('owner_user_id','owneruserid','owner_id')
+    `
+  );
+
+  const set = new Set(rows.map((r: any) => String(r.column_name)));
+
+  if (set.has("owner_user_id")) cachedOwnerCol = "owner_user_id";
+  else if (set.has("owneruserid")) cachedOwnerCol = "owneruserid";
+  else if (set.has("owner_id")) cachedOwnerCol = "owner_id";
+  else cachedOwnerCol = null;
+
+  return cachedOwnerCol;
 }
 
 async function getStreamerCore(slug: string) {
-  const { rows } = await pool.query(
-    `SELECT id, owner_user_id
-     FROM streamers
-     WHERE lower(slug) = lower($1)
-     LIMIT 1`,
-    [slug]
-  );
-  return rows[0] as null | { id: number; owner_user_id: number | null };
+  const ownerCol = await resolveOwnerCol();
+
+  const sql = ownerCol
+    ? `SELECT id, ${ownerCol} AS owner_user_id
+       FROM streamers
+       WHERE lower(slug) = lower($1)
+       LIMIT 1`
+    : `SELECT id, NULL::int AS owner_user_id
+       FROM streamers
+       WHERE lower(slug) = lower($1)
+       LIMIT 1`;
+
+  const { rows } = await pool.query(sql, [slug]);
+  const r = rows[0];
+  if (!r) return null;
+
+  return {
+    id: Number(r.id),
+    owner_user_id: r.owner_user_id == null ? null : Number(r.owner_user_id),
+  };
 }
 
 function canEdit(user: AuthUser, ownerUserId: number | null) {
@@ -72,8 +107,11 @@ streamerTabsRouter.put(
     if (!slug) return res.status(400).json({ ok: false, error: "BAD_SLUG" });
 
     const user = (req as any).user as AuthUser;
+
     const core = await getStreamerCore(slug);
     if (!core) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+
+    // si on n'a pas trouvé de colonne owner -> seuls les admins pourront éditer
     if (!canEdit(user, core.owner_user_id)) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
 
     const blocks = Array.isArray((req.body as any)?.blocks) ? (req.body as any).blocks : null;
@@ -101,8 +139,9 @@ streamerTabsRouter.put(
 
       await client.query("COMMIT");
       return res.json({ ok: true });
-    } catch (e: any) {
+    } catch (e) {
       try { await client.query("ROLLBACK"); } catch {}
+      console.error("[streamer_tabs/about] db error", e);
       return res.status(500).json({ ok: false, error: "DB_ERROR" });
     } finally {
       client.release();
@@ -155,8 +194,10 @@ streamerTabsRouter.put(
     if (!slug) return res.status(400).json({ ok: false, error: "BAD_SLUG" });
 
     const user = (req as any).user as AuthUser;
+
     const core = await getStreamerCore(slug);
     if (!core) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+
     if (!canEdit(user, core.owner_user_id)) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
 
     const rules = Array.isArray((req.body as any)?.rules) ? (req.body as any).rules : null;
@@ -183,16 +224,18 @@ streamerTabsRouter.put(
         const dateYmd = kind === "event" ? (String(r.date || "").trim() || null) : null;
 
         await client.query(
-          `INSERT INTO streamer_agenda_rules (streamer_id, kind, title, color, day_of_week, date_ymd, start_time, end_time)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          `INSERT INTO streamer_agenda_rules
+            (streamer_id, kind, title, color, day_of_week, date_ymd, start_time, end_time)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
           [core.id, kind, title, color, dayOfWeek, dateYmd, startTime, endTime]
         );
       }
 
       await client.query("COMMIT");
       return res.json({ ok: true });
-    } catch (e: any) {
+    } catch (e) {
       try { await client.query("ROLLBACK"); } catch {}
+      console.error("[streamer_tabs/agenda] db error", e);
       return res.status(500).json({ ok: false, error: "DB_ERROR" });
     } finally {
       client.release();
