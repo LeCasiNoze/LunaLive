@@ -45,19 +45,14 @@ async function resolveOwnerCol(): Promise<string | null> {
 }
 
 async function getStreamerCore(slug: string) {
-  const ownerCol = await resolveOwnerCol();
+  const { rows } = await pool.query(
+    `SELECT id, user_id AS owner_user_id
+     FROM streamers
+     WHERE lower(slug)=lower($1)
+     LIMIT 1`,
+    [slug]
+  );
 
-  const sql = ownerCol
-    ? `SELECT id, ${ownerCol} AS owner_user_id
-       FROM streamers
-       WHERE lower(slug) = lower($1)
-       LIMIT 1`
-    : `SELECT id, NULL::int AS owner_user_id
-       FROM streamers
-       WHERE lower(slug) = lower($1)
-       LIMIT 1`;
-
-  const { rows } = await pool.query(sql, [slug]);
   const r = rows[0];
   if (!r) return null;
 
