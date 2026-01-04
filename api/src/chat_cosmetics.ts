@@ -270,7 +270,13 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
 
         // ✅ si la sub est active -> badge custom ; sinon -> rien
         const b = info ? buildSubBadge(badgeCode, info) : null;
-        cosmetics.badges = b ? [{ id: badgeCode, ...b }] : [];
+
+        if (b) {
+          const { id: _drop, ...bNoId } = (b as any); // ✅ évite TS2783
+          cosmetics.badges = [{ ...bNoId, id: badgeCode }];
+        } else {
+          cosmetics.badges = [];
+        }
       } else {
         cosmetics.badges = [
           {
