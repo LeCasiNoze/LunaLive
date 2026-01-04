@@ -18,6 +18,11 @@ import { useChest } from "./hooks/useChest";
 import { ChestToast } from "./components/ChestToast";
 import { ChestModal } from "./components/ChestModal";
 
+// ✅ NEW tabs
+import { AboutTab } from "./tabs/AboutTab";
+import { VodTab } from "./tabs/VodTab";
+import { AgendaTab } from "./tabs/AgendaTab";
+
 function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
 }
@@ -85,6 +90,9 @@ export default function StreamerPage() {
     streamer?.ownerUserId != null &&
     Number(streamer.ownerUserId) === Number(myUserId)
   );
+
+  const isAdmin = String(myRole) === "admin";
+  const canEditTabs = isOwner || isAdmin;
 
   // host target from API + override after POST
   const hostTargetSlug = hostOverride?.slug ?? (streamer as any)?.hostTargetSlug ?? null;
@@ -561,7 +569,11 @@ export default function StreamerPage() {
           </div>
 
           <div className="streamChatBody">
-            <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} onFollowsCount={(n) => setFollowsCount(Number(n))} />
+            <ChatPanel
+              slug={String(slug || "")}
+              onRequireLogin={() => setLoginOpen(true)}
+              onFollowsCount={(n) => setFollowsCount(Number(n))}
+            />
           </div>
         </aside>
       </div>
@@ -584,30 +596,24 @@ export default function StreamerPage() {
         </div>
 
         <div className="streamTabContent">
-          {tab === "about" && (
-            <div>
-              <div className="panelTitle">À propos</div>
-              <div className="mutedSmall">(On mettra ici bio + liens casinos + images + siteweb, etc.)</div>
-            </div>
-          )}
+          {tab === "about" && slug ? (
+            <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} />
+          ) : null}
+
           {tab === "clips" && (
             <div>
               <div className="panelTitle">Clips</div>
-              <div className="mutedSmall">(placeholder)</div>
+              <div className="mutedSmall">(On branche avec le bot plus tard)</div>
             </div>
           )}
-          {tab === "vod" && (
-            <div>
-              <div className="panelTitle">VOD</div>
-              <div className="mutedSmall">(placeholder)</div>
-            </div>
-          )}
-          {tab === "agenda" && (
-            <div>
-              <div className="panelTitle">Agenda</div>
-              <div className="mutedSmall">(placeholder)</div>
-            </div>
-          )}
+
+          {tab === "vod" && slug ? (
+            <VodTab slug={String(slug)} streamerDisplay={streamer.displayName ? streamer.displayName : `@${String(slug)}`} />
+          ) : null}
+
+          {tab === "agenda" && slug ? (
+            <AgendaTab slug={String(slug)} token={token} canEdit={canEditTabs} />
+          ) : null}
         </div>
       </div>
 

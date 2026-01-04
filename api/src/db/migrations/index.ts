@@ -22,6 +22,7 @@ import { mig018_casino_team_rating_decimal } from "./mig018_casino_team_rating_d
 import { mig019_sub_gifts } from "./mig019_sub_gifts.js";
 import { mig020_host } from "./mig020_host.js";
 import { mig020_chat_settings } from "./mig020_chat_settings.js";
+import { mig021_streamer_tabs } from "./mig021_streamer_tabs.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -53,4 +54,6 @@ export async function migrateAll(pool: Pool) {
   await mig019_sub_gifts(pool);
   await mig020_host(pool);
   await mig020_chat_settings(pool);
+
+  await mig021_streamer_tabs(pool);
 }

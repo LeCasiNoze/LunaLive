@@ -40,6 +40,9 @@ import { adminCasinosRouter } from "./routes/admin_casinos.js";
 import { adminCasinosSetupRouter } from "./routes/admin_casinos_setup.js";
 import { streamerDliveLinkRouter } from "./routes/streamer_dlive_link.js";
 
+// ✅ NEW: tabs (about/agenda)
+import { streamerTabsRouter } from "./routes/streamer_tabs.js";
+
 export function createApp() {
   const app = express();
   app.set("trust proxy", 1);
@@ -65,6 +68,9 @@ export function createApp() {
   app.use(authRouter);
   app.use(streamerRouter);
   app.use(adminRouter);
+
+  // ✅ streamer tabs (about/agenda)
+  app.use("/streamers", streamerTabsRouter);
 
   // admin economy tools
   app.use(adminRubisRouter);
