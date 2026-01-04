@@ -1,4 +1,3 @@
-// api/src/chat_socket.ts
 import type { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 import { pool } from "./db.js";
@@ -6,6 +5,16 @@ import { chatStore } from "./chat_store.js";
 import type { AuthUser } from "./auth.js";
 import { normalizeAppearance, type Appearance } from "./appearance.js";
 import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
+
+// ✅ NEW
+import {
+  getChatSettings,
+  patchChatSettings,
+  containsLink,
+  formatSettingsChangeMessage,
+  type ChatSettings,
+  type ChatSettingsPatch,
+} from "./chat/chat_settings.js";
 
 type SocketData = {
   user?: AuthUser;
@@ -225,6 +234,38 @@ function clampInt(n: any, min: number, max: number) {
   return Math.max(min, Math.min(max, Math.floor(x)));
 }
 
+// ✅ NEW: follow/sub helpers
+async function isFollowing(streamerId: number, userId: number) {
+  const r = await pool.query(
+    `SELECT 1 FROM streamer_follows WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`,
+    [streamerId, userId]
+  );
+  return !!r.rows?.[0];
+}
+
+async function isActiveSub(streamerId: number, userId: number) {
+  const r = await pool.query(
+    `SELECT expires_at
+     FROM streamer_subscriptions
+     WHERE streamer_id=$1 AND user_id=$2
+     LIMIT 1`,
+    [streamerId, userId]
+  );
+  const ex = r.rows?.[0]?.expires_at ? new Date(String(r.rows[0].expires_at)).getTime() : 0;
+  return !!ex && ex > Date.now();
+}
+
+// ✅ NEW: tiny cache settings (évite une query par message)
+const settingsCache = new Map<number, { at: number; settings: ChatSettings }>();
+async function readSettings(streamerId: number) {
+  const now = Date.now();
+  const hit = settingsCache.get(streamerId);
+  if (hit && now - hit.at < 5000) return hit.settings;
+  const s = await getChatSettings(pool, streamerId);
+  settingsCache.set(streamerId, { at: now, settings: s });
+  return s;
+}
+
 export function attachChat(io: Server) {
   io.use((socket, next) => {
     tryAuth(socket);
@@ -235,7 +276,6 @@ export function attachChat(io: Server) {
     const data = socket.data as SocketData;
 
     // ✅ 3.A — Room "user:{id}" pour envoyer des notifs (go-live) à l'utilisateur
-    // tryAuth() a déjà rempli data.user si token OK (via io.use)
     if (data.user?.id) {
       socket.join(`user:${data.user.id}`);
     }
@@ -276,6 +316,85 @@ export function attachChat(io: Server) {
       }
     });
 
+    // ✅ NEW: settings get (mod/admin/owner)
+    socket.on("chat:settings_get", async ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
+      try {
+        const u = data.user;
+        if (!u) return cb?.({ ok: false, error: "auth_required" });
+
+        const s = String(slug || data.slug || "").trim();
+        if (!s) return cb?.({ ok: false, error: "bad_slug" });
+
+        const meta = await getStreamerMetaBySlug(s);
+        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+
+        const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+        if (!rp.perms.canMod) return cb?.({ ok: false, error: "forbidden" });
+
+        const settings = await readSettings(meta.id);
+        cb?.({ ok: true, settings });
+      } catch (e: any) {
+        cb?.({ ok: false, error: String(e?.message || "settings_get_failed") });
+      }
+    });
+
+    // ✅ NEW: settings set (mod/admin/owner) + system message
+    socket.on(
+      "chat:settings_set",
+      async (
+        { slug, patch }: { slug: string; patch: ChatSettingsPatch },
+        cb?: (ack: any) => void
+      ) => {
+        try {
+          const u = data.user;
+          if (!u) return cb?.({ ok: false, error: "auth_required" });
+
+          const s = String(slug || data.slug || "").trim();
+          if (!s) return cb?.({ ok: false, error: "bad_slug" });
+
+          const meta = await getStreamerMetaBySlug(s);
+          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+
+          const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+          if (!rp.perms.canMod) return cb?.({ ok: false, error: "forbidden" });
+
+          const old = await getChatSettings(pool, meta.id);
+
+          // ✅ exclusif: follow-only vs sub-only
+          const p: ChatSettingsPatch = { ...(patch || {}) };
+          if (p.subOnly === true) p.followOnly = false;
+          if (p.followOnly === true) p.subOnly = false;
+
+          const next = await patchChatSettings(pool, meta.id, p, u.id);
+          settingsCache.set(meta.id, { at: Date.now(), settings: next });
+
+          // compute changed keys (pour message système propre)
+          const changed: ChatSettingsPatch = {};
+          if (old.allowLinks !== next.allowLinks) changed.allowLinks = next.allowLinks;
+          if (old.followOnly !== next.followOnly) changed.followOnly = next.followOnly;
+          if (old.subOnly !== next.subOnly) changed.subOnly = next.subOnly;
+
+          // broadcast settings to clients
+          io.to(`chat:${meta.slug}`).emit("chat:settings", { ok: true, settings: next });
+
+          // system message only if real change
+          if (Object.keys(changed).length > 0) {
+            const sysText = formatSettingsChangeMessage({
+              actorUsername: u.username,
+              actorRole: rp.role || "viewer",
+              changed,
+            });
+            const sys = chatStore.addSystem(meta.slug, sysText);
+            io.to(`chat:${meta.slug}`).emit("chat:message", sys);
+          }
+
+          cb?.({ ok: true, settings: next });
+        } catch (e: any) {
+          cb?.({ ok: false, error: String(e?.message || "settings_set_failed") });
+        }
+      }
+    );
+
     socket.on("chat:send", async ({ slug, body }: { slug: string; body: string }, cb?: (ack: any) => void) => {
       try {
         const u = data.user;
@@ -297,6 +416,21 @@ export function attachChat(io: Server) {
         if (!text) return cb?.({ ok: false, error: "empty" });
         if (text.length > 200) text = text.slice(0, 200);
 
+        // ✅ NEW: chat settings enforcement
+        const settings = await readSettings(meta.id);
+
+        if (!settings.allowLinks && containsLink(text)) {
+          return cb?.({ ok: false, error: "links_disabled" });
+        }
+        if (settings.followOnly) {
+          const ok = await isFollowing(meta.id, u.id);
+          if (!ok) return cb?.({ ok: false, error: "follow_only" });
+        }
+        if (settings.subOnly) {
+          const ok = await isActiveSub(meta.id, u.id);
+          if (!ok) return cb?.({ ok: false, error: "sub_only" });
+        }
+
         // anti-spam: 1 msg / 200ms
         const t = Date.now();
         if (data.lastSendAt && t - data.lastSendAt < 200) return cb?.({ ok: false, error: "rate_limited" });
@@ -316,7 +450,6 @@ export function attachChat(io: Server) {
         const style = {
           nameColor: appearance.chat.usernameColor,
           msgColor: appearance.chat.messageColor,
-          // plus tard: badge/hat selon sub + skins
         };
 
         const cosmeticsByUser = await getChatCosmeticsForUsers([u.id]);
@@ -329,6 +462,7 @@ export function attachChat(io: Server) {
           body: text,
           createdAt: new Date(row.createdAt).toISOString(),
           cosmetics, // ✅ IMPORTANT
+          style, // (pas utilisé côté front pour le moment, mais ok)
         };
 
         io.to(`chat:${meta.slug}`).emit("chat:message", msg);
@@ -378,7 +512,13 @@ export function attachChat(io: Server) {
         // ✅ refresh aussi appearance (si streamer vient de changer ses couleurs)
         data.appearance = normalizeAppearance(meta.appearance);
 
-        socket.emit("chat:perms", { ok: true, role: rp.role, perms: rp.perms, state: rp.state, appearance: data.appearance });
+        socket.emit("chat:perms", {
+          ok: true,
+          role: rp.role,
+          perms: rp.perms,
+          state: rp.state,
+          appearance: data.appearance,
+        });
         cb?.({ ok: true });
       } catch (e: any) {
         cb?.({ ok: false, error: String(e?.message || "refresh_failed") });
@@ -690,9 +830,7 @@ export function attachChat(io: Server) {
           const targetUsername = await getUsernameById(targetId);
           const sys = chatStore.addSystem(
             meta.slug,
-            enabled
-              ? `🛡️ ${targetUsername} est maintenant modérateur`
-              : `🛡️ ${targetUsername} n'est plus modérateur`
+            enabled ? `🛡️ ${targetUsername} est maintenant modérateur` : `🛡️ ${targetUsername} n'est plus modérateur`
           );
           io.to(`chat:${meta.slug}`).emit("chat:message", sys);
 

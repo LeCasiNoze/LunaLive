@@ -1,4 +1,3 @@
-// web/src/components/ChatPanel.tsx
 import * as React from "react";
 import { io, type Socket } from "socket.io-client";
 import { useAuth } from "../auth/AuthProvider";
@@ -17,12 +16,9 @@ const DEBUG_USER = "LeCasiNoze";
 
 // ⚠️ on caste en any pour pas se battre avec le type exact maintenant
 const DEBUG_COSMETICS: any = {
-  // exemples (adapte aux clés que ton ChatMessageBubble attend)
   avatar: { frameId: "ghost_purple", hatId: "luna_cap" },
   badges: ["SUB", "LUNA"],
   title: { text: "Card Shark", style: "colored", color: "#a64cff" },
-
-  // pseudo skin (couleur/anim)
   username: { colorId: "ghost_purple", animId: "rainbow_scroll" },
 };
 
@@ -60,6 +56,12 @@ type JoinAck = {
   me?: { id: number; username: string; role: string } | null;
 
   appearance?: StreamerAppearance;
+};
+
+type ChatSettings = {
+  allowLinks: boolean;
+  followOnly: boolean;
+  subOnly: boolean;
 };
 
 /* =========================================================
@@ -140,10 +142,23 @@ export function ChatPanel({
   const atBottomRef = React.useRef(true);
   const [showJump, setShowJump] = React.useState(false);
 
-  // ✅ NEW: init scroll flag
+  // ✅ init scroll flag
   const pendingInitScrollRef = React.useRef(false);
 
   const myId = join?.me?.id != null ? Number(join.me.id) : null;
+
+  /* -------------------------
+     Chat settings UI (gear)
+     ------------------------- */
+  const canManageSettings = join?.role === "mod" || join?.role === "streamer" || join?.role === "admin";
+
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [settingsLoading, setSettingsLoading] = React.useState(false);
+  const [chatSettings, setChatSettings] = React.useState<ChatSettings>({
+    allowLinks: true,
+    followOnly: false,
+    subOnly: false,
+  });
 
   /* -------------------------
      Mobile keyboard handling (visualViewport)
@@ -376,7 +391,7 @@ export function ChatPanel({
     else setShowJump(true);
   }
 
-  // ✅ FIX: init scroll en bas après rendu réel des messages
+  // ✅ init scroll en bas après rendu réel des messages
   React.useLayoutEffect(() => {
     if (!pendingInitScrollRef.current) return;
     if (initialLoading) return;
@@ -384,12 +399,10 @@ export function ChatPanel({
     const el = listRef.current;
     if (!el) return;
 
-    // 1 passe
     el.scrollTop = el.scrollHeight;
     atBottomRef.current = true;
     setShowJump(false);
 
-    // 2e passe (fonts/images/layout)
     requestAnimationFrame(() => {
       if (atBottomRef.current) scrollToBottom("auto");
     });
@@ -416,10 +429,24 @@ export function ChatPanel({
       const j = await r.json();
       if (!j?.ok) throw new Error(j?.error || "messages_failed");
       setMessages(j.messages || []);
-      pendingInitScrollRef.current = true; // ✅ init scroll en bas
+      pendingInitScrollRef.current = true;
     } finally {
       setInitialLoading(false);
     }
+  }
+
+  async function fetchSettings() {
+    if (!token) return;
+    try {
+      const st = await emitSocket("chat:settings_get", { slug });
+      if (st?.ok && st.settings) {
+        setChatSettings({
+          allowLinks: !!st.settings.allowLinks,
+          followOnly: !!st.settings.followOnly,
+          subOnly: !!st.settings.subOnly,
+        });
+      }
+    } catch {}
   }
 
   /* =========================================================
@@ -489,6 +516,17 @@ export function ChatPanel({
       });
     });
 
+    // ✅ NEW: settings broadcast
+    socket.on("chat:settings", (payload: any) => {
+      if (!payload?.ok) return;
+      const st = payload.settings || {};
+      setChatSettings({
+        allowLinks: !!st.allowLinks,
+        followOnly: !!st.followOnly,
+        subOnly: !!st.subOnly,
+      });
+    });
+
     socket.on("stream:follows", (payload: any) => {
       const evSlug = String(payload?.slug || "").trim().toLowerCase();
       if (!evSlug || evSlug !== slugLower) return;
@@ -540,6 +578,11 @@ export function ChatPanel({
       setAppearance(normalizeAppearance(ack.appearance));
       await loadLastMessages(s);
 
+      // ✅ fetch settings if can manage
+      if (ack?.role === "mod" || ack?.role === "streamer" || ack?.role === "admin") {
+        await fetchSettings();
+      }
+
       if (autoFocus) {
         window.setTimeout(() => inputRef.current?.focus(), 50);
       }
@@ -580,6 +623,9 @@ export function ChatPanel({
             if (ack?.error === "auth_required") onRequireLogin();
             else if (ack?.error === "rate_limited") setError("Trop vite (slow mode 0.2s).");
             else if (ack?.error === "banned") setError("Tu es banni de ce chat.");
+            else if (ack?.error === "links_disabled") setError("Les liens sont désactivés sur ce chat.");
+            else if (ack?.error === "follow_only") setError("Chat réservé aux followers.");
+            else if (ack?.error === "sub_only") setError("Chat réservé aux subs.");
             else if (ack?.error === "timed_out") {
               const ex = String(ack?.expiresAt || "");
               setJoin((prev) =>
@@ -761,7 +807,12 @@ export function ChatPanel({
      Render
      ========================================================= */
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }} onClick={closeMenu}>
+    <div
+      style={{ height: "100%", display: "flex", flexDirection: "column" }}
+      onClick={() => {
+        closeMenu();
+      }}
+    >
       <style>
         {`@keyframes chatFadeLeft{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}`}
       </style>
@@ -945,6 +996,31 @@ export function ChatPanel({
             }}
           />
 
+          {canManageSettings ? (
+            <button
+              type="button"
+              onClick={async (e) => {
+                e.stopPropagation();
+                setError(null);
+                setSettingsOpen(true);
+                await fetchSettings();
+              }}
+              style={{
+                padding: "12px 14px",
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(255,255,255,0.06)",
+                color: "white",
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+              title="Options du chat"
+              aria-label="Options du chat"
+            >
+              ⚙️
+            </button>
+          ) : null}
+
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -966,6 +1042,155 @@ export function ChatPanel({
           </button>
         </div>
       </div>
+
+      {/* settings modal */}
+      {settingsOpen ? (
+        <div
+          onClick={() => setSettingsOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 80,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+            padding: 14,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              borderRadius: 18,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(18,14,26,0.98)",
+              boxShadow: "0 20px 80px rgba(0,0,0,0.55)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: 14,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <div style={{ fontWeight: 950 }}>Options du chat</div>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(false)}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "white",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+                aria-label="Fermer"
+                title="Fermer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: 14 }}>
+              <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 800, marginBottom: 10 }}>
+                Modérateur / propriétaire / admin uniquement. Les changements sont instantanés.
+              </div>
+
+              {[
+                {
+                  key: "allowLinks",
+                  title: "Autoriser les liens",
+                  desc: "Bloque les URLs dans les messages.",
+                  value: chatSettings.allowLinks,
+                },
+                {
+                  key: "followOnly",
+                  title: "Follow-only",
+                  desc: "Seuls les followers peuvent parler. (désactive sub-only si activé)",
+                  value: chatSettings.followOnly,
+                },
+                {
+                  key: "subOnly",
+                  title: "Sub-only",
+                  desc: "Seuls les subs actifs peuvent parler. (désactive follow-only si activé)",
+                  value: chatSettings.subOnly,
+                },
+              ].map((it) => (
+                <div
+                  key={it.key}
+                  style={{
+                    padding: 12,
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "rgba(255,255,255,0.04)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 950 }}>{it.title}</div>
+                    <div style={{ marginTop: 4, fontSize: 12, opacity: 0.80, fontWeight: 700 }}>
+                      {it.desc}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={settingsLoading}
+                    onClick={async () => {
+                      if (!token) return onRequireLogin();
+                      setSettingsLoading(true);
+                      setError(null);
+                      try {
+                        const patch: any = { [it.key]: !it.value };
+                        const ack = await emitSocket("chat:settings_set", { slug, patch });
+                        if (!ack?.ok) throw new Error(String(ack?.error || "settings_failed"));
+
+                        const s = ack.settings || {};
+                        setChatSettings({
+                          allowLinks: !!s.allowLinks,
+                          followOnly: !!s.followOnly,
+                          subOnly: !!s.subOnly,
+                        });
+                      } catch (e: any) {
+                        setError(String(e?.message || "Erreur"));
+                      } finally {
+                        setSettingsLoading(false);
+                      }
+                    }}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      background: it.value ? "rgba(80,255,160,0.14)" : "rgba(255,255,255,0.06)",
+                      color: "white",
+                      fontWeight: 950,
+                      cursor: settingsLoading ? "not-allowed" : "pointer",
+                      opacity: settingsLoading ? 0.7 : 1,
+                      whiteSpace: "nowrap",
+                      minWidth: 64,
+                      textAlign: "center",
+                    }}
+                  >
+                    {settingsLoading ? "…" : it.value ? "ON" : "OFF"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* menu */}
       {menu.open && menu.msg ? (
@@ -1007,7 +1232,6 @@ export function ChatPanel({
             Voir le profil
           </button>
 
-          {/* ✅ FIX: on affiche tant que ce n'est PAS confirmé "déjà sub" */}
           {!targetIsSelf && menu.isTargetSub !== true ? (
             <button
               onClick={() => doGiftSub(menu.msg!)}
@@ -1031,14 +1255,12 @@ export function ChatPanel({
             </button>
           ) : null}
 
-          {/* hint pendant vérif */}
           {!targetIsSelf && isAuthed && menu.subLoading ? (
             <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800, marginBottom: 8 }}>
               Vérification sub…
             </div>
           ) : null}
 
-          {/* hint si déjà sub */}
           {!targetIsSelf && isAuthed && menu.isTargetSub === true ? (
             <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800, marginBottom: 8 }}>
               Déjà abonné ✅
