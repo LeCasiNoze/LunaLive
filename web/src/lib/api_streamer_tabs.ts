@@ -12,13 +12,11 @@ export type AgendaRule = {
   id?: number;
   kind: AgendaRuleKind;
   title: string;
-  color: string; // ex: "#8b5cf6"
-  // regular
+  color: string;
   dayOfWeek?: number | null; // 0=dim ... 6=sam
-  // event
-  date?: string | null; // "YYYY-MM-DD"
-  startTime: string; // "HH:MM"
-  endTime: string; // "HH:MM"
+  date?: string | null; // YYYY-MM-DD
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
 };
 
 const BASE = (import.meta as any).env?.VITE_API_BASE ?? "https://lunalive-api.onrender.com";
@@ -35,7 +33,17 @@ async function j<T>(url: string, init: RequestInit = {}): Promise<T> {
   }
 }
 
-export async function getStreamerAbout(slug: string): Promise<{ ok: true; blocks: AboutBlock[] } | { ok: false; error: string }> {
+export function absFromApiMaybe(u: string) {
+  const s = String(u || "").trim();
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith("/")) return `${API}${s}`;
+  return s;
+}
+
+export async function getStreamerAbout(
+  slug: string
+): Promise<{ ok: true; blocks: AboutBlock[] } | { ok: false; error: string }> {
   return j(`${API}/streamers/${encodeURIComponent(slug)}/about`);
 }
 
@@ -51,6 +59,23 @@ export async function putStreamerAbout(
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({ blocks }),
+  });
+}
+
+export async function uploadStreamerAboutImage(
+  slug: string,
+  token: string,
+  file: File
+): Promise<{ ok: true; imageUrl: string } | { ok: false; error: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+
+  return j(`${API}/streamers/${encodeURIComponent(slug)}/about/upload-image`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: fd,
   });
 }
 

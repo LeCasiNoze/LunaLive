@@ -1,16 +1,24 @@
 // api/src/routes/streamer_tabs.ts
 import { Router } from "express";
+import path from "path";
+import fs from "fs/promises";
+import crypto from "crypto";
+import multer from "multer";
+import sharp from "sharp";
+
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
 import { requireAuth, type AuthUser } from "../auth.js";
 
 export const streamerTabsRouter = Router();
 
-/**
- * On détecte le nom réel de la colonne "owner" sur streamers
- * (ex: owner_user_id vs owneruserid vs owner_id).
- * Cache en mémoire pour éviter de requery à chaque requête.
- */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 3_000_000, // 3MB max
+  },
+});
+
 let cachedOwnerCol: string | null | undefined;
 
 async function resolveOwnerCol(): Promise<string | null> {
@@ -66,8 +74,72 @@ function canEdit(user: AuthUser, ownerUserId: number | null) {
   return ownerUserId != null && Number(ownerUserId) === uid;
 }
 
+/** uniquement nos uploads about */
+function isLocalAboutUploadUrl(url: string, streamerId: number) {
+  const u = String(url || "").trim();
+  return u.startsWith(`/uploads/streamer_about/${streamerId}/`);
+}
+
+function aboutUploadAbsPath(url: string) {
+  // url: /uploads/streamer_about/<id>/<file>
+  const rel = url.replace(/^\/uploads\//, ""); // streamer_about/<id>/<file>
+  return path.resolve(process.cwd(), "uploads", rel);
+}
+
+async function deleteFileSafe(absPath: string) {
+  try {
+    await fs.unlink(absPath);
+  } catch {
+    // ignore missing / already deleted
+  }
+}
+
 /* =========================
- *  ABOUT
+ *  ABOUT: upload image
+ * ========================= */
+
+streamerTabsRouter.post(
+  "/:slug/about/upload-image",
+  requireAuth,
+  upload.single("file"),
+  a(async (req, res) => {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "BAD_SLUG" });
+
+    const user = (req as any).user as AuthUser;
+    const core = await getStreamerCore(slug);
+    if (!core) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    if (!canEdit(user, core.owner_user_id)) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
+
+    const file = (req as any).file as undefined | { buffer: Buffer; mimetype: string; originalname: string };
+    if (!file?.buffer) return res.status(400).json({ ok: false, error: "NO_FILE" });
+
+    const mt = String(file.mimetype || "").toLowerCase();
+    if (!["image/jpeg", "image/png", "image/webp"].includes(mt)) {
+      return res.status(400).json({ ok: false, error: "BAD_FILE_TYPE" });
+    }
+
+    // ✅ optimisation: rotate (EXIF), resize inside 1280, convert webp
+    const out = await sharp(file.buffer)
+      .rotate()
+      .resize({ width: 1280, height: 1280, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 78 })
+      .toBuffer();
+
+    const dir = path.resolve(process.cwd(), "uploads", "streamer_about", String(core.id));
+    await fs.mkdir(dir, { recursive: true });
+
+    const name = `about_${crypto.randomUUID()}.webp`;
+    const abs = path.resolve(dir, name);
+    await fs.writeFile(abs, out);
+
+    const imageUrl = `/uploads/streamer_about/${core.id}/${name}`;
+    return res.json({ ok: true, imageUrl });
+  })
+);
+
+/* =========================
+ *  ABOUT: read
  * ========================= */
 
 streamerTabsRouter.get(
@@ -99,6 +171,10 @@ streamerTabsRouter.get(
   })
 );
 
+/* =========================
+ *  ABOUT: save + cleanup old images
+ * ========================= */
+
 streamerTabsRouter.put(
   "/:slug/about",
   requireAuth,
@@ -107,38 +183,50 @@ streamerTabsRouter.put(
     if (!slug) return res.status(400).json({ ok: false, error: "BAD_SLUG" });
 
     const user = (req as any).user as AuthUser;
-
     const core = await getStreamerCore(slug);
     if (!core) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
-
-    // si on n'a pas trouvé de colonne owner -> seuls les admins pourront éditer
     if (!canEdit(user, core.owner_user_id)) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
 
     const blocks = Array.isArray((req.body as any)?.blocks) ? (req.body as any).blocks : null;
     if (!blocks) return res.status(400).json({ ok: false, error: "BAD_BODY" });
     if (blocks.length > 30) return res.status(400).json({ ok: false, error: "TOO_MANY_BLOCKS" });
 
+    // avant: récupérer les images locales actuellement en DB (pour cleanup)
+    const before = await pool.query(
+      `SELECT image_url FROM streamer_about_blocks WHERE streamer_id=$1`,
+      [core.id]
+    );
+    const prevLocal = new Set<string>();
+    for (const r of before.rows) {
+      const u = String(r.image_url || "").trim();
+      if (u && isLocalAboutUploadUrl(u, core.id)) prevLocal.add(u);
+    }
+
+    const nextLocal = new Set<string>();
+    const payload = blocks.map((b: any) => {
+      const imageUrl = String(b.imageUrl || "").trim() || null;
+      const linkUrl = String(b.linkUrl || "").trim() || null;
+      const description = String(b.description || "").trim() || null;
+      if (imageUrl && isLocalAboutUploadUrl(imageUrl, core.id)) nextLocal.add(imageUrl);
+      return { imageUrl, linkUrl, description };
+    });
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
 
-      await client.query(`DELETE FROM streamer_about_blocks WHERE streamer_id = $1`, [core.id]);
+      await client.query(`DELETE FROM streamer_about_blocks WHERE streamer_id=$1`, [core.id]);
 
-      for (let i = 0; i < blocks.length; i++) {
-        const b = blocks[i] || {};
-        const imageUrl = String(b.imageUrl || "").trim() || null;
-        const linkUrl = String(b.linkUrl || "").trim() || null;
-        const description = String(b.description || "").trim() || null;
-
+      for (let i = 0; i < payload.length; i++) {
+        const b = payload[i];
         await client.query(
           `INSERT INTO streamer_about_blocks (streamer_id, position, image_url, link_url, description)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [core.id, i, imageUrl, linkUrl, description]
+           VALUES ($1,$2,$3,$4,$5)`,
+          [core.id, i, b.imageUrl, b.linkUrl, b.description]
         );
       }
 
       await client.query("COMMIT");
-      return res.json({ ok: true });
     } catch (e) {
       try { await client.query("ROLLBACK"); } catch {}
       console.error("[streamer_tabs/about] db error", e);
@@ -146,6 +234,20 @@ streamerTabsRouter.put(
     } finally {
       client.release();
     }
+
+    // ✅ cleanup: tout ce qui était en DB avant et n'est plus utilisé
+    for (const oldUrl of prevLocal) {
+      if (nextLocal.has(oldUrl)) continue;
+      const abs = aboutUploadAbsPath(oldUrl);
+
+      // sécurité : on n'efface que dans le dossier du streamer
+      const allowedRoot = path.resolve(process.cwd(), "uploads", "streamer_about", String(core.id));
+      if (!abs.startsWith(allowedRoot)) continue;
+
+      await deleteFileSafe(abs);
+    }
+
+    return res.json({ ok: true });
   })
 );
 
@@ -194,10 +296,8 @@ streamerTabsRouter.put(
     if (!slug) return res.status(400).json({ ok: false, error: "BAD_SLUG" });
 
     const user = (req as any).user as AuthUser;
-
     const core = await getStreamerCore(slug);
     if (!core) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
-
     if (!canEdit(user, core.owner_user_id)) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
 
     const rules = Array.isArray((req.body as any)?.rules) ? (req.body as any).rules : null;
@@ -207,8 +307,7 @@ streamerTabsRouter.put(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
-      await client.query(`DELETE FROM streamer_agenda_rules WHERE streamer_id = $1`, [core.id]);
+      await client.query(`DELETE FROM streamer_agenda_rules WHERE streamer_id=$1`, [core.id]);
 
       for (const raw of rules) {
         const r = raw || {};
@@ -221,7 +320,21 @@ streamerTabsRouter.put(
         const endTime = String(r.endTime || "00:00").trim();
 
         const dayOfWeek = kind === "regular" ? Number(r.dayOfWeek ?? 0) : null;
-        const dateYmd = kind === "event" ? (String(r.date || "").trim() || null) : null;
+
+        // ✅ important: event DOIT avoir une date
+        let dateYmd: string | null = null;
+        if (kind === "event") {
+          const d = String(r.date || "").trim();
+          dateYmd = d || null;
+          if (!dateYmd) {
+            // fallback "aujourd'hui" pour éviter DB_ERROR si UI laisse vide
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, "0");
+            const dd = String(now.getDate()).padStart(2, "0");
+            dateYmd = `${y}-${m}-${dd}`;
+          }
+        }
 
         await client.query(
           `INSERT INTO streamer_agenda_rules

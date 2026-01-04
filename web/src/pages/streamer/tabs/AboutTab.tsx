@@ -1,6 +1,12 @@
 // web/src/pages/streamer/tabs/AboutTab.tsx
 import * as React from "react";
-import { getStreamerAbout, putStreamerAbout, type AboutBlock } from "../../../lib/api_streamer_tabs";
+import {
+  getStreamerAbout,
+  putStreamerAbout,
+  uploadStreamerAboutImage,
+  absFromApiMaybe,
+  type AboutBlock,
+} from "../../../lib/api_streamer_tabs";
 
 function cleanUrl(u: string): string {
   const s = String(u || "").trim();
@@ -28,6 +34,9 @@ export function AboutTab({
 
   const [edit, setEdit] = React.useState(false);
   const [blocks, setBlocks] = React.useState<AboutBlock[]>([]);
+
+  // upload state per block index
+  const [uploadingIndex, setUploadingIndex] = React.useState<number | null>(null);
 
   async function load() {
     setLoading(true);
@@ -70,6 +79,7 @@ export function AboutTab({
 
       const r = await putStreamerAbout(slug, token, payload);
       if (!("ok" in r) || !r.ok) throw new Error((r as any)?.error || "Erreur");
+
       setEdit(false);
       await load();
     } catch (e: any) {
@@ -79,10 +89,26 @@ export function AboutTab({
     }
   }
 
+  async function uploadImage(i: number, file: File) {
+    if (!token) return setError("Connecte-toi pour upload une image.");
+    setUploadingIndex(i);
+    setError(null);
+    try {
+      const r = await uploadStreamerAboutImage(slug, token, file);
+      if (!("ok" in r) || !r.ok) throw new Error((r as any)?.error || "Upload error");
+      updateBlock(i, { imageUrl: r.imageUrl });
+    } catch (e: any) {
+      setError(String(e?.message || "Erreur upload"));
+    } finally {
+      setUploadingIndex(null);
+    }
+  }
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div className="panelTitle">À propos</div>
+
         {canEdit ? (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {!edit ? (
@@ -131,6 +157,8 @@ export function AboutTab({
               const link = String(b.linkUrl || "").trim();
               const desc = String(b.description || "").trim();
 
+              const imgSrc = img ? absFromApiMaybe(img) : "";
+
               return (
                 <div
                   key={b.id ?? i}
@@ -142,14 +170,14 @@ export function AboutTab({
                     background: "rgba(255,255,255,0.03)",
                   }}
                 >
-                  {img ? (
+                  {imgSrc ? (
                     <img
-                      src={img}
+                      src={imgSrc}
                       alt=""
                       loading="lazy"
                       style={{
                         width: "100%",
-                        maxHeight: 240,
+                        maxHeight: 260,
                         objectFit: "cover",
                         borderRadius: 14,
                         border: "1px solid rgba(255,255,255,0.10)",
@@ -161,7 +189,7 @@ export function AboutTab({
                   ) : null}
 
                   {desc ? (
-                    <div style={{ marginTop: img ? 10 : 0, whiteSpace: "pre-wrap", lineHeight: 1.35 }}>
+                    <div style={{ marginTop: imgSrc ? 10 : 0, whiteSpace: "pre-wrap", lineHeight: 1.35 }}>
                       {desc}
                     </div>
                   ) : null}
@@ -182,7 +210,7 @@ export function AboutTab({
                     </div>
                   ) : null}
 
-                  {!img && !desc && !link ? (
+                  {!imgSrc && !desc && !link ? (
                     <div className="mutedSmall" style={{ opacity: 0.85 }}>
                       (Bloc vide)
                     </div>
@@ -200,65 +228,108 @@ export function AboutTab({
 
       {!loading && edit ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
-          {blocks.map((b, i) => (
-            <div key={b.id ?? i} className="panel" style={{ padding: 14, borderRadius: 16 }}>
-              <div className="mutedSmall" style={{ marginBottom: 8, opacity: 0.85 }}>
-                Bloc #{i + 1}
-              </div>
+          {blocks.map((b, i) => {
+            const img = String(b.imageUrl ?? "").trim();
+            const imgSrc = img ? absFromApiMaybe(img) : "";
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <input
-                  value={String(b.imageUrl ?? "")}
-                  onChange={(e) => updateBlock(i, { imageUrl: e.target.value })}
-                  placeholder="Image (URL) — optionnel"
-                  style={{
-                    padding: "12px 12px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(0,0,0,0.25)",
-                    color: "white",
-                    fontWeight: 800,
-                  }}
-                />
+            return (
+              <div key={b.id ?? i} className="panel" style={{ padding: 14, borderRadius: 16 }}>
+                <div className="mutedSmall" style={{ marginBottom: 8, opacity: 0.85 }}>
+                  Bloc #{i + 1}
+                </div>
 
-                <input
-                  value={String(b.linkUrl ?? "")}
-                  onChange={(e) => updateBlock(i, { linkUrl: e.target.value })}
-                  placeholder="Lien (URL) — optionnel"
-                  style={{
-                    padding: "12px 12px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(0,0,0,0.25)",
-                    color: "white",
-                    fontWeight: 800,
-                  }}
-                />
+                {/* Preview image */}
+                {imgSrc ? (
+                  <img
+                    src={imgSrc}
+                    alt=""
+                    style={{
+                      width: "100%",
+                      maxHeight: 220,
+                      objectFit: "cover",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      marginBottom: 10,
+                    }}
+                  />
+                ) : null}
 
-                <textarea
-                  value={String(b.description ?? "")}
-                  onChange={(e) => updateBlock(i, { description: e.target.value })}
-                  placeholder="Description — optionnel"
-                  rows={4}
-                  style={{
-                    padding: "12px 12px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(0,0,0,0.25)",
-                    color: "white",
-                    fontWeight: 700,
-                    resize: "vertical",
-                  }}
-                />
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {/* ✅ Upload */}
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <label className="btnGhostSmall" style={{ cursor: token ? "pointer" : "not-allowed", opacity: token ? 1 : 0.6 }}>
+                      {uploadingIndex === i ? "Upload…" : imgSrc ? "Changer l’image" : "Uploader une image"}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        disabled={!token || uploadingIndex === i}
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          const f = e.currentTarget.files?.[0];
+                          e.currentTarget.value = "";
+                          if (!f) return;
+                          uploadImage(i, f);
+                        }}
+                      />
+                    </label>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-                  <button type="button" className="btnGhostSmall" onClick={() => removeBlock(i)}>
-                    Supprimer
-                  </button>
+                    {imgSrc ? (
+                      <button
+                        type="button"
+                        className="btnGhostSmall"
+                        onClick={() => updateBlock(i, { imageUrl: "" })}
+                        disabled={uploadingIndex === i}
+                      >
+                        Retirer l’image
+                      </button>
+                    ) : null}
+
+                    <div className="mutedSmall" style={{ opacity: 0.85 }}>
+                      (optimisé côté serveur : max 1280px, webp, léger)
+                    </div>
+                  </div>
+
+                  {/* (optionnel) lien */}
+                  <input
+                    value={String(b.linkUrl ?? "")}
+                    onChange={(e) => updateBlock(i, { linkUrl: e.target.value })}
+                    placeholder="Lien (URL) — optionnel"
+                    style={{
+                      padding: "12px 12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(0,0,0,0.25)",
+                      color: "white",
+                      fontWeight: 800,
+                    }}
+                  />
+
+                  {/* description */}
+                  <textarea
+                    value={String(b.description ?? "")}
+                    onChange={(e) => updateBlock(i, { description: e.target.value })}
+                    placeholder="Description — optionnel"
+                    rows={4}
+                    style={{
+                      padding: "12px 12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(0,0,0,0.25)",
+                      color: "white",
+                      fontWeight: 700,
+                      resize: "vertical",
+                    }}
+                  />
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" className="btnGhostSmall" onClick={() => removeBlock(i)}>
+                      Supprimer le bloc
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" className="btnGhostSmall" onClick={() => setBlocks((p) => [...p, emptyBlock()])}>
@@ -268,7 +339,7 @@ export function AboutTab({
 
           {!token ? (
             <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.85 }}>
-              Connecte-toi pour enregistrer.
+              Connecte-toi pour uploader et enregistrer.
             </div>
           ) : null}
         </div>

@@ -5,16 +5,13 @@ import { getStreamerAgenda, putStreamerAgenda, type AgendaRule } from "../../../
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
-
 function toLocalYMD(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
-
 function frDayLabel(d: Date) {
   const days = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
   return days[d.getDay()];
 }
-
 function timeToMin(s: string) {
   const m = String(s || "").match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return 0;
@@ -23,11 +20,21 @@ function timeToMin(s: string) {
   return hh * 60 + mm;
 }
 
-function clampColor(c: string) {
-  const s = String(c || "").trim();
-  if (/^#[0-9a-f]{6}$/i.test(s)) return s;
-  if (/^#[0-9a-f]{3}$/i.test(s)) return s;
-  return "#8b5cf6";
+const COLOR_PRESETS = [
+  { name: "Violet", color: "#8b5cf6" },
+  { name: "Bleu", color: "#3b82f6" },
+  { name: "Cyan", color: "#06b6d4" },
+  { name: "Vert", color: "#22c55e" },
+  { name: "Jaune", color: "#eab308" },
+  { name: "Orange", color: "#f97316" },
+  { name: "Rouge", color: "#ef4444" },
+  { name: "Rose", color: "#ec4899" },
+] as const;
+
+function ensurePresetColor(c: string) {
+  const s = String(c || "").trim().toLowerCase();
+  const found = COLOR_PRESETS.find((p) => p.color.toLowerCase() === s);
+  return found ? found.color : COLOR_PRESETS[0].color;
 }
 
 function emptyRule(): AgendaRule {
@@ -35,7 +42,7 @@ function emptyRule(): AgendaRule {
   return {
     kind: "regular",
     title: "Stream",
-    color: "#8b5cf6",
+    color: COLOR_PRESETS[0].color,
     dayOfWeek: d.getDay(),
     startTime: "21:00",
     endTime: "23:00",
@@ -82,6 +89,33 @@ export function AgendaTab({
     setRules((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
 
+  function setKind(i: number, kind: "regular" | "event") {
+    // ✅ fix bug: switch kind doit forcer un état valide (sinon DB_ERROR à l’enregistrement)
+    const now = new Date();
+    const today = toLocalYMD(now);
+    const dow = now.getDay();
+
+    setRules((prev) =>
+      prev.map((r, idx) => {
+        if (idx !== i) return r;
+        if (kind === "event") {
+          return {
+            ...r,
+            kind: "event",
+            date: String(r.date || "").trim() || today,
+            dayOfWeek: null,
+          };
+        }
+        return {
+          ...r,
+          kind: "regular",
+          dayOfWeek: Number.isFinite(Number(r.dayOfWeek)) ? Number(r.dayOfWeek) : dow,
+          date: null,
+        };
+      })
+    );
+  }
+
   function removeRule(i: number) {
     setRules((prev) => prev.filter((_, idx) => idx !== i));
   }
@@ -91,19 +125,33 @@ export function AgendaTab({
     setSaving(true);
     setError(null);
     try {
-      const payload = rules.map((r) => ({
-        id: r.id,
-        kind: r.kind,
-        title: String(r.title || "").trim().slice(0, 80) || "Stream",
-        color: clampColor(r.color),
-        dayOfWeek: r.kind === "regular" ? Number(r.dayOfWeek ?? 0) : null,
-        date: r.kind === "event" ? String(r.date || "").trim() || null : null,
-        startTime: String(r.startTime || "00:00").trim(),
-        endTime: String(r.endTime || "00:00").trim(),
-      }));
+      const today = toLocalYMD(new Date());
+
+      const payload = rules.map((r) => {
+        const kind = r.kind;
+        const color = ensurePresetColor(r.color);
+
+        const base = {
+          id: r.id,
+          kind,
+          title: String(r.title || "").trim().slice(0, 80) || "Stream",
+          color,
+          startTime: String(r.startTime || "00:00").trim(),
+          endTime: String(r.endTime || "00:00").trim(),
+        };
+
+        if (kind === "event") {
+          const d = String(r.date || "").trim() || today; // ✅ jamais vide
+          return { ...base, date: d, dayOfWeek: null };
+        }
+
+        const dow = Number(r.dayOfWeek);
+        return { ...base, dayOfWeek: Number.isFinite(dow) ? dow : 0, date: null };
+      });
 
       const rr = await putStreamerAgenda(slug, token, payload);
       if (!("ok" in rr) || !rr.ok) throw new Error((rr as any)?.error || "Erreur");
+
       setEdit(false);
       await load();
     } catch (e: any) {
@@ -146,13 +194,14 @@ export function AgendaTab({
   }, [next7, rules]);
 
   const legend = React.useMemo(() => {
-    const reg = new Map<string, string>(); // title -> color
+    const reg = new Map<string, string>();
     const ev = new Map<string, string>();
     for (const r of rules) {
       const t = String(r.title || "").trim();
       if (!t) continue;
-      if (r.kind === "regular") reg.set(t, clampColor(r.color));
-      else ev.set(t, clampColor(r.color));
+      const c = ensurePresetColor(r.color);
+      if (r.kind === "regular") reg.set(t, c);
+      else ev.set(t, c);
     }
     return {
       regular: Array.from(reg.entries()).map(([title, color]) => ({ title, color })),
@@ -164,6 +213,7 @@ export function AgendaTab({
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div className="panelTitle">Agenda (7 jours)</div>
+
         {canEdit ? (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {!edit ? (
@@ -239,7 +289,7 @@ export function AgendaTab({
                               display: "flex",
                               gap: 10,
                               alignItems: "center",
-                              borderLeft: `6px solid ${clampColor(r.color)}`,
+                              borderLeft: `6px solid ${ensurePresetColor(r.color)}`,
                             }}
                           >
                             <div style={{ minWidth: 86, fontWeight: 950 }}>
@@ -336,7 +386,7 @@ export function AgendaTab({
         <div style={{ marginTop: 12 }}>
           <div className="panel" style={{ padding: 14, borderRadius: 16 }}>
             <div className="mutedSmall" style={{ opacity: 0.85 }}>
-              Règles (réguliers) + événements (date précise). C’est ça qui nourrit l’affichage “7 jours”.
+              Règles (réguliers) + événements (date précise). Palette de couleurs uniquement.
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
@@ -345,7 +395,7 @@ export function AgendaTab({
                   <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                     <select
                       value={r.kind}
-                      onChange={(e) => updateRule(i, { kind: e.target.value as any })}
+                      onChange={(e) => setKind(i, e.target.value as any)}
                       style={{
                         padding: "10px 10px",
                         borderRadius: 12,
@@ -366,21 +416,6 @@ export function AgendaTab({
                       style={{
                         flex: 1,
                         minWidth: 200,
-                        padding: "10px 10px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(0,0,0,0.25)",
-                        color: "white",
-                        fontWeight: 900,
-                      }}
-                    />
-
-                    <input
-                      value={String(r.color ?? "")}
-                      onChange={(e) => updateRule(i, { color: e.target.value })}
-                      placeholder="#8b5cf6"
-                      style={{
-                        width: 120,
                         padding: "10px 10px",
                         borderRadius: 12,
                         border: "1px solid rgba(255,255,255,0.10)",
@@ -456,6 +491,40 @@ export function AgendaTab({
                         }}
                       />
                     )}
+
+                    {/* ✅ palette presets */}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      {COLOR_PRESETS.map((p) => {
+                        const active = ensurePresetColor(r.color).toLowerCase() === p.color.toLowerCase();
+                        return (
+                          <button
+                            key={p.color}
+                            type="button"
+                            className="btnGhostSmall"
+                            onClick={() => updateRule(i, { color: p.color })}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 8,
+                              border: active ? "1px solid rgba(255,255,255,0.45)" : undefined,
+                            }}
+                            title={p.name}
+                          >
+                            <span
+                              style={{
+                                width: 14,
+                                height: 14,
+                                borderRadius: 4,
+                                background: p.color,
+                                border: "1px solid rgba(255,255,255,0.15)",
+                                display: "inline-block",
+                              }}
+                            />
+                            <span style={{ fontWeight: 900 }}>{p.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
 
                     <button type="button" className="btnGhostSmall" onClick={() => removeRule(i)}>
                       Supprimer
