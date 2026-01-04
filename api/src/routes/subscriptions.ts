@@ -8,8 +8,8 @@ import { chatStore } from "../chat_store.js";
 
 export const subscriptionsRouter = express.Router();
 import { emitSystemChat, formatSubSystemMessage } from "../chat_events.js";
+
 // ✅ Durée d’un sub (MVP)
-// Ajuste si tu veux 7j / 30j / 31j / etc.
 const SUB_DURATION_DAYS = 30;
 
 type StreamerInfo = {
@@ -38,6 +38,38 @@ function emitSystemToChat(io: any, streamerSlug: string, body: string) {
   if (!io) return;
   const msg = chatStore.addSystem(String(streamerSlug), body);
   io.to(`chat:${String(streamerSlug)}`).emit("chat:message", msg);
+}
+
+function normSlug(slug: string) {
+  return String(slug || "").trim().toLowerCase();
+}
+
+/**
+ * ✅ Auto-equip le badge sub de la chaîne (badge_sub_<slug>)
+ * uniquement si l'utilisateur n'a PAS déjà un badge équipé
+ */
+async function autoEquipSubBadgeIfEmpty(userId: number, streamerSlug: string) {
+  const slugLower = normSlug(streamerSlug);
+  if (!slugLower) return;
+
+  const badgeCode = `badge_sub_${slugLower}`;
+
+  // s'assure que la ligne existe
+  await pool.query(
+    `INSERT INTO user_equipped_cosmetics (user_id)
+     VALUES ($1)
+     ON CONFLICT (user_id) DO NOTHING`,
+    [userId]
+  );
+
+  // ✅ n'écrase pas un badge déjà équipé
+  await pool.query(
+    `UPDATE user_equipped_cosmetics
+     SET badge_code = $2
+     WHERE user_id = $1
+       AND (badge_code IS NULL OR badge_code = 'none' OR badge_code = '')`,
+    [userId, badgeCode]
+  );
 }
 
 async function getStreamerBySlug(slug: string): Promise<StreamerInfo | null> {
@@ -127,6 +159,9 @@ subscriptionsRouter.post("/streamers/:slug/subscribe", requireAuth, async (req, 
 
     const expiresAt = await upsertSub(streamer.id, viewerUserId);
 
+    // ✅ auto-equip badge sub si aucun badge équipé
+    await autoEquipSubBadgeIfEmpty(viewerUserId, streamer.slug);
+
     // solde viewer
     const u = await pool.query(`SELECT rubis FROM users WHERE id=$1 LIMIT 1`, [viewerUserId]);
     const newBalance = Number(u.rows?.[0]?.rubis ?? 0);
@@ -137,12 +172,14 @@ subscriptionsRouter.post("/streamers/:slug/subscribe", requireAuth, async (req, 
         String(streamer.appearance.chat.subMessageTemplate)) ||
       "⭐ {user} s’est abonné à {streamer} !";
 
-    const body = applyTemplate(tpl, {
+    // (optionnel) si tu veux vraiment utiliser le tpl pour le message chat store:
+    const _body = applyTemplate(tpl, {
       user: viewerUsername || "Quelqu’un",
       streamer: streamer.displayName || streamer.slug,
     });
 
     const io = req.app.locals.io;
+    // emitSystemToChat(io, streamer.slug, _body); // <= si tu veux le message exact template
     emitSystemChat(
       io,
       streamer.slug,
@@ -217,6 +254,9 @@ subscriptionsRouter.post("/streamers/:slug/gift-sub", requireAuth, async (req, r
 
     const expiresAt = await upsertSub(streamer.id, recipientUserId);
 
+    // ✅ auto-equip badge sub chez le recipient si aucun badge équipé
+    await autoEquipSubBadgeIfEmpty(recipientUserId, streamer.slug);
+
     // solde gifter
     const u = await pool.query(`SELECT rubis FROM users WHERE id=$1 LIMIT 1`, [gifterUserId]);
     const newBalance = Number(u.rows?.[0]?.rubis ?? 0);
@@ -227,13 +267,14 @@ subscriptionsRouter.post("/streamers/:slug/gift-sub", requireAuth, async (req, r
         String(streamer.appearance.chat.giftSubMessageTemplate)) ||
       "🎁 {gifter} a offert un sub à {user} sur {streamer} !";
 
-    const body = applyTemplate(tpl, {
+    const _body = applyTemplate(tpl, {
       gifter: gifterUsername || "Quelqu’un",
       user: recipientUsername || "Quelqu’un",
       streamer: streamer.displayName || streamer.slug,
     });
 
     const io = req.app.locals.io;
+    // emitSystemToChat(io, streamer.slug, _body); // <= si tu veux le message exact template
     emitSystemChat(
       io,
       streamer.slug,
@@ -254,5 +295,250 @@ subscriptionsRouter.post("/streamers/:slug/gift-sub", requireAuth, async (req, r
     });
   } catch (e: any) {
     return res.status(400).json({ ok: false, error: String(e?.message || "error") });
+  }
+});
+// ===== Gift pools (pack + claim) =====
+const GIFT_POOL_EXPIRES_DAYS = 30;
+const GIFT_POOL_MAX = 100;
+
+function poolActiveWhere() {
+  return `(remaining > 0) AND (expires_at IS NULL OR expires_at > NOW())`;
+}
+
+// version TX de upsertSub (pour claim atomique)
+async function upsertSubTx(client: any, streamerId: number, userId: number) {
+  const r = await client.query(
+    `INSERT INTO streamer_subscriptions (streamer_id, user_id, started_at, expires_at, created_at, updated_at)
+     VALUES ($1,$2,NOW(), NOW() + ($3 * INTERVAL '1 day'), NOW(), NOW())
+     ON CONFLICT (streamer_id, user_id) DO UPDATE
+       SET started_at = CASE
+                         WHEN streamer_subscriptions.expires_at < NOW() THEN NOW()
+                         ELSE streamer_subscriptions.started_at
+                       END,
+           expires_at = GREATEST(streamer_subscriptions.expires_at, NOW()) + ($3 * INTERVAL '1 day'),
+           updated_at = NOW()
+     RETURNING expires_at`,
+    [streamerId, userId, SUB_DURATION_DAYS]
+  );
+  return r.rows?.[0]?.expires_at ?? null;
+}
+
+// version TX du badge auto-equip (optionnel, mais mieux)
+async function autoEquipSubBadgeIfEmptyTx(client: any, userId: number, streamerSlug: string) {
+  const slugLower = normSlug(streamerSlug);
+  if (!slugLower) return;
+  const badgeCode = `badge_sub_${slugLower}`;
+
+  await client.query(
+    `INSERT INTO user_equipped_cosmetics (user_id)
+     VALUES ($1)
+     ON CONFLICT (user_id) DO NOTHING`,
+    [userId]
+  );
+
+  await client.query(
+    `UPDATE user_equipped_cosmetics
+     SET badge_code = $2
+     WHERE user_id = $1
+       AND (badge_code IS NULL OR badge_code = 'none' OR badge_code = '')`,
+    [userId, badgeCode]
+  );
+}
+
+/**
+ * ✅ CREATE GiftPool (payer un pack de N subs)
+ * POST /streamers/:slug/gift-subs
+ * Body: { count: number }
+ */
+subscriptionsRouter.post("/streamers/:slug/gift-subs", requireAuth, async (req, res) => {
+  const slug = String(req.params.slug || "").trim();
+  if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
+
+  const gifterUserId = Number(req.user!.id);
+  const gifterUsername = String((req.user as any)?.username || "");
+
+  const streamer = await getStreamerBySlug(slug);
+  if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+  const countRaw = Number((req.body as any)?.count);
+  const count = Math.max(1, Math.min(GIFT_POOL_MAX, Math.floor(countRaw)));
+  if (!Number.isFinite(countRaw) || count <= 0) {
+    return res.status(400).json({ ok: false, error: "bad_count" });
+  }
+
+  const amount = count * SUB_PRICE_RUBIS;
+
+  try {
+    // Ledger SUPPORT au moment du paiement du pack
+    await spendSupport({
+      userId: gifterUserId,
+      streamerId: streamer.id,
+      streamerOwnerUserId: streamer.ownerUserId ?? 0,
+      amount,
+      purpose: "sub",
+      meta: { slug: streamer.slug, kind: "gift_pool_create", count },
+    });
+
+    // crée le pool
+    const ins = await pool.query(
+      `INSERT INTO sub_gift_pools (streamer_id, gifter_user_id, total, remaining, expires_at, meta)
+       VALUES ($1,$2,$3,$3, NOW() + ($4 * INTERVAL '1 day'), $5::jsonb)
+       RETURNING id, remaining, expires_at`,
+      [streamer.id, gifterUserId, count, GIFT_POOL_EXPIRES_DAYS, JSON.stringify({ slug: streamer.slug })]
+    );
+
+    // solde gifter
+    const u = await pool.query(`SELECT rubis FROM users WHERE id=$1 LIMIT 1`, [gifterUserId]);
+    const newBalance = Number(u.rows?.[0]?.rubis ?? 0);
+
+    // chat event
+    const io = req.app.locals.io;
+    emitSystemChat(
+      io,
+      streamer.slug,
+      `🎁 ${gifterUsername || "Quelqu’un"} a offert ${count} sub${count > 1 ? "s" : ""} à la commu !`
+    );
+
+    return res.json({
+      ok: true,
+      newBalance,
+      pool: {
+        id: String(ins.rows[0].id),
+        remaining: Number(ins.rows[0].remaining),
+        expiresAt: ins.rows[0].expires_at,
+      },
+    });
+  } catch (e: any) {
+    return res.status(400).json({ ok: false, error: String(e?.message || "error") });
+  }
+});
+
+/**
+ * ✅ STATUS (reste combien ? et est-ce que moi je peux claim ?)
+ * GET /streamers/:slug/gift-subs/status
+ */
+subscriptionsRouter.get("/streamers/:slug/gift-subs/status", requireAuth, async (req, res) => {
+  const slug = String(req.params.slug || "").trim();
+  if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
+
+  const userId = Number(req.user!.id);
+
+  const streamer = await getStreamerBySlug(slug);
+  if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+  const sub = await getSubRow(streamer.id, userId);
+  const isSub = !!(sub && isActiveSub(sub.expires_at));
+
+  const q = await pool.query(
+    `SELECT COALESCE(SUM(remaining),0)::int AS remaining,
+            MIN(expires_at) AS next_expires_at
+     FROM sub_gift_pools
+     WHERE streamer_id=$1 AND ${poolActiveWhere()}`,
+    [streamer.id]
+  );
+
+  const remaining = Number(q.rows?.[0]?.remaining ?? 0);
+  const nextExpiresAt = q.rows?.[0]?.next_expires_at ?? null;
+
+  return res.json({
+    ok: true,
+    remaining,
+    nextExpiresAt,
+    isSub,
+    canClaim: remaining > 0 && !isSub,
+  });
+});
+
+/**
+ * ✅ CLAIM (atomique)
+ * POST /streamers/:slug/gift-subs/claim
+ */
+subscriptionsRouter.post("/streamers/:slug/gift-subs/claim", requireAuth, async (req, res) => {
+  const slug = String(req.params.slug || "").trim();
+  if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
+
+  const userId = Number(req.user!.id);
+  const username = String((req.user as any)?.username || "");
+
+  const streamer = await getStreamerBySlug(slug);
+  if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+  // déjà sub ?
+  const cur = await getSubRow(streamer.id, userId);
+  if (cur && isActiveSub(cur.expires_at)) {
+    return res.status(400).json({ ok: false, error: "already_sub" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // trouve 1 pool dispo (lock)
+    const pick = await client.query(
+      `SELECT id
+       FROM sub_gift_pools
+       WHERE streamer_id=$1 AND ${poolActiveWhere()}
+       ORDER BY created_at ASC
+       FOR UPDATE SKIP LOCKED
+       LIMIT 1`,
+      [streamer.id]
+    );
+
+    const poolId = pick.rows?.[0]?.id;
+    if (!poolId) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ ok: false, error: "no_pool" });
+    }
+
+    // insert claim d'abord (évite de décrémenter si déjà claim sur ce streamer)
+    const claim = await client.query(
+      `INSERT INTO sub_gift_claims (streamer_id, pool_id, user_id)
+       VALUES ($1,$2,$3)
+       ON CONFLICT (streamer_id, user_id) DO NOTHING
+       RETURNING id`,
+      [streamer.id, poolId, userId]
+    );
+
+    if (!claim.rows?.[0]?.id) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ ok: false, error: "already_claimed" });
+    }
+
+    // décrémente remaining
+    const upd = await client.query(
+      `UPDATE sub_gift_pools
+       SET remaining = remaining - 1
+       WHERE id=$1 AND remaining > 0
+       RETURNING remaining, expires_at`,
+      [poolId]
+    );
+
+    if (!upd.rows?.[0]) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ ok: false, error: "race_lost" });
+    }
+
+    // crée/extend la sub
+    const expiresAt = await upsertSubTx(client, streamer.id, userId);
+
+    // badge (dans la même tx)
+    await autoEquipSubBadgeIfEmptyTx(client, userId, streamer.slug);
+
+    await client.query("COMMIT");
+
+    // chat event
+    const io = req.app.locals.io;
+    emitSystemChat(io, streamer.slug, `🎉 ${username || "Quelqu’un"} a claim un sub offert !`);
+
+    return res.json({
+      ok: true,
+      expiresAt,
+      remaining: Number(upd.rows[0].remaining),
+    });
+  } catch (e: any) {
+    try { await client.query("ROLLBACK"); } catch {}
+    return res.status(400).json({ ok: false, error: String(e?.message || "error") });
+  } finally {
+    client.release();
   }
 });
