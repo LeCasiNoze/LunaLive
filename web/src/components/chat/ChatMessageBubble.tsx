@@ -60,24 +60,6 @@ function normalizeTitle(title: any): { code: string; text: string; tier?: string
   return { code, text, tier };
 }
 
-function badgeStyle(b: any): React.CSSProperties | undefined {
-  if (!b) return undefined;
-
-  // tolérant: supporte {borderColor,textColor,backgroundColor} direct
-  // ou {meta:{...}}
-  const borderColor = b.borderColor ?? b.meta?.borderColor ?? null;
-  const textColor = b.textColor ?? b.meta?.textColor ?? null;
-  const backgroundColor = b.backgroundColor ?? b.meta?.backgroundColor ?? null;
-
-  if (!borderColor && !textColor && !backgroundColor) return undefined;
-
-  return {
-    ...(borderColor ? { borderColor: String(borderColor) } : null),
-    ...(textColor ? { color: String(textColor) } : null),
-    ...(backgroundColor ? { background: String(backgroundColor) } : null),
-  } as React.CSSProperties;
-}
-
 function badgeLabel(b: any): string {
   const v =
     b?.label ??
