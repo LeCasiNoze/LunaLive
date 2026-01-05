@@ -43,6 +43,7 @@ import { streamerDliveLinkRouter } from "./routes/streamer_dlive_link.js";
 // ✅ NEW: tabs (about/agenda)
 import { streamerTabsRouter } from "./routes/streamer_tabs.js";
 import { streamerVodsRouter } from "./routes/streamer_vods.js";
+import { meProfileRouter } from "./routes/me_profile.js";
 
 export function createApp() {
   const app = express();
@@ -111,6 +112,7 @@ export function createApp() {
 
   app.use(adminCasinosSetupRouter);
   app.use("/streamer/me/dlive-link", streamerDliveLinkRouter);
+  app.use(meProfileRouter);
 
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));

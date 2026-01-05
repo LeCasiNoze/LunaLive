@@ -5,6 +5,14 @@ function apiUrl(path: string) {
   return `${BASE}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
+function safeJson(s: string) {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
+
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const res = await fetch(input, init);
   const text = await res.text();
@@ -20,19 +28,13 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   return data as T;
 }
 
-function safeJson(s: string) {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return null;
-  }
-}
-
 export type ApiFollowing = {
   id?: string | null;
   slug: string;
   displayName?: string | null;
   isLive?: boolean | null;
+  notifyEnabled?: boolean | null;
+  followedAt?: string | null;
 };
 
 export async function myFollowing(
@@ -53,14 +55,22 @@ export async function myFollowing(
 export type ApiProfileStats = {
   ok: true;
 
+  // Account
+  accountAgeDays?: number | null;
+
   // Social
   followingCount?: number | null;
 
-  // Chat / watch
+  // Chat
   chatMessagesTotal?: number | null;
-  watchSecondsTotal?: number | null;
+  mostActiveChatHour?: number | null; // 0..23
+  mostActiveChatDow?: number | null; // 0..6 (dimanche..samedi)
+  topStreamersByMessages?: Array<{ slug: string; displayName: string; messages: number }>;
 
+  // Watch
+  watchSecondsTotal?: number | null;
   topStreamerByWatch?: null | { slug: string; displayName: string; seconds: number };
+  topStreamersByWatch?: Array<{ slug: string; displayName: string; seconds: number }>;
 
   // Economy
   rubisEarnedTotal?: number | null;
@@ -68,8 +78,14 @@ export type ApiProfileStats = {
   rubisSupportTotal?: number | null;
   rubisBurnTotal?: number | null;
 
-  // Account
-  accountAgeDays?: number | null;
+  // Fun extras
+  dailyWheelSpinsTotal?: number | null;
+  dailyWheelRubisTotal?: number | null;
+  dailyBonusClaimsTotal?: number | null;
+  achievementsUnlockedTotal?: number | null;
+  entitlementsTotal?: number | null;
+  chestRubisWonTotal?: number | null;
+  subGiftsClaimedTotal?: number | null;
 };
 
 export async function myProfileStats(token: string): Promise<ApiProfileStats> {
