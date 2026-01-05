@@ -4,7 +4,6 @@ import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
 import multer from "multer";
-import sharp from "sharp";
 
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
@@ -14,34 +13,20 @@ export const streamerTabsRouter = Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 3_000_000, // 3MB max
-  },
+  limits: { fileSize: 3_000_000 }, // 3MB
 });
 
-let cachedOwnerCol: string | null | undefined;
-
-async function resolveOwnerCol(): Promise<string | null> {
-  if (cachedOwnerCol !== undefined) return cachedOwnerCol;
-
-  const { rows } = await pool.query(
-    `
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_schema='public'
-      AND table_name='streamers'
-      AND column_name IN ('owner_user_id','owneruserid','owner_id')
-    `
-  );
-
-  const set = new Set(rows.map((r: any) => String(r.column_name)));
-
-  if (set.has("owner_user_id")) cachedOwnerCol = "owner_user_id";
-  else if (set.has("owneruserid")) cachedOwnerCol = "owneruserid";
-  else if (set.has("owner_id")) cachedOwnerCol = "owner_id";
-  else cachedOwnerCol = null;
-
-  return cachedOwnerCol;
+// lazy import sharp (évite de casser le boot si sharp manque)
+let sharpMod: any = null;
+async function getSharp() {
+  if (sharpMod) return sharpMod;
+  try {
+    const mod = await import("sharp");
+    sharpMod = (mod as any).default ?? mod;
+    return sharpMod;
+  } catch {
+    return null;
+  }
 }
 
 async function getStreamerCore(slug: string) {
@@ -76,7 +61,6 @@ function isLocalAboutUploadUrl(url: string, streamerId: number) {
 }
 
 function aboutUploadAbsPath(url: string) {
-  // url: /uploads/streamer_about/<id>/<file>
   const rel = url.replace(/^\/uploads\//, ""); // streamer_about/<id>/<file>
   return path.resolve(process.cwd(), "uploads", rel);
 }
@@ -84,9 +68,7 @@ function aboutUploadAbsPath(url: string) {
 async function deleteFileSafe(absPath: string) {
   try {
     await fs.unlink(absPath);
-  } catch {
-    // ignore missing / already deleted
-  }
+  } catch {}
 }
 
 /* =========================
@@ -106,7 +88,7 @@ streamerTabsRouter.post(
     if (!core) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
     if (!canEdit(user, core.owner_user_id)) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
 
-    const file = (req as any).file as undefined | { buffer: Buffer; mimetype: string; originalname: string };
+    const file = (req as any).file as undefined | { buffer: Buffer; mimetype: string };
     if (!file?.buffer) return res.status(400).json({ ok: false, error: "NO_FILE" });
 
     const mt = String(file.mimetype || "").toLowerCase();
@@ -114,11 +96,24 @@ streamerTabsRouter.post(
       return res.status(400).json({ ok: false, error: "BAD_FILE_TYPE" });
     }
 
-    // ✅ optimisation: rotate (EXIF), resize inside 1280, convert webp
+    const sharp = await getSharp();
+    if (!sharp) return res.status(500).json({ ok: false, error: "sharp_not_installed" });
+
+    // détecte square/banner (sur l'image source)
+    const meta = await sharp(file.buffer).metadata();
+    const w = Number(meta.width || 0);
+    const h = Number(meta.height || 0);
+    const ratio = w > 0 && h > 0 ? w / h : 1;
+    const kind = ratio >= 1.45 ? "banner" : "square";
+
+    // optimisation: garder le ratio (fit inside), convertir webp
+    const maxW = kind === "banner" ? 1600 : 1200;
+    const maxH = kind === "banner" ? 900 : 1200;
+
     const out = await sharp(file.buffer)
       .rotate()
-      .resize({ width: 1280, height: 1280, fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 78 })
+      .resize({ width: maxW, height: maxH, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 80 })
       .toBuffer();
 
     const dir = path.resolve(process.cwd(), "uploads", "streamer_about", String(core.id));
@@ -129,7 +124,7 @@ streamerTabsRouter.post(
     await fs.writeFile(abs, out);
 
     const imageUrl = `/uploads/streamer_about/${core.id}/${name}`;
-    return res.json({ ok: true, imageUrl });
+    return res.json({ ok: true, imageUrl, kind, width: w || null, height: h || null });
   })
 );
 
@@ -186,11 +181,8 @@ streamerTabsRouter.put(
     if (!blocks) return res.status(400).json({ ok: false, error: "BAD_BODY" });
     if (blocks.length > 30) return res.status(400).json({ ok: false, error: "TOO_MANY_BLOCKS" });
 
-    // avant: récupérer les images locales actuellement en DB (pour cleanup)
-    const before = await pool.query(
-      `SELECT image_url FROM streamer_about_blocks WHERE streamer_id=$1`,
-      [core.id]
-    );
+    // images locales présentes avant (pour cleanup)
+    const before = await pool.query(`SELECT image_url FROM streamer_about_blocks WHERE streamer_id=$1`, [core.id]);
     const prevLocal = new Set<string>();
     for (const r of before.rows) {
       const u = String(r.image_url || "").trim();
@@ -223,19 +215,20 @@ streamerTabsRouter.put(
 
       await client.query("COMMIT");
     } catch (e) {
-      try { await client.query("ROLLBACK"); } catch {}
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
       console.error("[streamer_tabs/about] db error", e);
       return res.status(500).json({ ok: false, error: "DB_ERROR" });
     } finally {
       client.release();
     }
 
-    // ✅ cleanup: tout ce qui était en DB avant et n'est plus utilisé
+    // cleanup fichiers plus utilisés
     for (const oldUrl of prevLocal) {
       if (nextLocal.has(oldUrl)) continue;
-      const abs = aboutUploadAbsPath(oldUrl);
 
-      // sécurité : on n'efface que dans le dossier du streamer
+      const abs = aboutUploadAbsPath(oldUrl);
       const allowedRoot = path.resolve(process.cwd(), "uploads", "streamer_about", String(core.id));
       if (!abs.startsWith(allowedRoot)) continue;
 
@@ -247,7 +240,7 @@ streamerTabsRouter.put(
 );
 
 /* =========================
- *  AGENDA
+ *  AGENDA (inchangé ici)
  * ========================= */
 
 streamerTabsRouter.get(
@@ -316,13 +309,11 @@ streamerTabsRouter.put(
 
         const dayOfWeek = kind === "regular" ? Number(r.dayOfWeek ?? 0) : null;
 
-        // ✅ important: event DOIT avoir une date
         let dateYmd: string | null = null;
         if (kind === "event") {
           const d = String(r.date || "").trim();
           dateYmd = d || null;
           if (!dateYmd) {
-            // fallback "aujourd'hui" pour éviter DB_ERROR si UI laisse vide
             const now = new Date();
             const y = now.getFullYear();
             const m = String(now.getMonth() + 1).padStart(2, "0");
@@ -342,7 +333,9 @@ streamerTabsRouter.put(
       await client.query("COMMIT");
       return res.json({ ok: true });
     } catch (e) {
-      try { await client.query("ROLLBACK"); } catch {}
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
       console.error("[streamer_tabs/agenda] db error", e);
       return res.status(500).json({ ok: false, error: "DB_ERROR" });
     } finally {
