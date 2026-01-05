@@ -18,7 +18,9 @@ type VodOut = {
 
 function pickBestHls(playbackUrl: any, resolution: any): string | null {
   const resArr = Array.isArray(resolution) ? resolution : [];
-  const by = (k: string) => resArr.find((x: any) => String(x?.resolution || "").toLowerCase() === k)?.url;
+  const by = (k: string) =>
+    resArr.find((x: any) => String(x?.resolution || "").toLowerCase() === k)?.url;
+
   return (
     by("src") ||
     by("720p") ||
@@ -54,8 +56,14 @@ streamerVodsRouter.get(
 
     const channelSlug = String(row.channelSlug || "").trim();
     if (!channelSlug) {
-      // streamer pas encore lié à un compte provider
-      return res.json({ ok: true, channelSlug: null, vods: [], pageInfo: { endCursor: null, hasNextPage: false } });
+      console.warn("[vods] no channelSlug for streamer slug=", slug);
+      return res.json({
+        ok: true,
+        channelSlug: null,
+        reason: "no_provider_account",
+        pageInfo: { endCursor: null, hasNextPage: false },
+        vods: [],
+      });
     }
 
     const query = `
@@ -86,7 +94,7 @@ streamerVodsRouter.get(
     const body = {
       operationName: "PastBroadcastsV2",
       variables: {
-        displayname: channelSlug, // DLive accepte généralement le username/slug ici
+        displayname: channelSlug,
         first: limit,
         after: cursor,
       },
@@ -95,14 +103,28 @@ streamerVodsRouter.get(
 
     const r = await fetch("https://graphigo.prd.dlive.tv/", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        // pas d'Authorization ici (public)
-      },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     }).then((x) => x.json());
 
-    const conn = r?.data?.userByDisplayName?.pastBroadcastsV2;
+    if (Array.isArray(r?.errors) && r.errors.length) {
+      console.warn("[vods] dlive graphql errors:", r.errors);
+      return res.status(502).json({ ok: false, error: "dlive_graphql_error" });
+    }
+
+    const user = r?.data?.userByDisplayName;
+    if (!user) {
+      console.warn("[vods] dlive userByDisplayName null for", { channelSlug, slug });
+      return res.json({
+        ok: true,
+        channelSlug,
+        reason: "dlive_user_not_found",
+        pageInfo: { endCursor: null, hasNextPage: false },
+        vods: [],
+      });
+    }
+
+    const conn = user?.pastBroadcastsV2;
     const pageInfo = conn?.pageInfo || { endCursor: null, hasNextPage: false };
     const list = Array.isArray(conn?.list) ? conn.list : [];
 
@@ -110,7 +132,10 @@ streamerVodsRouter.get(
       const playbackUrl = typeof v?.playbackUrl === "string" ? v.playbackUrl : null;
       const resArr = Array.isArray(v?.resolution)
         ? v.resolution
-            .map((x: any) => ({ resolution: String(x?.resolution || ""), url: String(x?.url || "") }))
+            .map((x: any) => ({
+              resolution: String(x?.resolution || ""),
+              url: String(x?.url || ""),
+            }))
             .filter((x: any) => x.resolution && x.url)
         : [];
 
@@ -132,6 +157,7 @@ streamerVodsRouter.get(
     res.json({
       ok: true,
       channelSlug,
+      reason: "ok",
       pageInfo: {
         endCursor: pageInfo?.endCursor ?? null,
         hasNextPage: !!pageInfo?.hasNextPage,
