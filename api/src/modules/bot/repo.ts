@@ -36,18 +36,79 @@ function isMissingTable(e: any) {
   return String(e?.code || "") === "42P01";
 }
 
+function isUndefinedColumn(e: any) {
+  return String(e?.code || "") === "42703"; // undefined_column
+}
+
 // Récupère le streamer “du user” (owner). MVP : 1 streamer owner.
 export async function getMyStreamer(pool: Pool, userId: number): Promise<MyStreamer | null> {
-  const r = await pool.query(
-    `SELECT id, slug
-     FROM streamers
-     WHERE owner_user_id = $1
-     ORDER BY id ASC
-     LIMIT 1`,
-    [userId]
-  );
-  return r.rows[0] ?? null;
+  const tries: { sql: string; args: any[] }[] = [
+    // ✅ cas très fréquent: users.streamer_id -> streamers.id
+    {
+      sql: `SELECT s.id, s.slug
+            FROM users u
+            JOIN streamers s ON s.id = u.streamer_id
+            WHERE u.id = $1
+            LIMIT 1`,
+      args: [userId],
+    },
+
+    // owner_user_id (chez toi ça crash, mais on le tente si ça existe sur d'autres env)
+    {
+      sql: `SELECT id, slug
+            FROM streamers
+            WHERE owner_user_id = $1
+            ORDER BY id ASC
+            LIMIT 1`,
+      args: [userId],
+    },
+
+    // user_id
+    {
+      sql: `SELECT id, slug
+            FROM streamers
+            WHERE user_id = $1
+            ORDER BY id ASC
+            LIMIT 1`,
+      args: [userId],
+    },
+
+    // table de liaison possible
+    {
+      sql: `SELECT s.id, s.slug
+            FROM streamer_users su
+            JOIN streamers s ON s.id = su.streamer_id
+            WHERE su.user_id = $1
+            ORDER BY s.id ASC
+            LIMIT 1`,
+      args: [userId],
+    },
+
+    {
+      sql: `SELECT s.id, s.slug
+            FROM streamer_members sm
+            JOIN streamers s ON s.id = sm.streamer_id
+            WHERE sm.user_id = $1
+            ORDER BY s.id ASC
+            LIMIT 1`,
+      args: [userId],
+    },
+  ];
+
+  for (const t of tries) {
+    try {
+      const r = await pool.query(t.sql, t.args);
+      return r.rows[0] ?? null;
+    } catch (e: any) {
+      // on teste l'alternative si table/colonne n'existe pas
+      if (isMissingTable(e) || isUndefinedColumn(e)) continue;
+      throw e;
+    }
+  }
+
+  return null;
 }
+
 
 /* Commands */
 export async function listCommands(pool: Pool, streamerId: number): Promise<BotCommandRow[]> {
