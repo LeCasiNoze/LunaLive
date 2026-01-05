@@ -2,6 +2,16 @@ import * as React from "react";
 import Hls from "hls.js";
 import { getStreamerVods, type ApiVod } from "../../../lib/api_streamer_tabs";
 
+const whiteStroke = {
+  color: "#fff",
+  textShadow: `
+    -1px -1px 0 #000,
+     1px -1px 0 #000,
+    -1px  1px 0 #000,
+     1px  1px 0 #000
+  `,
+};
+
 function fmtDuration(sec: number) {
   sec = Math.max(0, Math.floor(sec || 0));
   const h = Math.floor(sec / 3600);
@@ -136,35 +146,29 @@ export function VodTab({ slug }: { slug: string }) {
                     left: 10,
                     bottom: 10,
                     padding: "6px 10px",
-                    borderRadius: 12,
-                    background: "rgba(0,0,0,0.60)",
-                    fontWeight: 950,
+                    borderRadius: 10,
+                    background: "rgba(0,0,0,0.45)",
+                    fontWeight: 900,
+                    ...whiteStroke,
                   }}
                 >
                   {fmtDuration(v.lengthSec)}
                 </div>
+              </div>
 
                 <div
                   style={{
-                    position: "absolute",
-                    right: 10,
-                    bottom: 10,
-                    padding: "6px 10px",
-                    borderRadius: 12,
-                    background: "rgba(0,0,0,0.60)",
-                    fontWeight: 900,
-                    opacity: 0.95,
+                    marginTop: 10,
+                    fontWeight: 950,
+                    lineHeight: 1.25,
+                    fontSize: "0.95rem",
+                    ...whiteStroke,
                   }}
                 >
-                  {Number(v.viewCount || 0).toLocaleString()} vues
+                  {v.title || "(sans titre)"}
                 </div>
-              </div>
-
-              <div style={{ marginTop: 10, fontWeight: 950, lineHeight: 1.2 }}>
-                {v.title || "(sans titre)"}
-              </div>
               <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.85 }}>
-                {timeAgo(v.createdAtMs)} • {v.permlink}
+                {timeAgo(v.createdAtMs)}
               </div>
             </button>
           ))}
