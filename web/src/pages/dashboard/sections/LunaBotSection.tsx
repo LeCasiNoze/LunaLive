@@ -1,3 +1,5 @@
+//web/src/pages/dashboard/sections/LunaBotSection.tsx
+
 import * as React from "react";
 import { createPortal } from "react-dom";
 import type { ApiMyStreamer } from "../../../lib/api";
