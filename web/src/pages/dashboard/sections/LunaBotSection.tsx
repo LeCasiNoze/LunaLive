@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import type { ApiMyStreamer } from "../../../lib/api";
 import { useAuth } from "../../../auth/AuthProvider";
 import {
@@ -36,6 +37,8 @@ type ModuleDef = {
   onOpen?: () => void;
 };
 
+type ActiveModule = "commands" | "autoposts" | "logs" | "test-send" | null;
+
 const CATEGORY_LABEL: Record<ModuleCategory, string> = {
   general: "Général",
   rubis: "Rubis & mini-jeux",
@@ -45,6 +48,10 @@ const CATEGORY_LABEL: Record<ModuleCategory, string> = {
 };
 
 const CATEGORY_ORDER: ModuleCategory[] = ["general", "rubis", "discord", "moderation", "admin"];
+
+// ──────────────────────────────────────────
+// Small UI helpers
+// ──────────────────────────────────────────
 
 function Chip({
   kind,
@@ -210,6 +217,123 @@ function QuickCard({
       </div>
     </div>
   );
+}
+
+// ──────────────────────────────────────────
+// Modal (popup) — style NozeBot-like
+// ──────────────────────────────────────────
+
+function Modal({
+  open,
+  title,
+  desc,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  desc?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  React.useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+
+    // lock scroll
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const node = (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(0,0,0,0.65)",
+        backdropFilter: "blur(6px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+      onMouseDown={(e) => {
+        // click outside closes
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="panel"
+        style={{
+          width: "min(980px, 96vw)",
+          maxHeight: "92vh",
+          overflow: "hidden",
+          borderRadius: 22,
+          border: "1px solid rgba(255,255,255,0.10)",
+          background: "rgba(10,10,10,0.92)",
+          boxShadow: "0 20px 80px rgba(0,0,0,0.55)",
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: 16,
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 950, fontSize: 16, lineHeight: 1.1 }}>{title}</div>
+            {desc ? (
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                {desc}
+              </div>
+            ) : null}
+          </div>
+
+          <button
+            className="btnGhostInline"
+            onClick={onClose}
+            style={{ borderRadius: 14, padding: "10px 12px", fontWeight: 950 }}
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Body */}
+        <div
+          style={{
+            padding: 16,
+            overflow: "auto",
+            maxHeight: "calc(92vh - 70px)",
+          }}
+        >
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+
+  return createPortal(node, document.body);
 }
 
 // ──────────────────────────────────────────
@@ -527,7 +651,7 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
   const [logs, setLogs] = React.useState<ApiBotLogRow[]>([]);
 
   const [activeCategory, setActiveCategory] = React.useState<ModuleCategory>("general");
-  const [activeModule, setActiveModule] = React.useState<string | null>(null);
+  const [activeModule, setActiveModule] = React.useState<ActiveModule>(null);
 
   const [testBody, setTestBody] = React.useState("Test LunaBot ✅");
 
@@ -559,6 +683,13 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
     void reloadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  // Optionnel: à l’ouverture d’un module, on rafraîchit (effet “modal NozeBot”)
+  React.useEffect(() => {
+    if (!activeModule) return;
+    void reloadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeModule]);
 
   if (!token) {
     return (
@@ -636,13 +767,33 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
   const availableCategories = CATEGORY_ORDER.filter((c) => (isAdmin ? true : c !== "admin"));
   const visibleModules = modules.filter((m) => m.category === activeCategory);
 
+  const modalTitle =
+    activeModule === "commands"
+      ? "Commandes personnalisées"
+      : activeModule === "autoposts"
+      ? "Messages automatiques"
+      : activeModule === "logs"
+      ? "Logs"
+      : activeModule === "test-send"
+      ? "Message test"
+      : "Module";
+
+  const modalDesc =
+    activeModule === "commands"
+      ? "Crée, active/désactive et supprime tes !commandes."
+      : activeModule === "autoposts"
+      ? "Planifie des messages (exécution live-only gérée côté bot)."
+      : activeModule === "logs"
+      ? "Événements / erreurs / diagnostic du bot."
+      : activeModule === "test-send"
+      ? "Utile pour valider que le bot “push chat” fonctionne."
+      : undefined;
+
   return (
     <div className="panel" style={{ padding: 14 }}>
       <div className="panelTitle" style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
         <span>LunaBot</span>
-        <span style={{ opacity: 0.7, fontSize: 12, fontWeight: 900 }}>
-          @{streamer.slug}
-        </span>
+        <span style={{ opacity: 0.7, fontSize: 12, fontWeight: 900 }}>@{streamer.slug}</span>
       </div>
 
       {err && (
@@ -698,81 +849,58 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
         }}
       >
         {visibleModules.map((m) => (
-          <QuickCard
-            key={m.id}
-            icon={m.icon}
-            title={m.title}
-            desc={m.desc}
-            status={m.status}
-            onOpen={m.onOpen}
-          />
+          <QuickCard key={m.id} icon={m.icon} title={m.title} desc={m.desc} status={m.status} onOpen={m.onOpen} />
         ))}
       </div>
 
-      {/* Active module panel */}
-      {activeModule ? (
-        <div style={{ marginTop: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-            <div style={{ fontWeight: 950 }}>
-              {activeModule === "commands"
-                ? "Commandes"
-                : activeModule === "autoposts"
-                ? "Messages automatiques"
-                : activeModule === "logs"
-                ? "Logs"
-                : activeModule === "test-send"
-                ? "Message test"
-                : "Module"}
+      {/* ✅ POPUP like NozeBot */}
+      <Modal
+        open={!!activeModule}
+        title={modalTitle}
+        desc={modalDesc}
+        onClose={() => setActiveModule(null)}
+      >
+        {activeModule === "commands" ? (
+          <CommandsPanel token={token} commands={commands} onReload={reloadAll} />
+        ) : activeModule === "autoposts" ? (
+          <AutopostsPanel token={token} autoposts={autoposts} onReload={reloadAll} />
+        ) : activeModule === "logs" ? (
+          <LogsPanel token={token} logs={logs} onReload={reloadAll} />
+        ) : activeModule === "test-send" ? (
+          <div className="panel" style={{ padding: 14, borderRadius: 18 }}>
+            <div className="panelTitle">Envoyer un message bot</div>
+            <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+              Utile pour valider que le bot “push chat” fonctionne.
             </div>
-            <button className="btnGhostInline" onClick={() => setActiveModule(null)}>
-              Fermer
-            </button>
-          </div>
 
-          <div style={{ marginTop: 10 }}>
-            {activeModule === "commands" ? (
-              <CommandsPanel token={token} commands={commands} onReload={reloadAll} />
-            ) : activeModule === "autoposts" ? (
-              <AutopostsPanel token={token} autoposts={autoposts} onReload={reloadAll} />
-            ) : activeModule === "logs" ? (
-              <LogsPanel token={token} logs={logs} onReload={reloadAll} />
-            ) : activeModule === "test-send" ? (
-              <div className="panel" style={{ padding: 14, borderRadius: 18 }}>
-                <div className="panelTitle">Envoyer un message bot</div>
-                <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-                  Utile pour valider que le bot “push chat” fonctionne.
-                </div>
-
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                  <input
-                    value={testBody}
-                    onChange={(e) => setTestBody(e.target.value)}
-                    placeholder="Message"
-                    style={{
-                      flex: "1 1 360px",
-                      minWidth: 240,
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      background: "rgba(0,0,0,0.12)",
-                      color: "inherit",
-                    }}
-                  />
-                  <button
-                    className="btnGhostInline"
-                    onClick={async () => {
-                      await botTestSend(token, testBody);
-                      await reloadAll();
-                    }}
-                  >
-                    Envoyer
-                  </button>
-                </div>
-              </div>
-            ) : null}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              <input
+                value={testBody}
+                onChange={(e) => setTestBody(e.target.value)}
+                placeholder="Message"
+                style={{
+                  flex: "1 1 360px",
+                  minWidth: 240,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(0,0,0,0.12)",
+                  color: "inherit",
+                }}
+              />
+              <button
+                className="btnGhostInline"
+                onClick={async () => {
+                  await botTestSend(token, testBody);
+                  await reloadAll();
+                }}
+              >
+                Envoyer
+              </button>
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </Modal>
     </div>
   );
 }
