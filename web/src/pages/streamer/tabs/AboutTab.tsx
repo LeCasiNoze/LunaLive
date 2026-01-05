@@ -209,7 +209,7 @@ export function AboutTab({
         key={b.id ?? i}
         className="panel"
         style={{
-          padding: 14,
+          padding: 12,
           borderRadius: 16,
           border: "1px solid rgba(255,255,255,0.08)",
           background: "rgba(255,255,255,0.03)",
@@ -416,7 +416,8 @@ export function AboutTab({
           style={{
             marginTop: 12,
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 220px))",
+            justifyContent: "start",
             gap: 12,
             alignItems: "start",
           }}
