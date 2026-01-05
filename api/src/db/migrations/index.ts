@@ -23,6 +23,7 @@ import { mig019_sub_gifts } from "./mig019_sub_gifts.js";
 import { mig020_host } from "./mig020_host.js";
 import { mig020_chat_settings } from "./mig020_chat_settings.js";
 import { mig021_streamer_tabs } from "./mig021_streamer_tabs.js";
+import { mig022_bot_core } from "./mig022_bot_core.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -56,4 +57,5 @@ export async function migrateAll(pool: Pool) {
   await mig020_chat_settings(pool);
 
   await mig021_streamer_tabs(pool);
+  await mig022_bot_core(pool);
 }
