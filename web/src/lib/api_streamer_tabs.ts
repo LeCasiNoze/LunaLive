@@ -13,7 +13,7 @@ export type AgendaRule = {
   kind: AgendaRuleKind;
   title: string;
   color: string;
-  dayOfWeek?: number | null; // 0=dim ... 6=sam
+  dayOfWeek?: number | null;
   date?: string | null; // YYYY-MM-DD
   startTime: string; // HH:MM
   endTime: string; // HH:MM
@@ -54,10 +54,7 @@ export async function putStreamerAbout(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   return j(`${API}/streamers/${encodeURIComponent(slug)}/about`, {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ blocks }),
   });
 }
@@ -66,15 +63,16 @@ export async function uploadStreamerAboutImage(
   slug: string,
   token: string,
   file: File
-): Promise<{ ok: true; imageUrl: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; imageUrl: string; kind?: "banner" | "square"; width?: number | null; height?: number | null }
+  | { ok: false; error: string }
+> {
   const fd = new FormData();
   fd.append("file", file);
 
   return j(`${API}/streamers/${encodeURIComponent(slug)}/about/upload-image`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { Authorization: `Bearer ${token}` },
     body: fd,
   });
 }
@@ -92,10 +90,7 @@ export async function putStreamerAgenda(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   return j(`${API}/streamers/${encodeURIComponent(slug)}/agenda`, {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ rules }),
   });
 }
