@@ -1,3 +1,4 @@
+// bot/src/runner.ts
 import type { Pool } from "pg";
 import type { BotEnv } from "../env.js";
 import type { BotStreamerSettings, StreamerRow } from "../core/types.js";
@@ -26,16 +27,48 @@ export class StreamerRunner {
     this.transport = new LunaLiveDbTransport(pool, env, streamer);
   }
 
+  getSettings(): BotStreamerSettings {
+    return {
+      enabled: Boolean(this.settings.enabled),
+      prefix: String(this.settings.prefix || ""),
+      liveOnly: Boolean(this.settings.liveOnly),
+    };
+  }
+
+  updateSettings(next: BotStreamerSettings) {
+    this.settings = {
+      enabled: Boolean(next.enabled),
+      prefix: String(next.prefix || this.env.BOT_DEFAULT_PREFIX),
+      liveOnly: Boolean(next.liveOnly),
+    };
+
+    console.log("[bot] runner settings updated", {
+      slug: this.streamer.slug,
+      id: this.streamer.id,
+      prefix: this.settings.prefix,
+      liveOnly: this.settings.liveOnly,
+    });
+
+    void (async () => {
+      try {
+        await logEvent(this.pool, this.streamer.id, "info", "runner settings updated", {
+          prefix: this.settings.prefix,
+          liveOnly: this.settings.liveOnly,
+        });
+      } catch {}
+    })();
+  }
+
   start() {
     if (this.alive) return;
     this.alive = true;
 
-    const prefix = this.settings.prefix || this.env.BOT_DEFAULT_PREFIX;
+    const prefix0 = this.settings.prefix || this.env.BOT_DEFAULT_PREFIX;
 
     console.log("[bot] runner start", {
       slug: this.streamer.slug,
       id: this.streamer.id,
-      prefix,
+      prefix: prefix0,
       liveOnly: this.settings.liveOnly,
       startFromNow: this.env.BOT_CHAT_START_FROM_NOW,
     });
@@ -44,7 +77,7 @@ export class StreamerRunner {
       try {
         await logEvent(this.pool, this.streamer.id, "info", "runner start", {
           slug: this.streamer.slug,
-          prefix,
+          prefix: prefix0,
         });
       } catch {}
     })();
@@ -71,6 +104,9 @@ export class StreamerRunner {
     this.transport.start(async (msg) => {
       if (!this.alive) return;
 
+      // prefix dynamique (si settings changent en DB)
+      const prefix = this.settings.prefix || this.env.BOT_DEFAULT_PREFIX;
+
       const botUserId = this.env.BOT_USER_ID ?? 1;
       if (msg.userId === botUserId) return; // évite boucles
 
@@ -79,7 +115,10 @@ export class StreamerRunner {
 
       // ✅ debug MVP: ping en dur
       if (lower === `${prefix}ping`) {
-        console.log("[bot] cmd !ping detected", { slug: this.streamer.slug, from: msg.username });
+        console.log("[bot] cmd ping detected", {
+          slug: this.streamer.slug,
+          from: msg.username,
+        });
 
         try {
           await logEvent(this.pool, this.streamer.id, "info", "cmd ping", {

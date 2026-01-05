@@ -1,6 +1,23 @@
 // bot/src/env.ts
 import { z } from "zod";
 
+function parseBoolean(v: unknown, fallback?: boolean): boolean {
+  if (v === undefined || v === null || v === "") {
+    if (typeof fallback === "boolean") return fallback;
+    return false;
+  }
+
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v !== 0;
+
+  const s = String(v).trim().toLowerCase();
+  if (["true", "1", "yes", "y", "on"].includes(s)) return true;
+  if (["false", "0", "no", "n", "off"].includes(s)) return false;
+
+  // valeur inconnue → fallback si fourni, sinon false
+  return typeof fallback === "boolean" ? fallback : false;
+}
+
 const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
 
@@ -18,11 +35,21 @@ const EnvSchema = z.object({
   // chat tail
   BOT_CHAT_POLL_MS: z.coerce.number().int().min(200).default(800),
   BOT_CHAT_BATCH: z.coerce.number().int().min(10).max(500).default(200),
-  BOT_CHAT_START_FROM_NOW: z.coerce.boolean().default(true),
+
+  // ⚠️ Render: "false" ne doit PAS devenir true → custom parse
+  BOT_CHAT_START_FROM_NOW: z.preprocess(
+    (v) => parseBoolean(v, true),
+    z.boolean()
+  ),
 
   // comportement
   BOT_DEFAULT_PREFIX: z.string().min(1).default("!"),
-  BOT_LIVE_ONLY_DEFAULT: z.coerce.boolean().default(true),
+
+  // ⚠️ Render: "false" ne doit PAS devenir true → custom parse
+  BOT_LIVE_ONLY_DEFAULT: z.preprocess(
+    (v) => parseBoolean(v, true),
+    z.boolean()
+  ),
 
   // optionnel (ton mode forcé)
   BOT_FORCE_STREAMER_SLUG: z.string().min(1).optional(),
