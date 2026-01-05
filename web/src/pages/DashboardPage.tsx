@@ -11,6 +11,7 @@ import {
 
 import { DashboardSidebar, type DashboardTab } from "./dashboard/DashboardSidebar";
 import { OverviewSection } from "./dashboard/sections/OverviewSection";
+import { LunaBotSection } from "./dashboard/sections/LunaBotSection";
 import { StreamSection } from "./dashboard/sections/StreamSection";
 import { ModerationSection } from "./dashboard/sections/ModerationSection";
 import { AppearanceSection } from "./dashboard/sections/AppearanceSection";
@@ -79,7 +80,6 @@ export default function DashboardPage() {
     display: "flex",
     gap: 16,
     alignItems: "flex-start",
-    // responsive simple: sur petit écran ça passera en colonne (flex-wrap)
     flexWrap: "wrap",
   };
 
@@ -117,16 +117,10 @@ export default function DashboardPage() {
       ) : (
         streamer && (
           <div style={layoutStyle}>
-            {/* Sidebar */}
             <div style={sidebarStyle}>
-              <DashboardSidebar
-                tab={tab}
-                setTab={setTab}
-                streamer={streamer}
-              />
+              <DashboardSidebar tab={tab} setTab={setTab} streamer={streamer} />
             </div>
 
-            {/* Content */}
             <div style={contentStyle}>
               {tab === "overview" && (
                 <OverviewSection
@@ -137,6 +131,8 @@ export default function DashboardPage() {
                 />
               )}
 
+              {tab === "lunabot" && <LunaBotSection streamer={streamer} />}
+
               {tab === "stream" && (
                 <StreamSection
                   streamer={streamer}
@@ -144,7 +140,7 @@ export default function DashboardPage() {
                   onSaveTitle={async (title) => {
                     if (!token) return;
                     const r = await updateMyStreamerTitle(token, title);
-                    setStreamer(r.streamer); // ✅ effet immédiat dans le dashboard
+                    setStreamer(r.streamer);
                   }}
                 />
               )}
@@ -157,9 +153,7 @@ export default function DashboardPage() {
 
               {tab === "stats" && <StatsSection streamer={streamer} />}
 
-              {tab === "settings" && (
-                <SettingsSection streamer={streamer} onReload={load} />
-              )}
+              {tab === "settings" && <SettingsSection streamer={streamer} onReload={load} />}
             </div>
           </div>
         )
