@@ -45,6 +45,7 @@ import { streamerTabsRouter } from "./routes/streamer_tabs.js";
 import { streamerVodsRouter } from "./routes/streamer_vods.js";
 import { meProfileRouter } from "./routes/me_profile.js";
 import { internalBotRouter } from "./routes/internal_bot.js";
+import { botManageRouter } from "./routes/bot_manage.js";
 
 export function createApp() {
   const app = express();
@@ -100,7 +101,8 @@ export function createApp() {
   app.use(casinosPublicRouter);
   app.use("/me/casinos", requireAuth, casinosMeRouter);
   app.use(streamerVodsRouter);
-  
+  app.use(botManageRouter);
+
   // ✅ IMPORTANT: compat legacy frontend
   // ton build prod appelle encore /admin/casinos/listings (GET/POST)
   app.use("/admin/casinos/listings", adminCasinosRouter);
@@ -115,7 +117,7 @@ export function createApp() {
   app.use("/streamer/me/dlive-link", streamerDliveLinkRouter);
   app.use(meProfileRouter);
   app.use(internalBotRouter);
-  
+
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
 

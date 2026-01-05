@@ -936,3 +936,139 @@ export async function dliveLinkUnlink(token: string) {
     body: "{}",
   });
 }
+
+// ──────────────────────────────────────────
+// 🤖 LunaBot (dashboard)
+// ──────────────────────────────────────────
+
+export type ApiBotOverview = {
+  ok: true;
+  streamer: { id: string; slug: string };
+  counts: { commands: number; autoposts: number; logs: number };
+};
+
+export type ApiBotCommand = {
+  id: string;
+  trigger: string;
+  response: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ApiBotAutopost = {
+  id: string;
+  message: string;
+  everySec: number;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ApiBotLogRow = {
+  id: string;
+  level: string;
+  message: string;
+  meta: any;
+  createdAt: string;
+};
+
+export async function getMyBotOverview(token: string) {
+  return j<ApiBotOverview>("/me/bot/overview", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+// Commands
+export async function getMyBotCommands(token: string) {
+  return j<{ ok: true; commands: ApiBotCommand[] }>("/me/bot/commands", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function createMyBotCommand(token: string, payload: { trigger: string; response: string; enabled?: boolean }) {
+  return j<{ ok: true; command: ApiBotCommand }>("/me/bot/commands", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateMyBotCommand(
+  token: string,
+  id: string,
+  patch: Partial<{ trigger: string; response: string; enabled: boolean }>
+) {
+  return j<{ ok: true; command: ApiBotCommand }>(`/me/bot/commands/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteMyBotCommand(token: string, id: string) {
+  return j<{ ok: true; deleted: boolean }>(`/me/bot/commands/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+// Autoposts
+export async function getMyBotAutoposts(token: string) {
+  return j<{ ok: true; autoposts: ApiBotAutopost[] }>("/me/bot/autoposts", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function createMyBotAutopost(
+  token: string,
+  payload: { message: string; everySec: number; enabled?: boolean }
+) {
+  return j<{ ok: true; autopost: ApiBotAutopost }>("/me/bot/autoposts", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateMyBotAutopost(
+  token: string,
+  id: string,
+  patch: Partial<{ message: string; everySec: number; enabled: boolean }>
+) {
+  return j<{ ok: true; autopost: ApiBotAutopost }>(`/me/bot/autoposts/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteMyBotAutopost(token: string, id: string) {
+  return j<{ ok: true; deleted: boolean }>(`/me/bot/autoposts/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+// Logs
+export async function getMyBotLogs(token: string, limit = 50) {
+  return j<{ ok: true; logs: ApiBotLogRow[] }>(`/me/bot/logs?limit=${encodeURIComponent(String(limit))}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function clearMyBotLogs(token: string) {
+  return j<{ ok: true }>("/me/bot/logs/clear", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+// Test send
+export async function botTestSend(token: string, body?: string) {
+  return j<{ ok: true; id: number }>("/me/bot/test-send", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ body: body ?? "Test LunaBot ✅" }),
+  });
+}
