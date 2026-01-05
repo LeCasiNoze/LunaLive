@@ -7,7 +7,9 @@ import { loadAutoposts, loadCommands } from "./config.js";
 import { LunaLiveDbTransport } from "../providers/lunalive/db_transport.js";
 import { logEvent } from "../log.js";
 
-function preview(v: any, n = 100) {
+const BOT_TEXT_MAX = 500;
+
+function preview(v: any, n = 140) {
   const s = String(v ?? "");
   return s.length > n ? s.slice(0, n) + "…" : s;
 }
@@ -22,9 +24,6 @@ export class StreamerRunner {
   private autopostTimer: NodeJS.Timeout | null = null;
   private cfgReloadTimer: NodeJS.Timeout | null = null;
 
-  // anti-spam simple par (userId/username + trigger)
-  private lastCmdAt = new Map<string, number>();
-
   constructor(
     private pool: Pool,
     private env: BotEnv,
@@ -32,35 +31,6 @@ export class StreamerRunner {
     private settings: BotStreamerSettings
   ) {
     this.transport = new LunaLiveDbTransport(pool, env, streamer);
-  }
-
-  private renderTemplate(tpl: string, msg: any, trigger: string, args: string[]) {
-    const user = String(
-      msg?.username ||
-        msg?.displayName ||
-        (msg?.userId != null ? `user#${msg.userId}` : "user")
-    );
-    const streamer = String((this.streamer as any)?.displayName || this.streamer.slug || "streamer");
-
-    const vars: Record<string, string> = {
-      user,
-      streamer,
-      trigger,
-      args: args.join(" "),
-    };
-    for (let i = 0; i < 9; i++) vars[`arg${i + 1}`] = args[i] ?? "";
-
-    return String(tpl ?? "").replace(/\{([a-zA-Z0-9_]+)\}/g, (m, k) =>
-      Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : m
-    );
-  }
-
-  private allowCooldown(key: string, sec: number) {
-    const now = Date.now();
-    const last = this.lastCmdAt.get(key) ?? 0;
-    if (now - last < Math.max(0, sec) * 1000) return false;
-    this.lastCmdAt.set(key, now);
-    return true;
   }
 
   getSettings(): BotStreamerSettings {
@@ -118,6 +88,29 @@ export class StreamerRunner {
       } catch {}
     })();
 
+    const sendBotText = async (t: any, reason: "send" | "autopost" = "send") => {
+      let out = String(t ?? "").replace(/\r\n/g, "\n");
+
+      if (!out.trim()) return;
+
+      if (out.length > BOT_TEXT_MAX) {
+        // on tronque en sécurité (normalement l’API empêchera d’enregistrer > 500)
+        out = out.slice(0, BOT_TEXT_MAX);
+        try {
+          await logEvent(this.pool, this.streamer.id, "warn", "bot message truncated", {
+            max: BOT_TEXT_MAX,
+            reason,
+          });
+        } catch {}
+      }
+
+      await this.transport.send(out);
+
+      try {
+        await logEvent(this.pool, this.streamer.id, "info", reason, { t: preview(out) });
+      } catch {}
+    };
+
     // load initial config + refresh périodique
     const reload = async () => {
       try {
@@ -140,39 +133,13 @@ export class StreamerRunner {
     this.transport.start(async (msg: any) => {
       if (!this.alive) return;
 
-      // prefix dynamique (si settings changent en DB)
       const prefix = this.settings.prefix || this.env.BOT_DEFAULT_PREFIX;
 
       const botUserId = Number(this.env.BOT_USER_ID ?? 1);
       if (Number(msg.userId) === botUserId) return; // évite boucles
 
       const body = String(msg.body || "").trim();
-      const lower = body.toLowerCase();
 
-      // ✅ debug MVP: ping en dur
-      if (lower === `${prefix}ping`) {
-        console.log("[bot] cmd ping detected", {
-          slug: this.streamer.slug,
-          from: msg.username,
-        });
-
-        try {
-          await logEvent(this.pool, this.streamer.id, "info", "cmd ping", {
-            from: msg.username,
-            userId: msg.userId,
-          });
-        } catch {}
-
-        const t = "pong";
-        await this.transport.send(t);
-
-        try {
-          await logEvent(this.pool, this.streamer.id, "info", "send", { t });
-        } catch {}
-        return;
-      }
-
-      // log seulement si ça ressemble à une commande
       if (body.startsWith(prefix)) {
         console.log("[bot] cmd in", { slug: this.streamer.slug, from: msg.username, body });
         try {
@@ -182,59 +149,14 @@ export class StreamerRunner {
             body,
           });
         } catch {}
-
-        // ✅ CUSTOM COMMANDS (fix immédiat)
-        const after = body.slice(prefix.length).trimStart();
-        if (after) {
-          const parts = after.split(/\s+/).filter(Boolean);
-          const rawName = parts[0] || "";
-          const trigger = rawName.replace(/^[!/]+/g, "").toLowerCase();
-          const args = parts.slice(1);
-
-          const cmd = this.commands.get(trigger);
-          if (cmd) {
-            // match trouvé -> si disabled, on stop ici
-            if (!cmd.enabled) return;
-
-            const fromKey = String(msg.userId ?? msg.username ?? "anon");
-            const cdKey = `${fromKey}:${trigger}`;
-            if (!this.allowCooldown(cdKey, cmd.cooldownSec ?? 3)) return;
-
-            const out = this.renderTemplate(cmd.response, msg, trigger, args).trim();
-            if (!out) return;
-
-            try {
-              await logEvent(this.pool, this.streamer.id, "info", "cmd matched", {
-                trigger,
-                from: msg.username,
-                userId: msg.userId,
-                bodyPreview: preview(body),
-              });
-            } catch {}
-
-            await this.transport.send(out);
-
-            try {
-              await logEvent(this.pool, this.streamer.id, "info", "cmd sent", {
-                trigger,
-                outPreview: preview(out),
-              });
-            } catch {}
-            return;
-          }
-        }
       }
 
-      // fallback dispatch (builtins / autres)
       await dispatch({
         ctx: {
           streamer: this.streamer,
           prefix,
           send: async (t: string) => {
-            await this.transport.send(t);
-            try {
-              await logEvent(this.pool, this.streamer.id, "info", "send", { t });
-            } catch {}
+            await sendBotText(t, "send");
           },
         },
         msg,
@@ -243,22 +165,16 @@ export class StreamerRunner {
       });
     });
 
-    // autoposts minimal
+    // autoposts minimal (round-robin)
     const autopostTick = async () => {
       if (!this.alive) return;
       if (!this.autoposts.length) return;
 
-      // simple round-robin
       const it = this.autoposts.shift()!;
       this.autoposts.push(it);
 
       try {
-        await this.transport.send(it.message);
-        try {
-          await logEvent(this.pool, this.streamer.id, "info", "autopost", {
-            message: it.message,
-          });
-        } catch {}
+        await sendBotText(it.message, "autopost");
       } catch (e: any) {
         try {
           await logEvent(this.pool, this.streamer.id, "warn", "autopost failed", {

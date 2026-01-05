@@ -45,7 +45,9 @@ import { streamerTabsRouter } from "./routes/streamer_tabs.js";
 import { streamerVodsRouter } from "./routes/streamer_vods.js";
 import { meProfileRouter } from "./routes/me_profile.js";
 import { internalBotRouter } from "./routes/internal_bot.js";
-import { botManageRouter } from "./routes/bot_manage.js";
+
+// ✅ NEW clean bot module
+import { meBotRouter } from "./modules/bot/router.js";
 
 export function createApp() {
   const app = express();
@@ -59,7 +61,10 @@ export function createApp() {
   registerStatsRoutes(app);
 
   // static uploads
-  app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads"), { maxAge: "7d" }));
+  app.use(
+    "/uploads",
+    express.static(path.resolve(process.cwd(), "uploads"), { maxAge: "7d" })
+  );
 
   // existing routers
   app.use(pushRouter);
@@ -101,7 +106,9 @@ export function createApp() {
   app.use(casinosPublicRouter);
   app.use("/me/casinos", requireAuth, casinosMeRouter);
   app.use(streamerVodsRouter);
-  app.use(botManageRouter);
+
+  // ✅ LunaBot dashboard routes
+  app.use("/me/bot", requireAuth, meBotRouter);
 
   // ✅ IMPORTANT: compat legacy frontend
   // ton build prod appelle encore /admin/casinos/listings (GET/POST)

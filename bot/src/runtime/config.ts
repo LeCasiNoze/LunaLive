@@ -5,7 +5,6 @@ function normalizeTrigger(v: any) {
   const s = String(v || "").trim();
   if (!s) return "";
   const first = s.split(/\s+/)[0]; // 1er mot seulement
-  // accepte un trigger stocké avec "!" ou "/" par erreur
   return first.replace(/^[!/]+/g, "").toLowerCase();
 }
 
