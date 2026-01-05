@@ -154,7 +154,10 @@ export function AboutTab({
     const kind: "banner" | "square" = meta?.kind ?? "square";
 
     const tileAspect = kind === "banner" ? "3 / 1" : "1 / 1";
-    const tileSpan = kind === "banner" ? { gridColumn: "1 / -1" as const } : undefined;
+    const tileSpan =
+      kind === "banner"
+        ? ({ gridColumnEnd: "span 2" } as const) // ✅ 2 colonnes
+        : undefined;
 
     const ImgBox = (
       <div
@@ -412,16 +415,16 @@ export function AboutTab({
       ) : null}
 
       {!loading ? (
-        <div
-          style={{
-            marginTop: 12,
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 220px))",
-            justifyContent: "start",
-            gap: 12,
-            alignItems: "start",
-          }}
-        >
+        <div style={{
+          marginTop: 12,
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(200px, 220px))",
+          justifyContent: "start",
+          gap: 12,
+          alignItems: "start",
+          gridAutoFlow: "dense", // ✅ compacte autour des bannières
+        }}>
+
           {blocks.map((b, i) => renderTile(b, i, edit ? "edit" : "view"))}
         </div>
       ) : null}
