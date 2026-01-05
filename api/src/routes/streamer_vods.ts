@@ -161,7 +161,7 @@ streamerVodsRouter.get(
     if (!row) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
     const providerChannelSlug = normalizeDliveHandle(row.providerChannelSlug);
-    const linkedChannel = normalizeDliveHandle(row.linkedUsername || row.linkedDisplayname);
+    const linkedChannel = normalizeDliveHandle(row.linkedDisplayname);
     const useLinked = !!row.useLinked;
 
     const canUseLinked = !!linkedChannel;
