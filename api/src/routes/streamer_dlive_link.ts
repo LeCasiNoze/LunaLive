@@ -199,14 +199,15 @@ streamerDliveLinkRouter.post("/toggle", requireAuth, requireStreamer, async (req
   if (useLinked) {
     const s = await pool.query(
       `SELECT
-        dlive_use_linked AS "useLinked",
         dlive_link_displayname AS "linkedDisplayname",
-        dlive_linked_at AS "linkedAt"
+        dlive_link_username AS "linkedUsername"
       FROM streamers
       WHERE id=$1`,
       [streamerId]
     );
-    if (!s.rows?.[0]?.d) return res.status(400).json({ ok: false, error: "no_linked_channel" });
+    const row = s.rows?.[0];
+    const ok = !!String(row?.linkedUsername || row?.linkedDisplayname || "").trim();
+    if (!ok) return res.status(400).json({ ok: false, error: "no_linked_channel" });
   }
 
   await pool.query(`UPDATE streamers SET dlive_use_linked=$2 WHERE id=$1`, [streamerId, useLinked]);

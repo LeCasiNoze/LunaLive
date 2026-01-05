@@ -21,7 +21,7 @@ function normalizeDliveHandle(input: any): string {
   if (!s) return "";
   s = s.replace(/^https?:\/\/(www\.)?dlive\.tv\//i, "");
   s = s.replace(/^@/, "");
-  s = s.replace(/\/.*$/, ""); // garde le 1er segment
+  s = s.replace(/\/.*$/, "");
   return s.trim();
 }
 
@@ -37,111 +37,6 @@ function pickBestHls(playbackUrl: any, resolution: any): string | null {
     (typeof playbackUrl === "string" && playbackUrl ? playbackUrl : null) ||
     (typeof resArr?.[0]?.url === "string" ? resArr[0].url : null)
   );
-}
-
-async function tableExists(fullName: string) {
-  const { rows } = await pool.query(`SELECT to_regclass($1) AS reg`, [fullName]);
-  return !!rows?.[0]?.reg;
-}
-
-async function getColumns(tableName: string) {
-  const { rows } = await pool.query(
-    `SELECT column_name
-     FROM information_schema.columns
-     WHERE table_schema='public' AND table_name=$1`,
-    [tableName]
-  );
-  return new Set(rows.map((r: any) => String(r.column_name)));
-}
-
-type LinkedInfo = {
-  linkedDisplayname: string | null;
-  linkedUsername: string | null;
-  useLinked: boolean | null;
-  foundFrom: string | null;
-};
-
-async function getLinkedDliveInfoByUserId(userId: number): Promise<LinkedInfo> {
-  // candidates (adapte si besoin)
-  const candidates = [
-    "streamer_dlive_links",
-    "streamer_dlive_link",
-    "dlive_links",
-    "user_dlive_links",
-    "dlive_link",
-  ];
-
-  for (const t of candidates) {
-    const full = `public.${t}`;
-    const ok = await tableExists(full);
-    if (!ok) continue;
-
-    const cols = await getColumns(t);
-
-    // user ref column
-    const userCol =
-      (cols.has("user_id") && "user_id") ||
-      (cols.has("owner_user_id") && "owner_user_id") ||
-      (cols.has("uid") && "uid") ||
-      null;
-
-    // linked columns
-    const displayCol =
-      (cols.has("linked_displayname") && "linked_displayname") ||
-      (cols.has("linkedDisplayname") && "linkedDisplayname") ||
-      (cols.has("displayname") && "displayname") ||
-      null;
-
-    const usernameCol =
-      (cols.has("linked_username") && "linked_username") ||
-      (cols.has("linkedUsername") && "linkedUsername") ||
-      (cols.has("username") && "username") ||
-      null;
-
-    const useCol =
-      (cols.has("use_linked") && "use_linked") ||
-      (cols.has("useLinked") && "useLinked") ||
-      null;
-
-    if (!userCol) continue; // on sait pas relier à un user
-
-    // construit SELECT minimal
-    const sel = [
-      displayCol ? `${displayCol} AS "linkedDisplayname"` : `NULL::text AS "linkedDisplayname"`,
-      usernameCol ? `${usernameCol} AS "linkedUsername"` : `NULL::text AS "linkedUsername"`,
-      useCol ? `${useCol} AS "useLinked"` : `NULL::bool AS "useLinked"`,
-    ].join(", ");
-
-    try {
-      const { rows } = await pool.query(
-        `SELECT ${sel}
-         FROM ${t}
-         WHERE ${userCol}=$1
-         LIMIT 1`,
-        [userId]
-      );
-
-      const r = rows?.[0];
-      if (!r) continue;
-
-      const linkedDisplayname = r.linkedDisplayname != null ? String(r.linkedDisplayname) : null;
-      const linkedUsername = r.linkedUsername != null ? String(r.linkedUsername) : null;
-      const useLinked = r.useLinked != null ? !!r.useLinked : null;
-
-      if ((linkedDisplayname && linkedDisplayname.trim()) || (linkedUsername && linkedUsername.trim())) {
-        return {
-          linkedDisplayname: linkedDisplayname ? linkedDisplayname.trim() : null,
-          linkedUsername: linkedUsername ? linkedUsername.trim() : null,
-          useLinked,
-          foundFrom: t,
-        };
-      }
-    } catch {
-      // ignore et tente la suivante
-    }
-  }
-
-  return { linkedDisplayname: null, linkedUsername: null, useLinked: null, foundFrom: null };
 }
 
 async function fetchDliveVods(displayname: string, first: number, after: string | null) {
@@ -174,17 +69,22 @@ async function fetchDliveVods(displayname: string, first: number, after: string 
     query,
   };
 
-  const r = await fetch("https://graphigo.prd.dlive.tv/", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  }).then((x) => x.json());
-
-  if (Array.isArray(r?.errors) && r.errors.length) {
-    return { ok: false as const, error: "dlive_graphql_error", raw: r };
+  let json: any;
+  try {
+    json = await fetch("https://graphigo.prd.dlive.tv/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((x) => x.json());
+  } catch (e) {
+    return { ok: false as const, error: "dlive_fetch_failed" as const };
   }
 
-  const conn = r?.data?.userByDisplayName?.pastBroadcastsV2;
+  if (Array.isArray(json?.errors) && json.errors.length) {
+    return { ok: false as const, error: "dlive_graphql_error" as const };
+  }
+
+  const conn = json?.data?.userByDisplayName?.pastBroadcastsV2;
   const pageInfo = conn?.pageInfo || { endCursor: null, hasNextPage: false };
   const list = Array.isArray(conn?.list) ? conn.list : [];
 
@@ -230,7 +130,7 @@ streamerVodsRouter.get(
 
     if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
 
-    // parse cursor prefix: l:<cursor> / p:<cursor>
+    // cursor optionnel prefixé: l:<cursor> ou p:<cursor>
     let forcedSource: "linked" | "provider" | null = null;
     let afterCursor: string | null = cursorRaw;
 
@@ -246,7 +146,10 @@ streamerVodsRouter.get(
       `SELECT
          s.id,
          s.user_id AS "userId",
-         pa.channel_slug AS "providerChannelSlug"
+         pa.channel_slug AS "providerChannelSlug",
+         s.dlive_use_linked AS "useLinked",
+         s.dlive_link_displayname AS "linkedDisplayname",
+         s.dlive_link_username AS "linkedUsername"
        FROM streamers s
        LEFT JOIN provider_accounts pa ON pa.assigned_to_streamer_id = s.id
        WHERE s.slug=$1
@@ -258,21 +161,23 @@ streamerVodsRouter.get(
     if (!row) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
     const providerChannelSlug = normalizeDliveHandle(row.providerChannelSlug);
-    const userId = Number(row.userId || 0) || 0;
+    const linkedChannel = normalizeDliveHandle(row.linkedUsername || row.linkedDisplayname);
+    const useLinked = !!row.useLinked;
 
-    const linked = userId ? await getLinkedDliveInfoByUserId(userId) : null;
-    const linkedHandle = normalizeDliveHandle(linked?.linkedUsername || linked?.linkedDisplayname);
-
-    // choix de la source
-    const canUseLinked = !!linkedHandle;
+    const canUseLinked = !!linkedChannel;
     const canUseProvider = !!providerChannelSlug;
 
-    // si cursor impose une source -> on force
+    // source par défaut:
+    // - si cursor force -> force
+    // - sinon si useLinked ET linked existe -> linked
+    // - sinon si provider existe -> provider
+    // - sinon linked (si existe)
     let source: "linked" | "provider" | null = forcedSource;
-
     if (!source) {
-      // logique simple: si linked existe => linked, sinon provider
-      source = canUseLinked ? "linked" : canUseProvider ? "provider" : null;
+      if (useLinked && canUseLinked) source = "linked";
+      else if (canUseProvider) source = "provider";
+      else if (canUseLinked) source = "linked";
+      else source = null;
     }
 
     if (!source) {
@@ -281,31 +186,26 @@ streamerVodsRouter.get(
         reason: "no_source",
         channelSlug: null,
         providerChannelSlug: canUseProvider ? providerChannelSlug : null,
-        linkedChannel: canUseLinked ? linkedHandle : null,
+        linkedChannel: canUseLinked ? linkedChannel : null,
         source: null,
-        foundFrom: linked?.foundFrom ?? null,
         pageInfo: { endCursor: null, hasNextPage: false },
         vods: [],
       });
     }
 
-    const chosenDisplay = source === "linked" ? linkedHandle : providerChannelSlug;
+    const primary = source === "linked" ? linkedChannel : providerChannelSlug;
+    const secondary = source === "linked" ? providerChannelSlug : linkedChannel;
 
-    // fetch chosen
-    let out = await fetchDliveVods(chosenDisplay, limit, afterCursor);
+    // fetch primary
+    let out = await fetchDliveVods(primary, limit, afterCursor);
 
-    // fallback automatique si linked choisi mais 0 vods et provider dispo (ou inverse)
+    // fallback auto si 0 vods et autre source dispo (et pas cursor forcé)
     if (out.ok && out.vods.length === 0 && forcedSource == null) {
-      if (source === "linked" && canUseProvider && providerChannelSlug && providerChannelSlug !== chosenDisplay) {
-        const out2 = await fetchDliveVods(providerChannelSlug, limit, null);
+      if (secondary && secondary !== primary) {
+        const out2 = await fetchDliveVods(secondary, limit, null);
         if (out2.ok && out2.vods.length > 0) {
-          source = "provider";
-          out = out2;
-        }
-      } else if (source === "provider" && canUseLinked && linkedHandle && linkedHandle !== chosenDisplay) {
-        const out2 = await fetchDliveVods(linkedHandle, limit, null);
-        if (out2.ok && out2.vods.length > 0) {
-          source = "linked";
+          // on switch la source
+          source = source === "linked" ? "provider" : "linked";
           out = out2;
         }
       }
@@ -316,21 +216,17 @@ streamerVodsRouter.get(
     }
 
     const prefix = source === "linked" ? "l" : "p";
-    const endCursor = out.pageInfo.endCursor != null ? `${prefix}:${String(out.pageInfo.endCursor)}` : null;
+    const endCursor =
+      out.pageInfo.endCursor != null ? `${prefix}:${String(out.pageInfo.endCursor)}` : null;
 
     return res.json({
       ok: true,
       reason: "ok",
-      // pour ton UI: on met channelSlug = celui utilisé
-      channelSlug: source === "linked" ? linkedHandle : providerChannelSlug,
+      channelSlug: source === "linked" ? linkedChannel : providerChannelSlug, // utilisé
       providerChannelSlug: canUseProvider ? providerChannelSlug : null,
-      linkedChannel: canUseLinked ? linkedHandle : null,
+      linkedChannel: canUseLinked ? linkedChannel : null,
       source,
-      foundFrom: linked?.foundFrom ?? null,
-      pageInfo: {
-        endCursor,
-        hasNextPage: !!out.pageInfo.hasNextPage,
-      },
+      pageInfo: { endCursor, hasNextPage: !!out.pageInfo.hasNextPage },
       vods: out.vods,
     });
   })
