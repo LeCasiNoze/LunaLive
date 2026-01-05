@@ -56,13 +56,13 @@ export const CommandPatchSchema = z.object({
 
 export const AutopostCreateSchema = z.object({
   message: BotTextSchema,
-  everySec: z.number().int().min(10).max(86400),
+  everySec: z.number().int().min(60).max(86400),
   enabled: EnabledSchema,
 });
 
 export const AutopostPatchSchema = z.object({
   message: BotTextSchema.optional(),
-  everySec: z.number().int().min(10).max(86400).optional(),
+  everySec: z.number().int().min(60).max(86400).optional(),
   enabled: EnabledSchema,
 });
 

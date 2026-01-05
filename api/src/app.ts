@@ -47,7 +47,7 @@ import { meProfileRouter } from "./routes/me_profile.js";
 import { internalBotRouter } from "./routes/internal_bot.js";
 
 // ✅ NEW clean bot module
-import { meBotRouter } from "./modules/bot/router.js";
+import meBotRouter from "./modules/bot/router.js";
 
 export function createApp() {
   const app = express();
