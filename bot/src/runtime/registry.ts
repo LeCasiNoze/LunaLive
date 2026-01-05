@@ -14,6 +14,13 @@ export class Registry {
 
   start() {
     if (this.timer) return;
+
+    console.log("[bot] registry start", {
+      registryPollMs: this.env.BOT_REGISTRY_POLL_MS,
+      forceSlug: this.env.BOT_FORCE_STREAMER_SLUG || null,
+      liveOnlyDefault: this.env.BOT_LIVE_ONLY_DEFAULT,
+    });
+
     const tick = async () => this.syncOnce();
     this.timer = setInterval(tick, this.env.BOT_REGISTRY_POLL_MS);
     void tick();
@@ -22,13 +29,37 @@ export class Registry {
   stop() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+
     for (const r of this.runners.values()) r.stop();
     this.runners.clear();
   }
 
+  private async getStreamerBySlug(slug: string): Promise<StreamerRow | null> {
+    const s = String(slug || "").trim();
+    if (!s) return null;
+
+    const r = await this.pool.query(
+      `
+      SELECT id, slug, display_name, is_live
+      FROM streamers
+      WHERE lower(slug) = lower($1)
+      LIMIT 1
+    `,
+      [s]
+    );
+
+    const row = r.rows?.[0];
+    if (!row) return null;
+
+    return {
+      id: Number(row.id),
+      slug: String(row.slug),
+      displayName: String(row.display_name),
+      isLive: Boolean(row.is_live),
+    };
+  }
+
   private async syncOnce() {
-    // But: lister streamers "bot enabled"
-    // Au début, si table pas là → aucun runner (safe).
     let rows: Array<{
       streamer_id: number;
       enabled: boolean;
@@ -38,6 +69,8 @@ export class Registry {
       display_name: string;
       is_live: boolean;
     }> = [];
+
+    let tableMissing = false;
 
     try {
       const r = await this.pool.query(`
@@ -56,51 +89,125 @@ export class Registry {
       rows = r.rows;
     } catch (e: any) {
       const code = String(e?.code || "");
-      if (code !== "42P01") {
-        await logEvent(this.pool, null, "warn", "registry query failed", { err: e?.message || String(e) });
+      if (code === "42P01") {
+        tableMissing = true;
+      } else {
+        try {
+          await logEvent(this.pool, null, "warn", "registry query failed", {
+            err: e?.message || String(e),
+          });
+        } catch {}
+        console.log("[bot] registry query failed", e?.message || e);
       }
-      return;
     }
 
     const wanted = new Set<string>();
 
-    for (const row of rows) {
-      const streamer: StreamerRow = {
-        id: Number(row.streamer_id),
-        slug: String(row.slug),
-        displayName: String(row.display_name),
-        isLive: Boolean(row.is_live)
-      };
+    // 1) streamers configurés en DB (si table existe)
+    if (!tableMissing) {
+      console.log("[bot] registry sync settings rows=", rows.length);
 
-      const settings: BotStreamerSettings = {
-        enabled: Boolean(row.enabled),
-        prefix: String(row.prefix || this.env.BOT_DEFAULT_PREFIX),
-        liveOnly: row.live_only == null ? this.env.BOT_LIVE_ONLY_DEFAULT : Boolean(row.live_only)
-      };
+      for (const row of rows) {
+        const streamer: StreamerRow = {
+          id: Number(row.streamer_id),
+          slug: String(row.slug),
+          displayName: String(row.display_name),
+          isLive: Boolean(row.is_live),
+        };
 
-      // si liveOnly et offline => on n'exécute pas
-      if (settings.liveOnly && !streamer.isLive) {
-        continue;
+        const settings: BotStreamerSettings = {
+          enabled: Boolean(row.enabled),
+          prefix: String(row.prefix || this.env.BOT_DEFAULT_PREFIX),
+          liveOnly:
+            row.live_only == null
+              ? this.env.BOT_LIVE_ONLY_DEFAULT
+              : Boolean(row.live_only),
+        };
+
+        if (settings.liveOnly && !streamer.isLive) {
+          continue;
+        }
+
+        const key = String(streamer.id);
+        wanted.add(key);
+
+        if (!this.runners.has(key)) {
+          const runner = new StreamerRunner(this.pool, this.env, streamer, settings);
+          this.runners.set(key, runner);
+          runner.start();
+          try {
+            await logEvent(this.pool, streamer.id, "info", "registry started runner", {
+              slug: streamer.slug,
+              forced: false,
+            });
+          } catch {}
+          console.log("[bot] registry started runner", streamer.slug);
+        }
       }
+    } else {
+      console.log("[bot] registry: bot_streamer_settings missing (ok for MVP)");
+    }
 
-      const key = String(streamer.id);
-      wanted.add(key);
+    // 2) ✅ fallback MVP: force slug via env
+    const forceSlug = this.env.BOT_FORCE_STREAMER_SLUG;
+    if (forceSlug) {
+      try {
+        const streamer = await this.getStreamerBySlug(forceSlug);
+        if (!streamer) {
+          try {
+            await logEvent(this.pool, null, "warn", "force slug not found", {
+              slug: forceSlug,
+            });
+          } catch {}
+          console.log("[bot] force slug not found:", forceSlug);
+        } else {
+          const settings: BotStreamerSettings = {
+            enabled: true,
+            prefix: this.env.BOT_DEFAULT_PREFIX,
+            liveOnly: this.env.BOT_LIVE_ONLY_DEFAULT,
+          };
 
-      if (!this.runners.has(key)) {
-        const runner = new StreamerRunner(this.pool, this.env, streamer, settings);
-        this.runners.set(key, runner);
-        runner.start();
-        await logEvent(this.pool, streamer.id, "info", "registry started runner");
+          if (!settings.liveOnly || streamer.isLive) {
+            const key = String(streamer.id);
+            wanted.add(key);
+
+            if (!this.runners.has(key)) {
+              const runner = new StreamerRunner(this.pool, this.env, streamer, settings);
+              this.runners.set(key, runner);
+              runner.start();
+              try {
+                await logEvent(this.pool, streamer.id, "info", "registry started runner (forced)", {
+                  slug: streamer.slug,
+                  forced: true,
+                });
+              } catch {}
+              console.log("[bot] registry started forced runner", streamer.slug);
+            }
+          } else {
+            console.log("[bot] force runner skipped (offline + liveOnly=true)", {
+              slug: streamer.slug,
+            });
+          }
+        }
+      } catch (e: any) {
+        console.log("[bot] force slug error", e?.message || e);
       }
     }
 
-    // stop runners not wanted anymore
+    // 3) stop runners not wanted anymore
     for (const [key, runner] of this.runners) {
       if (!wanted.has(key)) {
         runner.stop();
         this.runners.delete(key);
-        await logEvent(this.pool, runner.streamer.id, "info", "registry stopped runner");
+        try {
+          await logEvent(this.pool, runner.streamer.id, "info", "registry stopped runner", {
+            slug: runner.streamer.slug,
+          });
+        } catch {}
+        console.log("[bot] registry stopped runner", runner.streamer.slug);
       }
     }
+
+    console.log("[bot] registry runners active =", this.runners.size);
   }
 }

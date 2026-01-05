@@ -30,14 +30,38 @@ export class StreamerRunner {
     if (this.alive) return;
     this.alive = true;
 
-    void logEvent(this.pool, this.streamer.id, "info", "runner start", {
-      slug: this.streamer.slug
+    const prefix = this.settings.prefix || this.env.BOT_DEFAULT_PREFIX;
+
+    console.log("[bot] runner start", {
+      slug: this.streamer.slug,
+      id: this.streamer.id,
+      prefix,
+      liveOnly: this.settings.liveOnly,
+      startFromNow: this.env.BOT_CHAT_START_FROM_NOW,
     });
+
+    void (async () => {
+      try {
+        await logEvent(this.pool, this.streamer.id, "info", "runner start", {
+          slug: this.streamer.slug,
+          prefix,
+        });
+      } catch {}
+    })();
 
     // load initial config + refresh périodique
     const reload = async () => {
-      this.commands = await loadCommands(this.pool, this.streamer.id);
-      this.autoposts = await loadAutoposts(this.pool, this.streamer.id);
+      try {
+        this.commands = await loadCommands(this.pool, this.streamer.id);
+        this.autoposts = await loadAutoposts(this.pool, this.streamer.id);
+      } catch (e: any) {
+        try {
+          await logEvent(this.pool, this.streamer.id, "warn", "runner reload failed", {
+            err: e?.message || String(e),
+          });
+        } catch {}
+        console.log("[bot] runner reload failed", e?.message || e);
+      }
     };
 
     void reload();
@@ -47,18 +71,58 @@ export class StreamerRunner {
     this.transport.start(async (msg) => {
       if (!this.alive) return;
 
+      const botUserId = this.env.BOT_USER_ID ?? 1;
+      if (msg.userId === botUserId) return; // évite boucles
+
+      const body = String(msg.body || "").trim();
+      const lower = body.toLowerCase();
+
+      // ✅ debug MVP: ping en dur
+      if (lower === `${prefix}ping`) {
+        console.log("[bot] cmd !ping detected", { slug: this.streamer.slug, from: msg.username });
+
+        try {
+          await logEvent(this.pool, this.streamer.id, "info", "cmd ping", {
+            from: msg.username,
+            userId: msg.userId,
+          });
+        } catch {}
+
+        const t = "pong";
+        await this.transport.send(t);
+
+        try {
+          await logEvent(this.pool, this.streamer.id, "info", "send", { t });
+        } catch {}
+        return;
+      }
+
+      // log seulement si ça ressemble à une commande
+      if (body.startsWith(prefix)) {
+        console.log("[bot] cmd in", { slug: this.streamer.slug, from: msg.username, body });
+        try {
+          await logEvent(this.pool, this.streamer.id, "info", "cmd in", {
+            from: msg.username,
+            userId: msg.userId,
+            body,
+          });
+        } catch {}
+      }
+
       await dispatch({
         ctx: {
           streamer: this.streamer,
-          prefix: this.settings.prefix || this.env.BOT_DEFAULT_PREFIX,
+          prefix,
           send: async (t) => {
             await this.transport.send(t);
-            await logEvent(this.pool, this.streamer.id, "info", "send", { t });
-          }
+            try {
+              await logEvent(this.pool, this.streamer.id, "info", "send", { t });
+            } catch {}
+          },
         },
         msg,
         commands: this.commands,
-        cooldowns: this.cooldowns
+        cooldowns: this.cooldowns,
       });
     });
 
@@ -73,22 +137,33 @@ export class StreamerRunner {
 
       try {
         await this.transport.send(it.message);
-        await logEvent(this.pool, this.streamer.id, "info", "autopost", { message: it.message });
+        try {
+          await logEvent(this.pool, this.streamer.id, "info", "autopost", {
+            message: it.message,
+          });
+        } catch {}
       } catch (e: any) {
-        await logEvent(this.pool, this.streamer.id, "warn", "autopost failed", { err: e?.message || String(e) });
+        try {
+          await logEvent(this.pool, this.streamer.id, "warn", "autopost failed", {
+            err: e?.message || String(e),
+          });
+        } catch {}
       }
 
-      // planifie le prochain en fonction du message courant
-      this.autopostTimer = setTimeout(autopostTick, Math.max(10, it.everySec) * 1000);
+      this.autopostTimer = setTimeout(
+        autopostTick,
+        Math.max(10, it.everySec) * 1000
+      );
     };
 
-    // démarre si on a au moins un autopost
     this.autopostTimer = setTimeout(autopostTick, 15_000);
   }
 
   stop() {
     if (!this.alive) return;
     this.alive = false;
+
+    console.log("[bot] runner stop", { slug: this.streamer.slug });
 
     this.transport.stop();
     if (this.autopostTimer) clearTimeout(this.autopostTimer);
@@ -97,6 +172,10 @@ export class StreamerRunner {
     this.autopostTimer = null;
     this.cfgReloadTimer = null;
 
-    void logEvent(this.pool, this.streamer.id, "info", "runner stop");
+    void (async () => {
+      try {
+        await logEvent(this.pool, this.streamer.id, "info", "runner stop");
+      } catch {}
+    })();
   }
 }
