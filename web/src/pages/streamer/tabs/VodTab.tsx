@@ -1,87 +1,65 @@
-// web/src/pages/streamer/tabs/VodTab.tsx
 import * as React from "react";
+import Hls from "hls.js";
+import { getStreamerVods, type ApiVod } from "../../../lib/api_streamer_tabs";
 
-function isDliveVodUrl(u: string) {
-  const s = String(u || "").trim();
-  return /^https?:\/\/(www\.)?dlive\.tv\/p\//i.test(s);
+function fmtDuration(sec: number) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+function timeAgo(ms: number) {
+  const d = Date.now() - (ms || 0);
+  const mins = Math.floor(d / 60000);
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `${h} h`;
+  const days = Math.floor(h / 24);
+  return `${days} j`;
 }
 
-export function VodTab({
-  slug,
-  streamerDisplay,
-}: {
-  slug: string;
-  streamerDisplay: string;
-}) {
-  const storageKey = `lunalive_vod_url_${String(slug || "").toLowerCase()}`;
-  const [url, setUrl] = React.useState<string>(() => {
-    try {
-      return localStorage.getItem(storageKey) || "";
-    } catch {
-      return "";
-    }
-  });
-
-  const [appliedUrl, setAppliedUrl] = React.useState<string>(url);
+export function VodTab({ slug }: { slug: string }) {
+  const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [vods, setVods] = React.useState<ApiVod[]>([]);
+  const [cursor, setCursor] = React.useState<string | null>(null);
+  const [hasNext, setHasNext] = React.useState(false);
 
-  function apply() {
-    const s = String(url || "").trim();
-    if (!s) {
-      setAppliedUrl("");
-      setError(null);
-      try { localStorage.removeItem(storageKey); } catch {}
-      return;
-    }
-    if (!isDliveVodUrl(s)) {
-      setError("URL invalide. Colle une URL DLive de replay qui ressemble à: https://dlive.tv/p/username+vod_id");
-      return;
-    }
+  const [openVod, setOpenVod] = React.useState<ApiVod | null>(null);
+
+  async function loadMore(reset = false) {
+    setLoading(true);
     setError(null);
-    setAppliedUrl(s);
-    try { localStorage.setItem(storageKey, s); } catch {}
+    try {
+      const r = await getStreamerVods(slug, reset ? null : cursor, 24);
+      if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+      const list = Array.isArray(r.vods) ? r.vods : [];
+      setVods((p) => (reset ? list : [...p, ...list]));
+      setCursor(r?.pageInfo?.endCursor ?? null);
+      setHasNext(!!r?.pageInfo?.hasNextPage);
+    } catch (e: any) {
+      setError(String(e?.message || "Erreur"));
+    } finally {
+      setLoading(false);
+    }
   }
+
+  React.useEffect(() => {
+    setVods([]);
+    setCursor(null);
+    setHasNext(false);
+    setOpenVod(null);
+    loadMore(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
 
   return (
     <div>
       <div className="panelTitle">VOD</div>
-      <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.9 }}>
-        MVP : on peut ouvrir une redif DLive <strong>dans LunaLive</strong> via embed.
-        <br />
-        (Plus tard : on branchera la liste automatique des replays + sélection.)
-      </div>
-
-      <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-        <input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="Colle l’URL d’un replay DLive (https://dlive.tv/p/...)"
-          style={{
-            flex: 1,
-            minWidth: 260,
-            padding: "12px 12px",
-            borderRadius: 14,
-            border: "1px solid rgba(255,255,255,0.10)",
-            background: "rgba(0,0,0,0.25)",
-            color: "white",
-            fontWeight: 800,
-          }}
-        />
-        <button type="button" className="btnPrimarySmall" onClick={apply}>
-          Ouvrir
-        </button>
-        <button
-          type="button"
-          className="btnGhostSmall"
-          onClick={() => {
-            setUrl("");
-            setAppliedUrl("");
-            setError(null);
-            try { localStorage.removeItem(storageKey); } catch {}
-          }}
-        >
-          Reset
-        </button>
+      <div className="mutedSmall" style={{ opacity: 0.85, marginTop: 6 }}>
+        Replays DLive (lecture directe en popup, sans stockage).
       </div>
 
       {error ? (
@@ -90,32 +68,189 @@ export function VodTab({
         </div>
       ) : null}
 
-      {appliedUrl ? (
-        <div className="panel" style={{ padding: 0, marginTop: 12, borderRadius: 18, overflow: "hidden" }}>
-          <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-            <div className="mutedSmall" style={{ opacity: 0.9 }}>
-              Replay : <strong style={{ color: "rgba(255,255,255,0.9)" }}>{streamerDisplay}</strong>
-            </div>
-            <div className="mutedSmall" style={{ marginTop: 4, opacity: 0.8 }}>
-              Si DLive bloque l’iframe un jour, on basculera sur une lecture HLS (extraction playbackUrl côté backend).
-            </div>
-          </div>
+      <div
+        style={{
+          marginTop: 12,
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+          gap: 12,
+          alignItems: "start",
+        }}
+      >
+        {vods.map((v) => (
+          <button
+            key={v.permlink}
+            type="button"
+            className="panel"
+            onClick={() => setOpenVod(v)}
+            style={{
+              padding: 10,
+              borderRadius: 16,
+              textAlign: "left",
+              cursor: "pointer",
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            <div
+              style={{
+                borderRadius: 14,
+                overflow: "hidden",
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(0,0,0,0.35)",
+                aspectRatio: "16 / 9",
+                position: "relative",
+              }}
+            >
+              {v.thumbnailUrl ? (
+                <img
+                  src={v.thumbnailUrl}
+                  alt=""
+                  loading="lazy"
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              ) : null}
 
-          <div style={{ aspectRatio: "16/9", background: "rgba(0,0,0,0.55)" }}>
-            <iframe
-              src={appliedUrl}
-              title="DLive VOD"
-              style={{ width: "100%", height: "100%", border: 0 }}
-              allow="autoplay; fullscreen; picture-in-picture"
-              allowFullScreen
-            />
+              <div
+                style={{
+                  position: "absolute",
+                  left: 10,
+                  bottom: 10,
+                  padding: "6px 10px",
+                  borderRadius: 12,
+                  background: "rgba(0,0,0,0.60)",
+                  fontWeight: 950,
+                }}
+              >
+                {fmtDuration(v.lengthSec)}
+              </div>
+
+              <div
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  bottom: 10,
+                  padding: "6px 10px",
+                  borderRadius: 12,
+                  background: "rgba(0,0,0,0.60)",
+                  fontWeight: 900,
+                  opacity: 0.95,
+                }}
+              >
+                {Number(v.viewCount || 0).toLocaleString()} vues
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10, fontWeight: 950, lineHeight: 1.2 }}>
+              {v.title || "(sans titre)"}
+            </div>
+            <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.85 }}>
+              {timeAgo(v.createdAtMs)} • {v.permlink}
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button type="button" className="btnGhostSmall" disabled={loading} onClick={() => loadMore(true)}>
+          Reset
+        </button>
+        {hasNext ? (
+          <button type="button" className="btnPrimarySmall" disabled={loading} onClick={() => loadMore(false)}>
+            {loading ? "…" : "Charger plus"}
+          </button>
+        ) : null}
+      </div>
+
+      {openVod ? <VodModal vod={openVod} onClose={() => setOpenVod(null)} /> : null}
+    </div>
+  );
+}
+
+function VodModal({ vod, onClose }: { vod: ApiVod; onClose: () => void }) {
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+
+  React.useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const url = vod.bestHlsUrl;
+    if (!url) return;
+
+    let hls: Hls | null = null;
+
+    // Safari iOS/macOS gère souvent HLS natif
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = url;
+      video.play().catch(() => {});
+      return () => {};
+    }
+
+    // Chrome/Windows => hls.js
+    if (Hls.isSupported()) {
+      hls = new Hls({
+        // options safe par défaut
+      });
+      hls.loadSource(url);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().catch(() => {});
+      });
+    } else {
+      // fallback (rare)
+      video.src = url;
+    }
+
+    return () => {
+      try {
+        hls?.destroy();
+      } catch {}
+      if (video) {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      }
+    };
+  }, [vod]);
+
+  return (
+    <div className="chatSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex: 80 }}>
+      <div
+        className="chatSheet"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        style={{ maxWidth: 980 }}
+      >
+        <div className="chatSheetTop">
+          <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {vod.title || "VOD"}
           </div>
+          <button className="iconBtn" onClick={onClose} type="button" aria-label="Fermer">
+            ✕
+          </button>
         </div>
-      ) : (
-        <div className="mutedSmall" style={{ marginTop: 12, opacity: 0.85 }}>
-          Colle une URL replay DLive pour l’afficher ici.
+
+        <div className="chatSheetBody" style={{ padding: 14 }}>
+          {!vod.bestHlsUrl ? (
+            <div className="mutedSmall" style={{ opacity: 0.85 }}>
+              Aucune URL de lecture trouvée.
+            </div>
+          ) : (
+            <video
+              ref={videoRef}
+              controls
+              playsInline
+              style={{
+                width: "100%",
+                borderRadius: 16,
+                background: "black",
+                border: "1px solid rgba(255,255,255,0.10)",
+              }}
+            />
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

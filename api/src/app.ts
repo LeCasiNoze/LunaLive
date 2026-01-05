@@ -42,6 +42,7 @@ import { streamerDliveLinkRouter } from "./routes/streamer_dlive_link.js";
 
 // ✅ NEW: tabs (about/agenda)
 import { streamerTabsRouter } from "./routes/streamer_tabs.js";
+import { streamerVodsRouter } from "./routes/streamer_vods.js";
 
 export function createApp() {
   const app = express();
@@ -96,7 +97,8 @@ export function createApp() {
   // casinos
   app.use(casinosPublicRouter);
   app.use("/me/casinos", requireAuth, casinosMeRouter);
-
+  app.use(streamerVodsRouter);
+  
   // ✅ IMPORTANT: compat legacy frontend
   // ton build prod appelle encore /admin/casinos/listings (GET/POST)
   app.use("/admin/casinos/listings", adminCasinosRouter);

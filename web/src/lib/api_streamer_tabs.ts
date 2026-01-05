@@ -94,3 +94,22 @@ export async function putStreamerAgenda(
     body: JSON.stringify({ rules }),
   });
 }
+
+
+export type ApiVod = {
+  permlink: string;
+  title: string;
+  thumbnailUrl: string | null;
+  lengthSec: number;
+  createdAtMs: number;
+  viewCount: number;
+  bestHlsUrl: string | null;
+};
+
+export async function getStreamerVods(slug: string, cursor?: string | null, limit = 24): Promise<any> {
+  const qs = new URLSearchParams();
+  if (cursor) qs.set("cursor", cursor);
+  qs.set("limit", String(limit));
+  const url = `${BASE.replace(/\/$/, "")}/streamers/${encodeURIComponent(slug)}/vods?${qs.toString()}`;
+  return fetch(url).then((x) => x.json());
+}

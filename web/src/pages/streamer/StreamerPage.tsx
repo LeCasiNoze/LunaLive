@@ -608,7 +608,7 @@ export default function StreamerPage() {
           )}
 
           {tab === "vod" && slug ? (
-            <VodTab slug={String(slug)} streamerDisplay={streamer.displayName ? streamer.displayName : `@${String(slug)}`} />
+            <VodTab slug={String(slug)} />
           ) : null}
 
           {tab === "agenda" && slug ? (
