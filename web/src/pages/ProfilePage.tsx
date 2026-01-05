@@ -5,7 +5,12 @@ import { applyStreamer, myStreamerRequest } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
 import { AchievementsModal } from "../components/AchievementsModal";
 import { PersonalisationSection } from "../components/profile/PersonalisationSection";
-import { myFollowing, myProfileStats, type ApiFollowing, type ApiProfileStats } from "../lib/api_profile";
+import {
+  myFollowing,
+  myProfileStats,
+  type ApiFollowing,
+  type ApiProfileStats,
+} from "../lib/api_profile";
 
 type Tab = "overview" | "personalisation" | "social" | "stats";
 
@@ -22,22 +27,98 @@ function fmt(n: number) {
   return n.toLocaleString("fr-FR");
 }
 
+function fmtRubis(n: number | null | undefined) {
+  if (n == null) return "—";
+  return fmt(n);
+}
+
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
+}
+
+function humanDuration(seconds: number | null | undefined) {
+  if (seconds == null) return "—";
+  const s = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h <= 0) return `${m} min`;
+  if (m <= 0) return `${h} h`;
+  return `${h} h ${m} min`;
+}
+
+function dowLabel(dow: number | null | undefined) {
+  if (dow == null) return "—";
+  const labels = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+  return labels[dow] ?? String(dow);
+}
+
+function hourLabel(hour: number | null | undefined) {
+  if (hour == null) return "—";
+  const h = clamp(Math.floor(hour), 0, 23);
+  return `${String(h).padStart(2, "0")}:00`;
+}
+
+function Chip({
+  children,
+  title,
+}: {
+  children: React.ReactNode;
+  title?: string;
+}) {
+  return (
+    <span
+      title={title}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "6px 10px",
+        borderRadius: 999,
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.04)",
+        fontSize: 13,
+        fontWeight: 700,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
 function StatCard({
   title,
   value,
   sub,
+  right,
 }: {
   title: string;
   value: React.ReactNode;
   sub?: React.ReactNode;
+  right?: React.ReactNode;
 }) {
   return (
     <div className="panel" style={{ margin: 0 }}>
-      <div className="panelTitle" style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+      <div
+        className="panelTitle"
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
         <span>{title}</span>
+        {right ? <span className="muted">{right}</span> : null}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 800, marginTop: 6 }}>{value}</div>
-      {sub ? <div className="muted" style={{ marginTop: 6 }}>{sub}</div> : null}
+      <div style={{ fontSize: 22, fontWeight: 900, marginTop: 6 }}>
+        {value}
+      </div>
+      {sub ? (
+        <div className="muted" style={{ marginTop: 6 }}>
+          {sub}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -69,6 +150,108 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
     return () => clearTimeout(t);
   }, [value, delayMs]);
   return debounced;
+}
+
+function MiniBarList({
+  title,
+  items,
+  valueKey,
+  onItemLink,
+  emptyLabel,
+}: {
+  title: string;
+  items: Array<any>;
+  valueKey: "seconds" | "minutes" | "messages";
+  onItemLink: (slug: string) => string;
+  emptyLabel?: string;
+}) {
+  const max = Math.max(
+    0,
+    ...items.map((x) => Number(x?.[valueKey] ?? 0) || 0)
+  );
+
+  return (
+    <div className="panel" style={{ margin: 0 }}>
+      <div className="panelTitle">{title}</div>
+      {items.length === 0 ? (
+        <div className="muted">{emptyLabel ?? "Pas de données pour le moment."}</div>
+      ) : (
+        <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+          {items.map((x, idx) => {
+            const v = Number(x?.[valueKey] ?? 0) || 0;
+            const pct = max > 0 ? (v / max) * 100 : 0;
+            const label =
+              valueKey === "seconds"
+                ? humanDuration(v)
+                : valueKey === "minutes"
+                ? `${fmt(v)} min`
+                : fmt(v);
+
+            return (
+              <div
+                key={`${x.slug ?? idx}`}
+                style={{
+                  display: "grid",
+                  gap: 6,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontWeight: 900,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        lineHeight: 1.1,
+                      }}
+                    >
+                      {x.displayName ?? x.slug}
+                    </div>
+                    <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
+                      @{x.slug}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontWeight: 900 }}>{label}</span>
+                    <Link to={onItemLink(String(x.slug))} className="btnGhost">
+                      Voir
+                    </Link>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    height: 10,
+                    borderRadius: 999,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "rgba(255,255,255,0.03)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${clamp(pct, 0, 100)}%`,
+                      height: "100%",
+                      background: "rgba(255,255,255,0.18)",
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ProfilePage() {
@@ -124,7 +307,7 @@ export default function ProfilePage() {
       setFollowLoading(true);
       setFollowErr(null);
       try {
-        const r = await myFollowing(token, { q: dq, limit: 80 });
+        const r = await myFollowing(token, { q: dq, limit: 120 });
         if (cancelled) return;
         setFollowing(r.items);
       } catch (e: any) {
@@ -157,7 +340,6 @@ export default function ProfilePage() {
         setStats(r);
       } catch (e: any) {
         if (cancelled) return;
-        // fallback soft: si endpoint pas encore là, on ne casse pas la page
         setStats(null);
         setStatsErr(e?.message ?? "Erreur chargement stats");
       } finally {
@@ -169,6 +351,23 @@ export default function ProfilePage() {
       cancelled = true;
     };
   }, [token, tab]);
+
+  // Small derived values (safe even if fields missing)
+  const s: any = stats ?? {};
+  const netRubis =
+    typeof s.rubisEarnedTotal === "number" && typeof s.rubisSpentTotal === "number"
+      ? s.rubisEarnedTotal - s.rubisSpentTotal
+      : null;
+
+  const topWatchName = s.topStreamerByWatch?.displayName ?? null;
+  const topWatchSecs = s.topStreamerByWatch?.seconds ?? null;
+
+  const topByWatch: any[] = Array.isArray(s.topStreamersByWatch)
+    ? s.topStreamersByWatch
+    : [];
+  const topByMsg: any[] = Array.isArray(s.topStreamersByMessages)
+    ? s.topStreamersByMessages
+    : [];
 
   return (
     <main className="container">
@@ -293,14 +492,14 @@ export default function ProfilePage() {
                   <div className="panel" style={{ margin: 0 }}>
                     <div className="panelTitle">Compte</div>
                     <div className="muted" style={{ marginBottom: 10 }}>
-                      Petit résumé rapide et accès aux sections.
+                      Accès rapide aux sections importantes.
                     </div>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                       <button className="btnGhost" onClick={() => setTab("social")}>
-                        Voir Following
+                        Following
                       </button>
                       <button className="btnGhost" onClick={() => setTab("stats")}>
-                        Voir Stats
+                        Stats fun
                       </button>
                       <button className="btnGhost" onClick={() => setTab("personalisation")}>
                         Personnaliser
@@ -356,7 +555,7 @@ export default function ProfilePage() {
               <div className="panel" style={{ marginTop: 14 }}>
                 <div className="panelTitle">Following</div>
                 <div className="muted" style={{ marginBottom: 10 }}>
-                  Les personnes / streamers que tu suis. (Recherche incluse)
+                  Les personnes / streamers que tu suis (recherche incluse).
                 </div>
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -383,7 +582,7 @@ export default function ProfilePage() {
                 <div
                   style={{
                     marginTop: 12,
-                    maxHeight: 340,
+                    maxHeight: 360,
                     overflow: "auto",
                     borderRadius: 14,
                     border: "1px solid rgba(255,255,255,0.10)",
@@ -414,17 +613,29 @@ export default function ProfilePage() {
                           }}
                         >
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 800, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            <div
+                              style={{
+                                fontWeight: 900,
+                                lineHeight: 1.2,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
                               {f.displayName ?? f.slug}
                             </div>
                             <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
                               @{f.slug}
-                              {typeof f.isLive === "boolean" ? (f.isLive ? " • 🔴 live" : " • offline") : null}
+                              {typeof f.isLive === "boolean"
+                                ? f.isLive
+                                  ? " • 🔴 live"
+                                  : " • offline"
+                                : null}
                             </div>
                           </div>
 
-                          {/* ⚠️ Ajuste la route selon ton routing réel */}
                           <div style={{ display: "flex", gap: 8 }}>
+                            {/* ajuste si ta route streamer est différente */}
                             <Link to={`/s/${f.slug}`} className="btnGhost">
                               Voir
                             </Link>
@@ -440,13 +651,62 @@ export default function ProfilePage() {
             {tab === "stats" ? (
               <div style={{ marginTop: 14 }}>
                 <div className="panel" style={{ margin: 0 }}>
-                  <div className="panelTitle">Récap du compte</div>
-                  <div className="muted">
-                    Plein de stats fun (watchtime, messages, rubis, etc.).  
+                  <div className="panelTitle" style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <span>Récap du compte</span>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        className="btnGhost"
+                        onClick={() => {
+                          // force reload quickly
+                          setStatsLoading(true);
+                          setStatsErr(null);
+                          (async () => {
+                            if (!token) return;
+                            try {
+                              const r = await myProfileStats(token);
+                              setStats(r);
+                            } catch (e: any) {
+                              setStats(null);
+                              setStatsErr(e?.message ?? "Erreur chargement stats");
+                            } finally {
+                              setStatsLoading(false);
+                            }
+                          })();
+                        }}
+                        disabled={statsLoading}
+                        title="Rafraîchir"
+                      >
+                        Rafraîchir
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    Stats fun (watchtime, messages, rubis, wheel, bonus, etc.)
                     {statsErr ? <> <span style={{ opacity: 0.9 }}>({statsErr})</span></> : null}
+                  </div>
+
+                  {/* quick chips */}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                    <Chip title="Depuis combien de temps ton compte existe">
+                      📅 {s.accountAgeDays != null ? `${fmt(s.accountAgeDays)} jours` : "—"}
+                    </Chip>
+                    <Chip title="Nombre de streamers suivis">
+                      👥 {s.followingCount != null ? fmt(s.followingCount) : "—"} suivis
+                    </Chip>
+                    <Chip title="Ton heure la plus active (messages)">
+                      ⏰ {hourLabel(s.mostActiveChatHour)}
+                    </Chip>
+                    <Chip title="Ton jour le plus actif (messages)">
+                      🗓️ {dowLabel(s.mostActiveChatDow)}
+                    </Chip>
+                    <Chip title="Ton top streamer en watchtime">
+                      ⭐ {topWatchName ? topWatchName : "—"}
+                    </Chip>
                   </div>
                 </div>
 
+                {/* KPI grid */}
                 <div
                   style={{
                     marginTop: 14,
@@ -470,53 +730,192 @@ export default function ProfilePage() {
                     <>
                       <StatCard
                         title="Watchtime total"
-                        value={stats.watchSecondsTotal != null ? `${fmt(Math.floor(stats.watchSecondsTotal / 3600))} h` : "—"}
-                        sub={stats.topStreamerByWatch ? <>Top streamer: <b>{stats.topStreamerByWatch.displayName}</b></> : null}
-                      />
-                      <StatCard title="Messages envoyés" value={stats.chatMessagesTotal != null ? fmt(stats.chatMessagesTotal) : "—"} />
-                      <StatCard title="Rubis gagnés" value={stats.rubisEarnedTotal != null ? fmt(stats.rubisEarnedTotal) : "—"} />
-                      <StatCard title="Rubis dépensés" value={stats.rubisSpentTotal != null ? fmt(stats.rubisSpentTotal) : "—"} />
-
-                      <StatCard
-                        title="Support total"
-                        value={stats.rubisSupportTotal != null ? fmt(stats.rubisSupportTotal) : "—"}
-                        sub="Rubis utilisés pour soutenir (subs/tips/gifts)"
+                        value={humanDuration(s.watchSecondsTotal)}
+                        sub={
+                          topWatchName
+                            ? <>
+                                Top: <b>{topWatchName}</b> ({humanDuration(topWatchSecs)})
+                              </>
+                            : "—"
+                        }
                       />
                       <StatCard
-                        title="Burn total"
-                        value={stats.rubisBurnTotal != null ? fmt(stats.rubisBurnTotal) : "—"}
-                        sub="Rubis “sink” (cosmétiques/mini-jeux/etc.)"
+                        title="Messages envoyés"
+                        value={s.chatMessagesTotal != null ? fmt(s.chatMessagesTotal) : "—"}
+                        sub={
+                          s.mostActiveChatHour != null || s.mostActiveChatDow != null ? (
+                            <>
+                              Pic: <b>{dowLabel(s.mostActiveChatDow)}</b> à{" "}
+                              <b>{hourLabel(s.mostActiveChatHour)}</b>
+                            </>
+                          ) : undefined
+                        }
                       />
                       <StatCard
-                        title="Streamers suivis"
-                        value={stats.followingCount != null ? fmt(stats.followingCount) : "—"}
+                        title="Rubis gagnés"
+                        value={fmtRubis(s.rubisEarnedTotal)}
+                        sub={
+                          typeof s.dailyWheelRubisTotal === "number" || typeof s.chestRubisWonTotal === "number" ? (
+                            <>
+                              Wheel: <b>{fmtRubis(s.dailyWheelRubisTotal)}</b> • Coffres:{" "}
+                              <b>{fmtRubis(s.chestRubisWonTotal)}</b>
+                            </>
+                          ) : undefined
+                        }
                       />
                       <StatCard
-                        title="Ancienneté"
-                        value={stats.accountAgeDays != null ? `${fmt(stats.accountAgeDays)} jours` : "—"}
+                        title="Rubis dépensés"
+                        value={fmtRubis(s.rubisSpentTotal)}
+                        sub={
+                          typeof s.rubisSupportTotal === "number" || typeof s.rubisBurnTotal === "number" ? (
+                            <>
+                              Support: <b>{fmtRubis(s.rubisSupportTotal)}</b> • Sink/Burn:{" "}
+                              <b>{fmtRubis(s.rubisBurnTotal)}</b>
+                            </>
+                          ) : undefined
+                        }
+                      />
+                      <StatCard
+                        title="Net rubis (gagnés - dépensés)"
+                        value={netRubis == null ? "—" : fmt(netRubis)}
+                        sub="Juste une stat fun (pas un solde)."
+                      />
+                      <StatCard
+                        title="Wheel"
+                        value={
+                          typeof s.dailyWheelSpinsTotal === "number"
+                            ? `${fmt(s.dailyWheelSpinsTotal)} spins`
+                            : "—"
+                        }
+                        sub={
+                          typeof s.dailyWheelRubisTotal === "number"
+                            ? <>Total gagné: <b>{fmt(s.dailyWheelRubisTotal)}</b> rubis</>
+                            : undefined
+                        }
+                      />
+                      <StatCard
+                        title="Bonus quotidien"
+                        value={
+                          typeof s.dailyBonusClaimsTotal === "number"
+                            ? `${fmt(s.dailyBonusClaimsTotal)} claims`
+                            : "—"
+                        }
+                        sub="Nombre de jours où tu as claim."
+                      />
+                      <StatCard
+                        title="Collectibles"
+                        value={
+                          typeof s.entitlementsTotal === "number"
+                            ? `${fmt(s.entitlementsTotal)} objets`
+                            : "—"
+                        }
+                        sub={
+                          typeof s.achievementsUnlockedTotal === "number"
+                            ? <>Succès débloqués: <b>{fmt(s.achievementsUnlockedTotal)}</b></>
+                            : undefined
+                        }
+                      />
+                      <StatCard
+                        title="Subs gifts"
+                        value={
+                          typeof s.subGiftsClaimedTotal === "number"
+                            ? fmt(s.subGiftsClaimedTotal)
+                            : "—"
+                        }
+                        sub="Nombre de gifts claim."
                       />
                     </>
                   )}
                 </div>
 
-                {/* Fun list */}
+                {/* Leaderboards */}
+                <div
+                  style={{
+                    marginTop: 14,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+                    gap: 14,
+                  }}
+                >
+                  <MiniBarList
+                    title="Top streamers — watchtime"
+                    items={topByWatch}
+                    valueKey="seconds"
+                    onItemLink={(slug) => `/s/${slug}`}
+                    emptyLabel="Tu n’as pas encore de watchtime enregistré."
+                  />
+                  <MiniBarList
+                    title="Top streamers — messages"
+                    items={topByMsg}
+                    valueKey="messages"
+                    onItemLink={(slug) => `/s/${slug}`}
+                    emptyLabel="Tu n’as pas encore envoyé de messages."
+                  />
+                </div>
+
+                {/* Fun section */}
                 <div className="panel" style={{ marginTop: 14 }}>
-                  <div className="panelTitle">Stats fun (idées)</div>
+                  <div className="panelTitle">Stats fun (à ajouter ensuite)</div>
                   <div className="muted" style={{ marginBottom: 10 }}>
-                    Même si tu ne branches pas tout au début, on peut alimenter progressivement.
+                    On peut enrichir progressivement sans alourdir la page.
                   </div>
-                  <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
-                    <li>Top 5 streamers les plus regardés (durée)</li>
-                    <li>Top 5 streamers où tu as le plus parlé (messages)</li>
-                    <li>Ton “jour de la semaine” le plus actif</li>
-                    <li>Ton “heure” la plus active (heatmap)</li>
-                    <li>Nombre de lives différents regardés</li>
-                    <li>Plus long streak de jours consécutifs</li>
-                    <li>Total rubis gagnés par source (wheel / watch / event / etc.)</li>
-                    <li>Total rubis dépensés par catégorie (support / cosmétiques / mini-jeux)</li>
-                    <li>Ton top emote / badge / titre le plus utilisé</li>
-                    <li>Ta plus grosse dépense / ton plus gros gain en une fois</li>
-                  </ul>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: "rgba(255,255,255,0.03)",
+                        padding: 12,
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, marginBottom: 6 }}>Activité</div>
+                      <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+                        <li>Heatmap heures / jours (chat + watch)</li>
+                        <li>Streak (jours consécutifs actifs)</li>
+                        <li>Record de messages sur une journée</li>
+                        <li>Nombre de lives différents regardés</li>
+                      </ul>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: "rgba(255,255,255,0.03)",
+                        padding: 12,
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, marginBottom: 6 }}>Économie</div>
+                      <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+                        <li>Rubis gagnés par source (wheel/bonus/coffres/events…)</li>
+                        <li>Dépenses par catégorie (support/cosmétiques/mini-jeux)</li>
+                        <li>Plus grosse dépense support</li>
+                        <li>Plus gros gain en une fois (wheel / coffre)</li>
+                      </ul>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: "rgba(255,255,255,0.03)",
+                        padding: 12,
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, marginBottom: 6 }}>Cosmétiques</div>
+                      <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+                        <li>Top badge / titre le plus équipé</li>
+                        <li>Temps cumulé avec un titre</li>
+                        <li>Collection complétée (%)</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : null}
