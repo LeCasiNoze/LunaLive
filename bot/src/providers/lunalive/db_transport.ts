@@ -89,15 +89,34 @@ export class LunaLiveDbTransport {
     const body = String(text || "").trim();
     if (!body) return;
 
-    const botUserId = this.env.BOT_USER_ID ?? 1;
-    const botUsername = this.env.BOT_USERNAME;
+    const base = String(this.env.BOT_API_BASE || "").replace(/\/$/, "");
+    const key = String(this.env.BOT_INTERNAL_KEY || "");
+    if (!base || !key) {
+      console.log("[bot] send skipped: BOT_API_BASE or BOT_INTERNAL_KEY missing");
+      return;
+    }
 
-    // NOTE: écrit en DB (historique). Pour un affichage instantané dans le chat live,
-    // il faudra un broadcast via l’API/socket plus tard.
-    await this.pool.query(
-      `INSERT INTO chat_messages(streamer_id, user_id, username, body)
-       VALUES ($1, $2, $3, $4)`,
-      [this.streamer.id, botUserId, botUsername, body]
-    );
+    const url = `${base}/internal/bot/chat/send`;
+
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-bot-key": key,
+        },
+        body: JSON.stringify({
+          streamerId: this.streamer.id,
+          body,
+        }),
+      });
+
+      if (!r.ok) {
+        const t = await r.text().catch(() => "");
+        console.log("[bot] send failed", r.status, t.slice(0, 300));
+      }
+    } catch (e: any) {
+      console.log("[bot] send exception", e?.message || e);
+    }
   }
 }

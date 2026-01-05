@@ -44,6 +44,7 @@ import { streamerDliveLinkRouter } from "./routes/streamer_dlive_link.js";
 import { streamerTabsRouter } from "./routes/streamer_tabs.js";
 import { streamerVodsRouter } from "./routes/streamer_vods.js";
 import { meProfileRouter } from "./routes/me_profile.js";
+import { internalBotRouter } from "./routes/internal_bot.js";
 
 export function createApp() {
   const app = express();
@@ -113,7 +114,8 @@ export function createApp() {
   app.use(adminCasinosSetupRouter);
   app.use("/streamer/me/dlive-link", streamerDliveLinkRouter);
   app.use(meProfileRouter);
-
+  app.use(internalBotRouter);
+  
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
 
