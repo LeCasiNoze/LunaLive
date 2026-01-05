@@ -28,7 +28,6 @@ export default function DashboardPage() {
   const [connection, setConnection] = React.useState<ApiStreamConnection | null>(null);
 
   const canAccess = !!user && (user.role === "streamer" || user.role === "admin");
-
   const [tab, setTab] = React.useState<DashboardTab>("overview");
 
   async function load() {

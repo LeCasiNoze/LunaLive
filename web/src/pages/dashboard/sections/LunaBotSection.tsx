@@ -44,13 +44,7 @@ const CATEGORY_LABEL: Record<ModuleCategory, string> = {
   admin: "Admin",
 };
 
-const CATEGORY_ORDER: ModuleCategory[] = [
-  "general",
-  "rubis",
-  "discord",
-  "moderation",
-  "admin",
-];
+const CATEGORY_ORDER: ModuleCategory[] = ["general", "rubis", "discord", "moderation", "admin"];
 
 function Chip({
   kind,
@@ -165,7 +159,7 @@ function QuickCard({
       style={{
         padding: 14,
         borderRadius: 18,
-        opacity: locked ? 0.70 : 1,
+        opacity: locked ? 0.7 : 1,
         border: "1px solid rgba(255,255,255,0.08)",
         background: "rgba(0,0,0,0.10)",
       }}
@@ -187,9 +181,7 @@ function QuickCard({
             <span style={{ fontSize: 18 }}>{icon}</span>
           </div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 950, fontSize: 14, lineHeight: 1.1 }}>
-              {title}
-            </div>
+            <div style={{ fontWeight: 950, fontSize: 14, lineHeight: 1.1 }}>{title}</div>
             {desc ? (
               <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
                 {desc}
@@ -221,7 +213,7 @@ function QuickCard({
 }
 
 // ──────────────────────────────────────────
-// Panels (contents)
+// Panels
 // ──────────────────────────────────────────
 
 function CommandsPanel({
@@ -262,7 +254,11 @@ function CommandsPanel({
         </span>
       </div>
 
-      {err && <div className="hint" style={{ marginTop: 10 }}>⚠️ {err}</div>}
+      {err && (
+        <div className="hint" style={{ marginTop: 10 }}>
+          ⚠️ {err}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
         <input
@@ -381,7 +377,11 @@ function AutopostsPanel({
         Note: l’exécution live-only sera gérée côté bot (pas ici).
       </div>
 
-      {err && <div className="hint" style={{ marginTop: 10 }}>⚠️ {err}</div>}
+      {err && (
+        <div className="hint" style={{ marginTop: 10 }}>
+          ⚠️ {err}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
         <input
@@ -480,7 +480,9 @@ function LogsPanel({
       <div className="panelTitle" style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
         <span>Logs</span>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="btnGhostInline" onClick={onReload}>Rafraîchir</button>
+          <button className="btnGhostInline" onClick={onReload}>
+            Rafraîchir
+          </button>
           <button
             className="btnGhostInline"
             onClick={async () => {
@@ -643,7 +645,11 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
         </span>
       </div>
 
-      {err && <div className="hint" style={{ marginTop: 10 }}>⚠️ {err}</div>}
+      {err && (
+        <div className="hint" style={{ marginTop: 10 }}>
+          ⚠️ {err}
+        </div>
+      )}
 
       {/* Header actions / stats */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
@@ -672,10 +678,14 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
           </div>
         </div>
 
-        <CategoryTabs active={activeCategory} categories={availableCategories} onChange={(c) => {
-          setActiveCategory(c);
-          setActiveModule(null);
-        }} />
+        <CategoryTabs
+          active={activeCategory}
+          categories={availableCategories}
+          onChange={(c) => {
+            setActiveCategory(c);
+            setActiveModule(null);
+          }}
+        />
       </div>
 
       {/* Grid */}
