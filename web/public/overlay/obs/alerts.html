@@ -1,452 +1,299 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>LunaLive — OBS Alerts</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OBS Alerts</title>
 
   <style>
-    :root{
-      color-scheme: dark;
-      --w: 520px;
-      --pad: 16px;
-      --radius: 18px;
-
-      --bg: rgba(0,0,0,0.22);
-      --bd: rgba(255,255,255,0.10);
-      --shadow: 0 16px 60px rgba(0,0,0,0.45);
-
-      --accent: rgba(124,77,255,0.65);
-      --txt: rgba(255,255,255,0.95);
-      --muted: rgba(255,255,255,0.70);
-
-      --img: 56px;
-      --badge: 42px;
-
-      --enter-ms: 260ms;
-      --exit-ms: 260ms;
-    }
-
     html,body{
       margin:0; padding:0;
+      background:transparent;
       width:100%; height:100%;
-      background: transparent !important;
       overflow:hidden;
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      color:white;
     }
 
-    /* stage = zone safe, pas obligatoire */
     .stage{
       width:100%;
       height:100%;
       display:flex;
       align-items:center;
       justify-content:center;
-      padding: 10px;
-      box-sizing:border-box;
+      pointer-events:none;
     }
 
-    .box{
-      width: min(var(--w), calc(100vw - 20px));
-      border-radius: var(--radius);
-      border: 1px solid var(--bd);
-      background: var(--bg);
-      box-shadow: var(--shadow);
-      padding: var(--pad);
-      color: var(--txt);
-
+    .wrap{
+      width:min(760px, 96vw);
       display:flex;
-      gap: 12px;
+      flex-direction:column;
       align-items:center;
-
-      opacity: 0;
-      transform: translateY(10px) scale(0.985);
-      filter: blur(0px);
-
-      will-change: transform, opacity;
+      gap: 12px;
+      opacity:0;
+      transform: translateY(10px) scale(0.98);
+      transition: opacity 180ms ease, transform 220ms ease;
     }
 
-    .box.on{
-      animation: enter var(--enter-ms) ease-out both;
-    }
-    .box.off{
-      animation: exit var(--exit-ms) ease-in both;
+    .wrap.on{
+      opacity:1;
+      transform: translateY(0) scale(1);
     }
 
-    @keyframes enter{
-      from{ opacity:0; transform: translateY(10px) scale(0.985); }
-      to  { opacity:1; transform: translateY(0) scale(1); }
-    }
-    @keyframes exit{
-      from{ opacity:1; transform: translateY(0) scale(1); }
-      to  { opacity:0; transform: translateY(-6px) scale(0.99); }
-    }
-
-    .left{
-      position:relative;
-      flex: 0 0 auto;
-      width: var(--img);
-      height: var(--img);
-      border-radius: 16px;
+    /* GROS média au dessus */
+    .media{
+      width:min(560px, 92vw);
+      max-height: 420px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-radius: 22px;
       overflow:hidden;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(124,77,255,0.18);
-      display:grid;
-      place-items:center;
+
+      /* look luna */
+      background: rgba(0,0,0,0.18);
+      border: 1px solid rgba(255,255,255,0.10);
+      box-shadow: 0 18px 70px rgba(0,0,0,0.55);
     }
-    .left img{
-      width:100%; height:100%;
-      object-fit: cover;
+
+    .media img{
+      width:100%;
+      height:auto;
+      max-height: 420px;
+      object-fit: contain;
       display:block;
     }
-    .badge{
-      width: var(--badge);
-      height: var(--badge);
-      border-radius: 16px;
-      display:grid;
-      place-items:center;
-      font-size: 20px;
-      filter: drop-shadow(0 10px 24px rgba(0,0,0,0.55));
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(124,77,255,0.18);
+
+    /* Texte en dessous, pas “petite case” */
+    .textBox{
+      width:100%;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(0,0,0,0.22);
+      box-shadow: 0 16px 60px rgba(0,0,0,0.45);
+      padding: 14px 16px;
+      text-align:center;
     }
 
     .txt{
-      min-width:0;
-      display:flex;
-      flex-direction:column;
-      gap: 4px;
-    }
-    .line{
       font-weight: 950;
-      font-size: 18px;
-      letter-spacing: 0.1px;
+      font-size: 20px;
       line-height: 1.15;
-      word-break: break-word;
-      overflow-wrap:anywhere;
-    }
-    .sub{
-      font-size: 12px;
-      opacity: 0.70;
-      line-height: 1.2;
+      letter-spacing: 0.2px;
+      text-shadow: 0 2px 16px rgba(0,0,0,0.45);
     }
 
-    /* debug banner */
-    .dbg{
-      position: fixed;
-      left: 10px;
-      bottom: 10px;
-      font-size: 11px;
-      padding: 6px 8px;
-      border-radius: 10px;
-      background: rgba(0,0,0,0.35);
-      border: 1px solid rgba(255,255,255,0.10);
-      color: rgba(255,255,255,0.85);
-      display:none;
-      user-select:none;
-      pointer-events:none;
-      max-width: calc(100vw - 20px);
-      white-space: nowrap;
-      overflow:hidden;
-      text-overflow: ellipsis;
+    .sub{
+      margin-top: 8px;
+      font-size: 12px;
+      opacity: 0.55;
     }
-    .dbg.on{ display:block; }
+
+    /* Petit shimmer discret */
+    @keyframes shimmer {
+      0% { filter: brightness(1); }
+      50% { filter: brightness(1.08); }
+      100% { filter: brightness(1); }
+    }
+    .wrap.on .media{ animation: shimmer 1600ms ease-in-out infinite; }
   </style>
 </head>
 
 <body>
   <div class="stage">
-    <div id="box" class="box" aria-live="polite">
-      <div class="left" id="left">
-        <div class="badge" id="badge">✨</div>
+    <div class="wrap" id="wrap">
+      <div class="media" id="media" style="display:none;">
+        <img id="img" alt="alert media" />
       </div>
 
-      <div class="txt">
-        <div class="line" id="line">En attente…</div>
-        <div class="sub" id="sub">LunaLive Alerts</div>
+      <div class="textBox">
+        <div class="txt" id="t">Alerte…</div>
+        <div class="sub" id="s">En attente d’événements</div>
       </div>
     </div>
   </div>
 
-  <div id="dbg" class="dbg"></div>
-
-  <!-- socket.io client from API -->
-  <script>
-    (function(){
-      const qs = new URLSearchParams(location.search);
-      const apiRaw = (qs.get("api") || "").trim();
-
-      let origin = "https://lunalive-api.onrender.com";
-      try{
-        const u = new URL(apiRaw || origin);
-        if (u.protocol === "http:" || u.protocol === "https:") origin = u.origin;
-      } catch {}
-      document.write('<script src="' + origin + '/socket.io/socket.io.js"><\/script>');
-    })();
-  </script>
-
   <script>
     const qs = new URLSearchParams(location.search);
+    const API_BASE = (qs.get("api") || location.origin).replace(/\/+$/, "");
+    const slug = (qs.get("slug") || "").trim();
+    const poll = Math.max(1000, parseInt(qs.get("poll") || "8000", 10));
 
-    function safeApiOrigin(v){
-      const s = String(v || "").trim();
-      if (!s) return "https://lunalive-api.onrender.com";
-      try{
-        const u = new URL(s);
-        if (u.protocol === "http:" || u.protocol === "https:") return u.origin;
-      } catch {}
-      return "https://lunalive-api.onrender.com";
-    }
+    const wrap = document.getElementById("wrap");
+    const media = document.getElementById("media");
+    const img = document.getElementById("img");
+    const t = document.getElementById("t");
+    const s = document.getElementById("s");
 
-    const API_BASE = safeApiOrigin(qs.get("api"));
-    const SLUG  = String(qs.get("slug") || "").trim();
-    const TOKEN = String(qs.get("token") || "").trim();
-
-    // si tu veux 2 sources OBS distinctes: ?event=follow et ?event=donation
-    const FILTER_EVENT = String(qs.get("event") || "").trim().toLowerCase(); // "" => all
-
-    const DEBUG = qs.get("debug") === "1";
-    const dbg = document.getElementById("dbg");
-    if (DEBUG) dbg.classList.add("on");
-    function log(s){
-      if (!DEBUG) return;
-      dbg.textContent = s;
-    }
-
-    const box = document.getElementById("box");
-    const left = document.getElementById("left");
-    const badge = document.getElementById("badge");
-    const line = document.getElementById("line");
-    const sub = document.getElementById("sub");
-
-    // config (fetch depuis API)
-    let cfg = {
-      alerts: {
-        follow_tpl: "Merci @{user} pour le follow 💜",
-        follow_img: null,
-        follow_sound: null,
-        sound_vol: 1,
-
-        donation_tpl: "Merci {user} pour {amount} {gift} !",
-        donation_img: null,
-        donation_sound: null,
-        donation_vol: 0.9,
-
-        follow_duration_ms: 4500,
-        donation_duration_ms: 5500,
-      }
-    };
-
-    function clamp(n,a,b){
-      const x = Number(n);
-      if (!Number.isFinite(x)) return a;
-      return Math.max(a, Math.min(b, x));
-    }
-
-    function applyTemplate(tpl, vars){
-      let s = String(tpl || "");
-      for (const [k,v] of Object.entries(vars || {})){
-        const val = String(v ?? "");
-        s = s.replaceAll(`{${k}}`, val);
-        s = s.replaceAll(`@{${k}}`, `@${val}`);
-      }
-      return s;
-    }
-
-    async function loadConfig(){
-      if (!TOKEN) return;
-      try{
-        const r = await fetch(`${API_BASE}/me/overlay/widgets-config`, {
-          headers: { Authorization: `Bearer ${TOKEN}` }
-        });
-        const j = await r.json().catch(() => null);
-        if (!r.ok || !j?.ok) return;
-
-        const a = j?.config?.alerts || {};
-        cfg.alerts.follow_tpl = String(a.follow_tpl ?? cfg.alerts.follow_tpl);
-        cfg.alerts.follow_img = a.follow_img ?? null;
-        cfg.alerts.follow_sound = a.follow_sound ?? null;
-        cfg.alerts.sound_vol = clamp(a.sound_vol ?? cfg.alerts.sound_vol, 0, 1);
-
-        cfg.alerts.donation_tpl = String(a.donation_tpl ?? cfg.alerts.donation_tpl);
-        cfg.alerts.donation_img = a.donation_img ?? null;
-        cfg.alerts.donation_sound = a.donation_sound ?? null;
-        cfg.alerts.donation_vol = clamp(a.donation_vol ?? cfg.alerts.donation_vol, 0, 1);
-
-        cfg.alerts.follow_duration_ms = Math.max(1200, Number(a.follow_duration_ms ?? cfg.alerts.follow_duration_ms));
-        cfg.alerts.donation_duration_ms = Math.max(1200, Number(a.donation_duration_ms ?? cfg.alerts.donation_duration_ms));
-
-        log(`config OK (follow_img=${!!cfg.alerts.follow_img}, follow_sound=${!!cfg.alerts.follow_sound})`);
-      } catch (e){
-        log(`config FAIL`);
-      }
-    }
-
-    // queue
-    const q = [];
+    // Queue pour éviter que 2 alertes se chevauchent
+    const queue = [];
     let playing = false;
+    let hideTimer = null;
 
-    function setLeftMedia(imageUrl, emoji){
-      left.innerHTML = "";
-      if (imageUrl){
-        const img = document.createElement("img");
-        img.src = String(imageUrl);
-        img.referrerPolicy = "no-referrer";
-        img.loading = "eager";
-        img.decoding = "async";
-        img.onerror = () => {
-          left.innerHTML = "";
-          const b = document.createElement("div");
-          b.className = "badge";
-          b.textContent = emoji || "✨";
-          left.appendChild(b);
-        };
-        left.appendChild(img);
-      } else {
-        const b = document.createElement("div");
-        b.className = "badge";
-        b.textContent = emoji || "✨";
-        left.appendChild(b);
-      }
+    function show() {
+      wrap.classList.add("on");
+    }
+    function hide() {
+      wrap.classList.remove("on");
+      // on nettoie après transition
+      window.setTimeout(() => {
+        t.textContent = "";
+        s.textContent = "En attente d’événements";
+        media.style.display = "none";
+        img.removeAttribute("src");
+      }, 180);
     }
 
-    async function playSound(url, vol){
-      if (!url) return;
-      try{
-        const a = new Audio(String(url));
-        a.volume = clamp(vol, 0, 1);
-        a.preload = "auto";
+    function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+    async function getAudioDurationMs(soundUrl) {
+      // Si pas de son => 7000ms direct
+      if (!soundUrl) return 7000;
+
+      // Essaie de lire la vraie durée (metadata)
+      return await new Promise((resolve) => {
+        let done = false;
+
+        const a = new Audio();
+        a.preload = "metadata";
+        a.src = soundUrl;
+
+        const finish = (ms) => {
+          if (done) return;
+          done = true;
+          try { a.pause(); } catch {}
+          resolve(ms);
+        };
+
+        a.addEventListener("loadedmetadata", () => {
+          const d = Number(a.duration);
+          if (Number.isFinite(d) && d > 0) finish(Math.ceil(d * 1000));
+          else finish(7000);
+        });
+
+        a.addEventListener("error", () => finish(7000));
+
+        // OBS/Browser parfois capricieux => timeout metadata
+        setTimeout(() => finish(7000), 1500);
+      });
+    }
+
+    async function playSound(soundUrl, volume) {
+      if (!soundUrl) return null;
+      const a = new Audio(soundUrl);
+      a.volume = Math.max(0, Math.min(1, Number(volume ?? 1)));
+      a.preload = "auto";
+      try {
         await a.play();
       } catch {
-        // OBS: parfois autoplay bloqué selon settings, pas grave
+        // autoplay peut échouer en navigateur normal (OBS ok en général)
       }
+      return a;
     }
 
-    function showOne(item){
-      const ev = String(item.event || "follow").toLowerCase();
-      const name = String(item.name || "Viewer");
+    async function playOne(payload) {
+      clearTimeout(hideTimer);
+      show();
 
-      const emoji = ev === "donation" ? "🫶" : "✨";
+      const text = String(payload?.text || payload?.message || "Alerte");
+      const imageUrl = payload?.imageUrl || null;
+      const soundUrl = payload?.soundUrl || null;
+      const volume = payload?.volume ?? 1;
 
-      // merge config + payload override
-      const a = cfg.alerts;
+      t.textContent = text;
+      s.textContent = payload?.event ? `Événement: ${payload.event}` : "";
 
-      const tpl = item.text
-        ? String(item.text)
-        : (ev === "donation" ? a.donation_tpl : a.follow_tpl);
+      // Média au dessus
+      if (imageUrl) {
+        media.style.display = "flex";
+        img.src = imageUrl;
+      } else {
+        media.style.display = "none";
+        img.removeAttribute("src");
+      }
 
-      const text = applyTemplate(tpl, {
-        user: name,
-        amount: item.amount ?? "",
-        gift: item.gift ?? "",
-      });
+      // Durée = durée réelle du son si présent, sinon 7s
+      const durationMs = await getAudioDurationMs(soundUrl);
 
-      const imgUrl = item.imageUrl ?? (ev === "donation" ? a.donation_img : a.follow_img);
-      const soundUrl = item.soundUrl ?? (ev === "donation" ? a.donation_sound : a.follow_sound);
-      const vol = clamp(item.volume ?? (ev === "donation" ? a.donation_vol : a.sound_vol), 0, 1);
+      // lance le son (en parallèle)
+      playSound(soundUrl, volume);
 
-      const dur = Math.max(1200, Number(item.durationMs ?? (ev === "donation" ? a.donation_duration_ms : a.follow_duration_ms)));
-
-      setLeftMedia(imgUrl, emoji);
-      line.textContent = text;
-      sub.textContent = ev === "donation" ? "Donation" : "Follow";
-
-      // animate
-      box.classList.remove("off");
-      box.classList.add("on");
-
-      // sound async
-      playSound(soundUrl, vol);
-
-      // exit after dur
-      window.setTimeout(() => {
-        box.classList.remove("on");
-        box.classList.add("off");
-
-        window.setTimeout(() => {
-          box.classList.remove("off");
-          // keep hidden until next alert
-          box.style.opacity = "0";
-          box.style.transform = "translateY(10px) scale(0.985)";
-          playing = false;
-          pump();
-        }, 260);
-      }, dur);
+      // garde à l'écran jusqu'à fin son (ou 7s)
+      hideTimer = setTimeout(() => hide(), durationMs);
+      await sleep(durationMs + 220);
     }
 
-    function pump(){
+    async function pump() {
       if (playing) return;
-      if (q.length === 0) return;
       playing = true;
-      const item = q.shift();
-      // reset base style before enter anim
-      box.style.opacity = "";
-      box.style.transform = "";
-      showOne(item);
-    }
-
-    function enqueue(payload){
-      const ev = String(payload?.event || "").toLowerCase();
-      if (FILTER_EVENT && ev && ev !== FILTER_EVENT) return;
-
-      q.push({
-        event: payload.event,
-        name: payload.name,
-        amount: payload.amount,
-        gift: payload.gift,
-        text: payload.text,
-        imageUrl: payload.imageUrl,
-        soundUrl: payload.soundUrl,
-        volume: payload.volume,
-        durationMs: payload.durationMs,
-      });
-      pump();
-    }
-
-    function connectSocket(){
-      if (!SLUG) {
-        log("SLUG manquant");
-        // mini preview si pas de slug
-        enqueue({ event: FILTER_EVENT || "follow", name: "TestFollower" });
-        return;
+      try {
+        while (queue.length) {
+          const p = queue.shift();
+          await playOne(p);
+        }
+      } finally {
+        playing = false;
       }
-
-      const ioClient = window.io;
-      if (typeof ioClient !== "function") {
-        log("socket.io introuvable");
-        return;
-      }
-
-      const sock = ioClient(API_BASE, {
-        transports: ["websocket","polling"],
-        withCredentials: false,
-        auth: TOKEN ? { token: TOKEN } : undefined,
-      });
-
-      sock.on("connect", () => {
-        log("socket connected");
-        try { sock.emit("stream:join", { slug: SLUG }, () => {}); } catch {}
-      });
-
-      // on écoute UN seul event standard
-      sock.on("obs:alert", (p) => {
-        try{
-          if (!p) return;
-          enqueue(p);
-        } catch {}
-      });
-
-      // fallback compat si tu changes plus tard
-      sock.on("alert", (p) => enqueue(p));
-      sock.on("alerts:show", (p) => enqueue(p));
     }
 
-    // init
-    loadConfig();
+    // --- MODE SOCKET (prod) ---
+    // Le serveur émet `obs:alert` dans la room `stream:{slug}`
+    // On se connecte au socket.io du même host que l'API (API_BASE)
+    let socket = null;
+    function connectSocket() {
+      // charge socket.io client depuis l'API (si ton app le sert)
+      const script = document.createElement("script");
+      script.src = `${API_BASE}/socket.io/socket.io.js`;
+      script.async = true;
+      script.onload = () => {
+        socket = window.io(API_BASE, { transports: ["websocket", "polling"] });
+
+        socket.on("connect", () => {
+          s.textContent = "Connecté ✓";
+          if (slug) {
+            socket.emit("stream:join", { slug }, (ack) => {
+              if (!ack?.ok) s.textContent = "Join stream: échec";
+            });
+          } else {
+            s.textContent = "slug manquant (URL)";
+          }
+        });
+
+        socket.on("disconnect", () => {
+          s.textContent = "Déconnecté…";
+        });
+
+        socket.on("obs:alert", (payload) => {
+          queue.push(payload);
+          pump();
+        });
+      };
+
+      script.onerror = () => {
+        s.textContent = "Socket client introuvable";
+      };
+
+      document.head.appendChild(script);
+    }
+
     connectSocket();
 
-    // refresh config toutes les 20s (si tu changes template/son)
-    window.setInterval(() => loadConfig(), 20000);
+    // --- MODE “preview” fallback ---
+    // Si tu ouvres l'URL en navigateur sans socket, tu peux simuler via query:
+    // ?event=follow&name=Viewer
+    const previewEvent = (qs.get("event") || "").trim();
+    if (previewEvent) {
+      const name = qs.get("name") || (previewEvent === "donation" ? "TestDonor" : "TestFollower");
+      const text = previewEvent === "donation"
+        ? `Merci ${name} pour la donation 🫶`
+        : `Merci @${name} pour le follow 💜`;
+
+      // petit auto preview après 400ms (si jamais socket pas prêt)
+      setTimeout(() => {
+        queue.push({ event: previewEvent, text, imageUrl: null, soundUrl: null, volume: 1 });
+        pump();
+      }, 400);
+    }
   </script>
 </body>
 </html>
