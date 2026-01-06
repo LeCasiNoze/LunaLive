@@ -22,6 +22,7 @@ import { ChestModal } from "./components/ChestModal";
 import { AboutTab } from "./tabs/AboutTab";
 import { VodTab } from "./tabs/VodTab";
 import { AgendaTab } from "./tabs/AgendaTab";
+import { ClipsTab } from "./tabs/ClipsTab";
 
 function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
@@ -607,12 +608,14 @@ export default function StreamerPage() {
             <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} />
           ) : null}
 
-          {tab === "clips" && (
-            <div>
-              <div className="panelTitle">Clips</div>
-              <div className="mutedSmall">(On branche avec le bot plus tard)</div>
-            </div>
-          )}
+          {tab === "clips" && slug ? (
+            <ClipsTab
+              slug={String(slug)}
+              token={token}
+              isOwner={isOwner}
+              onRequireLogin={() => setLoginOpen(true)}
+            />
+          ) : null}
 
           {tab === "vod" && slug ? (
             <VodTab slug={String(slug)} />

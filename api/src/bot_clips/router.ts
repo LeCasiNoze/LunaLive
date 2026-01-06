@@ -307,10 +307,13 @@ botClipsRouter.get("/list", async (req: AuthedReq, res) => {
   const rows = await listClipsForStreamer(streamerId, limit);
 
   const items = rows.map((r: BotClipRow) => {
-    const t = Math.max(0, Number(r.at_sec || 0));
+    const at = Math.max(0, Number(r.at_sec || 0));
+    const pre = Math.max(0, Number(r.pre_sec || 105));
+    const startSec = Math.max(0, at - pre);
+
     const base = r.vod_url ? String(r.vod_url) : null;
     const sep = base && base.includes("?") ? "&" : "?";
-    const vod_link = base ? `${base}${sep}t=${t}s` : null;
+    const vod_link = base ? `${base}${sep}t=${startSec}s` : null;
 
     return {
       id: Number(r.id),
@@ -325,7 +328,7 @@ botClipsRouter.get("/list", async (req: AuthedReq, res) => {
       vod_permlink: r.vod_permlink ?? null,
       vod_created_ts: r.vod_created_ts ?? null,
       vod_link,
-      timecode_str: hhmmss(t),
+      timecode_str: hhmmss(startSec),
     };
   });
 
@@ -339,7 +342,7 @@ botClipsRouter.post("/delete", express.json(), async (req: AuthedReq, res) => {
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, reason: "id_required" });
 
   const n = await removeClipForStreamer(streamerId, id);
-  return res.json({ ok: true, removed: n });
+  return res.json({ ok: true, hidden: n });
 });
 
 /* (3) DOWNLOAD START */
