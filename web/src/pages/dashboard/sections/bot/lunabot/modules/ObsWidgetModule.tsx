@@ -323,11 +323,10 @@ export function ObsWidgetModule({
     `&as=${encodeURIComponent(goalAnimSpecial)}` +
     `&ae=${encodeURIComponent(goalAnimEnabled ? 1 : 0)}` +
     `&poll=8000`;
-
+    
   const alertsObsUrl =
-    `${base}/overlay/obs/alerts.html?uid=${encodeURIComponent(uid)}&slug=${encodeURIComponent(
-      streamerSlug
-    )}&token=${encodeURIComponent(token)}` +
+    `${base}/overlay/obs/alerts.html?uid=${encodeURIComponent(uid)}&slug=${encodeURIComponent(streamerSlug)}&token=${encodeURIComponent(token)}` +
+    `&api=${encodeURIComponent(API_BASE)}` +
     `&name=${encodeURIComponent(streamerName)}&event=${alertsKind}&poll=8000`;
 
   function copy(text: string) {
@@ -648,7 +647,7 @@ export function ObsWidgetModule({
                 <input
                   style={inputStyle()}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
                   onChange={async (e) => {
                     const f = e.currentTarget.files?.[0];
                     if (!f) return;

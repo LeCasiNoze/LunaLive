@@ -1,5 +1,7 @@
 // api/src/index.ts
 import http from "http";
+import path from "path";
+import express from "express";
 import { Server as IOServer } from "socket.io";
 
 import { migrate, seedIfEmpty, pool } from "./db.js";
@@ -41,22 +43,23 @@ function startStatsCleanup() {
 
   const app = createApp();
 
+  // ✅ sert les uploads (alertes: images/gif/sons)
+  app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
   const server = http.createServer(app);
 
   // ✅ Socket.IO CORS aligné avec le front
   const io = new IOServer(server, {
     cors: {
-      origin: [
-        "https://lunalive.onrender.com",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-      ],
+      origin: ["https://lunalive.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"],
       credentials: true,
       methods: ["GET", "POST"],
     },
   });
 
+  // ✅ rendre io accessible aux routes (me_overlay -> /alert emit)
   app.locals.io = io;
+  app.set("io", io);
 
   attachChat(io);
   startStatsCleanup();
