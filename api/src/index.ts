@@ -10,6 +10,9 @@ import { attachChat } from "./chat_socket.js";
 import { startDlivePoller } from "./dlive_poller.js";
 import { startChestJobs } from "./chest_jobs.js";
 
+import { ensureBotClips } from "./bot_clips/store.js";
+import { startClipsVodLinker } from "./bot_clips/vod_linker.js";
+
 const port = Number(process.env.PORT || 3001);
 
 function startStatsCleanup() {
@@ -41,6 +44,9 @@ function startStatsCleanup() {
   await migrate();
   await seedIfEmpty();
 
+  // ✅ ensure clips table (runtime idempotent)
+  await ensureBotClips();
+
   const app = createApp();
 
   // ✅ sert les uploads (alertes: images/gif/sons)
@@ -65,6 +71,9 @@ function startStatsCleanup() {
   startStatsCleanup();
   startDlivePoller(io);
   startChestJobs(io);
+
+  // ✅ worker: link VOD url to pending clips
+  startClipsVodLinker();
 
   server.listen(port, () => console.log(`[api] listening on :${port}`));
 })();

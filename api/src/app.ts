@@ -51,6 +51,9 @@ import meBotRouter from "./modules/bot/router.js";
 import { meOverlayRouter } from "./routes/me_overlay.js";
 import { overlayApiRouter } from "./routes/overlay_api.js";
 
+// ✅ NEW: clips routes
+import { botClipsRouter } from "./bot_clips/router.js";
+
 export function createApp() {
   const app = express();
   app.set("trust proxy", 1);
@@ -108,14 +111,17 @@ export function createApp() {
   app.use(casinosPublicRouter);
   app.use("/me/casinos", requireAuth, casinosMeRouter);
   app.use(streamerVodsRouter);
+
   // ✅ OBS overlay config (compat frontend)
   app.use("/me/overlay", requireAuth, meOverlayRouter);
 
   // ✅ LunaBot dashboard routes
   app.use("/me/bot", requireAuth, meBotRouter);
 
+  // ✅ Clips dashboard (download/list/delete)
+  app.use("/me/bot/clips", botClipsRouter);
+
   // ✅ IMPORTANT: compat legacy frontend
-  // ton build prod appelle encore /admin/casinos/listings (GET/POST)
   app.use("/admin/casinos/listings", adminCasinosRouter);
 
   // admin casinos = admin key only (PAS requireAuth)
@@ -129,7 +135,7 @@ export function createApp() {
   app.use(meProfileRouter);
   app.use(internalBotRouter);
   app.use("/overlay/api", overlayApiRouter);
-  
+
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
 

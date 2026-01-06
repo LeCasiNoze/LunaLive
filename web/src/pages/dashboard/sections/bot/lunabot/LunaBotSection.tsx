@@ -1,3 +1,4 @@
+// web/src/pages/dashboard/sections/bot/LunaBotSection.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "../../../../../auth/AuthProvider";
@@ -18,6 +19,7 @@ import { AutopostsModule } from "./modules/AutopostsModule";
 import { LogsModule } from "./modules/LogsModule";
 import { TestSendModule } from "./modules/TestSendModule";
 import { ObsWidgetModule } from "./modules/ObsWidgetModule";
+import { ClipsModule } from "./modules/ClipsModule";
 
 // ──────────────────────────────────────────
 // Types
@@ -35,7 +37,7 @@ type ModuleDef = {
   onOpen?: () => void;
 };
 
-type ActiveModule = "commands" | "autoposts" | "logs" | "test-send" | "obs" | null;
+type ActiveModule = "commands" | "autoposts" | "logs" | "test-send" | "obs" | "clips" | null;
 
 const CATEGORY_LABEL: Record<ModuleCategory, string> = {
   general: "Général",
@@ -404,6 +406,15 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       onOpen: () => setActiveModule("autoposts"),
     },
     {
+      id: "clips",
+      category: "general",
+      status: "ready",
+      title: "Clips (!clip)",
+      desc: "Enregistre et télécharge tes clips (DLive VOD).",
+      icon: "🎬",
+      onOpen: () => setActiveModule("clips"),
+    },
+    {
       id: "logs",
       category: "general",
       status: "ready",
@@ -461,6 +472,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       ? "Commandes personnalisées"
       : activeModule === "autoposts"
       ? "Messages automatiques"
+      : activeModule === "clips"
+      ? "Clips"
       : activeModule === "logs"
       ? "Logs"
       : activeModule === "test-send"
@@ -474,6 +487,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       ? "Crée, active/désactive et supprime tes !commandes."
       : activeModule === "autoposts"
       ? "Planifie des messages (exécution live-only gérée côté bot)."
+      : activeModule === "clips"
+      ? "Commande chat: !clip (tout le monde par défaut). Fenêtre: 1m45 avant / 15s après."
       : activeModule === "logs"
       ? "Événements / erreurs / diagnostic du bot."
       : activeModule === "test-send"
@@ -548,6 +563,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
           <CommandsModule token={token} commands={commands} onReload={reloadAll} />
         ) : activeModule === "autoposts" ? (
           <AutopostsModule token={token} autoposts={autoposts} onReload={reloadAll} />
+        ) : activeModule === "clips" ? (
+          <ClipsModule token={token} onReload={reloadAll} />
         ) : activeModule === "logs" ? (
           <LogsModule token={token} logs={logs} onReload={reloadAll} />
         ) : activeModule === "test-send" ? (

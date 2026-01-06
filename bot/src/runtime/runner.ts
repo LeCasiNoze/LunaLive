@@ -1,3 +1,4 @@
+// bot/src/runtime/runner.ts
 import type { Pool } from "pg";
 import type { BotEnv } from "../env.js";
 import type { BotCommand, BotStreamerSettings, StreamerRow } from "../core/types.js";
@@ -6,6 +7,7 @@ import { dispatch } from "../core/dispatch.js";
 import { loadAutoposts, loadCommands } from "./config.js";
 import { LunaLiveDbTransport } from "../providers/lunalive/db_transport.js";
 import { logEvent } from "../log.js";
+import { tryHandleClipCommand } from "../modules/clips/clip.js";
 
 const BOT_TEXT_MAX = 500;
 
@@ -88,7 +90,10 @@ export class StreamerRunner {
       } catch {}
     })();
 
-    const sendBotText = async (t: any, reason: "send" | "autopost" = "send") => {
+    const sendBotText = async (
+      t: any,
+      reason: "send" | "autopost" | "clip" = "send"
+    ) => {
       let out = String(t ?? "").replace(/\r\n/g, "\n");
 
       if (!out.trim()) return;
@@ -139,6 +144,22 @@ export class StreamerRunner {
       if (Number(msg.userId) === botUserId) return; // évite boucles
 
       const body = String(msg.body || "").trim();
+
+      // ✅ BUILTIN: !clip (avant dispatch des commandes custom)
+      // Par défaut: tout le monde (option modo-only viendra après)
+      try {
+        const handled = await tryHandleClipCommand({
+          pool: this.pool,
+          streamer: this.streamer,
+          prefix,
+          msg,
+          send: async (t: string) => {
+            await sendBotText(t, "clip");
+          },
+          allowEveryone: true,
+        });
+        if (handled) return;
+      } catch {}
 
       if (body.startsWith(prefix)) {
         console.log("[bot] cmd in", { slug: this.streamer.slug, from: msg.username, body });
