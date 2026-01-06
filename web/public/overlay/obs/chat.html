@@ -3,52 +3,43 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>LunaLive — Chat OBS</title>
+  <title>LunaLive — OBS Chat (Live)</title>
+
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;800&display=swap" rel="stylesheet">
 
   <style>
     :root{
       color-scheme: dark;
 
-      /* couleurs (auto depuis appearance streamer) */
-      --c-user: #7c4dff;
-      --c-msg:  #ffffff;
-      --c-vip:  #7c4dff;
+      /* Fallbacks (seront remplacés par streamer appearance) */
+      --chat-name-color: #7c4dff;
+      --chat-msg-color:  #ffffff;
 
-      /* tailles fixes (pas paramétrables) */
-      --fz-user: 20px;
-      --fz-msg:  18px;
+      /* width max (seule option exposée) */
+      --wrap-maxw: 420px;
 
-      /* layout */
+      /* cards */
       --gap: 8px;
       --pad-x: 12px;
-      --pad-y: 8px;
+      --pad-y: 10px;
+      --bg-row: rgba(0, 0, 0, 0.92);
+      --bd-row: 1px solid rgba(255,255,255,.10);
+      --rad: 14px;
+      --shadow: 0 10px 24px rgba(0,0,0,.35);
 
-      /* max lignes */
-      --max-lines: 7;
-
-      /* design cartes */
-      --bg-row: rgba(0, 0, 0, 0.95);
-      --bd-row: 1px solid rgba(255,255,255,.12);
-      --rad: 12px;
-      --shadow: 0 8px 26px rgba(0,0,0,.35);
-      --txt-shadow-soft: 0 1px 2px rgba(0,0,0,.6);
-      --txt-shadow-strong: 0 1px 3px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.35);
-
-      /* ✅ seul param: largeur max (mw=) */
-      --wrap-maxw: 420px;
+      --txt-shadow-soft: 0 1px 2px rgba(0,0,0,.55);
+      --txt-shadow-strong: 0 1px 3px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.25);
     }
 
     html, body{
       margin:0; padding:0;
-      width:100%;
-      height:100%;
+      width:100%; height:100%;
       background: transparent !important;
       overflow:hidden;
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
     }
 
-    /* stack collé en bas à gauche */
+    /* stack bottom-left */
     body{
       display:flex;
       align-items:flex-end;
@@ -66,120 +57,178 @@
       box-sizing:border-box;
     }
 
-    .row{
+    .chatMsgRow{
       position: relative;
-      display:flex;
-      align-items:flex-start;
-      gap: 10px;
+      display:block;
       background: var(--bg-row);
       border: var(--bd-row);
       border-radius: var(--rad);
-      padding: var(--pad-y) var(--pad-x);
       box-shadow: var(--shadow);
-      will-change: transform, opacity, filter;
-      opacity:1; transform:none;
       overflow:hidden;
+      will-change: transform, opacity, filter;
     }
 
-    .row.appear{
+    .chatMsgRow.appear{
       opacity: 0;
       transform: translateY(8px);
-      animation: pop .20s ease-out forwards;
+      animation: pop .18s ease-out forwards;
     }
-    @keyframes pop { to { opacity:1; transform: translateY(0); } }
+    @keyframes pop{ to { opacity:1; transform: translateY(0);} }
 
-    /* avatar (fallback initials) */
-    .avatar{
-      width:36px; height:36px;
+    .chatMsgInner{
+      display:flex;
+      gap: 10px;
+      padding: var(--pad-y) var(--pad-x);
+      align-items:flex-start;
+    }
+
+    /* avatar */
+    .chatAvatarBorder{
+      width: 42px;
+      height: 42px;
       border-radius: 999px;
-      flex:none;
+      padding: 2px;
+      flex: none;
+      box-sizing:border-box;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,0.04);
+      box-shadow: 0 6px 18px rgba(0,0,0,.30);
+      position: relative;
+    }
+
+    .chatAvatarCircle{
+      width: 100%;
+      height: 100%;
+      border-radius: 999px;
+      overflow:hidden;
       display:flex;
       align-items:center;
       justify-content:center;
-      font-weight:900;
-      letter-spacing:.02em;
-      color: rgba(255,255,255,0.92);
-      background: rgba(255,255,255,0.10);
-      border: 1px solid rgba(255,255,255,.15);
-      box-shadow: 0 1px 6px rgba(0,0,0,.25);
-      margin-top: 1px;
+      font-weight: 950;
+      color: rgba(255,255,255,.92);
+      background: rgba(0,0,0,.35);
+      text-shadow: var(--txt-shadow-soft);
       user-select:none;
     }
 
-    .line{ display:block; flex:1; min-width:0; }
+    .chatAvatarImg{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+    }
 
-    /* badges */
-    .badge{
+    .chatHatEmoji{
+      position:absolute;
+      right:-4px;
+      top:-8px;
+      font-size: 16px;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,.7));
+      transform: rotate(8deg);
+      pointer-events:none;
+    }
+
+    /* content */
+    .chatMsgContent{ flex:1; min-width:0; }
+
+    .chatMsgTop{
+      display:flex;
+      align-items:baseline;
+      justify-content:space-between;
+      gap: 10px;
+    }
+
+    .chatMsgTopLeft{
+      display:flex;
+      align-items:baseline;
+      gap: 8px;
+      min-width:0;
+      flex-wrap:wrap;
+    }
+
+    .chatBadges{
       display:inline-flex;
       align-items:center;
-      justify-content:center;
-      padding: 1px 6px;
-      margin-right: 6px;
+      gap: 6px;
+      flex-wrap:wrap;
+    }
+
+    .chatBadge{
+      display:inline-flex;
+      align-items:center;
+      gap: 6px;
+      padding: 2px 8px;
       border-radius: 999px;
       font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
+      font-weight: 950;
+      letter-spacing: .08em;
       text-transform: uppercase;
-      white-space: nowrap;
-      text-shadow: var(--txt-shadow-soft);
+      border: 1px solid rgba(255,255,255,.18);
       background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.18);
-      box-shadow: 0 0 8px rgba(0,0,0,0.4);
+      color: rgba(255,255,255,.92);
+      text-shadow: var(--txt-shadow-soft);
+      white-space:nowrap;
+      line-height: 1.6;
     }
+    .chatBadgeIcon{ filter: drop-shadow(0 1px 3px rgba(0,0,0,.55)); }
 
-    .pseudo-emote{
-      display:inline-flex;
-      align-items:center;
-      margin-right: 6px;
-      font-size: calc(var(--fz-user) * 0.9);
-      filter: drop-shadow(0 0 4px rgba(0,0,0,0.8));
-    }
-
-    .user{
-      color: var(--c-user);
-      font-weight: 800;
-      font-size: var(--fz-user);
-      letter-spacing: .2px;
+    .chatUsername{
+      font-weight: 950;
+      font-size: 18px;
+      line-height: 1.1;
+      color: var(--uname-color, var(--chat-name-color));
       text-shadow: var(--txt-shadow-soft);
       white-space: nowrap;
-      display:inline-flex;
-      align-items:center;
-      vertical-align: baseline;
-      margin-right: .35em;
-      flex:none;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      max-width: 320px;
     }
-    .user.vip{ color: var(--c-vip); }
 
-    .sep{ opacity:.9; margin: 0 .35em; }
+    .chatTimestamp{
+      font-size: 12px;
+      opacity: .65;
+      color: rgba(255,255,255,.9);
+      flex: 0 0 auto;
+      text-shadow: var(--txt-shadow-soft);
+      white-space:nowrap;
+    }
 
-    .msg{
-      color: var(--c-msg);
-      font-weight: 600;
-      font-size: var(--fz-msg);
-      letter-spacing: .15px;
-      text-shadow: var(--txt-shadow-strong);
-      display:block;
+    .chatTitle{
       margin-top: 2px;
-      white-space: normal;
-      word-break: normal;
-      overflow-wrap: anywhere;
-      hyphens: auto;
-      min-width: 0;
-      flex:1;
+      font-size: 0.92em;
+      font-style: italic;
+      text-decoration: underline;
+      opacity: 0.95;
+      animation: none !important;
+      text-shadow: none !important;
+      filter: none !important;
     }
 
+    .chatBodyText{
+      margin-top: 6px;
+      color: var(--chat-msg-color);
+      font-weight: 700;
+      font-size: 17px;
+      line-height: 1.25;
+      text-shadow: var(--txt-shadow-strong);
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: normal;
+      hyphens: auto;
+    }
+
+    /* emotes */
     .msg-emote{
       display:inline-block;
-      width: 1.4em;
-      height: 1.4em;
+      width: 1.35em;
+      height: 1.35em;
       vertical-align: -0.2em;
       margin: 0 0.05em;
-      image-rendering: auto;
       filter: drop-shadow(0 0 4px rgba(0,0,0,0.7));
     }
 
-    /* pseudo cosmetics */
-    .pseudo-rainbow{
+    /* username effects (subset utile) */
+    .uname--rainbow{
       background: linear-gradient(90deg,#ff5252,#ffeb3b,#69f0ae,#40c4ff,#7c4dff,#ff5252);
       background-size: 300% 100%;
       -webkit-background-clip: text;
@@ -188,51 +237,71 @@
       animation: rainbowShift 4s linear infinite;
       text-shadow: 0 0 6px rgba(0,0,0,0.7);
     }
-    @keyframes rainbowShift { 0%{background-position:0% 50%;} 100%{background-position:300% 50%;} }
+    @keyframes rainbowShift { 0%{background-position:0% 50%} 100%{background-position:300% 50%} }
 
-    .pseudo-neon-outline-purple{
-      color:#e4d9ff;
-      -webkit-text-stroke: 0.5px rgba(168, 85, 247, 0.85);
+    .uname--neon-outline-purple{
+      color: #e4d9ff !important;
+      -webkit-text-stroke: 0.6px rgba(168, 85, 247, 0.85);
       text-shadow:
         0 0 3px rgba(168, 85, 247, 0.95),
         0 0 7px rgba(139, 92, 246, 0.8),
         0 0 12px rgba(129, 140, 248, 0.7);
     }
 
-    .pseudo-underline-glowing{
-      color:#ffffff;
+    .uname--gold{
+      color: #ffd700 !important;
+      text-shadow: 0 0 2px rgba(255,215,0,.8), 0 0 6px rgba(255,223,0,.7), 0 0 10px rgba(255,215,0,.5);
+    }
+
+    .uname--underline-glowing{
+      color: #ffffff !important;
       text-decoration: underline;
       text-decoration-color: #7c4dff;
-      text-shadow: 0 0 5px rgba(124, 77, 255, 1);
+      text-shadow: 0 0 5px rgba(124,77,255,1);
       position: relative;
     }
-    .pseudo-underline-glowing::after{
+    .uname--underline-glowing::after{
       content:"";
       position:absolute;
       bottom:-2px; left:0; right:0;
       height:2px;
       background: linear-gradient(90deg,#ff5252,#ffeb3b,#7c4dff);
-      animation: glowing-line 1.5s ease-in-out infinite;
-      background-size: 200% 100%;
+      animation: glowingLine 1.5s ease-in-out infinite;
+      background-size:200% 100%;
+      opacity:.95;
     }
-    @keyframes glowing-line{ 0%{background-position:100% 0;} 50%{background-position:0 0;} 100%{background-position:100% 0;} }
+    @keyframes glowingLine{
+      0%{background-position:100% 0}
+      50%{background-position:0 0}
+      100%{background-position:100% 0}
+    }
 
-    .pseudo-underlined-neon{
-      color:#ffffff;
-      text-shadow: 0 0 8px rgba(124, 77, 255, 0.9), 0 0 14px rgba(124, 77, 255, 0.8);
+    .uname--underlined-neon{
+      color:#ffffff !important;
+      text-shadow: 0 0 8px rgba(124,77,255,.9), 0 0 14px rgba(124,77,255,.8);
       position: relative;
     }
-    .pseudo-underlined-neon::after{
+    .uname--underlined-neon::after{
       content:"";
       position:absolute;
       bottom:-4px; left:0;
       width:100%; height:2px;
       background-color:#7c4dff;
-      opacity:0.7;
-      animation: neon-underline 1.5s ease-in-out infinite;
+      opacity:.7;
+      animation: neonUnderline 1.5s ease-in-out infinite;
       transform-origin:left;
     }
-    @keyframes neon-underline{ 0%{transform:scaleX(0);} 50%{transform:scaleX(1);} 100%{transform:scaleX(0);} }
+    @keyframes neonUnderline{
+      0%{transform:scaleX(0)}
+      50%{transform:scaleX(1)}
+      100%{transform:scaleX(0)}
+    }
+
+    /* simple frame highlight */
+    .frame--glow-purple{
+      box-shadow: 0 10px 24px rgba(0,0,0,.35), 0 0 18px rgba(124,77,255,.22);
+      border-color: rgba(124,77,255,.22);
+    }
   </style>
 </head>
 
@@ -241,45 +310,63 @@
     <div id="stack" class="stack" aria-live="polite"></div>
   </div>
 
-  <!-- charge socket.io depuis l'origin API (comme follow-goal) -->
+  <!-- socket.io from API -->
   <script>
-    (function () {
+    (function(){
       const qs = new URLSearchParams(location.search);
       const apiRaw = (qs.get("api") || "").trim();
 
-      function safeApiOrigin(v){
-        const s = String(v || "").trim();
-        if (!s) return "";
-        try {
-          const u = new URL(s);
-          if (u.protocol === "http:" || u.protocol === "https:") return u.origin;
-        } catch {}
-        return "";
-      }
-
-      // si file:// => location.origin = "null" => fallback prod
-      const fallbackProd = "https://lunalive-api.onrender.com";
-      const fromParam = safeApiOrigin(apiRaw);
-      const fromLoc = (location.origin && location.origin !== "null") ? location.origin : "";
-      const origin = fromParam || fromLoc || fallbackProd;
-
+      let origin = "https://lunalive-api.onrender.com";
+      try{
+        const u = new URL(apiRaw || origin);
+        if (u.protocol === "http:" || u.protocol === "https:") origin = u.origin;
+      } catch {}
       document.write('<script src="' + origin + '/socket.io/socket.io.js"><\/script>');
-      window.__LL_API_ORIGIN__ = origin;
     })();
   </script>
 
   <script>
     const qs = new URLSearchParams(location.search);
 
-    const SLUG = (qs.get("slug") || "").trim();
-    const MW = parseInt(qs.get("mw") || "420", 10);
-    document.documentElement.style.setProperty("--wrap-maxw", `${Math.max(260, (Number.isFinite(MW) ? MW : 420))}px`);
+    function safeApiOrigin(v){
+      const s = String(v || "").trim();
+      if (!s) return "https://lunalive-api.onrender.com";
+      try{
+        const u = new URL(s);
+        if (u.protocol === "http:" || u.protocol === "https:") return u.origin;
+      } catch {}
+      return "https://lunalive-api.onrender.com";
+    }
 
-    const MAX = 7;
+    const API_BASE = safeApiOrigin(qs.get("api"));
+    const SLUG  = (qs.get("slug") || "").trim();
+    const TOKEN = (qs.get("token") || "").trim();
+
+    // ✅ seule option publique
+    const mw = parseInt(qs.get("mw") || "420", 10);
+    document.documentElement.style.setProperty("--wrap-maxw", `${Math.max(260, mw)}px`);
+
     const stack = document.getElementById("stack");
 
-    // emotes DLive
-    const EMOTE_BASE = "https://images.prd.dlivecdn.com/emote/";
+    // config runtime
+    const MAX = 7;           // ✅ demandé
+    const LIFE = 0;          // ✅ demandé: pas de TTL
+    let viewerSkinsLevel = 1;
+
+    // cosmetics cache (si certains events n’envoient pas cosmetics à chaque fois)
+    const COSMETICS = {}; // usernameLower -> cosmetics
+
+    // title labels (copié de ton React)
+    const TITLE_LABELS = {
+      title_ratus: "Ratus",
+      title_ca_tourne: "Ça tourne !",
+      title_vrai_viewer: "Vrai Viewer",
+      title_no_life: "No Life",
+      title_batman: "Batman",
+      title_bigmoula: "BigMoula",
+      title_lunaking: "LunaKing",
+      title_allin_man: "All-in Man",
+    };
 
     function escapeHtml(s){
       return String(s ?? "")
@@ -287,182 +374,437 @@
         .replace(/</g,"&lt;")
         .replace(/>/g,"&gt;")
         .replace(/"/g,"&quot;")
-        .replace(/'/g,"&#39;");
+        .replace(/'/g,"&#039;");
     }
 
-    function renderEmotesUnsafeAlreadyEscaped(escapedText){
-      // escapedText est déjà échappé => on peut injecter <img> sans XSS
-      const norm = escapedText.replace(/&#58;|&#x3a;|&colon;/gi, ":");
-      if (norm.indexOf(":emote/") === -1) return norm;
+    // DLive emotes token -> <img>
+    const EMOTE_BASE = "https://images.prd.dlivecdn.com/emote/";
+    function renderEmotesSafe(text){
+      if (!text) return "";
+      let norm = String(text);
+      norm = norm.replace(/&#58;|&#x3a;|&colon;/gi, ":");
+      const safe = escapeHtml(norm);
+      if (safe.indexOf(":emote/") === -1) return safe;
 
-      return norm.replace(/:emote\/([^:<>\s]+):/g, (full, path) => {
+      return safe.replace(/:emote\/([^:<>\s]+):/g, (full, path) => {
         const parts = (String(path).split("/") || []);
         const last = parts.length ? parts[parts.length - 1] : "";
         if (!last) return full;
-
         const url = EMOTE_BASE + last;
-        return (
-          '<img class="msg-emote" ' +
-          'src="' + url + '" ' +
-          'alt="" loading="lazy" referrerpolicy="no-referrer">'
-        );
+        return '<img class="msg-emote" src="'+url+'" alt="" loading="lazy" referrerpolicy="no-referrer">';
       });
     }
 
-    function initials(name){
+    function getInitials(name){
       const s = String(name||"").trim();
       if(!s) return "??";
       const parts = s.split(/\s+/).slice(0,2);
-      return parts.map(p => (p[0] || "?").toUpperCase()).join("");
+      return parts.map(p=>p[0]?.toUpperCase() || "").join("") || "??";
     }
 
-    function applyPseudoCosmetics(el, cosmetics){
-      const p = String(cosmetics?.pseudo || "").trim();
-      if (!p) return;
-
-      const norm = p.replace(/^pseudo-/, "");
-      if (norm === "rainbow") el.classList.add("pseudo-rainbow");
-      if (norm === "neon-outline-purple") el.classList.add("pseudo-neon-outline-purple");
-      if (norm === "underline-glowing") el.classList.add("pseudo-underline-glowing");
-      if (norm === "underlined-neon") el.classList.add("pseudo-underlined-neon");
+    function formatHHMM(iso){
+      try{
+        const d = new Date(String(iso || ""));
+        if (!Number.isFinite(d.getTime())) throw new Error("bad_date");
+        const hh = String(d.getHours()).padStart(2,"0");
+        const mm = String(d.getMinutes()).padStart(2,"0");
+        return `${hh}:${mm}`;
+      } catch {
+        const d = new Date();
+        return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+      }
     }
 
-    function mkRow(user, rawText, opts = {}){
-      const { vip = false, cosmetics = null } = opts;
+    function normalizeTitle(title){
+      if (!title) return null;
 
-      const row = document.createElement("div");
-      row.className = "row appear";
-      row.dataset.birth = String(Date.now());
-      row.dataset.mid = opts.messageId != null ? String(opts.messageId) : "";
+      const codeRaw =
+        (typeof title === "string" ? title : null) ||
+        (typeof title?.code === "string" ? title.code : null) ||
+        (typeof title?.id === "string" ? title.id : null) ||
+        (typeof title?.text === "string" ? title.text : null) ||
+        (typeof title?.label === "string" ? title.label : null);
 
-      const ava = document.createElement("div");
-      ava.className = "avatar";
-      ava.textContent = initials(user);
-      row.appendChild(ava);
+      if (!codeRaw) return null;
 
-      const line = document.createElement("div");
-      line.className = "line";
+      const code = String(codeRaw).trim();
+      if (!code || code === "none") return null;
 
-      // badge (si présent)
-      if (cosmetics && (cosmetics.badgeLabel || cosmetics.badgeSlug)) {
-        const badge = document.createElement("span");
-        badge.className = "badge";
-        if (cosmetics.badgeSlug) badge.classList.add("badge-" + String(cosmetics.badgeSlug));
-        if (cosmetics.badgeColor) badge.style.background = String(cosmetics.badgeColor);
-        badge.textContent = String(cosmetics.badgeLabel || cosmetics.badgeSlug).toUpperCase();
-        line.appendChild(badge);
-      }
+      const text =
+        TITLE_LABELS[code] ??
+        code.replace(/^title_/, "").replace(/_/g," ").replace(/\b\w/g, m => m.toUpperCase());
 
-      // emote à côté du pseudo
-      if (cosmetics && cosmetics.emote) {
-        const em = document.createElement("span");
-        em.className = "pseudo-emote";
-        em.textContent = String(cosmetics.emote);
-        line.appendChild(em);
-      }
+      const tier = typeof title?.tier === "string" ? title.tier : null;
+      return { code, text, tier };
+    }
 
-      const u = document.createElement("span");
-      u.className = "user" + (vip ? " vip" : "");
-      u.textContent = user;
+    function badgeLabel(b){
+      const v = b?.label ?? b?.text ?? b?.badgeText ?? b?.meta?.badgeText ?? b?.code ?? "";
+      return String(v);
+    }
 
-      // bot en rouge
-      if (String(user).toLowerCase() === "lunalive" || String(user).toLowerCase() === "nozebot" || String(user).toLowerCase() === "nosebot") {
-        u.style.color = "red";
-      }
+    function usernameEffectClass(effect){
+      const e = String(effect || "none").toLowerCase();
+      if (e === "rainbow") return "uname--rainbow";
+      if (e === "neon-outline-purple" || e === "neon_outline_purple") return "uname--neon-outline-purple";
+      if (e === "gold") return "uname--gold";
+      if (e === "underline-glowing" || e === "underline_glowing") return "uname--underline-glowing";
+      if (e === "underlined-neon" || e === "underlined_neon") return "uname--underlined-neon";
+      return "";
+    }
 
-      applyPseudoCosmetics(u, cosmetics);
+    function frameClass(frameId){
+      const f = String(frameId || "").trim().toLowerCase();
+      if (!f || f === "none") return "";
+      if (f.includes("glow") && f.includes("purple")) return "frame--glow-purple";
+      return "";
+    }
 
-      const sep = document.createElement("span");
-      sep.className = "sep";
-      sep.textContent = ":";
+    function avatarBorderColor(borderId){
+      const b = String(borderId || "").trim().toLowerCase();
+      if (!b) return null;
+      const m = {
+        ghost_purple: "#7c4dff",
+        purple: "#7c4dff",
+        blue_lotus: "#3b82f6",
+        ocean: "#06b6d4",
+        gold: "#facc15",
+        diamond: "#67e8f9",
+        emerald: "#34d399",
+        silver: "#d1d5db",
+      };
+      return m[b] || null;
+    }
 
-      const m = document.createElement("span");
-      m.className = "msg";
-      const safe = escapeHtml(rawText);
-      m.innerHTML = renderEmotesUnsafeAlreadyEscaped(safe);
-
-      line.appendChild(u);
-      line.appendChild(sep);
-      line.appendChild(m);
-      row.appendChild(line);
-
-      return row;
+    function hatEmojiFromAvatar(avatar){
+      const hatIdNorm = avatar?.hatId ? String(avatar.hatId).replace(/^hat_/, "") : null;
+      return (
+        avatar?.hatEmoji ||
+        (hatIdNorm ? ({
+          luna_cap: "🧢",
+          carton_crown: "👑",
+          demon_horn: "😈",
+          eclipse_halo: "⭕",
+          astral_helmet: "🪖",
+          lotus_aureole: "🪷",
+        }[hatIdNorm] || null) : null)
+      );
     }
 
     function clampStack(){
       while (stack.children.length > MAX) stack.removeChild(stack.firstElementChild);
     }
 
-    function removeByMessageId(mid){
-      const s = String(mid ?? "");
-      if (!s) return;
-      const el = stack.querySelector(`[data-mid="${CSS.escape(s)}"]`);
-      if (el) el.remove();
+    function mkRow(m, animated){
+      const cosmetics = m.cosmetics || null;
+
+      const row = document.createElement("div");
+      row.className = "chatMsgRow" + (animated ? " appear" : "");
+
+      // frame (si lvl 3 => bloque cadrans / frames)
+      const lvl = viewerSkinsLevel;
+      const allowFrames = lvl < 3;
+      const frameId = cosmetics?.frame?.frameId || cosmetics?.frameId || null;
+      if (allowFrames && frameId) {
+        const fc = frameClass(frameId);
+        if (fc) row.classList.add(fc);
+      }
+
+      const inner = document.createElement("div");
+      inner.className = "chatMsgInner";
+      row.appendChild(inner);
+
+      // avatar border
+      const avaBorder = document.createElement("div");
+      avaBorder.className = "chatAvatarBorder";
+
+      const avatar = cosmetics?.avatar || {};
+      const borderId = avatar?.borderId || cosmetics?.avatarBorderId || null;
+      const borderColor =
+        avatar?.borderColor ||
+        cosmetics?.avatarBorderColor ||
+        avatarBorderColor(borderId);
+
+      if (borderColor) {
+        avaBorder.style.borderColor = borderColor;
+        avaBorder.style.boxShadow = `0 6px 18px rgba(0,0,0,.30), 0 0 14px ${borderColor}22`;
+      }
+
+      const circle = document.createElement("div");
+      circle.className = "chatAvatarCircle";
+      avaBorder.appendChild(circle);
+
+      const avatarUrl =
+        m.avatarUrl ||
+        cosmetics?.avatarUrl ||
+        cosmetics?.avatar?.url ||
+        cosmetics?.avatar?.imageUrl ||
+        null;
+
+      if (avatarUrl) {
+        const img = document.createElement("img");
+        img.className = "chatAvatarImg";
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.referrerPolicy = "no-referrer";
+        img.src = avatarUrl;
+        img.onerror = () => { img.remove(); circle.textContent = getInitials(m.username); };
+        circle.appendChild(img);
+      } else {
+        circle.textContent = getInitials(m.username);
+      }
+
+      const hatEmoji = hatEmojiFromAvatar(avatar);
+      if (hatEmoji) {
+        const hat = document.createElement("div");
+        hat.className = "chatHatEmoji";
+        hat.textContent = hatEmoji;
+        avaBorder.appendChild(hat);
+      }
+
+      inner.appendChild(avaBorder);
+
+      // content
+      const content = document.createElement("div");
+      content.className = "chatMsgContent";
+      inner.appendChild(content);
+
+      const top = document.createElement("div");
+      top.className = "chatMsgTop";
+      content.appendChild(top);
+
+      const topLeft = document.createElement("div");
+      topLeft.className = "chatMsgTopLeft";
+      top.appendChild(topLeft);
+
+      // badges
+      const badges = Array.isArray(cosmetics?.badges) ? cosmetics.badges : [];
+      if (badges.length) {
+        const badgesEl = document.createElement("div");
+        badgesEl.className = "chatBadges";
+        badges.forEach((b) => {
+          const sp = document.createElement("span");
+          sp.className = "chatBadge";
+          if (b?.borderColor) sp.style.borderColor = b.borderColor;
+          if (b?.textColor) sp.style.color = b.textColor;
+          if (b?.backgroundColor) sp.style.backgroundColor = b.backgroundColor;
+
+          if (b?.icon) {
+            const ic = document.createElement("span");
+            ic.className = "chatBadgeIcon";
+            ic.textContent = String(b.icon);
+            sp.appendChild(ic);
+          }
+          sp.appendChild(document.createTextNode(badgeLabel(b)));
+          badgesEl.appendChild(sp);
+        });
+        topLeft.appendChild(badgesEl);
+      }
+
+      // username + effect + color rules (viewerSkinsLevel)
+      const uname = document.createElement("div");
+      uname.className = "chatUsername";
+
+      const unameEffect = cosmetics?.username?.effect ?? "none";
+      const unameColor  = cosmetics?.username?.color ?? null;
+
+      // lvl 2+: bloque couleurs pseudo
+      const allowViewerNameColor = viewerSkinsLevel < 2;
+      const effectiveUnameColor = allowViewerNameColor ? unameColor : null;
+
+      const effClass = usernameEffectClass(unameEffect);
+      if (effClass) uname.classList.add(effClass);
+
+      uname.style.setProperty("--uname-color", effectiveUnameColor || "var(--chat-name-color)");
+      uname.title = m.username;
+      uname.textContent = m.username;
+
+      // bot rouge (compat)
+      if (String(m.username).toLowerCase() === "nozebot" || String(m.username).toLowerCase() === "nosebot") {
+        uname.style.color = "red";
+      }
+
+      topLeft.appendChild(uname);
+
+      const ts = document.createElement("div");
+      ts.className = "chatTimestamp";
+      ts.textContent = formatHHMM(m.createdAt);
+      top.appendChild(ts);
+
+      // title under username
+      const titleInfo = normalizeTitle(cosmetics?.title ?? null);
+      if (titleInfo) {
+        const t = document.createElement("div");
+        t.className = "chatTitle";
+        t.dataset.titleCode = titleInfo.code;
+        t.title = titleInfo.code;
+        t.textContent = titleInfo.text;
+        content.appendChild(t);
+      }
+
+      // body
+      const body = document.createElement("div");
+      body.className = "chatBodyText";
+      body.innerHTML = renderEmotesSafe(m.body || "");
+      content.appendChild(body);
+
+      return row;
     }
 
-    function setColorsFromAppearance(appearance){
-      const chat = appearance?.chat || {};
-      const uname = chat.usernameColor || "#7C4DFF";
-      const msg = chat.messageColor || "#FFFFFF";
-      document.documentElement.style.setProperty("--c-user", String(uname));
-      document.documentElement.style.setProperty("--c-msg", String(msg));
+    function pushMsg(m){
+      const row = mkRow(m, true);
+      stack.appendChild(row);
+      clampStack();
     }
 
-    function connect(){
-      if (!SLUG) return;
+    function normalizeIncoming(payload){
+      // accepte payload direct, ou payload.msg/message
+      const p = payload?.msg ?? payload?.message ?? payload;
 
-      const apiOrigin = window.__LL_API_ORIGIN__ || "https://lunalive-api.onrender.com";
+      // history array
+      if (Array.isArray(p)) {
+        return p.map(normalizeIncoming).flat().filter(Boolean);
+      }
+      if (!p) return null;
+
+      const username =
+        p.username ??
+        p.user?.username ??
+        p.user?.displayName ??
+        p.user?.name ??
+        p.user ??
+        "user";
+
+      const body =
+        p.body ??
+        p.text ??
+        p.message ??
+        p.content ??
+        p.value ??
+        "";
+
+      const createdAt =
+        p.createdAt ??
+        p.created_at ??
+        p.ts ??
+        p.at ??
+        new Date().toISOString();
+
+      const avatarUrl =
+        p.avatarUrl ??
+        p.avatar_url ??
+        p.user?.avatarUrl ??
+        p.user?.avatar_url ??
+        p.user?.avatar ??
+        null;
+
+      const userId =
+        Number(p.userId ?? p.user_id ?? p.user?.id ?? 0) || 0;
+
+      const id =
+        p.id ?? p.messageId ?? p.mid ?? `${createdAt}-${userId}-${String(username)}`;
+
+      const cosmetics = p.cosmetics ?? p.user?.cosmetics ?? null;
+
+      const out = {
+        id,
+        userId,
+        username: String(username),
+        body: String(body ?? ""),
+        createdAt: String(createdAt),
+        avatarUrl: avatarUrl ? String(avatarUrl) : null,
+        cosmetics: cosmetics || null
+      };
+
+      // cache cosmetics by username
+      const key = String(out.username).toLowerCase();
+      if (out.cosmetics) COSMETICS[key] = out.cosmetics;
+      else if (COSMETICS[key]) out.cosmetics = COSMETICS[key];
+
+      return out;
+    }
+
+    async function loadStreamerAppearance(){
+      if(!TOKEN || !SLUG) return;
+      try{
+        const r = await fetch(`${API_BASE}/streamer/me/appearance`, {
+          headers: { Authorization: `Bearer ${TOKEN}` },
+        });
+        const j = await r.json();
+        if(!r.ok || !j?.ok) return;
+
+        const ap = j.appearance || j.streamer?.appearance || {};
+        const chat = ap?.chat || {};
+        const uname = chat.usernameColor || "#7c4dff";
+        const msg = chat.messageColor || "#ffffff";
+        viewerSkinsLevel = Number(chat.viewerSkinsLevel ?? 1) || 1;
+
+        document.documentElement.style.setProperty("--chat-name-color", uname);
+        document.documentElement.style.setProperty("--chat-msg-color", msg);
+      } catch {}
+    }
+
+    function connectSocket(){
+      if(!SLUG) return;
+
       const ioClient = window.io;
       if (typeof ioClient !== "function") return;
 
-      const sock = ioClient(apiOrigin, {
-        transports: ["websocket", "polling"],
+      const sock = ioClient(API_BASE, {
+        transports: ["websocket","polling"],
         withCredentials: false,
+        auth: TOKEN ? { token: TOKEN } : undefined,
       });
 
-      const join = () => {
-        sock.emit("chat:join", { slug: SLUG }, (ack) => {
-          if (ack && ack.ok) {
-            setColorsFromAppearance(ack.appearance);
-          }
-        });
+      const onAnyMsg = (payload) => {
+        const n = normalizeIncoming(payload);
+        if (!n) return;
+
+        if (Array.isArray(n)) {
+          // history: keep last MAX
+          n.slice(-MAX).forEach(pushMsg);
+          return;
+        }
+
+        // si event fournit slug, on filtre (utile si le serveur broadcast global)
+        const evSlug =
+          String(payload?.slug ?? payload?.streamerSlug ?? payload?.channelSlug ?? "").trim().toLowerCase();
+        if (evSlug && evSlug !== SLUG.toLowerCase()) return;
+
+        pushMsg(n);
       };
 
-      sock.on("connect", join);
-      sock.on("reconnect", join);
-
-      sock.on("chat:message", (msg) => {
-        // msg attendu: {id,userId,username,body,createdAt,cosmetics,...}
-        const username = String(msg?.username || "user");
-        const body = String(msg?.body || "");
-        const cosmetics = msg?.cosmetics || null;
-
-        const row = mkRow(username, body, {
-          vip: false,
-          cosmetics,
-          messageId: msg?.id ?? null,
-        });
-
-        stack.appendChild(row);
-        clampStack();
+      sock.on("connect", () => {
+        // join stream room (déjà utilisé par follow goal)
+        try { sock.emit("stream:join", { slug: SLUG }, () => {}); } catch {}
+        // au cas où ton serveur attend un join chat dédié
+        try { sock.emit("chat:join", { slug: SLUG }, () => {}); } catch {}
+        try { sock.emit("chat:join", { streamerSlug: SLUG }, () => {}); } catch {}
       });
 
-      sock.on("chat:message_deleted", (p) => {
-        removeByMessageId(p?.id);
-      });
-
-      sock.on("chat:cleared", () => {
-        stack.innerHTML = "";
-      });
-
-      // si le streamer change ses couleurs pendant le live, on reçoit ça via refresh côté clients normaux
-      // ici on écoute aussi un éventuel broadcast settings/appearance si tu le mets plus tard (noop sinon)
-      sock.on("chat:appearance", (p) => {
-        if (p?.appearance) setColorsFromAppearance(p.appearance);
-      });
+      // écoute plusieurs noms d’events (robuste)
+      [
+        "chat:message",
+        "chat:msg",
+        "chat:new",
+        "chat:history",
+        "chat:messages",
+        "stream:chat",
+        "stream:message",
+        "message",
+      ].forEach((ev) => sock.on(ev, onAnyMsg));
     }
 
-    connect();
+    // ✅ init
+    loadStreamerAppearance();
+    connectSocket();
+
+    // si pas de slug => sample minimal
+    if(!SLUG){
+      const now = new Date().toISOString();
+      pushMsg({ id: 1, userId: 1, username:"ViewerOne", body:"SLUG manquant dans l'URL 😅", createdAt: now, avatarUrl:null, cosmetics:null });
+      pushMsg({ id: 2, userId: 2, username:"LeCasiNoze", body:"Ajoute ?slug=lecasinoze&token=...&api=...", createdAt: now, avatarUrl:null, cosmetics:null });
+    }
   </script>
 </body>
 </html>
