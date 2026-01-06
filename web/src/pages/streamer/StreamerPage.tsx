@@ -84,6 +84,13 @@ export default function StreamerPage() {
     toggleFollow,
     toggleNotify,
   } = useStreamerData(slug ?? null, token, () => setLoginOpen(true));
+  
+  const handleFollowsCount = React.useCallback(
+    (n: number) => {
+      setFollowsCount(n);
+    },
+    [setFollowsCount]
+  );
 
   const isOwner = !!(
     myUserId != null &&
@@ -285,7 +292,7 @@ export default function StreamerPage() {
                     onRequireLogin={() => setLoginOpen(true)}
                     compact
                     autoFocus={!isMobile}
-                    onFollowsCount={(n) => setFollowsCount(Number(n))}
+                    onFollowsCount={handleFollowsCount}
                   />
                 </div>
               </div>
@@ -545,7 +552,7 @@ export default function StreamerPage() {
                   slug={String(slug || "")}
                   onRequireLogin={() => setLoginOpen(true)}
                   compact
-                  onFollowsCount={(n) => setFollowsCount(Number(n))}
+                  onFollowsCount={handleFollowsCount}
                 />
               </div>
             </div>
@@ -572,7 +579,7 @@ export default function StreamerPage() {
             <ChatPanel
               slug={String(slug || "")}
               onRequireLogin={() => setLoginOpen(true)}
-              onFollowsCount={(n) => setFollowsCount(Number(n))}
+              onFollowsCount={handleFollowsCount}
             />
           </div>
         </aside>

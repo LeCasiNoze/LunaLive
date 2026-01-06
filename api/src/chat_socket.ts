@@ -315,6 +315,24 @@ export function attachChat(io: Server) {
         cb?.({ ok: false, error: String(e?.message || "join_failed") });
       }
     });
+    
+    // ✅ PUBLIC stream room (overlay OBS, pages, etc.)
+    socket.on("stream:join", (payload: any, cb?: (ack: any) => void) => {
+      try {
+        const slug = String(payload?.slug || "").trim();
+
+        // safe: slug simple uniquement
+        if (!slug || slug.length > 64 || !/^[a-z0-9_-]+$/i.test(slug)) {
+          cb?.({ ok: false, error: "bad_slug" });
+          return;
+        }
+
+        socket.join(`stream:${slug}`);
+        cb?.({ ok: true });
+      } catch {
+        cb?.({ ok: false, error: "join_failed" });
+      }
+    });
 
     // ✅ NEW: settings get (mod/admin/owner)
     socket.on("chat:settings_get", async ({ slug }: { slug: string }, cb?: (ack: any) => void) => {

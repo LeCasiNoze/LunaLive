@@ -339,7 +339,10 @@ publicRouter.post(
 
     const io = req.app.locals.io;
     if (io) {
-      io.to(`chat:${streamer.slug}`).emit("stream:follows", { slug: streamer.slug, followsCount });
+      io.to(`chat:${streamer.slug}`).to(`stream:${streamer.slug}`).emit("stream:follows", {
+        slug: streamer.slug,
+        followsCount,
+      });
     }
 
     if ((ins.rowCount ?? 0) > 0) {
@@ -402,7 +405,10 @@ publicRouter.delete(
 
     const io = req.app.locals.io;
     if (io) {
-      io.to(`chat:${streamer.slug}`).emit("stream:follows", { slug: streamer.slug, followsCount });
+      io.to(`chat:${streamer.slug}`).to(`stream:${streamer.slug}`).emit("stream:follows", {
+        slug: streamer.slug,
+        followsCount,
+      });
     }
 
     return res.json({ ok: true, following: false, followsCount, notifyEnabled: false });

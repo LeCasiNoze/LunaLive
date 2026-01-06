@@ -1,90 +1,453 @@
+<!-- api/public/overlay/obs/follow-goal.html -->
 <!doctype html>
 <html lang="fr">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>OBS Follow Goal</title>
-    <style>
-      html,body{ margin:0; padding:0; background:transparent; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
-      .wrap{
-        width: 100%;
-        padding: 12px;
-        box-sizing: border-box;
-      }
-      .card{
-        border-radius: 16px;
-        border: 1px solid rgba(255,255,255,0.10);
-        background: rgba(0,0,0,0.22);
-        box-shadow: 0 16px 50px rgba(0,0,0,0.35);
-        padding: 12px;
-      }
-      .top{
-        display:flex;
-        justify-content:space-between;
-        gap: 10px;
-        align-items:baseline;
-        margin-bottom: 10px;
-      }
-      .title{
-        font-weight: 950;
-        color: white;
-        opacity: 0.95;
-        font-size: 14px;
-        white-space:nowrap;
-        overflow:hidden;
-        text-overflow:ellipsis;
-      }
-      .count{
-        font-weight: 950;
-        color: white;
-        opacity: 0.85;
-        font-size: 12px;
-        flex: 0 0 auto;
-      }
-      .bar{
-        height: 12px;
-        border-radius: 999px;
-        border: 1px solid rgba(255,255,255,0.10);
-        background: rgba(0,0,0,0.20);
-        overflow:hidden;
-      }
-      .fill{
-        height:100%;
-        width: 0%;
-        background: var(--fg, #7C4DFF);
-        transition: width 500ms ease;
-      }
-      .sub{
-        margin-top: 8px;
-        font-size: 12px;
-        color: white;
-        opacity: 0.65;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <div class="card">
-        <div class="top">
-          <div class="title" id="name">Follow goal</div>
-          <div class="count" id="count">0 / 100</div>
-        </div>
-        <div class="bar"><div class="fill" id="fill"></div></div>
-        <div class="sub" id="sub">Aperçu statique (les routes suivront)</div>
-      </div>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>LunaLive — Barre Follows</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;800&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  color-scheme: dark;
+  --fg: #ffffff;   /* couleur remplissage de base */
+  --bg: #1f1f1f;   /* couleur piste vide */
+  --txt:#ffffff;   /* texte */
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:transparent;
+  font-family:'Poppins',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  height:100vh;
+  color:var(--txt);
+}
+.card{
+  width:min(720px,95vw);
+  padding:10px 14px;
+  border-radius:12px;
+  background:rgba(0,0,0,.20);
+  border:1px solid rgba(255,255,255,.10);
+  color:var(--txt);
+}
+.header{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:8px;
+}
+.pill{
+  font-size:13px;
+  font-weight:800;
+  padding:4px 8px;
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:999px;
+  color:var(--txt);
+}
+.title{
+  font-size:18px;
+  font-weight:800;
+  color:var(--txt);
+}
+.bar-wrap{
+  position:relative;
+  height:34px;
+  border-radius:999px;
+  background:var(--bg);
+  border:1px solid rgba(255,255,255,.12);
+  overflow:hidden;
+}
+.bar-fill{
+  position:absolute;
+  top:0;
+  bottom:0;
+  left:0;
+  width:0%;
+  background:var(--fg);
+  border-right:1px solid rgba(0,0,0,.15);
+  transition:width .6s ease;
+}
+
+/* scanline */
+.scanline-layer{
+  position:absolute;
+  top:0; bottom:0; left:-60%;
+  width:60%;
+  pointer-events:none;
+  will-change:transform;
+  background:radial-gradient(circle at 30% 50%,
+    rgba(255,255,255,0.55) 0%,
+    rgba(255,255,255,0.15) 35%,
+    rgba(255,255,255,0.00) 70%);
+  filter:blur(8px);
+  transform:skewX(-18deg) translateX(0);
+  mix-blend-mode:screen;
+  opacity:0.9;
+  animation:scanSweep 2.4s linear infinite;
+}
+.scanline-layer.hidden{display:none;}
+@keyframes scanSweep{ 0%{transform:skewX(-18deg) translateX(0%);} 100%{transform:skewX(-18deg) translateX(220%);} }
+
+/* barber */
+.barber-layer{
+  position:absolute;
+  top:0; bottom:0; left:0; right:0;
+  pointer-events:none;
+  opacity:0.35;
+  mix-blend-mode:screen;
+  background-image:repeating-linear-gradient(
+    -45deg,
+    rgba(255,255,255,0.8) 0px,
+    rgba(255,255,255,0.8) 6px,
+    rgba(255,255,255,0.0) 6px,
+    rgba(255,255,255,0.0) 12px
+  );
+  background-size:24px 24px;
+  background-position:0 0;
+  animation:barberScroll 1.2s linear infinite;
+}
+.barber-layer.hidden{display:none;}
+@keyframes barberScroll{ from{background-position:0 0;} to{background-position:24px 24px;} }
+
+/* rainbowfill */
+.rainbowfill-layer{
+  position:absolute;
+  top:0; bottom:0; left:0;
+  width:0%;
+  overflow:hidden;
+  pointer-events:none;
+}
+.rainbowfill-layer.hidden{display:none;}
+.rainbowfill-inner{
+  position:absolute; inset:0;
+  background:linear-gradient(60deg,#ff007c 0%,#ffea00 20%,#00ff95 40%,#00aaff 60%,#7a00ff 80%,#ff007c 100%);
+  background-size:400% 400%;
+  filter:brightness(1.3) saturate(1.4) blur(2px);
+  opacity:0.9;
+  animation:rainbowDrift 4s linear infinite;
+  will-change:background-position;
+}
+@keyframes rainbowDrift{ 0%{background-position:0% 0%;} 100%{background-position:100% 100%;} }
+
+/* compteur */
+.counter{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  pointer-events:none;
+  text-align:center;
+}
+.counter-inner{ position:relative; display:flex; align-items:center; justify-content:center; min-height:100%; }
+.counter-badge{ font-weight:800; font-size:15px; color:var(--txt); text-shadow:0 0 3px rgba(0,0,0,.8); }
+.counter-badge .sep{opacity:.7}
+.counter-badge .muted2{opacity:.85;font-weight:800}
+
+/* compact */
+.compact .header{display:none}
+.compact .card{padding:6px 10px}
+
+/* confettis */
+.confetti{
+  position:absolute; left:0; top:0; width:100%; height:100%;
+  pointer-events:none; overflow:visible;
+  mix-blend-mode:screen;
+}
+.confetti i{
+  position:absolute; left:50%; top:50%;
+  width:6px; height:10px; border-radius:1px; opacity:1;
+  animation:confBlast var(--dur,0.8s) cubic-bezier(.16,1,.3,1) forwards;
+  will-change:transform,opacity;
+}
+@keyframes confBlast{
+  0%{transform:translate(-50%,-50%) translate(0px,0px) rotate(0deg) scale(1); opacity:1;}
+  60%{transform:translate(-50%,-50%) translate(calc(var(--dx)*0.8), calc(var(--dy)*0.8)) rotate(240deg) scale(1); opacity:1;}
+  100%{transform:translate(-50%,-50%) translate(var(--dx), var(--dy)) rotate(360deg) scale(0.6); opacity:0;}
+}
+
+/* +1 */
+.plusone-box{
+  position:absolute;
+  right:100%;
+  margin-right:8px;
+  top:50%;
+  transform:translateY(-50%);
+  pointer-events:none;
+  overflow:visible;
+  font-family:'Poppins',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+}
+.plusone{
+  position:relative;
+  font-weight:800;
+  font-size:16px;
+  line-height:1;
+  color:#ffffff;
+  text-shadow:0 0 4px rgba(0,0,0,.8), 0 0 10px rgba(0,0,0,.9);
+  background:rgba(0,0,0,.5);
+  border:2px solid rgba(255,255,255,.8);
+  border-radius:999px;
+  padding:4px 8px;
+  opacity:0;
+  transform:translateY(0) scale(0.6);
+  animation:plusPop 800ms cubic-bezier(.16,1,.3,1) forwards;
+}
+@keyframes plusPop{
+  0%{opacity:1; transform:translateY(4px) scale(0.6);}
+  30%{opacity:1; transform:translateY(-4px) scale(1);}
+  60%{opacity:1; transform:translateY(-8px) scale(1.05);}
+  100%{opacity:0; transform:translateY(-16px) scale(0.9);}
+}
+</style>
+</head>
+
+<body>
+  <div class="card" id="root">
+    <div class="header">
+      <div class="pill">🚀 OBJECTIF FOLLOW</div>
+      <div class="title" id="title"></div>
     </div>
 
-    <script>
-      const qs = new URLSearchParams(location.search);
-      const name = qs.get("name") || "Follow goal";
-      const target = Math.max(1, parseInt(qs.get("target") || "100", 10));
-      const fg = qs.get("fg") ? `#${String(qs.get("fg")).replace(/^#/,"")}` : "#7C4DFF";
-      const cur = Math.max(0, Math.min(target, parseInt(qs.get("cur") || String(Math.round(target*0.35)), 10)));
+    <div class="bar-wrap" id="wrap">
+      <div class="bar-fill" id="barFill"></div>
 
-      document.documentElement.style.setProperty("--fg", fg);
-      document.getElementById("name").textContent = name;
-      document.getElementById("count").textContent = `${cur} / ${target}`;
-      document.getElementById("fill").style.width = `${Math.round((cur/target)*100)}%`;
-    </script>
-  </body>
+      <div class="scanline-layer hidden" id="scanlineLayer"></div>
+      <div class="barber-layer hidden"   id="barberLayer"></div>
+
+      <div class="rainbowfill-layer hidden" id="rainbowFillLayer">
+        <div class="rainbowfill-inner" id="rainbowFillInner"></div>
+      </div>
+
+      <div class="counter">
+        <div class="counter-inner">
+          <div class="plusone-box" id="plusoneBox"></div>
+          <div class="counter-badge" id="badge">—</div>
+        </div>
+      </div>
+
+      <div class="confetti" id="confetti"></div>
+    </div>
+  </div>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<script>
+const qs = new URLSearchParams(location.search);
+
+const SLUG  = (qs.get('slug') || '').trim();
+const TOKEN = (qs.get('token') || '').trim();
+
+const NAME   = (qs.get('name') || '').trim();
+const TARGET = Math.max(1, +(qs.get('target') || 100)); // ✅ objectif manuel streamer
+const LABEL  = (qs.get('label') || '').trim();
+
+const POLL = Math.max(3000, +(qs.get('poll') || 8000));
+const FORCE_COMPACT = qs.get('compact')==='1';
+
+const FG_IN  = qs.get('fg') || '';
+const BG_IN  = qs.get('bg') || '';
+const TXT_IN = qs.get('txt') || '';
+
+const AP = (qs.get('ap') || 'none').trim().toLowerCase();
+const AS = (qs.get('as') || 'none').trim().toLowerCase();
+const AE = qs.get('ae') === '1';
+
+function shouldPlaySpecial() {
+  if (!AE) return false;
+  if (AS === "confetti") return true;
+  return false;
+}
+
+function normColor(c, fallback){
+  if (!c) return fallback;
+  let s = c.trim();
+  if (!s) return fallback;
+  if (s[0] !== '#') s = '#'+s;
+  if (!/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(s)) return fallback;
+  return s;
+}
+function hexToRgb(hex){
+  let h=hex.replace('#','').toLowerCase();
+  if(h.length===3){h=h.split('').map(ch=>ch+ch).join('');}
+  if(h.length===8)h=h.slice(0,6);
+  const n=parseInt(h,16);
+  return {r:(n>>16)&255,g:(n>>8)&255,b:n&255};
+}
+function relLum({r,g,b}){
+  const s=[r,g,b].map(v=>{
+    v/=255;
+    return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4);
+  });
+  return 0.2126*s[0]+0.7152*s[1]+0.0722*s[2];
+}
+function autoTextFor(bgHex){
+  return relLum(hexToRgb(bgHex))>0.5 ? '#000000' : '#ffffff';
+}
+
+const FG = normColor(FG_IN, '#ffffff');
+const BG = normColor(BG_IN, '#1f1f1f');
+let TXT  = TXT_IN ? normColor(TXT_IN, autoTextFor(BG)) : autoTextFor(BG);
+if (TXT.toLowerCase() === BG.toLowerCase()) TXT = autoTextFor(BG);
+
+document.documentElement.style.setProperty('--fg',  FG);
+document.documentElement.style.setProperty('--bg',  BG);
+document.documentElement.style.setProperty('--txt', TXT);
+
+const root             = document.getElementById('root');
+const barFill          = document.getElementById('barFill');
+const badge            = document.getElementById('badge');
+const titleEl          = document.getElementById('title');
+
+const confBox          = document.getElementById('confetti');
+const plusoneBox       = document.getElementById('plusoneBox');
+
+const scanlineLayer    = document.getElementById('scanlineLayer');
+const barberLayer      = document.getElementById('barberLayer');
+const rainbowFillLayer = document.getElementById('rainbowFillLayer');
+
+if (FORCE_COMPACT || !LABEL) root.classList.add('compact');
+if (!root.classList.contains('compact')) titleEl.textContent = (LABEL || NAME || "Follow goal");
+
+const fmt = n => n>=1e6 ? (n/1e6).toFixed(2).replace(/\.00$/,'')+'M'
+  : n>=1e3 ? (n/1e3).toFixed(1).replace(/\.0$/,'')+'K'
+  : String(n);
+
+function applyPassiveAnimation(id){
+  scanlineLayer.classList.add("hidden");
+  barberLayer.classList.add("hidden");
+  rainbowFillLayer.classList.add("hidden");
+  if (id === "scanline") scanlineLayer.classList.remove("hidden");
+  else if (id === "barber") barberLayer.classList.remove("hidden");
+  else if (id === "rainbowfill") rainbowFillLayer.classList.remove("hidden");
+}
+applyPassiveAnimation(AP);
+
+function burstConfetti(){
+  confBox.innerHTML = '';
+  const N = 28;
+  for (let i = 0; i < N; i++) {
+    const el = document.createElement('i');
+    const angle = Math.random() * 2 * Math.PI;
+    const dist = 30 + Math.random() * 90;
+    const dx = Math.cos(angle) * dist;
+    const dy = Math.sin(angle) * dist;
+    el.style.background = `hsl(${Math.random()*360},90%,60%)`;
+    const dur = 0.7 + Math.random() * 0.5;
+    el.style.setProperty('--dur', dur.toFixed(2) + 's');
+    el.style.setProperty('--dx', dx.toFixed(1) + 'px');
+    el.style.setProperty('--dy', dy.toFixed(1) + 'px');
+    confBox.appendChild(el);
+  }
+  setTimeout(()=>{ confBox.innerHTML=''; }, 1500);
+}
+
+function spawnPlusOne(){
+  const el = document.createElement("div");
+  el.className = "plusone";
+  el.textContent = "+1";
+  plusoneBox.appendChild(el);
+  setTimeout(() => el.remove(), 900);
+}
+
+function playSpecial(){
+  burstConfetti();
+  spawnPlusOne();
+}
+
+let lastCount = null;
+
+function renderCount(c){
+  c = Number(c || 0);
+  if (!Number.isFinite(c)) return;
+
+  const g = TARGET;
+  const left = Math.max(0, g - c);
+
+  const pct = g > 0 ? Math.min(100, (c/g*100)) : 0;
+  const pctStr = pct.toFixed(2) + "%";
+
+  barFill.style.width = pctStr;
+  if (!rainbowFillLayer.classList.contains("hidden")){
+    rainbowFillLayer.style.width = pctStr;
+  }
+
+  badge.innerHTML = `
+    <b>${fmt(c)}</b>
+    <span class="sep">/</span>
+    <b>${fmt(g)}</b>
+    <span class="sep">•</span>
+    <span class="muted2">${fmt(left)} restants</span>
+  `;
+
+  // ✅ special only when count increases
+  if (lastCount !== null && c > lastCount) {
+    if (shouldPlaySpecial()) playSpecial();
+  }
+  lastCount = c;
+}
+
+async function loadOnce(){
+  // token uniquement pour le fetch sécurisé (fallback)
+  if (!SLUG || !TOKEN) return;
+
+  try{
+    const r = await fetch(`/overlay/api/followers?slug=${encodeURIComponent(SLUG)}&_=${Date.now()}`, {
+      cache:'no-store',
+      headers: { Authorization: `Bearer ${TOKEN}` }
+    });
+    const j = await r.json();
+    if (!r.ok || !j?.ok) return;
+
+    renderCount(j.count || 0);
+  } catch {
+    // ignore
+  }
+}
+
+// ✅ realtime via socket.io (même sans token)
+function connectSocket(){
+  try{
+    if (!SLUG) return;
+    const ioClient = window.io;
+    if (typeof ioClient !== "function") return;
+
+    const sock = ioClient({
+      transports: ["websocket", "polling"],
+      withCredentials: false,
+    });
+
+    sock.on("connect", () => {
+      sock.emit("stream:join", { slug: SLUG }, () => {});
+    });
+
+    sock.on("stream:follows", (payload) => {
+      const evSlug = String(payload?.slug || "").trim().toLowerCase();
+      if (!evSlug) return;
+      if (evSlug !== SLUG.toLowerCase()) return;
+
+      const n = Number(payload?.followsCount);
+      if (!Number.isFinite(n)) return;
+
+      renderCount(n);
+    });
+
+    // si tu veux: quand ça reconnect => refresh via fetch (fallback)
+    sock.on("reconnect", () => {
+      loadOnce();
+    });
+  } catch {
+    // ignore
+  }
+}
+
+connectSocket();
+
+// fallback polling
+setInterval(loadOnce, POLL);
+loadOnce();
+</script>
+</body>
 </html>

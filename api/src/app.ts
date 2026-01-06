@@ -49,6 +49,7 @@ import { internalBotRouter } from "./routes/internal_bot.js";
 // ✅ NEW clean bot module
 import meBotRouter from "./modules/bot/router.js";
 import { meOverlayRouter } from "./routes/me_overlay.js";
+import { overlayApiRouter } from "./routes/overlay_api.js";
 
 export function createApp() {
   const app = express();
@@ -127,7 +128,8 @@ export function createApp() {
   app.use("/streamer/me/dlive-link", streamerDliveLinkRouter);
   app.use(meProfileRouter);
   app.use(internalBotRouter);
-
+  app.use("/overlay/api", overlayApiRouter);
+  
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
 

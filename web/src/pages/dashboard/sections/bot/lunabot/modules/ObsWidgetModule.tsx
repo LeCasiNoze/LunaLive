@@ -298,12 +298,13 @@ export function ObsWidgetModule({
       sh(bg)
     )}&pos=br&sec=8&poll=8000`;
 
-  const goalObsUrl =
+    const goalObsUrl =
     `${base}/overlay/obs/follow-goal.html?uid=${encodeURIComponent(uid)}&slug=${encodeURIComponent(
-      streamerSlug
+        streamerSlug
     )}&token=${encodeURIComponent(token)}` +
+    `&api=${encodeURIComponent(API_BASE)}` + // ✅ AJOUTE ÇA
     `&name=${encodeURIComponent(streamerName)}&step=50&fg=${encodeURIComponent(sh(fg))}&bg=${encodeURIComponent(
-      sh(bg)
+        sh(bg)
     )}&txt=${encodeURIComponent(sh(txt))}` +
     `&target=${encodeURIComponent(Math.max(1, Number(goalTarget) || 1))}` +
     `&ap=${encodeURIComponent(goalAnimPassive)}` +
