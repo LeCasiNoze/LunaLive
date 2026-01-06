@@ -290,6 +290,12 @@ botClipsRouter.use(async (_req, _res, next) => {
   next();
 });
 
+botClipsRouter.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  next();
+});
+
 // Toutes les routes ici = streamer dashboard
 botClipsRouter.use(requireAuth, requireStreamer);
 
