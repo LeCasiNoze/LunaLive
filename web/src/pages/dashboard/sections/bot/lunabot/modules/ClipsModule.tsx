@@ -1,6 +1,8 @@
 // web/src/pages/dashboard/sections/bot/modules/ClipsModule.tsx
 import * as React from "react";
 
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+
 type ClipItem = {
   id: number;
   streamer_id: number;
@@ -40,12 +42,10 @@ function buildDliveVodPage(permlink: string, atSec: number) {
   return `https://dlive.tv/p/${p}?t=${t}s`;
 }
 
-async function apiJson<T>(
-  token: string,
-  url: string,
-  init?: RequestInit
-): Promise<T> {
-  const r = await fetch(url, {
+async function apiJson<T>(token: string, url: string, init?: RequestInit): Promise<T> {
+  const fullUrl = url.startsWith("http") ? url : `${API_BASE}${url}`;
+
+  const r = await fetch(fullUrl, {
     ...init,
     headers: {
       ...(init?.headers || {}),
@@ -53,27 +53,37 @@ async function apiJson<T>(
       "Content-Type": (init?.headers as any)?.["Content-Type"] || "application/json",
     },
   });
-  const j = await r.json().catch(() => ({}));
+
+  // ⚠️ si tu reçois de l'HTML (fallback SPA), on veut le voir direct
+  const text = await r.text().catch(() => "");
+  let j: any = null;
+  try {
+    j = text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(`bad_json_${r.status}`);
+  }
+
   if (!r.ok || (j && j.ok === false)) {
     const reason = (j && (j.reason || j.error)) || `http_${r.status}`;
     throw new Error(String(reason));
   }
+
   return j as T;
 }
 
-async function apiBlob(
-  token: string,
-  url: string
-): Promise<Blob> {
-  const r = await fetch(url, {
+async function apiBlob(token: string, url: string): Promise<Blob> {
+  const fullUrl = url.startsWith("http") ? url : `${API_BASE}${url}`;
+
+  const r = await fetch(fullUrl, {
     method: "GET",
     headers: { Authorization: `Bearer ${token}` },
   });
+
   if (!r.ok) {
-    // 409 = not_ready (on le gère ailleurs)
     const txt = await r.text().catch(() => "");
     throw new Error(`file_${r.status}${txt ? `:${txt.slice(0, 60)}` : ""}`);
   }
+
   return await r.blob();
 }
 
