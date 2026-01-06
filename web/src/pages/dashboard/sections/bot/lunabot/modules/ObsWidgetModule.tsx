@@ -75,19 +75,6 @@ function detailsStyle(): React.CSSProperties {
   };
 }
 
-/**
- * IMPORTANT
- * Les overlays /overlay/obs/*.html sont servis par l'API (pas par le site React).
- * Sinon Vite/React fallback => index.html => tu vois l'appli dans l'iframe (mauvais aperçu).
- */
-function obsBase() {
-  const v =
-    (import.meta.env.VITE_OBS_BASE_URL as string | undefined) ||
-    (import.meta.env.VITE_API_BASE as string | undefined) ||
-    "https://lunalive-api.onrender.com";
-  return String(v || "").replace(/\/+$/, "");
-}
-
 function Tabs({
   tab,
   setTab,
@@ -270,20 +257,35 @@ export function ObsWidgetModule({
     return () => window.clearTimeout(t);
   }, [token, scale, font, line, maxw]);
 
-  const base = obsBase();
+  // IMPORTANT: les overlays /overlay/obs/*.html sont servis par le WEB (public/), pas par l’API.
+  const base =
+    typeof window !== "undefined"
+      ? String(window.location.origin).replace(/\/+$/, "")
+      : "";
+
+  const API_BASE =
+    (import.meta.env.VITE_API_BASE as string | undefined) ||
+    "https://lunalive-api.onrender.com";
+
   const uid = String(userId ?? "0");
 
-  // chat url (✅ plus de couleurs ici — le style vient du streamer appearance)
+  // chat url (couleurs = streamer appearance => chat.html fetch /streamer/me/appearance)
   const chatParams = new URLSearchParams();
   chatParams.set("uid", uid);
   chatParams.set("slug", streamerSlug);
-  chatParams.set("token", token); // ✅ secret
+  chatParams.set("token", token); // secret
+  chatParams.set("api", API_BASE); // permet au HTML statique d'appeler l'API
 
-  // affichage
+  // dimensions/affichage
+  chatParams.set("mw", String(Math.max(260, maxw || 420)));
+  chatParams.set("lh", String(line));
+  chatParams.set("scale", String(scale));
+  chatParams.set("font", String(font));
+
+  // comportement (si/qd chat.html en tiendra compte)
   chatParams.set("max", String(Math.max(1, Number(chatMax) || 8)));
   chatParams.set("life", String(Math.max(0, Number(chatLife) || 0)));
-  chatParams.set("mw", String(Math.max(280, Number(maxw) || 420)));
-  chatParams.set("lh", String(Number(line) || 1.3));
+
   chatParams.set("poll", "8000");
 
   const chatObsUrl = `${base}/overlay/obs/chat.html?${chatParams.toString()}`;

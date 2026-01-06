@@ -48,6 +48,7 @@ import { internalBotRouter } from "./routes/internal_bot.js";
 
 // ✅ NEW clean bot module
 import meBotRouter from "./modules/bot/router.js";
+import { meOverlayRouter } from "./routes/me_overlay.js";
 
 export function createApp() {
   const app = express();
@@ -106,6 +107,8 @@ export function createApp() {
   app.use(casinosPublicRouter);
   app.use("/me/casinos", requireAuth, casinosMeRouter);
   app.use(streamerVodsRouter);
+  // ✅ OBS overlay config (compat frontend)
+  app.use("/me/overlay", requireAuth, meOverlayRouter);
 
   // ✅ LunaBot dashboard routes
   app.use("/me/bot", requireAuth, meBotRouter);
