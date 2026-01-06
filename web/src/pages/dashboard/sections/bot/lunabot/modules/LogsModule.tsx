@@ -1,4 +1,3 @@
-import * as React from "react";
 import { clearMyBotLogs, type ApiBotLogRow } from "../api";
 
 export function LogsModule({
