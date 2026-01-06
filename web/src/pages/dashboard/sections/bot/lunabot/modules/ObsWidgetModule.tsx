@@ -294,6 +294,7 @@ export function ObsWidgetModule({
     `${base}/overlay/obs/viewers.html?uid=${encodeURIComponent(uid)}&slug=${encodeURIComponent(
       streamerSlug
     )}&token=${encodeURIComponent(token)}` +
+    `&api=${encodeURIComponent(API_BASE)}` +
     `&name=${encodeURIComponent(streamerName)}&fg=${encodeURIComponent(sh(fg))}&bg=${encodeURIComponent(
       sh(bg)
     )}&pos=br&sec=8&poll=8000`;

@@ -1,48 +1,157 @@
 <!doctype html>
 <html lang="fr">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>OBS Viewers</title>
-    <style>
-      html,body{ margin:0; padding:0; background:transparent; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
-      .pill{
-        display:inline-flex;
-        align-items:center;
-        gap:10px;
-        padding: 10px 12px;
-        border-radius: 999px;
-        border: 1px solid rgba(255,255,255,0.10);
-        background: rgba(0,0,0,0.22);
-        box-shadow: 0 16px 50px rgba(0,0,0,0.35);
-        color: var(--fg, #ffffff);
-        font-weight: 950;
-        font-size: 14px;
-      }
-      .dot{
-        width: 10px; height: 10px; border-radius:999px;
-        background: rgba(255,255,255,0.22);
-        border: 1px solid rgba(255,255,255,0.18);
-      }
-      .muted{
-        opacity:0.75;
-        font-weight: 900;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="pill">
-      <span class="dot"></span>
-      <span>Viewers</span>
-      <span class="muted" id="v">0</span>
-    </div>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>LunaLive — Viewers</title>
+  <style>
+    :root{
+      color-scheme: dark;
+      --fg: #ffffff;   /* texte */
+      --bg: #1f1f1f;   /* fond */
+    }
+    html,body{ margin:0; padding:0; background:transparent; width:100%; height:100%; overflow:hidden; }
 
-    <script>
-      const qs = new URLSearchParams(location.search);
-      const fg = qs.get("fg") ? `#${String(qs.get("fg")).replace(/^#/,"")}` : "#FFFFFF";
-      const cur = parseInt(qs.get("cur") || "42", 10);
-      document.documentElement.style.setProperty("--fg", fg);
-      document.getElementById("v").textContent = String(Math.max(0, cur));
-    </script>
-  </body>
+    .logo{
+      width:26px; height:26px; display:block; object-fit:contain;
+      filter:drop-shadow(0 1px 1px rgba(0,0,0,.35));
+    }
+
+    .wrap{
+      position:fixed; inset:auto 20px 20px auto; /* br par défaut */
+      display:flex; align-items:center; gap:10px;
+      background:var(--bg);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:12px; padding:8px 12px;
+      box-shadow:0 8px 28px rgba(0,0,0,.35);
+      user-select:none;
+      color:var(--fg);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+    }
+
+    .pos-tl{ inset:20px auto auto 20px; }
+    .pos-tr{ inset:20px 20px auto auto; }
+    .pos-bl{ inset:auto auto 20px 20px; }
+    .pos-br{ inset:auto 20px 20px auto; }
+
+    .count{ font-weight:800; line-height:1; letter-spacing:.2px; font-size:32px; }
+    .label{ font-size:14px; opacity:.85; font-weight:700; }
+    .bump{ transform:scale(1.06); transition:transform .18s ease; }
+  </style>
+</head>
+<body>
+  <div id="box" class="wrap pos-br" aria-live="polite">
+    <img id="logo" class="logo" alt="dlive"/>
+    <div class="label" id="label"></div>
+    <div class="count" id="count">—</div>
+  </div>
+
+<script>
+/**
+ * Params:
+ *  slug     : slug streamer (obligatoire)
+ *  token    : JWT (obligatoire pour endpoint overlay/api)
+ *  api      : base API (optionnel) ex: https://lunalive-api.onrender.com
+ *  fg,bg    : couleurs (#rrggbb ou rrggbb)
+ *  pos      : tl|tr|bl|br (défaut br)
+ *  sec      : intervalle de poll en s (défaut 30, minimum 30)
+ *  fz       : taille px du nombre (option)
+ *  hidezero : 1 pour cacher si 0
+ *  label    : texte à afficher (option), ex: "Viewers"
+ *  compact  : 1 pour ne pas afficher le label
+ *  logo     : url logo (option)
+ *  lsize    : taille logo px (option)
+ */
+
+const qs = new URLSearchParams(location.search);
+
+const SLUG    = qs.get("slug") || "";
+const TOKEN   = qs.get("token") || "";
+
+const API_IN  = (qs.get("api") || "").trim().replace(/\/$/, "");
+const API     = API_IN || (
+  location.hostname === "localhost" || location.hostname === "127.0.0.1"
+    ? "http://localhost:3001"
+    : "https://lunalive-api.onrender.com"
+);
+
+const FG_IN   = qs.get("fg") || "";
+const BG_IN   = qs.get("bg") || "";
+const POS     = (qs.get("pos") || "br").toLowerCase();
+const SEC     = Math.max(30, parseInt(qs.get("sec") || "30", 10) || 30);
+
+const FZ      = parseInt(qs.get("fz") || "", 10);
+const HIDE0   = qs.get("hidezero") === "1";
+const LABEL   = qs.get("label") || "Viewers";
+const COMPACT = (qs.get("compact") ?? "1") === "1";
+
+const LOGO   = (qs.get("logo") || "/overlay/static/assets/dlive_logo.png").trim();
+const LSIZE  = Math.max(12, parseInt(qs.get("lsize") || "26", 10));
+
+function normColor(c, fallback){
+  if(!c) return fallback;
+  let s = c.trim(); if(!s) return fallback;
+  if(s[0] !== '#') s = '#'+s;
+  return /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(s) ? s : fallback;
+}
+
+document.documentElement.style.setProperty('--fg', normColor(FG_IN, '#ffffff'));
+document.documentElement.style.setProperty('--bg', normColor(BG_IN, '#1f1f1f'));
+
+const box   = document.getElementById("box");
+const count = document.getElementById("count");
+const label = document.getElementById("label");
+
+const logoEl = document.getElementById("logo");
+logoEl.src = LOGO;
+logoEl.style.width = logoEl.style.height = LSIZE + "px";
+logoEl.onerror = () => { logoEl.style.display = "none"; };
+
+box.classList.remove("pos-br","pos-bl","pos-tr","pos-tl");
+box.classList.add("pos-"+(POS==="tl"||POS==="tr"||POS==="bl"?"pos-"+POS:"br").replace(/^pos-/,"pos-"));
+
+if (!isNaN(FZ) && FZ > 0) count.style.fontSize = FZ + "px";
+label.textContent = COMPACT ? "" : LABEL;
+
+const fmt = n => new Intl.NumberFormat("fr-FR").format(n);
+
+async function load(){
+  if(!SLUG || !TOKEN){
+    count.textContent = "—";
+    box.style.visibility = "visible";
+    return;
+  }
+
+  try{
+    const url =
+      `${API}/overlay/api/viewers?slug=${encodeURIComponent(SLUG)}` +
+      `&token=${encodeURIComponent(TOKEN)}` +
+      `&_=${Date.now()}`;
+
+    const r = await fetch(url, { cache: "no-store" });
+    const j = await r.json().catch(() => null);
+
+    const v = Number(j && (j.viewers != null ? j.viewers : j.count));
+    const val = Number.isFinite(v) ? v : 0;
+
+    const visible = !(HIDE0 && (!val || val <= 0));
+    box.style.visibility = visible ? "visible" : "hidden";
+    if (!visible) return;
+
+    const pretty = fmt(val);
+    if (count.textContent !== pretty){
+      count.textContent = pretty;
+      count.classList.add("bump");
+      setTimeout(()=>count.classList.remove("bump"), 180);
+    }
+  }catch(_){
+    count.textContent = "—";
+    box.style.visibility = "visible";
+  }
+}
+
+setInterval(load, SEC * 1000);
+load();
+</script>
+</body>
 </html>

@@ -1,4 +1,3 @@
-// api/src/dlive_poller.ts
 import { pool } from "./db.js";
 import { fetchDliveLiveInfo } from "./dlive.js";
 import type { Server as IOServer } from "socket.io";
@@ -25,6 +24,7 @@ async function runWithConcurrency<T>(
 
 async function applyLiveState(
   streamerId: number,
+  slug: string,
   isLiveNow: boolean,
   viewersNow: number,
   io?: IOServer
@@ -34,7 +34,7 @@ async function applyLiveState(
     await client.query("BEGIN");
 
     const prev = await client.query(
-      `SELECT is_live AS "isLive"
+      `SELECT is_live AS "isLive", viewers
        FROM streamers
        WHERE id=$1
        FOR UPDATE`,
@@ -42,9 +42,21 @@ async function applyLiveState(
     );
 
     const wasLive = !!prev.rows?.[0]?.isLive;
+    const prevViewers = Number(prev.rows?.[0]?.viewers ?? 0);
+
+    const desiredIsLive = !!isLiveNow;
+    const desiredViewers = desiredIsLive ? Number(viewersNow || 0) : 0;
+
+    // ✅ économe: rien n'a changé => pas d'UPDATE, pas d'emit
+    if (desiredIsLive === wasLive && desiredViewers === prevViewers) {
+      await client.query("COMMIT");
+      return;
+    }
+
+    const room = `stream:${String(slug).toLowerCase()}`;
 
     // OFF -> ON
-    if (isLiveNow && !wasLive) {
+    if (desiredIsLive && !wasLive) {
       await client.query(
         `UPDATE streamers
          SET is_live=TRUE,
@@ -52,7 +64,7 @@ async function applyLiveState(
              live_started_at=NOW(),
              updated_at=NOW()
          WHERE id=$1`,
-        [streamerId, viewersNow]
+        [streamerId, desiredViewers]
       );
 
       // 1 live ouvert max / streamer
@@ -66,13 +78,19 @@ async function applyLiveState(
 
       await client.query("COMMIT");
 
+      io?.to(room).emit("stream:viewers", {
+        slug: String(slug),
+        isLive: true,
+        viewers: desiredViewers,
+      });
+
       // notif followers (socket + push)
       notifyFollowersGoLive(io, streamerId).catch(() => {});
       return;
     }
 
     // ON -> OFF
-    if (!isLiveNow && wasLive) {
+    if (!desiredIsLive && wasLive) {
       await client.query(
         `UPDATE streamers
          SET is_live=FALSE,
@@ -101,16 +119,23 @@ async function applyLiveState(
       );
 
       await client.query("COMMIT");
+
+      io?.to(room).emit("stream:viewers", {
+        slug: String(slug),
+        isLive: false,
+        viewers: 0,
+      });
+
       return;
     }
 
-    // Pas de transition
-    if (isLiveNow) {
+    // Pas de transition (juste update)
+    if (desiredIsLive) {
       await client.query(
         `UPDATE streamers
          SET viewers=$2, updated_at=NOW()
          WHERE id=$1`,
-        [streamerId, viewersNow]
+        [streamerId, desiredViewers]
       );
     } else {
       await client.query(
@@ -125,8 +150,16 @@ async function applyLiveState(
     }
 
     await client.query("COMMIT");
+
+    io?.to(room).emit("stream:viewers", {
+      slug: String(slug),
+      isLive: desiredIsLive,
+      viewers: desiredViewers,
+    });
   } catch (e) {
-    try { await client.query("ROLLBACK"); } catch {}
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
     throw e;
   } finally {
     client.release();
@@ -150,6 +183,7 @@ export function startDlivePoller(io?: IOServer) {
       const { rows } = await pool.query(
         `SELECT
            s.id AS "streamerId",
+           s.slug AS "slug",
            s.dlive_use_linked AS "useLinked",
            s.dlive_link_displayname AS "linkedDisplayname",
            s.dlive_link_username AS "linkedUsername",
@@ -168,6 +202,7 @@ export function startDlivePoller(io?: IOServer) {
         rows,
         async (r: {
           streamerId: number;
+          slug: string;
           useLinked: boolean;
           linkedDisplayname: string | null;
           linkedUsername: string | null;
@@ -206,7 +241,7 @@ export function startDlivePoller(io?: IOServer) {
             const isLive = !!info.isLive;
             const viewers = isLive ? Number(info.watchingCount ?? 0) : 0;
 
-            await applyLiveState(r.streamerId, isLive, viewers, io);
+            await applyLiveState(r.streamerId, r.slug, isLive, viewers, io);
           } catch (e) {
             console.warn("[dlive] poll failed", channelSlug, e);
           }

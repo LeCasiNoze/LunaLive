@@ -66,23 +66,41 @@ function tryAuth(socket: Socket) {
 
 async function getStreamerMetaBySlug(
   slug: string
-): Promise<{ id: number; slug: string; ownerUserId: number | null; appearance: any } | null> {
+): Promise<{
+  id: number;
+  slug: string;
+  ownerUserId: number | null;
+  appearance: any;
+  isLive: boolean;
+  viewers: number;
+} | null> {
   const s = String(slug || "").trim();
   if (!s) return null;
+
   const r = await pool.query(
-    `SELECT id, slug, user_id AS "ownerUserId", appearance
+    `SELECT
+        id,
+        slug,
+        user_id AS "ownerUserId",
+        appearance,
+        is_live AS "isLive",
+        viewers
      FROM streamers
      WHERE lower(slug)=lower($1)
      LIMIT 1`,
     [s]
   );
+
   const row = r.rows?.[0];
   if (!row) return null;
+
   return {
     id: Number(row.id),
     slug: String(row.slug),
     ownerUserId: row.ownerUserId != null ? Number(row.ownerUserId) : null,
     appearance: row.appearance ?? {},
+    isLive: !!row.isLive,
+    viewers: Number(row.viewers ?? 0),
   };
 }
 
@@ -315,20 +333,30 @@ export function attachChat(io: Server) {
         cb?.({ ok: false, error: String(e?.message || "join_failed") });
       }
     });
-    
+
     // ✅ PUBLIC stream room (overlay OBS, pages, etc.)
-    socket.on("stream:join", (payload: any, cb?: (ack: any) => void) => {
+    socket.on("stream:join", async (payload: any, cb?: (ack: any) => void) => {
       try {
-        const slug = String(payload?.slug || "").trim();
+        const raw = String(payload?.slug || "").trim();
 
         // safe: slug simple uniquement
-        if (!slug || slug.length > 64 || !/^[a-z0-9_-]+$/i.test(slug)) {
-          cb?.({ ok: false, error: "bad_slug" });
-          return;
+        if (!raw || raw.length > 64 || !/^[a-z0-9_-]+$/i.test(raw)) {
+          return cb?.({ ok: false, error: "bad_slug" });
         }
 
-        socket.join(`stream:${slug}`);
-        cb?.({ ok: true });
+        // canonical slug + snapshot live/viewers
+        const meta = await getStreamerMetaBySlug(raw);
+        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+
+        const room = `stream:${String(meta.slug).toLowerCase()}`;
+        socket.join(room);
+
+        cb?.({
+          ok: true,
+          slug: meta.slug,
+          isLive: !!meta.isLive,
+          viewers: Math.max(0, Number(meta.viewers || 0)),
+        });
       } catch {
         cb?.({ ok: false, error: "join_failed" });
       }
