@@ -283,6 +283,8 @@ export function ClipsModule({
             {items.map((c) => {
               const st = dl[c.id];
               const pct = Math.max(0, Math.min(100, Number(st?.percent || 0)));
+            const clipStartSec = Math.max(0, Math.floor((c.at_sec || 0) - (c.pre_sec || 105)));
+            const directVodUrl = c.vod_url ? `${c.vod_url}#t=${clipStartSec}` : null;
 
               return (
                 <div
@@ -342,27 +344,42 @@ export function ClipsModule({
                         Télécharger
                       </button>
 
-                      {c.vod_permlink ? (
-                        <a
-                          href={buildDliveVodPage(c.vod_permlink, c.at_sec)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ textDecoration: "none" }}
+                    {directVodUrl ? (
+                    <a href={directVodUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+                        <button
+                        className="btnGhostInline"
+                        style={{
+                            padding: "10px 12px",
+                            borderRadius: 14,
+                            fontWeight: 950,
+                            background: "rgba(59, 130, 246, 0.18)",
+                            border: "1px solid rgba(59, 130, 246, 0.35)",
+                        }}
                         >
-                          <button
-                            className="btnGhostInline"
-                            style={{
-                              padding: "10px 12px",
-                              borderRadius: 14,
-                              fontWeight: 950,
-                              background: "rgba(59, 130, 246, 0.18)",
-                              border: "1px solid rgba(59, 130, 246, 0.35)",
-                            }}
-                          >
-                            Voir
-                          </button>
-                        </a>
-                      ) : null}
+                        Voir
+                        </button>
+                    </a>
+                    ) : c.vod_permlink ? (
+                    <a
+                        href={buildDliveVodPage(c.vod_permlink, c.at_sec)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ textDecoration: "none" }}
+                    >
+                        <button
+                        className="btnGhostInline"
+                        style={{
+                            padding: "10px 12px",
+                            borderRadius: 14,
+                            fontWeight: 950,
+                            background: "rgba(59, 130, 246, 0.18)",
+                            border: "1px solid rgba(59, 130, 246, 0.35)",
+                        }}
+                        >
+                        Voir
+                        </button>
+                    </a>
+                    ) : null}
 
                       <button
                         className="btnGhostInline"
