@@ -17,6 +17,7 @@ import { CommandsModule } from "./modules/CommandsModule";
 import { AutopostsModule } from "./modules/AutopostsModule";
 import { LogsModule } from "./modules/LogsModule";
 import { TestSendModule } from "./modules/TestSendModule";
+import { ObsWidgetModule } from "./modules/ObsWidgetModule";
 
 // ──────────────────────────────────────────
 // Types
@@ -34,7 +35,7 @@ type ModuleDef = {
   onOpen?: () => void;
 };
 
-type ActiveModule = "commands" | "autoposts" | "logs" | "test-send" | null;
+type ActiveModule = "commands" | "autoposts" | "logs" | "test-send" | "obs" | null;
 
 const CATEGORY_LABEL: Record<ModuleCategory, string> = {
   general: "Général",
@@ -313,9 +314,7 @@ function Modal({
           </button>
         </div>
 
-        <div style={{ padding: 16, overflow: "auto", maxHeight: "calc(92vh - 70px)" }}>
-          {children}
-        </div>
+        <div style={{ padding: 16, overflow: "auto", maxHeight: "calc(92vh - 70px)" }}>{children}</div>
       </div>
     </div>
   );
@@ -386,10 +385,51 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
   }
 
   const modules: ModuleDef[] = [
-    { id: "commands", category: "general", status: "ready", title: "Commandes personnalisées", desc: "Gère tes !commandes.", icon: "⌨️", onOpen: () => setActiveModule("commands") },
-    { id: "autoposts", category: "general", status: "ready", title: "Messages automatiques", desc: "Planifie des messages.", icon: "🗓️", onOpen: () => setActiveModule("autoposts") },
-    { id: "logs", category: "general", status: "ready", title: "Logs & diagnostic", desc: "Événements / erreurs.", icon: "🧾", onOpen: () => setActiveModule("logs") },
-    { id: "test-send", category: "general", status: "ready", title: "Message test (chat)", desc: "Envoie un message bot immédiat.", icon: "📣", onOpen: () => setActiveModule("test-send") },
+    {
+      id: "commands",
+      category: "general",
+      status: "ready",
+      title: "Commandes personnalisées",
+      desc: "Gère tes !commandes.",
+      icon: "⌨️",
+      onOpen: () => setActiveModule("commands"),
+    },
+    {
+      id: "autoposts",
+      category: "general",
+      status: "ready",
+      title: "Messages automatiques",
+      desc: "Planifie des messages.",
+      icon: "🗓️",
+      onOpen: () => setActiveModule("autoposts"),
+    },
+    {
+      id: "logs",
+      category: "general",
+      status: "ready",
+      title: "Logs & diagnostic",
+      desc: "Événements / erreurs.",
+      icon: "🧾",
+      onOpen: () => setActiveModule("logs"),
+    },
+    {
+      id: "test-send",
+      category: "general",
+      status: "ready",
+      title: "Message test (chat)",
+      desc: "Envoie un message bot immédiat.",
+      icon: "📣",
+      onOpen: () => setActiveModule("test-send"),
+    },
+    {
+      id: "obs",
+      category: "general",
+      status: "ready",
+      title: "Widget OBS",
+      desc: "URL protégée + options overlay (Browser Source).",
+      icon: "📺",
+      onOpen: () => setActiveModule("obs"),
+    },
 
     { id: "wheel", category: "rubis", status: "soon", title: "Roue / tickets", desc: "Join + tirage.", icon: "🎡" },
     { id: "rains", category: "rubis", status: "soon", title: "Rains", desc: "Distribution live-only.", icon: "🌧️" },
@@ -425,6 +465,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       ? "Logs"
       : activeModule === "test-send"
       ? "Message test"
+      : activeModule === "obs"
+      ? "Widget OBS"
       : "Module";
 
   const modalDesc =
@@ -436,6 +478,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       ? "Événements / erreurs / diagnostic du bot."
       : activeModule === "test-send"
       ? "Utile pour valider que le bot “push chat” fonctionne."
+      : activeModule === "obs"
+      ? "Génère l’URL Browser Source OBS (avec secret), options d’affichage et rotate."
       : undefined;
 
   return (
@@ -508,6 +552,13 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
           <LogsModule token={token} logs={logs} onReload={reloadAll} />
         ) : activeModule === "test-send" ? (
           <TestSendModule token={token} onSent={reloadAll} />
+        ) : activeModule === "obs" ? (
+          <ObsWidgetModule
+            token={token}
+            streamerSlug={streamer.slug}
+            streamerName={(streamer as any).displayName ?? streamer.slug}
+            userId={(user as any)?.id ?? 0}
+          />
         ) : null}
       </Modal>
     </div>
