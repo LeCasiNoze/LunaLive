@@ -232,10 +232,34 @@ body{
     </div>
   </div>
 
-<script src="/socket.io/socket.io.js"></script>
+<script>
+(function () {
+  const qs = new URLSearchParams(location.search);
+  const apiRaw = (qs.get("api") || "").trim();
+
+  let origin = location.origin;
+  try {
+    const u = new URL(apiRaw || location.origin);
+    if (u.protocol === "http:" || u.protocol === "https:") origin = u.origin;
+  } catch {}
+
+  document.write('<script src="' + origin + '/socket.io/socket.io.js"><\/script>');
+})();
+</script>
+
 
 <script>
 const qs = new URLSearchParams(location.search);
+function safeApiOrigin(v){
+  const s = String(v || "").trim();
+  if (!s) return location.origin;
+  try {
+    const u = new URL(s);
+    if (u.protocol === "http:" || u.protocol === "https:") return u.origin;
+  } catch {}
+  return location.origin;
+}
+const API_BASE = safeApiOrigin(qs.get("api"));
 
 const SLUG  = (qs.get('slug') || '').trim();
 const TOKEN = (qs.get('token') || '').trim();
@@ -394,10 +418,11 @@ async function loadOnce(){
   if (!SLUG || !TOKEN) return;
 
   try{
-    const r = await fetch(`/overlay/api/followers?slug=${encodeURIComponent(SLUG)}&_=${Date.now()}`, {
-      cache:'no-store',
-      headers: { Authorization: `Bearer ${TOKEN}` }
+    const r = await fetch(`${API_BASE}/overlay/api/followers?slug=${encodeURIComponent(SLUG)}&_=${Date.now()}`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${TOKEN}` },
     });
+
     const j = await r.json();
     if (!r.ok || !j?.ok) return;
 
@@ -414,7 +439,7 @@ function connectSocket(){
     const ioClient = window.io;
     if (typeof ioClient !== "function") return;
 
-    const sock = ioClient({
+    const sock = ioClient(API_BASE, {
       transports: ["websocket", "polling"],
       withCredentials: false,
     });
