@@ -1,4 +1,4 @@
-/* chat theme helpers (si tu les utilises encore quelque part) */
+/* web/src/styles/40_chat.css */
 .chat-username{ color: var(--chat-name-color); font-weight: 700; }
 .chat-message{ color: var(--chat-msg-color); font-weight: 600; }
 

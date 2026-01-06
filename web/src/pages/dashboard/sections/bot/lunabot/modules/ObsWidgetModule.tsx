@@ -117,6 +117,15 @@ function Tabs({
   );
 }
 
+// ✅ Chat overlay: on ne laisse modifiable que la largeur max
+const CHAT_FIXED = {
+  scale: 1.6,
+  font: 22,
+  line: 1.3,
+  max_lines: 8,
+  life_sec: 0,
+} as const;
+
 export function ObsWidgetModule({
   token,
   streamerSlug,
@@ -137,13 +146,15 @@ export function ObsWidgetModule({
   const [txt, setTxt] = React.useState("#ffffff");
   const [goalTarget, setGoalTarget] = React.useState<number>(100);
 
-  // chat (✅ uniquement affichage / dimensions)
-  const [chatMax, setChatMax] = React.useState(8); // overlay NozeBot-like => 8
-  const [chatLife, setChatLife] = React.useState(0);
-  const [scale, setScale] = React.useState(1.6);
-  const [font, setFont] = React.useState(22);
-  const [line, setLine] = React.useState(1.3);
+  // chat (✅ seul maxw est modifiable)
   const [maxw, setMaxw] = React.useState(420);
+
+  // valeurs fixes (non modifiables dans la modale)
+  const scale = CHAT_FIXED.scale;
+  const font = CHAT_FIXED.font;
+  const line = CHAT_FIXED.line;
+  const chatMax = CHAT_FIXED.max_lines;
+  const chatLife = CHAT_FIXED.life_sec;
 
   // alerts
   const [alertsKind, setAlertsKind] = React.useState<"follow" | "donation">("follow");
@@ -210,13 +221,8 @@ export function ObsWidgetModule({
           setAlertVol(followVol);
         }
 
-        // Chat (✅ dimensions only)
-        setScale((r.config as any).chat?.scale ?? 1.6);
-        setFont((r.config as any).chat?.font ?? 22);
-        setLine((r.config as any).chat?.line ?? 1.3);
+        // Chat (✅ uniquement maxw)
         setMaxw((r.config as any).chat?.maxw ?? 420);
-        setChatMax((r.config as any).chat?.max_lines ?? 8);
-        setChatLife((r.config as any).chat?.life_sec ?? 0);
 
         // Goal
         setFg((r.config as any).goal?.fg ?? "#ffffff");
@@ -252,10 +258,15 @@ export function ObsWidgetModule({
   // debounce sync view-config (comme NozeBot)
   React.useEffect(() => {
     const t = window.setTimeout(() => {
-      obsSaveViewConfig(token, { scale, font, line, maxw }).catch(() => {});
+      obsSaveViewConfig(token, {
+        scale: CHAT_FIXED.scale,
+        font: CHAT_FIXED.font,
+        line: CHAT_FIXED.line,
+        maxw,
+      }).catch(() => {});
     }, 500);
     return () => window.clearTimeout(t);
-  }, [token, scale, font, line, maxw]);
+  }, [token, maxw]);
 
   // IMPORTANT: les overlays /overlay/obs/*.html sont servis par le WEB (public/), pas par l’API.
   const base =
@@ -282,9 +293,9 @@ export function ObsWidgetModule({
   chatParams.set("scale", String(scale));
   chatParams.set("font", String(font));
 
-  // comportement (si/qd chat.html en tiendra compte)
-  chatParams.set("max", String(Math.max(1, Number(chatMax) || 8)));
-  chatParams.set("life", String(Math.max(0, Number(chatLife) || 0)));
+  // comportement
+  chatParams.set("max", String(Math.max(1, Number(chatMax) || CHAT_FIXED.max_lines)));
+  chatParams.set("life", String(Math.max(0, Number(chatLife) || CHAT_FIXED.life_sec)));
 
   chatParams.set("poll", "8000");
 
@@ -299,13 +310,13 @@ export function ObsWidgetModule({
       sh(bg)
     )}&pos=br&sec=8&poll=8000`;
 
-    const goalObsUrl =
+  const goalObsUrl =
     `${base}/overlay/obs/follow-goal.html?uid=${encodeURIComponent(uid)}&slug=${encodeURIComponent(
-        streamerSlug
+      streamerSlug
     )}&token=${encodeURIComponent(token)}` +
-    `&api=${encodeURIComponent(API_BASE)}` + // ✅ AJOUTE ÇA
+    `&api=${encodeURIComponent(API_BASE)}` +
     `&name=${encodeURIComponent(streamerName)}&step=50&fg=${encodeURIComponent(sh(fg))}&bg=${encodeURIComponent(
-        sh(bg)
+      sh(bg)
     )}&txt=${encodeURIComponent(sh(txt))}` +
     `&target=${encodeURIComponent(Math.max(1, Number(goalTarget) || 1))}` +
     `&ap=${encodeURIComponent(goalAnimPassive)}` +
@@ -334,12 +345,13 @@ export function ObsWidgetModule({
     try {
       await obsSaveWidgetsConfig(token, {
         chat: {
-          scale,
-          font,
-          line,
           maxw,
-          max_lines: chatMax,
-          life_sec: chatLife,
+          // fixes
+          scale: CHAT_FIXED.scale,
+          font: CHAT_FIXED.font,
+          line: CHAT_FIXED.line,
+          max_lines: CHAT_FIXED.max_lines,
+          life_sec: CHAT_FIXED.life_sec,
         },
       });
       flash("Chat enregistré ✅");
@@ -817,68 +829,6 @@ export function ObsWidgetModule({
               </div>
 
               <div style={{ display: "grid", gap: 6 }}>
-                <InlineLabel>Line-height</InlineLabel>
-                <input
-                  style={{ ...inputStyle(), fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
-                  type="number"
-                  min={1}
-                  max={2}
-                  step={0.05}
-                  value={line}
-                  onChange={(e) => setLine(parseFloat(e.target.value || "1.3"))}
-                />
-              </div>
-
-              <div style={{ display: "grid", gap: 6 }}>
-                <InlineLabel>Font size (px)</InlineLabel>
-                <input
-                  style={{ ...inputStyle(), fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
-                  type="number"
-                  min={10}
-                  max={60}
-                  value={font}
-                  onChange={(e) => setFont(parseInt(e.target.value || "22", 10))}
-                />
-              </div>
-
-              <div style={{ display: "grid", gap: 6 }}>
-                <InlineLabel>Scale</InlineLabel>
-                <input
-                  style={{ ...inputStyle(), fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
-                  type="number"
-                  min={0.5}
-                  max={3}
-                  step={0.05}
-                  value={scale}
-                  onChange={(e) => setScale(parseFloat(e.target.value || "1.6"))}
-                />
-              </div>
-
-              <div style={{ display: "grid", gap: 6 }}>
-                <InlineLabel>Max lignes</InlineLabel>
-                <input
-                  style={{ ...inputStyle(), fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={chatMax}
-                  onChange={(e) => setChatMax(parseInt(e.target.value || "8", 10))}
-                />
-              </div>
-
-              <div style={{ display: "grid", gap: 6 }}>
-                <InlineLabel>Durée (sec) (0 = illimité)</InlineLabel>
-                <input
-                  style={{ ...inputStyle(), fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
-                  type="number"
-                  min={0}
-                  max={3600}
-                  value={chatLife}
-                  onChange={(e) => setChatLife(parseInt(e.target.value || "0", 10))}
-                />
-              </div>
-
-              <div style={{ display: "grid", gap: 6 }}>
                 <InlineLabel>Recommandations OBS</InlineLabel>
                 <ul className="muted" style={{ fontSize: 12, paddingLeft: 18, margin: 0, lineHeight: 1.5 }}>
                   <li>Source Navigateur : <b>850 × 1000</b></li>
@@ -909,7 +859,15 @@ export function ObsWidgetModule({
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 10,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
             <div className="muted" style={{ fontSize: 12, minHeight: 18 }}>
               {savedMsg}
             </div>
@@ -938,13 +896,28 @@ export function ObsWidgetModule({
                 value={goalObsUrl}
                 readOnly
               />
-              <button className="btnGhostInline" type="button" onClick={() => setShowUrl((v) => !v)} style={{ borderRadius: 14, padding: "10px 12px", fontWeight: 950 }}>
+              <button
+                className="btnGhostInline"
+                type="button"
+                onClick={() => setShowUrl((v) => !v)}
+                style={{ borderRadius: 14, padding: "10px 12px", fontWeight: 950 }}
+              >
                 {showUrl ? "🙈" : "👁"}
               </button>
-              <button className="btnGhostInline" type="button" onClick={() => copy(goalObsUrl)} style={{ borderRadius: 14, padding: "10px 12px", fontWeight: 950 }}>
+              <button
+                className="btnGhostInline"
+                type="button"
+                onClick={() => copy(goalObsUrl)}
+                style={{ borderRadius: 14, padding: "10px 12px", fontWeight: 950 }}
+              >
                 Copier
               </button>
-              <button className="btnGhostInline" type="button" onClick={() => window.open(goalObsUrl, "_blank", "noopener")} style={{ borderRadius: 14, padding: "10px 12px", fontWeight: 950 }}>
+              <button
+                className="btnGhostInline"
+                type="button"
+                onClick={() => window.open(goalObsUrl, "_blank", "noopener")}
+                style={{ borderRadius: 14, padding: "10px 12px", fontWeight: 950 }}
+              >
                 Ouvrir
               </button>
             </div>
@@ -964,15 +937,15 @@ export function ObsWidgetModule({
             </div>
           </div>
 
-          {/* ... le reste du GOAL inchangé (couleurs + animations + preview + save) ... */}
-          {/* (Je garde ton contenu existant ci-dessous, inchangé, pour ne pas te casser les options) */}
-
           <details style={detailsStyle()}>
             <summary style={{ cursor: "pointer", fontWeight: 950 }}>Couleurs</summary>
 
             <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
               <div>
-                <div className="muted" style={{ fontSize: 11, fontWeight: 950, letterSpacing: 0.6, textTransform: "uppercase" }}>
+                <div
+                  className="muted"
+                  style={{ fontSize: 11, fontWeight: 950, letterSpacing: 0.6, textTransform: "uppercase" }}
+                >
                   Presets (remplissage / fond / texte)
                 </div>
 
@@ -991,8 +964,24 @@ export function ObsWidgetModule({
                     >
                       <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
                         <span style={{ width: 14, height: 14, borderRadius: 4, background: p.fg }} />
-                        <span style={{ width: 14, height: 14, borderRadius: 4, background: p.bg, border: "1px solid rgba(255,255,255,0.18)" }} />
-                        <span style={{ width: 14, height: 14, borderRadius: 4, background: p.txt, border: "1px solid rgba(255,255,255,0.18)" }} />
+                        <span
+                          style={{
+                            width: 14,
+                            height: 14,
+                            borderRadius: 4,
+                            background: p.bg,
+                            border: "1px solid rgba(255,255,255,0.18)",
+                          }}
+                        />
+                        <span
+                          style={{
+                            width: 14,
+                            height: 14,
+                            borderRadius: 4,
+                            background: p.txt,
+                            border: "1px solid rgba(255,255,255,0.18)",
+                          }}
+                        />
                         {p.name}
                       </span>
                     </button>
@@ -1016,8 +1005,24 @@ export function ObsWidgetModule({
                     >
                       <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
                         <span style={{ width: 14, height: 14, borderRadius: 4, background: p.fg }} />
-                        <span style={{ width: 14, height: 14, borderRadius: 4, background: p.bg, border: "1px solid rgba(255,255,255,0.18)" }} />
-                        <span style={{ width: 14, height: 14, borderRadius: 4, background: p.txt, border: "1px solid rgba(255,255,255,0.18)" }} />
+                        <span
+                          style={{
+                            width: 14,
+                            height: 14,
+                            borderRadius: 4,
+                            background: p.bg,
+                            border: "1px solid rgba(255,255,255,0.18)",
+                          }}
+                        />
+                        <span
+                          style={{
+                            width: 14,
+                            height: 14,
+                            borderRadius: 4,
+                            background: p.txt,
+                            border: "1px solid rgba(255,255,255,0.18)",
+                          }}
+                        />
                         {p.name}
                       </span>
                     </button>
@@ -1026,32 +1031,87 @@ export function ObsWidgetModule({
               </div>
 
               <div>
-                <div className="muted" style={{ fontSize: 11, fontWeight: 950, letterSpacing: 0.6, textTransform: "uppercase" }}>
+                <div
+                  className="muted"
+                  style={{ fontSize: 11, fontWeight: 950, letterSpacing: 0.6, textTransform: "uppercase" }}
+                >
                   Couleurs personnalisées
                 </div>
 
-                <div style={{ marginTop: 10, display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+                <div
+                  style={{
+                    marginTop: 10,
+                    display: "grid",
+                    gap: 10,
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  }}
+                >
                   <div style={{ display: "grid", gap: 6 }}>
                     <InlineLabel>Remplissage</InlineLabel>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <input type="color" value={fg} onChange={(e) => setFg(e.target.value)} style={{ width: 44, height: 44, borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "transparent" }} />
-                      <input style={{ ...inputStyle(), fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }} value={fg} onChange={(e) => setFg(e.target.value)} />
+                      <input
+                        type="color"
+                        value={fg}
+                        onChange={(e) => setFg(e.target.value)}
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 12,
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          background: "transparent",
+                        }}
+                      />
+                      <input
+                        style={{ ...inputStyle(), fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+                        value={fg}
+                        onChange={(e) => setFg(e.target.value)}
+                      />
                     </div>
                   </div>
 
                   <div style={{ display: "grid", gap: 6 }}>
                     <InlineLabel>Fond</InlineLabel>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <input type="color" value={bg} onChange={(e) => setBg(e.target.value)} style={{ width: 44, height: 44, borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "transparent" }} />
-                      <input style={{ ...inputStyle(), fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }} value={bg} onChange={(e) => setBg(e.target.value)} />
+                      <input
+                        type="color"
+                        value={bg}
+                        onChange={(e) => setBg(e.target.value)}
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 12,
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          background: "transparent",
+                        }}
+                      />
+                      <input
+                        style={{ ...inputStyle(), fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+                        value={bg}
+                        onChange={(e) => setBg(e.target.value)}
+                      />
                     </div>
                   </div>
 
                   <div style={{ display: "grid", gap: 6 }}>
                     <InlineLabel>Texte</InlineLabel>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <input type="color" value={txt} onChange={(e) => setTxt(e.target.value)} style={{ width: 44, height: 44, borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "transparent" }} />
-                      <input style={{ ...inputStyle(), fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }} value={txt} onChange={(e) => setTxt(e.target.value)} />
+                      <input
+                        type="color"
+                        value={txt}
+                        onChange={(e) => setTxt(e.target.value)}
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 12,
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          background: "transparent",
+                        }}
+                      />
+                      <input
+                        style={{ ...inputStyle(), fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+                        value={txt}
+                        onChange={(e) => setTxt(e.target.value)}
+                      />
                     </div>
                   </div>
                 </div>

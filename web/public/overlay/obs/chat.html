@@ -1,3 +1,4 @@
+<!-- web/public/overlay/obs/chat.html -->
 <!doctype html>
 <html lang="fr">
 <head>
@@ -17,6 +18,11 @@
 
       /* width max (seule option exposée) */
       --wrap-maxw: 420px;
+
+      /* ✅ piloté par query params */
+      --chat-scale: 1;
+      --chat-font: 22px;
+      --chat-lh: 1.3;
 
       /* cards */
       --gap: 8px;
@@ -55,6 +61,10 @@
       padding: 6px;
       width: var(--wrap-maxw);
       box-sizing:border-box;
+
+      /* ✅ scale OBS */
+      transform: scale(var(--chat-scale));
+      transform-origin: bottom left;
     }
 
     .chatMsgRow{
@@ -118,13 +128,15 @@
       display:block;
     }
 
+    /* ✅ hat FIX (pas de travers) */
     .chatHatEmoji{
       position:absolute;
-      right:-4px;
-      top:-8px;
-      font-size: 16px;
+      right:-6px;
+      top:-10px;
+      font-size: 18px;
+      line-height: 1;
       filter: drop-shadow(0 2px 6px rgba(0,0,0,.7));
-      transform: rotate(8deg);
+      transform: rotate(0deg);
       pointer-events:none;
     }
 
@@ -174,7 +186,7 @@
 
     .chatUsername{
       font-weight: 950;
-      font-size: 18px;
+      font-size: calc(var(--chat-font) * 0.90);
       line-height: 1.1;
       color: var(--uname-color, var(--chat-name-color));
       text-shadow: var(--txt-shadow-soft);
@@ -193,14 +205,22 @@
       white-space:nowrap;
     }
 
+    /* ✅ title: sobre + ghost purple outline, et surtout PAS D'ANIM */
     .chatTitle{
       margin-top: 2px;
-      font-size: 0.92em;
-      font-style: italic;
-      text-decoration: underline;
-      opacity: 0.95;
+      font-size: calc(var(--chat-font) * 0.58);
+      line-height: 1.05;
+      font-style: normal;
+      font-weight: 950;
+      text-decoration: none;
+      opacity: 0.92;
+
+      color: rgba(12,12,12,.88);
+      -webkit-text-stroke: 0.75px rgba(124,77,255,0.70);
+      text-shadow: 0 1px 2px rgba(0,0,0,.55);
+
       animation: none !important;
-      text-shadow: none !important;
+      text-shadow: 0 1px 2px rgba(0,0,0,.55) !important;
       filter: none !important;
     }
 
@@ -208,8 +228,8 @@
       margin-top: 6px;
       color: var(--chat-msg-color);
       font-weight: 700;
-      font-size: 17px;
-      line-height: 1.25;
+      font-size: var(--chat-font);
+      line-height: var(--chat-lh);
       text-shadow: var(--txt-shadow-strong);
       white-space: normal;
       overflow-wrap: anywhere;
@@ -238,6 +258,38 @@
       text-shadow: 0 0 6px rgba(0,0,0,0.7);
     }
     @keyframes rainbowShift { 0%{background-position:0% 50%} 100%{background-position:300% 50%} }
+
+    /* ✅ chroma (arc-en-ciel défilant + underline) */
+    .uname--chroma{
+      background: linear-gradient(90deg,#ff5252,#ffeb3b,#69f0ae,#40c4ff,#7c4dff,#ff5252);
+      background-size: 350% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent !important;
+      animation: chromaShift 3.6s linear infinite;
+      text-shadow: 0 0 6px rgba(0,0,0,0.7);
+      position: relative;
+    }
+    .uname--chroma::after{
+      content:"";
+      position:absolute;
+      left:0; right:0;
+      bottom:-3px;
+      height:2px;
+      background: linear-gradient(90deg,#ff5252,#ffeb3b,#7c4dff);
+      background-size: 200% 100%;
+      animation: chromaLine 1.5s ease-in-out infinite;
+      opacity: .90;
+    }
+    @keyframes chromaShift{
+      0%{background-position:0% 50%}
+      100%{background-position:350% 50%}
+    }
+    @keyframes chromaLine{
+      0%{background-position:100% 0}
+      50%{background-position:0 0}
+      100%{background-position:100% 0}
+    }
 
     .uname--neon-outline-purple{
       color: #e4d9ff !important;
@@ -328,6 +380,12 @@
   <script>
     const qs = new URLSearchParams(location.search);
 
+    function clampNum(n, a, b){
+      const x = Number(n);
+      if (!Number.isFinite(x)) return a;
+      return Math.max(a, Math.min(b, x));
+    }
+
     function safeApiOrigin(v){
       const s = String(v || "").trim();
       if (!s) return "https://lunalive-api.onrender.com";
@@ -342,19 +400,31 @@
     const SLUG  = (qs.get("slug") || "").trim();
     const TOKEN = (qs.get("token") || "").trim();
 
-    // ✅ seule option publique
-    const mw = parseInt(qs.get("mw") || "420", 10);
-    document.documentElement.style.setProperty("--wrap-maxw", `${Math.max(260, mw)}px`);
+    // ✅ options OBS (dimensions/typo)
+    const mw = Math.floor(clampNum(qs.get("mw") || 420, 260, 2000));
+    document.documentElement.style.setProperty("--wrap-maxw", `${mw}px`);
+
+    const scale = clampNum(qs.get("scale") || 1, 0.5, 3);
+    document.documentElement.style.setProperty("--chat-scale", String(scale));
+
+    const font = Math.floor(clampNum(qs.get("font") || 22, 10, 60));
+    document.documentElement.style.setProperty("--chat-font", `${font}px`);
+
+    const lh = clampNum(qs.get("lh") || qs.get("line") || 1.3, 1.0, 2.0);
+    document.documentElement.style.setProperty("--chat-lh", String(lh));
 
     const stack = document.getElementById("stack");
 
-    // config runtime
-    const MAX = 7;           // ✅ demandé
-    const LIFE = 0;          // ✅ demandé: pas de TTL
+    // comportement
+    const MAX  = Math.floor(clampNum(qs.get("max") || 8, 1, 50));
+    const LIFE = Math.floor(clampNum(qs.get("life") || 0, 0, 3600)); // 0 = illimité
     let viewerSkinsLevel = 1;
 
     // cosmetics cache (si certains events n’envoient pas cosmetics à chaque fois)
     const COSMETICS = {}; // usernameLower -> cosmetics
+
+    // ✅ anti-doublons (history + live)
+    const SEEN = new Set();
 
     // title labels (copié de ton React)
     const TITLE_LABELS = {
@@ -444,8 +514,16 @@
     }
 
     function usernameEffectClass(effect){
-      const e = String(effect || "none").toLowerCase();
-      if (e === "rainbow") return "uname--rainbow";
+      const e = String(effect || "none").toLowerCase().trim();
+
+      // rainbow variants
+      if (e === "rainbow" || e === "rainbow_scroll" || e === "rainbow-scrolling" || e === "scrolling-rainbow")
+        return "uname--rainbow";
+
+      // chroma variants
+      if (e === "chroma" || e === "chroma_scroll" || e === "chroma-scrolling")
+        return "uname--chroma";
+
       if (e === "neon-outline-purple" || e === "neon_outline_purple") return "uname--neon-outline-purple";
       if (e === "gold") return "uname--gold";
       if (e === "underline-glowing" || e === "underline_glowing") return "uname--underline-glowing";
@@ -495,11 +573,31 @@
       while (stack.children.length > MAX) stack.removeChild(stack.firstElementChild);
     }
 
+    function reapOld(){
+      if (!LIFE || LIFE <= 0) return;
+      const now = Date.now();
+      const ttlMs = LIFE * 1000;
+      while (stack.firstElementChild) {
+        const el = stack.firstElementChild;
+        const ts = Number(el?.dataset?.ts || 0);
+        if (!ts || now - ts <= ttlMs) break;
+        stack.removeChild(el);
+      }
+    }
+
     function mkRow(m, animated){
       const cosmetics = m.cosmetics || null;
 
       const row = document.createElement("div");
       row.className = "chatMsgRow" + (animated ? " appear" : "");
+
+      // store ts for TTL
+      let tsMs = Date.now();
+      try{
+        const d = new Date(String(m.createdAt || ""));
+        if (Number.isFinite(d.getTime())) tsMs = d.getTime();
+      } catch {}
+      row.dataset.ts = String(tsMs);
 
       // frame (si lvl 3 => bloque cadrans / frames)
       const lvl = viewerSkinsLevel;
@@ -605,8 +703,18 @@
       const uname = document.createElement("div");
       uname.className = "chatUsername";
 
-      const unameEffect = cosmetics?.username?.effect ?? "none";
-      const unameColor  = cosmetics?.username?.color ?? null;
+      const unameEffect =
+        cosmetics?.username?.effect ??
+        cosmetics?.usernameEffect ??
+        cosmetics?.unameEffect ??
+        cosmetics?.effect ??
+        "none";
+
+      const unameColor =
+        cosmetics?.username?.color ??
+        cosmetics?.usernameColor ??
+        cosmetics?.unameColor ??
+        null;
 
       // lvl 2+: bloque couleurs pseudo
       const allowViewerNameColor = viewerSkinsLevel < 2;
@@ -651,10 +759,35 @@
       return row;
     }
 
-    function pushMsg(m){
-      const row = mkRow(m, true);
+    function pushOne(m, animated){
+      if (!m || !m.id) return;
+      if (SEEN.has(m.id)) return;
+      SEEN.add(m.id);
+
+      const row = mkRow(m, !!animated);
       stack.appendChild(row);
       clampStack();
+      reapOld();
+    }
+
+    function pushMany(list, animated){
+      const arr = (Array.isArray(list) ? list : [])
+        .map(normalizeIncoming)
+        .flat()
+        .filter(Boolean);
+
+      // tri asc (vieux -> récent) si possible
+      arr.sort((a,b) => {
+        const ta = new Date(String(a.createdAt||"")).getTime();
+        const tb = new Date(String(b.createdAt||"")).getTime();
+        return (Number.isFinite(ta)?ta:0) - (Number.isFinite(tb)?tb:0);
+      });
+
+      arr.slice(-MAX).forEach((x) => pushOne(x, animated));
+    }
+
+    function pushMsg(m){
+      pushOne(m, true);
     }
 
     function normalizeIncoming(payload){
@@ -744,6 +877,69 @@
       } catch {}
     }
 
+    function extractListFromJson(j){
+      if (!j) return null;
+      if (Array.isArray(j)) return j;
+      if (Array.isArray(j.messages)) return j.messages;
+      if (Array.isArray(j.items)) return j.items;
+      if (Array.isArray(j.history)) return j.history;
+      if (Array.isArray(j.rows)) return j.rows;
+      if (Array.isArray(j.data)) return j.data;
+      return null;
+    }
+
+    async function loadHistoryHttp(){
+      const slug = encodeURIComponent(SLUG);
+      const limit = encodeURIComponent(String(MAX));
+
+      const paths = [
+        `/public/chat/history?slug=${slug}&limit=${limit}`,
+        `/chat/history?slug=${slug}&limit=${limit}`,
+        `/public/chat/${slug}/history?limit=${limit}`,
+      ];
+
+      for (const p of paths){
+        try{
+          const r = await fetch(`${API_BASE}${p}`, {
+            headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : undefined
+          });
+          if(!r.ok) continue;
+          const j = await r.json().catch(() => null);
+          const list = extractListFromJson(j);
+          if(list && list.length){
+            pushMany(list, false);
+            return true;
+          }
+        } catch {}
+      }
+      return false;
+    }
+
+    function requestInitialHistory(sock){
+      const payloadA = { slug: SLUG, limit: MAX };
+      const payloadB = { streamerSlug: SLUG, limit: MAX };
+
+      const tryAck = (resp) => {
+        if (!resp) return;
+        const n = normalizeIncoming(resp);
+        if (Array.isArray(n)) pushMany(n, false);
+        else if (n) pushOne(n, false);
+      };
+
+      try { sock.emit("chat:history", payloadA, tryAck); } catch {}
+      try { sock.emit("chat:history", payloadB, tryAck); } catch {}
+      try { sock.emit("chat:get", payloadA, tryAck); } catch {}
+      try { sock.emit("chat:get", payloadB, tryAck); } catch {}
+      try { sock.emit("stream:history", payloadA, tryAck); } catch {}
+      try { sock.emit("stream:history", payloadB, tryAck); } catch {}
+
+      // fallback HTTP
+      window.setTimeout(() => {
+        if (stack.children.length > 0) return;
+        loadHistoryHttp();
+      }, 700);
+    }
+
     function connectSocket(){
       if(!SLUG) return;
 
@@ -761,12 +957,12 @@
         if (!n) return;
 
         if (Array.isArray(n)) {
-          // history: keep last MAX
-          n.slice(-MAX).forEach(pushMsg);
+          // history: pas d’anim “pop”
+          pushMany(n, false);
           return;
         }
 
-        // si event fournit slug, on filtre (utile si le serveur broadcast global)
+        // si event fournit slug, on filtre
         const evSlug =
           String(payload?.slug ?? payload?.streamerSlug ?? payload?.channelSlug ?? "").trim().toLowerCase();
         if (evSlug && evSlug !== SLUG.toLowerCase()) return;
@@ -775,11 +971,19 @@
       };
 
       sock.on("connect", () => {
-        // join stream room (déjà utilisé par follow goal)
-        try { sock.emit("stream:join", { slug: SLUG }, () => {}); } catch {}
-        // au cas où ton serveur attend un join chat dédié
-        try { sock.emit("chat:join", { slug: SLUG }, () => {}); } catch {}
-        try { sock.emit("chat:join", { streamerSlug: SLUG }, () => {}); } catch {}
+        const ack = (resp) => {
+          if (!resp) return;
+          const n = normalizeIncoming(resp);
+          if (Array.isArray(n)) pushMany(n, false);
+          else if (n) pushOne(n, false);
+        };
+
+        try { sock.emit("stream:join", { slug: SLUG }, ack); } catch {}
+        try { sock.emit("chat:join", { slug: SLUG }, ack); } catch {}
+        try { sock.emit("chat:join", { streamerSlug: SLUG }, ack); } catch {}
+
+        // ✅ demande explicite d’historique
+        requestInitialHistory(sock);
       });
 
       // écoute plusieurs noms d’events (robuste)
@@ -798,6 +1002,11 @@
     // ✅ init
     loadStreamerAppearance();
     connectSocket();
+
+    // TTL loop (si LIFE > 0)
+    if (LIFE > 0) {
+      window.setInterval(() => reapOld(), 1000);
+    }
 
     // si pas de slug => sample minimal
     if(!SLUG){
