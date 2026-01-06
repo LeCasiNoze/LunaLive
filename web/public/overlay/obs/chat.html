@@ -12,29 +12,15 @@
     :root{
       color-scheme: dark;
 
-      /* Fallbacks (seront remplacés par streamer appearance) */
+      /* Fallbacks (remplacés par streamer appearance) */
       --chat-name-color: #7c4dff;
       --chat-msg-color:  #ffffff;
 
-      /* width max (seule option exposée) */
+      /* overlay options */
       --wrap-maxw: 420px;
-
-      /* ✅ piloté par query params */
       --chat-scale: 1;
       --chat-font: 22px;
       --chat-lh: 1.3;
-
-      /* cards */
-      --gap: 8px;
-      --pad-x: 12px;
-      --pad-y: 10px;
-      --bg-row: rgba(0, 0, 0, 0.92);
-      --bd-row: 1px solid rgba(255,255,255,.10);
-      --rad: 14px;
-      --shadow: 0 10px 24px rgba(0,0,0,.35);
-
-      --txt-shadow-soft: 0 1px 2px rgba(0,0,0,.55);
-      --txt-shadow-strong: 0 1px 3px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.25);
     }
 
     html, body{
@@ -57,7 +43,7 @@
     .stack{
       display:flex;
       flex-direction:column;
-      gap: var(--gap);
+      gap: 8px;
       padding: 6px;
       width: var(--wrap-maxw);
       box-sizing:border-box;
@@ -67,174 +53,710 @@
       transform-origin: bottom left;
     }
 
+    /* =========================================================================
+       IMPORT: web/src/styles/40_chat.css (parties utiles overlay)
+       ========================================================================= */
+
+    .chat-username{ color: var(--chat-name-color); font-weight: 700; }
+    .chat-message{ color: var(--chat-msg-color); font-weight: 600; }
+
+    @keyframes chatFadeLeft {
+      from { opacity: 0; transform: translateX(-10px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .chat-fade-left{ animation: chatFadeLeft 180ms ease-out both; }
+
+    .chatScroll{
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .chatScroll::-webkit-scrollbar{ width: 0; height: 0; }
+
     .chatMsgRow{
-      position: relative;
-      display:block;
-      background: var(--bg-row);
-      border: var(--bd-row);
-      border-radius: var(--rad);
-      box-shadow: var(--shadow);
-      overflow:hidden;
-      will-change: transform, opacity, filter;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(17, 10, 23, 0.92);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+      padding: 10px 12px;
+      overflow: hidden;
+      will-change: transform, opacity;
     }
-
-    .chatMsgRow.appear{
-      opacity: 0;
-      transform: translateY(8px);
-      animation: pop .18s ease-out forwards;
-    }
-    @keyframes pop{ to { opacity:1; transform: translateY(0);} }
-
     .chatMsgInner{
       display:flex;
       gap: 10px;
-      padding: var(--pad-y) var(--pad-x);
       align-items:flex-start;
     }
 
-    /* avatar */
     .chatAvatarBorder{
-      width: 42px;
-      height: 42px;
+      width: 44px;
+      height: 44px;
       border-radius: 999px;
-      padding: 2px;
-      flex: none;
-      box-sizing:border-box;
-      border: 1px solid rgba(255,255,255,.14);
-      background: rgba(255,255,255,0.04);
-      box-shadow: 0 6px 18px rgba(0,0,0,.30);
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      display: grid;
+      place-items: center;
       position: relative;
+      flex: 0 0 auto;
+      overflow: visible; /* ✅ hat visible */
     }
 
     .chatAvatarCircle{
-      width: 100%;
-      height: 100%;
+      width: 38px;
+      height: 38px;
       border-radius: 999px;
-      overflow:hidden;
-      display:flex;
-      align-items:center;
-      justify-content:center;
+      display: grid;
+      place-items: center;
       font-weight: 950;
-      color: rgba(255,255,255,.92);
-      background: rgba(0,0,0,.35);
-      text-shadow: var(--txt-shadow-soft);
-      user-select:none;
+      font-size: 13px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.25);
+      overflow: hidden; /* ✅ crop image */
     }
 
     .chatAvatarImg{
-      width:100%;
-      height:100%;
-      object-fit:cover;
-      display:block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
     }
 
-    /* ✅ hat FIX (pas de travers) */
+    /* ✅ hat identique chat (centré, pas de travers) */
     .chatHatEmoji{
-      position:absolute;
-      right:-6px;
-      top:-10px;
-      font-size: 18px;
-      line-height: 1;
-      filter: drop-shadow(0 2px 6px rgba(0,0,0,.7));
-      transform: rotate(0deg);
-      pointer-events:none;
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 16px;
+      filter: drop-shadow(0 8px 16px rgba(0,0,0,0.55));
+      z-index: 3;
+      pointer-events: none;
     }
 
-    /* content */
-    .chatMsgContent{ flex:1; min-width:0; }
+    .avatarBorder--luna{
+      border-color: rgba(126,76,179,0.65);
+      box-shadow: 0 0 0 2px rgba(126,76,179,0.12), 0 18px 45px rgba(63,86,203,0.12);
+    }
+    .avatarBorder--diamond{
+      border-color: rgba(190,240,255,0.60);
+      box-shadow: 0 0 0 2px rgba(190,240,255,0.10);
+    }
+    .avatarBorder--ghost{
+      border-color: rgba(63,86,203,0.60);
+      box-shadow: 0 0 0 2px rgba(63,86,203,0.10);
+    }
+
+    .chatMsgContent{ min-width: 0; flex: 1; }
 
     .chatMsgTop{
       display:flex;
-      align-items:baseline;
-      justify-content:space-between;
+      justify-content: space-between;
       gap: 10px;
+      align-items:flex-start;
     }
-
     .chatMsgTopLeft{
+      min-width: 0;
       display:flex;
-      align-items:baseline;
       gap: 8px;
-      min-width:0;
-      flex-wrap:wrap;
-    }
-
-    .chatBadges{
-      display:inline-flex;
       align-items:center;
-      gap: 6px;
-      flex-wrap:wrap;
+      flex-wrap: wrap;
+    }
+    .chatTimestamp{
+      color: rgba(255,255,255,0.55);
+      font-size: 12px;
+      font-weight: 800;
+      flex: 0 0 auto;
+      white-space: nowrap;
     }
 
+    .chatBadges{ display:flex; gap: 6px; flex-wrap: wrap; }
     .chatBadge{
       display:inline-flex;
       align-items:center;
       gap: 6px;
-      padding: 2px 8px;
+      padding: 4px 8px;
       border-radius: 999px;
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 950;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      border: 1px solid rgba(255,255,255,.18);
+      border: 1px solid rgba(255,255,255,0.14);
       background: rgba(255,255,255,0.06);
-      color: rgba(255,255,255,.92);
-      text-shadow: var(--txt-shadow-soft);
-      white-space:nowrap;
+      color: rgba(255,255,255,0.92);
+      white-space: nowrap;
       line-height: 1.6;
     }
-    .chatBadgeIcon{ filter: drop-shadow(0 1px 3px rgba(0,0,0,.55)); }
+    .chatBadgeIcon{ opacity: 0.9; }
+
+    .badge--bronze{ opacity: 0.9; }
+    .badge--silver{ border-color: rgba(180,140,255,0.40); }
+    .badge--gold{ border-color: rgba(255,210,120,0.40); }
+    .badge--master{ border-color: rgba(190,240,255,0.45); box-shadow: 0 0 0 1px rgba(190,240,255,0.10); }
 
     .chatUsername{
       font-weight: 950;
-      font-size: calc(var(--chat-font) * 0.90);
-      line-height: 1.1;
-      color: var(--uname-color, var(--chat-name-color));
-      text-shadow: var(--txt-shadow-soft);
-      white-space: nowrap;
+      font-size: 14px; /* overridden in OBS section */
+      color: var(--uname-color, var(--chat-name-color, #ffd54a));
+      max-width: 100%;
       overflow:hidden;
-      text-overflow:ellipsis;
-      max-width: 320px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      position: relative;
+      display: inline-block; /* ✅ nécessaire pour le neon glow */
     }
 
-    .chatTimestamp{
-      font-size: 12px;
-      opacity: .65;
-      color: rgba(255,255,255,.9);
-      flex: 0 0 auto;
-      text-shadow: var(--txt-shadow-soft);
-      white-space:nowrap;
-    }
-
-    /* ✅ title: sobre + ghost purple outline, et surtout PAS D'ANIM */
     .chatTitle{
-      margin-top: 2px;
-      font-size: calc(var(--chat-font) * 0.58);
-      line-height: 1.05;
-      font-style: normal;
-      font-weight: 950;
-      text-decoration: none;
-      opacity: 0.92;
-
-      color: rgba(12,12,12,.88);
-      -webkit-text-stroke: 0.75px rgba(124,77,255,0.70);
-      text-shadow: 0 1px 2px rgba(0,0,0,.55);
-
-      animation: none !important;
-      text-shadow: 0 1px 2px rgba(0,0,0,.55) !important;
-      filter: none !important;
+      display: inline-block;
+      max-width: 100%;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
+
+    .title--bronze{ opacity: 0.9; }
+    .title--silver{ color: rgba(180,140,255,0.95); }
+    .title--gold{ color: rgba(255,210,120,0.95); }
+    .title--master{ color: rgba(190,240,255,0.95); }
 
     .chatBodyText{
       margin-top: 6px;
-      color: var(--chat-msg-color);
+      color: var(--chat-msg-color, rgba(255,255,255,0.92));
       font-weight: 700;
+      font-size: 13px; /* overridden in OBS section */
+      line-height: 1.25; /* overridden in OBS section */
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      hyphens: auto;
+    }
+
+    /* =========================================================================
+       IMPORT: web/src/styles/50_cosmetics.css (parties utiles overlay)
+       ========================================================================= */
+
+    /* Titles under username — DEFAULT (pro, lisible, DA) */
+    .chatTitle{
+      margin-top: 4px;
+      font-weight: 850;
+      font-size: 12.5px; /* overridden in OBS section */
+      opacity: 0.95;
+
+      width: fit-content;
+      max-width: 100%;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+
+      font-style: italic;
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+
+      color: rgba(142,197,255,0.92);                 /* ✅ bleu default */
+      text-decoration-color: rgba(142,197,255,0.55); /* ✅ underline bleu */
+    }
+
+    .title--silver{
+      color: rgba(142,197,255,0.92);
+      text-decoration-color: rgba(142,197,255,0.55);
+    }
+    .title--bronze{
+      color: rgba(142,197,255,0.72);
+      text-decoration-color: rgba(142,197,255,0.35);
+    }
+    .title--gold{
+      color: rgba(255,210,120,0.92);
+      text-decoration-color: rgba(255,210,120,0.55);
+    }
+    .title--master{
+      color: rgba(190,240,255,0.92);
+      text-decoration-color: rgba(190,240,255,0.55);
+      text-shadow: 0 0 10px rgba(190,240,255,0.08);
+    }
+
+    /* Frames */
+    .chatFrame--lunaPetals{
+      position: relative;
+      border: 1px solid transparent;
+      background:
+        linear-gradient(rgba(10, 8, 14, 0.94), rgba(10, 8, 14, 0.94)) padding-box,
+        linear-gradient(135deg, rgba(126,76,179,0.55), rgba(63,86,203,0.35)) border-box;
+      box-shadow: 0 0 0 1px rgba(126,76,179,0.10), 0 18px 50px rgba(0,0,0,0.35);
+    }
+    .chatFrame--lunaPetals::after{
+      content:"";
+      position:absolute;
+      inset: 0;
+      border-radius: 14px;
+      background:
+        radial-gradient(220px 120px at 15% 0%, rgba(126,76,179,0.18), transparent 65%),
+        radial-gradient(220px 120px at 90% 10%, rgba(63,86,203,0.14), transparent 60%);
+      pointer-events:none;
+      opacity: 0.9;
+    }
+
+    .chatFrame--gold{
+      position: relative;
+      border: 1px solid transparent;
+      background:
+        linear-gradient(rgba(10, 8, 14, 0.94), rgba(10, 8, 14, 0.94)) padding-box,
+        linear-gradient(135deg, rgba(255,210,120,0.45), rgba(126,76,179,0.30)) border-box;
+      box-shadow: 0 0 0 1px rgba(255,210,120,0.08), 0 18px 50px rgba(0,0,0,0.35);
+    }
+    .chatFrame--gold::after{
+      content:"";
+      position:absolute;
+      inset: 0;
+      border-radius: 14px;
+      background:
+        radial-gradient(220px 120px at 15% 0%, rgba(255,210,120,0.10), transparent 65%),
+        radial-gradient(220px 120px at 90% 10%, rgba(126,76,179,0.10), transparent 60%);
+      pointer-events:none;
+      opacity: 0.9;
+    }
+
+    .chatFrame--eclipse{
+      position: relative;
+      border: 1px solid transparent;
+      background:
+        linear-gradient(rgba(10, 8, 14, 0.94), rgba(10, 8, 14, 0.94)) padding-box,
+        linear-gradient(135deg, rgba(126,76,179,0.55), rgba(63,86,203,0.42)) border-box;
+      box-shadow: 0 0 0 1px rgba(126,76,179,0.10), 0 18px 50px rgba(0,0,0,0.35);
+    }
+    .chatFrame--eclipse::after{
+      content:"";
+      position:absolute;
+      inset: 0;
+      border-radius: 14px;
+      background:
+        radial-gradient(220px 120px at 15% 0%, rgba(126,76,179,0.14), transparent 65%),
+        radial-gradient(220px 120px at 90% 10%, rgba(63,86,203,0.12), transparent 60%);
+      pointer-events:none;
+      opacity: 0.9;
+    }
+
+    .chatFrame--lotusCrown{
+      position: relative;
+      border: 1px solid transparent;
+      background:
+        linear-gradient(rgba(10, 8, 14, 0.94), rgba(10, 8, 14, 0.94)) padding-box,
+        linear-gradient(135deg, rgba(63,86,203,0.50), rgba(190,240,255,0.20)) border-box;
+      box-shadow: 0 0 0 1px rgba(63,86,203,0.10), 0 18px 50px rgba(0,0,0,0.35);
+    }
+    .chatFrame--lotusCrown::after{
+      content:"";
+      position:absolute;
+      inset: 0;
+      border-radius: 14px;
+      background:
+        radial-gradient(220px 120px at 15% 0%, rgba(63,86,203,0.12), transparent 65%),
+        radial-gradient(220px 120px at 90% 10%, rgba(190,240,255,0.10), transparent 60%);
+      pointer-events:none;
+      opacity: 0.9;
+    }
+
+    /* reduced motion */
+    @media (prefers-reduced-motion: reduce){
+      .username--rainbow,
+      .username--neon,
+      .username--chroma,
+      .username--gold{
+        animation: none !important;
+      }
+      .username--neon::after,
+      .username--neon::before,
+      .username--chroma::after{
+        animation: none !important;
+      }
+      .chatTitle[data-title-code],
+      .chatTitle[data-title-code]::before,
+      .chatTitle[data-title-code]::after{
+        animation: none !important;
+        transition: none !important;
+      }
+    }
+
+    /* RAINBOW */
+    @keyframes unameRainbowMove {
+      0%   { background-position: 0% 50%; }
+      100% { background-position: 220% 50%; }
+    }
+    .username--rainbow{
+      color: transparent;
+      background-image: linear-gradient(
+        90deg,
+        #ff4d6d 0%,
+        #ff9f1c 14%,
+        #ffd54a 28%,
+        #2de2a6 42%,
+        #3F56CB 56%,
+        #7E4CB3 70%,
+        #ff4d6d 84%,
+        #ffd54a 100%
+      );
+      background-size: 240% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      animation: unameRainbowMove 3.2s linear infinite;
+    }
+
+    /* CHROMA (brand shimmer) */
+    @keyframes chromaShimmer {
+      0%   { background-position: 0% 50%, -120% 50%; }
+      100% { background-position: 180% 50%, 220% 50%; }
+    }
+    .username--chroma{
+      color: transparent;
+      background-image:
+        linear-gradient(
+          90deg,
+          rgba(126,76,179,1) 0%,
+          rgba(63,86,203,1) 40%,
+          rgba(126,76,179,1) 80%,
+          rgba(63,86,203,1) 100%
+        ),
+        linear-gradient(
+          90deg,
+          rgba(255,255,255,0.00) 0%,
+          rgba(255,255,255,0.55) 45%,
+          rgba(255,255,255,0.00) 60%
+        );
+      background-size: 220% 100%, 140% 100%;
+      background-blend-mode: screen;
+      -webkit-background-clip: text;
+      background-clip: text;
+      animation: chromaShimmer 2.4s linear infinite;
+      text-shadow: 0 0 14px rgba(126,76,179,0.10);
+      position: relative;
+    }
+    /* underline discret sous chroma (option "soulignage") */
+    @keyframes chromaUnderlineMove{
+      0%{ transform: scaleX(0); opacity: 0; }
+      35%{ transform: scaleX(1); opacity: .55; }
+      70%{ transform: scaleX(1); opacity: .55; }
+      100%{ transform: scaleX(0); opacity: 0; }
+    }
+    .username--chroma::after{
+      content:"";
+      position:absolute;
+      left:0; right:0;
+      bottom:-3px;
+      height:2px;
+      border-radius: 999px;
+      background: rgba(124,77,255,0.75);
+      transform-origin: left;
+      animation: chromaUnderlineMove 2.2s ease-in-out infinite;
+      pointer-events:none;
+    }
+
+    /* GOLD */
+    @keyframes goldGlintMove {
+      0%   { background-position: 0% 50%, -120% 50%; }
+      100% { background-position: 140% 50%, 220% 50%; }
+    }
+    .username--gold{
+      color: transparent;
+      background-image:
+        linear-gradient(
+          90deg,
+          #4b3516 0%,
+          #8c6a2a 14%,
+          #caa25a 28%,
+          #efd9a8 45%,
+          #fff2d2 52%,
+          #e4c784 66%,
+          #b38a3f 82%,
+          #4b3516 100%
+        ),
+        linear-gradient(
+          90deg,
+          rgba(255,255,255,0) 0%,
+          rgba(255,255,255,.55) 48%,
+          rgba(255,255,255,0) 60%
+        );
+      background-size: 170% 100%, 70% 100%;
+      background-blend-mode: normal, screen;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-stroke: 0.30px rgba(255, 226, 160, 0.22);
+      text-shadow:
+        0 0 2px rgba(255, 215, 150, 0.25),
+        0 0 6px rgba(255, 220, 160, 0.18);
+      animation: goldGlintMove 3.6s ease-in-out infinite;
+    }
+
+    /* NEON (glow + underline animé) */
+    .username--neon{
+      color: #e4d9ff;
+      -webkit-text-stroke: 0.5px rgba(168, 85, 247, 0.85);
+      text-shadow:
+        0 0 3px rgba(168, 85, 247, 0.95),
+        0 0 7px rgba(139, 92, 246, 0.8),
+        0 0 12px rgba(129, 140, 248, 0.7);
+      position: relative;
+    }
+    @keyframes neonUnderlinePulse{
+      0%{ transform: scaleX(0); opacity: 0; }
+      45%{ transform: scaleX(1); opacity: .80; }
+      55%{ transform: scaleX(1); opacity: .80; }
+      100%{ transform: scaleX(0); opacity: 0; }
+    }
+    .username--neon::after{
+      content:"";
+      position:absolute;
+      left:0; right:0;
+      bottom:-4px;
+      height:2px;
+      border-radius: 999px;
+      background: rgba(124,77,255,0.90);
+      transform-origin: left;
+      animation: neonUnderlinePulse 1.8s ease-in-out infinite;
+      pointer-events:none;
+      filter: drop-shadow(0 0 8px rgba(124,77,255,0.55));
+    }
+
+    /* HARD FIX — un titre ne doit JAMAIS récupérer l'effet du pseudo */
+    .chatTitle{
+      filter: none !important;
+      text-shadow: none !important;
+      -webkit-text-fill-color: currentColor !important;
+    }
+    .chatTitle.username--rainbow,
+    .chatTitle.username--chroma,
+    .chatTitle.username--gold,
+    .chatTitle.username--neon{
+      animation: none !important;
+      background-image: none !important;
+      background-size: auto !important;
+      background-position: 0% 50% !important;
+      color: rgba(142,197,255,0.92) !important;
+      -webkit-text-fill-color: currentColor !important;
+      -webkit-background-clip: initial !important;
+      background-clip: initial !important;
+      -webkit-text-stroke: 0 !important;
+      text-shadow: none !important;
+    }
+
+    /* Title FX (si utilisés par le shop) */
+    @keyframes titleShimmer{
+      0%{ background-position: 140% 0; }
+      100%{ background-position: -140% 0; }
+    }
+    .titleFx--shimmer{
+      color: transparent !important;
+      background-image: linear-gradient(
+        90deg,
+        rgba(142,197,255,0.55) 0%,
+        rgba(255,255,255,0.95) 35%,
+        rgba(142,197,255,0.55) 70%,
+        rgba(142,197,255,0.55) 100%
+      );
+      background-size: 240% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      animation: titleShimmer 2.2s linear infinite;
+    }
+
+    @keyframes titleAurora{
+      0%{ background-position: 0% 50%; }
+      100%{ background-position: 220% 50%; }
+    }
+    .titleFx--aurora{
+      color: transparent !important;
+      background-image: linear-gradient(
+        90deg,
+        rgba(126,76,179,1) 0%,
+        rgba(63,86,203,1) 40%,
+        rgba(190,240,255,1) 70%,
+        rgba(126,76,179,1) 100%
+      );
+      background-size: 240% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      animation: titleAurora 3.2s linear infinite;
+    }
+
+    /* TITLES (succès) — via data-title-code */
+    .chatTitle[data-title-code]{
+      position: relative;
+      display: inline-block;
+      will-change: transform, opacity;
+      -webkit-text-fill-color: currentColor !important;
+    }
+
+    @keyframes titleRatusTwitch{
+      0%, 92%, 100% { transform: translateX(0) rotate(0deg); }
+      93% { transform: translateX(-1px) rotate(-0.4deg); }
+      94% { transform: translateX( 1px) rotate( 0.4deg); }
+      95% { transform: translateX(-1px) rotate(-0.2deg); }
+      96% { transform: translateX(0) rotate(0deg); }
+    }
+    .chatTitle[data-title-code="title_ratus"]{
+      color: rgba(190, 198, 210, 0.92) !important;
+      text-decoration-color: rgba(190, 198, 210, 0.55) !important;
+      animation: titleRatusTwitch 7.5s ease-in-out infinite !important;
+    }
+
+    @keyframes titleTourneSweep{
+      from { background-position: 200% 0; }
+      to   { background-position: -200% 0; }
+    }
+    .chatTitle[data-title-code="title_ca_tourne"]{
+      color: rgba(120, 224, 255, 0.92) !important;
+      text-decoration-color: rgba(120, 224, 255, 0.55) !important;
+    }
+    .chatTitle[data-title-code="title_ca_tourne"]::after{
+      content:"";
+      position:absolute;
+      left: 0; right: 0;
+      bottom: -2px;
+      height: 2px;
+      border-radius: 999px;
+      opacity: 0.80;
+      pointer-events:none;
+      background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255,255,255,0.16) 35%,
+        rgba(120,224,255,0.80) 50%,
+        rgba(255,255,255,0.16) 65%,
+        transparent 100%
+      );
+      background-size: 220% 100%;
+      animation: titleTourneSweep 2.8s linear infinite !important;
+    }
+
+    @keyframes titleViewerScan{
+      0%, 70%   { transform: translateX(-130%); opacity: 0; }
+      78%       { opacity: 0.30; }
+      92%       { transform: translateX(130%); opacity: 0.30; }
+      100%      { transform: translateX(130%); opacity: 0; }
+    }
+    .chatTitle[data-title-code="title_vrai_viewer"]{
+      color: rgba(142,197,255,0.92) !important;
+      text-decoration-color: rgba(142,197,255,0.55) !important;
+    }
+    .chatTitle[data-title-code="title_vrai_viewer"]::before{
+      content:"";
+      position:absolute;
+      inset: 0;
+      pointer-events:none;
+      border-radius: 8px;
+      mix-blend-mode: screen;
+      background: linear-gradient(120deg,
+        transparent 0%,
+        rgba(255,255,255,0.22) 45%,
+        rgba(142,197,255,0.18) 52%,
+        rgba(255,255,255,0.22) 58%,
+        transparent 100%
+      );
+      transform: translateX(-130%);
+      animation: titleViewerScan 5.2s ease-in-out infinite !important;
+    }
+
+    @keyframes titleNoLifeBreathe{
+      0%, 100% { opacity: 0.78; transform: translateY(0); }
+      50%      { opacity: 1;    transform: translateY(0.6px); }
+    }
+    .chatTitle[data-title-code="title_no_life"]{
+      color: rgba(168, 140, 255, 0.92) !important;
+      text-decoration-color: rgba(168, 140, 255, 0.55) !important;
+      animation: titleNoLifeBreathe 3.2s ease-in-out infinite !important;
+    }
+
+    @keyframes titleBatSignal{
+      0%, 74%   { transform: translateX(-140%); opacity: 0; }
+      80%       { opacity: 0.28; }
+      95%       { transform: translateX(140%);  opacity: 0.28; }
+      100%      { transform: translateX(140%);  opacity: 0; }
+    }
+    .chatTitle[data-title-code="title_batman"]{
+      color: rgba(255, 211, 90, 0.92) !important;
+      text-decoration-color: rgba(255, 211, 90, 0.55) !important;
+    }
+    .chatTitle[data-title-code="title_batman"]::before{
+      content:"";
+      position:absolute;
+      inset: -2px -8px;
+      pointer-events:none;
+      border-radius: 10px;
+      mix-blend-mode: screen;
+      background: radial-gradient(circle at 30% 50%,
+        rgba(255,255,255,0.22) 0%,
+        rgba(255,255,255,0.10) 28%,
+        transparent 60%
+      );
+      transform: translateX(-140%);
+      animation: titleBatSignal 6.2s ease-in-out infinite !important;
+    }
+
+    /* Shop titles (optionnels) */
+    @keyframes titleMoulaSheen{
+      0%, 78%   { transform: translateX(-140%) rotate(12deg); opacity: 0; }
+      82%       { opacity: 0.22; }
+      96%       { transform: translateX(140%)  rotate(12deg); opacity: 0.22; }
+      100%      { transform: translateX(140%)  rotate(12deg); opacity: 0; }
+    }
+    .chatTitle[data-title-code="title_bigmoula"]{
+      color: rgba(110, 235, 170, 0.92) !important;
+      text-decoration-color: rgba(110, 235, 170, 0.55) !important;
+    }
+    .chatTitle[data-title-code="title_bigmoula"]::before{
+      content:"";
+      position:absolute;
+      top: -6px; bottom: -6px;
+      left: -25%;
+      width: 55%;
+      pointer-events:none;
+      border-radius: 12px;
+      mix-blend-mode: screen;
+      background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255,255,255,0.22) 45%,
+        rgba(255,255,255,0.08) 55%,
+        transparent 100%
+      );
+      transform: translateX(-140%) rotate(12deg);
+      animation: titleMoulaSheen 7.2s ease-in-out infinite !important;
+    }
+
+    @keyframes titleLunaGlow{
+      0%, 100% { text-shadow: 0 0 0 rgba(142,197,255,0.0); }
+      50%      { text-shadow: 0 0 10px rgba(142,197,255,0.14); }
+    }
+    .chatTitle[data-title-code="title_lunaking"]{
+      color: rgba(190, 240, 255, 0.92) !important;
+      text-decoration-color: rgba(190, 240, 255, 0.55) !important;
+      animation: titleLunaGlow 2.9s ease-in-out infinite !important;
+    }
+
+    @keyframes titleAllInPulse{
+      0%, 78%, 100% { transform: scale(1); }
+      82%           { transform: scale(1.06); }
+      86%           { transform: scale(1); }
+      90%           { transform: scale(1.035); }
+      94%           { transform: scale(1); }
+    }
+    .chatTitle[data-title-code="title_allin_man"]{
+      color: rgba(255, 140, 105, 0.92) !important;
+      text-decoration-color: rgba(255, 140, 105, 0.55) !important;
+      animation: titleAllInPulse 4.0s ease-in-out infinite !important;
+    }
+
+    /* =========================================================================
+       OBS sizing overrides (gardent le rendu, juste scalable)
+       ========================================================================= */
+    .stack .chatUsername{
+      font-size: calc(var(--chat-font) * 0.90);
+    }
+    .stack .chatBodyText{
       font-size: var(--chat-font);
       line-height: var(--chat-lh);
-      text-shadow: var(--txt-shadow-strong);
-      white-space: normal;
-      overflow-wrap: anywhere;
-      word-break: normal;
-      hyphens: auto;
+    }
+    .stack .chatTitle{
+      font-size: calc(var(--chat-font) * 0.58);
+    }
+    .stack .chatTimestamp{
+      font-size: calc(var(--chat-font) * 0.55);
+    }
+    .stack .chatBadge{
+      font-size: calc(var(--chat-font) * 0.42);
+      padding: 2px 8px;
     }
 
     /* emotes */
@@ -246,120 +768,12 @@
       margin: 0 0.05em;
       filter: drop-shadow(0 0 4px rgba(0,0,0,0.7));
     }
-
-    /* username effects (subset utile) */
-    .uname--rainbow{
-      background: linear-gradient(90deg,#ff5252,#ffeb3b,#69f0ae,#40c4ff,#7c4dff,#ff5252);
-      background-size: 300% 100%;
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent !important;
-      animation: rainbowShift 4s linear infinite;
-      text-shadow: 0 0 6px rgba(0,0,0,0.7);
-    }
-    @keyframes rainbowShift { 0%{background-position:0% 50%} 100%{background-position:300% 50%} }
-
-    /* ✅ chroma (arc-en-ciel défilant + underline) */
-    .uname--chroma{
-      background: linear-gradient(90deg,#ff5252,#ffeb3b,#69f0ae,#40c4ff,#7c4dff,#ff5252);
-      background-size: 350% 100%;
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent !important;
-      animation: chromaShift 3.6s linear infinite;
-      text-shadow: 0 0 6px rgba(0,0,0,0.7);
-      position: relative;
-    }
-    .uname--chroma::after{
-      content:"";
-      position:absolute;
-      left:0; right:0;
-      bottom:-3px;
-      height:2px;
-      background: linear-gradient(90deg,#ff5252,#ffeb3b,#7c4dff);
-      background-size: 200% 100%;
-      animation: chromaLine 1.5s ease-in-out infinite;
-      opacity: .90;
-    }
-    @keyframes chromaShift{
-      0%{background-position:0% 50%}
-      100%{background-position:350% 50%}
-    }
-    @keyframes chromaLine{
-      0%{background-position:100% 0}
-      50%{background-position:0 0}
-      100%{background-position:100% 0}
-    }
-
-    .uname--neon-outline-purple{
-      color: #e4d9ff !important;
-      -webkit-text-stroke: 0.6px rgba(168, 85, 247, 0.85);
-      text-shadow:
-        0 0 3px rgba(168, 85, 247, 0.95),
-        0 0 7px rgba(139, 92, 246, 0.8),
-        0 0 12px rgba(129, 140, 248, 0.7);
-    }
-
-    .uname--gold{
-      color: #ffd700 !important;
-      text-shadow: 0 0 2px rgba(255,215,0,.8), 0 0 6px rgba(255,223,0,.7), 0 0 10px rgba(255,215,0,.5);
-    }
-
-    .uname--underline-glowing{
-      color: #ffffff !important;
-      text-decoration: underline;
-      text-decoration-color: #7c4dff;
-      text-shadow: 0 0 5px rgba(124,77,255,1);
-      position: relative;
-    }
-    .uname--underline-glowing::after{
-      content:"";
-      position:absolute;
-      bottom:-2px; left:0; right:0;
-      height:2px;
-      background: linear-gradient(90deg,#ff5252,#ffeb3b,#7c4dff);
-      animation: glowingLine 1.5s ease-in-out infinite;
-      background-size:200% 100%;
-      opacity:.95;
-    }
-    @keyframes glowingLine{
-      0%{background-position:100% 0}
-      50%{background-position:0 0}
-      100%{background-position:100% 0}
-    }
-
-    .uname--underlined-neon{
-      color:#ffffff !important;
-      text-shadow: 0 0 8px rgba(124,77,255,.9), 0 0 14px rgba(124,77,255,.8);
-      position: relative;
-    }
-    .uname--underlined-neon::after{
-      content:"";
-      position:absolute;
-      bottom:-4px; left:0;
-      width:100%; height:2px;
-      background-color:#7c4dff;
-      opacity:.7;
-      animation: neonUnderline 1.5s ease-in-out infinite;
-      transform-origin:left;
-    }
-    @keyframes neonUnderline{
-      0%{transform:scaleX(0)}
-      50%{transform:scaleX(1)}
-      100%{transform:scaleX(0)}
-    }
-
-    /* simple frame highlight */
-    .frame--glow-purple{
-      box-shadow: 0 10px 24px rgba(0,0,0,.35), 0 0 18px rgba(124,77,255,.22);
-      border-color: rgba(124,77,255,.22);
-    }
   </style>
 </head>
 
 <body>
   <div id="root">
-    <div id="stack" class="stack" aria-live="polite"></div>
+    <div id="stack" class="stack chatScroll" aria-live="polite"></div>
   </div>
 
   <!-- socket.io from API -->
@@ -420,13 +834,10 @@
     const LIFE = Math.floor(clampNum(qs.get("life") || 0, 0, 3600)); // 0 = illimité
     let viewerSkinsLevel = 1;
 
-    // cosmetics cache (si certains events n’envoient pas cosmetics à chaque fois)
+    // cosmetics cache
     const COSMETICS = {}; // usernameLower -> cosmetics
 
-    // ✅ anti-doublons (history + live)
-    const SEEN = new Set();
-
-    // title labels (copié de ton React)
+    // title labels (compat)
     const TITLE_LABELS = {
       title_ratus: "Ratus",
       title_ca_tourne: "Ça tourne !",
@@ -465,11 +876,13 @@
       });
     }
 
-    function getInitials(name){
-      const s = String(name||"").trim();
-      if(!s) return "??";
-      const parts = s.split(/\s+/).slice(0,2);
-      return parts.map(p=>p[0]?.toUpperCase() || "").join("") || "??";
+    function getInitials(username){
+      const s = (username || "?").trim();
+      if (!s) return "?";
+      const parts = s.split(/[\s_\-]+/g).filter(Boolean);
+      const a = parts[0]?.[0] ?? s[0];
+      const b = parts[1]?.[0] ?? s[1] ?? "";
+      return (a + b).toUpperCase();
     }
 
     function formatHHMM(iso){
@@ -483,6 +896,20 @@
         const d = new Date();
         return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
       }
+    }
+
+    function titleTierClass(tier){
+      const t = String(tier || "").trim().toLowerCase();
+      if (!t) return "";
+      if (t === "bronze" || t === "silver" || t === "gold" || t === "master") return `title--${t}`;
+      return "";
+    }
+
+    function titleEffectClass(effect){
+      const e = String(effect || "").trim().toLowerCase();
+      if (e === "shimmer") return "titleFx--shimmer";
+      if (e === "aurora") return "titleFx--aurora";
+      return "";
     }
 
     function normalizeTitle(title){
@@ -505,7 +932,9 @@
         code.replace(/^title_/, "").replace(/_/g," ").replace(/\b\w/g, m => m.toUpperCase());
 
       const tier = typeof title?.tier === "string" ? title.tier : null;
-      return { code, text, tier };
+      const effect = typeof title?.effect === "string" ? title.effect : null;
+
+      return { code, text, tier, effect };
     }
 
     function badgeLabel(b){
@@ -514,44 +943,43 @@
     }
 
     function usernameEffectClass(effect){
-      const e = String(effect || "none").toLowerCase().trim();
+      const e = String(effect || "").trim().toLowerCase();
+      if (!e || e === "none" || e === "default") return "";
 
-      // rainbow variants
-      if (e === "rainbow" || e === "rainbow_scroll" || e === "rainbow-scrolling" || e === "scrolling-rainbow")
-        return "uname--rainbow";
+      // compat codes catalog (site)
+      if (e === "rainbow" || e === "rainbow_scroll" || e === "uanim_rainbow_scroll") return "username--rainbow";
+      if (e === "neon_underline" || e === "uanim_neon_underline") return "username--neon";
+      if (e === "chroma" || e === "uanim_chroma_toggle") return "username--chroma";
+      if (e === "gold" || e === "uanim_gold_toggle") return "username--gold";
 
-      // chroma variants
-      if (e === "chroma" || e === "chroma_scroll" || e === "chroma-scrolling")
-        return "uname--chroma";
+      // compat extra (si jamais)
+      if (e === "rainbow-scrolling" || e === "scrolling-rainbow") return "username--rainbow";
+      if (e === "chroma_scroll" || e === "chroma-scrolling") return "username--chroma";
 
-      if (e === "neon-outline-purple" || e === "neon_outline_purple") return "uname--neon-outline-purple";
-      if (e === "gold") return "uname--gold";
-      if (e === "underline-glowing" || e === "underline_glowing") return "uname--underline-glowing";
-      if (e === "underlined-neon" || e === "underlined_neon") return "uname--underlined-neon";
       return "";
     }
 
     function frameClass(frameId){
-      const f = String(frameId || "").trim().toLowerCase();
-      if (!f || f === "none") return "";
-      if (f.includes("glow") && f.includes("purple")) return "frame--glow-purple";
+      const raw = String(frameId || "").trim();
+      if (!raw || raw === "none") return "";
+
+      const k = raw.toLowerCase().startsWith("frame_") ? raw.slice(6).toLowerCase() : raw.toLowerCase();
+
+      if (k === "luna_petals") return "chatFrame--lunaPetals";
+      if (k === "gold" || k === "gold_shop") return "chatFrame--gold";
+      if (k === "eclipse" || k === "eclipse_master") return "chatFrame--eclipse";
+      if (k === "lotus_crown" || k === "lotus_event") return "chatFrame--lotusCrown";
+
       return "";
     }
 
-    function avatarBorderColor(borderId){
+    function avatarBorderClass(borderId){
       const b = String(borderId || "").trim().toLowerCase();
-      if (!b) return null;
-      const m = {
-        ghost_purple: "#7c4dff",
-        purple: "#7c4dff",
-        blue_lotus: "#3b82f6",
-        ocean: "#06b6d4",
-        gold: "#facc15",
-        diamond: "#67e8f9",
-        emerald: "#34d399",
-        silver: "#d1d5db",
-      };
-      return m[b] || null;
+      if (!b || b === "none") return "";
+      if (b === "luna") return "avatarBorder--luna";
+      if (b === "diamond") return "avatarBorder--diamond";
+      if (b === "ghost") return "avatarBorder--ghost";
+      return "";
     }
 
     function hatEmojiFromAvatar(avatar){
@@ -585,13 +1013,13 @@
       }
     }
 
-    function mkRow(m, animated){
+    function mkRow(m){
       const cosmetics = m.cosmetics || null;
 
       const row = document.createElement("div");
-      row.className = "chatMsgRow" + (animated ? " appear" : "");
+      row.className = "chatMsgRow chat-fade-left";
 
-      // store ts for TTL
+      // ts for TTL
       let tsMs = Date.now();
       try{
         const d = new Date(String(m.createdAt || ""));
@@ -599,7 +1027,7 @@
       } catch {}
       row.dataset.ts = String(tsMs);
 
-      // frame (si lvl 3 => bloque cadrans / frames)
+      // frames (lvl 3 => block frames)
       const lvl = viewerSkinsLevel;
       const allowFrames = lvl < 3;
       const frameId = cosmetics?.frame?.frameId || cosmetics?.frameId || null;
@@ -612,21 +1040,18 @@
       inner.className = "chatMsgInner";
       row.appendChild(inner);
 
-      // avatar border
+      // avatar
       const avaBorder = document.createElement("div");
       avaBorder.className = "chatAvatarBorder";
 
       const avatar = cosmetics?.avatar || {};
       const borderId = avatar?.borderId || cosmetics?.avatarBorderId || null;
-      const borderColor =
-        avatar?.borderColor ||
-        cosmetics?.avatarBorderColor ||
-        avatarBorderColor(borderId);
 
-      if (borderColor) {
-        avaBorder.style.borderColor = borderColor;
-        avaBorder.style.boxShadow = `0 6px 18px rgba(0,0,0,.30), 0 0 14px ${borderColor}22`;
-      }
+      const bc = avatarBorderClass(borderId);
+      if (bc) avaBorder.classList.add(bc);
+
+      // allow explicit overrides
+      if (avatar?.borderColor) avaBorder.style.borderColor = String(avatar.borderColor);
 
       const circle = document.createElement("div");
       circle.className = "chatAvatarCircle";
@@ -683,6 +1108,7 @@
         badges.forEach((b) => {
           const sp = document.createElement("span");
           sp.className = "chatBadge";
+          if (b?.tier) sp.classList.add(`badge--${String(b.tier).toLowerCase()}`);
           if (b?.borderColor) sp.style.borderColor = b.borderColor;
           if (b?.textColor) sp.style.color = b.textColor;
           if (b?.backgroundColor) sp.style.backgroundColor = b.backgroundColor;
@@ -716,7 +1142,7 @@
         cosmetics?.unameColor ??
         null;
 
-      // lvl 2+: bloque couleurs pseudo
+      // lvl 2+: block viewer custom username color
       const allowViewerNameColor = viewerSkinsLevel < 2;
       const effectiveUnameColor = allowViewerNameColor ? unameColor : null;
 
@@ -728,7 +1154,9 @@
       uname.textContent = m.username;
 
       // bot rouge (compat)
-      if (String(m.username).toLowerCase() === "nozebot" || String(m.username).toLowerCase() === "nosebot") {
+      const lower = String(m.username).toLowerCase();
+      if (lower === "nozebot" || lower === "nosebot") {
+        uname.style.setProperty("--uname-color", "red");
         uname.style.color = "red";
       }
 
@@ -744,6 +1172,14 @@
       if (titleInfo) {
         const t = document.createElement("div");
         t.className = "chatTitle";
+        if (titleInfo.tier) {
+          const tc = titleTierClass(titleInfo.tier);
+          if (tc) t.classList.add(tc);
+        }
+        if (titleInfo.effect) {
+          const fx = titleEffectClass(titleInfo.effect);
+          if (fx) t.classList.add(fx);
+        }
         t.dataset.titleCode = titleInfo.code;
         t.title = titleInfo.code;
         t.textContent = titleInfo.text;
@@ -759,42 +1195,16 @@
       return row;
     }
 
-    function pushOne(m, animated){
-      if (!m || !m.id) return;
-      if (SEEN.has(m.id)) return;
-      SEEN.add(m.id);
-
-      const row = mkRow(m, !!animated);
+    function pushMsg(m){
+      const row = mkRow(m);
       stack.appendChild(row);
       clampStack();
       reapOld();
     }
 
-    function pushMany(list, animated){
-      const arr = (Array.isArray(list) ? list : [])
-        .map(normalizeIncoming)
-        .flat()
-        .filter(Boolean);
-
-      // tri asc (vieux -> récent) si possible
-      arr.sort((a,b) => {
-        const ta = new Date(String(a.createdAt||"")).getTime();
-        const tb = new Date(String(b.createdAt||"")).getTime();
-        return (Number.isFinite(ta)?ta:0) - (Number.isFinite(tb)?tb:0);
-      });
-
-      arr.slice(-MAX).forEach((x) => pushOne(x, animated));
-    }
-
-    function pushMsg(m){
-      pushOne(m, true);
-    }
-
     function normalizeIncoming(payload){
-      // accepte payload direct, ou payload.msg/message
       const p = payload?.msg ?? payload?.message ?? payload;
 
-      // history array
       if (Array.isArray(p)) {
         return p.map(normalizeIncoming).flat().filter(Boolean);
       }
@@ -849,7 +1259,6 @@
         cosmetics: cosmetics || null
       };
 
-      // cache cosmetics by username
       const key = String(out.username).toLowerCase();
       if (out.cosmetics) COSMETICS[key] = out.cosmetics;
       else if (COSMETICS[key]) out.cosmetics = COSMETICS[key];
@@ -877,69 +1286,6 @@
       } catch {}
     }
 
-    function extractListFromJson(j){
-      if (!j) return null;
-      if (Array.isArray(j)) return j;
-      if (Array.isArray(j.messages)) return j.messages;
-      if (Array.isArray(j.items)) return j.items;
-      if (Array.isArray(j.history)) return j.history;
-      if (Array.isArray(j.rows)) return j.rows;
-      if (Array.isArray(j.data)) return j.data;
-      return null;
-    }
-
-    async function loadHistoryHttp(){
-      const slug = encodeURIComponent(SLUG);
-      const limit = encodeURIComponent(String(MAX));
-
-      const paths = [
-        `/public/chat/history?slug=${slug}&limit=${limit}`,
-        `/chat/history?slug=${slug}&limit=${limit}`,
-        `/public/chat/${slug}/history?limit=${limit}`,
-      ];
-
-      for (const p of paths){
-        try{
-          const r = await fetch(`${API_BASE}${p}`, {
-            headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : undefined
-          });
-          if(!r.ok) continue;
-          const j = await r.json().catch(() => null);
-          const list = extractListFromJson(j);
-          if(list && list.length){
-            pushMany(list, false);
-            return true;
-          }
-        } catch {}
-      }
-      return false;
-    }
-
-    function requestInitialHistory(sock){
-      const payloadA = { slug: SLUG, limit: MAX };
-      const payloadB = { streamerSlug: SLUG, limit: MAX };
-
-      const tryAck = (resp) => {
-        if (!resp) return;
-        const n = normalizeIncoming(resp);
-        if (Array.isArray(n)) pushMany(n, false);
-        else if (n) pushOne(n, false);
-      };
-
-      try { sock.emit("chat:history", payloadA, tryAck); } catch {}
-      try { sock.emit("chat:history", payloadB, tryAck); } catch {}
-      try { sock.emit("chat:get", payloadA, tryAck); } catch {}
-      try { sock.emit("chat:get", payloadB, tryAck); } catch {}
-      try { sock.emit("stream:history", payloadA, tryAck); } catch {}
-      try { sock.emit("stream:history", payloadB, tryAck); } catch {}
-
-      // fallback HTTP
-      window.setTimeout(() => {
-        if (stack.children.length > 0) return;
-        loadHistoryHttp();
-      }, 700);
-    }
-
     function connectSocket(){
       if(!SLUG) return;
 
@@ -957,12 +1303,10 @@
         if (!n) return;
 
         if (Array.isArray(n)) {
-          // history: pas d’anim “pop”
-          pushMany(n, false);
+          n.slice(-MAX).forEach(pushMsg);
           return;
         }
 
-        // si event fournit slug, on filtre
         const evSlug =
           String(payload?.slug ?? payload?.streamerSlug ?? payload?.channelSlug ?? "").trim().toLowerCase();
         if (evSlug && evSlug !== SLUG.toLowerCase()) return;
@@ -971,22 +1315,11 @@
       };
 
       sock.on("connect", () => {
-        const ack = (resp) => {
-          if (!resp) return;
-          const n = normalizeIncoming(resp);
-          if (Array.isArray(n)) pushMany(n, false);
-          else if (n) pushOne(n, false);
-        };
-
-        try { sock.emit("stream:join", { slug: SLUG }, ack); } catch {}
-        try { sock.emit("chat:join", { slug: SLUG }, ack); } catch {}
-        try { sock.emit("chat:join", { streamerSlug: SLUG }, ack); } catch {}
-
-        // ✅ demande explicite d’historique
-        requestInitialHistory(sock);
+        try { sock.emit("stream:join", { slug: SLUG }, () => {}); } catch {}
+        try { sock.emit("chat:join", { slug: SLUG }, () => {}); } catch {}
+        try { sock.emit("chat:join", { streamerSlug: SLUG }, () => {}); } catch {}
       });
 
-      // écoute plusieurs noms d’events (robuste)
       [
         "chat:message",
         "chat:msg",
@@ -999,16 +1332,15 @@
       ].forEach((ev) => sock.on(ev, onAnyMsg));
     }
 
-    // ✅ init
+    // init
     loadStreamerAppearance();
     connectSocket();
 
-    // TTL loop (si LIFE > 0)
     if (LIFE > 0) {
       window.setInterval(() => reapOld(), 1000);
     }
 
-    // si pas de slug => sample minimal
+    // si pas de slug => sample
     if(!SLUG){
       const now = new Date().toISOString();
       pushMsg({ id: 1, userId: 1, username:"ViewerOne", body:"SLUG manquant dans l'URL 😅", createdAt: now, avatarUrl:null, cosmetics:null });
