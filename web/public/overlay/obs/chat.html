@@ -1,171 +1,468 @@
 <!doctype html>
 <html lang="fr">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>OBS Chat</title>
-    <style>
-      :root{
-        --uname:#7C4DFF;
-        --msg:#FFFFFF;
-        --bg: rgba(0,0,0,0);
-        --shadow: rgba(0,0,0,0.35);
-      }
-      html,body{ margin:0; padding:0; background:transparent; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
-      body{ overflow:hidden; }
-      .root{
-        width: var(--mw, 420px);
-        transform-origin: bottom left;
-        transform: scale(var(--scale, 1));
-      }
-      .stack{
-        display:flex;
-        flex-direction:column;
-        gap:10px;
-        padding: 10px;
-        align-items:flex-start;
-      }
-      .msg{
-        display:flex;
-        gap:10px;
-        align-items:flex-start;
-        max-width:100%;
-      }
-      .ava{
-        width:36px; height:36px;
-        border-radius:999px;
-        display:flex; align-items:center; justify-content:center;
-        background: rgba(255,255,255,0.10);
-        border:1px solid rgba(255,255,255,0.12);
-        color: rgba(255,255,255,0.9);
-        font-weight:900;
-        flex: 0 0 auto;
-        box-shadow: 0 10px 22px var(--shadow);
-      }
-      .bubble{
-        border-radius:16px;
-        padding:10px 12px;
-        border:1px solid rgba(255,255,255,0.10);
-        background: rgba(0,0,0,0.28);
-        box-shadow: 0 10px 22px var(--shadow);
-        max-width: calc(100% - 50px);
-      }
-      .top{
-        display:flex;
-        gap:10px;
-        align-items:baseline;
-        justify-content:space-between;
-        margin-bottom:6px;
-      }
-      .uname{
-        font-weight:950;
-        color: var(--uname);
-        font-size: calc(var(--font, 22px) * 0.82);
-        line-height: 1.1;
-        white-space:nowrap;
-        overflow:hidden;
-        text-overflow:ellipsis;
-        max-width: 260px;
-      }
-      .time{
-        font-size: 12px;
-        opacity:0.65;
-        color:white;
-        flex: 0 0 auto;
-      }
-      .body{
-        color: var(--msg);
-        opacity:0.95;
-        font-size: var(--font, 22px);
-        line-height: var(--lh, 1.3);
-        word-break: break-word;
-      }
-      .hint{
-        color:white;
-        opacity:0.55;
-        font-size:12px;
-        padding: 0 10px 10px 10px;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="root" id="root">
-      <div class="stack" id="stack"></div>
-      <div class="hint" id="hint"></div>
-    </div>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>LunaLive — Chat OBS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;800&display=swap" rel="stylesheet">
 
-    <script>
+  <style>
+    :root{
+      color-scheme: dark;
+
+      /* couleurs (auto depuis appearance streamer) */
+      --c-user: #7c4dff;
+      --c-msg:  #ffffff;
+      --c-vip:  #7c4dff;
+
+      /* tailles fixes (pas paramétrables) */
+      --fz-user: 20px;
+      --fz-msg:  18px;
+
+      /* layout */
+      --gap: 8px;
+      --pad-x: 12px;
+      --pad-y: 8px;
+
+      /* max lignes */
+      --max-lines: 7;
+
+      /* design cartes */
+      --bg-row: rgba(0, 0, 0, 0.95);
+      --bd-row: 1px solid rgba(255,255,255,.12);
+      --rad: 12px;
+      --shadow: 0 8px 26px rgba(0,0,0,.35);
+      --txt-shadow-soft: 0 1px 2px rgba(0,0,0,.6);
+      --txt-shadow-strong: 0 1px 3px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.35);
+
+      /* ✅ seul param: largeur max (mw=) */
+      --wrap-maxw: 420px;
+    }
+
+    html, body{
+      margin:0; padding:0;
+      width:100%;
+      height:100%;
+      background: transparent !important;
+      overflow:hidden;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+
+    /* stack collé en bas à gauche */
+    body{
+      display:flex;
+      align-items:flex-end;
+      justify-content:flex-start;
+    }
+
+    #root{ padding:0; margin:0; }
+
+    .stack{
+      display:flex;
+      flex-direction:column;
+      gap: var(--gap);
+      padding: 6px;
+      width: var(--wrap-maxw);
+      box-sizing:border-box;
+    }
+
+    .row{
+      position: relative;
+      display:flex;
+      align-items:flex-start;
+      gap: 10px;
+      background: var(--bg-row);
+      border: var(--bd-row);
+      border-radius: var(--rad);
+      padding: var(--pad-y) var(--pad-x);
+      box-shadow: var(--shadow);
+      will-change: transform, opacity, filter;
+      opacity:1; transform:none;
+      overflow:hidden;
+    }
+
+    .row.appear{
+      opacity: 0;
+      transform: translateY(8px);
+      animation: pop .20s ease-out forwards;
+    }
+    @keyframes pop { to { opacity:1; transform: translateY(0); } }
+
+    /* avatar (fallback initials) */
+    .avatar{
+      width:36px; height:36px;
+      border-radius: 999px;
+      flex:none;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:900;
+      letter-spacing:.02em;
+      color: rgba(255,255,255,0.92);
+      background: rgba(255,255,255,0.10);
+      border: 1px solid rgba(255,255,255,.15);
+      box-shadow: 0 1px 6px rgba(0,0,0,.25);
+      margin-top: 1px;
+      user-select:none;
+    }
+
+    .line{ display:block; flex:1; min-width:0; }
+
+    /* badges */
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding: 1px 6px;
+      margin-right: 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      text-shadow: var(--txt-shadow-soft);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.18);
+      box-shadow: 0 0 8px rgba(0,0,0,0.4);
+    }
+
+    .pseudo-emote{
+      display:inline-flex;
+      align-items:center;
+      margin-right: 6px;
+      font-size: calc(var(--fz-user) * 0.9);
+      filter: drop-shadow(0 0 4px rgba(0,0,0,0.8));
+    }
+
+    .user{
+      color: var(--c-user);
+      font-weight: 800;
+      font-size: var(--fz-user);
+      letter-spacing: .2px;
+      text-shadow: var(--txt-shadow-soft);
+      white-space: nowrap;
+      display:inline-flex;
+      align-items:center;
+      vertical-align: baseline;
+      margin-right: .35em;
+      flex:none;
+    }
+    .user.vip{ color: var(--c-vip); }
+
+    .sep{ opacity:.9; margin: 0 .35em; }
+
+    .msg{
+      color: var(--c-msg);
+      font-weight: 600;
+      font-size: var(--fz-msg);
+      letter-spacing: .15px;
+      text-shadow: var(--txt-shadow-strong);
+      display:block;
+      margin-top: 2px;
+      white-space: normal;
+      word-break: normal;
+      overflow-wrap: anywhere;
+      hyphens: auto;
+      min-width: 0;
+      flex:1;
+    }
+
+    .msg-emote{
+      display:inline-block;
+      width: 1.4em;
+      height: 1.4em;
+      vertical-align: -0.2em;
+      margin: 0 0.05em;
+      image-rendering: auto;
+      filter: drop-shadow(0 0 4px rgba(0,0,0,0.7));
+    }
+
+    /* pseudo cosmetics */
+    .pseudo-rainbow{
+      background: linear-gradient(90deg,#ff5252,#ffeb3b,#69f0ae,#40c4ff,#7c4dff,#ff5252);
+      background-size: 300% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent !important;
+      animation: rainbowShift 4s linear infinite;
+      text-shadow: 0 0 6px rgba(0,0,0,0.7);
+    }
+    @keyframes rainbowShift { 0%{background-position:0% 50%;} 100%{background-position:300% 50%;} }
+
+    .pseudo-neon-outline-purple{
+      color:#e4d9ff;
+      -webkit-text-stroke: 0.5px rgba(168, 85, 247, 0.85);
+      text-shadow:
+        0 0 3px rgba(168, 85, 247, 0.95),
+        0 0 7px rgba(139, 92, 246, 0.8),
+        0 0 12px rgba(129, 140, 248, 0.7);
+    }
+
+    .pseudo-underline-glowing{
+      color:#ffffff;
+      text-decoration: underline;
+      text-decoration-color: #7c4dff;
+      text-shadow: 0 0 5px rgba(124, 77, 255, 1);
+      position: relative;
+    }
+    .pseudo-underline-glowing::after{
+      content:"";
+      position:absolute;
+      bottom:-2px; left:0; right:0;
+      height:2px;
+      background: linear-gradient(90deg,#ff5252,#ffeb3b,#7c4dff);
+      animation: glowing-line 1.5s ease-in-out infinite;
+      background-size: 200% 100%;
+    }
+    @keyframes glowing-line{ 0%{background-position:100% 0;} 50%{background-position:0 0;} 100%{background-position:100% 0;} }
+
+    .pseudo-underlined-neon{
+      color:#ffffff;
+      text-shadow: 0 0 8px rgba(124, 77, 255, 0.9), 0 0 14px rgba(124, 77, 255, 0.8);
+      position: relative;
+    }
+    .pseudo-underlined-neon::after{
+      content:"";
+      position:absolute;
+      bottom:-4px; left:0;
+      width:100%; height:2px;
+      background-color:#7c4dff;
+      opacity:0.7;
+      animation: neon-underline 1.5s ease-in-out infinite;
+      transform-origin:left;
+    }
+    @keyframes neon-underline{ 0%{transform:scaleX(0);} 50%{transform:scaleX(1);} 100%{transform:scaleX(0);} }
+  </style>
+</head>
+
+<body>
+  <div id="root">
+    <div id="stack" class="stack" aria-live="polite"></div>
+  </div>
+
+  <!-- charge socket.io depuis l'origin API (comme follow-goal) -->
+  <script>
+    (function () {
       const qs = new URLSearchParams(location.search);
-      const token = qs.get("token") || "";
-      const api = (qs.get("api") || "https://lunalive-api.onrender.com").replace(/\/+$/,"");
-      const mw = parseInt(qs.get("mw") || "420", 10);
-      const scale = parseFloat(qs.get("scale") || "1");
-      const font = parseInt(qs.get("font") || "22", 10);
-      const lh = parseFloat(qs.get("lh") || "1.3");
+      const apiRaw = (qs.get("api") || "").trim();
 
-      document.documentElement.style.setProperty("--mw", `${Math.max(260, mw)}px`);
-      document.documentElement.style.setProperty("--scale", String(Math.max(0.3, scale)));
-      document.documentElement.style.setProperty("--font", `${Math.max(10, font)}px`);
-      document.documentElement.style.setProperty("--lh", String(Math.max(0.9, lh)));
-
-      const stack = document.getElementById("stack");
-      const hint = document.getElementById("hint");
-
-      function initials(name){
-        const s = String(name||"").trim();
-        if(!s) return "??";
-        const parts = s.split(/\s+/).slice(0,2);
-        return parts.map(p=>p[0].toUpperCase()).join("");
+      function safeApiOrigin(v){
+        const s = String(v || "").trim();
+        if (!s) return "";
+        try {
+          const u = new URL(s);
+          if (u.protocol === "http:" || u.protocol === "https:") return u.origin;
+        } catch {}
+        return "";
       }
 
-      function renderSample(){
-        const now = new Date();
-        const hh = String(now.getHours()).padStart(2,"0");
-        const mm = String(now.getMinutes()).padStart(2,"0");
-        const rows = [
-          { u:"ViewerOne", m:"Yo 👋" },
-          { u:"LeCasiNoze", m:"Test overlay chat (style streamer) ✅" },
-          { u:"MoonKid", m:"Ça rend propre en OBS !" },
-        ];
-        stack.innerHTML = rows.map(r => `
-          <div class="msg">
-            <div class="ava">${initials(r.u)}</div>
-            <div class="bubble">
-              <div class="top">
-                <div class="uname" title="${r.u}">${r.u}</div>
-                <div class="time">${hh}:${mm}</div>
-              </div>
-              <div class="body">${r.m}</div>
-            </div>
-          </div>
-        `).join("");
+      // si file:// => location.origin = "null" => fallback prod
+      const fallbackProd = "https://lunalive-api.onrender.com";
+      const fromParam = safeApiOrigin(apiRaw);
+      const fromLoc = (location.origin && location.origin !== "null") ? location.origin : "";
+      const origin = fromParam || fromLoc || fallbackProd;
+
+      document.write('<script src="' + origin + '/socket.io/socket.io.js"><\/script>');
+      window.__LL_API_ORIGIN__ = origin;
+    })();
+  </script>
+
+  <script>
+    const qs = new URLSearchParams(location.search);
+
+    const SLUG = (qs.get("slug") || "").trim();
+    const MW = parseInt(qs.get("mw") || "420", 10);
+    document.documentElement.style.setProperty("--wrap-maxw", `${Math.max(260, (Number.isFinite(MW) ? MW : 420))}px`);
+
+    const MAX = 7;
+    const stack = document.getElementById("stack");
+
+    // emotes DLive
+    const EMOTE_BASE = "https://images.prd.dlivecdn.com/emote/";
+
+    function escapeHtml(s){
+      return String(s ?? "")
+        .replace(/&/g,"&amp;")
+        .replace(/</g,"&lt;")
+        .replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;")
+        .replace(/'/g,"&#39;");
+    }
+
+    function renderEmotesUnsafeAlreadyEscaped(escapedText){
+      // escapedText est déjà échappé => on peut injecter <img> sans XSS
+      const norm = escapedText.replace(/&#58;|&#x3a;|&colon;/gi, ":");
+      if (norm.indexOf(":emote/") === -1) return norm;
+
+      return norm.replace(/:emote\/([^:<>\s]+):/g, (full, path) => {
+        const parts = (String(path).split("/") || []);
+        const last = parts.length ? parts[parts.length - 1] : "";
+        if (!last) return full;
+
+        const url = EMOTE_BASE + last;
+        return (
+          '<img class="msg-emote" ' +
+          'src="' + url + '" ' +
+          'alt="" loading="lazy" referrerpolicy="no-referrer">'
+        );
+      });
+    }
+
+    function initials(name){
+      const s = String(name||"").trim();
+      if(!s) return "??";
+      const parts = s.split(/\s+/).slice(0,2);
+      return parts.map(p => (p[0] || "?").toUpperCase()).join("");
+    }
+
+    function applyPseudoCosmetics(el, cosmetics){
+      const p = String(cosmetics?.pseudo || "").trim();
+      if (!p) return;
+
+      const norm = p.replace(/^pseudo-/, "");
+      if (norm === "rainbow") el.classList.add("pseudo-rainbow");
+      if (norm === "neon-outline-purple") el.classList.add("pseudo-neon-outline-purple");
+      if (norm === "underline-glowing") el.classList.add("pseudo-underline-glowing");
+      if (norm === "underlined-neon") el.classList.add("pseudo-underlined-neon");
+    }
+
+    function mkRow(user, rawText, opts = {}){
+      const { vip = false, cosmetics = null } = opts;
+
+      const row = document.createElement("div");
+      row.className = "row appear";
+      row.dataset.birth = String(Date.now());
+      row.dataset.mid = opts.messageId != null ? String(opts.messageId) : "";
+
+      const ava = document.createElement("div");
+      ava.className = "avatar";
+      ava.textContent = initials(user);
+      row.appendChild(ava);
+
+      const line = document.createElement("div");
+      line.className = "line";
+
+      // badge (si présent)
+      if (cosmetics && (cosmetics.badgeLabel || cosmetics.badgeSlug)) {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        if (cosmetics.badgeSlug) badge.classList.add("badge-" + String(cosmetics.badgeSlug));
+        if (cosmetics.badgeColor) badge.style.background = String(cosmetics.badgeColor);
+        badge.textContent = String(cosmetics.badgeLabel || cosmetics.badgeSlug).toUpperCase();
+        line.appendChild(badge);
       }
 
-      async function loadStreamerAppearance(){
-        if(!token) {
-          hint.textContent = "Token manquant (URL OBS). Aperçu en mode sample.";
-          return;
-        }
-        try{
-          const r = await fetch(`${api}/streamer/me/appearance`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const j = await r.json();
-          if(!j || !j.ok) throw new Error(j?.error || "appearance_failed");
-          const ap = j.appearance || j.streamer?.appearance;
-          const chat = ap?.chat || {};
-          const uname = chat.usernameColor || "#7C4DFF";
-          const msg = chat.messageColor || "#FFFFFF";
-          document.documentElement.style.setProperty("--uname", uname);
-          document.documentElement.style.setProperty("--msg", msg);
-          hint.textContent = "Couleurs chargées depuis l'apparence streamer ✅";
-        } catch(e){
-          hint.textContent = "Impossible de charger l'apparence (fallback).";
-        }
+      // emote à côté du pseudo
+      if (cosmetics && cosmetics.emote) {
+        const em = document.createElement("span");
+        em.className = "pseudo-emote";
+        em.textContent = String(cosmetics.emote);
+        line.appendChild(em);
       }
 
-      renderSample();
-      loadStreamerAppearance();
-    </script>
-  </body>
+      const u = document.createElement("span");
+      u.className = "user" + (vip ? " vip" : "");
+      u.textContent = user;
+
+      // bot en rouge
+      if (String(user).toLowerCase() === "lunalive" || String(user).toLowerCase() === "nozebot" || String(user).toLowerCase() === "nosebot") {
+        u.style.color = "red";
+      }
+
+      applyPseudoCosmetics(u, cosmetics);
+
+      const sep = document.createElement("span");
+      sep.className = "sep";
+      sep.textContent = ":";
+
+      const m = document.createElement("span");
+      m.className = "msg";
+      const safe = escapeHtml(rawText);
+      m.innerHTML = renderEmotesUnsafeAlreadyEscaped(safe);
+
+      line.appendChild(u);
+      line.appendChild(sep);
+      line.appendChild(m);
+      row.appendChild(line);
+
+      return row;
+    }
+
+    function clampStack(){
+      while (stack.children.length > MAX) stack.removeChild(stack.firstElementChild);
+    }
+
+    function removeByMessageId(mid){
+      const s = String(mid ?? "");
+      if (!s) return;
+      const el = stack.querySelector(`[data-mid="${CSS.escape(s)}"]`);
+      if (el) el.remove();
+    }
+
+    function setColorsFromAppearance(appearance){
+      const chat = appearance?.chat || {};
+      const uname = chat.usernameColor || "#7C4DFF";
+      const msg = chat.messageColor || "#FFFFFF";
+      document.documentElement.style.setProperty("--c-user", String(uname));
+      document.documentElement.style.setProperty("--c-msg", String(msg));
+    }
+
+    function connect(){
+      if (!SLUG) return;
+
+      const apiOrigin = window.__LL_API_ORIGIN__ || "https://lunalive-api.onrender.com";
+      const ioClient = window.io;
+      if (typeof ioClient !== "function") return;
+
+      const sock = ioClient(apiOrigin, {
+        transports: ["websocket", "polling"],
+        withCredentials: false,
+      });
+
+      const join = () => {
+        sock.emit("chat:join", { slug: SLUG }, (ack) => {
+          if (ack && ack.ok) {
+            setColorsFromAppearance(ack.appearance);
+          }
+        });
+      };
+
+      sock.on("connect", join);
+      sock.on("reconnect", join);
+
+      sock.on("chat:message", (msg) => {
+        // msg attendu: {id,userId,username,body,createdAt,cosmetics,...}
+        const username = String(msg?.username || "user");
+        const body = String(msg?.body || "");
+        const cosmetics = msg?.cosmetics || null;
+
+        const row = mkRow(username, body, {
+          vip: false,
+          cosmetics,
+          messageId: msg?.id ?? null,
+        });
+
+        stack.appendChild(row);
+        clampStack();
+      });
+
+      sock.on("chat:message_deleted", (p) => {
+        removeByMessageId(p?.id);
+      });
+
+      sock.on("chat:cleared", () => {
+        stack.innerHTML = "";
+      });
+
+      // si le streamer change ses couleurs pendant le live, on reçoit ça via refresh côté clients normaux
+      // ici on écoute aussi un éventuel broadcast settings/appearance si tu le mets plus tard (noop sinon)
+      sock.on("chat:appearance", (p) => {
+        if (p?.appearance) setColorsFromAppearance(p.appearance);
+      });
+    }
+
+    connect();
+  </script>
+</body>
 </html>
