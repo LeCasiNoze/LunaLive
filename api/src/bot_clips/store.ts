@@ -10,9 +10,13 @@ export type BotClipRow = {
   pre_sec: number;
   post_sec: number;
   created_ts: number;
+
   vod_url: string | null;
   vod_permlink: string | null;
   vod_created_ts: number | null;
+
+  hidden_by_streamer?: boolean;
+  deleted_ts?: number | null;
 };
 
 let ensured = false;
@@ -29,35 +33,59 @@ export async function ensureBotClips() {
       at_sec INTEGER NOT NULL,
       pre_sec INTEGER NOT NULL DEFAULT 105,
       post_sec INTEGER NOT NULL DEFAULT 15,
-      created_ts INTEGER NOT NULL,
+      created_ts BIGINT NOT NULL,
       vod_url TEXT,
       vod_permlink TEXT,
-      vod_created_ts INTEGER
+      vod_created_ts BIGINT
     );
+  `);
+
+  // ✅ nouvelles colonnes (pour tes règles)
+  await pool.query(`
+    ALTER TABLE bot_clips
+      ADD COLUMN IF NOT EXISTS hidden_by_streamer BOOLEAN NOT NULL DEFAULT false;
+  `);
+
+  await pool.query(`
+    ALTER TABLE bot_clips
+      ADD COLUMN IF NOT EXISTS deleted_ts BIGINT;
   `);
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_bot_clips_streamer_created
-      ON bot_clips(streamer_id, created_ts DESC);
+      ON bot_clips(streamer_id, created_ts DESC, id DESC);
   `);
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_bot_clips_streamer_vod_pending
       ON bot_clips(streamer_id)
-      WHERE vod_url IS NULL;
+      WHERE vod_url IS NULL AND deleted_ts IS NULL AND hidden_by_streamer = false;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_bot_clips_deleted
+      ON bot_clips(streamer_id, deleted_ts);
   `);
 
   ensured = true;
 }
 
+/**
+ * ✅ LIST dashboard (module bot):
+ * - visible uniquement si pas hidden_by_streamer
+ * - et pas deleted_ts
+ */
 export async function listClipsForStreamer(streamerId: number, limit = 200) {
   const lim = Math.min(1000, Math.max(1, Math.floor(Number(limit) || 200)));
   const r = await pool.query(
     `SELECT id, streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts,
-            vod_url, vod_permlink, vod_created_ts
+            vod_url, vod_permlink, vod_created_ts,
+            hidden_by_streamer, deleted_ts
      FROM bot_clips
      WHERE streamer_id=$1
-     ORDER BY created_ts DESC
+       AND deleted_ts IS NULL
+       AND hidden_by_streamer = false
+     ORDER BY created_ts DESC, id DESC
      LIMIT $2`,
     [streamerId, lim]
   );
@@ -67,19 +95,42 @@ export async function listClipsForStreamer(streamerId: number, limit = 200) {
 export async function getClipForStreamer(streamerId: number, clipId: number) {
   const r = await pool.query(
     `SELECT id, streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts,
-            vod_url, vod_permlink, vod_created_ts
+            vod_url, vod_permlink, vod_created_ts,
+            hidden_by_streamer, deleted_ts
      FROM bot_clips
      WHERE streamer_id=$1 AND id=$2
+       AND deleted_ts IS NULL
      LIMIT 1`,
     [streamerId, clipId]
   );
   return (r.rows?.[0] as BotClipRow | undefined) ?? null;
 }
 
+/**
+ * ✅ IMPORTANT: "Supprimer" depuis le module bot = juste HIDE (pas delete DB)
+ */
 export async function removeClipForStreamer(streamerId: number, clipId: number) {
   const r = await pool.query(
-    `DELETE FROM bot_clips WHERE streamer_id=$1 AND id=$2`,
+    `UPDATE bot_clips
+     SET hidden_by_streamer = true
+     WHERE streamer_id=$1 AND id=$2
+       AND deleted_ts IS NULL`,
     [streamerId, clipId]
+  );
+  return Number(r.rowCount || 0);
+}
+
+/**
+ * ✅ Delete "public" (page streamer) = delete_ts + hide
+ * (utilisé par /clips/:id/delete côté routes public)
+ */
+export async function markClipDeletedById(clipId: number, nowTs: number) {
+  const r = await pool.query(
+    `UPDATE bot_clips
+     SET deleted_ts = $2,
+         hidden_by_streamer = true
+     WHERE id = $1 AND deleted_ts IS NULL`,
+    [clipId, nowTs]
   );
   return Number(r.rowCount || 0);
 }
@@ -89,6 +140,8 @@ export async function listStreamersWithPendingVodClips(): Promise<number[]> {
     `SELECT DISTINCT streamer_id
      FROM bot_clips
      WHERE vod_url IS NULL
+       AND deleted_ts IS NULL
+       AND hidden_by_streamer = false
      LIMIT 1000`
   );
   return (r.rows || []).map((x: any) => Number(x.streamer_id));
@@ -100,8 +153,11 @@ export async function listPendingClipsForStreamer(streamerId: number, limit = 50
     `SELECT id, streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts,
             vod_url, vod_permlink, vod_created_ts
      FROM bot_clips
-     WHERE streamer_id=$1 AND vod_url IS NULL
-     ORDER BY created_ts ASC
+     WHERE streamer_id=$1
+       AND vod_url IS NULL
+       AND deleted_ts IS NULL
+       AND hidden_by_streamer = false
+     ORDER BY created_ts ASC, id ASC
      LIMIT $2`,
     [streamerId, lim]
   );
@@ -116,7 +172,8 @@ export async function setClipVodInfo(
   await pool.query(
     `UPDATE bot_clips
      SET vod_url=$1, vod_permlink=$2, vod_created_ts=$3
-     WHERE streamer_id=$4 AND id=$5`,
+     WHERE streamer_id=$4 AND id=$5
+       AND deleted_ts IS NULL`,
     [info.vod_url, info.vod_permlink ?? null, info.vod_created_ts ?? null, streamerId, clipId]
   );
 }
@@ -143,6 +200,6 @@ export async function getDliveChannelSlugForStreamer(streamerId: number): Promis
   const linked = row.linkedDisplayname ? String(row.linkedDisplayname) : "";
   const provider = row.providerChannelSlug ? String(row.providerChannelSlug) : "";
 
-  const channelSlug = (useLinked && linked) ? linked : provider;
+  const channelSlug = useLinked && linked ? linked : provider;
   return channelSlug.trim() ? channelSlug.trim() : null;
 }

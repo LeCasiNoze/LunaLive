@@ -207,3 +207,150 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     return res.end(svgFallback(slug));
   });
 });
+// ✅ Thumb clip: /thumbs/clips/:id.jpg
+thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse) => {
+  const clipId = Number(req.params.id || 0);
+  if (!Number.isFinite(clipId) || clipId <= 0) return res.status(400).end();
+
+  const key = `clip:${clipId}`;
+
+  // cache
+  const hit = cache.get(key);
+  if (hit && hit.exp > Date.now()) {
+    res.set("Content-Type", hit.contentType);
+    res.set("Cache-Control", "public, max-age=30");
+    return res.end(hit.buf);
+  }
+
+  // pas de ffmpeg => SVG
+  if (!FFMPEG_OK) {
+    res.set("Content-Type", "image/svg+xml; charset=utf-8");
+    res.set("Cache-Control", "public, max-age=30");
+    return res.end(svgFallback(`clip ${clipId}`));
+  }
+
+  // charge clip
+  const { rows } = await pool.query(
+    `SELECT id, vod_url, at_sec, pre_sec, post_sec, title
+     FROM bot_clips
+     WHERE id=$1 AND deleted_ts IS NULL
+     LIMIT 1`,
+    [clipId]
+  );
+
+  const clip = rows?.[0] || null;
+  if (!clip) {
+    res.set("Content-Type", "image/svg+xml; charset=utf-8");
+    res.set("Cache-Control", "public, max-age=30");
+    return res.end(svgFallback(`clip ${clipId}`));
+  }
+
+  const vodUrl = clip.vod_url ? String(clip.vod_url) : "";
+  if (!vodUrl) {
+    res.set("Content-Type", "image/svg+xml; charset=utf-8");
+    res.set("Cache-Control", "public, max-age=30");
+    return res.end(svgFallback(String(clip.title || `clip ${clipId}`)));
+  }
+
+  const at = Math.max(0, Number(clip.at_sec || 0));
+  const pre = Math.max(0, Number(clip.pre_sec || 105));
+  const post = Math.max(0, Number(clip.post_sec || 15));
+
+  const startSec = Math.max(0, at - pre);
+  const durationSec = Math.max(1, pre + post);
+
+  // preview = ~ +60s dans le clip, clamp
+  const previewSec = Math.min(startSec + 60, startSec + durationSec - 1);
+
+  const HLS_HEADERS =
+    "Origin: https://dlive.tv\r\n" +
+    "Referer: https://dlive.tv/\r\n" +
+    "User-Agent: Mozilla/5.0\r\n";
+
+  const args = [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-y",
+    "-nostdin",
+
+    "-protocol_whitelist",
+    "file,http,https,tcp,tls",
+
+    "-headers",
+    HLS_HEADERS,
+    "-user_agent",
+    "Mozilla/5.0",
+
+    "-rw_timeout",
+    "8000000",
+
+    "-ss",
+    String(previewSec),
+    "-i",
+    vodUrl,
+
+    "-an",
+    "-frames:v",
+    "1",
+    "-vf",
+    "scale=640:-1",
+    "-q:v",
+    "5",
+    "-f",
+    "image2pipe",
+    "-vcodec",
+    "mjpeg",
+    "pipe:1",
+  ];
+
+  const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
+
+  const chunks: Buffer[] = [];
+  let stderr = "";
+
+  const killTimer = setTimeout(() => {
+    try {
+      p.kill("SIGKILL");
+    } catch {}
+  }, 9000);
+
+  req.on("close", () => {
+    try {
+      p.kill("SIGKILL");
+    } catch {}
+  });
+
+  p.stdout.on("data", (d: Buffer) => chunks.push(Buffer.from(d)));
+  p.stderr.on("data", (d: Buffer) => (stderr += String(d)));
+
+  p.on("error", (e) => {
+    clearTimeout(killTimer);
+    console.warn(`[thumbs] clip ffmpeg spawn error bin=${FFMPEG_BIN} clipId=${clipId}`, e);
+    res.set("Content-Type", "image/svg+xml; charset=utf-8");
+    res.set("Cache-Control", "public, max-age=30");
+    return res.end(svgFallback(String(clip.title || `clip ${clipId}`)));
+  });
+
+  p.on("close", (code, signal) => {
+    clearTimeout(killTimer);
+
+    const buf = Buffer.concat(chunks);
+    const ok = code === 0 && buf.length > 5_000;
+
+    if (ok) {
+      cache.set(key, { exp: Date.now() + CACHE_MS, buf, contentType: "image/jpeg" });
+      res.set("Content-Type", "image/jpeg");
+      res.set("Cache-Control", "public, max-age=30");
+      return res.end(buf);
+    }
+
+    console.warn(
+      `[thumbs] clip ffmpeg failed bin=${FFMPEG_BIN} clipId=${clipId} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 400) || ""}`
+    );
+
+    res.set("Content-Type", "image/svg+xml; charset=utf-8");
+    res.set("Cache-Control", "public, max-age=30");
+    return res.end(svgFallback(String(clip.title || `clip ${clipId}`)));
+  });
+});
