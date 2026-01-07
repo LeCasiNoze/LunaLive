@@ -1,6 +1,7 @@
 // api/src/calls/queue.ts
 import type { Pool } from "pg";
 import { keyText, normText } from "./normalize.js";
+import { normalizeProvider } from "./provider_aliases.js";
 
 export type CallItem = {
   id: string;
@@ -68,28 +69,117 @@ export async function getCallsSettings(pool: Pool, streamerId: number): Promise<
   };
 }
 
-export async function isUserBannedFromCalls(pool: Pool, streamerId: number, userId: number): Promise<boolean> {
+/**
+ * Nouveau système bans:
+ *  - table calls_bans(streamer_id, kind, ban_key)
+ *  - kind in ('user','slot','provider')
+ *
+ * IMPORTANT:
+ * - ban user = ban_key = lower(username) (mais on tolère aussi userId string)
+ * - ban provider = ban_key = provider_norm (lower)
+ * - ban slot = ban_key = slotKey
+ */
+export async function isUserBannedFromCalls(
+  pool: Pool,
+  streamerId: number,
+  userId: number,
+  username?: string | null
+): Promise<boolean> {
+  const u = String(username || "").trim().toLowerCase();
+  const idKey = String(userId || "").trim();
+
+  // on check username si dispo, sinon fallback userId string
+  if (u) {
+    const r = await pool.query(
+      `SELECT 1
+       FROM calls_bans
+       WHERE streamer_id=$1 AND kind='user' AND (ban_key=$2 OR ban_key=$3)
+       LIMIT 1`,
+      [streamerId, u, idKey]
+    );
+    return !!r.rows?.[0];
+  }
+
   const r = await pool.query(
-    `SELECT 1 FROM calls_user_bans WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`,
-    [streamerId, userId]
+    `SELECT 1
+     FROM calls_bans
+     WHERE streamer_id=$1 AND kind='user' AND ban_key=$2
+     LIMIT 1`,
+    [streamerId, idKey]
   );
   return !!r.rows?.[0];
 }
 
 export async function isSlotBanned(pool: Pool, streamerId: number, slotKey: string): Promise<boolean> {
+  const k = String(slotKey || "").trim();
+  if (!k) return false;
+
   const r = await pool.query(
-    `SELECT 1 FROM calls_banned_slots WHERE streamer_id=$1 AND slot_key=$2 LIMIT 1`,
-    [streamerId, slotKey]
+    `SELECT 1
+     FROM calls_bans
+     WHERE streamer_id=$1 AND kind='slot' AND ban_key=$2
+     LIMIT 1`,
+    [streamerId, k]
   );
   return !!r.rows?.[0];
 }
 
 export async function isProviderBanned(pool: Pool, streamerId: number, provider: string): Promise<boolean> {
+  const raw = String(provider || "").trim();
+  if (!raw) return false;
+
+  const prov = normalizeProvider(raw);
+  const k = String(prov || raw).trim().toLowerCase();
+  if (!k) return false;
+
   const r = await pool.query(
-    `SELECT 1 FROM calls_banned_providers WHERE streamer_id=$1 AND provider=$2 LIMIT 1`,
-    [streamerId, provider]
+    `SELECT 1
+     FROM calls_bans
+     WHERE streamer_id=$1 AND kind='provider' AND ban_key=$2
+     LIMIT 1`,
+    [streamerId, k]
   );
   return !!r.rows?.[0];
+}
+
+async function ensureProviderPolicyRow(pool: Pool, streamerId: number) {
+  await pool.query(
+    `
+    INSERT INTO calls_provider_policy (streamer_id, mode)
+    VALUES ($1, 'allow_all')
+    ON CONFLICT (streamer_id) DO NOTHING
+    `,
+    [streamerId]
+  );
+}
+
+async function isProviderAllowedByPolicy(
+  pool: Pool,
+  streamerId: number,
+  providerNorm: string | null
+): Promise<boolean> {
+  // si pas de provider => on laisse passer (tu peux changer si tu veux strict)
+  if (!providerNorm) return true;
+
+  await ensureProviderPolicyRow(pool, streamerId);
+
+  const pr = await pool.query(
+    `SELECT mode FROM calls_provider_policy WHERE streamer_id=$1 LIMIT 1`,
+    [streamerId]
+  );
+
+  const mode = String(pr.rows?.[0]?.mode || "allow_all");
+  if (mode !== "allow_only") return true;
+
+  const ar = await pool.query(
+    `SELECT 1
+     FROM calls_allowed_providers
+     WHERE streamer_id=$1 AND provider_norm=$2
+     LIMIT 1`,
+    [streamerId, providerNorm]
+  );
+
+  return !!ar.rows?.[0];
 }
 
 export async function countUserCalls(pool: Pool, streamerId: number, userId: number): Promise<number> {
@@ -113,8 +203,42 @@ export async function addCall(
 
   const slotKey = keyText(slotName);
 
-  // lock par streamer pour pos + dédup
+  // provider -> provider_norm
+  const providerRaw = provider ? normText(provider) : null;
+  const providerNorm = providerRaw ? normalizeProvider(providerRaw) : null;
+  const providerStore = providerNorm ? String(providerNorm).trim().toLowerCase() : providerRaw;
+
+  // settings (si désactivé => stop)
+  const settings = await getCallsSettings(pool, streamerId);
+  if (!settings.enabled) return { ok: false, error: "calls_disabled" };
+
+  // lock par streamer pour pos + dédup + checks cohérents
   await pool.query(`SELECT pg_advisory_xact_lock($1)`, [Number(streamerId)]);
+
+  // ✅ bans / policy / limits
+  if (await isUserBannedFromCalls(pool, streamerId, userId, username)) {
+    return { ok: false, error: "user_banned" };
+  }
+
+  if (await isSlotBanned(pool, streamerId, slotKey)) {
+    return { ok: false, error: "slot_banned" };
+  }
+
+  if (providerStore && (await isProviderBanned(pool, streamerId, providerStore))) {
+    return { ok: false, error: "provider_banned" };
+  }
+
+  if (!(await isProviderAllowedByPolicy(pool, streamerId, providerStore ? providerStore.toLowerCase() : null))) {
+    return { ok: false, error: "provider_not_allowed" };
+  }
+
+  // per-user limit (0 = infini)
+  if (settings.perUserLimit > 0) {
+    const n = await countUserCalls(pool, streamerId, userId);
+    if (n >= settings.perUserLimit) {
+      return { ok: false, error: "limit_reached" };
+    }
+  }
 
   const maxPos = await pool.query(
     `SELECT COALESCE(MAX(pos),0)::bigint AS m FROM calls_queue WHERE streamer_id=$1`,
@@ -129,7 +253,7 @@ export async function addCall(
       VALUES ($1,$2,$3,$4,$5,$6,$7)
       RETURNING id, created_at AS "createdAt"
       `,
-      [streamerId, slotName, slotKey, provider, userId, username, nextPos]
+      [streamerId, slotName, slotKey, providerStore, userId, username, nextPos]
     );
 
     const row = ins.rows?.[0];
@@ -141,7 +265,7 @@ export async function addCall(
       item: {
         id,
         slotName,
-        provider: provider ?? null,
+        provider: providerStore ?? null,
         userId,
         username,
         pos: nextPos,
@@ -156,12 +280,7 @@ export async function addCall(
   }
 }
 
-export async function listCalls(
-  pool: Pool,
-  streamerId: number,
-  limit: number,
-  offset: number
-): Promise<CallItem[]> {
+export async function listCalls(pool: Pool, streamerId: number, limit: number, offset: number): Promise<CallItem[]> {
   const lim = Math.max(1, Math.min(200, Math.floor(Number(limit || 50))));
   const off = Math.max(0, Math.floor(Number(offset || 0)));
 
@@ -199,9 +318,6 @@ export async function resetCalls(pool: Pool, streamerId: number): Promise<void> 
 }
 
 export async function deleteCallById(pool: Pool, streamerId: number, id: string): Promise<boolean> {
-  const r = await pool.query(
-    `DELETE FROM calls_queue WHERE streamer_id=$1 AND id=$2 RETURNING id`,
-    [streamerId, id]
-  );
+  const r = await pool.query(`DELETE FROM calls_queue WHERE streamer_id=$1 AND id=$2 RETURNING id`, [streamerId, id]);
   return !!r.rows?.[0];
 }
