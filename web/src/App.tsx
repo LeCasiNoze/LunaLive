@@ -44,6 +44,7 @@ function AppInner() {
       <GoLiveNotifier />
       <DailyBonusToast />
       <AchievementsToast />
+      <CallsToast />
 
       <Routes>
         <Route path="/" element={<LivesPage />} />
@@ -57,7 +58,6 @@ function AppInner() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
-        <CallsToast />
       </Routes>
 
       {isMobile && <BottomTabs />}
