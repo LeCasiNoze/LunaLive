@@ -1,43 +1,26 @@
 // api/src/calls/shuffle_fetcher.ts
 import { normText } from "./normalize.js";
 
-export type ShuffleProvider = { name: string; slug: string };
+export type ShuffleProviderRow = {
+  id: string;
+  name: string;
+  slug: string;
+  gamesCount: number;
+};
 
-export type SlotRow = { name: string; provider: string | null };
+export type SlotRow = { name: string; provider: string | null; providerSlug?: string | null };
 
-function safeJsonParse(s: string) {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return null;
-  }
-}
+const GQL_URL = String(process.env.SHUFFLE_GQL_URL || "https://shuffle.com/main-api/graphql/api/graphql").trim();
 
-export function parseShuffleProviders(): ShuffleProvider[] {
-  const raw = String(process.env.SHUFFLE_PROVIDERS_JSON || "").trim();
-  if (!raw) return [];
-  const j = safeJsonParse(raw);
-  if (!Array.isArray(j)) return [];
-  return j
-    .map((x: any) => ({
-      name: String(x?.name || "").trim(),
-      slug: String(x?.slug || "").trim(),
-    }))
-    .filter((x) => x.name && x.slug);
-}
-
-function parseHeaders(): Record<string, string> {
-  const raw = String(process.env.SHUFFLE_HEADERS_JSON || "").trim();
-  if (!raw) return {};
-  const j = safeJsonParse(raw);
-  if (!j || typeof j !== "object") return {};
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(j)) {
-    if (!k) continue;
-    if (v == null) continue;
-    out[String(k)] = String(v);
-  }
-  return out;
+function headersFor(referer: string) {
+  return {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+    Origin: "https://shuffle.com",
+    Referer: referer,
+    "User-Agent": "Mozilla/5.0 LunaLive (slots-updater)",
+  } as Record<string, string>;
 }
 
 function shouldRetryTooMany(status: number, bodyText: string) {
@@ -57,40 +40,9 @@ async function sleepBackoff(attempt: number) {
   await sleep(Math.floor(jitter));
 }
 
-function pickItems(data: any): any[] {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
+type GqlResp = { data?: any; errors?: any[] };
 
-  // formats fréquents
-  if (Array.isArray(data.items)) return data.items;
-  if (Array.isArray(data.data)) return data.data;
-  if (Array.isArray(data.games)) return data.games;
-  if (data.result && Array.isArray(data.result.items)) return data.result.items;
-  if (data.payload && Array.isArray(data.payload.items)) return data.payload.items;
-
-  // fallback: première array trouvée (soft)
-  for (const v of Object.values(data)) {
-    if (Array.isArray(v)) return v as any[];
-  }
-  return [];
-}
-
-function extractName(it: any): string {
-  if (!it) return "";
-  if (typeof it === "string") return it;
-  if (typeof it === "object") {
-    return String(it.name || it.title || it.game || it.label || "").trim();
-  }
-  return "";
-}
-
-export async function fetchShuffleBySlug(slug: string, providerNameHint?: string): Promise<SlotRow[]> {
-  const urlTpl = String(process.env.SHUFFLE_PROVIDER_URL_TMPL || "").trim();
-  if (!urlTpl) throw new Error("SHUFFLE_PROVIDER_URL_TMPL_missing");
-
-  const url = urlTpl.replace(/\{slug\}/g, encodeURIComponent(slug));
-  const headers = parseHeaders();
-
+async function postGql(query: string, variables: any, operationName: string, referer: string) {
   const maxRetries = Math.max(0, Number(process.env.SHUFFLE_MAX_RETRIES || 3));
   const timeoutMs = Math.max(2000, Number(process.env.SHUFFLE_TIMEOUT_MS || 15000));
 
@@ -103,9 +55,12 @@ export async function fetchShuffleBySlug(slug: string, providerNameHint?: string
     let text = "";
 
     try {
-      const r = await fetch(url, {
-        method: "GET",
-        headers,
+      const body = JSON.stringify({ operationName, query, variables });
+
+      const r = await fetch(GQL_URL, {
+        method: "POST",
+        headers: headersFor(referer),
+        body,
         signal: ctrl.signal,
       });
 
@@ -118,22 +73,25 @@ export async function fetchShuffleBySlug(slug: string, providerNameHint?: string
           await sleepBackoff(attempt - 1);
           continue;
         }
-        throw new Error(`shuffle_fetch_failed:${status}`);
+        throw new Error(`shuffle_http:${status}`);
       }
 
-      const data = text ? safeJsonParse(text) : null;
-      const items = pickItems(data);
+      const j = (text ? JSON.parse(text) : {}) as GqlResp;
 
-      const provider = normText(providerNameHint || "") || null;
+      // GraphQL errors (Shuffle renvoie souvent errors[].extensions.code)
+      if (j && Array.isArray(j.errors) && j.errors.length) {
+        const code = String((j.errors[0] as any)?.extensions?.code || "").trim();
+        const msg = String((j.errors[0] as any)?.message || "").trim();
 
-      const out: SlotRow[] = [];
-      for (const it of items) {
-        const name = normText(extractName(it));
-        if (!name) continue;
-        out.push({ name, provider });
+        // cas que tu vois dans tes logs
+        if (msg.includes("GAME_PROVIDER_NOT_FOUND")) {
+          throw new Error("shuffle_gql:GAME_PROVIDER_NOT_FOUND");
+        }
+
+        throw new Error(`shuffle_gql:${code || "ERROR"}:${msg || "Invalid request"}`);
       }
 
-      return out;
+      return j.data;
     } catch (e: any) {
       const msg = String(e?.message || e);
 
@@ -158,22 +116,126 @@ export async function fetchShuffleBySlug(slug: string, providerNameHint?: string
   }
 }
 
-export async function fetchShuffleAll(): Promise<SlotRow[]> {
-  const providers = parseShuffleProviders();
-  if (!providers.length) throw new Error("SHUFFLE_PROVIDERS_JSON_missing_or_empty");
+const Q_GET_PROVIDERS = `
+query GetGameCountByProvider {
+  getGameCountByProvider {
+    provider { id name slug }
+    gamesCount
+  }
+}
+`;
+
+export async function fetchShuffleProviders(): Promise<ShuffleProviderRow[]> {
+  const data = await postGql(
+    Q_GET_PROVIDERS,
+    {},
+    "GetGameCountByProvider",
+    "https://shuffle.com/fr/casino/providers/nolimit-city"
+  );
+
+  const rows = data?.getGameCountByProvider;
+  if (!Array.isArray(rows)) return [];
+
+  return rows
+    .map((x: any) => ({
+      id: String(x?.provider?.id || "").trim(),
+      name: String(x?.provider?.name || "").trim(),
+      slug: String(x?.provider?.slug || "").trim(),
+      gamesCount: Number(x?.gamesCount || 0) || 0,
+    }))
+    .filter((x: any) => x.id && x.name && x.slug);
+}
+
+const Q_CACHED_GAMES = `
+query CachedGames($providerSlug: String!, $first: Int!, $skip: Int!) {
+  cachedGames(providerSlug: $providerSlug, first: $first, skip: $skip) {
+    totalCount
+    nodes { name slug }
+  }
+}
+`;
+
+export async function fetchShuffleProviderSlots(providerSlug: string, providerNameHint: string): Promise<SlotRow[]> {
+  const slug = String(providerSlug || "").trim();
+  if (!slug) return [];
+
+  const first = Math.max(1, Math.min(40, Number(process.env.SHUFFLE_BATCH || 40)));
+  let skip = 0;
+  let total = Number.POSITIVE_INFINITY;
+
+  const out: SlotRow[] = [];
+
+  while (skip < total) {
+    const referer = `https://shuffle.com/fr/casino/providers/${encodeURIComponent(slug)}`;
+    const data = await postGql(
+      Q_CACHED_GAMES,
+      { providerSlug: slug, first, skip },
+      "CachedGames",
+      referer
+    );
+
+    const cg = data?.cachedGames;
+    const nodes = cg?.nodes;
+    const totalCount = Number(cg?.totalCount);
+
+    if (Number.isFinite(totalCount)) total = totalCount;
+    if (!Array.isArray(nodes) || nodes.length === 0) break;
+
+    for (const n of nodes) {
+      const name = normText(n?.name);
+      if (!name) continue;
+      out.push({ name, provider: normText(providerNameHint) || null, providerSlug: slug });
+    }
+
+    skip += first;
+  }
+
+  return out;
+}
+
+export async function fetchShuffleAllSlots(options?: {
+  excludeSlugs?: string[];
+  excludeIds?: string[];
+}): Promise<{ items: SlotRow[]; providers: ShuffleProviderRow[]; skipped: { slug: string; err: string }[] }> {
+  const providers = await fetchShuffleProviders();
+
+  const excludeSlugs = new Set(
+    (options?.excludeSlugs || [
+      // demandés
+      "shuffle-games",
+      "evolution",
+      "pragmatic-play-live",
+    ])
+      .map((s) => String(s).trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  const excludeIds = new Set((options?.excludeIds || []).map((s) => String(s).trim().toLowerCase()).filter(Boolean));
 
   const interMs = Math.max(0, Number(process.env.SHUFFLE_INTER_PROVIDER_MS || 800));
 
-  const all: SlotRow[] = [];
+  const items: SlotRow[] = [];
+  const skipped: { slug: string; err: string }[] = [];
+
   for (const p of providers) {
-    console.log(`[shuffle] provider ${p.name} (${p.slug})`);
+    const slug = p.slug.toLowerCase();
+    const id = p.id.toLowerCase();
+
+    if (p.gamesCount <= 0) continue;
+    if (excludeSlugs.has(slug) || excludeIds.has(id)) continue;
+
     try {
-      const rows = await fetchShuffleBySlug(p.slug, p.name);
-      all.push(...rows);
+      const rows = await fetchShuffleProviderSlots(p.slug, p.name);
+      items.push(...rows);
     } catch (e: any) {
-      console.warn(`[shuffle] skip ${p.name} (${p.slug})`, e?.message || e);
+      const err = String(e?.message || e);
+      skipped.push({ slug: p.slug, err });
+      // soft skip (comme NozeBot)
+      console.warn(`[slots-updater] skip provider=${p.id} slug=${p.slug} err=${err}`);
     }
+
     if (interMs > 0) await sleep(interMs);
   }
-  return all;
+
+  return { items, providers, skipped };
 }

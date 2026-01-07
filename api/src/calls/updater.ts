@@ -4,20 +4,22 @@ import { upsertSlots, type SlotRow, type InsertedSlotRow } from "./catalog.js";
 
 /**
  * ✅ Source: Shuffle GraphQL
- * - Liste providers via getGameCountByProvider
+ * - Liste providers via getGameCountByProvider (id + name + slug)
  * - Liste jeux via cachedGames(providerSlug, first, skip)
  *
- * Exclusions demandées:
- * - original (Shuffle originals)
+ * Exclusions demandées (par SLUG Shuffle, pas par id):
+ * - shuffle-games (Shuffle originals)
  * - evolution
- * - pragmaticplaylive
+ * - pragmatic-play-live
  */
 
 const SHUFFLE_GQL = "https://shuffle.com/main-api/graphql/api/graphql";
-const EXCLUDED_PROVIDER_IDS = new Set<string>(["original", "evolution", "pragmaticplaylive"]);
+
+// ⚠️ IMPORTANT: exclusions par slug (pas par id)
+const EXCLUDED_PROVIDER_SLUGS = new Set<string>(["shuffle-games", "evolution", "pragmatic-play-live"]);
 
 const Q_PROVIDERS = `query GetGameCountByProvider {
-  getGameCountByProvider { provider { id name } gamesCount }
+  getGameCountByProvider { provider { id name slug } gamesCount }
 }`;
 
 const Q_CACHED_GAMES = `query CachedGames($providerSlug:String!, $first:Int!, $skip:Int!) {
@@ -62,9 +64,14 @@ async function shufflePost(payload: any, referer: string) {
   return data;
 }
 
-async function fetchProviders(): Promise<{ id: string; name: string; gamesCount: number }[]> {
+type ProviderRow = { id: string; name: string; slug: string; gamesCount: number };
+
+async function fetchProviders(): Promise<ProviderRow[]> {
   const referer = "https://shuffle.com/fr/casino/providers/nolimit-city";
-  const data = await shufflePost({ query: Q_PROVIDERS, variables: {}, operationName: "GetGameCountByProvider" }, referer);
+  const data = await shufflePost(
+    { query: Q_PROVIDERS, variables: {}, operationName: "GetGameCountByProvider" },
+    referer
+  );
 
   const arr = data?.data?.getGameCountByProvider;
   if (!Array.isArray(arr)) return [];
@@ -73,9 +80,12 @@ async function fetchProviders(): Promise<{ id: string; name: string; gamesCount:
     .map((x: any) => ({
       id: String(x?.provider?.id || "").trim(),
       name: String(x?.provider?.name || "").trim(),
+      slug: String(x?.provider?.slug || "").trim(),
       gamesCount: Number(x?.gamesCount || 0),
     }))
-    .filter((x) => x.id && x.name && Number.isFinite(x.gamesCount));
+    .filter(
+      (x) => x.id && x.name && x.slug && Number.isFinite(x.gamesCount)
+    );
 }
 
 async function fetchProviderGames(providerSlug: string, providerName: string): Promise<SlotRow[]> {
@@ -129,13 +139,17 @@ async function fetchProviderGames(providerSlug: string, providerName: string): P
 
 export async function runSlotsUpdate(
   pool: Pool
-): Promise<{ ok: true; fetched: number; inserted: InsertedSlotRow[] } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; fetched: number; inserted: InsertedSlotRow[] }
+  | { ok: false; error: string }
+> {
   try {
     const providers = await fetchProviders();
 
+    // ✅ targets = ceux qui ont des jeux, et pas dans exclusions
     const targets = providers
       .filter((p) => p.gamesCount > 0)
-      .filter((p) => !EXCLUDED_PROVIDER_IDS.has(p.id));
+      .filter((p) => !EXCLUDED_PROVIDER_SLUGS.has(p.slug));
 
     const all: SlotRow[] = [];
 
@@ -143,12 +157,15 @@ export async function runSlotsUpdate(
     const interProviderMs = Number(process.env.SHUFFLE_INTER_PROVIDER_MS || 650);
 
     for (const p of targets) {
-      // tente / skip si rate limit
+      // ✅ ICI LE FIX IMPORTANT:
+      // on passe p.slug à cachedGames, pas p.id
       try {
-        const rows = await fetchProviderGames(p.id, p.name);
+        const rows = await fetchProviderGames(p.slug, p.name);
         all.push(...rows);
       } catch (e: any) {
-        console.warn(`[slots-updater] skip provider=${p.id} err=${String(e?.message || e)}`);
+        console.warn(
+          `[slots-updater] skip providerId=${p.id} slug=${p.slug} err=${String(e?.message || e)}`
+        );
       }
 
       if (interProviderMs > 0) await sleep(interProviderMs);
