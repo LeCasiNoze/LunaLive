@@ -2,7 +2,7 @@
 import express from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
-import { getCallsSettings, listCalls, resetCalls, deleteCallById, effectiveLimit } from "../calls/queue.js";
+import { getCallsSettings, resetCalls, deleteCallById, effectiveLimit } from "../calls/queue.js";
 
 // helper: slug -> streamer meta
 async function getStreamerBySlug(slug: string) {
@@ -17,7 +17,11 @@ async function getStreamerBySlug(slug: string) {
   );
   const row = r.rows?.[0];
   if (!row) return null;
-  return { id: Number(row.id), slug: String(row.slug), ownerUserId: row.ownerUserId != null ? Number(row.ownerUserId) : null };
+  return {
+    id: Number(row.id),
+    slug: String(row.slug),
+    ownerUserId: row.ownerUserId != null ? Number(row.ownerUserId) : null,
+  };
 }
 
 function canModOnStreamer(user: any, meta: { ownerUserId: number | null }) {
@@ -65,10 +69,41 @@ callsRouter.get("/:slug/list", requireAuth, async (req: any, res) => {
 
     if (!canModOnStreamer(u, meta)) return res.status(403).json({ ok: false, error: "forbidden" });
 
-    const limit = Number(req.query.limit || 50);
-    const offset = Number(req.query.offset || 0);
+    const limitRaw = Number(req.query.limit || 50);
+    const offsetRaw = Number(req.query.offset || 0);
 
-    const items = await listCalls(pool, meta.id, limit, offset);
+    const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? limitRaw : 50));
+    const offset = Math.max(0, Number.isFinite(offsetRaw) ? offsetRaw : 0);
+
+    // ✅ Join calls_queue -> slots_catalog pour récupérer image_url
+    const { rows } = await pool.query(
+      `
+      SELECT
+        q.id::text AS id,
+        q.slot_name AS "slotName",
+        q.provider AS provider,
+        q.username AS username,
+        q.pos AS pos,
+        sc.image_url AS "imageUrl"
+      FROM calls_queue q
+      LEFT JOIN slots_catalog sc
+        ON sc.name_key = q.slot_key
+      WHERE q.streamer_id = $1
+      ORDER BY q.pos ASC
+      LIMIT $2 OFFSET $3
+      `,
+      [meta.id, limit, offset]
+    );
+
+    const items = (rows || []).map((r: any) => ({
+      id: String(r.id),
+      slotName: String(r.slotName),
+      provider: r.provider ? String(r.provider) : null,
+      username: String(r.username),
+      pos: Number(r.pos) || 0,
+      imageUrl: r.imageUrl ? String(r.imageUrl) : null,
+    }));
+
     res.json({ ok: true, items });
   } catch (e: any) {
     res.json({ ok: false, error: String(e?.message || "list_failed") });
