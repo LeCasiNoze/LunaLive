@@ -6,22 +6,22 @@ import { normalizeProvider } from "./provider_aliases.js";
 export type SlotRow = {
   name: string;
   provider: string | null;
+  imageUrl?: string | null;
 };
 
 export type InsertedSlotRow = {
   name: string;
   provider: string | null; // provider_norm canonique si dispo
-  slotKey: string; // name_key
+  slotKey: string;         // name_key
+  imageUrl: string | null;
 };
 
 export async function upsertSlots(pool: Pool, items: SlotRow[]): Promise<InsertedSlotRow[]> {
   if (!items.length) return [];
 
-  // ✅ dédup obligatoire: évite "ON CONFLICT DO UPDATE command cannot affect row a second time"
-  const byKey = new Map<
-    string,
-    { name: string; nameKey: string; providerRaw: string | null; providerNorm: string | null }
-  >();
+  // ✅ dédup par name_key pour éviter:
+  // "ON CONFLICT DO UPDATE command cannot affect row a second time"
+  const dedup = new Map<string, { name: string; providerRaw: string | null; providerNorm: string | null; imageUrl: string | null }>();
 
   for (const it of items) {
     const name = normText(it.name);
@@ -33,44 +33,42 @@ export async function upsertSlots(pool: Pool, items: SlotRow[]): Promise<Inserte
     const providerRaw = it.provider ? normText(it.provider) : null;
     const providerNorm = providerRaw ? normalizeProvider(providerRaw) : null;
 
-    // Si doublon dans le batch, on garde le 1er (ou le dernier, au choix).
-    if (!byKey.has(nameKey)) {
-      byKey.set(nameKey, { name, nameKey, providerRaw, providerNorm });
-    }
+    const imageUrl = it.imageUrl ? String(it.imageUrl).trim() : null;
+
+    // la dernière valeur gagne (ça permet de “mettre à jour” une image plus tard)
+    dedup.set(nameKey, { name, providerRaw, providerNorm, imageUrl });
   }
 
-  if (!byKey.size) return [];
+  if (!dedup.size) return [];
 
   const values: any[] = [];
   const chunks: string[] = [];
   let i = 1;
 
-  for (const v of byKey.values()) {
-    values.push(v.name, v.nameKey, v.providerRaw, v.providerNorm);
-    chunks.push(`($${i++}, $${i++}, $${i++}, $${i++})`);
+  for (const [nameKey, v] of dedup.entries()) {
+    values.push(v.name, nameKey, v.providerRaw, v.providerNorm, v.imageUrl);
+    chunks.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
   }
 
-  /**
-   * ✅ Trick Postgres:
-   * RETURNING (xmax = 0) => ligne réellement insérée
-   */
   const { rows } = await pool.query(
     `
     WITH upserted AS (
-      INSERT INTO slots_catalog (name, name_key, provider, provider_norm)
+      INSERT INTO slots_catalog (name, name_key, provider, provider_norm, image_url)
       VALUES ${chunks.join(",")}
       ON CONFLICT (name_key) DO UPDATE
         SET name = EXCLUDED.name,
             provider = EXCLUDED.provider,
             provider_norm = EXCLUDED.provider_norm,
+            image_url = COALESCE(EXCLUDED.image_url, slots_catalog.image_url),
             updated_at = NOW()
       RETURNING
         name,
         name_key AS "slotKey",
         provider_norm AS "providerNorm",
+        image_url AS "imageUrl",
         (xmax = 0) AS "wasInserted"
     )
-    SELECT name, "slotKey", "providerNorm"
+    SELECT name, "slotKey", "providerNorm", "imageUrl"
     FROM upserted
     WHERE "wasInserted" = TRUE
     `,
@@ -81,6 +79,7 @@ export async function upsertSlots(pool: Pool, items: SlotRow[]): Promise<Inserte
     name: String(r.name),
     slotKey: String(r.slotKey),
     provider: r.providerNorm ? String(r.providerNorm) : null,
+    imageUrl: r.imageUrl ? String(r.imageUrl) : null,
   }));
 }
 
@@ -118,7 +117,11 @@ export async function searchSlots(pool: Pool, qRaw: string, limit: number) {
   const like = `%${qKey}%`;
   const r = await pool.query(
     `
-    SELECT name, name_key AS "nameKey", provider_norm AS "provider"
+    SELECT
+      name,
+      name_key AS "nameKey",
+      provider_norm AS "provider",
+      image_url AS "imageUrl"
     FROM slots_catalog
     WHERE name_key ILIKE $1
     ORDER BY updated_at DESC
@@ -134,30 +137,32 @@ export async function searchSlots(pool: Pool, qRaw: string, limit: number) {
       name: String(row.name),
       nameKey: String(row.nameKey),
       provider: row.provider ? String(row.provider) : null,
+      imageUrl: row.imageUrl ? String(row.imageUrl) : null,
       s: scoreCandidate(qKey, qToks, String(row.nameKey)),
     }))
     .sort((a, b) => b.s - a.s)
     .slice(0, limit);
 
-  return scored.map((x) => ({ name: x.name, provider: x.provider }));
+  return scored.map((x) => ({ name: x.name, provider: x.provider, imageUrl: x.imageUrl }));
 }
 
 export async function resolveSlot(
   pool: Pool,
   input: string
-): Promise<{ name: string; provider: string | null } | null> {
+): Promise<{ name: string; provider: string | null; imageUrl: string | null } | null> {
   const q = normText(input);
   const qKey = keyText(q);
   if (!qKey) return null;
 
   const exact = await pool.query(
-    `SELECT name, provider_norm AS provider FROM slots_catalog WHERE name_key=$1 LIMIT 1`,
+    `SELECT name, provider_norm AS provider, image_url AS "imageUrl" FROM slots_catalog WHERE name_key=$1 LIMIT 1`,
     [qKey]
   );
   if (exact.rows?.[0]) {
     return {
       name: String(exact.rows[0].name),
       provider: exact.rows[0].provider ? String(exact.rows[0].provider) : null,
+      imageUrl: exact.rows[0].imageUrl ? String(exact.rows[0].imageUrl) : null,
     };
   }
 
@@ -165,5 +170,5 @@ export async function resolveSlot(
   if (!cand.length) return null;
   if (qKey.length < 3) return null;
 
-  return { name: cand[0].name, provider: cand[0].provider };
+  return { name: cand[0].name, provider: cand[0].provider, imageUrl: cand[0].imageUrl ?? null };
 }

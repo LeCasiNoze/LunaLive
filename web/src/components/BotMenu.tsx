@@ -5,14 +5,56 @@ function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
 }
 
-type SlotItem = { name: string; provider: string | null };
+type SlotItem = { name: string; provider: string | null; imageUrl?: string | null };
 type CallItem = {
   id: string;
   slotName: string;
   provider: string | null;
   username: string;
   pos: number;
+  imageUrl?: string | null; // ⚠️ sera visible quand l'API le renverra
 };
+
+function SlotThumb({ url, size = 34 }: { url?: string | null; size?: number }) {
+  const [broken, setBroken] = React.useState(false);
+
+  const boxStyle: React.CSSProperties = {
+    width: size,
+    height: size,
+    borderRadius: 12,
+    flex: "0 0 auto",
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.06)",
+    overflow: "hidden",
+    display: "grid",
+    placeItems: "center",
+  };
+
+  if (!url || broken) {
+    return (
+      <div style={boxStyle} aria-hidden="true" title="🎰">
+        <span style={{ fontSize: 16, opacity: 0.9 }}>🎰</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={boxStyle} aria-hidden="true">
+      <img
+        src={url}
+        alt=""
+        loading="lazy"
+        onError={() => setBroken(true)}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          display: "block",
+        }}
+      />
+    </div>
+  );
+}
 
 export function BotMenu({
   open,
@@ -287,7 +329,7 @@ export function BotMenu({
                       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
                         {items.map((it) => (
                           <button
-                            key={it.name}
+                            key={`${it.name}|${it.provider || ""}`}
                             type="button"
                             onClick={() => {
                               sendBang(`!call ${it.name}`);
@@ -305,8 +347,24 @@ export function BotMenu({
                               cursor: "pointer",
                             }}
                           >
-                            {it.name}
-                            {it.provider ? <span style={{ opacity: 0.75, fontWeight: 800 }}> — {it.provider}</span> : null}
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                              <SlotThumb url={it.imageUrl} />
+                              <div style={{ minWidth: 0 }}>
+                                <div
+                                  style={{
+                                    fontWeight: 950,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {it.name}
+                                  {it.provider ? (
+                                    <span style={{ opacity: 0.75, fontWeight: 800 }}> — {it.provider}</span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
                           </button>
                         ))}
                       </div>
@@ -424,13 +482,16 @@ export function BotMenu({
                             background: "rgba(255,255,255,0.05)",
                           }}
                         >
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {c.pos}. {c.slotName}
-                              {c.provider ? <span style={{ opacity: 0.75, fontWeight: 800 }}> — {c.provider}</span> : null}
-                            </div>
-                            <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
-                              @ {c.username}
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+                            <SlotThumb url={c.imageUrl} />
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {c.pos}. {c.slotName}
+                                {c.provider ? <span style={{ opacity: 0.75, fontWeight: 800 }}> — {c.provider}</span> : null}
+                              </div>
+                              <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
+                                @ {c.username}
+                              </div>
                             </div>
                           </div>
 

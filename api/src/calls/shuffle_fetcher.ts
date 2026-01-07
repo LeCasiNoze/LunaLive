@@ -1,5 +1,6 @@
 // api/src/calls/shuffle_fetcher.ts
 import { normText } from "./normalize.js";
+import { shuffleImageFromNode, isGqlValidationError } from "./shuffle_images.js";
 
 export type ShuffleProviderRow = {
   id: string;
@@ -8,7 +9,12 @@ export type ShuffleProviderRow = {
   gamesCount: number;
 };
 
-export type SlotRow = { name: string; provider: string | null; providerSlug?: string | null };
+export type SlotRow = {
+  name: string;
+  provider: string | null;
+  providerSlug?: string | null;
+  imageUrl?: string | null;
+};
 
 const GQL_URL = String(process.env.SHUFFLE_GQL_URL || "https://shuffle.com/main-api/graphql/api/graphql").trim();
 
@@ -146,11 +152,27 @@ export async function fetchShuffleProviders(): Promise<ShuffleProviderRow[]> {
     .filter((x: any) => x.id && x.name && x.slug);
 }
 
+// Requête actuelle (safe)
 const Q_CACHED_GAMES = `
 query CachedGames($providerSlug: String!, $first: Int!, $skip: Int!) {
   cachedGames(providerSlug: $providerSlug, first: $first, skip: $skip) {
     totalCount
     nodes { name slug }
+  }
+}
+`;
+
+// Requête enrichie (images) — si Shuffle refuse, on fallback sur Q_CACHED_GAMES
+const Q_CACHED_GAMES_WITH_IMAGES = `
+query CachedGames($providerSlug: String!, $first: Int!, $skip: Int!) {
+  cachedGames(providerSlug: $providerSlug, first: $first, skip: $skip) {
+    totalCount
+    nodes {
+      name
+      slug
+      images { list thumbnail cover }
+      image { key }
+    }
   }
 }
 `;
@@ -167,12 +189,30 @@ export async function fetchShuffleProviderSlots(providerSlug: string, providerNa
 
   while (skip < total) {
     const referer = `https://shuffle.com/fr/casino/providers/${encodeURIComponent(slug)}`;
-    const data = await postGql(
-      Q_CACHED_GAMES,
-      { providerSlug: slug, first, skip },
-      "CachedGames",
-      referer
-    );
+
+    // 1) try query with images
+    let data: any = null;
+    try {
+      data = await postGql(
+        Q_CACHED_GAMES_WITH_IMAGES,
+        { providerSlug: slug, first, skip },
+        "CachedGames",
+        referer
+      );
+    } catch (e: any) {
+      const err = String(e?.message || e);
+      // fallback only on validation-like errors
+      if (isGqlValidationError(err)) {
+        data = await postGql(
+          Q_CACHED_GAMES,
+          { providerSlug: slug, first, skip },
+          "CachedGames",
+          referer
+        );
+      } else {
+        throw e;
+      }
+    }
 
     const cg = data?.cachedGames;
     const nodes = cg?.nodes;
@@ -184,7 +224,15 @@ export async function fetchShuffleProviderSlots(providerSlug: string, providerNa
     for (const n of nodes) {
       const name = normText(n?.name);
       if (!name) continue;
-      out.push({ name, provider: normText(providerNameHint) || null, providerSlug: slug });
+
+      const imageUrl = shuffleImageFromNode(n);
+
+      out.push({
+        name,
+        provider: normText(providerNameHint) || null,
+        providerSlug: slug,
+        imageUrl: imageUrl || null,
+      });
     }
 
     skip += first;

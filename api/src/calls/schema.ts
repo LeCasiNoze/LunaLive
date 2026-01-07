@@ -37,16 +37,16 @@ export async function ensureCallsSchema(pool: Pool) {
     CREATE TABLE IF NOT EXISTS calls_settings (
       streamer_id BIGINT PRIMARY KEY,
       enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      show_cmd_in_chat BOOLEAN NOT NULL DEFAULT FALSE,   -- si true: on laisse afficher la commande brute (option future)
-      show_accept_public BOOLEAN NOT NULL DEFAULT TRUE,  -- message bot quand accepté
+      show_cmd_in_chat BOOLEAN NOT NULL DEFAULT FALSE,
+      show_accept_public BOOLEAN NOT NULL DEFAULT TRUE,
       allow_listec BOOLEAN NOT NULL DEFAULT TRUE,
-      listec_max INT NOT NULL DEFAULT 10,                -- défaut 10 (Q11)
-      per_user_limit INT NOT NULL DEFAULT 2,             -- free=2 (0/ >10 => infini géré logique)
+      listec_max INT NOT NULL DEFAULT 10,
+      per_user_limit INT NOT NULL DEFAULT 2,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
 
-  // Bans (future / déjà utile)
+  // Bans
   await pool.query(`
     CREATE TABLE IF NOT EXISTS calls_user_bans (
       streamer_id BIGINT NOT NULL,
@@ -87,8 +87,15 @@ export async function ensureCallsSchema(pool: Pool) {
       name_key TEXT NOT NULL,
       provider TEXT NULL,
       provider_norm TEXT NULL,
+      image_url TEXT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
+
+  // ✅ si la table existait déjà, on ajoute la colonne
+  await pool.query(`
+    ALTER TABLE slots_catalog
+    ADD COLUMN IF NOT EXISTS image_url TEXT NULL;
   `);
 
   await pool.query(`
@@ -100,8 +107,4 @@ export async function ensureCallsSchema(pool: Pool) {
     CREATE INDEX IF NOT EXISTS slots_catalog_provider
     ON slots_catalog(provider_norm);
   `);
-
-  // NOTE:
-  // Le "miroir" chat_settings.show_call_commands est géré en migration dédiée
-  // (sinon crash au boot si la table n'existe pas encore).
 }
