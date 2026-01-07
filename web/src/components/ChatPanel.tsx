@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import { ChatMessageBubble } from "./chat/ChatMessageBubble";
 import type { ChatCosmetics } from "../lib/cosmetics";
+import { BotMenu } from "../components/BotMenu";
 
 import {
   DEFAULT_APPEARANCE as DEFAULT_STREAMER_APPEARANCE,
@@ -156,6 +157,7 @@ export function ChatPanel({
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     return dist < extraPx;
   }
+  const [botOpen, setBotOpen] = React.useState(false);
 
   const myId = join?.me?.id != null ? Number(join.me.id) : null;
 
@@ -553,6 +555,11 @@ export function ChatPanel({
 
     socket.on("connect_error", (e: any) => {
       setError(String(e?.message || "socket_connect_error"));
+    });
+
+    socket.on("ui:toast", (payload: any) => {
+      if (!payload?.title) return;
+      window.dispatchEvent(new CustomEvent("ui:toast", { detail: payload }));
     });
 
     socket.on("chat:message", (msg: ChatMsg) => {
@@ -1013,6 +1020,30 @@ export function ChatPanel({
           <div style={{ marginBottom: 10, fontSize: 12, color: "rgba(255,120,150,0.95)" }}>{error}</div>
         ) : null}
 
+        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+          <button
+            type="button"
+            onClick={() => {
+              if (!token) return onRequireLogin();
+              setBotOpen(true);
+            }}
+            style={{
+              flex: 1,
+              padding: "12px 12px",
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(124,77,255,0.18)",
+              color: "white",
+              fontWeight: 950,
+              cursor: "pointer",
+            }}
+            title="Ouvrir le menu du bot"
+            aria-label="Ouvrir le menu du bot"
+          >
+            🤖 Bot
+          </button>
+        </div>
+
         <div style={{ display: "flex", gap: 10 }}>
           <input
             ref={inputRef}
@@ -1441,6 +1472,20 @@ export function ChatPanel({
           ) : null}
         </div>
       ) : null}
+            <BotMenu
+        open={botOpen}
+        onClose={() => setBotOpen(false)}
+        slug={slug}
+        token={token || null}
+        role={join?.role}
+        canMod={!!join?.perms?.canMod}
+        onRequireLogin={onRequireLogin}
+        sendBang={(text) => {
+          // on passe par la même logique que le chat -> intercept server-side
+          sockRef.current?.emit("chat:send", { slug, body: text }, () => {});
+        }}
+      />
+
     </div>
   );
 }

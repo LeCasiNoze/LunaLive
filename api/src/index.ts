@@ -13,6 +13,9 @@ import { startChestJobs } from "./chest_jobs.js";
 import { ensureBotClips } from "./bot_clips/store.js";
 import { startClipsVodLinker } from "./bot_clips/vod_linker.js";
 
+import { ensureCallsSchema } from "./calls/schema.js";
+import { startSlotsUpdater } from "./calls/updater.js";
+
 const port = Number(process.env.PORT || 3001);
 
 function startStatsCleanup() {
@@ -46,6 +49,11 @@ function startStatsCleanup() {
 
   // ✅ ensure clips table (runtime idempotent)
   await ensureBotClips();
+  // ✅ calls + slots schema
+  await ensureCallsSchema(pool);
+
+  // ✅ catalogue slots updater (12h)
+  startSlotsUpdater(pool, 12);
 
   const app = createApp();
 

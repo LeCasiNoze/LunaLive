@@ -54,6 +54,9 @@ import { overlayApiRouter } from "./routes/overlay_api.js";
 // ✅ NEW: clips routes
 import { botClipsRouter } from "./bot_clips/router.js";
 import { clipsPublicRouter } from "./routes/clips_public.js";
+import { slotsRouter } from "./routes/slots.js";
+import { callsRouter } from "./routes/calls.js";
+
 export function createApp() {
   const app = express();
   app.set("trust proxy", 1);
@@ -136,6 +139,9 @@ export function createApp() {
   app.use(internalBotRouter);
   app.use("/overlay/api", overlayApiRouter);
   app.use(clipsPublicRouter);
+
+  app.use("/slots", slotsRouter);
+  app.use("/calls", callsRouter);
   
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));

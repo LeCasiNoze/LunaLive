@@ -19,6 +19,7 @@ import { LoginModal } from "./components/LoginModal";
 import { GoLiveNotifier } from "./components/GoLiveNotifier";
 import { DailyBonusToast } from "./components/DailyBonusToast";
 import { AchievementsToast } from "./components/AchievementsToast";
+import { CallsToast } from "./components/CallsToast";
 
 function AppInner() {
   const location = useLocation();
@@ -56,6 +57,7 @@ function AppInner() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <CallsToast />
       </Routes>
 
       {isMobile && <BottomTabs />}

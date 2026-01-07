@@ -5,6 +5,7 @@ import { chatStore } from "./chat_store.js";
 import type { AuthUser } from "./auth.js";
 import { normalizeAppearance, type Appearance } from "./appearance.js";
 import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
+import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 
 // ✅ NEW
 import {
@@ -475,6 +476,32 @@ export function attachChat(io: Server) {
         if (settings.subOnly) {
           const ok = await isActiveSub(meta.id, u.id);
           if (!ok) return cb?.({ ok: false, error: "sub_only" });
+        }
+                // ✅ NEW: commandes !call / !listec / !resetc (intercept)
+        const bang = parseBangCommand(text);
+        if (bang) {
+          const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+
+          const out = await handleCallsCommand({
+            pool,
+            io,
+            slug: meta.slug,
+            streamerId: meta.id,
+
+            actorUserId: u.id,
+            actorUsername: u.username,
+            actorRole: (rp.role || "viewer") as any,
+            canMod: !!rp.perms.canMod,
+
+            cmd: bang.cmd,
+            arg: bang.arg,
+          });
+
+          if (out.handled) {
+            // par défaut: on ne poste pas la commande dans le chat
+            // si tu actives show_cmd_in_chat plus tard => on laissera passer
+            if (!out.showOriginalInChat) return cb?.({ ok: true });
+          }
         }
 
         // anti-spam: 1 msg / 200ms
