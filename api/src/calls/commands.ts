@@ -6,14 +6,11 @@ import { resolveSlot } from "./catalog.js";
 import {
   addCall,
   countUserCalls,
-  deleteCallById,
   effectiveLimit,
   getCallsSettings,
-  isProviderBanned,
-  isSlotBanned,
-  isUserBannedFromCalls,
   listCalls,
   resetCalls,
+  isUserBannedFromCalls,
 } from "./queue.js";
 import { normText } from "./normalize.js";
 import { chatStore } from "../chat_store.js";
@@ -41,7 +38,7 @@ export async function handleCallsCommand(opts: {
   cmd: string;
   arg: string;
 }): Promise<
-  | { handled: true; showOriginalInChat: boolean } // handled & should we still send the original message?
+  | { handled: true; showOriginalInChat: boolean }
   | { handled: false }
 > {
   const { pool, io, slug, streamerId, actorUserId, actorUsername, actorRole, canMod, cmd, arg } = opts;
@@ -49,7 +46,7 @@ export async function handleCallsCommand(opts: {
   if (cmd !== "call" && cmd !== "listec" && cmd !== "resetc") return { handled: false };
 
   const settings = await getCallsSettings(pool, streamerId);
-  const showOriginalInChat = !!settings.showCmdInChat; // option future, par défaut false
+  const showOriginalInChat = !!settings.showCmdInChat;
 
   // calls disabled
   if (!settings.enabled) {
@@ -59,8 +56,7 @@ export async function handleCallsCommand(opts: {
         title: "Calls désactivés",
         message: "Le streamer a désactivé les calls pour le moment.",
       });
-    }
-    if (cmd === "resetc") {
+    } else {
       emitUserToast(io, actorUserId, { kind: "error", title: "Calls désactivés" });
     }
     return { handled: true, showOriginalInChat };
@@ -72,6 +68,7 @@ export async function handleCallsCommand(opts: {
       emitUserToast(io, actorUserId, { kind: "error", title: "Accès refusé", message: "Réservé aux modérateurs." });
       return { handled: true, showOriginalInChat };
     }
+
     await resetCalls(pool, streamerId);
 
     const sys = chatStore.addSystem(slug, `🧹 Calls reset par @${actorUsername}`);
@@ -110,9 +107,13 @@ export async function handleCallsCommand(opts: {
   }
 
   // cmd === call
-  // bans
-  if (await isUserBannedFromCalls(pool, streamerId, actorUserId)) {
-    emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Tu ne peux pas utiliser les calls." });
+  // user banned (ban_key username / userId) => passe username pour être exact
+  if (await isUserBannedFromCalls(pool, streamerId, actorUserId, actorUsername)) {
+    emitUserToast(io, actorUserId, {
+      kind: "error",
+      title: "Call refusé",
+      message: "Tu ne peux pas utiliser les calls.",
+    });
     return { handled: true, showOriginalInChat };
   }
 
@@ -122,7 +123,7 @@ export async function handleCallsCommand(opts: {
     return { handled: true, showOriginalInChat };
   }
 
-  // limit (mods/streamer/admin => pas de limite, selon ton “mods peuvent tout faire”)
+  // limit (mods/streamer/admin => pas de limite)
   const lim = effectiveLimit(settings.perUserLimit);
   const bypassLimit = canMod || actorRole === "admin" || actorRole === "streamer";
   if (!bypassLimit && lim > 0) {
@@ -140,54 +141,58 @@ export async function handleCallsCommand(opts: {
   // resolve slot (exact ou fuzzy)
   const resolved = await resolveSlot(pool, raw);
   if (!resolved) {
-    emitUserToast(io, actorUserId, { kind: "error", title: "Machine introuvable", message: "Essaie un nom plus précis." });
+    emitUserToast(io, actorUserId, {
+      kind: "error",
+      title: "Machine introuvable",
+      message: "Essaie un nom plus précis.",
+    });
     return { handled: true, showOriginalInChat };
   }
 
-  // slot/provider bans
-  // (slotKey check se fait côté addCall via unique + key; mais ban doit checker key)
-  const slotKey = resolved.name.toLowerCase().normalize("NFKC").replace(/\s+/g, " ").trim();
-  if (await isSlotBanned(pool, streamerId, slotKey)) {
-    emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Machine interdite." });
-    return { handled: true, showOriginalInChat };
-  }
-  if (resolved.provider && (await isProviderBanned(pool, streamerId, resolved.provider))) {
-    emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Provider interdit." });
-    return { handled: true, showOriginalInChat };
-  }
+  // add (gère bans slot/provider/policy/limit côté addCall aussi)
+  const add = await addCall(pool, streamerId, actorUserId, actorUsername, resolved.name, resolved.provider, {
+    bypassLimit,
+  });
 
-  // insert
-  const r = await pool.query("BEGIN");
-  try {
-    const add = await addCall(pool, streamerId, actorUserId, actorUsername, resolved.name, resolved.provider);
-    if (!add.ok) {
-      await pool.query("ROLLBACK");
-      if (add.error === "already_in_queue") {
-        emitUserToast(io, actorUserId, { kind: "error", title: "Déjà en file", message: "Cette machine est déjà call." });
-        return { handled: true, showOriginalInChat };
-      }
-      emitUserToast(io, actorUserId, { kind: "error", title: "Erreur", message: "Impossible d'ajouter le call." });
+  if (!add.ok) {
+    if (add.error === "already_in_queue") {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Déjà en file", message: "Cette machine est déjà call." });
+      return { handled: true, showOriginalInChat };
+    }
+    if (add.error === "limit_reached") {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Limite atteinte", message: "Tu as atteint ta limite de calls." });
+      return { handled: true, showOriginalInChat };
+    }
+    if (add.error === "user_banned") {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Tu ne peux pas utiliser les calls." });
+      return { handled: true, showOriginalInChat };
+    }
+    if (add.error === "slot_banned") {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Machine interdite." });
+      return { handled: true, showOriginalInChat };
+    }
+    if (add.error === "provider_banned") {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Provider interdit." });
+      return { handled: true, showOriginalInChat };
+    }
+    if (add.error === "provider_not_allowed") {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Ce provider n’est pas autorisé ici." });
       return { handled: true, showOriginalInChat };
     }
 
-    await pool.query("COMMIT");
-
-    if (settings.showAcceptPublic) {
-      const sys = chatStore.addSystem(
-        slug,
-        `🎰 Call ajouté : "${add.item.slotName}"${add.item.provider ? ` (${add.item.provider})` : ""} — @${actorUsername}`
-      );
-      io.to(`chat:${slug}`).emit("chat:message", sys);
-    }
-
-    io.to(`chat:${slug}`).emit("calls:changed", { action: "add" });
-
-    return { handled: true, showOriginalInChat };
-  } catch (e) {
-    try {
-      await pool.query("ROLLBACK");
-    } catch {}
     emitUserToast(io, actorUserId, { kind: "error", title: "Erreur", message: "Impossible d'ajouter le call." });
     return { handled: true, showOriginalInChat };
   }
+
+  if (settings.showAcceptPublic) {
+    const sys = chatStore.addSystem(
+      slug,
+      `🎰 Call ajouté : "${add.item.slotName}"${add.item.provider ? ` (${add.item.provider})` : ""} — @${actorUsername}`
+    );
+    io.to(`chat:${slug}`).emit("chat:message", sys);
+  }
+
+  io.to(`chat:${slug}`).emit("calls:changed", { action: "add" });
+
+  return { handled: true, showOriginalInChat };
 }

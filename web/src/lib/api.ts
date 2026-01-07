@@ -1089,3 +1089,150 @@ export async function adminSlotsUpdate(adminKey: string) {
     headers: { "x-admin-key": adminKey },
   });
 }
+// ──────────────────────────────────────────
+// 🎯 Calls (dashboard)
+// ──────────────────────────────────────────
+
+export type ApiCallsConfig = {
+  enabled: boolean;
+  showCmdInChat: boolean;
+  showAcceptPublic: boolean;
+  allowListec: boolean;
+  listecMax: number;
+  perUserLimit: number;
+};
+
+export type ApiCallQueueItem = {
+  id: string;
+  slotName: string;
+  provider: string | null;
+  username: string;
+  pos: number;
+  imageUrl: string | null;
+};
+
+export type ApiCallBanRow = {
+  id: string;
+  kind: "user" | "slot" | "provider";
+  banKey: string;
+  label: string | null;
+  createdAt: string;
+};
+
+export type ApiProviderPolicy = {
+  ok: true;
+  mode: "allow_all" | "allow_only";
+  allowed: string[];
+};
+
+export async function getCallsConfig(streamerSlug: string, token: string) {
+  return j<{ ok: true; config: ApiCallsConfig }>(`/calls/${encodeURIComponent(streamerSlug)}/config`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function patchCallsConfig(streamerSlug: string, token: string, patch: Partial<ApiCallsConfig>) {
+  return j<{ ok: true; config: ApiCallsConfig }>(`/calls/${encodeURIComponent(streamerSlug)}/config`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function getCallsQueue(streamerSlug: string, token: string, limit = 60, offset = 0) {
+  return j<{ ok: true; items: ApiCallQueueItem[] }>(
+    `/calls/${encodeURIComponent(streamerSlug)}/list?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(
+      String(offset)
+    )}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+}
+
+export async function resetCallsQueue(streamerSlug: string, token: string) {
+  return j<{ ok: true }>(`/calls/${encodeURIComponent(streamerSlug)}/reset`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function deleteCallQueueItem(streamerSlug: string, token: string, id: string) {
+  return j<{ ok: true; deleted: boolean }>(`/calls/${encodeURIComponent(streamerSlug)}/item/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function getCallsBans(streamerSlug: string, token: string, kind: "user" | "slot" | "provider") {
+  return j<{ ok: true; items: ApiCallBanRow[] }>(
+    `/calls/${encodeURIComponent(streamerSlug)}/bans?kind=${encodeURIComponent(kind)}&limit=300`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+}
+
+export async function banCalls(
+  streamerSlug: string,
+  token: string,
+  payload:
+    | { kind: "user"; username?: string; userId?: number }
+    | { kind: "provider"; provider: string }
+    | { kind: "slot"; slotName?: string; slotKey?: string; label?: string }
+) {
+  return j<{ ok: true; changed: boolean }>(`/calls/${encodeURIComponent(streamerSlug)}/ban`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function unbanCalls(streamerSlug: string, token: string, kind: "user" | "slot" | "provider", keys: string[]) {
+  return j<{ ok: true; changed: boolean }>(`/calls/${encodeURIComponent(streamerSlug)}/unban`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ kind, keys }),
+  });
+}
+
+export async function getCallsProviderPolicy(streamerSlug: string, token: string) {
+  return j<ApiProviderPolicy>(`/calls/${encodeURIComponent(streamerSlug)}/provider-policy`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function setCallsProviderPolicy(streamerSlug: string, token: string, mode: "allow_all" | "allow_only") {
+  return j<{ ok: true }>(`/calls/${encodeURIComponent(streamerSlug)}/provider-policy`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  });
+}
+
+export async function allowCallsProviders(streamerSlug: string, token: string, providers: string[]) {
+  return j<{ ok: true }>(`/calls/${encodeURIComponent(streamerSlug)}/provider-allow`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ providers }),
+  });
+}
+
+export async function unallowCallsProviders(streamerSlug: string, token: string, providers: string[]) {
+  return j<{ ok: true; changed: boolean }>(`/calls/${encodeURIComponent(streamerSlug)}/provider-unallow`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ providers }),
+  });
+}
+
+export async function allowOnlyCallsProvider(streamerSlug: string, token: string, provider: string) {
+  return j<{ ok: true }>(`/calls/${encodeURIComponent(streamerSlug)}/provider-allow-only`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ provider }),
+  });
+}
+
+// Suggestions slots (déjà côté API)
+export type ApiSlotSuggestion = { name: string; provider: string | null; imageUrl: string | null };
+
+export async function searchSlots(q: string, limit = 10) {
+  return j<ApiSlotSuggestion[]>(`/slots/search?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(String(limit))}`);
+}

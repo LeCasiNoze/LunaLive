@@ -1,3 +1,4 @@
+// web/src/pages/dashboard/sections/bot/api.ts
 export {
   botTestSend,
   clearMyBotLogs,
@@ -11,6 +12,22 @@ export {
   getMyBotOverview,
   updateMyBotAutopost,
   updateMyBotCommand,
+    // Calls (dashboard)
+  getCallsConfig,
+  patchCallsConfig,
+  getCallsQueue,
+  resetCallsQueue,
+  deleteCallQueueItem,
+  getCallsBans,
+  banCalls,
+  unbanCalls,
+  getCallsProviderPolicy,
+  setCallsProviderPolicy,
+  allowCallsProviders,
+  unallowCallsProviders,
+  allowOnlyCallsProvider,
+  searchSlots,
+
 } from "../../../../../lib/api";
 
 export type {
@@ -19,4 +36,11 @@ export type {
   ApiBotLogRow,
   ApiBotOverview,
   ApiMyStreamer,
+    // Calls (dashboard)
+  ApiCallsConfig,
+  ApiCallQueueItem,
+  ApiCallBanRow,
+  ApiProviderPolicy,
+  ApiSlotSuggestion,
+
 } from "../../../../../lib/api";

@@ -20,7 +20,7 @@ import { LogsModule } from "./modules/LogsModule";
 import { TestSendModule } from "./modules/TestSendModule";
 import { ObsWidgetModule } from "./modules/ObsWidgetModule";
 import { ClipsModule } from "./modules/ClipsModule";
-import { CallsHuntModule } from "./modules/CallsHuntModule";
+import { CallsModule } from "./modules/CallsHuntModule";
 
 // ──────────────────────────────────────────
 // Types
@@ -38,15 +38,7 @@ type ModuleDef = {
   onOpen?: () => void;
 };
 
-type ActiveModule =
-  | "commands"
-  | "autoposts"
-  | "logs"
-  | "test-send"
-  | "obs"
-  | "clips"
-  | "call-hunt"
-  | null;
+type ActiveModule = "commands" | "autoposts" | "logs" | "test-send" | "obs" | "clips" | "calls" | null;
 
 const CATEGORY_LABEL: Record<ModuleCategory, string> = {
   general: "Général",
@@ -63,7 +55,13 @@ const CATEGORY_ORDER: ModuleCategory[] = ["general", "callhunt", "rubis", "disco
 // Small UI helpers
 // ──────────────────────────────────────────
 
-function Chip({ kind, children }: { kind: "ready" | "soon"; children: React.ReactNode }) {
+function Chip({
+  kind,
+  children,
+}: {
+  kind: "ready" | "soon";
+  children: React.ReactNode;
+}) {
   const base: React.CSSProperties = {
     fontSize: 11,
     fontWeight: 900,
@@ -135,7 +133,9 @@ function CategoryTabs({
               padding: "8px 12px",
               borderRadius: 999,
               fontWeight: 900,
-              border: isActive ? "1px solid rgba(124,77,255,0.55)" : "1px solid rgba(255,255,255,0.10)",
+              border: isActive
+                ? "1px solid rgba(124,77,255,0.55)"
+                : "1px solid rgba(255,255,255,0.10)",
               background: isActive ? "rgba(124,77,255,0.14)" : "rgba(0,0,0,0.12)",
             }}
           >
@@ -222,7 +222,7 @@ function QuickCard({
 }
 
 // ──────────────────────────────────────────
-// Modal (popup)
+// Modal (popup) — style NozeBot-like
 // ──────────────────────────────────────────
 
 function Modal({
@@ -446,13 +446,13 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
 
     // ✅ NEW: Call & Hunt
     {
-      id: "call-hunt",
+      id: "calls",
       category: "callhunt",
       status: "ready",
-      title: "Calls & Hunt (settings + bans)",
-      desc: "Limites, bans users/machines/providers, allowlist providers.",
-      icon: "🎯",
-      onOpen: () => setActiveModule("call-hunt"),
+      title: "Calls & Hunt",
+      desc: "Queue + limites + bans + providers autorisés.",
+      icon: "🎰",
+      onOpen: () => setActiveModule("calls"),
     },
 
     { id: "wheel", category: "rubis", status: "soon", title: "Roue / tickets", desc: "Join + tirage.", icon: "🎡" },
@@ -493,8 +493,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       ? "Message test"
       : activeModule === "obs"
       ? "Widget OBS"
-      : activeModule === "call-hunt"
-      ? "Call & Hunt"
+      : activeModule === "calls"
+      ? "Calls & Hunt"
       : "Module";
 
   const modalDesc =
@@ -510,8 +510,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       ? "Utile pour valider que le bot “push chat” fonctionne."
       : activeModule === "obs"
       ? "Génère l’URL Browser Source OBS (avec secret), options d’affichage et rotate."
-      : activeModule === "call-hunt"
-      ? "Gère les paramètres de calls et les bans (users/machines/providers) + mode allowlist providers."
+      : activeModule === "calls"
+      ? "Queue calls, limites par user, bans (users/machines/providers) + mode “autoriser seulement ces providers”."
       : undefined;
 
   return (
@@ -593,8 +593,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
             streamerName={(streamer as any).displayName ?? streamer.slug}
             userId={(user as any)?.id ?? 0}
           />
-        ) : activeModule === "call-hunt" ? (
-          <CallsHuntModule token={token} streamerSlug={streamer.slug} />
+        ) : activeModule === "calls" ? (
+          <CallsModule token={token} streamerSlug={streamer.slug} />
         ) : null}
       </Modal>
     </div>

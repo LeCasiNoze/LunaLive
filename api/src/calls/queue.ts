@@ -75,9 +75,9 @@ export async function getCallsSettings(pool: Pool, streamerId: number): Promise<
  *  - kind in ('user','slot','provider')
  *
  * IMPORTANT:
- * - ban user = ban_key = lower(username) (mais on tolère aussi userId string)
+ * - ban user = ban_key = lower(username) (fallback: userId string)
  * - ban provider = ban_key = provider_norm (lower)
- * - ban slot = ban_key = slotKey
+ * - ban slot = ban_key = slotKey (name_key)
  */
 export async function isUserBannedFromCalls(
   pool: Pool,
@@ -88,7 +88,6 @@ export async function isUserBannedFromCalls(
   const u = String(username || "").trim().toLowerCase();
   const idKey = String(userId || "").trim();
 
-  // on check username si dispo, sinon fallback userId string
   if (u) {
     const r = await pool.query(
       `SELECT 1
@@ -142,6 +141,14 @@ export async function isProviderBanned(pool: Pool, streamerId: number, provider:
   return !!r.rows?.[0];
 }
 
+export async function countUserCalls(pool: Pool, streamerId: number, userId: number): Promise<number> {
+  const r = await pool.query(`SELECT COUNT(*)::int AS n FROM calls_queue WHERE streamer_id=$1 AND user_id=$2`, [
+    streamerId,
+    userId,
+  ]);
+  return Number(r.rows?.[0]?.n ?? 0);
+}
+
 async function ensureProviderPolicyRow(pool: Pool, streamerId: number) {
   await pool.query(
     `
@@ -153,22 +160,15 @@ async function ensureProviderPolicyRow(pool: Pool, streamerId: number) {
   );
 }
 
-async function isProviderAllowedByPolicy(
-  pool: Pool,
-  streamerId: number,
-  providerNorm: string | null
-): Promise<boolean> {
-  // si pas de provider => on laisse passer (tu peux changer si tu veux strict)
-  if (!providerNorm) return true;
+async function isProviderAllowedByPolicy(pool: Pool, streamerId: number, providerNormLower: string | null): Promise<boolean> {
+  // si pas de provider => on laisse passer (tu peux rendre strict si tu veux)
+  if (!providerNormLower) return true;
 
   await ensureProviderPolicyRow(pool, streamerId);
 
-  const pr = await pool.query(
-    `SELECT mode FROM calls_provider_policy WHERE streamer_id=$1 LIMIT 1`,
-    [streamerId]
-  );
-
+  const pr = await pool.query(`SELECT mode FROM calls_provider_policy WHERE streamer_id=$1 LIMIT 1`, [streamerId]);
   const mode = String(pr.rows?.[0]?.mode || "allow_all");
+
   if (mode !== "allow_only") return true;
 
   const ar = await pool.query(
@@ -176,18 +176,9 @@ async function isProviderAllowedByPolicy(
      FROM calls_allowed_providers
      WHERE streamer_id=$1 AND provider_norm=$2
      LIMIT 1`,
-    [streamerId, providerNorm]
+    [streamerId, providerNormLower]
   );
-
   return !!ar.rows?.[0];
-}
-
-export async function countUserCalls(pool: Pool, streamerId: number, userId: number): Promise<number> {
-  const r = await pool.query(
-    `SELECT COUNT(*)::int AS n FROM calls_queue WHERE streamer_id=$1 AND user_id=$2`,
-    [streamerId, userId]
-  );
-  return Number(r.rows?.[0]?.n ?? 0);
 }
 
 export async function addCall(
@@ -196,65 +187,58 @@ export async function addCall(
   userId: number,
   username: string,
   slotNameRaw: string,
-  provider: string | null
+  provider: string | null,
+  opts?: { bypassLimit?: boolean }
 ): Promise<{ ok: true; item: CallItem; position: number } | { ok: false; error: string }> {
   const slotName = normText(slotNameRaw);
   if (!slotName) return { ok: false, error: "bad_slot" };
 
   const slotKey = keyText(slotName);
 
-  // provider -> provider_norm
+  // provider -> provider_norm (stocké en lower)
   const providerRaw = provider ? normText(provider) : null;
   const providerNorm = providerRaw ? normalizeProvider(providerRaw) : null;
-  const providerStore = providerNorm ? String(providerNorm).trim().toLowerCase() : providerRaw;
+  const providerLower = providerNorm ? String(providerNorm).trim().toLowerCase() : providerRaw ? providerRaw.toLowerCase() : null;
 
-  // settings (si désactivé => stop)
   const settings = await getCallsSettings(pool, streamerId);
   if (!settings.enabled) return { ok: false, error: "calls_disabled" };
 
-  // lock par streamer pour pos + dédup + checks cohérents
-  await pool.query(`SELECT pg_advisory_xact_lock($1)`, [Number(streamerId)]);
+  // bans / policy / limits
+  if (await isUserBannedFromCalls(pool, streamerId, userId, username)) return { ok: false, error: "user_banned" };
+  if (await isSlotBanned(pool, streamerId, slotKey)) return { ok: false, error: "slot_banned" };
+  if (providerLower && (await isProviderBanned(pool, streamerId, providerLower))) return { ok: false, error: "provider_banned" };
+  if (!(await isProviderAllowedByPolicy(pool, streamerId, providerLower))) return { ok: false, error: "provider_not_allowed" };
 
-  // ✅ bans / policy / limits
-  if (await isUserBannedFromCalls(pool, streamerId, userId, username)) {
-    return { ok: false, error: "user_banned" };
-  }
-
-  if (await isSlotBanned(pool, streamerId, slotKey)) {
-    return { ok: false, error: "slot_banned" };
-  }
-
-  if (providerStore && (await isProviderBanned(pool, streamerId, providerStore))) {
-    return { ok: false, error: "provider_banned" };
-  }
-
-  if (!(await isProviderAllowedByPolicy(pool, streamerId, providerStore ? providerStore.toLowerCase() : null))) {
-    return { ok: false, error: "provider_not_allowed" };
-  }
-
-  // per-user limit (0 = infini)
-  if (settings.perUserLimit > 0) {
-    const n = await countUserCalls(pool, streamerId, userId);
-    if (n >= settings.perUserLimit) {
-      return { ok: false, error: "limit_reached" };
+  if (!opts?.bypassLimit) {
+    if (settings.perUserLimit > 0) {
+      const n = await countUserCalls(pool, streamerId, userId);
+      if (n >= settings.perUserLimit) return { ok: false, error: "limit_reached" };
     }
   }
 
-  const maxPos = await pool.query(
-    `SELECT COALESCE(MAX(pos),0)::bigint AS m FROM calls_queue WHERE streamer_id=$1`,
-    [streamerId]
-  );
-  const nextPos = Number(maxPos.rows?.[0]?.m ?? 0) + 1;
-
+  // IMPORTANT: multi-queries cohérentes => on prend un client + transaction
+  const client = await pool.connect();
   try {
-    const ins = await pool.query(
+    await client.query("BEGIN");
+
+    // lock par streamer pour pos + dédup
+    await client.query(`SELECT pg_advisory_xact_lock($1)`, [Number(streamerId)]);
+
+    const maxPos = await client.query(`SELECT COALESCE(MAX(pos),0)::bigint AS m FROM calls_queue WHERE streamer_id=$1`, [
+      streamerId,
+    ]);
+    const nextPos = Number(maxPos.rows?.[0]?.m ?? 0) + 1;
+
+    const ins = await client.query(
       `
       INSERT INTO calls_queue (streamer_id, slot_name, slot_key, provider, user_id, username, pos)
       VALUES ($1,$2,$3,$4,$5,$6,$7)
       RETURNING id, created_at AS "createdAt"
       `,
-      [streamerId, slotName, slotKey, providerStore, userId, username, nextPos]
+      [streamerId, slotName, slotKey, providerLower, userId, username, nextPos]
     );
+
+    await client.query("COMMIT");
 
     const row = ins.rows?.[0];
     const id = String(row.id);
@@ -265,7 +249,7 @@ export async function addCall(
       item: {
         id,
         slotName,
-        provider: providerStore ?? null,
+        provider: providerLower ?? null,
         userId,
         username,
         pos: nextPos,
@@ -273,10 +257,16 @@ export async function addCall(
       },
     };
   } catch (e: any) {
-    // unique violation => déjà en file
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+
     const msg = String(e?.message || "");
     if (msg.includes("calls_queue_unique_slot")) return { ok: false, error: "already_in_queue" };
+
     return { ok: false, error: "insert_failed" };
+  } finally {
+    client.release();
   }
 }
 
