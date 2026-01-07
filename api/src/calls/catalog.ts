@@ -12,7 +12,7 @@ export type SlotRow = {
 export type InsertedSlotRow = {
   name: string;
   provider: string | null; // provider_norm canonique si dispo
-  slotKey: string;         // name_key
+  slotKey: string; // name_key
   imageUrl: string | null;
 };
 
@@ -21,7 +21,10 @@ export async function upsertSlots(pool: Pool, items: SlotRow[]): Promise<Inserte
 
   // ✅ dédup par name_key pour éviter:
   // "ON CONFLICT DO UPDATE command cannot affect row a second time"
-  const dedup = new Map<string, { name: string; providerRaw: string | null; providerNorm: string | null; imageUrl: string | null }>();
+  const dedup = new Map<
+    string,
+    { name: string; providerRaw: string | null; providerNorm: string | null; imageUrl: string | null }
+  >();
 
   for (const it of items) {
     const name = normText(it.name);
@@ -59,6 +62,7 @@ export async function upsertSlots(pool: Pool, items: SlotRow[]): Promise<Inserte
         SET name = EXCLUDED.name,
             provider = EXCLUDED.provider,
             provider_norm = EXCLUDED.provider_norm,
+            -- ✅ si EXCLUDED.image_url est non-null, on met à jour même si la row existait déjà
             image_url = COALESCE(EXCLUDED.image_url, slots_catalog.image_url),
             updated_at = NOW()
       RETURNING

@@ -2,12 +2,11 @@
 import type { Pool } from "pg";
 import { upsertSlots, type SlotRow, type InsertedSlotRow } from "./catalog.js";
 import { normText, keyText } from "./normalize.js";
-import { shuffleImageFromNode, isGqlValidationError } from "./shuffle_images.js";
+import { loadShuffleImagesIndex, getShuffleImageUrlFromIndex, type ShuffleImagesIndex } from "./shuffle_images.js";
 
 /**
- * Source: Shuffle GraphQL
- * - Providers: getGameCountByProvider { provider { id name slug } gamesCount }
- * - Games: cachedGames(providerSlug, first, skip)
+ * Source: Shuffle GraphQL (pour noms/slugs/providers)
+ * Images: JSON public (n9assets) -> imgix (shuffle-com.imgix.net)
  *
  * Exclusions:
  * - original (Shuffle originals)
@@ -15,7 +14,7 @@ import { shuffleImageFromNode, isGqlValidationError } from "./shuffle_images.js"
  * - pragmaticplaylive
  */
 
-const SHUFFLE_GQL = "https://shuffle.com/main-api/graphql/api/graphql";
+const SHUFFLE_GQL = String(process.env.SHUFFLE_GQL_URL || "https://shuffle.com/main-api/graphql/api/graphql").trim();
 const EXCLUDED_PROVIDER_IDS = new Set<string>(["original", "evolution", "pragmaticplaylive"]);
 
 const Q_PROVIDERS = `query GetGameCountByProvider {
@@ -26,18 +25,6 @@ const Q_CACHED_GAMES = `query CachedGames($providerSlug:String!, $first:Int!, $s
   cachedGames(providerSlug:$providerSlug, first:$first, skip:$skip) {
     totalCount
     nodes { name slug }
-  }
-}`;
-
-const Q_CACHED_GAMES_WITH_IMAGES = `query CachedGames($providerSlug:String!, $first:Int!, $skip:Int!) {
-  cachedGames(providerSlug:$providerSlug, first:$first, skip:$skip) {
-    totalCount
-    nodes {
-      name
-      slug
-      images { list thumbnail cover }
-      image { key }
-    }
   }
 }`;
 
@@ -131,9 +118,14 @@ async function fetchProviders(): Promise<ProviderRow[]> {
     .filter((x) => x.id && x.name && x.slug && Number.isFinite(x.gamesCount));
 }
 
-async function fetchProviderGames(providerSlug: string, providerName: string): Promise<SlotRow[]> {
+async function fetchProviderGames(
+  providerId: string,
+  providerSlug: string,
+  providerName: string,
+  imagesIdx: ShuffleImagesIndex
+): Promise<SlotRow[]> {
   const referer = `https://shuffle.com/fr/casino/providers/${providerSlug}`;
-  const first = 40; // ✅ safe
+  const first = Math.max(1, Math.min(40, Number(process.env.SHUFFLE_BATCH || 40))); // ✅ safe
   let skip = 0;
 
   const out: SlotRow[] = [];
@@ -145,32 +137,14 @@ async function fetchProviderGames(providerSlug: string, providerName: string): P
     guardPages++;
     if (guardPages > 400) break;
 
-    // 1) try with images
-    let data: any = null;
-    try {
-      data = await shufflePostWithRetry(
-        {
-          query: Q_CACHED_GAMES_WITH_IMAGES,
-          variables: { providerSlug, first, skip },
-          operationName: "CachedGames",
-        },
-        referer
-      );
-    } catch (e: any) {
-      const msg = String(e?.message || e);
-      if (isGqlValidationError(msg)) {
-        data = await shufflePostWithRetry(
-          {
-            query: Q_CACHED_GAMES,
-            variables: { providerSlug, first, skip },
-            operationName: "CachedGames",
-          },
-          referer
-        );
-      } else {
-        throw e;
-      }
-    }
+    const data = await shufflePostWithRetry(
+      {
+        query: Q_CACHED_GAMES,
+        variables: { providerSlug, first, skip },
+        operationName: "CachedGames",
+      },
+      referer
+    );
 
     const cg = data?.data?.cachedGames;
     const total = Number(cg?.totalCount || 0);
@@ -180,7 +154,10 @@ async function fetchProviderGames(providerSlug: string, providerName: string): P
       const name = String(n?.name || "").trim();
       if (!name) continue;
 
-      const imageUrl = shuffleImageFromNode(n);
+      const slug = String(n?.slug || "").trim() || null;
+
+      // ✅ images via n9assets -> imgix
+      const imageUrl = getShuffleImageUrlFromIndex(imagesIdx, { slug, providerId, name });
 
       out.push({ name, provider: providerName, imageUrl: imageUrl || null });
     }
@@ -197,10 +174,7 @@ async function fetchProviderGames(providerSlug: string, providerName: string): P
 
 async function countExistingKeys(pool: Pool, keys: string[]): Promise<number> {
   if (!keys.length) return 0;
-  const { rowCount } = await pool.query(
-    `SELECT name_key FROM slots_catalog WHERE name_key = ANY($1::text[])`,
-    [keys]
-  );
+  const { rowCount } = await pool.query(`SELECT name_key FROM slots_catalog WHERE name_key = ANY($1::text[])`, [keys]);
   return Number(rowCount || 0);
 }
 
@@ -213,11 +187,12 @@ export async function runSlotsUpdate(
   pool: Pool
 ): Promise<{ ok: true; fetched: number; inserted: InsertedSlotRow[] } | { ok: false; error: string }> {
   try {
+    // ✅ charge l’index images 1 fois (cache TTL dans shuffle_images.ts)
+    const imagesIdx = await loadShuffleImagesIndex();
+
     const providers = await fetchProviders();
 
-    const targets = providers
-      .filter((p) => p.gamesCount > 0)
-      .filter((p) => !EXCLUDED_PROVIDER_IDS.has(p.id));
+    const targets = providers.filter((p) => p.gamesCount > 0).filter((p) => !EXCLUDED_PROVIDER_IDS.has(p.id));
 
     const interProviderMs = Number(process.env.SHUFFLE_INTER_PROVIDER_MS || 650);
     const logNamesMax = Math.max(0, Number(process.env.SLOTS_LOG_NEW_MAX || 25));
@@ -226,19 +201,16 @@ export async function runSlotsUpdate(
     const allInserted: InsertedSlotRow[] = [];
 
     console.log(`[slots-updater] providers=${targets.length} excluded=${EXCLUDED_PROVIDER_IDS.size}`);
+    console.log(`[slots-updater] shuffleImages slugs=${imagesIdx.bySlug.size} externalIds=${imagesIdx.byExternalId.size}`);
 
     for (const p of targets) {
-      console.log(
-        `[slots-updater] ▶ provider start id=${p.id} slug=${p.slug} name="${p.name}" gamesCount=${p.gamesCount}`
-      );
+      console.log(`[slots-updater] ▶ provider start id=${p.id} slug=${p.slug} name="${p.name}" gamesCount=${p.gamesCount}`);
 
       let rows: SlotRow[] = [];
       try {
-        rows = await fetchProviderGames(p.slug, p.name);
+        rows = await fetchProviderGames(p.id, p.slug, p.name, imagesIdx);
       } catch (e: any) {
-        console.warn(
-          `[slots-updater] skip providerId=${p.id} slug=${p.slug} err=${String(e?.message || e)}`
-        );
+        console.warn(`[slots-updater] skip providerId=${p.id} slug=${p.slug} err=${String(e?.message || e)}`);
         if (interProviderMs > 0) await sleep(interProviderMs);
         continue;
       }
@@ -260,11 +232,7 @@ export async function runSlotsUpdate(
           // merge: si on a une image sur le nouveau et pas l'ancien, on la garde
           const nextImg = r.imageUrl ? String(r.imageUrl) : null;
           const prevImg = prev.imageUrl ? String(prev.imageUrl) : null;
-          uniq.set(k, {
-            name: nm,
-            provider: r.provider,
-            imageUrl: prevImg || nextImg || null,
-          });
+          uniq.set(k, { name: nm, provider: r.provider, imageUrl: prevImg || nextImg || null });
         }
       }
 
@@ -272,11 +240,9 @@ export async function runSlotsUpdate(
       const keys = Array.from(uniq.keys());
       const alreadyInDb = await countExistingKeys(pool, keys);
 
-      console.log(
-        `[slots-updater]   fetched=${rows.length} unique=${uniq.size} dupInBatch=${dupInBatch} alreadyInDb=${alreadyInDb}`
-      );
+      console.log(`[slots-updater]   fetched=${rows.length} unique=${uniq.size} dupInBatch=${dupInBatch} alreadyInDb=${alreadyInDb}`);
 
-      // upsert (stocke image_url si présent)
+      // ✅ upsert mettra à jour image_url même si la row existait déjà (si imageUrl non-null)
       const inserted = await upsertSlots(pool, Array.from(uniq.values()));
       allInserted.push(...inserted);
 
@@ -284,9 +250,7 @@ export async function runSlotsUpdate(
         const names = inserted.map((x) => x.name).sort((a, b) => a.localeCompare(b));
         const show = sample(names, logNamesMax);
         console.log(
-          `[slots-updater]   ✅ inserted=${inserted.length} new=[${show.join(" • ")}${
-            names.length > show.length ? " …" : ""
-          }]`
+          `[slots-updater]   ✅ inserted=${inserted.length} new=[${show.join(" • ")}${names.length > show.length ? " …" : ""}]`
         );
       } else {
         console.log(`[slots-updater]   ✅ inserted=0`);

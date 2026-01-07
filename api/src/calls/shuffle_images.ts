@@ -80,7 +80,7 @@ export function pickShuffleImage(images: any): string | null {
 }
 
 /**
- * Extrait et normalise une URL d'image (comme NozeBot).
+ * Compat (ancienne méthode GraphQL):
  * Priorité:
  *  1) node.images.{list,thumbnail,cover}
  *  2) node.image.key (uuid) => imgix
@@ -120,6 +120,9 @@ export function shuffleImageFromNode(node: any): string | null {
   return null;
 }
 
+/**
+ * ✅ Utilitaire conservé (pour compat avec ton fetcher)
+ */
 export function isGqlValidationError(errMsg: string): boolean {
   const m = String(errMsg || "");
   return (
@@ -127,7 +130,112 @@ export function isGqlValidationError(errMsg: string): boolean {
     m.includes("Cannot query field") ||
     m.includes("Unknown argument") ||
     m.includes("Unknown type") ||
-    m.includes("Field") && m.includes("must not have a selection") ||
+    (m.includes("Field") && m.includes("must not have a selection")) ||
     m.includes("Cannot return null for non-nullable field")
   );
+}
+
+/* ============================================================================
+ * Shuffle images index (public JSON)
+ * Source: https://n9assets.com/file/games/games.json
+ * ============================================================================
+ */
+
+export type ShuffleImagesIndex = {
+  loadedAtMs: number;
+  bySlug: Map<string, string>;
+  byExternalId: Map<string, string>;
+};
+
+function shuffleGamesJsonUrl(): string {
+  return String(process.env.SHUFFLE_GAMES_JSON_URL || "https://n9assets.com/file/games/games.json").trim();
+}
+
+function shuffleGamesJsonTtlMs(): number {
+  return Math.max(60_000, Number(process.env.SHUFFLE_GAMES_JSON_TTL_MS || 6 * 3600_000)); // 6h
+}
+
+function shuffleGamesJsonTimeoutMs(): number {
+  return Math.max(2_000, Number(process.env.SHUFFLE_GAMES_JSON_TIMEOUT_MS || 20_000));
+}
+
+let _cache: ShuffleImagesIndex | null = null;
+let _inflight: Promise<ShuffleImagesIndex> | null = null;
+
+function makeImgixFromKey(key: string): string | null {
+  const k = String(key || "").trim();
+  if (!k) return null;
+  return rewriteShuffleToImgix(k);
+}
+
+export async function loadShuffleImagesIndex(force?: boolean): Promise<ShuffleImagesIndex> {
+  const now = Date.now();
+  const ttl = shuffleGamesJsonTtlMs();
+
+  if (!force && _cache && now - _cache.loadedAtMs < ttl) return _cache;
+  if (_inflight) return _inflight;
+
+  _inflight = (async () => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), shuffleGamesJsonTimeoutMs());
+
+    try {
+      const r = await fetch(shuffleGamesJsonUrl(), {
+        method: "GET",
+        headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 LunaLive (shuffle-images)" },
+        signal: ctrl.signal,
+      });
+
+      if (!r.ok) throw new Error(`shuffle_games_json_http:${r.status}`);
+
+      const data = (await r.json()) as any;
+      if (!Array.isArray(data)) throw new Error("shuffle_games_json_invalid");
+
+      const bySlug = new Map<string, string>();
+      const byExternalId = new Map<string, string>();
+
+      for (const g of data) {
+        if (!g || typeof g !== "object") continue;
+
+        const slug = typeof g.slug === "string" ? g.slug.trim() : "";
+        const externalId = typeof g.externalId === "string" ? g.externalId.trim() : "";
+
+        const key = g.image && typeof g.image === "object" ? (g.image as any).key : null;
+        const img = typeof key === "string" ? makeImgixFromKey(key) : null;
+        if (!img) continue;
+
+        if (slug) bySlug.set(slug, img);
+        if (externalId) byExternalId.set(externalId, img);
+      }
+
+      _cache = { loadedAtMs: Date.now(), bySlug, byExternalId };
+      return _cache;
+    } finally {
+      clearTimeout(t);
+      _inflight = null;
+    }
+  })();
+
+  return _inflight;
+}
+
+export function getShuffleImageUrlFromIndex(
+  idx: ShuffleImagesIndex,
+  args: { slug?: string | null; providerId?: string | null; name?: string | null }
+): string | null {
+  const slug = String(args.slug || "").trim();
+  if (slug) {
+    const hit = idx.bySlug.get(slug);
+    if (hit) return hit;
+  }
+
+  const providerId = String(args.providerId || "").trim();
+  const name = String(args.name || "").trim();
+  if (providerId && name) {
+    const ext = `${providerId}:${name}`;
+    const hit2 = idx.byExternalId.get(ext);
+    if (hit2) return hit2;
+  }
+
+  return null;
 }

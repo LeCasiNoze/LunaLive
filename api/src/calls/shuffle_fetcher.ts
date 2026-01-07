@@ -1,6 +1,6 @@
 // api/src/calls/shuffle_fetcher.ts
 import { normText } from "./normalize.js";
-import { shuffleImageFromNode, isGqlValidationError } from "./shuffle_images.js";
+import { loadShuffleImagesIndex, getShuffleImageUrlFromIndex, type ShuffleImagesIndex } from "./shuffle_images.js";
 
 export type ShuffleProviderRow = {
   id: string;
@@ -40,7 +40,6 @@ async function sleep(ms: number) {
 }
 
 async function sleepBackoff(attempt: number) {
-  // Backoff exponentiel + jitter: 1200ms, 2400ms, 4800ms (±20%)
   const base = 1200 * Math.pow(2, attempt);
   const jitter = base * (0.8 + Math.random() * 0.4);
   await sleep(Math.floor(jitter));
@@ -84,12 +83,10 @@ async function postGql(query: string, variables: any, operationName: string, ref
 
       const j = (text ? JSON.parse(text) : {}) as GqlResp;
 
-      // GraphQL errors (Shuffle renvoie souvent errors[].extensions.code)
       if (j && Array.isArray(j.errors) && j.errors.length) {
         const code = String((j.errors[0] as any)?.extensions?.code || "").trim();
         const msg = String((j.errors[0] as any)?.message || "").trim();
 
-        // cas que tu vois dans tes logs
         if (msg.includes("GAME_PROVIDER_NOT_FOUND")) {
           throw new Error("shuffle_gql:GAME_PROVIDER_NOT_FOUND");
         }
@@ -101,14 +98,12 @@ async function postGql(query: string, variables: any, operationName: string, ref
     } catch (e: any) {
       const msg = String(e?.message || e);
 
-      // abort -> retry (soft)
       if ((msg.includes("aborted") || msg.includes("AbortError")) && attempt < maxRetries) {
         attempt++;
         await sleepBackoff(attempt - 1);
         continue;
       }
 
-      // retry rate-limit
       if (shouldRetryTooMany(status, text) && attempt < maxRetries) {
         attempt++;
         await sleepBackoff(attempt - 1);
@@ -152,7 +147,7 @@ export async function fetchShuffleProviders(): Promise<ShuffleProviderRow[]> {
     .filter((x: any) => x.id && x.name && x.slug);
 }
 
-// Requête actuelle (safe)
+// ✅ Requête safe (sans images)
 const Q_CACHED_GAMES = `
 query CachedGames($providerSlug: String!, $first: Int!, $skip: Int!) {
   cachedGames(providerSlug: $providerSlug, first: $first, skip: $skip) {
@@ -162,24 +157,23 @@ query CachedGames($providerSlug: String!, $first: Int!, $skip: Int!) {
 }
 `;
 
-// Requête enrichie (images) — si Shuffle refuse, on fallback sur Q_CACHED_GAMES
-const Q_CACHED_GAMES_WITH_IMAGES = `
-query CachedGames($providerSlug: String!, $first: Int!, $skip: Int!) {
-  cachedGames(providerSlug: $providerSlug, first: $first, skip: $skip) {
-    totalCount
-    nodes {
-      name
-      slug
-      images { list thumbnail cover }
-      image { key }
-    }
-  }
+let _imagesIdx: ShuffleImagesIndex | null = null;
+async function imagesIndex(): Promise<ShuffleImagesIndex> {
+  if (_imagesIdx) return _imagesIdx;
+  _imagesIdx = await loadShuffleImagesIndex();
+  return _imagesIdx;
 }
-`;
 
-export async function fetchShuffleProviderSlots(providerSlug: string, providerNameHint: string): Promise<SlotRow[]> {
+export async function fetchShuffleProviderSlots(
+  providerId: string,
+  providerSlug: string,
+  providerNameHint: string
+): Promise<SlotRow[]> {
+  const pid = String(providerId || "").trim();
   const slug = String(providerSlug || "").trim();
   if (!slug) return [];
+
+  const idx = await imagesIndex();
 
   const first = Math.max(1, Math.min(40, Number(process.env.SHUFFLE_BATCH || 40)));
   let skip = 0;
@@ -190,29 +184,12 @@ export async function fetchShuffleProviderSlots(providerSlug: string, providerNa
   while (skip < total) {
     const referer = `https://shuffle.com/fr/casino/providers/${encodeURIComponent(slug)}`;
 
-    // 1) try query with images
-    let data: any = null;
-    try {
-      data = await postGql(
-        Q_CACHED_GAMES_WITH_IMAGES,
-        { providerSlug: slug, first, skip },
-        "CachedGames",
-        referer
-      );
-    } catch (e: any) {
-      const err = String(e?.message || e);
-      // fallback only on validation-like errors
-      if (isGqlValidationError(err)) {
-        data = await postGql(
-          Q_CACHED_GAMES,
-          { providerSlug: slug, first, skip },
-          "CachedGames",
-          referer
-        );
-      } else {
-        throw e;
-      }
-    }
+    const data = await postGql(
+      Q_CACHED_GAMES,
+      { providerSlug: slug, first, skip },
+      "CachedGames",
+      referer
+    );
 
     const cg = data?.cachedGames;
     const nodes = cg?.nodes;
@@ -225,7 +202,12 @@ export async function fetchShuffleProviderSlots(providerSlug: string, providerNa
       const name = normText(n?.name);
       if (!name) continue;
 
-      const imageUrl = shuffleImageFromNode(n);
+      const gameSlug = typeof n?.slug === "string" ? n.slug.trim() : "";
+      const imageUrl = getShuffleImageUrlFromIndex(idx, {
+        slug: gameSlug || null,
+        providerId: pid || null,
+        name,
+      });
 
       out.push({
         name,
@@ -248,12 +230,7 @@ export async function fetchShuffleAllSlots(options?: {
   const providers = await fetchShuffleProviders();
 
   const excludeSlugs = new Set(
-    (options?.excludeSlugs || [
-      // demandés
-      "shuffle-games",
-      "evolution",
-      "pragmatic-play-live",
-    ])
+    (options?.excludeSlugs || ["shuffle-games", "evolution", "pragmatic-play-live"])
       .map((s) => String(s).trim().toLowerCase())
       .filter(Boolean)
   );
@@ -273,12 +250,11 @@ export async function fetchShuffleAllSlots(options?: {
     if (excludeSlugs.has(slug) || excludeIds.has(id)) continue;
 
     try {
-      const rows = await fetchShuffleProviderSlots(p.slug, p.name);
+      const rows = await fetchShuffleProviderSlots(p.id, p.slug, p.name);
       items.push(...rows);
     } catch (e: any) {
       const err = String(e?.message || e);
       skipped.push({ slug: p.slug, err });
-      // soft skip (comme NozeBot)
       console.warn(`[slots-updater] skip provider=${p.id} slug=${p.slug} err=${err}`);
     }
 
