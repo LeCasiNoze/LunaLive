@@ -10,58 +10,60 @@ export type SlotRow = {
 
 export type InsertedSlotRow = {
   name: string;
-  nameKey: string;
-  provider: string | null; // provider_norm
+  slotKey: string;
+  provider: string | null; // provider_norm (canon)
 };
 
 export async function upsertSlots(pool: Pool, items: SlotRow[]): Promise<InsertedSlotRow[]> {
   if (!items.length) return [];
 
-  // batch upsert
   const values: any[] = [];
   const chunks: string[] = [];
   let i = 1;
 
+  // de-dup en mémoire (évite gros doublons)
+  const seen = new Set<string>();
+
   for (const it of items) {
     const name = normText(it.name);
     if (!name) continue;
-    const nameKey = keyText(name);
 
-    const provider = it.provider ? normText(it.provider) : null;
-    const providerNorm = provider ? normalizeProvider(provider) : null;
+    const slotKey = keyText(name);
+    if (!slotKey) continue;
 
-    values.push(name, nameKey, provider, providerNorm);
+    const providerRaw = it.provider ? normText(it.provider) : null;
+    const providerNorm = providerRaw ? normalizeProvider(providerRaw) : null;
+
+    const dedupKey = `${slotKey}::${providerNorm ?? ""}`;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
+
+    values.push(name, slotKey, providerRaw, providerNorm);
     chunks.push(`($${i++}, $${i++}, $${i++}, $${i++})`);
   }
 
   if (!chunks.length) return [];
 
+  // ✅ IMPORTANT: "ajoute seulement si pas déjà en DB"
+  // On ne touche pas aux existants -> ON CONFLICT DO NOTHING
   const r = await pool.query(
     `
     INSERT INTO slots_catalog (name, name_key, provider, provider_norm)
     VALUES ${chunks.join(",")}
-    ON CONFLICT (name_key) DO UPDATE
-      SET name = EXCLUDED.name,
-          provider = EXCLUDED.provider,
-          provider_norm = EXCLUDED.provider_norm,
-          updated_at = NOW()
+    ON CONFLICT (name_key) DO NOTHING
     RETURNING
       name,
-      name_key AS "nameKey",
-      provider_norm AS "provider",
-      (xmax = 0) AS "inserted"
+      name_key AS "slotKey",
+      provider_norm AS "provider"
     `,
     values
   );
 
-  // On ne garde que les VRAIES insertions (nouvelles machines)
-  return (r.rows || [])
-    .filter((x: any) => !!x.inserted)
-    .map((x: any) => ({
-      name: String(x.name),
-      nameKey: String(x.nameKey),
-      provider: x.provider ? String(x.provider) : null,
-    }));
+  return (r.rows || []).map((x: any) => ({
+    name: String(x.name),
+    slotKey: String(x.slotKey),
+    provider: x.provider ? String(x.provider) : null,
+  }));
 }
 
 function tokenize(s: string) {
@@ -86,7 +88,6 @@ function scoreCandidate(qKey: string, qToks: string[], nameKey: string) {
     if (toks.includes(t)) hit += 2;
     else if (toks.some((x) => x.startsWith(t))) hit += 1;
   }
-  // pénalité longueur
   const lenPenalty = Math.max(0, Math.min(20, Math.floor(Math.abs(nameKey.length - qKey.length) / 3)));
   return hit * 60 - lenPenalty;
 }
@@ -96,7 +97,6 @@ export async function searchSlots(pool: Pool, qRaw: string, limit: number) {
   const qKey = keyText(q);
   if (!qKey) return [];
 
-  // On récupère un pool “large” via ILIKE
   const like = `%${qKey}%`;
   const r = await pool.query(
     `
@@ -124,25 +124,24 @@ export async function searchSlots(pool: Pool, qRaw: string, limit: number) {
   return scored.map((x) => ({ name: x.name, provider: x.provider }));
 }
 
-// resolve “une machine” à partir d’un input libre
 export async function resolveSlot(pool: Pool, input: string): Promise<{ name: string; provider: string | null } | null> {
   const q = normText(input);
   const qKey = keyText(q);
   if (!qKey) return null;
 
-  // exact
   const exact = await pool.query(
     `SELECT name, provider_norm AS provider FROM slots_catalog WHERE name_key=$1 LIMIT 1`,
     [qKey]
   );
   if (exact.rows?.[0]) {
-    return { name: String(exact.rows[0].name), provider: exact.rows[0].provider ? String(exact.rows[0].provider) : null };
+    return {
+      name: String(exact.rows[0].name),
+      provider: exact.rows[0].provider ? String(exact.rows[0].provider) : null,
+    };
   }
 
-  // fuzzy via searchSlots (limit 10) + threshold
   const cand = await searchSlots(pool, q, 10);
   if (!cand.length) return null;
-
   if (qKey.length < 3) return null;
 
   return { name: cand[0].name, provider: cand[0].provider };

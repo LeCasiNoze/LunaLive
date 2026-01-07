@@ -14,7 +14,7 @@ import { ensureBotClips } from "./bot_clips/store.js";
 import { startClipsVodLinker } from "./bot_clips/vod_linker.js";
 
 import { ensureCallsSchema } from "./calls/schema.js";
-import { startSlotsUpdater } from "./calls/updater.js";
+import { runSlotsUpdate } from "./calls/updater.js"; // ✅ CHANGÉ (plus startSlotsUpdater)
 
 const port = Number(process.env.PORT || 3001);
 
@@ -43,17 +43,41 @@ function startStatsCleanup() {
   setInterval(() => run().catch((e) => console.warn("[stats-cleanup] run failed", e)), 60_000);
 }
 
+// ✅ scheduler slots (run au boot + toutes les X heures)
+function startSlotsCatalogUpdater(everyHours: number) {
+  const ms = Math.max(1, Number(everyHours || 12)) * 3600_000;
+
+  const tick = async () => {
+    try {
+      const r = await runSlotsUpdate(pool);
+      if (r.ok) {
+        console.log(
+          `[slots-updater] ok fetched=${r.fetched} inserted=${r.inserted.length}`
+        );
+      } else {
+        console.warn(`[slots-updater] failed ${r.error}`);
+      }
+    } catch (e: any) {
+      console.warn("[slots-updater] crashed", e?.message || e);
+    }
+  };
+
+  tick().catch(() => {});
+  setInterval(() => tick().catch(() => {}), ms);
+}
+
 (async () => {
   await migrate();
   await seedIfEmpty();
 
   // ✅ ensure clips table (runtime idempotent)
   await ensureBotClips();
+
   // ✅ calls + slots schema
   await ensureCallsSchema(pool);
 
   // ✅ catalogue slots updater (12h)
-  startSlotsUpdater(pool, 12);
+  startSlotsCatalogUpdater(12);
 
   const app = createApp();
 
@@ -65,7 +89,11 @@ function startStatsCleanup() {
   // ✅ Socket.IO CORS aligné avec le front
   const io = new IOServer(server, {
     cors: {
-      origin: ["https://lunalive.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"],
+      origin: [
+        "https://lunalive.onrender.com",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+      ],
       credentials: true,
       methods: ["GET", "POST"],
     },

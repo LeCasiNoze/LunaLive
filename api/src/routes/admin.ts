@@ -397,16 +397,23 @@ adminRouter.post(
   requireAdminKey,
   a(async (_req, res) => {
     const r = await runSlotsUpdate(pool);
+    if (!r.ok) return res.status(500).json({ ok: false, error: r.error });
 
-    const byProvider: Record<string, string[]> = {};
+    const byProvider: Record<string, { name: string; slotKey?: string | null }[]> = {};
     for (const it of r.inserted) {
       const p = (it.provider ? String(it.provider) : "unknown").trim() || "unknown";
-      (byProvider[p] ||= []).push(it.name);
+      (byProvider[p] ||= []).push({ name: it.name, slotKey: it.slotKey });
     }
 
-    // (option) tri A->Z
-    for (const k of Object.keys(byProvider)) byProvider[k].sort((a, b) => a.localeCompare(b));
+    for (const k of Object.keys(byProvider)) {
+      byProvider[k].sort((a, b) => a.name.localeCompare(b.name));
+    }
 
-    res.json({ ok: true, added: r.inserted.length, byProvider });
+    res.json({
+      ok: true,
+      fetched: r.fetched,
+      added: r.inserted.length,
+      byProvider,
+    });
   })
 );

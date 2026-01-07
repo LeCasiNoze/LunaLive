@@ -1078,8 +1078,9 @@ export async function botTestSend(token: string, body?: string) {
 // ──────────────────────────────────────────
 export type AdminSlotsUpdateResp = {
   ok: true;
+  fetched: number;
   added: number;
-  byProvider: Record<string, string[]>;
+  byProvider: Record<string, { name: string; slotKey?: string | null }[]>;
 };
 
 export async function adminSlotsUpdate(adminKey: string) {

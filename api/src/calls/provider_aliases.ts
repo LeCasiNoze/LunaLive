@@ -1,55 +1,58 @@
 // api/src/calls/provider_aliases.ts
-const MAP: Record<string, string> = {
-  "prag": "Pragmatic",
-  "pp": "Pragmatic",
-  "pragmatic": "Pragmatic",
-  "pragmatic play": "Pragmatic",
+// Alias → nom canonique (inspiré NozeBot)
 
-  "hacksaw": "Hacksaw",
-  "hacksaw gaming": "Hacksaw",
-  "hs": "Hacksaw",
-
-  "nlc": "Nolimit City",
+const ALIASES: Record<string, string> = {
+  // Nolimit
   "nolimit": "Nolimit City",
   "nolimit city": "Nolimit City",
 
-  "relax": "Relax",
-  "relax gaming": "Relax",
+  // Pragmatic
+  "pragmatic": "Pragmatic Play",
+  "pragmatic play": "Pragmatic Play",
 
+  // Hacksaw
+  "hacksaw": "Hacksaw Gaming",
+  "hacksaw gaming": "Hacksaw Gaming",
+
+  // BGaming
+  "bgaming": "BGaming",
+
+  // ELK
+  "elk": "Elk",
+  "elk studios": "Elk",
+
+  // Relax
+  "relax": "Relax Gaming",
+  "relax gaming": "Relax Gaming",
+
+  // Microgaming
+  "microgaming": "Microgaming",
+
+  // Thunderkick
+  "thunderkick": "Thunderkick",
+
+  // Play'n GO (si ça arrive un jour)
+  "playn go": "Play'n GO",
+  "play'n go": "Play'n GO",
   "playngo": "Play'n GO",
-  "play n go": "Play'n GO",
-  "png": "Play'n GO",
-  "play'ngo": "Play'n GO",
 
-  "btg": "Big Time Gaming",
-  "big time gaming": "Big Time Gaming",
+  // ✅ Sous-providers -> provider parent
+  "backseat": "Hacksaw Gaming",
+  "backseat gaming": "Hacksaw Gaming",
+  "bullshark": "Hacksaw Gaming",
+  "bullshark games": "Hacksaw Gaming",
 
-  "push": "Push Gaming",
-  "push gaming": "Push Gaming",
+  // Shady Lady
+  "shady lady": "Shady Lady",
+  "shadylady": "Shady Lady",
 
-  "quickspin": "Quickspin",
-  "qs": "Quickspin",
-
-  "elk": "ELK",
-  "elk studios": "ELK",
-
-  "redtiger": "Red Tiger",
-  "red tiger": "Red Tiger",
+  // AvatarUX
+  "avatar ux": "AvatarUX",
+  "avatarux": "AvatarUX",
 };
 
-function norm(s: string): string {
-  return String(s || "")
-    .normalize("NFKC")
-    .replace(/’/g, "'")
-    .replace(/[–—]/g, "-")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-}
-
-export function normalizeProvider(input: string | null | undefined): string | null {
-  const raw = (input ?? "").trim();
+export function normalizeProvider(raw?: string | null): string | null {
   if (!raw) return null;
-  const key = norm(raw);
-  return MAP[key] || raw.trim();
+  const key = String(raw).trim().toLowerCase();
+  return (ALIASES as any)[key] ?? String(raw).trim();
 }

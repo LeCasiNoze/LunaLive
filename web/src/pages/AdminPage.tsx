@@ -44,7 +44,6 @@ export default function AdminPage() {
   // ✅ Manual slots update
   const [slotsLoading, setSlotsLoading] = React.useState(false);
   const [slotsRes, setSlotsRes] = React.useState<AdminSlotsUpdateResp | null>(null);
-  const [slotsErr, setSlotsErr] = React.useState<string | null>(null);
 
   async function refresh() {
     const r = await adminListRequests(key);
@@ -94,10 +93,6 @@ export default function AdminPage() {
     );
   }
 
-  const providersSorted = slotsRes?.byProvider
-    ? Object.keys(slotsRes.byProvider).sort((a, b) => a.localeCompare(b))
-    : [];
-
   return (
     <main className="container">
       <div className="pageTitle">
@@ -109,6 +104,7 @@ export default function AdminPage() {
         className="btnPrimary"
         style={{ marginBottom: 14 }}
         onClick={() => setShowCasinos((v) => !v)}
+        type="button"
       >
         {showCasinos ? "Fermer gestion Casinos" : "Gérer Casinos (TrustPilot)"}
       </button>
@@ -117,23 +113,24 @@ export default function AdminPage() {
 
       {/* ✅ Slots updater */}
       <div className="panel" style={{ marginTop: 14 }}>
-        <div className="panelTitle">Slots — mise à jour manuelle</div>
+        <div className="panelTitle">Slots — mise à jour (Shuffle)</div>
         <div className="mutedSmall" style={{ marginBottom: 10 }}>
-          Lance l’updater et retourne la liste des <b>nouvelles</b> machines ajoutées, groupées par provider.
+          Met à jour la DB depuis Shuffle: <b>tous les providers</b> (sauf Shuffle originals, Evolution, Pragmatic Live).
+          Retourne uniquement les <b>nouvelles</b> machines insérées.
         </div>
 
         <button
           className="btnPrimary"
           disabled={slotsLoading}
           onClick={async () => {
-            setSlotsErr(null);
+            setErr(null);
             setSlotsRes(null);
             setSlotsLoading(true);
             try {
               const r = await adminSlotsUpdate(key);
               setSlotsRes(r);
             } catch (e: any) {
-              setSlotsErr(String(e?.message || e));
+              setErr(String(e?.message || e));
             } finally {
               setSlotsLoading(false);
             }
@@ -143,24 +140,17 @@ export default function AdminPage() {
           {slotsLoading ? "Mise à jour en cours…" : "Lancer la mise à jour slots"}
         </button>
 
-        {slotsErr ? (
-          <div className="hint" style={{ marginTop: 10 }}>
-            ⚠️ {slotsErr}
-          </div>
-        ) : null}
-
         {slotsRes?.ok ? (
           <div style={{ marginTop: 12 }}>
             <div className="mutedSmall" style={{ marginBottom: 10 }}>
-              ✅ Nouvelles machines ajoutées: <b>{slotsRes.added}</b>
+              ✅ Fetched: <b>{slotsRes.fetched}</b> • Nouvelles machines ajoutées: <b>{slotsRes.added}</b>
             </div>
 
             {slotsRes.added > 0 ? (
-              providersSorted.map((prov) => {
-                const list = slotsRes.byProvider[prov] || [];
-                if (!list.length) return null;
-
-                return (
+              Object.entries(slotsRes.byProvider || {})
+                .filter(([, arr]) => (arr?.length || 0) > 0)
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .map(([prov, arr]) => (
                   <div
                     key={prov}
                     style={{
@@ -169,20 +159,21 @@ export default function AdminPage() {
                     }}
                   >
                     <div style={{ fontWeight: 900 }}>
-                      {prov} — <span className="mutedSmall">{list.length} nouvelles</span>
+                      {prov} — <span className="mutedSmall">{arr.length} nouvelles</span>
                     </div>
-
                     <div className="mutedSmall" style={{ marginTop: 6, lineHeight: 1.35 }}>
-                      {list.slice(0, 80).map((name, i) => (
-                        <div key={`${prov}-${i}`}>• {name}</div>
+                      {arr.slice(0, 120).map((s, i) => (
+                        <div key={`${s.name}-${i}`}>
+                          • {s.name}
+                          {s.slotKey ? <span style={{ opacity: 0.6 }}> ({s.slotKey})</span> : null}
+                        </div>
                       ))}
-                      {list.length > 80 ? (
-                        <div style={{ opacity: 0.65, marginTop: 6 }}>… +{list.length - 80} autres</div>
+                      {arr.length > 120 ? (
+                        <div style={{ opacity: 0.65, marginTop: 6 }}>… +{arr.length - 120} autres</div>
                       ) : null}
                     </div>
                   </div>
-                );
-              })
+                ))
             ) : (
               <div className="mutedSmall" style={{ marginTop: 10 }}>
                 Aucune nouvelle machine détectée.
@@ -190,6 +181,8 @@ export default function AdminPage() {
             )}
           </div>
         ) : null}
+
+        {err ? <div className="hint" style={{ marginTop: 10 }}>⚠️ {err}</div> : null}
       </div>
 
       <div className="panel" style={{ marginTop: 14 }}>
@@ -218,6 +211,7 @@ export default function AdminPage() {
                 await adminApproveRequest(key, r.id);
                 await refresh();
               }}
+              type="button"
             >
               Approve
             </button>
@@ -227,6 +221,7 @@ export default function AdminPage() {
                 await adminRejectRequest(key, r.id);
                 await refresh();
               }}
+              type="button"
             >
               Reject
             </button>
@@ -255,6 +250,7 @@ export default function AdminPage() {
             setNewName("");
             await refresh();
           }}
+          type="button"
         >
           Créer
         </button>
@@ -283,6 +279,7 @@ export default function AdminPage() {
                 await adminDeleteStreamer(key, s.slug);
                 await refresh();
               }}
+              type="button"
             >
               Supprimer
             </button>

@@ -2,77 +2,161 @@
 import type { Pool } from "pg";
 import { upsertSlots, type SlotRow, type InsertedSlotRow } from "./catalog.js";
 
-function parseSources(): { url: string; provider?: string }[] {
-  const raw = String(process.env.SLOTS_SOURCES_JSON || "").trim();
-  if (!raw) return [];
+/**
+ * ✅ Source: Shuffle GraphQL
+ * - Liste providers via getGameCountByProvider
+ * - Liste jeux via cachedGames(providerSlug, first, skip)
+ *
+ * Exclusions demandées:
+ * - original (Shuffle originals)
+ * - evolution
+ * - pragmaticplaylive
+ */
+
+const SHUFFLE_GQL = "https://shuffle.com/main-api/graphql/api/graphql";
+const EXCLUDED_PROVIDER_IDS = new Set<string>(["original", "evolution", "pragmaticplaylive"]);
+
+const Q_PROVIDERS = `query GetGameCountByProvider {
+  getGameCountByProvider { provider { id name } gamesCount }
+}`;
+
+const Q_CACHED_GAMES = `query CachedGames($providerSlug:String!, $first:Int!, $skip:Int!) {
+  cachedGames(providerSlug:$providerSlug, first:$first, skip:$skip) {
+    totalCount
+    nodes { name slug }
+  }
+}`;
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function shufflePost(payload: any, referer: string) {
+  const r = await fetch(SHUFFLE_GQL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Origin: "https://shuffle.com",
+      Referer: referer,
+      "User-Agent": "Mozilla/5.0 (LunaLive slots-updater)",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const txt = await r.text().catch(() => "");
+  let data: any = null;
   try {
-    const j = JSON.parse(raw);
-    if (!Array.isArray(j)) return [];
-    return j
-      .map((x: any) => ({ url: String(x?.url || "").trim(), provider: x?.provider ? String(x.provider) : undefined }))
-      .filter((x) => x.url);
+    data = txt ? JSON.parse(txt) : null;
   } catch {
-    return [];
-  }
-}
-
-async function fetchJson(url: string) {
-  const r = await fetch(url, { method: "GET" });
-  if (!r.ok) throw new Error(`fetch_failed:${r.status}`);
-  return r.json();
-}
-
-export type SlotsUpdateResult = {
-  ok: true;
-  inserted: InsertedSlotRow[];
-  scanned: number; // nombre d’items lus (après parsing)
-};
-
-export async function runSlotsUpdate(pool: Pool): Promise<SlotsUpdateResult> {
-  const sources = parseSources();
-  if (!sources.length) {
-    return { ok: true, inserted: [], scanned: 0 };
+    data = null;
   }
 
-  const all: SlotRow[] = [];
+  if (!r.ok) {
+    throw new Error(`shuffle_http_${r.status}:${(txt || "").slice(0, 200)}`);
+  }
+  if (data?.errors?.length) {
+    const msg = String(data.errors?.[0]?.message || "shuffle_graphql_error");
+    throw new Error(`shuffle_gql:${msg}`);
+  }
+  return data;
+}
 
-  for (const src of sources) {
-    const data = await fetchJson(src.url);
+async function fetchProviders(): Promise<{ id: string; name: string; gamesCount: number }[]> {
+  const referer = "https://shuffle.com/fr/casino/providers/nolimit-city";
+  const data = await shufflePost({ query: Q_PROVIDERS, variables: {}, operationName: "GetGameCountByProvider" }, referer);
 
-    if (Array.isArray(data)) {
-      for (const it of data) {
-        if (typeof it === "string") all.push({ name: it, provider: src.provider ?? null });
-        else if (it && typeof it === "object") {
-          const name = String((it as any).name || (it as any).title || "").trim();
-          const provider = (it as any).provider ? String((it as any).provider) : src.provider ?? null;
-          if (name) all.push({ name, provider });
-        }
-      }
-    } else if (data && typeof data === "object" && Array.isArray((data as any).items)) {
-      for (const it of (data as any).items) {
-        const name = String(it?.name || it?.title || "").trim();
-        const provider = it?.provider ? String(it.provider) : src.provider ?? null;
-        if (name) all.push({ name, provider });
-      }
+  const arr = data?.data?.getGameCountByProvider;
+  if (!Array.isArray(arr)) return [];
+
+  return arr
+    .map((x: any) => ({
+      id: String(x?.provider?.id || "").trim(),
+      name: String(x?.provider?.name || "").trim(),
+      gamesCount: Number(x?.gamesCount || 0),
+    }))
+    .filter((x) => x.id && x.name && Number.isFinite(x.gamesCount));
+}
+
+async function fetchProviderGames(providerSlug: string, providerName: string): Promise<SlotRow[]> {
+  const referer = `https://shuffle.com/fr/casino/providers/${providerSlug}`;
+  const first = 40; // ✅ safe (comme ton script)
+  let skip = 0;
+
+  const out: SlotRow[] = [];
+  const seen = new Set<string>();
+
+  // hard safety
+  let guardPages = 0;
+
+  while (true) {
+    guardPages++;
+    if (guardPages > 300) break; // évite boucle infinie si Shuffle bug
+
+    const data = await shufflePost(
+      {
+        query: Q_CACHED_GAMES,
+        variables: { providerSlug, first, skip },
+        operationName: "CachedGames",
+      },
+      referer
+    );
+
+    const cg = data?.data?.cachedGames;
+    const total = Number(cg?.totalCount || 0);
+    const nodes = Array.isArray(cg?.nodes) ? cg.nodes : [];
+
+    for (const n of nodes) {
+      const name = String(n?.name || "").trim();
+      if (!name) continue;
+
+      const k = name.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+
+      out.push({ name, provider: providerName });
     }
+
+    skip += first;
+    if (!total || skip >= total) break;
+
+    // petit throttle (anti-burst)
+    await sleep(180);
   }
 
-  const inserted = await upsertSlots(pool, all);
-  return { ok: true, inserted, scanned: all.length };
+  return out;
 }
 
-export function startSlotsUpdater(pool: Pool, everyHours: number) {
-  const ms = Math.max(1, Number(everyHours || 12)) * 3600_000;
+export async function runSlotsUpdate(
+  pool: Pool
+): Promise<{ ok: true; fetched: number; inserted: InsertedSlotRow[] } | { ok: false; error: string }> {
+  try {
+    const providers = await fetchProviders();
 
-  const tick = async () => {
-    try {
-      const r = await runSlotsUpdate(pool);
-      console.log(`[slots-updater] ok inserted=${r.inserted.length} scanned=${r.scanned}`);
-    } catch (e: any) {
-      console.warn("[slots-updater] failed", e?.message || e);
+    const targets = providers
+      .filter((p) => p.gamesCount > 0)
+      .filter((p) => !EXCLUDED_PROVIDER_IDS.has(p.id));
+
+    const all: SlotRow[] = [];
+
+    // ✅ throttle global (comme NozeBot)
+    const interProviderMs = Number(process.env.SHUFFLE_INTER_PROVIDER_MS || 650);
+
+    for (const p of targets) {
+      // tente / skip si rate limit
+      try {
+        const rows = await fetchProviderGames(p.id, p.name);
+        all.push(...rows);
+      } catch (e: any) {
+        console.warn(`[slots-updater] skip provider=${p.id} err=${String(e?.message || e)}`);
+      }
+
+      if (interProviderMs > 0) await sleep(interProviderMs);
     }
-  };
 
-  tick().catch(() => {});
-  setInterval(() => tick().catch(() => {}), ms);
+    const inserted = await upsertSlots(pool, all);
+    return { ok: true, fetched: all.length, inserted };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || "update_failed") };
+  }
 }
