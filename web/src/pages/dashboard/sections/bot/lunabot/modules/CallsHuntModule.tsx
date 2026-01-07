@@ -1,4 +1,4 @@
-// web/src/pages/dashboard/sections/bot/modules/CallsModule.tsx
+// web/src/pages/dashboard/sections/bot/modules/CallsHuntModule.tsx
 import * as React from "react";
 import {
   getCallsBans,

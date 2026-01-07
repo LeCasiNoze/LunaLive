@@ -25,6 +25,7 @@ import { mig020_chat_settings } from "./mig020_chat_settings.js";
 import { mig021_streamer_tabs } from "./mig021_streamer_tabs.js";
 import { mig022_bot_core } from "./mig022_bot_core.js";
 import { mig023_chat_settings_calls } from "./mig023_chat_settings_calls.js";
+import { mig024_calls_bans_policy } from "./mig024_calls_hunt_bans_policy.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -61,4 +62,5 @@ export async function migrateAll(pool: Pool) {
   await mig022_bot_core(pool);
 
   await mig023_chat_settings_calls(pool);
+  await mig024_calls_bans_policy(pool);
 }
