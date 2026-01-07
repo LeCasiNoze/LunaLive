@@ -8,42 +8,51 @@ export type SlotRow = {
   provider: string | null;
 };
 
-// ✅ NEW: ce que renvoie l’upsert pour “nouvelles machines”
 export type InsertedSlotRow = {
   name: string;
   provider: string | null; // provider_norm canonique si dispo
-  slotKey: string;         // name_key
+  slotKey: string; // name_key
 };
 
 export async function upsertSlots(pool: Pool, items: SlotRow[]): Promise<InsertedSlotRow[]> {
   if (!items.length) return [];
 
-  // batch upsert
-  const values: any[] = [];
-  const chunks: string[] = [];
-  let i = 1;
+  // ✅ dédup obligatoire: évite "ON CONFLICT DO UPDATE command cannot affect row a second time"
+  const byKey = new Map<
+    string,
+    { name: string; nameKey: string; providerRaw: string | null; providerNorm: string | null }
+  >();
 
   for (const it of items) {
     const name = normText(it.name);
     if (!name) continue;
 
     const nameKey = keyText(name);
+    if (!nameKey) continue;
 
     const providerRaw = it.provider ? normText(it.provider) : null;
     const providerNorm = providerRaw ? normalizeProvider(providerRaw) : null;
 
-    // on stocke provider “affichage” + provider_norm canonique
-    values.push(name, nameKey, providerRaw, providerNorm);
+    // Si doublon dans le batch, on garde le 1er (ou le dernier, au choix).
+    if (!byKey.has(nameKey)) {
+      byKey.set(nameKey, { name, nameKey, providerRaw, providerNorm });
+    }
+  }
+
+  if (!byKey.size) return [];
+
+  const values: any[] = [];
+  const chunks: string[] = [];
+  let i = 1;
+
+  for (const v of byKey.values()) {
+    values.push(v.name, v.nameKey, v.providerRaw, v.providerNorm);
     chunks.push(`($${i++}, $${i++}, $${i++}, $${i++})`);
   }
 
-  if (!chunks.length) return [];
-
   /**
    * ✅ Trick Postgres:
-   * Dans un INSERT ... ON CONFLICT DO UPDATE ... RETURNING
-   * (xmax = 0) => ligne réellement insérée
-   * (xmax != 0) => ligne mise à jour
+   * RETURNING (xmax = 0) => ligne réellement insérée
    */
   const { rows } = await pool.query(
     `
@@ -82,7 +91,6 @@ function tokenize(s: string) {
     .filter(Boolean);
 }
 
-// scoring simple sans extension
 function scoreCandidate(qKey: string, qToks: string[], nameKey: string) {
   if (!nameKey) return 0;
 
@@ -98,7 +106,6 @@ function scoreCandidate(qKey: string, qToks: string[], nameKey: string) {
     else if (toks.some((x) => x.startsWith(t))) hit += 1;
   }
 
-  // pénalité longueur
   const lenPenalty = Math.max(0, Math.min(20, Math.floor(Math.abs(nameKey.length - qKey.length) / 3)));
   return hit * 60 - lenPenalty;
 }
@@ -108,7 +115,6 @@ export async function searchSlots(pool: Pool, qRaw: string, limit: number) {
   const qKey = keyText(q);
   if (!qKey) return [];
 
-  // On récupère un pool “large” via ILIKE
   const like = `%${qKey}%`;
   const r = await pool.query(
     `
@@ -136,13 +142,14 @@ export async function searchSlots(pool: Pool, qRaw: string, limit: number) {
   return scored.map((x) => ({ name: x.name, provider: x.provider }));
 }
 
-// resolve “une machine” à partir d’un input libre
-export async function resolveSlot(pool: Pool, input: string): Promise<{ name: string; provider: string | null } | null> {
+export async function resolveSlot(
+  pool: Pool,
+  input: string
+): Promise<{ name: string; provider: string | null } | null> {
   const q = normText(input);
   const qKey = keyText(q);
   if (!qKey) return null;
 
-  // exact
   const exact = await pool.query(
     `SELECT name, provider_norm AS provider FROM slots_catalog WHERE name_key=$1 LIMIT 1`,
     [qKey]
@@ -154,10 +161,8 @@ export async function resolveSlot(pool: Pool, input: string): Promise<{ name: st
     };
   }
 
-  // fuzzy via searchSlots (limit 10) + threshold
   const cand = await searchSlots(pool, q, 10);
   if (!cand.length) return null;
-
   if (qKey.length < 3) return null;
 
   return { name: cand[0].name, provider: cand[0].provider };
