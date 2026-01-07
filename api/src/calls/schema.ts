@@ -101,10 +101,7 @@ export async function ensureCallsSchema(pool: Pool) {
     ON slots_catalog(provider_norm);
   `);
 
-  // ✅ “miroir” futur avec chat_settings (Q12)
-  // On ajoute une colonne sans casser l’existant.
-  await pool.query(`
-    ALTER TABLE chat_settings
-    ADD COLUMN IF NOT EXISTS show_call_commands BOOLEAN NOT NULL DEFAULT FALSE;
-  `);
+  // NOTE:
+  // Le "miroir" chat_settings.show_call_commands est géré en migration dédiée
+  // (sinon crash au boot si la table n'existe pas encore).
 }
