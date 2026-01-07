@@ -41,10 +41,10 @@ export default function AdminPage() {
   const [newName, setNewName] = React.useState("");
   const [showCasinos, setShowCasinos] = React.useState(false);
 
-  // ✅ NEW: manual slots update
-  const [slotsMode, setSlotsMode] = React.useState<"premium" | "free">("premium");
+  // ✅ Manual slots update
   const [slotsLoading, setSlotsLoading] = React.useState(false);
   const [slotsRes, setSlotsRes] = React.useState<AdminSlotsUpdateResp | null>(null);
+  const [slotsErr, setSlotsErr] = React.useState<string | null>(null);
 
   async function refresh() {
     const r = await adminListRequests(key);
@@ -94,6 +94,10 @@ export default function AdminPage() {
     );
   }
 
+  const providersSorted = slotsRes?.byProvider
+    ? Object.keys(slotsRes.byProvider).sort((a, b) => a.localeCompare(b))
+    : [];
+
   return (
     <main className="container">
       <div className="pageTitle">
@@ -111,98 +115,74 @@ export default function AdminPage() {
 
       {showCasinos && <CasinosAdminSection adminKey={key} />}
 
-      {/* ✅ NEW: Manual slots update */}
+      {/* ✅ Slots updater */}
       <div className="panel" style={{ marginTop: 14 }}>
         <div className="panelTitle">Slots — mise à jour manuelle</div>
         <div className="mutedSmall" style={{ marginBottom: 10 }}>
-          Lance l’updater et retourne la liste des <b>nouvelles</b> machines trouvées, groupées par provider.
+          Lance l’updater et retourne la liste des <b>nouvelles</b> machines ajoutées, groupées par provider.
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span className="mutedSmall">Mode:</span>
-            <button
-              className="btnGhostSmall"
-              onClick={() => setSlotsMode("premium")}
-              style={{
-                opacity: slotsMode === "premium" ? 1 : 0.65,
-                border: slotsMode === "premium" ? "1px solid rgba(124,77,255,0.55)" : undefined,
-              }}
-              type="button"
-            >
-              premium
-            </button>
-            <button
-              className="btnGhostSmall"
-              onClick={() => setSlotsMode("free")}
-              style={{
-                opacity: slotsMode === "free" ? 1 : 0.65,
-                border: slotsMode === "free" ? "1px solid rgba(124,77,255,0.55)" : undefined,
-              }}
-              type="button"
-            >
-              free
-            </button>
+        <button
+          className="btnPrimary"
+          disabled={slotsLoading}
+          onClick={async () => {
+            setSlotsErr(null);
+            setSlotsRes(null);
+            setSlotsLoading(true);
+            try {
+              const r = await adminSlotsUpdate(key);
+              setSlotsRes(r);
+            } catch (e: any) {
+              setSlotsErr(String(e?.message || e));
+            } finally {
+              setSlotsLoading(false);
+            }
+          }}
+          type="button"
+        >
+          {slotsLoading ? "Mise à jour en cours…" : "Lancer la mise à jour slots"}
+        </button>
+
+        {slotsErr ? (
+          <div className="hint" style={{ marginTop: 10 }}>
+            ⚠️ {slotsErr}
           </div>
-
-          <button
-            className="btnPrimary"
-            disabled={slotsLoading}
-            onClick={async () => {
-              setErr(null);
-              setSlotsRes(null);
-              setSlotsLoading(true);
-              try {
-                const r = await adminSlotsUpdate(key, slotsMode);
-                setSlotsRes(r);
-              } catch (e: any) {
-                setErr(String(e?.message || e));
-              } finally {
-                setSlotsLoading(false);
-              }
-            }}
-            type="button"
-          >
-            {slotsLoading ? "Mise à jour en cours…" : "Lancer la mise à jour slots"}
-          </button>
-        </div>
+        ) : null}
 
         {slotsRes?.ok ? (
           <div style={{ marginTop: 12 }}>
             <div className="mutedSmall" style={{ marginBottom: 10 }}>
-              ✅ Mode: <b>{slotsRes.mode}</b> • Total nouvelles machines: <b>{slotsRes.totalAdded}</b>
+              ✅ Nouvelles machines ajoutées: <b>{slotsRes.added}</b>
             </div>
 
-            {(slotsRes.byProvider || []).filter((p) => (p?.added || 0) > 0).length ? (
-              (slotsRes.byProvider || [])
-                .filter((p) => (p?.added || 0) > 0)
-                .map((p) => (
+            {slotsRes.added > 0 ? (
+              providersSorted.map((prov) => {
+                const list = slotsRes.byProvider[prov] || [];
+                if (!list.length) return null;
+
+                return (
                   <div
-                    key={String(p.provider ?? "unknown")}
+                    key={prov}
                     style={{
                       padding: "10px 0",
                       borderTop: "1px solid rgba(255,255,255,0.06)",
                     }}
                   >
                     <div style={{ fontWeight: 900 }}>
-                      {p.provider ?? "unknown"} — <span className="mutedSmall">{p.added} nouvelles</span>
+                      {prov} — <span className="mutedSmall">{list.length} nouvelles</span>
                     </div>
 
                     <div className="mutedSmall" style={{ marginTop: 6, lineHeight: 1.35 }}>
-                      {(p.slots || []).slice(0, 80).map((s, i) => (
-                        <div key={String(s.slotKey || i)}>
-                          • {s.name}
-                          {s.slotKey ? <span style={{ opacity: 0.6 }}> ({s.slotKey})</span> : null}
-                        </div>
+                      {list.slice(0, 80).map((name, i) => (
+                        <div key={`${prov}-${i}`}>• {name}</div>
                       ))}
-                      {(p.slots || []).length > 80 ? (
-                        <div style={{ opacity: 0.65, marginTop: 6 }}>
-                          … +{(p.slots || []).length - 80} autres
-                        </div>
+                      {list.length > 80 ? (
+                        <div style={{ opacity: 0.65, marginTop: 6 }}>… +{list.length - 80} autres</div>
                       ) : null}
                     </div>
                   </div>
-                ))
+                );
+              })
             ) : (
               <div className="mutedSmall" style={{ marginTop: 10 }}>
                 Aucune nouvelle machine détectée.
@@ -210,14 +190,6 @@ export default function AdminPage() {
             )}
           </div>
         ) : null}
-
-        {slotsRes && !(slotsRes as any).ok ? (
-          <div className="hint" style={{ marginTop: 10 }}>
-            ⚠️ {String((slotsRes as any).error || "Erreur")}
-          </div>
-        ) : null}
-
-        {err ? <div className="hint" style={{ marginTop: 10 }}>⚠️ {err}</div> : null}
       </div>
 
       <div className="panel" style={{ marginTop: 14 }}>
@@ -321,7 +293,6 @@ export default function AdminPage() {
         <ProviderAccountsAdminSection adminKey={key} />
       </div>
 
-      {/* ✅ NEW: mint rubis */}
       <RubisMintAdminSection adminKey={key} />
     </main>
   );

@@ -1,17 +1,7 @@
 // api/src/calls/updater.ts
 import type { Pool } from "pg";
-import { upsertSlots, type SlotRow } from "./catalog.js";
+import { upsertSlots, type SlotRow, type InsertedSlotRow } from "./catalog.js";
 
-/**
- * MVP: sources configurables (tu brancheras tes fetchers NozeBot ensuite).
- *
- * Env possible:
- *  - SLOTS_SOURCES_JSON='[{"url":"https://.../slots.json","provider":"Pragmatic"}]'
- *
- * Format attendu: un JSON array d'objets, chacun:
- *  - si array de strings: ["Gates of Olympus", ...]
- *  - ou array d'objets: [{name:"...", provider:"..."}, ...]
- */
 function parseSources(): { url: string; provider?: string }[] {
   const raw = String(process.env.SLOTS_SOURCES_JSON || "").trim();
   if (!raw) return [];
@@ -32,10 +22,16 @@ async function fetchJson(url: string) {
   return r.json();
 }
 
-export async function runSlotsUpdate(pool: Pool): Promise<{ ok: boolean; added: number; error?: string }> {
+export type SlotsUpdateResult = {
+  ok: true;
+  inserted: InsertedSlotRow[];
+  scanned: number; // nombre d’items lus (après parsing)
+};
+
+export async function runSlotsUpdate(pool: Pool): Promise<SlotsUpdateResult> {
   const sources = parseSources();
   if (!sources.length) {
-    return { ok: true, added: 0 };
+    return { ok: true, inserted: [], scanned: 0 };
   }
 
   const all: SlotRow[] = [];
@@ -61,8 +57,8 @@ export async function runSlotsUpdate(pool: Pool): Promise<{ ok: boolean; added: 
     }
   }
 
-  await upsertSlots(pool, all);
-  return { ok: true, added: all.length };
+  const inserted = await upsertSlots(pool, all);
+  return { ok: true, inserted, scanned: all.length };
 }
 
 export function startSlotsUpdater(pool: Pool, everyHours: number) {
@@ -71,13 +67,12 @@ export function startSlotsUpdater(pool: Pool, everyHours: number) {
   const tick = async () => {
     try {
       const r = await runSlotsUpdate(pool);
-      console.log(`[slots-updater] ok added=${r.added}`);
+      console.log(`[slots-updater] ok inserted=${r.inserted.length} scanned=${r.scanned}`);
     } catch (e: any) {
       console.warn("[slots-updater] failed", e?.message || e);
     }
   };
 
-  // run once at start (soft)
   tick().catch(() => {});
   setInterval(() => tick().catch(() => {}), ms);
 }

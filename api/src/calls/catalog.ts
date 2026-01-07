@@ -8,8 +8,14 @@ export type SlotRow = {
   provider: string | null;
 };
 
-export async function upsertSlots(pool: Pool, items: SlotRow[]) {
-  if (!items.length) return;
+export type InsertedSlotRow = {
+  name: string;
+  nameKey: string;
+  provider: string | null; // provider_norm
+};
+
+export async function upsertSlots(pool: Pool, items: SlotRow[]): Promise<InsertedSlotRow[]> {
+  if (!items.length) return [];
 
   // batch upsert
   const values: any[] = [];
@@ -20,6 +26,7 @@ export async function upsertSlots(pool: Pool, items: SlotRow[]) {
     const name = normText(it.name);
     if (!name) continue;
     const nameKey = keyText(name);
+
     const provider = it.provider ? normText(it.provider) : null;
     const providerNorm = provider ? normalizeProvider(provider) : null;
 
@@ -27,9 +34,9 @@ export async function upsertSlots(pool: Pool, items: SlotRow[]) {
     chunks.push(`($${i++}, $${i++}, $${i++}, $${i++})`);
   }
 
-  if (!chunks.length) return;
+  if (!chunks.length) return [];
 
-  await pool.query(
+  const r = await pool.query(
     `
     INSERT INTO slots_catalog (name, name_key, provider, provider_norm)
     VALUES ${chunks.join(",")}
@@ -38,9 +45,23 @@ export async function upsertSlots(pool: Pool, items: SlotRow[]) {
           provider = EXCLUDED.provider,
           provider_norm = EXCLUDED.provider_norm,
           updated_at = NOW()
+    RETURNING
+      name,
+      name_key AS "nameKey",
+      provider_norm AS "provider",
+      (xmax = 0) AS "inserted"
     `,
     values
   );
+
+  // On ne garde que les VRAIES insertions (nouvelles machines)
+  return (r.rows || [])
+    .filter((x: any) => !!x.inserted)
+    .map((x: any) => ({
+      name: String(x.name),
+      nameKey: String(x.nameKey),
+      provider: x.provider ? String(x.provider) : null,
+    }));
 }
 
 function tokenize(s: string) {
@@ -122,9 +143,6 @@ export async function resolveSlot(pool: Pool, input: string): Promise<{ name: st
   const cand = await searchSlots(pool, q, 10);
   if (!cand.length) return null;
 
-  // on reprend le scoring du 1er implicitement (déjà trié)
-  // threshold: si trop loin => introuvable
-  // Ici on accepte si query >= 3 chars et on a au moins un résultat
   if (qKey.length < 3) return null;
 
   return { name: cand[0].name, provider: cand[0].provider };

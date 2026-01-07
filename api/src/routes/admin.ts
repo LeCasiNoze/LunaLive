@@ -5,6 +5,7 @@ import { requireAdminKey } from "../auth.js";
 import { a } from "../utils/async.js";
 import { slugify } from "../slug.js";
 import { ensureAssignedDliveAccount, releaseAccountForStreamerId } from "../provider_accounts.js";
+import { runSlotsUpdate } from "../calls/updater.js";
 
 export const adminRouter = Router();
 
@@ -388,5 +389,24 @@ adminRouter.post(
     } finally {
       client.release();
     }
+  })
+);
+
+adminRouter.post(
+  "/admin/slots/update",
+  requireAdminKey,
+  a(async (_req, res) => {
+    const r = await runSlotsUpdate(pool);
+
+    const byProvider: Record<string, string[]> = {};
+    for (const it of r.inserted) {
+      const p = (it.provider ? String(it.provider) : "unknown").trim() || "unknown";
+      (byProvider[p] ||= []).push(it.name);
+    }
+
+    // (option) tri A->Z
+    for (const k of Object.keys(byProvider)) byProvider[k].sort((a, b) => a.localeCompare(b));
+
+    res.json({ ok: true, added: r.inserted.length, byProvider });
   })
 );

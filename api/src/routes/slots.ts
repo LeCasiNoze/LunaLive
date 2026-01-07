@@ -29,7 +29,7 @@ slotsRouter.post("/update", requireAuth, async (req: any, res) => {
     if (u.role !== "admin") return res.status(403).json({ ok: false, error: "forbidden" });
 
     const r = await runSlotsUpdate(pool);
-    res.json({ ok: true, added: r.added });
+    res.json({ ok: true, added: r.inserted.length });
   } catch (e: any) {
     res.json({ ok: false, error: String(e?.message || "update_failed") });
   }

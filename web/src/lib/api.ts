@@ -1076,26 +1076,14 @@ export async function botTestSend(token: string, body?: string) {
 // ──────────────────────────────────────────
 // 🎰 Admin — Slots updater manual
 // ──────────────────────────────────────────
-export type AdminSlotsUpdateSlot = {
-  name: string;
-  slotKey?: string | null;
-};
-
-export type AdminSlotsUpdateProvider = {
-  provider: string | null;
-  added: number;
-  slots: AdminSlotsUpdateSlot[];
-};
-
 export type AdminSlotsUpdateResp = {
   ok: true;
-  mode: "premium" | "free";
-  totalAdded: number;
-  byProvider: AdminSlotsUpdateProvider[];
+  added: number;
+  byProvider: Record<string, string[]>;
 };
 
-export async function adminSlotsUpdate(adminKey: string, mode: "premium" | "free" = "premium") {
-  return j<AdminSlotsUpdateResp>(`/admin/slots/update?mode=${encodeURIComponent(mode)}`, {
+export async function adminSlotsUpdate(adminKey: string) {
+  return j<AdminSlotsUpdateResp>(`/admin/slots/update`, {
     method: "POST",
     headers: { "x-admin-key": adminKey },
   });
