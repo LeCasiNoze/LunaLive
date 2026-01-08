@@ -2,12 +2,7 @@
 import type { HuntState, SuggestItem, SavedHunt } from "./hunt_types";
 
 function apiBase() {
-  // 1) si VITE_API_BASE est défini, on l'utilise
-  const envBase = (import.meta as any).env?.VITE_API_BASE;
-  if (envBase) return String(envBase).replace(/\/+$/, "");
-
-  // 2) sinon fallback (même en DEV) -> évite le "no proxy" qui casse les calls
-  return "https://lunalive-api.onrender.com";
+  return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
 }
 
 import { loadToken } from "./storage";

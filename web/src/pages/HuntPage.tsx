@@ -26,15 +26,14 @@ import type { HuntState, SuggestItem, SavedHunt } from "../lib/hunt_types";
 const fmtEur = (n: number) => `${(Number(n) || 0).toFixed(2)}€`;
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
+function apiBase() {
+  const envBase = (import.meta as any).env?.VITE_API_BASE;
+  const base = envBase ? String(envBase) : "https://lunalive-api.onrender.com";
+  return base.replace(/\/+$/, "");
+}
+
 function pickImageUrl(x: any): string | null {
-  const u =
-    x?.image_url ??
-    x?.imageUrl ??
-    x?.imageURL ??
-    x?.img ??
-    x?.thumb ??
-    x?.thumbnail ??
-    null;
+  const u = x?.image_url ?? x?.imageUrl ?? x?.imageURL ?? x?.thumb_url ?? x?.thumbUrl ?? null;
   const s = String(u || "").trim();
   return s ? s : null;
 }
@@ -69,24 +68,16 @@ function createdLabel(h: any) {
   return t.toLocaleString();
 }
 
-function SlotThumb({
-  url,
-  size = 44,
-  title,
-}: {
-  url?: string | null;
-  size?: number;
-  title?: string;
-}) {
+function SlotThumb({ url, size = 42 }: { url?: string | null; size?: number }) {
   const [broken, setBroken] = React.useState(false);
 
   const boxStyle: React.CSSProperties = {
     width: size,
     height: size,
-    borderRadius: 14,
+    borderRadius: 12,
     flex: "0 0 auto",
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.04)",
     overflow: "hidden",
     display: "grid",
     placeItems: "center",
@@ -94,16 +85,14 @@ function SlotThumb({
 
   if (!url || broken) {
     return (
-      <div style={boxStyle} aria-hidden="true" title={title || "🎰"}>
-        <span style={{ fontSize: Math.max(14, Math.floor(size * 0.42)), opacity: 0.9 }}>
-          🎰
-        </span>
+      <div style={boxStyle} aria-hidden="true" title="🎰">
+        <span style={{ fontSize: 16, opacity: 0.9 }}>🎰</span>
       </div>
     );
   }
 
   return (
-    <div style={boxStyle} aria-hidden="true" title={title || ""}>
+    <div style={boxStyle} aria-hidden="true">
       <img
         src={url}
         alt=""
@@ -137,11 +126,10 @@ export default function HuntPage() {
     } as any
   );
 
-  const phase = (state?.phase ||
-    ((state as any)?.opened ? "open" : "edit")) as HuntState["phase"];
+  const phase = (state?.phase || ((state as any)?.opened ? "open" : "edit")) as HuntState["phase"];
   const items = (state?.items || []) as any[];
 
-  // ✅ Affichage "edit" : les nouveaux en haut (sans casser l'ordre du deck en open)
+  // ✅ affichage edit : nouveaux en haut
   const itemsEdit = React.useMemo(() => {
     const arr = Array.isArray(items) ? [...items] : [];
     return arr.reverse();
@@ -153,8 +141,30 @@ export default function HuntPage() {
   // Suggest
   const [q, setQ] = React.useState("");
   const [suggestions, setSuggestions] = React.useState<SuggestItem[]>([]);
+  const [suggLoading, setSuggLoading] = React.useState(false);
+  const [suggError, setSuggError] = React.useState<string | null>(null);
   const [showSugg, setShowSugg] = React.useState(false);
   const [sel, setSel] = React.useState(0);
+
+  // Cache local (name -> image/provider) pour afficher les thumbs dans la liste
+  const [slotMetaByName, setSlotMetaByName] = React.useState<
+    Record<string, { imageUrl: string | null; provider: string | null }>
+  >({});
+
+  function keyName(n: any) {
+    return String(n || "").trim().toLowerCase();
+  }
+
+  function pickItemImage(x: any): string | null {
+    return pickImageUrl(x) ?? slotMetaByName[keyName(x?.name)]?.imageUrl ?? null;
+  }
+
+  function pickItemProvider(x: any): string | null {
+    return pickProvider(x) ?? slotMetaByName[keyName(x?.name)]?.provider ?? null;
+  }
+
+  // anti-race : ignore les réponses en retard
+  const suggReqRef = React.useRef(0);
 
   // Bet focus after add
   const betRefs = React.useRef<Record<string, HTMLInputElement | null>>({});
@@ -177,10 +187,7 @@ export default function HuntPage() {
     [items]
   );
   const profit = React.useMemo(() => totalPayAll - startValue, [totalPayAll, startValue]);
-  const globalMulti = React.useMemo(
-    () => (totalBetAll > 0 ? totalPayAll / totalBetAll : 0),
-    [totalBetAll, totalPayAll]
-  );
+  const globalMulti = React.useMemo(() => (totalBetAll > 0 ? totalPayAll / totalBetAll : 0), [totalBetAll, totalPayAll]);
 
   const remainingBet = React.useMemo(
     () =>
@@ -207,12 +214,7 @@ export default function HuntPage() {
   }, [remainingToRecoup, remainingBet]);
 
   const canOpen = React.useMemo(() => {
-    return (
-      phase === "edit" &&
-      startValue > 0 &&
-      items.length > 0 &&
-      items.every((it: any) => Number(it.bet) > 0)
-    );
+    return phase === "edit" && startValue > 0 && items.length > 0 && items.every((it: any) => Number(it.bet) > 0);
   }, [phase, startValue, items]);
 
   // keep deckIndex valid
@@ -247,39 +249,94 @@ export default function HuntPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // suggestions debounce
-  React.useEffect(() => {
-    const t = window.setTimeout(async () => {
-      const qq = q.trim();
-      if (qq.length < 2) {
-        setSuggestions([]);
-        setShowSugg(false);
-        return;
-      }
+  // ✅ Suggestions : même UX + fallback /slots/search (comme BotMenu)
+  async function fetchSuggestions(text: string) {
+    const s = String(text || "").trim();
+    const reqId = ++suggReqRef.current;
+
+    if (s.length < 2) {
+      setSuggestions([]);
+      setSuggError(null);
+      setSuggLoading(false);
+      return;
+    }
+
+    setSuggLoading(true);
+    setSuggError(null);
+
+    try {
+      // 1) on tente /api/hunt2/suggest (si backend ok)
+      let raw: any[] = [];
       try {
-        const r = await huntSuggest(qq, 12);
-        if (r?.ok) {
-          const already = new Set(items.map((it: any) => String(it.name || "").trim().toLowerCase()));
-          const raw = Array.isArray((r as any).items) ? (r as any).items : [];
-          const seen = new Set<string>();
-          const filtered = raw.filter((x: any) => {
-            const key = String(x.name || "").trim().toLowerCase();
-            if (!key || seen.has(key)) return false;
-            seen.add(key);
-            return !already.has(key);
-          });
-          setSuggestions(filtered);
-          setShowSugg(true);
-          setSel(0);
-        } else {
-          setSuggestions([]);
-          setShowSugg(false);
-        }
-      } catch {
-        setSuggestions([]);
-        setShowSugg(false);
+        const r = await huntSuggest(s, 12);
+        raw = Array.isArray((r as any)?.items) ? (r as any).items : [];
+      } catch (e: any) {
+        raw = [];
+        // on garde l’erreur pour debug si la fallback échoue aussi
+        setSuggError(String(e?.message || "hunt_suggest_failed"));
       }
-    }, 200);
+
+      // 2) fallback EXACT BotMenu: /slots/search
+      if (!raw.length) {
+        try {
+          const r2 = await fetch(`${apiBase()}/slots/search?q=${encodeURIComponent(s)}&limit=12`);
+          const j2 = await r2.json().catch(() => null);
+          if (j2?.ok && Array.isArray(j2.items)) {
+            raw = j2.items.map((x: any) => ({
+              name: String(x?.name || ""),
+              provider: x?.provider ?? null,
+              image_url: x?.imageUrl ?? null,
+              score: 0,
+            }));
+            setSuggError(null);
+          }
+        } catch (e: any) {
+          // si tout a échoué, on garde l’erreur existante
+          setSuggError((prev) => prev ?? String(e?.message || "slots_search_failed"));
+        }
+      }
+
+      // réponse en retard => ignore
+      if (reqId !== suggReqRef.current) return;
+
+      const already = new Set(items.map((it: any) => String(it.name || "").trim().toLowerCase()));
+      const seen = new Set<string>();
+
+      const filtered = raw.filter((x: any) => {
+        const key = String(x?.name || "").trim().toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return !already.has(key);
+      });
+
+      setSlotMetaByName((prev) => {
+        const next = { ...prev };
+        for (const x of filtered) {
+          const k = keyName((x as any)?.name);
+          if (!k) continue;
+          const img = pickImageUrl(x);
+          const prov = pickProvider(x);
+          if (!next[k]) next[k] = { imageUrl: img ?? null, provider: prov ?? null };
+          else {
+            if (!next[k].imageUrl && img) next[k].imageUrl = img;
+            if (!next[k].provider && prov) next[k].provider = prov;
+          }
+        }
+        return next;
+      });
+
+      setSuggestions(filtered);
+      setSel(0);
+    } finally {
+      if (reqId === suggReqRef.current) setSuggLoading(false);
+    }
+  }
+
+  // debounce
+  React.useEffect(() => {
+    const t = window.setTimeout(() => {
+      fetchSuggestions(q).catch(() => {});
+    }, 120);
     return () => window.clearTimeout(t);
   }, [q, items]);
 
@@ -347,21 +404,21 @@ export default function HuntPage() {
     const nm = (item?.name || q || "").trim();
     if (!nm) return;
 
-    setBusy(true);
-    try {
-      const j = await huntAdd(nm);
-
-      setQ("");
-      setSuggestions([]);
-      setShowSugg(false);
-      setSel(0);
-
-      if (j?.ok && (j as any).id) setPendingFocusId(String((j as any).id));
-
-      await refreshState();
-    } finally {
-      setBusy(false);
+    // si on a cliqué une suggestion, on garde son image/provider pour l’affichage de la liste
+    if (item?.name) {
+      const k = keyName(item.name);
+      const img = pickImageUrl(item);
+      const prov = pickProvider(item);
+      setSlotMetaByName((prev) => ({
+        ...prev,
+        [k]: {
+          imageUrl: img ?? prev[k]?.imageUrl ?? null,
+          provider: prov ?? prev[k]?.provider ?? null,
+        },
+      }));
     }
+
+    setBusy(true);
   }
 
   async function removeItem(id: string) {
@@ -487,7 +544,6 @@ export default function HuntPage() {
   const current = phase === "open" ? items[deckIndex] : null;
   const currentId = current ? String(current.id) : null;
   const currentKey = currentId || "";
-
   const isConfirmed = currentId ? !!confirmed[currentKey] : false;
 
   async function validateCurrentPay() {
@@ -545,11 +601,7 @@ export default function HuntPage() {
                       ? "border:1px solid rgba(244,63,94,0.35)"
                       : "";
                   return (
-                    <div
-                      key={h.id}
-                      className="huntListItem"
-                      style={tone ? ({ border: tone as any } as any) : undefined}
-                    >
+                    <div key={h.id} className="huntListItem" style={tone ? ({ border: tone as any } as any) : undefined}>
                       <div className="huntListTop">
                         <div className="huntListTitle">
                           <button
@@ -561,12 +613,7 @@ export default function HuntPage() {
                             {h.title ? h.title : `Hunt #${h.id}`}
                           </button>
                         </div>
-                        <button
-                          className="btn btnDanger"
-                          onClick={() => deleteSaved(h.id)}
-                          disabled={busy}
-                          title="Supprimer"
-                        >
+                        <button className="btn btnDanger" onClick={() => deleteSaved(h.id)} disabled={busy} title="Supprimer">
                           ✕
                         </button>
                       </div>
@@ -574,8 +621,7 @@ export default function HuntPage() {
                       <div className="huntListMeta">
                         {createdLabel(h)} • {(h as any).items_count ?? 0} items
                         <br />
-                        start {fmtEur(Number((h as any).start || 0))} • total pay{" "}
-                        {fmtEur(Number((h as any).total_pay || 0))}
+                        start {fmtEur(Number((h as any).start || 0))} • total pay {fmtEur(Number((h as any).total_pay || 0))}
                       </div>
                     </div>
                   );
@@ -702,84 +748,84 @@ export default function HuntPage() {
                   <div className="huntRow">
                     <input
                       value={q}
-                      onChange={(e) => setQ(e.target.value)}
+                      onChange={(e) => {
+                        setQ(e.target.value);
+                        if (!showSugg) setShowSugg(true);
+                      }}
                       placeholder="Tape un nom de machine…"
                       style={{ width: 460, maxWidth: "100%" }}
-                      disabled={busy || startValue <= 0}
-                      onFocus={() => q.trim().length >= 2 && setShowSugg(true)}
-                      onBlur={() => setTimeout(() => setShowSugg(false), 120)}
+                      disabled={busy}
+                      onFocus={() => setShowSugg(true)}
+                      onBlur={() => setTimeout(() => setShowSugg(false), 160)}
                       onKeyDown={(e) => {
-                        if (!showSugg || suggestions.length === 0) {
+                        const visible = showSugg && q.trim().length >= 2;
+                        if (!visible) {
                           if (e.key === "Enter") addItemFromSelection(null);
                           return;
                         }
+
                         if (e.key === "ArrowDown") {
                           e.preventDefault();
-                          setSel((i) => Math.min(suggestions.length - 1, i + 1));
+                          if (suggestions.length) setSel((i) => Math.min(suggestions.length - 1, i + 1));
                         } else if (e.key === "ArrowUp") {
                           e.preventDefault();
-                          setSel((i) => Math.max(0, i - 1));
+                          if (suggestions.length) setSel((i) => Math.max(0, i - 1));
                         } else if (e.key === "Enter") {
                           e.preventDefault();
-                          addItemFromSelection(suggestions[sel] || null);
+                          if (suggestions.length) addItemFromSelection(suggestions[sel] || null);
+                          else addItemFromSelection(null);
                         } else if (e.key === "Escape") {
                           setShowSugg(false);
                         }
                       }}
                     />
 
-                    <button
-                      className="btn btnPrimary"
-                      disabled={busy || !q.trim() || startValue <= 0}
-                      onClick={() => addItemFromSelection(null)}
-                    >
+                    <button className="btn btnPrimary" disabled={busy || !q.trim()} onClick={() => addItemFromSelection(null)}>
                       Ajouter
                     </button>
                   </div>
 
-                  {startValue <= 0 && (
-                    <div className="huntSmallMuted" style={{ marginTop: 10 }}>
-                      Définis un <b>Start</b> pour débloquer l’ajout de machines.
-                    </div>
-                  )}
+                  {/* ✅ Suggestions : BotMenu-like */}
+                  {showSugg && q.trim().length >= 2 ? (
+                    <div style={{ marginTop: 10 }}>
+                      {suggLoading ? <div className="huntSmallMuted">Suggestions…</div> : null}
 
-                  {!!showSugg && !!suggestions.length && (
-                    <div className="suggGrid">
-                      {suggestions.map((s, i) => {
-                        const img = pickImageUrl(s);
-                        const prov = pickProvider(s);
-                        return (
-                          <button
-                            key={`${s.name}-${prov || ""}-${i}`}
-                            className="suggItem"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => addItemFromSelection(s)}
-                            disabled={busy}
-                            style={
-                              i === sel
-                                ? ({ outline: "2px solid rgba(167,139,250,0.55)", outlineOffset: 2 } as any)
-                                : undefined
-                            }
-                          >
-                            <div className="suggRow">
-                              <div className="suggImg">
-                                <SlotThumb url={img} size={44} />
-                              </div>
-                              <div style={{ minWidth: 0, flex: 1 }}>
-                                <div className="suggName">{s.name}</div>
-                                <div className="suggSub">
-                                  {prov ? prov : "—"}
-                                  {typeof (s as any).score === "number"
-                                    ? ` • score ${Math.round(Number((s as any).score || 0))}`
-                                    : ""}
+                      {suggestions.length ? (
+                        <div className="suggGrid">
+                          {suggestions.map((s, i) => {
+                            const img = pickImageUrl(s);
+                            const prov = pickProvider(s);
+                            return (
+                              <button
+                                key={`${s.name}-${prov || ""}-${i}`}
+                                className="suggItem"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => addItemFromSelection(s)}
+                                disabled={busy}
+                                style={i === sel ? ({ outline: "2px solid rgba(167,139,250,0.55)", outlineOffset: 2 } as any) : undefined}
+                              >
+                                <div className="suggRow">
+                                  <SlotThumb url={img} size={42} />
+                                  <div style={{ minWidth: 0, flex: 1 }}>
+                                    <div className="suggName">{s.name}</div>
+                                    <div className="suggSub">{prov ? prov : "—"}</div>
+                                  </div>
                                 </div>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : !suggLoading ? (
+                        <div className="huntSmallMuted">{suggError ? `Aucune suggestion. (${suggError})` : "Aucune suggestion."}</div>
+                      ) : null}
                     </div>
-                  )}
+                  ) : null}
+
+                  {startValue <= 0 ? (
+                    <div className="huntSmallMuted" style={{ marginTop: 10 }}>
+                      ⚠️ Tu peux chercher des machines, mais pour <b>ajouter</b> il faut définir un <b>Start</b>.
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -802,12 +848,12 @@ export default function HuntPage() {
                   ) : (
                     <div className="itemsGrid" style={{ marginTop: 10 }}>
                       {itemsEdit.map((it: any) => {
-                        const img = pickImageUrl(it);
-                        const prov = pickProvider(it);
+                        const img = pickItemImage(it);
+                        const prov = pickItemProvider(it);
                         return (
                           <div key={it.id} className="itemRow">
                             <div className="itemImg">
-                              <SlotThumb url={img} size={54} />
+                              <SlotThumb url={img} size={46} />
                             </div>
 
                             <div style={{ minWidth: 0 }}>
@@ -882,11 +928,7 @@ export default function HuntPage() {
                   <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
                     {/* Nav */}
                     <div className="huntRow" style={{ justifyContent: "space-between" }}>
-                      <button
-                        className="btn"
-                        onClick={() => setDeckIndex((i) => Math.max(0, i - 1))}
-                        disabled={busy || deckIndex === 0}
-                      >
+                      <button className="btn" onClick={() => setDeckIndex((i) => Math.max(0, i - 1))} disabled={busy || deckIndex === 0}>
                         ◀ Précédent
                       </button>
                       <button
@@ -910,17 +952,15 @@ export default function HuntPage() {
                     >
                       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 0 }}>
                         <div style={{ minHeight: 260, background: "rgba(0,0,0,0.25)" }}>
-                          {pickImageUrl(current) ? (
+                            {pickItemImage(current) ? (
                             <img
-                              src={pickImageUrl(current) as string}
+                                src={pickItemImage(current) as string}
                               alt={current.name}
                               referrerPolicy="no-referrer"
                               style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                             />
                           ) : (
-                            <div style={{ height: "100%", display: "grid", placeItems: "center", opacity: 0.7 }}>
-                              —
-                            </div>
+                            <div style={{ height: "100%", display: "grid", placeItems: "center", opacity: 0.7 }}>—</div>
                           )}
                         </div>
 
@@ -935,11 +975,7 @@ export default function HuntPage() {
                             <StatPill label="Pay" value={fmtEur(Number(current.pay) || 0)} />
                             <StatPill
                               label="Multi"
-                              value={`x${
-                                Number(current.bet) > 0
-                                  ? ((Number(current.pay) || 0) / Number(current.bet)).toFixed(2)
-                                  : "0.00"
-                              }`}
+                              value={`x${Number(current.bet) > 0 ? ((Number(current.pay) || 0) / Number(current.bet)).toFixed(2) : "0.00"}`}
                             />
                           </div>
 
@@ -958,9 +994,6 @@ export default function HuntPage() {
                               disabled={busy}
                               onKeyDown={async (e) => {
                                 if (e.key === "Enter") {
-                                  if (!currentId) return;
-                                  const raw = String(draftPay[currentKey] ?? "").trim();
-                                  if (!raw) return;
                                   await validateCurrentPay();
                                 }
                               }}
@@ -968,15 +1001,9 @@ export default function HuntPage() {
                           </div>
 
                           <div className="huntRow" style={{ justifyContent: "space-between", marginTop: 6 }}>
-                            {/* ✅ Bouton unique : Valider -> Next -> Terminer */}
                             <button
                               className="btn btnPrimary"
-                              disabled={
-                                busy ||
-                                !currentId ||
-                                (!isConfirmed && !String(draftPay[currentKey] ?? "").trim()) ||
-                                (isConfirmed && deckIndex >= items.length - 1 && false)
-                              }
+                              disabled={busy || !currentId || (!isConfirmed && !String(draftPay[currentKey] ?? "").trim())}
                               onClick={async () => {
                                 if (!currentId) return;
 
@@ -985,21 +1012,13 @@ export default function HuntPage() {
                                   return;
                                 }
 
-                                // déjà confirmé
                                 if (deckIndex >= items.length - 1) {
-                                  await doClose(); // dernière -> termine
+                                  await doClose();
                                   return;
                                 }
 
                                 goNext();
                               }}
-                              title={
-                                !isConfirmed
-                                  ? "Valide le gain"
-                                  : deckIndex >= items.length - 1
-                                  ? "Terminer le hunt"
-                                  : "Passe à la suivante"
-                              }
                             >
                               {primaryDeckLabel}
                             </button>
