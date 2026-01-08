@@ -1,3 +1,4 @@
+// api/src/chat_socket.ts
 import type { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 import { pool } from "./db.js";
@@ -477,7 +478,8 @@ export function attachChat(io: Server) {
           const ok = await isActiveSub(meta.id, u.id);
           if (!ok) return cb?.({ ok: false, error: "sub_only" });
         }
-                // ✅ NEW: commandes !call / !listec / !resetc (intercept)
+
+        // ✅ NEW: commandes !call / !listec / !resetc (intercept)
         const bang = parseBangCommand(text);
         if (bang) {
           const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
@@ -487,6 +489,7 @@ export function attachChat(io: Server) {
             io,
             slug: meta.slug,
             streamerId: meta.id,
+            streamerOwnerUserId: meta.ownerUserId, // ✅ FIX ICI
 
             actorUserId: u.id,
             actorUsername: u.username,

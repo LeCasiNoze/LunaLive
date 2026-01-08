@@ -59,6 +59,7 @@ import { callsRouter } from "./routes/calls.js";
 
 // ✅ NEW: Hunt
 import { hunt2Router } from "./routes/hunt2.js";
+import { callsHuntRouter } from "./routes/calls_hunt.js";
 
 export function createApp() {
   const app = express();
@@ -145,7 +146,8 @@ export function createApp() {
 
   app.use("/slots", slotsRouter);
   app.use("/calls", callsRouter);
-
+  app.use("/calls", callsHuntRouter); 
+  
   // ✅ Hunt routes (/api/hunt2/*)
   app.use(hunt2Router);
 

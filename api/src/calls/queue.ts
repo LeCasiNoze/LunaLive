@@ -11,6 +11,11 @@ export type CallItem = {
   username: string;
   pos: number;
   createdAt: string;
+
+  // Hunt fields (shared source of truth)
+  bet: number | null;
+  pay: number | null;
+  bounty: boolean | null;
 };
 
 export type CallsSettings = {
@@ -20,6 +25,9 @@ export type CallsSettings = {
   allowListec: boolean;
   listecMax: number;
   perUserLimit: number;
+
+  // 🔥 NEW: sync calls_queue -> hunt (only when hunt has start)
+  syncHunt: boolean;
 };
 
 // règle “0 infini / >10 infini”
@@ -31,9 +39,58 @@ export function effectiveLimit(n: number): number {
   return Math.floor(x);
 }
 
+async function ensureCallsSchema(pool: Pool) {
+  // calls_settings.sync_hunt
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF to_regclass('public.calls_settings') IS NOT NULL THEN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='calls_settings' AND column_name='sync_hunt'
+        ) THEN
+          ALTER TABLE calls_settings ADD COLUMN sync_hunt BOOLEAN NOT NULL DEFAULT FALSE;
+        END IF;
+      END IF;
+    END $$;
+  `);
+
+  // calls_queue bet/pay/bounty
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF to_regclass('public.calls_queue') IS NOT NULL THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='calls_queue' AND column_name='bet'
+        ) THEN
+          ALTER TABLE calls_queue ADD COLUMN bet NUMERIC NULL;
+        END IF;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='calls_queue' AND column_name='pay'
+        ) THEN
+          ALTER TABLE calls_queue ADD COLUMN pay NUMERIC NULL;
+        END IF;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='calls_queue' AND column_name='bounty'
+        ) THEN
+          ALTER TABLE calls_queue ADD COLUMN bounty BOOLEAN NULL;
+        END IF;
+      END IF;
+    END $$;
+  `);
+}
+
 export async function getCallsSettings(pool: Pool, streamerId: number): Promise<CallsSettings> {
+  await ensureCallsSchema(pool);
+
   const r = await pool.query(
-    `SELECT enabled, show_cmd_in_chat, show_accept_public, allow_listec, listec_max, per_user_limit
+    `SELECT enabled, show_cmd_in_chat, show_accept_public, allow_listec, listec_max, per_user_limit, sync_hunt
      FROM calls_settings
      WHERE streamer_id=$1
      LIMIT 1`,
@@ -56,6 +113,7 @@ export async function getCallsSettings(pool: Pool, streamerId: number): Promise<
       allowListec: true,
       listecMax: 10,
       perUserLimit: 2,
+      syncHunt: false,
     };
   }
 
@@ -66,6 +124,7 @@ export async function getCallsSettings(pool: Pool, streamerId: number): Promise<
     allowListec: !!row.allow_listec,
     listecMax: Math.max(1, Math.min(50, Number(row.listec_max ?? 10))),
     perUserLimit: effectiveLimit(Number(row.per_user_limit ?? 2)),
+    syncHunt: !!row.sync_hunt,
   };
 }
 
@@ -190,6 +249,8 @@ export async function addCall(
   provider: string | null,
   opts?: { bypassLimit?: boolean }
 ): Promise<{ ok: true; item: CallItem; position: number } | { ok: false; error: string }> {
+  await ensureCallsSchema(pool);
+
   const slotName = normText(slotNameRaw);
   if (!slotName) return { ok: false, error: "bad_slot" };
 
@@ -231,8 +292,8 @@ export async function addCall(
 
     const ins = await client.query(
       `
-      INSERT INTO calls_queue (streamer_id, slot_name, slot_key, provider, user_id, username, pos)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      INSERT INTO calls_queue (streamer_id, slot_name, slot_key, provider, user_id, username, pos, bet, pay, bounty)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NULL)
       RETURNING id, created_at AS "createdAt"
       `,
       [streamerId, slotName, slotKey, providerLower, userId, username, nextPos]
@@ -254,6 +315,9 @@ export async function addCall(
         username,
         pos: nextPos,
         createdAt: new Date(row.createdAt).toISOString(),
+        bet: null,
+        pay: null,
+        bounty: null,
       },
     };
   } catch (e: any) {
@@ -271,6 +335,8 @@ export async function addCall(
 }
 
 export async function listCalls(pool: Pool, streamerId: number, limit: number, offset: number): Promise<CallItem[]> {
+  await ensureCallsSchema(pool);
+
   const lim = Math.max(1, Math.min(200, Math.floor(Number(limit || 50))));
   const off = Math.max(0, Math.floor(Number(offset || 0)));
 
@@ -283,7 +349,10 @@ export async function listCalls(pool: Pool, streamerId: number, limit: number, o
       user_id::int AS "userId",
       username AS "username",
       pos::int AS "pos",
-      created_at AS "createdAt"
+      created_at AS "createdAt",
+      bet AS "bet",
+      pay AS "pay",
+      bounty AS "bounty"
     FROM calls_queue
     WHERE streamer_id=$1
     ORDER BY pos ASC
@@ -300,6 +369,9 @@ export async function listCalls(pool: Pool, streamerId: number, limit: number, o
     username: String(x.username),
     pos: Number(x.pos),
     createdAt: new Date(x.createdAt).toISOString(),
+    bet: x.bet == null ? null : Number(x.bet),
+    pay: x.pay == null ? null : Number(x.pay),
+    bounty: typeof x.bounty === "boolean" ? x.bounty : (x.bounty ?? null),
   }));
 }
 
@@ -310,4 +382,138 @@ export async function resetCalls(pool: Pool, streamerId: number): Promise<void> 
 export async function deleteCallById(pool: Pool, streamerId: number, id: string): Promise<boolean> {
   const r = await pool.query(`DELETE FROM calls_queue WHERE streamer_id=$1 AND id=$2 RETURNING id`, [streamerId, id]);
   return !!r.rows?.[0];
+}
+
+export async function setCallBet(pool: Pool, streamerId: number, id: string, bet: number): Promise<boolean> {
+  await ensureCallsSchema(pool);
+  const b = Number(bet);
+  if (!(b >= 0)) return false;
+  const r = await pool.query(`UPDATE calls_queue SET bet=$3 WHERE streamer_id=$1 AND id=$2 RETURNING id`, [
+    streamerId,
+    id,
+    b,
+  ]);
+  return !!r.rows?.[0];
+}
+
+export async function setCallPay(pool: Pool, streamerId: number, id: string, pay: number): Promise<boolean> {
+  await ensureCallsSchema(pool);
+  const p = Number(pay);
+  if (!(p >= 0)) return false;
+  const r = await pool.query(`UPDATE calls_queue SET pay=$3 WHERE streamer_id=$1 AND id=$2 RETURNING id`, [
+    streamerId,
+    id,
+    p,
+  ]);
+  return !!r.rows?.[0];
+}
+
+export async function setCallBounty(pool: Pool, streamerId: number, id: string, bounty: boolean): Promise<boolean> {
+  await ensureCallsSchema(pool);
+  const r = await pool.query(`UPDATE calls_queue SET bounty=$3 WHERE streamer_id=$1 AND id=$2 RETURNING id`, [
+    streamerId,
+    id,
+    !!bounty,
+  ]);
+  return !!r.rows?.[0];
+}
+
+export async function reorderCalls(pool: Pool, streamerId: number, ids: string[]): Promise<void> {
+  const clean = Array.isArray(ids) ? ids.map((x) => String(x)).filter(Boolean) : [];
+  if (!clean.length) return;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`SELECT pg_advisory_xact_lock($1)`, [Number(streamerId)]);
+    for (let i = 0; i < clean.length; i++) {
+      await client.query(`UPDATE calls_queue SET pos=$3 WHERE streamer_id=$1 AND id=$2`, [streamerId, clean[i], i + 1]);
+    }
+    await client.query("COMMIT");
+  } catch {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+    throw new Error("reorder_failed");
+  } finally {
+    client.release();
+  }
+}
+
+export async function findCurrentForBet(pool: Pool, streamerId: number): Promise<CallItem | null> {
+  await ensureCallsSchema(pool);
+  const r = await pool.query(
+    `
+    SELECT
+      id::text AS id,
+      slot_name AS "slotName",
+      provider AS "provider",
+      user_id::int AS "userId",
+      username AS "username",
+      pos::int AS "pos",
+      created_at AS "createdAt",
+      bet AS "bet",
+      pay AS "pay",
+      bounty AS "bounty"
+    FROM calls_queue
+    WHERE streamer_id=$1
+      AND (bet IS NULL OR bet <= 0)
+    ORDER BY pos ASC
+    LIMIT 1
+    `,
+    [streamerId]
+  );
+  const x = r.rows?.[0];
+  if (!x) return null;
+  return {
+    id: String(x.id),
+    slotName: String(x.slotName),
+    provider: x.provider ? String(x.provider) : null,
+    userId: Number(x.userId),
+    username: String(x.username),
+    pos: Number(x.pos),
+    createdAt: new Date(x.createdAt).toISOString(),
+    bet: x.bet == null ? null : Number(x.bet),
+    pay: x.pay == null ? null : Number(x.pay),
+    bounty: typeof x.bounty === "boolean" ? x.bounty : (x.bounty ?? null),
+  };
+}
+
+export async function findCurrentForPay(pool: Pool, streamerId: number): Promise<CallItem | null> {
+  await ensureCallsSchema(pool);
+  const r = await pool.query(
+    `
+    SELECT
+      id::text AS id,
+      slot_name AS "slotName",
+      provider AS "provider",
+      user_id::int AS "userId",
+      username AS "username",
+      pos::int AS "pos",
+      created_at AS "createdAt",
+      bet AS "bet",
+      pay AS "pay",
+      bounty AS "bounty"
+    FROM calls_queue
+    WHERE streamer_id=$1
+      AND (pay IS NULL)
+    ORDER BY pos ASC
+    LIMIT 1
+    `,
+    [streamerId]
+  );
+  const x = r.rows?.[0];
+  if (!x) return null;
+  return {
+    id: String(x.id),
+    slotName: String(x.slotName),
+    provider: x.provider ? String(x.provider) : null,
+    userId: Number(x.userId),
+    username: String(x.username),
+    pos: Number(x.pos),
+    createdAt: new Date(x.createdAt).toISOString(),
+    bet: x.bet == null ? null : Number(x.bet),
+    pay: x.pay == null ? null : Number(x.pay),
+    bounty: typeof x.bounty === "boolean" ? x.bounty : (x.bounty ?? null),
+  };
 }

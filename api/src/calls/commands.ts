@@ -11,6 +11,11 @@ import {
   listCalls,
   resetCalls,
   isUserBannedFromCalls,
+  deleteCallById,
+  findCurrentForBet,
+  findCurrentForPay,
+  setCallBet,
+  setCallPay,
 } from "./queue.js";
 import { normText } from "./normalize.js";
 import { chatStore } from "../chat_store.js";
@@ -23,12 +28,53 @@ export function parseBangCommand(text: string): { cmd: string; arg: string } | n
   return { cmd: String(m[1] || "").toLowerCase(), arg: String(m[2] || "") };
 }
 
+// minimal (évite “relation hunt_sessions does not exist”)
+async function ensureHuntSchema(pool: Pool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS hunt_sessions (
+      user_id      INT PRIMARY KEY,
+      phase        TEXT NOT NULL DEFAULT 'edit',
+      opened       BOOLEAN NOT NULL DEFAULT FALSE,
+      start        NUMERIC NULL,
+      archive_id   BIGINT NULL,
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+}
+
+async function getHuntMeta(pool: Pool, ownerUserId: number) {
+  await ensureHuntSchema(pool);
+  const r = await pool.query(`SELECT phase, opened, start FROM hunt_sessions WHERE user_id=$1`, [ownerUserId]);
+  const row = r.rows?.[0];
+  return {
+    phase: String(row?.phase || "edit"),
+    opened: !!row?.opened,
+    start: row?.start == null ? null : Number(row.start),
+  };
+}
+
+async function setHuntPhase(pool: Pool, ownerUserId: number, phase: "edit" | "open") {
+  await ensureHuntSchema(pool);
+  await pool.query(
+    `
+    INSERT INTO hunt_sessions(user_id) VALUES($1)
+    ON CONFLICT (user_id) DO NOTHING
+    `,
+    [ownerUserId]
+  );
+  await pool.query(
+    `UPDATE hunt_sessions SET phase=$2, opened=$3, updated_at=NOW() WHERE user_id=$1`,
+    [ownerUserId, phase, phase === "open"]
+  );
+}
+
 export async function handleCallsCommand(opts: {
   pool: Pool;
   io: Server;
 
   slug: string;
   streamerId: number;
+  streamerOwnerUserId: number | null;
 
   actorUserId: number;
   actorUsername: string;
@@ -41,9 +87,24 @@ export async function handleCallsCommand(opts: {
   | { handled: true; showOriginalInChat: boolean }
   | { handled: false }
 > {
-  const { pool, io, slug, streamerId, actorUserId, actorUsername, actorRole, canMod, cmd, arg } = opts;
+  const {
+    pool,
+    io,
+    slug,
+    streamerId,
+    streamerOwnerUserId,
+    actorUserId,
+    actorUsername,
+    actorRole,
+    canMod,
+    cmd,
+    arg,
+  } = opts;
 
-  if (cmd !== "call" && cmd !== "listec" && cmd !== "resetc") return { handled: false };
+  // ✅ NEW: hunt commands live here (because same source of truth = calls_queue)
+  const isHuntCmd = cmd === "bonus" || cmd === "pass" || cmd === "open" || cmd === "pay";
+  const isCallCmd = cmd === "call" || cmd === "listec" || cmd === "resetc";
+  if (!isCallCmd && !isHuntCmd) return { handled: false };
 
   const settings = await getCallsSettings(pool, streamerId);
   const showOriginalInChat = !!settings.showCmdInChat;
@@ -62,7 +123,190 @@ export async function handleCallsCommand(opts: {
     return { handled: true, showOriginalInChat };
   }
 
-  // permissions
+  // ──────────────────────────────────────────
+  // Hunt sync gate
+  // ──────────────────────────────────────────
+  const ownerUserId = streamerOwnerUserId != null ? Number(streamerOwnerUserId) : null;
+
+  async function isSyncActive(): Promise<boolean> {
+    if (!settings.syncHunt) return false;
+    if (!ownerUserId) return false;
+
+    const hm = await getHuntMeta(pool, ownerUserId);
+    return (Number(hm.start) || 0) > 0; // ✅ “hunt déclaré”
+  }
+
+  // ──────────────────────────────────────────
+  // Permissions helpers
+  // ──────────────────────────────────────────
+  const canHuntControl = canMod || actorRole === "admin" || actorRole === "streamer";
+
+  // ──────────────────────────────────────────
+  // Hunt commands
+  // ──────────────────────────────────────────
+  if (cmd === "open") {
+    if (!canHuntControl) {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Accès refusé", message: "Réservé aux mods/streamer." });
+      return { handled: true, showOriginalInChat };
+    }
+
+    if (!(await isSyncActive())) {
+      emitUserToast(io, actorUserId, {
+        kind: "error",
+        title: "Sync Hunt inactif",
+        message: "Active Sync Hunt + démarre un Hunt (Start) pour utiliser !open.",
+      });
+      return { handled: true, showOriginalInChat };
+    }
+
+    // open requires all bets
+    const items = await listCalls(pool, streamerId, 500, 0);
+    if (!items.length) {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Hunt vide", message: "Aucun call en file." });
+      return { handled: true, showOriginalInChat };
+    }
+    const missing = items.filter((x) => !(Number(x.bet) > 0));
+    if (missing.length) {
+      emitUserToast(io, actorUserId, {
+        kind: "error",
+        title: "Bets manquants",
+        message: `Il manque la bet sur ${missing.length} machine(s).`,
+      });
+      return { handled: true, showOriginalInChat };
+    }
+
+    await setHuntPhase(pool, ownerUserId!, "open");
+
+    const sys = chatStore.addSystem(slug, `🔓 Hunt OPEN par @${actorUsername}`);
+    io.to(`chat:${slug}`).emit("chat:message", sys);
+
+    io.to(`chat:${slug}`).emit("calls:changed", { action: "hunt_open" });
+    io.to(`chat:${slug}`).emit("hunt:changed", { action: "open" });
+
+    return { handled: true, showOriginalInChat };
+  }
+
+  if (cmd === "bonus") {
+    if (!canHuntControl) {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Accès refusé", message: "Réservé aux mods/streamer." });
+      return { handled: true, showOriginalInChat };
+    }
+    if (!(await isSyncActive())) {
+      emitUserToast(io, actorUserId, {
+        kind: "error",
+        title: "Sync Hunt inactif",
+        message: "Active Sync Hunt + démarre un Hunt (Start) pour utiliser !bonus.",
+      });
+      return { handled: true, showOriginalInChat };
+    }
+
+    const bet = Number(String(arg || "").trim().replace(",", "."));
+    if (!(bet > 0)) {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Bet invalide", message: "Ex: !bonus 0.60" });
+      return { handled: true, showOriginalInChat };
+    }
+
+    const cur = await findCurrentForBet(pool, streamerId);
+    if (!cur) {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Aucune machine", message: "Aucun call en attente de bet." });
+      return { handled: true, showOriginalInChat };
+    }
+
+    await setCallBet(pool, streamerId, cur.id, bet);
+
+    const sys = chatStore.addSystem(
+      slug,
+      `✅ Bet enregistrée: "${cur.slotName}"${cur.provider ? ` (${cur.provider})` : ""} — ${bet}€ (GG 🎉)`
+    );
+    io.to(`chat:${slug}`).emit("chat:message", sys);
+
+    io.to(`chat:${slug}`).emit("calls:changed", { action: "bet" });
+    io.to(`chat:${slug}`).emit("hunt:changed", { action: "bet" });
+
+    return { handled: true, showOriginalInChat };
+  }
+
+  if (cmd === "pass") {
+    if (!canHuntControl) {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Accès refusé", message: "Réservé aux mods/streamer." });
+      return { handled: true, showOriginalInChat };
+    }
+    if (!(await isSyncActive())) {
+      emitUserToast(io, actorUserId, {
+        kind: "error",
+        title: "Sync Hunt inactif",
+        message: "Active Sync Hunt + démarre un Hunt (Start) pour utiliser !pass.",
+      });
+      return { handled: true, showOriginalInChat };
+    }
+
+    const cur = await findCurrentForBet(pool, streamerId);
+    if (!cur) {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Rien à passer", message: "Aucun call en attente." });
+      return { handled: true, showOriginalInChat };
+    }
+
+    await deleteCallById(pool, streamerId, cur.id);
+
+    const sys = chatStore.addSystem(slug, `⏭️ Pass: "${cur.slotName}" — supprimé de la liste.`);
+    io.to(`chat:${slug}`).emit("chat:message", sys);
+
+    io.to(`chat:${slug}`).emit("calls:changed", { action: "pass" });
+    io.to(`chat:${slug}`).emit("hunt:changed", { action: "pass" });
+
+    return { handled: true, showOriginalInChat };
+  }
+
+  if (cmd === "pay") {
+    if (!canHuntControl) {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Accès refusé", message: "Réservé aux mods/streamer." });
+      return { handled: true, showOriginalInChat };
+    }
+    if (!(await isSyncActive())) {
+      emitUserToast(io, actorUserId, {
+        kind: "error",
+        title: "Sync Hunt inactif",
+        message: "Active Sync Hunt + démarre un Hunt (Start) pour utiliser !pay.",
+      });
+      return { handled: true, showOriginalInChat };
+    }
+
+    // ensure hunt is open (sinon on pay dans le vide)
+    const hm = await getHuntMeta(pool, ownerUserId!);
+    if (String(hm.phase) !== "open") {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Hunt pas open", message: "Fais !open d’abord." });
+      return { handled: true, showOriginalInChat };
+    }
+
+    const pay = Number(String(arg || "").trim().replace(",", "."));
+    if (!(pay >= 0)) {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Pay invalide", message: "Ex: !pay 12.5" });
+      return { handled: true, showOriginalInChat };
+    }
+
+    const cur = await findCurrentForPay(pool, streamerId);
+    if (!cur) {
+      emitUserToast(io, actorUserId, { kind: "error", title: "Aucune machine", message: "Plus rien à payer." });
+      return { handled: true, showOriginalInChat };
+    }
+
+    await setCallPay(pool, streamerId, cur.id, pay);
+
+    const sys = chatStore.addSystem(
+      slug,
+      `💰 Pay: "${cur.slotName}"${cur.provider ? ` (${cur.provider})` : ""} — ${pay}€`
+    );
+    io.to(`chat:${slug}`).emit("chat:message", sys);
+
+    io.to(`chat:${slug}`).emit("calls:changed", { action: "pay" });
+    io.to(`chat:${slug}`).emit("hunt:changed", { action: "pay" });
+
+    return { handled: true, showOriginalInChat };
+  }
+
+  // ──────────────────────────────────────────
+  // Existing calls commands (call/listec/resetc)
+  // ──────────────────────────────────────────
   if (cmd === "resetc") {
     if (!canMod) {
       emitUserToast(io, actorUserId, { kind: "error", title: "Accès refusé", message: "Réservé aux modérateurs." });
@@ -74,6 +318,7 @@ export async function handleCallsCommand(opts: {
     const sys = chatStore.addSystem(slug, `🧹 Calls reset par @${actorUsername}`);
     io.to(`chat:${slug}`).emit("chat:message", sys);
     io.to(`chat:${slug}`).emit("calls:changed", { action: "reset" });
+    io.to(`chat:${slug}`).emit("hunt:changed", { action: "reset" });
 
     return { handled: true, showOriginalInChat };
   }
@@ -107,7 +352,6 @@ export async function handleCallsCommand(opts: {
   }
 
   // cmd === call
-  // user banned (ban_key username / userId) => passe username pour être exact
   if (await isUserBannedFromCalls(pool, streamerId, actorUserId, actorUsername)) {
     emitUserToast(io, actorUserId, {
       kind: "error",
@@ -149,38 +393,19 @@ export async function handleCallsCommand(opts: {
     return { handled: true, showOriginalInChat };
   }
 
-  // add (gère bans slot/provider/policy/limit côté addCall aussi)
   const add = await addCall(pool, streamerId, actorUserId, actorUsername, resolved.name, resolved.provider, {
     bypassLimit,
   });
 
   if (!add.ok) {
-    if (add.error === "already_in_queue") {
-      emitUserToast(io, actorUserId, { kind: "error", title: "Déjà en file", message: "Cette machine est déjà call." });
-      return { handled: true, showOriginalInChat };
-    }
-    if (add.error === "limit_reached") {
-      emitUserToast(io, actorUserId, { kind: "error", title: "Limite atteinte", message: "Tu as atteint ta limite de calls." });
-      return { handled: true, showOriginalInChat };
-    }
-    if (add.error === "user_banned") {
-      emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Tu ne peux pas utiliser les calls." });
-      return { handled: true, showOriginalInChat };
-    }
-    if (add.error === "slot_banned") {
-      emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Machine interdite." });
-      return { handled: true, showOriginalInChat };
-    }
-    if (add.error === "provider_banned") {
-      emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Provider interdit." });
-      return { handled: true, showOriginalInChat };
-    }
-    if (add.error === "provider_not_allowed") {
-      emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Ce provider n’est pas autorisé ici." });
-      return { handled: true, showOriginalInChat };
-    }
-
-    emitUserToast(io, actorUserId, { kind: "error", title: "Erreur", message: "Impossible d'ajouter le call." });
+    const m = add.error;
+    if (m === "already_in_queue") emitUserToast(io, actorUserId, { kind: "error", title: "Déjà en file", message: "Cette machine est déjà call." });
+    else if (m === "limit_reached") emitUserToast(io, actorUserId, { kind: "error", title: "Limite atteinte", message: "Tu as atteint ta limite de calls." });
+    else if (m === "user_banned") emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Tu ne peux pas utiliser les calls." });
+    else if (m === "slot_banned") emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Machine interdite." });
+    else if (m === "provider_banned") emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Provider interdit." });
+    else if (m === "provider_not_allowed") emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Ce provider n’est pas autorisé ici." });
+    else emitUserToast(io, actorUserId, { kind: "error", title: "Erreur", message: "Impossible d'ajouter le call." });
     return { handled: true, showOriginalInChat };
   }
 
@@ -193,6 +418,11 @@ export async function handleCallsCommand(opts: {
   }
 
   io.to(`chat:${slug}`).emit("calls:changed", { action: "add" });
+
+  // si sync active => hunt UI est la même liste, donc on ping aussi hunt:changed
+  if (await isSyncActive()) {
+    io.to(`chat:${slug}`).emit("hunt:changed", { action: "add" });
+  }
 
   return { handled: true, showOriginalInChat };
 }
