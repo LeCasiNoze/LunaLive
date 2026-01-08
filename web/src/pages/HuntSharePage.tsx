@@ -1,5 +1,5 @@
 // web/src/pages/HuntSharePage.tsx
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import type { HuntState } from "../lib/hunt_types";
 import { huntShareState } from "../lib/hunt_api";
