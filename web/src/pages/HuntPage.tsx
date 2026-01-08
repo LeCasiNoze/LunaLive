@@ -3,7 +3,7 @@ import * as React from "react";
 
 import { useAuth } from "../auth/AuthProvider";
 import {
-  
+  huntAdd,
   huntClose,
   huntDelete,
   huntDeleteAll,
@@ -42,6 +42,36 @@ function pickProvider(x: any): string | null {
   const p = x?.provider ?? x?.provider_name ?? x?.providerName ?? null;
   const s = String(p || "").trim();
   return s ? s : null;
+}
+
+type CallQueueItem = {
+  id: string;
+  slotName: string;
+  provider: string | null;
+  username: string;
+  pos: number;
+  imageUrl?: string | null;
+};
+
+function pickStreamerSlugFromUser(u: any): string | null {
+  const cands = [u?.streamer?.slug, u?.streamerSlug, u?.streamer_slug, u?.slug];
+  for (const x of cands) {
+    const s = String(x || "").trim();
+    if (s) return s;
+  }
+  return null;
+}
+
+function pickHuntSyncEnabled(cfg: any): boolean {
+  const v =
+    cfg?.huntSync ??
+    cfg?.hunt_sync ??
+    cfg?.huntSyncEnabled ??
+    cfg?.hunt_sync_enabled ??
+    cfg?.syncHunt ??
+    cfg?.sync_hunt ??
+    false;
+  return !!v;
 }
 
 function isProfitable(h: SavedHunt) {
@@ -112,7 +142,10 @@ function SlotThumb({ url, size = 42 }: { url?: string | null; size?: number }) {
 
 /* ===================== Component ===================== */
 export default function HuntPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth() as any;
+
+  const streamerSlug = React.useMemo(() => pickStreamerSlugFromUser(user), [user]);
+  const [huntSyncEnabled, setHuntSyncEnabled] = React.useState(false);
 
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
@@ -128,6 +161,20 @@ export default function HuntPage() {
 
   const phase = (state?.phase || ((state as any)?.opened ? "open" : "edit")) as HuntState["phase"];
   const items = (state?.items || []) as any[];
+
+  // refs utiles pour sync (évite dépendances qui re-créent l’interval)
+  const itemsRef = React.useRef<any[]>([]);
+  React.useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  const busyRef = React.useRef(false);
+  React.useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
+
+  const syncInFlightRef = React.useRef(false);
+  const processedCallIdRef = React.useRef<Record<string, true>>({});
 
   // ✅ affichage edit : nouveaux en haut
   const itemsEdit = React.useMemo(() => {
@@ -147,9 +194,9 @@ export default function HuntPage() {
   const [sel, setSel] = React.useState(0);
 
   // Cache local (name -> image/provider) pour afficher les thumbs dans la liste
-  const [slotMetaByName, setSlotMetaByName] = React.useState<
-    Record<string, { imageUrl: string | null; provider: string | null }>
-  >({});
+  const [slotMetaByName, setSlotMetaByName] = React.useState<Record<string, { imageUrl: string | null; provider: string | null }>>(
+    {}
+  );
 
   function keyName(n: any) {
     return String(n || "").trim().toLowerCase();
@@ -178,14 +225,8 @@ export default function HuntPage() {
   const startValue = Number((state as any)?.start) || 0;
 
   // totals
-  const totalBetAll = React.useMemo(
-    () => items.reduce((s: number, it: any) => s + (Number(it.bet) || 0), 0),
-    [items]
-  );
-  const totalPayAll = React.useMemo(
-    () => items.reduce((s: number, it: any) => s + (Number(it.pay) || 0), 0),
-    [items]
-  );
+  const totalBetAll = React.useMemo(() => items.reduce((s: number, it: any) => s + (Number(it.bet) || 0), 0), [items]);
+  const totalPayAll = React.useMemo(() => items.reduce((s: number, it: any) => s + (Number(it.pay) || 0), 0), [items]);
   const profit = React.useMemo(() => totalPayAll - startValue, [totalPayAll, startValue]);
   const globalMulti = React.useMemo(() => (totalBetAll > 0 ? totalPayAll / totalBetAll : 0), [totalBetAll, totalPayAll]);
 
@@ -223,11 +264,118 @@ export default function HuntPage() {
     else setDeckIndex(0);
   }, [items.length]);
 
+  // ✅ Auto-hydrate meta (images/providers) depuis /slots/search
+  // => après refresh, les images reviennent sans devoir remove/add
+  const metaInFlight = React.useRef<Record<string, boolean>>({});
+
+  async function ensureMetaForName(name: string) {
+    const k = keyName(name);
+    if (!k) return;
+
+    // déjà connu
+    const already = slotMetaByName[k];
+    if (already?.imageUrl || already?.provider) return;
+
+    // déjà en cours
+    if (metaInFlight.current[k]) return;
+    metaInFlight.current[k] = true;
+
+    try {
+      const r = await fetch(`${apiBase()}/slots/search?q=${encodeURIComponent(name)}&limit=8`);
+      const j = await r.json().catch(() => null);
+      if (!j?.ok || !Array.isArray(j.items) || !j.items.length) return;
+
+      // on essaye match exact, sinon 1er résultat
+      const want = k;
+      const best = j.items.find((x: any) => keyName(x?.name) === want) ?? j.items[0];
+
+      const img = pickImageUrl(best) ?? (best?.imageUrl ? String(best.imageUrl) : null);
+      const prov = pickProvider(best);
+
+      if (img || prov) {
+        setSlotMetaByName((prev) => {
+          const cur = prev[k];
+          // ne pas écraser si déjà rempli entre temps
+          const next = {
+            imageUrl: cur?.imageUrl ?? (img || null),
+            provider: cur?.provider ?? (prov || null),
+          };
+          return { ...prev, [k]: next };
+        });
+      }
+    } catch {
+      // ignore
+    } finally {
+      metaInFlight.current[k] = false;
+    }
+  }
+
+  function hydrateMetaForItems(list: any[]) {
+    // 1) si l’item a déjà image/provider, on le met direct en cache
+    setSlotMetaByName((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      for (const it of list || []) {
+        const k = keyName(it?.name);
+        if (!k) continue;
+
+        const img = pickImageUrl(it);
+        const prov = pickProvider(it);
+
+        if (!next[k]) {
+          if (img || prov) {
+            next[k] = { imageUrl: img ?? null, provider: prov ?? null };
+            changed = true;
+          }
+        } else {
+          const cur = next[k];
+          const ni = cur.imageUrl || !img ? cur.imageUrl : img;
+          const np = cur.provider || !prov ? cur.provider : prov;
+          if (ni !== cur.imageUrl || np !== cur.provider) {
+            next[k] = { imageUrl: ni ?? null, provider: np ?? null };
+            changed = true;
+          }
+        }
+      }
+
+      return changed ? next : prev;
+    });
+
+    // 2) pour ceux sans meta, fetch /slots/search
+    for (const it of list || []) {
+      const name = String(it?.name || "").trim();
+      if (!name) continue;
+      const k = keyName(name);
+      if (!k) continue;
+
+      const known = slotMetaByName[k];
+      const hasInline = !!pickImageUrl(it) || !!pickProvider(it);
+      if (hasInline) continue;
+      if (known?.imageUrl || known?.provider) continue;
+
+      ensureMetaForName(name).catch(() => {});
+    }
+  }
+
+  // hydrate quand items changent (inclut refresh / load)
+  React.useEffect(() => {
+    if (!items?.length) return;
+    hydrateMetaForItems(items);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+
   async function refreshState() {
     const s = await huntGetState();
     if (s?.ok && s.state) {
       setState(s.state as any);
       setStartInput(s.state?.start != null ? String(s.state.start) : "");
+
+      // ✅ hydrate tout de suite aussi (évite flash "—")
+      try {
+        const list = Array.isArray((s.state as any)?.items) ? (s.state as any).items : [];
+        if (list.length) hydrateMetaForItems(list);
+      } catch {}
     }
   }
 
@@ -249,7 +397,126 @@ export default function HuntPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Suggestions : même UX + fallback /slots/search (comme BotMenu)
+  /* ===================== Hunt sync (calls -> hunt items) ===================== */
+
+  // 1) Charger la config calls (huntSync) périodiquement
+    React.useEffect(() => {
+    if (!token || !streamerSlug) return;
+
+    const slug = streamerSlug; // ✅ string garanti ici
+    let alive = true;
+
+    async function loadCfg() {
+        try {
+        const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/config`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        const j = await r.json().catch(() => null);
+        if (!alive) return;
+
+        const cfg = j?.config ?? j;
+        setHuntSyncEnabled(pickHuntSyncEnabled(cfg));
+        } catch {
+        // ignore
+        }
+    }
+
+    void loadCfg();
+    const t = window.setInterval(() => void loadCfg(), 15000);
+    return () => {
+        alive = false;
+        window.clearInterval(t);
+    };
+    }, [token, streamerSlug]);
+
+
+  // 2) Poll queue et auto-add dans hunt si syncActive
+  const syncActive = huntSyncEnabled && startValue > 0 && (phase === "edit" || phase === "open");
+
+    React.useEffect(() => {
+    if (!token || !streamerSlug || !syncActive) return;
+
+    const slug = streamerSlug; // ✅ string garanti
+    let stop = false;
+
+    async function tick() {
+        if (stop) return;
+        if (busyRef.current) return;
+        if (syncInFlightRef.current) return;
+
+        syncInFlightRef.current = true;
+        try {
+        const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/list?limit=80`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        const j = await r.json().catch(() => null);
+        if (!j?.ok || !Array.isArray(j.items)) return;
+
+        const queue = j.items as CallQueueItem[];
+
+        const currentItems = itemsRef.current || [];
+        const existingNames = new Set(currentItems.map((it: any) => String(it?.name || "").trim().toLowerCase()));
+
+        const toAdd: CallQueueItem[] = [];
+        for (const c of queue) {
+          const callId = String(c?.id || "").trim();
+          if (!callId) continue;
+
+          // ✅ déjà traité (évite re-add à chaque refresh)
+          if (processedCallIdRef.current[callId]) continue;
+
+          const nm = String(c?.slotName || "").trim();
+          const k = nm.toLowerCase();
+
+          // ✅ pas de doublon dans le hunt
+          if (!k || existingNames.has(k)) {
+            processedCallIdRef.current[callId] = true; // considéré "vu" (sinon loop infinie)
+            continue;
+          }
+
+          toAdd.push(c);
+          if (toAdd.length >= 5) break; // anti-spam
+        }
+
+        if (!toAdd.length) return;
+
+        for (const c of toAdd) {
+          const callId = String(c.id || "").trim();
+          const nm = String(c.slotName || "").trim();
+          const k = nm.toLowerCase();
+
+          // hydrate meta pour thumbs
+          setSlotMetaByName((prev) => ({
+            ...prev,
+            [k]: {
+              imageUrl: (c.imageUrl ?? prev[k]?.imageUrl ?? null) as any,
+              provider: c.provider ?? prev[k]?.provider ?? null,
+            },
+          }));
+
+          processedCallIdRef.current[callId] = true;
+          await huntAdd(nm);
+        }
+
+        // refresh 1 fois après le batch
+        await refreshState();
+      } catch {
+        // ignore
+      } finally {
+        syncInFlightRef.current = false;
+      }
+    }
+
+    void tick();
+    const t = window.setInterval(() => void tick(), 2500);
+    return () => {
+      stop = true;
+      window.clearInterval(t);
+    };
+  }, [token, streamerSlug, syncActive]);
+
+  /* ===================== Suggestions ===================== */
+
   async function fetchSuggestions(text: string) {
     const s = String(text || "").trim();
     const reqId = ++suggReqRef.current;
@@ -272,7 +539,6 @@ export default function HuntPage() {
         raw = Array.isArray((r as any)?.items) ? (r as any).items : [];
       } catch (e: any) {
         raw = [];
-        // on garde l’erreur pour debug si la fallback échoue aussi
         setSuggError(String(e?.message || "hunt_suggest_failed"));
       }
 
@@ -291,12 +557,10 @@ export default function HuntPage() {
             setSuggError(null);
           }
         } catch (e: any) {
-          // si tout a échoué, on garde l’erreur existante
           setSuggError((prev) => prev ?? String(e?.message || "slots_search_failed"));
         }
       }
 
-      // réponse en retard => ignore
       if (reqId !== suggReqRef.current) return;
 
       const already = new Set(items.map((it: any) => String(it.name || "").trim().toLowerCase()));
@@ -404,7 +668,7 @@ export default function HuntPage() {
     const nm = (item?.name || q || "").trim();
     if (!nm) return;
 
-    // si on a cliqué une suggestion, on garde son image/provider pour l’affichage de la liste
+    // ✅ si on vient d'une suggestion, on garde image/provider en cache pour la liste du bas
     if (item?.name) {
       const k = keyName(item.name);
       const img = pickImageUrl(item);
@@ -419,6 +683,22 @@ export default function HuntPage() {
     }
 
     setBusy(true);
+    try {
+      const j = await huntAdd(nm);
+
+      setQ("");
+      setSuggestions([]);
+      setSuggError(null);
+      setSuggLoading(false);
+      setShowSugg(false);
+      setSel(0);
+
+      if (j?.ok && (j as any).id) setPendingFocusId(String((j as any).id));
+
+      await refreshState();
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function removeItem(id: string) {
@@ -488,6 +768,7 @@ export default function HuntPage() {
       await huntNew();
       setDraftPay({});
       setConfirmed({});
+      processedCallIdRef.current = {}; // reset sync memory sur nouveau hunt
       await refreshAll();
     } finally {
       setBusy(false);
@@ -500,6 +781,7 @@ export default function HuntPage() {
       await huntLoad(id);
       setDraftPay({});
       setConfirmed({});
+      processedCallIdRef.current = {}; // reset sync memory sur load
       await refreshState();
     } finally {
       setBusy(false);
@@ -545,6 +827,10 @@ export default function HuntPage() {
   const currentId = current ? String(current.id) : null;
   const currentKey = currentId || "";
   const isConfirmed = currentId ? !!confirmed[currentKey] : false;
+
+  // ✅ utiliser la même source que liste/suggestions (inclut meta hydratée)
+  const currentImg = current ? pickItemImage(current) : null;
+  const currentProv = current ? pickItemProvider(current) : null;
 
   async function validateCurrentPay() {
     if (!currentId) return;
@@ -951,10 +1237,19 @@ export default function HuntPage() {
                       }}
                     >
                       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 0 }}>
-                        <div style={{ minHeight: 260, background: "rgba(0,0,0,0.25)" }}>
-                            {pickItemImage(current) ? (
+                        {/* ✅ hauteur FIXE => l’image ne déforme plus le layout */}
+                        <div
+                          style={{
+                            height: 260,
+                            minHeight: 260,
+                            maxHeight: 260,
+                            background: "rgba(0,0,0,0.25)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          {currentImg ? (
                             <img
-                                src={pickItemImage(current) as string}
+                              src={currentImg}
                               alt={current.name}
                               referrerPolicy="no-referrer"
                               style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
@@ -967,7 +1262,7 @@ export default function HuntPage() {
                         <div style={{ padding: 14, display: "grid", gap: 10 }}>
                           <div>
                             <div style={{ fontWeight: 900, fontSize: 18, lineHeight: 1.2 }}>{current.name}</div>
-                            <div className="huntSmallMuted">{pickProvider(current) ?? "—"}</div>
+                            <div className="huntSmallMuted">{currentProv ?? "—"}</div>
                           </div>
 
                           <div className="huntPills" style={{ marginTop: 0 }}>
@@ -975,7 +1270,9 @@ export default function HuntPage() {
                             <StatPill label="Pay" value={fmtEur(Number(current.pay) || 0)} />
                             <StatPill
                               label="Multi"
-                              value={`x${Number(current.bet) > 0 ? ((Number(current.pay) || 0) / Number(current.bet)).toFixed(2) : "0.00"}`}
+                              value={`x${
+                                Number(current.bet) > 0 ? ((Number(current.pay) || 0) / Number(current.bet)).toFixed(2) : "0.00"
+                              }`}
                             />
                           </div>
 

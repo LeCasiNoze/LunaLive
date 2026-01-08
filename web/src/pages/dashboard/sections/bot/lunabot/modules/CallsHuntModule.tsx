@@ -220,10 +220,7 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
     setErr(null);
     setBusy(true);
     try {
-      const keys = bans
-        .filter((b) => selectedBanKeys[b.banKey])
-        .map((b) => b.banKey);
-
+      const keys = bans.filter((b) => selectedBanKeys[b.banKey]).map((b) => b.banKey);
       if (!keys.length) return;
 
       await unbanCalls(streamerSlug, token, banKind, keys);
@@ -305,18 +302,18 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
       <div className="panel" style={{ padding: 14, borderRadius: 18 }}>
         <div className="panelTitle">Calls & Hunt</div>
         <div className="muted">{busy ? "Chargement…" : "Config indisponible"}</div>
-        {err ? <div className="hint" style={{ marginTop: 10 }}>⚠️ {err}</div> : null}
+        {err ? (
+          <div className="hint" style={{ marginTop: 10 }}>
+            ⚠️ {err}
+          </div>
+        ) : null}
       </div>
     );
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {err && (
-        <div className="hint">
-          ⚠️ {err}
-        </div>
-      )}
+      {err && <div className="hint">⚠️ {err}</div>}
 
       {/* SETTINGS */}
       <div className="panel" style={{ padding: 14, borderRadius: 18 }}>
@@ -327,13 +324,16 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
           </span>
         </div>
 
-        <div style={{ marginTop: 10, display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+        <div
+          style={{
+            marginTop: 10,
+            display: "grid",
+            gap: 10,
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          }}
+        >
           <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <input
-              type="checkbox"
-              checked={cfg.enabled}
-              onChange={(e) => saveConfig({ enabled: e.target.checked })}
-            />
+            <input type="checkbox" checked={cfg.enabled} onChange={(e) => saveConfig({ enabled: e.target.checked })} />
             <RowLabel label="Calls activés" />
           </label>
 
@@ -362,6 +362,16 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
               onChange={(e) => saveConfig({ showCmdInChat: e.target.checked })}
             />
             <RowLabel label="Afficher le message !call original" />
+          </label>
+
+          {/* ✅ NEW sync hunt */}
+          <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={!!(cfg as any).syncHunt}
+              onChange={(e) => saveConfig({ syncHunt: e.target.checked } as any)}
+            />
+            <RowLabel label="Sync Hunt (calls → tableau hunt si hunt en cours)" />
           </label>
 
           <div>
@@ -461,7 +471,11 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
             Ajouter whitelist
           </SmallBtn>
 
-          <SmallBtn disabled={busy} onClick={allowOnlyOneProvider} style={{ border: "1px solid rgba(255,190,60,0.35)" }}>
+          <SmallBtn
+            disabled={busy}
+            onClick={allowOnlyOneProvider}
+            style={{ border: "1px solid rgba(255,190,60,0.35)" }}
+          >
             Tout interdire sauf celui-là
           </SmallBtn>
         </div>
@@ -522,9 +536,9 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
           {queue.length === 0 ? (
             <div className="muted">Aucun call en file.</div>
           ) : (
-            queue.map((it) => (
+            queue.map((it: any) => (
               <div
-                key={it.id}
+                key={String(it.id)}
                 style={{
                   display: "flex",
                   gap: 10,
@@ -535,11 +549,33 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
                   background: "rgba(0,0,0,0.10)",
                 }}
               >
-                <div style={{ width: 44, height: 44, borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.10)" }}>
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    overflow: "hidden",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                  }}
+                >
                   {it.imageUrl ? (
-                    <img src={it.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    <img
+                      src={it.imageUrl}
+                      alt=""
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    />
                   ) : (
-                    <div className="muted" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900 }}>
+                    <div
+                      className="muted"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 900,
+                      }}
+                    >
                       ?
                     </div>
                   )}
@@ -555,7 +591,7 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
                   </div>
                 </div>
 
-                <SmallBtn disabled={busy} onClick={() => removeQueueItem(it.id)}>
+                <SmallBtn disabled={busy} onClick={() => removeQueueItem(String(it.id))}>
                   Supprimer
                 </SmallBtn>
               </div>
@@ -650,9 +686,21 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
                         cursor: "pointer",
                       }}
                     >
-                      <div style={{ width: 40, height: 40, borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.10)" }}>
+                      <div
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 12,
+                          overflow: "hidden",
+                          border: "1px solid rgba(255,255,255,0.10)",
+                        }}
+                      >
                         {s.imageUrl ? (
-                          <img src={s.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                          <img
+                            src={s.imageUrl}
+                            alt=""
+                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                          />
                         ) : null}
                       </div>
                       <div style={{ minWidth: 0 }}>
@@ -668,7 +716,8 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
 
               {slotPick ? (
                 <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
-                  Sélection: <b>{slotPick.name}</b>{slotPick.provider ? ` (${slotPick.provider})` : ""}
+                  Sélection: <b>{slotPick.name}</b>
+                  {slotPick.provider ? ` (${slotPick.provider})` : ""}
                 </div>
               ) : null}
             </div>
@@ -690,7 +739,7 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
           ) : (
             bans.map((b) => (
               <div
-                key={b.id}
+                key={String(b.id)}
                 style={{
                   display: "flex",
                   gap: 10,
@@ -708,9 +757,7 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
                 />
 
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 950 }}>
-                    {b.label ? b.label : b.banKey}
-                  </div>
+                  <div style={{ fontWeight: 950 }}>{b.label ? b.label : b.banKey}</div>
                   <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                     key: {b.banKey}
                   </div>
