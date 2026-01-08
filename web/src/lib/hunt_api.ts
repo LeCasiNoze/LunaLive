@@ -2,15 +2,18 @@
 import type { HuntState, SuggestItem, SavedHunt } from "./hunt_types";
 
 function apiBase() {
-  return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
+  // 1) si VITE_API_BASE est défini, on l'utilise
+  const envBase = (import.meta as any).env?.VITE_API_BASE;
+  if (envBase) return String(envBase).replace(/\/+$/, "");
+
+  // 2) sinon fallback (même en DEV) -> évite le "no proxy" qui casse les calls
+  return "https://lunalive-api.onrender.com";
 }
 
+import { loadToken } from "./storage";
+
 function getAuthToken(): string | null {
-  try {
-    return localStorage.getItem("token") || localStorage.getItem("auth_token") || null;
-  } catch {
-    return null;
-  }
+  return loadToken();
 }
 
 async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {

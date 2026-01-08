@@ -1,55 +1,239 @@
+// web/src/pages/HuntPage.tsx
 import * as React from "react";
+
 import { useAuth } from "../auth/AuthProvider";
 import {
   huntAdd,
   huntClose,
+  huntDelete,
+  huntDeleteAll,
   huntGetState,
   huntLoad,
   huntMyHunts,
   huntNew,
   huntOpen,
+  huntRemove,
   huntRevert,
   huntSave,
   huntSetBet,
   huntSetPay,
   huntSetStart,
   huntSuggest,
-  huntDelete,
-  huntDeleteAll,
 } from "../lib/hunt_api";
 import type { HuntState, SuggestItem, SavedHunt } from "../lib/hunt_types";
 
-function fmt(n: number) {
-  try {
-    return n.toLocaleString("fr-FR");
-  } catch {
-    return String(n);
-  }
+/* ===================== Helpers ===================== */
+const fmtEur = (n: number) => `${(Number(n) || 0).toFixed(2)}€`;
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+function pickImageUrl(x: any): string | null {
+  const u =
+    x?.image_url ??
+    x?.imageUrl ??
+    x?.imageURL ??
+    x?.img ??
+    x?.thumb ??
+    x?.thumbnail ??
+    null;
+  const s = String(u || "").trim();
+  return s ? s : null;
 }
 
+function pickProvider(x: any): string | null {
+  const p = x?.provider ?? x?.provider_name ?? x?.providerName ?? null;
+  const s = String(p || "").trim();
+  return s ? s : null;
+}
+
+function isProfitable(h: SavedHunt) {
+  const start = Number((h as any).start) || 0;
+  const pay = Number((h as any).total_pay) || 0;
+  if (start <= 0) return null;
+  return pay >= start;
+}
+
+function StatPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="pill">
+      <span>{label}</span>
+      <b className="tabular-nums">{value}</b>
+    </div>
+  );
+}
+
+function createdLabel(h: any) {
+  const v = h?.created_at ?? h?.createdAt ?? null;
+  if (!v) return "—";
+  const t = new Date(String(v));
+  if (!Number.isFinite(t.getTime())) return "—";
+  return t.toLocaleString();
+}
+
+function SlotThumb({
+  url,
+  size = 44,
+  title,
+}: {
+  url?: string | null;
+  size?: number;
+  title?: string;
+}) {
+  const [broken, setBroken] = React.useState(false);
+
+  const boxStyle: React.CSSProperties = {
+    width: size,
+    height: size,
+    borderRadius: 14,
+    flex: "0 0 auto",
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.06)",
+    overflow: "hidden",
+    display: "grid",
+    placeItems: "center",
+  };
+
+  if (!url || broken) {
+    return (
+      <div style={boxStyle} aria-hidden="true" title={title || "🎰"}>
+        <span style={{ fontSize: Math.max(14, Math.floor(size * 0.42)), opacity: 0.9 }}>
+          🎰
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={boxStyle} aria-hidden="true" title={title || ""}>
+      <img
+        src={url}
+        alt=""
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setBroken(true)}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          display: "block",
+        }}
+      />
+    </div>
+  );
+}
+
+/* ===================== Component ===================== */
 export default function HuntPage() {
   const { user } = useAuth();
 
   const [loading, setLoading] = React.useState(true);
-  const [state, setState] = React.useState<HuntState | null>(null);
+  const [busy, setBusy] = React.useState(false);
 
-  const [q, setQ] = React.useState("");
-  const [suggestions, setSuggestions] = React.useState<SuggestItem[]>([]);
+  const [state, setState] = React.useState<HuntState>(
+    {
+      phase: "edit",
+      opened: false,
+      items: [],
+      start: null,
+    } as any
+  );
+
+  const phase = (state?.phase ||
+    ((state as any)?.opened ? "open" : "edit")) as HuntState["phase"];
+  const items = (state?.items || []) as any[];
+
+  // ✅ Affichage "edit" : les nouveaux en haut (sans casser l'ordre du deck en open)
+  const itemsEdit = React.useMemo(() => {
+    const arr = Array.isArray(items) ? [...items] : [];
+    return arr.reverse();
+  }, [items]);
+
   const [myHunts, setMyHunts] = React.useState<SavedHunt[]>([]);
-
   const [startInput, setStartInput] = React.useState<string>("");
 
-  async function refreshAll() {
-    const s = await huntGetState();
-    if (!s?.ok) throw new Error("state_failed");
-    setState(s.state);
+  // Suggest
+  const [q, setQ] = React.useState("");
+  const [suggestions, setSuggestions] = React.useState<SuggestItem[]>([]);
+  const [showSugg, setShowSugg] = React.useState(false);
+  const [sel, setSel] = React.useState(0);
 
-    // refresh list archives
+  // Bet focus after add
+  const betRefs = React.useRef<Record<string, HTMLInputElement | null>>({});
+  const [pendingFocusId, setPendingFocusId] = React.useState<string | null>(null);
+
+  // OPEN: deck
+  const [deckIndex, setDeckIndex] = React.useState(0);
+  const [draftPay, setDraftPay] = React.useState<Record<string, string>>({});
+  const [confirmed, setConfirmed] = React.useState<Record<string, boolean>>({});
+
+  const startValue = Number((state as any)?.start) || 0;
+
+  // totals
+  const totalBetAll = React.useMemo(
+    () => items.reduce((s: number, it: any) => s + (Number(it.bet) || 0), 0),
+    [items]
+  );
+  const totalPayAll = React.useMemo(
+    () => items.reduce((s: number, it: any) => s + (Number(it.pay) || 0), 0),
+    [items]
+  );
+  const profit = React.useMemo(() => totalPayAll - startValue, [totalPayAll, startValue]);
+  const globalMulti = React.useMemo(
+    () => (totalBetAll > 0 ? totalPayAll / totalBetAll : 0),
+    [totalBetAll, totalPayAll]
+  );
+    const [suggLoading, setSuggLoading] = React.useState(false);
+
+  const remainingBet = React.useMemo(
+    () =>
+      items
+        .filter((it: any) => it.pay === null || typeof it.pay === "undefined")
+        .reduce((s: number, it: any) => s + (Number(it.bet) || 0), 0),
+    [items]
+  );
+
+  const remainingToRecoup = React.useMemo(() => {
+    const left = startValue - totalPayAll;
+    return left > 0 ? left : 0;
+  }, [startValue, totalPayAll]);
+
+  const beBase = React.useMemo(() => {
+    if (startValue <= 0 || totalBetAll <= 0) return 0;
+    return startValue / totalBetAll;
+  }, [startValue, totalBetAll]);
+
+  const beLive = React.useMemo(() => {
+    if (remainingToRecoup <= 0) return 0;
+    if (remainingBet <= 0) return 0;
+    return remainingToRecoup / remainingBet;
+  }, [remainingToRecoup, remainingBet]);
+
+  const canOpen = React.useMemo(() => {
+    return (
+      phase === "edit" &&
+      startValue > 0 &&
+      items.length > 0 &&
+      items.every((it: any) => Number(it.bet) > 0)
+    );
+  }, [phase, startValue, items]);
+
+  // keep deckIndex valid
+  React.useEffect(() => {
+    if (items?.length) setDeckIndex((i) => Math.max(0, Math.min(i, items.length - 1)));
+    else setDeckIndex(0);
+  }, [items.length]);
+
+  async function refreshState() {
+    const s = await huntGetState();
+    if (s?.ok && s.state) {
+      setState(s.state as any);
+      setStartInput(s.state?.start != null ? String(s.state.start) : "");
+    }
+  }
+
+  async function refreshAll() {
+    await refreshState();
     const h = await huntMyHunts().catch(() => null);
     if (h?.ok) setMyHunts(h.items || []);
-
-    // sync start input
-    setStartInput(s.state?.start ? String(s.state.start) : "");
   }
 
   React.useEffect(() => {
@@ -57,8 +241,6 @@ export default function HuntPage() {
       try {
         setLoading(true);
         await refreshAll();
-      } catch {
-        // ignore here; UI will show login block if not connected
       } finally {
         setLoading(false);
       }
@@ -66,405 +248,835 @@ export default function HuntPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // suggestions
+  // suggestions debounce
   React.useEffect(() => {
-    let alive = true;
-    (async () => {
+    const t = window.setTimeout(async () => {
       const qq = q.trim();
       if (qq.length < 2) {
         setSuggestions([]);
+        setShowSugg(false);
         return;
       }
       try {
         const r = await huntSuggest(qq, 12);
-        if (!alive) return;
-        setSuggestions(r?.ok ? r.items : []);
+        if (r?.ok) {
+          const already = new Set(items.map((it: any) => String(it.name || "").trim().toLowerCase()));
+          const raw = Array.isArray((r as any).items) ? (r as any).items : [];
+          const seen = new Set<string>();
+          const filtered = raw.filter((x: any) => {
+            const key = String(x.name || "").trim().toLowerCase();
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return !already.has(key);
+          });
+          setSuggestions(filtered);
+          setShowSugg(true);
+          setSel(0);
+        } else {
+          setSuggestions([]);
+          setShowSugg(false);
+        }
       } catch {
-        if (!alive) return;
         setSuggestions([]);
+        setShowSugg(false);
       }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [q]);
+    }, 200);
+    return () => window.clearTimeout(t);
+  }, [q, items]);
+
+  // focus bet after add
+  React.useEffect(() => {
+    if (!pendingFocusId) return;
+    const el = betRefs.current[pendingFocusId];
+    if (el) {
+      el.focus();
+      try {
+        (el as any).select?.();
+      } catch {}
+      setPendingFocusId(null);
+    }
+  }, [pendingFocusId, itemsEdit]);
+
+  // keyboard shortcuts in open
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (phase !== "open") return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setDeckIndex((i) => Math.max(0, i - 1));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setDeckIndex((i) => Math.min((items?.length || 1) - 1, i + 1));
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phase, items]);
 
   if (!user) {
     return (
-      <main className="page">
-        <h1>Hunt</h1>
-        <p>Tu dois être connecté pour accéder au tableau de hunt.</p>
+      <main className="page huntPage">
+        <div className="huntLayout" style={{ gridTemplateColumns: "1fr" }}>
+          <section className="huntPanel">
+            <div className="huntPanelInner">
+              <h1 className="huntTitle">Hunt</h1>
+              <div className="huntSubtitle">Connecte-toi pour créer et gérer ton hunt.</div>
+            </div>
+          </section>
+        </div>
       </main>
     );
   }
 
-  const phase = state?.phase ?? "edit";
-  const items = state?.items ?? [];
+  async function saveStart() {
+    const v = Number(startInput);
+    if (!(v > 0)) return;
+    setBusy(true);
+    try {
+      await huntSetStart(v);
+      await refreshState();
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  const totalBet = items.reduce((s, it: any) => s + (Number(it.bet) || 0), 0);
-  const totalPay = items.reduce((s, it: any) => s + (Number(it.pay) || 0), 0);
-  const start = Number(state?.start) || 0;
-  const profit = start > 0 ? totalPay - start : 0;
-  const globalMulti = start > 0 && totalPay > 0 ? Math.round((totalPay / start) * 100) / 100 : null;
+  async function addItemFromSelection(item: SuggestItem | null) {
+    if (!(startValue > 0)) {
+      alert("Définis d’abord le Start du hunt.");
+      return;
+    }
+    const nm = (item?.name || q || "").trim();
+    if (!nm) return;
+
+    setBusy(true);
+    try {
+      const j = await huntAdd(nm);
+
+      setQ("");
+      setSuggestions([]);
+      setShowSugg(false);
+      setSel(0);
+
+      if (j?.ok && (j as any).id) setPendingFocusId(String((j as any).id));
+
+      await refreshState();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeItem(id: string) {
+    setBusy(true);
+    try {
+      await huntRemove(id);
+      await refreshState();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setBet(id: string, bet: number) {
+    setBusy(true);
+    try {
+      await huntSetBet(id, bet);
+      await refreshState();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setPay(id: string, pay: number) {
+    setBusy(true);
+    try {
+      await huntSetPay(id, pay);
+      await refreshState();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doOpen() {
+    if (!canOpen) return;
+    setBusy(true);
+    try {
+      await huntOpen();
+      await refreshState();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doClose() {
+    setBusy(true);
+    try {
+      await huntClose();
+      await refreshAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doRevert() {
+    setBusy(true);
+    try {
+      await huntRevert();
+      await refreshState();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doNew() {
+    setBusy(true);
+    try {
+      await huntNew();
+      setDraftPay({});
+      setConfirmed({});
+      await refreshAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doLoad(id: number) {
+    setBusy(true);
+    try {
+      await huntLoad(id);
+      setDraftPay({});
+      setConfirmed({});
+      await refreshState();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doSaveCopy() {
+    const title = prompt("Titre (optionnel) :", "") || undefined;
+    setBusy(true);
+    try {
+      await huntSave(title);
+      await refreshAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteSaved(id: number) {
+    setBusy(true);
+    try {
+      await huntDelete(id);
+      await refreshAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteAllSaved() {
+    const ok = confirm("Supprimer TOUTES tes sauvegardes ?");
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await huntDeleteAll();
+      await refreshAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const progressPct = startValue > 0 ? clamp01(totalPayAll / startValue) * 100 : 0;
+
+  const current = phase === "open" ? items[deckIndex] : null;
+  const currentId = current ? String(current.id) : null;
+  const currentKey = currentId || "";
+
+  const isConfirmed = currentId ? !!confirmed[currentKey] : false;
+
+  async function validateCurrentPay() {
+    if (!currentId) return;
+    const raw = String(draftPay[currentKey] ?? "").trim();
+    if (!raw) return;
+    const v = Math.max(0, Number((Number(raw) || 0).toFixed(2)));
+    await setPay(currentId, v);
+    setConfirmed((p) => ({ ...p, [currentKey]: true }));
+  }
+
+  function goNext() {
+    setDeckIndex((x) => Math.min(items.length - 1, x + 1));
+  }
+
+  const primaryDeckLabel =
+    phase === "open" && current
+      ? isConfirmed
+        ? deckIndex >= items.length - 1
+          ? "Terminer"
+          : "Next"
+        : "Valider"
+      : "Valider";
 
   return (
-    <main className="page">
-      <div className="pageHeader">
-        <h1>Hunt</h1>
-        <p style={{ opacity: 0.8, marginTop: 6 }}>
-          Phase: <b>{phase}</b>
-        </p>
-      </div>
+    <main className="page huntPage">
+      <div className="huntLayout">
+        {/* ===== SIDEBAR ===== */}
+        <aside className="huntPanel">
+          <div className="huntPanelInner">
+            <div className="huntSidebarHeader">
+              <div className="huntSidebarTitle">Mes Hunts</div>
+              <div className="huntRow">
+                <button className="btn" onClick={refreshAll} disabled={busy} title="Rafraîchir">
+                  ↻
+                </button>
+                <button className="btn btnDanger" onClick={deleteAllSaved} disabled={busy} title="Tout supprimer">
+                  ✕
+                </button>
+              </div>
+            </div>
 
-      {/* Actions principales */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span style={{ opacity: 0.8 }}>Start</span>
-            <input
-              value={startInput}
-              onChange={(e) => setStartInput(e.target.value)}
-              placeholder="ex: 5000"
-              style={{ width: 140 }}
-              disabled={phase !== "edit"}
-            />
-            <button
-              disabled={phase !== "edit"}
-              onClick={async () => {
-                const v = Number(startInput);
-                if (!Number.isFinite(v) || v <= 0) return;
-                await huntSetStart(v);
-                await refreshAll();
-              }}
-            >
-              Valider Start
-            </button>
-          </div>
+            {!myHunts.length ? (
+              <div className="huntSmallMuted" style={{ marginTop: 10 }}>
+                Aucun hunt sauvegardé pour l’instant.
+              </div>
+            ) : (
+              <div className="huntList">
+                {myHunts.map((h) => {
+                  const prof = isProfitable(h);
+                  const tone =
+                    prof === true
+                      ? "border:1px solid rgba(16,185,129,0.35)"
+                      : prof === false
+                      ? "border:1px solid rgba(244,63,94,0.35)"
+                      : "";
+                  return (
+                    <div
+                      key={h.id}
+                      className="huntListItem"
+                      style={tone ? ({ border: tone as any } as any) : undefined}
+                    >
+                      <div className="huntListTop">
+                        <div className="huntListTitle">
+                          <button
+                            onClick={async () => {
+                              await doLoad(h.id);
+                            }}
+                            disabled={busy}
+                          >
+                            {h.title ? h.title : `Hunt #${h.id}`}
+                          </button>
+                        </div>
+                        <button
+                          className="btn btnDanger"
+                          onClick={() => deleteSaved(h.id)}
+                          disabled={busy}
+                          title="Supprimer"
+                        >
+                          ✕
+                        </button>
+                      </div>
 
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {phase === "edit" && (
-              <>
-                <button
-                  onClick={async () => {
-                    await huntOpen();
-                    await refreshAll();
-                  }}
-                  disabled={!items.length || !start}
-                >
-                  Ouvrir le Hunt
-                </button>
-                <button
-                  onClick={async () => {
-                    await huntNew();
-                    await refreshAll();
-                  }}
-                >
-                  Nouveau Hunt
-                </button>
-                <button
-                  onClick={async () => {
-                    const ok = confirm("Reset total du hunt actuel ?");
-                    if (!ok) return;
-                    // si tu as /reset, remplace huntNew() par huntReset()
-                    await huntNew();
-                    await refreshAll();
-                  }}
-                >
-                  Reset
-                </button>
-              </>
+                      <div className="huntListMeta">
+                        {createdLabel(h)} • {(h as any).items_count ?? 0} items
+                        <br />
+                        start {fmtEur(Number((h as any).start || 0))} • total pay{" "}
+                        {fmtEur(Number((h as any).total_pay || 0))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
 
-            {phase === "open" && (
-              <>
-                <button
-                  onClick={async () => {
-                    await huntClose();
-                    await refreshAll();
-                  }}
-                >
-                  Clôturer
-                </button>
-                <button
-                  onClick={async () => {
-                    await huntRevert();
-                    await refreshAll();
-                  }}
-                >
-                  Revenir en édition
-                </button>
-              </>
-            )}
-
-            {phase === "closed" && (
-              <>
-                <button
-                  onClick={async () => {
-                    await huntRevert();
-                    await refreshAll();
-                  }}
-                >
-                  Revenir en édition
-                </button>
-                <button
-                  onClick={async () => {
-                    await huntNew();
-                    await refreshAll();
-                  }}
-                >
-                  Nouveau Hunt
-                </button>
-                <button
-                  onClick={async () => {
-                    const title = prompt("Titre de sauvegarde (optionnel) :", "");
-                    await huntSave(title || undefined);
-                    await refreshAll();
-                  }}
-                >
-                  Sauvegarder (copie)
-                </button>
-              </>
-            )}
+            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+              <button className="btn btnPrimary" onClick={doNew} disabled={busy}>
+                Commencer un nouveau Hunt
+              </button>
+            </div>
           </div>
-        </div>
+        </aside>
 
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 12, opacity: 0.9 }}>
-          <div>Items: <b>{items.length}</b></div>
-          <div>Total Bet: <b>{fmt(totalBet)}</b></div>
-          <div>Total Pay: <b>{fmt(totalPay)}</b></div>
-          <div>
-            Profit: <b>{fmt(profit)}</b>
-          </div>
-          <div>
-            Multi: <b>{globalMulti ?? "-"}</b>
-          </div>
-        </div>
-      </div>
+        {/* ===== MAIN ===== */}
+        <section style={{ display: "grid", gap: 14 }}>
+          {/* Header / Start / Actions */}
+          <div className="huntPanel">
+            <div className="huntPanelInner">
+              <h1 className="huntTitle">Hunt</h1>
+              <div className="huntSubtitle">Sidebar + stats + ajout + tableau + deck (sans libs).</div>
 
-      {/* Ajout machine */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <h2 style={{ marginTop: 0 }}>Ajouter une machine</h2>
+              <div className="huntRow" style={{ marginTop: 12 }}>
+                <div className="huntRow" style={{ gap: 8 }}>
+                  <span className="huntSmallMuted">Start</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={startInput}
+                    onChange={(e) => setStartInput(e.target.value)}
+                    placeholder="ex: 100"
+                    style={{ width: 160 }}
+                    disabled={busy}
+                  />
+                  <button className="btn btnPrimary" onClick={saveStart} disabled={busy || !(Number(startInput) > 0)}>
+                    Valider Start
+                  </button>
+                </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Tape un nom de machine…"
-            style={{ width: 360, maxWidth: "100%" }}
-            disabled={phase !== "edit"}
-          />
-          <button
-            disabled={phase !== "edit" || !q.trim()}
-            onClick={async () => {
-              const name = q.trim();
-              if (!name) return;
-              await huntAdd(name);
-              setQ("");
-              setSuggestions([]);
-              await refreshAll();
-            }}
-          >
-            Ajouter
-          </button>
-        </div>
-
-        {!!suggestions.length && phase === "edit" && (
-          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-            {suggestions.map((s) => (
-              <button
-                key={`${s.name}-${s.score ?? ""}`}
-                style={{
-                  textAlign: "left",
-                  padding: 10,
-                  borderRadius: 10,
-                }}
-                onClick={async () => {
-                  await huntAdd(s.name);
-                  setQ("");
-                  setSuggestions([]);
-                  await refreshAll();
-                }}
-              >
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  {s.image_url ? (
-                    <img
-                      src={s.image_url}
-                      alt=""
-                      style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 8 }}
-                    />
-                  ) : (
-                    <div style={{ width: 34, height: 34, borderRadius: 8, opacity: 0.2, border: "1px solid currentColor" }} />
+                <div style={{ marginLeft: "auto" }} className="huntRow">
+                  {phase === "edit" && (
+                    <button className="btn btnPrimary" onClick={doOpen} disabled={busy || !canOpen}>
+                      Ouvrir le hunt
+                    </button>
                   )}
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700 }}>{s.name}</div>
-                    <div style={{ opacity: 0.75, fontSize: 12 }}>
-                      {s.provider ? s.provider : "—"}
-                      {typeof s.score === "number" ? ` • score ${s.score}` : ""}
+
+                  {phase === "open" && (
+                    <>
+                      <button className="btn" onClick={doRevert} disabled={busy}>
+                        Revenir en édition
+                      </button>
+                      <button className="btn btnPrimary" onClick={doClose} disabled={busy}>
+                        Terminer le hunt
+                      </button>
+                    </>
+                  )}
+
+                  {phase === "closed" && (
+                    <>
+                      <button className="btn" onClick={doRevert} disabled={busy}>
+                        Revenir en édition
+                      </button>
+                      <button className="btn" onClick={doSaveCopy} disabled={busy}>
+                        Sauvegarder (copie)
+                      </button>
+                      <button className="btn btnPrimary" onClick={doNew} disabled={busy}>
+                        Nouveau Hunt
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="huntPills">
+                <StatPill label="Phase" value={String(phase)} />
+                <StatPill label="Items" value={String(items.length)} />
+                <StatPill label="Total bet" value={fmtEur(totalBetAll)} />
+                <StatPill label="Total pay" value={fmtEur(totalPayAll)} />
+                <StatPill label="Profit" value={fmtEur(profit)} />
+                <StatPill label="Multi" value={`x${globalMulti.toFixed(2)}`} />
+                <StatPill label="BE base" value={`x${beBase.toFixed(2)}`} />
+                <StatPill label="BE reste" value={`x${beLive.toFixed(2)}`} />
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <div className="huntRow" style={{ justifyContent: "space-between" }}>
+                  <span className="huntSmallMuted">Récupéré</span>
+                  <span className="huntSmallMuted">
+                    {fmtEur(totalPayAll)} / {fmtEur(startValue)}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    marginTop: 6,
+                    height: 10,
+                    borderRadius: 999,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "rgba(255,255,255,0.04)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${progressPct}%`,
+                      background: progressPct >= 100 ? "rgba(16,185,129,0.70)" : "rgba(34,211,238,0.70)",
+                      transition: "width 200ms ease",
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ===== EDIT ===== */}
+          {phase === "edit" && (
+            <>
+              {/* Ajout machine + suggestions */}
+              <div className="huntPanel">
+                <div className="huntPanelInner">
+                  <div style={{ fontWeight: 900, marginBottom: 8 }}>Ajouter une machine</div>
+
+                  <div className="huntRow">
+                    <input
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      placeholder="Tape un nom de machine…"
+                      style={{ width: 460, maxWidth: "100%" }}
+                      disabled={busy || startValue <= 0}
+                      onFocus={() => q.trim().length >= 2 && setShowSugg(true)}
+                      onBlur={() => setTimeout(() => setShowSugg(false), 120)}
+                      onKeyDown={(e) => {
+                        if (!showSugg || suggestions.length === 0) {
+                          if (e.key === "Enter") addItemFromSelection(null);
+                          return;
+                        }
+                        if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          setSel((i) => Math.min(suggestions.length - 1, i + 1));
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          setSel((i) => Math.max(0, i - 1));
+                        } else if (e.key === "Enter") {
+                          e.preventDefault();
+                          addItemFromSelection(suggestions[sel] || null);
+                        } else if (e.key === "Escape") {
+                          setShowSugg(false);
+                        }
+                      }}
+                    />
+
+                    <button
+                      className="btn btnPrimary"
+                      disabled={busy || !q.trim() || startValue <= 0}
+                      onClick={() => addItemFromSelection(null)}
+                    >
+                      Ajouter
+                    </button>
+                  </div>
+
+                  {startValue <= 0 && (
+                    <div className="huntSmallMuted" style={{ marginTop: 10 }}>
+                      Définis un <b>Start</b> pour débloquer l’ajout de machines.
+                    </div>
+                  )}
+
+                  {!!showSugg && !!suggestions.length && (
+                    <div className="suggGrid">
+                      {suggestions.map((s, i) => {
+                        const img = pickImageUrl(s);
+                        const prov = pickProvider(s);
+                        return (
+                          <button
+                            key={`${s.name}-${prov || ""}-${i}`}
+                            className="suggItem"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => addItemFromSelection(s)}
+                            disabled={busy}
+                            style={
+                              i === sel
+                                ? ({ outline: "2px solid rgba(167,139,250,0.55)", outlineOffset: 2 } as any)
+                                : undefined
+                            }
+                          >
+                            <div className="suggRow">
+                              <div className="suggImg">
+                                <SlotThumb url={img} size={44} />
+                              </div>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div className="suggName">{s.name}</div>
+                                <div className="suggSub">
+                                  {prov ? prov : "—"}
+                                  {typeof (s as any).score === "number"
+                                    ? ` • score ${Math.round(Number((s as any).score || 0))}`
+                                    : ""}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Liste items */}
+              <div className="huntPanel">
+                <div className="huntPanelInner">
+                  <div className="huntRow" style={{ justifyContent: "space-between" }}>
+                    <div className="huntSmallMuted">
+                      {items.length} machine{items.length > 1 ? "s" : ""} • total bet <b>{fmtEur(totalBetAll)}</b>
+                    </div>
+                    <button className="btn btnPrimary" onClick={doOpen} disabled={busy || !canOpen}>
+                      Ouvrir le hunt
+                    </button>
+                  </div>
+
+                  {!items.length ? (
+                    <div className="huntSmallMuted" style={{ marginTop: 10 }}>
+                      Aucune machine pour l’instant.
+                    </div>
+                  ) : (
+                    <div className="itemsGrid" style={{ marginTop: 10 }}>
+                      {itemsEdit.map((it: any) => {
+                        const img = pickImageUrl(it);
+                        const prov = pickProvider(it);
+                        return (
+                          <div key={it.id} className="itemRow">
+                            <div className="itemImg">
+                              <SlotThumb url={img} size={54} />
+                            </div>
+
+                            <div style={{ minWidth: 0 }}>
+                              <div className="itemName">{it.name}</div>
+                              <div className="itemProvider">{prov ?? "—"}</div>
+                            </div>
+
+                            <input
+                              ref={(el) => {
+                                betRefs.current[String(it.id)] = el;
+                              }}
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="bet"
+                              defaultValue={it.bet ?? ""}
+                              disabled={busy}
+                              onBlur={(e) => {
+                                const v = Number(e.currentTarget.value || "0");
+                                if (!Number.isFinite(v)) return;
+                                setBet(String(it.id), Math.max(0, Number(v.toFixed(2))));
+                              }}
+                            />
+
+                            <input type="number" placeholder="pay (lock)" disabled value={it.pay ?? ""} />
+
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                              <button className="btn btnDanger" disabled={busy} onClick={() => removeItem(String(it.id))}>
+                                Supprimer
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {!canOpen && items.length > 0 && (
+                    <div className="huntSmallMuted" style={{ marginTop: 10 }}>
+                      ⚠️ Pour ouvrir : Start &gt; 0, au moins 1 machine, et chaque machine doit avoir une mise (bet) &gt; 0.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ===== OPEN (deck simple) ===== */}
+          {phase === "open" && (
+            <div className="huntPanel">
+              <div className="huntPanelInner">
+                <div className="huntRow" style={{ justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontWeight: 900 }}>Ouverture des bonus</div>
+                    <div className="huntSmallMuted">{items.length ? `${deckIndex + 1} / ${items.length}` : "—"}</div>
+                  </div>
+                  <div className="huntRow">
+                    <button className="btn" onClick={doRevert} disabled={busy}>
+                      Revenir en édition
+                    </button>
+                    <button className="btn btnPrimary" onClick={doClose} disabled={busy}>
+                      Terminer le hunt
+                    </button>
+                  </div>
+                </div>
+
+                {!current ? (
+                  <div className="huntSmallMuted" style={{ marginTop: 10 }}>
+                    Aucune machine.
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+                    {/* Nav */}
+                    <div className="huntRow" style={{ justifyContent: "space-between" }}>
+                      <button
+                        className="btn"
+                        onClick={() => setDeckIndex((i) => Math.max(0, i - 1))}
+                        disabled={busy || deckIndex === 0}
+                      >
+                        ◀ Précédent
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={() => setDeckIndex((i) => Math.min(items.length - 1, i + 1))}
+                        disabled={busy || deckIndex >= items.length - 1}
+                      >
+                        Suivant ▶
+                      </button>
+                    </div>
+
+                    {/* Card */}
+                    <div
+                      className="huntPanel"
+                      style={{
+                        borderRadius: 18,
+                        overflow: "hidden",
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: "rgba(255,255,255,0.04)",
+                      }}
+                    >
+                      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 0 }}>
+                        <div style={{ minHeight: 260, background: "rgba(0,0,0,0.25)" }}>
+                          {pickImageUrl(current) ? (
+                            <img
+                              src={pickImageUrl(current) as string}
+                              alt={current.name}
+                              referrerPolicy="no-referrer"
+                              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                            />
+                          ) : (
+                            <div style={{ height: "100%", display: "grid", placeItems: "center", opacity: 0.7 }}>
+                              —
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ padding: 14, display: "grid", gap: 10 }}>
+                          <div>
+                            <div style={{ fontWeight: 900, fontSize: 18, lineHeight: 1.2 }}>{current.name}</div>
+                            <div className="huntSmallMuted">{pickProvider(current) ?? "—"}</div>
+                          </div>
+
+                          <div className="huntPills" style={{ marginTop: 0 }}>
+                            <StatPill label="Bet" value={fmtEur(Number(current.bet) || 0)} />
+                            <StatPill label="Pay" value={fmtEur(Number(current.pay) || 0)} />
+                            <StatPill
+                              label="Multi"
+                              value={`x${
+                                Number(current.bet) > 0
+                                  ? ((Number(current.pay) || 0) / Number(current.bet)).toFixed(2)
+                                  : "0.00"
+                              }`}
+                            />
+                          </div>
+
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div className="huntSmallMuted">Entrer le gain</div>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={draftPay[currentKey] ?? (current.pay != null ? String(current.pay) : "")}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setDraftPay((p) => ({ ...p, [currentKey]: val }));
+                                setConfirmed((p) => ({ ...p, [currentKey]: false }));
+                              }}
+                              disabled={busy}
+                              onKeyDown={async (e) => {
+                                if (e.key === "Enter") {
+                                  if (!currentId) return;
+                                  const raw = String(draftPay[currentKey] ?? "").trim();
+                                  if (!raw) return;
+                                  await validateCurrentPay();
+                                }
+                              }}
+                            />
+                          </div>
+
+                          <div className="huntRow" style={{ justifyContent: "space-between", marginTop: 6 }}>
+                            {/* ✅ Bouton unique : Valider -> Next -> Terminer */}
+                            <button
+                              className="btn btnPrimary"
+                              disabled={
+                                busy ||
+                                !currentId ||
+                                (!isConfirmed && !String(draftPay[currentKey] ?? "").trim()) ||
+                                (isConfirmed && deckIndex >= items.length - 1 && false)
+                              }
+                              onClick={async () => {
+                                if (!currentId) return;
+
+                                if (!isConfirmed) {
+                                  await validateCurrentPay();
+                                  return;
+                                }
+
+                                // déjà confirmé
+                                if (deckIndex >= items.length - 1) {
+                                  await doClose(); // dernière -> termine
+                                  return;
+                                }
+
+                                goNext();
+                              }}
+                              title={
+                                !isConfirmed
+                                  ? "Valide le gain"
+                                  : deckIndex >= items.length - 1
+                                  ? "Terminer le hunt"
+                                  : "Passe à la suivante"
+                              }
+                            >
+                              {primaryDeckLabel}
+                            </button>
+
+                            <div className="huntSmallMuted" style={{ marginLeft: "auto" }}>
+                              Astuce : flèches clavier ◀ ▶ pour naviguer.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Tableau */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <h2 style={{ marginTop: 0 }}>Tableau</h2>
-
-        {loading && <div style={{ opacity: 0.8 }}>Chargement…</div>}
-
-        {!items.length ? (
-          <div style={{ opacity: 0.8 }}>Aucune machine pour l’instant.</div>
-        ) : (
-          <div style={{ display: "grid", gap: 10 }}>
-            {items.map((it: any) => (
-              <div
-                key={it.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "44px 1fr 140px 140px 120px",
-                  gap: 10,
-                  alignItems: "center",
-                }}
-              >
-                {it.image_url ? (
-                  <img
-                    src={it.image_url}
-                    alt=""
-                    style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 10 }}
-                  />
-                ) : (
-                  <div style={{ width: 44, height: 44, borderRadius: 10, opacity: 0.2, border: "1px solid currentColor" }} />
                 )}
+              </div>
+            </div>
+          )}
 
-                <div>
-                  <div style={{ fontWeight: 800 }}>{it.name}</div>
-                  <div style={{ opacity: 0.75, fontSize: 12 }}>
-                    {it.provider ?? "—"}
+          {/* ===== CLOSED ===== */}
+          {phase === "closed" && (
+            <div className="huntPanel">
+              <div className="huntPanelInner">
+                <div className="huntRow" style={{ justifyContent: "space-between" }}>
+                  <div style={{ fontWeight: 900 }}>Hunt terminé</div>
+                  <div className="huntRow">
+                    <button className="btn" onClick={doRevert} disabled={busy}>
+                      Revenir en édition
+                    </button>
+                    <button className="btn" onClick={doSaveCopy} disabled={busy}>
+                      Sauvegarder (copie)
+                    </button>
+                    <button className="btn btnPrimary" onClick={doNew} disabled={busy}>
+                      Nouveau Hunt
+                    </button>
                   </div>
                 </div>
 
-                <input
-                  type="number"
-                  placeholder="bet"
-                  value={it.bet ?? ""}
-                  disabled={phase !== "edit" && phase !== "open"}
-                  onChange={async (e) => {
-                    const v = Number(e.target.value);
-                    if (!Number.isFinite(v) || v < 0) return;
-                    await huntSetBet(it.id, v);
-                    await refreshAll();
-                  }}
-                />
+                <div className="huntPills" style={{ marginTop: 12 }}>
+                  <StatPill label="Start" value={fmtEur(startValue)} />
+                  <StatPill label="Total pay" value={fmtEur(totalPayAll)} />
+                  <StatPill label="Global multi" value={`x${globalMulti.toFixed(2)}`} />
+                  <StatPill label="Profit" value={fmtEur(profit)} />
+                </div>
 
-                <input
-                  type="number"
-                  placeholder="pay"
-                  value={it.pay ?? ""}
-                  disabled={phase !== "open"}
-                  onChange={async (e) => {
-                    const v = Number(e.target.value);
-                    if (!Number.isFinite(v) || v < 0) return;
-                    await huntSetPay(it.id, v);
-                    await refreshAll();
-                  }}
-                />
-
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                  <button
-                    disabled={phase !== "edit"}
-                    onClick={async () => {
-                      const ok = confirm(`Supprimer "${it.name}" ?`);
-                      if (!ok) return;
-                      // si tu as /remove (id) sur hunt2 => huntRemove(it.id)
-                      const { huntRemove } = await import("../lib/hunt_api");
-                      await huntRemove(it.id);
-                      await refreshAll();
+                <div style={{ marginTop: 12 }}>
+                  <div className="huntRow" style={{ justifyContent: "space-between" }}>
+                    <span className="huntSmallMuted">Récupéré</span>
+                    <span className="huntSmallMuted">
+                      {fmtEur(totalPayAll)} / {fmtEur(startValue)}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 6,
+                      height: 10,
+                      borderRadius: 999,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(255,255,255,0.04)",
+                      overflow: "hidden",
                     }}
                   >
-                    Supprimer
-                  </button>
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${progressPct}%`,
+                        background: progressPct >= 100 ? "rgba(16,185,129,0.70)" : "rgba(34,211,238,0.70)",
+                        transition: "width 200ms ease",
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
 
-      {/* Archives */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <h2 style={{ marginTop: 0, marginBottom: 0 }}>Mes hunts sauvegardés</h2>
-          <button
-            onClick={async () => {
-              await refreshAll();
-            }}
-          >
-            Rafraîchir
-          </button>
-          <div style={{ marginLeft: "auto" }}>
-            <button
-              onClick={async () => {
-                const ok = confirm("Supprimer TOUTES tes sauvegardes ?");
-                if (!ok) return;
-                await huntDeleteAll();
-                await refreshAll();
-              }}
-            >
-              Tout supprimer
-            </button>
-          </div>
-        </div>
-
-        {!myHunts.length ? (
-          <div style={{ opacity: 0.8, marginTop: 10 }}>Aucune sauvegarde.</div>
-        ) : (
-          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-            {myHunts.map((h) => (
-              <div
-                key={h.id}
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 800 }}>
-                    {h.title ? h.title : `Hunt #${h.id}`}
-                  </div>
-                  <div style={{ opacity: 0.75, fontSize: 12 }}>
-                    {h.created_at} • items {h.items_count} • start {h.start ?? "-"} • total {h.total_pay ?? "-"}
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={async () => {
-                      await huntLoad(h.id);
-                      await refreshAll();
-                    }}
-                  >
-                    Charger
-                  </button>
-                  <button
-                    onClick={async () => {
-                      const ok = confirm(`Supprimer la sauvegarde #${h.id} ?`);
-                      if (!ok) return;
-                      await huntDelete(h.id);
-                      await refreshAll();
-                    }}
-                  >
-                    Supprimer
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+          {loading ? <div className="huntSmallMuted">Chargement…</div> : null}
+        </section>
       </div>
     </main>
   );
