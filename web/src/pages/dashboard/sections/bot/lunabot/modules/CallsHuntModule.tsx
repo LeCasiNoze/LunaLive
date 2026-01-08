@@ -37,6 +37,11 @@ function SmallBtn(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   );
 }
 
+// ✅ helper: garantit un tableau (évite .length sur undefined)
+function asArray<T>(v: any): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
+
 export function CallsModule({ token, streamerSlug }: { token: string; streamerSlug: string }) {
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
@@ -73,18 +78,22 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
         getCallsProviderPolicy(streamerSlug, token),
       ]);
 
-      setCfg(c.config);
-      setQueue(q.items);
+      setCfg(c?.config ?? null);
+      setQueue(asArray<ApiCallQueueItem>(q?.items));
 
-      setPolicyMode(pol.mode);
-      setAllowedProviders(pol.allowed);
+      setPolicyMode((pol?.mode === "allow_only" ? "allow_only" : "allow_all") as any);
+      setAllowedProviders(asArray<string>(pol?.allowed));
 
       // bans current tab
       const b = await getCallsBans(streamerSlug, token, banKind);
-      setBans(b.items);
+      setBans(asArray<ApiCallBanRow>(b?.items));
       setSelectedBanKeys({});
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
+      // ✅ évite de laisser des undefined traîner
+      setQueue((prev) => asArray<ApiCallQueueItem>(prev));
+      setBans((prev) => asArray<ApiCallBanRow>(prev));
+      setAllowedProviders((prev) => asArray<string>(prev));
     } finally {
       setBusy(false);
     }
@@ -100,10 +109,11 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
     void (async () => {
       try {
         const b = await getCallsBans(streamerSlug, token, banKind);
-        setBans(b.items);
+        setBans(asArray<ApiCallBanRow>(b?.items));
         setSelectedBanKeys({});
       } catch (e: any) {
         setErr(String(e?.message || "Erreur"));
+        setBans([]); // ✅ jamais undefined
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -120,7 +130,7 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
       void (async () => {
         try {
           const r = await searchSlots(q, 8);
-          setSlotSug(r || []);
+          setSlotSug(asArray<ApiSlotSuggestion>(r));
         } catch {
           setSlotSug([]);
         }
@@ -135,7 +145,7 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
     setBusy(true);
     try {
       const r = await patchCallsConfig(streamerSlug, token, patch);
-      setCfg(r.config);
+      setCfg(r?.config ?? cfg);
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
     } finally {
@@ -147,9 +157,10 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
     setErr(null);
     try {
       const q = await getCallsQueue(streamerSlug, token, 80, 0);
-      setQueue(q.items);
+      setQueue(asArray<ApiCallQueueItem>(q?.items));
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
+      setQueue([]); // ✅ jamais undefined
     }
   }
 
@@ -181,7 +192,7 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
 
   async function reloadBans() {
     const b = await getCallsBans(streamerSlug, token, banKind);
-    setBans(b.items);
+    setBans(asArray<ApiCallBanRow>(b?.items));
     setSelectedBanKeys({});
   }
 
@@ -198,7 +209,6 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
         if (!provider) throw new Error("Provider requis");
         await banCalls(streamerSlug, token, { kind: "provider", provider });
       } else {
-        // slot
         const pick = slotPick;
         if (!pick) throw new Error("Choisis une machine (suggestions)");
         await banCalls(streamerSlug, token, { kind: "slot", slotName: pick.name, label: pick.name });
@@ -220,7 +230,7 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
     setErr(null);
     setBusy(true);
     try {
-      const keys = bans.filter((b) => selectedBanKeys[b.banKey]).map((b) => b.banKey);
+      const keys = asArray<ApiCallBanRow>(bans).filter((b) => selectedBanKeys[b.banKey]).map((b) => b.banKey);
       if (!keys.length) return;
 
       await unbanCalls(streamerSlug, token, banKind, keys);
@@ -238,8 +248,8 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
     try {
       await setCallsProviderPolicy(streamerSlug, token, next);
       const pol = await getCallsProviderPolicy(streamerSlug, token);
-      setPolicyMode(pol.mode);
-      setAllowedProviders(pol.allowed);
+      setPolicyMode((pol?.mode === "allow_only" ? "allow_only" : "allow_all") as any);
+      setAllowedProviders(asArray<string>(pol?.allowed));
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
     } finally {
@@ -255,8 +265,8 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
     try {
       await allowCallsProviders(streamerSlug, token, [p]);
       const pol = await getCallsProviderPolicy(streamerSlug, token);
-      setPolicyMode(pol.mode);
-      setAllowedProviders(pol.allowed);
+      setPolicyMode((pol?.mode === "allow_only" ? "allow_only" : "allow_all") as any);
+      setAllowedProviders(asArray<string>(pol?.allowed));
       setProviderInput("");
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -271,8 +281,8 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
     try {
       await unallowCallsProviders(streamerSlug, token, [p]);
       const pol = await getCallsProviderPolicy(streamerSlug, token);
-      setPolicyMode(pol.mode);
-      setAllowedProviders(pol.allowed);
+      setPolicyMode((pol?.mode === "allow_only" ? "allow_only" : "allow_all") as any);
+      setAllowedProviders(asArray<string>(pol?.allowed));
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
     } finally {
@@ -288,8 +298,8 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
     try {
       await allowOnlyCallsProvider(streamerSlug, token, p);
       const pol = await getCallsProviderPolicy(streamerSlug, token);
-      setPolicyMode(pol.mode);
-      setAllowedProviders(pol.allowed);
+      setPolicyMode((pol?.mode === "allow_only" ? "allow_only" : "allow_all") as any);
+      setAllowedProviders(asArray<string>(pol?.allowed));
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
     } finally {
@@ -471,11 +481,7 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
             Ajouter whitelist
           </SmallBtn>
 
-          <SmallBtn
-            disabled={busy}
-            onClick={allowOnlyOneProvider}
-            style={{ border: "1px solid rgba(255,190,60,0.35)" }}
-          >
+          <SmallBtn disabled={busy} onClick={allowOnlyOneProvider} style={{ border: "1px solid rgba(255,190,60,0.35)" }}>
             Tout interdire sauf celui-là
           </SmallBtn>
         </div>
@@ -559,11 +565,7 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
                   }}
                 >
                   {it.imageUrl ? (
-                    <img
-                      src={it.imageUrl}
-                      alt=""
-                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                    />
+                    <img src={it.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                   ) : (
                     <div
                       className="muted"
@@ -696,11 +698,7 @@ export function CallsModule({ token, streamerSlug }: { token: string; streamerSl
                         }}
                       >
                         {s.imageUrl ? (
-                          <img
-                            src={s.imageUrl}
-                            alt=""
-                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                          />
+                          <img src={s.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                         ) : null}
                       </div>
                       <div style={{ minWidth: 0 }}>

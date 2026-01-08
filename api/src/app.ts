@@ -145,9 +145,10 @@ export function createApp() {
   app.use(clipsPublicRouter);
 
   app.use("/slots", slotsRouter);
-  app.use("/calls", callsRouter);
   app.use("/calls", callsHuntRouter); 
-  
+  app.use("/calls", callsRouter);
+
+
   // ✅ Hunt routes (/api/hunt2/*)
   app.use(hunt2Router);
 
