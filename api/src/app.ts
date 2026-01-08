@@ -57,6 +57,9 @@ import { clipsPublicRouter } from "./routes/clips_public.js";
 import { slotsRouter } from "./routes/slots.js";
 import { callsRouter } from "./routes/calls.js";
 
+// ✅ NEW: Hunt
+import { hunt2Router } from "./routes/hunt2.js";
+
 export function createApp() {
   const app = express();
   app.set("trust proxy", 1);
@@ -142,7 +145,10 @@ export function createApp() {
 
   app.use("/slots", slotsRouter);
   app.use("/calls", callsRouter);
-  
+
+  // ✅ Hunt routes (/api/hunt2/*)
+  app.use(hunt2Router);
+
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
 

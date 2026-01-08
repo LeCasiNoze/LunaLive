@@ -20,6 +20,7 @@ import { GoLiveNotifier } from "./components/GoLiveNotifier";
 import { DailyBonusToast } from "./components/DailyBonusToast";
 import { AchievementsToast } from "./components/AchievementsToast";
 import { CallsToast } from "./components/CallsToast";
+import HuntPage from "./pages/HuntPage";
 
 function AppInner() {
   const location = useLocation();
@@ -53,6 +54,7 @@ function AppInner() {
 
         <Route path="/casinos" element={<CasinosPage />} />
         <Route path="/casinos/:slug" element={<CasinoPage />} />
+        <Route path="/hunt" element={<HuntPage />} />
 
         <Route path="/s/:slug" element={<StreamerPage />} />
         <Route path="/profile" element={<ProfilePage />} />

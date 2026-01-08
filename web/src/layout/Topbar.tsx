@@ -1,3 +1,4 @@
+//web/src/layout/Topbar.tsx
 import { NavLink } from "react-router-dom";
 import type { User } from "../lib/types";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -37,6 +38,12 @@ export function Topbar({
             <NavLink to="/casinos" className={linkClass}>
               Casinos
             </NavLink>
+
+            {/* ✅ NEW: Hunt (accessible si connecté côté page) */}
+            <NavLink to="/hunt" className={linkClass}>
+              Hunt
+            </NavLink>
+
             <NavLink to="/shop" className={linkClass}>
               Shop
             </NavLink>
