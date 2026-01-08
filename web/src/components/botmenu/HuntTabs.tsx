@@ -39,6 +39,20 @@ type CallItem = {
   imageUrl?: string | null;
 };
 
+async function readJsonSafe(r: Response): Promise<any> {
+  const text = await r.text().catch(() => "");
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { ok: false, error: text.slice(0, 180) || "invalid_json" };
+  }
+}
+
+function toast(kind: "success" | "error", title: string, message?: string) {
+  window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind, title, message } }));
+}
+
 export function HuntTab({
   token,
   slug,
@@ -60,63 +74,63 @@ export function HuntTab({
   const [calls, setCalls] = React.useState<CallItem[]>([]);
   const [callsLoading, setCallsLoading] = React.useState(false);
 
-    async function loadState(opts?: { silent?: boolean }) {
+  async function loadState(opts?: { silent?: boolean }) {
     if (!token) return;
     const silent = !!opts?.silent;
 
     if (!silent) setLoading(true);
     try {
-        const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/hunt/state`, {
+      const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/hunt/state`, {
         headers: { Authorization: `Bearer ${token}` },
-        });
-        const j = (await r.json()) as HuntStateResp;
-        if (j?.ok) setState(j);
-        else if (!silent) setState(null);
-    } catch {
-        if (!silent) setState(null);
-    } finally {
-        if (!silent) setLoading(false);
-    }
-    }
+      });
+      const j = (await readJsonSafe(r)) as HuntStateResp;
 
-    async function loadQueue(opts?: { silent?: boolean }) {
+      if (r.ok && j?.ok) setState(j);
+      else if (!silent) setState(null);
+    } catch {
+      if (!silent) setState(null);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }
+
+  async function loadQueue(opts?: { silent?: boolean }) {
     if (!token) return;
     const silent = !!opts?.silent;
 
-    // ✅ IMPORTANT: en refresh silencieux, on ne toggle pas callsLoading
     if (!silent) setCallsLoading(true);
     try {
-        const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/list?limit=80`, {
+      const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/list?limit=80`, {
         headers: { Authorization: `Bearer ${token}` },
-        });
-        const j = await r.json();
-        if (j?.ok && Array.isArray(j.items)) setCalls(j.items || []);
-        else if (!silent) setCalls([]);
+      });
+      const j = await readJsonSafe(r);
+
+      if (r.ok && j?.ok && Array.isArray(j.items)) setCalls(j.items || []);
+      else if (!silent) setCalls([]);
     } catch {
-        if (!silent) setCalls([]);
+      if (!silent) setCalls([]);
     } finally {
-        if (!silent) setCallsLoading(false);
+      if (!silent) setCallsLoading(false);
     }
-    }
+  }
 
-    async function loadAll(opts?: { silent?: boolean }) {
+  async function loadAll(opts?: { silent?: boolean }) {
     await Promise.all([loadState(opts), loadQueue(opts)]);
-    }
+  }
 
-    React.useEffect(() => {
+  React.useEffect(() => {
     if (!canMod || !token) return;
 
-    // 1er load visible
     void loadAll({ silent: false });
 
-    // refreshs invisibles
     const t = window.setInterval(() => void loadAll({ silent: true }), 2500);
     return () => window.clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [canMod, token, slug]);
+  }, [canMod, token, slug]);
 
   async function post(path: string, body?: any) {
     if (!token) return onRequireLogin();
+
     const r = await fetch(`${apiBase()}${path}`, {
       method: "POST",
       headers: {
@@ -124,14 +138,15 @@ export function HuntTab({
         "Content-Type": "application/json",
       },
       body: body ? JSON.stringify(body) : "{}",
-    }).then((x) => x.json());
+    });
 
-    if (!r?.ok) {
-      window.dispatchEvent(
-        new CustomEvent("ui:toast", { detail: { kind: "error", title: "Erreur", message: r?.error || "failed" } })
-      );
+    const j = await readJsonSafe(r);
+
+    if (!r.ok || !j?.ok) {
+      toast("error", "Erreur", j?.error || j?.message || `HTTP ${r.status}`);
       return;
     }
+
     await loadAll();
   }
 
@@ -143,15 +158,14 @@ export function HuntTab({
     const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/reset`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
-    }).then((x) => x.json());
+    });
+    const j = await readJsonSafe(r);
 
-    if (r?.ok) {
-      window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "success", title: "Calls reset ✅" } }));
+    if (r.ok && j?.ok) {
+      toast("success", "Calls reset ✅");
       await loadAll();
     } else {
-      window.dispatchEvent(
-        new CustomEvent("ui:toast", { detail: { kind: "error", title: "Erreur", message: r?.error || "reset_failed" } })
-      );
+      toast("error", "Erreur", j?.error || "reset_failed");
     }
   }
 
@@ -161,14 +175,13 @@ export function HuntTab({
     const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/item/${encodeURIComponent(id)}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
-    }).then((x) => x.json());
+    });
+    const j = await readJsonSafe(r);
 
-    if (r?.ok) {
+    if (r.ok && j?.ok) {
       await loadAll();
     } else {
-      window.dispatchEvent(
-        new CustomEvent("ui:toast", { detail: { kind: "error", title: "Erreur", message: r?.error || "delete_failed" } })
-      );
+      toast("error", "Erreur", j?.error || "delete_failed");
     }
   }
 
@@ -181,8 +194,8 @@ export function HuntTab({
 
   const mode = state?.mode || "farm";
 
-  // ✅ IMPORTANT: fallback UI -> si le backend ne renvoie pas currentCall,
-  // on prend la 1ère machine de la file (même source que l’onglet File)
+  // ✅ fallback UI -> si le backend ne renvoie pas currentCall,
+  // on prend la 1ère machine de la file
   const headFromQueue = calls[0]
     ? {
         id: calls[0].id,
@@ -295,7 +308,7 @@ export function HuntTab({
               onClick={() => {
                 const b = Number(String(bet).replace(",", "."));
                 if (!(b > 0)) {
-                  window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "error", title: "Bet invalide" } }));
+                  toast("error", "Bet invalide");
                   return;
                 }
                 void post(`/calls/${encodeURIComponent(slug)}/hunt/bonus`, { bet: b });
@@ -361,7 +374,7 @@ export function HuntTab({
               onClick={() => {
                 const p = Number(String(pay).replace(",", "."));
                 if (!(p >= 0)) {
-                  window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "error", title: "Pay invalide" } }));
+                  toast("error", "Pay invalide");
                   return;
                 }
                 void post(`/calls/${encodeURIComponent(slug)}/hunt/pay`, { pay: p });
@@ -387,7 +400,7 @@ export function HuntTab({
         </div>
       )}
 
-      {/* ✅ LA FILE (même source de vérité que l’onglet File) */}
+      {/* ✅ LA FILE */}
       <div style={{ marginTop: 4, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div style={{ fontWeight: 950 }}>File de calls (même source)</div>
@@ -409,47 +422,46 @@ export function HuntTab({
         </div>
 
         {!calls.length ? (
-        callsLoading ? (
+          callsLoading ? (
             <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Chargement…</div>
-        ) : (
+          ) : (
             <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Aucun call.</div>
-        )
+          )
         ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {/* ✅ si ça refresh, on garde la liste visible (plus de flash) */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {callsLoading ? (
-            <div style={{ fontSize: 12, opacity: 0.6, fontWeight: 800, marginBottom: 2 }}>Mise à jour…</div>
+              <div style={{ fontSize: 12, opacity: 0.6, fontWeight: 800, marginBottom: 2 }}>Mise à jour…</div>
             ) : null}
 
             {calls.map((c) => (
-            <div
+              <div
                 key={c.id}
                 style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-                padding: "10px 12px",
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(255,255,255,0.05)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.05)",
                 }}
-            >
+              >
                 <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
-                <SlotThumb url={c.imageUrl} />
-                <div style={{ minWidth: 0 }}>
+                  <SlotThumb url={c.imageUrl} />
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.pos}. {c.slotName}
-                    {c.provider ? <span style={{ opacity: 0.75, fontWeight: 800 }}> — {c.provider}</span> : null}
+                      {c.pos}. {c.slotName}
+                      {c.provider ? <span style={{ opacity: 0.75, fontWeight: 800 }}> — {c.provider}</span> : null}
                     </div>
                     <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>@ {c.username}</div>
-                </div>
+                  </div>
                 </div>
 
                 <button
-                type="button"
-                onClick={() => void doDeleteCall(c.id)}
-                style={{
+                  type="button"
+                  onClick={() => void doDeleteCall(c.id)}
+                  style={{
                     padding: "10px 12px",
                     borderRadius: 14,
                     border: "1px solid rgba(255,255,255,0.10)",
@@ -458,13 +470,13 @@ export function HuntTab({
                     fontWeight: 950,
                     cursor: "pointer",
                     whiteSpace: "nowrap",
-                }}
+                  }}
                 >
-                Supprimer
+                  Supprimer
                 </button>
-            </div>
+              </div>
             ))}
-        </div>
+          </div>
         )}
       </div>
     </div>
