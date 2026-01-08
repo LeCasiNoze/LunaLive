@@ -181,7 +181,6 @@ export default function HuntPage() {
     () => (totalBetAll > 0 ? totalPayAll / totalBetAll : 0),
     [totalBetAll, totalPayAll]
   );
-    const [suggLoading, setSuggLoading] = React.useState(false);
 
   const remainingBet = React.useMemo(
     () =>
