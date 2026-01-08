@@ -1,0 +1,16 @@
+/* web/src/styles/70_hunt.css*/
+.huntPage button {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: inherit;
+}
+.huntPage button:disabled { opacity: .4; cursor: not-allowed; }
+.huntPage input {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+}
