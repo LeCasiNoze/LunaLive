@@ -1330,3 +1330,10 @@ export async function callsHuntPay(streamerSlug: string, token: string, payEur: 
     body: JSON.stringify({ payEur }),
   });
 }
+
+export async function callsHuntReset(streamerSlug: string, token: string) {
+  return j<{ ok: true }>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/reset`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

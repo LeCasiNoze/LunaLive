@@ -8,6 +8,7 @@ import {
   callsHuntPay,
   callsHuntSetStart,
   callsHuntSetBet,
+  callsHuntReset,
   type ApiCallsHuntState,
   type ApiHuntQueueItem,
   type ApiHuntBonusDrop,
@@ -25,13 +26,13 @@ function getOpening(s: ApiCallsHuntState | null) {
   return s.mode === "open" || (s as any).opening === true || phase === "open" || (s as any)?.hunt?.opened === true;
 }
 
-function getStartEur(s: ApiCallsHuntState | null) {
-  if (!s) return 0;
-  const v =
-    (s as any).startEur ??
-    (s as any)?.hunt?.start ??
-    0;
-  return Number(v) || 0;
+function getStartRaw(s: ApiCallsHuntState | null): number | null {
+  if (!s) return null;
+  // ✅ backend renvoie startEur: null | number
+  const v = (s as any).startEur ?? (s as any)?.hunt?.start ?? null;
+  if (v === null || typeof v === "undefined") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 function pickBonusDrops(s: ApiCallsHuntState | null): ApiHuntBonusDrop[] {
@@ -39,7 +40,6 @@ function pickBonusDrops(s: ApiCallsHuntState | null): ApiHuntBonusDrop[] {
   const explicit = asArr<ApiHuntBonusDrop>((s as any).bonusDrops);
   if (explicit.length) return explicit;
 
-  // fallback si backend met tout dans queue avec betEur
   const q = asArr<ApiHuntQueueItem>((s as any).queue);
   return q
     .filter((it: any) => Number(it?.betEur ?? 0) > 0)
@@ -97,10 +97,7 @@ function Thumb({ url }: { url?: string | null }) {
       {url ? (
         <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       ) : (
-        <div
-          className="muted"
-          style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", fontWeight: 900 }}
-        >
+        <div className="muted" style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", fontWeight: 900 }}>
           ?
         </div>
       )}
@@ -131,8 +128,8 @@ export function HuntTabs({
     const s = await getCallsHuntState(streamerSlug, token);
     setState(s);
 
-    const start = getStartEur(s);
-    setStartInp(start ? String(start) : "");
+    const startRaw = getStartRaw(s);
+    setStartInp(startRaw !== null ? String(startRaw) : "");
   }
 
   React.useEffect(() => {
@@ -167,15 +164,15 @@ export function HuntTabs({
 
   const opening = getOpening(state);
 
-  // ✅ Machine en cours = backend source of truth
   const currentFarm = (state as any)?.currentCall ?? null;
   const currentOpen = (state as any)?.currentOpenItem ?? null;
 
-  // ✅ Bonus drops list
   const bonusDrops = pickBonusDrops(state);
 
-  // ✅ Stats fiables
-  const startEur = getStartEur(state);
+  const startRaw = getStartRaw(state);
+  const hasStart = startRaw !== null && startRaw > 0;
+  const startEur = startRaw ?? 0;
+
   const callsCount =
     Number((state as any)?.callsCount) ||
     (asArr<any>((state as any)?.queue).filter((x) => !(Number(x?.betEur ?? 0) > 0)).length);
@@ -246,7 +243,7 @@ export function HuntTabs({
   async function doSetStart() {
     if (!canModerate) return;
     const v = Number(startInp);
-    if (!Number.isFinite(v)) {
+    if (!Number.isFinite(v) || v <= 0) {
       setErr("Start invalide");
       return;
     }
@@ -265,7 +262,7 @@ export function HuntTabs({
   async function doSetBet() {
     if (!canModerate) return;
     const v = Number(betInp);
-    if (!Number.isFinite(v)) {
+    if (!Number.isFinite(v) || v <= 0) {
       setErr("Bet invalide");
       return;
     }
@@ -277,6 +274,26 @@ export function HuntTabs({
       await load();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur (route bet ?)"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doReset() {
+    if (!canModerate) return;
+    const ok = window.confirm("Reset Hunt ? (Start + machines + session seront supprimés)");
+    if (!ok) return;
+
+    setErr(null);
+    setBusy(true);
+    try {
+      await callsHuntReset(streamerSlug, token);
+      setPayInp("");
+      setBetInp("");
+      setStartInp("");
+      await load();
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur"));
     } finally {
       setBusy(false);
     }
@@ -332,6 +349,45 @@ export function HuntTabs({
           </div>
         </div>
 
+        {/* ✅ Setup start visible direct si pas de start */}
+        {canModerate && !hasStart ? (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 14,
+              border: "1px solid rgba(124,77,255,0.22)",
+              background: "rgba(124,77,255,0.10)",
+              display: "flex",
+              gap: 10,
+              alignItems: "flex-end",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ flex: "1 1 220px" }}>
+              <div style={{ fontWeight: 950, fontSize: 12 }}>Set up a start</div>
+              <input
+                value={startInp}
+                onChange={(e) => setStartInp(e.target.value)}
+                placeholder="ex: 200"
+                style={{
+                  width: "100%",
+                  marginTop: 6,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(0,0,0,0.12)",
+                  color: "inherit",
+                }}
+              />
+            </div>
+            <SmallBtn disabled={busy} onClick={doSetStart} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
+              Valider start
+            </SmallBtn>
+          </div>
+        ) : null}
+
+        {/* Options engrenage */}
         {canModerate && showOpts ? (
           <div
             style={{
@@ -383,11 +439,21 @@ export function HuntTabs({
               />
             </div>
             <SmallBtn disabled={busy} onClick={doSetBet}>Set bet</SmallBtn>
+
+            <div style={{ flex: "1 1 100%", height: 1, background: "rgba(255,255,255,0.08)" }} />
+
+            <SmallBtn
+              disabled={busy}
+              onClick={doReset}
+              style={{ border: "1px solid rgba(255,80,80,0.35)", background: "rgba(255,80,80,0.10)" }}
+            >
+              Reset Hunt
+            </SmallBtn>
           </div>
         ) : null}
       </Panel>
 
-      {/* ✅ Machine en cours / Bonus en cours */}
+      {/* Machine en cours / Bonus en cours */}
       <Panel title={opening ? "Bonus en cours" : "Machine en cours"}>
         {!opening ? (
           currentFarm ? (
@@ -461,7 +527,7 @@ export function HuntTabs({
         )}
       </Panel>
 
-      {/* ✅ Liste Hunt = uniquement bonus drops */}
+      {/* Bonus drops */}
       <Panel title={`Bonus drops (${bonusDrops.length})`}>
         {bonusDrops.length === 0 ? (
           <div className="muted">
