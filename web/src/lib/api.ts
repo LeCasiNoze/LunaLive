@@ -1163,32 +1163,102 @@ export async function deleteCallQueueItem(streamerSlug: string, token: string, i
 }
 
 export async function getCallsBans(streamerSlug: string, token: string, kind: "user" | "slot" | "provider") {
-  return j<{ ok: true; items: ApiCallBanRow[] }>(
-    `/calls/${encodeURIComponent(streamerSlug)}/bans?kind=${encodeURIComponent(kind)}&limit=300`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
+  const resp: any = await j<any>(`/calls/${encodeURIComponent(streamerSlug)}/bans`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  // ✅ si un jour l'API renvoie déjà items, on le prend direct
+  if (Array.isArray(resp?.items)) {
+    return { ok: true as const, items: resp.items as ApiCallBanRow[] };
+  }
+
+  const bans = resp?.bans || {};
+  const nowIso = new Date().toISOString();
+
+  let items: ApiCallBanRow[] = [];
+
+  if (kind === "slot") {
+    const list = Array.isArray(bans?.slots) ? bans.slots : [];
+    items = list.map((s: any) => ({
+      id: `slot:${String(s.slotKey ?? s.name ?? "").trim() || Math.random()}`,
+      kind: "slot",
+      banKey: String(s.slotKey ?? "").trim() || String(s.name ?? "").trim(),
+      label: String(s.name ?? s.slotKey ?? "").trim() || null,
+      createdAt: nowIso,
+    }));
+  } else if (kind === "provider") {
+    const list = Array.isArray(bans?.providers) ? bans.providers : [];
+    items = list.map((p: any) => {
+      const key = String(p.provider ?? "").trim();
+      return {
+        id: `provider:${key || Math.random()}`,
+        kind: "provider",
+        banKey: key,
+        label: key || null,
+        createdAt: nowIso,
+      };
+    });
+  } else {
+    const list = Array.isArray(bans?.users) ? bans.users : [];
+    items = list.map((u: any) => {
+      const key = String(u.username ?? "").trim();
+      return {
+        id: `user:${key || Math.random()}`,
+        kind: "user",
+        banKey: key,
+        label: key || null,
+        createdAt: nowIso,
+      };
+    });
+  }
+
+  return { ok: true as const, items };
 }
+
+export type ApiBanPayload =
+  | { kind: "user"; username?: string; userId?: number; label?: string }
+  | { kind: "provider"; provider?: string; providerKey?: string; label?: string }
+  | { kind: "slot"; slot?: string; slotName?: string; slotKey?: string; provider?: string | null; label?: string };
 
 export async function banCalls(
   streamerSlug: string,
   token: string,
   payload:
     | { kind: "user"; username?: string; userId?: number }
-    | { kind: "provider"; provider: string }
-    | { kind: "slot"; slotName?: string; slotKey?: string; label?: string }
+    | { kind: "provider"; provider?: string; providerKey?: string }
+    | { kind: "slot"; slotName?: string; slot?: string; slotKey?: string; label?: string }
 ) {
-  return j<{ ok: true; changed: boolean }>(`/calls/${encodeURIComponent(streamerSlug)}/ban`, {
+  // ✅ Backend calls.ts attend: { kind, value, slotKey? }
+  const body: any = { kind: payload.kind };
+
+  if (payload.kind === "slot") {
+    const slotName =
+      String((payload as any).slotName ?? (payload as any).slot ?? (payload as any).label ?? "").trim();
+    if (slotName) body.value = slotName;
+
+    const slotKey = String((payload as any).slotKey ?? "").trim();
+    if (slotKey) body.slotKey = slotKey;
+  } else if (payload.kind === "provider") {
+    const prov = String((payload as any).provider ?? (payload as any).providerKey ?? "").trim();
+    if (prov) body.value = prov;
+  } else if (payload.kind === "user") {
+    // ⚠️ ton backend actuel ne gère pas userId, seulement username via value
+    const username = String((payload as any).username ?? "").trim();
+    if (username) body.value = username;
+  }
+
+  return j<{ ok: boolean; error?: string }>(`/calls/${encodeURIComponent(streamerSlug)}/ban`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 }
 
 export async function unbanCalls(streamerSlug: string, token: string, kind: "user" | "slot" | "provider", keys: string[]) {
-  return j<{ ok: true; changed: boolean }>(`/calls/${encodeURIComponent(streamerSlug)}/unban`, {
+  return j<{ ok: true; changed?: boolean }>(`/calls/${encodeURIComponent(streamerSlug)}/unban`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ kind, keys }),
+    body: JSON.stringify({ kind, values: keys }),
   });
 }
 

@@ -37,6 +37,12 @@ function canModOnStreamer(user: any, meta: { ownerUserId: number | null }) {
   return false;
 }
 
+async function ensureCallsBansCols() {
+  // ✅ compat prod: certaines DB n'ont pas encore ces colonnes
+  await pool.query(`ALTER TABLE calls_bans ADD COLUMN IF NOT EXISTS note TEXT;`);
+  await pool.query(`ALTER TABLE calls_bans ADD COLUMN IF NOT EXISTS created_by_user_id BIGINT;`);
+}
+
 async function ensureProviderPolicyRow(streamerId: number) {
   await pool.query(
     `
@@ -264,6 +270,8 @@ callsRouter.get("/:slug/bans", requireAuth, async (req: any, res) => {
     if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
     if (!canModOnStreamer(u, meta)) return res.status(403).json({ ok: false, error: "forbidden" });
 
+    await ensureCallsBansCols(); // ✅ AJOUTE ÇA
+
     const { rows } = await pool.query(
       `
       SELECT kind, ban_key AS "banKey", note, created_at AS "createdAt"
@@ -274,58 +282,57 @@ callsRouter.get("/:slug/bans", requireAuth, async (req: any, res) => {
       [meta.id]
     );
 
+    // Map slotKey -> name for label
     const slotKeys = (rows || [])
       .filter((r: any) => String(r.kind) === "slot")
       .map((r: any) => String(r.banKey))
       .filter(Boolean);
 
-    let slotMeta = new Map<string, { name: string; provider: string | null; imageUrl: string | null }>();
+    const slotNameByKey = new Map<string, string>();
     if (slotKeys.length) {
       const { rows: srows } = await pool.query(
         `
-        SELECT name_key AS "slotKey", name, provider_norm AS "provider", image_url AS "imageUrl"
+        SELECT name_key AS "slotKey", name
         FROM slots_catalog
         WHERE name_key = ANY($1::text[])
         `,
         [slotKeys]
       );
-      for (const r of srows || []) {
-        slotMeta.set(String(r.slotKey), {
-          name: String(r.name),
-          provider: r.provider ? String(r.provider) : null,
-          imageUrl: r.imageUrl ? String(r.imageUrl) : null,
-        });
-      }
+      for (const r of srows || []) slotNameByKey.set(String(r.slotKey), String(r.name));
     }
 
-    const out = {
-      users: [] as any[],
-      providers: [] as any[],
-      slots: [] as any[],
-    };
+    // ✅ Front (dashboard) format: { ok:true, items: ApiCallBanRow[] }
+    const items = (rows || []).map((r: any) => {
+      const kind = String(r.kind) as "user" | "slot" | "provider";
+      const banKey = String(r.banKey);
 
+      const label =
+        kind === "slot" ? slotNameByKey.get(banKey) ?? banKey : banKey;
+
+      return {
+        id: `${kind}:${banKey}`,          // pas d'id en DB -> id stable
+        kind,
+        banKey,
+        label,
+        createdAt: r.createdAt,
+      };
+    });
+
+    // ✅ Compat old UI: on continue à exposer bans:{users/providers/slots}
+    const out = { users: [] as any[], providers: [] as any[], slots: [] as any[] };
     for (const r of rows || []) {
-      const kind = String((r as any).kind);
-      const banKey = String((r as any).banKey);
-      const note = (r as any).note != null ? String((r as any).note) : null;
+      const kind = String(r.kind);
+      const banKey = String(r.banKey);
+      const note = r.note != null ? String(r.note) : null;
 
       if (kind === "user") out.users.push({ username: banKey, note });
       else if (kind === "provider") out.providers.push({ provider: banKey, note });
-      else if (kind === "slot") {
-        const sm = slotMeta.get(banKey);
-        out.slots.push({
-          slotKey: banKey,
-          name: sm?.name ?? banKey,
-          provider: sm?.provider ?? null,
-          imageUrl: sm?.imageUrl ?? null,
-          note,
-        });
-      }
+      else if (kind === "slot") out.slots.push({ slotKey: banKey, name: slotNameByKey.get(banKey) ?? banKey, note });
     }
 
-    res.json({ ok: true, bans: out });
+    res.json({ ok: true, items, bans: out });
   } catch (e: any) {
-    res.json({ ok: false, error: String(e?.message || "bans_failed") });
+    res.status(500).json({ ok: false, error: String(e?.message || "bans_failed") });
   }
 });
 
@@ -338,7 +345,10 @@ callsRouter.post("/:slug/ban", requireAuth, express.json(), async (req: any, res
     if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
     if (!canModOnStreamer(u, meta)) return res.status(403).json({ ok: false, error: "forbidden" });
 
+    await ensureCallsBansCols(); // ✅ AJOUTE ÇA
+
     const p = req.body || {};
+
     const kind = String(p.kind || "").trim();
     const note = p.note != null ? String(p.note).trim() : null;
 
@@ -346,9 +356,16 @@ callsRouter.post("/:slug/ban", requireAuth, express.json(), async (req: any, res
       return res.json({ ok: false, error: "bad_kind" });
     }
 
-    // value (ou slotKey)
-    const value = String(p.value || "").trim();
-    const slotKeyOverride = String(p.slotKey || "").trim();
+    // value (compat old + new payloads)
+    const value =
+      String(
+        p.value ??
+          (kind === "slot" ? (p.slotName ?? p.slot) : kind === "provider" ? (p.provider ?? p.providerKey) : p.username) ??
+          ""
+      ).trim();
+
+    // slotKey override (compat old + new)
+    const slotKeyOverride = String(p.slotKey ?? p.slot_key ?? "").trim();
 
     let banKey = "";
 
@@ -397,7 +414,8 @@ callsRouter.post("/:slug/unban", requireAuth, express.json(), async (req: any, r
 
     const p = req.body || {};
     const kind = String(p.kind || "").trim();
-    const values: string[] = Array.isArray(p.values) ? p.values.map((x: any) => String(x || "").trim()).filter(Boolean) : [];
+    const valuesRaw = Array.isArray(p.values) ? p.values : Array.isArray(p.keys) ? p.keys : [];
+    const values: string[] = valuesRaw.map((x: any) => String(x || "").trim()).filter(Boolean);
 
     if (!["user", "slot", "provider"].includes(kind)) {
       return res.json({ ok: false, error: "bad_kind" });

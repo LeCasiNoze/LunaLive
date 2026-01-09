@@ -17,6 +17,14 @@ type CallItem = {
   imageUrl?: string | null;
 };
 
+const CALLS_QUEUE_CHANGED_EVT = "calls:queue-changed";
+
+type CallsQueueChangedDetail = {
+  slug?: string;
+  removedId?: string | null;
+  action?: "bonus" | "pass" | "delete" | "reset" | string;
+};
+
 export function CallTab({
   token,
   slug,
@@ -133,6 +141,28 @@ export function CallTab({
     if (token && canMod) void loadQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, canMod, slug]);
+
+  // ✅ SYNC: si Hunt valide un bonus (ou pass), on refresh la queue sans action manuelle
+  React.useEffect(() => {
+    function onQueueChanged(ev: Event) {
+      const ce = ev as CustomEvent;
+      const detail = (ce?.detail || {}) as CallsQueueChangedDetail;
+
+      if (detail?.slug && String(detail.slug) !== String(slug)) return;
+
+      // best-effort: remove optimiste immédiat (ça évite le flash si le fetch prend 300ms)
+      if (detail?.removedId) {
+        const rid = String(detail.removedId);
+        setCalls((prev) => prev.filter((c) => String(c.id) !== rid));
+      }
+
+      // source de vérité : reload depuis l'API (positions correctes)
+      if (token && canMod) void loadQueue();
+    }
+
+    window.addEventListener(CALLS_QUEUE_CHANGED_EVT, onQueueChanged as any);
+    return () => window.removeEventListener(CALLS_QUEUE_CHANGED_EVT, onQueueChanged as any);
+  }, [slug, token, canMod]); // volontaire: handler doit voir les valeurs à jour
 
   return (
     <>
