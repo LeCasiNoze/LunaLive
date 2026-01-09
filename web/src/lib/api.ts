@@ -1220,30 +1220,20 @@ export type ApiBanPayload =
   | { kind: "provider"; provider?: string; providerKey?: string; label?: string }
   | { kind: "slot"; slot?: string; slotName?: string; slotKey?: string; provider?: string | null; label?: string };
 
-export async function banCalls(
-  streamerSlug: string,
-  token: string,
-  payload:
-    | { kind: "user"; username?: string; userId?: number }
-    | { kind: "provider"; provider?: string; providerKey?: string }
-    | { kind: "slot"; slotName?: string; slot?: string; slotKey?: string; label?: string }
-) {
-  // ✅ Backend calls.ts attend: { kind, value, slotKey? }
+export async function banCalls(streamerSlug: string, token: string, payload: ApiBanPayload) {
   const body: any = { kind: payload.kind };
 
   if (payload.kind === "slot") {
-    const slotName =
-      String((payload as any).slotName ?? (payload as any).slot ?? (payload as any).label ?? "").trim();
+    const slotName = String(payload.slotName ?? payload.slot ?? payload.label ?? "").trim();
     if (slotName) body.value = slotName;
 
-    const slotKey = String((payload as any).slotKey ?? "").trim();
+    const slotKey = String(payload.slotKey ?? "").trim();
     if (slotKey) body.slotKey = slotKey;
   } else if (payload.kind === "provider") {
-    const prov = String((payload as any).provider ?? (payload as any).providerKey ?? "").trim();
+    const prov = String(payload.provider ?? payload.providerKey ?? payload.label ?? "").trim();
     if (prov) body.value = prov;
   } else if (payload.kind === "user") {
-    // ⚠️ ton backend actuel ne gère pas userId, seulement username via value
-    const username = String((payload as any).username ?? "").trim();
+    const username = String(payload.username ?? payload.label ?? "").trim();
     if (username) body.value = username;
   }
 

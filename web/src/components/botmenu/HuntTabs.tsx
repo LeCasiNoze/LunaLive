@@ -567,46 +567,6 @@ React.useEffect(() => {
       .slice(0, 12);
   }, [providerQ, providerCatalog]);
 
-async function postBan(payload: any) {
-  const slug = encodeURIComponent(streamerSlug);
-
-  // ✅ Selon les versions, l’ajout de ban est souvent sur /ban (singulier)
-  // ou /bans/add. On essaye plusieurs routes, on ignore seulement les 404.
-  const candidates = [
-    `/calls/${slug}/ban`,
-    `/calls/${slug}/bans/add`,
-    `/calls/${slug}/bans`, // garde au cas où (mais chez toi ça 404)
-  ];
-
-  let last404: any = null;
-
-  for (const path of candidates) {
-    const r = await fetch(`${apiBase()}${path}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    // si 404 → on tente la candidate suivante
-    if (r.status === 404) {
-      last404 = path;
-      continue;
-    }
-
-    const j = await r.json().catch(() => null);
-
-    if (!r.ok || !j?.ok) {
-      throw new Error(j?.error || j?.message || `http_${r.status}`);
-    }
-    return j;
-  }
-
-  throw new Error(`ban_route_not_found (tried: ${candidates.join(", ")}; last404=${last404})`);
-}
-
   // ====== bans actions ======
 async function addSlotBan() {
   if (!canModerate) return;
