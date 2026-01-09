@@ -142,6 +142,7 @@ async function loadQueue(streamerId: number) {
       q.pos             AS pos,
       q.bet             AS bet,
       q.pay             AS pay,
+      q.is_bonus        AS "isBonus",
       sc.image_url      AS "imageUrl"
     FROM calls_queue q
     LEFT JOIN slots_catalog sc
@@ -163,14 +164,20 @@ async function loadQueue(streamerId: number) {
     betEur: x.bet === null || typeof x.bet === "undefined" ? null : Number(x.bet),
     payEur: x.pay === null || typeof x.pay === "undefined" ? null : Number(x.pay),
     imageUrl: x.imageUrl ?? null,
+    isBonus: !!x.isBonus,
   }));
 }
 
 // ✅ helpers anti-bug Number(null)=0
 function isBonus(it: any) {
+  // ✅ prioritaire: flag DB (robuste)
+  if (it?.isBonus === true) return true;
+
+  // fallback historique: bet > 0
   const b = it?.betEur;
   return typeof b === "number" && Number.isFinite(b) && b > 0;
 }
+
 function isUnpaid(it: any) {
   const p = it?.payEur;
   return p === null || typeof p === "undefined";
@@ -442,11 +449,18 @@ callsHuntRouter.post("/:slug/hunt/bonus", async (req: AuthedReq, res) => {
     const curCall = items.find((x) => !isBonus(x)) || null;
     if (!curCall) return res.json({ ok: true });
 
-    await pool.query(`UPDATE calls_queue SET bet=$3 WHERE streamer_id=$1 AND id=$2`, [
-      streamer.id,
-      curCall.id,
-      bet,
-    ]);
+    await pool.query(`
+      ALTER TABLE calls_queue
+      ADD COLUMN IF NOT EXISTS is_bonus BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+
+    await pool.query(
+      `UPDATE calls_queue
+       SET bet=$3, is_bonus=TRUE
+       WHERE streamer_id=$1 AND id=$2`,
+      [streamer.id, curCall.id, bet]
+    );
+
     return res.json({ ok: true });
   } catch (e) {
     console.error(e);

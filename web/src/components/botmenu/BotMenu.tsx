@@ -1,7 +1,6 @@
 // web/src/components/botmenu/BotMenu.tsx
 import * as React from "react";
 import { CallTab } from "./CallTab";
-import { QueueTab } from "./QueueTab";
 import { HuntTabs } from "./HuntTabs";
 
 export function BotMenu({
@@ -23,7 +22,7 @@ export function BotMenu({
   onRequireLogin: () => void;
   sendBang: (text: string) => void;
 }) {
-  const [tab, setTab] = React.useState<"call" | "queue" | "hunt">("call");
+  const [tab, setTab] = React.useState<"call" | "hunt">("call");
 
   React.useEffect(() => {
     if (!open) return;
@@ -89,7 +88,7 @@ export function BotMenu({
 
         {/* tabs */}
         <div style={{ display: "flex", gap: 8, padding: 12, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          {(["call", "queue", "hunt"] as const).map((k) => (
+          {(["call", "hunt"] as const).map((k) => (
             <button
               key={k}
               type="button"
@@ -104,7 +103,7 @@ export function BotMenu({
                 cursor: "pointer",
               }}
             >
-              {k === "call" ? "Call" : k === "queue" ? "File" : "Hunt"}
+              {k === "call" ? "Call" : "Hunt"}
             </button>
           ))}
 
@@ -115,24 +114,22 @@ export function BotMenu({
           ) : null}
         </div>
 
-        <div style={{ padding: 12 }}>
-          {tab === "call" ? (
-            <CallTab token={token} onClose={onClose} onRequireLogin={onRequireLogin} sendBang={sendBang} />
-          ) : null}
+        {tab === "call" ? (
+          <CallTab
+            token={token}
+            slug={slug}
+            canMod={canMod}
+            onClose={onClose}
+            onRequireLogin={onRequireLogin}
+            sendBang={sendBang}
+          />
+        ) : null}
 
-          {tab === "queue" ? (
-            <QueueTab token={token} slug={slug} canMod={canMod} onRequireLogin={onRequireLogin} />
-          ) : null}
+        {tab === "hunt" ? (
+          <HuntTabs token={token ?? ""} streamerSlug={slug} canModerate={canMod} />
+        ) : null}
 
-          {tab === "hunt" ? (
-            <HuntTabs
-            token={token ?? ""}
-            streamerSlug={slug}
-            canModerate={canMod}
-            />
-          ) : null}
         </div>
       </div>
-    </div>
   );
 }

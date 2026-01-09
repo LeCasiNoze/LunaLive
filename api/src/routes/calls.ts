@@ -164,6 +164,12 @@ callsRouter.get("/:slug/list", requireAuth, async (req: any, res) => {
     const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? limitRaw : 50));
     const offset = Math.max(0, Number.isFinite(offsetRaw) ? offsetRaw : 0);
 
+    // ✅ assure la colonne (robuste en prod)
+    await pool.query(`
+      ALTER TABLE calls_queue
+      ADD COLUMN IF NOT EXISTS is_bonus BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+
     const { rows } = await pool.query(
       `
       SELECT
@@ -176,11 +182,14 @@ callsRouter.get("/:slug/list", requireAuth, async (req: any, res) => {
 
         q.bet AS "bet",
         q.pay AS "pay",
-        q.bounty AS "bounty"
+        q.bounty AS "bounty",
+        q.is_bonus AS "isBonus"
       FROM calls_queue q
       LEFT JOIN slots_catalog sc
         ON sc.name_key = q.slot_key
-      WHERE q.streamer_id = $1
+      WHERE q.streamer_id=$1
+        AND COALESCE(q.is_bonus, FALSE) = FALSE   -- ✅ ne retourne que les calls
+        AND (q.bet IS NULL OR q.bet <= 0)         -- ✅ compat (au cas où)
       ORDER BY q.pos ASC
       LIMIT $2 OFFSET $3
       `,
@@ -198,6 +207,8 @@ callsRouter.get("/:slug/list", requireAuth, async (req: any, res) => {
       bet: r.bet == null ? null : Number(r.bet),
       pay: r.pay == null ? null : Number(r.pay),
       bounty: typeof r.bounty === "boolean" ? r.bounty : (r.bounty ?? null),
+
+      isBonus: !!r.isBonus, // ✅ debug/robuste
     }));
 
     res.json({ ok: true, items });
