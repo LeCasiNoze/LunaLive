@@ -1167,9 +1167,10 @@ export async function getCallsBans(streamerSlug: string, token: string, kind: "u
     headers: { Authorization: `Bearer ${token}` },
   });
 
-  // ✅ si un jour l'API renvoie déjà items, on le prend direct
+  // ✅ si l'API renvoie items (mix), on filtre par kind ici
   if (Array.isArray(resp?.items)) {
-    return { ok: true as const, items: resp.items as ApiCallBanRow[] };
+    const filtered = (resp.items as ApiCallBanRow[]).filter((it) => it && it.kind === kind);
+    return { ok: true as const, items: filtered };
   }
 
   const bans = resp?.bans || {};
