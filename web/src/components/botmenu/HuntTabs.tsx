@@ -1,3 +1,4 @@
+// web/src/pages/dashboard/sections/bot/modules/HuntTabs.tsx
 import * as React from "react";
 import { Settings } from "lucide-react";
 import {
@@ -10,11 +11,29 @@ import {
   callsHuntSetBet,
   callsHuntReset,
   type ApiCallsHuntState,
-  type ApiHuntQueueItem,
   type ApiHuntBonusDrop,
 } from "../../lib/api";
 
 const fmtEur = (n: any) => `${(Number(n) || 0).toFixed(2)}€`;
+
+const API_BASE = ((import.meta as any).env?.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+
+// ✅ Best-effort: sync aussi le start côté Hunt2 (tableau Hunt)
+// (endpoint correct = /api/hunt2/set-start)
+async function syncHunt2Start(token: string, startEur: number) {
+  try {
+    await fetch(`${API_BASE}/api/hunt2/set-start`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ start: startEur }),
+    });
+  } catch {
+    // ignore
+  }
+}
 
 function asArr<T>(v: any): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
@@ -28,7 +47,6 @@ function getOpening(s: ApiCallsHuntState | null) {
 
 function getStartRaw(s: ApiCallsHuntState | null): number | null {
   if (!s) return null;
-  // ✅ backend renvoie startEur: null | number
   const v = (s as any).startEur ?? (s as any)?.hunt?.start ?? null;
   if (v === null || typeof v === "undefined") return null;
   const n = Number(v);
@@ -37,20 +55,29 @@ function getStartRaw(s: ApiCallsHuntState | null): number | null {
 
 function pickBonusDrops(s: ApiCallsHuntState | null): ApiHuntBonusDrop[] {
   if (!s) return [];
-  const explicit = asArr<ApiHuntBonusDrop>((s as any).bonusDrops);
+  const anyS: any = s;
+
+  const explicit = asArr<ApiHuntBonusDrop>(anyS.bonusDrops);
   if (explicit.length) return explicit;
 
-  const q = asArr<ApiHuntQueueItem>((s as any).queue);
-  return q
-    .filter((it: any) => Number(it?.betEur ?? 0) > 0)
-    .map((it: any) => ({
+  const alt1 = asArr<ApiHuntBonusDrop>(anyS.bonus);
+  if (alt1.length) return alt1;
+
+  const alt2 = asArr<ApiHuntBonusDrop>(anyS.hunt?.bonusDrops ?? anyS.hunt?.bonus);
+  if (alt2.length) return alt2;
+
+  // fallback: reconstruire depuis une liste “queue/items/calls”
+  const list = asArr<any>(anyS.queue ?? anyS.items ?? anyS.calls ?? []);
+  return list
+    .filter((it) => Number(it?.betEur ?? it?.bet ?? 0) > 0)
+    .map((it) => ({
       id: it.id,
-      slotName: it.slotName,
-      provider: it.provider,
-      username: it.username,
-      imageUrl: it.imageUrl,
-      betEur: Number(it.betEur ?? 0) || 0,
-      payEur: it.payEur ?? null,
+      slotName: it.slotName ?? it.name,
+      provider: it.provider ?? null,
+      username: it.username ?? null,
+      imageUrl: it.imageUrl ?? it.image_url ?? null,
+      betEur: Number(it.betEur ?? it.bet ?? 0) || 0,
+      payEur: it.payEur ?? it.pay ?? null,
     }));
 }
 
@@ -120,16 +147,35 @@ export function HuntTabs({
   const [state, setState] = React.useState<ApiCallsHuntState | null>(null);
 
   const [showOpts, setShowOpts] = React.useState(false);
+
+  // inputs
   const [startInp, setStartInp] = React.useState("");
-  const [betInp, setBetInp] = React.useState("");
   const [payInp, setPayInp] = React.useState("");
+
+  // ✅ bonus -> ask bet (farm only)
+  const [askBet, setAskBet] = React.useState(false);
+  const [bonusBetInp, setBonusBetInp] = React.useState("");
+
+  // ✅ GG toast
+  const [gg, setGg] = React.useState(false);
+
+  // ✅ FIX: éviter que le polling écrase l'input start pendant qu'on tape
+  const editingStartRef = React.useRef(false);
+
+  function flashGg() {
+    setGg(true);
+    window.setTimeout(() => setGg(false), 1300);
+  }
 
   async function load() {
     const s = await getCallsHuntState(streamerSlug, token);
     setState(s);
 
-    const startRaw = getStartRaw(s);
-    setStartInp(startRaw !== null ? String(startRaw) : "");
+    // ✅ ne pas écraser l'input si l'utilisateur est en train d'écrire
+    if (!editingStartRef.current) {
+      const startRaw = getStartRaw(s);
+      setStartInp(startRaw !== null ? String(startRaw) : "");
+    }
   }
 
   React.useEffect(() => {
@@ -163,19 +209,24 @@ export function HuntTabs({
   }, [token, streamerSlug]);
 
   const opening = getOpening(state);
+  const bonusDrops = pickBonusDrops(state);
 
   const currentFarm = (state as any)?.currentCall ?? null;
-  const currentOpen = (state as any)?.currentOpenItem ?? null;
 
-  const bonusDrops = pickBonusDrops(state);
+  const rawCurrentOpen = (state as any)?.currentOpenItem ?? (state as any)?.currentBonus ?? (state as any)?.currentOpen ?? null;
+
+  // ✅ si backend ne renvoie pas currentOpenItem, on prend le premier bonus non payé
+  const currentOpen =
+    rawCurrentOpen ||
+    (opening ? bonusDrops.find((b: any) => b && (b.payEur === null || typeof b.payEur === "undefined")) || bonusDrops[0] || null : null);
 
   const startRaw = getStartRaw(state);
   const hasStart = startRaw !== null && startRaw > 0;
   const startEur = startRaw ?? 0;
 
   const callsCount =
-    Number((state as any)?.callsCount) ||
-    (asArr<any>((state as any)?.queue).filter((x) => !(Number(x?.betEur ?? 0) > 0)).length);
+    Number((state as any)?.callsCount) || asArr<any>((state as any)?.queue).filter((x) => !(Number(x?.betEur ?? 0) > 0)).length;
+
   const bonusCount = Number((state as any)?.bonusCount) || bonusDrops.length;
 
   async function doPass() {
@@ -184,6 +235,8 @@ export function HuntTabs({
     setBusy(true);
     try {
       await callsHuntPass(streamerSlug, token);
+      setAskBet(false);
+      setBonusBetInp("");
       await load();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -192,12 +245,34 @@ export function HuntTabs({
     }
   }
 
-  async function doBonus() {
+  // ✅ farm: "Bonus" => ouvre input bet (pas d'appel direct)
+  function onClickBonus() {
     if (!canModerate) return;
+    setErr(null);
+    setAskBet(true);
+    setBonusBetInp("");
+  }
+
+  async function doConfirmBonusWithBet() {
+    if (!canModerate) return;
+
+    const v = Number(String(bonusBetInp).replace(",", "."));
+    if (!Number.isFinite(v) || v <= 0) {
+      setErr("Bet invalide");
+      return;
+    }
+
     setErr(null);
     setBusy(true);
     try {
+      // 1) set bet sur la machine courante
+      await callsHuntSetBet(streamerSlug, token, v);
+      // 2) move en bonus drop
       await callsHuntBonusDrop(streamerSlug, token);
+
+      setAskBet(false);
+      setBonusBetInp("");
+      flashGg();
       await load();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -206,7 +281,8 @@ export function HuntTabs({
     }
   }
 
-  async function doOpen() {
+  // ✅ gear: toggle farm/open (on réutilise la même route "open" en mode toggle)
+  async function doToggleOpenFarm() {
     if (!canModerate) return;
     setErr(null);
     setBusy(true);
@@ -222,7 +298,7 @@ export function HuntTabs({
 
   async function doPay() {
     if (!canModerate) return;
-    const v = Number(payInp);
+    const v = Number(String(payInp).replace(",", "."));
     if (!Number.isFinite(v) || v < 0) {
       setErr("Pay invalide");
       return;
@@ -242,7 +318,7 @@ export function HuntTabs({
 
   async function doSetStart() {
     if (!canModerate) return;
-    const v = Number(startInp);
+    const v = Number(String(startInp).replace(",", "."));
     if (!Number.isFinite(v) || v <= 0) {
       setErr("Start invalide");
       return;
@@ -251,29 +327,14 @@ export function HuntTabs({
     setBusy(true);
     try {
       await callsHuntSetStart(streamerSlug, token, v);
+
+      // ✅ sync aussi le start pour le tableau Hunt (hunt2)
+      await syncHunt2Start(token, v);
+
+      editingStartRef.current = false;
       await load();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur (route start ?)"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doSetBet() {
-    if (!canModerate) return;
-    const v = Number(betInp);
-    if (!Number.isFinite(v) || v <= 0) {
-      setErr("Bet invalide");
-      return;
-    }
-    setErr(null);
-    setBusy(true);
-    try {
-      await callsHuntSetBet(streamerSlug, token, v);
-      setBetInp("");
-      await load();
-    } catch (e: any) {
-      setErr(String(e?.message || "Erreur (route bet ?)"));
     } finally {
       setBusy(false);
     }
@@ -289,8 +350,10 @@ export function HuntTabs({
     try {
       await callsHuntReset(streamerSlug, token);
       setPayInp("");
-      setBetInp("");
       setStartInp("");
+      setAskBet(false);
+      setBonusBetInp("");
+      editingStartRef.current = false;
       await load();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -300,7 +363,34 @@ export function HuntTabs({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, position: "relative" }}>
+      <style>{`
+        @keyframes ggPop {
+          0% { transform: translateY(8px) scale(0.96); opacity: 0; }
+          25% { transform: translateY(0px) scale(1.00); opacity: 1; }
+          80% { transform: translateY(0px) scale(1.00); opacity: 1; }
+          100% { transform: translateY(-6px) scale(0.98); opacity: 0; }
+        }
+      `}</style>
+
+      {gg ? (
+        <div style={{ position: "sticky", top: 8, zIndex: 50, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
+          <div
+            style={{
+              animation: "ggPop 1.3s ease-in-out both",
+              padding: "10px 14px",
+              borderRadius: 999,
+              fontWeight: 950,
+              border: "1px solid rgba(124,77,255,0.40)",
+              background: "rgba(124,77,255,0.16)",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+            }}
+          >
+            GG ✅
+          </div>
+        </div>
+      ) : null}
+
       {err ? <div className="hint">⚠️ {err}</div> : null}
 
       <Panel
@@ -336,15 +426,21 @@ export function HuntTabs({
       >
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
           <div>
-            <div className="muted" style={{ fontSize: 12 }}>Start</div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Start
+            </div>
             <div style={{ fontWeight: 950 }}>{fmtEur(startEur)}</div>
           </div>
           <div>
-            <div className="muted" style={{ fontSize: 12 }}>Calls en cours</div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Calls en cours
+            </div>
             <div style={{ fontWeight: 950 }}>{callsCount}</div>
           </div>
           <div>
-            <div className="muted" style={{ fontSize: 12 }}>Bonus drops</div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Bonus drops
+            </div>
             <div style={{ fontWeight: 950 }}>{bonusCount}</div>
           </div>
         </div>
@@ -368,7 +464,12 @@ export function HuntTabs({
               <div style={{ fontWeight: 950, fontSize: 12 }}>Set up a start</div>
               <input
                 value={startInp}
-                onChange={(e) => setStartInp(e.target.value)}
+                onFocus={() => (editingStartRef.current = true)}
+                onBlur={() => (editingStartRef.current = false)}
+                onChange={(e) => {
+                  editingStartRef.current = true;
+                  setStartInp(e.target.value);
+                }}
                 placeholder="ex: 200"
                 style={{
                   width: "100%",
@@ -406,7 +507,12 @@ export function HuntTabs({
               <div style={{ fontWeight: 950, fontSize: 12 }}>Start</div>
               <input
                 value={startInp}
-                onChange={(e) => setStartInp(e.target.value)}
+                onFocus={() => (editingStartRef.current = true)}
+                onBlur={() => (editingStartRef.current = false)}
+                onChange={(e) => {
+                  editingStartRef.current = true;
+                  setStartInp(e.target.value);
+                }}
                 placeholder="ex: 200"
                 style={{
                   width: "100%",
@@ -419,34 +525,22 @@ export function HuntTabs({
                 }}
               />
             </div>
-            <SmallBtn disabled={busy} onClick={doSetStart}>Set start</SmallBtn>
 
-            <div style={{ flex: "1 1 180px" }}>
-              <div style={{ fontWeight: 950, fontSize: 12 }}>Bet</div>
-              <input
-                value={betInp}
-                onChange={(e) => setBetInp(e.target.value)}
-                placeholder="ex: 0.20"
-                style={{
-                  width: "100%",
-                  marginTop: 6,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(0,0,0,0.12)",
-                  color: "inherit",
-                }}
-              />
-            </div>
-            <SmallBtn disabled={busy} onClick={doSetBet}>Set bet</SmallBtn>
+            <SmallBtn disabled={busy} onClick={doSetStart}>
+              Set start
+            </SmallBtn>
 
             <div style={{ flex: "1 1 100%", height: 1, background: "rgba(255,255,255,0.08)" }} />
 
             <SmallBtn
               disabled={busy}
-              onClick={doReset}
-              style={{ border: "1px solid rgba(255,80,80,0.35)", background: "rgba(255,80,80,0.10)" }}
+              onClick={doToggleOpenFarm}
+              style={{ border: "1px solid rgba(124,77,255,0.45)", background: "rgba(124,77,255,0.08)" }}
             >
+              {opening ? "Revenir en farm" : "Ouvrir le hunt"}
+            </SmallBtn>
+
+            <SmallBtn disabled={busy} onClick={doReset} style={{ border: "1px solid rgba(255,80,80,0.35)", background: "rgba(255,80,80,0.10)" }}>
               Reset Hunt
             </SmallBtn>
           </div>
@@ -467,14 +561,60 @@ export function HuntTabs({
                 <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                   call par @{currentFarm.username || "?"}
                 </div>
+
+                {/* ✅ input bet inline quand on clique "Bonus" */}
+                {canModerate && askBet ? (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: 10,
+                      borderRadius: 14,
+                      border: "1px solid rgba(124,77,255,0.25)",
+                      background: "rgba(124,77,255,0.10)",
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ fontWeight: 950, fontSize: 12, marginRight: 2 }}>Bet du bonus :</div>
+                    <input
+                      value={bonusBetInp}
+                      onChange={(e) => setBonusBetInp(e.target.value)}
+                      placeholder="ex: 0.30"
+                      style={{
+                        width: 140,
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: "rgba(0,0,0,0.12)",
+                        color: "inherit",
+                      }}
+                    />
+                    <SmallBtn disabled={busy} onClick={doConfirmBonusWithBet} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
+                      Valider
+                    </SmallBtn>
+                    <SmallBtn
+                      disabled={busy}
+                      onClick={() => {
+                        setAskBet(false);
+                        setBonusBetInp("");
+                      }}
+                    >
+                      Annuler
+                    </SmallBtn>
+                  </div>
+                ) : null}
               </div>
 
               {canModerate ? (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  <SmallBtn disabled={busy} onClick={doBonus} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
+                  <SmallBtn disabled={busy} onClick={onClickBonus} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
                     Bonus
                   </SmallBtn>
-                  <SmallBtn disabled={busy} onClick={doPass}>Pass</SmallBtn>
+                  <SmallBtn disabled={busy} onClick={doPass}>
+                    Pass
+                  </SmallBtn>
                 </div>
               ) : null}
             </div>
@@ -482,7 +622,7 @@ export function HuntTabs({
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
               <div className="muted">Aucune machine.</div>
               {canModerate ? (
-                <SmallBtn disabled={busy} onClick={doOpen} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
+                <SmallBtn disabled={busy} onClick={doToggleOpenFarm} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
                   Ouvrir le hunt
                 </SmallBtn>
               ) : null}
@@ -559,7 +699,10 @@ export function HuntTabs({
                   <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                     bet: <b>{fmtEur(b.betEur ?? 0)}</b>
                     {Number(b.payEur) >= 0 ? (
-                      <span className="muted"> — pay: <b>{fmtEur(b.payEur)}</b></span>
+                      <span className="muted">
+                        {" "}
+                        — pay: <b>{fmtEur(b.payEur)}</b>
+                      </span>
                     ) : null}
                   </div>
                 </div>

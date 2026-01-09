@@ -15,7 +15,7 @@ async function ensureSchema() {
       mode        TEXT NOT NULL DEFAULT 'farm',   -- 'farm' | 'open'
       opened      BOOLEAN NOT NULL DEFAULT FALSE,
       start       NUMERIC NULL,                   -- start € (pas une date)
-      bet_default NUMERIC NULL,                   -- ✅ bet par défaut (utilisée par /bonus)
+      bet_default NUMERIC NULL,                   -- bet par défaut (utilisée par /bonus)
       archive_id  BIGINT NULL,
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -39,7 +39,11 @@ async function getStreamerBySlug(slug: string): Promise<StreamerRow | null> {
 }
 
 // Autorise: owner / admin / mod (si table existe)
-async function canControlStreamer(streamerId: number, ownerUserId: number, actor: any): Promise<boolean> {
+async function canControlStreamer(
+  streamerId: number,
+  ownerUserId: number,
+  actor: any
+): Promise<boolean> {
   const actorUserId = Number(actor?.id || 0);
   if (!actorUserId) return false;
 
@@ -162,6 +166,16 @@ async function loadQueue(streamerId: number) {
   }));
 }
 
+// ✅ helpers anti-bug Number(null)=0
+function isBonus(it: any) {
+  const b = it?.betEur;
+  return typeof b === "number" && Number.isFinite(b) && b > 0;
+}
+function isUnpaid(it: any) {
+  const p = it?.payEur;
+  return p === null || typeof p === "undefined";
+}
+
 export const callsHuntRouter = express.Router();
 callsHuntRouter.use(requireAuth);
 
@@ -179,11 +193,11 @@ callsHuntRouter.get("/:slug/hunt/state", async (req: AuthedReq, res) => {
     const session = await getSession(streamer.id);
     const items = await loadQueue(streamer.id);
 
-    const farmCalls = items.filter((x) => !(Number(x.betEur) > 0));
-    const bonusDrops = items.filter((x) => Number(x.betEur) > 0);
+    const farmCalls = items.filter((x) => !isBonus(x));
+    const bonusDrops = items.filter((x) => isBonus(x));
 
     const curCall = farmCalls[0] || null;
-    const curOpen = bonusDrops.find((x) => !(Number(x.payEur) >= 0)) || null;
+    const curOpen = bonusDrops.find((x) => isUnpaid(x)) || null;
 
     const opening = session.mode === "open" || session.opened === true;
 
@@ -195,7 +209,7 @@ callsHuntRouter.get("/:slug/hunt/state", async (req: AuthedReq, res) => {
       opening,
 
       startEur: session.start,
-      betEur: session.betDefault, // ✅ utile si tu veux l’afficher côté UI
+      betEur: session.betDefault,
 
       callsCount: farmCalls.length,
       bonusCount: bonusDrops.length,
@@ -244,6 +258,8 @@ callsHuntRouter.get("/:slug/hunt/state", async (req: AuthedReq, res) => {
             provider: curOpen.provider,
             bet: curOpen.betEur,
             betEur: curOpen.betEur,
+            pay: curOpen.payEur,
+            payEur: curOpen.payEur,
             caller: curOpen.username ?? null,
             pos: curOpen.pos,
           }
@@ -256,7 +272,50 @@ callsHuntRouter.get("/:slug/hunt/state", async (req: AuthedReq, res) => {
 });
 
 /**
+ * POST /calls/:slug/hunt/close
+ * Force fermeture => farm
+ */
+callsHuntRouter.post("/:slug/hunt/close", async (req: AuthedReq, res) => {
+  try {
+    const slug = String(req.params.slug || "");
+    const streamer = await getStreamerBySlug(slug);
+    if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    const okCtl = await canControlStreamer(streamer.id, streamer.ownerUserId, req.user);
+    if (!okCtl) return res.status(403).json({ ok: false, error: "forbidden" });
+
+    await setSession(streamer.id, { opened: false, mode: "farm" });
+    return res.json({ ok: true, opening: false });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+/**
+ * POST /calls/:slug/hunt/revert
+ * Alias "revenir en édition" => farm
+ */
+callsHuntRouter.post("/:slug/hunt/revert", async (req: AuthedReq, res) => {
+  try {
+    const slug = String(req.params.slug || "");
+    const streamer = await getStreamerBySlug(slug);
+    if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    const okCtl = await canControlStreamer(streamer.id, streamer.ownerUserId, req.user);
+    if (!okCtl) return res.status(403).json({ ok: false, error: "forbidden" });
+
+    await setSession(streamer.id, { opened: false, mode: "farm" });
+    return res.json({ ok: true, opening: false });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+/**
  * POST /calls/:slug/hunt/open
+ * ✅ toggle: si déjà open -> repasse farm
  */
 callsHuntRouter.post("/:slug/hunt/open", async (req: AuthedReq, res) => {
   try {
@@ -267,8 +326,16 @@ callsHuntRouter.post("/:slug/hunt/open", async (req: AuthedReq, res) => {
     const okCtl = await canControlStreamer(streamer.id, streamer.ownerUserId, req.user);
     if (!okCtl) return res.status(403).json({ ok: false, error: "forbidden" });
 
-    await setSession(streamer.id, { opened: true, mode: "open" });
-    return res.json({ ok: true });
+    const cur = await getSession(streamer.id);
+    const currentlyOpen = cur.mode === "open" || cur.opened === true;
+
+    if (currentlyOpen) {
+      await setSession(streamer.id, { opened: false, mode: "farm" });
+      return res.json({ ok: true, opening: false });
+    } else {
+      await setSession(streamer.id, { opened: true, mode: "open" });
+      return res.json({ ok: true, opening: true });
+    }
   } catch (e) {
     console.error(e);
     return res.status(500).json({ ok: false, error: "server_error" });
@@ -340,10 +407,13 @@ callsHuntRouter.post("/:slug/hunt/pass", async (req: AuthedReq, res) => {
     if (!okCtl) return res.status(403).json({ ok: false, error: "forbidden" });
 
     const items = await loadQueue(streamer.id);
-    const curCall = items.find((x) => !(Number(x.betEur) > 0)) || null;
+    const curCall = items.find((x) => !isBonus(x)) || null;
     if (!curCall) return res.json({ ok: true });
 
-    await pool.query(`DELETE FROM calls_queue WHERE streamer_id=$1 AND id=$2`, [streamer.id, curCall.id]);
+    await pool.query(`DELETE FROM calls_queue WHERE streamer_id=$1 AND id=$2`, [
+      streamer.id,
+      curCall.id,
+    ]);
     return res.json({ ok: true });
   } catch (e) {
     console.error(e);
@@ -369,10 +439,14 @@ callsHuntRouter.post("/:slug/hunt/bonus", async (req: AuthedReq, res) => {
     if (!(bet > 0)) return res.status(400).json({ ok: false, error: "no_bet_set" });
 
     const items = await loadQueue(streamer.id);
-    const curCall = items.find((x) => !(Number(x.betEur) > 0)) || null;
+    const curCall = items.find((x) => !isBonus(x)) || null;
     if (!curCall) return res.json({ ok: true });
 
-    await pool.query(`UPDATE calls_queue SET bet=$3 WHERE streamer_id=$1 AND id=$2`, [streamer.id, curCall.id, bet]);
+    await pool.query(`UPDATE calls_queue SET bet=$3 WHERE streamer_id=$1 AND id=$2`, [
+      streamer.id,
+      curCall.id,
+      bet,
+    ]);
     return res.json({ ok: true });
   } catch (e) {
     console.error(e);
@@ -397,12 +471,43 @@ callsHuntRouter.post("/:slug/hunt/pay", async (req: AuthedReq, res) => {
       return res.status(400).json({ ok: false, error: "bad_pay" });
     }
 
-    const items = await loadQueue(streamer.id);
-    const curOpen = items.find((x) => Number(x.betEur) > 0 && !(Number(x.payEur) >= 0)) || null;
-    if (!curOpen) return res.json({ ok: true });
+const items = await loadQueue(streamer.id);
 
-    await pool.query(`UPDATE calls_queue SET pay=$3 WHERE streamer_id=$1 AND id=$2`, [streamer.id, curOpen.id, payEur]);
-    return res.json({ ok: true });
+const unpaidBonus = items.filter((x) => isBonus(x) && isUnpaid(x));
+const curOpen = unpaidBonus[0] || null;
+
+if (!curOpen) {
+  return res.json({
+    ok: true,
+    paid: false,
+    reason: "no_unpaid_bonus",
+    payEur,
+    unpaidBonusIds: unpaidBonus.map((x) => x.id),
+    snapshot: {
+      total: items.length,
+      farmCount: items.filter((x) => !isBonus(x)).length,
+      bonusCount: items.filter((x) => isBonus(x)).length,
+    },
+  });
+}
+
+await pool.query(`UPDATE calls_queue SET pay=$3 WHERE streamer_id=$1 AND id=$2`, [
+  streamer.id,
+  curOpen.id,
+  payEur,
+]);
+
+return res.json({
+  ok: true,
+  paid: true,
+  paidId: curOpen.id,
+  payEur,
+  was: {
+    payEur: curOpen.payEur ?? null,
+  },
+  unpaidBonusIds: unpaidBonus.map((x) => x.id),
+});
+
   } catch (e) {
     console.error(e);
     return res.status(500).json({ ok: false, error: "server_error" });

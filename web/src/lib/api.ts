@@ -1286,29 +1286,30 @@ export async function getCallsHuntState(streamerSlug: string, token?: string | n
   });
 }
 
+// ✅ maintenant les endpoints renvoient l'état complet (même payload que getCallsHuntState)
 export async function callsHuntPass(streamerSlug: string, token: string) {
-  return j<{ ok: true }>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/pass`, {
+  return j<ApiCallsHuntState>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/pass`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   });
 }
 
 export async function callsHuntBonusDrop(streamerSlug: string, token: string) {
-  return j<{ ok: true }>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/bonus`, {
+  return j<ApiCallsHuntState>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/bonus`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   });
 }
 
 export async function callsHuntOpen(streamerSlug: string, token: string) {
-  return j<{ ok: true }>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/open`, {
+  return j<ApiCallsHuntState>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/open`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   });
 }
 
 export async function callsHuntSetStart(streamerSlug: string, token: string, startEur: number) {
-  return j<{ ok: true }>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/start`, {
+  return j<ApiCallsHuntState>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/start`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ startEur }),
@@ -1316,7 +1317,7 @@ export async function callsHuntSetStart(streamerSlug: string, token: string, sta
 }
 
 export async function callsHuntSetBet(streamerSlug: string, token: string, betEur: number) {
-  return j<{ ok: true }>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/bet`, {
+  return j<ApiCallsHuntState>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/bet`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ betEur }),
@@ -1324,7 +1325,7 @@ export async function callsHuntSetBet(streamerSlug: string, token: string, betEu
 }
 
 export async function callsHuntPay(streamerSlug: string, token: string, payEur: number) {
-  return j<{ ok: true }>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/pay`, {
+  return j<ApiCallsHuntState>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/pay`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ payEur }),
@@ -1332,8 +1333,9 @@ export async function callsHuntPay(streamerSlug: string, token: string, payEur: 
 }
 
 export async function callsHuntReset(streamerSlug: string, token: string) {
-  return j<{ ok: true }>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/reset`, {
+  return j<ApiCallsHuntState>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/reset`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   });
 }
+

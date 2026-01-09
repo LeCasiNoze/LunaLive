@@ -25,6 +25,102 @@ import type { HuntState, SuggestItem, SavedHunt } from "../lib/hunt_types";
 /* ===================== Helpers ===================== */
 const fmtEur = (n: number) => `${(Number(n) || 0).toFixed(2)}€`;
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+function canUseCallsHunt(token: any, streamerSlug: any) {
+  return !!token && !!streamerSlug;
+}
+
+async function callsHuntGetState(slug: string, token: string) {
+  const payload = await callsHuntJson(slug, token, "state");
+  return { ok: true, state: mapCallsHuntToHuntState(payload), raw: payload };
+}
+
+async function callsHuntSetStart(slug: string, token: string, startEur: number) {
+  return callsHuntJson(slug, token, "start", { startEur, start: startEur });
+}
+
+async function callsHuntAddItem(slug: string, token: string, name: string) {
+  return callsHuntJson(slug, token, "add", { name });
+}
+
+async function callsHuntRemoveItem(slug: string, token: string, id: string) {
+  return callsHuntJson(slug, token, "remove", { id });
+}
+
+async function callsHuntSetBet(slug: string, token: string, id: string, betEur: number) {
+  return callsHuntJson(slug, token, "bet", { id, betEur, bet: betEur });
+}
+
+async function callsHuntSetPay(slug: string, token: string, _id: string, payEur: number) {
+  // ✅ backend pay = "premier bonus unpaid"
+  return callsHuntJson(slug, token, "pay", { payEur, pay: payEur });
+}
+
+async function callsHuntOpen(slug: string, token: string) {
+  return callsHuntJson(slug, token, "open", {});
+}
+
+async function callsHuntClose(slug: string, token: string) {
+  return callsHuntJson(slug, token, "close", {});
+}
+
+async function callsHuntRevert(slug: string, token: string) {
+  return callsHuntJson(slug, token, "revert", {});
+}
+
+async function callsHuntNew(slug: string, token: string) {
+  // ✅ route existante
+  return callsHuntJson(slug, token, "reset", {});
+}
+
+async function callsHuntLoad(slug: string, token: string, _huntId: number) {
+  // Pas de "load" côté calls_hunt pour l’instant => on reset
+  return callsHuntJson(slug, token, "reset", {});
+}
+
+async function callsHuntJson(slug: string, token: string, path: string, body?: any) {
+  const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/hunt/${path}`, {
+    method: body ? "POST" : "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(j?.error || j?.message || `API ${r.status}`);
+  return j;
+}
+
+function mapCallsHuntToHuntState(payload: any): HuntState {
+  // ✅ On force un phase compatible UI
+  const phase = (payload?.opening || payload?.mode === "open") ? "open" : "edit";
+
+  const start = payload?.startEur ?? payload?.hunt?.start ?? null;
+
+  // ✅ On affiche UNIQUEMENT les bonus (bonusDrops), sinon fallback filter betEur>0
+  const rawBonus =
+    (Array.isArray(payload?.bonusDrops) && payload.bonusDrops) ||
+    (Array.isArray(payload?.queue) ? payload.queue.filter((x: any) => (Number(x?.betEur) || 0) > 0) : []) ||
+    [];
+
+  const items = rawBonus.map((it: any) => ({
+    id: String(it?.id ?? ""),
+    name: String(it?.slotName ?? it?.name ?? ""),
+    provider: it?.provider ?? null,
+    image_url: it?.imageUrl ?? it?.image_url ?? null,
+    pos: Number.isFinite(Number(it?.pos)) ? Number(it.pos) : null,
+    bet: (it?.betEur ?? it?.bet ?? null),
+    pay: (it?.payEur ?? it?.pay ?? null),
+    caller: it?.username ?? it?.caller ?? null,
+  }));
+
+  return {
+    phase,
+    opened: phase === "open",
+    start: start == null ? null : Number(start),
+    items,
+  } as any;
+}
 
 function apiBase() {
   const envBase = (import.meta as any).env?.VITE_API_BASE;
@@ -150,6 +246,12 @@ export default function HuntPage() {
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
 
+  // 🐛 Debug visuel
+  const [debugOn, setDebugOn] = React.useState(false);
+  const [debugStateRaw, setDebugStateRaw] = React.useState<any>(null);
+  const [debugLastPay, setDebugLastPay] = React.useState<any>(null);
+  const [debugLastAction, setDebugLastAction] = React.useState<string>("");
+
   const [state, setState] = React.useState<HuntState>(
     {
       phase: "edit",
@@ -176,6 +278,9 @@ export default function HuntPage() {
   const syncInFlightRef = React.useRef(false);
   const processedCallIdRef = React.useRef<Record<string, true>>({});
 
+  // ✅ évite que le polling écrase le start pendant qu’on tape
+  const editingStartRef = React.useRef(false);
+
   // ✅ affichage edit : nouveaux en haut
   const itemsEdit = React.useMemo(() => {
     const arr = Array.isArray(items) ? [...items] : [];
@@ -194,9 +299,9 @@ export default function HuntPage() {
   const [sel, setSel] = React.useState(0);
 
   // Cache local (name -> image/provider) pour afficher les thumbs dans la liste
-  const [slotMetaByName, setSlotMetaByName] = React.useState<Record<string, { imageUrl: string | null; provider: string | null }>>(
-    {}
-  );
+  const [slotMetaByName, setSlotMetaByName] = React.useState<
+    Record<string, { imageUrl: string | null; provider: string | null }>
+  >({});
 
   function keyName(n: any) {
     return String(n || "").trim().toLowerCase();
@@ -254,9 +359,11 @@ export default function HuntPage() {
     return remainingToRecoup / remainingBet;
   }, [remainingToRecoup, remainingBet]);
 
-  const canOpen = React.useMemo(() => {
-    return phase === "edit" && startValue > 0 && items.length > 0 && items.every((it: any) => Number(it.bet) > 0);
-  }, [phase, startValue, items]);
+const canOpen = React.useMemo(() => {
+  const useCalls = canUseCallsHunt(token, streamerSlug);
+  if (useCalls) return startValue > 0 && items.length > 0; // bets déjà gérés par calls_queue
+  return phase === "edit" && startValue > 0 && items.length > 0 && items.every((it: any) => Number(it.bet) > 0);
+}, [phase, startValue, items, token, streamerSlug]);
 
   // keep deckIndex valid
   React.useEffect(() => {
@@ -365,19 +472,32 @@ export default function HuntPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
-  async function refreshState() {
-    const s = await huntGetState();
-    if (s?.ok && s.state) {
-      setState(s.state as any);
-      setStartInput(s.state?.start != null ? String(s.state.start) : "");
+async function refreshState(opts?: { preserveStartInput?: boolean }) {
+  // ✅ si possible, on lit l’état depuis /calls/:slug/hunt/state (même monde que BotMenu)
+  const useCalls = canUseCallsHunt(token, streamerSlug);
 
-      // ✅ hydrate tout de suite aussi (évite flash "—")
-      try {
-        const list = Array.isArray((s.state as any)?.items) ? (s.state as any).items : [];
-        if (list.length) hydrateMetaForItems(list);
-      } catch {}
-    }
+  const s = useCalls
+    ? await callsHuntGetState(String(streamerSlug), String(token))
+    : await huntGetState();
+
+  if (useCalls) {
+    setDebugStateRaw((s as any)?.raw ?? null);
   }
+
+  if (s?.ok && (s as any).state) {
+    const nextState = (s as any).state as any;
+    setState(nextState);
+
+    if (!opts?.preserveStartInput && !editingStartRef.current) {
+      setStartInput(nextState?.start != null ? String(nextState.start) : "");
+    }
+
+    try {
+      const list = Array.isArray(nextState?.items) ? nextState.items : [];
+      if (list.length) hydrateMetaForItems(list);
+    } catch {}
+  }
+}
 
   async function refreshAll() {
     await refreshState();
@@ -400,54 +520,53 @@ export default function HuntPage() {
   /* ===================== Hunt sync (calls -> hunt items) ===================== */
 
   // 1) Charger la config calls (huntSync) périodiquement
-    React.useEffect(() => {
+  React.useEffect(() => {
     if (!token || !streamerSlug) return;
 
-    const slug = streamerSlug; // ✅ string garanti ici
+    const slug = streamerSlug;
     let alive = true;
 
     async function loadCfg() {
-        try {
+      try {
         const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/config`, {
-            headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}` },
         });
         const j = await r.json().catch(() => null);
         if (!alive) return;
 
         const cfg = j?.config ?? j;
         setHuntSyncEnabled(pickHuntSyncEnabled(cfg));
-        } catch {
+      } catch {
         // ignore
-        }
+      }
     }
 
     void loadCfg();
     const t = window.setInterval(() => void loadCfg(), 15000);
     return () => {
-        alive = false;
-        window.clearInterval(t);
+      alive = false;
+      window.clearInterval(t);
     };
-    }, [token, streamerSlug]);
-
+  }, [token, streamerSlug]);
 
   // 2) Poll queue et auto-add dans hunt si syncActive
   const syncActive = huntSyncEnabled && startValue > 0 && (phase === "edit" || phase === "open");
 
-    React.useEffect(() => {
+  React.useEffect(() => {
     if (!token || !streamerSlug || !syncActive) return;
 
-    const slug = streamerSlug; // ✅ string garanti
+    const slug = streamerSlug;
     let stop = false;
 
     async function tick() {
-        if (stop) return;
-        if (busyRef.current) return;
-        if (syncInFlightRef.current) return;
+      if (stop) return;
+      if (busyRef.current) return;
+      if (syncInFlightRef.current) return;
 
-        syncInFlightRef.current = true;
-        try {
+      syncInFlightRef.current = true;
+      try {
         const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/list?limit=80`, {
-            headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}` },
         });
         const j = await r.json().catch(() => null);
         if (!j?.ok || !Array.isArray(j.items)) return;
@@ -495,7 +614,9 @@ export default function HuntPage() {
           }));
 
           processedCallIdRef.current[callId] = true;
-          await huntAdd(nm);
+          const useCalls = canUseCallsHunt(token, streamerSlug);
+          if (useCalls) await callsHuntAddItem(String(streamerSlug), String(token), nm);
+          else await huntAdd(nm);
         }
 
         // refresh 1 fois après le batch
@@ -514,6 +635,34 @@ export default function HuntPage() {
       window.clearInterval(t);
     };
   }, [token, streamerSlug, syncActive]);
+
+  /* ===================== ✅ LIVE REFRESH (BotMenu -> HuntPage) ===================== */
+  React.useEffect(() => {
+    if (!token) return;
+
+    // on poll en priorité quand on est en OPEN (deck), sinon seulement si syncActive
+    const shouldPoll = phase === "open" || syncActive;
+    if (!shouldPoll) return;
+
+    let stop = false;
+
+    async function tick() {
+      if (stop) return;
+      if (busyRef.current) return;
+      if (syncInFlightRef.current) return; // évite de se marcher dessus avec le sync calls->hunt
+      await refreshState({ preserveStartInput: true }).catch(() => {});
+    }
+
+    void tick();
+
+    const ms = phase === "open" ? 1000 : 2500;
+    const t = window.setInterval(() => void tick(), ms);
+
+    return () => {
+      stop = true;
+      window.clearInterval(t);
+    };
+  }, [token, phase, syncActive]);
 
   /* ===================== Suggestions ===================== */
 
@@ -633,6 +782,21 @@ export default function HuntPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [phase, items]);
 
+  // ✅ si le pay est mis ailleurs (BotMenu), on “recalle” le deck sur le 1er unpaid
+  React.useEffect(() => {
+    if (phase !== "open") return;
+    if (!items?.length) return;
+
+    const cur = items[deckIndex];
+    const curPaid = cur && cur.pay !== null && typeof cur.pay !== "undefined";
+    if (!cur || curPaid) {
+      const firstUnpaid = items.findIndex((it: any) => it && (it.pay === null || typeof it.pay === "undefined"));
+      if (firstUnpaid >= 0) setDeckIndex(firstUnpaid);
+      else setDeckIndex(Math.min(deckIndex, items.length - 1));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, items, items.length]);
+
   if (!user) {
     return (
       <main className="page huntPage">
@@ -648,17 +812,23 @@ export default function HuntPage() {
     );
   }
 
-  async function saveStart() {
-    const v = Number(startInput);
-    if (!(v > 0)) return;
-    setBusy(true);
-    try {
-      await huntSetStart(v);
-      await refreshState();
-    } finally {
-      setBusy(false);
-    }
+async function saveStart() {
+  const v = Number(startInput);
+  if (!(v > 0)) return;
+
+  const useCalls = canUseCallsHunt(token, streamerSlug);
+
+  setBusy(true);
+  try {
+    if (useCalls) await callsHuntSetStart(String(streamerSlug), String(token), Number(v.toFixed(2)));
+    else await huntSetStart(v);
+
+    await refreshState();
+  } finally {
+    setBusy(false);
   }
+}
+
 
   async function addItemFromSelection(item: SuggestItem | null) {
     if (!(startValue > 0)) {
@@ -684,18 +854,24 @@ export default function HuntPage() {
 
     setBusy(true);
     try {
-      const j = await huntAdd(nm);
+const useCalls = canUseCallsHunt(token, streamerSlug);
 
-      setQ("");
-      setSuggestions([]);
-      setSuggError(null);
-      setSuggLoading(false);
-      setShowSugg(false);
-      setSel(0);
+const j = useCalls
+  ? await callsHuntAddItem(String(streamerSlug), String(token), nm)
+  : await huntAdd(nm);
 
-      if (j?.ok && (j as any).id) setPendingFocusId(String((j as any).id));
+setQ("");
+setSuggestions([]);
+setSuggError(null);
+setSuggLoading(false);
+setShowSugg(false);
+setSel(0);
 
-      await refreshState();
+// si backend renvoie un id d’item, on focus
+if (j?.ok && (j as any).id) setPendingFocusId(String((j as any).id));
+
+await refreshState();
+
     } finally {
       setBusy(false);
     }
@@ -704,8 +880,12 @@ export default function HuntPage() {
   async function removeItem(id: string) {
     setBusy(true);
     try {
-      await huntRemove(id);
-      await refreshState();
+const useCalls = canUseCallsHunt(token, streamerSlug);
+if (useCalls) await callsHuntRemoveItem(String(streamerSlug), String(token), String(id));
+else await huntRemove(id);
+
+await refreshState();
+
     } finally {
       setBusy(false);
     }
@@ -714,29 +894,53 @@ export default function HuntPage() {
   async function setBet(id: string, bet: number) {
     setBusy(true);
     try {
-      await huntSetBet(id, bet);
-      await refreshState();
+const useCalls = canUseCallsHunt(token, streamerSlug);
+const b = Math.max(0, Number((Number(bet) || 0).toFixed(2)));
+
+if (useCalls) await callsHuntSetBet(String(streamerSlug), String(token), String(id), b);
+else await huntSetBet(id, b);
+
+await refreshState();
+
     } finally {
       setBusy(false);
     }
   }
 
-  async function setPay(id: string, pay: number) {
-    setBusy(true);
-    try {
-      await huntSetPay(id, pay);
-      await refreshState();
-    } finally {
-      setBusy(false);
+async function setPay(id: string, pay: number) {
+  setBusy(true);
+  try {
+    const useCalls = canUseCallsHunt(token, streamerSlug);
+    const p = Math.max(0, Number((Number(pay) || 0).toFixed(2)));
+
+    setDebugLastAction(`pay(${p})`);
+
+    if (useCalls) {
+      const resp = await callsHuntSetPay(String(streamerSlug), String(token), String(id), p);
+      setDebugLastPay(resp);
+    } else {
+      const resp = await huntSetPay(id, p);
+      setDebugLastPay(resp);
     }
+
+    await refreshState();
+  } finally {
+    setBusy(false);
   }
+}
+
 
   async function doOpen() {
     if (!canOpen) return;
     setBusy(true);
     try {
-      await huntOpen();
-      await refreshState();
+const useCalls = canUseCallsHunt(token, streamerSlug);
+
+if (useCalls) await callsHuntOpen(String(streamerSlug), String(token));
+else await huntOpen();
+
+await refreshState();
+
     } finally {
       setBusy(false);
     }
@@ -745,31 +949,46 @@ export default function HuntPage() {
   async function doClose() {
     setBusy(true);
     try {
-      await huntClose();
-      await refreshAll();
+const useCalls = canUseCallsHunt(token, streamerSlug);
+
+if (useCalls) await callsHuntClose(String(streamerSlug), String(token));
+else await huntClose();
+
+await refreshAll();
+
     } finally {
       setBusy(false);
     }
   }
 
-  async function doRevert() {
-    setBusy(true);
-    try {
-      await huntRevert();
-      await refreshState();
-    } finally {
-      setBusy(false);
-    }
+async function doRevert() {
+  setBusy(true);
+  try {
+    const useCalls = canUseCallsHunt(token, streamerSlug);
+
+    if (useCalls) await callsHuntRevert(String(streamerSlug), String(token));
+    else await huntRevert();
+
+    await refreshState();
+  } finally {
+    setBusy(false);
   }
+}
 
   async function doNew() {
     setBusy(true);
     try {
-      await huntNew();
-      setDraftPay({});
-      setConfirmed({});
-      processedCallIdRef.current = {}; // reset sync memory sur nouveau hunt
-      await refreshAll();
+      
+const useCalls = canUseCallsHunt(token, streamerSlug);
+
+if (useCalls) await callsHuntNew(String(streamerSlug), String(token));
+else await huntNew();
+
+setDraftPay({});
+setConfirmed({});
+processedCallIdRef.current = {};
+
+await refreshAll();
     } finally {
       setBusy(false);
     }
@@ -778,11 +997,17 @@ export default function HuntPage() {
   async function doLoad(id: number) {
     setBusy(true);
     try {
-      await huntLoad(id);
-      setDraftPay({});
-      setConfirmed({});
-      processedCallIdRef.current = {}; // reset sync memory sur load
-      await refreshState();
+const useCalls = canUseCallsHunt(token, streamerSlug);
+
+if (useCalls) await callsHuntLoad(String(streamerSlug), String(token), id);
+else await huntLoad(id);
+
+setDraftPay({});
+setConfirmed({});
+processedCallIdRef.current = {};
+
+await refreshState();
+
     } finally {
       setBusy(false);
     }
@@ -837,8 +1062,18 @@ export default function HuntPage() {
     const raw = String(draftPay[currentKey] ?? "").trim();
     if (!raw) return;
     const v = Math.max(0, Number((Number(raw) || 0).toFixed(2)));
+
     await setPay(currentId, v);
     setConfirmed((p) => ({ ...p, [currentKey]: true }));
+
+    // ✅ auto-next (workflow “bot menu”)
+const nextUnpaid = items.findIndex((it: any, idx: number) => {
+  if (idx <= deckIndex) return false;
+  return it && (it.pay === null || typeof it.pay === "undefined");
+});
+if (nextUnpaid >= 0) setDeckIndex(nextUnpaid);
+else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length - 1, x + 1));
+
   }
 
   function goNext() {
@@ -938,6 +1173,8 @@ export default function HuntPage() {
                     type="number"
                     step="0.01"
                     value={startInput}
+                    onFocus={() => (editingStartRef.current = true)}
+                    onBlur={() => (editingStartRef.current = false)}
                     onChange={(e) => setStartInput(e.target.value)}
                     placeholder="ex: 100"
                     style={{ width: 160 }}
@@ -1393,6 +1630,105 @@ export default function HuntPage() {
           {loading ? <div className="huntSmallMuted">Chargement…</div> : null}
         </section>
       </div>
+      {/* 🐛 Debug overlay */}
+<div
+  style={{
+    position: "fixed",
+    right: 14,
+    bottom: 14,
+    zIndex: 9999,
+    display: "grid",
+    gap: 8,
+    pointerEvents: "auto",
+  }}
+>
+  <button
+    className="btn"
+    onClick={() => setDebugOn((v) => !v)}
+    title="Debug"
+    style={{ width: 46, justifyContent: "center" }}
+  >
+    🐛
+  </button>
+
+  {debugOn ? (
+    <div
+      style={{
+        width: 420,
+        maxWidth: "92vw",
+        maxHeight: "70vh",
+        overflow: "auto",
+        borderRadius: 14,
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(0,0,0,0.72)",
+        padding: 12,
+      }}
+    >
+      <div style={{ fontWeight: 900, marginBottom: 8 }}>Debug Hunt</div>
+
+      <div className="huntSmallMuted" style={{ marginBottom: 10 }}>
+        action: <b>{debugLastAction || "—"}</b>
+      </div>
+
+      <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
+        <div className="huntSmallMuted">
+          phase: <b>{String(phase)}</b> • opening(raw):{" "}
+          <b>{String(debugStateRaw?.opening ?? debugStateRaw?.mode ?? "—")}</b>
+        </div>
+        <div className="huntSmallMuted">
+          start: <b>{String(debugStateRaw?.startEur ?? state?.start ?? "—")}</b> • items: <b>{items.length}</b>
+        </div>
+        <div className="huntSmallMuted">
+          deckIndex: <b>{deckIndex}</b> • currentId: <b>{currentId ?? "—"}</b>
+        </div>
+
+        <div className="huntSmallMuted">
+          unpaidIds:{" "}
+          <b>
+            {items
+              .filter((it: any) => it && (it.pay === null || typeof it.pay === "undefined"))
+              .map((it: any) => String(it.id))
+              .join(", ") || "—"}
+          </b>
+        </div>
+      </div>
+
+      <div style={{ fontWeight: 800, marginBottom: 6 }}>Last PAY response</div>
+      <pre
+        style={{
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          fontSize: 12,
+          lineHeight: 1.25,
+          margin: 0,
+          padding: 10,
+          borderRadius: 12,
+          border: "1px solid rgba(255,255,255,0.10)",
+          background: "rgba(255,255,255,0.06)",
+        }}
+      >
+        {JSON.stringify(debugLastPay, null, 2)}
+      </pre>
+
+      <div style={{ fontWeight: 800, marginTop: 10, marginBottom: 6 }}>Raw state (/calls/.../hunt/state)</div>
+      <pre
+        style={{
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          fontSize: 12,
+          lineHeight: 1.25,
+          margin: 0,
+          padding: 10,
+          borderRadius: 12,
+          border: "1px solid rgba(255,255,255,0.10)",
+          background: "rgba(255,255,255,0.06)",
+        }}
+      >
+        {JSON.stringify(debugStateRaw, null, 2)}
+      </pre>
+    </div>
+  ) : null}
+</div>
     </main>
   );
 }

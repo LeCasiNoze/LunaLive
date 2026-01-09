@@ -4,17 +4,31 @@ import crypto from "crypto";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
 import { searchSlots as searchSlotsCatalog } from "../calls/catalog.js";
-import { addCall, deleteCallById, getCallsSettings, listCalls, reorderCalls, setCallBet, setCallPay, setCallBounty } from "../calls/queue.js";
+import {
+  addCall,
+  deleteCallById,
+  getCallsSettings,
+  reorderCalls,
+  setCallBet,
+  setCallPay,
+  setCallBounty,
+} from "../calls/queue.js";
 
 type HuntPhase = "edit" | "open" | "closed";
 
 type HuntItem = {
   id: string;
   name: string;
+  provider?: string | null;
   image_url?: string | null;
+
+  // queue meta
+  pos?: number | null;
+  slot_key?: string | null;
+
   bet?: number | null;
   pay?: number | null;
-  provider?: string | null;
+
   bounty?: boolean | null;
   caller?: string | null;
 };
@@ -74,6 +88,7 @@ function scoreName(q: string, name: string) {
 }
 
 async function ensureSchema() {
+  // tables
   await pool.query(`
     CREATE TABLE IF NOT EXISTS hunt_sessions (
       user_id      INT PRIMARY KEY,
@@ -120,6 +135,12 @@ async function ensureSchema() {
     );
     CREATE INDEX IF NOT EXISTS hunt_share_tokens_user_idx ON hunt_share_tokens(user_id);
   `);
+
+  // ✅ compat columns used by /calls-hunt/* (bet_default)
+  await pool.query(`
+    ALTER TABLE hunt_sessions
+    ADD COLUMN IF NOT EXISTS bet_default NUMERIC NULL;
+  `);
 }
 
 async function ensureSession(userId: number) {
@@ -134,7 +155,20 @@ async function ensureSession(userId: number) {
   );
 }
 
-async function getMyStreamerMeta(userId: number): Promise<{ streamerId: number; ownerUserId: number } | null> {
+async function getBetDefault(userId: number): Promise<number | null> {
+  await ensureSession(userId);
+  const r = await pool.query(`SELECT bet_default FROM hunt_sessions WHERE user_id=$1`, [userId]);
+  return num(r.rows?.[0]?.bet_default);
+}
+
+async function setBetDefault(userId: number, bet: number | null) {
+  await ensureSession(userId);
+  await pool.query(`UPDATE hunt_sessions SET bet_default=$2, updated_at=NOW() WHERE user_id=$1`, [userId, bet]);
+}
+
+async function getMyStreamerMeta(
+  userId: number
+): Promise<{ streamerId: number; ownerUserId: number } | null> {
   const r = await pool.query(
     `SELECT id, user_id AS "ownerUserId" FROM streamers WHERE user_id=$1 LIMIT 1`,
     [userId]
@@ -144,7 +178,9 @@ async function getMyStreamerMeta(userId: number): Promise<{ streamerId: number; 
   return { streamerId: Number(row.id), ownerUserId: Number(row.ownerUserId) };
 }
 
-async function isSyncActiveForUser(userId: number): Promise<{ ok: true; streamerId: number } | { ok: false }> {
+async function isSyncActiveForUser(
+  userId: number
+): Promise<{ ok: true; streamerId: number } | { ok: false }> {
   const meta = await getMyStreamerMeta(userId);
   if (!meta) return { ok: false };
 
@@ -162,7 +198,10 @@ async function isSyncActiveForUser(userId: number): Promise<{ ok: true; streamer
 async function getState(userId: number): Promise<HuntState> {
   await ensureSession(userId);
 
-  const s = await pool.query(`SELECT phase, opened, start, archive_id FROM hunt_sessions WHERE user_id=$1`, [userId]);
+  const s = await pool.query(
+    `SELECT phase, opened, start, archive_id FROM hunt_sessions WHERE user_id=$1`,
+    [userId]
+  );
   const row = s.rows[0] || {};
   const phase = (row?.phase as HuntPhase) || "edit";
   const opened = !!row?.opened;
@@ -174,6 +213,8 @@ async function getState(userId: number): Promise<HuntState> {
       `
       SELECT
         q.id::text AS id,
+        q.pos AS pos,
+        q.slot_key AS slot_key,
         q.slot_name AS name,
         q.provider AS provider,
         sc.image_url AS image_url,
@@ -192,12 +233,16 @@ async function getState(userId: number): Promise<HuntState> {
 
     const mapped: HuntItem[] = (items.rows || []).map((r: any) => ({
       id: String(r.id),
+      pos: Number.isFinite(Number(r.pos)) ? Number(r.pos) : null,
+      slot_key: r.slot_key ?? null,
+
       name: String(r.name),
       provider: r.provider ?? null,
       image_url: r.image_url ?? null,
+
       bet: num(r.bet),
       pay: num(r.pay),
-      bounty: typeof r.bounty === "boolean" ? r.bounty : (r.bounty ?? null),
+      bounty: typeof r.bounty === "boolean" ? r.bounty : r.bounty ?? null,
       caller: r.caller ?? null,
     }));
 
@@ -212,21 +257,24 @@ async function getState(userId: number): Promise<HuntState> {
 
   // fallback (old hunt2 local list)
   const itemsQ = await pool.query(
-    `SELECT id, name, provider, image_url, bet, pay, bounty, caller
+    `SELECT id, pos, name, provider, image_url, bet, pay, bounty, caller
      FROM hunt_session_items
      WHERE user_id=$1
      ORDER BY pos ASC, id ASC`,
     [userId]
   );
 
-  const items: HuntItem[] = itemsQ.rows.map((r) => ({
+  const items: HuntItem[] = itemsQ.rows.map((r: any) => ({
     id: String(r.id),
+    pos: Number.isFinite(Number(r.pos)) ? Number(r.pos) : null,
+
     name: String(r.name),
     provider: r.provider ?? null,
     image_url: r.image_url ?? null,
+
     bet: num(r.bet),
     pay: num(r.pay),
-    bounty: typeof r.bounty === "boolean" ? r.bounty : (r.bounty ?? null),
+    bounty: typeof r.bounty === "boolean" ? r.bounty : r.bounty ?? null,
     caller: r.caller ?? null,
   }));
 
@@ -244,7 +292,10 @@ async function writeSessionMeta(
   patch: Partial<{ phase: HuntPhase; opened: boolean; start: number | null; archive_id: number | null }>
 ) {
   await ensureSession(userId);
-  const cur = await pool.query(`SELECT phase, opened, start, archive_id FROM hunt_sessions WHERE user_id=$1`, [userId]);
+  const cur = await pool.query(
+    `SELECT phase, opened, start, archive_id FROM hunt_sessions WHERE user_id=$1`,
+    [userId]
+  );
   const row = cur.rows[0] || {};
   const phase = patch.phase ?? (row.phase as HuntPhase) ?? "edit";
   const opened = typeof patch.opened === "boolean" ? patch.opened : !!row.opened;
@@ -287,6 +338,7 @@ async function suggestSlots(q: string, limit = 12): Promise<SuggestItem[]> {
   }
   return out;
 }
+
 async function getStreamerBySlug(slug: string): Promise<{ streamerId: number; ownerUserId: number } | null> {
   const r = await pool.query(`SELECT id, user_id AS "ownerUserId" FROM streamers WHERE slug=$1 LIMIT 1`, [slug]);
   const row = r.rows?.[0];
@@ -305,7 +357,6 @@ async function canControlStreamer(opts: {
   if (actorRole === "admin") return true;
   if (actorUserId === ownerUserId) return true;
 
-  // mods: table "streamer_moderators" (si elle existe)
   try {
     const r = await pool.query(
       `SELECT 1 FROM streamer_moderators WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`,
@@ -313,9 +364,8 @@ async function canControlStreamer(opts: {
     );
     if ((r.rows?.length ?? 0) > 0) return true;
   } catch {
-    // si la table n'existe pas, on ne crash pas, on refuse juste
+    // table absente => pas de crash
   }
-
   return false;
 }
 
@@ -344,6 +394,7 @@ async function requireStreamerControl(req: any, res: any, slug: string) {
   return meta;
 }
 
+// ✅ current call = first FARM item (bet null/<=0)
 async function getHeadCall(streamerId: number) {
   const r = await pool.query(
     `
@@ -359,6 +410,7 @@ async function getHeadCall(streamerId: number) {
     LEFT JOIN slots_catalog sc
       ON sc.name_key = q.slot_key
     WHERE q.streamer_id=$1
+      AND (q.bet IS NULL OR q.bet <= 0)
     ORDER BY q.pos ASC
     LIMIT 1
   `,
@@ -367,6 +419,7 @@ async function getHeadCall(streamerId: number) {
   return r.rows?.[0] ?? null;
 }
 
+// ✅ current open item = first BONUS item unpaid (bet>0 && pay NULL)
 async function getFirstUnpaidOpenItem(streamerId: number) {
   const r = await pool.query(
     `
@@ -382,6 +435,7 @@ async function getFirstUnpaidOpenItem(streamerId: number) {
     LEFT JOIN slots_catalog sc
       ON sc.name_key = q.slot_key
     WHERE q.streamer_id=$1
+      AND q.bet IS NOT NULL AND q.bet > 0
       AND q.pay IS NULL
     ORDER BY q.pos ASC
     LIMIT 1
@@ -392,136 +446,275 @@ async function getFirstUnpaidOpenItem(streamerId: number) {
 }
 
 async function rotateCallsQueue(streamerId: number) {
-  const idsR = await pool.query(
-    `SELECT id::text AS id FROM calls_queue WHERE streamer_id=$1 ORDER BY pos ASC`,
-    [streamerId]
-  );
+  const idsR = await pool.query(`SELECT id::text AS id FROM calls_queue WHERE streamer_id=$1 ORDER BY pos ASC`, [
+    streamerId,
+  ]);
   const ids = (idsR.rows || []).map((x: any) => String(x.id)).filter(Boolean);
   if (ids.length <= 1) return;
 
   const first = ids.shift()!;
   ids.push(first);
-
   await reorderCalls(pool, streamerId, ids);
 }
 
 export const hunt2Router = express.Router();
+hunt2Router.use(express.json());
 
-// ──────────────────────────────────────────
-// ✅ COMPAT BotMenu: /calls/:slug/hunt/*
-// ──────────────────────────────────────────
+/* ──────────────────────────────────────────
+   ✅ Shared payload builder for /calls/* & /calls-hunt/*
+   (IMPORTANT: all POST now return the updated state)
+   ────────────────────────────────────────── */
 
-hunt2Router.get("/calls/:slug/hunt/state", requireAuth, async (req: any, res) => {
-  try {
-    const slug = String(req.params.slug || "");
-    const meta = await requireStreamerControl(req, res, slug);
-    if (!meta) return;
+async function buildCallsCompatPayload(meta: { streamerId: number; ownerUserId: number }) {
+  const st = await getState(meta.ownerUserId);
+  const betDefault = await getBetDefault(meta.ownerUserId);
 
-    // hunt meta = stockée sur le owner (comme ton hunt2)
-    const st = await getState(meta.ownerUserId);
+  const mode: "farm" | "open" = st.phase === "open" ? "open" : "farm";
+  const opening = mode === "open";
 
-    const mode: "farm" | "open" = st.phase === "open" ? "open" : "farm";
+  const queue = (st.items || [])
+    .slice()
+    .sort((a, b) => (Number(a.pos ?? 0) || 0) - (Number(b.pos ?? 0) || 0))
+    .map((it) => ({
+      id: it.id,
+      slotName: it.name,
+      provider: it.provider ?? null,
+      username: it.caller ?? null,
+      pos: Number(it.pos ?? 0) || 0,
+      imageUrl: it.image_url ?? null,
+      betEur: it.bet ?? null,
+      payEur: it.pay ?? null,
+    }));
 
-    const head = await getHeadCall(meta.streamerId);
-    const openItem = mode === "open" ? await getFirstUnpaidOpenItem(meta.streamerId) : null;
+  const bonusDrops = queue.filter((x) => Number(x.betEur) > 0);
 
-    return res.json({
-      ok: true,
-      mode,
-      hunt: {
-        phase: st.phase,
-        opened: !!st.opened,
-        start: num(st.start),
-        archive_id: st.archive_id ?? null,
-        itemsCount: Array.isArray(st.items) ? st.items.length : 0,
-      },
-      currentCall: head,
-      currentOpenItem: openItem,
-    });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ ok: false, error: "server_error" });
-  }
-});
+  const head = await getHeadCall(meta.streamerId);
+  const openItem = opening ? await getFirstUnpaidOpenItem(meta.streamerId) : null;
 
-hunt2Router.post("/calls/:slug/hunt/open", requireAuth, async (req: any, res) => {
-  try {
-    const slug = String(req.params.slug || "");
-    const meta = await requireStreamerControl(req, res, slug);
-    if (!meta) return;
+  return {
+    ok: true as const,
 
-    const st = await getState(meta.ownerUserId);
-    const start = Number(st.start) || 0;
+    mode,
+    opening,
 
-    if (!(start > 0)) return res.status(400).json({ ok: false, error: "start_required" });
-    if (!st.items?.length) return res.status(400).json({ ok: false, error: "empty" });
-    if (!st.items.every((it) => (Number(it.bet) || 0) > 0)) return res.status(400).json({ ok: false, error: "bet_required" });
+    startEur: num(st.start),
+    betEur: betDefault,
 
-    await writeSessionMeta(meta.ownerUserId, { phase: "open", opened: true });
-    return res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ ok: false, error: "server_error" });
-  }
-});
+    queue,
 
-hunt2Router.post("/calls/:slug/hunt/pass", requireAuth, async (req: any, res) => {
-  try {
-    const slug = String(req.params.slug || "");
-    const meta = await requireStreamerControl(req, res, slug);
-    if (!meta) return;
+    bonusDrops: bonusDrops.map((x) => ({
+      id: x.id,
+      slotName: x.slotName,
+      provider: x.provider,
+      username: x.username,
+      imageUrl: x.imageUrl,
+      betEur: x.betEur,
+      payEur: x.payEur,
+      pos: x.pos,
+    })),
 
-    await rotateCallsQueue(meta.streamerId);
-    return res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ ok: false, error: "server_error" });
-  }
-});
+    // compat old payload
+    hunt: {
+      phase: st.phase,
+      opened: !!st.opened,
+      start: num(st.start),
+      archive_id: st.archive_id ?? null,
+      itemsCount: Array.isArray(st.items) ? st.items.length : 0,
+    },
 
-hunt2Router.post("/calls/:slug/hunt/bonus", requireAuth, async (req: any, res) => {
-  try {
-    const slug = String(req.params.slug || "");
-    const meta = await requireStreamerControl(req, res, slug);
-    if (!meta) return;
+    currentCall: head,
+    currentOpenItem: openItem,
+  };
+}
 
-    const bet = Number(req.body?.bet);
-    if (!(bet > 0)) return res.status(400).json({ ok: false, error: "bad_bet" });
+/* ──────────────────────────────────────────
+   ✅ Shared handlers for /calls/* and /calls-hunt/*
+   ────────────────────────────────────────── */
 
-    const head = await getHeadCall(meta.streamerId);
-    if (!head?.id) return res.status(400).json({ ok: false, error: "empty_queue" });
+function registerCallsCompat(prefix: "/calls" | "/calls-hunt") {
+  // STATE
+  hunt2Router.get(`${prefix}/:slug/hunt/state`, requireAuth, async (req: any, res) => {
+    try {
+      const slug = String(req.params.slug || "");
+      const meta = await requireStreamerControl(req, res, slug);
+      if (!meta) return;
 
-    await setCallBet(pool, meta.streamerId, String(head.id), bet);
+      const payload = await buildCallsCompatPayload(meta);
+      return res.json(payload);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ ok: false, error: "server_error" });
+    }
+  });
 
-    // ✅ workflow: bonus -> on avance automatiquement sur la suivante
-    await rotateCallsQueue(meta.streamerId);
+  // OPEN
+  hunt2Router.post(`${prefix}/:slug/hunt/open`, requireAuth, async (req: any, res) => {
+    try {
+      const slug = String(req.params.slug || "");
+      const meta = await requireStreamerControl(req, res, slug);
+      if (!meta) return;
 
-    return res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ ok: false, error: "server_error" });
-  }
-});
+      const st = await getState(meta.ownerUserId);
+      const start = Number(st.start) || 0;
 
-hunt2Router.post("/calls/:slug/hunt/pay", requireAuth, async (req: any, res) => {
-  try {
-    const slug = String(req.params.slug || "");
-    const meta = await requireStreamerControl(req, res, slug);
-    if (!meta) return;
+      if (!(start > 0)) return res.status(400).json({ ok: false, error: "start_required" });
+      if (!st.items?.length) return res.status(400).json({ ok: false, error: "empty" });
 
-    const pay = Number(req.body?.pay);
-    if (!(pay >= 0)) return res.status(400).json({ ok: false, error: "bad_pay" });
+      // ✅ IMPORTANT: en sync mode tu as des FARM (bet null) + BONUS (bet>0)
+      // On autorise l'open si on a AU MOINS 1 bonus drop (bet>0)
+      const hasBonus = (st.items || []).some((it) => (Number(it.bet) || 0) > 0);
+      if (!hasBonus) return res.status(400).json({ ok: false, error: "no_bonus_drops" });
 
-    const it = await getFirstUnpaidOpenItem(meta.streamerId);
-    if (!it?.id) return res.json({ ok: true }); // rien à payer
+      await writeSessionMeta(meta.ownerUserId, { phase: "open", opened: true });
 
-    await setCallPay(pool, meta.streamerId, String(it.id), pay);
-    return res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ ok: false, error: "server_error" });
-  }
-});
+      const payload = await buildCallsCompatPayload(meta);
+      return res.json(payload);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ ok: false, error: "server_error" });
+    }
+  });
+
+  // PASS
+  hunt2Router.post(`${prefix}/:slug/hunt/pass`, requireAuth, async (req: any, res) => {
+    try {
+      const slug = String(req.params.slug || "");
+      const meta = await requireStreamerControl(req, res, slug);
+      if (!meta) return;
+
+      await rotateCallsQueue(meta.streamerId);
+
+      const payload = await buildCallsCompatPayload(meta);
+      return res.json(payload);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ ok: false, error: "server_error" });
+    }
+  });
+
+  // BONUS DROP (uses bet_default stored; body optional)
+  hunt2Router.post(`${prefix}/:slug/hunt/bonus`, requireAuth, async (req: any, res) => {
+    try {
+      const slug = String(req.params.slug || "");
+      const meta = await requireStreamerControl(req, res, slug);
+      if (!meta) return;
+
+      // front usually sends NO body -> take stored bet_default
+      const betFromBody = Number(req.body?.betEur ?? req.body?.bet);
+      const betDefault = await getBetDefault(meta.ownerUserId);
+      const bet = Number.isFinite(betFromBody) && betFromBody > 0 ? betFromBody : Number(betDefault ?? 0);
+
+      if (!(bet > 0)) return res.status(400).json({ ok: false, error: "no_bet_set" });
+
+      const head = await getHeadCall(meta.streamerId);
+      if (!head?.id) return res.status(400).json({ ok: false, error: "empty_queue" });
+
+      await setCallBet(pool, meta.streamerId, String(head.id), bet);
+
+      // workflow: bonus -> go next
+      await rotateCallsQueue(meta.streamerId);
+
+      const payload = await buildCallsCompatPayload(meta);
+      return res.json(payload);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ ok: false, error: "server_error" });
+    }
+  });
+
+  // PAY
+  hunt2Router.post(`${prefix}/:slug/hunt/pay`, requireAuth, async (req: any, res) => {
+    try {
+      const slug = String(req.params.slug || "");
+      const meta = await requireStreamerControl(req, res, slug);
+      if (!meta) return;
+
+      const pay = Number(req.body?.payEur);
+      if (!Number.isFinite(pay) || pay < 0) return res.status(400).json({ ok: false, error: "bad_pay" });
+
+      const it = await getFirstUnpaidOpenItem(meta.streamerId);
+      if (it?.id) {
+        await setCallPay(pool, meta.streamerId, String(it.id), pay);
+      }
+
+      // ✅ always return the updated state (even if nothing to pay)
+      const payload = await buildCallsCompatPayload(meta);
+      return res.json(payload);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ ok: false, error: "server_error" });
+    }
+  });
+
+  // START
+  hunt2Router.post(`${prefix}/:slug/hunt/start`, requireAuth, async (req: any, res) => {
+    try {
+      const slug = String(req.params.slug || "");
+      const meta = await requireStreamerControl(req, res, slug);
+      if (!meta) return;
+
+      const startEur = Number(req.body?.startEur);
+      if (!Number.isFinite(startEur) || startEur <= 0) return res.status(400).json({ ok: false, error: "bad_start" });
+
+      await writeSessionMeta(meta.ownerUserId, { start: startEur, phase: "edit", opened: false, archive_id: null });
+
+      const payload = await buildCallsCompatPayload(meta);
+      return res.json(payload);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ ok: false, error: "server_error" });
+    }
+  });
+
+  // BET DEFAULT
+  hunt2Router.post(`${prefix}/:slug/hunt/bet`, requireAuth, async (req: any, res) => {
+    try {
+      const slug = String(req.params.slug || "");
+      const meta = await requireStreamerControl(req, res, slug);
+      if (!meta) return;
+
+      const betEur = Number(req.body?.betEur);
+      if (!Number.isFinite(betEur) || betEur <= 0) return res.status(400).json({ ok: false, error: "bad_bet" });
+
+      await setBetDefault(meta.ownerUserId, betEur);
+
+      const payload = await buildCallsCompatPayload(meta);
+      return res.json(payload);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ ok: false, error: "server_error" });
+    }
+  });
+
+  // RESET
+  hunt2Router.post(`${prefix}/:slug/hunt/reset`, requireAuth, async (req: any, res) => {
+    try {
+      const slug = String(req.params.slug || "");
+      const meta = await requireStreamerControl(req, res, slug);
+      if (!meta) return;
+
+      await pool.query(`DELETE FROM calls_queue WHERE streamer_id=$1`, [meta.streamerId]);
+
+      await ensureSession(meta.ownerUserId);
+      await pool.query(
+        `UPDATE hunt_sessions
+         SET phase='edit', opened=FALSE, start=NULL, bet_default=NULL, archive_id=NULL, updated_at=NOW()
+         WHERE user_id=$1`,
+        [meta.ownerUserId]
+      );
+
+      const payload = await buildCallsCompatPayload(meta);
+      return res.json(payload);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ ok: false, error: "server_error" });
+    }
+  });
+}
+
+// ✅ register BOTH route families
+registerCallsCompat("/calls");
+registerCallsCompat("/calls-hunt");
 
 /* =========================
    PUBLIC SHARE (no auth)
@@ -560,7 +753,7 @@ hunt2Router.get("/api/hunt2/share/state", async (req, res) => {
 
 hunt2Router.use("/api/hunt2", requireAuth);
 
-hunt2Router.get("/api/hunt2/state", async (req, res) => {
+hunt2Router.get("/api/hunt2/state", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     const state = await getState(userId);
@@ -583,7 +776,7 @@ hunt2Router.get("/api/hunt2/suggest", async (req, res) => {
   }
 });
 
-hunt2Router.post("/api/hunt2/set-start", async (req, res) => {
+hunt2Router.post("/api/hunt2/set-start", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     const start = Number(req.body?.start);
@@ -598,8 +791,8 @@ hunt2Router.post("/api/hunt2/set-start", async (req, res) => {
   }
 });
 
-// ADD: in sync mode, we insert into calls_queue (same list)
-hunt2Router.post("/api/hunt2/add", async (req, res) => {
+// ADD: in sync mode, insert into calls_queue (same list)
+hunt2Router.post("/api/hunt2/add", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     const name = String(req.body?.name || "").trim();
@@ -610,7 +803,6 @@ hunt2Router.post("/api/hunt2/add", async (req, res) => {
 
     const sync = await isSyncActiveForUser(userId);
     if (sync.ok) {
-      // add to calls_queue as streamer (bypass limit)
       const add = await addCall(pool, sync.streamerId, userId, String(req.user?.username || "streamer"), name, null, {
         bypassLimit: true,
       });
@@ -618,7 +810,6 @@ hunt2Router.post("/api/hunt2/add", async (req, res) => {
       return res.json({ ok: true, id: add.item.id });
     }
 
-    // fallback old behavior (hunt_session_items)
     const ins = await pool.query(
       `INSERT INTO hunt_session_items(user_id, pos, name, provider, image_url)
        VALUES ($1, (SELECT COALESCE(MAX(pos), -1)+1 FROM hunt_session_items WHERE user_id=$1), $2, NULL, NULL)
@@ -633,7 +824,7 @@ hunt2Router.post("/api/hunt2/add", async (req, res) => {
   }
 });
 
-hunt2Router.post("/api/hunt2/remove", async (req, res) => {
+hunt2Router.post("/api/hunt2/remove", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     const id = String(req.body?.id || "");
@@ -653,7 +844,7 @@ hunt2Router.post("/api/hunt2/remove", async (req, res) => {
   }
 });
 
-hunt2Router.post("/api/hunt2/set-bet", async (req, res) => {
+hunt2Router.post("/api/hunt2/set-bet", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     const id = String(req.body?.id || "");
@@ -674,7 +865,7 @@ hunt2Router.post("/api/hunt2/set-bet", async (req, res) => {
   }
 });
 
-hunt2Router.post("/api/hunt2/set-pay", async (req, res) => {
+hunt2Router.post("/api/hunt2/set-pay", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     const id = String(req.body?.id || "");
@@ -695,7 +886,7 @@ hunt2Router.post("/api/hunt2/set-pay", async (req, res) => {
   }
 });
 
-hunt2Router.post("/api/hunt2/set-bounty", async (req, res) => {
+hunt2Router.post("/api/hunt2/set-bounty", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     const id = String(req.body?.id || "");
@@ -742,7 +933,7 @@ hunt2Router.post("/api/hunt2/reorder", express.json(), async (req: any, res) => 
   }
 });
 
-hunt2Router.post("/api/hunt2/open", async (req, res) => {
+hunt2Router.post("/api/hunt2/open", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     const st = await getState(userId);
@@ -750,7 +941,8 @@ hunt2Router.post("/api/hunt2/open", async (req, res) => {
     const start = Number(st.start) || 0;
     if (!(start > 0)) return res.status(400).json({ ok: false, error: "start_required" });
     if (!st.items.length) return res.status(400).json({ ok: false, error: "empty" });
-    if (!st.items.every((it) => (Number(it.bet) || 0) > 0)) return res.status(400).json({ ok: false, error: "bet_required" });
+    if (!st.items.every((it) => (Number(it.bet) || 0) > 0))
+      return res.status(400).json({ ok: false, error: "bet_required" });
 
     await writeSessionMeta(userId, { phase: "open", opened: true });
     const state = await getState(userId);
@@ -761,7 +953,7 @@ hunt2Router.post("/api/hunt2/open", async (req, res) => {
   }
 });
 
-hunt2Router.post("/api/hunt2/revert", async (req, res) => {
+hunt2Router.post("/api/hunt2/revert", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     await writeSessionMeta(userId, { phase: "edit", opened: false });
@@ -774,7 +966,7 @@ hunt2Router.post("/api/hunt2/revert", async (req, res) => {
 });
 
 // close = archive snapshot (in sync mode: snapshot comes from calls_queue view)
-hunt2Router.post("/api/hunt2/close", async (req, res) => {
+hunt2Router.post("/api/hunt2/close", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     const state = await getState(userId);
@@ -801,7 +993,7 @@ hunt2Router.post("/api/hunt2/close", async (req, res) => {
     const archiveId = Number(ins.rows[0].id);
     await writeSessionMeta(userId, { phase: "closed", opened: false, archive_id: archiveId });
 
-    // ✅ if sync active => reset calls_queue too (clean slate)
+    // ✅ if sync active => reset calls_queue too
     const sync = await isSyncActiveForUser(userId);
     if (sync.ok) {
       await pool.query(`DELETE FROM calls_queue WHERE streamer_id=$1`, [sync.streamerId]);
@@ -815,7 +1007,7 @@ hunt2Router.post("/api/hunt2/close", async (req, res) => {
   }
 });
 
-hunt2Router.post("/api/hunt2/new", async (req, res) => {
+hunt2Router.post("/api/hunt2/new", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     await ensureSession(userId);
@@ -828,6 +1020,7 @@ hunt2Router.post("/api/hunt2/new", async (req, res) => {
     }
 
     await writeSessionMeta(userId, { phase: "edit", opened: false, start: null, archive_id: null });
+    await setBetDefault(userId, null);
 
     const state = await getState(userId);
     res.json({ ok: true, state });
@@ -837,12 +1030,9 @@ hunt2Router.post("/api/hunt2/new", async (req, res) => {
   }
 });
 
-/* Le reste de ton hunt2.ts (my-hunts/load/save/delete/share) peut rester inchangé :
-   il marchera car snapshot est toujours un HuntState.
-*/
+/* my-hunts/load/save/delete/share */
 
-
-hunt2Router.get("/api/hunt2/my-hunts", async (req, res) => {
+hunt2Router.get("/api/hunt2/my-hunts", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     await ensureSchema();
@@ -872,16 +1062,13 @@ hunt2Router.get("/api/hunt2/my-hunts", async (req, res) => {
   }
 });
 
-hunt2Router.post("/api/hunt2/load", async (req, res) => {
+hunt2Router.post("/api/hunt2/load", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     const id = Number(req.body?.id);
     if (!(id > 0)) return res.status(400).json({ ok: false, error: "bad_id" });
 
-    const r = await pool.query(
-      `SELECT snapshot, start FROM hunt_archives WHERE id=$1 AND user_id=$2`,
-      [id, userId]
-    );
+    const r = await pool.query(`SELECT snapshot, start FROM hunt_archives WHERE id=$1 AND user_id=$2`, [id, userId]);
     const row = r.rows[0];
     if (!row) return res.status(404).json({ ok: false, error: "not_found" });
 
@@ -910,12 +1097,7 @@ hunt2Router.post("/api/hunt2/load", async (req, res) => {
       );
     }
 
-    await writeSessionMeta(userId, {
-      phase: "closed",
-      opened: false,
-      start: num(row.start),
-      archive_id: id,
-    });
+    await writeSessionMeta(userId, { phase: "closed", opened: false, start: num(row.start), archive_id: id });
 
     const state = await getState(userId);
     res.json({ ok: true, state });
@@ -925,7 +1107,7 @@ hunt2Router.post("/api/hunt2/load", async (req, res) => {
   }
 });
 
-hunt2Router.post("/api/hunt2/save", async (req, res) => {
+hunt2Router.post("/api/hunt2/save", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     const title = req.body?.title ? String(req.body.title).trim() : null;
@@ -957,7 +1139,7 @@ hunt2Router.post("/api/hunt2/save", async (req, res) => {
   }
 });
 
-hunt2Router.post("/api/hunt2/delete", async (req, res) => {
+hunt2Router.post("/api/hunt2/delete", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     const id = Number(req.body?.id);
@@ -971,7 +1153,7 @@ hunt2Router.post("/api/hunt2/delete", async (req, res) => {
   }
 });
 
-hunt2Router.post("/api/hunt2/delete-all", async (req, res) => {
+hunt2Router.post("/api/hunt2/delete-all", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     await pool.query(`DELETE FROM hunt_archives WHERE user_id=$1`, [userId]);
@@ -982,24 +1164,21 @@ hunt2Router.post("/api/hunt2/delete-all", async (req, res) => {
   }
 });
 
-hunt2Router.post("/api/hunt2/share/create", async (req, res) => {
+hunt2Router.post("/api/hunt2/share/create", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     await ensureSchema();
 
     const expiresInSec = Number(req.body?.expiresInSec || 0);
     const token = crypto.randomBytes(18).toString("base64url");
+    const expiresAt = expiresInSec > 0 ? new Date(Date.now() + expiresInSec * 1000).toISOString() : null;
 
-    const expiresAt =
-      expiresInSec > 0 ? new Date(Date.now() + expiresInSec * 1000).toISOString() : null;
+    await pool.query(`INSERT INTO hunt_share_tokens(token, user_id, expires_at) VALUES($1,$2,$3)`, [
+      token,
+      userId,
+      expiresAt,
+    ]);
 
-    await pool.query(
-      `INSERT INTO hunt_share_tokens(token, user_id, expires_at)
-       VALUES($1,$2,$3)`,
-      [token, userId, expiresAt]
-    );
-
-    // URL = origin du front si présent, sinon host API (fallback)
     const origin = String(req.headers.origin || `${req.protocol}://${req.get("host")}`);
     const url = `${origin}/hunt/share/${token}`;
 
@@ -1010,7 +1189,7 @@ hunt2Router.post("/api/hunt2/share/create", async (req, res) => {
   }
 });
 
-hunt2Router.post("/api/hunt2/share/revoke", async (req, res) => {
+hunt2Router.post("/api/hunt2/share/revoke", async (req: any, res) => {
   try {
     const userId = Number(req.user!.id);
     await ensureSchema();
@@ -1018,12 +1197,7 @@ hunt2Router.post("/api/hunt2/share/revoke", async (req, res) => {
     const token = String(req.body?.token || "").trim();
     if (!token) return res.status(400).json({ ok: false, error: "bad_token" });
 
-    await pool.query(
-      `UPDATE hunt_share_tokens SET revoked_at=NOW()
-       WHERE token=$1 AND user_id=$2`,
-      [token, userId]
-    );
-
+    await pool.query(`UPDATE hunt_share_tokens SET revoked_at=NOW() WHERE token=$1 AND user_id=$2`, [token, userId]);
     res.json({ ok: true });
   } catch (e) {
     console.error(e);

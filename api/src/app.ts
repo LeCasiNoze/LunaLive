@@ -145,7 +145,7 @@ export function createApp() {
   app.use(clipsPublicRouter);
 
   app.use("/slots", slotsRouter);
-  app.use("/calls", callsHuntRouter); 
+  app.use("/calls-hunt", callsHuntRouter);
   app.use("/calls", callsRouter);
 
 
