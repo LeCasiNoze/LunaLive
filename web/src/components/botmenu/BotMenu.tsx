@@ -2,7 +2,7 @@
 import * as React from "react";
 import { CallTab } from "./CallTab";
 import { QueueTab } from "./QueueTab";
-import { HuntTab } from "./HuntTabs";
+import { HuntTabs } from "./HuntTabs";
 
 export function BotMenu({
   open,
@@ -125,7 +125,11 @@ export function BotMenu({
           ) : null}
 
           {tab === "hunt" ? (
-            <HuntTab token={token} slug={slug} canMod={canMod} onRequireLogin={onRequireLogin} />
+            <HuntTabs
+            token={token ?? ""}
+            streamerSlug={slug}
+            canModerate={canMod}
+            />
           ) : null}
         </div>
       </div>

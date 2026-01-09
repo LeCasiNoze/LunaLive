@@ -1,484 +1,507 @@
-// web/src/components/botmenu/HuntTab.tsx
 import * as React from "react";
-import { SlotThumb } from "./SlotThumb";
+import { Settings } from "lucide-react";
+import {
+  getCallsHuntState,
+  callsHuntPass,
+  callsHuntBonusDrop,
+  callsHuntOpen,
+  callsHuntPay,
+  callsHuntSetStart,
+  callsHuntSetBet,
+  type ApiCallsHuntState,
+  type ApiHuntQueueItem,
+  type ApiHuntBonusDrop,
+} from "../../lib/api";
 
-function apiBase() {
-  return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
+const fmtEur = (n: any) => `${(Number(n) || 0).toFixed(2)}€`;
+
+function asArr<T>(v: any): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
 }
 
-type HuntStateResp = {
-  ok: boolean;
-  mode: "farm" | "open";
-  hunt: { phase: string; opened: boolean; start: number | null; archive_id: number | null; itemsCount: number };
-  currentCall: null | {
-    id: string;
-    slotName: string;
-    slotKey: string;
-    provider: string | null;
-    username: string;
-    pos: number;
-    imageUrl: string | null;
-  };
-  currentOpenItem: null | {
-    id: string;
-    name: string;
-    provider: string | null;
-    image_url: string | null;
-    bet: number | null;
-    caller: string | null;
-    pos: number;
-  };
-};
-
-type CallItem = {
-  id: string;
-  slotName: string;
-  provider: string | null;
-  username: string;
-  pos: number;
-  imageUrl?: string | null;
-};
-
-async function readJsonSafe(r: Response): Promise<any> {
-  const text = await r.text().catch(() => "");
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { ok: false, error: text.slice(0, 180) || "invalid_json" };
-  }
+function getOpening(s: ApiCallsHuntState | null) {
+  if (!s) return false;
+  const phase = (s as any)?.hunt?.phase;
+  return s.mode === "open" || (s as any).opening === true || phase === "open" || (s as any)?.hunt?.opened === true;
 }
 
-function toast(kind: "success" | "error", title: string, message?: string) {
-  window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind, title, message } }));
+function getStartEur(s: ApiCallsHuntState | null) {
+  if (!s) return 0;
+  const v =
+    (s as any).startEur ??
+    (s as any)?.hunt?.start ??
+    0;
+  return Number(v) || 0;
 }
 
-export function HuntTab({
+function pickBonusDrops(s: ApiCallsHuntState | null): ApiHuntBonusDrop[] {
+  if (!s) return [];
+  const explicit = asArr<ApiHuntBonusDrop>((s as any).bonusDrops);
+  if (explicit.length) return explicit;
+
+  // fallback si backend met tout dans queue avec betEur
+  const q = asArr<ApiHuntQueueItem>((s as any).queue);
+  return q
+    .filter((it: any) => Number(it?.betEur ?? 0) > 0)
+    .map((it: any) => ({
+      id: it.id,
+      slotName: it.slotName,
+      provider: it.provider,
+      username: it.username,
+      imageUrl: it.imageUrl,
+      betEur: Number(it.betEur ?? 0) || 0,
+      payEur: it.payEur ?? null,
+    }));
+}
+
+function Panel({ title, right, children }: any) {
+  return (
+    <div className="panel" style={{ padding: 14, borderRadius: 18 }}>
+      <div className="panelTitle" style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <span>{title}</span>
+        {right ? <span>{right}</span> : null}
+      </div>
+      <div style={{ marginTop: 10 }}>{children}</div>
+    </div>
+  );
+}
+
+function SmallBtn(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      {...props}
+      className="btnGhostInline"
+      style={{
+        padding: "10px 12px",
+        borderRadius: 14,
+        fontWeight: 950,
+        ...(props.style || {}),
+      }}
+    />
+  );
+}
+
+function Thumb({ url }: { url?: string | null }) {
+  return (
+    <div
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        overflow: "hidden",
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(0,0,0,0.12)",
+        flex: "0 0 auto",
+      }}
+    >
+      {url ? (
+        <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      ) : (
+        <div
+          className="muted"
+          style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", fontWeight: 900 }}
+        >
+          ?
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function HuntTabs({
   token,
-  slug,
-  canMod,
-  onRequireLogin,
+  streamerSlug,
+  canModerate,
 }: {
-  token: string | null;
-  slug: string;
-  canMod: boolean;
-  onRequireLogin: () => void;
+  token: string;
+  streamerSlug: string;
+  canModerate: boolean;
 }) {
-  const [loading, setLoading] = React.useState(false);
-  const [state, setState] = React.useState<HuntStateResp | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
 
-  const [bet, setBet] = React.useState("");
-  const [pay, setPay] = React.useState("");
+  const [state, setState] = React.useState<ApiCallsHuntState | null>(null);
 
-  // ✅ même source de vérité que "File"
-  const [calls, setCalls] = React.useState<CallItem[]>([]);
-  const [callsLoading, setCallsLoading] = React.useState(false);
+  const [showOpts, setShowOpts] = React.useState(false);
+  const [startInp, setStartInp] = React.useState("");
+  const [betInp, setBetInp] = React.useState("");
+  const [payInp, setPayInp] = React.useState("");
 
-  async function loadState(opts?: { silent?: boolean }) {
-    if (!token) return;
-    const silent = !!opts?.silent;
+  async function load() {
+    const s = await getCallsHuntState(streamerSlug, token);
+    setState(s);
 
-    if (!silent) setLoading(true);
-    try {
-      const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/hunt/state`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const j = (await readJsonSafe(r)) as HuntStateResp;
-
-      if (r.ok && j?.ok) setState(j);
-      else if (!silent) setState(null);
-    } catch {
-      if (!silent) setState(null);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }
-
-  async function loadQueue(opts?: { silent?: boolean }) {
-    if (!token) return;
-    const silent = !!opts?.silent;
-
-    if (!silent) setCallsLoading(true);
-    try {
-      const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/list?limit=80`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const j = await readJsonSafe(r);
-
-      if (r.ok && j?.ok && Array.isArray(j.items)) setCalls(j.items || []);
-      else if (!silent) setCalls([]);
-    } catch {
-      if (!silent) setCalls([]);
-    } finally {
-      if (!silent) setCallsLoading(false);
-    }
-  }
-
-  async function loadAll(opts?: { silent?: boolean }) {
-    await Promise.all([loadState(opts), loadQueue(opts)]);
+    const start = getStartEur(s);
+    setStartInp(start ? String(start) : "");
   }
 
   React.useEffect(() => {
-    if (!canMod || !token) return;
+    let alive = true;
 
-    void loadAll({ silent: false });
+    void (async () => {
+      try {
+        await load();
+      } catch (e: any) {
+        if (!alive) return;
+        setErr(String(e?.message || "Erreur"));
+      }
+    })();
 
-    const t = window.setInterval(() => void loadAll({ silent: true }), 2500);
-    return () => window.clearInterval(t);
+    const t = setInterval(() => {
+      void (async () => {
+        try {
+          await load();
+        } catch (e: any) {
+          if (!alive) return;
+          setErr(String(e?.message || "Erreur"));
+        }
+      })();
+    }, 1500);
+
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canMod, token, slug]);
+  }, [token, streamerSlug]);
 
-  async function post(path: string, body?: any) {
-    if (!token) return onRequireLogin();
+  const opening = getOpening(state);
 
-    const r = await fetch(`${apiBase()}${path}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: body ? JSON.stringify(body) : "{}",
-    });
+  // ✅ Machine en cours = backend source of truth
+  const currentFarm = (state as any)?.currentCall ?? null;
+  const currentOpen = (state as any)?.currentOpenItem ?? null;
 
-    const j = await readJsonSafe(r);
+  // ✅ Bonus drops list
+  const bonusDrops = pickBonusDrops(state);
 
-    if (!r.ok || !j?.ok) {
-      toast("error", "Erreur", j?.error || j?.message || `HTTP ${r.status}`);
+  // ✅ Stats fiables
+  const startEur = getStartEur(state);
+  const callsCount =
+    Number((state as any)?.callsCount) ||
+    (asArr<any>((state as any)?.queue).filter((x) => !(Number(x?.betEur ?? 0) > 0)).length);
+  const bonusCount = Number((state as any)?.bonusCount) || bonusDrops.length;
+
+  async function doPass() {
+    if (!canModerate) return;
+    setErr(null);
+    setBusy(true);
+    try {
+      await callsHuntPass(streamerSlug, token);
+      await load();
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doBonus() {
+    if (!canModerate) return;
+    setErr(null);
+    setBusy(true);
+    try {
+      await callsHuntBonusDrop(streamerSlug, token);
+      await load();
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doOpen() {
+    if (!canModerate) return;
+    setErr(null);
+    setBusy(true);
+    try {
+      await callsHuntOpen(streamerSlug, token);
+      await load();
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doPay() {
+    if (!canModerate) return;
+    const v = Number(payInp);
+    if (!Number.isFinite(v) || v < 0) {
+      setErr("Pay invalide");
       return;
     }
-
-    await loadAll();
-  }
-
-  async function doResetQueue() {
-    if (!token) return onRequireLogin();
-    const ok = window.confirm("Reset la file de calls ?");
-    if (!ok) return;
-
-    const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/reset`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const j = await readJsonSafe(r);
-
-    if (r.ok && j?.ok) {
-      toast("success", "Calls reset ✅");
-      await loadAll();
-    } else {
-      toast("error", "Erreur", j?.error || "reset_failed");
+    setErr(null);
+    setBusy(true);
+    try {
+      await callsHuntPay(streamerSlug, token, v);
+      setPayInp("");
+      await load();
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur"));
+    } finally {
+      setBusy(false);
     }
   }
 
-  async function doDeleteCall(id: string) {
-    if (!token) return onRequireLogin();
-
-    const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/item/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const j = await readJsonSafe(r);
-
-    if (r.ok && j?.ok) {
-      await loadAll();
-    } else {
-      toast("error", "Erreur", j?.error || "delete_failed");
+  async function doSetStart() {
+    if (!canModerate) return;
+    const v = Number(startInp);
+    if (!Number.isFinite(v)) {
+      setErr("Start invalide");
+      return;
+    }
+    setErr(null);
+    setBusy(true);
+    try {
+      await callsHuntSetStart(streamerSlug, token, v);
+      await load();
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur (route start ?)"));
+    } finally {
+      setBusy(false);
     }
   }
 
-  if (!canMod) {
-    return <div style={{ fontSize: 13, opacity: 0.8, fontWeight: 800 }}>Accès réservé aux modérateurs / streamer / admin.</div>;
+  async function doSetBet() {
+    if (!canModerate) return;
+    const v = Number(betInp);
+    if (!Number.isFinite(v)) {
+      setErr("Bet invalide");
+      return;
+    }
+    setErr(null);
+    setBusy(true);
+    try {
+      await callsHuntSetBet(streamerSlug, token, v);
+      setBetInp("");
+      await load();
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur (route bet ?)"));
+    } finally {
+      setBusy(false);
+    }
   }
-  if (!token) {
-    return <div style={{ fontSize: 13, opacity: 0.8, fontWeight: 800 }}>Connecte-toi pour accéder au Hunt.</div>;
-  }
-
-  const mode = state?.mode || "farm";
-
-  // ✅ fallback UI -> si le backend ne renvoie pas currentCall,
-  // on prend la 1ère machine de la file
-  const headFromQueue = calls[0]
-    ? {
-        id: calls[0].id,
-        slotName: calls[0].slotName,
-        provider: calls[0].provider,
-        username: calls[0].username,
-        pos: calls[0].pos,
-        imageUrl: calls[0].imageUrl ?? null,
-      }
-    : null;
-
-  const headCall = state?.currentCall || (headFromQueue as any);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ fontWeight: 950 }}>Hunt</div>
-        <button
-          type="button"
-          onClick={() => void loadAll()}
-          style={{
-            padding: "8px 10px",
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.10)",
-            background: "rgba(255,255,255,0.06)",
-            color: "white",
-            fontWeight: 900,
-            cursor: "pointer",
-          }}
-        >
-          {loading || callsLoading ? "…" : "Refresh"}
-        </button>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {err ? <div className="hint">⚠️ {err}</div> : null}
 
-      <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
-        Mode: <b>{mode === "farm" ? "Farm (calls → bets)" : "Open (pays)"}</b> · Items hunt:{" "}
-        <b>{state?.hunt?.itemsCount ?? "—"}</b>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => post(`/calls/${encodeURIComponent(slug)}/hunt/open`)}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 14,
-          border: "1px solid rgba(255,255,255,0.10)",
-          background: "rgba(124,77,255,0.18)",
-          color: "white",
-          fontWeight: 950,
-          cursor: "pointer",
-        }}
+      <Panel
+        title={
+          <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            Hunt
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 950,
+                padding: "3px 8px",
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: opening ? "rgba(124,77,255,0.14)" : "rgba(0,0,0,0.12)",
+              }}
+            >
+              {opening ? "OUVERTURE" : "FARM"}
+            </span>
+          </span>
+        }
+        right={
+          canModerate ? (
+            <button
+              onClick={() => setShowOpts((v) => !v)}
+              className="btnGhostInline"
+              style={{ padding: "8px 10px", borderRadius: 12, display: "inline-flex", gap: 8, alignItems: "center" }}
+              title="Options Hunt"
+            >
+              <Settings size={16} />
+            </button>
+          ) : null
+        }
       >
-        🔓 Ouvrir le hunt
-      </button>
-
-      {mode === "farm" ? (
-        <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}>
-          <div style={{ fontWeight: 950, marginBottom: 8 }}>Machine en cours (head call)</div>
-
-          {!headCall ? (
-            <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 800 }}>Aucun call en file.</div>
-          ) : (
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <SlotThumb url={headCall.imageUrl} size={54} />
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {headCall.slotName}
-                  {headCall.provider ? <span style={{ opacity: 0.75, fontWeight: 800 }}> — {headCall.provider}</span> : null}
-                </div>
-                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>call par @{headCall.username}</div>
-              </div>
-            </div>
-          )}
-
-          <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
-            <input
-              value={bet}
-              onChange={(e) => setBet(e.target.value)}
-              placeholder="bet (ex: 0.6)"
-              style={{
-                flex: 1,
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(0,0,0,0.12)",
-                color: "inherit",
-                fontWeight: 800,
-              }}
-            />
-
-            <button
-              type="button"
-              onClick={() => post(`/calls/${encodeURIComponent(slug)}/hunt/pass`)}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(255,120,150,0.12)",
-                color: "white",
-                fontWeight: 950,
-                cursor: "pointer",
-              }}
-            >
-              Pass
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                const b = Number(String(bet).replace(",", "."));
-                if (!(b > 0)) {
-                  toast("error", "Bet invalide");
-                  return;
-                }
-                void post(`/calls/${encodeURIComponent(slug)}/hunt/bonus`, { bet: b });
-                setBet("");
-              }}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(124,77,255,0.18)",
-                color: "white",
-                fontWeight: 950,
-                cursor: "pointer",
-              }}
-            >
-              Bonus
-            </button>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+          <div>
+            <div className="muted" style={{ fontSize: 12 }}>Start</div>
+            <div style={{ fontWeight: 950 }}>{fmtEur(startEur)}</div>
           </div>
-
-          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
-            Astuce: tu peux aussi faire <b>!bonus 0.6</b> dans le chat.
+          <div>
+            <div className="muted" style={{ fontSize: 12 }}>Calls en cours</div>
+            <div style={{ fontWeight: 950 }}>{callsCount}</div>
+          </div>
+          <div>
+            <div className="muted" style={{ fontSize: 12 }}>Bonus drops</div>
+            <div style={{ fontWeight: 950 }}>{bonusCount}</div>
           </div>
         </div>
-      ) : (
-        <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}>
-          <div style={{ fontWeight: 950, marginBottom: 8 }}>Machine en cours (open)</div>
 
-          {!state?.currentOpenItem ? (
-            <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 800 }}>Plus d’item à payer.</div>
-          ) : (
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <SlotThumb url={state.currentOpenItem.image_url} size={54} />
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {state.currentOpenItem.name}
-                  {state.currentOpenItem.provider ? <span style={{ opacity: 0.75, fontWeight: 800 }}> — {state.currentOpenItem.provider}</span> : null}
-                </div>
-                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
-                  bet: <b>{state.currentOpenItem.bet ?? "—"}</b> · caller: <b>@{state.currentOpenItem.caller ?? "—"}</b>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
-            <input
-              value={pay}
-              onChange={(e) => setPay(e.target.value)}
-              placeholder="pay (ex: 120)"
-              style={{
-                flex: 1,
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(0,0,0,0.12)",
-                color: "inherit",
-                fontWeight: 800,
-              }}
-            />
-
-            <button
-              type="button"
-              onClick={() => {
-                const p = Number(String(pay).replace(",", "."));
-                if (!(p >= 0)) {
-                  toast("error", "Pay invalide");
-                  return;
-                }
-                void post(`/calls/${encodeURIComponent(slug)}/hunt/pay`, { pay: p });
-                setPay("");
-              }}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(124,77,255,0.18)",
-                color: "white",
-                fontWeight: 950,
-                cursor: "pointer",
-              }}
-            >
-              Valider pay
-            </button>
-          </div>
-
-          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
-            Astuce: tu peux aussi faire <b>!pay 120</b> dans le chat.
-          </div>
-        </div>
-      )}
-
-      {/* ✅ LA FILE */}
-      <div style={{ marginTop: 4, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div style={{ fontWeight: 950 }}>File de calls (même source)</div>
-          <button
-            type="button"
-            onClick={() => void doResetQueue()}
+        {canModerate && showOpts ? (
+          <div
             style={{
-              padding: "8px 10px",
-              borderRadius: 12,
+              marginTop: 10,
+              padding: 12,
+              borderRadius: 14,
               border: "1px solid rgba(255,255,255,0.10)",
-              background: "rgba(255,120,150,0.12)",
-              color: "white",
-              fontWeight: 950,
-              cursor: "pointer",
+              background: "rgba(0,0,0,0.10)",
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+              alignItems: "flex-end",
             }}
           >
-            Reset file
-          </button>
-        </div>
+            <div style={{ flex: "1 1 180px" }}>
+              <div style={{ fontWeight: 950, fontSize: 12 }}>Start</div>
+              <input
+                value={startInp}
+                onChange={(e) => setStartInp(e.target.value)}
+                placeholder="ex: 200"
+                style={{
+                  width: "100%",
+                  marginTop: 6,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(0,0,0,0.12)",
+                  color: "inherit",
+                }}
+              />
+            </div>
+            <SmallBtn disabled={busy} onClick={doSetStart}>Set start</SmallBtn>
 
-        {!calls.length ? (
-          callsLoading ? (
-            <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Chargement…</div>
+            <div style={{ flex: "1 1 180px" }}>
+              <div style={{ fontWeight: 950, fontSize: 12 }}>Bet</div>
+              <input
+                value={betInp}
+                onChange={(e) => setBetInp(e.target.value)}
+                placeholder="ex: 0.20"
+                style={{
+                  width: "100%",
+                  marginTop: 6,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(0,0,0,0.12)",
+                  color: "inherit",
+                }}
+              />
+            </div>
+            <SmallBtn disabled={busy} onClick={doSetBet}>Set bet</SmallBtn>
+          </div>
+        ) : null}
+      </Panel>
+
+      {/* ✅ Machine en cours / Bonus en cours */}
+      <Panel title={opening ? "Bonus en cours" : "Machine en cours"}>
+        {!opening ? (
+          currentFarm ? (
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <Thumb url={currentFarm.imageUrl} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 950, fontSize: 14, lineHeight: 1.2 }}>
+                  {currentFarm.slotName || "—"}
+                  {currentFarm.provider ? <span className="muted"> ({currentFarm.provider})</span> : null}
+                </div>
+                <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                  call par @{currentFarm.username || "?"}
+                </div>
+              </div>
+
+              {canModerate ? (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <SmallBtn disabled={busy} onClick={doBonus} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
+                    Bonus
+                  </SmallBtn>
+                  <SmallBtn disabled={busy} onClick={doPass}>Pass</SmallBtn>
+                </div>
+              ) : null}
+            </div>
           ) : (
-            <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Aucun call.</div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+              <div className="muted">Aucune machine.</div>
+              {canModerate ? (
+                <SmallBtn disabled={busy} onClick={doOpen} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
+                  Ouvrir le hunt
+                </SmallBtn>
+              ) : null}
+            </div>
           )
+        ) : currentOpen ? (
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <Thumb url={currentOpen.imageUrl ?? currentOpen.image_url} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 950, fontSize: 14, lineHeight: 1.2 }}>
+                {currentOpen.slotName ?? currentOpen.name ?? "—"}
+                {currentOpen.provider ? <span className="muted"> ({currentOpen.provider})</span> : null}
+              </div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                bet: <b>{fmtEur((currentOpen.betEur ?? currentOpen.bet) ?? 0)}</b>
+              </div>
+            </div>
+
+            {canModerate ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
+                <input
+                  value={payInp}
+                  onChange={(e) => setPayInp(e.target.value)}
+                  placeholder="Pay du bonus (ex: 45.20)"
+                  style={{
+                    width: 220,
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(0,0,0,0.12)",
+                    color: "inherit",
+                  }}
+                />
+                <SmallBtn disabled={busy} onClick={doPay} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
+                  Valider
+                </SmallBtn>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="muted">Aucun bonus à ouvrir.</div>
+        )}
+      </Panel>
+
+      {/* ✅ Liste Hunt = uniquement bonus drops */}
+      <Panel title={`Bonus drops (${bonusDrops.length})`}>
+        {bonusDrops.length === 0 ? (
+          <div className="muted">
+            Aucun bonus drop pour l’instant.
+            <br />
+            (Quand une machine a une bet, elle doit apparaître ici.)
+          </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {callsLoading ? (
-              <div style={{ fontSize: 12, opacity: 0.6, fontWeight: 800, marginBottom: 2 }}>Mise à jour…</div>
-            ) : null}
-
-            {calls.map((c) => (
+            {bonusDrops.map((b: any, idx) => (
               <div
-                key={c.id}
+                key={String(b.id ?? `${b.slotName}-${idx}`)}
                 style={{
                   display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
                   gap: 10,
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  background: "rgba(255,255,255,0.05)",
+                  alignItems: "center",
+                  padding: 10,
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(0,0,0,0.10)",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
-                  <SlotThumb url={c.imageUrl} />
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {c.pos}. {c.slotName}
-                      {c.provider ? <span style={{ opacity: 0.75, fontWeight: 800 }}> — {c.provider}</span> : null}
-                    </div>
-                    <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>@ {c.username}</div>
+                <Thumb url={b.imageUrl} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 950, fontSize: 13, lineHeight: 1.2 }}>
+                    #{idx + 1} — {b.slotName || "—"}
+                    {b.provider ? <span className="muted"> ({b.provider})</span> : null}
+                  </div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                    bet: <b>{fmtEur(b.betEur ?? 0)}</b>
+                    {Number(b.payEur) >= 0 ? (
+                      <span className="muted"> — pay: <b>{fmtEur(b.payEur)}</b></span>
+                    ) : null}
                   </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => void doDeleteCall(c.id)}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(255,120,150,0.12)",
-                    color: "white",
-                    fontWeight: 950,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Supprimer
-                </button>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </Panel>
     </div>
   );
 }
