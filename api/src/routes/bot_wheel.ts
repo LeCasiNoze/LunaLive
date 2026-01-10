@@ -3,6 +3,7 @@ import express from "express";
 import { pool } from "../db.js";
 import normalizeAppearance from "../appearance.js";
 import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
+import { requireAuth } from "../auth.js";
 
 export const botWheelRouter = express.Router();
 
@@ -243,4 +244,139 @@ botWheelRouter.post("/draw", requireStreamer, async (req: AuthedReq, res) => {
   const winner = list[index]?.username ?? null;
 
   res.json({ ok: true, winner, index });
+});
+
+// GET /me/bot/bot_wheel/public?slug=...
+botWheelRouter.get("/public", async (req: any, res) => {
+  const slug = String(req.query?.slug || "").trim();
+  if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
+
+  const metaR = await pool.query(
+    `SELECT id
+     FROM streamers
+     WHERE lower(slug)=lower($1)
+     LIMIT 1`,
+    [slug]
+  );
+  const streamerId = Number(metaR.rows?.[0]?.id || 0);
+  if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+  await ensureCfg(streamerId);
+
+  const cfgR = await pool.query(
+    `SELECT enroll_open
+     FROM bot_wheel_cfg
+     WHERE streamer_id=$1
+     LIMIT 1`,
+    [streamerId]
+  );
+  const enrollOpen = Boolean(cfgR.rows?.[0]?.enroll_open);
+
+  const countR = await pool.query(
+    `SELECT COUNT(*)::int AS n
+     FROM bot_wheel_entries
+     WHERE streamer_id=$1`,
+    [streamerId]
+  );
+  const n = Number(countR.rows?.[0]?.n || 0);
+
+  // si authed, dire s'il est déjà inscrit
+  let joined = false;
+  const u = (req as any).user;
+  if (u?.id) {
+    const userId = Number(u.id);
+
+    // essaie avec user_id, fallback username_lc si pas de colonne
+    try {
+      const jr = await pool.query(
+        `SELECT 1 FROM bot_wheel_entries WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`,
+        [streamerId, userId]
+      );
+      joined = !!jr.rows?.[0];
+    } catch {
+      const usernameLc = String(u.username || "").trim().toLowerCase();
+      if (usernameLc) {
+        const jr = await pool.query(
+          `SELECT 1 FROM bot_wheel_entries WHERE streamer_id=$1 AND username_lc=$2 LIMIT 1`,
+          [streamerId, usernameLc]
+        );
+        joined = !!jr.rows?.[0];
+      }
+    }
+  }
+
+  res.set("Cache-Control", "no-store");
+  return res.json({
+    ok: true,
+    cfg: { enroll_open: enrollOpen },
+    counts: { entries: n },
+    me: { joined },
+    // TODO conditions future: follow-only / sub-only / etc
+  });
+});
+
+// POST /me/bot/bot_wheel/join { slug }
+botWheelRouter.post("/join", requireAuth, express.json(), async (req: any, res) => {
+  const slug = String(req.body?.slug || "").trim();
+  if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
+
+  const u = req.user;
+  if (!u?.id) return res.status(401).json({ ok: false, error: "unauthorized" });
+
+  const metaR = await pool.query(
+    `SELECT id
+     FROM streamers
+     WHERE lower(slug)=lower($1)
+     LIMIT 1`,
+    [slug]
+  );
+  const streamerId = Number(metaR.rows?.[0]?.id || 0);
+  if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+  await ensureCfg(streamerId);
+
+  const cfgR = await pool.query(
+    `SELECT enroll_open
+     FROM bot_wheel_cfg
+     WHERE streamer_id=$1
+     LIMIT 1`,
+    [streamerId]
+  );
+  const open = Boolean(cfgR.rows?.[0]?.enroll_open);
+
+  if (!open) {
+    return res.status(409).json({ ok: false, error: "closed" });
+  }
+
+  // TODO conditions future: follow-only / sub-only / etc (mêmes règles que !join)
+  const userId = Number(u.id);
+  const username = String(u.username || "").trim();
+  const usernameLc = username.toLowerCase();
+
+  let joined = false;
+  let already = false;
+
+  try {
+    const ins = await pool.query(
+      `INSERT INTO bot_wheel_entries(streamer_id, user_id, username, username_lc)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (streamer_id, user_id) DO NOTHING
+       RETURNING id`,
+      [streamerId, userId, username, usernameLc]
+    );
+    joined = !!ins.rows?.[0];
+    already = !joined;
+  } catch {
+    const ins = await pool.query(
+      `INSERT INTO bot_wheel_entries(streamer_id, username, username_lc)
+       VALUES ($1,$2,$3)
+       ON CONFLICT (streamer_id, username_lc) DO NOTHING
+       RETURNING id`,
+      [streamerId, username, usernameLc]
+    );
+    joined = !!ins.rows?.[0];
+    already = !joined;
+  }
+
+  return res.json({ ok: true, status: joined ? "joined" : "already" });
 });

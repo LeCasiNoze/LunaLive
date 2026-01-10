@@ -8,6 +8,7 @@ import { loadAutoposts, loadCommands } from "./config.js";
 import { LunaLiveDbTransport } from "../providers/lunalive/db_transport.js";
 import { logEvent } from "../log.js";
 import { tryHandleClipCommand } from "../modules/clips/clip.js";
+import { tryHandleWheelCommand } from "../modules/wheel/wheel.js";
 
 const BOT_TEXT_MAX = 500;
 
@@ -159,6 +160,20 @@ export class StreamerRunner {
           allowEveryone: true,
         });
         if (handled) return;
+      } catch {}
+
+      // ✅ BUILTIN: wheel (!join / !wheel)
+      try {
+        const handledWheel = await tryHandleWheelCommand({
+          pool: this.pool,
+          streamer: this.streamer,
+          prefix,
+          msg,
+          send: async (t: string) => {
+            await sendBotText(t, "send");
+          },
+        });
+        if (handledWheel) return;
       } catch {}
 
       if (body.startsWith(prefix)) {

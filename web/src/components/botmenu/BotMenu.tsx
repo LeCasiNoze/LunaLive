@@ -2,6 +2,7 @@
 import * as React from "react";
 import { CallTab } from "./CallTab";
 import { HuntTabs } from "./HuntTabs";
+import { WheelTab } from "./WheelTab";
 
 export function BotMenu({
   open,
@@ -22,7 +23,7 @@ export function BotMenu({
   onRequireLogin: () => void;
   sendBang: (text: string) => void;
 }) {
-  const [tab, setTab] = React.useState<"call" | "hunt">("call");
+  const [tab, setTab] = React.useState<"call" | "hunt" | "wheel">("call");
 
   React.useEffect(() => {
     if (!open) return;
@@ -88,7 +89,7 @@ export function BotMenu({
 
         {/* tabs */}
         <div style={{ display: "flex", gap: 8, padding: 12, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          {(["call", "hunt"] as const).map((k) => (
+          {(["call", "hunt", "wheel"] as const).map((k) => (
             <button
               key={k}
               type="button"
@@ -103,7 +104,7 @@ export function BotMenu({
                 cursor: "pointer",
               }}
             >
-              {k === "call" ? "Call" : "Hunt"}
+              {k === "call" ? "Call" : k === "hunt" ? "Hunt" : "Roue"}
             </button>
           ))}
 
@@ -127,6 +128,16 @@ export function BotMenu({
 
         {tab === "hunt" ? (
           <HuntTabs token={token ?? ""} streamerSlug={slug} canModerate={canMod} />
+        ) : null}
+
+        {tab === "wheel" ? (
+          <WheelTab
+            token={token}
+            slug={slug}
+            canMod={canMod}
+            onClose={onClose}
+            onRequireLogin={onRequireLogin}
+          />
         ) : null}
 
         </div>
