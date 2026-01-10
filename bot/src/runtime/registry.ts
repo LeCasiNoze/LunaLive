@@ -19,6 +19,9 @@ export class Registry {
   private runners = new Map<RunnerKey, StreamerRunner>();
   private timer: NodeJS.Timeout | null = null;
 
+  // ✅ NEW: keep last is_live to detect live -> off transitions
+  private lastLive = new Map<RunnerKey, boolean>();
+
   constructor(private pool: Pool, private env: BotEnv) {}
 
   start() {
@@ -42,6 +45,9 @@ export class Registry {
 
     for (const r of this.runners.values()) r.stop();
     this.runners.clear();
+
+    // ✅ clear lastLive cache too
+    this.lastLive.clear();
   }
 
   private async getStreamerBySlug(slug: string): Promise<StreamerRow | null> {
@@ -67,6 +73,23 @@ export class Registry {
       displayName: String(row.display_name),
       isLive: Boolean(row.is_live),
     };
+  }
+
+  // ✅ NEW: when stream goes OFF, force-close bot_wheel enroll_open
+  private async autoCloseBotWheelEnroll(streamerId: number) {
+    try {
+      await this.pool.query(
+        `INSERT INTO bot_wheel_cfg(streamer_id, enroll_open)
+         VALUES ($1, FALSE)
+         ON CONFLICT (streamer_id)
+         DO UPDATE SET enroll_open=FALSE, updated_at=NOW()`,
+        [streamerId]
+      );
+    } catch (e: any) {
+      // table missing -> ignore (dev / migration not applied)
+      if (String(e?.code || "") === "42P01") return;
+      console.log("[bot] bot_wheel autoclose failed", e?.message || e);
+    }
   }
 
   private async syncOnce() {
@@ -159,16 +182,21 @@ export class Registry {
       const settings: BotStreamerSettings = {
         enabled: row.enabled == null ? true : Boolean(row.enabled),
         prefix: String(row.prefix || this.env.BOT_DEFAULT_PREFIX),
-        liveOnly:
-          row.live_only == null
-            ? this.env.BOT_LIVE_ONLY_DEFAULT
-            : Boolean(row.live_only),
+        liveOnly: row.live_only == null ? this.env.BOT_LIVE_ONLY_DEFAULT : Boolean(row.live_only),
       };
 
-      const shouldRun =
-        settings.enabled && (!settings.liveOnly || streamer.isLive);
+      const shouldRun = settings.enabled && (!settings.liveOnly || streamer.isLive);
 
       const key = String(streamer.id);
+
+      // ✅ detect live -> off and autoclose enroll
+      const prevLive = this.lastLive.get(key);
+      const nowLive = Boolean(streamer.isLive);
+      this.lastLive.set(key, nowLive);
+
+      if (prevLive === true && nowLive === false) {
+        await this.autoCloseBotWheelEnroll(streamer.id);
+      }
 
       if (!shouldRun) continue;
 

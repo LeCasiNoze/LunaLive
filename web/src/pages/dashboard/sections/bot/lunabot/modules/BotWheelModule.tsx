@@ -1,22 +1,16 @@
 // web/src/pages/dashboard/sections/bot/modules/BotWheelModule.tsx
 import * as React from "react";
 import { Shuffle, RotateCcw, Copy, X, Plus, Users, Eraser, Search } from "lucide-react";
+import {
+  addBotWheelEntry,
+  clearBotWheel,
+  drawBotWheel,
+  getBotWheelState,
+  removeBotWheelEntry,
+  setBotWheelEnroll,
+} from "../../../../../../lib/api_wheel_bot";
 
 type Entry = { username: string };
-
-function apiBase() {
-  return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
-}
-
-async function apiAuthed(token: string, path: string, init?: RequestInit) {
-  return fetch(`${apiBase()}${path}`, {
-    ...init,
-    headers: {
-      ...(init?.headers || {}),
-      Authorization: `Bearer ${token}`,
-    },
-  });
-}
 
 function rand(min: number, max: number) {
   return Math.random() * (max - min) + min;
@@ -76,14 +70,7 @@ export function BotWheelModule({ token }: { token: string }) {
     setLoading(true);
     setErr(null);
     try {
-      const r = await apiAuthed(token, "/bot_wheel/state");
-      const j = await r.json().catch(() => null);
-
-      if (!r.ok || !j?.ok) {
-        setErr(String(j?.error || `Erreur API (${r.status})`));
-        return;
-      }
-
+      const j = await getBotWheelState(token);
       setEnrollOpen(Boolean(j?.cfg?.enroll_open));
       const list = Array.isArray(j?.entries) ? j.entries : [];
       setEntries(list.map((e: any) => ({ username: String(e?.username || "") })));
@@ -103,13 +90,7 @@ export function BotWheelModule({ token }: { token: string }) {
     setEnrollOpen(open);
     setErr(null);
     try {
-      const r = await apiAuthed(token, "/bot_wheel/enroll", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ open }),
-      });
-      const j = await r.json().catch(() => null);
-      if (!r.ok || !j?.ok) setErr(String(j?.error || `Erreur API (${r.status})`));
+      await setBotWheelEnroll(token, open);
     } catch (e: any) {
       setErr(String(e?.message || "Erreur réseau"));
     }
@@ -121,16 +102,7 @@ export function BotWheelModule({ token }: { token: string }) {
 
     setErr(null);
     try {
-      const r = await apiAuthed(token, "/bot_wheel/add", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ username: name }),
-      });
-      const j = await r.json().catch(() => null);
-      if (!r.ok || !j?.ok) {
-        setErr(String(j?.error || `Erreur API (${r.status})`));
-        return;
-      }
+      await addBotWheelEntry(token, name);
       setAddName("");
       void load();
     } catch (e: any) {
@@ -141,16 +113,7 @@ export function BotWheelModule({ token }: { token: string }) {
   async function removeEntry(name: string) {
     setErr(null);
     try {
-      const r = await apiAuthed(token, "/bot_wheel/remove", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ username: name }),
-      });
-      const j = await r.json().catch(() => null);
-      if (!r.ok || !j?.ok) {
-        setErr(String(j?.error || `Erreur API (${r.status})`));
-        return;
-      }
+      await removeBotWheelEntry(token, name);
       void load();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur réseau"));
@@ -162,12 +125,7 @@ export function BotWheelModule({ token }: { token: string }) {
 
     setErr(null);
     try {
-      const r = await apiAuthed(token, "/bot_wheel/clear", { method: "POST" });
-      const j = await r.json().catch(() => null);
-      if (!r.ok || !j?.ok) {
-        setErr(String(j?.error || `Erreur API (${r.status})`));
-        return;
-      }
+      await clearBotWheel(token);
       void load();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur réseau"));
@@ -283,24 +241,16 @@ export function BotWheelModule({ token }: { token: string }) {
     let targetIdx = Math.floor(Math.random() * entries.length);
 
     try {
-      const r = await apiAuthed(token, "/bot_wheel/draw", { method: "POST" });
-      const j = await r.json().catch(() => null);
+      const j = await drawBotWheel(token);
+      const winnerName = typeof j?.winner === "string" ? j.winner : null;
+      const serverIdxRaw = typeof j?.index === "number" ? j.index : null;
 
-      if (r.ok && j?.ok) {
-        const winnerName = typeof j?.winner === "string" ? j.winner : null;
-        const serverIdxRaw = typeof j?.index === "number" ? j.index : null;
-
-        if (winnerName) {
-          const idxByName = entries.findIndex(
-            (e) => e.username.toLowerCase() === winnerName.toLowerCase()
-          );
-          if (idxByName >= 0) targetIdx = idxByName;
-          else if (serverIdxRaw != null && serverIdxRaw >= 0 && serverIdxRaw < entries.length) {
-            targetIdx = serverIdxRaw;
-          }
-        } else if (serverIdxRaw != null && serverIdxRaw >= 0 && serverIdxRaw < entries.length) {
-          targetIdx = serverIdxRaw;
-        }
+      if (winnerName) {
+        const idxByName = entries.findIndex((e) => e.username.toLowerCase() === winnerName.toLowerCase());
+        if (idxByName >= 0) targetIdx = idxByName;
+        else if (serverIdxRaw != null && serverIdxRaw >= 0 && serverIdxRaw < entries.length) targetIdx = serverIdxRaw;
+      } else if (serverIdxRaw != null && serverIdxRaw >= 0 && serverIdxRaw < entries.length) {
+        targetIdx = serverIdxRaw;
       }
     } catch {
       // ignore
@@ -407,11 +357,7 @@ export function BotWheelModule({ token }: { token: string }) {
 
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={enrollOpen}
-                  onChange={(e) => toggleEnroll(e.target.checked)}
-                />
+                <input type="checkbox" checked={enrollOpen} onChange={(e) => toggleEnroll(e.target.checked)} />
                 <span
                   style={{
                     fontSize: 12,

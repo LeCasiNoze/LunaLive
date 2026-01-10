@@ -18,6 +18,8 @@ import {
   type ChatSettingsPatch,
 } from "./chat/chat_settings.js";
 
+export let chatIo: Server | null = null;
+
 type SocketData = {
   user?: AuthUser;
   slug?: string; // canonical slug (db)
@@ -287,6 +289,8 @@ async function readSettings(streamerId: number) {
 }
 
 export function attachChat(io: Server) {
+  chatIo = io;
+
   io.use((socket, next) => {
     tryAuth(socket);
     next();
