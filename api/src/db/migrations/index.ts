@@ -27,6 +27,7 @@ import { mig022_bot_core } from "./mig022_bot_core.js";
 import { mig023_chat_settings_calls } from "./mig023_chat_settings_calls.js";
 import { mig024_calls_bans_policy } from "./mig024_calls_hunt_bans_policy.js";
 import { mig025_calls_settings_hunt } from "./mig025_calls_settings_hunt.js";
+import { mig026_bot_wheel } from "./mig026_bot_wheel.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -65,4 +66,7 @@ export async function migrateAll(pool: Pool) {
   await mig023_chat_settings_calls(pool);
   await mig024_calls_bans_policy(pool);
   await mig025_calls_settings_hunt(pool);
+
+  // ✅ Bot wheel (tirage stream) — tables isolées de la roue quotidienne
+  await mig026_bot_wheel(pool);
 }

@@ -61,6 +61,9 @@ import { callsRouter } from "./routes/calls.js";
 import { hunt2Router } from "./routes/hunt2.js";
 import { callsHuntRouter } from "./routes/calls_hunt.js";
 
+// ✅ NEW: bot_wheel (tirage stream) — isolé de wheelRouter (roue quotidienne)
+import { botWheelRouter } from "./routes/bot_wheel.js";
+
 export function createApp() {
   const app = express();
   app.set("trust proxy", 1);
@@ -103,6 +106,7 @@ export function createApp() {
   app.use(cashoutRouter);
   app.use(subscriptionsRouter);
 
+  // ⚠️ wheelRouter = roue quotidienne (déjà existante)
   app.use(wheelRouter);
   app.use(chestRouter);
 
@@ -124,6 +128,9 @@ export function createApp() {
 
   // ✅ LunaBot dashboard routes
   app.use("/me/bot", requireAuth, meBotRouter);
+
+  // ✅ Bot wheel module (tirage stream) — routes: /me/bot/bot_wheel/*
+  app.use("/me/bot/bot_wheel", requireAuth, botWheelRouter);
 
   // ✅ Clips dashboard (download/list/delete)
   app.use("/me/bot/clips", botClipsRouter);
@@ -147,7 +154,6 @@ export function createApp() {
   app.use("/slots", slotsRouter);
   app.use("/calls-hunt", callsHuntRouter);
   app.use("/calls", callsRouter);
-
 
   // ✅ Hunt routes (/api/hunt2/*)
   app.use(hunt2Router);

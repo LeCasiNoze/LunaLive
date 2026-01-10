@@ -21,6 +21,7 @@ import { TestSendModule } from "./modules/TestSendModule";
 import { ObsWidgetModule } from "./modules/ObsWidgetModule";
 import { ClipsModule } from "./modules/ClipsModule";
 import { CallsModule } from "./modules/CallsHuntModule";
+import { BotWheelModule } from "./modules/BotWheelModule";
 
 // ──────────────────────────────────────────
 // Types
@@ -38,7 +39,16 @@ type ModuleDef = {
   onOpen?: () => void;
 };
 
-type ActiveModule = "commands" | "autoposts" | "logs" | "test-send" | "obs" | "clips" | "calls" | null;
+type ActiveModule =
+  | "commands"
+  | "autoposts"
+  | "logs"
+  | "test-send"
+  | "obs"
+  | "clips"
+  | "calls"
+  | "bot-wheel"
+  | null;
 
 const CATEGORY_LABEL: Record<ModuleCategory, string> = {
   general: "Général",
@@ -443,8 +453,6 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       icon: "📺",
       onOpen: () => setActiveModule("obs"),
     },
-
-    // ✅ NEW: Call & Hunt
     {
       id: "calls",
       category: "callhunt",
@@ -455,7 +463,17 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       onOpen: () => setActiveModule("calls"),
     },
 
-    { id: "wheel", category: "rubis", status: "soon", title: "Roue / tickets", desc: "Join + tirage.", icon: "🎡" },
+    // ✅ module “tirage roue streamer” = bot_wheel (pas la roue quotidienne)
+    {
+      id: "bot-wheel",
+      category: "rubis",
+      status: "ready",
+      title: "Roue (tirage stream)",
+      desc: "Inscriptions + tirage (bot_wheel).",
+      icon: "🎡",
+      onOpen: () => setActiveModule("bot-wheel"),
+    },
+
     { id: "rains", category: "rubis", status: "soon", title: "Rains", desc: "Distribution live-only.", icon: "🌧️" },
     { id: "predictions", category: "rubis", status: "soon", title: "Prédictions", desc: "Rubis live-only.", icon: "📊" },
     { id: "chest", category: "rubis", status: "soon", title: "Coffre streamer", desc: "Ouvertures + rewards.", icon: "📦" },
@@ -495,6 +513,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       ? "Widget OBS"
       : activeModule === "calls"
       ? "Calls & Hunt"
+      : activeModule === "bot-wheel"
+      ? "Roue (tirage stream)"
       : "Module";
 
   const modalDesc =
@@ -512,6 +532,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       ? "Génère l’URL Browser Source OBS (avec secret), options d’affichage et rotate."
       : activeModule === "calls"
       ? "Queue calls, limites par user, bans (users/machines/providers) + mode “autoriser seulement ces providers”."
+      : activeModule === "bot-wheel"
+      ? "Module bot_wheel: inscriptions + tirage (ne touche pas la roue quotidienne)."
       : undefined;
 
   return (
@@ -595,6 +617,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
           />
         ) : activeModule === "calls" ? (
           <CallsModule token={token} streamerSlug={streamer.slug} />
+        ) : activeModule === "bot-wheel" ? (
+          <BotWheelModule token={token} />
         ) : null}
       </Modal>
     </div>
