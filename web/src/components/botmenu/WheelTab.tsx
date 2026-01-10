@@ -22,6 +22,9 @@ export function WheelTab({
   const [joined, setJoined] = React.useState(false);
   const [count, setCount] = React.useState(0);
 
+  // ✅ NEW: empêche l’inscription via botmenu si pas live
+  const [isLive, setIsLive] = React.useState(true);
+
   const isAuthed = !!token;
 
   async function load() {
@@ -31,10 +34,26 @@ export function WheelTab({
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
       const j = await r.json();
+
       if (j?.ok) {
         setEnrollOpen(!!j.cfg?.enroll_open);
         setJoined(!!j.me?.joined);
         setCount(Number(j.counts?.entries || 0));
+
+        // ✅ accepte plusieurs formats possibles côté API
+        // - { live: { isLive: boolean } }
+        // - { streamer: { isLive: boolean } }
+        // - { isLive: boolean }
+        const live =
+          typeof j?.live?.isLive === "boolean"
+            ? j.live.isLive
+            : typeof j?.streamer?.isLive === "boolean"
+              ? j.streamer.isLive
+              : typeof j?.isLive === "boolean"
+                ? j.isLive
+                : true;
+
+        setIsLive(!!live);
       }
     } finally {
       setLoading(false);
@@ -48,6 +67,16 @@ export function WheelTab({
 
   async function doJoin() {
     if (!token) return onRequireLogin();
+
+    // ✅ bloque UI si pas live
+    if (!isLive) {
+      window.dispatchEvent(
+        new CustomEvent("ui:toast", {
+          detail: { kind: "info", title: "Stream hors-ligne", message: "Tu pourras rejoindre quand le live sera lancé." },
+        })
+      );
+      return;
+    }
 
     setLoading(true);
     try {
@@ -72,6 +101,12 @@ export function WheelTab({
           window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "info", title: "Inscriptions fermées" } }));
         } else if (e === "unauthorized") {
           onRequireLogin();
+        } else if (e === "offline") {
+          // si tu ajoutes ça côté API plus tard
+          window.dispatchEvent(
+            new CustomEvent("ui:toast", { detail: { kind: "info", title: "Stream hors-ligne", message: "Reviens quand le live est lancé." } })
+          );
+          setIsLive(false);
         } else {
           window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "error", title: "Erreur", message: e } }));
         }
@@ -96,17 +131,23 @@ export function WheelTab({
       if (j?.ok) {
         setEnrollOpen(next);
         window.dispatchEvent(
-          new CustomEvent("ui:toast", { detail: { kind: "success", title: next ? "Inscriptions ouvertes" : "Inscriptions fermées" } })
+          new CustomEvent("ui:toast", {
+            detail: { kind: "success", title: next ? "Inscriptions ouvertes" : "Inscriptions fermées" },
+          })
         );
       } else {
         window.dispatchEvent(
-          new CustomEvent("ui:toast", { detail: { kind: "error", title: "Erreur", message: j?.error || "enroll_failed" } })
+          new CustomEvent("ui:toast", {
+            detail: { kind: "error", title: "Erreur", message: j?.error || "enroll_failed" },
+          })
         );
       }
     } finally {
       setLoading(false);
     }
   }
+
+  const joinDisabled = loading || joined || !enrollOpen || !isLive;
 
   return (
     <div style={{ paddingTop: 4 }}>
@@ -139,6 +180,9 @@ export function WheelTab({
               <span style={{ opacity: 0.85 }}>
                 {enrollOpen ? "Inscriptions ouvertes" : "Inscriptions fermées"} • {count} inscrit(s)
               </span>
+              <span style={{ marginLeft: 10, fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
+                {isLive ? "LIVE" : "OFFLINE"}
+              </span>
             </div>
 
             <button
@@ -160,7 +204,7 @@ export function WheelTab({
 
           <button
             type="button"
-            disabled={loading || joined}
+            disabled={joinDisabled}
             onClick={() => void doJoin()}
             style={{
               marginTop: 10,
@@ -171,14 +215,27 @@ export function WheelTab({
               background: joined ? "rgba(255,255,255,0.06)" : "rgba(124,77,255,0.22)",
               color: "white",
               fontWeight: 950,
-              cursor: joined ? "not-allowed" : "pointer",
-              opacity: joined ? 0.8 : 1,
+              cursor: joinDisabled ? "not-allowed" : "pointer",
+              opacity: joinDisabled ? 0.78 : 1,
             }}
+            title={
+              !isLive
+                ? "Stream hors-ligne"
+                : !enrollOpen
+                  ? "Inscriptions fermées"
+                  : joined
+                    ? "Déjà inscrit"
+                    : ""
+            }
           >
-            {joined ? "Déjà inscrit ✅" : "Rejoindre la roue"}
+            {joined ? "Déjà inscrit ✅" : !isLive ? "Stream hors-ligne" : !enrollOpen ? "Inscriptions fermées" : "Rejoindre la roue"}
           </button>
 
-          {!enrollOpen ? (
+          {!isLive ? (
+            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
+              Stream hors-ligne — inscription via le BotMenu désactivée. (Tu pourras rejoindre quand le live sera lancé.)
+            </div>
+          ) : !enrollOpen ? (
             <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
               Les inscriptions sont fermées — tu peux toujours tenter via !join quand elles seront ouvertes.
             </div>
@@ -186,7 +243,10 @@ export function WheelTab({
 
           {canMod ? (
             <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.10)" }}>
-              <div style={{ fontWeight: 950, opacity: 0.9, marginBottom: 8 }}>Modération</div>
+              <div style={{ fontWeight: 950, opacity: 0.9, marginBottom: 8 }}>
+                Modération <span style={{ opacity: 0.8 }}>({enrollOpen ? "ouverte" : "fermée"})</span>
+              </div>
+
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   type="button"
