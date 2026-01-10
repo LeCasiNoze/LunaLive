@@ -476,6 +476,54 @@ export function ChatPanel({
     });
   }
 
+  async function joinRain(_from: "toast" | "chat" = "toast") {
+    if (!token) return onRequireLogin();
+
+    try {
+      const r = await fetch(`${apiBase()}/me/bot/bot_rain/join`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ slug }),
+      }).then((x) => x.json());
+
+      if (!r?.ok) {
+        const err = String(r?.error || "join_failed");
+        const msg =
+          err === "already_joined"
+            ? "Tu es déjà inscrit ✅"
+            : err === "not_open"
+            ? "Inscription fermée."
+            : err === "offline"
+            ? "Stream offline."
+            : err === "disabled"
+            ? "Rain désactivée."
+            : err;
+
+        window.dispatchEvent(
+          new CustomEvent("ui:toast", {
+            detail: { kind: err === "already_joined" ? "info" : "error", title: "🌧️ Rain", message: msg },
+          })
+        );
+        return;
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("ui:toast", {
+          detail: { kind: "success", title: "🌧️ Rain", message: "Inscription validée ✅" },
+        })
+      );
+    } catch (e: any) {
+      window.dispatchEvent(
+        new CustomEvent("ui:toast", {
+          detail: { kind: "error", title: "🌧️ Rain", message: String(e?.message || "Erreur") },
+        })
+      );
+    }
+  }
+
   async function loadLastMessages(s: string) {
     try {
       setInitialLoading(true);
@@ -525,6 +573,19 @@ export function ChatPanel({
 
     return () => window.clearTimeout(t);
   }, [slug, join?.state?.timeoutUntil]);
+
+  React.useEffect(() => {
+    const onJoin = (ev: any) => {
+      const s = String(ev?.detail?.slug || "");
+      if (!s) return;
+      if (s.toLowerCase() !== String(slug).toLowerCase()) return;
+      joinRain("toast");
+    };
+
+    window.addEventListener("ui:rain_join", onJoin as any);
+    return () => window.removeEventListener("ui:rain_join", onJoin as any);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, token]);
 
   /* =========================================================
      Socket connect + join

@@ -3,6 +3,7 @@ import * as React from "react";
 import { CallTab } from "./CallTab";
 import { HuntTabs } from "./HuntTabs";
 import { WheelTab } from "./WheelTab";
+import { RainTab } from "./RainTab";
 
 export function BotMenu({
   open,
@@ -23,7 +24,7 @@ export function BotMenu({
   onRequireLogin: () => void;
   sendBang: (text: string) => void;
 }) {
-  const [tab, setTab] = React.useState<"call" | "hunt" | "wheel">("call");
+  const [tab, setTab] = React.useState<"call" | "hunt" | "wheel" | "rain">("call");
 
   React.useEffect(() => {
     if (!open) return;
@@ -88,8 +89,16 @@ export function BotMenu({
         </div>
 
         {/* tabs */}
-        <div style={{ display: "flex", gap: 8, padding: 12, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          {(["call", "hunt", "wheel"] as const).map((k) => (
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            padding: 12,
+            borderBottom: "1px solid rgba(255,255,255,0.06)",
+            flexWrap: "wrap",
+          }}
+        >
+          {(["call", "hunt", "wheel", "rain"] as const).map((k) => (
             <button
               key={k}
               type="button"
@@ -104,7 +113,7 @@ export function BotMenu({
                 cursor: "pointer",
               }}
             >
-              {k === "call" ? "Call" : k === "hunt" ? "Hunt" : "Roue"}
+              {k === "call" ? "Call" : k === "hunt" ? "Hunt" : k === "wheel" ? "Roue" : "Rain"}
             </button>
           ))}
 
@@ -126,21 +135,16 @@ export function BotMenu({
           />
         ) : null}
 
-        {tab === "hunt" ? (
-          <HuntTabs token={token ?? ""} streamerSlug={slug} canModerate={canMod} />
-        ) : null}
+        {tab === "hunt" ? <HuntTabs token={token ?? ""} streamerSlug={slug} canModerate={canMod} /> : null}
 
         {tab === "wheel" ? (
-          <WheelTab
-            token={token}
-            slug={slug}
-            canMod={canMod}
-            onClose={onClose}
-            onRequireLogin={onRequireLogin}
-          />
+          <WheelTab token={token} slug={slug} canMod={canMod} onClose={onClose} onRequireLogin={onRequireLogin} />
         ) : null}
 
-        </div>
+        {tab === "rain" ? (
+          <RainTab token={token} slug={slug} canMod={canMod} onClose={onClose} onRequireLogin={onRequireLogin} />
+        ) : null}
       </div>
+    </div>
   );
 }

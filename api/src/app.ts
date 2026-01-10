@@ -64,6 +64,9 @@ import { callsHuntRouter } from "./routes/calls_hunt.js";
 // ✅ NEW: bot_wheel (tirage stream) — isolé de wheelRouter (roue quotidienne)
 import { botWheelRouter } from "./routes/bot_wheel.js";
 
+// ✅ NEW: bot_rain
+import { botRainRouter } from "./routes/bot_rain.js";
+
 export function createApp() {
   const app = express();
   app.set("trust proxy", 1);
@@ -131,6 +134,9 @@ export function createApp() {
 
   // ✅ Bot wheel module (tirage stream) — routes: /me/bot/bot_wheel/*
   app.use("/me/bot/bot_wheel", requireAuth, botWheelRouter);
+
+  // ✅ Rain module — routes: /me/bot/bot_rain/*
+  app.use("/me/bot/bot_rain", requireAuth, botRainRouter);
 
   // ✅ Clips dashboard (download/list/delete)
   app.use("/me/bot/clips", botClipsRouter);
