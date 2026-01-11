@@ -4,13 +4,14 @@ import { CallTab } from "./CallTab";
 import { HuntTabs } from "./HuntTabs";
 import { WheelTab } from "./WheelTab";
 import { RainTab } from "./RainTab";
+import { PredictionsTab } from "./PredictionsTab";
 
 export function BotMenu({
   open,
   onClose,
   slug,
   token,
-  role,
+  role, // volontairement conservé (usage futur permissions fines)
   canMod,
   onRequireLogin,
   sendBang,
@@ -24,7 +25,12 @@ export function BotMenu({
   onRequireLogin: () => void;
   sendBang: (text: string) => void;
 }) {
-  const [tab, setTab] = React.useState<"call" | "hunt" | "wheel" | "rain">("call");
+  // 👇 marque explicitement role comme “lu”
+  void role;
+
+  const [tab, setTab] = React.useState<
+    "call" | "hunt" | "wheel" | "rain" | "predictions"
+  >("call");
 
   React.useEffect(() => {
     if (!open) return;
@@ -59,6 +65,7 @@ export function BotMenu({
           overflow: "hidden",
         }}
       >
+        {/* Header */}
         <div
           style={{
             padding: 14,
@@ -81,14 +88,12 @@ export function BotMenu({
               fontWeight: 900,
               cursor: "pointer",
             }}
-            aria-label="Fermer"
-            title="Fermer"
           >
             ✕
           </button>
         </div>
 
-        {/* tabs */}
+        {/* Tabs */}
         <div
           style={{
             display: "flex",
@@ -98,7 +103,9 @@ export function BotMenu({
             flexWrap: "wrap",
           }}
         >
-          {(["call", "hunt", "wheel", "rain"] as const).map((k) => (
+          {(
+            ["call", "hunt", "wheel", "rain", "predictions"] as const
+          ).map((k) => (
             <button
               key={k}
               type="button"
@@ -107,24 +114,30 @@ export function BotMenu({
                 padding: "10px 12px",
                 borderRadius: 14,
                 border: "1px solid rgba(255,255,255,0.10)",
-                background: tab === k ? "rgba(124,77,255,0.20)" : "rgba(255,255,255,0.05)",
+                background:
+                  tab === k
+                    ? "rgba(124,77,255,0.20)"
+                    : "rgba(255,255,255,0.05)",
                 color: "white",
                 fontWeight: 950,
                 cursor: "pointer",
               }}
             >
-              {k === "call" ? "Call" : k === "hunt" ? "Hunt" : k === "wheel" ? "Roue" : "Rain"}
+              {k === "call"
+                ? "Call"
+                : k === "hunt"
+                ? "Hunt"
+                : k === "wheel"
+                ? "Roue"
+                : k === "rain"
+                ? "Rain"
+                : "Prédictions"}
             </button>
           ))}
-
-          {!canMod ? (
-            <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.75, fontWeight: 800, alignSelf: "center" }}>
-              {role ? `Rôle: ${role}` : ""}
-            </div>
-          ) : null}
         </div>
 
-        {tab === "call" ? (
+        {/* Content */}
+        {tab === "call" && (
           <CallTab
             token={token}
             slug={slug}
@@ -133,17 +146,34 @@ export function BotMenu({
             onRequireLogin={onRequireLogin}
             sendBang={sendBang}
           />
-        ) : null}
+        )}
 
-        {tab === "hunt" ? <HuntTabs token={token ?? ""} streamerSlug={slug} canModerate={canMod} /> : null}
+        {tab === "hunt" && (
+          <HuntTabs token={token ?? ""} streamerSlug={slug} canModerate={canMod} />
+        )}
 
-        {tab === "wheel" ? (
-          <WheelTab token={token} slug={slug} canMod={canMod} onClose={onClose} onRequireLogin={onRequireLogin} />
-        ) : null}
+        {tab === "wheel" && (
+          <WheelTab
+            token={token}
+            slug={slug}
+            canMod={canMod}
+            onClose={onClose}
+            onRequireLogin={onRequireLogin}
+          />
+        )}
 
-        {tab === "rain" ? (
-          <RainTab token={token} slug={slug} canMod={canMod} onClose={onClose} onRequireLogin={onRequireLogin} />
-        ) : null}
+        {tab === "rain" && (
+          <RainTab token={token} slug={slug} onRequireLogin={onRequireLogin} />
+        )}
+
+        {tab === "predictions" && (
+          <PredictionsTab
+            token={token}
+            slug={slug}
+            canMod={canMod}
+            onRequireLogin={onRequireLogin}
+          />
+        )}
       </div>
     </div>
   );

@@ -66,6 +66,7 @@ import { botWheelRouter } from "./routes/bot_wheel.js";
 
 // ✅ NEW: bot_rain
 import { botRainRouter } from "./routes/bot_rain.js";
+import { predictionsRouter } from "./predictions/predictions.routes.js";
 
 export function createApp() {
   const app = express();
@@ -112,7 +113,8 @@ export function createApp() {
   // ⚠️ wheelRouter = roue quotidienne (déjà existante)
   app.use(wheelRouter);
   app.use(chestRouter);
-
+  app.use(predictionsRouter);
+  
   app.use("/me/daily-bonus", requireAuth, dailyBonusRoutes);
   app.use("/me/achievements", requireAuth, achievementsRouter);
 

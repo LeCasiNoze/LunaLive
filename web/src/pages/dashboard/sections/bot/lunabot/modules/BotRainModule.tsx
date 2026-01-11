@@ -6,7 +6,7 @@ type RainState = {
   ok: true;
   slug: string;
   enabled: boolean;
-  intervalMin: 10 | 30 | 60;
+  intervalMin: 10 | 30 | 60 | 120;
   rubiesPerUser: number;
   joinWindowSec: number;
   isLive: boolean;
@@ -22,6 +22,7 @@ const PRESETS = [
   { intervalMin: 10 as const, rubiesPerUser: 1 },
   { intervalMin: 30 as const, rubiesPerUser: 5 },
   { intervalMin: 60 as const, rubiesPerUser: 15 },
+  { intervalMin: 120 as const, rubiesPerUser: 50 },
 ];
 
 function apiBase() {
@@ -63,7 +64,7 @@ export function BotRainModule({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function setPreset(intervalMin: 10 | 30 | 60) {
+  function setPreset(intervalMin: 10 | 30 | 60 | 120) {
     const p = PRESETS.find((x) => x.intervalMin === intervalMin)!;
     setState((old) =>
       old

@@ -195,11 +195,16 @@ export function CallsToast() {
             <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
               <button
                 type="button"
-                onClick={() => {
-                  window.dispatchEvent(new CustomEvent(current.action!.event, { detail: current.action!.detail }));
-                  const dismiss = current.action!.dismissOnClick ?? true;
-                  if (dismiss) setCurrent(null);
-                }}
+                  onClick={() => {
+                    console.log("[TOAST CLICK]", current.action);
+                    window.dispatchEvent(
+                      new CustomEvent(current.action!.event, {
+                        detail: current.action!.detail,
+                      })
+                    );
+                    const dismiss = current.action!.dismissOnClick ?? true;
+                    if (dismiss) setCurrent(null);
+                  }}
                 style={{
                   padding: "10px 12px",
                   borderRadius: 14,

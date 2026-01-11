@@ -14,6 +14,7 @@ import {
 
 const DEBUG_FORCE_COSMETICS = false; // mets false quand fini
 const DEBUG_USER = "LeCasiNoze";
+const CHAT_ENTER_ANIM = "slide";
 
 // ⚠️ on caste en any pour pas se battre avec le type exact maintenant
 const DEBUG_COSMETICS: any = {
@@ -146,16 +147,10 @@ export function ChatPanel({
   // ✅ init scroll flag
   const pendingInitScrollRef = React.useRef(false);
 
-  // ✅ NEW: "stick to bottom" (auto-follow) pour rester collé au dernier msg
-  const stickyUntilRef = React.useRef<number>(0);
-  const stickySeqRef = React.useRef<number>(0);
-  const pendingStickyScrollRef = React.useRef(false);
-
-  function isNearBottom(extraPx: number = 140) {
+  function isAtBottom(thresholdPx: number = 8) {
     const el = listRef.current;
     if (!el) return true;
-    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    return dist < extraPx;
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx;
   }
   const [botOpen, setBotOpen] = React.useState(false);
 
@@ -188,6 +183,24 @@ export function ChatPanel({
 
   const focusedRef = React.useRef(false);
 
+  function forceScrollBottomMultiPass() {
+    const el = listRef.current;
+    if (!el) return;
+
+    const scroll = () => {
+      el.scrollTop = el.scrollHeight;
+      atBottomRef.current = true;
+      setShowJump(false);
+    };
+
+    scroll();
+    requestAnimationFrame(scroll);
+    setTimeout(scroll, 50);
+    setTimeout(scroll, 150);
+    setTimeout(scroll, 300);
+    setTimeout(scroll, 600);
+  }
+  
   React.useEffect(() => {
     if (!isCoarse) return;
 
@@ -361,6 +374,13 @@ export function ChatPanel({
 
     return noUsername;
   }
+function isRainOpenMessage(msg: ChatMsg) {
+  return typeof msg.body === "string" && msg.body.includes("[RAIN_OPEN]");
+}
+
+function stripRainToken(text: string) {
+  return text.replace("[RAIN_OPEN]", "").trim();
+}
 
   /* -------------------------
      Derived values
@@ -381,7 +401,9 @@ export function ChatPanel({
   const nameColor = appearance.chat.usernameColor;
   const msgColor = appearance.chat.messageColor;
   const viewerSkinsLevel = (appearance.chat.viewerSkinsLevel ?? 1) as 1 | 2 | 3;
-
+  const userScrolledRef = React.useRef(false);
+  const ignoreScrollRef = React.useRef(false);
+  const animatedMsgIdsRef = React.useRef<Set<number>>(new Set());
   /* =========================================================
      Scroll
      ========================================================= */
@@ -397,75 +419,48 @@ export function ChatPanel({
     const el = listRef.current;
     if (!el) return;
 
-    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-
-    // ✅ seuil plus tolérant (images/badges qui chargent)
-    const atBottom = dist < 140;
+    const atBottom = isAtBottom();
     atBottomRef.current = atBottom;
 
-    if (atBottom) {
-      setShowJump(false);
-    } else {
-      setShowJump(true);
-
-      // ✅ si l'utilisateur remonte, on stop le "stick"
-      stickyUntilRef.current = 0;
-      stickySeqRef.current++;
-    }
+  if (ignoreScrollRef.current) {
+    return; // ⛔ scroll causé par un nouveau message → on ignore
   }
 
-  // ✅ init scroll en bas après rendu réel des messages
-  React.useLayoutEffect(() => {
-    if (!pendingInitScrollRef.current) return;
-    if (initialLoading) return;
-
-    const el = listRef.current;
-    if (!el) return;
-
-    el.scrollTop = el.scrollHeight;
-    atBottomRef.current = true;
+  if (atBottom) {
+    userScrolledRef.current = false;
     setShowJump(false);
-
-    requestAnimationFrame(() => {
-      if (atBottomRef.current) scrollToBottom("auto");
-    });
-    window.setTimeout(() => {
-      if (atBottomRef.current) scrollToBottom("auto");
-    }, 80);
-
-    pendingInitScrollRef.current = false;
-  }, [messages.length, initialLoading]);
+  } else {
+    userScrolledRef.current = true;
+    setShowJump(true);
+  }
+}
 
     // ✅ NEW: si on était en bas quand un msg arrive => on force le scroll au bottom (multi-pass)
-  React.useLayoutEffect(() => {
-    if (!pendingStickyScrollRef.current) return;
-    pendingStickyScrollRef.current = false;
-    if (initialLoading) return;
+React.useLayoutEffect(() => {
+  if (initialLoading) return;
+  if (userScrolledRef.current) return;
 
-    const until = stickyUntilRef.current;
-    if (!until || until < Date.now()) return;
+  const el = listRef.current;
+  if (!el) return;
 
-    const seq = ++stickySeqRef.current;
+  const scroll = () => {
+    el.scrollTop = el.scrollHeight;
+    atBottomRef.current = true;
+  };
 
-    const doScroll = () => {
-      if (seq !== stickySeqRef.current) return;
-      if (!stickyUntilRef.current || stickyUntilRef.current < Date.now()) return;
-      scrollToBottom("auto");
-    };
+  // multi-pass robuste
+  scroll();
+  requestAnimationFrame(scroll);
 
-    // plusieurs passes (rAF + timeouts) pour couvrir images/fonts/cosmétiques
-    doScroll();
-    requestAnimationFrame(doScroll);
-    const t1 = window.setTimeout(doScroll, 80);
-    const t2 = window.setTimeout(doScroll, 220);
-    const t3 = window.setTimeout(doScroll, 600);
+  const timers = [
+    window.setTimeout(scroll, 50),
+    window.setTimeout(scroll, 150),
+    window.setTimeout(scroll, 300),
+    window.setTimeout(scroll, 600),
+  ];
 
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-      window.clearTimeout(t3);
-    };
-  }, [messages.length, initialLoading]);
+  return () => timers.forEach(clearTimeout);
+}, [messages.length, initialLoading]);
 
   /* =========================================================
      Socket helpers
@@ -624,25 +619,14 @@ export function ChatPanel({
     });
 
     socket.on("chat:message", (msg: ChatMsg) => {
-      // ✅ on check "vraiment" si on est proche du bottom
-      const wasAtBottom = isNearBottom(140);
-
-      if (wasAtBottom) {
-        // ✅ on active un mode "stick" pendant un court instant
-        stickyUntilRef.current = Date.now() + 1500; // 1.5s suffisent
-        pendingStickyScrollRef.current = true;
-      }
-
+      animatedMsgIdsRef.current.add(msg.id); // 👈 AJOUT
       setMessages((prev) => {
         const next = [...prev, msg];
         if (next.length > 50) next.splice(0, next.length - 50);
         return next;
       });
 
-      // UX: si pas en bas => montre le bouton jump
-      if (!wasAtBottom) {
-        requestAnimationFrame(() => setShowJump(true));
-      }
+      forceScrollBottomMultiPass();
     });
 
     // ✅ NEW: settings broadcast
@@ -768,6 +752,10 @@ export function ChatPanel({
             }
           } else {
             setInput("");
+            // ✅ quand j’envoie moi-même → toujours revenir en bas
+            atBottomRef.current = true;
+            forceScrollBottomMultiPass();
+
             if (focusedRef.current) {
               window.setTimeout(() => inputRef.current?.focus(), 0);
             }
@@ -945,6 +933,37 @@ export function ChatPanel({
       <style>
         {`@keyframes chatFadeLeft{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}`}
       </style>
+      
+      <style>
+      {`
+      .chat-enter {
+        will-change: transform, opacity;
+        backface-visibility: hidden;
+        transform-origin: left center;
+      }
+
+      /* Slide doux et fluide */
+      @keyframes chatEnterSlide {
+        0% {
+          opacity: 0;
+          transform: translateX(-12px);
+        }
+        60% {
+          opacity: 1;
+          transform: translateX(2px);
+        }
+        100% {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      .chat-enter.slide {
+        animation: chatEnterSlide 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+      }
+      `}
+      </style>
+
 
       {!compact ? (
         <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
@@ -984,31 +1003,61 @@ export function ChatPanel({
             const isDeleted = !!m.deleted || m.body === "";
             if (m.userId !== 0 && isDeleted) return null;
 
-            if (isSystem) {
-              return (
-                <div
-                  key={m.id}
-                  style={{
-                    cursor: "default",
-                    padding: 10,
-                    borderRadius: 14,
-                    background: "rgba(124,77,255,0.10)",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    animation: "chatFadeLeft 180ms ease-out both",
-                  }}
-                >
-                  <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                    <div style={{ fontWeight: 800, fontSize: 13, color: "rgba(255,255,255,0.95)" }}>
-                      {m.username}
-                    </div>
-                    <div style={{ fontSize: 11, opacity: 0.55 }}>
-                      {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </div>
+          if (isSystem) {
+            const isRain = isRainOpenMessage(m);
+            const body = isRain ? stripRainToken(m.body) : m.body;
+
+            return (
+              <div
+                key={m.id}
+                className={
+                  animatedMsgIdsRef.current.has(m.id)
+                    ? `chat-enter ${CHAT_ENTER_ANIM}`
+                    : undefined
+                }
+                style={{
+                  cursor: "default",
+                  padding: 10,
+                  borderRadius: 14,
+                  background: "rgba(124,77,255,0.10)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                  <div style={{ fontWeight: 800, fontSize: 13, color: "rgba(255,255,255,0.95)" }}>
+                    {m.username}
                   </div>
-                  <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95, color: "white" }}>{m.body}</div>
+                  <div style={{ fontSize: 11, opacity: 0.55 }}>
+                    {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </div>
                 </div>
-              );
-            }
+
+                <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95, color: "white" }}>
+                  {body}
+                </div>
+
+                {isRain ? (
+                  <div style={{ marginTop: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => joinRain("chat")}
+                      style={{
+                        padding: "8px 14px",
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: "rgba(124,77,255,0.30)",
+                        color: "white",
+                        fontWeight: 900,
+                        cursor: "pointer",
+                      }}
+                    >
+                      🌧️ Rejoindre la rain
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          }
 
             const baseCosmetics =
               DEBUG_FORCE_COSMETICS && m.username === DEBUG_USER
@@ -1020,6 +1069,14 @@ export function ChatPanel({
             return (
               <div
                 key={m.id}
+                className={
+                  animatedMsgIdsRef.current.has(m.id)
+                    ? `chat-enter ${CHAT_ENTER_ANIM}`
+                    : undefined
+                }
+                onAnimationEnd={() => {
+                  animatedMsgIdsRef.current.delete(m.id);
+                }}
                 onContextMenu={(e) => openMenuMouse(e, m)}
                 onTouchStart={(e) => onTouchStartMsg(e, m)}
                 onTouchEnd={cancelLongPress}

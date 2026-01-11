@@ -11,6 +11,7 @@ const PRESETS: Record<number, number> = {
   10: 1,
   30: 5,
   60: 15,
+  120: 50,
 };
 
 const ALLOWED_INTERVALS = new Set([10, 30, 60]);
@@ -60,7 +61,7 @@ async function ensureSchema() {
   schemaReady = true;
 }
 
-function clampInterval(v: any): 10 | 30 | 60 {
+function clampInterval(v: any): 10 | 30 | 60 | 120 {
   const n = Number(v);
   if (ALLOWED_INTERVALS.has(n)) return n as any;
   return 30;

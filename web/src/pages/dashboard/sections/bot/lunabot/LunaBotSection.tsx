@@ -23,6 +23,7 @@ import { ClipsModule } from "./modules/ClipsModule";
 import { CallsModule } from "./modules/CallsHuntModule";
 import { BotWheelModule } from "./modules/BotWheelModule";
 import { BotRainModule } from "./modules/BotRainModule";
+import { PredictionsModule } from "./modules/PredictionsModule";
 
 // ──────────────────────────────────────────
 // Types
@@ -50,6 +51,7 @@ type ActiveModule =
   | "calls"
   | "bot-wheel"
   | "bot-rain"
+  | "predictions"   // ✅ À AJOUTER
   | null;
 
 const CATEGORY_LABEL: Record<ModuleCategory, string> = {
@@ -485,7 +487,15 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       icon: "🌧️",
       onOpen: () => setActiveModule("bot-rain"),
     },
-    { id: "predictions", category: "rubis", status: "soon", title: "Prédictions", desc: "Rubis live-only.", icon: "📊" },
+    {
+      id: "predictions",
+      category: "rubis",
+      status: "ready",
+      title: "Prédictions",
+      desc: "Prédictions rubis live-only.",
+      icon: "📊",
+      onOpen: () => setActiveModule("predictions"),
+    },
     { id: "chest", category: "rubis", status: "soon", title: "Coffre streamer", desc: "Ouvertures + rewards.", icon: "📦" },
 
     { id: "discord-setup", category: "discord", status: "soon", title: "Setup Discord", desc: "Lier / rôles.", icon: "🔗" },
@@ -607,36 +617,46 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
         ))}
       </div>
 
-    <Modal open={!!activeModule} title={modalTitle} desc={modalDesc} onClose={() => setActiveModule(null)}>
-      {activeModule === "commands" ? (
-        <CommandsModule token={token} commands={commands} onReload={reloadAll} />
-      ) : activeModule === "autoposts" ? (
-        <AutopostsModule token={token} autoposts={autoposts} onReload={reloadAll} />
-      ) : activeModule === "clips" ? (
-        <ClipsModule token={token} onReload={reloadAll} />
-      ) : activeModule === "logs" ? (
-        <LogsModule token={token} logs={logs} onReload={reloadAll} />
-      ) : activeModule === "test-send" ? (
-        <TestSendModule token={token} onSent={reloadAll} />
-      ) : activeModule === "obs" ? (
-        <ObsWidgetModule
-          token={token}
-          streamerSlug={streamer.slug}
-          streamerName={(streamer as any).displayName ?? streamer.slug}
-          userId={(user as any)?.id ?? 0}
-        />
-      ) : activeModule === "calls" ? (
-        <CallsModule token={token} streamerSlug={streamer.slug} />
-      ) : activeModule === "bot-wheel" ? (
-        <BotWheelModule token={token} />
-      ) : activeModule === "bot-rain" ? (
-        <BotRainModule
-          token={token}
-          streamerSlug={streamer.slug}
-        />
-      ) : null}
-    </Modal>
-
+      <Modal
+        open={!!activeModule}
+        title={modalTitle}
+        desc={modalDesc}
+        onClose={() => setActiveModule(null)}
+      >
+        {activeModule === "commands" ? (
+          <CommandsModule token={token} commands={commands} onReload={reloadAll} />
+        ) : activeModule === "autoposts" ? (
+          <AutopostsModule token={token} autoposts={autoposts} onReload={reloadAll} />
+        ) : activeModule === "clips" ? (
+          <ClipsModule token={token} onReload={reloadAll} />
+        ) : activeModule === "logs" ? (
+          <LogsModule token={token} logs={logs} onReload={reloadAll} />
+        ) : activeModule === "test-send" ? (
+          <TestSendModule token={token} onSent={reloadAll} />
+        ) : activeModule === "obs" ? (
+          <ObsWidgetModule
+            token={token}
+            streamerSlug={streamer.slug}
+            streamerName={(streamer as any).displayName ?? streamer.slug}
+            userId={(user as any)?.id ?? 0}
+          />
+        ) : activeModule === "calls" ? (
+          <CallsModule token={token} streamerSlug={streamer.slug} />
+        ) : activeModule === "bot-wheel" ? (
+          <BotWheelModule token={token} />
+        ) : activeModule === "bot-rain" ? (
+          <BotRainModule
+            token={token}
+            streamerSlug={streamer.slug}
+          />
+        ) : activeModule === "predictions" ? (
+          <PredictionsModule
+            token={token}
+            streamerId={Number(streamer.id)}
+            streamerSlug={streamer.slug}
+          />
+        ) : null}
+      </Modal>
     </div>
   );
 }
