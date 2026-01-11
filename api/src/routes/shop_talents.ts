@@ -3,7 +3,7 @@ import { Router } from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
 import { a } from "../utils/async.js";
-import { spendRubis } from "../wallet_engine.js";
+import { spendRubisTx } from "../wallet_engine.js";
 
 export const shopTalentsRouter = Router();
 
@@ -129,30 +129,38 @@ shopTalentsRouter.post(
     const nextLevel = currentLevel + 1;
     const price = LEVEL_PRICES[nextLevel];
 
+    const client = await pool.connect();
     try {
-      await spendRubis({
+      await client.query("BEGIN");
+
+      await spendRubisTx(client, {
         userId,
         amount: price,
         spendKind: "sink",
         spendType: "talent",
         meta: { talent: code, level: nextLevel },
-        });
+      });
+
+      await client.query(
+        `
+        INSERT INTO user_talents (user_id, talent_code, level)
+        VALUES ($1,$2,$3)
+        ON CONFLICT (user_id, talent_code)
+        DO UPDATE SET level = EXCLUDED.level
+        `,
+        [userId, code, nextLevel]
+      );
+
+      await client.query("COMMIT");
     } catch (e: any) {
+      await client.query("ROLLBACK");
       if (String(e?.message) === "insufficient_funds") {
         return res.status(400).json({ ok: false, error: "insufficient_funds" });
       }
-      return res.status(500).json({ ok: false, error: "buy_failed" });
+      throw e;
+    } finally {
+      client.release();
     }
-
-    await pool.query(
-      `
-      INSERT INTO user_talents (user_id, talent_code, level)
-      VALUES ($1,$2,$3)
-      ON CONFLICT (user_id, talent_code)
-      DO UPDATE SET level = EXCLUDED.level, updated_at = NOW()
-    `,
-      [userId, code, nextLevel]
-    );
 
     const rubis = await getUserRubis(userId);
 

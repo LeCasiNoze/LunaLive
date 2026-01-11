@@ -122,7 +122,7 @@ export function createApp() {
   app.use(cosmeticsRouter);
   app.use(avatarRouter);
   app.use(shopRouter);
-  app.use("/shop/talents", shopTalentsRouter);
+  app.use("/api/shop/talents", shopTalentsRouter);
   app.use(cosmeticsCatalogRoutes);
 
   // casinos
