@@ -12,40 +12,6 @@ import { shopTalents, buyTalent, type ApiTalentItem } from "../lib/api";
 
 type Kind = "username" | "badge" | "title" | "frame" | "hat";
 
-const TALENTS_DEF = [
-  {
-    code: "talent_shop_discount",
-    name: "Réduction shop",
-    desc: "Réduction sur les cosmétiques du shop.",
-  },
-  {
-    code: "talent_xp_boost",
-    name: "Boost XP",
-    desc: "Augmente l’XP gagnée sur la plateforme.",
-  },
-  {
-    code: "talent_rain_boost",
-    name: "Boost Rain",
-    desc: "Augmente les gains issus des rain.",
-  },
-  {
-    code: "talent_prediction_bet_cap",
-    name: "Mise prédiction max",
-    desc: "Augmente la mise maximale possible sur les prédictions.",
-  },
-  {
-    code: "talent_prediction_shield",
-    name: "Shield prédiction",
-    desc: "Protège certaines prédictions perdues.",
-  },
-  {
-    code: "talent_calls_limit",
-    name: "Calls & PCall",
-    desc: "Augmente les calls disponibles et débloque le pay call.",
-  },
-] as const;
-
-
 const TOP_TABS = [
   { id: "skins", label: "Skins" },
   { id: "upgrades", label: "Améliorations" },
@@ -237,7 +203,7 @@ export function ShopPage({
   const [availableRubis, setAvailableRubis] = React.useState<number>(user?.rubis ?? 0);
   const [availablePrestige, setAvailablePrestige] = React.useState<number>(0);
   const [talents, setTalents] = React.useState<ApiTalentItem[]>([]);
-  const [loadingTalents, setLoadingTalents] = React.useState(false);
+  const [, setLoadingTalents] = React.useState(false);
 
   const [items, setItems] = React.useState<ShopCosmeticItem[]>([]);
   const [owned, setOwned] = React.useState<Record<string, string[]>>({});
