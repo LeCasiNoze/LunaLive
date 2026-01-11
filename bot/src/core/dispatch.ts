@@ -1,3 +1,4 @@
+// bot/src/core/dispatch.ts
 import type { BotCommand, ChatMsg, CommandContext } from "./types.js";
 import { applyTemplate } from "./template.js";
 import { Cooldowns } from "./cooldowns.js";
@@ -35,7 +36,29 @@ export async function dispatch(opts: DispatchOpts) {
 
   if (!trigger) return;
 
+  // ──────────────────────────────────────────
+  // 🎯 PRÉDICTIONS — !1 / !2 (SILENCIEUX)
+  // ──────────────────────────────────────────
+  if (trigger === "1" || trigger === "2") {
+    const choice = trigger === "2" ? 2 : 1;
+
+    try {
+      await ctx.predictions?.bet({
+        userId: msg.userId,
+        username: msg.username,
+        choice,
+        streamerId: ctx.streamer.id,
+      });
+    } catch {
+      // volontairement silencieux
+    }
+
+    return;
+  }
+
+  // ──────────────────────────────────────────
   // built-in minimal
+  // ──────────────────────────────────────────
   if (trigger === "ping") {
     const cdKey = `u:${msg.userId}:ping`;
     if (!cooldowns.allow(cdKey, 3)) return;
@@ -43,6 +66,9 @@ export async function dispatch(opts: DispatchOpts) {
     return;
   }
 
+  // ──────────────────────────────────────────
+  // commandes personnalisées
+  // ──────────────────────────────────────────
   const cmd = commands.get(trigger);
   if (!cmd || !cmd.enabled) return;
 
