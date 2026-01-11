@@ -4,8 +4,10 @@ import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
 import { a } from "../utils/async.js";
 import { COSMETICS_CATALOG, type CosmeticItem, type CosmeticKind } from "../cosmetics/catalog.js";
+import { shopTalentsRouter } from "./shop_talents.js";
 
 export const shopRouter = Router();
+shopRouter.use("/shop/talents", shopTalentsRouter);
 
 const PRESTIGE_TOKEN = "prestige_token";
 
@@ -287,8 +289,6 @@ shopRouter.get(
       .slice()
       .sort(shopSort);
       
-    res.json({ ok: true, debug: "shopRouter_v2_titles", availableRubis, availablePrestige, owned, equipped, items });
-
     res.json({ ok: true, availableRubis, availablePrestige, owned, equipped, items });
   })
 );

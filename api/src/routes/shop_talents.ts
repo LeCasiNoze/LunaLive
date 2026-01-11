@@ -34,26 +34,26 @@ const LEVEL_PRICES: Record<number, number> = {
 // ──────────────────────────────────────────
 
 async function getUserTalents(userId: number) {
-  const r = await pool.query<{ talent_code: string; level: number }>(
-    `
-    SELECT talent_code, level
-    FROM user_talents
-    WHERE user_id = $1
-  `,
-    [userId]
-  );
+  try {
+    const r = await pool.query<{ talent_code: string; level: number }>(
+      `SELECT talent_code, level FROM user_talents WHERE user_id = $1`,
+      [userId]
+    );
 
-  const map: Record<string, number> = {};
-  for (const row of r.rows) {
-    map[row.talent_code] = Number(row.level) || 0;
+    const map: Record<string, number> = {};
+    for (const row of r.rows) {
+      map[row.talent_code] = Number(row.level) || 0;
+    }
+
+    for (const t of TALENTS) {
+      if (map[t] == null) map[t] = 0;
+    }
+
+    return map;
+  } catch {
+    // table pas encore migrée
+    return Object.fromEntries(TALENTS.map((t) => [t, 0]));
   }
-
-  // ensure all talents exist
-  for (const t of TALENTS) {
-    if (map[t] == null) map[t] = 0;
-  }
-
-  return map;
 }
 
 async function getUserRubis(userId: number) {

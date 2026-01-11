@@ -33,7 +33,6 @@ import { cosmeticsRouter } from "./routes/cosmetics.js";
 import { cosmeticsCatalogRoutes } from "./routes/cosmetics_catalog_routes.js";
 import { avatarRouter } from "./routes/avatar.js";
 import { shopRouter } from "./routes/shop.js";
-import { shopTalentsRouter } from "./routes/shop_talents.js";
 
 import { casinosPublicRouter } from "./routes/casinos_public.js";
 import { casinosMeRouter } from "./routes/casinos_me.js";
@@ -122,7 +121,6 @@ export function createApp() {
   app.use(cosmeticsRouter);
   app.use(avatarRouter);
   app.use(shopRouter);
-  app.use("/api/shop/talents", shopTalentsRouter);
   app.use(cosmeticsCatalogRoutes);
 
   // casinos

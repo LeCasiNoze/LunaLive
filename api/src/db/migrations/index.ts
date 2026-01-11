@@ -29,6 +29,8 @@ import { mig024_calls_bans_policy } from "./mig024_calls_hunt_bans_policy.js";
 import { mig025_calls_settings_hunt } from "./mig025_calls_settings_hunt.js";
 import { mig026_bot_wheel } from "./mig026_bot_wheel.js";
 import { mig027_predictions } from "./mig027_predictions.js";
+import { mig028_user_talents } from "./mig028_user_upgrades.js";
+
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -73,4 +75,5 @@ export async function migrateAll(pool: Pool) {
 
   // ✅ Prédictions (rubis – live only)
   await mig027_predictions(pool);
+  await mig028_user_talents(pool)
 }
