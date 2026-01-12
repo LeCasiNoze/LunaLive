@@ -1,23 +1,3 @@
-<<<<<<< HEAD
-// api/src/db/migrations/mig0xx_user_upgrades.ts
-import type { Pool } from "pg";
-
-export async function up(pool: Pool) {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS user_upgrades (
-      user_id INT NOT NULL,
-      upgrade_key VARCHAR(64) NOT NULL,
-      level INT NOT NULL DEFAULT 0,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (user_id, upgrade_key)
-    );
-  `);
-}
-
-export async function down(pool: Pool) {
-  await pool.query(`DROP TABLE IF EXISTS user_upgrades;`);
-=======
 // api/src/db/migrations/mig028_user_talents.ts
 import type { Pool } from "pg";
 
@@ -87,5 +67,4 @@ export async function mig028_user_talents(pool: Pool) {
     FOR EACH ROW
     EXECUTE FUNCTION user_talents_touch_updated_at();
   `);
->>>>>>> b0190bf507ff63c35ec62af4eb6d40313c9e97ce
 }
