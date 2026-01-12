@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 
-export type AuthUser = { id: number; username: string; rubis: number; role: string };
+export type AuthUser = { id: number; username: string; role: string };
 
 declare global {
   namespace Express {
@@ -20,24 +20,42 @@ export async function verifyPassword(password: string, hash: string) {
   return bcrypt.compare(password, hash);
 }
 
-export function signToken(u: AuthUser) {
+export function signToken(u: { id: number; username: string; role: string }) {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("JWT_SECRET missing");
-  return jwt.sign(u, secret, { expiresIn: "30d" });
+
+  return jwt.sign(
+    { id: u.id, username: u.username, role: u.role },
+    secret,
+    { expiresIn: "30d" }
+  );
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  // ✅ laisser passer le preflight CORS
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
   const h = String(req.headers.authorization || "");
   const m = h.match(/^Bearer\s+(.+)$/i);
-  if (!m) return res.status(401).json({ ok: false, error: "unauthorized" });
+  if (!m) {
+    return res.status(401).json({ ok: false, error: "unauthorized", reason: "missing_bearer" });
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    console.error("[auth] JWT_SECRET missing on this runtime");
+    return res.status(500).json({ ok: false, error: "server_misconfig", reason: "jwt_secret_missing" });
+  }
 
   try {
-    const secret = process.env.JWT_SECRET;
-    if (!secret) throw new Error("JWT_SECRET missing");
-    req.user = jwt.verify(m[1], secret) as AuthUser;
+    const decoded = jwt.verify(m[1], secret);
+    req.user = decoded as AuthUser;
     return next();
-  } catch {
-    return res.status(401).json({ ok: false, error: "unauthorized" });
+  } catch (e: any) {
+    console.warn("[auth] jwt verify failed:", e?.name, e?.message);
+    return res.status(401).json({ ok: false, error: "unauthorized", reason: e?.name || "bad_token" });
   }
 }
 
