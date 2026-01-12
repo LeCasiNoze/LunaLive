@@ -75,6 +75,12 @@ export function createApp() {
 
   app.use(cors());
   app.use(express.json({ limit: "300kb" }));
+  app.use((req, res, next) => {
+    res.setHeader("x-build", "vod-debug-2026-01-12");
+    next();
+  });
+
+  app.use(streamerVodsRouter);
 
   // legacy modules
   registerChatRoutes(app);
@@ -98,6 +104,10 @@ export function createApp() {
   // NEW routers (clean split)
   app.use(publicRouter);
   app.use(authRouter);
+
+  // ✅ IMPORTANT: VODs doivent être publiques et matcher AVANT streamerRouter
+
+
   app.use(streamerRouter);
   app.use(adminRouter);
 
@@ -127,8 +137,6 @@ export function createApp() {
   app.use(shopRouter);
   app.use("/shop/talents", shopTalentsRouter);
   app.use(cosmeticsCatalogRoutes);
-
-  app.use(streamerVodsRouter);
 
   // ✅ OBS overlay config (compat frontend)
   app.use("/me/overlay", requireAuth, meOverlayRouter);

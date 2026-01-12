@@ -127,6 +127,7 @@ streamerVodsRouter.get(
     const slug = String(req.params.slug || "").trim();
     const cursorRaw = req.query.cursor != null ? String(req.query.cursor) : null;
     const limit = Math.max(1, Math.min(48, Number(req.query.limit || 24)));
+    res.setHeader("x-handler", "streamer_vods");
 
     if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
 

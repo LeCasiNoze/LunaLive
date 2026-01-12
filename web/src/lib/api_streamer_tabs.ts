@@ -110,6 +110,5 @@ export async function getStreamerVods(slug: string, cursor?: string | null, limi
   const qs = new URLSearchParams();
   if (cursor) qs.set("cursor", cursor);
   qs.set("limit", String(limit));
-  const url = `${BASE.replace(/\/$/, "")}/streamers/${encodeURIComponent(slug)}/vods?${qs.toString()}`;
-  return fetch(url).then((x) => x.json());
+  return j(`${API}/streamers/${encodeURIComponent(slug)}/vods?${qs.toString()}`);
 }
