@@ -13,6 +13,7 @@ declare global {
   }
 }
 
+
 export async function hashPassword(password: string) {
   return bcrypt.hash(password, 10);
 }
@@ -31,19 +32,28 @@ export function signToken(u: { id: number; username: string; role: string }) {
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  console.log("[AUTH] header:", req.headers.authorization);
+  console.log("[AUTH] JWT_SECRET present:", !!process.env.JWT_SECRET);
+
   const h = String(req.headers.authorization || "");
   const m = h.match(/^Bearer\s+(.+)$/i);
-  if (!m) return res.status(401).json({ ok: false, error: "unauthorized" });
+  if (!m) {
+    console.log("[AUTH] no bearer");
+    return res.status(401).json({ ok: false, error: "unauthorized" });
+  }
 
   try {
     const secret = process.env.JWT_SECRET;
     if (!secret) throw new Error("JWT_SECRET missing");
     req.user = jwt.verify(m[1], secret) as AuthUser;
+    console.log("[AUTH] token OK", req.user);
     return next();
-  } catch {
+  } catch (e) {
+    console.error("[AUTH] verify failed", e);
     return res.status(401).json({ ok: false, error: "unauthorized" });
   }
 }
+
 
 export function requireAdminKey(req: Request, res: Response, next: NextFunction) {
   const key = String(req.headers["x-admin-key"] || "");
