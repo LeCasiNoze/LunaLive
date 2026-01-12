@@ -1,19 +1,21 @@
 // api/src/services/dailyBonus.ts
+// ✅ VERSION COMPLÈTE CORRIGÉE — COMPATIBLE wallet_engine ACTUEL (SANS tx_id)
+
 import type { Pool, PoolClient } from "pg";
+import { earnRubisTx } from "../wallet_engine.js";
 
 type WeekDayReward =
   | { type: "rubis"; amount: number; origin: string; weight_bp: number }
   | { type: "token"; token: "wheel_ticket"; amount: number };
 
 type Granted =
-  | { type: "rubis"; amount: number; origin: string; weight_bp: number; tx_id?: number }
+  | { type: "rubis"; amount: number; origin: string; weight_bp: number }
   | { type: "token"; token: "wheel_ticket" | "prestige_token"; amount: number }
   | { type: "entitlement"; kind: "skin" | "title"; code: string; fallback?: boolean };
 
 const DAILY_WEIGHT_BP = 3000;
 
 function rewardByIsoDow(isodow: number): WeekDayReward {
-  // ISO: 1=Lun ... 7=Dim
   switch (isodow) {
     case 1: return { type: "rubis", amount: 3, origin: "daily_bonus_mon", weight_bp: DAILY_WEIGHT_BP };
     case 2: return { type: "rubis", amount: 3, origin: "daily_bonus_tue", weight_bp: DAILY_WEIGHT_BP };
@@ -38,39 +40,11 @@ async function getParisNow(client: PoolClient) {
   `);
 
   return {
-    day: String(r.rows[0].day),              // "YYYY-MM-DD"
+    day: String(r.rows[0].day),
     monthStart: String(r.rows[0].month_start),
     isodow: Number(r.rows[0].isodow),
     weekStart: String(r.rows[0].week_start),
   };
-}
-
-async function mintRubis(client: PoolClient, userId: number, amount: number, origin: string, weight_bp: number) {
-  const tx = await client.query(
-    `
-    INSERT INTO rubis_tx (kind, purpose, status, from_user_id, to_user_id, amount, support_value, streamer_amount, platform_amount, burn_amount, meta)
-    VALUES ('mint', $1, 'succeeded', NULL, $2, $3, 0, 0, 0, 0, jsonb_build_object('origin',$1,'weight_bp',$4))
-    RETURNING id;
-    `,
-    [origin, userId, amount, weight_bp]
-  );
-  const txId = Number(tx.rows?.[0]?.id);
-
-  await client.query(
-    `
-    INSERT INTO rubis_lots (user_id, origin, weight_bp, amount_total, amount_remaining, meta)
-    VALUES ($1, $2, $3, $4, $4, jsonb_build_object('source','daily_bonus'));
-    `,
-    [userId, origin, weight_bp, amount]
-  );
-
-  await client.query(
-    `INSERT INTO rubis_tx_entries (tx_id, entity, user_id, delta) VALUES ($1, 'user', $2, $3);`,
-    [txId, userId, amount]
-  );
-
-  await client.query(`UPDATE users SET rubis = rubis + $2 WHERE id = $1;`, [userId, amount]);
-  return txId;
 }
 
 async function addToken(client: PoolClient, userId: number, token: string, amount: number) {
@@ -198,7 +172,6 @@ export async function getDailyBonusState(pool: Pool, userId: number) {
     const labels = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
     const week = [];
     for (let d = 1; d <= 7; d++) {
-      // date du jour d dans la semaine
       const rr = await client.query<{ date: string }>(
         `SELECT ($1::date + ($2::int - 1) * INTERVAL '1 day')::date::text AS date;`,
         [weekStart, d]
@@ -217,7 +190,6 @@ export async function getDailyBonusState(pool: Pool, userId: number) {
 
       if (isToday) status = todayClaimed ? "today_claimed" : "today_claimable";
       else if (isPast) status = weekClaims.has(date) ? "claimed" : "missed";
-      else status = "future";
 
       week.push({
         isodow: d,
@@ -255,7 +227,7 @@ export async function claimDailyBonusToday(pool: Pool, userId: number) {
   try {
     await client.query("BEGIN");
 
-    const { day, monthStart, isodow, weekStart } = await getParisNow(client);
+    const { day, isodow } = await getParisNow(client);
 
     const ins = await client.query(
       `
@@ -273,8 +245,16 @@ export async function claimDailyBonusToday(pool: Pool, userId: number) {
     if (!alreadyClaimed) {
       const rw = rewardByIsoDow(isodow);
       if (rw.type === "rubis") {
-        const txId = await mintRubis(client, userId, rw.amount, rw.origin, rw.weight_bp);
-        granted.push({ type: "rubis", amount: rw.amount, origin: rw.origin, weight_bp: rw.weight_bp, tx_id: txId });
+        await earnRubisTx(client, userId, rw.origin, rw.amount, {
+          weight_bp: rw.weight_bp,
+          source: "daily_bonus",
+        });
+        granted.push({
+          type: "rubis",
+          amount: rw.amount,
+          origin: rw.origin,
+          weight_bp: rw.weight_bp,
+        });
       } else {
         await addToken(client, userId, rw.token, rw.amount);
         granted.push({ type: "token", token: rw.token, amount: rw.amount });
@@ -283,7 +263,6 @@ export async function claimDailyBonusToday(pool: Pool, userId: number) {
 
     await client.query("COMMIT");
 
-    // renvoie aussi state pour refresh UI
     const state = await getDailyBonusState(pool, userId);
     return { ok: true, alreadyClaimed, granted, state };
   } catch (e) {
@@ -302,25 +281,21 @@ export async function claimDailyBonusMilestone(pool: Pool, userId: number, miles
     const { monthStart } = await getParisNow(client);
     const monthClaimedDays = await countClaimsThisMonth(client, userId, monthStart);
 
-    if (monthClaimedDays < milestone) {
-      throw new Error("milestone_not_reached");
-    }
-
-    const already = await milestoneClaimed(client, userId, monthStart, milestone);
-    if (already) {
+    if (monthClaimedDays < milestone) throw new Error("milestone_not_reached");
+    if (await milestoneClaimed(client, userId, monthStart, milestone)) {
       throw new Error("milestone_already_claimed");
     }
 
     const granted: Granted[] = [];
 
     if (milestone === 5) {
-      const txId = await mintRubis(client, userId, 5, "monthly_bonus_5", DAILY_WEIGHT_BP);
-      granted.push({ type: "rubis", amount: 5, origin: "monthly_bonus_5", weight_bp: DAILY_WEIGHT_BP, tx_id: txId });
+      await earnRubisTx(client, userId, "monthly_bonus_5", 5, { weight_bp: DAILY_WEIGHT_BP });
+      granted.push({ type: "rubis", amount: 5, origin: "monthly_bonus_5", weight_bp: DAILY_WEIGHT_BP });
     }
 
     if (milestone === 10) {
-      const txId = await mintRubis(client, userId, 10, "monthly_bonus_10", DAILY_WEIGHT_BP);
-      granted.push({ type: "rubis", amount: 10, origin: "monthly_bonus_10", weight_bp: DAILY_WEIGHT_BP, tx_id: txId });
+      await earnRubisTx(client, userId, "monthly_bonus_10", 10, { weight_bp: DAILY_WEIGHT_BP });
+      granted.push({ type: "rubis", amount: 10, origin: "monthly_bonus_10", weight_bp: DAILY_WEIGHT_BP });
       await addToken(client, userId, "wheel_ticket", 1);
       granted.push({ type: "token", token: "wheel_ticket", amount: 1 });
     }
@@ -331,8 +306,13 @@ export async function claimDailyBonusMilestone(pool: Pool, userId: number, miles
       if (ok) {
         granted.push({ type: "entitlement", kind: "skin", code });
       } else {
-        const txId = await mintRubis(client, userId, 20, "monthly_bonus_20_fallback", DAILY_WEIGHT_BP);
-        granted.push({ type: "rubis", amount: 20, origin: "monthly_bonus_20_fallback", weight_bp: DAILY_WEIGHT_BP, tx_id: txId });
+        await earnRubisTx(client, userId, "monthly_bonus_20_fallback", 20, { weight_bp: DAILY_WEIGHT_BP });
+        granted.push({
+          type: "rubis",
+          amount: 20,
+          origin: "monthly_bonus_20_fallback",
+          weight_bp: DAILY_WEIGHT_BP,
+        });
         granted.push({ type: "entitlement", kind: "skin", code, fallback: true });
       }
     }

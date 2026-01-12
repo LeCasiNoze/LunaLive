@@ -3,8 +3,21 @@ import type { Server as IOServer } from "socket.io";
 import { pool } from "./db.js";
 
 const OUT_WEIGHT_BP = 2000; // 0.20
-const RULE_MINUTES = 5;
-const RULE_RUBIS = 3;
+const BUCKET_MINUTES = 5;
+
+/**
+ * Règle de génération par tranche de spectateurs
+ * Toutes les 5 minutes, selon le nombre moyen de viewers actifs
+ */
+function viewersToRubis(viewers: number): number {
+  if (viewers <= 0) return 0;
+  if (viewers <= 10) return 2;
+  if (viewers <= 20) return 3;
+  if (viewers <= 30) return 4;
+  if (viewers <= 40) return 5;
+  if (viewers <= 50) return 6;
+  return 6 + Math.floor((viewers - 50) / 10); // +1 par tranche de 10
+}
 
 async function ensureChest(client: any, streamerId: number) {
   await client.query(
@@ -16,8 +29,10 @@ async function ensureChest(client: any, streamerId: number) {
 }
 
 async function autoMintTick() {
-  // On crédite uniquement des minutes "finies" => up to (now rounded) - 1 minute
-  const toTsRes = await pool.query(`SELECT (date_trunc('minute', NOW()) - INTERVAL '1 minute') AS t`);
+  // borne supérieure : minute pleine précédente
+  const toTsRes = await pool.query(
+    `SELECT (date_trunc('minute', NOW()) - INTERVAL '1 minute') AS t`
+  );
   const toTs = toTsRes.rows?.[0]?.t ? new Date(toTsRes.rows[0].t).toISOString() : null;
   if (!toTs) return;
 
@@ -36,14 +51,14 @@ async function autoMintTick() {
       await ensureChest(client, streamerId);
 
       const st = await client.query(
-        `SELECT last_bucket_ts AS "lastBucketTs", carry_minutes AS "carryMinutes"
+        `SELECT last_bucket_ts AS "lastBucketTs"
          FROM streamer_chest_auto_state
          WHERE streamer_id=$1
          FOR UPDATE`,
         [streamerId]
       );
 
-      // init state if missing
+      // init state
       if (!st.rows?.[0]) {
         await client.query(
           `INSERT INTO streamer_chest_auto_state (streamer_id, last_bucket_ts, carry_minutes)
@@ -55,17 +70,23 @@ async function autoMintTick() {
         continue;
       }
 
-      const lastBucketTs = st.rows?.[0]?.lastBucketTs ? new Date(st.rows[0].lastBucketTs).toISOString() : null;
-      const carry = Number(st.rows?.[0]?.carryMinutes || 0);
+      const lastBucketTs = st.rows[0].lastBucketTs
+        ? new Date(st.rows[0].lastBucketTs).toISOString()
+        : null;
 
-      // nothing new
+      // rien de nouveau
       if (lastBucketTs && new Date(toTs).getTime() <= new Date(lastBucketTs).getTime()) {
         await client.query("COMMIT");
         continue;
       }
 
-      const countRes = await client.query(
-        `SELECT COUNT(*)::int AS n
+      /**
+       * On compte le nombre de viewers distincts
+       * ayant été présents AU MOINS une minute
+       * dans la fenêtre [lastBucketTs ; toTs]
+       */
+      const viewersRes = await client.query(
+        `SELECT COUNT(DISTINCT viewer_key)::int AS n
          FROM stream_viewer_minutes
          WHERE streamer_id=$1
            AND bucket_ts > COALESCE($2::timestamptz, '1970-01-01'::timestamptz)
@@ -73,19 +94,15 @@ async function autoMintTick() {
         [streamerId, lastBucketTs, toTs]
       );
 
-      const newMinutes = Number(countRes.rows?.[0]?.n || 0);
-      const totalMinutes = carry + newMinutes;
-
-      const minted = Math.floor(totalMinutes / RULE_MINUTES) * RULE_RUBIS;
-      const newCarry = totalMinutes % RULE_MINUTES;
+      const viewers = Number(viewersRes.rows?.[0]?.n || 0);
+      const minted = viewersToRubis(viewers);
 
       await client.query(
         `UPDATE streamer_chest_auto_state
          SET last_bucket_ts=$2::timestamptz,
-             carry_minutes=$3,
              updated_at=NOW()
          WHERE streamer_id=$1`,
-        [streamerId, toTs, newCarry]
+        [streamerId, toTs]
       );
 
       if (minted > 0) {
@@ -97,13 +114,18 @@ async function autoMintTick() {
             OUT_WEIGHT_BP,
             minted,
             JSON.stringify({
-              rule: { minutes: RULE_MINUTES, rubis: RULE_RUBIS },
-              fromToBucket: { toTs },
+              rule: "viewers_per_5min",
+              viewers,
+              bucketMinutes: BUCKET_MINUTES,
+              toTs,
             }),
           ]
         );
 
-        await client.query(`UPDATE streamer_chests SET updated_at=NOW() WHERE streamer_id=$1`, [streamerId]);
+        await client.query(
+          `UPDATE streamer_chests SET updated_at=NOW() WHERE streamer_id=$1`,
+          [streamerId]
+        );
       }
 
       await client.query("COMMIT");
@@ -130,9 +152,11 @@ async function closeExpiredOpenings(io?: IOServer) {
 
   if (!(r.rows || []).length) return;
 
-  // import dynamique pour éviter circular deps
   const mod = await import("./routes/chest.js");
-  const closeFn = (mod as any).closeOpeningAndPayout as (openingId: number, closedBy: "auto") => Promise<any>;
+  const closeFn = (mod as any).closeOpeningAndPayout as (
+    openingId: number,
+    closedBy: "auto"
+  ) => Promise<any>;
   if (typeof closeFn !== "function") return;
 
   for (const row of r.rows || []) {
@@ -152,10 +176,10 @@ async function closeExpiredOpenings(io?: IOServer) {
 }
 
 export function startChestJobs(io?: IOServer) {
-  // Auto-close rapide (fermeture auto = streamer ne ferme pas)
+  // fermeture auto
   setInterval(() => closeExpiredOpenings(io).catch(() => {}), 5_000);
 
-  // Auto-mint par minute
+  // génération coffre toutes les minutes
   autoMintTick().catch(() => {});
   setInterval(() => autoMintTick().catch(() => {}), 60_000);
 }

@@ -8,6 +8,7 @@ import {
   type StreamerAppearance,
 } from "../lib/appearance";
 import { buyShopCosmetic, shopCosmetics, type ShopCosmeticItem } from "../lib/api";
+import { shopTalents, buyTalent, type ApiTalentItem } from "../lib/api";
 
 type Kind = "username" | "badge" | "title" | "frame" | "hat";
 
@@ -199,8 +200,10 @@ export function ShopPage({
   const [buying, setBuying] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
-  const [availableRubis, setAvailableRubis] = React.useState<number>(user?.rubis ?? 0);
+  const [, setAvailableRubis] = React.useState<number>(user?.rubis ?? 0);
   const [availablePrestige, setAvailablePrestige] = React.useState<number>(0);
+  const [talents, setTalents] = React.useState<ApiTalentItem[]>([]);
+  const [, setLoadingTalents] = React.useState(false);
 
   const [items, setItems] = React.useState<ShopCosmeticItem[]>([]);
   const [owned, setOwned] = React.useState<Record<string, string[]>>({});
@@ -213,6 +216,29 @@ export function ShopPage({
   }>({ username: null, badge: null, title: null, frame: null, hat: null });
 
   const [selected, setSelected] = React.useState<{ kind: Kind; code: string } | null>(null);
+
+  async function loadTalents() {
+  if (!token) return;
+  setLoadingTalents(true);
+  try {
+    const j = await shopTalents(token);
+    if (j?.ok) {
+      setTalents(j.talents || []);
+      if (Number.isFinite(j.availableRubis)) {
+        setAvailableRubis(j.availableRubis);
+      }
+    }
+  } finally {
+    setLoadingTalents(false);
+  }
+}
+
+React.useEffect(() => {
+  if (topTab === "upgrades") {
+    loadTalents();
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [topTab]);
 
   async function load() {
     if (!token) return;
@@ -253,7 +279,7 @@ export function ShopPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const effectiveRubis = Number.isFinite(availableRubis) ? availableRubis : 0;
+  const effectiveRubis = user?.rubis ?? 0;
   const effectivePrestige = Number.isFinite(availablePrestige) ? availablePrestige : 0;
 
   const visible = React.useMemo(() => {
@@ -308,14 +334,8 @@ export function ShopPage({
     setErr(null);
     try {
       const j = await buyShopCosmetic(token, it.kind, it.code);
+      await authAny.refreshMe();
       if (!j?.ok) throw new Error((j as any)?.error || "buy_failed");
-
-      const rub =
-        Number((j as any).availableRubis) ||
-        Number((j as any).user?.rubis) ||
-        (isPrestige ? effectiveRubis : Math.max(0, effectiveRubis - pr));
-
-      setAvailableRubis(Number.isFinite(rub) ? rub : 0);
 
       const pre = Number((j as any).availablePrestige);
       if (Number.isFinite(pre)) setAvailablePrestige(pre);
@@ -373,11 +393,126 @@ export function ShopPage({
       </div>
 
       {/* UPGRADES */}
-      {topTab === "upgrades" ? (
-        <div style={{ marginTop: 14 }}>
-          <div className="muted">Bientôt : améliorations (boosts, features, etc.).</div>
-        </div>
-      ) : null}
+{topTab === "upgrades" ? (
+  <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
+    <div
+      style={{
+        width: "100%",
+        maxWidth: 720,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      {[
+        {
+          code: "talent_calls_limit",
+          name: "Calls & PCall",
+          desc: "Augmente les calls disponibles et débloque le pay call.",
+          icon: "📣",
+        },
+        {
+          code: "talent_xp_boost",
+          name: "Boost XP",
+          desc: "Augmente l’XP gagnée sur la plateforme.",
+          icon: "⚡",
+        },
+        {
+          code: "talent_rain_boost",
+          name: "Boost Rain",
+          desc: "Augmente les gains issus des rain.",
+          icon: "🌧️",
+        },
+        {
+          code: "talent_prediction_bet_cap",
+          name: "Mise prédiction max",
+          desc: "Augmente la mise maximale possible sur les prédictions.",
+          icon: "🎯",
+        },
+        {
+          code: "talent_prediction_shield",
+          name: "Shield prédiction",
+          desc: "Protège certaines prédictions perdues.",
+          icon: "🛡️",
+        },
+        {
+          code: "talent_shop_discount",
+          name: "Réduction shop",
+          desc: "Réduction sur les cosmétiques du shop.",
+          icon: "🛒",
+        },
+      ].map((t) => {
+        const talent = talents.find((x) => x.code === t.code);
+
+        const level = talent?.level ?? 0;
+        const maxLevel = talent?.maxLevel ?? 3;
+        const nextPrice = talent?.nextPrice ?? 500; // fallback visible
+
+        const isMax = level >= maxLevel;
+        const canAfford = effectiveRubis >= nextPrice;
+
+        return (
+          <div
+            key={t.code}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.08)",
+              background: "rgba(0,0,0,0.22)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+            }}
+          >
+            {/* LEFT */}
+            <div style={{ display: "flex", gap: 10, minWidth: 0 }}>
+              <div style={{ fontSize: 20 }}>{t.icon}</div>
+              <div>
+                <div style={{ fontWeight: 900, fontSize: 14 }}>{t.name}</div>
+                <div className="muted" style={{ fontSize: 12, lineHeight: 1.2 }}>
+                  {t.desc}
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span style={{ fontSize: 12, opacity: 0.85 }}>
+                {isMax ? "MAX" : `Niv. ${level + 1}`}
+              </span>
+
+              {isMax ? (
+                <button className="btnGhostSmall" disabled>
+                  MAX
+                </button>
+              ) : (
+                <button
+                  className={canAfford ? "btnPrimarySmall" : "btnGhostSmall"}
+                  disabled={!canAfford}
+                  onClick={async () => {
+                    if (!token) return;
+                    await buyTalent(token, t.code);
+                    await loadTalents();
+                  }}
+                >
+                  {nextPrice.toLocaleString("fr-FR")} 💎
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+) : null}
 
       {/* SUBS */}
       {topTab === "subs" ? (

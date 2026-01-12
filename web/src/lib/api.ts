@@ -1400,3 +1400,39 @@ export async function callsHuntReset(streamerSlug: string, token: string) {
   });
 }
 
+// ──────────────────────────────────────────
+// 🧠 Shop Talents
+// ──────────────────────────────────────────
+
+export type ApiTalentItem = {
+  code: string;
+  level: number;
+  maxLevel: number;
+  nextLevel: number | null;
+  nextPrice: number | null;
+};
+
+export type ShopTalentsResp = {
+  ok: true;
+  availableRubis: number;
+  talents: ApiTalentItem[];
+};
+
+export async function shopTalents(token: string): Promise<ShopTalentsResp> {
+  const r = await fetch(`${BASE}/shop/talents`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return r.json();
+}
+
+export async function buyTalent(token: string, code: string) {
+  const r = await fetch(`${BASE}/shop/talents/buy`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ code }),
+  });
+  return r.json();
+}
