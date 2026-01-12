@@ -200,7 +200,7 @@ export function ShopPage({
   const [buying, setBuying] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
-  const [availableRubis, setAvailableRubis] = React.useState<number>(user?.rubis ?? 0);
+  const [, setAvailableRubis] = React.useState<number>(user?.rubis ?? 0);
   const [availablePrestige, setAvailablePrestige] = React.useState<number>(0);
   const [talents, setTalents] = React.useState<ApiTalentItem[]>([]);
   const [, setLoadingTalents] = React.useState(false);
@@ -279,7 +279,7 @@ React.useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const effectiveRubis = Number.isFinite(availableRubis) ? availableRubis : 0;
+  const effectiveRubis = user?.rubis ?? 0;
   const effectivePrestige = Number.isFinite(availablePrestige) ? availablePrestige : 0;
 
   const visible = React.useMemo(() => {
@@ -334,14 +334,8 @@ React.useEffect(() => {
     setErr(null);
     try {
       const j = await buyShopCosmetic(token, it.kind, it.code);
+      await authAny.refreshMe();
       if (!j?.ok) throw new Error((j as any)?.error || "buy_failed");
-
-      const rub =
-        Number((j as any).availableRubis) ||
-        Number((j as any).user?.rubis) ||
-        (isPrestige ? effectiveRubis : Math.max(0, effectiveRubis - pr));
-
-      setAvailableRubis(Number.isFinite(rub) ? rub : 0);
 
       const pre = Number((j as any).availablePrestige);
       if (Number.isFinite(pre)) setAvailablePrestige(pre);

@@ -1,7 +1,10 @@
 // api/src/routes/wheel.ts
+// ✅ VERSION COMPLÈTE CORRIGÉE — 100% wallet_engine
+
 import express from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
+import { earnRubisTx } from "../wallet_engine.js";
 
 export const wheelRouter = express.Router();
 
@@ -51,11 +54,10 @@ wheelRouter.get("/wheel/me", requireAuth, async (req, res) => {
   );
 
   const usedToday = (check.rowCount ?? 0) > 0;
-  const canSpin = !usedToday;
 
   return res.json({
     ok: true,
-    canSpin,
+    canSpin: !usedToday,
     usedToday,
     day,
     segments: SEGMENTS.map(({ label, amount }) => ({ label, amount })),
@@ -86,39 +88,12 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
       }
     }
 
-    // ✅ mint rubis: origin wheel_daily, weight 0.30
-    const weightBp = 3000;
-
-    // IMPORTANT: jsonb param typé => plus de 42P18
-    const txMeta = { segmentIndex, label: seg.label, day };
-
-    const tx = await client.query(
-      `INSERT INTO rubis_tx (kind, purpose, status, to_user_id, amount, meta)
-       VALUES ('mint','wheel_daily','succeeded',$1,$2,$3::jsonb)
-       RETURNING id`,
-      [userId, reward, JSON.stringify(txMeta)]
-    );
-
-    const txId = Number(tx.rows[0].id);
-
-    await client.query(
-      `INSERT INTO rubis_tx_entries (tx_id, entity, user_id, delta)
-       VALUES ($1,'user',$2,$3)`,
-      [txId, userId, reward]
-    );
-
-    const lotMeta = { txId, segmentIndex, label: seg.label, day };
-
-    await client.query(
-      `INSERT INTO rubis_lots (user_id, origin, weight_bp, amount_total, amount_remaining, meta)
-       VALUES ($1,'wheel_daily',$2,$3,$3,$4::jsonb)`,
-      [userId, weightBp, reward, JSON.stringify(lotMeta)]
-    );
-
-    const u = await client.query(
-      `UPDATE users SET rubis = rubis + $1 WHERE id=$2 RETURNING id, username, rubis`,
-      [reward, userId]
-    );
+    const txId = await earnRubisTx(client, userId, "wheel_daily", reward, {
+      weight_bp: 3000,
+      segmentIndex,
+      label: seg.label,
+      day,
+    });
 
     if (!god) {
       await client.query(
@@ -137,17 +112,12 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
       reward,
       label: seg.label,
       txId: String(txId),
-      user: { id: Number(u.rows[0].id), username: String(u.rows[0].username), rubis: Number(u.rows[0].rubis) },
     });
   } catch (e: any) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
-
+    try { await client.query("ROLLBACK"); } catch {}
     if (String(e?.code) === "23505") {
       return res.status(409).json({ ok: false, error: "already_used" });
     }
-
     console.error("[wheel] spin failed", e);
     return res.status(500).json({ ok: false, error: "server_error" });
   } finally {
