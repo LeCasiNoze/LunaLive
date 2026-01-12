@@ -74,8 +74,8 @@ export type CasinoListResp = {
 
 export async function listCasinos(opts: { sort: "top" | "newest"; q: string | null }): Promise<CasinoListResp> {
   const qs = new URLSearchParams();
-  qs.set("sort", opts.sort);
-  if (opts.q) qs.set("q", opts.q);
+  qs.set("sort", opts.sort === "newest" ? "new" : "top");
+  if (opts.q) qs.set("search", opts.q);
   return j<CasinoListResp>(`/casinos?${qs.toString()}`);
 }
 

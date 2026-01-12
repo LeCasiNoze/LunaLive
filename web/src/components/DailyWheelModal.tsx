@@ -141,18 +141,21 @@ export function DailyWheelModal({
       const r = (await spinWheel(token)) as ApiWheelSpinResult;
       setResult(r);
 
+      // ✅ update rubis immédiat (Topbar + autres)
       const newRubis = Number((r as any)?.user?.rubis);
       if (Number.isFinite(newRubis)) {
-        // 1) update auth user (AuthProvider expose patchUser)
         try {
-        if (typeof (auth as any)?.patchUser === "function") {
+          if (typeof (auth as any)?.patchUser === "function") {
             (auth as any).patchUser({ rubis: newRubis });
-        }
+          }
         } catch {}
 
-        // 2) event global (si d’autres composants veulent écouter)
         try {
-          window.dispatchEvent(new CustomEvent("rubis:update", { detail: { rubis: newRubis } }));
+          window.dispatchEvent(
+            new CustomEvent("rubis:update", {
+              detail: { rubis: newRubis, source: "wheel" },
+            })
+          );
         } catch {}
       }
 
@@ -166,8 +169,11 @@ export function DailyWheelModal({
       const finalDeg = spins * 360 + (360 - centerAngle);
 
       const el = wheelRef.current;
+
+      // ✅ on lance l’animation et on n’appelle onAfterSpin QU’À LA FIN
+      const durationMs = 4200;
+
       if (el) {
-        const durationMs = 4200;
         el.style.transition = `transform ${durationMs}ms cubic-bezier(0.12, 0.8, 0.12, 1)`;
         el.style.transform = `rotate(${finalDeg}deg)`;
         el.style.setProperty("--wheel-rot", `${finalDeg}deg`);
@@ -182,19 +188,23 @@ export function DailyWheelModal({
           if (c >= totalTicks) window.clearInterval(id);
         }, interval);
 
-        window.setTimeout(() => {
+        window.setTimeout(async () => {
           window.clearInterval(id);
           ding();
           setPhase("done");
+
+          try {
+            await onAfterSpin?.();
+          } catch {}
         }, durationMs + 40);
       } else {
         ding();
         setPhase("done");
-      }
 
-      try {
-        await onAfterSpin?.();
-      } catch {}
+        try {
+          await onAfterSpin?.();
+        } catch {}
+      }
     } catch (e: any) {
       const m = String(e?.message || e);
       if (m === "already_used") setMsg("Déjà utilisée aujourd’hui.");
@@ -208,8 +218,7 @@ export function DailyWheelModal({
   const rw: any = (result as any)?.reward;
   const rewardValue = rw && typeof rw === "object" ? Number(rw.raw ?? 0) : Number(rw ?? 0);
 
-  const rewardText =
-    phase === "done" && result ? `🎉 Tu as gagné ${rewardValue.toLocaleString()} rubis !` : null;
+  const rewardText = phase === "done" && result ? `🎉 Tu as gagné ${rewardValue.toLocaleString("fr-FR")} rubis !` : null;
 
   const modal = (
     <div className="modalBackdrop" role="presentation" onClick={onClose} style={{ zIndex: 2000 }}>

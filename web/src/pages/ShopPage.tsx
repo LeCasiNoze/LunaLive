@@ -200,7 +200,7 @@ export function ShopPage({
   const [buying, setBuying] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
-  const [, setAvailableRubis] = React.useState<number>(user?.rubis ?? 0);
+  const [availableRubis, setAvailableRubis] = React.useState<number>(user?.rubis ?? 0);
   const [availablePrestige, setAvailablePrestige] = React.useState<number>(0);
   const [talents, setTalents] = React.useState<ApiTalentItem[]>([]);
   const [, setLoadingTalents] = React.useState(false);
@@ -217,51 +217,61 @@ export function ShopPage({
 
   const [selected, setSelected] = React.useState<{ kind: Kind; code: string } | null>(null);
 
-  async function loadTalents() {
-  if (!token) return;
-  setLoadingTalents(true);
-  try {
-    const j = await shopTalents(token);
-    if (j?.ok) {
-      setTalents(j.talents || []);
-      if (Number.isFinite(j.availableRubis)) {
-        setAvailableRubis(j.availableRubis);
-      }
-    }
-  } finally {
-    setLoadingTalents(false);
-  }
-}
+  const patchUser = authAny.patchUser as ((p: any) => void) | undefined;
 
-React.useEffect(() => {
-  if (topTab === "upgrades") {
-    loadTalents();
+  function syncRubis(v: number, source: string) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return;
+    setAvailableRubis(n);
+    patchUser?.({ rubis: n });
+    window.dispatchEvent(new CustomEvent("rubis:update", { detail: { rubis: n, source } }));
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [topTab]);
+
+  async function loadTalents() {
+    if (!token) return;
+    setLoadingTalents(true);
+    try {
+      const j: any = await shopTalents(token);
+      if (j?.ok) {
+        setTalents(j.talents || []);
+        if (Number.isFinite(Number(j.availableRubis))) {
+          syncRubis(Number(j.availableRubis), "shop:talents");
+        }
+      }
+    } finally {
+      setLoadingTalents(false);
+    }
+  }
+
+  React.useEffect(() => {
+    if (topTab === "upgrades") {
+      loadTalents();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topTab]);
 
   async function load() {
     if (!token) return;
     setLoading(true);
     setErr(null);
     try {
-      const j = await shopCosmetics(token);
-      if (!j?.ok) throw new Error((j as any)?.error || "load_failed");
+      const j: any = await shopCosmetics(token);
+      if (!j?.ok) throw new Error(j?.error || "load_failed");
 
       const rub =
-        Number((j as any).availableRubis) ||
-        Number((j as any).user?.rubis) ||
+        Number(j.availableRubis) ||
+        Number(j.user?.rubis) ||
         Number(user?.rubis ?? 0);
 
-      setAvailableRubis(Number.isFinite(rub) ? rub : 0);
+      syncRubis(Number.isFinite(rub) ? rub : 0, "shop:load");
 
-      const pre = Number((j as any).availablePrestige) || 0;
+      const pre = Number(j.availablePrestige) || 0;
       setAvailablePrestige(Number.isFinite(pre) ? pre : 0);
 
-      setOwned(normalizeOwnedRecord((j as any).owned));
-      setEquipped((j as any).equipped || { username: null, badge: null, title: null, frame: null, hat: null });
+      setOwned(normalizeOwnedRecord(j.owned));
+      setEquipped(j.equipped || { username: null, badge: null, title: null, frame: null, hat: null });
 
-      const arr = Array.isArray((j as any).items) ? (j as any).items : [];
+      const arr = Array.isArray(j.items) ? j.items : [];
       setItems(arr.filter((x: any) => x && x.active));
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -271,7 +281,8 @@ React.useEffect(() => {
   }
 
   React.useEffect(() => {
-    if (user?.rubis != null) setAvailableRubis(user.rubis);
+    if (user?.rubis != null) syncRubis(Number(user.rubis), "auth:user");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.rubis]);
 
   React.useEffect(() => {
@@ -279,7 +290,7 @@ React.useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const effectiveRubis = user?.rubis ?? 0;
+  const effectiveRubis = Number.isFinite(availableRubis) ? availableRubis : (user?.rubis ?? 0);
   const effectivePrestige = Number.isFinite(availablePrestige) ? availablePrestige : 0;
 
   const visible = React.useMemo(() => {
@@ -333,24 +344,24 @@ React.useEffect(() => {
     setBuying(true);
     setErr(null);
     try {
-      const j = await buyShopCosmetic(token, it.kind, it.code);
-      await authAny.refreshMe();
-      if (!j?.ok) throw new Error((j as any)?.error || "buy_failed");
+      const j: any = await buyShopCosmetic(token, it.kind, it.code);
+      if (!j?.ok) throw new Error(j?.error || "buy_failed");
 
-      const pre = Number((j as any).availablePrestige);
+      // ✅ update rubis instant (Shop + Topbar)
+      const newRubis = Number(j.availableRubis) || Number(j.user?.rubis);
+      if (Number.isFinite(newRubis)) syncRubis(newRubis, "shop:buy");
+
+      const pre = Number(j.availablePrestige);
       if (Number.isFinite(pre)) setAvailablePrestige(pre);
 
-      if ((j as any).owned) {
-        setOwned(normalizeOwnedRecord((j as any).owned));
+      if (j.owned) {
+        setOwned(normalizeOwnedRecord(j.owned));
       } else {
         addOwnedLocal(it.kind, it.code);
       }
 
-      if ((j as any).user && typeof authAny.setUser === "function" && user) {
-        authAny.setUser({ ...user, rubis: Number((j as any).user.rubis) });
-      } else if (typeof authAny.refreshMe === "function") {
-        authAny.refreshMe();
-      }
+      // fallback sécurité (si une autre page a modifié entre-temps)
+      if (typeof authAny.refreshMe === "function") authAny.refreshMe();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
     } finally {
@@ -393,126 +404,129 @@ React.useEffect(() => {
       </div>
 
       {/* UPGRADES */}
-{topTab === "upgrades" ? (
-  <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
-    <div
-      style={{
-        width: "100%",
-        maxWidth: 720,
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-      }}
-    >
-      {[
-        {
-          code: "talent_calls_limit",
-          name: "Calls & PCall",
-          desc: "Augmente les calls disponibles et débloque le pay call.",
-          icon: "📣",
-        },
-        {
-          code: "talent_xp_boost",
-          name: "Boost XP",
-          desc: "Augmente l’XP gagnée sur la plateforme.",
-          icon: "⚡",
-        },
-        {
-          code: "talent_rain_boost",
-          name: "Boost Rain",
-          desc: "Augmente les gains issus des rain.",
-          icon: "🌧️",
-        },
-        {
-          code: "talent_prediction_bet_cap",
-          name: "Mise prédiction max",
-          desc: "Augmente la mise maximale possible sur les prédictions.",
-          icon: "🎯",
-        },
-        {
-          code: "talent_prediction_shield",
-          name: "Shield prédiction",
-          desc: "Protège certaines prédictions perdues.",
-          icon: "🛡️",
-        },
-        {
-          code: "talent_shop_discount",
-          name: "Réduction shop",
-          desc: "Réduction sur les cosmétiques du shop.",
-          icon: "🛒",
-        },
-      ].map((t) => {
-        const talent = talents.find((x) => x.code === t.code);
-
-        const level = talent?.level ?? 0;
-        const maxLevel = talent?.maxLevel ?? 3;
-        const nextPrice = talent?.nextPrice ?? 500; // fallback visible
-
-        const isMax = level >= maxLevel;
-        const canAfford = effectiveRubis >= nextPrice;
-
-        return (
+      {topTab === "upgrades" ? (
+        <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
           <div
-            key={t.code}
             style={{
-              padding: "10px 14px",
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(0,0,0,0.22)",
+              width: "100%",
+              maxWidth: 720,
               display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
+              flexDirection: "column",
+              gap: 8,
             }}
           >
-            {/* LEFT */}
-            <div style={{ display: "flex", gap: 10, minWidth: 0 }}>
-              <div style={{ fontSize: 20 }}>{t.icon}</div>
-              <div>
-                <div style={{ fontWeight: 900, fontSize: 14 }}>{t.name}</div>
-                <div className="muted" style={{ fontSize: 12, lineHeight: 1.2 }}>
-                  {t.desc}
-                </div>
-              </div>
-            </div>
+            {[
+              {
+                code: "talent_calls_limit",
+                name: "Calls & PCall",
+                desc: "Augmente les calls disponibles et débloque le pay call.",
+                icon: "📣",
+              },
+              {
+                code: "talent_xp_boost",
+                name: "Boost XP",
+                desc: "Augmente l’XP gagnée sur la plateforme.",
+                icon: "⚡",
+              },
+              {
+                code: "talent_rain_boost",
+                name: "Boost Rain",
+                desc: "Augmente les gains issus des rain.",
+                icon: "🌧️",
+              },
+              {
+                code: "talent_prediction_bet_cap",
+                name: "Mise prédiction max",
+                desc: "Augmente la mise maximale possible sur les prédictions.",
+                icon: "🎯",
+              },
+              {
+                code: "talent_prediction_shield",
+                name: "Shield prédiction",
+                desc: "Protège certaines prédictions perdues.",
+                icon: "🛡️",
+              },
+              {
+                code: "talent_shop_discount",
+                name: "Réduction shop",
+                desc: "Réduction sur les cosmétiques du shop.",
+                icon: "🛒",
+              },
+            ].map((t) => {
+              const talent = talents.find((x) => x.code === t.code);
 
-            {/* RIGHT */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <span style={{ fontSize: 12, opacity: 0.85 }}>
-                {isMax ? "MAX" : `Niv. ${level + 1}`}
-              </span>
+              const level = talent?.level ?? 0;
+              const maxLevel = talent?.maxLevel ?? 3;
+              const nextPrice = talent?.nextPrice ?? 500; // fallback visible
 
-              {isMax ? (
-                <button className="btnGhostSmall" disabled>
-                  MAX
-                </button>
-              ) : (
-                <button
-                  className={canAfford ? "btnPrimarySmall" : "btnGhostSmall"}
-                  disabled={!canAfford}
-                  onClick={async () => {
-                    if (!token) return;
-                    await buyTalent(token, t.code);
-                    await loadTalents();
+              const isMax = level >= maxLevel;
+              const canAfford = effectiveRubis >= nextPrice;
+
+              return (
+                <div
+                  key={t.code}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "rgba(0,0,0,0.22)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
                   }}
                 >
-                  {nextPrice.toLocaleString("fr-FR")} 💎
-                </button>
-              )}
-            </div>
+                  {/* LEFT */}
+                  <div style={{ display: "flex", gap: 10, minWidth: 0 }}>
+                    <div style={{ fontSize: 20 }}>{t.icon}</div>
+                    <div>
+                      <div style={{ fontWeight: 900, fontSize: 14 }}>{t.name}</div>
+                      <div className="muted" style={{ fontSize: 12, lineHeight: 1.2 }}>
+                        {t.desc}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* RIGHT */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span style={{ fontSize: 12, opacity: 0.85 }}>
+                      {isMax ? "MAX" : `Niv. ${level + 1}`}
+                    </span>
+
+                    {isMax ? (
+                      <button className="btnGhostSmall" disabled>
+                        MAX
+                      </button>
+                    ) : (
+                      <button
+                        className={canAfford ? "btnPrimarySmall" : "btnGhostSmall"}
+                        disabled={!canAfford}
+                        onClick={async () => {
+                          if (!token) return;
+                          const r: any = await buyTalent(token, t.code);
+                          if (r?.ok && Number.isFinite(Number(r.availableRubis))) {
+                            syncRubis(Number(r.availableRubis), "shop:buyTalent");
+                          }
+                          await loadTalents();
+                        }}
+                      >
+                        {nextPrice.toLocaleString("fr-FR")} 💎
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        );
-      })}
-    </div>
-  </div>
-) : null}
+        </div>
+      ) : null}
 
       {/* SUBS */}
       {topTab === "subs" ? (

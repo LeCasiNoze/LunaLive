@@ -85,6 +85,9 @@ export function createApp() {
     "/uploads",
     express.static(path.resolve(process.cwd(), "uploads"), { maxAge: "7d" })
   );
+  // ✅ PUBLIC casinos (doit être avant tout router qui pourrait exiger auth globalement)
+  app.use(casinosPublicRouter);
+  app.use("/me/casinos", requireAuth, casinosMeRouter);
 
   // existing routers
   app.use(pushRouter);
@@ -125,9 +128,6 @@ export function createApp() {
   app.use("/shop/talents", shopTalentsRouter);
   app.use(cosmeticsCatalogRoutes);
 
-  // casinos
-  app.use(casinosPublicRouter);
-  app.use("/me/casinos", requireAuth, casinosMeRouter);
   app.use(streamerVodsRouter);
 
   // ✅ OBS overlay config (compat frontend)

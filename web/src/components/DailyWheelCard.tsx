@@ -13,6 +13,7 @@ export function DailyWheelCard() {
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
   const user = auth?.user ?? null;
+  const patchUser: ((p: any) => void) | undefined = auth?.patchUser;
 
   const god = isLeCasinoze(user?.username);
 
@@ -26,7 +27,7 @@ export function DailyWheelCard() {
   // ✅ solde "live" (mis à jour via l'event rubis:update)
   const [rubisLive, setRubisLive] = React.useState<number | null>(null);
 
-  // init/reset quand user change
+  // init/reset quand user/token change
   React.useEffect(() => {
     if (!token) {
       setRubisLive(null);
@@ -36,15 +37,20 @@ export function DailyWheelCard() {
     if (Number.isFinite(v)) setRubisLive(v);
   }, [token, user?.rubis]);
 
-  // écoute l'event global dispatché par DailyWheelModal
+  // ✅ écoute l'event global rubis:update
+  // -> update immédiat du composant ET du user global (Topbar)
   React.useEffect(() => {
     const onRubisUpdate = (ev: any) => {
       const v = Number(ev?.detail?.rubis);
-      if (Number.isFinite(v)) setRubisLive(v);
+      if (!Number.isFinite(v)) return;
+
+      setRubisLive(v);
+      patchUser?.({ rubis: v });
     };
+
     window.addEventListener("rubis:update", onRubisUpdate as any);
     return () => window.removeEventListener("rubis:update", onRubisUpdate as any);
-  }, []);
+  }, [patchUser]);
 
   const refresh = React.useCallback(async () => {
     if (!token) {
@@ -72,10 +78,10 @@ export function DailyWheelCard() {
   const subtitle = !token
     ? "Connecte-toi pour tourner"
     : loading
-      ? "Chargement…"
-      : canSpin
-        ? "Prête"
-        : "Déjà utilisée aujourd’hui";
+    ? "Chargement…"
+    : canSpin
+    ? "Prête"
+    : "Déjà utilisée aujourd’hui";
 
   const displayRubis = Number(rubisLive ?? user?.rubis ?? 0);
 
@@ -92,7 +98,7 @@ export function DailyWheelCard() {
 
           {token ? (
             <div className="pill" title="Solde rubis">
-              💎 {displayRubis.toLocaleString()}
+              💎 {displayRubis.toLocaleString("fr-FR")}
             </div>
           ) : null}
         </div>

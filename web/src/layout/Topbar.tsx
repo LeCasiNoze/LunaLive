@@ -1,19 +1,20 @@
-//web/src/layout/Topbar.tsx
+// web/src/layout/Topbar.tsx
 import { NavLink } from "react-router-dom";
-import type { User } from "../lib/types";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { AvatarMenu } from "../components/AvatarMenu";
+import { useAuth } from "../auth/AuthProvider";
 
 export function Topbar({
-  user,
   onOpenLogin,
   onLogout,
 }: {
-  user: User | null;
   onOpenLogin: () => void;
   onLogout: () => void;
 }) {
   const isMobile = useIsMobile();
+  const authAny = useAuth() as any;
+  const user = authAny.user as { rubis: number } | null;
+
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `navItem ${isActive ? "active" : ""}`;
 
@@ -38,12 +39,9 @@ export function Topbar({
             <NavLink to="/casinos" className={linkClass}>
               Casinos
             </NavLink>
-
-            {/* ✅ NEW: Hunt (accessible si connecté côté page) */}
             <NavLink to="/hunt" className={linkClass}>
               Hunt
             </NavLink>
-
             <NavLink to="/shop" className={linkClass}>
               Shop
             </NavLink>
@@ -54,9 +52,9 @@ export function Topbar({
           {user ? (
             <div className="rightRow">
               <div className="pill" title="Rubis">
-                💎 <span>{user.rubis.toLocaleString("fr-FR")}</span>
+                💎 <span>{Number(user.rubis || 0).toLocaleString("fr-FR")}</span>
               </div>
-              <AvatarMenu user={user} onLogout={onLogout} />
+              <AvatarMenu user={user as any} onLogout={onLogout} />
             </div>
           ) : (
             <button className="btnPrimary" onClick={onOpenLogin}>

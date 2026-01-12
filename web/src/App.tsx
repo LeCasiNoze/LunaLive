@@ -25,7 +25,7 @@ import HuntPage from "./pages/HuntPage";
 function AppInner() {
   const location = useLocation();
   const isMobile = useIsMobile();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
 
   const [loginOpen, setLoginOpen] = React.useState(false);
 
@@ -36,7 +36,6 @@ function AppInner() {
   return (
     <div className="app">
       <Topbar
-        user={user as any}
         onOpenLogin={() => setLoginOpen(true)}
         onLogout={logout}
       />
