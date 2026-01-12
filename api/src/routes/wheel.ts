@@ -40,7 +40,7 @@ async function todayParisDate(): Promise<string> {
   return String(r.rows?.[0]?.d || "");
 }
 
-wheelRouter.get("/wheel/me", requireAuth, async (req, res) => {
+wheelRouter.get("/me", requireAuth, async (req, res) => {
   const god = isTestGod(req);
   const day = await todayParisDate();
 
@@ -64,7 +64,7 @@ wheelRouter.get("/wheel/me", requireAuth, async (req, res) => {
   });
 });
 
-wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
+wheelRouter.post("/spin", requireAuth, async (req, res) => {
   const god = isTestGod(req);
   const userId = Number(req.user!.id);
   const day = await todayParisDate();

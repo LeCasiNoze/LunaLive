@@ -728,12 +728,10 @@ const defs: AchievementDef[] = [
 ];
 
 achievementsRouter.get("/", async (req, res) => {
-  const userIdRaw = (req as any)?.user?.id ?? (req as any)?.userId ?? null;
-  const userId = Number(userIdRaw);
+  const user = (req as any).user;
 
-  if (!Number.isFinite(userId) || userId <= 0) {
-    return res.status(401).json({ ok: false, error: "unauthorized" });
-  }
+  // 🔒 invariant garanti par requireAuth
+  const userId = user.id;
 
   const m = await getMetrics(userId);
 

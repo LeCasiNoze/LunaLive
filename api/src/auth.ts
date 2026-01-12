@@ -35,7 +35,8 @@ export function signToken(u: { id: number; username: string; role: string }) {
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   console.log("[AUTH] header:", req.headers.authorization);
   console.log("[AUTH] JWT_SECRET present:", !!process.env.JWT_SECRET);
-
+  console.log("[AUTH] user:", req.user);
+  
   const h = String(req.headers.authorization || "");
   const m = h.match(/^Bearer\s+(.+)$/i);
   if (!m) {

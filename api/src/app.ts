@@ -112,8 +112,7 @@ export function createApp() {
   app.use(cashoutRouter);
   app.use(subscriptionsRouter);
 
-  // ⚠️ wheelRouter = roue quotidienne (déjà existante)
-  app.use(wheelRouter);
+  app.use("/wheel", wheelRouter);
   app.use(chestRouter);
   app.use(predictionsRouter);
   
