@@ -614,7 +614,7 @@ export async function adminSearchUsers(adminKey: string, q: string, limit = 8) {
 
 export async function adminMintRubis(
   adminKey: string,
-  payload: { userId: number; amount: number; weightBp: number; note?: string | null }
+  payload: { userId: number; amount: number; origin: string; note?: string | null }
 ) {
   return j<{ ok: true; txId: string; lotId: string; user: { id: number; username: string; rubis: number } }>(
     `/admin/rubis/mint`,

@@ -154,7 +154,7 @@ shopTalentsRouter.post(
       await client.query("COMMIT");
     } catch (e: any) {
       await client.query("ROLLBACK");
-      if (String(e?.message) === "insufficient_funds") {
+      if (String(e?.message) === "insufficient_rubis") {
         return res.status(400).json({ ok: false, error: "insufficient_funds" });
       }
       throw e;

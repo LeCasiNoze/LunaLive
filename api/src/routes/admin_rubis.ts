@@ -1,6 +1,8 @@
 // api/src/routes/admin_rubis.ts
 import express from "express";
+import crypto from "node:crypto";
 import { pool } from "../db.js";
+import { earnRubisTx } from "../wallet_engine.js";
 
 export const adminRubisRouter = express.Router();
 
@@ -20,7 +22,35 @@ function clampInt(n: any, min: number, max: number) {
   return i;
 }
 
-// ✅ recherche users
+function pickOriginFromBody(body: any): string {
+  // ✅ voie normale (WalletEngine-friendly)
+  const o = String(body?.origin ?? "").trim();
+  if (o) return o;
+
+  // ⚠️ compat rétro : ancien front envoyait weightBp
+  // WalletEngine ne fonctionne PAS avec weightBp arbitraire côté API,
+  // donc on mappe vers des origins connus.
+  const weightBp = clampInt(body?.weightBp, 0, 10000);
+  switch (weightBp) {
+    case 10000:
+      return "paid_topup";
+    case 3500:
+      return "farm_watch";
+    case 3000:
+      // wheel_daily / achievement ont le même w, on choisit wheel_daily par défaut
+      return "wheel_daily";
+    case 2500:
+      return "chest_auto";
+    case 2000:
+      return "chest_streamer";
+    case 1000:
+      return "event_platform";
+    default:
+      return "event_platform";
+  }
+}
+
+// ✅ recherche users (lecture only, OK)
 adminRubisRouter.get("/admin/users/search", requireAdminKey, async (req, res, next) => {
   try {
     const q = String(req.query.q || "").trim();
@@ -51,81 +81,65 @@ adminRubisRouter.get("/admin/users/search", requireAdminKey, async (req, res, ne
   }
 });
 
-// ✅ mint rubis avec poids choisi
+// ✅ mint rubis (CONFORME : earnRubisTx)
 adminRubisRouter.post("/admin/rubis/mint", requireAdminKey, async (req, res, next) => {
   const client = await pool.connect();
   try {
     const userId = clampInt(req.body?.userId, 1, 1_000_000_000);
     const amount = clampInt(req.body?.amount, 1, 2_000_000_000);
-    const weightBp = clampInt(req.body?.weightBp, 0, 10000);
 
     if (!userId) return res.status(400).json({ ok: false, error: "bad_userId" });
     if (!amount) return res.status(400).json({ ok: false, error: "bad_amount" });
-    if (weightBp === null) return res.status(400).json({ ok: false, error: "bad_weightBp" });
 
-    const origin = "admin_grant";
+    const origin = pickOriginFromBody(req.body);
+    const note = req.body?.note ?? null;
+
+    // identifiant unique pour retrouver tx/lot créés par earnRubisTx
+    const adminGrantId = crypto.randomUUID();
 
     await client.query("BEGIN");
 
-    // lock user
-    const u = await client.query(`SELECT id, username, rubis FROM users WHERE id=$1 FOR UPDATE`, [userId]);
-    if (!u.rows[0]) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ ok: false, error: "user_not_found" });
-    }
+    // ✅ crédit via WalletEngine (LE SEUL TRUC AUTORISÉ)
+    await earnRubisTx(client, userId, origin, amount, {
+      by: "admin",
+      note,
+      adminGrantId,
+    });
 
-    // credit visible balance
-    await client.query(`UPDATE users SET rubis = rubis + $2 WHERE id=$1`, [userId, amount]);
+    // lecture post-credit (dans la même tx)
+    const u = await client.query(`SELECT id, username, rubis FROM users WHERE id=$1 LIMIT 1`, [userId]);
+    if (!u.rows?.[0]) throw new Error("user_not_found");
 
-    // create lot
-    const lot = await client.query(
-      `INSERT INTO rubis_lots (user_id, origin, weight_bp, amount_total, amount_remaining, meta)
-       VALUES ($1,$2,$3,$4,$4,$5::jsonb)
-       RETURNING id`,
-      [userId, origin, weightBp, amount, JSON.stringify({ by: "admin", note: req.body?.note ?? null })]
+    // récupérer les ids (best effort) via adminGrantId stocké en meta
+    const lot = await client.query<{ id: number }>(
+      `SELECT id
+       FROM wallet_lots
+       WHERE user_id=$1 AND (meta->>'adminGrantId')=$2
+       ORDER BY id DESC
+       LIMIT 1`,
+      [userId, adminGrantId]
     );
 
-    // tx ledger
-    const tx = await client.query(
-      `INSERT INTO rubis_tx (
-         kind, purpose, status,
-         from_user_id, to_user_id, streamer_id,
-         amount, support_value, streamer_amount, platform_amount, burn_amount,
-         meta
-       )
-       VALUES (
-         'mint','admin_grant','succeeded',
-         NULL,$1,NULL,
-         $2,0,0,0,0,
-         $3::jsonb
-       )
-       RETURNING id`,
-      [
-        userId,
-        amount,
-        JSON.stringify({
-          origin,
-          weightBp,
-          lotId: Number(lot.rows[0].id),
-          note: req.body?.note ?? null,
-        }),
-      ]
-    );
-
-    // entries (audit)
-    await client.query(
-      `INSERT INTO rubis_tx_entries (tx_id, entity, user_id, delta)
-       VALUES ($1, 'user', $2, $3)`,
-      [Number(tx.rows[0].id), userId, amount]
+    const tx = await client.query<{ id: number }>(
+      `SELECT id
+       FROM wallet_tx
+       WHERE user_id=$1 AND kind='earn' AND origin=$2 AND (meta->>'adminGrantId')=$3
+       ORDER BY id DESC
+       LIMIT 1`,
+      [userId, origin, adminGrantId]
     );
 
     await client.query("COMMIT");
 
     res.json({
       ok: true,
-      txId: String(tx.rows[0].id),
-      lotId: String(lot.rows[0].id),
-      user: { id: userId, username: String(u.rows[0].username), rubis: Number(u.rows[0].rubis) + amount },
+      txId: tx.rows?.[0]?.id != null ? String(tx.rows[0].id) : null,
+      lotId: lot.rows?.[0]?.id != null ? String(lot.rows[0].id) : null,
+      user: {
+        id: Number(u.rows[0].id),
+        username: String(u.rows[0].username),
+        rubis: Number(u.rows[0].rubis || 0),
+      },
     });
   } catch (err) {
     try {
