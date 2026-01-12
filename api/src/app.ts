@@ -156,7 +156,8 @@ export function createApp() {
   app.use(adminCasinosSetupRouter);
   app.use("/streamer/me/dlive-link", streamerDliveLinkRouter);
   app.use(meProfileRouter);
-  app.use(internalBotRouter);
+  app.use("/internal", internalBotRouter);
+
   app.use("/overlay/api", overlayApiRouter);
   app.use(clipsPublicRouter);
 
