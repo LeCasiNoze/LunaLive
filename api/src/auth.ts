@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 
-export type AuthUser = { id: number; username: string; role: string };
+export type AuthUser = { id: number; username: string; rubis: number; role: string };
 
 declare global {
   namespace Express {
@@ -20,28 +20,16 @@ export async function verifyPassword(password: string, hash: string) {
   return bcrypt.compare(password, hash);
 }
 
-export function signToken(u: { id: number; username: string; role: string }) {
+export function signToken(u: AuthUser) {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("JWT_SECRET missing");
-
-  return jwt.sign(
-    { id: u.id, username: u.username, role: u.role },
-    secret,
-    { expiresIn: "30d" }
-  );
+  return jwt.sign(u, secret, { expiresIn: "30d" });
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  // ✅ laisser passer le preflight CORS
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
-  }
-
   const h = String(req.headers.authorization || "");
   const m = h.match(/^Bearer\s+(.+)$/i);
-  if (!m) {
-    return res.status(401).json({ ok: false, error: "unauthorized" });
-  }
+  if (!m) return res.status(401).json({ ok: false, error: "unauthorized" });
 
   try {
     const secret = process.env.JWT_SECRET;
