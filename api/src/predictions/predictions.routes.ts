@@ -14,11 +14,12 @@ import {
   assertStreamerLive,
 } from "./predictions.service.js";
 
+import { spendRubis } from "../wallet_engine.js";
+
 export const predictionsRouter = express.Router();
 
 /**
  * POST /api/bot/predictions/create
- * body: { streamerId, question, option1, option2, durationSec, fixedStake }
  */
 predictionsRouter.post(
   "/api/bot/predictions/create",
@@ -60,7 +61,7 @@ predictionsRouter.post(
 );
 
 /**
- * GET /api/bot/predictions/current?streamerId=123
+ * GET /api/bot/predictions/current
  */
 predictionsRouter.get(
   "/api/bot/predictions/current",
@@ -78,7 +79,7 @@ predictionsRouter.get(
       }
 
       return res.json({ ok: true, prediction: pred });
-    } catch (e: any) {
+    } catch {
       return res.status(500).json({ ok: false, reason: "current_failed" });
     }
   }
@@ -87,7 +88,6 @@ predictionsRouter.get(
 /**
  * POST /api/bot/predictions/bet
  * body: { streamerId, choice }
- * → stake = last_prediction_stake || fixedStake
  */
 predictionsRouter.post(
   "/api/bot/predictions/bet",
@@ -122,7 +122,56 @@ predictionsRouter.post(
       const stake =
         Number(r.rows?.[0]?.last_prediction_stake) || pred.fixed_stake;
 
+      // ──────────────────────────────────────────
+      // 🔒 UPGRADE: predictions.bet_cap
+      // ──────────────────────────────────────────
+      const up = await pool.query(
+        `
+        SELECT level
+        FROM user_upgrades
+        WHERE user_id = $1
+          AND upgrade_key = 'predictions.bet_cap'
+        LIMIT 1
+        `,
+        [userId]
+      );
+
+      const level = Number(up.rows?.[0]?.level || 0);
+
+      let cap = 0;
+      if (level === 1) cap = 30;
+      else if (level === 2) cap = 50;
+      else if (level >= 3) cap = 100;
+
+      if (cap > 0 && stake > cap) {
+        return res.status(400).json({
+          ok: false,
+          reason: "bet_cap_exceeded",
+          cap,
+        });
+      }
+
+      // ──────────────────────────────────────────
+      // 💸 spend rubis (SINK)
+      // ──────────────────────────────────────────
+      await spendRubis({
+        userId,
+        amount: stake,
+        spendKind: "sink",
+        spendType: "prediction_bet",
+        meta: {
+          predictionId: pred.id,
+          streamerId,
+          choice,
+        },
+      });
+
       await addBet(pool, pred, userId, choice as 1 | 2, stake);
+
+      await pool.query(
+        `UPDATE users SET last_prediction_stake=$2 WHERE id=$1`,
+        [userId, stake]
+      );
 
       return res.json({ ok: true, stake });
     } catch (e: any) {
@@ -137,7 +186,6 @@ predictionsRouter.post(
 
 /**
  * POST /api/bot/predictions/resolve
- * body: { streamerId, winning }
  */
 predictionsRouter.post(
   "/api/bot/predictions/resolve",
@@ -151,7 +199,6 @@ predictionsRouter.post(
         return res.status(400).json({ ok: false, reason: "bad_streamer" });
       }
 
-      // LIVE ONLY
       await assertStreamerLive(pool, streamerId);
 
       const pred = await getActivePrediction(pool, streamerId);

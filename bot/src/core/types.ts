@@ -34,7 +34,22 @@ export type BotAutopost = {
 };
 
 export type CommandContext = {
-  streamer: StreamerRow;
   prefix: string;
-  send: (text: string) => Promise<void>;
+  streamer: {
+    id: number;
+    slug: string;
+    displayName: string;
+  };
+
+  send: (msg: string) => Promise<void>;
+
+  // ✅ À AJOUTER
+  predictions?: {
+    bet: (params: {
+      userId: number;
+      username: string;
+      choice: 1 | 2;
+      streamerId: number;
+    }) => Promise<void>;
+  };
 };
