@@ -40,27 +40,27 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
   // ✅ Debug activable via env Render: AUTH_DEBUG=1
   const DEBUG = process.env.AUTH_DEBUG === "1";
+  const bootId = (req.app as any)?.locals?.bootId || null;
 
   const h = String(req.headers.authorization || "");
   const m = h.match(/^Bearer\s+(.+)$/i);
   if (!m) {
-    return res.status(401).json({
-      ok: false,
-      error: "unauthorized",
-      ...(DEBUG ? { reason: "missing_bearer" } : {}),
-    });
+  return res.status(401).json({
+    ok: false,
+    error: "unauthorized",
+    ...(DEBUG ? { reason: "missing_bearer", bootId } : {}),
+  });
   }
 
   const token = m[1];
   const secret = process.env.JWT_SECRET;
 
   if (!secret) {
-    // ⚠️ ne pas masquer en 401: c’est une misconfig serveur
-    return res.status(500).json({
-      ok: false,
-      error: "server_misconfig",
-      ...(DEBUG ? { reason: "jwt_secret_missing" } : {}),
-    });
+  return res.status(500).json({
+    ok: false,
+    error: "server_misconfig",
+    ...(DEBUG ? { reason: "jwt_secret_missing", bootId } : {}),
+  });
   }
 
   try {
@@ -84,11 +84,11 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
       );
     }
 
-    return res.status(401).json({
-      ok: false,
-      error: "unauthorized",
-      ...(DEBUG ? { reason: name, message: msg } : {}),
-    });
+  return res.status(401).json({
+    ok: false,
+    error: "unauthorized",
+    ...(DEBUG ? { reason: name, message: msg } : {}),
+  });
   }
 }
 

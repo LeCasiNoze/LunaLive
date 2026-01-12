@@ -73,6 +73,8 @@ export function createApp() {
   const app = express();
 
   const BOOT_ID = `${process.pid}-${Date.now()}`;
+  (app as any).locals.bootId = BOOT_ID;
+
   app.use((req, res, next) => {
     res.setHeader("x-api-boot", BOOT_ID);
     next();
@@ -80,17 +82,30 @@ export function createApp() {
 
   app.set("trust proxy", 1);
 
-  app.use(cors());
+ app.use(
+  cors({
+    origin: [
+      "https://lunalive.onrender.com",
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+    ],
+    credentials: false,
+    exposedHeaders: ["x-api-boot", "x-auth-debug"],
+  })
+);
+
   app.use(express.json({ limit: "300kb" }));
 
   app.get("/debug/auth", (req, res) => {
     const h = String(req.headers.authorization || "");
     res.json({
       ok: true,
+      bootId: (req.app as any).locals.bootId || null,
       hasAuthHeader: !!h,
       authPrefix: h.slice(0, 20),
       hasJwtSecret: !!process.env.JWT_SECRET,
       jwtSecretLen: (process.env.JWT_SECRET || "").length,
+      authDebugEnabled: process.env.AUTH_DEBUG === "1",
       nodeEnv: process.env.NODE_ENV || null,
     });
   });
