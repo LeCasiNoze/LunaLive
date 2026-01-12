@@ -150,8 +150,31 @@ export async function adminReleaseProviderAccount(adminKey: string, id: number) 
 
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
+import { loadToken } from "./storage";
+
 async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const usedAuth =
+    typeof init.headers === "object" && init.headers
+      ? (init.headers as any)?.Authorization
+      : null;
+
+  const usedToken =
+    typeof usedAuth === "string" && usedAuth.startsWith("Bearer ")
+      ? usedAuth.slice(7)
+      : null;
+
   const r = await fetch(`${BASE}${path}`, init);
+
+  if (r.status === 401) {
+    const currentToken = loadToken();
+
+    // ✅ logout UNIQUEMENT si le token utilisé est encore le token courant
+    if (currentToken && usedToken && currentToken === usedToken) {
+      try {
+        window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+      } catch {}
+    }
+  }
 
   const text = await r.text().catch(() => "");
   let data: any = null;
@@ -172,7 +195,6 @@ async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   return data as T;
 }
-
 export type MyCosmeticsResp = {
   ok: true;
   owned: Record<string, string[]>;
