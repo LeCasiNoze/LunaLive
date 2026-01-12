@@ -122,7 +122,7 @@ authRouter.post(
     await pool.query(`DELETE FROM pending_registrations WHERE id=$1`, [p.id]);
 
     const user = created.rows[0];
-    const token = signToken({ id: user.id, username: user.username, role: user.role });
+    const token = signToken({ id: user.id, username: user.username, rubis: user.rubis, role: user.role });
 
     res.json({ ok: true, token, user });
   })

@@ -16,7 +16,6 @@ import { publicRouter } from "./routes/public.js";
 import { authRouter } from "./routes/auth.js";
 import { streamerRouter } from "./routes/streamer.js";
 import { adminRouter } from "./routes/admin.js";
-import { adminWalletRouter } from "./routes/admin_wallet.js";
 
 import { walletRouter } from "./routes/wallet.js";
 import { supportRouter } from "./routes/support.js";
@@ -34,6 +33,7 @@ import { cosmeticsRouter } from "./routes/cosmetics.js";
 import { cosmeticsCatalogRoutes } from "./routes/cosmetics_catalog_routes.js";
 import { avatarRouter } from "./routes/avatar.js";
 import { shopRouter } from "./routes/shop.js";
+import { shopTalentsRouter } from "./routes/shop_talents.js";
 
 import { casinosPublicRouter } from "./routes/casinos_public.js";
 import { casinosMeRouter } from "./routes/casinos_me.js";
@@ -71,44 +71,10 @@ import { predictionsRouter } from "./predictions/predictions.routes.js";
 
 export function createApp() {
   const app = express();
-
-  const BOOT_ID = `${process.pid}-${Date.now()}`;
-  (app as any).locals.bootId = BOOT_ID;
-
-  app.use((req, res, next) => {
-    res.setHeader("x-api-boot", BOOT_ID);
-    next();
-  });
-
   app.set("trust proxy", 1);
 
- app.use(
-  cors({
-    origin: [
-      "https://lunalive.onrender.com",
-      "http://localhost:5173",
-      "http://127.0.0.1:5173",
-    ],
-    credentials: false,
-    exposedHeaders: ["x-api-boot", "x-auth-debug"],
-  })
-);
-
+  app.use(cors());
   app.use(express.json({ limit: "300kb" }));
-
-  app.get("/debug/auth", (req, res) => {
-    const h = String(req.headers.authorization || "");
-    res.json({
-      ok: true,
-      bootId: (req.app as any).locals.bootId || null,
-      hasAuthHeader: !!h,
-      authPrefix: h.slice(0, 20),
-      hasJwtSecret: !!process.env.JWT_SECRET,
-      jwtSecretLen: (process.env.JWT_SECRET || "").length,
-      authDebugEnabled: process.env.AUTH_DEBUG === "1",
-      nodeEnv: process.env.NODE_ENV || null,
-    });
-  });
 
   // legacy modules
   registerChatRoutes(app);
@@ -131,7 +97,6 @@ export function createApp() {
   app.use(authRouter);
   app.use(streamerRouter);
   app.use(adminRouter);
-  app.use(adminWalletRouter);
 
   // ✅ streamer tabs (about/agenda)
   app.use("/streamers", streamerTabsRouter);
@@ -146,7 +111,8 @@ export function createApp() {
   app.use(cashoutRouter);
   app.use(subscriptionsRouter);
 
-  app.use("/wheel", wheelRouter);
+  // ⚠️ wheelRouter = roue quotidienne (déjà existante)
+  app.use(wheelRouter);
   app.use(chestRouter);
   app.use(predictionsRouter);
   
@@ -156,6 +122,7 @@ export function createApp() {
   app.use(cosmeticsRouter);
   app.use(avatarRouter);
   app.use(shopRouter);
+  app.use("/shop/talents", shopTalentsRouter);
   app.use(cosmeticsCatalogRoutes);
 
   // casinos
@@ -190,8 +157,7 @@ export function createApp() {
   app.use(adminCasinosSetupRouter);
   app.use("/streamer/me/dlive-link", streamerDliveLinkRouter);
   app.use(meProfileRouter);
-  app.use("/internal", internalBotRouter);
-
+  app.use(internalBotRouter);
   app.use("/overlay/api", overlayApiRouter);
   app.use(clipsPublicRouter);
 

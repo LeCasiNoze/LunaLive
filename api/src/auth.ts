@@ -2,9 +2,8 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import crypto from "crypto";
 
-export type AuthUser = { id: number; username: string; role: string };
+export type AuthUser = { id: number; username: string; rubis: number; role: string };
 
 declare global {
   namespace Express {
@@ -21,74 +20,24 @@ export async function verifyPassword(password: string, hash: string) {
   return bcrypt.compare(password, hash);
 }
 
-export function signToken(u: { id: number; username: string; role: string }) {
+export function signToken(u: AuthUser) {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("JWT_SECRET missing");
-
-  return jwt.sign({ id: u.id, username: u.username, role: u.role }, secret, {
-    expiresIn: "30d",
-  });
-}
-
-function secretHash8(secret: string) {
-  return crypto.createHash("sha1").update(secret).digest("hex").slice(0, 8);
+  return jwt.sign(u, secret, { expiresIn: "30d" });
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  // ✅ laisser passer le preflight CORS
-  if (req.method === "OPTIONS") return res.sendStatus(204);
-
-  // ✅ Debug activable via env Render: AUTH_DEBUG=1
-  const DEBUG = process.env.AUTH_DEBUG === "1";
-  const bootId = (req.app as any)?.locals?.bootId || null;
-
   const h = String(req.headers.authorization || "");
   const m = h.match(/^Bearer\s+(.+)$/i);
-  if (!m) {
-  return res.status(401).json({
-    ok: false,
-    error: "unauthorized",
-    ...(DEBUG ? { reason: "missing_bearer", bootId } : {}),
-  });
-  }
-
-  const token = m[1];
-  const secret = process.env.JWT_SECRET;
-
-  if (!secret) {
-  return res.status(500).json({
-    ok: false,
-    error: "server_misconfig",
-    ...(DEBUG ? { reason: "jwt_secret_missing", bootId } : {}),
-  });
-  }
+  if (!m) return res.status(401).json({ ok: false, error: "unauthorized" });
 
   try {
-    const decoded = jwt.verify(token, secret) as AuthUser;
-    req.user = decoded;
-
-    if (DEBUG) {
-      // preuve consultable dans Network → Headers → Response Headers
-      res.setHeader("x-auth-debug", `ok; secret=${secretHash8(secret)}; pid=${process.pid}`);
-    }
-
+    const secret = process.env.JWT_SECRET;
+    if (!secret) throw new Error("JWT_SECRET missing");
+    req.user = jwt.verify(m[1], secret) as AuthUser;
     return next();
-  } catch (e: any) {
-    const name = e?.name || "verify_failed";
-    const msg = e?.message || "";
-
-    if (DEBUG) {
-      res.setHeader(
-        "x-auth-debug",
-        `fail(${name}); secret=${secretHash8(secret)}; pid=${process.pid}`
-      );
-    }
-
-  return res.status(401).json({
-    ok: false,
-    error: "unauthorized",
-    ...(DEBUG ? { reason: name, message: msg } : {}),
-  });
+  } catch {
+    return res.status(401).json({ ok: false, error: "unauthorized" });
   }
 }
 
