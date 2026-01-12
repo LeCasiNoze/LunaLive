@@ -71,6 +71,13 @@ import { predictionsRouter } from "./predictions/predictions.routes.js";
 
 export function createApp() {
   const app = express();
+
+  const BOOT_ID = `${process.pid}-${Date.now()}`;
+  app.use((req, res, next) => {
+    res.setHeader("x-api-boot", BOOT_ID);
+    next();
+  });
+
   app.set("trust proxy", 1);
 
   app.use(cors());
