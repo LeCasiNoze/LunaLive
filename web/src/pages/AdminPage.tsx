@@ -11,7 +11,7 @@ import {
 } from "../lib/api";
 import { UsersAdminSection } from "../components/admin/UsersAdminSection";
 import { ProviderAccountsAdminSection } from "../components/admin/ProviderAccountsAdminSection";
-import { AdminWalletSection } from "../components/admin/AdminWalletSection";
+import { RubisMintAdminSection } from "../components/admin/RubisMintAdminSection";
 import { CasinosAdminSection } from "../components/admin/CasinosAdminSection";
 
 const SS_KEY = "lunalive_admin_key_v1";
@@ -290,7 +290,7 @@ export default function AdminPage() {
         <ProviderAccountsAdminSection adminKey={key} />
       </div>
 
-      <AdminWalletSection adminKey={key} />
+      <RubisMintAdminSection adminKey={key} />
     </main>
   );
 }
