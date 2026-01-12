@@ -16,6 +16,7 @@ import { publicRouter } from "./routes/public.js";
 import { authRouter } from "./routes/auth.js";
 import { streamerRouter } from "./routes/streamer.js";
 import { adminRouter } from "./routes/admin.js";
+import { adminWalletRouter } from "./routes/admin_wallet.js";
 
 import { walletRouter } from "./routes/wallet.js";
 import { supportRouter } from "./routes/support.js";
@@ -96,6 +97,7 @@ export function createApp() {
   app.use(authRouter);
   app.use(streamerRouter);
   app.use(adminRouter);
+  app.use(adminWalletRouter);
 
   // ✅ streamer tabs (about/agenda)
   app.use("/streamers", streamerTabsRouter);

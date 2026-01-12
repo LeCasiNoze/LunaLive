@@ -88,7 +88,7 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
       }
     }
 
-    const txId = await earnRubisTx(client, userId, "wheel_daily", reward, {
+    await earnRubisTx(client, userId, "wheel_daily", reward, {
       weight_bp: 3000,
       segmentIndex,
       label: seg.label,
@@ -97,9 +97,9 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
 
     if (!god) {
       await client.query(
-        `INSERT INTO daily_wheel_spins (user_id, day, segment_index, reward_rubis, tx_id)
-         VALUES ($1,$2::date,$3,$4,$5)`,
-        [userId, day, segmentIndex, reward, txId]
+        `INSERT INTO daily_wheel_spins (user_id, day, segment_index, reward_rubis)
+         VALUES ($1,$2::date,$3,$4)`,
+        [userId, day, segmentIndex, reward]
       );
     }
 
@@ -111,7 +111,6 @@ wheelRouter.post("/wheel/spin", requireAuth, async (req, res) => {
       segmentIndex,
       reward,
       label: seg.label,
-      txId: String(txId),
     });
   } catch (e: any) {
     try { await client.query("ROLLBACK"); } catch {}

@@ -1436,3 +1436,122 @@ export async function buyTalent(token: string, code: string) {
   });
   return r.json();
 }
+/* ======================================================
+   ADMIN WALLET API
+====================================================== */
+
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
+/* =========================
+   HELPERS
+========================= */
+
+async function adminFetch<T>(
+  adminKey: string,
+  path: string,
+  opts: RequestInit = {}
+): Promise<T> {
+  const r = await fetch(`${API_BASE}${path}`, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      "x-admin-key": adminKey,
+      ...(opts.headers || {}),
+    },
+  });
+
+  if (!r.ok) {
+    let err: any = {};
+    try {
+      err = await r.json();
+    } catch {}
+    throw new Error(err?.error || `HTTP ${r.status}`);
+  }
+
+  return r.json();
+}
+
+/* =========================
+   GET WALLET DETAIL
+========================= */
+
+export async function adminGetWallet(
+  adminKey: string,
+  userId: number
+): Promise<{
+  user: {
+    id: number;
+    username: string;
+    rubis: number;
+  };
+  lots: {
+    id: number;
+    origin: string;
+    weight_bp: number;
+    amount_total: number;
+    amount_remaining: number;
+    created_at: string;
+  }[];
+}> {
+  
+  return adminFetch(adminKey, `/admin/wallet/${userId}`);
+}
+
+/* =========================
+   ADD RUBIS
+========================= */
+
+export async function adminWalletAdd(
+  adminKey: string,
+  body: {
+    userId: number;
+    amount: number;
+    weightBp: number; // 10000 | 2000
+  }
+) {
+  return adminFetch(adminKey, `/admin/wallet/add`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/* =========================
+   REMOVE RUBIS
+========================= */
+
+export async function adminWalletRemove(
+  adminKey: string,
+  body: {
+    userId: number;
+    amount: number;
+  }
+) {
+  return adminFetch(adminKey, `/admin/wallet/remove`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/* =========================
+   RESET ONE USER
+========================= */
+
+export async function adminWalletResetUser(
+  adminKey: string,
+  userId: number
+) {
+  return adminFetch(adminKey, `/admin/wallet/reset-user`, {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  });
+}
+
+/* =========================
+   RESET ALL USERS
+========================= */
+
+export async function adminWalletResetAll(adminKey: string) {
+  return adminFetch(adminKey, `/admin/wallet/reset-all`, {
+    method: "POST",
+  });
+}
