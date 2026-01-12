@@ -24,6 +24,7 @@ export async function verifyPassword(password: string, hash: string) {
 export function signToken(u: { id: number; username: string; role: string }) {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("JWT_SECRET missing");
+
   return jwt.sign(
     { id: u.id, username: u.username, role: u.role },
     secret,
