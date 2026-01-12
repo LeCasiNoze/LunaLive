@@ -299,9 +299,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setUser(null);
     saveToken(null);
-
-    // ✅ empêche d'autres logout successifs
-    sessionStorage.setItem("auth:loggedOut", "1");
   }, []);
 
   const setAuth = React.useCallback((t: string, u: ApiUser) => {
@@ -365,16 +362,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     refreshMe();
   }, [refreshMe]);
-
-  React.useEffect(() => {
-    const onUnauthorized = () => {
-      if (sessionStorage.getItem("auth:loggedOut") === "1") return;
-      logout();
-    };
-
-    window.addEventListener("auth:unauthorized", onUnauthorized);
-    return () => window.removeEventListener("auth:unauthorized", onUnauthorized);
-  }, [logout]);
 
   // claim dès que user est dispo (après refreshMe / login)
   React.useEffect(() => {
