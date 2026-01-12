@@ -76,6 +76,18 @@ export function createApp() {
   app.use(cors());
   app.use(express.json({ limit: "300kb" }));
 
+  app.get("/debug/auth", (req, res) => {
+    const h = String(req.headers.authorization || "");
+    res.json({
+      ok: true,
+      hasAuthHeader: !!h,
+      authPrefix: h.slice(0, 20),
+      hasJwtSecret: !!process.env.JWT_SECRET,
+      jwtSecretLen: (process.env.JWT_SECRET || "").length,
+      nodeEnv: process.env.NODE_ENV || null,
+    });
+  });
+
   // legacy modules
   registerChatRoutes(app);
   registerStatsRoutes(app);

@@ -77,7 +77,7 @@ function startSlotsCatalogUpdater(everyHours: number) {
   await ensureCallsSchema(pool);
 
   // ✅ catalogue slots updater (12h)
-  startSlotsCatalogUpdater(12);
+  //startSlotsCatalogUpdater(12);
 
   const app = createApp();
 
