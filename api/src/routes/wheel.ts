@@ -1,5 +1,5 @@
 // api/src/routes/wheel.ts
-// ✅ VERSION COMPLÈTE CORRIGÉE — 100% wallet_engine
+// 🎡 Daily Wheel — version stable, auto-protégée, 100% wallet_engine
 
 import express from "express";
 import { pool } from "../db.js";
@@ -7,6 +7,13 @@ import { requireAuth } from "../auth.js";
 import { earnRubisTx } from "../wallet_engine.js";
 
 export const wheelRouter = express.Router();
+
+// 🔐 PROTECTION GLOBALE DU ROUTER
+wheelRouter.use(requireAuth);
+
+// ─────────────────────────────────────────────
+// 🎯 Configuration roue
+// ─────────────────────────────────────────────
 
 const SEGMENTS = [
   { label: "+1", amount: 1, weight: 0.315 },
@@ -30,43 +37,62 @@ function pickWeightedIndex() {
   return SEGMENTS.length - 1;
 }
 
+// ⚠️ utilisateur “god” (debug only)
 function isTestGod(req: any) {
   const u = String(req.user?.username || "").trim().toLowerCase();
   return u === "lecasinoze";
 }
 
+// Date du jour Europe/Paris (YYYY-MM-DD)
 async function todayParisDate(): Promise<string> {
-  const r = await pool.query(`SELECT (NOW() AT TIME ZONE 'Europe/Paris')::date::text AS d;`);
+  const r = await pool.query(
+    `SELECT (NOW() AT TIME ZONE 'Europe/Paris')::date::text AS d`
+  );
   return String(r.rows?.[0]?.d || "");
 }
 
-wheelRouter.get("/me", requireAuth, async (req, res) => {
+// ─────────────────────────────────────────────
+// 📥 GET /wheel/me
+// ─────────────────────────────────────────────
+
+wheelRouter.get("/wheel/me", async (req, res) => {
+  const userId = Number(req.user!.id);
   const god = isTestGod(req);
   const day = await todayParisDate();
 
   if (god) {
-    return res.json({ ok: true, canSpin: true, usedToday: false, day, segments: SEGMENTS });
+    return res.json({
+      ok: true,
+      day,
+      canSpin: true,
+      usedToday: false,
+      segments: SEGMENTS.map(({ label, amount }) => ({ label, amount })),
+    });
   }
 
   const check = await pool.query(
     `SELECT 1 FROM daily_wheel_spins WHERE user_id=$1 AND day=$2::date LIMIT 1`,
-    [Number(req.user!.id), day]
+    [userId, day]
   );
 
   const usedToday = (check.rowCount ?? 0) > 0;
 
   return res.json({
     ok: true,
+    day,
     canSpin: !usedToday,
     usedToday,
-    day,
     segments: SEGMENTS.map(({ label, amount }) => ({ label, amount })),
   });
 });
 
-wheelRouter.post("/spin", requireAuth, async (req, res) => {
-  const god = isTestGod(req);
+// ─────────────────────────────────────────────
+// 🎰 POST /wheel/spin
+// ─────────────────────────────────────────────
+
+wheelRouter.post("/wheel/spin", async (req, res) => {
   const userId = Number(req.user!.id);
+  const god = isTestGod(req);
   const day = await todayParisDate();
 
   const segmentIndex = pickWeightedIndex();
@@ -82,12 +108,14 @@ wheelRouter.post("/spin", requireAuth, async (req, res) => {
         `SELECT 1 FROM daily_wheel_spins WHERE user_id=$1 AND day=$2::date LIMIT 1`,
         [userId, day]
       );
+
       if ((exists.rowCount ?? 0) > 0) {
         await client.query("ROLLBACK");
         return res.status(409).json({ ok: false, error: "already_used" });
       }
     }
 
+    // 💎 gain rubis (ledger economy v1)
     await earnRubisTx(client, userId, "wheel_daily", reward, {
       weight_bp: 3000,
       segmentIndex,
@@ -113,10 +141,14 @@ wheelRouter.post("/spin", requireAuth, async (req, res) => {
       label: seg.label,
     });
   } catch (e: any) {
-    try { await client.query("ROLLBACK"); } catch {}
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+
     if (String(e?.code) === "23505") {
       return res.status(409).json({ ok: false, error: "already_used" });
     }
+
     console.error("[wheel] spin failed", e);
     return res.status(500).json({ ok: false, error: "server_error" });
   } finally {
