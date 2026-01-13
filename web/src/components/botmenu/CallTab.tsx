@@ -118,24 +118,22 @@ export function CallTab({
     }
   }
 
-  async function loadQueue() {
-    if (!token) return;
-    if (!canMod) return;
-    setCallsLoading(true);
-    try {
-      // ✅ IMPORTANT: /list est maintenant “calls only” (pas bonus)
-      const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/list?limit=80`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const j = await r.json();
-      if (j?.ok) setCalls(j.items || []);
-      else setCalls([]);
-    } catch {
-      setCalls([]);
-    } finally {
-      setCallsLoading(false);
-    }
+async function loadQueue() {
+  if (!token) return;
+  setCallsLoading(true);
+  try {
+    const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/list?limit=80`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const j = await r.json();
+    if (j?.ok) setCalls(j.items || []);
+    else setCalls([]);
+  } catch {
+    setCalls([]);
+  } finally {
+    setCallsLoading(false);
   }
+}
 
   async function doReset() {
     if (!token) return onRequireLogin();
@@ -216,9 +214,8 @@ export function CallTab({
 
   // ✅ auto load queue quand on ouvre CallTab
   React.useEffect(() => {
-    if (token && canMod) void loadQueue();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, canMod, slug]);
+    if (token) void loadQueue();
+  }, [token, slug]);
 
   // ✅ SYNC: si Hunt valide un bonus (ou pass), on refresh la queue sans action manuelle
   React.useEffect(() => {
@@ -235,7 +232,7 @@ export function CallTab({
       }
 
       // source de vérité : reload depuis l'API (positions correctes)
-      if (token && canMod) void loadQueue();
+      if (token) void loadQueue();
     }
 
     window.addEventListener(CALLS_QUEUE_CHANGED_EVT, onQueueChanged as any);
@@ -455,47 +452,45 @@ export function CallTab({
               )}
             </div>
 
-            {canMod ? (
-              callsLoading ? (
-                <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Chargement…</div>
-              ) : !calls.length ? (
-                <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Aucun call.</div>
-              ) : (
-                <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                  {calls.map((c) => (
-                    <div
-                      key={c.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        padding: "10px 12px",
-                        borderRadius: 14,
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(255,255,255,0.05)",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
-                        <SlotThumb url={c.imageUrl} />
-                        <div style={{ minWidth: 0 }}>
-                          <div
-                            style={{
-                              fontWeight: 950,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {c.pos}. {c.slotName}
-                            {c.provider ? <span style={{ opacity: 0.75, fontWeight: 800 }}> — {c.provider}</span> : null}
-                          </div>
-                          <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
-                            @ {c.username}
-                          </div>
+            {callsLoading ? (
+              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Chargement…</div>
+            ) : !calls.length ? (
+              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Aucun call.</div>
+            ) : (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                {calls.map((c) => (
+                  <div
+                    key={c.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(255,255,255,0.05)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+                      <SlotThumb url={c.imageUrl} />
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontWeight: 950,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {c.pos}. {c.slotName}
+                          {c.provider ? <span style={{ opacity: 0.75, fontWeight: 800 }}> — {c.provider}</span> : null}
                         </div>
+                        <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>@ {c.username}</div>
                       </div>
+                    </div>
 
+                    {canMod ? (
                       <button
                         type="button"
                         onClick={() => doDelete(c.id)}
@@ -512,11 +507,11 @@ export function CallTab({
                       >
                         Supprimer
                       </button>
-                    </div>
-                  ))}
-                </div>
-              )
-            ) : null}
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}

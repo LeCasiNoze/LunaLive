@@ -69,11 +69,13 @@ import { botWheelRouter } from "./routes/bot_wheel.js";
 import { botRainRouter } from "./routes/bot_rain.js";
 import { predictionsRouter } from "./predictions/predictions.routes.js";
 import { callsPcallRouter } from "./routes/calls_pcall.js";
+import { billingRouter } from "./routes/billing.js";
 
 export function createApp() {
   const app = express();
   app.set("trust proxy", 1);
-
+  app.use("/billing", billingRouter);
+  
   app.use(cors());
   app.use(express.json({ limit: "300kb" }));
   app.use((req, res, next) => {

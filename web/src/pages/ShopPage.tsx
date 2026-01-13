@@ -9,6 +9,7 @@ import {
 } from "../lib/appearance";
 import { buyShopCosmetic, shopCosmetics, type ShopCosmeticItem } from "../lib/api";
 import { shopTalents, buyTalent, type ApiTalentItem } from "../lib/api";
+import { billingCheckout, billingPortal } from "../lib/api_billing";
 
 type Kind = "username" | "badge" | "title" | "frame" | "hat";
 
@@ -163,8 +164,10 @@ function sortByPriceAsc(a: ShopCosmeticItem, b: ShopCosmeticItem) {
   const ar = a.priceRubis == null ? Number.POSITIVE_INFINITY : Number(a.priceRubis);
   const br = b.priceRubis == null ? Number.POSITIVE_INFINITY : Number(b.priceRubis);
 
-  const ap = (a as any).pricePrestige == null ? Number.POSITIVE_INFINITY : Number((a as any).pricePrestige);
-  const bp = (b as any).pricePrestige == null ? Number.POSITIVE_INFINITY : Number((b as any).pricePrestige);
+  const ap =
+    (a as any).pricePrestige == null ? Number.POSITIVE_INFINITY : Number((a as any).pricePrestige);
+  const bp =
+    (b as any).pricePrestige == null ? Number.POSITIVE_INFINITY : Number((b as any).pricePrestige);
 
   const aGroup = ar !== Number.POSITIVE_INFINITY ? 0 : ap !== Number.POSITIVE_INFINITY ? 1 : 2;
   const bGroup = br !== Number.POSITIVE_INFINITY ? 0 : bp !== Number.POSITIVE_INFINITY ? 1 : 2;
@@ -184,6 +187,179 @@ function normalizeOwnedRecord(x: any): Record<string, string[]> {
   return {};
 }
 
+/* ------------------------------ SUBS UI ------------------------------ */
+
+type SubSlide = { title: string; points: string[] };
+type SubPlan = {
+  id: "viewer" | "streamer";
+  label: string;
+  badge: string; // petit pill
+  icon: string;
+  priceText: string; // affichage libre tant que pas décidé
+  visibleIf: (u: { role?: string } | null) => boolean;
+  slides: SubSlide[];
+  ctaLabel: string;
+};
+
+function isStreamerRole(role?: string) {
+  const r = String(role || "").toLowerCase();
+  return r === "streamer" || r === "admin_streamer" || r.includes("streamer");
+}
+
+function Dots({
+  count,
+  active,
+  onPick,
+}: {
+  count: number;
+  active: number;
+  onPick: (i: number) => void;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <button
+          key={i}
+          onClick={() => onPick(i)}
+          className="btnGhostSmall"
+          style={{
+            width: 10,
+            height: 10,
+            padding: 0,
+            borderRadius: 999,
+            opacity: i === active ? 1 : 0.55,
+            border:
+              i === active
+                ? "1px solid rgba(255,255,255,0.30)"
+                : "1px solid rgba(255,255,255,0.10)",
+            background: i === active ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.12)",
+          }}
+          aria-label={`Page ${i + 1}`}
+          title={`Page ${i + 1}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SubPlanCard({
+  plan,
+  disabledReason,
+  onSubscribe,
+  onManage,
+  disabledSubscribe,
+  disabledManage,
+}: {
+  plan: SubPlan;
+  disabledReason: string;
+  onSubscribe: (planId: "viewer" | "streamer") => void;
+  onManage: () => void;
+  disabledSubscribe?: boolean;
+  disabledManage?: boolean;
+}) {
+  const [page, setPage] = React.useState(0);
+  const slide = plan.slides[Math.max(0, Math.min(page, plan.slides.length - 1))];
+
+  return (
+    <div
+      style={{
+        borderRadius: 18,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(0,0,0,0.20)",
+        padding: 14,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        minHeight: 260,
+      }}
+    >
+      {/* header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ fontSize: 22 }}>{plan.icon}</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ fontWeight: 950, fontSize: 15 }}>{plan.label}</div>
+            <span
+              className="cosPill"
+              style={{
+                fontSize: 12,
+                padding: "4px 8px",
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(255,255,255,0.04)",
+              }}
+            >
+              {plan.badge}
+            </span>
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+            {plan.priceText}
+          </div>
+        </div>
+
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button
+            className="btnGhostSmall"
+            disabled={plan.slides.length <= 1}
+            onClick={() => setPage((p) => (p - 1 + plan.slides.length) % plan.slides.length)}
+            title="Précédent"
+          >
+            ◀
+          </button>
+          <button
+            className="btnGhostSmall"
+            disabled={plan.slides.length <= 1}
+            onClick={() => setPage((p) => (p + 1) % plan.slides.length)}
+            title="Suivant"
+          >
+            ▶
+          </button>
+        </div>
+      </div>
+
+      {/* content */}
+      <div
+        style={{
+          borderRadius: 14,
+          border: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(0,0,0,0.16)",
+          padding: 12,
+          flex: 1,
+        }}
+      >
+        <div style={{ fontWeight: 900, marginBottom: 8 }}>{slide.title}</div>
+        <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+          {slide.points.map((p, idx) => (
+            <li key={idx} style={{ opacity: 0.95, lineHeight: 1.25 }}>
+              {p}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* footer */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Dots count={plan.slides.length} active={page} onPick={setPage} />
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button className="btnPrimarySmall" disabled={disabledSubscribe} onClick={() => onSubscribe(plan.id)}>
+            {plan.ctaLabel}
+          </button>
+
+          <button className="btnGhostSmall" disabled={disabledManage} onClick={onManage}>
+            Gérer
+          </button>
+        </div>
+      </div>
+
+      <div className="muted" style={{ fontSize: 12, opacity: 0.85 }}>
+        {disabledReason}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------ PAGE ------------------------------ */
+
 export function ShopPage({
   streamerAppearance = DEFAULT_STREAMER_APPEARANCE,
 }: {
@@ -191,13 +367,16 @@ export function ShopPage({
 }) {
   const authAny = useAuth() as any;
   const token: string | null = authAny.token ?? null;
-  const user = authAny.user as { id: number; username: string; rubis: number } | null;
+
+  // ⬇️ on élargit le type pour inclure role (utilisé pour masquer l’abonnement streamer)
+  const user = authAny.user as { id: number; username: string; rubis: number; role?: string } | null;
 
   const [topTab, setTopTab] = React.useState<(typeof TOP_TABS)[number]["id"]>("skins");
   const [cat, setCat] = React.useState<Kind>("username");
 
   const [loading, setLoading] = React.useState(false);
   const [buying, setBuying] = React.useState(false);
+  const [subsBusy, setSubsBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
   const [availableRubis, setAvailableRubis] = React.useState<number>(user?.rubis ?? 0);
@@ -244,15 +423,15 @@ export function ShopPage({
   }
 
   React.useEffect(() => {
-  try {
-    const want = String(localStorage.getItem("shop:openTab") || "");
-    if (want && ["skins", "upgrades", "subs", "rubis"].includes(want)) {
-      setTopTab(want as any);
-    }
-    localStorage.removeItem("shop:openTab");
-  } catch {}
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
+    try {
+      const want = String(localStorage.getItem("shop:openTab") || "");
+      if (want && ["skins", "upgrades", "subs", "rubis"].includes(want)) {
+        setTopTab(want as any);
+      }
+      localStorage.removeItem("shop:openTab");
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   React.useEffect(() => {
     if (topTab === "upgrades") {
@@ -269,11 +448,7 @@ export function ShopPage({
       const j: any = await shopCosmetics(token);
       if (!j?.ok) throw new Error(j?.error || "load_failed");
 
-      const rub =
-        Number(j.availableRubis) ||
-        Number(j.user?.rubis) ||
-        Number(user?.rubis ?? 0);
-
+      const rub = Number(j.availableRubis) || Number(j.user?.rubis) || Number(user?.rubis ?? 0);
       syncRubis(Number.isFinite(rub) ? rub : 0, "shop:load");
 
       const pre = Number(j.availablePrestige) || 0;
@@ -301,7 +476,7 @@ export function ShopPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const effectiveRubis = Number.isFinite(availableRubis) ? availableRubis : (user?.rubis ?? 0);
+  const effectiveRubis = Number.isFinite(availableRubis) ? availableRubis : user?.rubis ?? 0;
   const effectivePrestige = Number.isFinite(availablePrestige) ? availablePrestige : 0;
 
   const visible = React.useMemo(() => {
@@ -336,7 +511,7 @@ export function ShopPage({
     });
 
     setItems((prev) =>
-      prev.map((x) => ((x.kind === kind && x.code === code) ? ({ ...(x as any), owned: true } as any) : x))
+      prev.map((x) => (x.kind === kind && x.code === code ? ({ ...(x as any), owned: true } as any) : x))
     );
   }
 
@@ -358,7 +533,6 @@ export function ShopPage({
       const j: any = await buyShopCosmetic(token, it.kind, it.code);
       if (!j?.ok) throw new Error(j?.error || "buy_failed");
 
-      // ✅ update rubis instant (Shop + Topbar)
       const newRubis = Number(j.availableRubis) || Number(j.user?.rubis);
       if (Number.isFinite(newRubis)) syncRubis(newRubis, "shop:buy");
 
@@ -371,7 +545,6 @@ export function ShopPage({
         addOwnedLocal(it.kind, it.code);
       }
 
-      // fallback sécurité (si une autre page a modifié entre-temps)
       if (typeof authAny.refreshMe === "function") authAny.refreshMe();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -382,6 +555,88 @@ export function ShopPage({
 
   const username = user?.username ?? "Invité";
   const previewUserId = user?.id ?? 999999;
+
+  const disabledSubsReason = "Paiement + activation/annulation seront branchés après validation du front.";
+
+  async function onSubscribe(plan: "viewer" | "streamer") {
+    if (!token) return;
+    setSubsBusy(true);
+    setErr(null);
+    try {
+      const j: any = await billingCheckout(token, plan);
+      if (!j?.ok || !j?.url) throw new Error(j?.error || "checkout_failed");
+      window.location.href = String(j.url);
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur paiement"));
+      setSubsBusy(false);
+    }
+  }
+
+  async function onManage() {
+    if (!token) return;
+    setSubsBusy(true);
+    setErr(null);
+    try {
+      const j: any = await billingPortal(token);
+      if (!j?.ok || !j?.url) throw new Error(j?.error || "portal_failed");
+      window.location.href = String(j.url);
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur portail"));
+      setSubsBusy(false);
+    }
+  }
+
+  // ✅ définition des plans (prix texte editable plus tard)
+  const SUB_PLANS: SubPlan[] = [
+    {
+      id: "viewer",
+      label: "Abonnement Viewer",
+      badge: "30 jours",
+      icon: "⭐",
+      priceText: "19,99 € / 30 jours — renouvellement automatique",
+      visibleIf: () => true,
+      ctaLabel: "S’abonner",
+      slides: [
+        {
+          title: "Inclus à chaque cycle",
+          points: ["🎁 1 ticket “sub offert” (équiv. 1 sub)", "💎 +500 rubis offerts (à chaque renouvellement)", "✨ Cosmétique exclusif (à définir)"],
+        },
+        {
+          title: "Boost coffres & gains",
+          points: ["🧰 + génération passive dans les coffres de stream (ex: +1 rubis / tick)", "💰 Bonus sur la récupération des rubis des coffres", "🌧️ Boost sur les rain", "🎯 Bonus sur les gains quand tu remportes une prédiction"],
+        },
+        {
+          title: "Bonus quotidiens & accès",
+          points: ["📅 Bonus quotidien supplémentaire (Daily bonus/agenda)", "🎡 Tickets de roue supplémentaires (logique à définir)", "📣 Accès à PCall (bypass comme talent Calls niv 3)", "⚡ Boost XP (sera branché plus tard avec le système XP)"],
+        },
+      ],
+    },
+    {
+      id: "streamer",
+      label: "Abonnement Streamer",
+      badge: "Streamer only — 30 jours",
+      icon: "🎥",
+      priceText: "49,99 € / 30 jours — renouvellement automatique",
+      visibleIf: (u) => isStreamerRole(u?.role),
+      ctaLabel: "S’abonner",
+      slides: [
+        {
+          title: "Inclus à chaque cycle",
+          points: ["🎁 10 tickets “sub offert” pour ta communauté", "📌 Statut prioritaire (TrustPilot / mise en avant)", "🚀 Priorité retraits (via statut prio côté admin)"],
+        },
+        {
+          title: "Boost stream & features",
+          points: ["🧰 +50% génération passive dans ton coffre de stream (proposition)", "🎯 + de prédictions par jour", "🌧️ +1 palier de rain", "🎬 Cap de clips augmenté (à définir)"],
+        },
+        {
+          title: "Évolutif",
+          points: ["⭐ Le statut prio sert de “flag” pour ajouter des perks futures"],
+        },
+      ],
+    },
+  ];
+
+  const visiblePlans = SUB_PLANS.filter((p) => p.visibleIf(user));
 
   return (
     <div className="panel" style={{ marginTop: 14 }}>
@@ -402,7 +657,7 @@ export function ShopPage({
             key={t.id}
             className={topTab === t.id ? "btnPrimary" : "btnGhost"}
             onClick={() => setTopTab(t.id)}
-            disabled={loading || buying}
+            disabled={loading || buying || subsBusy}
           >
             {t.label}
           </button>
@@ -417,58 +672,19 @@ export function ShopPage({
       {/* UPGRADES */}
       {topTab === "upgrades" ? (
         <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 720,
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}
-          >
+          <div style={{ width: "100%", maxWidth: 720, display: "flex", flexDirection: "column", gap: 8 }}>
             {[
-              {
-                code: "talent_calls_limit",
-                name: "Calls & PCall",
-                desc: "Augmente les calls disponibles et débloque le pay call.",
-                icon: "📣",
-              },
-              {
-                code: "talent_xp_boost",
-                name: "Boost XP",
-                desc: "Augmente l’XP gagnée sur la plateforme.",
-                icon: "⚡",
-              },
-              {
-                code: "talent_rain_boost",
-                name: "Boost Rain",
-                desc: "Augmente les gains issus des rain.",
-                icon: "🌧️",
-              },
-              {
-                code: "talent_prediction_bet_cap",
-                name: "Mise prédiction max",
-                desc: "Augmente la mise maximale possible sur les prédictions.",
-                icon: "🎯",
-              },
-              {
-                code: "talent_prediction_shield",
-                name: "Shield prédiction",
-                desc: "Protège certaines prédictions perdues.",
-                icon: "🛡️",
-              },
-              {
-                code: "talent_shop_discount",
-                name: "Réduction shop",
-                desc: "Réduction sur les cosmétiques du shop.",
-                icon: "🛒",
-              },
+              { code: "talent_calls_limit", name: "Calls & PCall", desc: "Augmente les calls disponibles et débloque le pay call.", icon: "📣" },
+              { code: "talent_xp_boost", name: "Boost XP", desc: "Augmente l’XP gagnée sur la plateforme.", icon: "⚡" },
+              { code: "talent_rain_boost", name: "Boost Rain", desc: "Augmente les gains issus des rain.", icon: "🌧️" },
+              { code: "talent_prediction_bet_cap", name: "Mise prédiction max", desc: "Augmente la mise maximale possible sur les prédictions.", icon: "🎯" },
+              { code: "talent_prediction_shield", name: "Shield prédiction", desc: "Protège certaines prédictions perdues.", icon: "🛡️" },
             ].map((t) => {
               const talent = talents.find((x) => x.code === t.code);
 
               const level = talent?.level ?? 0;
               const maxLevel = talent?.maxLevel ?? 3;
-              const nextPrice = talent?.nextPrice ?? 500; // fallback visible
+              const nextPrice = talent?.nextPrice ?? 500;
 
               const isMax = level >= maxLevel;
               const canAfford = effectiveRubis >= nextPrice;
@@ -487,7 +703,6 @@ export function ShopPage({
                     gap: 12,
                   }}
                 >
-                  {/* LEFT */}
                   <div style={{ display: "flex", gap: 10, minWidth: 0 }}>
                     <div style={{ fontSize: 20 }}>{t.icon}</div>
                     <div>
@@ -498,18 +713,8 @@ export function ShopPage({
                     </div>
                   </div>
 
-                  {/* RIGHT */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <span style={{ fontSize: 12, opacity: 0.85 }}>
-                      {isMax ? "MAX" : `Niv. ${level + 1}`}
-                    </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, whiteSpace: "nowrap" }}>
+                    <span style={{ fontSize: 12, opacity: 0.85 }}>{isMax ? "MAX" : `Niv. ${level + 1}`}</span>
 
                     {isMax ? (
                       <button className="btnGhostSmall" disabled>
@@ -518,7 +723,7 @@ export function ShopPage({
                     ) : (
                       <button
                         className={canAfford ? "btnPrimarySmall" : "btnGhostSmall"}
-                        disabled={!canAfford}
+                        disabled={!canAfford || buying || loading || subsBusy}
                         onClick={async () => {
                           if (!token) return;
                           const r: any = await buyTalent(token, t.code);
@@ -541,8 +746,55 @@ export function ShopPage({
 
       {/* SUBS */}
       {topTab === "subs" ? (
-        <div style={{ marginTop: 14 }}>
-          <div className="muted">Bientôt : abonnements (packs, avantages, etc.).</div>
+        <div style={{ marginTop: 16, display: "flex", justifyContent: "center" }}>
+          <div style={{ width: "100%", maxWidth: 900 }}>
+            <div
+              style={{
+                borderRadius: 16,
+                border: "1px solid rgba(255,255,255,0.08)",
+                background: "rgba(0,0,0,0.18)",
+                padding: 12,
+                marginBottom: 12,
+              }}
+            >
+              <div style={{ fontWeight: 950, display: "flex", alignItems: "center", gap: 10 }}>
+                <span>Abonnements</span>
+                <span className="muted" style={{ fontSize: 12, fontWeight: 700 }}>
+                  (mensuels)
+                </span>
+              </div>
+              <div className="muted" style={{ marginTop: 6, lineHeight: 1.25 }}>
+                Tu peux choisir un abonnement Viewer. L’abonnement Streamer n’apparaît que pour les comptes streamer.
+                Les avantages seront branchés seulement après validation du paiement + activation.
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+                gap: 12,
+              }}
+            >
+              {visiblePlans.map((p) => (
+                <SubPlanCard
+                  key={p.id}
+                  plan={p}
+                  disabledReason={disabledSubsReason}
+                  onSubscribe={onSubscribe}
+                  onManage={onManage}
+                  disabledSubscribe={!token || subsBusy}
+                  disabledManage={!token || subsBusy}
+                />
+              ))}
+            </div>
+
+            {!visiblePlans.find((p) => p.id === "streamer") ? (
+              <div className="muted" style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
+                ℹ️ L’offre Streamer est cachée car ton compte n’a pas le rôle streamer.
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -556,7 +808,6 @@ export function ShopPage({
       {/* SKINS */}
       {topTab === "skins" ? (
         <>
-          {/* Preview global */}
           <div
             className="shopPreviewNoTruncate cosPreview"
             style={{
@@ -588,7 +839,6 @@ export function ShopPage({
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 14, marginTop: 14 }}>
-            {/* Catégories */}
             <div
               style={{
                 borderRadius: 16,
@@ -604,19 +854,18 @@ export function ShopPage({
                     key={c.id}
                     className={cat === c.id ? "btnPrimary" : "btnGhost"}
                     onClick={() => setCat(c.id)}
-                    disabled={loading || buying}
+                    disabled={loading || buying || subsBusy}
                     style={{ textAlign: "left" }}
                   >
                     {c.label}
                   </button>
                 ))}
-                <button className="btnGhost" onClick={load} disabled={loading || buying}>
+                <button className="btnGhost" onClick={load} disabled={loading || buying || subsBusy}>
                   {loading ? "Chargement…" : "Recharger"}
                 </button>
               </div>
             </div>
 
-            {/* Items */}
             <div
               style={{
                 borderRadius: 16,
@@ -704,7 +953,6 @@ export function ShopPage({
                         </div>
                       </div>
 
-                      {/* preview */}
                       <div
                         className="cosPreview"
                         style={{
@@ -727,16 +975,11 @@ export function ShopPage({
                         />
                       </div>
 
-                      {/* buy */}
                       <div style={{ display: "flex", gap: 8 }}>
                         {buyable ? (
                           <button
-                            className={
-                              !token || buying || loading || ownedNow || !canAfford
-                                ? "btnGhostSmall"
-                                : "btnPrimarySmall"
-                            }
-                            disabled={!token || buying || loading || ownedNow || !canAfford}
+                            className={!token || buying || loading || subsBusy || ownedNow || !canAfford ? "btnGhostSmall" : "btnPrimarySmall"}
+                            disabled={!token || buying || loading || subsBusy || ownedNow || !canAfford}
                             onClick={(e) => {
                               e.stopPropagation();
                               buy(it);
