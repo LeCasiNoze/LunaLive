@@ -4,6 +4,7 @@ import { pool } from "../db.js";
 import normalizeAppearance from "../appearance.js";
 import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
 import { earnRubisTx } from "../wallet_engine.js";
+import type { PoolClient } from "pg";
 
 export const botRainRouter = Router();
 
@@ -17,6 +18,49 @@ const PRESETS: Record<number, number> = {
 const ALLOWED_INTERVALS = new Set([10, 30, 60]);
 
 let schemaReady = false;
+
+// Talent: boost rain (appliqué au RECEVEUR)
+const RAIN_TALENT_CODE = "talent_rain_boost" as const;
+
+// +10% / +20% / +30% (niveaux 1..3)
+const RAIN_BOOST_MULT: Record<number, number> = {
+  0: 1.0,
+  1: 1.10,
+  2: 1.20,
+  3: 1.30,
+};
+
+function applyRainBoost(base: number, level: number) {
+  const lv = Math.max(0, Math.min(3, Number(level || 0)));
+  const mult = RAIN_BOOST_MULT[lv] ?? 1;
+  // arrondi pour que les petits montants aient un vrai effet (ex: 5 * 1.2 => 6)
+  const v = Math.round(Number(base || 0) * mult);
+  return Math.max(1, v);
+}
+
+async function getRainBoostLevels(client: PoolClient, userIds: number[]) {
+  const ids = (userIds || []).map((x) => Number(x)).filter((x) => x > 0);
+  const map = new Map<number, number>();
+  if (!ids.length) return map;
+
+  try {
+    const r = await client.query<{ user_id: number; level: number }>(
+      `SELECT user_id, level
+       FROM user_talents
+       WHERE talent_code = $1
+         AND user_id = ANY($2::bigint[])`,
+      [RAIN_TALENT_CODE, ids]
+    );
+
+    for (const row of r.rows || []) {
+      map.set(Number(row.user_id), Math.max(0, Number(row.level || 0)));
+    }
+  } catch {
+    // si table pas dispo (ou autre), on n'applique pas de bonus
+  }
+
+  return map;
+}
 
 async function ensureSchema() {
   if (schemaReady) return;
@@ -381,7 +425,7 @@ async function advanceIfNeeded(req: any, streamer: any, cfg: any) {
       const toast = {
         kind: "info",
         title: "🌧️ Rain",
-        message: `Rejoins pour gagner ${cfg.rubiesPerUser} rubis`,
+        message: `Rejoins pour gagner ${cfg.rubiesPerUser} rubis (+ bonus talents)`,
         sticky: true,
         dismissible: true,
         durationMs: cfg.joinWindowSec * 1000,
@@ -408,11 +452,20 @@ async function advanceIfNeeded(req: any, streamer: any, cfg: any) {
         [streamer.streamerId, curRound]
       );
 
+      const userIds = (joins.rows || []).map((x: any) => Number(x.user_id)).filter((x: number) => x > 0);
+      const boostByUser = await getRainBoostLevels(client, userIds);
+
       for (const r of joins.rows || []) {
         const uid = Number(r.user_id);
         if (!uid) continue;
-        await earnRubisTx(client, uid, "event_platform", cfg.rubiesPerUser, {
+
+        const level = boostByUser.get(uid) ?? 0;
+        const payout = applyRainBoost(cfg.rubiesPerUser, level);
+
+        await earnRubisTx(client, uid, "event_platform", payout, {
           kind: "rain",
+          base: cfg.rubiesPerUser,
+          talent: { code: RAIN_TALENT_CODE, level },
           streamerId: streamer.streamerId,
           slug: streamer.slug,
           roundId: curRound,

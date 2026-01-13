@@ -247,7 +247,7 @@ export async function addCall(
   username: string,
   slotNameRaw: string,
   provider: string | null,
-  opts?: { bypassLimit?: boolean }
+  opts?: { bypassLimit?: boolean; perUserLimit?: number; insertAfterCurrent?: boolean }
 ): Promise<{ ok: true; item: CallItem; position: number } | { ok: false; error: string }> {
   await ensureCallsSchema(pool);
 
@@ -271,9 +271,10 @@ export async function addCall(
   if (!(await isProviderAllowedByPolicy(pool, streamerId, providerLower))) return { ok: false, error: "provider_not_allowed" };
 
   if (!opts?.bypassLimit) {
-    if (settings.perUserLimit > 0) {
+    const lim = typeof opts?.perUserLimit === "number" ? effectiveLimit(opts!.perUserLimit) : settings.perUserLimit;
+    if (lim > 0) {
       const n = await countUserCalls(pool, streamerId, userId);
-      if (n >= settings.perUserLimit) return { ok: false, error: "limit_reached" };
+      if (n >= lim) return { ok: false, error: "limit_reached" };
     }
   }
 
@@ -285,19 +286,50 @@ export async function addCall(
     // lock par streamer pour pos + dédup
     await client.query(`SELECT pg_advisory_xact_lock($1)`, [Number(streamerId)]);
 
-    const maxPos = await client.query(`SELECT COALESCE(MAX(pos),0)::bigint AS m FROM calls_queue WHERE streamer_id=$1`, [
-      streamerId,
-    ]);
-    const nextPos = Number(maxPos.rows?.[0]?.m ?? 0) + 1;
+  // position par défaut = append
+  let nextPos = 0;
 
-    const ins = await client.query(
-      `
-      INSERT INTO calls_queue (streamer_id, slot_name, slot_key, provider, user_id, username, pos, bet, pay, bounty)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NULL)
-      RETURNING id, created_at AS "createdAt"
-      `,
-      [streamerId, slotName, slotKey, providerLower, userId, username, nextPos]
+  const maxPosRes = await client.query(
+    `SELECT COALESCE(MAX(pos),0)::bigint AS m FROM calls_queue WHERE streamer_id=$1`,
+    [streamerId]
+  );
+  const maxPos = Number(maxPosRes.rows?.[0]?.m ?? 0);
+
+  if (opts?.insertAfterCurrent) {
+    // “current” = plus petit pos (le call en cours)
+    const minPosRes = await client.query(
+      `SELECT COALESCE(MIN(pos),0)::bigint AS m FROM calls_queue WHERE streamer_id=$1`,
+      [streamerId]
     );
+    const minPos = Number(minPosRes.rows?.[0]?.m ?? 0);
+
+    if (maxPos <= 0) {
+      // queue vide => pas de "2e", on met en 1
+      nextPos = 1;
+    } else {
+      // queue non vide => insérer juste après le current
+      nextPos = Math.max(2, minPos + 1);
+
+      // décale tous les éléments à partir de nextPos
+      await client.query(
+        `UPDATE calls_queue
+        SET pos = pos + 1
+        WHERE streamer_id=$1 AND pos >= $2`,
+        [streamerId, nextPos]
+      );
+    }
+  } else {
+    nextPos = maxPos + 1;
+  }
+
+  const ins = await client.query(
+    `
+    INSERT INTO calls_queue (streamer_id, slot_name, slot_key, provider, user_id, username, pos, bet, pay, bounty)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NULL)
+    RETURNING id, created_at AS "createdAt"
+    `,
+    [streamerId, slotName, slotKey, providerLower, userId, username, nextPos]
+  );
 
     await client.query("COMMIT");
 

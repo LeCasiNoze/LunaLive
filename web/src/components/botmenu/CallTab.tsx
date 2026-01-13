@@ -50,6 +50,52 @@ export function CallTab({
 
   const isAuthed = !!token;
 
+  // ✅ PayCall (pcall) UI state
+  const [pcallUnlocked, setPcallUnlocked] = React.useState<boolean>(false);
+  const [pcallNextAtMs, setPcallNextAtMs] = React.useState<number>(0);
+  const [nowMs, setNowMs] = React.useState<number>(() => Date.now());
+
+  function msToMinLeft(ms: number) {
+    const n = Math.max(0, ms);
+    return Math.max(1, Math.ceil(n / 60000));
+  }
+
+  const pcallOnCooldown = pcallNextAtMs > 0 && nowMs < pcallNextAtMs;
+  const pcallLeftMin = pcallOnCooldown ? msToMinLeft(pcallNextAtMs - nowMs) : 0;
+
+  function toast(kind: "success" | "error" | "info", title: string, message?: string) {
+    window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind, title, message } }));
+  }
+
+  function goShopSubs() {
+    try {
+      localStorage.setItem("shop:openTab", "subs");
+    } catch {}
+    window.location.href = "/shop";
+  }
+
+  // tick pour afficher cooldown temps réel
+  React.useEffect(() => {
+    const t = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  async function loadPcallStatus() {
+    if (!token) return;
+    try {
+      const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/pcall/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const j = await r.json();
+      if (j?.ok) {
+        setPcallUnlocked(!!j.unlocked);
+        setPcallNextAtMs(Number(j.nextAtMs || 0));
+      }
+    } catch {
+      // silence
+    }
+  }
+
   async function fetchSuggestions(text: string) {
     const s = String(text || "").trim();
     if (s.length < 2) {
@@ -58,7 +104,10 @@ export function CallTab({
     }
     setLoading(true);
     try {
-      const r = await fetch(`${apiBase()}/slots/search?q=${encodeURIComponent(s)}&limit=10`);
+      // ✅ FIX 401: on envoie le Bearer token (l'API exige l'auth ici)
+      const r = await fetch(`${apiBase()}/slots/search?q=${encodeURIComponent(s)}&limit=10`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       const j = await r.json();
       if (j?.ok) setItems(j.items || []);
       else setItems([]);
@@ -101,12 +150,10 @@ export function CallTab({
     }).then((x) => x.json());
 
     if (r?.ok) {
-      window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "success", title: "Calls reset ✅" } }));
+      toast("success", "Calls reset ✅");
       await loadQueue();
     } else {
-      window.dispatchEvent(
-        new CustomEvent("ui:toast", { detail: { kind: "error", title: "Erreur", message: r?.error || "reset_failed" } })
-      );
+      toast("error", "Erreur", r?.error || "reset_failed");
     }
   }
 
@@ -122,10 +169,35 @@ export function CallTab({
     if (r?.ok) {
       await loadQueue();
     } else {
-      window.dispatchEvent(
-        new CustomEvent("ui:toast", { detail: { kind: "error", title: "Erreur", message: r?.error || "delete_failed" } })
-      );
+      toast("error", "Erreur", r?.error || "delete_failed");
     }
+  }
+
+  async function doPcall(slotName: string) {
+    const t = String(slotName || "").trim();
+    if (!t) return;
+
+    // pas débloqué => redirect shop abonnements
+    if (!pcallUnlocked) {
+      onClose();
+      goShopSubs();
+      return;
+    }
+
+    // cooldown => toast et on ne ferme pas forcément
+    if (pcallOnCooldown) {
+      toast("error", "Pay Call en cooldown", `Reviens dans ${pcallLeftMin} min.`);
+      return;
+    }
+
+    // envoi cmd
+    sendBang(`!pcall ${t}`);
+    onClose();
+
+    // optimiste: bloque local 1h30 + refresh status best-effort
+    const optimistic = Date.now() + 90 * 60 * 1000;
+    setPcallNextAtMs(optimistic);
+    window.setTimeout(() => void loadPcallStatus(), 800);
   }
 
   // debounce suggestions
@@ -134,7 +206,13 @@ export function CallTab({
       fetchSuggestions(q).catch(() => {});
     }, 120);
     return () => window.clearTimeout(t);
-  }, [q]);
+  }, [q]); // volontaire
+
+  // load pcall status
+  React.useEffect(() => {
+    if (token) void loadPcallStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, slug]);
 
   // ✅ auto load queue quand on ouvre CallTab
   React.useEffect(() => {
@@ -162,7 +240,7 @@ export function CallTab({
 
     window.addEventListener(CALLS_QUEUE_CHANGED_EVT, onQueueChanged as any);
     return () => window.removeEventListener(CALLS_QUEUE_CHANGED_EVT, onQueueChanged as any);
-  }, [slug, token, canMod]); // volontaire: handler doit voir les valeurs à jour
+  }, [slug, token, canMod]);
 
   return (
     <>
@@ -219,41 +297,112 @@ export function CallTab({
             }}
           />
 
+          {/* ===== PCALL action ===== */}
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button
+              type="button"
+              onClick={() => {
+                const text = q.trim();
+                if (!text) return;
+                void doPcall(text);
+              }}
+              style={{
+                flex: 1,
+                padding: "12px 12px",
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: !pcallUnlocked
+                  ? "rgba(255,255,255,0.06)"
+                  : pcallOnCooldown
+                  ? "rgba(255,255,255,0.06)"
+                  : "rgba(124,77,255,0.22)",
+                color: "white",
+                fontWeight: 950,
+                cursor: "pointer",
+                opacity: !pcallUnlocked ? 0.9 : 1,
+              }}
+            >
+              {!pcallUnlocked
+                ? "🔒 Call prioritaire (débloquer)"
+                : pcallOnCooldown
+                ? `⏳ Call prioritaire (${pcallLeftMin} min)`
+                : "⚡ Call prioritaire"}
+            </button>
+          </div>
+
           <div style={{ marginTop: 10 }}>
             {loading ? <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Suggestions…</div> : null}
 
             {items.length ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
                 {items.map((it) => (
-                  <button
-                    key={`${it.name}|${it.provider || ""}`}
-                    type="button"
-                    onClick={() => {
-                      sendBang(`!call ${it.name}`);
-                      onClose();
-                    }}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(255,255,255,0.05)",
-                      color: "white",
-                      textAlign: "left",
-                      fontWeight: 900,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                      <SlotThumb url={it.imageUrl} />
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {it.name}
-                          {it.provider ? <span style={{ opacity: 0.75, fontWeight: 800 }}> — {it.provider}</span> : null}
+                  <div key={`${it.name}|${it.provider || ""}`} style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        sendBang(`!call ${it.name}`);
+                        onClose();
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: "10px 12px",
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: "rgba(255,255,255,0.05)",
+                        color: "white",
+                        textAlign: "left",
+                        fontWeight: 900,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <SlotThumb url={it.imageUrl} />
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontWeight: 950,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {it.name}
+                            {it.provider ? (
+                              <span style={{ opacity: 0.75, fontWeight: 800 }}> — {it.provider}</span>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void doPcall(it.name)}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: !pcallUnlocked
+                          ? "rgba(255,255,255,0.06)"
+                          : pcallOnCooldown
+                          ? "rgba(255,255,255,0.06)"
+                          : "rgba(124,77,255,0.22)",
+                        color: "white",
+                        fontWeight: 950,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={
+                        !pcallUnlocked
+                          ? "Débloque le talent Calls niveau 3"
+                          : pcallOnCooldown
+                          ? "Cooldown actif"
+                          : "Prioritaire"
+                      }
+                    >
+                      {!pcallUnlocked ? "🔒" : pcallOnCooldown ? `⏳ ${pcallLeftMin}m` : "⚡"}
+                    </button>
+                  </div>
                 ))}
               </div>
             ) : q.trim().length >= 2 ? (
@@ -330,11 +479,20 @@ export function CallTab({
                       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
                         <SlotThumb url={c.imageUrl} />
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <div
+                            style={{
+                              fontWeight: 950,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
                             {c.pos}. {c.slotName}
                             {c.provider ? <span style={{ opacity: 0.75, fontWeight: 800 }}> — {c.provider}</span> : null}
                           </div>
-                          <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>@ {c.username}</div>
+                          <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
+                            @ {c.username}
+                          </div>
                         </div>
                       </div>
 

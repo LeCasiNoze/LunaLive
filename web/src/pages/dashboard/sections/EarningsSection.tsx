@@ -62,13 +62,141 @@ function computeWeightedValue(breakdownByWeight: Record<string, number> | null |
   for (const [wStr, amtRaw] of Object.entries(breakdownByWeight || {})) {
     const weightBp = Number(wStr);
     const amt = Number(amtRaw);
+
+    // ⚠️ weight<=0 => on ne valorise pas (rubis "non classés")
     if (!Number.isFinite(weightBp) || !Number.isFinite(amt) || amt <= 0) continue;
 
     totalRubis += amt;
-    valueCents += Math.floor((amt * weightBp) / 10000);
+
+    if (weightBp > 0) {
+      // cents = rubis * weight (bp)/10000 ; 1 rubis @10000 => 1 cent
+      valueCents += Math.floor((amt * weightBp) / 10000);
+    }
   }
 
   return { totalRubis, valueCents, valueEur: valueCents / 100 };
+}
+
+/**
+ * ✅ Normalise la répartition pour qu’elle colle au solde réel (availableRubis).
+ *
+ * Objectif:
+ * - éviter les "rubis fantômes" dans la répartition (sum(breakdown) > available)
+ * - éviter d’inventer une valeur en € quand il manque des buckets (sum(breakdown) < available)
+ *
+ * Règles:
+ * - si sumRaw > available => on scale DOWN et on arrondit pour que la somme == available
+ * - si sumRaw < available => on ajoute un bucket "non classés" (weightBp=0) pour combler,
+ *   sans impact sur la valeur pondérée € (pour ne pas sur-estimer)
+ */
+function normalizeBreakdownToAvailable(
+  breakdownByWeight: Record<string, number> | null | undefined,
+  availableRubis: number
+) {
+  const available = Number(availableRubis);
+  const safeAvailable = Number.isFinite(available) ? Math.max(0, Math.floor(available)) : 0;
+
+  const rawEntries = Object.entries(breakdownByWeight || {})
+    .map(([w, v]) => [String(w), Number(v)] as const)
+    .filter(([, v]) => Number.isFinite(v) && v > 0);
+
+  const sumRaw = rawEntries.reduce((acc, [, v]) => acc + v, 0);
+
+  // cas simple: rien
+  if (!rawEntries.length) {
+    const out: Record<string, number> = {};
+    if (safeAvailable > 0) out["0"] = safeAvailable; // tout non classé
+    return {
+      breakdown: out,
+      sumRaw,
+      available: safeAvailable,
+      mode: sumRaw > safeAvailable ? "scaled_down" : sumRaw < safeAvailable ? "added_untracked" : "ok",
+      untrackedAdded: safeAvailable,
+      scaledDownFactor: 0,
+    } as const;
+  }
+
+  // ✅ si la répartition dépasse le solde réel => scale down
+  if (sumRaw > safeAvailable && safeAvailable >= 0) {
+    const factor = safeAvailable === 0 ? 0 : safeAvailable / sumRaw;
+
+    // floor + distribute remainder to match exactly safeAvailable
+    const scaled = rawEntries.map(([wStr, v]) => {
+      const x = v * factor;
+      const flo = Math.floor(x);
+      const rem = x - flo;
+      return { wStr, flo, rem };
+    });
+
+    let sumFlo = scaled.reduce((acc, it) => acc + it.flo, 0);
+    let diff = safeAvailable - sumFlo;
+
+    // distribue les +1 sur les plus gros restes
+    if (diff > 0) {
+      scaled.sort((a, b) => b.rem - a.rem);
+      for (let i = 0; i < scaled.length && diff > 0; i++) {
+        scaled[i].flo += 1;
+        diff--;
+      }
+    } else if (diff < 0) {
+      // sécurité: si on dépasse (rare), on retire sur les plus petits restes
+      scaled.sort((a, b) => a.rem - b.rem);
+      for (let i = 0; i < scaled.length && diff < 0; i++) {
+        if (scaled[i].flo > 0) {
+          scaled[i].flo -= 1;
+          diff++;
+        }
+      }
+    }
+
+    const out: Record<string, number> = {};
+    for (const it of scaled) {
+      if (it.flo > 0) out[it.wStr] = it.flo;
+    }
+
+    return {
+      breakdown: out,
+      sumRaw,
+      available: safeAvailable,
+      mode: "scaled_down",
+      untrackedAdded: 0,
+      scaledDownFactor: factor,
+    } as const;
+  }
+
+  // ✅ si la répartition est en dessous du solde => on ajoute un bucket non classé
+  if (sumRaw < safeAvailable) {
+    const out: Record<string, number> = {};
+    for (const [wStr, v] of rawEntries) out[wStr] = Math.floor(v);
+
+    const missing = safeAvailable - sumRaw;
+    if (missing > 0) {
+      // weight=0 => pas de valeur € (évite surestimation)
+      out["0"] = (out["0"] || 0) + missing;
+    }
+
+    return {
+      breakdown: out,
+      sumRaw,
+      available: safeAvailable,
+      mode: "added_untracked",
+      untrackedAdded: missing,
+      scaledDownFactor: 1,
+    } as const;
+  }
+
+  // ✅ parfait
+  const out: Record<string, number> = {};
+  for (const [wStr, v] of rawEntries) out[wStr] = Math.floor(v);
+
+  return {
+    breakdown: out,
+    sumRaw,
+    available: safeAvailable,
+    mode: "ok",
+    untrackedAdded: 0,
+    scaledDownFactor: 1,
+  } as const;
 }
 
 /**
@@ -77,16 +205,14 @@ function computeWeightedValue(breakdownByWeight: Record<string, number> | null |
  * - on “retire” des rubis en priorité des poids élevés (comme dans l’économie)
  * - on estime combien de rubis seront consommés + combien resteront
  */
-function simulateCashout(
-  breakdownByWeight: Record<string, number> | null | undefined,
-  centsWanted: number
-) {
+function simulateCashout(breakdownByWeight: Record<string, number> | null | undefined, centsWanted: number) {
   const entries = Object.entries(breakdownByWeight || {})
     .map(([w, v]) => [Number(w), Number(v)] as const)
-    .filter(([w, v]) => Number.isFinite(w) && Number.isFinite(v) && v > 0)
+    // ⚠️ weight<=0 => ne couvre aucun cent (donc inutile pour cashout)
+    .filter(([w, v]) => Number.isFinite(w) && Number.isFinite(v) && v > 0 && w > 0)
     .sort((a, b) => b[0] - a[0]); // poids élevés d'abord
 
-  const totalRubis = entries.reduce((acc, [, v]) => acc + v, 0);
+  const totalRubis = Object.values(breakdownByWeight || {}).reduce((acc, v) => acc + (Number(v) || 0), 0);
   let remainingCents = Math.max(0, Math.floor(centsWanted));
 
   let rubisSpent = 0;
@@ -113,10 +239,10 @@ function simulateCashout(
   }
 
   const canCover = remainingCents <= 0 && centsWanted > 0;
-  const remainingRubis = Math.max(0, totalRubis - rubisSpent);
+  const remainingRubis = Math.max(0, Math.floor(totalRubis) - rubisSpent);
 
   return {
-    totalRubis,
+    totalRubis: Math.floor(totalRubis),
     rubisSpent,
     remainingRubis,
     centsCovered,
@@ -133,6 +259,7 @@ const WEIGHT_HELP: Array<{ bp: number; label: string }> = [
   { bp: 2500, label: "Coffre auto" },
   { bp: 2000, label: "Coffre streamer / dons streamers" },
   { bp: 1000, label: "Événements plateforme" },
+  { bp: 0, label: "Non classés (non suivis / legacy)" },
 ];
 
 function InfoTip({
@@ -192,12 +319,7 @@ function InfoTip({
             <div style={{ fontWeight: 900, fontSize: 12, color: "rgba(255,255,255,0.92)" }}>
               {title ?? "Info"}
             </div>
-            <button
-              type="button"
-              onClick={onToggle}
-              className="btnPrimarySmall"
-              style={{ padding: "4px 8px" }}
-            >
+            <button type="button" onClick={onToggle} className="btnPrimarySmall" style={{ padding: "4px 8px" }}>
               Fermer
             </button>
           </div>
@@ -260,23 +382,27 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
     };
   }, [reload]);
 
-  const breakdownByWeight = data?.wallet?.breakdownByWeight ?? {};
-  const weighted = React.useMemo(
-    () => computeWeightedValue(breakdownByWeight),
-    [JSON.stringify(breakdownByWeight)]
-  );
+  // ✅ solde dispo : on prend la valeur API telle quelle (même si =0), sinon fallback user
+  const apiAvailable = Number(data?.wallet?.availableRubis);
+  const available = Number.isFinite(apiAvailable) ? Math.max(0, Math.floor(apiAvailable)) : Number(auth?.user?.rubis ?? 0);
 
-  // ✅ solde dispo : priorité API, sinon fallback user
-  const available =
-    Number(data?.wallet?.availableRubis ?? 0) > 0
-      ? Number(data?.wallet?.availableRubis ?? 0)
-      : Number(auth?.user?.rubis ?? 0);
+  const rawBreakdown = data?.wallet?.breakdownByWeight ?? {};
 
-  // ✅ € : priorité au calcul pondéré, sinon fallback “1.00”
-  const approxEur = weighted.valueCents > 0 ? weighted.valueEur : available / 100;
+  // ✅ normalisation anti "rubis fantômes" / anti surestimation €
+  const normalized = React.useMemo(() => {
+    return normalizeBreakdownToAvailable(rawBreakdown, available);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [available, JSON.stringify(rawBreakdown)]);
 
-  const lifetime = Number(data?.wallet?.lifetimeRubis ?? 0);
-  const reserved = Number(data?.wallet?.reservedRubis ?? 0);
+  const breakdownByWeight = normalized.breakdown;
+
+  const weighted = React.useMemo(() => computeWeightedValue(breakdownByWeight), [JSON.stringify(breakdownByWeight)]);
+
+  // ✅ € : uniquement sur rubis classés (weight>0). Les non-classés (weight=0) ne donnent pas de valeur.
+  const approxEur = weighted.valueCents > 0 ? weighted.valueEur : 0;
+
+  const lifetime = Math.max(0, Math.floor(Number(data?.wallet?.lifetimeRubis ?? 0) || 0));
+  const reserved = Math.max(0, Math.floor(Number(data?.wallet?.reservedRubis ?? 0) || 0));
 
   const weightEntries = Object.entries(breakdownByWeight)
     .map(([w, v]) => [Number(w), Number(v)] as const)
@@ -289,6 +415,8 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
     for (const row of data?.last ?? []) {
       const t = String(row.spend_type || "").toLowerCase();
       const v = Number(row.streamer_earn_rubis ?? 0);
+      if (!Number.isFinite(v) || v <= 0) continue;
+
       if (t.includes("sub")) out.sub += v;
       else if (t.includes("tip") || t.includes("don")) out.tip += v;
       else if (t.includes("event")) out.event += v;
@@ -299,21 +427,25 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
 
   const maxBucket = Math.max(1, ...Object.values(buckets));
 
-  // Estimation cashout
+  // Estimation cashout (sur breakdown normalisé)
   const wantedCents = isEurValid ? Math.round(eurWanted * 100) : 0;
   const cashoutSim = React.useMemo(() => {
     if (!wantedCents) return null;
     return simulateCashout(breakdownByWeight, wantedCents);
   }, [wantedCents, JSON.stringify(breakdownByWeight)]);
 
-  const maxCashoutEur = weighted.valueEur > 0 ? weighted.valueEur : approxEur;
+  const maxCashoutEur = weighted.valueEur > 0 ? weighted.valueEur : 0;
 
   return (
     <div className="panel">
       <div className="panelTitle">Revenus</div>
       <div className="mutedSmall">Chaîne : @{streamer.slug}</div>
 
-      {loading ? <div className="muted" style={{ marginTop: 10 }}>Chargement…</div> : null}
+      {loading ? (
+        <div className="muted" style={{ marginTop: 10 }}>
+          Chargement…
+        </div>
+      ) : null}
       {error ? (
         <div className="mutedSmall" style={{ marginTop: 10, color: "rgba(255,90,90,0.95)" }}>
           {error}
@@ -401,21 +533,34 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
           {/* 2) ✅ Solde + Répartition + info */}
           <div className="panel" style={{ marginTop: 12 }}>
             <div className="mutedSmall">Solde du streamer</div>
-            <div style={{ fontWeight: 950, fontSize: 22, marginTop: 2 }}>
-              {available.toLocaleString()} rubis
-            </div>
+            <div style={{ fontWeight: 950, fontSize: 22, marginTop: 2 }}>{available.toLocaleString()} rubis</div>
 
             <div className="mutedSmall" style={{ marginTop: 6 }}>
-              Valeur estimée (pondérée) :{" "}
+              Valeur estimée (pondérée, rubis classés uniquement) :{" "}
               <strong style={{ color: "rgba(255,255,255,0.9)" }}>{fmtEur(approxEur)} €</strong>
             </div>
 
             <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.8 }}>
               Lifetime:{" "}
-              <strong style={{ color: "rgba(255,255,255,0.9)" }}>{lifetime.toLocaleString()}</strong>{" "}
-              • Réservé cashout:{" "}
+              <strong style={{ color: "rgba(255,255,255,0.9)" }}>{lifetime.toLocaleString()}</strong> • Réservé cashout:{" "}
               <strong style={{ color: "rgba(255,255,255,0.9)" }}>{reserved.toLocaleString()}</strong>
             </div>
+
+            {/* ✅ signalisation anti-phantom */}
+            {normalized.mode !== "ok" ? (
+              <div className="mutedSmall" style={{ marginTop: 8, color: "rgba(255,210,140,0.95)" }}>
+                {normalized.mode === "scaled_down" ? (
+                  <>
+                    ⚠️ Répartition corrigée (anti rubis fantômes) : la somme des buckets dépassait le solde réel.
+                  </>
+                ) : (
+                  <>
+                    ℹ️ Répartition incomplète : {normalized.untrackedAdded.toLocaleString()} rubis non classés (non
+                    valorisés en €).
+                  </>
+                )}
+              </div>
+            ) : null}
 
             <div
               style={{
@@ -429,11 +574,7 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
               <div className="mutedSmall" style={{ marginBottom: 4 }}>
                 Répartition du solde (poids → rubis)
               </div>
-              <InfoTip
-                open={weightsInfoOpen}
-                onToggle={() => setWeightsInfoOpen((v) => !v)}
-                title="À propos des poids"
-              >
+              <InfoTip open={weightsInfoOpen} onToggle={() => setWeightsInfoOpen((v) => !v)} title="À propos des poids">
                 <div>
                   Chaque rubis n’a pas la même valeur selon sa provenance.
                   <br />
@@ -478,17 +619,22 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
                 ))}
               </div>
             ) : (
-              <div className="mutedSmall" style={{ opacity: 0.75, marginTop: 6 }}>—</div>
+              <div className="mutedSmall" style={{ opacity: 0.75, marginTop: 6 }}>
+                —
+              </div>
             )}
           </div>
 
           {/* 3) ✅ Cashout */}
           <div className="panel" style={{ marginTop: 12 }}>
-            <div className="mutedSmall" style={{ marginBottom: 6 }}>Cashout</div>
+            <div className="mutedSmall" style={{ marginBottom: 6 }}>
+              Cashout
+            </div>
 
             <div className="mutedSmall" style={{ opacity: 0.85, lineHeight: 1.4 }}>
               Tu demandes un retrait en <strong>€</strong>. Le site retire des rubis de ton portefeuille{" "}
-              <strong>en priorité sur les poids élevés</strong> (ceux qui “valent” le plus).
+              <strong>en priorité sur les poids élevés</strong> (ceux qui “valent” le plus). Les rubis{" "}
+              <strong>non classés</strong> (poids 0) ne sont pas comptés dans la valeur € (évite surestimation).
             </div>
 
             <div className="mutedSmall" style={{ marginTop: 8 }}>
@@ -523,33 +669,30 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
                 <div className="mutedSmall" style={{ opacity: 0.75 }}>
                   Saisis un montant pour voir l’estimation (rubis retirés / rubis restants).
                 </div>
-              ) : (
+              ) : cashoutSim ? (
                 <>
-                  {cashoutSim ? (
-                    <>
-                      <div className="mutedSmall" style={{ opacity: 0.9 }}>
-                        Montant demandé :{" "}
-                        <strong style={{ color: "rgba(255,255,255,0.92)" }}>{fmtEur(eurWanted)} €</strong>
-                        {" "}• Couvert estimé :{" "}
-                        <strong style={{ color: "rgba(255,255,255,0.92)" }}>{fmtEur(cashoutSim.eurCovered)} €</strong>
-                      </div>
+                  <div className="mutedSmall" style={{ opacity: 0.9 }}>
+                    Montant demandé :{" "}
+                    <strong style={{ color: "rgba(255,255,255,0.92)" }}>{fmtEur(eurWanted)} €</strong> • Couvert estimé :{" "}
+                    <strong style={{ color: "rgba(255,255,255,0.92)" }}>{fmtEur(cashoutSim.eurCovered)} €</strong>
+                  </div>
 
-                      <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.9 }}>
-                        Rubis retirés (estimation) :{" "}
-                        <strong style={{ color: "rgba(255,255,255,0.92)" }}>{cashoutSim.rubisSpent.toLocaleString()}</strong>
-                        {" "}• Rubis restants :{" "}
-                        <strong style={{ color: "rgba(255,255,255,0.92)" }}>{cashoutSim.remainingRubis.toLocaleString()}</strong>
-                      </div>
+                  <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.9 }}>
+                    Rubis retirés (estimation) :{" "}
+                    <strong style={{ color: "rgba(255,255,255,0.92)" }}>{cashoutSim.rubisSpent.toLocaleString()}</strong>{" "}
+                    • Rubis restants :{" "}
+                    <strong style={{ color: "rgba(255,255,255,0.92)" }}>
+                      {cashoutSim.remainingRubis.toLocaleString()}
+                    </strong>
+                  </div>
 
-                      {!cashoutSim.canCover ? (
-                        <div className="mutedSmall" style={{ marginTop: 8, color: "rgba(255,180,90,0.95)" }}>
-                          Solde pondéré insuffisant pour couvrir ce montant (max ≈ {fmtEur(maxCashoutEur)} €).
-                        </div>
-                      ) : null}
-                    </>
+                  {!cashoutSim.canCover ? (
+                    <div className="mutedSmall" style={{ marginTop: 8, color: "rgba(255,180,90,0.95)" }}>
+                      Solde pondéré insuffisant pour couvrir ce montant (max ≈ {fmtEur(maxCashoutEur)} €).
+                    </div>
                   ) : null}
                 </>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -578,9 +721,11 @@ export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
             })}
           </div>
 
-          {/* (optionnel) Dernières entrées */}
+          {/* Dernières entrées */}
           <div className="panel" style={{ marginTop: 12 }}>
-            <div className="mutedSmall" style={{ marginBottom: 8 }}>Dernières entrées</div>
+            <div className="mutedSmall" style={{ marginBottom: 8 }}>
+              Dernières entrées
+            </div>
             <div style={{ display: "grid", gap: 8 }}>
               {(data.last ?? []).slice(0, 10).map((row, i) => (
                 <div key={i} className="panel" style={{ padding: 12 }}>

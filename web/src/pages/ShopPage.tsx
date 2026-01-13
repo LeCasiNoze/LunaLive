@@ -244,6 +244,17 @@ export function ShopPage({
   }
 
   React.useEffect(() => {
+  try {
+    const want = String(localStorage.getItem("shop:openTab") || "");
+    if (want && ["skins", "upgrades", "subs", "rubis"].includes(want)) {
+      setTopTab(want as any);
+    }
+    localStorage.removeItem("shop:openTab");
+  } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+  React.useEffect(() => {
     if (topTab === "upgrades") {
       loadTalents();
     }

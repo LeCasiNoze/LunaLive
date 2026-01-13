@@ -68,6 +68,7 @@ import { botWheelRouter } from "./routes/bot_wheel.js";
 // ✅ NEW: bot_rain
 import { botRainRouter } from "./routes/bot_rain.js";
 import { predictionsRouter } from "./predictions/predictions.routes.js";
+import { callsPcallRouter } from "./routes/calls_pcall.js";
 
 export function createApp() {
   const app = express();
@@ -172,7 +173,7 @@ export function createApp() {
   app.use("/slots", slotsRouter);
   app.use("/calls-hunt", callsHuntRouter);
   app.use("/calls", callsRouter);
-
+  app.use("/calls", callsPcallRouter);
   // ✅ Hunt routes (/api/hunt2/*)
   app.use(hunt2Router);
 

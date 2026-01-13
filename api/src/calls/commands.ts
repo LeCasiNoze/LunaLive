@@ -28,6 +28,59 @@ export function parseBangCommand(text: string): { cmd: string; arg: string } | n
   return { cmd: String(m[1] || "").toLowerCase(), arg: String(m[2] || "") };
 }
 
+const CALLS_TALENT_CODE = "talent_calls_limit" as const;
+
+// lvl 1 => +1, lvl 2/3 => +2
+function callsLimitBonusFromLevel(level: number) {
+  const lv = Math.max(0, Math.min(3, Number(level || 0)));
+  if (lv >= 2) return 2;
+  if (lv >= 1) return 1;
+  return 0;
+}
+
+async function getUserTalentLevel(pool: Pool, userId: number, code: string): Promise<number> {
+  try {
+    const r = await pool.query<{ level: number }>(
+      `SELECT level FROM user_talents WHERE user_id=$1 AND talent_code=$2 LIMIT 1`,
+      [userId, code]
+    );
+    return Math.max(0, Number(r.rows?.[0]?.level || 0));
+  } catch {
+    // table pas migrée / pas dispo => no bonus
+    return 0;
+  }
+}
+
+async function ensurePcallSchema(pool: Pool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS calls_pcall_cooldowns (
+      streamer_id INT NOT NULL,
+      user_id INT NOT NULL,
+      next_at_ms BIGINT NOT NULL DEFAULT 0,
+      PRIMARY KEY (streamer_id, user_id)
+    );
+  `);
+}
+
+async function getPcallNextAt(pool: Pool, streamerId: number, userId: number) {
+  await ensurePcallSchema(pool);
+  const r = await pool.query<{ next_at_ms: string | number }>(
+    `SELECT next_at_ms FROM calls_pcall_cooldowns WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`,
+    [streamerId, userId]
+  );
+  return Number(r.rows?.[0]?.next_at_ms || 0);
+}
+
+async function setPcallCooldown(pool: Pool, streamerId: number, userId: number, nextAtMs: number) {
+  await ensurePcallSchema(pool);
+  await pool.query(
+    `INSERT INTO calls_pcall_cooldowns(streamer_id, user_id, next_at_ms)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (streamer_id, user_id) DO UPDATE SET next_at_ms = EXCLUDED.next_at_ms`,
+    [streamerId, userId, nextAtMs]
+  );
+}
+
 // minimal (évite “relation hunt_sessions does not exist”)
 async function ensureHuntSchema(pool: Pool) {
   await pool.query(`
@@ -103,7 +156,7 @@ export async function handleCallsCommand(opts: {
 
   // ✅ NEW: hunt commands live here (because same source of truth = calls_queue)
   const isHuntCmd = cmd === "bonus" || cmd === "pass" || cmd === "open" || cmd === "pay";
-  const isCallCmd = cmd === "call" || cmd === "listec" || cmd === "resetc";
+  const isCallCmd = cmd === "call" || cmd === "pcall" || cmd === "listec" || cmd === "resetc";
   if (!isCallCmd && !isHuntCmd) return { handled: false };
 
   const settings = await getCallsSettings(pool, streamerId);
@@ -368,8 +421,17 @@ export async function handleCallsCommand(opts: {
   }
 
   // limit (mods/streamer/admin => pas de limite)
-  const lim = effectiveLimit(settings.perUserLimit);
   const bypassLimit = canMod || actorRole === "admin" || actorRole === "streamer";
+
+  let lim = effectiveLimit(settings.perUserLimit);
+
+  // talent_calls_limit => ajoute des slots par rapport à la limite streamer
+  if (!bypassLimit && lim > 0) {
+    const level = await getUserTalentLevel(pool, actorUserId, CALLS_TALENT_CODE);
+    const bonus = callsLimitBonusFromLevel(level);
+    lim = lim + bonus;
+  }
+
   if (!bypassLimit && lim > 0) {
     const n = await countUserCalls(pool, streamerId, actorUserId);
     if (n >= lim) {
@@ -377,6 +439,35 @@ export async function handleCallsCommand(opts: {
         kind: "error",
         title: "Limite atteinte",
         message: `Tu as déjà ${n}/${lim} calls en file.`,
+      });
+      return { handled: true, showOriginalInChat };
+    }
+  }
+
+  // ──────────────────────────────────────────
+  // pcall (paycall): unlock lvl 3 + cooldown 1h30 + insertion 2e
+  // ──────────────────────────────────────────
+  const isPcall = cmd === "pcall";
+
+  if (isPcall) {
+    const level = await getUserTalentLevel(pool, actorUserId, CALLS_TALENT_CODE);
+    if (Number(level) < 3) {
+      emitUserToast(io, actorUserId, {
+        kind: "error",
+        title: "Pay Call verrouillé",
+        message: "Il faut le talent Calls niveau 3.",
+      });
+      return { handled: true, showOriginalInChat };
+    }
+
+    const nextAt = await getPcallNextAt(pool, streamerId, actorUserId);
+    const now = Date.now();
+    if (nextAt && now < nextAt) {
+      const leftMin = Math.max(1, Math.ceil((nextAt - now) / 60000));
+      emitUserToast(io, actorUserId, {
+        kind: "error",
+        title: "Pay Call en cooldown",
+        message: `Reviens dans ${leftMin} min.`,
       });
       return { handled: true, showOriginalInChat };
     }
@@ -395,6 +486,8 @@ export async function handleCallsCommand(opts: {
 
   const add = await addCall(pool, streamerId, actorUserId, actorUsername, resolved.name, resolved.provider, {
     bypassLimit,
+    perUserLimit: lim,
+    insertAfterCurrent: cmd === "pcall",
   });
 
   if (!add.ok) {
@@ -408,7 +501,9 @@ export async function handleCallsCommand(opts: {
     else emitUserToast(io, actorUserId, { kind: "error", title: "Erreur", message: "Impossible d'ajouter le call." });
     return { handled: true, showOriginalInChat };
   }
-
+    if (cmd === "pcall") {
+      await setPcallCooldown(pool, streamerId, actorUserId, Date.now() + 90 * 60 * 1000);
+    }
   if (settings.showAcceptPublic) {
     const sys = chatStore.addSystem(
       slug,
