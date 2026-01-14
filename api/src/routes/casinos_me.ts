@@ -19,6 +19,8 @@ const MIME_EXT: Record<string, string> = {
   "image/webp": "webp",
 };
 
+const ALLOWED_MIME = new Set(Object.keys(MIME_EXT));
+
 async function tryLoadSharp(): Promise<any | null> {
   try {
     const mod: any = await import("sharp");
@@ -70,7 +72,7 @@ casinosMeRouter.put(
   })
 );
 
-// POST comment (multipart)
+// POST comment (multipart) -> images en DB
 casinosMeRouter.post(
   COMMENTS_PATHS,
   requireAuth,
@@ -85,68 +87,80 @@ casinosMeRouter.post(
     if (!body) return res.status(400).json({ ok: false, error: "empty_body" });
 
     for (const f of files) {
-      if (!MIME_EXT[f.mimetype]) return res.status(400).json({ ok: false, error: "bad_image_type" });
+      const mt = String(f.mimetype || "").toLowerCase();
+      if (!ALLOWED_MIME.has(mt)) return res.status(400).json({ ok: false, error: "bad_image_type" });
     }
 
     const hasImages = files.length > 0;
     const status = hasImages ? "pending" : "published";
 
-    const ins = await pool.query(
-      `INSERT INTO casino_comments (casino_id, user_id, body, status, has_images)
-       VALUES ($1,$2,$3,$4,$5)
-       RETURNING id::text AS id`,
-      [casinoId, Number(req.user!.id), body, status, hasImages]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
 
-    const commentId = String(ins.rows[0].id);
+      const ins = await client.query(
+        `INSERT INTO casino_comments (casino_id, user_id, body, status, has_images)
+         VALUES ($1,$2,$3,$4,$5)
+         RETURNING id::text AS id`,
+        [casinoId, Number(req.user!.id), body, status, hasImages]
+      );
 
-    if (hasImages) {
-      const sharp = await tryLoadSharp();
+      const commentId = String(ins.rows[0].id);
 
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
+      if (hasImages) {
+        const sharp = await tryLoadSharp();
 
-        let outBuf: Buffer;
-        let mime: string;
-        let sizeBytes: number | null = null;
-        let w: number | null = null;
-        let h: number | null = null;
+        for (let i = 0; i < files.length; i++) {
+          const f = files[i];
 
-        // nom stable unique
-        const base = `img_${Date.now()}_${crypto.randomUUID().slice(0, 8)}_${i}`;
+          let outBuf: Buffer;
+          let mime: string;
+          let sizeBytes: number | null = null;
+          let w: number | null = null;
+          let h: number | null = null;
 
-        if (sharp) {
-          const img = sharp(f.buffer).rotate();
-          const meta = await img.metadata();
-          w = meta.width ?? null;
-          h = meta.height ?? null;
+          const base = `img_${Date.now()}_${crypto.randomUUID().slice(0, 8)}_${i}`;
 
-          const pipeline = meta.width && meta.width > 1280 ? img.resize({ width: 1280, withoutEnlargement: true }) : img;
+          if (sharp) {
+            const img = sharp(f.buffer).rotate();
+            const meta = await img.metadata();
+            w = meta.width ?? null;
+            h = meta.height ?? null;
 
-          outBuf = await pipeline.webp({ quality: 75 }).toBuffer();
-          mime = "image/webp";
-          sizeBytes = outBuf.length;
-        } else {
-          // fallback: on stocke le binaire original
-          outBuf = f.buffer;
-          mime = String(f.mimetype || "application/octet-stream");
-          sizeBytes = outBuf.length;
+            const pipeline =
+              meta.width && meta.width > 1280 ? img.resize({ width: 1280, withoutEnlargement: true }) : img;
+
+            outBuf = await pipeline.webp({ quality: 75 }).toBuffer();
+            mime = "image/webp";
+            sizeBytes = outBuf.length;
+          } else {
+            outBuf = f.buffer;
+            mime = String(f.mimetype || "application/octet-stream").toLowerCase();
+            sizeBytes = outBuf.length;
+          }
+
+          const ext = mime === "image/webp" ? "webp" : MIME_EXT[String(f.mimetype || "").toLowerCase()] || "bin";
+          const outRel = `/uploads/casino_comments/${commentId}/${base}.${ext}`;
+
+          await client.query(
+            `INSERT INTO casino_comment_images (comment_id, url, w, h, size_bytes, mime, bytes)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            [Number(commentId), outRel, w, h, sizeBytes, mime, outBuf]
+          );
         }
-
-        const outRel =
-          mime === "image/webp"
-            ? `/uploads/casino_comments/${commentId}/${base}.webp`
-            : `/uploads/casino_comments/${commentId}/${base}.${MIME_EXT[f.mimetype]}`;
-
-        await pool.query(
-          `INSERT INTO casino_comment_images (comment_id, url, w, h, size_bytes, mime, bytes)
-           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-          [Number(commentId), outRel, w, h, sizeBytes, mime, outBuf]
-        );
       }
-    }
 
-    res.json({ ok: true, id: commentId, status });
+      await client.query("COMMIT");
+      return res.json({ ok: true, id: commentId, status });
+    } catch (e) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
+      console.error("[casinos_me] post comment error", e);
+      return res.status(500).json({ ok: false, error: "server_error" });
+    } finally {
+      client.release();
+    }
   })
 );
 

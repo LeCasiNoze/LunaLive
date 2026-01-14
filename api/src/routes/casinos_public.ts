@@ -283,16 +283,36 @@ casinosPublicRouter.get(
 
     const ids = rows.map((x: any) => x.id);
     const imagesBy: Record<string, any[]> = {};
+
     if (ids.length) {
       const imgs = await pool.query(
-        `SELECT comment_id::text AS "commentId", url, w, h, size_bytes AS "sizeBytes"
+        `SELECT
+           id::text AS "imageId",
+           comment_id::text AS "commentId",
+           COALESCE(url, '') AS url,
+           w, h,
+           size_bytes AS "sizeBytes"
          FROM casino_comment_images
-         WHERE comment_id = ANY($1::bigint[])`,
+         WHERE comment_id = ANY($1::bigint[])
+         ORDER BY id ASC`,
         [ids.map((x: string) => Number(x))]
       );
+
       for (const im of imgs.rows) {
-        imagesBy[im.commentId] = imagesBy[im.commentId] ?? [];
-        imagesBy[im.commentId].push(im);
+        const cid = String(im.commentId);
+        const imageId = String(im.imageId);
+
+        const url = im.url && String(im.url).trim()
+          ? String(im.url).trim()
+          : `/casino-comment-images/${imageId}`;
+
+        imagesBy[cid] = imagesBy[cid] ?? [];
+        imagesBy[cid].push({
+          url,
+          w: im.w ?? null,
+          h: im.h ?? null,
+          sizeBytes: im.sizeBytes ?? null,
+        });
       }
     }
 
