@@ -19,6 +19,9 @@ declare global {
   }
 }
 
+// ─────────────────────────────────────────────
+// Password helpers
+// ─────────────────────────────────────────────
 export async function hashPassword(password: string) {
   return bcrypt.hash(password, 10);
 }
@@ -26,6 +29,9 @@ export async function verifyPassword(password: string, hash: string) {
   return bcrypt.compare(password, hash);
 }
 
+// ─────────────────────────────────────────────
+// JWT helpers
+// ─────────────────────────────────────────────
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("JWT_SECRET missing");
@@ -57,20 +63,34 @@ export function signToken(u: AuthUser) {
   return jwt.sign(payload, secret, { expiresIn: "30d" });
 }
 
+// ─────────────────────────────────────────────
+// Auth middleware (JWT)
+// ─────────────────────────────────────────────
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const debug = process.env.ADMIN_DEBUG === "1";
+  if (debug) res.setHeader("x-auth-guard", "requireAuth");
+
   const token = extractJwtFromReq(req);
-  if (!token) return res.status(401).json({ ok: false, error: "unauthorized" });
+  if (!token) {
+    if (debug) res.setHeader("x-auth-result", "missing_token");
+    return res.status(401).json({ ok: false, error: "unauthorized" });
+  }
 
   try {
     const secret = getJwtSecret();
     req.user = jwt.verify(token, secret) as AuthUser;
+    if (debug) res.setHeader("x-auth-result", "ok");
     return next();
   } catch {
+    if (debug) res.setHeader("x-auth-result", "bad_token");
     return res.status(401).json({ ok: false, error: "unauthorized" });
   }
 }
 
-function getExpectedAdminKey() {
+// ─────────────────────────────────────────────
+// Admin key helpers
+// ─────────────────────────────────────────────
+function getExpectedAdminKey(): string {
   return String(
     process.env.ADMIN_KEY ||
       process.env.ADMIN_PASSWORD ||
@@ -83,7 +103,7 @@ function getExpectedAdminKey() {
 
 // ✅ admin key : accepte x-admin-key OU Bearer <ADMIN_KEY>
 function extractAdminKey(req: Request) {
-  const k = String(req.headers["x-admin-key"] || "").trim();
+  const k = String((req.headers as any)["x-admin-key"] || "").trim();
   if (k) return k;
 
   const h = String(req.headers.authorization || "").trim();
@@ -93,38 +113,56 @@ function extractAdminKey(req: Request) {
   return "";
 }
 
+function maskSecret(s: string) {
+  const v = String(s || "");
+  if (!v) return "";
+  if (v.length <= 6) return "***";
+  return `${v.slice(0, 2)}***${v.slice(-2)}(len=${v.length})`;
+}
+
+// ─────────────────────────────────────────────
+// Admin middleware (x-admin-key / Bearer ADMIN_KEY)
+// ─────────────────────────────────────────────
 export function requireAdminKey(req: Request, res: Response, next: NextFunction) {
-  const expected = String(process.env.ADMIN_KEY || "").trim();
-  if (!expected) return res.status(500).json({ ok: false, error: "ADMIN_KEY not configured" });
+  const debug = process.env.ADMIN_DEBUG === "1";
+  if (debug) res.setHeader("x-auth-guard", "requireAdminKey");
+
+  const expected = getExpectedAdminKey();
+  if (!expected) {
+    if (debug) res.setHeader("x-admin-key-check", "no_expected");
+    return res.status(500).json({ ok: false, error: "ADMIN_KEY not configured" });
+  }
 
   const provided = extractAdminKey(req);
+  const match = !!provided && provided === expected;
 
-  // ✅ DEBUG (TEMPORAIRE) : log EXACT des clés + headers
-  if (process.env.ADMIN_DEBUG === "1") {
+  if (debug) {
+    res.setHeader("x-admin-key-present", provided ? "1" : "0");
+    res.setHeader("x-admin-key-check", match ? "ok" : "fail");
+
+    // logs (sans leak du secret)
     console.log("[ADMIN_DEBUG] ---- requireAdminKey ----");
     console.log("[ADMIN_DEBUG] method:", req.method);
-    console.log("[ADMIN_DEBUG] path:", req.originalUrl || req.url);
-
-    // headers utiles
+    console.log("[ADMIN_DEBUG] url:", req.originalUrl || req.url);
     console.log("[ADMIN_DEBUG] headers.authorization:", String(req.headers.authorization || ""));
     console.log("[ADMIN_DEBUG] headers.x-admin-key:", String((req.headers as any)["x-admin-key"] || ""));
     console.log("[ADMIN_DEBUG] headers.x-access-token:", String((req.headers as any)["x-access-token"] || ""));
-
-    // valeurs EXACTES (attention: secret)
-    console.log("[ADMIN_DEBUG] provided(adminKey):", JSON.stringify(provided));
-    console.log("[ADMIN_DEBUG] expected(ADMIN_KEY):", JSON.stringify(expected));
-
-    // comparaison
-    console.log("[ADMIN_DEBUG] match:", provided === expected);
+    console.log("[ADMIN_DEBUG] provided(masked):", maskSecret(provided));
+    console.log("[ADMIN_DEBUG] expected(masked):", maskSecret(expected));
+    console.log("[ADMIN_DEBUG] match:", match);
     console.log("[ADMIN_DEBUG] ----------------------------");
   }
 
-  if (!provided || provided !== expected) {
+  if (!match) {
     return res.status(401).json({ ok: false, error: "unauthorized" });
   }
+
   return next();
 }
 
+// ─────────────────────────────────────────────
+// Optional helper (non-blocking)
+// ─────────────────────────────────────────────
 export function tryGetAuthUser(req: Request): AuthUser | null {
   const token = extractJwtFromReq(req);
   if (!token) return null;
