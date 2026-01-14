@@ -1,13 +1,162 @@
-// web/src/lib/api.ts
-import { loadToken } from "./storage";
+
+export type ApiUser = {
+  id: number;
+  username: string;
+  rubis: number;
+  role: string;
+  emailVerified?: boolean;
+};
+
+export type ApiLive = {
+  id: string;
+  slug: string;
+  displayName: string;
+  title: string;
+  viewers: number;
+  thumbUrl?: string | null;
+  liveStartedAt?: string | null;
+};
+
+export type ApiStreamer = ApiLive & { isLive: boolean; featured: boolean };
+
+export type ApiStreamerRequest = {
+  id: number;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+};
+
+export type AdminRequestRow = {
+  id: number;
+  status: string;
+  createdAt: string;
+  userId: number;
+  username: string;
+};
+
+export type ApiMyStreamer = {
+  id: string;
+  slug: string;
+  displayName: string;
+  title: string;
+  viewers: number;
+  isLive: boolean;
+  featured: boolean;
+};
+
+export type ApiStreamConnection = {
+  provider: "dlive";
+  channelSlug: string;
+  rtmpUrl: string;
+  streamKey: string;
+};
+
+export type CosmeticItem = {
+  kind: "username" | "badge" | "title" | "frame" | "hat";
+  code: string;
+  name: string;
+  rarity: string;
+  unlock: string;
+  priceRubis: number | null;
+  active: boolean;
+  meta?: any;
+};
+
+export async function cosmeticsCatalog(token?: string | null): Promise<{ ok: true; items: CosmeticItem[] }> {
+  return j<{ ok: true; items: CosmeticItem[] }>("/cosmetics/catalog", {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+}
+
+export async function getMyStreamer(token: string) {
+  return j<{ ok: true; streamer: ApiMyStreamer | null }>("/streamer/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function updateMyStreamerTitle(token: string, title: string) {
+  return j<{ ok: true; streamer: ApiMyStreamer }>("/streamer/me", {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function getMyStreamConnection(token: string) {
+  return j<{ ok: true; connection: ApiStreamConnection | null }>("/streamer/me/connection", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+export type AdminProviderAccountRow = {
+  id: number;
+  provider: string;
+  channelSlug: string;
+  rtmpUrl: string;
+  assignedAt: string | null;
+  releasedAt: string | null;
+  assignedStreamerId: string | null;
+  assignedStreamerSlug: string | null;
+  assignedStreamerName: string | null;
+  assignedUsername: string | null;
+};
+
+export type ApiPublicStreamer = {
+  id: string;
+  slug: string;
+  displayName: string;
+  title: string;
+  viewers: number;
+  isLive: boolean;
+  provider?: string | null;
+  providerChannelSlug?: string | null;
+};
+
+export async function adminListProviderAccounts(adminKey: string) {
+  return j<{ ok: true; accounts: AdminProviderAccountRow[] }>("/admin/provider-accounts", {
+    headers: { "x-admin-key": adminKey },
+  });
+}
+
+export async function adminCreateProviderAccount(
+  adminKey: string,
+  payload: { provider?: string; channelSlug: string; rtmpUrl: string; streamKey: string }
+) {
+  return j<{ ok: true }>(`/admin/provider-accounts`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminDeleteProviderAccount(adminKey: string, id: number) {
+  return j<{ ok: true }>(`/admin/provider-accounts/${id}`, {
+    method: "DELETE",
+    headers: { "x-admin-key": adminKey },
+  });
+}
+
+export async function adminAssignProviderAccount(adminKey: string, id: number, streamerId: string) {
+  return j<{ ok: true }>(`/admin/provider-accounts/${id}/assign`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ streamerId: Number(streamerId) }),
+  });
+}
+
+export async function adminReleaseProviderAccount(adminKey: string, id: number) {
+  return j<{ ok: true }>(`/admin/provider-accounts/${id}/release`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey },
+  });
+}
 
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
+import { loadToken } from "./storage";
+
 async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
-  // détecte le token effectivement utilisé dans CET appel
   const usedAuth =
     typeof init.headers === "object" && init.headers
-      ? (init.headers as any)?.Authorization ?? (init.headers as any)?.authorization
+      ? (init.headers as any)?.Authorization
       : null;
 
   const usedToken =
@@ -17,9 +166,11 @@ async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const r = await fetch(`${BASE}${path}`, init);
 
-  // ✅ 401: logout UNIQUEMENT si le token utilisé est encore le token courant
-  if (r.status === 401) {
+  // ✅ IMPORTANT: on ignore la logique "logout user" sur les endpoints admin
+  if (r.status === 401 && !path.startsWith("/admin/")) {
     const currentToken = loadToken();
+
+    // logout UNIQUEMENT si le token utilisé est encore le token courant
     if (currentToken && usedToken && currentToken === usedToken) {
       try {
         window.dispatchEvent(new CustomEvent("auth:unauthorized"));
@@ -47,55 +198,74 @@ async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-// ──────────────────────────────────────────
-// Types communs
-// ──────────────────────────────────────────
-export type ApiUser = {
-  id: number;
-  username: string;
-  rubis: number;
-  role: string;
-  emailVerified?: boolean;
+async function jAdmin<T>(path: string, adminKey: string, init: RequestInit = {}): Promise<T> {
+  const r = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: {
+      // on force proprement l’admin key
+      "x-admin-key": adminKey,
+      // compat si certains middlewares lisent Authorization
+      Authorization: `Bearer ${adminKey}`,
+      ...(init.headers || {}),
+    },
+  });
+
+  const text = await r.text().catch(() => "");
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+
+  if (!r.ok) {
+    const msg =
+      data?.error ||
+      data?.message ||
+      (text && text.length < 200 ? text : null) ||
+      `API ${r.status}`;
+    throw new Error(String(msg));
+  }
+
+  return data as T;
+}
+
+export type MyCosmeticsResp = {
+  ok: true;
+  owned: Record<string, string[]>;
+  equipped: {
+    username: string | null;
+    badge: string | null;
+    title: string | null;
+    frame: string | null;
+    hat: string | null;
+  };
+  free?: Record<string, string[]>;
 };
 
-export type ApiLive = {
-  id: string;
-  slug: string;
-  displayName: string;
-  title: string;
-  viewers: number;
-  thumbUrl?: string | null;
-  liveStartedAt?: string | null;
-};
+export async function myCosmetics(token: string): Promise<MyCosmeticsResp> {
+  const r = await fetch(`${BASE}/me/cosmetics`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return await r.json();
+}
 
-export type ApiStreamer = ApiLive & { isLive: boolean; featured: boolean };
+export async function equipCosmetic(
+  token: string,
+  kind: "username" | "badge" | "title" | "frame" | "hat",
+  code: string | null
+): Promise<{ ok: boolean; equipped?: any; error?: string }> {
+  const r = await fetch(`${BASE}/me/cosmetics/equip`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ kind, code }),
+  });
+  return await r.json();
+}
 
-export type ApiStreamerRequest = {
-  id: number;
-  status: "pending" | "approved" | "rejected";
-  createdAt: string;
-};
-
-export type ApiMyStreamer = {
-  id: string;
-  slug: string;
-  displayName: string;
-  title: string;
-  viewers: number;
-  isLive: boolean;
-  featured: boolean;
-};
-
-export type ApiStreamConnection = {
-  provider: "dlive";
-  channelSlug: string;
-  rtmpUrl: string;
-  streamKey: string;
-};
-
-// ──────────────────────────────────────────
-// Public
-// ──────────────────────────────────────────
 export type ApiStreamerPage = {
   id: string;
   slug: string;
@@ -107,20 +277,22 @@ export type ApiStreamerPage = {
   channelSlug?: string | null;
   channelUsername?: string | null;
 
+  // ✅ follows
   followsCount?: number;
   isFollowing?: boolean;
 
+  // ✅ notif bell (si user connecté + follow)
   notifyEnabled?: boolean;
 };
 
+/* Public */
 export const getLives = () => j<ApiLive[]>("/lives");
-
-export const getStreamers = () => j<ApiStreamer[]>("/streamers");
-
 export const getStreamer = (slug: string, token?: string | null) =>
   j<ApiStreamerPage>(`/streamers/${encodeURIComponent(slug)}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
+
+export const getStreamers = () => j<ApiStreamer[]>("/streamers");
 
 export async function followStreamer(slug: string, token: string) {
   return j<{ ok: true; following: boolean; followsCount: number; notifyEnabled?: boolean }>(
@@ -137,16 +309,17 @@ export async function unfollowStreamer(slug: string, token: string) {
 }
 
 export async function setFollowNotify(slug: string, notifyEnabled: boolean, token: string) {
-  return j<{ ok: true; notifyEnabled: boolean }>(`/streamers/${encodeURIComponent(slug)}/follow/notify`, {
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ notifyEnabled }),
-  });
+  return j<{ ok: true; notifyEnabled: boolean }>(
+    `/streamers/${encodeURIComponent(slug)}/follow/notify`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ notifyEnabled }),
+    }
+  );
 }
 
-// ──────────────────────────────────────────
-// Auth
-// ──────────────────────────────────────────
+/* Auth */
 export async function register(username: string, email: string, password: string) {
   return j<{ ok: true; needsVerify: true }>("/auth/register", {
     method: "POST",
@@ -160,14 +333,6 @@ export async function registerVerify(username: string, code: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, code }),
-  });
-}
-
-export async function registerResend(username: string) {
-  return j<{ ok: boolean; needsVerify?: boolean; devCode?: string; error?: string }>("/auth/register/resend", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username }),
   });
 }
 
@@ -185,9 +350,6 @@ export async function me(token: string) {
   });
 }
 
-// ──────────────────────────────────────────
-// Streamer me
-// ──────────────────────────────────────────
 export async function applyStreamer(token: string) {
   return j<{ ok: true; request: ApiStreamerRequest }>("/streamer/apply", {
     method: "POST",
@@ -201,396 +363,179 @@ export async function myStreamerRequest(token: string) {
   });
 }
 
-export async function getMyStreamer(token: string) {
-  return j<{ ok: true; streamer: ApiMyStreamer | null }>("/streamer/me", {
-    headers: { Authorization: `Bearer ${token}` },
+/* Admin */
+export async function adminListRequests(adminKey: string) {
+  return j<{ ok: true; requests: AdminRequestRow[] }>("/admin/requests", {
+    headers: { "x-admin-key": adminKey },
   });
 }
 
-export async function updateMyStreamerTitle(token: string, title: string) {
-  return j<{ ok: true; streamer: ApiMyStreamer }>("/streamer/me", {
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ title }),
+export async function adminApproveRequest(adminKey: string, id: number) {
+  return j<{ ok: true }>(`/admin/requests/${id}/approve`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey },
   });
 }
 
-export async function getMyStreamConnection(token: string) {
-  return j<{ ok: true; connection: ApiStreamConnection | null }>("/streamer/me/connection", {
-    headers: { Authorization: `Bearer ${token}` },
+export async function adminRejectRequest(adminKey: string, id: number) {
+  return j<{ ok: true }>(`/admin/requests/${id}/reject`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey },
   });
 }
 
-// ──────────────────────────────────────────
-// Cosmetics catalog + me cosmetics
-// ──────────────────────────────────────────
-export type CosmeticItem = {
-  kind: "username" | "badge" | "title" | "frame" | "hat";
-  code: string;
-  name: string;
-  rarity: string;
-  unlock: string;
-  priceRubis: number | null;
-  active: boolean;
-  meta?: any;
+export async function adminCreateStreamer(adminKey: string, slug: string, displayName: string) {
+  return j<{ ok: true }>(`/admin/streamers`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ slug, displayName }),
+  });
+}
+
+export async function adminDeleteStreamer(adminKey: string, slug: string) {
+  return j<{ ok: true }>(`/admin/streamers/${encodeURIComponent(slug)}`, {
+    method: "DELETE",
+    headers: { "x-admin-key": adminKey },
+  });
+}
+
+export type AdminUserRow = {
+  id: number;
+  username: string;
+  role: "viewer" | "streamer" | "admin";
+  rubis: number;
+  createdAt: string;
+  requestStatus: string | null;
+  streamerSlug: string | null;
 };
 
-export async function cosmeticsCatalog(token?: string | null): Promise<{ ok: true; items: CosmeticItem[] }> {
-  return j<{ ok: true; items: CosmeticItem[] }>("/cosmetics/catalog", {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+export async function adminListUsers(adminKey: string) {
+  return j<{ ok: true; users: AdminUserRow[] }>("/admin/users", {
+    headers: { "x-admin-key": adminKey },
   });
 }
 
-export type MyCosmeticsResp = {
-  ok: true;
-  owned: Record<string, string[]>;
-  equipped: {
-    username: string | null;
-    badge: string | null;
-    title: string | null;
-    frame: string | null;
-    hat: string | null;
-  };
-  free?: Record<string, string[]>;
-};
-
-export async function myCosmetics(token: string): Promise<MyCosmeticsResp> {
-  return j<MyCosmeticsResp>("/me/cosmetics", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-export async function equipCosmetic(
-  token: string,
-  kind: "username" | "badge" | "title" | "frame" | "hat",
-  code: string | null
-): Promise<{ ok: boolean; equipped?: any; error?: string }> {
-  return j<{ ok: boolean; equipped?: any; error?: string }>("/me/cosmetics/equip", {
+export async function adminSetUserRole(adminKey: string, id: number, role: AdminUserRow["role"]) {
+  return j<{ ok: true }>(`/admin/users/${id}`, {
     method: "PATCH",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ kind, code }),
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
   });
 }
 
-// ──────────────────────────────────────────
-// Achievements
-// ──────────────────────────────────────────
-export type ApiAchievement = {
+export async function registerResend(username: string) {
+  return j<{ ok: boolean; needsVerify?: boolean; devCode?: string; error?: string }>(
+    "/auth/register/resend",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username }),
+    }
+  );
+}
+export type ApiModeratorRow = { id: number; username: string; createdAt: string };
+export type ApiUserSearchRow = { id: number; username: string };
+
+export type ApiModerationEventRow = {
   id: string;
-  tier: "bronze" | "silver" | "gold" | "master";
-  category: string;
-  icon: string;
-  name: string;
-
-  desc: string | null;
-  hint: string | null;
-  rewardPreview: string | null;
-
-  unlocked: boolean;
-  progress: null | { current: number; target: number };
+  type: string;
+  createdAt: string;
+  actorUsername: string | null;
+  targetUsername: string | null;
+  messagePreview: string | null;
 };
 
-export type ApiMyAchievementsResp = {
-  ok: true;
-  generatedAt: string;
-  monthStart: string;
-  monthEnd: string;
-  achievements: ApiAchievement[];
+export type ApiModerationEventDetail = {
+  id: string;
+  type: string;
+  createdAt: string;
+  actorUsername: string | null;
+  targetUsername: string | null;
+  messageId: string | null;
+  messageContent: string | null;
+  meta: any;
 };
 
-export async function getMyAchievements(token: string) {
-  return j<ApiMyAchievementsResp>("/me/achievements", {
+export async function getMyModerators(token: string) {
+  return j<{ ok: true; moderators: ApiModeratorRow[] }>("/streamer/me/moderators", {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
 
-// ──────────────────────────────────────────
-// Shop cosmetics
-// ──────────────────────────────────────────
-export type ShopCosmeticItem = {
-  kind: "username" | "badge" | "title" | "frame" | "hat";
-  code: string;
-  name: string;
-  rarity: string;
-  unlock: "shop" | "achievement" | "role" | "event" | "system";
-  priceRubis: number | null;
-  active: boolean;
-  meta?: any;
-};
-
-export type ShopCosmeticsResp = {
-  ok: true;
-  availableRubis: number;
-  owned: Record<string, string[]>;
-  equipped: {
-    username: string | null;
-    badge: string | null;
-    title: string | null;
-    frame: string | null;
-    hat: string | null;
-  };
-  items: ShopCosmeticItem[];
-};
-
-export async function shopCosmetics(token: string): Promise<ShopCosmeticsResp> {
-  return j<ShopCosmeticsResp>("/shop/cosmetics", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-export type BuyShopCosmeticResp = {
-  ok: true;
-  alreadyOwned: boolean;
-  availableRubis: number;
-  owned: Record<string, string[]>;
-  user: { id: number; username: string; rubis: number } | null;
-  item?: ShopCosmeticItem;
-};
-
-export async function buyShopCosmetic(token: string, kind: string, code: string): Promise<BuyShopCosmeticResp> {
-  return j<BuyShopCosmeticResp>("/shop/cosmetics/buy", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ kind, code }),
-  });
-}
-
-// ──────────────────────────────────────────
-// 🧠 Shop Talents
-// ──────────────────────────────────────────
-export type ApiTalentItem = {
-  code: string;
-  level: number;
-  maxLevel: number;
-  nextLevel: number | null;
-  nextPrice: number | null;
-};
-
-export type ShopTalentsResp = {
-  ok: true;
-  availableRubis: number;
-  talents: ApiTalentItem[];
-};
-
-export async function shopTalents(token: string): Promise<ShopTalentsResp> {
-  return j<ShopTalentsResp>("/shop/talents", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-export async function buyTalent(token: string, code: string) {
-  return j<any>("/shop/talents/buy", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
-  });
-}
-
-// ──────────────────────────────────────────
-// 🎡 Daily Wheel
-// ──────────────────────────────────────────
-export type ApiWheelMe = {
-  ok: true;
-  day: string; // "YYYY-MM-DD"
-  canSpin: boolean;
-  usedToday: boolean;
-  segments: { label: string; amount: number }[];
-};
-
-export type ApiWheelSpinResult = {
-  ok: true;
-  day: string;
-  segmentIndex: number;
-  reward: number;
-  label: string;
-  txId: string;
-  user: { id: string; username: string; rubis: number };
-};
-
-export async function getMyWheel(token: string) {
-  return j<ApiWheelMe>("/wheel/me", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-export async function spinWheel(token: string) {
-  return j<ApiWheelSpinResult>("/wheel/spin", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-export const getWheelState = getMyWheel;
-
-// ──────────────────────────────────────────
-// 🎁 Chest
-// ──────────────────────────────────────────
-export type ApiChest = {
-  ok: true;
-  streamerId: number;
-  capOutWeightBp: number;
-  balance: number;
-  breakdown: Record<string, number>;
-  opening: null | {
-    id: string;
-    status: "open" | "closed" | "canceled";
-    opensAt: string;
-    closesAt: string;
-    minWatchMinutes: number;
-    participantsCount: number;
-    joined: boolean;
-  };
-};
-
-export async function getStreamerChest(slug: string) {
-  return j<ApiChest>(`/streamers/${encodeURIComponent(slug)}/chest`);
-}
-
-export async function chestDeposit(slug: string, token: string, amount: number, note?: string | null) {
-  return j<{ ok: true; txId: string; balance: number }>(`/streamers/${encodeURIComponent(slug)}/chest/deposit`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ amount, note: note ?? null }),
-  });
-}
-
-export async function chestOpen(slug: string, token: string, durationSec = 30, minWatchMinutes = 5) {
-  return j<{ ok: true; opening: { id: string; opensAt: string; closesAt: string; minWatchMinutes: number } }>(
-    `/streamers/${encodeURIComponent(slug)}/chest/open`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ durationSec, minWatchMinutes }),
-    }
+export async function searchUsersForModerator(token: string, q: string) {
+  return j<{ ok: true; users: ApiUserSearchRow[] }>(
+    `/streamer/me/moderators/search?q=${encodeURIComponent(q)}&limit=8`,
+    { headers: { Authorization: `Bearer ${token}` } }
   );
 }
 
-export async function chestJoin(slug: string, token: string) {
-  return j<{ ok: true; openingId: string }>(`/streamers/${encodeURIComponent(slug)}/chest/join`, {
+export async function addModerator(token: string, userId: number) {
+  return j<{ ok: true }>(`/streamer/me/moderators`, {
     method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export async function removeModerator(token: string, userId: number) {
+  return j<{ ok: true }>(`/streamer/me/moderators/${userId}`, {
+    method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
 }
 
-export async function chestClose(slug: string, token: string) {
-  return j<{ ok: true; openingId: string; payouts?: any[] }>(`/streamers/${encodeURIComponent(slug)}/chest/close`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-// ──────────────────────────────────────────
-// 🎁 Daily Bonus
-// ──────────────────────────────────────────
-export type ApiDailyBonusGranted =
-  | { type: "rubis"; amount: number; origin: string; weight_bp: number; tx_id?: number }
-  | { type: "token"; token: "wheel_ticket" | "prestige_token"; amount: number }
-  | { type: "entitlement"; kind: "skin" | "title"; code: string; fallback?: boolean };
-
-export type ApiDailyBonusWeekDay = {
-  isodow: number;
-  label: string;
-  date: string;
-  reward:
-    | { type: "rubis"; amount: number; origin: string; weight_bp: number }
-    | { type: "token"; token: "wheel_ticket"; amount: number };
-  status: "future" | "missed" | "claimed" | "today_claimable" | "today_claimed";
-};
-
-export type ApiDailyBonusMilestone = { milestone: 5 | 10 | 20 | 30; status: "locked" | "claimable" | "claimed" };
-
-export type ApiDailyBonusState = {
-  ok: true;
-  day: string;
-  isodow: number;
-  weekStart: string;
-  monthStart: string;
-  monthClaimedDays: number;
-  todayClaimed: boolean;
-  week: ApiDailyBonusWeekDay[];
-  milestones: ApiDailyBonusMilestone[];
-  tokens: { wheel_ticket: number; prestige_token: number };
-};
-
-export async function getDailyBonusState(token: string) {
-  return j<ApiDailyBonusState>("/me/daily-bonus/state", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-export async function claimDailyBonusToday(token: string) {
-  return j<{ ok: true; alreadyClaimed: boolean; granted: ApiDailyBonusGranted[]; state: ApiDailyBonusState }>(
-    "/me/daily-bonus/claim",
-    { method: "POST", headers: { Authorization: `Bearer ${token}` } }
-  );
-}
-// ✅ compat: du code (AuthProvider) importe encore claimDailyBonus
-export const claimDailyBonus = claimDailyBonusToday;
-
-export async function claimDailyBonusMilestone(token: string, milestone: 5 | 10 | 20 | 30) {
-  return j<{ ok: true; milestone: 5 | 10 | 20 | 30; granted: ApiDailyBonusGranted[]; state: ApiDailyBonusState }>(
-    "/me/daily-bonus/claim-milestone",
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ milestone }),
-    }
+export async function getModerationEvents(token: string, limit = 40) {
+  return j<{ ok: true; events: ApiModerationEventRow[] }>(
+    `/streamer/me/moderation-events?limit=${limit}`,
+    { headers: { Authorization: `Bearer ${token}` } }
   );
 }
 
-// ──────────────────────────────────────────
-// 🔔 Push
-// ──────────────────────────────────────────
-export async function getVapidPublicKey() {
-  return j<{ ok: true; publicKey: string }>("/push/vapid-public-key");
+export async function getModerationEventDetail(token: string, id: string) {
+  return j<{ ok: true; event: ApiModerationEventDetail }>(
+    `/streamer/me/moderation-events/${encodeURIComponent(id)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
 }
 
-export async function pushSubscribe(token: string, subscription: any) {
-  return j<{ ok: true }>("/push/subscribe", {
+export async function unbanUserFromDashboard(token: string, userId: number) {
+  return j<{ ok: true; changed: boolean }>(`/streamer/me/moderation-actions/unban`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ subscription }),
+    body: JSON.stringify({ userId }),
   });
 }
 
-export async function pushUnsubscribe(token: string, endpoint: string) {
-  return j<{ ok: true }>("/push/unsubscribe", {
+export async function unmuteTimeoutFromDashboard(token: string, timeoutId: number) {
+  return j<{ ok: true; changed: boolean }>(`/streamer/me/moderation-actions/unmute`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ endpoint }),
+    body: JSON.stringify({ timeoutId }),
   });
 }
+export type ApiBannedRow = { id: number; username: string; createdAt: string; reason: string | null };
 
-// ──────────────────────────────────────────
-// ❤️ Subscribe streamer
-// ──────────────────────────────────────────
-export async function subscribeStreamer(slug: string, token: string) {
-  return j<{ ok: true; newBalance?: number }>(`/streamers/${encodeURIComponent(slug)}/subscribe`, {
-    method: "POST",
+export async function getMyBans(token: string) {
+  return j<{ ok: true; bans: ApiBannedRow[] }>("/streamer/me/bans", {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
 
-// ──────────────────────────────────────────
-// 👁️ Watch heartbeat
-// ──────────────────────────────────────────
-export async function watchHeartbeat(
-  payload: { slug: string; anonId: string; isLive?: boolean },
-  token?: string | null
-) {
-  return j<{ ok: true; isLive: boolean; viewersNow?: number; self?: boolean }>("/watch/heartbeat", {
+export async function searchUsersForBan(token: string, q: string) {
+  return j<{ ok: true; users: ApiUserSearchRow[] }>(
+    `/streamer/me/bans/search?q=${encodeURIComponent(q)}&limit=8`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+}
+
+export async function banUserFromDashboard(token: string, userId: number, reason?: string) {
+  return j<{ ok: true; changed: boolean }>(`/streamer/me/moderation-actions/ban`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(payload),
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, reason: reason ?? null }),
   });
 }
 
-// ──────────────────────────────────────────
-// 📊 Stats (dashboard)
-// ──────────────────────────────────────────
 export type StatsPeriod = "daily" | "weekly" | "monthly";
 export type StatsMetric = "viewers_avg" | "viewers_peak" | "messages" | "watch_time";
 
@@ -630,6 +575,23 @@ export type ApiStatsSeries = {
   points: { t: string; v: number }[];
 };
 
+export async function watchHeartbeat(
+  payload: { slug: string; anonId: string; isLive?: boolean },
+  token?: string | null
+) {
+  return j<{ ok: true; isLive: boolean; viewersNow?: number; self?: boolean }>(
+    "/watch/heartbeat",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
 export async function getMyStatsSummary(token: string, period: StatsPeriod, cursor: string) {
   return j<ApiStatsSummary>(
     `/streamer/me/stats/summary?period=${encodeURIComponent(period)}&cursor=${encodeURIComponent(cursor)}`,
@@ -644,9 +606,398 @@ export async function getMyStatsSeries(token: string, period: StatsPeriod, curso
   );
 }
 
+export async function getVapidPublicKey() {
+  return j<{ ok: true; publicKey: string }>("/push/vapid-public-key");
+}
+
+export async function pushSubscribe(token: string, subscription: any) {
+  return j<{ ok: true }>("/push/subscribe", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ subscription }),
+  });
+}
+
+export async function pushUnsubscribe(token: string, endpoint: string) {
+  return j<{ ok: true }>("/push/unsubscribe", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint }),
+  });
+}
+
+export async function subscribeStreamer(slug: string, token: string) {
+  return j<{ ok: true; newBalance?: number }>(`/streamers/${encodeURIComponent(slug)}/subscribe`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+export type AdminUserSearchRow = {
+  id: number;
+  username: string;
+  role: string;
+  rubis: number;
+};
+
+export async function adminSearchUsers(adminKey: string, q: string, limit = 8) {
+  return j<{ ok: true; users: AdminUserSearchRow[] }>(
+    `/admin/users/search?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(String(limit))}`,
+    { headers: { "x-admin-key": adminKey } }
+  );
+}
+
+export async function adminMintRubis(
+  adminKey: string,
+  payload: { userId: number; amount: number; origin: string; note?: string | null }
+) {
+  return j<{ ok: true; txId: string; lotId: string; user: { id: number; username: string; rubis: number } }>(
+    `/admin/rubis/mint`,
+    {
+      method: "POST",
+      headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export type ApiWheelState = {
+  ok: true;
+  day: string;
+  canSpin: boolean;
+  lastSpin: null | {
+    day: string;
+    spun_at: string;
+    raw_reward: number;
+    minted_total: number;
+    minted_normal: number;
+    minted_low: number;
+    dropped: number;
+  };
+  cap: { freeAwarded: number; freeLowAwarded: number; capNormal: number; capLow: number };
+};
+
+export type ApiWheelSpin = {
+  ok: true;
+  day: string;
+  txId: string;
+  reward: {
+    raw: number;
+    mintedTotal: number;
+    mintedNormal: number;
+    mintedLow: number;
+    dropped: number;
+  };
+  user: { id: number; rubis: number };
+  cap: { capNormal: number; capLow: number };
+};
+
+// ──────────────────────────────────────────
+// 🎡 DAILY WHEEL (API v1)
+// ──────────────────────────────────────────
+export type ApiWheelMe = {
+  ok: true;
+  day: string; // "YYYY-MM-DD"
+  canSpin: boolean;
+  usedToday: boolean;
+  segments: { label: string; amount: number }[];
+};
+
+export type ApiWheelSpinResult = {
+  ok: true;
+  day: string;
+  segmentIndex: number;
+  reward: number;
+  label: string;
+  txId: string;
+  user: { id: string; username: string; rubis: number };
+};
+
+export async function getMyWheel(token: string) {
+  return j<ApiWheelMe>("/wheel/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function spinWheel(token: string) {
+  // si déjà utilisé, ton backend renvoie 409 + { error:"already_used" }
+  // j() va throw Error("already_used") -> on gère côté UI via message.
+  return j<ApiWheelSpinResult>("/wheel/spin", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+// (optionnel) alias si tu as déjà du code qui appelle getWheelState()
+export const getWheelState = getMyWheel;
+
+export type ApiChest = {
+  ok: true;
+  streamerId: number;
+  capOutWeightBp: number;
+  balance: number;
+  breakdown: Record<string, number>;
+  opening: null | {
+    id: string;
+    status: "open" | "closed" | "canceled";
+    opensAt: string;
+    closesAt: string;
+    minWatchMinutes: number;
+    participantsCount: number;
+    joined: boolean;
+  };
+};
+
+export async function getStreamerChest(slug: string) {
+  return j<ApiChest>(`/streamers/${encodeURIComponent(slug)}/chest`);
+}
+
+export async function chestDeposit(slug: string, token: string, amount: number, note?: string | null) {
+  return j<{ ok: true; txId: string; balance: number }>(
+    `/streamers/${encodeURIComponent(slug)}/chest/deposit`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ amount, note: note ?? null }),
+    }
+  );
+}
+
+export async function chestOpen(slug: string, token: string, durationSec = 30, minWatchMinutes = 5) {
+  return j<{ ok: true; opening: { id: string; opensAt: string; closesAt: string; minWatchMinutes: number } }>(
+    `/streamers/${encodeURIComponent(slug)}/chest/open`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ durationSec, minWatchMinutes }),
+    }
+  );
+}
+
+export async function chestJoin(slug: string, token: string) {
+  return j<{ ok: true; openingId: string }>(`/streamers/${encodeURIComponent(slug)}/chest/join`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function chestClose(slug: string, token: string) {
+  return j<{ ok: true; openingId: string; payouts?: any[] }>(`/streamers/${encodeURIComponent(slug)}/chest/close`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export type ApiDailyBonusClaim = {
+  ok: true;
+  alreadyClaimed: boolean;
+  day: string;        // "YYYY-MM-DD" (Europe/Paris)
+  monthStart: string; // "YYYY-MM-DD"
+  claimedDays: number;
+  granted: ApiDailyBonusGranted[];
+};
+
+export async function claimDailyBonus(token: string) {
+  return j<ApiDailyBonusClaim>("/me/daily-bonus/claim", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export type ApiDailyBonusWeekDay = {
+  isodow: number;
+  label: string;
+  date: string;
+  reward: { type: "rubis"; amount: number; origin: string; weight_bp: number } | { type: "token"; token: "wheel_ticket"; amount: number };
+  status: "future" | "missed" | "claimed" | "today_claimable" | "today_claimed";
+};
+
+export type ApiDailyBonusMilestone = { milestone: 5 | 10 | 20 | 30; status: "locked" | "claimable" | "claimed" };
+
+export type ApiDailyBonusState = {
+  ok: true;
+  day: string;
+  isodow: number;
+  weekStart: string;
+  monthStart: string;
+  monthClaimedDays: number;
+  todayClaimed: boolean;
+  week: ApiDailyBonusWeekDay[];
+  milestones: ApiDailyBonusMilestone[];
+  tokens: { wheel_ticket: number; prestige_token: number };
+};
+
+export type ApiDailyBonusGranted =
+  | { type: "rubis"; amount: number; origin: string; weight_bp: number; tx_id?: number }
+  | { type: "token"; token: "wheel_ticket" | "prestige_token"; amount: number }
+  | { type: "entitlement"; kind: "skin" | "title"; code: string; fallback?: boolean };
+
+export async function getDailyBonusState(token: string) {
+  return j<ApiDailyBonusState>("/me/daily-bonus/state", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function claimDailyBonusToday(token: string) {
+  return j<{ ok: true; alreadyClaimed: boolean; granted: ApiDailyBonusGranted[]; state: ApiDailyBonusState }>(
+    "/me/daily-bonus/claim",
+    { method: "POST", headers: { Authorization: `Bearer ${token}` } }
+  );
+}
+
+export async function claimDailyBonusMilestone(token: string, milestone: 5 | 10 | 20 | 30) {
+  return j<{ ok: true; milestone: 5 | 10 | 20 | 30; granted: ApiDailyBonusGranted[]; state: ApiDailyBonusState }>(
+    "/me/daily-bonus/claim-milestone",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ milestone }),
+    }
+  );
+}
+
+// web/src/lib/api.ts
+
+export type ApiAchievement = {
+  id: string;
+  tier: "bronze" | "silver" | "gold" | "master";
+  category: string;
+  icon: string;
+  name: string;
+
+  desc: string | null;
+  hint: string | null;
+  rewardPreview: string | null;
+
+  unlocked: boolean;
+  progress: null | { current: number; target: number };
+};
+
+export type ApiMyAchievementsResp = {
+  ok: true;
+  generatedAt: string;
+  monthStart: string;
+  monthEnd: string;
+  achievements: ApiAchievement[];
+};
+
+export async function getMyAchievements(token: string) {
+  return j<ApiMyAchievementsResp>("/me/achievements", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export type ShopCosmeticItem = {
+  kind: "username" | "badge" | "title" | "frame" | "hat";
+  code: string;
+  name: string;
+  rarity: string;
+  unlock: "shop" | "achievement" | "role" | "event" | "system";
+  priceRubis: number | null;
+  active: boolean;
+  meta?: any;
+};
+
+export type ShopCosmeticsResp = {
+  ok: true;
+  availableRubis: number;
+  owned: Record<string, string[]>;
+  equipped: {
+    username: string | null;
+    badge: string | null;
+    title: string | null;
+    frame: string | null;
+    hat: string | null;
+  };
+  items: ShopCosmeticItem[];
+};
+
+export async function shopCosmetics(token: string): Promise<ShopCosmeticsResp> {
+  const r = await fetch(`${BASE}/shop/cosmetics`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return r.json();
+}
+
+export type BuyShopCosmeticResp = {
+  ok: true;
+  alreadyOwned: boolean;
+  availableRubis: number;
+  owned: Record<string, string[]>;
+  user: { id: number; username: string; rubis: number } | null;
+  item?: ShopCosmeticItem;
+};
+
+export async function buyShopCosmetic(token: string, kind: string, code: string): Promise<BuyShopCosmeticResp> {
+  const r = await fetch(`${BASE}/shop/cosmetics/buy`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ kind, code }),
+  });
+  return r.json();
+}
+
+export type ApiDliveLinkMe = {
+  ok: true;
+  useLinked: boolean;
+  linkedDisplayname: string | null;
+  linkedAt: string | null;
+  pending: null | {
+    id: number;
+    requestedDisplayname: string;
+    code: string;
+    createdAt: string;
+    expiresAt: string;
+  };
+};
+
+export async function dliveLinkMe(token: string) {
+  return j<ApiDliveLinkMe>("/streamer/me/dlive-link", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function dliveLinkRequest(token: string, channel: string) {
+  return j<{ ok: true; code: string; requestedDisplayname: string; expiresAt: string }>(
+    "/streamer/me/dlive-link/request",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ channel }),
+    }
+  );
+}
+
+export async function dliveLinkVerify(token: string) {
+  return j<{ ok: true }>("/streamer/me/dlive-link/verify", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: "{}",
+  });
+}
+
+export async function dliveLinkToggle(token: string, useLinked: boolean) {
+  return j<{ ok: true }>("/streamer/me/dlive-link/toggle", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ useLinked }),
+  });
+}
+
+export async function dliveLinkUnlink(token: string) {
+  return j<{ ok: true }>("/streamer/me/dlive-link/unlink", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: "{}",
+  });
+}
+
 // ──────────────────────────────────────────
 // 🤖 LunaBot (dashboard)
 // ──────────────────────────────────────────
+
 export type ApiBotOverview = {
   ok: true;
   streamer: { id: string; slug: string };
@@ -685,6 +1036,7 @@ export async function getMyBotOverview(token: string) {
   });
 }
 
+// Commands
 export async function getMyBotCommands(token: string) {
   return j<{ ok: true; commands: ApiBotCommand[] }>("/me/bot/commands", {
     headers: { Authorization: `Bearer ${token}` },
@@ -718,13 +1070,17 @@ export async function deleteMyBotCommand(token: string, id: string) {
   });
 }
 
+// Autoposts
 export async function getMyBotAutoposts(token: string) {
   return j<{ ok: true; autoposts: ApiBotAutopost[] }>("/me/bot/autoposts", {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
 
-export async function createMyBotAutopost(token: string, payload: { message: string; everySec: number; enabled?: boolean }) {
+export async function createMyBotAutopost(
+  token: string,
+  payload: { message: string; everySec: number; enabled?: boolean }
+) {
   return j<{ ok: true; autopost: ApiBotAutopost }>("/me/bot/autoposts", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -751,6 +1107,7 @@ export async function deleteMyBotAutopost(token: string, id: string) {
   });
 }
 
+// Logs
 export async function getMyBotLogs(token: string, limit = 50) {
   return j<{ ok: true; logs: ApiBotLogRow[] }>(`/me/bot/logs?limit=${encodeURIComponent(String(limit))}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -764,6 +1121,7 @@ export async function clearMyBotLogs(token: string) {
   });
 }
 
+// Test send
 export async function botTestSend(token: string, body?: string) {
   return j<{ ok: true; id: number }>("/me/bot/test-send", {
     method: "POST",
@@ -773,8 +1131,25 @@ export async function botTestSend(token: string, body?: string) {
 }
 
 // ──────────────────────────────────────────
+// 🎰 Admin — Slots updater manual
+// ──────────────────────────────────────────
+export type AdminSlotsUpdateResp = {
+  ok: true;
+  fetched: number;
+  added: number;
+  byProvider: Record<string, { name: string; slotKey?: string | null }[]>;
+};
+
+export async function adminSlotsUpdate(adminKey: string) {
+  return j<AdminSlotsUpdateResp>(`/admin/slots/update`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey },
+  });
+}
+// ──────────────────────────────────────────
 // 🎯 Calls (dashboard)
 // ──────────────────────────────────────────
+
 export type ApiCallsConfig = {
   enabled: boolean;
   showCmdInChat: boolean;
@@ -849,6 +1224,7 @@ export async function getCallsBans(streamerSlug: string, token: string, kind: "u
     headers: { Authorization: `Bearer ${token}` },
   });
 
+  // ✅ si l'API renvoie items (mix), on filtre par kind ici
   if (Array.isArray(resp?.items)) {
     const filtered = (resp.items as ApiCallBanRow[]).filter((it) => it && it.kind === kind);
     return { ok: true as const, items: filtered };
@@ -972,16 +1348,16 @@ export async function allowOnlyCallsProvider(streamerSlug: string, token: string
   });
 }
 
-// Suggestions slots
+// Suggestions slots (déjà côté API)
 export type ApiSlotSuggestion = { name: string; provider: string | null; imageUrl: string | null };
 
 export async function searchSlots(q: string, limit = 10) {
   return j<ApiSlotSuggestion[]>(`/slots/search?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(String(limit))}`);
 }
-
 // ──────────────────────────────────────────
 // 🧩 Calls Hunt (dashboard)
 // ──────────────────────────────────────────
+
 export type ApiHuntMode = "farm" | "open";
 
 export type ApiHuntQueueItem = {
@@ -991,7 +1367,7 @@ export type ApiHuntQueueItem = {
   username?: string | null;
   pos?: number;
   imageUrl?: string | null;
-  betEur?: number | null;
+  betEur?: number | null; // si ton backend renvoie bet sur la queue
 };
 
 export type ApiHuntBonusDrop = {
@@ -1006,16 +1382,20 @@ export type ApiHuntBonusDrop = {
 
 export type ApiCallsHuntState = {
   ok: true;
-  mode?: ApiHuntMode;
-  opening?: boolean;
+
+  // infos hunt
+  mode?: ApiHuntMode;          // "farm" | "open"
+  opening?: boolean;           // fallback
   startEur?: number | null;
 
-  queue?: ApiHuntQueueItem[];
-  calls?: ApiHuntQueueItem[];
-  items?: ApiHuntQueueItem[];
+  // queue calls (ordre chrono)
+  queue?: ApiHuntQueueItem[];  // idéal
+  calls?: ApiHuntQueueItem[];  // fallback
+  items?: ApiHuntQueueItem[];  // fallback
 
+  // bonus drops list (calls avec bet)
   bonusDrops?: ApiHuntBonusDrop[];
-  bonus?: ApiHuntBonusDrop[];
+  bonus?: ApiHuntBonusDrop[];  // fallback
 };
 
 export async function getCallsHuntState(streamerSlug: string, token?: string | null) {
@@ -1024,6 +1404,7 @@ export async function getCallsHuntState(streamerSlug: string, token?: string | n
   });
 }
 
+// ✅ maintenant les endpoints renvoient l'état complet (même payload que getCallsHuntState)
 export async function callsHuntPass(streamerSlug: string, token: string) {
   return j<ApiCallsHuntState>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/pass`, {
     method: "POST",
@@ -1077,332 +1458,115 @@ export async function callsHuntReset(streamerSlug: string, token: string) {
 }
 
 // ──────────────────────────────────────────
-// Admin (divers, hors casinos)
+// 🧠 Shop Talents
 // ──────────────────────────────────────────
-export type AdminRequestRow = {
-  id: number;
-  status: string;
-  createdAt: string;
+
+export type ApiTalentItem = {
+  code: string;
+  level: number;
+  maxLevel: number;
+  nextLevel: number | null;
+  nextPrice: number | null;
+};
+
+export type ShopTalentsResp = {
+  ok: true;
+  availableRubis: number;
+  talents: ApiTalentItem[];
+};
+
+export async function shopTalents(token: string): Promise<ShopTalentsResp> {
+  const r = await fetch(`${BASE}/shop/talents`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return r.json();
+}
+
+export async function buyTalent(token: string, code: string) {
+  const r = await fetch(`${BASE}/shop/talents/buy`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ code }),
+  });
+  return r.json();
+}
+
+// ──────────────────────────────────────────
+// ✅ Admin — Casino comments moderation
+// ──────────────────────────────────────────
+export type AdminCasinoCommentRow = {
+  id: string; // comment id (uuid ou text)
+  casinoId: string; // bigint -> text côté API
+  casinoSlug: string;
+  casinoName: string;
+
   userId: number;
   username: string;
-};
 
-export async function adminListRequests(adminKey: string) {
-  return j<{ ok: true; requests: AdminRequestRow[] }>("/admin/requests", {
-    headers: { "x-admin-key": adminKey },
-  });
-}
+  body: string;
+  status: "pending" | "published" | "rejected";
 
-export async function adminApproveRequest(adminKey: string, id: number) {
-  return j<{ ok: true }>(`/admin/requests/${id}/approve`, {
-    method: "POST",
-    headers: { "x-admin-key": adminKey },
-  });
-}
-
-export async function adminRejectRequest(adminKey: string, id: number) {
-  return j<{ ok: true }>(`/admin/requests/${id}/reject`, {
-    method: "POST",
-    headers: { "x-admin-key": adminKey },
-  });
-}
-
-export async function adminCreateStreamer(adminKey: string, slug: string, displayName: string) {
-  return j<{ ok: true }>(`/admin/streamers`, {
-    method: "POST",
-    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ slug, displayName }),
-  });
-}
-
-export async function adminDeleteStreamer(adminKey: string, slug: string) {
-  return j<{ ok: true }>(`/admin/streamers/${encodeURIComponent(slug)}`, {
-    method: "DELETE",
-    headers: { "x-admin-key": adminKey },
-  });
-}
-
-export type AdminUserRow = {
-  id: number;
-  username: string;
-  role: "viewer" | "streamer" | "admin";
-  rubis: number;
   createdAt: string;
-  requestStatus: string | null;
-  streamerSlug: string | null;
+  updatedAt: string;
+
+  // pour afficher "a des images"
+  hasImages: boolean;
+
+  // si l'auteur a aussi noté le casino au moment de poster
+  authorRating: number | null;
+
+  // images associées (peut être [])
+  images: Array<{
+    url: string;
+    w: number | null;
+    h: number | null;
+    sizeBytes: number | null;
+  }>;
 };
 
-export async function adminListUsers(adminKey: string) {
-  return j<{ ok: true; users: AdminUserRow[] }>("/admin/users", {
-    headers: { "x-admin-key": adminKey },
-  });
-}
-
-export async function adminSetUserRole(adminKey: string, id: number, role: AdminUserRow["role"]) {
-  return j<{ ok: true }>(`/admin/users/${id}`, {
-    method: "PATCH",
-    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ role }),
-  });
-}
-
-export type AdminUserSearchRow = {
-  id: number;
-  username: string;
-  role: string;
-  rubis: number;
-};
-
-export async function adminSearchUsers(adminKey: string, q: string, limit = 8) {
-  return j<{ ok: true; users: AdminUserSearchRow[] }>(
-    `/admin/users/search?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(String(limit))}`,
-    { headers: { "x-admin-key": adminKey } }
-  );
-}
-
-export async function adminMintRubis(
+export async function adminListCasinoComments(
   adminKey: string,
-  payload: { userId: number; amount: number; origin: string; note?: string | null }
+  statusOrParams?:
+    | "pending" | "published" | "rejected"
+    | { status?: "pending" | "published" | "rejected"; limit?: number; cursor?: string | null },
+  limitMaybe?: number
 ) {
-  return j<{ ok: true; txId: string; lotId: string; user: { id: number; username: string; rubis: number } }>(
-    `/admin/rubis/mint`,
-    {
-      method: "POST",
-      headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }
-  );
+  // ✅ compat: adminListCasinoComments(key, "pending", 80)
+  // ✅ new:    adminListCasinoComments(key, { status:"pending", limit:80, cursor:null })
+  const params =
+    typeof statusOrParams === "string"
+      ? { status: statusOrParams, limit: limitMaybe }
+      : (statusOrParams ?? {});
+
+  const q = new URLSearchParams();
+  if (params.status) q.set("status", params.status);
+  if (params.limit) q.set("limit", String(params.limit));
+  if (params.cursor) q.set("cursor", String(params.cursor));
+
+  const qs = q.toString();
+return jAdmin<{ ok: true; items: AdminCasinoCommentRow[]; nextCursor: string | null }>(
+  `/admin/casino-comments${qs ? `?${qs}` : ""}`,
+  adminKey
+);
+
 }
 
-export type AdminProviderAccountRow = {
-  id: number;
-  provider: string;
-  channelSlug: string;
-  rtmpUrl: string;
-  assignedAt: string | null;
-  releasedAt: string | null;
-  assignedStreamerId: string | null;
-  assignedStreamerSlug: string | null;
-  assignedStreamerName: string | null;
-  assignedUsername: string | null;
-};
+export async function adminApproveCasinoComment(adminKey: string, commentId: string) {
+return jAdmin<{ ok: true }>(
+  `/admin/casino-comments/${encodeURIComponent(commentId)}/approve`,
+  adminKey,
+  { method: "POST" }
+);
 
-export async function adminListProviderAccounts(adminKey: string) {
-  return j<{ ok: true; accounts: AdminProviderAccountRow[] }>("/admin/provider-accounts", {
-    headers: { "x-admin-key": adminKey },
-  });
 }
 
-export async function adminCreateProviderAccount(
-  adminKey: string,
-  payload: { provider?: string; channelSlug: string; rtmpUrl: string; streamKey: string }
-) {
-  return j<{ ok: true }>(`/admin/provider-accounts`, {
-    method: "POST",
-    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function adminDeleteProviderAccount(adminKey: string, id: number) {
-  return j<{ ok: true }>(`/admin/provider-accounts/${id}`, {
-    method: "DELETE",
-    headers: { "x-admin-key": adminKey },
-  });
-}
-
-export async function adminAssignProviderAccount(adminKey: string, id: number, streamerId: string) {
-  return j<{ ok: true }>(`/admin/provider-accounts/${id}/assign`, {
-    method: "POST",
-    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ streamerId: Number(streamerId) }),
-  });
-}
-
-export async function adminReleaseProviderAccount(adminKey: string, id: number) {
-  return j<{ ok: true }>(`/admin/provider-accounts/${id}/release`, {
-    method: "POST",
-    headers: { "x-admin-key": adminKey },
-  });
-}
-
-// ──────────────────────────────────────────
-// 🎰 Admin — Slots updater manual
-// ──────────────────────────────────────────
-export type AdminSlotsUpdateResp = {
-  ok: true;
-  fetched: number;
-  added: number;
-  byProvider: Record<string, { name: string; slotKey?: string | null }[]>;
-};
-
-export async function adminSlotsUpdate(adminKey: string) {
-  return j<AdminSlotsUpdateResp>(`/admin/slots/update`, {
-    method: "POST",
-    headers: { "x-admin-key": adminKey },
-  });
-}
-
-// ──────────────────────────────────────────
-// 🔗 DLive link (streamer)
-// ──────────────────────────────────────────
-export type ApiDliveLinkMe = {
-  ok: true;
-  useLinked: boolean;
-  linkedDisplayname: string | null;
-  linkedAt: string | null;
-  pending: null | {
-    id: number;
-    requestedDisplayname: string;
-    code: string;
-    createdAt: string;
-    expiresAt: string;
-  };
-};
-
-export async function dliveLinkMe(token: string) {
-  return j<ApiDliveLinkMe>("/streamer/me/dlive-link", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-export async function dliveLinkRequest(token: string, channel: string) {
-  return j<{ ok: true; code: string; requestedDisplayname: string; expiresAt: string }>(
-    "/streamer/me/dlive-link/request",
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ channel }),
-    }
-  );
-}
-
-export async function dliveLinkVerify(token: string) {
-  return j<{ ok: true }>("/streamer/me/dlive-link/verify", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: "{}",
-  });
-}
-
-export async function dliveLinkToggle(token: string, useLinked: boolean) {
-  return j<{ ok: true }>("/streamer/me/dlive-link/toggle", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ useLinked }),
-  });
-}
-
-export async function dliveLinkUnlink(token: string) {
-  return j<{ ok: true }>("/streamer/me/dlive-link/unlink", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: "{}",
-  });
-}
-
-// ──────────────────────────────────────────
-// Moderation (dashboard)
-// ──────────────────────────────────────────
-export type ApiModeratorRow = { id: number; username: string; createdAt: string };
-export type ApiUserSearchRow = { id: number; username: string };
-
-export type ApiModerationEventRow = {
-  id: string;
-  type: string;
-  createdAt: string;
-  actorUsername: string | null;
-  targetUsername: string | null;
-  messagePreview: string | null;
-};
-
-export type ApiModerationEventDetail = {
-  id: string;
-  type: string;
-  createdAt: string;
-  actorUsername: string | null;
-  targetUsername: string | null;
-  messageId: string | null;
-  messageContent: string | null;
-  meta: any;
-};
-
-export async function getMyModerators(token: string) {
-  return j<{ ok: true; moderators: ApiModeratorRow[] }>("/streamer/me/moderators", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-export async function searchUsersForModerator(token: string, q: string) {
-  return j<{ ok: true; users: ApiUserSearchRow[] }>(
-    `/streamer/me/moderators/search?q=${encodeURIComponent(q)}&limit=8`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-}
-
-export async function addModerator(token: string, userId: number) {
-  return j<{ ok: true }>(`/streamer/me/moderators`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ userId }),
-  });
-}
-
-export async function removeModerator(token: string, userId: number) {
-  return j<{ ok: true }>(`/streamer/me/moderators/${userId}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-export async function getModerationEvents(token: string, limit = 40) {
-  return j<{ ok: true; events: ApiModerationEventRow[] }>(`/streamer/me/moderation-events?limit=${limit}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-export async function getModerationEventDetail(token: string, id: string) {
-  return j<{ ok: true; event: ApiModerationEventDetail }>(
-    `/streamer/me/moderation-events/${encodeURIComponent(id)}`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-}
-
-export async function unbanUserFromDashboard(token: string, userId: number) {
-  return j<{ ok: true; changed: boolean }>(`/streamer/me/moderation-actions/unban`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ userId }),
-  });
-}
-
-export async function unmuteTimeoutFromDashboard(token: string, timeoutId: number) {
-  return j<{ ok: true; changed: boolean }>(`/streamer/me/moderation-actions/unmute`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ timeoutId }),
-  });
-}
-
-export type ApiBannedRow = { id: number; username: string; createdAt: string; reason: string | null };
-
-export async function getMyBans(token: string) {
-  return j<{ ok: true; bans: ApiBannedRow[] }>("/streamer/me/bans", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-export async function searchUsersForBan(token: string, q: string) {
-  return j<{ ok: true; users: ApiUserSearchRow[] }>(
-    `/streamer/me/bans/search?q=${encodeURIComponent(q)}&limit=8`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-}
-
-export async function banUserFromDashboard(token: string, userId: number, reason?: string) {
-  return j<{ ok: true; changed: boolean }>(`/streamer/me/moderation-actions/ban`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ userId, reason: reason ?? null }),
-  });
+export async function adminRejectCasinoComment(adminKey: string, commentId: string) {
+return jAdmin<{ ok: true }>(
+  `/admin/casino-comments/${encodeURIComponent(commentId)}/reject`,
+  adminKey,
+  { method: "POST" }
+);
 }
