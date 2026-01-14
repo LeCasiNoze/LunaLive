@@ -7,15 +7,15 @@ import { requireAdminKey } from "../auth.js";
 export const adminCasinoCommentsRouter = Router();
 
 // -----------------------------------------------------------------------------
-// ✅ Casino comments moderation (ADMIN)
 // Mounted in app.ts with:
-//   app.use("/admin/casinos", adminCasinoCommentsRouter);
-// So routes here must start with "/comments/..."
+//   app.use("/admin/casinos/comments", adminCasinoCommentsRouter);
+// So paths here are:
+//   GET    /admin/casinos/comments/pending
+//   PATCH  /admin/casinos/comments/:commentId
 // -----------------------------------------------------------------------------
-//
-// GET /admin/casinos/comments/pending?limit=50&cursor=ISO&q=...&casinoId=123
+
 adminCasinoCommentsRouter.get(
-  "/comments/pending",
+  "/pending",
   requireAdminKey,
   a(async (req, res) => {
     const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50)));
@@ -83,15 +83,8 @@ adminCasinoCommentsRouter.get(
   })
 );
 
-// -----------------------------------------------------------------------------
-// PATCH /admin/casinos/comments/:commentId
-// body: { action: "approve" | "reject" | "delete", note?: string | null }
-// -----------------------------------------------------------------------------
-// ⚠️ IMPORTANT:
-// - On garde commentId en string (ton SELECT renvoie id::text, donc pas forcément un number)
-// - Le WHERE utilise id::text = $1 pour marcher avec bigint OU uuid sans se prendre la tête
 adminCasinoCommentsRouter.patch(
-  "/comments/:commentId",
+  "/:commentId",
   requireAdminKey,
   a(async (req, res) => {
     const id = String(req.params.commentId || "").trim();
@@ -104,7 +97,6 @@ adminCasinoCommentsRouter.patch(
     if (action === "approve") status = "published";
     if (action === "reject") status = "rejected";
     if (action === "delete") status = "deleted";
-
     if (!status) return res.status(400).json({ ok: false, error: "bad_action" });
 
     const r = await pool.query(

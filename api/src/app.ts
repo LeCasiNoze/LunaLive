@@ -213,7 +213,7 @@ export function createApp() {
   // IMPORTANT: comments moderation DOIT être monté AVANT adminCasinosRouter
   // sinon adminCasinosRouter intercepte /admin/casinos/comments/*
   // ─────────────────────────────────────────────
-  app.use("/admin/casinos", adminCasinoCommentsRouter);
+  app.use("/admin/casinos/comments", adminCasinoCommentsRouter);
 
   // compat legacy frontend
   app.use("/admin/casinos/listings", adminCasinosRouter);
