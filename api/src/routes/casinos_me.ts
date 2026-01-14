@@ -1,8 +1,7 @@
 // api/src/routes/casinos_me.ts
 import { Router } from "express";
-import fs from "fs";
-import path from "path";
 import multer from "multer";
+import crypto from "crypto";
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
 import { requireAuth } from "../auth.js";
@@ -27,10 +26,6 @@ async function tryLoadSharp(): Promise<any | null> {
   } catch {
     return null;
   }
-}
-
-function ensureDir(p: string) {
-  fs.mkdirSync(p, { recursive: true });
 }
 
 function toInt(v: any): number | null {
@@ -106,20 +101,19 @@ casinosMeRouter.post(
     const commentId = String(ins.rows[0].id);
 
     if (hasImages) {
-      const outDir = path.resolve(process.cwd(), "uploads", "casino_comments", commentId);
-      ensureDir(outDir);
-
       const sharp = await tryLoadSharp();
 
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
-        const base = `img_${Date.now()}_${i}`;
 
-        let outAbs: string;
-        let outRel: string;
+        let outBuf: Buffer;
+        let mime: string;
         let sizeBytes: number | null = null;
         let w: number | null = null;
         let h: number | null = null;
+
+        // nom stable unique
+        const base = `img_${Date.now()}_${crypto.randomUUID().slice(0, 8)}_${i}`;
 
         if (sharp) {
           const img = sharp(f.buffer).rotate();
@@ -127,26 +121,27 @@ casinosMeRouter.post(
           w = meta.width ?? null;
           h = meta.height ?? null;
 
-          const pipeline =
-            meta.width && meta.width > 1280 ? img.resize({ width: 1280, withoutEnlargement: true }) : img;
+          const pipeline = meta.width && meta.width > 1280 ? img.resize({ width: 1280, withoutEnlargement: true }) : img;
 
-          const outBuf = await pipeline.webp({ quality: 75 }).toBuffer();
-          outAbs = path.join(outDir, `${base}.webp`);
-          outRel = `/uploads/casino_comments/${commentId}/${base}.webp`;
-          fs.writeFileSync(outAbs, outBuf);
+          outBuf = await pipeline.webp({ quality: 75 }).toBuffer();
+          mime = "image/webp";
           sizeBytes = outBuf.length;
         } else {
-          const ext = MIME_EXT[f.mimetype];
-          outAbs = path.join(outDir, `${base}.${ext}`);
-          outRel = `/uploads/casino_comments/${commentId}/${base}.${ext}`;
-          fs.writeFileSync(outAbs, f.buffer);
-          sizeBytes = f.buffer.length;
+          // fallback: on stocke le binaire original
+          outBuf = f.buffer;
+          mime = String(f.mimetype || "application/octet-stream");
+          sizeBytes = outBuf.length;
         }
 
+        const outRel =
+          mime === "image/webp"
+            ? `/uploads/casino_comments/${commentId}/${base}.webp`
+            : `/uploads/casino_comments/${commentId}/${base}.${MIME_EXT[f.mimetype]}`;
+
         await pool.query(
-          `INSERT INTO casino_comment_images (comment_id, url, w, h, size_bytes)
-           VALUES ($1,$2,$3,$4,$5)`,
-          [Number(commentId), outRel, w, h, sizeBytes]
+          `INSERT INTO casino_comment_images (comment_id, url, w, h, size_bytes, mime, bytes)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [Number(commentId), outRel, w, h, sizeBytes, mime, outBuf]
         );
       }
     }

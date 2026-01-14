@@ -50,6 +50,9 @@ import { adminCasinosRouter } from "./routes/admin_casinos.js";
 import { adminCasinosSetupRouter } from "./routes/admin_casinos_setup.js";
 import { adminCasinoCommentsRouter } from "./routes/admin_casino_comments.js";
 
+// ✅ NEW: serve casino comment images from DB
+import { casinoCommentImagesRouter } from "./routes/casino_comment_images.js";
+
 // Streamer / integrations
 import { streamerDliveLinkRouter } from "./routes/streamer_dlive_link.js";
 import { meProfileRouter } from "./routes/me_profile.js";
@@ -73,6 +76,7 @@ import { hunt2Router } from "./routes/hunt2.js";
 
 // Billing
 import { billingRouter } from "./routes/billing.js";
+import { uploadsRouter } from "./routes/uploads.js";
 
 export function createApp() {
   const app = express();
@@ -129,6 +133,17 @@ export function createApp() {
   registerStatsRoutes(app);
 
   // ─────────────────────────────────────────────
+  // ✅ Uploads routers + DB images BEFORE static
+  // ─────────────────────────────────────────────
+  app.use("/uploads", uploadsRouter);
+
+  // ✅ NEW: serve casino comments images from DB (fallback to disk if not found)
+  app.use("/uploads", casinoCommentImagesRouter);
+
+  // (garde ton static)
+  app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads"), { maxAge: "7d" }));
+
+  // ─────────────────────────────────────────────
   // ✅ Static uploads
   // ─────────────────────────────────────────────
   app.use(
@@ -145,7 +160,6 @@ export function createApp() {
 
   // ─────────────────────────────────────────────
   // ✅ Casinos PUBLIC + /me/casinos (auth)
-  // (doit être avant des routers qui pourraient imposer auth ailleurs)
   // ─────────────────────────────────────────────
   app.use(casinosPublicRouter);
   app.use("/me/casinos", requireAuth, casinosMeRouter);
@@ -216,25 +230,15 @@ export function createApp() {
   app.use("/me/bot/bot_wheel", requireAuth, botWheelRouter);
   app.use("/me/bot/bot_rain", requireAuth, botRainRouter);
 
-  // Clips dashboard (si tu veux sécuriser, tu peux aussi mettre requireAuth ici)
+  // Clips dashboard
   app.use("/me/bot/clips", botClipsRouter);
 
   // ─────────────────────────────────────────────
   // ✅ Casinos ADMIN (ordre CRITIQUE)
-  // IMPORTANT: comments moderation DOIT être monté AVANT adminCasinosRouter
-  // sinon adminCasinosRouter intercepte /admin/casinos/comments/*
   // ─────────────────────────────────────────────
-
-  // compat legacy frontend
   app.use("/admin/casinos/listings", adminCasinosRouter);
-
-  // admin casinos = admin key only (PAS requireAuth)
   app.use("/admin/casinos", adminCasinosRouter);
-
-  // (optionnel mais ok)
   app.use("/casinos/listings", adminCasinosRouter);
-
-  // setup casinos (si c'est /admin/... à l'intérieur, laisse le router décider)
   app.use(adminCasinosSetupRouter);
 
   // ─────────────────────────────────────────────

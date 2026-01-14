@@ -1,7 +1,7 @@
 // api/src/db/migrations/mig029_stripe_subscriptions.ts
 import type { Pool } from "pg";
 
-export async function up(pool: Pool) {
+export async function mig029_stripe_subscriptions(pool: Pool) {
   await pool.query(`
     ALTER TABLE users
       ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;

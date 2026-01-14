@@ -1,3 +1,4 @@
+// api/src/routes/avatar.ts
 import { Router } from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
@@ -16,6 +17,7 @@ function toInt(x: any) {
   return Number.isFinite(n) ? Math.floor(n) : 0;
 }
 
+// Public: GET /avatars/u/:id
 avatarRouter.get("/avatars/u/:id", async (req, res) => {
   try {
     const userId = toInt(req.params.id);
@@ -35,7 +37,7 @@ avatarRouter.get("/avatars/u/:id", async (req, res) => {
     res.setHeader("Content-Type", String(row.mime));
     res.setHeader("Last-Modified", new Date(row.updated_at).toUTCString());
 
-    // ✅ cache OK, et on bust avec ?v=... (updated_at)
+    // ✅ cache OK, et on bust avec ?v=... côté front
     res.setHeader("Cache-Control", "public, max-age=86400");
 
     return res.status(200).send(row.bytes);
@@ -44,6 +46,7 @@ avatarRouter.get("/avatars/u/:id", async (req, res) => {
   }
 });
 
+// Auth: PUT /me/avatar
 avatarRouter.put("/me/avatar", requireAuth, async (req: any, res) => {
   const userId = toInt(req.user?.id);
   if (!userId) return res.status(401).json({ ok: false, error: "auth_required" });
@@ -72,7 +75,7 @@ avatarRouter.put("/me/avatar", requireAuth, async (req: any, res) => {
   try {
     await client.query("BEGIN");
 
-    // ✅ “on supprime l’ancienne” (place) puis on insère la nouvelle
+    // ✅ remplace l’avatar
     await client.query(`DELETE FROM user_avatars WHERE user_id=$1`, [userId]);
     await client.query(
       `INSERT INTO user_avatars (user_id, mime, bytes, updated_at)
@@ -87,7 +90,7 @@ avatarRouter.put("/me/avatar", requireAuth, async (req: any, res) => {
       ok: true,
       avatarUrl: `${PUBLIC_API_BASE}/avatars/u/${userId}?v=${v}`,
     });
-  } catch (e: any) {
+  } catch {
     try {
       await client.query("ROLLBACK");
     } catch {}
@@ -97,6 +100,7 @@ avatarRouter.put("/me/avatar", requireAuth, async (req: any, res) => {
   }
 });
 
+// Auth: DELETE /me/avatar
 avatarRouter.delete("/me/avatar", requireAuth, async (req: any, res) => {
   const userId = toInt(req.user?.id);
   if (!userId) return res.status(401).json({ ok: false, error: "auth_required" });

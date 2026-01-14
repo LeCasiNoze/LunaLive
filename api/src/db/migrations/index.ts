@@ -30,6 +30,8 @@ import { mig025_calls_settings_hunt } from "./mig025_calls_settings_hunt.js";
 import { mig026_bot_wheel } from "./mig026_bot_wheel.js";
 import { mig027_predictions } from "./mig027_predictions.js";
 import { mig028_user_talents } from "./mig028_user_upgrades.js";
+import { mig029_stripe_subscriptions } from "./mig029_stripe_subscriptions.js";
+import { mig030_comment_images_blob } from "./mig030_comment_images_blob.js";
 
 
 export async function migrateAll(pool: Pool) {
@@ -76,4 +78,8 @@ export async function migrateAll(pool: Pool) {
   // ✅ Prédictions (rubis – live only)
   await mig027_predictions(pool);
   await mig028_user_talents(pool)
+
+  await mig029_stripe_subscriptions(pool)
+  await mig030_comment_images_blob(pool)
+
 }
