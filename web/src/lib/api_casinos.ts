@@ -81,9 +81,19 @@ export async function listCasinos(opts: { sort: "top" | "newest"; q: string | nu
 
 export function absApiUrl(u: string | null): string | null {
   if (!u) return null;
-  if (/^https?:\/\//i.test(u)) return u;
-  if (u.startsWith("/")) return `${BASE}${u}`;
-  return `${BASE}/${u}`;
+  const s = String(u).trim();
+  if (!s) return null;
+
+  // ✅ IMPORTANT: ne jamais toucher aux URLs locales navigateur
+  // (preview upload)
+  if (/^(blob:|data:|about:|file:)/i.test(s)) return s;
+
+  // déjà absolue
+  if (/^https?:\/\//i.test(s)) return s;
+
+  // relative
+  if (s.startsWith("/")) return `${BASE}${s}`;
+  return `${BASE}/${s}`;
 }
 
 export type CasinosListResp = {

@@ -149,7 +149,27 @@ export default function CasinoPage() {
   const [savingRating, setSavingRating] = React.useState(false);
 
   const [body, setBody] = React.useState("");
+  type PickedImg = { file: File; url: string };
+
   const [files, setFiles] = React.useState<File[]>([]);
+  const [pickedImgs, setPickedImgs] = React.useState<PickedImg[]>([]);
+
+  function revokePicked(list: PickedImg[]) {
+    for (const it of list) {
+      try {
+        URL.revokeObjectURL(it.url);
+      } catch {}
+    }
+  }
+
+  function clearPicked() {
+    setFiles([]);
+    setPickedImgs((prev) => {
+      revokePicked(prev);
+      return [];
+    });
+  }
+
   const [posting, setPosting] = React.useState(false);
 
   const refOverview = React.useRef<HTMLDivElement>(null);
@@ -195,6 +215,13 @@ export default function CasinoPage() {
       setLoadingComments(false);
     }
   }
+
+  React.useEffect(() => {
+  return () => {
+    revokePicked(pickedImgs);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   React.useEffect(() => {
     loadCasino();
@@ -266,8 +293,18 @@ export default function CasinoPage() {
 
   function onPickFiles(list: FileList | null) {
     if (!list) return;
+
     const arr = Array.from(list).slice(0, 3);
+
+    // revoke anciens blobs
+    setPickedImgs((prev) => {
+      revokePicked(prev);
+      return [];
+    });
+
+    const next = arr.map((f) => ({ file: f, url: URL.createObjectURL(f) }));
     setFiles(arr);
+    setPickedImgs(next);
   }
 
   async function onPost() {
@@ -279,31 +316,43 @@ export default function CasinoPage() {
     const text = body.trim();
     if (!text) return;
 
+    // ✅ snapshot AVANT toute mutation
+    const imgsSnap = pickedImgs;
+    const filesSnap = files;
+
     setPosting(true);
     try {
-      // ✅ token obligatoire (route /me/...)
-      const r = await (postCasinoComment as any)((data as any).casino.id, text, files, token);
+      const r = await (postCasinoComment as any)((data as any).casino.id, text, filesSnap, token);
+
       setBody("");
-      setFiles([]);
 
       if (r.status === "published") {
+        clearPicked();
         setComments([]);
         setNextCursor(null);
         await loadComments({ reset: true });
       } else {
+        // ✅ pending avec les URLs blob
         const pending: CasinoComment = {
           id: `local_pending_${Date.now()}`,
           body: text,
           createdAt: new Date().toISOString(),
           userId: (user as any).id ?? 0,
           username: (user as any).username ?? "Moi",
-          hasImages: true,
+          hasImages: imgsSnap.length > 0,
           authorRating: myRating ? myRating : null,
           upCount: 0,
           downCount: 0,
           myReaction: null,
-          images: files.map((f) => ({ url: URL.createObjectURL(f), w: null, h: null, sizeBytes: f.size })),
+          images: imgsSnap.map((p) => ({
+            url: p.url,
+            w: null,
+            h: null,
+            sizeBytes: p.file.size,
+          })),
         };
+
+        clearPicked();
         setComments((prev) => [pending, ...prev]);
       }
     } catch (e: any) {
@@ -531,8 +580,60 @@ export default function CasinoPage() {
                   Publier
                 </button>
               </div>
-              {files.length > 0 && (
-                <div className="mutedSmall">{files.length} image(s) • Les messages avec images nécessitent validation.</div>
+              {pickedImgs.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div className="mutedSmall">
+                    Image{pickedImgs.length > 1 ? "s" : ""} chargée{pickedImgs.length > 1 ? "s" : ""} ✅ • Validation requise
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                    {pickedImgs.map((p, idx) => (
+                      <div key={idx} style={{ position: "relative" }}>
+                        <img
+                          src={p.url}
+                          alt=""
+                          style={{
+                            width: 110,
+                            height: 70,
+                            objectFit: "cover",
+                            borderRadius: 10,
+                            border: "1px solid rgba(255,255,255,0.15)",
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPickedImgs((prev) => {
+                              const copy = [...prev];
+                              const removed = copy.splice(idx, 1)[0];
+                              if (removed) {
+                                try {
+                                  URL.revokeObjectURL(removed.url);
+                                } catch {}
+                              }
+                              setFiles(copy.map((x) => x.file));
+                              return copy;
+                            });
+                          }}
+                          style={{
+                            position: "absolute",
+                            top: -6,
+                            right: -6,
+                            width: 22,
+                            height: 22,
+                            borderRadius: 999,
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                          aria-label="Retirer l'image"
+                          title="Retirer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
               {(!user || !token) && <div className="mutedSmall">Connecte-toi pour publier / réagir.</div>}
             </div>
