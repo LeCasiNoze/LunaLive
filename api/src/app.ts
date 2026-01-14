@@ -179,8 +179,8 @@ export function createApp() {
   app.use("/calls", callsPcallRouter);
   // ✅ Hunt routes (/api/hunt2/*)
   app.use(hunt2Router);
-  app.use("/admin/casinos", adminCasinoCommentsRouter);
-  
+  app.use("/admin/casinos/comments", adminCasinoCommentsRouter);
+
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
 

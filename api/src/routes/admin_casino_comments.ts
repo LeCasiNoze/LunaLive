@@ -8,7 +8,7 @@ export const adminCasinoCommentsRouter = Router();
 
 // GET /admin/casinos/comments/pending?limit=50&cursor=ISO&q=...&casinoId=123
 adminCasinoCommentsRouter.get(
-  "/comments/pending",
+  "/pending",
   requireAdminKey,
   a(async (req, res) => {
     const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50)));
@@ -79,7 +79,7 @@ adminCasinoCommentsRouter.get(
 // PATCH /admin/casinos/comments/:commentId
 // body: { action: "approve" | "reject" | "delete", note?: string | null }
 adminCasinoCommentsRouter.patch(
-  "/comments/:commentId",
+  "/:commentId",
   requireAdminKey,
   a(async (req, res) => {
     const id = Number(req.params.commentId);
