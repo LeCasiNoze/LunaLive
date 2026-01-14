@@ -6,6 +6,11 @@ import { requireAdminKey } from "../auth.js";
 
 export const adminCasinoCommentsRouter = Router();
 
+adminCasinoCommentsRouter.use((req, _res, next) => {
+  console.error("[ADMIN_COMMENTS_ROUTER] HIT", req.method, req.originalUrl);
+  next();
+});
+
 // -----------------------------------------------------------------------------
 // Mounted in app.ts with:
 //   app.use("/admin/casinos/comments", adminCasinoCommentsRouter);

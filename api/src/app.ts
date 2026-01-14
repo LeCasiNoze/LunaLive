@@ -112,7 +112,7 @@ export function createApp() {
 
   // build marker (pratique pour vérifier le déploiement)
   app.use((_req, res, next) => {
-    res.setHeader("x-build", "vod-debug-2026-01-12");
+    res.setHeader("x-build", "comments-fix-2026-01-14-1505");
     next();
   });
 
