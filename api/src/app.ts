@@ -49,8 +49,6 @@ import { casinosMeRouter } from "./routes/casinos_me.js";
 import { adminCasinosRouter } from "./routes/admin_casinos.js";
 import { adminCasinosSetupRouter } from "./routes/admin_casinos_setup.js";
 import { adminCasinoCommentsRouter } from "./routes/admin_casino_comments.js";
-
-// ✅ NEW: serve casino comment images from DB
 import { casinoCommentImagesRouter } from "./routes/casino_comment_images.js";
 
 // Streamer / integrations
@@ -92,9 +90,10 @@ export function createApp() {
   // Billing (souvent webhook / needs early mount)
   app.use("/billing", billingRouter);
 
+  // uploads/avatars (middlewares globaux existants)
   app.use(streamerUploadsRouter);
   app.use(avatarRouter);
-  
+
   // ─────────────────────────────────────────────
   // ✅ TEMP: Admin debug (logs only for /admin*)
   // ─────────────────────────────────────────────
@@ -111,17 +110,20 @@ export function createApp() {
       console.error("[ADMIN_DEBUG][HDR] origin:", JSON.stringify(String(req.headers.origin || "")));
       console.error("[ADMIN_DEBUG][HDR] host:", JSON.stringify(String(req.headers.host || "")));
 
-      // marqueur visible dans DevTools
       res.setHeader("x-admin-debug-seen", "1");
     }
     next();
   });
 
-  // build marker (pratique pour vérifier le déploiement)
+  // build marker
   app.use((_req, res, next) => {
     res.setHeader("x-build", "comments-fix-2026-01-14-1505");
     next();
   });
+
+  // ─────────────────────────────────────────────
+  // ✅ Admin comments router monté AVANT admin casinos router
+  // ─────────────────────────────────────────────
   app.use("/admin/casinos/comments", adminCasinoCommentsRouter);
 
   // ─────────────────────────────────────────────
@@ -140,7 +142,7 @@ export function createApp() {
   // ─────────────────────────────────────────────
   app.use("/uploads", uploadsRouter);
 
-  // ✅ NEW: serve casino comments images from DB (fallback to disk if not found)
+  // images commentaires casinos depuis DB (fallback disk si pas trouvé)
   app.use("/uploads", casinoCommentImagesRouter);
 
   // ─────────────────────────────────────────────
@@ -154,7 +156,7 @@ export function createApp() {
     },
     express.static(path.resolve(process.cwd(), "uploads"), {
       maxAge: "7d",
-      fallthrough: false, // ✅ si le fichier n'existe pas => 404 direct, pas next()
+      fallthrough: false,
     })
   );
 
@@ -236,7 +238,10 @@ export function createApp() {
   // ─────────────────────────────────────────────
   app.use("/admin/casinos/listings", adminCasinosRouter);
   app.use("/admin/casinos", adminCasinosRouter);
-  app.use("/casinos/listings", adminCasinosRouter);
+
+  // ❌ IMPORTANT: on ne monte PAS un router admin sur un chemin public
+  // app.use("/casinos/listings", adminCasinosRouter);
+
   app.use(adminCasinosSetupRouter);
 
   // ─────────────────────────────────────────────

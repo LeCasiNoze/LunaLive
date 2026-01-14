@@ -1,8 +1,12 @@
 // api/src/routes/admin_casinos.ts
 import { Router } from "express";
 import { pool } from "../db.js";
+import { requireAdminKey } from "../auth.js";
 
 export const adminCasinosRouter = Router();
+
+// ✅ une seule source de vérité : middleware commun
+adminCasinosRouter.use(requireAdminKey);
 
 function parseNullableFloat(v: any) {
   if (v == null || v === "") return null;
@@ -10,32 +14,6 @@ function parseNullableFloat(v: any) {
   if (!Number.isFinite(n)) return null;
   return n;
 }
-
-function getAdminKeyFromReq(req: any) {
-  const h = String(req.headers["x-admin-key"] || "");
-  if (h) return h;
-  const auth = String(req.headers.authorization || "");
-  const m = auth.match(/^Bearer\s+(.+)$/i);
-  if (m) return m[1];
-  return "";
-}
-
-function requireAdminKey(req: any, res: any, next: any) {
-  const provided = getAdminKeyFromReq(req);
-  const expected =
-    process.env.ADMIN_KEY ||
-    process.env.ADMIN_PASSWORD ||
-    process.env.ADMIN_SECRET ||
-    process.env.ADMIN_PASS ||
-    process.env.ADMIN ||
-    "";
-
-  if (!expected) return res.status(500).json({ ok: false, error: "ADMIN_KEY not configured" });
-  if (!provided || provided !== expected) return res.status(401).json({ ok: false, error: "unauthorized" });
-  return next();
-}
-
-adminCasinosRouter.use(requireAdminKey);
 
 // Helpers
 function normStatus(v: any) {
@@ -86,12 +64,10 @@ adminCasinosRouter.get("/", async (req, res) => {
     [like]
   );
 
-  // ✅ compat vieux front
   return res.json({ ok: true, items: rows, listings: rows, casinos: rows });
 });
 
 // ✅ POST /admin/casinos
-// (compat: renvoie id + item/casino)
 adminCasinosRouter.post("/", async (req, res) => {
   const slug = String(req.body?.slug || "").trim().toLowerCase();
   const name = String(req.body?.name || "").trim();
@@ -130,8 +106,8 @@ adminCasinosRouter.post("/", async (req, res) => {
       ok: true,
       id: item?.id,
       item,
-      casino: item,   // compat
-      listing: item,  // compat
+      casino: item, // compat
+      listing: item, // compat
     });
   } catch (e: any) {
     return res.status(400).json({ ok: false, error: e?.message || "insert_failed" });
@@ -148,24 +124,45 @@ adminCasinosRouter.patch("/:id", async (req, res) => {
   if ("slug" in patch) fields.push({ col: "slug", val: String(patch.slug || "").trim().toLowerCase() });
 
   if ("logoUrl" in patch) fields.push({ col: "logo_url", val: patch.logoUrl ? String(patch.logoUrl) : null });
-  if ("bonusHeadline" in patch) fields.push({ col: "bonus_headline", val: patch.bonusHeadline ? String(patch.bonusHeadline) : null });
-  if ("description" in patch) fields.push({ col: "description", val: patch.description ? String(patch.description) : null });
+  if ("bonusHeadline" in patch)
+    fields.push({ col: "bonus_headline", val: patch.bonusHeadline ? String(patch.bonusHeadline) : null });
+  if ("description" in patch)
+    fields.push({ col: "description", val: patch.description ? String(patch.description) : null });
 
-  if ("pros" in patch) fields.push({ col: "pros", val: Array.isArray(patch.pros) ? JSON.stringify(patch.pros) : JSON.stringify([]), castJsonb: true });
-  if ("cons" in patch) fields.push({ col: "cons", val: Array.isArray(patch.cons) ? JSON.stringify(patch.cons) : JSON.stringify([]), castJsonb: true });
-  if ("sections" in patch) fields.push({ col: "sections", val: Array.isArray(patch.sections) ? JSON.stringify(patch.sections) : JSON.stringify([]), castJsonb: true });
+  if ("pros" in patch)
+    fields.push({
+      col: "pros",
+      val: Array.isArray(patch.pros) ? JSON.stringify(patch.pros) : JSON.stringify([]),
+      castJsonb: true,
+    });
+  if ("cons" in patch)
+    fields.push({
+      col: "cons",
+      val: Array.isArray(patch.cons) ? JSON.stringify(patch.cons) : JSON.stringify([]),
+      castJsonb: true,
+    });
+  if ("sections" in patch)
+    fields.push({
+      col: "sections",
+      val: Array.isArray(patch.sections) ? JSON.stringify(patch.sections) : JSON.stringify([]),
+      castJsonb: true,
+    });
 
   if ("teamRating" in patch) {
-   const n = parseNullableFloat(patch.teamRating);
-   if (patch.teamRating !== null && patch.teamRating !== "" && n === null) {
-    return res.status(400).json({ ok: false, error: "bad teamRating" });
-   }
-   fields.push({ col: "team_rating", val: n });
- }
- 
+    const n = parseNullableFloat(patch.teamRating);
+    if (patch.teamRating !== null && patch.teamRating !== "" && n === null) {
+      return res.status(400).json({ ok: false, error: "bad teamRating" });
+    }
+    fields.push({ col: "team_rating", val: n });
+  }
+
   if ("teamReview" in patch) fields.push({ col: "team_review", val: patch.teamReview ? String(patch.teamReview) : null });
 
-  if ("featuredRank" in patch) fields.push({ col: "featured_rank", val: patch.featuredRank === null || patch.featuredRank === "" ? null : Number(patch.featuredRank) });
+  if ("featuredRank" in patch)
+    fields.push({
+      col: "featured_rank",
+      val: patch.featuredRank === null || patch.featuredRank === "" ? null : Number(patch.featuredRank),
+    });
 
   if ("watchLevel" in patch) {
     const wl = normWatch(patch.watchLevel);
@@ -201,7 +198,6 @@ adminCasinosRouter.patch("/:id", async (req, res) => {
 });
 
 // ✅ GET /admin/casinos/:id/links
-// (compat: items + links)
 adminCasinosRouter.get("/:id/links", async (req, res) => {
   const casinoId = String(req.params.id);
 

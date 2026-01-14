@@ -10,6 +10,8 @@ import {
   type AdminProviderAccountRow,
 } from "../../lib/api";
 
+const DLV_RTMP = "rtmp://stream.dlive.tv/live";
+
 function maskUrl(u: string) {
   if (!u) return "";
   return u.length > 46 ? u.slice(0, 46) + "…" : u;
@@ -20,13 +22,10 @@ export function ProviderAccountsAdminSection({ adminKey }: { adminKey: string })
   const [busy, setBusy] = React.useState(false);
 
   const [accounts, setAccounts] = React.useState<AdminProviderAccountRow[]>([]);
-  const [eligibleStreamers, setEligibleStreamers] = React.useState<
-    Array<{ streamerId: string; label: string }>
-  >([]);
+  const [eligibleStreamers, setEligibleStreamers] = React.useState<Array<{ streamerId: string; label: string }>>([]);
 
   // form single add
   const [channelSlug, setChannelSlug] = React.useState("");
-  const [rtmpUrl, setRtmpUrl] = React.useState("");
   const [streamKey, setStreamKey] = React.useState("");
 
   // bulk add
@@ -42,17 +41,12 @@ export function ProviderAccountsAdminSection({ adminKey }: { adminKey: string })
 
     setAccounts(a.accounts);
 
-    // streamers map by slug -> id
     const slugToId = new Map<string, string>();
     for (const s of streamers) slugToId.set(String(s.slug), String(s.id));
 
-    // which streamerIds already assigned
     const assigned = new Set<string>();
-    for (const acc of a.accounts) {
-      if (acc.assignedStreamerId) assigned.add(String(acc.assignedStreamerId));
-    }
+    for (const acc of a.accounts) if (acc.assignedStreamerId) assigned.add(String(acc.assignedStreamerId));
 
-    // eligible = users role streamer/admin with streamerSlug, and not already assigned
     const eligible: Array<{ streamerId: string; label: string }> = [];
     for (const u of users.users) {
       const isStreamer = u.role === "streamer" || u.role === "admin";
@@ -82,11 +76,10 @@ export function ProviderAccountsAdminSection({ adminKey }: { adminKey: string })
       await adminCreateProviderAccount(adminKey, {
         provider: "dlive",
         channelSlug: channelSlug.trim(),
-        rtmpUrl: rtmpUrl.trim(),
+        rtmpUrl: DLV_RTMP, // ✅ fixe
         streamKey: streamKey.trim(),
       });
       setChannelSlug("");
-      setRtmpUrl("");
       setStreamKey("");
       await refresh();
     } catch (e: any) {
@@ -97,24 +90,19 @@ export function ProviderAccountsAdminSection({ adminKey }: { adminKey: string })
   }
 
   function parseBulk(input: string) {
-    // format: channelSlug | rtmpUrl | streamKey (separator: "|" or "," or ";")
+    // format: channelSlug | streamKey (separator: "|" or "," or ";")
     const lines = input
       .split("\n")
       .map((l) => l.trim())
       .filter(Boolean);
 
-    const out: Array<{ channelSlug: string; rtmpUrl: string; streamKey: string }> = [];
+    const out: Array<{ channelSlug: string; streamKey: string }> = [];
 
     for (const line of lines) {
-      const parts = line.includes("|")
-        ? line.split("|")
-        : line.includes(";")
-        ? line.split(";")
-        : line.split(",");
-
-      const [a, b, c] = parts.map((p) => String(p || "").trim());
-      if (!a || !b || !c) continue;
-      out.push({ channelSlug: a, rtmpUrl: b, streamKey: c });
+      const parts = line.includes("|") ? line.split("|") : line.includes(";") ? line.split(";") : line.split(",");
+      const [a, b] = parts.map((p) => String(p || "").trim());
+      if (!a || !b) continue;
+      out.push({ channelSlug: a, streamKey: b });
     }
 
     return out;
@@ -123,7 +111,7 @@ export function ProviderAccountsAdminSection({ adminKey }: { adminKey: string })
   async function addBulk() {
     const items = parseBulk(bulk);
     if (!items.length) {
-      setErr("Bulk invalide. Format: channelSlug | rtmpUrl | streamKey (1 par ligne)");
+      setErr("Bulk invalide. Format: channelSlug | streamKey (1 par ligne)");
       return;
     }
 
@@ -131,12 +119,11 @@ export function ProviderAccountsAdminSection({ adminKey }: { adminKey: string })
     setErr(null);
     try {
       for (const it of items) {
-        // on insert un par un (MVP). Si un échoue, on continue.
         try {
           await adminCreateProviderAccount(adminKey, {
             provider: "dlive",
             channelSlug: it.channelSlug,
-            rtmpUrl: it.rtmpUrl,
+            rtmpUrl: DLV_RTMP, // ✅ fixe
             streamKey: it.streamKey,
           });
         } catch {}
@@ -152,9 +139,9 @@ export function ProviderAccountsAdminSection({ adminKey }: { adminKey: string })
 
   return (
     <div className="panel" style={{ marginTop: 14 }}>
-      <div className="panelTitle">Comptes DLive (pool)</div>
+      <div className="panelTitle">Ajout de compte DLive (pool)</div>
       <div className="muted" style={{ marginBottom: 10 }}>
-        Ajout, assignation, dissociation. Les clés ne sont pas affichées ici (mais stockées en DB).
+        RTMP fixe : <b>{DLV_RTMP}</b>. Ajout, assignation, dissociation.
       </div>
 
       {err && <div className="hint">⚠️ {err}</div>}
@@ -169,25 +156,20 @@ export function ProviderAccountsAdminSection({ adminKey }: { adminKey: string })
         </div>
 
         <div className="field">
-          <label>RTMP URL</label>
-          <input value={rtmpUrl} onChange={(e) => setRtmpUrl(e.target.value)} placeholder="rtmp://..." />
-        </div>
-
-        <div className="field">
           <label>Stream Key</label>
           <input value={streamKey} onChange={(e) => setStreamKey(e.target.value)} placeholder="(secret)" />
         </div>
 
-        <button className="btnPrimary" onClick={addOne} disabled={busy}>
+        <button className="btnPrimary" onClick={addOne} disabled={busy || !channelSlug.trim() || !streamKey.trim()}>
           {busy ? "…" : "Ajouter"}
         </button>
       </div>
 
       {/* Bulk */}
       <div className="panel" style={{ marginTop: 14 }}>
-        <div className="panelTitle">Ajout en masse (50+)</div>
+        <div className="panelTitle">Ajout en masse</div>
         <div className="mutedSmall" style={{ marginBottom: 8 }}>
-          1 ligne = <b>channelSlug | rtmpUrl | streamKey</b>
+          1 ligne = <b>channelSlug | streamKey</b>
         </div>
 
         <div className="field">
@@ -196,7 +178,7 @@ export function ProviderAccountsAdminSection({ adminKey }: { adminKey: string })
             value={bulk}
             onChange={(e) => setBulk(e.target.value)}
             rows={6}
-            placeholder={"channel-1 | rtmp://... | KEY1\nchannel-2 | rtmp://... | KEY2"}
+            placeholder={"channel-1 | KEY1\nchannel-2 | KEY2"}
           />
         </div>
 
@@ -211,7 +193,6 @@ export function ProviderAccountsAdminSection({ adminKey }: { adminKey: string })
 
         {accounts.map((acc) => {
           const isAssigned = !!acc.assignedStreamerId;
-
           return (
             <div
               key={acc.id}
@@ -229,7 +210,7 @@ export function ProviderAccountsAdminSection({ adminKey }: { adminKey: string })
                   <span className="mutedSmall">
                     {acc.provider} / {acc.channelSlug}
                   </span>
-                  <div className="mutedSmall">RTMP: {maskUrl(acc.rtmpUrl)}</div>
+                  <div className="mutedSmall">RTMP: {maskUrl(acc.rtmpUrl || DLV_RTMP)}</div>
                 </div>
 
                 {isAssigned ? (
@@ -262,9 +243,7 @@ export function ProviderAccountsAdminSection({ adminKey }: { adminKey: string })
                 {isAssigned ? (
                   <>
                     <b>ASSIGNÉ</b> → {acc.assignedUsername || "?"}{" "}
-                    <span className="mutedSmall">
-                      ({acc.assignedStreamerSlug || "?"})
-                    </span>
+                    <span className="mutedSmall">({acc.assignedStreamerSlug || "?"})</span>
                   </>
                 ) : (
                   <b>LIBRE</b>
@@ -289,9 +268,7 @@ export function ProviderAccountsAdminSection({ adminKey }: { adminKey: string })
                       </option>
                     ))}
                   </select>
-                  <span className="mutedSmall">
-                    {eligibleStreamers.length ? "" : "Aucun streamer sans compte"}
-                  </span>
+                  <span className="mutedSmall">{eligibleStreamers.length ? "" : "Aucun streamer sans compte"}</span>
                 </div>
               )}
             </div>

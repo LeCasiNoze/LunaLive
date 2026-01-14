@@ -18,7 +18,6 @@ import {
 } from "../lib/api";
 import { UsersAdminSection } from "../components/admin/UsersAdminSection";
 import { ProviderAccountsAdminSection } from "../components/admin/ProviderAccountsAdminSection";
-import { RubisMintAdminSection } from "../components/admin/RubisMintAdminSection";
 import { CasinosAdminSection } from "../components/admin/CasinosAdminSection";
 import { Link } from "react-router-dom";
 
@@ -251,7 +250,6 @@ export default function AdminPage() {
   function goto(next: string) {
     setTab(next);
     saveTab(next);
-    // reset local errors when navigating
     setErr(null);
   }
 
@@ -352,14 +350,7 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.05fr 0.95fr",
-            gap: 14,
-            alignItems: "start",
-          }}
-        >
+        <div style={{ display: "grid", gridTemplateColumns: "1.05fr 0.95fr", gap: 14, alignItems: "start" }}>
           <Card
             title={
               <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -421,13 +412,11 @@ export default function AdminPage() {
                 <Pill tone="brand">🧭 Navigation rapide</Pill>
                 <Pill tone="info">📝 Modération avis</Pill>
                 <Pill tone="warn">🎰 Sync slots</Pill>
-                <Pill tone="neutral">👥 Utilisateurs</Pill>
-                <Pill tone="good">💎 Rubis</Pill>
+                <Pill tone="neutral">👥 Utilisateurs + Rubis</Pill>
               </div>
 
               <div className="mutedSmall" style={{ lineHeight: 1.45, opacity: 0.9 }}>
-                Une fois connecté, tu auras un vrai “centre de contrôle” avec un menu latéral, des cartes, des compteurs
-                et des actions regroupées.
+                Une fois connecté, tu auras un centre de contrôle avec un menu latéral et des actions regroupées.
               </div>
             </div>
           </Card>
@@ -487,14 +476,7 @@ export default function AdminPage() {
       </div>
 
       {/* LAYOUT */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "320px 1fr",
-          gap: 14,
-          alignItems: "start",
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 14, alignItems: "start" }}>
         {/* SIDEBAR */}
         <div style={{ position: "sticky", top: 12, alignSelf: "start" }}>
           <Card
@@ -510,7 +492,6 @@ export default function AdminPage() {
                 className="btnGhostSmall"
                 type="button"
                 onClick={() => {
-                  // petit reset visuel
                   setSlotsRes(null);
                   setErr(null);
                 }}
@@ -520,19 +501,13 @@ export default function AdminPage() {
             }
           >
             <div style={{ display: "grid", gap: 10 }}>
-              <NavButton
-                active={tab === "overview"}
-                icon="🏠"
-                label="Aperçu"
-                hint="Vue globale + raccourcis"
-                onClick={() => goto("overview")}
-              />
+              <NavButton active={tab === "overview"} icon="🏠" label="Aperçu" hint="Vue globale + raccourcis" onClick={() => goto("overview")} />
 
               <NavButton
                 active={tab === "casinos"}
                 icon="🏷️"
                 label="Casinos (TrustPilot)"
-                hint="Gestion casinos & contenus"
+                hint="Gestion casinos + liens + avis publiés"
                 onClick={() => goto("casinos")}
               />
 
@@ -541,15 +516,7 @@ export default function AdminPage() {
                 icon="📝"
                 label="Validation avis"
                 hint="Modération des commentaires"
-                badge={
-                  pendingCasinoComments > 0 ? (
-                    <Pill tone="warn">
-                      <b>{pendingCasinoComments}</b>
-                    </Pill>
-                  ) : (
-                    <Pill tone="neutral">0</Pill>
-                  )
-                }
+                badge={pendingCasinoComments > 0 ? <Pill tone="warn"><b>{pendingCasinoComments}</b></Pill> : <Pill tone="neutral">0</Pill>}
                 onClick={() => goto("casino_comments")}
               />
 
@@ -566,48 +533,26 @@ export default function AdminPage() {
                 icon="🧾"
                 label="Demandes streamer"
                 hint="Approve / Reject"
-                badge={
-                  pendingRequests > 0 ? (
-                    <Pill tone="warn">
-                      <b>{pendingRequests}</b>
-                    </Pill>
-                  ) : (
-                    <Pill tone="neutral">0</Pill>
-                  )
-                }
+                badge={pendingRequests > 0 ? <Pill tone="warn"><b>{pendingRequests}</b></Pill> : <Pill tone="neutral">0</Pill>}
                 onClick={() => goto("requests")}
               />
 
-              <NavButton
-                active={tab === "streamers"}
-                icon="🎥"
-                label="Gestion streamers"
-                hint="Créer / supprimer"
-                onClick={() => goto("streamers")}
-              />
+              <NavButton active={tab === "streamers"} icon="🎥" label="Gestion streamers" hint="Créer / supprimer" onClick={() => goto("streamers")} />
 
               <NavButton
                 active={tab === "users"}
                 icon="👥"
                 label="Utilisateurs"
-                hint="Admin users (section existante)"
+                hint="Users + rubis + détails"
                 onClick={() => goto("users")}
               />
 
               <NavButton
                 active={tab === "providers"}
                 icon="🔗"
-                label="Comptes provider"
-                hint="Liaisons & providers"
+                label="Ajout de compte DLive"
+                hint="Pool DLive (RTMP fixe)"
                 onClick={() => goto("providers")}
-              />
-
-              <NavButton
-                active={tab === "rubis"}
-                icon="💎"
-                label="Rubis (Mint)"
-                hint="Outils rubis admin"
-                onClick={() => goto("rubis")}
               />
             </div>
           </Card>
@@ -630,139 +575,51 @@ export default function AdminPage() {
 
         {/* CONTENT */}
         <div style={{ display: "grid", gap: 14 }}>
-          {/* OVERVIEW */}
           {tab === "overview" ? (
-            <div style={{ display: "grid", gap: 14 }}>
-              <Card
-                title={
-                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 18 }}>⚡</span>
-                    Aperçu & raccourcis
-                  </span>
-                }
-                subtitle="Le panneau est organisé en sections. Utilise le menu à gauche pour naviguer vite."
-                right={
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button className="btnPrimary" type="button" onClick={() => goto("requests")}>
-                      🧾 Voir demandes
-                    </button>
-                    <button className="btnSecondary" type="button" onClick={() => goto("casino_comments")}>
-                      📝 Voir avis
-                    </button>
-                  </div>
-                }
-              >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                    gap: 10,
-                  }}
-                >
-                  <div
-                    style={{
-                      padding: 12,
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(255,255,255,0.03)",
-                    }}
-                  >
-                    <div className="mutedSmall" style={{ opacity: 0.85 }}>
-                      Demandes streamer (pending)
-                    </div>
-                    <div style={{ fontSize: 26, fontWeight: 950, marginTop: 4 }}>{pendingRequests}</div>
-                    <div style={{ marginTop: 10 }}>
-                      <button className="btnGhostSmall" type="button" onClick={() => goto("requests")}>
-                        Ouvrir
-                      </button>
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      padding: 12,
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(255,255,255,0.03)",
-                    }}
-                  >
-                    <div className="mutedSmall" style={{ opacity: 0.85 }}>
-                      Avis casinos (pending)
-                    </div>
-                    <div style={{ fontSize: 26, fontWeight: 950, marginTop: 4 }}>{pendingCasinoComments}</div>
-                    <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button className="btnGhostSmall" type="button" onClick={() => goto("casino_comments")}>
-                        Ouvrir
-                      </button>
-                      <button
-                        className="btnGhostSmall"
-                        type="button"
-                        onClick={() => refreshCasinoComments()}
-                        disabled={ccLoading}
-                      >
-                        {ccLoading ? "…" : "Rafraîchir"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      padding: 12,
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(255,255,255,0.03)",
-                    }}
-                  >
-                    <div className="mutedSmall" style={{ opacity: 0.85 }}>
-                      Streamers
-                    </div>
-                    <div style={{ fontSize: 26, fontWeight: 950, marginTop: 4 }}>{streamers.length}</div>
-                    <div style={{ marginTop: 10 }}>
-                      <button className="btnGhostSmall" type="button" onClick={() => goto("streamers")}>
-                        Gérer
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <Pill tone="brand">💡 Astuce: garde cet onglet en “centre de contrôle”.</Pill>
-                  <Pill tone="info">📌 Les sections “Users / Providers / Rubis” sont intactes.</Pill>
-                  <Pill tone="neutral">🧱 UI refactor: uniquement layout/ergonomie.</Pill>
-                </div>
-              </Card>
-
-              <Card
-                title={
-                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 18 }}>📍</span>
-                    Raccourcis rapides
-                  </span>
-                }
-                subtitle="Des boutons pour aller directement aux zones clés."
-              >
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button className="btnPrimary" type="button" onClick={() => goto("casinos")}>
-                    🏷️ Casinos
-                  </button>
-                  <button className="btnSecondary" type="button" onClick={() => goto("slots")}>
-                    🎰 MàJ Slots
+            <Card
+              title={
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>⚡</span>
+                  Aperçu & raccourcis
+                </span>
+              }
+              subtitle="Navigation plus propre, et rubis désormais intégrés dans Utilisateurs."
+              right={
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button className="btnPrimary" type="button" onClick={() => goto("requests")}>
+                    🧾 Voir demandes
                   </button>
                   <button className="btnSecondary" type="button" onClick={() => goto("users")}>
-                    👥 Users
-                  </button>
-                  <button className="btnSecondary" type="button" onClick={() => goto("providers")}>
-                    🔗 Providers
-                  </button>
-                  <button className="btnSecondary" type="button" onClick={() => goto("rubis")}>
-                    💎 Rubis
+                    👥 Users + Rubis
                   </button>
                 </div>
-              </Card>
-            </div>
+              }
+            >
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+                <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)" }}>
+                  <div className="mutedSmall" style={{ opacity: 0.85 }}>
+                    Demandes streamer (pending)
+                  </div>
+                  <div style={{ fontSize: 26, fontWeight: 950, marginTop: 4 }}>{pendingRequests}</div>
+                </div>
+
+                <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)" }}>
+                  <div className="mutedSmall" style={{ opacity: 0.85 }}>
+                    Avis casinos (pending)
+                  </div>
+                  <div style={{ fontSize: 26, fontWeight: 950, marginTop: 4 }}>{pendingCasinoComments}</div>
+                </div>
+
+                <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)" }}>
+                  <div className="mutedSmall" style={{ opacity: 0.85 }}>
+                    Streamers
+                  </div>
+                  <div style={{ fontSize: 26, fontWeight: 950, marginTop: 4 }}>{streamers.length}</div>
+                </div>
+              </div>
+            </Card>
           ) : null}
 
-          {/* CASINOS */}
           {tab === "casinos" ? (
             <Card
               title={
@@ -771,18 +628,13 @@ export default function AdminPage() {
                   Casinos (TrustPilot)
                 </span>
               }
-              subtitle="Gestion des casinos et du contenu (section existante)."
-              right={
-                <button className="btnSecondary" type="button" onClick={() => goto("overview")}>
-                  ← Retour
-                </button>
-              }
+              subtitle="Affichage refait : liste + détails + liens + avis publiés (suppression)."
+              right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
             >
               <CasinosAdminSection adminKey={key} />
             </Card>
           ) : null}
 
-          {/* CASINO COMMENTS */}
           {tab === "casino_comments" ? (
             <Card
               title={
@@ -791,14 +643,12 @@ export default function AdminPage() {
                   Avis casinos — validation
                 </span>
               }
-              subtitle={
-                <>
-                  Les commentaires avec images peuvent être en <b>pending</b> (validation requise).
-                </>
-              }
+              subtitle="Les commentaires avec images peuvent être en pending (validation requise)."
               right={
                 <>
-                  <Pill tone="info">Filtre: <b>En attente</b></Pill>
+                  <Pill tone="info">
+                    Filtre: <b>En attente</b>
+                  </Pill>
                   <button className="btnPrimary" onClick={refreshCasinoComments} disabled={ccLoading} type="button">
                     {ccLoading ? "Chargement…" : "Rafraîchir"}
                   </button>
@@ -812,9 +662,6 @@ export default function AdminPage() {
                 <Pill tone={ccItems.length ? "brand" : "neutral"}>
                   Items: <b>{ccItems.length}</b>
                 </Pill>
-                <div className="mutedSmall" style={{ opacity: 0.85 }}>
-                  Astuce: ouvre la page casino pour vérifier le rendu en conditions réelles.
-                </div>
               </div>
 
               {ccItems.length === 0 && !ccLoading ? <div className="mutedSmall">Aucun avis.</div> : null}
@@ -822,7 +669,12 @@ export default function AdminPage() {
               <div style={{ display: "grid", gap: 10 }}>
                 {ccItems.map((c) => {
                   const created = new Date(c.createdAt).toLocaleString("fr-FR");
-                  const statusTone = c.status === "pending" ? "warn" : c.status === "approved" ? "good" : "bad";
+
+                  // ✅ FIX TS2367 :
+                  // backend => status: pending | published | rejected | deleted
+                  const statusTone =
+                    c.status === "pending" ? "warn" : c.status === "published" ? "good" : "bad";
+
                   return (
                     <div
                       key={c.id}
@@ -935,11 +787,7 @@ export default function AdminPage() {
                                       background: "rgba(255,255,255,0.03)",
                                     }}
                                   >
-                                    <img
-                                      src={src}
-                                      alt=""
-                                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                                    />
+                                    <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                                   </a>
                                 );
                               }
@@ -954,7 +802,6 @@ export default function AdminPage() {
             </Card>
           ) : null}
 
-          {/* SLOTS */}
           {tab === "slots" ? (
             <Card
               title={
@@ -963,19 +810,8 @@ export default function AdminPage() {
                   Slots — mise à jour (Shuffle)
                 </span>
               }
-              subtitle={
-                <>
-                  Met à jour la DB depuis Shuffle: <b>tous les providers</b> (sauf Shuffle originals, Evolution,
-                  Pragmatic Live). Retourne uniquement les <b>nouvelles</b> machines insérées.
-                </>
-              }
-              right={
-                <>
-                  <button className="btnSecondary" type="button" onClick={() => goto("overview")}>
-                    ← Retour
-                  </button>
-                </>
-              }
+              subtitle="Met à jour la DB depuis Shuffle."
+              right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
             >
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <button
@@ -1005,64 +841,9 @@ export default function AdminPage() {
                   </Pill>
                 ) : null}
               </div>
-
-              {slotsRes?.ok ? (
-                <div style={{ marginTop: 12 }}>
-                  {slotsRes.added > 0 ? (
-                    Object.entries(slotsRes.byProvider || {})
-                      .filter(([, arr]) => (arr?.length || 0) > 0)
-                      .sort((a, b) => a[0].localeCompare(b[0]))
-                      .map(([prov, arr]) => (
-                        <div
-                          key={prov}
-                          style={{
-                            marginTop: 10,
-                            borderRadius: 14,
-                            border: "1px solid rgba(255,255,255,0.10)",
-                            background: "rgba(255,255,255,0.03)",
-                            overflow: "hidden",
-                          }}
-                        >
-                          <div
-                            style={{
-                              padding: "10px 12px",
-                              borderBottom: "1px solid rgba(255,255,255,0.08)",
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 10,
-                              alignItems: "center",
-                              flexWrap: "wrap",
-                            }}
-                          >
-                            <div style={{ fontWeight: 950 }}>
-                              {prov} — <span className="mutedSmall">{arr.length} nouvelles</span>
-                            </div>
-                          </div>
-
-                          <div className="mutedSmall" style={{ padding: 12, lineHeight: 1.35 }}>
-                            {arr.slice(0, 120).map((s: any, i: number) => (
-                              <div key={`${s.name}-${i}`}>
-                                • {s.name}
-                                {s.slotKey ? <span style={{ opacity: 0.6 }}> ({s.slotKey})</span> : null}
-                              </div>
-                            ))}
-                            {arr.length > 120 ? (
-                              <div style={{ opacity: 0.65, marginTop: 6 }}>… +{arr.length - 120} autres</div>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))
-                  ) : (
-                    <div className="mutedSmall" style={{ marginTop: 10 }}>
-                      Aucune nouvelle machine détectée.
-                    </div>
-                  )}
-                </div>
-              ) : null}
             </Card>
           ) : null}
 
-          {/* REQUESTS */}
           {tab === "requests" ? (
             <Card
               title={
@@ -1072,28 +853,8 @@ export default function AdminPage() {
                 </span>
               }
               subtitle="Clique Approve / Reject."
-              right={
-                <>
-                  <button
-                    className="btnSecondary"
-                    type="button"
-                    onClick={() => refresh().catch((e) => setErr(String((e as any)?.message || e)))}
-                  >
-                    🔄 Refresh
-                  </button>
-                  <button className="btnSecondary" type="button" onClick={() => goto("overview")}>
-                    ← Retour
-                  </button>
-                </>
-              }
+              right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
             >
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-                <Pill tone={pendingRequests > 0 ? "warn" : "good"}>
-                  pending: <b>{pendingRequests}</b>
-                </Pill>
-                <Pill tone="neutral">total: <b>{requests.length}</b></Pill>
-              </div>
-
               <div style={{ display: "grid", gap: 10 }}>
                 {requests.map((r) => (
                   <div
@@ -1113,9 +874,7 @@ export default function AdminPage() {
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                         <b>{r.username}</b>
-                        <Pill tone={String(r.status) === "pending" ? "warn" : "neutral"}>
-                          {r.status}
-                        </Pill>
+                        <Pill tone={String(r.status) === "pending" ? "warn" : "neutral"}>{r.status}</Pill>
                       </div>
                     </div>
 
@@ -1156,12 +915,9 @@ export default function AdminPage() {
                   </div>
                 ))}
               </div>
-
-              {!requests.length ? <div className="mutedSmall">Aucune demande</div> : null}
             </Card>
           ) : null}
 
-          {/* STREAMERS */}
           {tab === "streamers" ? (
             <div style={{ display: "grid", gap: 14 }}>
               <Card
@@ -1172,20 +928,9 @@ export default function AdminPage() {
                   </span>
                 }
                 subtitle="Création rapide d’un streamer (slug + display name)."
-                right={
-                  <button className="btnSecondary" type="button" onClick={() => goto("overview")}>
-                    ← Retour
-                  </button>
-                }
+                right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
               >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                    alignItems: "end",
-                  }}
-                >
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "end" }}>
                   <div className="field" style={{ margin: 0 }}>
                     <label>Slug</label>
                     <input value={newSlug} onChange={(e) => setNewSlug(e.target.value)} placeholder="ex: wayzebi" />
@@ -1209,23 +954,6 @@ export default function AdminPage() {
                       disabled={!newSlug.trim() || !newName.trim()}
                     >
                       Créer
-                    </button>
-                    <button
-                      className="btnSecondary"
-                      type="button"
-                      onClick={() => {
-                        setNewSlug("");
-                        setNewName("");
-                      }}
-                    >
-                      Reset
-                    </button>
-                    <button
-                      className="btnSecondary"
-                      type="button"
-                      onClick={() => refresh().catch((e) => setErr(String((e as any)?.message || e)))}
-                    >
-                      🔄 Refresh streamers
                     </button>
                   </div>
                 </div>
@@ -1279,13 +1007,10 @@ export default function AdminPage() {
                     </div>
                   ))}
                 </div>
-
-                {!streamers.length ? <div className="mutedSmall">Aucun streamer.</div> : null}
               </Card>
             </div>
           ) : null}
 
-          {/* USERS */}
           {tab === "users" ? (
             <Card
               title={
@@ -1294,54 +1019,25 @@ export default function AdminPage() {
                   Utilisateurs
                 </span>
               }
-              subtitle="Section existante (inchangée) — affichée proprement dans une carte."
-              right={
-                <button className="btnSecondary" type="button" onClick={() => goto("overview")}>
-                  ← Retour
-                </button>
-              }
+              subtitle="Users + détails + rubis (mint / remove / set)."
+              right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
             >
               <UsersAdminSection adminKey={key} />
             </Card>
           ) : null}
 
-          {/* PROVIDERS */}
           {tab === "providers" ? (
             <Card
               title={
                 <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ fontSize: 18 }}>🔗</span>
-                  Comptes provider
+                  Ajout de compte DLive
                 </span>
               }
-              subtitle="Section existante (inchangée) — liaisons & providers."
-              right={
-                <button className="btnSecondary" type="button" onClick={() => goto("overview")}>
-                  ← Retour
-                </button>
-              }
+              subtitle="RTMP fixe: rtmp://stream.dlive.tv/live — on ne le demande plus."
+              right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
             >
               <ProviderAccountsAdminSection adminKey={key} />
-            </Card>
-          ) : null}
-
-          {/* RUBIS */}
-          {tab === "rubis" ? (
-            <Card
-              title={
-                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 18 }}>💎</span>
-                  Rubis — Mint
-                </span>
-              }
-              subtitle="Section existante (inchangée) — outils rubis admin."
-              right={
-                <button className="btnSecondary" type="button" onClick={() => goto("overview")}>
-                  ← Retour
-                </button>
-              }
-            >
-              <RubisMintAdminSection adminKey={key} />
             </Card>
           ) : null}
         </div>
