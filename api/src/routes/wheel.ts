@@ -12,7 +12,7 @@ import { earnRubisTx } from "../wallet_engine.js";
 export const wheelRouter = express.Router();
 
 // 🔐 PROTECTION GLOBALE DU ROUTER
-wheelRouter.use(requireAuth);
+wheelRouter.use("/wheel", requireAuth);
 
 // ─────────────────────────────────────────────
 // 🎯 Configuration roue
