@@ -19,6 +19,7 @@ function toInt(x: any) {
 
 // Public: GET /avatars/u/:id
 avatarRouter.get("/avatars/u/:id", async (req, res) => {
+  res.setHeader("x-router-hit", "avatar_public");
   try {
     const userId = toInt(req.params.id);
     if (!userId) return res.status(400).end();

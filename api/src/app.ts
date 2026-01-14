@@ -92,6 +92,9 @@ export function createApp() {
   // Billing (souvent webhook / needs early mount)
   app.use("/billing", billingRouter);
 
+  app.use(streamerUploadsRouter);
+  app.use(avatarRouter);
+  
   // ─────────────────────────────────────────────
   // ✅ TEMP: Admin debug (logs only for /admin*)
   // ─────────────────────────────────────────────
@@ -140,9 +143,6 @@ export function createApp() {
   // ✅ NEW: serve casino comments images from DB (fallback to disk if not found)
   app.use("/uploads", casinoCommentImagesRouter);
 
-  // (garde ton static)
-  app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads"), { maxAge: "7d" }));
-
   // ─────────────────────────────────────────────
   // ✅ Static uploads
   // ─────────────────────────────────────────────
@@ -170,7 +170,6 @@ export function createApp() {
   app.use(pushRouter);
   app.use(thumbsRouter);
   app.use(moderationRouter);
-  app.use(streamerUploadsRouter);
 
   // ─────────────────────────────────────────────
   // ✅ Public + Auth
@@ -216,7 +215,6 @@ export function createApp() {
   // ✅ Cosmetics / Shop
   // ─────────────────────────────────────────────
   app.use(cosmeticsRouter);
-  app.use(avatarRouter);
   app.use(shopRouter);
   app.use("/shop/talents", shopTalentsRouter);
   app.use(cosmeticsCatalogRoutes);
