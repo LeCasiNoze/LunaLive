@@ -115,6 +115,7 @@ export function createApp() {
     res.setHeader("x-build", "comments-fix-2026-01-14-1505");
     next();
   });
+  app.use("/admin/casinos/comments", adminCasinoCommentsRouter);
 
   // ─────────────────────────────────────────────
   // ✅ Public VODs (doit matcher AVANT streamerRouter)
@@ -213,7 +214,6 @@ export function createApp() {
   // IMPORTANT: comments moderation DOIT être monté AVANT adminCasinosRouter
   // sinon adminCasinosRouter intercepte /admin/casinos/comments/*
   // ─────────────────────────────────────────────
-  app.use("/admin/casinos/comments", adminCasinoCommentsRouter);
 
   // compat legacy frontend
   app.use("/admin/casinos/listings", adminCasinosRouter);
