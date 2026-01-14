@@ -59,7 +59,7 @@ export default function AdminPage() {
 
   // ✅ Casino comments moderation
   const [showCasinoComments, setShowCasinoComments] = React.useState(false);
-  const [ccStatus, setCcStatus] = React.useState<"pending" | "published" | "rejected">("pending");
+  const [ccStatus] = React.useState<"pending">("pending");
   const [ccLoading, setCcLoading] = React.useState(false);
   const [ccItems, setCcItems] = React.useState<AdminCasinoCommentRow[]>([]);
 
@@ -163,11 +163,9 @@ export default function AdminPage() {
           </div>
 
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <select className="select" value={ccStatus} onChange={(e) => setCcStatus(e.target.value as any)}>
-              <option value="pending">En attente</option>
-              <option value="published">Publiés</option>
-              <option value="rejected">Refusés</option>
-            </select>
+            <div className="mutedSmall">
+              Filtre: <b>En attente</b>
+            </div>
 
             <button className="btnPrimary" onClick={refreshCasinoComments} disabled={ccLoading} type="button">
               {ccLoading ? "Chargement…" : "Rafraîchir"}

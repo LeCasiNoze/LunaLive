@@ -198,38 +198,6 @@ async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-async function jAdmin<T>(path: string, adminKey: string, init: RequestInit = {}): Promise<T> {
-  const r = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      // on force proprement l’admin key
-      "x-admin-key": adminKey,
-      // compat si certains middlewares lisent Authorization
-      Authorization: `Bearer ${adminKey}`,
-      ...(init.headers || {}),
-    },
-  });
-
-  const text = await r.text().catch(() => "");
-  let data: any = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = null;
-  }
-
-  if (!r.ok) {
-    const msg =
-      data?.error ||
-      data?.message ||
-      (text && text.length < 200 ? text : null) ||
-      `API ${r.status}`;
-    throw new Error(String(msg));
-  }
-
-  return data as T;
-}
-
 export type MyCosmeticsResp = {
   ok: true;
   owned: Record<string, string[]>;
@@ -1530,43 +1498,49 @@ export type AdminCasinoCommentRow = {
 export async function adminListCasinoComments(
   adminKey: string,
   statusOrParams?:
-    | "pending" | "published" | "rejected"
-    | { status?: "pending" | "published" | "rejected"; limit?: number; cursor?: string | null },
+    | "pending"
+    | { status?: "pending"; limit?: number; cursor?: string | null; q?: string; casinoId?: string | number | null },
   limitMaybe?: number
 ) {
-  // ✅ compat: adminListCasinoComments(key, "pending", 80)
-  // ✅ new:    adminListCasinoComments(key, { status:"pending", limit:80, cursor:null })
+  // compat: adminListCasinoComments(key, "pending", 80)
   const params =
     typeof statusOrParams === "string"
       ? { status: statusOrParams, limit: limitMaybe }
       : (statusOrParams ?? {});
 
+  // backend actuel: uniquement "pending"
+  const status = (params.status ?? "pending") as "pending";
+
   const q = new URLSearchParams();
-  if (params.status) q.set("status", params.status);
   if (params.limit) q.set("limit", String(params.limit));
   if (params.cursor) q.set("cursor", String(params.cursor));
+  if (params.q) q.set("q", String(params.q));
+  if (params.casinoId != null && String(params.casinoId).trim() !== "") q.set("casinoId", String(params.casinoId));
 
   const qs = q.toString();
-return jAdmin<{ ok: true; items: AdminCasinoCommentRow[]; nextCursor: string | null }>(
-  `/admin/casino-comments${qs ? `?${qs}` : ""}`,
-  adminKey
-);
 
+  // ✅ IMPORTANT: endpoint backend réel
+  // selon ton montage Express, c’est très probablement /admin/casinos + router("/comments/pending")
+  return j<{ ok: true; items: AdminCasinoCommentRow[]; nextCursor: string | null }>(
+    `/admin/casinos/comments/${status}${qs ? `?${qs}` : ""}`,
+    { headers: { "x-admin-key": adminKey } }
+  );
 }
 
 export async function adminApproveCasinoComment(adminKey: string, commentId: string) {
-return jAdmin<{ ok: true }>(
-  `/admin/casino-comments/${encodeURIComponent(commentId)}/approve`,
-  adminKey,
-  { method: "POST" }
-);
-
+  // backend réel: PATCH /admin/casinos/comments/:commentId  { action:"approve" }
+  return j<{ ok: true; id: string; status: string }>(`/admin/casinos/comments/${encodeURIComponent(commentId)}`, {
+    method: "PATCH",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "approve" }),
+  });
 }
 
 export async function adminRejectCasinoComment(adminKey: string, commentId: string) {
-return jAdmin<{ ok: true }>(
-  `/admin/casino-comments/${encodeURIComponent(commentId)}/reject`,
-  adminKey,
-  { method: "POST" }
-);
+  return j<{ ok: true; id: string; status: string }>(`/admin/casinos/comments/${encodeURIComponent(commentId)}`, {
+    method: "PATCH",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "reject" }),
+  });
 }
+

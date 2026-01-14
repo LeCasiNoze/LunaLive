@@ -70,7 +70,18 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-// ✅ admin key : accepte x-admin-key OU Bearer <ADMIN_KEY> (comme ton admin_casinos)
+function getExpectedAdminKey() {
+  return String(
+    process.env.ADMIN_KEY ||
+      process.env.ADMIN_PASSWORD ||
+      process.env.ADMIN_SECRET ||
+      process.env.ADMIN_PASS ||
+      process.env.ADMIN ||
+      ""
+  ).trim();
+}
+
+// ✅ admin key : accepte x-admin-key OU Bearer <ADMIN_KEY>
 function extractAdminKey(req: Request) {
   const k = String(req.headers["x-admin-key"] || "").trim();
   if (k) return k;
@@ -83,7 +94,7 @@ function extractAdminKey(req: Request) {
 }
 
 export function requireAdminKey(req: Request, res: Response, next: NextFunction) {
-  const expected = String(process.env.ADMIN_KEY || "").trim();
+  const expected = getExpectedAdminKey();
   if (!expected) return res.status(500).json({ ok: false, error: "ADMIN_KEY not configured" });
 
   const provided = extractAdminKey(req);
@@ -92,6 +103,7 @@ export function requireAdminKey(req: Request, res: Response, next: NextFunction)
   }
   return next();
 }
+
 
 export function tryGetAuthUser(req: Request): AuthUser | null {
   const token = extractJwtFromReq(req);
