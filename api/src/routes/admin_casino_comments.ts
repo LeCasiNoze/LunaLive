@@ -6,9 +6,16 @@ import { requireAdminKey } from "../auth.js";
 
 export const adminCasinoCommentsRouter = Router();
 
+// -----------------------------------------------------------------------------
+// ✅ Casino comments moderation (ADMIN)
+// Mounted in app.ts with:
+//   app.use("/admin/casinos", adminCasinoCommentsRouter);
+// So routes here must start with "/comments/..."
+// -----------------------------------------------------------------------------
+//
 // GET /admin/casinos/comments/pending?limit=50&cursor=ISO&q=...&casinoId=123
 adminCasinoCommentsRouter.get(
-  "/pending",
+  "/comments/pending",
   requireAdminKey,
   a(async (req, res) => {
     const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50)));
@@ -76,14 +83,19 @@ adminCasinoCommentsRouter.get(
   })
 );
 
+// -----------------------------------------------------------------------------
 // PATCH /admin/casinos/comments/:commentId
 // body: { action: "approve" | "reject" | "delete", note?: string | null }
+// -----------------------------------------------------------------------------
+// ⚠️ IMPORTANT:
+// - On garde commentId en string (ton SELECT renvoie id::text, donc pas forcément un number)
+// - Le WHERE utilise id::text = $1 pour marcher avec bigint OU uuid sans se prendre la tête
 adminCasinoCommentsRouter.patch(
-  "/:commentId",
+  "/comments/:commentId",
   requireAdminKey,
   a(async (req, res) => {
-    const id = Number(req.params.commentId);
-    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "bad_comment_id" });
+    const id = String(req.params.commentId || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "bad_comment_id" });
 
     const action = String(req.body?.action ?? "").trim();
     const note = req.body?.note == null ? null : String(req.body.note).slice(0, 2000);
@@ -101,7 +113,7 @@ adminCasinoCommentsRouter.patch(
       SET status=$2,
           moderated_at=NOW(),
           moderation_note=$3
-      WHERE id=$1
+      WHERE id::text = $1
       RETURNING id::text AS id, status
       `,
       [id, status, note]
