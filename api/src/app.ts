@@ -79,6 +79,26 @@ export function createApp() {
   
   app.use(cors());
   app.use(express.json({ limit: "300kb" }));
+    // ✅ ADMIN DEBUG (TEMP) : log toutes les requêtes /admin* + ajoute un header pour confirmer
+  app.use((req, res, next) => {
+    if (process.env.ADMIN_DEBUG === "1" && String(req.path || "").startsWith("/admin")) {
+      const auth = String(req.headers.authorization || "");
+      const xAdmin = String((req.headers as any)["x-admin-key"] || "");
+      const xAccess = String((req.headers as any)["x-access-token"] || "");
+
+      console.error("[ADMIN_DEBUG][REQ]", req.method, req.originalUrl);
+      console.error("[ADMIN_DEBUG][HDR] authorization:", JSON.stringify(auth));
+      console.error("[ADMIN_DEBUG][HDR] x-admin-key:", JSON.stringify(xAdmin));
+      console.error("[ADMIN_DEBUG][HDR] x-access-token:", JSON.stringify(xAccess));
+      console.error("[ADMIN_DEBUG][HDR] origin:", JSON.stringify(String(req.headers.origin || "")));
+      console.error("[ADMIN_DEBUG][HDR] host:", JSON.stringify(String(req.headers.host || "")));
+
+      // marqueur visible dans DevTools
+      res.setHeader("x-admin-debug-seen", "1");
+    }
+    next();
+  });
+
   app.use((req, res, next) => {
     res.setHeader("x-build", "vod-debug-2026-01-12");
     next();
