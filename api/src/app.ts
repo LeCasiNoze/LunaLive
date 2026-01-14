@@ -70,6 +70,7 @@ import { botRainRouter } from "./routes/bot_rain.js";
 import { predictionsRouter } from "./predictions/predictions.routes.js";
 import { callsPcallRouter } from "./routes/calls_pcall.js";
 import { billingRouter } from "./routes/billing.js";
+import { adminCasinoCommentsRouter } from "./routes/admin_casino_comments.js";
 
 export function createApp() {
   const app = express();
@@ -178,7 +179,8 @@ export function createApp() {
   app.use("/calls", callsPcallRouter);
   // ✅ Hunt routes (/api/hunt2/*)
   app.use(hunt2Router);
-
+  app.use("/admin/casinos", adminCasinoCommentsRouter);
+  
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
 

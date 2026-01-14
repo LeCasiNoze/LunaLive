@@ -181,7 +181,11 @@ export async function getCasinoComments(
   if (params.limit) q.set("limit", String(params.limit));
   if (params.cursor) q.set("cursor", params.cursor);
   const qs = q.toString();
-  return j(`/casinos/${encodeURIComponent(slug)}/comments${qs ? `?${qs}` : ""}`);
+
+  // ✅ token si dispo (sans l'exiger)
+  const init = withAuth({}, false);
+
+  return j(`/casinos/${encodeURIComponent(slug)}/comments${qs ? `?${qs}` : ""}`, init);
 }
 
 export async function setCasinoRating(casinoId: string, rating: number): Promise<{ ok: true }> {

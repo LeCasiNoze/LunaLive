@@ -1,3 +1,4 @@
+// web/src/pages/AdminPage.tsx
 import * as React from "react";
 import {
   adminListRequests,
@@ -15,6 +16,7 @@ import { RubisMintAdminSection } from "../components/admin/RubisMintAdminSection
 import { CasinosAdminSection } from "../components/admin/CasinosAdminSection";
 
 const SS_KEY = "lunalive_admin_key_v1";
+const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
 function loadAdminKey() {
   try {
@@ -27,6 +29,283 @@ function saveAdminKey(k: string) {
   try {
     sessionStorage.setItem(SS_KEY, k);
   } catch {}
+}
+
+function absApiUrl(u: string | null | undefined): string | null {
+  if (!u) return null;
+  const s = String(u);
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith("/")) return `${BASE}${s}`;
+  return `${BASE}/${s}`;
+}
+
+// ──────────────────────────────────────────
+// ✅ Admin Casinos — Moderation (pending comments)
+// ──────────────────────────────────────────
+type AdminCasinoComment = {
+  id: string;
+  casinoId: string;
+  casinoSlug: string;
+  casinoName: string;
+
+  userId: number;
+  username: string;
+
+  body: string;
+  createdAt: string;
+
+  status: "published" | "pending" | "rejected" | "deleted";
+  hasImages: boolean;
+  authorRating: number | null;
+
+  images: Array<{ url: string; w: number | null; h: number | null; sizeBytes: number | null }>;
+};
+
+async function adminJ<T>(path: string, adminKey: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: {
+      "x-admin-key": adminKey,
+      ...(init.headers || {}),
+    },
+  });
+  const text = await res.text().catch(() => "");
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+  if (!res.ok || (data && data.ok === false)) {
+    throw new Error(String(data?.error || data?.message || (text && text.length < 200 ? text : null) || `HTTP ${res.status}`));
+  }
+  return data as T;
+}
+
+function CasinosCommentsModerationSection({ adminKey }: { adminKey: string }) {
+  const [status, setStatus] = React.useState<"pending" | "published" | "rejected">("pending");
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+  const [items, setItems] = React.useState<AdminCasinoComment[]>([]);
+  const [q, setQ] = React.useState("");
+  const [actingId, setActingId] = React.useState<string | null>(null);
+  const [noteById, setNoteById] = React.useState<Record<string, string>>({});
+
+  async function load() {
+    setErr(null);
+    setLoading(true);
+    try {
+      const qs = new URLSearchParams();
+      qs.set("status", status);
+      qs.set("limit", "50");
+      if (q.trim()) qs.set("q", q.trim());
+
+      // ⚠️ Backend attendu:
+      // GET /admin/casinos/comments?status=pending|published|rejected&limit=50&q=
+      // -> { ok:true, items:[...] }
+      const r = await adminJ<{ ok: true; items: AdminCasinoComment[] }>(
+        `/admin/casinos/comments?${qs.toString()}`,
+        adminKey
+      );
+      setItems(Array.isArray(r.items) ? r.items : []);
+    } catch (e: any) {
+      setErr(String(e?.message || e));
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  React.useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
+  async function approve(id: string) {
+    setErr(null);
+    setActingId(id);
+    try {
+      const note = (noteById[id] ?? "").trim() || null;
+
+      // ⚠️ Backend attendu:
+      // POST /admin/casinos/comments/:id/approve  body: { note?:string|null }
+      await adminJ<{ ok: true }>(
+        `/admin/casinos/comments/${encodeURIComponent(id)}/approve`,
+        adminKey,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ note }),
+        }
+      );
+
+      // sortir de la liste (si on est en pending)
+      setItems((prev) => prev.filter((x) => x.id !== id));
+    } catch (e: any) {
+      setErr(String(e?.message || e));
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  async function reject(id: string) {
+    setErr(null);
+    setActingId(id);
+    try {
+      const note = (noteById[id] ?? "").trim() || null;
+
+      // ⚠️ Backend attendu:
+      // POST /admin/casinos/comments/:id/reject  body: { note?:string|null }
+      await adminJ<{ ok: true }>(
+        `/admin/casinos/comments/${encodeURIComponent(id)}/reject`,
+        adminKey,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ note }),
+        }
+      );
+
+      setItems((prev) => prev.filter((x) => x.id !== id));
+    } catch (e: any) {
+      setErr(String(e?.message || e));
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  return (
+    <div className="panel" style={{ marginTop: 14 }}>
+      <div className="panelTitle">Avis casinos — modération</div>
+
+      <div className="mutedSmall" style={{ marginBottom: 10 }}>
+        Les avis avec images sont en <b>pending</b> (validation requise). Tu peux les <b>valider</b> ou <b>refuser</b> pour les faire sortir de la file.
+      </div>
+
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+        <select className="select" value={status} onChange={(e) => setStatus(e.target.value as any)}>
+          <option value="pending">En attente</option>
+          <option value="published">Publiés</option>
+          <option value="rejected">Refusés</option>
+        </select>
+
+        <div className="field" style={{ margin: 0, flex: 1, minWidth: 240 }}>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Recherche (casino / user / contenu)…"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") load();
+            }}
+          />
+        </div>
+
+        <button className="btnPrimary" onClick={load} disabled={loading} type="button">
+          {loading ? "Chargement…" : "Rafraîchir"}
+        </button>
+      </div>
+
+      {err ? <div className="hint" style={{ marginTop: 8 }}>⚠️ {err}</div> : null}
+
+      {!loading && items.length === 0 ? (
+        <div className="mutedSmall">Aucun élément.</div>
+      ) : null}
+
+      {items.map((c) => {
+        const imgs = Array.isArray(c.images) ? c.images : [];
+        const isActing = actingId === c.id;
+
+        return (
+          <div
+            key={c.id}
+            style={{
+              padding: "12px 0",
+              borderTop: "1px solid rgba(255,255,255,0.06)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 260 }}>
+                <div style={{ fontWeight: 900 }}>
+                  {c.casinoName}{" "}
+                  <span className="mutedSmall" style={{ fontWeight: 500 }}>
+                    ({c.casinoSlug})
+                  </span>
+                </div>
+                <div className="mutedSmall">
+                  <b>{c.username}</b> • {new Date(c.createdAt).toLocaleString("fr-FR")}{" "}
+                  {c.authorRating != null ? <span>• ⭐ {c.authorRating}/5</span> : null}{" "}
+                  {c.hasImages ? <span>• 🖼️ {imgs.length}</span> : null}
+                </div>
+              </div>
+
+              {/* actions */}
+              {status === "pending" ? (
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button className="btnGhostSmall" disabled={isActing} onClick={() => approve(c.id)} type="button">
+                    Valider
+                  </button>
+                  <button className="btnGhostSmall" disabled={isActing} onClick={() => reject(c.id)} type="button">
+                    Refuser
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <div style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>{c.body}</div>
+
+            {imgs.length > 0 ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                {imgs.slice(0, 12).map((im, i) => {
+                  const src = absApiUrl(im.url) || im.url;
+                  return (
+                    <a
+                      key={`${c.id}_${i}`}
+                      href={src}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        display: "block",
+                        width: 110,
+                        height: 80,
+                        borderRadius: 10,
+                        overflow: "hidden",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                      }}
+                      title="Ouvrir"
+                    >
+                      <img
+                        src={src}
+                        alt=""
+                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      />
+                    </a>
+                  );
+                })}
+                {imgs.length > 12 ? (
+                  <div className="mutedSmall" style={{ alignSelf: "center" }}>
+                    +{imgs.length - 12}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {status === "pending" ? (
+              <div style={{ marginTop: 10 }}>
+                <div className="mutedSmall" style={{ marginBottom: 6 }}>
+                  Note admin (optionnel) — visible dans l’historique de modération côté back (si tu la stockes).
+                </div>
+                <input
+                  value={noteById[c.id] ?? ""}
+                  onChange={(e) => setNoteById((m) => ({ ...m, [c.id]: e.target.value }))}
+                  placeholder="Ex: preuve OK / faux retrait / insultes / etc."
+                />
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function AdminPage() {
@@ -55,6 +334,7 @@ export default function AdminPage() {
   React.useEffect(() => {
     if (!key) return;
     refresh().catch((e) => setErr(String(e?.message || e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   async function onLogin() {
@@ -85,7 +365,7 @@ export default function AdminPage() {
             <input type="password" value={input} onChange={(e) => setInput(e.target.value)} />
           </div>
           {err && <div className="hint">⚠️ {err}</div>}
-          <button className="btnPrimary" onClick={onLogin}>
+          <button className="btnPrimary" onClick={onLogin} type="button">
             Entrer
           </button>
         </div>
@@ -109,7 +389,14 @@ export default function AdminPage() {
         {showCasinos ? "Fermer gestion Casinos" : "Gérer Casinos (TrustPilot)"}
       </button>
 
-      {showCasinos && <CasinosAdminSection adminKey={key} />}
+      {showCasinos ? (
+        <>
+          <CasinosAdminSection adminKey={key} />
+
+          {/* ✅ NEW: moderation juste à côté du TrustPilot */}
+          <CasinosCommentsModerationSection adminKey={key} />
+        </>
+      ) : null}
 
       {/* ✅ Slots updater */}
       <div className="panel" style={{ marginTop: 14 }}>
@@ -182,7 +469,11 @@ export default function AdminPage() {
           </div>
         ) : null}
 
-        {err ? <div className="hint" style={{ marginTop: 10 }}>⚠️ {err}</div> : null}
+        {err ? (
+          <div className="hint" style={{ marginTop: 10 }}>
+            ⚠️ {err}
+          </div>
+        ) : null}
       </div>
 
       <div className="panel" style={{ marginTop: 14 }}>

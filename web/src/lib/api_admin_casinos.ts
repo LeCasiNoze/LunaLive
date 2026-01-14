@@ -1,7 +1,7 @@
 // web/src/lib/api_admin_casinos.ts
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
-async function j<T>(path: string, adminKey: string, init: RequestInit = {}): Promise<T> {
+async function jAdmin<T>(path: string, adminKey: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
@@ -10,6 +10,7 @@ async function j<T>(path: string, adminKey: string, init: RequestInit = {}): Pro
       ...(init.headers || {}),
     },
   });
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok || (data && data.ok === false)) throw new Error(data?.error || `HTTP ${res.status}`);
   return data as T;
@@ -60,13 +61,13 @@ function pickArray<T>(obj: any, keys: string[]): T[] {
 export async function adminListCasinos(adminKey: string, opts?: { q?: string }) {
   const q = (opts?.q || "").trim();
   const qs = q ? `?q=${encodeURIComponent(q)}` : "";
-  const r = await j<any>(`/admin/casinos${qs}`, adminKey);
+  const r = await jAdmin<any>(`/admin/casinos${qs}`, adminKey);
   const items = pickArray<AdminCasino>(r, ["items", "listings", "casinos"]);
   return { ok: true as const, items };
 }
 
 export async function adminCreateCasino(adminKey: string, slug: string, name: string) {
-  const r = await j<any>(`/admin/casinos`, adminKey, {
+  const r = await jAdmin<any>(`/admin/casinos`, adminKey, {
     method: "POST",
     body: JSON.stringify({ slug, name }),
   });
@@ -76,20 +77,24 @@ export async function adminCreateCasino(adminKey: string, slug: string, name: st
 }
 
 export async function adminUpdateCasino(adminKey: string, id: string, patch: Partial<AdminCasino>) {
-  return j<{ ok: true }>(`/admin/casinos/${encodeURIComponent(id)}`, adminKey, {
+  return jAdmin<{ ok: true }>(`/admin/casinos/${encodeURIComponent(id)}`, adminKey, {
     method: "PATCH",
     body: JSON.stringify(patch),
   });
 }
 
 export async function adminListCasinoLinks(adminKey: string, casinoId: string) {
-  const r = await j<any>(`/admin/casinos/${encodeURIComponent(casinoId)}/links`, adminKey);
+  const r = await jAdmin<any>(`/admin/casinos/${encodeURIComponent(casinoId)}/links`, adminKey);
   const items = pickArray<AdminCasinoLink>(r, ["items", "links"]);
   return { ok: true as const, items };
 }
 
-export async function adminCreateCasinoLink(adminKey: string, casinoId: string, data: Partial<AdminCasinoLink>) {
-  const r = await j<any>(`/admin/casinos/${encodeURIComponent(casinoId)}/links`, adminKey, {
+export async function adminCreateCasinoLink(
+  adminKey: string,
+  casinoId: string,
+  data: Partial<AdminCasinoLink>
+) {
+  const r = await jAdmin<any>(`/admin/casinos/${encodeURIComponent(casinoId)}/links`, adminKey, {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -98,7 +103,7 @@ export async function adminCreateCasinoLink(adminKey: string, casinoId: string, 
 }
 
 export async function adminUpdateCasinoLink(adminKey: string, linkId: string, patch: Partial<AdminCasinoLink>) {
-  return j<{ ok: true }>(`/admin/casinos/links/${encodeURIComponent(linkId)}`, adminKey, {
+  return jAdmin<{ ok: true }>(`/admin/casinos/links/${encodeURIComponent(linkId)}`, adminKey, {
     method: "PATCH",
     body: JSON.stringify(patch),
   });

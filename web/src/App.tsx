@@ -13,6 +13,10 @@ import ProfilePage from "./pages/ProfilePage";
 import AdminPage from "./pages/AdminPage";
 import DashboardPage from "./pages/DashboardPage";
 import { ShopPage } from "./pages/ShopPage";
+import HuntPage from "./pages/HuntPage";
+
+// ✅ NEW
+import AdminCasinoCommentsPage from "./pages/admin/AdminCasinoCommentsPage";
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
@@ -20,7 +24,6 @@ import { GoLiveNotifier } from "./components/GoLiveNotifier";
 import { DailyBonusToast } from "./components/DailyBonusToast";
 import { AchievementsToast } from "./components/AchievementsToast";
 import { CallsToast } from "./components/CallsToast";
-import HuntPage from "./pages/HuntPage";
 
 function AppInner() {
   const location = useLocation();
@@ -35,12 +38,8 @@ function AppInner() {
 
   return (
     <div className="app">
-      <Topbar
-        onOpenLogin={() => setLoginOpen(true)}
-        onLogout={logout}
-      />
+      <Topbar onOpenLogin={() => setLoginOpen(true)} onLogout={logout} />
 
-      {/* ✅ ICI, hors de <Routes> */}
       <GoLiveNotifier />
       <DailyBonusToast />
       <AchievementsToast />
@@ -57,7 +56,11 @@ function AppInner() {
 
         <Route path="/s/:slug" element={<StreamerPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+
         <Route path="/admin" element={<AdminPage />} />
+        {/* ✅ NEW: modération avis casinos */}
+        <Route path="/admin/casinos/comments" element={<AdminCasinoCommentsPage />} />
+
         <Route path="/dashboard" element={<DashboardPage />} />
       </Routes>
 

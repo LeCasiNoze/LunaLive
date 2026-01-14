@@ -92,8 +92,7 @@ function linkHref(l: any): string {
 /**
  * Avatar URL resolver:
  * - priorité à streamer.avatarUrl si fourni par l’API
- * - sinon fallback sur /avatars/u/:userId (comme PersonalisationSection)
- * - on teste plein de champs possibles (selon ton backend actuel)
+ * - sinon fallback sur /avatars/u/:userId
  */
 function pickStreamerAvatarUrl(link: any) {
   const s = link?.streamer ?? null;
@@ -109,7 +108,7 @@ function pickStreamerAvatarUrl(link: any) {
 
   const direct = s?.avatarUrl ? absApiUrl(s.avatarUrl) || s.avatarUrl : null;
 
-  // cache-bust soft (1/min) pour éviter un cache agressif
+  // cache-bust soft (1/min)
   const byUid = uid ? absApiUrl(`/avatars/u/${uid}?v=${Math.floor(Date.now() / 60000)}`) : null;
 
   return {
@@ -132,7 +131,10 @@ function pickStreamerAvatarUrl(link: any) {
 
 export default function CasinoPage() {
   const { slug } = useParams();
-  const { user } = useAuth();
+  // ⚠️ IMPORTANT: on récupère aussi token (selon ton AuthProvider)
+  const auth: any = useAuth();
+  const user = auth?.user ?? null;
+  const token: string | null = auth?.token ?? auth?.accessToken ?? auth?.jwt ?? null;
 
   const [loading, setLoading] = React.useState(true);
   const [data, setData] = React.useState<CasinoDetailResp | null>(null);
@@ -163,8 +165,12 @@ export default function CasinoPage() {
       const r = await getCasino(slug);
       setData(r);
       setMyRating(0);
-      console.log("[CasinoPage] links raw =", r?.links);
-      console.log("[CasinoPage] bonusLink raw =", r?.bonusLink);
+      if (DEV) {
+        // eslint-disable-next-line no-console
+        console.log("[CasinoPage] links raw =", (r as any)?.links);
+        // eslint-disable-next-line no-console
+        console.log("[CasinoPage] bonusLink raw =", (r as any)?.bonusLink);
+      }
     } catch (e: any) {
       setError(e?.message || "error");
     } finally {
@@ -176,11 +182,13 @@ export default function CasinoPage() {
     if (!slug) return;
     setLoadingComments(true);
     try {
-      const r = await getCasinoComments(slug, {
+      // ✅ token pour avoir myReaction (tryGetAuthUser côté API)
+      const r = await (getCasinoComments as any)(slug, {
         sort: commentSort,
         limit: 30,
         cursor: opts?.reset ? null : nextCursor,
-      });
+      }, token);
+
       setNextCursor(r.nextCursor);
       setComments((prev) => (opts?.reset ? r.items : [...prev, ...r.items]));
     } finally {
@@ -198,12 +206,13 @@ export default function CasinoPage() {
     setNextCursor(null);
     loadComments({ reset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [commentSort, slug]);
+  }, [commentSort, slug, token]);
 
-  // ✅ IMPORTANT: ce useEffect est AVANT les return (sinon crash hooks)
+  // ✅ IMPORTANT: ce useEffect est AVANT les return
   React.useEffect(() => {
     if (!DEV) return;
     if (!data) {
+      // eslint-disable-next-line no-console
       console.log("[CasinoPage] DEV debug: data = null");
       return;
     }
@@ -226,23 +235,26 @@ export default function CasinoPage() {
       };
     });
 
+    // eslint-disable-next-line no-console
     console.table(rows);
 
     const casino = (data as any).casino;
     const bonusCtaText = (casino?.bonusHeadline || "").trim() || "Récupérez votre bonus";
+    // eslint-disable-next-line no-console
     console.log("[CasinoPage] bonusCtaText =", bonusCtaText);
   }, [data]);
 
   async function onSaveRating(v: number) {
     if (!data) return;
-    if (!user) {
+    if (!user || !token) {
       alert("Connecte-toi pour noter.");
       return;
     }
     setMyRating(v);
     setSavingRating(true);
     try {
-      await setCasinoRating((data as any).casino.id, v);
+      // ✅ token obligatoire (route /me/...)
+      await (setCasinoRating as any)((data as any).casino.id, v, token);
       const fresh = await getCasino((data as any).casino.slug);
       setData(fresh);
     } catch (e: any) {
@@ -260,7 +272,7 @@ export default function CasinoPage() {
 
   async function onPost() {
     if (!data) return;
-    if (!user) {
+    if (!user || !token) {
       alert("Connecte-toi pour publier.");
       return;
     }
@@ -269,7 +281,8 @@ export default function CasinoPage() {
 
     setPosting(true);
     try {
-      const r = await postCasinoComment((data as any).casino.id, text, files);
+      // ✅ token obligatoire (route /me/...)
+      const r = await (postCasinoComment as any)((data as any).casino.id, text, files, token);
       setBody("");
       setFiles([]);
 
@@ -301,12 +314,13 @@ export default function CasinoPage() {
   }
 
   async function toggleReaction(commentId: string, current: "up" | "down" | null, next: "up" | "down") {
-    if (!user) {
+    if (!user || !token) {
       alert("Connecte-toi pour réagir.");
       return;
     }
     const newKind: "up" | "down" | null = current === next ? null : next;
 
+    // Optimistic UI
     setComments((prev) =>
       prev.map((c) => {
         if (c.id !== commentId) return c;
@@ -324,7 +338,8 @@ export default function CasinoPage() {
     );
 
     try {
-      await reactToCasinoComment(commentId, newKind);
+      // ✅ token obligatoire (route /me/...)
+      await (reactToCasinoComment as any)(commentId, newKind, token);
     } catch (e: any) {
       alert(e?.message || "Erreur réaction");
       setComments([]);
@@ -353,8 +368,8 @@ export default function CasinoPage() {
   const casino = data.casino;
   const stats = data.stats;
 
-  const pros = splitList(casino.pros);
-  const cons = splitList(casino.cons);
+  const pros = splitList((casino as any).pros);
+  const cons = splitList((casino as any).cons);
 
   const linksSorted = sortLinks((data as any).links || []);
   const streamerLinks = linksSorted.filter((l: any) => l.streamer);
@@ -365,16 +380,18 @@ export default function CasinoPage() {
   const avg = numFromAny((stats as any)?.avgRating) ?? 0;
   const rc = Number((stats as any)?.ratingsCount ?? 0) || 0;
 
-  const team = numFromAny(casino.teamRating);
+  const team = numFromAny((casino as any).teamRating);
   const teamTxt = team == null ? "—" : team.toFixed(1);
 
-  const logoSrc = absApiUrl(casino.logoUrl) || casino.logoUrl || null;
+  const logoSrc = absApiUrl((casino as any).logoUrl) || (casino as any).logoUrl || null;
 
   return (
     <div className="container">
       <div className="casinoHeader">
         <div className="casinoHeaderLeft">
-          <div className="casinoHeaderLogo">{logoSrc ? <img src={logoSrc} alt="" /> : <div className="casinoLogoPh" />}</div>
+          <div className="casinoHeaderLogo">
+            {logoSrc ? <img src={logoSrc} alt="" /> : <div className="casinoLogoPh" />}
+          </div>
 
           <div className="casinoHeaderMeta">
             <h1 className="casinoH1">{casino.name}</h1>
@@ -422,7 +439,11 @@ export default function CasinoPage() {
           <div ref={refOverview} className="panel">
             <h2>Aperçu</h2>
 
-            {casino.description ? <p className="casinoDesc">{casino.description}</p> : <p className="mutedSmall">Description à venir.</p>}
+            {casino.description ? (
+              <p className="casinoDesc">{casino.description}</p>
+            ) : (
+              <p className="mutedSmall">Description à venir.</p>
+            )}
 
             <div className="prosCons">
               <div className="pcCol">
@@ -474,7 +495,7 @@ export default function CasinoPage() {
               <StarPicker value={myRating} onChange={onSaveRating} disabled={savingRating} />
               <div className="mutedSmall">{myRating ? `${myRating}/5` : "—"}</div>
             </div>
-            {!user && <div className="mutedSmall">Connecte-toi pour noter.</div>}
+            {(!user || !token) && <div className="mutedSmall">Connecte-toi pour noter.</div>}
           </div>
 
           <div ref={refComments} className="panel">
@@ -489,24 +510,41 @@ export default function CasinoPage() {
             </div>
 
             <div className="composer">
-              <textarea className="textarea" value={body} onChange={(e) => setBody(e.target.value)} placeholder="Partager un avis, un retrait, un win…" />
+              <textarea
+                className="textarea"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Partager un avis, un retrait, un win…"
+              />
               <div className="composerRow">
                 <label className="fileBtn">
                   + Images (max 3)
-                  <input type="file" accept="image/*" multiple onChange={(e) => onPickFiles(e.target.files)} style={{ display: "none" }} />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => onPickFiles(e.target.files)}
+                    style={{ display: "none" }}
+                  />
                 </label>
                 <button className="btnPrimary" onClick={onPost} disabled={posting || !body.trim()}>
                   Publier
                 </button>
               </div>
-              {files.length > 0 && <div className="mutedSmall">{files.length} image(s) • Les messages avec images nécessitent validation.</div>}
+              {files.length > 0 && (
+                <div className="mutedSmall">{files.length} image(s) • Les messages avec images nécessitent validation.</div>
+              )}
+              {(!user || !token) && <div className="mutedSmall">Connecte-toi pour publier / réagir.</div>}
             </div>
 
             <div className="commentsScroll">
               {comments.length === 0 && !loadingComments && <div className="mutedSmall">Aucun message pour l’instant.</div>}
 
               {comments.map((c) => (
-                <div key={c.id} className={`commentItem ${String(c.id).startsWith("local_pending_") ? "pending" : ""}`}>
+                <div
+                  key={c.id}
+                  className={`commentItem ${String(c.id).startsWith("local_pending_") ? "pending" : ""}`}
+                >
                   <div className="commentTop">
                     <div className="commentUser">
                       <b>{c.username}</b>
@@ -534,10 +572,18 @@ export default function CasinoPage() {
                   )}
 
                   <div className="reactions">
-                    <button className={`reactBtn ${c.myReaction === "up" ? "on" : ""}`} onClick={() => toggleReaction(c.id, c.myReaction, "up")}>
+                    <button
+                      className={`reactBtn ${c.myReaction === "up" ? "on" : ""}`}
+                      onClick={() => toggleReaction(c.id, c.myReaction, "up")}
+                      disabled={!user || !token}
+                    >
                       👍 <span>{c.upCount}</span>
                     </button>
-                    <button className={`reactBtn ${c.myReaction === "down" ? "on" : ""}`} onClick={() => toggleReaction(c.id, c.myReaction, "down")}>
+                    <button
+                      className={`reactBtn ${c.myReaction === "down" ? "on" : ""}`}
+                      onClick={() => toggleReaction(c.id, c.myReaction, "down")}
+                      disabled={!user || !token}
+                    >
                       👎 <span>{c.downCount}</span>
                     </button>
                   </div>
@@ -587,10 +633,8 @@ export default function CasinoPage() {
                     <div key={l.id} className="sideStreamer">
                       <div className="sideStreamerTop">
                         <div className="sideAvatar" style={{ position: "relative", overflow: "hidden" }}>
-                          {/* fallback toujours visible */}
                           {initial}
 
-                          {/* image par dessus si on a une URL */}
                           {avatar ? (
                             <img
                               src={avatar}
@@ -605,11 +649,13 @@ export default function CasinoPage() {
                               }}
                               onLoad={() => {
                                 if (!DEV) return;
+                                // eslint-disable-next-line no-console
                                 console.log("[CasinoPage] avatar OK", picked.debug);
                               }}
                               onError={(e) => {
                                 (e.currentTarget as HTMLImageElement).style.display = "none";
                                 if (!DEV) return;
+                                // eslint-disable-next-line no-console
                                 console.log("[CasinoPage] avatar FAIL", picked.debug);
                               }}
                             />
