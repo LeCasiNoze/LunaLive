@@ -94,16 +94,36 @@ function extractAdminKey(req: Request) {
 }
 
 export function requireAdminKey(req: Request, res: Response, next: NextFunction) {
-  const expected = getExpectedAdminKey();
+  const expected = String(process.env.ADMIN_KEY || "").trim();
   if (!expected) return res.status(500).json({ ok: false, error: "ADMIN_KEY not configured" });
 
   const provided = extractAdminKey(req);
+
+  // ✅ DEBUG (TEMPORAIRE) : log EXACT des clés + headers
+  if (process.env.ADMIN_DEBUG === "1") {
+    console.log("[ADMIN_DEBUG] ---- requireAdminKey ----");
+    console.log("[ADMIN_DEBUG] method:", req.method);
+    console.log("[ADMIN_DEBUG] path:", req.originalUrl || req.url);
+
+    // headers utiles
+    console.log("[ADMIN_DEBUG] headers.authorization:", String(req.headers.authorization || ""));
+    console.log("[ADMIN_DEBUG] headers.x-admin-key:", String((req.headers as any)["x-admin-key"] || ""));
+    console.log("[ADMIN_DEBUG] headers.x-access-token:", String((req.headers as any)["x-access-token"] || ""));
+
+    // valeurs EXACTES (attention: secret)
+    console.log("[ADMIN_DEBUG] provided(adminKey):", JSON.stringify(provided));
+    console.log("[ADMIN_DEBUG] expected(ADMIN_KEY):", JSON.stringify(expected));
+
+    // comparaison
+    console.log("[ADMIN_DEBUG] match:", provided === expected);
+    console.log("[ADMIN_DEBUG] ----------------------------");
+  }
+
   if (!provided || provided !== expected) {
     return res.status(401).json({ ok: false, error: "unauthorized" });
   }
   return next();
 }
-
 
 export function tryGetAuthUser(req: Request): AuthUser | null {
   const token = extractJwtFromReq(req);
