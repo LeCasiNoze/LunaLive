@@ -131,7 +131,17 @@ export function createApp() {
   // ─────────────────────────────────────────────
   // ✅ Static uploads
   // ─────────────────────────────────────────────
-  app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads"), { maxAge: "7d" }));
+  app.use(
+    "/uploads",
+    (_req, res, next) => {
+      res.setHeader("x-router-hit", "static_uploads");
+      next();
+    },
+    express.static(path.resolve(process.cwd(), "uploads"), {
+      maxAge: "7d",
+      fallthrough: false, // ✅ si le fichier n'existe pas => 404 direct, pas next()
+    })
+  );
 
   // ─────────────────────────────────────────────
   // ✅ Casinos PUBLIC + /me/casinos (auth)
