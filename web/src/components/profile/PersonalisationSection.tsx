@@ -327,7 +327,7 @@ export function PersonalisationSection({
 
   React.useEffect(() => {
     if (!myUserId) return;
-    setAvatarUrl(`${API_BASE}/avatars/u/${myUserId}`);
+    setAvatarUrl(`${API_BASE}/avatars/u/${myUserId}?v=${Date.now()}`);
   }, [myUserId]);
 
   async function load() {
@@ -419,7 +419,8 @@ export function PersonalisationSection({
       }),
   ].sort((a, b) => byOwnedFirst(ownedSet, a, b));
 
-  const effectiveAvatar = avatarPreview || avatarUrl;
+  // IMPORTANT: ne JAMAIS mettre le blob dans les cosmétiques (sinon blob partout)
+  const effectiveAvatar = avatarUrl;
 
   function withAvatar<C extends ChatCosmetics | null>(c: C): C {
     if (!c) return c;
@@ -557,7 +558,7 @@ export function PersonalisationSection({
                           if (!j?.ok) throw new Error(j?.error || "upload_failed");
 
                           const bust = Date.now();
-                          setAvatarUrl(`${API_BASE}/avatars/u/${myUserId}?v=${bust}`);
+                          setAvatarUrl(String(j?.avatarUrl || `${API_BASE}/avatars/u/${myUserId}?v=${bust}`));
 
                           setAvatarPayload(null);
                           if (avatarPreview) URL.revokeObjectURL(avatarPreview);
