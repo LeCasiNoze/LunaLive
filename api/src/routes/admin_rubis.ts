@@ -2,7 +2,7 @@
 import express from "express";
 import crypto from "node:crypto";
 import { pool } from "../db.js";
-import { earnRubisTx } from "../wallet_engine.js";
+import { earnRubisTx, spendRubisTx } from "../wallet_engine.js";
 
 export const adminRubisRouter = express.Router();
 
@@ -81,64 +81,83 @@ adminRubisRouter.get("/admin/users/search", requireAdminKey, async (req, res, ne
   }
 });
 
-// ✅ mint rubis (CONFORME : earnRubisTx)
-adminRubisRouter.post("/admin/rubis/mint", requireAdminKey, async (req, res, next) => {
+// ✅ adjust rubis (CONFORME : earnRubisTx / spendRubisTx)
+// POST /admin/rubis/adjust
+adminRubisRouter.post("/admin/rubis/adjust", requireAdminKey, async (req, res, next) => {
   const client = await pool.connect();
   try {
     const userId = clampInt(req.body?.userId, 1, 1_000_000_000);
-    const amount = clampInt(req.body?.amount, 1, 2_000_000_000);
+    const mode = String(req.body?.mode || "").trim() as "add" | "remove" | "set";
+    const amount = clampInt(req.body?.amount, 0, 2_000_000_000);
 
     if (!userId) return res.status(400).json({ ok: false, error: "bad_userId" });
-    if (!amount) return res.status(400).json({ ok: false, error: "bad_amount" });
+    if (!["add", "remove", "set"].includes(mode)) return res.status(400).json({ ok: false, error: "bad_mode" });
+    if (amount == null) return res.status(400).json({ ok: false, error: "bad_amount" });
 
     const origin = pickOriginFromBody(req.body);
     const note = req.body?.note ?? null;
 
-    // identifiant unique pour retrouver tx/lot créés par earnRubisTx
-    const adminGrantId = crypto.randomUUID();
-
     await client.query("BEGIN");
 
-    // ✅ crédit via WalletEngine (LE SEUL TRUC AUTORISÉ)
-    await earnRubisTx(client, userId, origin, amount, {
-      by: "admin",
-      note,
-      adminGrantId,
-    });
+    // lock user row
+    const u0 = await client.query(`SELECT id, username, rubis FROM users WHERE id=$1 FOR UPDATE`, [userId]);
+    if (!u0.rows?.[0]) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ ok: false, error: "user_not_found" });
+    }
 
-    // lecture post-credit (dans la même tx)
-    const u = await client.query(`SELECT id, username, rubis FROM users WHERE id=$1 LIMIT 1`, [userId]);
-    if (!u.rows?.[0]) throw new Error("user_not_found");
+    const cur = Number(u0.rows[0].rubis || 0);
 
-    // récupérer les ids (best effort) via adminGrantId stocké en meta
-    const lot = await client.query<{ id: number }>(
-      `SELECT id
-       FROM wallet_lots
-       WHERE user_id=$1 AND (meta->>'adminGrantId')=$2
-       ORDER BY id DESC
-       LIMIT 1`,
-      [userId, adminGrantId]
-    );
+    if (mode === "add") {
+      if (!amount) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ ok: false, error: "bad_amount" });
+      }
+      await earnRubisTx(client, userId, origin, amount, { by: "admin", note, mode: "add" });
+    }
 
-    const tx = await client.query<{ id: number }>(
-      `SELECT id
-       FROM wallet_tx
-       WHERE user_id=$1 AND kind='earn' AND origin=$2 AND (meta->>'adminGrantId')=$3
-       ORDER BY id DESC
-       LIMIT 1`,
-      [userId, origin, adminGrantId]
-    );
+    if (mode === "remove") {
+      if (!amount) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ ok: false, error: "bad_amount" });
+      }
+      // burn (sink)
+      await spendRubisTx(client, {
+        userId,
+        amount,
+        spendKind: "sink",
+        spendType: "admin_adjust_remove",
+        meta: { by: "admin", note, mode: "remove" },
+      });
+    }
+
+    if (mode === "set") {
+      const target = amount; // amount est la cible
+      const delta = target - cur;
+
+      if (delta > 0) {
+        await earnRubisTx(client, userId, origin, delta, { by: "admin", note, mode: "set", target });
+      } else if (delta < 0) {
+        await spendRubisTx(client, {
+          userId,
+          amount: -delta,
+          spendKind: "sink",
+          spendType: "admin_adjust_set",
+          meta: { by: "admin", note, mode: "set", target },
+        });
+      }
+      // delta = 0 => rien
+    }
+
+    const u1 = await client.query(`SELECT id, username, rubis FROM users WHERE id=$1 LIMIT 1`, [userId]);
 
     await client.query("COMMIT");
-
     res.json({
       ok: true,
-      txId: tx.rows?.[0]?.id != null ? String(tx.rows[0].id) : null,
-      lotId: lot.rows?.[0]?.id != null ? String(lot.rows[0].id) : null,
       user: {
-        id: Number(u.rows[0].id),
-        username: String(u.rows[0].username),
-        rubis: Number(u.rows[0].rubis || 0),
+        id: Number(u1.rows[0].id),
+        username: String(u1.rows[0].username),
+        rubis: Number(u1.rows[0].rubis || 0),
       },
     });
   } catch (err) {

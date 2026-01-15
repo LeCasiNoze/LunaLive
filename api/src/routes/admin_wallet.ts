@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool } from "../db.js";
-import { spendRubisTx } from "../wallet_engine.js";
+import { earnRubisTx, spendRubisTx } from "../wallet_engine.js";
 
 export const adminWalletRouter = Router();
 
@@ -118,53 +118,29 @@ adminWalletRouter.post("/admin/wallet/add", async (req, res) => {
   const amount = clampInt(req.body?.amount, 1, 2e9);
   const weightBp = clampInt(req.body?.weightBp, 0, 10000);
 
-  if (!userId || !amount) {
-    return res.status(400).json({ ok: false, error: "bad_params" });
-  }
+  if (!userId || !amount) return res.status(400).json({ ok: false, error: "bad_params" });
 
-  // ✅ poids autorisés uniquement
-  if (![10000, 2000].includes(weightBp!)) {
-    return res.status(400).json({ ok: false, error: "invalid_weight" });
-  }
+  // ✅ compat: map weightBp -> origin (même logique que admin_rubis.ts)
+  const origin =
+    weightBp === 10000 ? "paid_topup" :
+    weightBp === 3500 ? "farm_watch" :
+    weightBp === 3000 ? "wheel_daily" :
+    weightBp === 2500 ? "chest_auto" :
+    weightBp === 2000 ? "chest_streamer" :
+    weightBp === 1000 ? "event_platform" :
+    "event_platform";
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    const u = await client.query(
-      `SELECT id FROM users WHERE id=$1 FOR UPDATE`,
-      [userId]
-    );
+    const u = await client.query(`SELECT id FROM users WHERE id=$1 FOR UPDATE`, [userId]);
     if (!u.rows[0]) {
       await client.query("ROLLBACK");
       return res.status(404).json({ ok: false, error: "user_not_found" });
     }
 
-    await client.query(
-      `UPDATE users SET rubis = rubis + $2 WHERE id=$1`,
-      [userId, amount]
-    );
-
-    const lot = await client.query(
-      `
-      INSERT INTO rubis_lots
-        (user_id, origin, weight_bp, amount_total, amount_remaining, meta)
-      VALUES
-        ($1, 'admin', $2, $3, $3, '{"by":"admin"}'::jsonb)
-      RETURNING id
-    `,
-      [userId, weightBp, amount]
-    );
-
-    await client.query(
-      `
-      INSERT INTO rubis_tx
-        (kind, purpose, status, to_user_id, amount, meta)
-      VALUES
-        ('mint','admin','succeeded',$1,$2,$3::jsonb)
-    `,
-      [userId, amount, JSON.stringify({ lotId: lot.rows[0].id })]
-    );
+    await earnRubisTx(client, userId, origin, amount, { by: "admin_wallet", weightBp, note: "admin/wallet/add" });
 
     await client.query("COMMIT");
     res.json({ ok: true });
@@ -175,6 +151,7 @@ adminWalletRouter.post("/admin/wallet/add", async (req, res) => {
     client.release();
   }
 });
+
 
 /* =========================
    REMOVE RUBIS (SINK)
@@ -223,30 +200,28 @@ adminWalletRouter.post("/admin/wallet/reset-user", async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    await client.query(
-      `UPDATE rubis_lots SET amount_remaining=0 WHERE user_id=$1`,
-      [userId]
-    );
-    await client.query(
-      `UPDATE users SET rubis=0 WHERE id=$1`,
-      [userId]
-    );
+    const u = await client.query(`SELECT id, rubis FROM users WHERE id=$1 FOR UPDATE`, [userId]);
+    if (!u.rows[0]) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ ok: false, error: "user_not_found" });
+    }
 
-    await client.query(
-      `
-      INSERT INTO rubis_tx
-        (kind, purpose, status, to_user_id, amount)
-      VALUES
-        ('reset','admin','succeeded',$1,0)
-    `,
-      [userId]
-    );
+    const cur = Number(u.rows[0].rubis || 0);
+    if (cur > 0) {
+      await spendRubisTx(client, {
+        userId,
+        amount: cur,
+        spendKind: "sink",
+        spendType: "admin_reset_user",
+        meta: { by: "admin_wallet" },
+      });
+    }
 
     await client.query("COMMIT");
     res.json({ ok: true });
   } catch (e: any) {
     await client.query("ROLLBACK");
-    res.status(500).json({ ok: false, error: "reset_failed" });
+    res.status(500).json({ ok: false, error: e?.message || "reset_failed" });
   } finally {
     client.release();
   }
@@ -262,23 +237,26 @@ adminWalletRouter.post("/admin/wallet/reset-all", async (_req, res) => {
   try {
     await client.query("BEGIN");
 
-    await client.query(`UPDATE rubis_lots SET amount_remaining=0`);
-    await client.query(`UPDATE users SET rubis=0`);
-
-    await client.query(
-      `
-      INSERT INTO rubis_tx
-        (kind, purpose, status, amount)
-      VALUES
-        ('reset_all','admin','succeeded',0)
-    `
-    );
+    const users = await client.query(`SELECT id, rubis FROM users WHERE rubis > 0 ORDER BY id ASC`);
+    for (const row of users.rows) {
+      const userId = Number(row.id);
+      const cur = Number(row.rubis || 0);
+      if (cur > 0) {
+        await spendRubisTx(client, {
+          userId,
+          amount: cur,
+          spendKind: "sink",
+          spendType: "admin_reset_all",
+          meta: { by: "admin_wallet" },
+        });
+      }
+    }
 
     await client.query("COMMIT");
-    res.json({ ok: true });
-  } catch {
+    res.json({ ok: true, resetUsers: users.rows.length });
+  } catch (e: any) {
     await client.query("ROLLBACK");
-    res.status(500).json({ ok: false, error: "reset_all_failed" });
+    res.status(500).json({ ok: false, error: e?.message || "reset_all_failed" });
   } finally {
     client.release();
   }

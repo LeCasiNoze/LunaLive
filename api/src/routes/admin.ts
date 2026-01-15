@@ -196,7 +196,7 @@ adminRouter.get(
 
     if (!r.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
 
-    // ✅ messagesCount (confirmé dans ton code : table chat_messages)
+    // ✅ messagesCount (table confirmée: chat_messages)
     let messagesCount: number | null = null;
     if (await regclassExists("chat_messages")) {
       messagesCount = await safeScalar<number>(
@@ -208,37 +208,22 @@ adminRouter.get(
       );
     }
 
-    // ✅ rubisSpent (best-effort) : si ledger présent, sinon null
-    // (on ne touche PAS users.rubis ici)
-    let rubisSpent: number | null = null;
+    // ✅ rubisSpent EXACT via ledger (rubis_tx_entries)
+    const spent = await pool.query(
+      `
+      SELECT COALESCE(SUM(-e.delta), 0)::int AS spent
+      FROM rubis_tx_entries e
+      JOIN rubis_tx t ON t.id = e.tx_id
+      WHERE e.entity = 'user'
+        AND e.user_id = $1
+        AND e.delta < 0
+        AND t.status = 'succeeded'
+      `,
+      [id]
+    );
+    const rubisSpent = Number(spent.rows?.[0]?.spent || 0);
 
-    if (await regclassExists("wallet_tx")) {
-      rubisSpent = await safeScalar<number>(
-        `
-        SELECT COALESCE(SUM(amount),0)::int AS s
-        FROM wallet_tx
-        WHERE user_id=$1
-          AND kind IN ('spend','debit')
-          AND status IN ('ok','committed','done')
-        `,
-        [id],
-        "s"
-      );
-    } else if (await regclassExists("rubis_tx")) {
-      rubisSpent = await safeScalar<number>(
-        `
-        SELECT COALESCE(SUM(amount),0)::int AS s
-        FROM rubis_tx
-        WHERE user_id=$1
-          AND type IN ('spend','debit')
-          AND status IN ('ok','committed','done')
-        `,
-        [id],
-        "s"
-      );
-    }
-
-    res.json({
+    return res.json({
       ok: true,
       userId: r.rows[0].userId,
       createdAt: r.rows[0].createdAt ?? null,
