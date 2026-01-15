@@ -119,42 +119,70 @@ function LogoBackdrop({
   url: string | null | undefined;
   variant?: "default" | "podium";
 }) {
-  if (!url) return null;
+  const hasUrl = Boolean(url);
 
   // podium a un peu plus de présence
-  const opacity = variant === "podium" ? 0.22 : 0.58;
+  const opacityImg = variant === "podium" ? 0.22 : 0.58;
 
   return (
     <>
-      {/* Image cover */}
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          backgroundImage: `url(${url})`,
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "center",
-          backgroundSize: "contain",
-          opacity,
-          filter: "contrast(1.08) saturate(1.25) brightness(1.05)",
-          transform: "scale(1.03)",
-          pointerEvents: "none",
-        }}
-      />
-      {/* Scrim pour lisibilité + “effet transparent” */}
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            variant === "podium"
-              ? "linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.22) 55%, rgba(0,0,0,0.62)), radial-gradient(900px 420px at 50% 0%, rgba(255,255,255,0.06), rgba(0,0,0,0) 60%)"
-              : "linear-gradient(90deg, rgba(0,0,0,0.06), rgba(0,0,0,0.26) 55%, rgba(0,0,0,0.64))",
-          pointerEvents: "none",
-        }}
-      />
+      {/* ✅ Fallback décoratif quand pas de logo */}
+      {!hasUrl ? (
+        <>
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: -2,
+              background:
+                "radial-gradient(900px 320px at 20% 0%, rgba(255,210,110,0.14), rgba(0,0,0,0) 60%), radial-gradient(900px 320px at 90% 10%, rgba(140,90,255,0.16), rgba(0,0,0,0) 62%), repeating-linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.06) 1px, rgba(0,0,0,0) 1px, rgba(0,0,0,0) 10px)",
+              opacity: variant === "podium" ? 0.85 : 0.75,
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "linear-gradient(180deg, rgba(0,0,0,0.10), rgba(0,0,0,0.30))",
+              pointerEvents: "none",
+            }}
+          />
+        </>
+      ) : (
+        <>
+          {/* Image cover */}
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundImage: `url(${url})`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "center",
+              backgroundSize: "contain",
+              opacity: opacityImg,
+              filter: "contrast(1.08) saturate(1.25) brightness(1.05)",
+              transform: "scale(1.03)",
+              pointerEvents: "none",
+            }}
+          />
+          {/* Scrim pour lisibilité + “effet transparent” */}
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                variant === "podium"
+                  ? "linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.22) 55%, rgba(0,0,0,0.62)), radial-gradient(900px 420px at 50% 0%, rgba(255,255,255,0.06), rgba(0,0,0,0) 60%)"
+                  : "linear-gradient(90deg, rgba(0,0,0,0.06), rgba(0,0,0,0.26) 55%, rgba(0,0,0,0.64))",
+              pointerEvents: "none",
+            }}
+          />
+        </>
+      )}
     </>
   );
 }
