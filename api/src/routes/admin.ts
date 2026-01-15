@@ -28,17 +28,47 @@ async function safeScalar<T>(sql: string, params: any[], key: string): Promise<T
   }
 }
 
+function readInt(v: any): number | null {
+  const n = Number(String(v ?? "").trim());
+  if (!Number.isFinite(n)) return null;
+  const i = Math.floor(n);
+  return i > 0 ? i : null;
+}
+
+function normalizeSlug(input: string) {
+  const s = String(input || "").trim();
+  if (!s) return "";
+  // on accepte déjà un slug propre, sinon slugify
+  const cleaned = s.toLowerCase();
+  if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(cleaned)) return cleaned;
+  return slugify(s);
+}
+
+// ─────────────────────────────────────────────
+// Requests (streamer apply)
+// ─────────────────────────────────────────────
 adminRouter.get(
   "/admin/requests",
   requireAdminKey,
-  a(async (_req, res) => {
+  a(async (req, res) => {
+    const status = String((req.query as any)?.status || "").trim();
+    const allowed = new Set(["pending", "approved", "rejected"]);
+
+    const where = allowed.has(status) ? `WHERE r.status = $1` : "";
+    const params = allowed.has(status) ? [status] : [];
+
     const { rows } = await pool.query(
-      `SELECT r.id, r.status, r.created_at AS "createdAt",
-              u.id AS "userId", u.username
-       FROM streamer_requests r
-       JOIN users u ON u.id = r.user_id
-       ORDER BY r.created_at DESC`
+      `
+      SELECT r.id, r.status, r.created_at AS "createdAt",
+             u.id AS "userId", u.username
+      FROM streamer_requests r
+      JOIN users u ON u.id = r.user_id
+      ${where}
+      ORDER BY r.created_at DESC
+      `,
+      params
     );
+
     res.json({ ok: true, requests: rows });
   })
 );
@@ -76,11 +106,20 @@ adminRouter.post(
       const exists = await client.query(`SELECT 1 FROM streamers WHERE slug=$1`, [slug]);
       if (exists.rows[0]) slug = `${slug}-${userId}`;
 
+      // crée si absent
       await client.query(
         `INSERT INTO streamers (slug, display_name, user_id, title, viewers, is_live)
          VALUES ($1,$2,$3,'',0,false)
          ON CONFLICT (user_id) DO NOTHING`,
         [slug, username, userId]
+      );
+
+      // ✅ si le streamer existait déjà, on le "réactive"
+      await client.query(
+        `UPDATE streamers
+         SET suspended_until=NULL, updated_at=NOW()
+         WHERE user_id=$1`,
+        [userId]
       );
 
       const s = await client.query(`SELECT id FROM streamers WHERE user_id=$1 LIMIT 1`, [userId]);
@@ -126,6 +165,7 @@ adminRouter.post(
 
     const userId = rows[0].user_id;
 
+    // si un streamer existe déjà, on libère le provider
     const s = await pool.query(`SELECT id FROM streamers WHERE user_id=$1 LIMIT 1`, [userId]);
     const streamerId = s.rows[0]?.id ? Number(s.rows[0].id) : null;
     if (streamerId) {
@@ -133,6 +173,10 @@ adminRouter.post(
       try {
         await client.query("BEGIN");
         await releaseAccountForStreamerId(client, streamerId);
+        await client.query(
+          `UPDATE streamers SET suspended_until=NOW(), updated_at=NOW(), featured=false WHERE id=$1`,
+          [streamerId]
+        );
         await client.query("COMMIT");
       } finally {
         client.release();
@@ -140,12 +184,219 @@ adminRouter.post(
     }
 
     await pool.query(`UPDATE users SET role='viewer' WHERE id=$1`, [userId]);
-    await pool.query(`DELETE FROM streamers WHERE user_id=$1`, [userId]);
+
+    // NOTE: on ne delete plus forcément le streamer ici (au choix)
+    // On garde le streamer + suspended_until (ça permet re-approve proprement).
+    // Si tu veux l'ancien comportement (delete), dé-commente :
+    // await pool.query(`DELETE FROM streamers WHERE user_id=$1`, [userId]);
 
     res.json({ ok: true });
   })
 );
 
+// ─────────────────────────────────────────────
+// Admin Streamers (create / ban / unban)
+// ─────────────────────────────────────────────
+adminRouter.post(
+  "/admin/streamers",
+  requireAdminKey,
+  a(async (req, res) => {
+    const displayName = String(req.body.displayName || "").trim();
+    const rawSlug = String(req.body.slug || "").trim();
+
+    if (!displayName && !rawSlug) return res.status(400).json({ ok: false, error: "bad_input" });
+
+    let slug = normalizeSlug(rawSlug || displayName);
+    if (!slug) return res.status(400).json({ ok: false, error: "slug_required" });
+
+    // unique slug (simple)
+    const exists = await pool.query(`SELECT 1 FROM streamers WHERE slug=$1`, [slug]);
+    if (exists.rows[0]) slug = `${slug}-${Math.floor(Math.random() * 10000)}`;
+
+    await pool.query(
+      `INSERT INTO streamers (slug, display_name, user_id, title, viewers, is_live, featured, suspended_until)
+       VALUES ($1,$2,NULL,'',0,false,false,NULL)`,
+      [slug, displayName || slug]
+    );
+
+    res.json({ ok: true });
+  })
+);
+
+/**
+ * DELETE /admin/streamers/:slug
+ * => "Supprimer" côté admin = BAN (rejected)
+ * - permanent: suspended_until = 'infinity'
+ * - temporaire: ?durationSec=3600  (1h)
+ *
+ * Effets:
+ * - streamer_requests => rejected
+ * - users.role => viewer (si lié à user)
+ * - release provider account
+ * - streamers.featured=false, is_live=false, viewers=0
+ */
+adminRouter.delete(
+  "/admin/streamers/:slug",
+  requireAdminKey,
+  a(async (req, res) => {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
+
+    const durationSec =
+      readInt((req.query as any)?.durationSec) ??
+      readInt((req.body as any)?.durationSec) ??
+      null;
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const cur = await client.query(
+        `SELECT id, user_id
+         FROM streamers
+         WHERE slug=$1
+         FOR UPDATE`,
+        [slug]
+      );
+      if (!cur.rows[0]) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ ok: false, error: "not_found" });
+      }
+
+      const streamerId = Number(cur.rows[0].id);
+      const userId = cur.rows[0].user_id ? Number(cur.rows[0].user_id) : null;
+
+      // streamer "manuel" (pas de user lié) -> on peut vraiment supprimer
+      if (!userId) {
+        await client.query(`DELETE FROM streamers WHERE id=$1`, [streamerId]);
+        await client.query("COMMIT");
+        return res.json({ ok: true, deleted: true });
+      }
+
+      // 1) streamer_requests -> rejected (upsert)
+      await client.query(
+        `INSERT INTO streamer_requests (user_id, status)
+         VALUES ($1,'rejected')
+         ON CONFLICT (user_id)
+         DO UPDATE SET status='rejected', updated_at=NOW()`,
+        [userId]
+      );
+
+      // 2) user role -> viewer
+      await client.query(`UPDATE users SET role='viewer' WHERE id=$1`, [userId]);
+
+      // 3) release provider account
+      await releaseAccountForStreamerId(client, streamerId);
+
+      // 4) suspend streamer
+      if (durationSec) {
+        await client.query(
+          `UPDATE streamers
+           SET suspended_until = NOW() + ($1::int * INTERVAL '1 second'),
+               featured = FALSE,
+               is_live = FALSE,
+               viewers = 0,
+               updated_at = NOW()
+           WHERE id = $2`,
+          [durationSec, streamerId]
+        );
+      } else {
+        await client.query(
+          `UPDATE streamers
+           SET suspended_until = 'infinity'::timestamptz,
+               featured = FALSE,
+               is_live = FALSE,
+               viewers = 0,
+               updated_at = NOW()
+           WHERE id = $1`,
+          [streamerId]
+        );
+      }
+
+      await client.query("COMMIT");
+      res.json({ ok: true, banned: true, temporary: !!durationSec, durationSec: durationSec ?? null });
+    } catch (e) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
+      throw e;
+    } finally {
+      client.release();
+    }
+  })
+);
+
+adminRouter.post(
+  "/admin/streamers/:slug/unban",
+  requireAdminKey,
+  a(async (req, res) => {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const cur = await client.query(
+        `SELECT id, user_id
+         FROM streamers
+         WHERE slug=$1
+         FOR UPDATE`,
+        [slug]
+      );
+      if (!cur.rows[0]) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ ok: false, error: "not_found" });
+      }
+
+      const streamerId = Number(cur.rows[0].id);
+      const userId = cur.rows[0].user_id ? Number(cur.rows[0].user_id) : null;
+      if (!userId) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ ok: false, error: "streamer_has_no_user" });
+      }
+
+      // remettre approved + role streamer
+      await client.query(
+        `INSERT INTO streamer_requests (user_id, status)
+         VALUES ($1,'approved')
+         ON CONFLICT (user_id)
+         DO UPDATE SET status='approved', updated_at=NOW()`,
+        [userId]
+      );
+
+      await client.query(`UPDATE users SET role='streamer' WHERE id=$1`, [userId]);
+
+      await client.query(
+        `UPDATE streamers
+         SET suspended_until=NULL, updated_at=NOW()
+         WHERE id=$1`,
+        [streamerId]
+      );
+
+      // ré-assign provider account (si possible)
+      const conn = await ensureAssignedDliveAccount(client, streamerId);
+      if (!conn) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ ok: false, error: "no_free_provider_account" });
+      }
+
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (e) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
+      throw e;
+    } finally {
+      client.release();
+    }
+  })
+);
+
+// ─────────────────────────────────────────────
+// Users
+// ─────────────────────────────────────────────
 adminRouter.get(
   "/admin/users",
   requireAdminKey,
@@ -180,7 +431,6 @@ adminRouter.get(
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
 
-    // ✅ base fiable depuis users
     const r = await pool.query(
       `
       SELECT
@@ -196,7 +446,6 @@ adminRouter.get(
 
     if (!r.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
 
-    // ✅ messagesCount (table confirmée: chat_messages)
     let messagesCount: number | null = null;
     if (await regclassExists("chat_messages")) {
       messagesCount = await safeScalar<number>(
@@ -208,7 +457,6 @@ adminRouter.get(
       );
     }
 
-    // ✅ rubisSpent EXACT via ledger (rubis_tx_entries)
     const spent = await pool.query(
       `
       SELECT COALESCE(SUM(-e.delta), 0)::int AS spent
@@ -272,6 +520,8 @@ adminRouter.patch(
           [slug, username, id]
         );
 
+        await pool.query(`UPDATE streamers SET suspended_until=NULL, updated_at=NOW() WHERE user_id=$1`, [id]);
+
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
@@ -301,13 +551,15 @@ adminRouter.patch(
           try {
             await client.query("BEGIN");
             await releaseAccountForStreamerId(client, streamerId);
+            await client.query(
+              `UPDATE streamers SET suspended_until='infinity'::timestamptz, featured=false, updated_at=NOW() WHERE id=$1`,
+              [streamerId]
+            );
             await client.query("COMMIT");
           } finally {
             client.release();
           }
         }
-
-        await pool.query(`DELETE FROM streamers WHERE user_id=$1`, [id]);
       }
     }
 
@@ -319,7 +571,9 @@ adminRouter.patch(
   })
 );
 
-/* Provider accounts */
+// ─────────────────────────────────────────────
+// Provider accounts
+// ─────────────────────────────────────────────
 adminRouter.get(
   "/admin/provider-accounts",
   requireAdminKey,
@@ -473,6 +727,9 @@ adminRouter.post(
   })
 );
 
+// ─────────────────────────────────────────────
+// Slots updater
+// ─────────────────────────────────────────────
 adminRouter.post(
   "/admin/slots/update",
   requireAdminKey,

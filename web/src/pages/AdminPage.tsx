@@ -238,6 +238,9 @@ export default function AdminPage() {
   const [newSlug, setNewSlug] = React.useState("");
   const [newName, setNewName] = React.useState("");
 
+  // ✅ requests view (pending by default)
+  const [reqView, setReqView] = React.useState<"pending" | "rejected">("pending");
+
   // ✅ Casino comments moderation
   const [ccStatus] = React.useState<"pending">("pending");
   const [ccLoading, setCcLoading] = React.useState(false);
@@ -251,6 +254,7 @@ export default function AdminPage() {
     setTab(next);
     saveTab(next);
     setErr(null);
+    if (next === "requests") setReqView("pending"); // ✅ reset view when opening tab
   }
 
   async function refresh() {
@@ -286,7 +290,17 @@ export default function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, tab, ccStatus]);
 
-  const pendingRequests = React.useMemo(() => requests.filter((r) => String(r.status) === "pending").length, [requests]);
+  const pendingRequestsItems = React.useMemo(
+    () => requests.filter((r) => String(r.status) === "pending"),
+    [requests]
+  );
+  const rejectedRequestsItems = React.useMemo(
+    () => requests.filter((r) => String(r.status) === "rejected"),
+    [requests]
+  );
+
+  const pendingRequests = pendingRequestsItems.length;
+
   const pendingCasinoComments = React.useMemo(
     () => ccItems.filter((c) => String(c.status) === "pending").length,
     [ccItems]
@@ -532,7 +546,7 @@ export default function AdminPage() {
                 active={tab === "requests"}
                 icon="🧾"
                 label="Demandes streamer"
-                hint="Approve / Reject"
+                hint="Par défaut: uniquement pending"
                 badge={pendingRequests > 0 ? <Pill tone="warn"><b>{pendingRequests}</b></Pill> : <Pill tone="neutral">0</Pill>}
                 onClick={() => goto("requests")}
               />
@@ -670,7 +684,6 @@ export default function AdminPage() {
                 {ccItems.map((c) => {
                   const created = new Date(c.createdAt).toLocaleString("fr-FR");
 
-                  // ✅ FIX TS2367 :
                   // backend => status: pending | published | rejected | deleted
                   const statusTone =
                     c.status === "pending" ? "warn" : c.status === "published" ? "good" : "bad";
@@ -852,11 +865,47 @@ export default function AdminPage() {
                   Demandes “Devenir streamer”
                 </span>
               }
-              subtitle="Clique Approve / Reject."
-              right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
+              subtitle={reqView === "pending" ? "Liste = uniquement les demandes en attente." : "Liste = uniquement les demandes rejetées."}
+              right={
+                <>
+                  <Pill tone={reqView === "pending" ? "warn" : "neutral"}>
+                    Pending: <b>{pendingRequestsItems.length}</b>
+                  </Pill>
+                  <Pill tone={reqView === "rejected" ? "bad" : "neutral"}>
+                    Rejetées: <b>{rejectedRequestsItems.length}</b>
+                  </Pill>
+
+                  <button
+                    className={reqView === "pending" ? "btnPrimary" : "btnSecondary"}
+                    type="button"
+                    onClick={() => setReqView("pending")}
+                  >
+                    📥 Voir pending
+                  </button>
+
+                  <button
+                    className={reqView === "rejected" ? "btnPrimary" : "btnSecondary"}
+                    type="button"
+                    onClick={() => setReqView("rejected")}
+                  >
+                    ❌ Voir rejetées
+                  </button>
+
+                  <button className="btnSecondary" type="button" onClick={() => goto("overview")}>
+                    ← Retour
+                  </button>
+                </>
+              }
             >
+              {reqView === "pending" && pendingRequestsItems.length === 0 ? (
+                <div className="mutedSmall">Aucune demande en attente.</div>
+              ) : null}
+              {reqView === "rejected" && rejectedRequestsItems.length === 0 ? (
+                <div className="mutedSmall">Aucune demande rejetée.</div>
+              ) : null}
+
               <div style={{ display: "grid", gap: 10 }}>
-                {requests.map((r) => (
+                {(reqView === "pending" ? pendingRequestsItems : rejectedRequestsItems).map((r) => (
                   <div
                     key={r.id}
                     style={{
@@ -874,11 +923,14 @@ export default function AdminPage() {
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                         <b>{r.username}</b>
-                        <Pill tone={String(r.status) === "pending" ? "warn" : "neutral"}>{r.status}</Pill>
+                        <Pill tone={String(r.status) === "pending" ? "warn" : String(r.status) === "rejected" ? "bad" : "neutral"}>
+                          {r.status}
+                        </Pill>
                       </div>
                     </div>
 
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      {/* ✅ Dans "rejected", on propose seulement "Approve" comme tu veux */}
                       <button
                         className="btnGhostSmall"
                         onClick={async () => {
@@ -895,22 +947,25 @@ export default function AdminPage() {
                       >
                         ✅ Approve
                       </button>
-                      <button
-                        className="btnGhostSmall"
-                        onClick={async () => {
-                          setErr(null);
-                          await adminRejectRequest(key, r.id);
-                          await refresh();
-                        }}
-                        type="button"
-                        style={{
-                          borderRadius: 12,
-                          border: "1px solid rgba(239,68,68,0.30)",
-                          background: "rgba(239,68,68,0.10)",
-                        }}
-                      >
-                        ❌ Reject
-                      </button>
+
+                      {reqView === "pending" ? (
+                        <button
+                          className="btnGhostSmall"
+                          onClick={async () => {
+                            setErr(null);
+                            await adminRejectRequest(key, r.id);
+                            await refresh();
+                          }}
+                          type="button"
+                          style={{
+                            borderRadius: 12,
+                            border: "1px solid rgba(239,68,68,0.30)",
+                            background: "rgba(239,68,68,0.10)",
+                          }}
+                        >
+                          ❌ Reject
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 ))}
