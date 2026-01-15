@@ -1,11 +1,11 @@
-/* ===== Casinos TrustPilot V1 ===== */
+/* web/src/styles/60_trust.css */
+/* ───────────────────────────────
+   Casinos (Trustpilot-like) — CLEAN (V2 kept)
+   + Backward-compat aliases for old V1 classes
+─────────────────────────────── */
 
-.casinoToolbar{
-  display:flex;
-  gap: 10px;
-  align-items:center;
-  margin: 12px 0 18px;
-}
+/* ===== Shared / small utilities ===== */
+
 .input, .select, .textarea{
   width: 100%;
   border-radius: 12px;
@@ -36,99 +36,334 @@
   background: rgba(255,90,90,0.10);
 }
 
-.casinoSection{ margin-top: 18px; }
-.sectionHead{ display:flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.sectionHead h2{ margin: 0; font-size: 18px; }
+/* ===== Toolbar ===== */
 
-.podiumGrid{
-  margin-top: 10px;
-  display:grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+.casinoToolbar{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+  margin: 12px 0 18px;
 }
-.podiumCard{
-  text-decoration:none;
-  color: var(--text);
+
+/* If toolbar is inside a .panel */
+.casinoToolbar.panel { padding: 14px; }
+
+.toolbarRow{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+  flex-wrap: wrap;
+}
+
+.searchWrap{
+  position: relative;
+  flex: 1;
+  min-width: 260px;
+}
+.searchIcon{
+  position:absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.75;
+}
+.searchInput{
+  width: 100%;
+  padding: 10px 12px 10px 38px;
+  border-radius: 12px;
   border: 1px solid rgba(255,255,255,0.10);
   background: rgba(255,255,255,0.04);
-  border-radius: 16px;
-  padding: 12px;
-  display:flex;
-  flex-direction: column;
-  gap: 8px;
+  color: var(--text);
+  outline: none;
+  font-weight: 700;
 }
-.podiumRank{ font-weight: 900; opacity: .9; }
-.podiumName{ font-weight: 900; font-size: 16px; }
-.podiumSub{ color: var(--muted); font-size: 12px; }
-.podiumBonus{ font-weight: 800; }
-.podiumCta{ margin-top: 4px; color: rgba(255,255,255,0.85); font-weight: 900; }
+
+/* ===== Sections ===== */
+
+.casinoSection{ margin-top: 18px; }
+
+.sectionHead{
+  display:flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.sectionHead h2{ margin: 0; font-size: 18px; }
+
+/* ===== Cards grid (LIST) ===== */
 
 .casinoGrid{
   margin-top: 10px;
   display:grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, minmax(0,1fr));
   gap: 12px;
 }
+@media (max-width: 980px){
+  .casinoGrid{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+@media (max-width: 620px){
+  .casinoGrid{ grid-template-columns: 1fr; }
+}
+
+/* Card */
 .casinoCard{
+  display:block;
   text-decoration:none;
   color: var(--text);
   border: 1px solid rgba(255,255,255,0.10);
   background: rgba(255,255,255,0.04);
   border-radius: 16px;
   padding: 12px;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.casinoCard:hover{
+  transform: translateY(-1px);
+  border-color: rgba(126,76,179,0.45);
+  background: rgba(255,255,255,0.055);
+}
+
+/* Old V1 structure compatibility: keep flex layout if your markup uses it */
+.casinoCard.isFlex,
+.casinoCard[data-layout="flex"]{
   display:flex;
   flex-direction: column;
   gap: 10px;
 }
-.casinoCardTop{ display:flex; gap: 12px; align-items: center; }
+
+/* Card top */
+.casinoCardTop{ display:flex; gap: 12px; align-items:flex-start; }
+
 .casinoLogo{
   width: 44px; height: 44px;
-  border-radius: 14px;
+  border-radius: 12px;
   overflow:hidden;
   border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(0,0,0,0.25);
-  display:flex; align-items:center; justify-content:center;
+  background: rgba(0,0,0,0.18);
+  flex: 0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
-.casinoLogo img{ width:100%; height:100%; object-fit: cover; }
-.casinoLogoPh{ width: 100%; height: 100%; background: rgba(255,255,255,0.06); }
-.casinoCardMeta{ flex:1; min-width: 0; }
-.casinoNameRow{ display:flex; align-items:center; gap: 8px; flex-wrap: wrap; }
-.casinoName{ font-weight: 900; }
-.casinoRatingRow{ display:flex; align-items:center; gap: 8px; }
-.casinoRatingTxt{ color: var(--muted); font-size: 12px; }
-.casinoBonus{ font-weight: 800; }
-.casinoCardCta{ font-weight: 900; opacity: .9; }
+.casinoLogo img{ width:100%; height:100%; object-fit: cover; display:block; }
 
-.badge{
+/* V2 placeholder */
+.casinoLogoPh{
+  width: 100%; height: 100%;
+  background: linear-gradient(135deg, rgba(126,76,179,0.55), rgba(63,86,203,0.55));
+  opacity: 0.55;
+}
+/* V1 placeholder alias */
+.casinoLogoPh.v1{
+  background: rgba(255,255,255,0.06);
+  opacity: 1;
+}
+
+.casinoMeta,
+.casinoCardMeta{ /* V1 alias */
+  flex: 1;
+  min-width: 0;
+}
+
+.casinoNameRow{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.casinoName{
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* V1 used flex-wrap sometimes */
+.casinoNameRow.v1,
+.casinoNameRow.isWrap{
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.casinoBadges{ display:flex; gap: 6px; flex-wrap: wrap; justify-content:flex-end; }
+
+/* V2 badges */
+.badgeChip{
   font-size: 11px;
-  padding: 4px 8px;
+  font-weight: 900;
+  padding: 5px 8px;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
+  background: rgba(0,0,0,0.18);
+}
+.badgeChip.featured{
+  border-color: rgba(126,76,179,0.45);
+  background: rgba(126,76,179,0.12);
+}
+.badgeChip.watch{
+  border-color: rgba(255, 193, 7, 0.35);
+  background: rgba(255, 193, 7, 0.10);
+}
+.badgeChip.avoid{
+  border-color: rgba(255, 82, 82, 0.35);
+  background: rgba(255, 82, 82, 0.10);
+}
+
+/* V1 badge alias -> map to chip look */
+.badge{
+  font-size: 11px;
   font-weight: 900;
+  padding: 5px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.18);
 }
 .badge.warn{
-  border-color: rgba(255,204,0,0.25);
-  background: rgba(255,204,0,0.08);
+  border-color: rgba(255, 193, 7, 0.35);
+  background: rgba(255, 193, 7, 0.10);
 }
 .badge.danger{
-  border-color: rgba(255,90,90,0.25);
-  background: rgba(255,90,90,0.08);
+  border-color: rgba(255, 82, 82, 0.35);
+  background: rgba(255, 82, 82, 0.10);
 }
+
+/* Rating line */
+.ratingLine,
+.casinoRatingRow{ /* V1 alias */
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.stars{ display:flex; gap: 2px; }
+.star{ opacity: 0.25; }
+.star.on{ opacity: 0.95; }
+
+/* V1 opacity rules for stars */
+.stars .star{ opacity: 0.35; }
+.stars .star.on{ opacity: 1; }
+
+.ratingText,
+.casinoRatingTxt{ /* V1 alias */
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.casinoBonus{
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.78);
+  font-weight: 800;
+}
+
+.casinoCardBottom{
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  display:flex;
+  justify-content:flex-end;
+}
+.seeMore,
+.casinoCardCta{ /* V1 alias */
+  font-weight: 900;
+  color: rgba(255,255,255,0.85);
+  opacity: .9;
+}
+
+/* ===== Podium ===== */
+
+.podiumGrid{
+  margin-top: 10px;
+  display:grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 12px;
+}
+@media (max-width: 820px){
+  .podiumGrid{ grid-template-columns: 1fr; }
+}
+
+.podiumCard{
+  display:block;
+  text-decoration:none;
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  border-radius: 18px;
+  padding: 14px;
+}
+.podiumCard.r1{ border-color: rgba(126,76,179,0.55); box-shadow: 0 0 0 2px rgba(126,76,179,0.10); }
+.podiumRank{ font-weight: 1000; opacity: 0.85; }
+.podiumLogo{
+  width: 56px; height: 56px;
+  border-radius: 14px;
+  overflow:hidden;
+  margin-top: 10px;
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.podiumLogo img{ width:100%; height:100%; object-fit: cover; display:block; }
+
+.podiumName{ margin-top: 10px; font-size: 18px; font-weight: 1000; }
+.podiumRating{ margin-top: 8px; }
+.podiumBonus{ margin-top: 10px; font-weight: 900; color: rgba(255,255,255,0.80); font-size: 12px; }
+
+/* V1 podium aliases */
+.podiumSub{ color: var(--muted); font-size: 12px; }
+.podiumCta{ margin-top: 4px; color: rgba(255,255,255,0.85); font-weight: 900; }
+
+/* ===== Watchlist cards ===== */
 
 .watchGrid{
   margin-top: 10px;
   display:grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0,1fr));
   gap: 12px;
 }
+@media (max-width: 820px){
+  .watchGrid{ grid-template-columns: 1fr; }
+}
+
+.watchCard{
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  padding: 14px;
+}
+.watchCard.avoid{
+  border-color: rgba(255,82,82,0.28);
+  background: rgba(255,82,82,0.06);
+}
+.watchCard.watch{
+  border-color: rgba(255,193,7,0.22);
+  background: rgba(255,193,7,0.06);
+}
+.watchTitle{
+  display:flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.watchPill{
+  font-size: 11px;
+  font-weight: 1000;
+  padding: 5px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.18);
+}
+.watchPill.avoid{ border-color: rgba(255,82,82,0.35); background: rgba(255,82,82,0.10); }
+.watchPill.watch{ border-color: rgba(255,193,7,0.35); background: rgba(255,193,7,0.10); }
+
+/* V1 watchItem alias -> look like watchCard */
 .watchItem{
   text-decoration:none;
   color: var(--text);
-  border: 1px solid rgba(255,90,90,0.18);
-  background: rgba(255,90,90,0.06);
   border-radius: 16px;
-  padding: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  padding: 14px;
   display:flex;
   flex-direction: column;
   gap: 8px;
@@ -136,10 +371,8 @@
 .watchNameRow{ display:flex; align-items:center; justify-content: space-between; gap: 10px; }
 .watchName{ font-weight: 900; }
 
-.stars .star{ opacity: .35; }
-.stars .star.on{ opacity: 1; }
+/* ===== Casino detail ===== */
 
-/* casino detail */
 .casinoHeader{
   display:flex;
   justify-content: space-between;
@@ -151,10 +384,18 @@
   padding: 12px;
 }
 .casinoHeaderLeft{ display:flex; gap: 12px; align-items: center; }
-.casinoHeaderLogo{ width: 52px; height: 52px; border-radius: 18px; overflow:hidden; border: 1px solid rgba(255,255,255,0.10); }
+
+.casinoHeaderLogo{
+  width: 52px; height: 52px;
+  border-radius: 18px;
+  overflow:hidden;
+  border: 1px solid rgba(255,255,255,0.10);
+}
 .casinoHeaderLogo img{ width:100%; height:100%; object-fit: cover; }
+
 .casinoHeaderMeta{ display:flex; flex-direction: column; gap: 8px; }
 .casinoH1{ margin: 0; font-size: 22px; }
+
 .casinoHeaderRatings{ display:flex; gap: 10px; flex-wrap: wrap; }
 .ratingPill{
   display:flex; align-items:center; gap: 8px;
@@ -178,7 +419,12 @@
   background: rgba(255,90,90,0.08);
 }
 
-.casinoHeaderRight{ display:flex; flex-direction: column; align-items:flex-end; gap: 8px; }
+.casinoHeaderRight{
+  display:flex;
+  flex-direction: column;
+  align-items:flex-end;
+  gap: 8px;
+}
 
 .casinoAnchors{
   margin: 12px 0 14px;
@@ -204,6 +450,7 @@
 }
 .casinoMain{ display:flex; flex-direction: column; gap: 14px; }
 .casinoSide{ position: sticky; top: 84px; } /* sous la topbar */
+
 .panel, .sidePanel{
   border: 1px solid rgba(255,255,255,0.10);
   background: rgba(255,255,255,0.04);
@@ -218,6 +465,7 @@
 .prosCons{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .pcTitle{ font-weight: 900; margin-bottom: 6px; }
 .pcList{ margin: 0; padding-left: 18px; color: rgba(255,255,255,0.90); }
+
 .teamBox{ margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px; }
 
 .rateRow{ margin-top: 10px; display:flex; align-items:center; gap: 12px; }
@@ -241,6 +489,7 @@
 
 .composer{ display:flex; flex-direction: column; gap: 8px; }
 .composerRow{ display:flex; justify-content: space-between; gap: 10px; align-items: center; }
+
 .fileBtn{
   border: 1px solid rgba(255,255,255,0.10);
   background: rgba(255,255,255,0.04);
@@ -271,6 +520,7 @@
   background: rgba(255,204,0,0.06);
 }
 .commentUser{ display:flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
 .commentBadge{
   font-size: 11px;
   padding: 4px 8px;
@@ -285,6 +535,7 @@
 }
 
 .commentBody{ margin-top: 6px; white-space: pre-wrap; }
+
 .commentImgs{
   margin-top: 8px;
   display:grid;
@@ -339,233 +590,17 @@
 .sideInfo{ flex:1; min-width:0; }
 .sideName{ font-weight: 900; }
 
-.btnPrimary.full, .btnSecondary.full{ width: 100%; display:flex; justify-content:center; }
+.btnPrimary.full, .btnSecondary.full{
+  width: 100%;
+  display:flex;
+  justify-content:center;
+}
 
 @media (max-width: 980px){
-  .podiumGrid{ grid-template-columns: 1fr; }
-  .casinoGrid{ grid-template-columns: 1fr; }
-  .watchGrid{ grid-template-columns: 1fr; }
   .casinoTwoCol{ grid-template-columns: 1fr; }
   .casinoSide{ position: static; }
   .commentsScroll{ max-height: 520px; }
 }
-/* ───────────────────────────────
-   Casinos (Trustpilot-like)
-─────────────────────────────── */
-
-.casinoToolbar.panel { padding: 14px; }
-.toolbarRow{
-  display:flex;
-  gap: 10px;
-  align-items:center;
-  flex-wrap: wrap;
-}
-
-.searchWrap{
-  position: relative;
-  flex: 1;
-  min-width: 260px;
-}
-.searchIcon{
-  position:absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  opacity: 0.75;
-}
-.searchInput{
-  width: 100%;
-  padding: 10px 12px 10px 38px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.04);
-  color: var(--text);
-  outline: none;
-  font-weight: 700;
-}
-
-.casinoSection{ margin-top: 18px; }
-.sectionHead{
-  display:flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-.sectionHead h2{ margin: 0; font-size: 18px; }
-
-.casinoGrid{
-  display:grid;
-  grid-template-columns: repeat(3, minmax(0,1fr));
-  gap: 12px;
-}
-@media (max-width: 980px){
-  .casinoGrid{ grid-template-columns: repeat(2, minmax(0,1fr)); }
-}
-@media (max-width: 620px){
-  .casinoGrid{ grid-template-columns: 1fr; }
-}
-
-.casinoCard{
-  display:block;
-  text-decoration:none;
-  color: var(--text);
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.04);
-  border-radius: 16px;
-  padding: 12px;
-  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
-}
-.casinoCard:hover{
-  transform: translateY(-1px);
-  border-color: rgba(126,76,179,0.45);
-  background: rgba(255,255,255,0.055);
-}
-
-.casinoCardTop{ display:flex; gap: 12px; align-items:flex-start; }
-.casinoLogo{
-  width: 44px; height: 44px;
-  border-radius: 12px;
-  overflow:hidden;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(0,0,0,0.18);
-  flex: 0 0 auto;
-}
-.casinoLogo img{ width:100%; height:100%; object-fit: cover; display:block; }
-.casinoLogoPh{
-  width: 100%; height: 100%;
-  background: linear-gradient(135deg, rgba(126,76,179,0.55), rgba(63,86,203,0.55));
-  opacity: 0.55;
-}
-
-.casinoMeta{ flex: 1; min-width: 0; }
-.casinoNameRow{
-  display:flex;
-  align-items:center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.casinoName{
-  font-weight: 900;
-  letter-spacing: 0.2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.casinoBadges{ display:flex; gap: 6px; flex-wrap: wrap; justify-content:flex-end; }
-
-.badgeChip{
-  font-size: 11px;
-  font-weight: 900;
-  padding: 5px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(0,0,0,0.18);
-}
-.badgeChip.featured{
-  border-color: rgba(126,76,179,0.45);
-  background: rgba(126,76,179,0.12);
-}
-.badgeChip.watch{
-  border-color: rgba(255, 193, 7, 0.35);
-  background: rgba(255, 193, 7, 0.10);
-}
-.badgeChip.avoid{
-  border-color: rgba(255, 82, 82, 0.35);
-  background: rgba(255, 82, 82, 0.10);
-}
-
-.ratingLine{ display:flex; align-items:center; gap: 8px; margin-top: 6px; }
-.stars{ display:flex; gap: 2px; }
-.star{ opacity: 0.25; }
-.star.on{ opacity: 0.95; }
-.ratingText{ font-size: 13px; }
-
-.casinoBonus{
-  margin-top: 6px;
-  font-size: 12px;
-  color: rgba(255,255,255,0.78);
-  font-weight: 800;
-}
-
-.casinoCardBottom{
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255,255,255,0.07);
-  display:flex;
-  justify-content:flex-end;
-}
-.seeMore{
-  font-weight: 900;
-  color: rgba(255,255,255,0.85);
-}
-
-/* Podium */
-.podiumGrid{
-  display:grid;
-  grid-template-columns: repeat(3, minmax(0,1fr));
-  gap: 12px;
-}
-@media (max-width: 820px){
-  .podiumGrid{ grid-template-columns: 1fr; }
-}
-.podiumCard{
-  display:block;
-  text-decoration:none;
-  color: var(--text);
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.04);
-  border-radius: 18px;
-  padding: 14px;
-}
-.podiumCard.r1{ border-color: rgba(126,76,179,0.55); box-shadow: 0 0 0 2px rgba(126,76,179,0.10); }
-.podiumRank{ font-weight: 1000; opacity: 0.85; }
-.podiumLogo{ width: 56px; height: 56px; border-radius: 14px; overflow:hidden; margin-top: 10px; border: 1px solid rgba(255,255,255,0.10); }
-.podiumLogo img{ width:100%; height:100%; object-fit: cover; display:block; }
-.podiumName{ margin-top: 10px; font-size: 18px; font-weight: 1000; }
-.podiumRating{ margin-top: 8px; }
-.podiumBonus{ margin-top: 10px; font-weight: 900; color: rgba(255,255,255,0.80); font-size: 12px; }
-
-/* Watchlist cards */
-.watchGrid{
-  display:grid;
-  grid-template-columns: repeat(2, minmax(0,1fr));
-  gap: 12px;
-}
-@media (max-width: 820px){
-  .watchGrid{ grid-template-columns: 1fr; }
-}
-.watchCard{
-  border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.04);
-  padding: 14px;
-}
-.watchCard.avoid{
-  border-color: rgba(255,82,82,0.28);
-  background: rgba(255,82,82,0.06);
-}
-.watchCard.watch{
-  border-color: rgba(255,193,7,0.22);
-  background: rgba(255,193,7,0.06);
-}
-.watchTitle{
-  display:flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 6px;
-}
-.watchPill{
-  font-size: 11px;
-  font-weight: 1000;
-  padding: 5px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(0,0,0,0.18);
-}
-.watchPill.avoid{ border-color: rgba(255,82,82,0.35); background: rgba(255,82,82,0.10); }
-.watchPill.watch{ border-color: rgba(255,193,7,0.35); background: rgba(255,193,7,0.10); }
 
 /* Affiche correctement les retours à la ligne saisis dans l’admin */
 .casinoDesc,

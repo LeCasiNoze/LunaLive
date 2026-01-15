@@ -1,4 +1,4 @@
-
+import { loadToken } from "./storage";
 export type ApiUser = {
   id: number;
   username: string;
@@ -118,12 +118,12 @@ export async function adminListProviderAccounts(adminKey: string) {
 
 export async function adminCreateProviderAccount(
   adminKey: string,
-  payload: { provider?: string; channelSlug: string; rtmpUrl: string; streamKey: string }
+  payload: { provider?: string; channelSlug: string; rtmpUrl?: string; streamKey: string }
 ) {
   return j<{ ok: true }>(`/admin/provider-accounts`, {
     method: "POST",
     headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, rtmpUrl: payload.rtmpUrl ?? DLIVE_RTMP_URL }),
   });
 }
 
@@ -150,8 +150,7 @@ export async function adminReleaseProviderAccount(adminKey: string, id: number) 
 }
 
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
-
-import { loadToken } from "./storage";
+export const DLIVE_RTMP_URL = "rtmp://stream.dlive.tv/live";
 
 async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
   const usedAuth =
@@ -212,10 +211,9 @@ export type MyCosmeticsResp = {
 };
 
 export async function myCosmetics(token: string): Promise<MyCosmeticsResp> {
-  const r = await fetch(`${BASE}/me/cosmetics`, {
+  return j<MyCosmeticsResp>("/me/cosmetics", {
     headers: { Authorization: `Bearer ${token}` },
   });
-  return await r.json();
 }
 
 export async function equipCosmetic(
@@ -223,15 +221,11 @@ export async function equipCosmetic(
   kind: "username" | "badge" | "title" | "frame" | "hat",
   code: string | null
 ): Promise<{ ok: boolean; equipped?: any; error?: string }> {
-  const r = await fetch(`${BASE}/me/cosmetics/equip`, {
+  return j<{ ok: boolean; equipped?: any; error?: string }>("/me/cosmetics/equip", {
     method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ kind, code }),
   });
-  return await r.json();
 }
 
 export type ApiStreamerPage = {
@@ -379,6 +373,12 @@ export type AdminUserRow = {
 
 export async function adminListUsers(adminKey: string) {
   return j<{ ok: true; users: AdminUserRow[] }>("/admin/users", {
+    headers: { "x-admin-key": adminKey },
+  });
+}
+
+export async function adminGetUserDetails(adminKey: string, userId: number) {
+  return j<AdminUserDetails>(`/admin/users/${encodeURIComponent(String(userId))}/details`, {
     headers: { "x-admin-key": adminKey },
   });
 }
@@ -880,12 +880,10 @@ export type ShopCosmeticsResp = {
 };
 
 export async function shopCosmetics(token: string): Promise<ShopCosmeticsResp> {
-  const r = await fetch(`${BASE}/shop/cosmetics`, {
+  return j<ShopCosmeticsResp>("/shop/cosmetics", {
     headers: { Authorization: `Bearer ${token}` },
   });
-  return r.json();
 }
-
 export type BuyShopCosmeticResp = {
   ok: true;
   alreadyOwned: boolean;
@@ -896,15 +894,11 @@ export type BuyShopCosmeticResp = {
 };
 
 export async function buyShopCosmetic(token: string, kind: string, code: string): Promise<BuyShopCosmeticResp> {
-  const r = await fetch(`${BASE}/shop/cosmetics/buy`, {
+  return j<BuyShopCosmeticResp>("/shop/cosmetics/buy", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ kind, code }),
   });
-  return r.json();
 }
 
 export type ApiDliveLinkMe = {
@@ -1444,22 +1438,17 @@ export type ShopTalentsResp = {
 };
 
 export async function shopTalents(token: string): Promise<ShopTalentsResp> {
-  const r = await fetch(`${BASE}/shop/talents`, {
+  return j<ShopTalentsResp>("/shop/talents", {
     headers: { Authorization: `Bearer ${token}` },
   });
-  return r.json();
 }
 
 export async function buyTalent(token: string, code: string) {
-  const r = await fetch(`${BASE}/shop/talents/buy`, {
+  return j<any>("/shop/talents/buy", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ code }),
   });
-  return r.json();
 }
 
 // ──────────────────────────────────────────
@@ -1543,4 +1532,34 @@ export async function adminRejectCasinoComment(adminKey: string, commentId: stri
     body: JSON.stringify({ action: "reject" }),
   });
 }
+
+export type AdminAdjustRubisMode = "add" | "remove" | "set";
+
+export async function adminAdjustUserRubis(
+  adminKey: string,
+  payload: { userId: number; mode: AdminAdjustRubisMode; amount: number; origin?: string; weightBp?: number; note?: string | null }
+) {
+  return j<{ ok: true; txId?: string; user?: { id: number; username: string; rubis: number } }>(`/admin/rubis/adjust`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+  userId: payload.userId,
+  mode: payload.mode,
+  amount: Math.floor(Number(payload.amount || 0)),
+  origin: payload.origin,
+  weightBp: payload.weightBp ?? 10000,
+  note: payload.note ?? null,
+}),
+  });
+}
+
+export type AdminUserDetails = {
+  ok: true;
+  userId: number;
+  createdAt: string | null;
+  lastLoginAt: string | null;
+  messagesCount: number | null;
+  rubisSpent: number | null;
+  siteSpentEur: number | null;
+};
 

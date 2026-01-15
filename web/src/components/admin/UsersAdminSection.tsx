@@ -1,40 +1,12 @@
 import * as React from "react";
 import {
+  adminAdjustUserRubis,
+  adminGetUserDetails,
   adminListUsers,
   adminSetUserRole,
-  adminMintRubis, // existant chez toi
   type AdminUserRow,
+  type AdminUserDetails,
 } from "../../lib/api";
-
-// ⚠️ À BRANCHER (backend à ajouter)
-// - adminGetUserDetails(adminKey, userId)
-// - adminAdjustUserRubis(adminKey, { userId, mode: "add"|"remove"|"set", amount, origin?, note? })
-async function adminGetUserDetails(_adminKey: string, userId: number) {
-  // fallback minimal : on a déjà la ligne user
-  return {
-    ok: true,
-    userId,
-    createdAt: null,
-    lastLoginAt: null,
-    messagesCount: null,
-    rubisSpent: null,
-    siteSpentEur: null, // todo
-  };
-}
-async function adminAdjustUserRubis(adminKey: string, p: { userId: number; mode: "add" | "remove" | "set"; amount: number; origin?: string; note?: string | null }) {
-  // mode add => on peut utiliser adminMintRubis existant (wallet-engine earn)
-  if (p.mode === "add") {
-    return adminMintRubis(adminKey, {
-      userId: p.userId,
-      amount: p.amount,
-      origin: p.origin || "paid_topup",
-      weightBp: 10000,
-      note: p.note ?? null,
-    } as any);
-  }
-  // remove/set => nécessite backend.
-  throw new Error("adminAdjustUserRubis(remove/set) backend manquant (à implémenter)");
-}
 
 const ORIGINS: { origin: string; label: string }[] = [
   { origin: "paid_topup", label: "paid_topup (1.00)" },
@@ -135,10 +107,13 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
   const [edit, setEdit] = React.useState<Record<number, AdminUserRow["role"]>>({});
 
   const [openUserId, setOpenUserId] = React.useState<number | null>(null);
-  const openedUser = React.useMemo(() => rows.find((u) => u.id === openUserId) || null, [rows, openUserId]);
+  const openedUser = React.useMemo(
+    () => rows.find((u) => u.id === openUserId) || null,
+    [rows, openUserId]
+  );
 
   // details state
-  const [detail, setDetail] = React.useState<any | null>(null);
+  const [detail, setDetail] = React.useState<AdminUserDetails | null>(null);
   const [detailErr, setDetailErr] = React.useState<string | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
 
@@ -177,8 +152,8 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
     setDetailErr(null);
     setDetailLoading(true);
     try {
-      const d = await adminGetUserDetails(adminKey, userId);
-      setDetail(d);
+      const r = await adminGetUserDetails(adminKey, userId);
+      setDetail(r);
     } catch (e: any) {
       setDetailErr(String(e?.message || e));
     } finally {
@@ -198,29 +173,13 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
     setDetailErr(null);
     setDetailLoading(true);
     try {
-      if (rubMode === "add") {
-        await adminAdjustUserRubis(adminKey, {
-          userId: openedUser.id,
-          mode: "add",
-          amount: amt,
-          origin: rubOrigin,
-          note: rubNote.trim() ? rubNote.trim() : null,
-        });
-      } else if (rubMode === "remove") {
-        await adminAdjustUserRubis(adminKey, {
-          userId: openedUser.id,
-          mode: "remove",
-          amount: amt,
-          note: rubNote.trim() ? rubNote.trim() : null,
-        });
-      } else {
-        await adminAdjustUserRubis(adminKey, {
-          userId: openedUser.id,
-          mode: "set",
-          amount: amt,
-          note: rubNote.trim() ? rubNote.trim() : null,
-        });
-      }
+      await adminAdjustUserRubis(adminKey, {
+        userId: openedUser.id,
+        mode: rubMode,
+        amount: amt,
+        origin: rubMode === "add" ? rubOrigin : undefined,
+        note: rubNote.trim() ? rubNote.trim() : null,
+      });
 
       await load(); // refresh balance/roles list
       setRubNote("");
@@ -269,7 +228,9 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
                 <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
                   <b style={{ fontSize: 14 }}>{u.username}</b>
                   <span className="mutedSmall">#{u.id}</span>
-                  <span className="mutedSmall">rubis: <b>{Number(u.rubis || 0).toLocaleString()}</b></span>
+                  <span className="mutedSmall">
+                    rubis: <b>{Number(u.rubis || 0).toLocaleString()}</b>
+                  </span>
                 </div>
                 <div className="mutedSmall" style={{ opacity: 0.85 }}>
                   role: <b>{u.role}</b> — request: {u.requestStatus ?? "-"} — streamer: {u.streamerSlug ?? "-"}
@@ -310,7 +271,9 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
           openedUser ? (
             <span style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               👤 {openedUser.username} <span className="mutedSmall">#{openedUser.id}</span>
-              <Pill>rubis: <b>{Number(openedUser.rubis || 0).toLocaleString()}</b></Pill>
+              <Pill>
+                rubis: <b>{Number(openedUser.rubis || 0).toLocaleString()}</b>
+              </Pill>
             </span>
           ) : (
             "Utilisateur"
@@ -363,7 +326,13 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
               </select>
 
               <label className="mutedSmall">Montant</label>
-              <input type="number" value={rubAmount} onChange={(e) => setRubAmount(Number(e.target.value))} min={1} step={1} />
+              <input
+                type="number"
+                value={rubAmount}
+                onChange={(e) => setRubAmount(Number(e.target.value))}
+                min={1}
+                step={1}
+              />
 
               {rubMode === "add" ? (
                 <>
@@ -392,7 +361,7 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
                 {detailLoading ? "…" : "Appliquer"}
               </button>
               <div className="mutedSmall" style={{ opacity: 0.85 }}>
-                “Retirer/Set” nécessite un endpoint admin côté API (je te liste les fichiers à modifier plus bas).
+                “Retirer/Set” nécessite l’endpoint admin côté API : <b>POST /admin/rubis/adjust</b>
               </div>
             </div>
           </div>

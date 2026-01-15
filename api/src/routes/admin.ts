@@ -9,6 +9,25 @@ import { runSlotsUpdate } from "../calls/updater.js";
 
 export const adminRouter = Router();
 
+// ─────────────────────────────────────────────
+// Helpers (safe)
+// ─────────────────────────────────────────────
+async function regclassExists(name: string): Promise<boolean> {
+  const full = name.includes(".") ? name : `public.${name}`;
+  const r = await pool.query(`SELECT to_regclass($1) AS reg`, [full]);
+  return !!r.rows?.[0]?.reg;
+}
+
+async function safeScalar<T>(sql: string, params: any[], key: string): Promise<T | null> {
+  try {
+    const r = await pool.query(sql, params);
+    const v = r.rows?.[0]?.[key];
+    return v == null ? null : (v as T);
+  } catch {
+    return null;
+  }
+}
+
 adminRouter.get(
   "/admin/requests",
   requireAdminKey,
@@ -151,6 +170,83 @@ adminRouter.get(
       ORDER BY u.created_at DESC
     `);
     res.json({ ok: true, users: rows });
+  })
+);
+
+adminRouter.get(
+  "/admin/users/:id/details",
+  requireAdminKey,
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    // ✅ base fiable depuis users
+    const r = await pool.query(
+      `
+      SELECT
+        u.id            AS "userId",
+        u.created_at    AS "createdAt",
+        u.last_login_at AS "lastLoginAt"
+      FROM users u
+      WHERE u.id = $1
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    if (!r.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+
+    // ✅ messagesCount (confirmé dans ton code : table chat_messages)
+    let messagesCount: number | null = null;
+    if (await regclassExists("chat_messages")) {
+      messagesCount = await safeScalar<number>(
+        `SELECT COUNT(*)::int AS c
+         FROM chat_messages
+         WHERE user_id=$1 AND deleted_at IS NULL`,
+        [id],
+        "c"
+      );
+    }
+
+    // ✅ rubisSpent (best-effort) : si ledger présent, sinon null
+    // (on ne touche PAS users.rubis ici)
+    let rubisSpent: number | null = null;
+
+    if (await regclassExists("wallet_tx")) {
+      rubisSpent = await safeScalar<number>(
+        `
+        SELECT COALESCE(SUM(amount),0)::int AS s
+        FROM wallet_tx
+        WHERE user_id=$1
+          AND kind IN ('spend','debit')
+          AND status IN ('ok','committed','done')
+        `,
+        [id],
+        "s"
+      );
+    } else if (await regclassExists("rubis_tx")) {
+      rubisSpent = await safeScalar<number>(
+        `
+        SELECT COALESCE(SUM(amount),0)::int AS s
+        FROM rubis_tx
+        WHERE user_id=$1
+          AND type IN ('spend','debit')
+          AND status IN ('ok','committed','done')
+        `,
+        [id],
+        "s"
+      );
+    }
+
+    res.json({
+      ok: true,
+      userId: r.rows[0].userId,
+      createdAt: r.rows[0].createdAt ?? null,
+      lastLoginAt: r.rows[0].lastLoginAt ?? null,
+      messagesCount,
+      rubisSpent,
+      siteSpentEur: null,
+    });
   })
 );
 

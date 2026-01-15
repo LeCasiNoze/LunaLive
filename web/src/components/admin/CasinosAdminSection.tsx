@@ -39,7 +39,15 @@ function listToLines(arr: string[] | null | undefined) {
   return (arr || []).join("\n");
 }
 
-function SegButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
+function SegButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
   return (
     <button
       className={active ? "btnPrimarySmall" : "btnGhostSmall"}
@@ -83,12 +91,27 @@ export function CasinosAdminSection({ adminKey }: Props) {
   const [prosText, setProsText] = React.useState("");
   const [consText, setConsText] = React.useState("");
 
+  // ✅ Fix dropdown blanc sur blanc (Windows/Chrome)
+  const selectStyle: React.CSSProperties = {
+    background: "rgba(10,10,14,0.95)",
+    color: "var(--text)",
+    border: "1px solid rgba(255,255,255,0.10)",
+  };
+  const optionStyle: React.CSSProperties = {
+    background: "rgb(10,10,14)",
+    color: "var(--text)",
+  };
+
   async function refreshList() {
     setErr(null);
     setLoading(true);
     try {
       const r = await adminListCasinos(adminKey, { q });
-      const list = Array.isArray(r.items) ? r.items : Array.isArray((r as any).casinos) ? (r as any).casinos : [];
+      const list = Array.isArray(r.items)
+        ? r.items
+        : Array.isArray((r as any).casinos)
+          ? (r as any).casinos
+          : [];
       setItems(list);
       setSelectedId((prev) => {
         if (prev && list.some((x: { id: string }) => x.id === prev)) return prev;
@@ -107,7 +130,11 @@ export function CasinosAdminSection({ adminKey }: Props) {
     setLinksLoading(true);
     try {
       const r = await adminListCasinoLinks(adminKey, casinoId);
-      const list = Array.isArray(r.items) ? r.items : Array.isArray((r as any).links) ? (r as any).links : [];
+      const list = Array.isArray(r.items)
+        ? r.items
+        : Array.isArray((r as any).links)
+          ? (r as any).links
+          : [];
       setLinks(list);
     } finally {
       setLinksLoading(false);
@@ -163,11 +190,16 @@ export function CasinosAdminSection({ adminKey }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
-  const selected = React.useMemo(() => items.find((x) => x.id === selectedId) || null, [items, selectedId]);
+  const selected = React.useMemo(
+    () => items.find((x) => x.id === selectedId) || null,
+    [items, selectedId]
+  );
 
   function patchSelected(patch: Partial<AdminCasino>) {
     if (!selected) return;
-    setItems((prev) => prev.map((c) => (c.id === selected.id ? ({ ...c, ...patch } as any) : c)));
+    setItems((prev) =>
+      prev.map((c) => (c.id === selected.id ? ({ ...c, ...patch } as any) : c))
+    );
   }
 
   const safeLinks = Array.isArray(links) ? links : [];
@@ -195,13 +227,22 @@ export function CasinosAdminSection({ adminKey }: Props) {
               OK
             </button>
           </div>
-          {err ? <div className="hint" style={{ marginTop: 10 }}>⚠️ {err}</div> : null}
+          {err ? (
+            <div className="hint" style={{ marginTop: 10 }}>
+              ⚠️ {err}
+            </div>
+          ) : null}
         </div>
 
         <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
           <div style={{ fontWeight: 950, marginBottom: 8 }}>Créer un casino</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <input className="input" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} placeholder="slug (optionnel)" />
+            <input
+              className="input"
+              value={newSlug}
+              onChange={(e) => setNewSlug(e.target.value)}
+              placeholder="slug (optionnel)"
+            />
             <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="name" />
           </div>
           <button
@@ -279,10 +320,21 @@ export function CasinosAdminSection({ adminKey }: Props) {
         ) : (
           <>
             {/* header */}
-            <div style={{ padding: 14, borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <div
+              style={{
+                padding: 14,
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 1000, fontSize: 16 }}>{selected.name}</div>
-                <div className="mutedSmall">{selected.slug} • id {selected.id}</div>
+                <div className="mutedSmall">
+                  {selected.slug} • id {selected.id}
+                </div>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <button
@@ -326,9 +378,15 @@ export function CasinosAdminSection({ adminKey }: Props) {
 
             {/* tabs */}
             <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <SegButton active={tab === "identity"} onClick={() => setTab("identity")}>Identité</SegButton>
-              <SegButton active={tab === "content"} onClick={() => setTab("content")}>Contenu</SegButton>
-              <SegButton active={tab === "links"} onClick={() => setTab("links")}>Liens</SegButton>
+              <SegButton active={tab === "identity"} onClick={() => setTab("identity")}>
+                Identité
+              </SegButton>
+              <SegButton active={tab === "content"} onClick={() => setTab("content")}>
+                Contenu
+              </SegButton>
+              <SegButton active={tab === "links"} onClick={() => setTab("links")}>
+                Liens
+              </SegButton>
               <SegButton
                 active={tab === "reviews"}
                 onClick={() => {
@@ -357,16 +415,25 @@ export function CasinosAdminSection({ adminKey }: Props) {
 
                   <div className="field">
                     <label>Logo URL</label>
-                    <input className="input" value={selected.logoUrl || ""} onChange={(e) => patchSelected({ logoUrl: e.target.value || null })} />
+                    <input
+                      className="input"
+                      value={selected.logoUrl || ""}
+                      onChange={(e) => patchSelected({ logoUrl: e.target.value || null })}
+                    />
                   </div>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 160px", gap: 10 }}>
                     <div className="field">
                       <label>Status</label>
-                      <select className="select" value={selected.status} onChange={(e) => patchSelected({ status: e.target.value as any })}>
-                        <option value="published">published</option>
-                        <option value="hidden">hidden</option>
-                        <option value="disabled">disabled</option>
+                      <select
+                        className="select"
+                        style={selectStyle}
+                        value={selected.status}
+                        onChange={(e) => patchSelected({ status: e.target.value as any })}
+                      >
+                        <option style={optionStyle} value="published">published</option>
+                        <option style={optionStyle} value="hidden">hidden</option>
+                        <option style={optionStyle} value="disabled">disabled</option>
                       </select>
                     </div>
                     <div className="field">
@@ -379,17 +446,26 @@ export function CasinosAdminSection({ adminKey }: Props) {
                     </div>
                     <div className="field">
                       <label>Watch level</label>
-                      <select className="select" value={selected.watchLevel} onChange={(e) => patchSelected({ watchLevel: e.target.value as any })}>
-                        <option value="none">none</option>
-                        <option value="watch">watch</option>
-                        <option value="avoid">avoid</option>
+                      <select
+                        className="select"
+                        style={selectStyle}
+                        value={selected.watchLevel}
+                        onChange={(e) => patchSelected({ watchLevel: e.target.value as any })}
+                      >
+                        <option style={optionStyle} value="none">none</option>
+                        <option style={optionStyle} value="watch">watch</option>
+                        <option style={optionStyle} value="avoid">avoid</option>
                       </select>
                     </div>
                   </div>
 
                   <div className="field">
                     <label>Watch reason</label>
-                    <input className="input" value={selected.watchReason || ""} onChange={(e) => patchSelected({ watchReason: e.target.value || null })} />
+                    <input
+                      className="input"
+                      value={selected.watchReason || ""}
+                      onChange={(e) => patchSelected({ watchReason: e.target.value || null })}
+                    />
                   </div>
                 </div>
               ) : null}
@@ -398,12 +474,20 @@ export function CasinosAdminSection({ adminKey }: Props) {
                 <div style={{ display: "grid", gap: 12 }}>
                   <div className="field">
                     <label>Bonus headline</label>
-                    <input className="input" value={selected.bonusHeadline || ""} onChange={(e) => patchSelected({ bonusHeadline: e.target.value || null })} />
+                    <input
+                      className="input"
+                      value={selected.bonusHeadline || ""}
+                      onChange={(e) => patchSelected({ bonusHeadline: e.target.value || null })}
+                    />
                   </div>
 
                   <div className="field">
                     <label>Description</label>
-                    <textarea className="textarea" value={selected.description || ""} onChange={(e) => patchSelected({ description: e.target.value || null })} />
+                    <textarea
+                      className="textarea"
+                      value={selected.description || ""}
+                      onChange={(e) => patchSelected({ description: e.target.value || null })}
+                    />
                   </div>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -433,7 +517,11 @@ export function CasinosAdminSection({ adminKey }: Props) {
                     </div>
                     <div className="field">
                       <label>Team review</label>
-                      <textarea className="textarea" value={selected.teamReview || ""} onChange={(e) => patchSelected({ teamReview: e.target.value || null })} />
+                      <textarea
+                        className="textarea"
+                        value={selected.teamReview || ""}
+                        onChange={(e) => patchSelected({ teamReview: e.target.value || null })}
+                      />
                     </div>
                   </div>
                 </div>
@@ -508,19 +596,28 @@ export function CasinosAdminSection({ adminKey }: Props) {
 
                   <div style={{ display: "grid", gap: 10 }}>
                     {streamerLinks.map((l: any) => (
-                      <div key={l.id} style={{ border: "1px solid rgba(255,255,255,0.10)", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.03)" }}>
+                      <div
+                        key={l.id}
+                        style={{
+                          border: "1px solid rgba(255,255,255,0.10)",
+                          borderRadius: 14,
+                          padding: 12,
+                          background: "rgba(255,255,255,0.03)",
+                        }}
+                      >
                         <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 160px 140px", gap: 8, alignItems: "center" }}>
                           <select
                             className="select"
+                            style={selectStyle}
                             value={l.streamerId ?? ""}
                             onChange={(e) => {
                               const v = e.target.value ? Number(e.target.value) : null;
                               setLinks((prev) => prev.map((x: any) => (x.id === l.id ? { ...x, streamerId: v } : x)));
                             }}
                           >
-                            <option value="">—</option>
+                            <option style={optionStyle} value="">—</option>
                             {streamers.map((s) => (
-                              <option key={s.id} value={s.id}>
+                              <option key={s.id} style={optionStyle} value={s.id}>
                                 {s.displayName}
                               </option>
                             ))}
@@ -593,12 +690,7 @@ export function CasinosAdminSection({ adminKey }: Props) {
                       placeholder="Rechercher dans les avis…"
                       style={{ flex: 1, minWidth: 260 }}
                     />
-                    <button
-                      className="btnSecondary"
-                      type="button"
-                      onClick={() => loadReviews({ reset: true })}
-                      disabled={reviewsLoading}
-                    >
+                    <button className="btnSecondary" type="button" onClick={() => loadReviews({ reset: true })} disabled={reviewsLoading}>
                       {reviewsLoading ? "…" : "Rechercher"}
                     </button>
                   </div>
@@ -617,7 +709,8 @@ export function CasinosAdminSection({ adminKey }: Props) {
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                         <div>
-                          <b>{r.username}</b> <span className="mutedSmall">({new Date(r.createdAt).toLocaleString()})</span>
+                          <b>{r.username}</b>{" "}
+                          <span className="mutedSmall">({new Date(r.createdAt).toLocaleString()})</span>
                         </div>
                         <button
                           className="btnGhostSmall"
