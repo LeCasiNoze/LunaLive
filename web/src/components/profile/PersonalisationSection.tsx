@@ -36,14 +36,17 @@ type UiItem = {
   unlock?: string;
 };
 
-const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(
+  /\/$/,
+  ""
+);
 
-const CATS: Array<{ id: Kind; label: string }> = [
-  { id: "username", label: "Pseudo" },
-  { id: "badge", label: "Badges" },
-  { id: "hat", label: "Chapeaux" },
-  { id: "frame", label: "Cadrans message" },
-  { id: "title", label: "Titres" },
+const CATS: Array<{ id: Kind; label: string; emoji: string }> = [
+  { id: "username", label: "Pseudo", emoji: "✨" },
+  { id: "badge", label: "Badges", emoji: "🏷️" },
+  { id: "hat", label: "Chapeaux", emoji: "🧢" },
+  { id: "frame", label: "Cadrans", emoji: "💬" },
+  { id: "title", label: "Titres", emoji: "🏆" },
 ];
 
 function niceUnlock(u?: string) {
@@ -78,7 +81,10 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(bin);
 }
 
-async function makeSquareAvatar(file: File, size = 128): Promise<{ mime: string; b64: string; previewUrl: string }> {
+async function makeSquareAvatar(
+  file: File,
+  size = 160
+): Promise<{ mime: string; b64: string; previewUrl: string }> {
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.src = url;
@@ -140,22 +146,22 @@ function renderItemTitle(it: UiItem) {
   if (it.kind === "badge" && it.code) {
     const tier = rarityToTier(it.rarity || "");
     return (
-      <span className="shopTitleBadgeRow">
-        <span className="shopTitleKind">Badge</span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontWeight: 1000, opacity: 0.75 }}>Badge</span>
         <span className={`chatBadge badge--${tier}`}>{badgeTextFromCode(it.code)}</span>
       </span>
     );
   }
-  return <span className="shopTitleText">{it.name}</span>;
+  return <span style={{ fontWeight: 1100 }}>{it.name}</span>;
 }
 
 function kindBorder(kind: Kind) {
   const map: Record<Kind, string> = {
-    username: "rgba(255, 213, 74, 0.20)",
-    badge: "rgba(190, 240, 255, 0.20)",
-    hat: "rgba(126, 76, 179, 0.20)",
-    frame: "rgba(63, 86, 203, 0.20)",
-    title: "rgba(180, 140, 255, 0.20)",
+    username: "rgba(255, 213, 74, 0.22)",
+    badge: "rgba(190, 240, 255, 0.22)",
+    hat: "rgba(126, 76, 179, 0.22)",
+    frame: "rgba(63, 86, 203, 0.22)",
+    title: "rgba(180, 140, 255, 0.22)",
   };
   return map[kind] || "rgba(255,255,255,0.10)";
 }
@@ -285,6 +291,89 @@ function byOwnedFirst(ownedSet: Set<string>, a: UiItem, b: UiItem) {
   return a.name.localeCompare(b.name);
 }
 
+function Chip({
+  children,
+  tone = "neutral",
+  title,
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "pink" | "blue" | "green" | "gold";
+  title?: string;
+}) {
+  const tones: Record<string, { bg: string; bd: string }> = {
+    neutral: { bg: "rgba(255,255,255,0.06)", bd: "rgba(255,255,255,0.10)" },
+    pink: { bg: "rgba(255, 90, 180, 0.14)", bd: "rgba(255, 90, 180, 0.26)" },
+    blue: { bg: "rgba(80, 160, 255, 0.14)", bd: "rgba(80, 160, 255, 0.26)" },
+    green: { bg: "rgba(80, 240, 170, 0.12)", bd: "rgba(80, 240, 170, 0.22)" },
+    gold: { bg: "rgba(255, 210, 110, 0.14)", bd: "rgba(255, 210, 110, 0.26)" },
+  };
+  const t = tones[tone] ?? tones.neutral;
+
+  return (
+    <span
+      title={title}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 12px",
+        borderRadius: 999,
+        border: `1px solid ${t.bd}`,
+        background: t.bg,
+        fontSize: 13,
+        fontWeight: 1000,
+        whiteSpace: "nowrap",
+        backdropFilter: "blur(10px)",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SegPill({
+  active,
+  onClick,
+  emoji,
+  label,
+  disabled,
+}: {
+  active: boolean;
+  onClick: () => void;
+  emoji: string;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 12px",
+        borderRadius: 999,
+        border: active
+          ? "1px solid rgba(255,255,255,0.18)"
+          : "1px solid rgba(255,255,255,0.10)",
+        background: active
+          ? "linear-gradient(90deg, rgba(140,90,255,0.30), rgba(80,160,255,0.22), rgba(255,90,180,0.16))"
+          : "rgba(255,255,255,0.05)",
+        boxShadow: active ? "0 16px 40px rgba(0,0,0,0.25)" : "none",
+        color: "inherit",
+        fontWeight: 1100,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : 1,
+        backdropFilter: "blur(10px)",
+      }}
+    >
+      <span style={{ fontSize: 16 }}>{emoji}</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
 export function PersonalisationSection({
   username,
   streamerAppearance = DEFAULT_STREAMER_APPEARANCE,
@@ -300,7 +389,9 @@ export function PersonalisationSection({
   const fileRef = React.useRef<HTMLInputElement | null>(null);
   const [avatarUrl, setAvatarUrl] = React.useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null);
-  const [avatarPayload, setAvatarPayload] = React.useState<{ mime: string; b64: string } | null>(null);
+  const [avatarPayload, setAvatarPayload] = React.useState<{ mime: string; b64: string } | null>(
+    null
+  );
   const [avatarBusy, setAvatarBusy] = React.useState(false);
 
   const [tab, setTab] = React.useState<Kind>("username");
@@ -443,165 +534,205 @@ export function PersonalisationSection({
     return withAvatar(buildCosmeticsPreview(simulated, { titleNames }));
   }
 
+  const curLabel = CATS.find((x) => x.id === tab)?.label ?? tab;
+  const curEmoji = CATS.find((x) => x.id === tab)?.emoji ?? "🎨";
+
   return (
-    <div className="panel" style={{ marginTop: 14 }}>
-      <div className="panelTitle">Personnalisation</div>
-      <div className="muted" style={{ marginBottom: 10 }}>
-        Équipe tes cosmétiques. Les items non possédés sont verrouillés (sauf “Par défaut / Aucun”).
+    <div
+      style={{
+        borderRadius: 22,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background:
+          "radial-gradient(900px 300px at 20% 0%, rgba(255,90,180,0.18), rgba(0,0,0,0) 60%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+        padding: 16,
+        boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
+        backdropFilter: "blur(10px)",
+      }}
+    >
+      <style>{`
+        @media (prefers-reduced-motion: no-preference) {
+          .ll-pulse { animation: llPulse 6s ease-in-out infinite; }
+        }
+        @keyframes llPulse {
+          0%,100% { filter: drop-shadow(0 0 0 rgba(255,255,255,0)); transform: translateY(0px); }
+          50% { filter: drop-shadow(0 12px 30px rgba(140,90,255,0.30)); transform: translateY(-3px); }
+        }
+      `}</style>
+
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontWeight: 1200, letterSpacing: -0.2 }}>
+            🎨 Personnalisation
+          </div>
+          <div className="muted">
+            Choisis ton style. Les items non possédés sont verrouillés (sauf “Par défaut / Aucun”).
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <Chip tone="blue" title="Aperçu live dans le chat">
+            💬 Aperçu live
+          </Chip>
+          <button className="btnGhost" onClick={load} disabled={!token || loading || saving}>
+            {loading ? "Chargement…" : "🔄 Recharger"}
+          </button>
+        </div>
       </div>
 
-      {!token ? <div className="muted">Connecte-toi pour gérer tes skins.</div> : null}
+      {!token ? <div className="muted" style={{ marginTop: 10 }}>Connecte-toi pour gérer tes skins.</div> : null}
 
       {err ? (
-        <div className="hint" style={{ opacity: 0.95 }}>
+        <div className="hint" style={{ opacity: 0.95, marginTop: 10 }}>
           ⚠️ {err}
         </div>
       ) : null}
 
-      {/* Preview */}
+      {/* TOP ROW: Preview + Avatar card */}
       <div
-        className="cosPreview"
         style={{
-          marginTop: 10,
-          padding: 12,
-          borderRadius: 16,
-          border: "1px solid rgba(255,255,255,0.08)",
-          background: "rgba(0,0,0,0.18)",
-          ...({
-            ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
-            ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
-          } as any),
+          marginTop: 14,
+          display: "grid",
+          gridTemplateColumns: "1.15fr 0.85fr",
+          gap: 14,
+          alignItems: "start",
         }}
       >
-        <div style={{ fontWeight: 950, marginBottom: 10 }}>Aperçu</div>
-        <ChatMessageBubble
-          streamerAppearance={streamerAppearance}
-          msg={{
-            id: "preview",
-            userId: myUserId || 0,
-            username,
-            body: "Exemple de message — “ça rend comment ?”",
-            createdAt: new Date().toISOString(),
-            cosmetics: previewCosmetics,
-          }}
-        />
-      </div>
-
-      {/* Layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 14, marginTop: 14 }}>
-        {/* Sidebar */}
+        {/* Preview */}
         <div
           style={{
-            borderRadius: 16,
-            border: "1px solid rgba(255,255,255,0.08)",
-            background: "rgba(0,0,0,0.18)",
-            padding: 10,
+            borderRadius: 20,
+            border: "1px solid rgba(255,255,255,0.10)",
+            background:
+              "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+            padding: 14,
+            boxShadow: "0 16px 44px rgba(0,0,0,0.25)",
+            backdropFilter: "blur(10px)",
+            ...({
+              ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
+              ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
+            } as any),
           }}
         >
-          {/* Avatar section (compact) */}
-          <div
-            style={{
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(255,255,255,0.03)",
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <div style={{ fontWeight: 950, marginBottom: 8 }}>Avatar</div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+            <div style={{ fontWeight: 1100 }}>✨ Aperçu</div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              {saving ? "Enregistrement…" : ""}
+            </div>
+          </div>
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <div className="chatAvatarBorder" style={{ width: 44, height: 44 }}>
-                {(avatarPreview || avatarUrl) ? (
-                  <img
-                    className="chatAvatarImg"
-                    src={avatarPreview || `${avatarUrl}`}
-                    alt=""
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = "none";
-                    }}
-                  />
-                ) : null}
-                <div className="chatAvatarCircle" style={{ width: 38, height: 38 }}>
+          <div style={{ marginTop: 10 }}>
+            <ChatMessageBubble
+              streamerAppearance={streamerAppearance}
+              msg={{
+                id: "preview",
+                userId: myUserId || 0,
+                username,
+                body: "Exemple de message — “ça rend comment ?”",
+                createdAt: new Date().toISOString(),
+                cosmetics: previewCosmetics,
+              }}
+            />
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+            <Chip tone="gold" title="Catégorie active">
+              {curEmoji} <b>{curLabel}</b>
+            </Chip>
+            <Chip title="Astuce">
+              🎯 Clique une carte pour équiper / retirer
+            </Chip>
+          </div>
+        </div>
+
+        {/* Avatar */}
+        <div
+          style={{
+            borderRadius: 20,
+            border: "1px solid rgba(255,255,255,0.10)",
+            background:
+              "radial-gradient(600px 240px at 20% 0%, rgba(80,160,255,0.20), rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+            padding: 14,
+            boxShadow: "0 16px 44px rgba(0,0,0,0.25)",
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+            <div style={{ fontWeight: 1100 }}>🖼️ Avatar</div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              carré • auto-crop
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12, display: "flex", gap: 12, alignItems: "center" }}>
+            <div
+              className="ll-pulse"
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 24,
+                border: "1px solid rgba(255,255,255,0.14)",
+                background:
+                  "linear-gradient(135deg, rgba(140,90,255,0.25), rgba(80,160,255,0.14), rgba(255,90,180,0.10))",
+                overflow: "hidden",
+                display: "grid",
+                placeItems: "center",
+                boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+                flex: "0 0 auto",
+              }}
+            >
+              {(avatarPreview || avatarUrl) ? (
+                <img
+                  src={avatarPreview || `${avatarUrl}`}
+                  alt=""
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = "none";
+                  }}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                <div style={{ fontWeight: 1200, letterSpacing: 1 }}>
                   {getInitials(username)}
                 </div>
-              </div>
+              )}
+            </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0, flex: 1 }}>
-                <button
-                  className="btnGhostSmall"
-                  disabled={!token || avatarBusy}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  {avatarPayload ? "Changer l’image" : "Uploader une image"}
-                </button>
+            <div style={{ display: "grid", gap: 8, minWidth: 0, flex: 1 }}>
+              <button
+                className="btnGhost"
+                disabled={!token || avatarBusy}
+                onClick={() => fileRef.current?.click()}
+                style={{ justifyContent: "center" }}
+              >
+                {avatarPayload ? "🪄 Changer l’image" : "⬆️ Uploader une image"}
+              </button>
 
-                {avatarPayload ? (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      className="btnPrimarySmall"
-                      disabled={!token || avatarBusy}
-                      onClick={async () => {
-                        if (!token || !avatarPayload) return;
-                        setAvatarBusy(true);
-                        setErr(null);
-                        try {
-                          const r = await fetch(`${API_BASE}/me/avatar`, {
-                            method: "PUT",
-                            headers: {
-                              "Content-Type": "application/json",
-                              Authorization: `Bearer ${token}`,
-                            },
-                            body: JSON.stringify({ mime: avatarPayload.mime, data: avatarPayload.b64 }),
-                          });
-                          const j = await r.json();
-                          if (!j?.ok) throw new Error(j?.error || "upload_failed");
-
-                          const bust = Date.now();
-                          setAvatarUrl(String(j?.avatarUrl || `${API_BASE}/avatars/u/${myUserId}?v=${bust}`));
-
-                          setAvatarPayload(null);
-                          if (avatarPreview) URL.revokeObjectURL(avatarPreview);
-                          setAvatarPreview(null);
-                        } catch (e: any) {
-                          setErr(String(e?.message || "Erreur"));
-                        } finally {
-                          setAvatarBusy(false);
-                        }
-                      }}
-                    >
-                      {avatarBusy ? "Upload…" : "Valider"}
-                    </button>
-
-                    <button
-                      className="btnGhostSmall"
-                      disabled={avatarBusy}
-                      onClick={() => {
-                        setAvatarPayload(null);
-                        if (avatarPreview) URL.revokeObjectURL(avatarPreview);
-                        setAvatarPreview(null);
-                      }}
-                    >
-                      Annuler
-                    </button>
-                  </div>
-                ) : (
+              {avatarPayload ? (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <button
-                    className="btnGhostSmall"
+                    className="btnPrimary"
                     disabled={!token || avatarBusy}
                     onClick={async () => {
-                      if (!token) return;
+                      if (!token || !avatarPayload) return;
                       setAvatarBusy(true);
                       setErr(null);
                       try {
                         const r = await fetch(`${API_BASE}/me/avatar`, {
-                          method: "DELETE",
-                          headers: { Authorization: `Bearer ${token}` },
+                          method: "PUT",
+                          headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`,
+                          },
+                          body: JSON.stringify({ mime: avatarPayload.mime, data: avatarPayload.b64 }),
                         });
-                        const j = await r.json().catch(() => ({}));
-                        if (j?.ok !== true) throw new Error(j?.error || "delete_failed");
+                        const j = await r.json();
+                        if (!j?.ok) throw new Error(j?.error || "upload_failed");
 
-                        setAvatarUrl(null);
+                        const bust = Date.now();
+                        setAvatarUrl(String(j?.avatarUrl || `${API_BASE}/avatars/u/${myUserId}?v=${bust}`));
+
+                        setAvatarPayload(null);
+                        if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+                        setAvatarPreview(null);
                       } catch (e: any) {
                         setErr(String(e?.message || "Erreur"));
                       } finally {
@@ -609,193 +740,214 @@ export function PersonalisationSection({
                       }
                     }}
                   >
-                    Supprimer
+                    {avatarBusy ? "Upload…" : "✅ Valider"}
                   </button>
-                )}
-              </div>
-            </div>
 
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              style={{ display: "none" }}
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                setErr(null);
-                setAvatarBusy(true);
-                try {
-                  const { mime, b64, previewUrl } = await makeSquareAvatar(f, 128);
-                  setAvatarPayload({ mime, b64 });
-                  if (avatarPreview) URL.revokeObjectURL(avatarPreview);
-                  setAvatarPreview(previewUrl);
-                } catch (err: any) {
-                  setErr(String(err?.message || "avatar_prepare_failed"));
-                } finally {
-                  setAvatarBusy(false);
-                }
-              }}
-            />
+                  <button
+                    className="btnGhost"
+                    disabled={avatarBusy}
+                    onClick={() => {
+                      setAvatarPayload(null);
+                      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+                      setAvatarPreview(null);
+                    }}
+                  >
+                    Annuler
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="btnGhost"
+                  disabled={!token || avatarBusy}
+                  onClick={async () => {
+                    if (!token) return;
+                    setAvatarBusy(true);
+                    setErr(null);
+                    try {
+                      const r = await fetch(`${API_BASE}/me/avatar`, {
+                        method: "DELETE",
+                        headers: { Authorization: `Bearer ${token}` },
+                      });
+                      const j = await r.json().catch(() => ({}));
+                      if (j?.ok !== true) throw new Error(j?.error || "delete_failed");
+                      setAvatarUrl(null);
+                    } catch (e: any) {
+                      setErr(String(e?.message || "Erreur"));
+                    } finally {
+                      setAvatarBusy(false);
+                    }
+                  }}
+                >
+                  🗑️ Supprimer
+                </button>
+              )}
+            </div>
           </div>
 
-          <div style={{ fontWeight: 950, marginBottom: 8 }}>Catégories</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {CATS.map((c) => (
-              <button
-                key={c.id}
-                className={tab === c.id ? "btnPrimary" : "btnGhost"}
-                onClick={() => setTab(c.id)}
-                disabled={loading || saving}
-                style={{ textAlign: "left" }}
-              >
-                {c.label}
-              </button>
-            ))}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              setErr(null);
+              setAvatarBusy(true);
+              try {
+                const { mime, b64, previewUrl } = await makeSquareAvatar(f, 160);
+                setAvatarPayload({ mime, b64 });
+                if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+                setAvatarPreview(previewUrl);
+              } catch (err: any) {
+                setErr(String(err?.message || "avatar_prepare_failed"));
+              } finally {
+                setAvatarBusy(false);
+              }
+            }}
+          />
+        </div>
+      </div>
 
-            <button className="btnGhost" onClick={load} disabled={loading || saving}>
-              {loading ? "Chargement…" : "Recharger"}
-            </button>
+      {/* CATEGORY pills */}
+      <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {CATS.map((c) => (
+          <SegPill
+            key={c.id}
+            active={tab === c.id}
+            emoji={c.emoji}
+            label={c.label}
+            onClick={() => setTab(c.id)}
+            disabled={loading || saving}
+          />
+        ))}
+      </div>
+
+      {/* ITEMS */}
+      <div
+        style={{
+          marginTop: 14,
+          borderRadius: 20,
+          border: "1px solid rgba(255,255,255,0.10)",
+          background:
+            "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+          padding: 14,
+          boxShadow: "0 16px 44px rgba(0,0,0,0.25)",
+          backdropFilter: "blur(10px)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ fontWeight: 1100 }}>
+            {curEmoji} {curLabel}
+          </div>
+          <div className="muted" style={{ fontSize: 12 }}>
+            {saving ? "Enregistrement…" : loading ? "Chargement…" : `${items.length} items`}
           </div>
         </div>
 
-        {/* Items grid */}
         <div
           style={{
-            borderRadius: 16,
-            border: "1px solid rgba(255,255,255,0.08)",
-            background: "rgba(0,0,0,0.18)",
-            padding: 12,
-            minHeight: 220,
+            marginTop: 12,
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+            alignItems: "start",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <div style={{ fontWeight: 950 }}>{CATS.find((x) => x.id === tab)?.label}</div>
-            <div className="muted" style={{ fontSize: 12 }}>
-              {saving ? "Enregistrement…" : ""}
-            </div>
-          </div>
+          {items.map((it) => {
+            const isEquipped = (equipped as any)?.[tab] === it.code;
+            const isOwned = !!it.free || (it.code != null && ownedSet.has(it.code));
+            const locked = !isOwned;
+            const cardPreviewCosmetics = previewForItem(it);
 
-          <div
-            className="cosGrid"
-            style={{
-              marginTop: 12,
-              display: "grid",
-              gap: 12,
-              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 420px))",
-              justifyContent: "start",
-              alignItems: "start",
-            }}
-          >
-            {items.map((it) => {
-              const isEquipped = (equipped as any)?.[tab] === it.code;
-              const isOwned = !!it.free || (it.code != null && ownedSet.has(it.code));
-              const locked = !isOwned;
-              const cardPreviewCosmetics = previewForItem(it);
+            const baseBorder = kindBorder(it.kind);
+            const border = isEquipped
+              ? `1px solid rgba(255,255,255,0.22)`
+              : `1px solid ${baseBorder}`;
 
-              const baseBorder = kindBorder(it.kind);
+            const bg = locked
+              ? "rgba(0,0,0,0.42)"
+              : "linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0.10))";
 
-              const border = isEquipped ? `1px solid rgba(255,255,255,0.24)` : `1px solid ${baseBorder}`;
-
-              const bg = locked ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.04)";
-
-              return (
-                <button
-                  key={`${it.kind}:${String(it.code)}`}
-                  className={[
-                    "cosCard",
-                    `cosCard--${it.kind}`,
-                    isEquipped ? "isSelected" : "",
-                    isOwned ? "isOwned" : "",
-                    locked ? "isLocked" : "",
-                  ].join(" ")}
-                  onClick={() => (isOwned ? doEquip(it.kind, it.code) : null)}
-                  disabled={!token || loading || saving || !isOwned}
-                  title={!isOwned ? "Non possédé" : isEquipped ? "Cliquer pour retirer" : "Cliquer pour équiper"}
-                  style={{
-                    textAlign: "left",
-                    borderRadius: 16,
-                    border,
-                    background: bg,
-                    color: "white",
-                    padding: 12,
-                    cursor: !isOwned ? "not-allowed" : "pointer",
-                    opacity: locked ? 0.55 : 1,
-                  }}
-                >
-                  {/* head (compact) */}
-                  <div className="cosCardHead" style={{ marginBottom: 8 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div className="cosCardTitle">{renderItemTitle(it)}</div>
-
-                      <div className="cosCardMeta" style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <span
-                          className={`cosPill ${isEquipped ? "cosPillOwned" : ""}`}
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 950,
-                            padding: "4px 8px",
-                            borderRadius: 999,
-                            border: "1px solid rgba(255,255,255,0.14)",
-                            background: isEquipped ? "rgba(124,77,255,0.18)" : "rgba(255,255,255,0.06)",
-                          }}
-                        >
-                          {isEquipped ? "Équipé" : it.free ? "Gratuit" : isOwned ? "Possédé" : "Verrouillé"}
-                        </span>
-
-                        {!it.free ? (
-                          <span style={{ fontSize: 11, fontWeight: 900, opacity: 0.9 }}>
-                            {niceUnlock(it.unlock)}
-                            {it.unlock === "shop"
-                              ? it.priceRubis != null
-                                ? ` — ${Number(it.priceRubis).toLocaleString("fr-FR")} rubis`
-                                : it.pricePrestige != null
-                                ? ` — ${Number(it.pricePrestige).toLocaleString("fr-FR")} prestige`
-                                : ""
-                              : it.rarity
-                              ? ` — ${it.rarity}`
-                              : ""}
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 11, fontWeight: 900, opacity: 0.8 }}>Retirer l’élément</span>
-                        )}
-                      </div>
+            return (
+              <button
+                key={`${it.kind}:${String(it.code)}`}
+                onClick={() => (isOwned ? doEquip(it.kind, it.code) : null)}
+                disabled={!token || loading || saving || !isOwned}
+                title={!isOwned ? "Non possédé" : isEquipped ? "Cliquer pour retirer" : "Cliquer pour équiper"}
+                style={{
+                  textAlign: "left",
+                  borderRadius: 18,
+                  border,
+                  background: bg,
+                  color: "white",
+                  padding: 12,
+                  cursor: !isOwned ? "not-allowed" : "pointer",
+                  opacity: locked ? 0.55 : 1,
+                  boxShadow: isEquipped ? "0 18px 50px rgba(0,0,0,0.25)" : "none",
+                  transform: isEquipped ? "translateY(-2px)" : "translateY(0px)",
+                  transition: "transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease",
+                }}
+              >
+                {/* header */}
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 1100, lineHeight: 1.2 }}>
+                      {renderItemTitle(it)}
                     </div>
-                  </div>
 
-                  {/* preview */}
-                  <div
-                    className="cosPreview"
-                    style={{
-                      pointerEvents: "none",
-                      opacity: locked ? 0.8 : 0.95,
-                      ...({
-                        ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
-                        ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
-                      } as any),
-                    }}
-                  >
-                    <ChatMessageBubble
-                      streamerAppearance={streamerAppearance}
-                      msg={{
-                        id: `cardpreview:${it.kind}:${String(it.code)}`,
-                        userId: myUserId || 0,
-                        username,
-                        body: "…",
-                        createdAt: new Date().toISOString(),
-                        cosmetics: cardPreviewCosmetics,
-                      }}
-                    />
-                  </div>
-
-                  {/* CTA */}
-                  {isOwned ? (
-                    <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                    <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                       <span
                         style={{
                           fontSize: 11,
-                          fontWeight: 950,
+                          fontWeight: 1100,
                           padding: "4px 8px",
+                          borderRadius: 999,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: isEquipped ? "rgba(124,77,255,0.18)" : "rgba(255,255,255,0.06)",
+                        }}
+                      >
+                        {isEquipped ? "✅ Équipé" : it.free ? "🎁 Gratuit" : isOwned ? "🧾 Possédé" : "🔒 Verrouillé"}
+                      </span>
+
+                      {!it.free ? (
+                        <span style={{ fontSize: 11, fontWeight: 900, opacity: 0.88 }}>
+                          {niceUnlock(it.unlock)}
+                          {it.unlock === "shop"
+                            ? it.priceRubis != null
+                              ? ` — ${Number(it.priceRubis).toLocaleString("fr-FR")} rubis`
+                              : it.pricePrestige != null
+                              ? ` — ${Number(it.pricePrestige).toLocaleString("fr-FR")} prestige`
+                              : ""
+                            : it.rarity
+                            ? ` — ${it.rarity}`
+                            : ""}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 11, fontWeight: 900, opacity: 0.78 }}>Retirer l’élément</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* tiny CTA */}
+                  <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
+                    <span style={{ opacity: 0.65, fontSize: 16 }}>
+                      {it.kind === "badge"
+                        ? "🏷️"
+                        : it.kind === "hat"
+                        ? "🧢"
+                        : it.kind === "frame"
+                        ? "💬"
+                        : it.kind === "title"
+                        ? "🏆"
+                        : "✨"}
+                    </span>
+                    {isOwned ? (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 1100,
+                          padding: "4px 10px",
                           borderRadius: 999,
                           border: "1px solid rgba(255,255,255,0.12)",
                           background: isEquipped ? "rgba(124,77,255,0.18)" : "rgba(255,255,255,0.06)",
@@ -803,14 +955,53 @@ export function PersonalisationSection({
                       >
                         {isEquipped ? "Retirer" : "Équiper"}
                       </span>
-                    </div>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* preview */}
+                <div
+                  style={{
+                    marginTop: 10,
+                    pointerEvents: "none",
+                    opacity: locked ? 0.78 : 0.95,
+                    ...({
+                      ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
+                      ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
+                    } as any),
+                  }}
+                >
+                  <ChatMessageBubble
+                    streamerAppearance={streamerAppearance}
+                    msg={{
+                      id: `cardpreview:${it.kind}:${String(it.code)}`,
+                      userId: myUserId || 0,
+                      username,
+                      body: "…",
+                      createdAt: new Date().toISOString(),
+                      cosmetics: cardPreviewCosmetics,
+                    }}
+                  />
+                </div>
+
+                {/* subtle footer */}
+                {it.desc ? (
+                  <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>
+                    {it.desc}
+                  </div>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      {/* Responsive tweaks */}
+      <style>{`
+        @media (max-width: 980px) {
+          .ll-stack { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
     </div>
   );
 }

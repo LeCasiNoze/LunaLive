@@ -221,3 +221,94 @@
 }
 .dropdownItem:hover{ background: rgba(255,255,255,0.06); }
 .dropdownItem.danger{ color: rgba(255,120,140,0.95); }
+/* PC layout */
+.streamGrid{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 16px;
+  align-items: start;
+}
+
+.streamChatFixed{
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* important */
+}
+
+/* important: body must be able to shrink, sinon scroll chelou */
+.streamChatBody{
+  flex: 1;
+  min-height: 0;
+  overflow: hidden; /* ChatPanel gère son scroll interne */
+}
+
+/* Meta bar under stream */
+.streamMetaBar{
+  padding: 14px;
+}
+
+.streamMetaTop{
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.streamMetaTitleWrap{
+  min-width: 0;
+  flex: 1;
+}
+
+.streamMetaTitle{
+  font-weight: 950;
+  font-size: 16px;
+  letter-spacing: 0.2px;
+  line-height: 1.2;
+  color: rgba(255,255,255,0.94);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.streamMetaStats{
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.metaChip{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+}
+
+.streamMetaActions{
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.streamMetaActionsRow{
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Buttons: give them life */
+.btnPrimarySmall, .btnGhostSmall{
+  transition: transform .08s ease, filter .12s ease, border-color .12s ease, background .12s ease;
+}
+.btnPrimarySmall:hover{ filter: brightness(1.08); }
+.btnGhostSmall:hover{
+  filter: brightness(1.06);
+  border-color: rgba(255,255,255,0.18);
+}
+.btnPrimarySmall:active, .btnGhostSmall:active{ transform: translateY(1px); }

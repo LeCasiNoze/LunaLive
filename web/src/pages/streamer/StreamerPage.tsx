@@ -36,6 +36,11 @@ type GiftStatus = {
   myClaimed: boolean;
 };
 
+function fmt(n: any) {
+  const x = Number(n || 0);
+  return Number.isFinite(x) ? x.toLocaleString() : "0";
+}
+
 export default function StreamerPage() {
   const { slug } = useParams();
   const auth = useAuth() as any;
@@ -85,7 +90,7 @@ export default function StreamerPage() {
     toggleFollow,
     toggleNotify,
   } = useStreamerData(slug ?? null, token, () => setLoginOpen(true));
-  
+
   const handleFollowsCount = React.useCallback(
     (n: number) => {
       setFollowsCount(n);
@@ -93,11 +98,7 @@ export default function StreamerPage() {
     [setFollowsCount]
   );
 
-  const isOwner = !!(
-    myUserId != null &&
-    streamer?.ownerUserId != null &&
-    Number(streamer.ownerUserId) === Number(myUserId)
-  );
+  const isOwner = !!(myUserId != null && streamer?.ownerUserId != null && Number(streamer.ownerUserId) === Number(myUserId));
 
   const isAdmin = String(myRole) === "admin";
   const canEditTabs = isOwner || isAdmin;
@@ -216,6 +217,47 @@ export default function StreamerPage() {
     if (!streamer?.isLive) setLiveViewersNow(null);
   }, [streamer?.isLive]);
 
+  // ✅ PC sizing: chat = player + metaBar
+  const playerWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const metaWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const [leftStackH, setLeftStackH] = React.useState<number>(0);
+
+  const measureLeftStack = React.useCallback(() => {
+    const a = playerWrapRef.current?.getBoundingClientRect?.().height ?? 0;
+    const b = metaWrapRef.current?.getBoundingClientRect?.().height ?? 0;
+    const total = Math.max(0, Math.round(a + b));
+    if (total && Math.abs(total - leftStackH) > 2) setLeftStackH(total);
+    if (!total && leftStackH !== 0) setLeftStackH(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leftStackH]);
+
+  React.useLayoutEffect(() => {
+    // on mount + after streamer changes
+    measureLeftStack();
+  }, [measureLeftStack, streamer?.isLive, streamer?.title, streamer?.displayName]);
+
+  React.useEffect(() => {
+    let ro: ResizeObserver | null = null;
+
+    const RO = (window as any).ResizeObserver as (new (cb: () => void) => ResizeObserver) | undefined;
+
+    if (RO) {
+      ro = new RO(() => measureLeftStack());
+      if (playerWrapRef.current) ro.observe(playerWrapRef.current);
+      if (metaWrapRef.current) ro.observe(metaWrapRef.current);
+    }
+
+    const onResize = () => measureLeftStack();
+    window.addEventListener("resize", onResize);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      try {
+        ro?.disconnect();
+      } catch {}
+    };
+  }, [measureLeftStack]);
+
   if (loading) return <div className="panel">Chargement…</div>;
   if (!streamer) return <div className="panel">Streamer introuvable</div>;
 
@@ -226,6 +268,8 @@ export default function StreamerPage() {
 
   const myRubis = Number(auth?.user?.rubis ?? 0);
   const SUB_PRICE_RUBIS = 500;
+
+  const followersInline = followsCount == null ? "" : ` (${fmt(followsCount)} followers)`;
 
   const PlayerBlock = (
     <>
@@ -240,16 +284,26 @@ export default function StreamerPage() {
             borderRadius: 18,
             aspectRatio: "16/9",
             background: streamer.offlineBgUrl
-              ? `linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0.25)), url(${streamer.offlineBgUrl}) center/cover no-repeat`
+              ? `linear-gradient(to top, rgba(0,0,0,0.70), rgba(0,0,0,0.20)), url(${streamer.offlineBgUrl}) center/cover no-repeat`
               : "rgba(255,255,255,0.04)",
             display: "flex",
-            alignItems: "flex-end",
+            alignItems: "stretch",
           }}
         >
-          <div style={{ padding: 16 }}>
-            <div style={{ fontWeight: 950, fontSize: 18 }}>OFFLINE</div>
-            <div className="mutedSmall" style={{ marginTop: 6 }}>
-              {streamer.title}
+          {/* overlay full-size */}
+          <div
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "flex-end",
+              background: "linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0.00))",
+            }}
+          >
+            <div style={{ padding: 16 }}>
+              <div style={{ fontWeight: 950, fontSize: 18 }}>OFFLINE</div>
+              <div className="mutedSmall" style={{ marginTop: 6 }}>
+                {streamer.title}
+              </div>
             </div>
           </div>
         </div>
@@ -281,7 +335,7 @@ export default function StreamerPage() {
             <div className="chatSheetBackdrop" onClick={closeCinemaChat} role="presentation">
               <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
                 <div className="chatSheetTop">
-                  <div style={{ fontWeight: 950 }}>Chat</div>
+                  <div style={{ fontWeight: 950 }}></div>
                   <button className="iconBtn" onClick={closeCinemaChat} type="button" aria-label="Fermer">
                     ✕
                   </button>
@@ -320,217 +374,342 @@ export default function StreamerPage() {
         onClose={() => chest.setToast(null)}
       />
 
-      {/* ✅ Banner si on arrive depuis un host */}
+      {/* ✅ mini info (host) — compact */}
       {hostedBy ? (
-        <div className="panel" style={{ marginBottom: 12, padding: 12 }}>
+        <div className="panel" style={{ marginBottom: 10, padding: 10 }}>
           <div className="mutedSmall">
-            📺 Hosté par{" "}
-            <strong style={{ color: "rgba(255,255,255,0.9)" }}>
-              @{hostedBy}
-            </strong>
+            📺 Hosté par <strong style={{ color: "rgba(255,255,255,0.92)" }}>{hostedBy}</strong>
           </div>
         </div>
       ) : null}
 
-      {/* ✅ Si on est viewer sur une chaîne hostée : info (le redirect arrive juste après) */}
       {!isOwner && hostTargetSlug && hostTargetIsLive ? (
-        <div className="panel" style={{ marginBottom: 12, padding: 12 }}>
+        <div className="panel" style={{ marginBottom: 10, padding: 10 }}>
           <div className="mutedSmall">
             📺 Chaîne hostée → redirection vers{" "}
-            <strong style={{ color: "rgba(255,255,255,0.9)" }}>
-              {hostTargetDisplayName ? hostTargetDisplayName : `@${hostTargetSlug}`}
+            <strong style={{ color: "rgba(255,255,255,0.92)" }}>
+              {hostTargetDisplayName ? hostTargetDisplayName : hostTargetSlug}
             </strong>
             …
           </div>
         </div>
       ) : null}
 
-      {/* Header */}
-      <div className="panel streamHeaderBar">
-        <div className="streamHeaderLeft">
-          <div className="streamHeaderTitle">
-            <span className="streamHeaderTitleText">
-              {streamer.title}
-              {streamer.displayName ? ` — ${streamer.displayName}` : ""}
-            </span>
-          </div>
+      {/* Stage */}
+      <div className="streamGrid">
+        <div className="streamMain">
+          <div ref={playerWrapRef}>{PlayerBlock}</div>
 
-          <div className="streamHeaderSub mutedSmall">
-            Durée du stream actuel :{" "}
-            <strong style={{ color: "rgba(255,255,255,0.9)" }}>
-              <LiveDurationText isLive={streamer.isLive} startedAtMs={streamer.liveStartedAtMs} />
-            </strong>
-          </div>
-        </div>
-
-        <div className="streamHeaderRight">
-          <div className="streamFollowBox">
-            <div className="mutedSmall">
-              Nombre de follow :{" "}
-              <strong style={{ color: "rgba(255,255,255,0.9)" }}>
-                {followsCount === null ? "—" : Number(followsCount).toLocaleString()}
-              </strong>
-            </div>
-
-            {claimError ? (
-              <div className="mutedSmall" style={{ marginTop: 6, color: "rgba(255,90,90,0.95)" }}>
-                {claimError}
-              </div>
-            ) : null}
-
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" className="btnPrimarySmall" disabled={followLoading} onClick={toggleFollow}>
-                {followLoading ? "…" : isFollowing ? "Suivi" : "Suivre"}
-              </button>
-
-              <button
-                type="button"
-                className="btnGhostSmall"
-                disabled={followLoading}
-                onClick={() => {
-                  if (!token) return setLoginOpen(true);
-                  setSubError(null);
-                  setGiftError(null);
-                  setSubOpen(true);
+          {/* ✅ meta bar UNDER stream split in 2 panels */}
+          <div ref={metaWrapRef} style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "stretch", justifyContent: "space-between" }}>
+              {/* LEFT: stream info */}
+              <div
+                className="panel"
+                style={{
+                  marginTop: 0,
+                  width: "fit-content",
+                  maxWidth: "100%",
+                  padding: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  background:
+                    "linear-gradient(135deg, rgba(126,76,179,0.16), rgba(63,86,203,0.10))",
+                  border: "1px solid rgba(255,255,255,0.12)",
                 }}
               >
-                Sub
-              </button>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {/* Title line with color accents */}
+                  <div style={{ fontWeight: 950, fontSize: 18, lineHeight: 1.15 }}>
+                    <span style={{ color: "rgba(255,255,255,0.92)" }}>{streamer.title}</span>
+                    {streamer.displayName ? (
+                      <>
+                        <span style={{ opacity: 0.55 }}> — </span>
+                        <span
+                          style={{
+                            background: "linear-gradient(135deg, rgba(180,140,255,0.95), rgba(110,170,255,0.92))",
+                            WebkitBackgroundClip: "text",
+                            backgroundClip: "text",
+                            color: "transparent",
+                            fontWeight: 1000,
+                          }}
+                        >
+                          {streamer.displayName}
+                        </span>
+                        {followsCount != null ? (
+                          <span style={{ opacity: 0.85, fontWeight: 900, color: "rgba(255,255,255,0.82)" }}>
+                            {followersInline}
+                          </span>
+                        ) : null}
+                      </>
+                    ) : followsCount != null ? (
+                      <span style={{ opacity: 0.85, fontWeight: 900, color: "rgba(255,255,255,0.82)" }}>
+                        {followersInline}
+                      </span>
+                    ) : null}
+                  </div>
 
-              {/* ✅ HOST button owner */}
-              {isOwner ? (
-                <button
-                  type="button"
-                  className="btnGhostSmall"
-                  onClick={() => {
-                    if (!token) return setLoginOpen(true);
-                    setHostError(null);
-                    setHostOpen(true);
+                  <div className="mutedSmall" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "7px 10px",
+                        borderRadius: 999,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: "rgba(255,255,255,0.06)",
+                        fontWeight: 900,
+                        color: "rgba(255,255,255,0.86)",
+                      }}
+                    >
+                      <span style={{ opacity: 0.9 }}>
+                        <EyeIcon />
+                      </span>
+                      <span>{fmt(viewers)} viewers</span>
+                    </span>
+
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "7px 10px",
+                        borderRadius: 999,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: "rgba(255,255,255,0.06)",
+                        fontWeight: 900,
+                        color: "rgba(255,255,255,0.86)",
+                      }}
+                    >
+                      <span style={{ opacity: 0.9 }}>⏱️</span>
+                      <span>
+                        <LiveDurationText isLive={streamer.isLive} startedAtMs={streamer.liveStartedAtMs} />
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT: interactions */}
+              <div
+                className="panel"
+                style={{
+                  marginTop: 0,
+                  padding: 14,
+                  width: "fit-content",
+                  maxWidth: "100%",
+                  marginLeft: "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minHeight: 92,
+                }}
+              >
+                {claimError ? (
+                  <div className="mutedSmall" style={{ marginBottom: 8, color: "rgba(255,90,90,0.95)" }}>
+                    {claimError}
+                  </div>
+                ) : null}
+
+                <div
+                  className="streamMetaActionsRow"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
                   }}
-                  title="Host quelqu’un"
                 >
-                  Host
-                </button>
-              ) : null}
+                  {/* FOLLOW */}
+                  <button
+                    type="button"
+                    className={isFollowing ? "btnGhostSmall" : "btnPrimarySmall"}
+                    disabled={followLoading}
+                    onClick={toggleFollow}
+                    title={isFollowing ? "Tu suis déjà" : "Suivre"}
+                    style={{
+                      borderRadius: 14,
+                      padding: "9px 12px",
+                      fontWeight: 950,
+                      boxShadow: isFollowing ? "none" : "0 10px 28px rgba(0,0,0,0.28)",
+                    }}
+                  >
+                    {followLoading ? "…" : isFollowing ? "✅ Suivi" : "➕ Suivre"}
+                  </button>
 
-              {/* ✅ Claim button si gifts dispo */}
-              {giftStatus?.remaining ? (
-                token && giftStatus.canClaim ? (
+                  {/* SUB */}
                   <button
                     type="button"
                     className="btnPrimarySmall"
-                    disabled={claimLoading}
-                    onClick={async () => {
-                      if (!token || !slug) return;
-                      setClaimLoading(true);
-                      setClaimError(null);
-                      try {
-                        const r = await fetch(
-                          `${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/claim`,
-                          {
-                            method: "POST",
-                            headers: { Authorization: `Bearer ${token}` },
-                          }
-                        ).then((x) => x.json());
-                        if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
-                        await refreshMeIfPossible();
-                        await fetchGiftStatus();
-                      } catch (e: any) {
-                        setClaimError(String(e?.message || "Erreur"));
-                      } finally {
-                        setClaimLoading(false);
-                      }
+                    disabled={followLoading}
+                    onClick={() => {
+                      if (!token) return setLoginOpen(true);
+                      setSubError(null);
+                      setGiftError(null);
+                      setSubOpen(true);
                     }}
-                    title="Claim un sub offert"
+                    style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
+                    title="S'abonner"
                   >
-                    {claimLoading ? "…" : `Claim sub (${giftStatus.remaining})`}
+                    💎 Sub
                   </button>
-                ) : (
+
+                  {/* CHEST */}
                   <button
                     type="button"
                     className="btnGhostSmall"
                     onClick={() => {
-                      if (!token) return setLoginOpen(true);
-                      setSubOpen(true);
+                      chest.setChestError(null);
+                      chest.setChestModalOpen(true);
                     }}
-                    title="Des subs sont disponibles"
+                    title="Voir le coffre"
+                    style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
                   >
-                    🎁 Subs offerts ({giftStatus.remaining})
+                    🎁 Coffre{chest.chestLoading ? "…" : chest.chestBalance > 0 ? ` (${chest.chestBalance})` : ""}
                   </button>
-                )
-              ) : null}
 
-              {/* petite info si déjà claim */}
-              {giftStatus?.myClaimed ? (
-                <span className="mutedSmall" style={{ opacity: 0.9 }}>
-                  ✅ Sub offert claim
-                </span>
-              ) : null}
+                  {/* Owner: open chest */}
+                  {isOwner && !chest.chestHasOpen ? (
+                    <button
+                      type="button"
+                      className="btnPrimarySmall"
+                      disabled={chest.ownerLoading || !streamer.isLive}
+                      onClick={chest.open}
+                      title={!streamer.isLive ? "Stream offline" : "Ouvre 2 minutes (fermeture auto)"}
+                      style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
+                    >
+                      {chest.ownerLoading ? "…" : "Ouvrir coffre"}
+                    </button>
+                  ) : null}
 
-              <button
-                type="button"
-                className="btnGhostSmall"
-                onClick={() => {
-                  chest.setChestError(null);
-                  chest.setChestModalOpen(true);
-                }}
-                title="Voir le coffre"
-              >
-                🎁 Coffre{chest.chestLoading ? "…" : chest.chestBalance > 0 ? ` (${chest.chestBalance})` : ""}
-              </button>
+                  {/* Viewer: join chest */}
+                  {!isOwner && chest.chestHasOpen ? (
+                    <button
+                      type="button"
+                      className="btnPrimarySmall"
+                      disabled={chest.joinLoading || chest.alreadyJoined}
+                      onClick={chest.join}
+                      style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
+                    >
+                      {chest.alreadyJoined ? "✅ Inscrit" : chest.joinLoading ? "…" : "Participer"}
+                    </button>
+                  ) : null}
 
-              {/* Owner: open only */}
-              {isOwner && !chest.chestHasOpen ? (
-                <button
-                  type="button"
-                  className="btnPrimarySmall"
-                  disabled={chest.ownerLoading || !streamer.isLive}
-                  onClick={chest.open}
-                  title={!streamer.isLive ? "Stream offline" : "Ouvre 2 minutes (fermeture auto)"}
-                >
-                  {chest.ownerLoading ? "…" : "Ouvrir coffre"}
-                </button>
-              ) : null}
+                  {/* Gift subs */}
+                  {giftStatus?.remaining ? (
+                    token && giftStatus.canClaim ? (
+                      <button
+                        type="button"
+                        className="btnPrimarySmall"
+                        disabled={claimLoading}
+                        onClick={async () => {
+                          if (!token || !slug) return;
+                          setClaimLoading(true);
+                          setClaimError(null);
+                          try {
+                            const r = await fetch(
+                              `${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/claim`,
+                              { method: "POST", headers: { Authorization: `Bearer ${token}` } }
+                            ).then((x) => x.json());
+                            if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+                            await refreshMeIfPossible();
+                            await fetchGiftStatus();
+                          } catch (e: any) {
+                            setClaimError(String(e?.message || "Erreur"));
+                          } finally {
+                            setClaimLoading(false);
+                          }
+                        }}
+                        title="Claim un sub offert"
+                        style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
+                      >
+                        {claimLoading ? "…" : `🎁 Claim (${giftStatus.remaining})`}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btnGhostSmall"
+                        onClick={() => {
+                          if (!token) return setLoginOpen(true);
+                          setSubOpen(true);
+                        }}
+                        title="Des subs sont disponibles"
+                        style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
+                      >
+                        🎁 Subs offerts ({giftStatus.remaining})
+                      </button>
+                    )
+                  ) : null}
 
-              {/* Viewer: join */}
-              {!isOwner && chest.chestHasOpen ? (
-                <button
-                  type="button"
-                  className="btnPrimarySmall"
-                  disabled={chest.joinLoading || chest.alreadyJoined}
-                  onClick={chest.join}
-                >
-                  {chest.alreadyJoined ? "Inscrit" : chest.joinLoading ? "…" : "Participer"}
-                </button>
-              ) : null}
+                  {/* HOST */}
+                  {isOwner ? (
+                    <button
+                      type="button"
+                      className="btnGhostSmall"
+                      onClick={() => {
+                        if (!token) return setLoginOpen(true);
+                        setHostError(null);
+                        setHostOpen(true);
+                      }}
+                      title="Host quelqu’un"
+                      style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
+                    >
+                      📺 Host
+                    </button>
+                  ) : null}
 
-              {isFollowing ? (
-                <button
-                  type="button"
-                  className="btnGhostSmall"
-                  disabled={followLoading}
-                  onClick={toggleNotify}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-                >
-                  <BellIcon on={notifyEnabled} /> {notifyEnabled ? "Notif" : "Muet"}
-                </button>
-              ) : null}
+                  {/* NOTIF */}
+                  {isFollowing ? (
+                    <button
+                      type="button"
+                      className="btnGhostSmall"
+                      disabled={followLoading}
+                      onClick={toggleNotify}
+                      style={{
+                        borderRadius: 14,
+                        padding: "9px 12px",
+                        fontWeight: 950,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                      title="Notifications"
+                    >
+                      <BellIcon on={notifyEnabled} /> {notifyEnabled ? "Notif" : "Muet"}
+                    </button>
+                  ) : null}
+
+                  {/* FULLSCREEN (in group) */}
+                  <button
+                    type="button"
+                    className="btnGhostSmall"
+                    onClick={enterCinema}
+                    title="Plein écran"
+                    style={{
+                      borderRadius: 14,
+                      padding: "9px 12px",
+                      fontWeight: 950,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    ⛶ Plein écran
+                  </button>
+                </div>
+
+                {giftStatus?.myClaimed ? (
+                  <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.92 }}>
+                    ✅ Sub offert claim
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Stage */}
-      <div className="streamGrid">
-        <div className="streamMain">
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-            <button type="button" className="btnGhostSmall" onClick={enterCinema}>
-              Plein écran
-            </button>
-          </div>
-
-          {PlayerBlock}
-
+          {/* Mobile mini chat (unchanged for later) */}
           {showMiniChat ? (
             <div className="panel mobileMiniChat" style={{ padding: 0, marginTop: 12 }}>
               <div className="streamChatHeader">
@@ -539,7 +718,7 @@ export default function StreamerPage() {
                     <span style={{ opacity: 0.9 }}>
                       <EyeIcon />
                     </span>
-                    <span>{Number(viewers || 0).toLocaleString()} viewer</span>
+                    <span>{fmt(viewers)} viewer</span>
                   </div>
                 </div>
 
@@ -549,39 +728,35 @@ export default function StreamerPage() {
               </div>
 
               <div className="streamChatBody">
-                <ChatPanel
-                  slug={String(slug || "")}
-                  onRequireLogin={() => setLoginOpen(true)}
-                  compact
-                  onFollowsCount={handleFollowsCount}
-                />
+                <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} compact onFollowsCount={handleFollowsCount} />
               </div>
             </div>
           ) : null}
         </div>
 
-        <aside className="panel streamChat" style={{ padding: 0 }}>
-          <div className="streamChatHeader">
+        {/* ✅ Chat fixed height = (player + meta bar) */}
+        <aside
+          className="panel streamChat streamChatFixed"
+          style={{
+            padding: 0,
+            height: leftStackH > 0 ? leftStackH : undefined,
+            maxHeight: leftStackH > 0 ? leftStackH : undefined,
+          }}
+        >
+          <div className="streamChatHeader" style={{ justifyContent: "space-between" }}>
             <div className="streamChatHeaderLeft">
-              <div className="mutedSmall" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <span style={{ opacity: 0.9 }}>
-                  <EyeIcon />
-                </span>
-                <span>{Number(viewers || 0).toLocaleString()} viewer</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>
+                  {streamer.displayName ? streamer.displayName : ""}
+                </div>
               </div>
             </div>
 
-            <div className="mutedSmall">
-              rôle : <strong style={{ color: "rgba(255,255,255,0.9)" }}>{String(myRole)}</strong>
-            </div>
+            <div style={{ paddingRight: 10 }} />
           </div>
 
-          <div className="streamChatBody">
-            <ChatPanel
-              slug={String(slug || "")}
-              onRequireLogin={() => setLoginOpen(true)}
-              onFollowsCount={handleFollowsCount}
-            />
+          <div className="streamChatBody" style={{ flex: 1, minHeight: 0 }}>
+            <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} onFollowsCount={handleFollowsCount} />
           </div>
         </aside>
       </div>
@@ -604,26 +779,15 @@ export default function StreamerPage() {
         </div>
 
         <div className="streamTabContent">
-          {tab === "about" && slug ? (
-            <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} />
-          ) : null}
+          {tab === "about" && slug ? <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
 
           {tab === "clips" && slug ? (
-            <ClipsTab
-              slug={String(slug)}
-              token={token}
-              isOwner={isOwner}
-              onRequireLogin={() => setLoginOpen(true)}
-            />
+            <ClipsTab slug={String(slug)} token={token} isOwner={isOwner} onRequireLogin={() => setLoginOpen(true)} />
           ) : null}
 
-          {tab === "vod" && slug ? (
-            <VodTab slug={String(slug)} />
-          ) : null}
+          {tab === "vod" && slug ? <VodTab slug={String(slug)} /> : null}
 
-          {tab === "agenda" && slug ? (
-            <AgendaTab slug={String(slug)} token={token} canEdit={canEditTabs} />
-          ) : null}
+          {tab === "agenda" && slug ? <AgendaTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
         </div>
       </div>
 
@@ -712,16 +876,10 @@ export default function StreamerPage() {
         giftError={giftError}
       />
 
-      {/* ✅ HOST modal */}
+      {/* ✅ HOST modal (unchanged) */}
       {hostOpen ? (
         <div className="chatSheetBackdrop" onClick={() => setHostOpen(false)} role="presentation" style={{ zIndex: 60 }}>
-          <div
-            className="chatSheet"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            style={{ maxWidth: 560 }}
-          >
+          <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 560 }}>
             <div className="chatSheetTop">
               <div style={{ fontWeight: 950 }}>Host</div>
               <button className="iconBtn" onClick={() => setHostOpen(false)} type="button" aria-label="Fermer">
@@ -733,9 +891,7 @@ export default function StreamerPage() {
               {hostTargetSlug ? (
                 <div className="panel" style={{ marginBottom: 12 }}>
                   <div className="mutedSmall">Host actuel</div>
-                  <div style={{ fontWeight: 950, marginTop: 4 }}>
-                    {hostTargetDisplayName ? hostTargetDisplayName : `@${hostTargetSlug}`}
-                  </div>
+                  <div style={{ fontWeight: 950, marginTop: 4 }}>{hostTargetDisplayName ? hostTargetDisplayName : `@${hostTargetSlug}`}</div>
 
                   <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                     <button
@@ -791,9 +947,7 @@ export default function StreamerPage() {
                     setHostError(null);
                     try {
                       const lives = await getLives();
-                      const arr = (lives as any[]).filter(
-                        (x) => String(x.slug || "").toLowerCase() !== String(slug || "").toLowerCase()
-                      );
+                      const arr = (lives as any[]).filter((x) => String(x.slug || "").toLowerCase() !== String(slug || "").toLowerCase());
                       setHostLives(arr);
                     } catch (e: any) {
                       setHostError(String(e?.message || "Erreur"));
@@ -817,10 +971,7 @@ export default function StreamerPage() {
                   .filter((x) => {
                     const q = hostQuery.trim().toLowerCase();
                     if (!q) return true;
-                    return (
-                      String(x.displayName || x.slug || "").toLowerCase().includes(q) ||
-                      String(x.slug || "").toLowerCase().includes(q)
-                    );
+                    return String(x.displayName || x.slug || "").toLowerCase().includes(q) || String(x.slug || "").toLowerCase().includes(q);
                   })
                   .slice(0, 30)
                   .map((x) => (

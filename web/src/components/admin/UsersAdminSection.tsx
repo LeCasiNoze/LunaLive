@@ -18,6 +18,28 @@ const ORIGINS: { origin: string; label: string }[] = [
   { origin: "event_platform", label: "event_platform (0.10)" },
 ];
 
+const uiInputStyle: React.CSSProperties = {
+  width: "100%",
+  height: 38,
+  padding: "0 12px",
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "rgba(255,255,255,0.06)",
+  color: "rgba(255,255,255,0.92)",
+  outline: "none",
+  boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.15)",
+};
+
+const uiSelectStyle: React.CSSProperties = {
+  ...uiInputStyle,
+  cursor: "pointer",
+};
+
+const uiLabelStyle: React.CSSProperties = {
+  fontSize: 12,
+  opacity: 0.85,
+};
+
 function Pill({ children }: { children: React.ReactNode }) {
   return (
     <span
@@ -51,15 +73,18 @@ function Drawer({
   children: React.ReactNode;
 }) {
   if (!open) return null;
+
   return (
     <div
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.55)",
-        zIndex: 50,
+        background: "rgba(0,0,0,0.72)",
+        backdropFilter: "blur(6px)",
+        zIndex: 1000,
         display: "grid",
-        placeItems: "end",
+        placeItems: "center",
+        padding: 16,
       }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -67,16 +92,16 @@ function Drawer({
     >
       <div
         style={{
-          width: "min(720px, 100%)",
-          height: "min(92vh, 900px)",
-          borderTopLeftRadius: 18,
-          borderTopRightRadius: 18,
-          border: "1px solid rgba(255,255,255,0.12)",
-          background:
-            "linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 55%, rgba(0,0,0,0.2) 100%)",
-          boxShadow: "0 30px 100px rgba(0,0,0,0.6)",
+          width: "min(760px, 100%)",
+          maxHeight: "min(88vh, 920px)",
+          borderRadius: 18,
+          border: "1px solid rgba(255,255,255,0.14)",
+          background: "rgba(16, 14, 26, 0.96)",
+          boxShadow: "0 30px 110px rgba(0,0,0,0.75)",
           overflow: "hidden",
+          transform: "translateZ(0)",
         }}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div
           style={{
@@ -86,14 +111,25 @@ function Drawer({
             justifyContent: "space-between",
             gap: 10,
             alignItems: "center",
+            background:
+              "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)",
           }}
         >
           <div style={{ fontWeight: 950 }}>{title}</div>
-          <button className="btnGhostSmall" onClick={onClose} type="button">
+          <button className="btnGhostSmall" onClick={onClose} type="button" title="Fermer">
             ✖
           </button>
         </div>
-        <div style={{ padding: 14, overflow: "auto", height: "100%" }}>{children}</div>
+
+        <div
+          style={{
+            padding: 14,
+            overflow: "auto",
+            maxHeight: "calc(min(88vh, 920px) - 56px)",
+          }}
+        >
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -316,17 +352,17 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
             }}
           >
             <div style={{ fontWeight: 950, marginBottom: 10 }}>Rubis (admin)</div>
-
             <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 10, alignItems: "center" }}>
-              <label className="mutedSmall">Mode</label>
-              <select value={rubMode} onChange={(e) => setRubMode(e.target.value as any)}>
+              <label className="mutedSmall" style={uiLabelStyle}>Mode</label>
+              <select style={uiSelectStyle} value={rubMode} onChange={(e) => setRubMode(e.target.value as any)}>
                 <option value="add">Ajouter</option>
                 <option value="remove">Retirer</option>
                 <option value="set">Set (valeur exacte)</option>
               </select>
 
-              <label className="mutedSmall">Montant</label>
+              <label className="mutedSmall" style={uiLabelStyle}>Montant</label>
               <input
+                style={uiInputStyle}
                 type="number"
                 value={rubAmount}
                 onChange={(e) => setRubAmount(Number(e.target.value))}
@@ -336,8 +372,8 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
 
               {rubMode === "add" ? (
                 <>
-                  <label className="mutedSmall">Origine</label>
-                  <select value={rubOrigin} onChange={(e) => setRubOrigin(String(e.target.value))}>
+                  <label className="mutedSmall" style={uiLabelStyle}>Origine</label>
+                  <select style={uiSelectStyle} value={rubOrigin} onChange={(e) => setRubOrigin(String(e.target.value))}>
                     {ORIGINS.map((o) => (
                       <option key={o.origin} value={o.origin}>
                         {o.label}
@@ -347,13 +383,18 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
                 </>
               ) : (
                 <>
-                  <label className="mutedSmall">Origine</label>
-                  <input value="(backend)" readOnly />
+                  <label className="mutedSmall" style={uiLabelStyle}>Origine</label>
+                  <input style={uiInputStyle} value="(backend)" readOnly />
                 </>
               )}
 
-              <label className="mutedSmall">Note</label>
-              <input value={rubNote} onChange={(e) => setRubNote(e.target.value)} placeholder="optionnel" />
+              <label className="mutedSmall" style={uiLabelStyle}>Note</label>
+              <input
+                style={uiInputStyle}
+                value={rubNote}
+                onChange={(e) => setRubNote(e.target.value)}
+                placeholder="optionnel"
+              />
             </div>
 
             <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>

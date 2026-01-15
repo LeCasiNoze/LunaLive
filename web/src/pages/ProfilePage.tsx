@@ -58,91 +58,6 @@ function hourLabel(hour: number | null | undefined) {
   return `${String(h).padStart(2, "0")}:00`;
 }
 
-function Chip({
-  children,
-  title,
-}: {
-  children: React.ReactNode;
-  title?: string;
-}) {
-  return (
-    <span
-      title={title}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "6px 10px",
-        borderRadius: 999,
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(255,255,255,0.04)",
-        fontSize: 13,
-        fontWeight: 700,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
-function StatCard({
-  title,
-  value,
-  sub,
-  right,
-}: {
-  title: string;
-  value: React.ReactNode;
-  sub?: React.ReactNode;
-  right?: React.ReactNode;
-}) {
-  return (
-    <div className="panel" style={{ margin: 0 }}>
-      <div
-        className="panelTitle"
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          gap: 10,
-        }}
-      >
-        <span>{title}</span>
-        {right ? <span className="muted">{right}</span> : null}
-      </div>
-      <div style={{ fontSize: 22, fontWeight: 900, marginTop: 6 }}>
-        {value}
-      </div>
-      {sub ? (
-        <div className="muted" style={{ marginTop: 6 }}>
-          {sub}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function SegButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      className={active ? "btnPrimary" : "btnGhost"}
-      onClick={onClick}
-      style={{ padding: "10px 12px" }}
-    >
-      {children}
-    </button>
-  );
-}
-
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debounced, setDebounced] = React.useState(value);
   React.useEffect(() => {
@@ -150,6 +65,152 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
     return () => clearTimeout(t);
   }, [value, delayMs]);
   return debounced;
+}
+
+function getAvatarUrl(u: any): string | null {
+  // ✅ On essaye plusieurs champs possibles (selon ton backend/DB), sans rien casser.
+  const candidates = [
+    u?.avatarUrl,
+    u?.avatar_url,
+    u?.avatar,
+    u?.photoUrl,
+    u?.photo_url,
+    u?.picture,
+    u?.imageUrl,
+    u?.image_url,
+  ].filter(Boolean);
+
+  const v = candidates[0];
+  if (!v) return null;
+  const s = String(v);
+  if (!s) return null;
+  return s;
+}
+
+function Pill({
+  children,
+  tone = "neutral",
+  title,
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "pink" | "blue" | "green" | "gold";
+  title?: string;
+}) {
+  const tones: Record<string, { bg: string; bd: string }> = {
+    neutral: { bg: "rgba(255,255,255,0.06)", bd: "rgba(255,255,255,0.10)" },
+    pink: { bg: "rgba(255, 90, 180, 0.14)", bd: "rgba(255, 90, 180, 0.26)" },
+    blue: { bg: "rgba(80, 160, 255, 0.14)", bd: "rgba(80, 160, 255, 0.26)" },
+    green: { bg: "rgba(80, 240, 170, 0.12)", bd: "rgba(80, 240, 170, 0.22)" },
+    gold: { bg: "rgba(255, 210, 110, 0.14)", bd: "rgba(255, 210, 110, 0.26)" },
+  };
+  const t = tones[tone] ?? tones.neutral;
+
+  return (
+    <span
+      title={title}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 12px",
+        borderRadius: 999,
+        border: `1px solid ${t.bd}`,
+        background: t.bg,
+        fontSize: 13,
+        fontWeight: 900,
+        whiteSpace: "nowrap",
+        backdropFilter: "blur(10px)",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function StatTile({
+  emoji,
+  label,
+  value,
+  sub,
+}: {
+  emoji: string;
+  label: string;
+  value: React.ReactNode;
+  sub?: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: 18,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background:
+          "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+        padding: 14,
+        boxShadow: "0 14px 40px rgba(0,0,0,0.25)",
+        backdropFilter: "blur(10px)",
+        display: "grid",
+        gap: 6,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 14,
+            display: "grid",
+            placeItems: "center",
+            background: "rgba(255,255,255,0.08)",
+            border: "1px solid rgba(255,255,255,0.12)",
+          }}
+        >
+          <span style={{ fontSize: 18 }}>{emoji}</span>
+        </div>
+        <div style={{ fontWeight: 900, opacity: 0.9 }}>{label}</div>
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 1000, letterSpacing: -0.2 }}>
+        {value}
+      </div>
+      {sub ? <div className="muted">{sub}</div> : null}
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: string;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 12px",
+        borderRadius: 999,
+        border: active ? "1px solid rgba(255,255,255,0.18)" : "1px solid rgba(255,255,255,0.10)",
+        background: active
+          ? "linear-gradient(90deg, rgba(140,90,255,0.30), rgba(80,160,255,0.22), rgba(255,90,180,0.16))"
+          : "rgba(255,255,255,0.05)",
+        boxShadow: active ? "0 16px 40px rgba(0,0,0,0.25)" : "none",
+        color: "inherit",
+        fontWeight: 1000,
+        cursor: "pointer",
+        backdropFilter: "blur(10px)",
+      }}
+    >
+      <span style={{ fontSize: 16 }}>{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
 }
 
 function MiniBarList({
@@ -165,18 +226,32 @@ function MiniBarList({
   onItemLink: (slug: string) => string;
   emptyLabel?: string;
 }) {
-  const max = Math.max(
-    0,
-    ...items.map((x) => Number(x?.[valueKey] ?? 0) || 0)
-  );
+  const max = Math.max(0, ...items.map((x) => Number(x?.[valueKey] ?? 0) || 0));
 
   return (
-    <div className="panel" style={{ margin: 0 }}>
-      <div className="panelTitle">{title}</div>
+    <div
+      style={{
+        borderRadius: 22,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background:
+          "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+        padding: 16,
+        boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
+        backdropFilter: "blur(10px)",
+        minHeight: 220,
+      }}
+    >
+      <div style={{ fontWeight: 1000, letterSpacing: -0.2, display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <span>{title}</span>
+        <span style={{ opacity: 0.6 }}>🏁</span>
+      </div>
+
       {items.length === 0 ? (
-        <div className="muted">{emptyLabel ?? "Pas de données pour le moment."}</div>
+        <div className="muted" style={{ marginTop: 10 }}>
+          {emptyLabel ?? "Pas de données pour le moment."}
+        </div>
       ) : (
-        <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+        <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
           {items.map((x, idx) => {
             const v = Number(x?.[valueKey] ?? 0) || 0;
             const pct = max > 0 ? (v / max) * 100 : 0;
@@ -188,25 +263,12 @@ function MiniBarList({
                 : fmt(v);
 
             return (
-              <div
-                key={`${x.slug ?? idx}`}
-                style={{
-                  display: "grid",
-                  gap: 6,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    alignItems: "center",
-                  }}
-                >
+              <div key={`${x.slug ?? idx}`} style={{ display: "grid", gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
                   <div style={{ minWidth: 0 }}>
                     <div
                       style={{
-                        fontWeight: 900,
+                        fontWeight: 1000,
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -220,8 +282,8 @@ function MiniBarList({
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <span style={{ fontWeight: 900 }}>{label}</span>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <span style={{ fontWeight: 1000 }}>{label}</span>
                     <Link to={onItemLink(String(x.slug))} className="btnGhost">
                       Voir
                     </Link>
@@ -233,7 +295,7 @@ function MiniBarList({
                     height: 10,
                     borderRadius: 999,
                     border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(255,255,255,0.03)",
+                    background: "rgba(255,255,255,0.04)",
                     overflow: "hidden",
                   }}
                 >
@@ -241,7 +303,8 @@ function MiniBarList({
                     style={{
                       width: `${clamp(pct, 0, 100)}%`,
                       height: "100%",
-                      background: "rgba(255,255,255,0.18)",
+                      background:
+                        "linear-gradient(90deg, rgba(140,90,255,0.85), rgba(80,160,255,0.85), rgba(255,90,180,0.85))",
                     }}
                   />
                 </div>
@@ -275,6 +338,11 @@ export default function ProfilePage() {
   const [stats, setStats] = React.useState<ApiProfileStats | null>(null);
   const [statsLoading, setStatsLoading] = React.useState(false);
   const [statsErr, setStatsErr] = React.useState<string | null>(null);
+
+  // avatar fallback handling
+  const avatarUrl = user ? getAvatarUrl(user) : null;
+  const [avatarOk, setAvatarOk] = React.useState(true);
+  React.useEffect(() => setAvatarOk(true), [avatarUrl]);
 
   React.useEffect(() => {
     (async () => {
@@ -352,7 +420,7 @@ export default function ProfilePage() {
     };
   }, [token, tab]);
 
-  // Small derived values (safe even if fields missing)
+  // derived
   const s: any = stats ?? {};
   const netRubis =
     typeof s.rubisEarnedTotal === "number" && typeof s.rubisSpentTotal === "number"
@@ -362,15 +430,22 @@ export default function ProfilePage() {
   const topWatchName = s.topStreamerByWatch?.displayName ?? null;
   const topWatchSecs = s.topStreamerByWatch?.seconds ?? null;
 
-  const topByWatch: any[] = Array.isArray(s.topStreamersByWatch)
-    ? s.topStreamersByWatch
-    : [];
-  const topByMsg: any[] = Array.isArray(s.topStreamersByMessages)
-    ? s.topStreamersByMessages
-    : [];
+  const topByWatch: any[] = Array.isArray(s.topStreamersByWatch) ? s.topStreamersByWatch : [];
+  const topByMsg: any[] = Array.isArray(s.topStreamersByMessages) ? s.topStreamersByMessages : [];
 
   return (
-    <main className="container">
+    <main className="container" style={{ paddingBottom: 28 }}>
+      {/* Small page-level styles (safe, scoped-ish) */}
+      <style>{`
+        @media (prefers-reduced-motion: no-preference) {
+          .ll-float { animation: llFloat 10s ease-in-out infinite; }
+          .ll-float2 { animation: llFloat 13s ease-in-out infinite; }
+          .ll-glow { animation: llGlow 6s ease-in-out infinite; }
+        }
+        @keyframes llFloat { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-10px); } }
+        @keyframes llGlow { 0%,100% { filter: drop-shadow(0 0 0 rgba(255,255,255,0)); } 50% { filter: drop-shadow(0 12px 28px rgba(140,90,255,0.35)); } }
+      `}</style>
+
       <div className="pageTitle">
         <h1>Profil</h1>
 
@@ -378,335 +453,687 @@ export default function ProfilePage() {
           <p className="muted">Connecte-toi pour accéder à ton profil.</p>
         ) : (
           <>
-            {/* Header / Identity */}
+            {/* HERO */}
             <div
-              className="panel"
               style={{
                 marginTop: 12,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 14,
-                flexWrap: "wrap",
+                borderRadius: 26,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background:
+                  "radial-gradient(900px 280px at 15% 0%, rgba(140,90,255,0.35), rgba(0,0,0,0) 60%), radial-gradient(700px 260px at 85% 20%, rgba(255,90,180,0.22), rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+                padding: 18,
+                boxShadow: "0 24px 70px rgba(0,0,0,0.35)",
+                overflow: "hidden",
+                position: "relative",
+                backdropFilter: "blur(10px)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 260 }}>
-                <div
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 14,
-                    display: "grid",
-                    placeItems: "center",
-                    fontWeight: 900,
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background: "rgba(255,255,255,0.04)",
-                    userSelect: "none",
-                  }}
-                  title={user.username}
-                >
-                  {initials(user.username)}
-                </div>
-
-                <div>
-                  <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1.1 }}>
-                    {user.username}
-                  </div>
-                  <div className="muted" style={{ marginTop: 2 }}>
-                    Rôle: <b>{user.role}</b> • Rubis: <b>{fmt(user.rubis)}</b>
-                  </div>
-                </div>
+              {/* Decorative blobs / emojis */}
+              <div
+                className="ll-float"
+                style={{
+                  position: "absolute",
+                  inset: "auto auto -40px -40px",
+                  width: 180,
+                  height: 180,
+                  borderRadius: 999,
+                  background: "radial-gradient(circle at 30% 30%, rgba(80,160,255,0.55), rgba(140,90,255,0.10) 70%, rgba(0,0,0,0) 72%)",
+                  transform: "rotate(12deg)",
+                  pointerEvents: "none",
+                }}
+              />
+              <div
+                className="ll-float2"
+                style={{
+                  position: "absolute",
+                  inset: "-60px -80px auto auto",
+                  width: 220,
+                  height: 220,
+                  borderRadius: 999,
+                  background: "radial-gradient(circle at 40% 35%, rgba(255,90,180,0.45), rgba(255,210,110,0.10) 62%, rgba(0,0,0,0) 72%)",
+                  transform: "rotate(-18deg)",
+                  pointerEvents: "none",
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  top: 14,
+                  right: 18,
+                  display: "flex",
+                  gap: 10,
+                  opacity: 0.9,
+                  pointerEvents: "none",
+                }}
+              >
+                <span className="ll-float" style={{ fontSize: 18 }}>✨</span>
+                <span className="ll-float2" style={{ fontSize: 18 }}>🌙</span>
+                <span className="ll-float" style={{ fontSize: 18 }}>💎</span>
               </div>
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button className="btnGhost" onClick={() => setAchOpen(true)}>
-                  Succès
-                </button>
-
-                {(user.role === "streamer" || user.role === "admin") ? (
-                  <Link to="/dashboard" className="btnPrimary">
-                    Dashboard streamer
-                  </Link>
-                ) : (
-                  <button
-                    className="btnPrimary"
-                    onClick={onApply}
-                    disabled={busyApply || reqStatus === "pending" || reqStatus === "approved"}
-                    title={
-                      reqStatus === "pending"
-                        ? "Demande en attente"
-                        : reqStatus === "approved"
-                        ? "Déjà streamer"
-                        : ""
-                    }
-                  >
-                    {busyApply
-                      ? "…"
-                      : reqStatus === "pending"
-                      ? "Demande en attente"
-                      : reqStatus === "approved"
-                      ? "Déjà streamer"
-                      : "Devenir streamer"}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Tabs */}
-            <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-              <SegButton active={tab === "overview"} onClick={() => setTab("overview")}>
-                Aperçu
-              </SegButton>
-              <SegButton active={tab === "personalisation"} onClick={() => setTab("personalisation")}>
-                Personnalisation
-              </SegButton>
-              <SegButton active={tab === "social"} onClick={() => setTab("social")}>
-                Social
-              </SegButton>
-              <SegButton active={tab === "stats"} onClick={() => setTab("stats")}>
-                Stats
-              </SegButton>
-            </div>
-
-            {/* Content */}
-            {tab === "overview" ? (
-              <>
+              <div style={{ display: "grid", gap: 14, position: "relative" }}>
+                {/* Identity row */}
                 <div
                   style={{
-                    marginTop: 14,
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
                     gap: 14,
+                    flexWrap: "wrap",
                   }}
                 >
-                  <div className="panel" style={{ margin: 0 }}>
-                    <div className="panelTitle">Succès</div>
-                    <div className="muted" style={{ marginBottom: 10 }}>
-                      Consulte tes succès (Bronze / Silver / Gold / Master).
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 260 }}>
+                    {/* ✅ AVATAR (et fallback si pas dispo) */}
+                    <div
+                      className="ll-glow"
+                      style={{
+                        width: 64,
+                        height: 64,
+                        borderRadius: 20,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background:
+                          "linear-gradient(135deg, rgba(140,90,255,0.25), rgba(80,160,255,0.14), rgba(255,90,180,0.10))",
+                        display: "grid",
+                        placeItems: "center",
+                        overflow: "hidden",
+                        boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+                      }}
+                      title={user.username}
+                    >
+                      {avatarUrl && avatarOk ? (
+                        <img
+                          src={avatarUrl}
+                          alt={user.username}
+                          onError={() => setAvatarOk(false)}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            display: "grid",
+                            placeItems: "center",
+                            fontWeight: 1000,
+                            fontSize: 18,
+                            letterSpacing: 1,
+                            background:
+                              "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.10), rgba(0,0,0,0.20) 70%)",
+                          }}
+                        >
+                          {initials(user.username)}
+                        </div>
+                      )}
                     </div>
-                    <button className="btnPrimary" onClick={() => setAchOpen(true)}>
-                      Ouvrir les succès
-                    </button>
-                  </div>
 
-                  <div className="panel" style={{ margin: 0 }}>
-                    <div className="panelTitle">Compte</div>
-                    <div className="muted" style={{ marginBottom: 10 }}>
-                      Accès rapide aux sections importantes.
-                    </div>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <button className="btnGhost" onClick={() => setTab("social")}>
-                        Following
-                      </button>
-                      <button className="btnGhost" onClick={() => setTab("stats")}>
-                        Stats fun
-                      </button>
-                      <button className="btnGhost" onClick={() => setTab("personalisation")}>
-                        Personnaliser
-                      </button>
-                    </div>
-                  </div>
-
-                  {user.role !== "streamer" && user.role !== "admin" ? (
-                    <div className="panel" style={{ margin: 0 }}>
-                      <div className="panelTitle">Devenir streamer</div>
-                      <div className="muted" style={{ marginBottom: 10 }}>
-                        {reqStatus === "pending" && "Demande envoyée : en attente de validation."}
-                        {reqStatus === "approved" && "Demande acceptée ✅"}
-                        {reqStatus === "rejected" && "Demande refusée."}
-                        {!reqStatus && "Tu peux envoyer une demande pour devenir streamer."}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 22, fontWeight: 1100, letterSpacing: -0.4, lineHeight: 1.1 }}>
+                        {user.username} <span style={{ opacity: 0.75 }}>👋</span>
                       </div>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                        <Pill tone="blue" title="Ton rôle sur la plateforme">
+                          🛡️ <span style={{ opacity: 0.9 }}>Rôle</span> <b>{user.role}</b>
+                        </Pill>
+                        <Pill tone="pink" title="Ton solde rubis actuel">
+                          💎 <span style={{ opacity: 0.9 }}>Rubis</span> <b>{fmt(user.rubis)}</b>
+                        </Pill>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <button className="btnGhost" onClick={() => setAchOpen(true)}>
+                      🏆 Succès
+                    </button>
+
+                    {(user.role === "streamer" || user.role === "admin") ? (
+                      <Link to="/dashboard" className="btnPrimary">
+                        🚀 Dashboard streamer
+                      </Link>
+                    ) : (
                       <button
                         className="btnPrimary"
                         onClick={onApply}
                         disabled={busyApply || reqStatus === "pending" || reqStatus === "approved"}
+                        title={
+                          reqStatus === "pending"
+                            ? "Demande en attente"
+                            : reqStatus === "approved"
+                            ? "Déjà streamer"
+                            : ""
+                        }
                       >
                         {busyApply
                           ? "…"
                           : reqStatus === "pending"
-                          ? "En attente"
+                          ? "⏳ Demande en attente"
                           : reqStatus === "approved"
-                          ? "Déjà streamer"
-                          : "Faire une demande"}
+                          ? "✅ Déjà streamer"
+                          : "🎥 Devenir streamer"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tabs */}
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <TabButton active={tab === "overview"} onClick={() => setTab("overview")} icon="🌈" label="Aperçu" />
+                  <TabButton
+                    active={tab === "personalisation"}
+                    onClick={() => setTab("personalisation")}
+                    icon="🎨"
+                    label="Personnalisation"
+                  />
+                  <TabButton active={tab === "social"} onClick={() => setTab("social")} icon="🤝" label="Social" />
+                  <TabButton active={tab === "stats"} onClick={() => setTab("stats")} icon="📊" label="Stats" />
+                </div>
+              </div>
+            </div>
+
+            {/* CONTENT */}
+            {tab === "overview" ? (
+              <div
+                style={{
+                  marginTop: 16,
+                  display: "grid",
+                  gridTemplateColumns: "1.15fr 0.85fr",
+                  gap: 14,
+                }}
+              >
+                {/* LEFT */}
+                <div style={{ display: "grid", gap: 14 }}>
+                  <div
+                    style={{
+                      borderRadius: 22,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background:
+                        "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+                      padding: 16,
+                      boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
+                      backdropFilter: "blur(10px)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                      <div style={{ fontWeight: 1100, letterSpacing: -0.2 }}>
+                        ✨ Ton espace
+                      </div>
+                      <div className="muted">Raccourcis & vibe</div>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 12,
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                        gap: 12,
+                      }}
+                    >
+                      <StatTile
+                        emoji="🏆"
+                        label="Succès"
+                        value="Collection"
+                        sub="Bronze / Silver / Gold / Master"
+                      />
+                      <StatTile
+                        emoji="🎨"
+                        label="Style"
+                        value="Personnalise"
+                        sub="Pseudos, badges, frames…"
+                      />
+                      <StatTile
+                        emoji="🤝"
+                        label="Following"
+                        value="Social"
+                        sub="Voir tes streamers favoris"
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+                      <button className="btnPrimary" onClick={() => setAchOpen(true)}>
+                        🏆 Ouvrir les succès
+                      </button>
+                      <button className="btnGhost" onClick={() => setTab("personalisation")}>
+                        🎨 Personnaliser
+                      </button>
+                      <button className="btnGhost" onClick={() => setTab("social")}>
+                        🤝 Voir following
+                      </button>
+                      <button className="btnGhost" onClick={() => setTab("stats")}>
+                        📊 Stats fun
                       </button>
                     </div>
-                  ) : (
-                    <div className="panel" style={{ margin: 0 }}>
-                      <div className="panelTitle">Espace streamer</div>
-                      <div className="muted" style={{ marginBottom: 10 }}>
-                        Accède à ton dashboard streamer.
+                  </div>
+
+                  {/* Streamer card */}
+                  {user.role !== "streamer" && user.role !== "admin" ? (
+                    <div
+                      style={{
+                        borderRadius: 22,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background:
+                          "radial-gradient(600px 240px at 20% 0%, rgba(255,210,110,0.18), rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+                        padding: 16,
+                        boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
+                        backdropFilter: "blur(10px)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                        <div style={{ fontWeight: 1100, letterSpacing: -0.2 }}>🎥 Devenir streamer</div>
+                        <div className="muted">
+                          {reqStatus === "pending"
+                            ? "En attente"
+                            : reqStatus === "approved"
+                            ? "Acceptée ✅"
+                            : reqStatus === "rejected"
+                            ? "Refusée"
+                            : "Prêt ?"}
+                        </div>
                       </div>
-                      <Link to="/dashboard" className="btnPrimary">
-                        Ouvrir le Dashboard
-                      </Link>
+
+                      <div className="muted" style={{ marginTop: 10 }}>
+                        {reqStatus === "pending" && "Ta demande a été envoyée : on valide ça très vite."}
+                        {reqStatus === "approved" && "Bienvenue dans l’espace streamer 👑"}
+                        {reqStatus === "rejected" && "Demande refusée (tu peux réessayer plus tard)."}
+                        {!reqStatus && "Envoie une demande et débloque ton dashboard streamer."}
+                      </div>
+
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+                        <button
+                          className="btnPrimary"
+                          onClick={onApply}
+                          disabled={busyApply || reqStatus === "pending" || reqStatus === "approved"}
+                        >
+                          {busyApply
+                            ? "…"
+                            : reqStatus === "pending"
+                            ? "⏳ En attente"
+                            : reqStatus === "approved"
+                            ? "✅ Déjà streamer"
+                            : "🚀 Faire une demande"}
+                        </button>
+                        <span className="muted" style={{ alignSelf: "center" }}>
+                          🌙 Tip: mets ton profil propre avant
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        borderRadius: 22,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background:
+                          "radial-gradient(700px 260px at 20% 0%, rgba(80,240,170,0.14), rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+                        padding: 16,
+                        boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
+                        backdropFilter: "blur(10px)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                        <div style={{ fontWeight: 1100, letterSpacing: -0.2 }}>🟢 Espace streamer</div>
+                        <div className="muted">Tout est prêt</div>
+                      </div>
+                      <div className="muted" style={{ marginTop: 10 }}>
+                        Gère ton live, ton bot, tes features et tes outils.
+                      </div>
+                      <div style={{ marginTop: 12 }}>
+                        <Link to="/dashboard" className="btnPrimary">
+                          🚀 Ouvrir le Dashboard
+                        </Link>
+                      </div>
                     </div>
                   )}
                 </div>
-              </>
+
+                {/* RIGHT */}
+                <div style={{ display: "grid", gap: 14 }}>
+                  <div
+                    style={{
+                      borderRadius: 22,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background:
+                        "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+                      padding: 16,
+                      boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
+                      backdropFilter: "blur(10px)",
+                    }}
+                  >
+                    <div style={{ fontWeight: 1100, letterSpacing: -0.2, display: "flex", justifyContent: "space-between" }}>
+                      <span>🧭 Suggestions</span>
+                      <span className="muted">petites idées</span>
+                    </div>
+
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      <div
+                        style={{
+                          padding: 12,
+                          borderRadius: 16,
+                          border: "1px solid rgba(255,255,255,0.10)",
+                          background: "rgba(255,255,255,0.04)",
+                        }}
+                      >
+                        <div style={{ fontWeight: 1000 }}>🎨 Personnalise ton profil</div>
+                        <div className="muted" style={{ marginTop: 4 }}>
+                          Ça rend ton pseudo + ton style beaucoup plus “LunaLive”.
+                        </div>
+                        <button className="btnGhost" style={{ marginTop: 10 }} onClick={() => setTab("personalisation")}>
+                          Aller
+                        </button>
+                      </div>
+
+                      <div
+                        style={{
+                          padding: 12,
+                          borderRadius: 16,
+                          border: "1px solid rgba(255,255,255,0.10)",
+                          background: "rgba(255,255,255,0.04)",
+                        }}
+                      >
+                        <div style={{ fontWeight: 1000 }}>🤝 Fais ton “feed”</div>
+                        <div className="muted" style={{ marginTop: 4 }}>
+                          Suis 2-3 streamers, et reviens checker les lives 🔴
+                        </div>
+                        <button className="btnGhost" style={{ marginTop: 10 }} onClick={() => setTab("social")}>
+                          Voir following
+                        </button>
+                      </div>
+
+                      <div
+                        style={{
+                          padding: 12,
+                          borderRadius: 16,
+                          border: "1px solid rgba(255,255,255,0.10)",
+                          background: "rgba(255,255,255,0.04)",
+                        }}
+                      >
+                        <div style={{ fontWeight: 1000 }}>📊 Stats fun</div>
+                        <div className="muted" style={{ marginTop: 4 }}>
+                          Watchtime, messages, wheel, rubis… (clean & joli)
+                        </div>
+                        <button className="btnGhost" style={{ marginTop: 10 }} onClick={() => setTab("stats")}>
+                          Ouvrir
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      borderRadius: 22,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background:
+                        "radial-gradient(600px 260px at 10% 0%, rgba(80,160,255,0.18), rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+                      padding: 16,
+                      boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
+                      backdropFilter: "blur(10px)",
+                    }}
+                  >
+                    <div style={{ fontWeight: 1100, letterSpacing: -0.2 }}>💡 Mini tips</div>
+                    <ul style={{ margin: "10px 0 0", paddingLeft: 18, lineHeight: 1.7 }}>
+                      <li>✨ Une belle photo = plus “premium”</li>
+                      <li>🏆 Les succès donnent du rythme à ton profil</li>
+                      <li>💎 Tes rubis servent pour shop + support</li>
+                      <li>🌙 On ajoutera une vraie “activity timeline” ensuite</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <style>{`
+                  @media (max-width: 900px) {
+                    .container main {}
+                  }
+                `}</style>
+              </div>
             ) : null}
 
             {tab === "personalisation" ? (
-              <div style={{ marginTop: 14 }}>
-                <PersonalisationSection username={user.username} />
+              <div style={{ marginTop: 16 }}>
+                <div
+                  style={{
+                    borderRadius: 22,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background:
+                      "radial-gradient(800px 260px at 20% 0%, rgba(255,90,180,0.18), rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+                    padding: 16,
+                    boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
+                    backdropFilter: "blur(10px)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ fontWeight: 1100, letterSpacing: -0.2 }}>🎨 Personnalisation</div>
+                    <div className="muted">Fais-toi plaisir ✨</div>
+                  </div>
+
+                  <div style={{ marginTop: 12 }}>
+                    <PersonalisationSection username={user.username} />
+                  </div>
+
+                  <div className="muted" style={{ marginTop: 12 }}>
+                    Tip: si tu ajoutes un vrai avatar côté backend, il s’affichera ici automatiquement.
+                  </div>
+                </div>
               </div>
             ) : null}
 
             {tab === "social" ? (
-              <div className="panel" style={{ marginTop: 14 }}>
-                <div className="panelTitle">Following</div>
-                <div className="muted" style={{ marginBottom: 10 }}>
-                  Les personnes / streamers que tu suis (recherche incluse).
-                </div>
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                  <input
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="Rechercher…"
-                    style={{
-                      flex: "1 1 240px",
-                      minWidth: 220,
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      background: "rgba(255,255,255,0.04)",
-                      color: "inherit",
-                      outline: "none",
-                    }}
-                  />
-                  <button className="btnGhost" onClick={() => setQ("")} disabled={!q}>
-                    Reset
-                  </button>
-                </div>
-
+              <div style={{ marginTop: 16 }}>
                 <div
                   style={{
-                    marginTop: 12,
-                    maxHeight: 360,
-                    overflow: "auto",
-                    borderRadius: 14,
+                    borderRadius: 22,
                     border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(0,0,0,0.12)",
-                    padding: 10,
+                    background:
+                      "radial-gradient(800px 280px at 20% 0%, rgba(80,240,170,0.14), rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+                    padding: 16,
+                    boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
+                    backdropFilter: "blur(10px)",
                   }}
                 >
-                  {followLoading ? (
-                    <div className="muted">Chargement…</div>
-                  ) : followErr ? (
-                    <div className="muted">{followErr}</div>
-                  ) : following.length === 0 ? (
-                    <div className="muted">Aucun résultat.</div>
-                  ) : (
-                    <div style={{ display: "grid", gap: 8 }}>
-                      {following.map((f) => (
-                        <div
-                          key={f.id ?? f.slug}
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            gap: 10,
-                            padding: "10px 10px",
-                            borderRadius: 12,
-                            border: "1px solid rgba(255,255,255,0.10)",
-                            background: "rgba(255,255,255,0.03)",
-                          }}
-                        >
-                          <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ fontWeight: 1100, letterSpacing: -0.2 }}>🤝 Following</div>
+                    <div className="muted">Recherche + accès rapide</div>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 12,
+                      display: "flex",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                    }}
+                  >
+                    <input
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      placeholder="🔎 Rechercher…"
+                      style={{
+                        flex: "1 1 240px",
+                        minWidth: 220,
+                        padding: "10px 12px",
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: "rgba(255,255,255,0.05)",
+                        color: "inherit",
+                        outline: "none",
+                      }}
+                    />
+                    <button className="btnGhost" onClick={() => setQ("")} disabled={!q}>
+                      Reset
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 12,
+                      borderRadius: 18,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(0,0,0,0.12)",
+                      padding: 10,
+                      maxHeight: 420,
+                      overflow: "auto",
+                    }}
+                  >
+                    {followLoading ? (
+                      <div className="muted" style={{ padding: 10 }}>
+                        Chargement… ⏳
+                      </div>
+                    ) : followErr ? (
+                      <div className="muted" style={{ padding: 10 }}>
+                        {followErr}
+                      </div>
+                    ) : following.length === 0 ? (
+                      <div className="muted" style={{ padding: 10 }}>
+                        Aucun résultat.
+                      </div>
+                    ) : (
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {following.map((f: any) => {
+                          const fAvatar = getAvatarUrl(f);
+                          const live = typeof f.isLive === "boolean" ? f.isLive : null;
+
+                          return (
                             <div
+                              key={f.id ?? f.slug}
                               style={{
-                                fontWeight: 900,
-                                lineHeight: 1.2,
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: 10,
+                                padding: "12px 12px",
+                                borderRadius: 16,
+                                border: "1px solid rgba(255,255,255,0.10)",
+                                background:
+                                  live === true
+                                    ? "linear-gradient(90deg, rgba(255,90,180,0.14), rgba(80,160,255,0.10), rgba(255,255,255,0.03))"
+                                    : "rgba(255,255,255,0.04)",
                               }}
                             >
-                              {f.displayName ?? f.slug}
-                            </div>
-                            <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
-                              @{f.slug}
-                              {typeof f.isLive === "boolean"
-                                ? f.isLive
-                                  ? " • 🔴 live"
-                                  : " • offline"
-                                : null}
-                            </div>
-                          </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                                <div
+                                  style={{
+                                    width: 44,
+                                    height: 44,
+                                    borderRadius: 16,
+                                    border: "1px solid rgba(255,255,255,0.12)",
+                                    background:
+                                      "linear-gradient(135deg, rgba(140,90,255,0.22), rgba(80,160,255,0.12), rgba(255,90,180,0.08))",
+                                    overflow: "hidden",
+                                    display: "grid",
+                                    placeItems: "center",
+                                    flex: "0 0 auto",
+                                  }}
+                                  title={f.displayName ?? f.slug}
+                                >
+                                  {fAvatar ? (
+                                    <img
+                                      src={fAvatar}
+                                      alt={f.displayName ?? f.slug}
+                                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                    />
+                                  ) : (
+                                    <div style={{ fontWeight: 1000 }}>{initials(f.displayName ?? f.slug)}</div>
+                                  )}
+                                </div>
 
-                          <div style={{ display: "flex", gap: 8 }}>
-                            {/* ajuste si ta route streamer est différente */}
-                            <Link to={`/s/${f.slug}`} className="btnGhost">
-                              Voir
-                            </Link>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                                <div style={{ minWidth: 0 }}>
+                                  <div
+                                    style={{
+                                      fontWeight: 1100,
+                                      lineHeight: 1.2,
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                    }}
+                                  >
+                                    {f.displayName ?? f.slug}{" "}
+                                    {live === true ? <span style={{ marginLeft: 6 }}>🔴</span> : null}
+                                  </div>
+                                  <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
+                                    @{f.slug}
+                                    {live === true ? " • live" : live === false ? " • offline" : ""}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                <Link to={`/s/${f.slug}`} className="btnGhost">
+                                  👀 Voir
+                                </Link>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : null}
 
             {tab === "stats" ? (
-              <div style={{ marginTop: 14 }}>
-                <div className="panel" style={{ margin: 0 }}>
-                  <div className="panelTitle" style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                    <span>Récap du compte</span>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button
-                        className="btnGhost"
-                        onClick={() => {
-                          // force reload quickly
-                          setStatsLoading(true);
-                          setStatsErr(null);
-                          (async () => {
-                            if (!token) return;
-                            try {
-                              const r = await myProfileStats(token);
-                              setStats(r);
-                            } catch (e: any) {
-                              setStats(null);
-                              setStatsErr(e?.message ?? "Erreur chargement stats");
-                            } finally {
-                              setStatsLoading(false);
-                            }
-                          })();
-                        }}
-                        disabled={statsLoading}
-                        title="Rafraîchir"
-                      >
-                        Rafraîchir
-                      </button>
-                    </div>
+              <div style={{ marginTop: 16 }}>
+                <div
+                  style={{
+                    borderRadius: 22,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background:
+                      "radial-gradient(900px 300px at 20% 0%, rgba(80,160,255,0.20), rgba(0,0,0,0) 60%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+                    padding: 16,
+                    boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
+                    backdropFilter: "blur(10px)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ fontWeight: 1100, letterSpacing: -0.2 }}>📊 Stats fun</div>
+                    <button
+                      className="btnGhost"
+                      onClick={() => {
+                        setStatsLoading(true);
+                        setStatsErr(null);
+                        (async () => {
+                          if (!token) return;
+                          try {
+                            const r = await myProfileStats(token);
+                            setStats(r);
+                          } catch (e: any) {
+                            setStats(null);
+                            setStatsErr(e?.message ?? "Erreur chargement stats");
+                          } finally {
+                            setStatsLoading(false);
+                          }
+                        })();
+                      }}
+                      disabled={statsLoading}
+                      title="Rafraîchir"
+                    >
+                      🔄 Rafraîchir
+                    </button>
                   </div>
 
-                  <div className="muted" style={{ marginTop: 6 }}>
-                    Stats fun (watchtime, messages, rubis, wheel, bonus, etc.)
-                    {statsErr ? <> <span style={{ opacity: 0.9 }}>({statsErr})</span></> : null}
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    Watchtime, messages, rubis, wheel, bonus…{" "}
+                    {statsErr ? <span style={{ opacity: 0.9 }}>({statsErr})</span> : null}
                   </div>
 
-                  {/* quick chips */}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                    <Chip title="Depuis combien de temps ton compte existe">
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+                    <Pill title="Depuis combien de temps ton compte existe" tone="neutral">
                       📅 {s.accountAgeDays != null ? `${fmt(s.accountAgeDays)} jours` : "—"}
-                    </Chip>
-                    <Chip title="Nombre de streamers suivis">
+                    </Pill>
+                    <Pill title="Nombre de streamers suivis" tone="neutral">
                       👥 {s.followingCount != null ? fmt(s.followingCount) : "—"} suivis
-                    </Chip>
-                    <Chip title="Ton heure la plus active (messages)">
+                    </Pill>
+                    <Pill title="Ton heure la plus active (messages)" tone="neutral">
                       ⏰ {hourLabel(s.mostActiveChatHour)}
-                    </Chip>
-                    <Chip title="Ton jour le plus actif (messages)">
+                    </Pill>
+                    <Pill title="Ton jour le plus actif (messages)" tone="neutral">
                       🗓️ {dowLabel(s.mostActiveChatDow)}
-                    </Chip>
-                    <Chip title="Ton top streamer en watchtime">
+                    </Pill>
+                    <Pill title="Ton top streamer en watchtime" tone="gold">
                       ⭐ {topWatchName ? topWatchName : "—"}
-                    </Chip>
+                    </Pill>
                   </div>
                 </div>
 
-                {/* KPI grid */}
                 <div
                   style={{
                     marginTop: 14,
@@ -716,43 +1143,54 @@ export default function ProfilePage() {
                   }}
                 >
                   {statsLoading ? (
-                    <div className="panel" style={{ margin: 0 }}>
+                    <div
+                      style={{
+                        borderRadius: 22,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: "rgba(255,255,255,0.05)",
+                        padding: 16,
+                      }}
+                    >
                       <div className="muted">Chargement des stats…</div>
                     </div>
                   ) : !stats ? (
                     <>
-                      <StatCard title="Watchtime total" value="—" sub="(à brancher)" />
-                      <StatCard title="Messages envoyés" value="—" sub="(à brancher)" />
-                      <StatCard title="Rubis gagnés" value="—" sub="(à brancher)" />
-                      <StatCard title="Rubis dépensés" value="—" sub="(à brancher)" />
+                      <StatTile emoji="⏱️" label="Watchtime total" value="—" sub="(à brancher)" />
+                      <StatTile emoji="💬" label="Messages envoyés" value="—" sub="(à brancher)" />
+                      <StatTile emoji="💎" label="Rubis gagnés" value="—" sub="(à brancher)" />
+                      <StatTile emoji="🔥" label="Rubis dépensés" value="—" sub="(à brancher)" />
                     </>
                   ) : (
                     <>
-                      <StatCard
-                        title="Watchtime total"
+                      <StatTile
+                        emoji="⏱️"
+                        label="Watchtime total"
                         value={humanDuration(s.watchSecondsTotal)}
                         sub={
-                          topWatchName
-                            ? <>
-                                Top: <b>{topWatchName}</b> ({humanDuration(topWatchSecs)})
-                              </>
-                            : "—"
+                          topWatchName ? (
+                            <>
+                              Top: <b>{topWatchName}</b> ({humanDuration(topWatchSecs)})
+                            </>
+                          ) : (
+                            "—"
+                          )
                         }
                       />
-                      <StatCard
-                        title="Messages envoyés"
+                      <StatTile
+                        emoji="💬"
+                        label="Messages envoyés"
                         value={s.chatMessagesTotal != null ? fmt(s.chatMessagesTotal) : "—"}
                         sub={
                           s.mostActiveChatHour != null || s.mostActiveChatDow != null ? (
                             <>
-                              Pic: <b>{dowLabel(s.mostActiveChatDow)}</b> à{" "}
-                              <b>{hourLabel(s.mostActiveChatHour)}</b>
+                              Pic: <b>{dowLabel(s.mostActiveChatDow)}</b> à <b>{hourLabel(s.mostActiveChatHour)}</b>
                             </>
                           ) : undefined
                         }
                       />
-                      <StatCard
-                        title="Rubis gagnés"
+                      <StatTile
+                        emoji="💎"
+                        label="Rubis gagnés"
                         value={fmtRubis(s.rubisEarnedTotal)}
                         sub={
                           typeof s.dailyWheelRubisTotal === "number" || typeof s.chestRubisWonTotal === "number" ? (
@@ -763,8 +1201,9 @@ export default function ProfilePage() {
                           ) : undefined
                         }
                       />
-                      <StatCard
-                        title="Rubis dépensés"
+                      <StatTile
+                        emoji="🔥"
+                        label="Rubis dépensés"
                         value={fmtRubis(s.rubisSpentTotal)}
                         sub={
                           typeof s.rubisSupportTotal === "number" || typeof s.rubisBurnTotal === "number" ? (
@@ -775,60 +1214,52 @@ export default function ProfilePage() {
                           ) : undefined
                         }
                       />
-                      <StatCard
-                        title="Net rubis (gagnés - dépensés)"
+                      <StatTile
+                        emoji="🧮"
+                        label="Net rubis"
                         value={netRubis == null ? "—" : fmt(netRubis)}
-                        sub="Juste une stat fun (pas un solde)."
+                        sub="Fun stat (pas un solde)."
                       />
-                      <StatCard
-                        title="Wheel"
-                        value={
-                          typeof s.dailyWheelSpinsTotal === "number"
-                            ? `${fmt(s.dailyWheelSpinsTotal)} spins`
-                            : "—"
-                        }
+                      <StatTile
+                        emoji="🎡"
+                        label="Daily Wheel"
+                        value={typeof s.dailyWheelSpinsTotal === "number" ? `${fmt(s.dailyWheelSpinsTotal)} spins` : "—"}
                         sub={
-                          typeof s.dailyWheelRubisTotal === "number"
-                            ? <>Total gagné: <b>{fmt(s.dailyWheelRubisTotal)}</b> rubis</>
-                            : undefined
+                          typeof s.dailyWheelRubisTotal === "number" ? (
+                            <>
+                              Total gagné: <b>{fmt(s.dailyWheelRubisTotal)}</b> rubis
+                            </>
+                          ) : undefined
                         }
                       />
-                      <StatCard
-                        title="Bonus quotidien"
-                        value={
-                          typeof s.dailyBonusClaimsTotal === "number"
-                            ? `${fmt(s.dailyBonusClaimsTotal)} claims`
-                            : "—"
-                        }
+                      <StatTile
+                        emoji="🗓️"
+                        label="Bonus quotidien"
+                        value={typeof s.dailyBonusClaimsTotal === "number" ? `${fmt(s.dailyBonusClaimsTotal)} claims` : "—"}
                         sub="Nombre de jours où tu as claim."
                       />
-                      <StatCard
-                        title="Collectibles"
-                        value={
-                          typeof s.entitlementsTotal === "number"
-                            ? `${fmt(s.entitlementsTotal)} objets`
-                            : "—"
-                        }
+                      <StatTile
+                        emoji="🎁"
+                        label="Collectibles"
+                        value={typeof s.entitlementsTotal === "number" ? `${fmt(s.entitlementsTotal)} objets` : "—"}
                         sub={
-                          typeof s.achievementsUnlockedTotal === "number"
-                            ? <>Succès débloqués: <b>{fmt(s.achievementsUnlockedTotal)}</b></>
-                            : undefined
+                          typeof s.achievementsUnlockedTotal === "number" ? (
+                            <>
+                              Succès débloqués: <b>{fmt(s.achievementsUnlockedTotal)}</b>
+                            </>
+                          ) : undefined
                         }
                       />
-                      <StatCard
-                        title="Subs gifts"
-                        value={
-                          typeof s.subGiftsClaimedTotal === "number"
-                            ? fmt(s.subGiftsClaimedTotal)
-                            : "—"
-                        }
+                      <StatTile
+                        emoji="🎁"
+                        label="Subs gifts"
+                        value={typeof s.subGiftsClaimedTotal === "number" ? fmt(s.subGiftsClaimedTotal) : "—"}
                         sub="Nombre de gifts claim."
                       />
                     </>
                   )}
                 </div>
 
-                {/* Leaderboards */}
                 <div
                   style={{
                     marginTop: 14,
@@ -838,87 +1269,32 @@ export default function ProfilePage() {
                   }}
                 >
                   <MiniBarList
-                    title="Top streamers — watchtime"
+                    title="🏁 Top streamers — watchtime"
                     items={topByWatch}
                     valueKey="seconds"
                     onItemLink={(slug) => `/s/${slug}`}
                     emptyLabel="Tu n’as pas encore de watchtime enregistré."
                   />
                   <MiniBarList
-                    title="Top streamers — messages"
+                    title="💬 Top streamers — messages"
                     items={topByMsg}
                     valueKey="messages"
                     onItemLink={(slug) => `/s/${slug}`}
                     emptyLabel="Tu n’as pas encore envoyé de messages."
                   />
                 </div>
-
-                {/* Fun section */}
-                <div className="panel" style={{ marginTop: 14 }}>
-                  <div className="panelTitle">Stats fun (à ajouter ensuite)</div>
-                  <div className="muted" style={{ marginBottom: 10 }}>
-                    On peut enrichir progressivement sans alourdir la page.
-                  </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                      gap: 10,
-                    }}
-                  >
-                    <div
-                      style={{
-                        borderRadius: 14,
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(255,255,255,0.03)",
-                        padding: 12,
-                      }}
-                    >
-                      <div style={{ fontWeight: 900, marginBottom: 6 }}>Activité</div>
-                      <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
-                        <li>Heatmap heures / jours (chat + watch)</li>
-                        <li>Streak (jours consécutifs actifs)</li>
-                        <li>Record de messages sur une journée</li>
-                        <li>Nombre de lives différents regardés</li>
-                      </ul>
-                    </div>
-
-                    <div
-                      style={{
-                        borderRadius: 14,
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(255,255,255,0.03)",
-                        padding: 12,
-                      }}
-                    >
-                      <div style={{ fontWeight: 900, marginBottom: 6 }}>Économie</div>
-                      <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
-                        <li>Rubis gagnés par source (wheel/bonus/coffres/events…)</li>
-                        <li>Dépenses par catégorie (support/cosmétiques/mini-jeux)</li>
-                        <li>Plus grosse dépense support</li>
-                        <li>Plus gros gain en une fois (wheel / coffre)</li>
-                      </ul>
-                    </div>
-
-                    <div
-                      style={{
-                        borderRadius: 14,
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(255,255,255,0.03)",
-                        padding: 12,
-                      }}
-                    >
-                      <div style={{ fontWeight: 900, marginBottom: 6 }}>Cosmétiques</div>
-                      <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
-                        <li>Top badge / titre le plus équipé</li>
-                        <li>Temps cumulé avec un titre</li>
-                        <li>Collection complétée (%)</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
               </div>
             ) : null}
+
+            {/* Responsive tweak */}
+            <style>{`
+              @media (max-width: 980px) {
+                .container { }
+              }
+              @media (max-width: 980px) {
+                main .ll-two-col { grid-template-columns: 1fr !important; }
+              }
+            `}</style>
           </>
         )}
       </div>
