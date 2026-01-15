@@ -4,7 +4,7 @@ import path from "path";
 import express from "express";
 import { Server as IOServer } from "socket.io";
 
-import { migrate, seedIfEmpty, pool } from "./db.js";
+import { migrate, pool } from "./db.js";
 import { createApp } from "./app.js";
 import { attachChat } from "./chat_socket.js";
 import { startDlivePoller } from "./dlive_poller.js";
@@ -68,7 +68,6 @@ function startSlotsCatalogUpdater(everyHours: number) {
 
 (async () => {
   await migrate();
-  await seedIfEmpty();
 
   // ✅ ensure clips table (runtime idempotent)
   await ensureBotClips();
