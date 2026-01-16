@@ -57,6 +57,7 @@ function tryGetAuthUser(req: express.Request): AuthUser | null {
 clipsPublicRouter.use(async (_req, _res, next) => {
   try {
     await ensureBotClips();
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS clip_likes (
         clip_id BIGINT NOT NULL,
@@ -65,6 +66,27 @@ clipsPublicRouter.use(async (_req, _res, next) => {
         PRIMARY KEY (clip_id, user_id)
       );
     `);
+
+    // ✅ upgrade si ancienne version en INTEGER (int4)
+    await pool.query(`
+      ALTER TABLE clip_likes
+      ALTER COLUMN created_ts TYPE BIGINT
+      USING created_ts::bigint;
+    `).catch(() => {});
+
+    // ✅ bot_clips: très probablement là que ça casse sur ton range "month"
+    await pool.query(`
+      ALTER TABLE bot_clips
+      ALTER COLUMN created_ts TYPE BIGINT
+      USING created_ts::bigint;
+    `).catch(() => {});
+
+    await pool.query(`
+      ALTER TABLE bot_clips
+      ALTER COLUMN deleted_ts TYPE BIGINT
+      USING deleted_ts::bigint;
+    `).catch(() => {});
+
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_clip_likes_clip ON clip_likes(clip_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_clip_likes_user ON clip_likes(user_id);`);
   } catch {}
