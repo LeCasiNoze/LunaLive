@@ -20,10 +20,6 @@ import { EarningsSection } from "./dashboard/sections/EarningsSection";
 import { StatsSection } from "./dashboard/sections/StatsSection";
 import { SettingsSection } from "./dashboard/sections/SettingsSection";
 
-function clamp(n: number, a: number, b: number) {
-  return Math.max(a, Math.min(b, n));
-}
-
 function fmt(n: number | null | undefined) {
   const v = Number(n);
   if (!Number.isFinite(v)) return "—";
