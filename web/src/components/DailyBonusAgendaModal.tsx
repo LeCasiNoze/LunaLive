@@ -32,69 +32,6 @@ function rewardLabel(r: WeekDay["reward"]) {
   return `🎡 x${r.amount}`;
 }
 
-function cellStyle(status: WeekDay["status"]) {
-  const base: React.CSSProperties = {
-    padding: "10px 10px",
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.05)",
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-    cursor: "default",
-    userSelect: "none",
-  };
-
-  const greyed =
-    status === "future" || status === "missed" || status === "claimed" || status === "today_claimed";
-
-  const clickable = status === "today_claimable";
-
-  if (greyed) {
-    return {
-      ...base,
-      opacity: status === "missed" ? 0.55 : 0.75,
-      filter: status === "missed" ? "grayscale(1)" : "none",
-    };
-  }
-
-  if (clickable) {
-    return {
-      ...base,
-      cursor: "pointer",
-      border: "1px solid rgba(255,255,255,0.25)",
-      boxShadow: "0 0 0 1px rgba(180,140,255,0.35), 0 0 18px rgba(140,120,255,0.25)",
-      background: "rgba(255,255,255,0.07)",
-    };
-  }
-
-  return base;
-}
-
-function milestoneStyle(status: Milestone["status"]) {
-  const base: React.CSSProperties = {
-    padding: "10px 12px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.05)",
-    fontSize: 12,
-    fontWeight: 900,
-    cursor: "default",
-    userSelect: "none",
-  };
-
-  if (status === "claimed") return { ...base, opacity: 0.75 };
-  if (status === "locked") return { ...base, opacity: 0.55, filter: "grayscale(1)" };
-
-  return {
-    ...base,
-    cursor: "pointer",
-    border: "1px solid rgba(255,255,255,0.25)",
-    boxShadow: "0 0 0 1px rgba(180,140,255,0.35), 0 0 18px rgba(140,120,255,0.25)",
-    background: "rgba(255,255,255,0.07)",
-  };
-}
-
 function toastTextFromGranted(granted: any[] | null | undefined) {
   const arr = Array.isArray(granted) ? granted : [];
   if (!arr.length) return "Récompense récupérée ✅";
@@ -120,7 +57,6 @@ function toastTextFromGranted(granted: any[] | null | undefined) {
       continue;
     }
 
-    // (optionnel) uniques plus tard
     const kind = String(g.kind || g.unique || "");
     if (kind === "skin") uniqSkin += 1;
     if (kind === "title") uniqTitle += 1;
@@ -134,6 +70,20 @@ function toastTextFromGranted(granted: any[] | null | undefined) {
   if (uniqTitle > 0) parts.push(`Titre débloqué`);
 
   return parts.length ? `${parts.join(" • ")} ✅` : "Récompense récupérée ✅";
+}
+
+function dayBadge(status: WeekDay["status"]) {
+  if (status === "claimed" || status === "today_claimed") return "✓";
+  if (status === "missed") return "×";
+  return "";
+}
+
+function statusPill(status: WeekDay["status"]) {
+  if (status === "today_claimable") return { label: "À récupérer", kind: "cta" as const };
+  if (status === "today_claimed") return { label: "Déjà récupéré", kind: "ok" as const };
+  if (status === "claimed") return { label: "Récupéré", kind: "ok" as const };
+  if (status === "missed") return { label: "Manqué", kind: "bad" as const };
+  return { label: "À venir", kind: "muted" as const };
 }
 
 export function DailyBonusAgendaModal({
@@ -152,7 +102,7 @@ export function DailyBonusAgendaModal({
   const [tab, setTab] = React.useState<"agenda" | "infos" | "event">("agenda");
   const [busy, setBusy] = React.useState<string | null>(null);
 
-  // ✅ mini toast interne (ne masque pas le calendrier)
+  // toast interne
   const [toast, setToast] = React.useState<string | null>(null);
   const toastTimer = React.useRef<number | null>(null);
 
@@ -173,11 +123,8 @@ export function DailyBonusAgendaModal({
     setBusy("today");
     try {
       const r: any = await claimDailyBonusToday(token);
-
       if (r?.state?.ok) onState(r.state);
       await refreshMe();
-
-      // ✅ FIX TS: on utilise r.granted
       showToast(toastTextFromGranted(r?.granted));
     } catch (e: any) {
       showToast(String(e?.message || "Erreur"));
@@ -191,11 +138,8 @@ export function DailyBonusAgendaModal({
     setBusy(`m${m}`);
     try {
       const r: any = await claimDailyBonusMilestone(token, m);
-
       if (r?.state?.ok) onState(r.state);
       await refreshMe();
-
-      // ✅ pareil: toast basé sur granted si présent
       showToast(r?.granted?.length ? toastTextFromGranted(r.granted) : `Palier ${m} jours récupéré ✅`);
     } catch (e: any) {
       showToast(String(e?.message || "Erreur"));
@@ -204,7 +148,7 @@ export function DailyBonusAgendaModal({
     }
   }
 
-  // ✅ ESC pour fermer
+  // ESC
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -217,189 +161,496 @@ export function DailyBonusAgendaModal({
     <div
       role="dialog"
       aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.78)",
-        backdropFilter: "blur(6px)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 2147483647,
-        padding: 16,
-      }}
+      className="llBonusOverlay"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      {/* ✅ Toast discret */}
-      {toast ? (
-        <div
-          style={{
-            position: "fixed",
-            top: 18,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 2147483647,
-            padding: "10px 14px",
-            borderRadius: 999,
-            background: "rgba(15,15,24,0.92)",
-            border: "1px solid rgba(255,255,255,0.14)",
-            boxShadow: "0 18px 60px rgba(0,0,0,0.55)",
-            fontWeight: 900,
-            fontSize: 13,
-            letterSpacing: 0.2,
-          }}
-        >
-          {toast}
-        </div>
-      ) : null}
+      <style>{`
+        .llBonusOverlay{
+          position: fixed;
+          inset: 0;
+          z-index: 2147483647;
+          display: grid;
+          place-items: center;
+          padding: 16px;
+          background: rgba(0,0,0,0.78);
+          backdrop-filter: blur(8px);
+        }
 
-        <div
-        style={{
-            width: "min(920px, 96vw)",
-            maxHeight: "min(760px, 90vh)",
-            overflow: "hidden",
-            display: "grid",
-            gridTemplateColumns: "240px 1fr",
-            gap: 0,
-            padding: 0,
+        .llBonusToast{
+          position: fixed;
+          top: 18px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 2147483647;
+          padding: 10px 14px;
+          border-radius: 999px;
+          background: rgba(15,15,24,0.92);
+          border: 1px solid rgba(255,255,255,0.14);
+          box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+          font-weight: 950;
+          font-size: 13px;
+          color: rgba(255,255,255,0.92);
+        }
 
-            // ✅ OPAQUE
-            background: "#0b0b10",
-            border: "1px solid rgba(255,255,255,0.10)",
-            borderRadius: 18,
-            boxShadow: "0 18px 60px rgba(0,0,0,0.60)",
-        }}
-        >
+        .llBonusModal{
+          width: min(980px, 96vw);
+          max-height: min(780px, 90vh);
+          overflow: hidden;
+          display: grid;
+          grid-template-columns: 260px 1fr;
+          border-radius: 20px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background:
+            radial-gradient(520px 260px at 10% 0%, rgba(124,77,255,0.18), rgba(0,0,0,0) 60%),
+            rgba(10,10,14,0.96);
+          box-shadow: 0 26px 90px rgba(0,0,0,0.60);
+        }
+
+        @media (max-width: 840px){
+          .llBonusModal{
+            grid-template-columns: 1fr;
+            max-height: 92vh;
+          }
+        }
+
+        .llBonusSide{
+          border-right: 1px solid rgba(255,255,255,0.08);
+          padding: 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0.18));
+        }
+
+        @media (max-width: 840px){
+          .llBonusSide{
+            border-right: none;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+          }
+        }
+
+        .llBonusSideTop{
+          display:flex;
+          align-items:center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+        .llBonusTitle{
+          font-weight: 1100;
+          letter-spacing: -0.2px;
+          font-size: 14px;
+          color: rgba(255,255,255,0.92);
+        }
+        .llBonusClose{
+          border-radius: 14px;
+          padding: 8px 10px;
+          font-weight: 950;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.18);
+          color: rgba(255,255,255,0.86);
+          cursor: pointer;
+          transition: transform .08s ease, border-color .12s ease, background .12s ease, box-shadow .12s ease;
+        }
+        .llBonusClose:hover{
+          transform: translateY(-1px);
+          border-color: rgba(255,255,255,0.16);
+          background: rgba(255,255,255,0.06);
+        }
+        .llBonusClose:focus-visible{
+          outline: none;
+          box-shadow: 0 0 0 2px rgba(124,77,255,0.16);
+          border-color: rgba(124,77,255,0.55);
+        }
+
+        .llBonusTabs{
+          display: grid;
+          gap: 8px;
+        }
+        .llBonusTab{
+          width: 100%;
+          text-align: left;
+          border-radius: 16px;
+          padding: 10px 12px;
+          font-weight: 950;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.14);
+          color: rgba(255,255,255,0.86);
+          cursor: pointer;
+          transition: transform .08s ease, border-color .12s ease, background .12s ease, box-shadow .12s ease;
+        }
+        .llBonusTab:hover{
+          transform: translateY(-1px);
+          border-color: rgba(255,255,255,0.16);
+          background: rgba(255,255,255,0.05);
+        }
+        .llBonusTab.isActive{
+          border-color: rgba(124,77,255,0.55);
+          background: rgba(124,77,255,0.14);
+          box-shadow: 0 0 0 2px rgba(124,77,255,0.10);
+        }
+        .llBonusTab.isSoon{
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+
+        .llBonusMeta{
+          margin-top: 4px;
+          padding: 12px;
+          border-radius: 16px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(0,0,0,0.14);
+          color: rgba(255,255,255,0.70);
+          font-size: 12px;
+          line-height: 1.55;
+        }
+        .llBonusMeta strong{
+          color: rgba(255,255,255,0.92);
+          font-weight: 950;
+        }
+
+        .llBonusBody{
+          padding: 14px;
+          overflow: auto;
+        }
+
+        .llBonusHeadRow{
+          display:flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .llBonusH1{
+          font-weight: 1100;
+          letter-spacing: -0.2px;
+          font-size: 16px;
+          color: rgba(255,255,255,0.92);
+        }
+        .llBonusSub{
+          font-size: 12px;
+          color: rgba(255,255,255,0.62);
+        }
+
+        .llBonusWeekGrid{
+          margin-top: 12px;
+          display: grid;
+          gap: 10px;
+          grid-template-columns: repeat(4, 1fr);
+        }
+        @media (max-width: 980px){
+          .llBonusWeekGrid{ grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 720px){
+          .llBonusWeekGrid{ grid-template-columns: repeat(2, 1fr); }
+        }
+
+        .llBonusDay{
+          position: relative;
+          padding: 12px;
+          border-radius: 18px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background:
+            radial-gradient(180px 90px at 18% 0%, rgba(255,255,255,0.06), rgba(0,0,0,0) 62%),
+            rgba(0,0,0,0.16);
+          color: rgba(255,255,255,0.88);
+          text-align: left;
+          user-select: none;
+          transition: transform .10s ease, border-color .14s ease, background .14s ease, box-shadow .14s ease;
+          cursor: default;
+        }
+
+        .llBonusDayTop{
+          display:flex;
+          justify-content: space-between;
+          gap: 10px;
+          align-items: center;
+        }
+        .llBonusDayLabel{
+          font-weight: 1050;
+          letter-spacing: -0.2px;
+          font-size: 13px;
+          color: rgba(255,255,255,0.92);
+        }
+        .llBonusDayMark{
+          font-weight: 1100;
+          opacity: 0.75;
+        }
+
+        .llBonusReward{
+          margin-top: 10px;
+          font-weight: 1100;
+          font-size: 18px;
+          letter-spacing: -0.2px;
+          line-height: 1.1;
+        }
+        .llBonusDate{
+          margin-top: 6px;
+          font-size: 12px;
+          color: rgba(255,255,255,0.62);
+        }
+
+        .llBonusPill{
+          margin-top: 10px;
+          display:inline-flex;
+          align-items:center;
+          gap: 8px;
+          padding: 7px 10px;
+          border-radius: 999px;
+          font-weight: 950;
+          font-size: 12px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.14);
+          color: rgba(255,255,255,0.80);
+          white-space: nowrap;
+        }
+        .llBonusPill.ok{
+          border-color: rgba(60, 240, 180, 0.26);
+          background: rgba(60, 240, 180, 0.10);
+          color: rgba(230,255,248,0.92);
+        }
+        .llBonusPill.bad{
+          border-color: rgba(255,90,90,0.24);
+          background: rgba(255,90,90,0.10);
+          color: rgba(255,210,210,0.92);
+        }
+        .llBonusPill.cta{
+          border-color: rgba(124,77,255,0.55);
+          background: rgba(124,77,255,0.16);
+          color: rgba(255,255,255,0.92);
+          box-shadow: 0 0 0 2px rgba(124,77,255,0.10);
+        }
+
+        .llBonusDay.isClickable{
+          cursor: pointer;
+          border-color: rgba(255,255,255,0.18);
+        }
+        .llBonusDay.isClickable:hover{
+          transform: translateY(-1px);
+          border-color: rgba(124,77,255,0.45);
+          background:
+            radial-gradient(180px 90px at 18% 0%, rgba(124,77,255,0.16), rgba(0,0,0,0) 62%),
+            rgba(255,255,255,0.05);
+          box-shadow: 0 16px 44px rgba(0,0,0,0.28);
+        }
+        .llBonusDay.isClickable:focus-visible{
+          outline: none;
+          box-shadow:
+            0 0 0 2px rgba(124,77,255,0.18),
+            0 16px 44px rgba(0,0,0,0.28);
+          border-color: rgba(124,77,255,0.60);
+        }
+
+        .llBonusDay.isDim{ opacity: 0.72; }
+        .llBonusDay.isMissed{ opacity: 0.55; filter: grayscale(1); }
+
+        .llBonusPanel{
+          margin-top: 12px;
+          padding: 12px;
+          border-radius: 18px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(0,0,0,0.14);
+        }
+
+        .llBonusMilestonesRow{
+          margin-top: 10px;
+          display:flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .llBonusMilestone{
+          display:inline-flex;
+          align-items:center;
+          gap: 8px;
+          padding: 10px 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.14);
+          font-size: 12px;
+          font-weight: 950;
+          color: rgba(255,255,255,0.86);
+          user-select: none;
+          cursor: default;
+          transition: transform .10s ease, border-color .14s ease, background .14s ease, box-shadow .14s ease;
+        }
+        .llBonusMilestone.isLocked{ opacity: 0.55; filter: grayscale(1); }
+        .llBonusMilestone.isClaimed{ opacity: 0.75; }
+        .llBonusMilestone.isClaimable{
+          cursor: pointer;
+          border-color: rgba(255,255,255,0.18);
+        }
+        .llBonusMilestone.isClaimable:hover{
+          transform: translateY(-1px);
+          border-color: rgba(124,77,255,0.55);
+          background: rgba(124,77,255,0.14);
+          box-shadow: 0 16px 44px rgba(0,0,0,0.26);
+        }
+        .llBonusMilestone.isClaimable:focus-visible{
+          outline: none;
+          box-shadow: 0 0 0 2px rgba(124,77,255,0.18);
+          border-color: rgba(124,77,255,0.60);
+        }
+
+        @media (prefers-reduced-motion: reduce){
+          .llBonusDay, .llBonusMilestone, .llBonusTab, .llBonusClose{
+            transition: border-color .12s ease, background .12s ease, box-shadow .12s ease;
+          }
+          .llBonusDay:hover, .llBonusMilestone:hover, .llBonusTab:hover, .llBonusClose:hover{
+            transform: none;
+          }
+        }
+      `}</style>
+
+      {toast ? <div className="llBonusToast">{toast}</div> : null}
+
+      <div className="llBonusModal">
         {/* Sidebar */}
-        <div
-          style={{
-            borderRight: "1px solid rgba(255,255,255,0.08)",
-            padding: 12,
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontWeight: 950 }}>Bonus</div>
-            <button type="button" className="btnPrimarySmall" onClick={onClose} style={{ padding: "6px 10px" }}>
+        <div className="llBonusSide">
+          <div className="llBonusSideTop">
+            <div className="llBonusTitle">Bonus</div>
+            <button type="button" className="llBonusClose" onClick={onClose}>
               ✕
             </button>
           </div>
 
-          <button
-            type="button"
-            className={tab === "agenda" ? "btnPrimarySmall" : "btnSmall"}
-            onClick={() => setTab("agenda")}
-            style={{ justifyContent: "flex-start" as any }}
-          >
-            Chemin du retour
-          </button>
+          <div className="llBonusTabs">
+            <button
+              type="button"
+              className={`llBonusTab ${tab === "agenda" ? "isActive" : ""}`}
+              onClick={() => setTab("agenda")}
+            >
+              Chemin du retour
+            </button>
 
-          <button
-            type="button"
-            className={tab === "infos" ? "btnPrimarySmall" : "btnSmall"}
-            onClick={() => setTab("infos")}
-            style={{ justifyContent: "flex-start" as any }}
-          >
-            Informations
-          </button>
+            <button
+              type="button"
+              className={`llBonusTab ${tab === "infos" ? "isActive" : ""}`}
+              onClick={() => setTab("infos")}
+            >
+              Informations
+            </button>
 
-          <button
-            type="button"
-            className={tab === "event" ? "btnPrimarySmall" : "btnSmall"}
-            onClick={() => setTab("event")}
-            style={{ justifyContent: "flex-start" as any, opacity: 0.75 }}
-            title="Bientôt"
-          >
-            Événements (bientôt)
-          </button>
+            <button type="button" className="llBonusTab isSoon" onClick={() => {}} title="Bientôt">
+              Événements (bientôt)
+            </button>
+          </div>
 
-          <div className="mutedSmall" style={{ opacity: 0.85 }}>
-            Aujourd’hui: <strong style={{ color: "rgba(255,255,255,0.9)" }}>{state.day}</strong>
+          <div className="llBonusMeta">
+            Aujourd’hui: <strong>{state.day}</strong>
             <br />
-            Jours claimés ce mois:{" "}
-            <strong style={{ color: "rgba(255,255,255,0.9)" }}>{state.monthClaimedDays}</strong>
+            Jours claimés ce mois: <strong>{state.monthClaimedDays}</strong>
             <br />
-            Tickets roue:{" "}
-            <strong style={{ color: "rgba(255,255,255,0.9)" }}>{state.tokens.wheel_ticket}</strong>
+            Tickets roue: <strong>{state.tokens.wheel_ticket}</strong>
             <br />
-            Prestige:{" "}
-            <strong style={{ color: "rgba(255,255,255,0.9)" }}>{state.tokens.prestige_token}</strong>
+            Prestige: <strong>{state.tokens.prestige_token}</strong>
           </div>
         </div>
 
         {/* Content */}
-        <div style={{ padding: 14, overflow: "auto" }}>
+        <div className="llBonusBody">
           {tab === "agenda" ? (
             <>
-              <div className="panelTitle">Agenda hebdo</div>
-
-              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-                {state.week.map((d) => (
-                  <div
-                    key={d.date}
-                    style={cellStyle(d.status)}
-                    onClick={() => {
-                      if (d.status === "today_claimable" && !busy) claimToday();
-                    }}
-                    title={d.status === "today_claimable" ? "Cliquer pour récupérer" : undefined}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontWeight: 950 }}>{d.label}</div>
-                      <div className="mutedSmall" style={{ opacity: 0.75 }}>
-                        {d.status === "claimed" || d.status === "today_claimed"
-                          ? "✓"
-                          : d.status === "missed"
-                            ? "×"
-                            : ""}
-                      </div>
-                    </div>
-
-                    <div style={{ fontWeight: 900, fontSize: 14 }}>{rewardLabel(d.reward)}</div>
-
-                    <div className="mutedSmall" style={{ opacity: 0.75 }}>
-                      {d.date}
-                    </div>
-
-                    {d.status === "today_claimable" ? (
-                      <div className="mutedSmall" style={{ opacity: 0.9 }}>
-                        {busy === "today" ? "Récupération…" : "Récupérer"}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
+              <div className="llBonusHeadRow">
+                <div className="llBonusH1">Agenda hebdo</div>
+                <div className="llBonusSub">Clique uniquement sur aujourd’hui quand c’est disponible.</div>
               </div>
 
-              <div className="panel" style={{ marginTop: 12, background: "rgba(255,255,255,0.03)" }}>
-                <div className="mutedSmall" style={{ marginBottom: 10 }}>
+              <div className="llBonusWeekGrid">
+                {state.week.map((d) => {
+                  const clickable = d.status === "today_claimable" && !busy;
+                  const pill = statusPill(d.status);
+
+                  return (
+                    <div
+                      key={d.date}
+                      role={clickable ? "button" : undefined}
+                      tabIndex={clickable ? 0 : -1}
+                      className={[
+                        "llBonusDay",
+                        clickable ? "isClickable" : "",
+                        d.status === "missed" ? "isMissed" : "",
+                        d.status === "future" || d.status === "claimed" || d.status === "today_claimed" ? "isDim" : "",
+                      ].join(" ")}
+                      onClick={() => {
+                        if (d.status === "today_claimable" && !busy) claimToday();
+                      }}
+                      onKeyDown={(e) => {
+                        if (!clickable) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          claimToday();
+                        }
+                      }}
+                      title={d.status === "today_claimable" ? "Cliquer pour récupérer" : undefined}
+                    >
+                      <div className="llBonusDayTop">
+                        <div className="llBonusDayLabel">{d.label}</div>
+                        <div className="llBonusDayMark">{dayBadge(d.status)}</div>
+                      </div>
+
+                      <div className="llBonusReward">{rewardLabel(d.reward)}</div>
+                      <div className="llBonusDate">{d.date}</div>
+
+                      <div className={`llBonusPill ${pill.kind}`}>
+                        {pill.kind === "cta" && busy === "today" ? "Récupération…" : pill.label}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="llBonusPanel">
+                <div className="llBonusSub" style={{ opacity: 0.85 }}>
                   Paliers mensuels (5 / 10 / 20 / 30)
                 </div>
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  {state.milestones.map((m) => (
-                    <div
-                      key={m.milestone}
-                      style={milestoneStyle(m.status)}
-                      onClick={() => {
-                        if (m.status === "claimable" && !busy) claimMilestone(m.milestone);
-                      }}
-                      title={m.status === "claimable" ? "Cliquer pour récupérer" : undefined}
-                    >
-                      {m.milestone} jours{" "}
-                      {m.status === "claimed"
+                <div className="llBonusMilestonesRow">
+                  {state.milestones.map((m) => {
+                    const isClaimable = m.status === "claimable" && !busy;
+                    const cls =
+                      m.status === "locked"
+                        ? "isLocked"
+                        : m.status === "claimed"
+                        ? "isClaimed"
+                        : "isClaimable";
+
+                    const right =
+                      m.status === "claimed"
                         ? "✓"
                         : m.status === "claimable"
-                          ? busy === `m${m.milestone}`
-                            ? "…"
-                            : "★"
-                          : "🔒"}
-                    </div>
-                  ))}
+                        ? busy === `m${m.milestone}`
+                          ? "…"
+                          : "★"
+                        : "🔒";
+
+                    return (
+                      <div
+                        key={m.milestone}
+                        role={isClaimable ? "button" : undefined}
+                        tabIndex={isClaimable ? 0 : -1}
+                        className={`llBonusMilestone ${cls}`}
+                        onClick={() => {
+                          if (m.status === "claimable" && !busy) claimMilestone(m.milestone);
+                        }}
+                        onKeyDown={(e) => {
+                          if (!isClaimable) return;
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            claimMilestone(m.milestone);
+                          }
+                        }}
+                        title={m.status === "claimable" ? "Cliquer pour récupérer" : undefined}
+                      >
+                        <span>{m.milestone} jours</span>
+                        <span style={{ opacity: 0.85 }}>{right}</span>
+                      </div>
+                    );
+                  })}
                 </div>
 
-                <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85, lineHeight: 1.5 }}>
+                <div className="llBonusSub" style={{ marginTop: 10, opacity: 0.85, lineHeight: 1.55 }}>
                   • 20j = Skin (unique, sinon +20 rubis)
                   <br />
                   • 30j = Titre (unique, sinon +1 jeton prestige)
@@ -410,9 +661,12 @@ export function DailyBonusAgendaModal({
 
           {tab === "infos" ? (
             <>
-              <div className="panelTitle">Informations</div>
-              <div className="panel" style={{ marginTop: 12, background: "rgba(255,255,255,0.03)" }}>
-                <div className="mutedSmall" style={{ opacity: 0.9, lineHeight: 1.55 }}>
+              <div className="llBonusHeadRow">
+                <div className="llBonusH1">Informations</div>
+              </div>
+
+              <div className="llBonusPanel" style={{ marginTop: 12 }}>
+                <div className="llBonusSub" style={{ opacity: 0.92, lineHeight: 1.65 }}>
                   • 1 récupération par jour (timezone Europe/Paris).
                   <br />
                   • Cycle hebdo : Lun 3 / Mar 3 / Mer 🎡 / Jeu 5 / Ven 5 / Sam 🎡 / Dim 10.
@@ -427,9 +681,12 @@ export function DailyBonusAgendaModal({
 
           {tab === "event" ? (
             <>
-              <div className="panelTitle">Événements</div>
-              <div className="panel" style={{ marginTop: 12, background: "rgba(255,255,255,0.03)" }}>
-                <div className="mutedSmall" style={{ opacity: 0.9 }}>
+              <div className="llBonusHeadRow">
+                <div className="llBonusH1">Événements</div>
+              </div>
+
+              <div className="llBonusPanel" style={{ marginTop: 12 }}>
+                <div className="llBonusSub" style={{ opacity: 0.92 }}>
                   Onglet réservé pour plus tard (events, annonces, promos, etc.).
                 </div>
               </div>
