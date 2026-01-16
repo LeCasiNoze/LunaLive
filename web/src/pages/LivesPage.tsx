@@ -11,8 +11,8 @@ import { DailyWheelCard } from "../components/DailyWheelCard";
 import { DailyBonusAccessCard } from "../components/DailyBonusAccessCard";
 
 type LiveCardVM = LiveCard & {
-  thumbFallback: string;
-  thumbFinal: string;
+  thumbFallback: string; // svg
+  thumbFinal: string; // what we display (never "blink" during refresh)
   durationLabel?: string | null;
 
   // premium / featured (foundation)
@@ -21,12 +21,12 @@ type LiveCardVM = LiveCard & {
 
 type ClipVM = {
   id: string;
-  url: string; // target video link
+  url: string; // target video link (or future clip page)
   thumbUrl: string | null;
   likes: number;
   streamerSlug?: string | null;
   streamerName?: string | null;
-  streamerAvatarUrl?: string | null; // optional later
+  streamerAvatarUrl?: string | null;
 };
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
@@ -51,6 +51,16 @@ function absolutize(url: string | null) {
   if (u.startsWith("http://") || u.startsWith("https://")) return u;
   if (u.startsWith("/") && API_BASE) return `${API_BASE}${u}`;
   return u;
+}
+
+function preloadImage(url: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const done = (ok: boolean) => resolve(ok);
+    img.onload = () => done(true);
+    img.onerror = () => done(false);
+    img.src = url;
+  });
 }
 
 function Pill({
@@ -150,8 +160,9 @@ function LiveBackdrop({ url }: { url: string }) {
 }
 
 /**
- * Foundation: featured slugs come from /streamers (which exposes "featured")
- * We only need it for LIVE ones.
+ * Featured foundation:
+ * - source of truth currently = /streamers (returns {slug,isLive,featured})
+ * - we only need it for LIVE ones.
  */
 async function fetchFeaturedLiveSlugs(): Promise<Set<string>> {
   try {
@@ -174,47 +185,87 @@ async function fetchFeaturedLiveSlugs(): Promise<Set<string>> {
 }
 
 /**
- * Foundation: top clips of the month
- * - safe if endpoint doesn't exist yet (returns [])
- * Expected future shape:
- * [{ id, url, thumbUrl, likes, streamerSlug, streamerName, streamerAvatarUrl }]
+ * Clips du mois
+ * ✅ On essaye l’API "propre" /clips/top (celle que tu vas brancher dans clips_public.ts)
+ * ✅ Fallback: rien (ne casse pas la page)
+ *
+ * Attendu (propre):
+ * { ok:true, total:number, clips:[{ id, thumbUrl, likesCount, streamerSlug, streamerDisplayName, avatarUrl, ... }] }
  */
-async function fetchTopClipsMonth(): Promise<ClipVM[]> {
+async function fetchTopClipsMonth(): Promise<{ total: number; clips: ClipVM[] }> {
   try {
-    // ✅ when you wire backend, keep same path and just return the expected shape
-    const res = await fetch(`${API_BASE}/clips/top?period=month&limit=20`, {
+    // ✅ endpoint prévu (à brancher côté API)
+    const res = await fetch(`${API_BASE}/clips/top?range=month&limit=24`, {
       headers: { "content-type": "application/json" },
     });
-    const data = await res.json().catch(() => null);
-    if (!res.ok || !Array.isArray(data)) return [];
 
-    return data
-      .map((x: any) => ({
-        id: String(x?.id ?? ""),
-        url: String(x?.url ?? ""),
-        thumbUrl: x?.thumbUrl ? String(x.thumbUrl) : x?.thumb_url ? String(x.thumb_url) : null,
-        likes: Number(x?.likes ?? x?.likeCount ?? x?.like_count ?? 0) || 0,
-        streamerSlug: x?.streamerSlug ? String(x.streamerSlug) : x?.streamer_slug ? String(x.streamer_slug) : null,
-        streamerName: x?.streamerName ? String(x.streamerName) : x?.streamer_name ? String(x.streamer_name) : null,
-        streamerAvatarUrl: x?.streamerAvatarUrl
-          ? String(x.streamerAvatarUrl)
-          : x?.streamer_avatar_url
-          ? String(x.streamer_avatar_url)
-          : null,
-      }))
-      .filter((c: ClipVM) => !!c.id && !!c.url);
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j || j.ok === false) return { total: 0, clips: [] };
+
+    const arr = Array.isArray(j.clips) ? j.clips : Array.isArray(j) ? j : [];
+    const total = Number(j.total ?? arr.length ?? 0) || 0;
+
+    const clips = arr
+      .map((x: any) => {
+        const id = String(x?.id ?? "");
+        if (!id) return null;
+
+        const streamerSlug =
+          x?.streamerSlug != null ? String(x.streamerSlug) : x?.streamer_slug != null ? String(x.streamer_slug) : null;
+
+        const streamerName =
+          x?.streamerDisplayName != null
+            ? String(x.streamerDisplayName)
+            : x?.streamer_display_name != null
+            ? String(x.streamer_display_name)
+            : x?.streamerName != null
+            ? String(x.streamerName)
+            : x?.streamer_name != null
+            ? String(x.streamer_name)
+            : null;
+
+        const likes =
+          Number(x?.likesCount ?? x?.likes_count ?? x?.likes ?? x?.likeCount ?? x?.like_count ?? 0) || 0;
+
+        const thumbUrl = x?.thumbUrl ? String(x.thumbUrl) : x?.thumb_url ? String(x.thumb_url) : null;
+
+        // URL cible : pour l’instant, on peut ouvrir la page streamer + onglet clips
+        // (tu pourras ensuite faire une vraie page /clips/:id)
+        const url =
+          x?.url && String(x.url).startsWith("http")
+            ? String(x.url)
+            : streamerSlug
+            ? `/s/${encodeURIComponent(streamerSlug)}?tab=clips`
+            : "#";
+
+        const streamerAvatarUrl =
+          x?.avatarUrl != null
+            ? String(x.avatarUrl)
+            : x?.streamerAvatarUrl != null
+            ? String(x.streamerAvatarUrl)
+            : x?.streamer_avatar_url != null
+            ? String(x.streamer_avatar_url)
+            : null;
+
+        return {
+          id,
+          url,
+          thumbUrl,
+          likes,
+          streamerSlug,
+          streamerName,
+          streamerAvatarUrl,
+        } satisfies ClipVM;
+      })
+      .filter(Boolean) as ClipVM[];
+
+    return { total, clips };
   } catch {
-    return [];
+    return { total: 0, clips: [] };
   }
 }
 
-function ClipLikesBadge({
-  likes,
-  corner,
-}: {
-  likes: number;
-  corner: "tl" | "tr" | "br" | "bl";
-}) {
+function ClipLikesBadge({ likes, corner }: { likes: number; corner: "tl" | "tr" | "br" | "bl" }) {
   const pos: Record<string, React.CSSProperties> = {
     tl: { top: 8, left: 8 },
     tr: { top: 8, right: 8 },
@@ -248,61 +299,105 @@ function ClipLikesBadge({
 
 export default function LivesPage() {
   const [lives, setLives] = React.useState<LiveCardVM[]>([]);
-  const [loading, setLoading] = React.useState(true);        // initial only
+  const [loading, setLoading] = React.useState(true); // initial only
   const [refreshing, setRefreshing] = React.useState(false); // silent refresh
   const [err, setErr] = React.useState<string | null>(null);
 
   const [clips, setClips] = React.useState<ClipVM[]>([]);
+  const [clipsTotal, setClipsTotal] = React.useState(0);
   const [clipsLoading, setClipsLoading] = React.useState(false);
 
-  const load = React.useCallback(async (opts?: { silent?: boolean }) => {
-    const silent = !!opts?.silent;
+  // ✅ lock pour éviter refresh concurrents
+  const refreshLockRef = React.useRef(false);
 
-    // ✅ si on a déjà des lives affichés, on ne met PAS loading=true
-    if (silent) setRefreshing(true);
-    else setLoading(true);
-
-    setErr(null);
-
-    try {
-      const nowMs = Date.now();
-
-      const data = await getLives();
-
-      const vmBase: LiveCardVM[] = (data as any[]).map((x: any) => {
-        const fallback = svgThumb(x.displayName);
-
-        const rawThumbUrl = absolutize(x.thumbUrl || x.thumb_url || null);
-        const thumbFinal = rawThumbUrl ? withMinuteBust(String(rawThumbUrl), nowMs) : fallback;
-
-        const started = x.liveStartedAt || x.live_started_at || null;
-        const durationLabel = started ? formatDurationDot(String(started), nowMs) : null;
-
-        return { ...x, thumbFallback: fallback, thumbFinal, durationLabel };
-      });
-
-      // featured foundation
-      const featuredSlugs = await fetchFeaturedLiveSlugs();
-      const vm = vmBase.map((x) => ({
+  const mergeThumbFinal = React.useCallback((prev: LiveCardVM[], nextBase: LiveCardVM[]) => {
+    // on garde l’ancienne thumbFinal si la nouvelle n’est pas encore préloadée
+    const prevMap = new Map(prev.map((x) => [String(x.slug || x.id), x] as const));
+    return nextBase.map((x) => {
+      const k = String(x.slug || x.id);
+      const old = prevMap.get(k);
+      return {
         ...x,
-        featured: x?.featured != null ? !!(x as any).featured : featuredSlugs.has(String(x.slug || "")),
-      }));
-
-      setLives(vm);
-    } catch (e: any) {
-      // ✅ ne pas casser l'écran en silent refresh : on garde la liste visible
-      setErr(e?.message || String(e));
-    } finally {
-      if (silent) setRefreshing(false);
-      else setLoading(false);
-    }
+        thumbFinal: old?.thumbFinal || x.thumbFinal,
+      };
+    });
   }, []);
+
+  const load = React.useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const silent = !!opts?.silent;
+      if (refreshLockRef.current) return;
+      refreshLockRef.current = true;
+
+      if (silent) setRefreshing(true);
+      else setLoading(true);
+
+      setErr(null);
+
+      try {
+        const nowMs = Date.now();
+        const data = await getLives();
+
+        // base mapping
+        const vmBase: LiveCardVM[] = (data as any[]).map((x: any) => {
+          const fallback = svgThumb(x.displayName);
+          const rawThumbUrl = absolutize(x.thumbUrl || x.thumb_url || null);
+          const thumbUrl = rawThumbUrl ? withMinuteBust(String(rawThumbUrl), nowMs) : null;
+
+          // IMPORTANT: thumbFinal initial = old thumb (merge), sinon fallback
+          const thumbFinal = thumbUrl || fallback;
+
+          const started = x.liveStartedAt || x.live_started_at || null;
+          const durationLabel = started ? formatDurationDot(String(started), nowMs) : null;
+
+          return { ...x, thumbFallback: fallback, thumbFinal, durationLabel };
+        });
+
+        // featured foundation
+        const featuredSlugs = await fetchFeaturedLiveSlugs();
+        const vmWithFeatured = vmBase.map((x) => ({
+          ...x,
+          featured: x?.featured != null ? !!(x as any).featured : featuredSlugs.has(String(x.slug || "")),
+        }));
+
+        // ✅ merge thumbs so we never blink to fallback during refresh
+        setLives((prev) => mergeThumbFinal(prev, vmWithFeatured));
+
+        // ✅ now: preload any "new" thumbs and only then swap thumbFinal for that card
+        // (best effort: if preload fails, keep old)
+        const preloadJobs = vmWithFeatured.map(async (live) => {
+          const nowThumb = absolutize((live as any).thumbUrl || (live as any).thumb_url || null);
+          const url = nowThumb ? withMinuteBust(String(nowThumb), nowMs) : null;
+          if (!url) return;
+
+          const ok = await preloadImage(url);
+          if (!ok) return;
+
+          setLives((prev) =>
+            prev.map((p) => (String(p.slug || p.id) === String(live.slug || live.id) ? { ...p, thumbFinal: url } : p))
+          );
+        });
+
+        // run in background but awaited so lock releases cleanly
+        await Promise.allSettled(preloadJobs);
+      } catch (e: any) {
+        // ✅ silent refresh: keep UI visible, just show alert if you want
+        setErr(e?.message || String(e));
+      } finally {
+        refreshLockRef.current = false;
+        if (silent) setRefreshing(false);
+        else setLoading(false);
+      }
+    },
+    [mergeThumbFinal]
+  );
 
   const loadClips = React.useCallback(async () => {
     setClipsLoading(true);
     try {
-      const data = await fetchTopClipsMonth();
-      setClips(data);
+      const r = await fetchTopClipsMonth();
+      setClips(r.clips);
+      setClipsTotal(r.total || r.clips.length);
     } finally {
       setClipsLoading(false);
     }
@@ -314,7 +409,7 @@ export default function LivesPage() {
     loadClips();
   }, [load, loadClips]);
 
-  // auto-refresh (foundation): poll while tab is visible
+  // auto-refresh: poll while tab is visible
   React.useEffect(() => {
     const EVERY_MS = 20_000;
 
@@ -339,17 +434,13 @@ export default function LivesPage() {
     return { liveCount, viewersTotal };
   }, [lives]);
 
-  const sorted = React.useMemo(
-    () => [...lives].sort((a, b) => Number(b.viewers) - Number(a.viewers)),
-    [lives]
-  );
+  const sorted = React.useMemo(() => [...lives].sort((a, b) => Number(b.viewers) - Number(a.viewers)), [lives]);
 
-  // ✅ category "Mise en avant" only if there is at least 1 featured live
   const featuredLives = React.useMemo(() => sorted.filter((x) => !!x.featured), [sorted]);
   const normalLives = React.useMemo(() => sorted.filter((x) => !x.featured), [sorted]);
 
   const clipsTop4 = React.useMemo(() => clips.slice(0, 4), [clips]);
-  const extraClipsCount = Math.max(0, clips.length - clipsTop4.length);
+  const extraClipsCount = Math.max(0, clipsTotal - clipsTop4.length);
 
   return (
     <main className="container livesPage">
@@ -509,7 +600,7 @@ export default function LivesPage() {
           min-height: 34px;
         }
 
-        /* flashy hover */
+        /* Flashy hover */
         .hoverGlow{
           transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
         }
@@ -517,6 +608,18 @@ export default function LivesPage() {
           transform: translateY(-2px);
           box-shadow: 0 26px 70px rgba(0,0,0,0.38);
           border-color: rgba(255,90,180,0.25);
+        }
+
+        /* Header live ping */
+        .livePing{
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          background: rgba(255,90,180,0.95);
+          box-shadow: 0 0 0 6px rgba(255,90,180,0.14);
+          display:inline-block;
+          vertical-align: middle;
+          margin-right: 6px;
         }
 
         /* Clips */
@@ -545,15 +648,6 @@ export default function LivesPage() {
           background: rgba(255,255,255,0.06);
           min-height: 92px;
         }
-        .clipTile::before{
-          content:"";
-          position:absolute;
-          inset:0;
-          background: radial-gradient(420px 160px at 30% 0%, rgba(255,90,180,0.16), rgba(0,0,0,0) 60%),
-                      radial-gradient(420px 160px at 90% 20%, rgba(80,160,255,0.14), rgba(0,0,0,0) 60%),
-                      linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.22));
-          pointer-events:none;
-        }
         .clipThumb{
           position:absolute;
           inset:0;
@@ -563,6 +657,15 @@ export default function LivesPage() {
           opacity: 0.92;
           filter: contrast(1.03) saturate(1.12);
           transform: scale(1.03);
+        }
+        .clipTile::before{
+          content:"";
+          position:absolute;
+          inset:0;
+          background: radial-gradient(420px 160px at 30% 0%, rgba(255,90,180,0.16), rgba(0,0,0,0) 60%),
+                      radial-gradient(420px 160px at 90% 20%, rgba(80,160,255,0.14), rgba(0,0,0,0) 60%),
+                      linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.22));
+          pointer-events:none;
         }
         .clipPlay{
           position:absolute;
@@ -584,7 +687,28 @@ export default function LivesPage() {
           font-size: 16px;
         }
 
-        /* overlay for +N extra clips */
+        .clipMidAvatar{
+          position:absolute;
+          left: 50%;
+          top: 50%;
+          transform: translate(-50%,-50%);
+          width: 40px;
+          height: 40px;
+          border-radius: 16px;
+          overflow:hidden;
+          border: 1px solid rgba(255,255,255,0.18);
+          background: rgba(0,0,0,0.40);
+          backdrop-filter: blur(10px);
+          box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+          pointer-events:none;
+        }
+        .clipMidAvatar img{
+          width:100%;
+          height:100%;
+          object-fit: cover;
+          display:block;
+        }
+
         .clipsMoreOverlay{
           position:absolute;
           inset: 0;
@@ -608,8 +732,6 @@ export default function LivesPage() {
           background-clip:text;
           color: transparent;
         }
-
-        /* little corner markers at the center cross (visual cue) */
         .clipsCross{
           position:absolute;
           left: 50%;
@@ -634,20 +756,21 @@ export default function LivesPage() {
             <h1 className="livesH1">Lives</h1>
             <div className="mutedSmall" style={{ maxWidth: 760 }}>
               Les streams en direct sur LunaLive. Miniatures live, viewers, durée.
+              {refreshing ? (
+                <span style={{ marginLeft: 10, opacity: 0.8, fontWeight: 900 }}>
+                  <span className="livePing" aria-hidden /> update…
+                </span>
+              ) : null}
             </div>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
-            <Pill tone="live" title="Nombre de lives en direct">🔴 Live <b>{totals.liveCount}</b></Pill>
-            <Pill tone="neutral" title="Viewers total sur la plateforme">👁 Viewers <b>{formatViewers(totals.viewersTotal)}</b></Pill>
-              <button
-                className="btnPrimary"
-                onClick={() => load({ silent: true })}
-                disabled={loading || refreshing}
-                style={{ borderRadius: 999 }}
-              >
-                {loading ? "Chargement…" : refreshing ? "Rafraîchit…" : "Rafraîchir"}
-              </button>
+            <Pill tone="live" title="Nombre de lives en direct">
+              🔴 Live <b>{totals.liveCount}</b>
+            </Pill>
+            <Pill tone="neutral" title="Viewers total sur la plateforme">
+              👁 Viewers <b>{formatViewers(totals.viewersTotal)}</b>
+            </Pill>
           </div>
         </div>
 
@@ -662,9 +785,9 @@ export default function LivesPage() {
             <DailyWheelCard />
             <DailyBonusAccessCard />
 
-            {/* ✅ Clips section (below daily bonus, a bit lower + separated) */}
             <div className="sidebarDivider" />
 
+            {/* ✅ Clips du mois */}
             <GlassCard className="clipsCard">
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
                 <div style={{ display: "grid", gap: 4 }}>
@@ -676,20 +799,18 @@ export default function LivesPage() {
                   </div>
                 </div>
 
-                <button
-                  className="btnGhost"
-                  onClick={loadClips}
-                  disabled={clipsLoading}
-                  style={{ borderRadius: 999, padding: "8px 10px" }}
-                  title="Rafraîchir les clips"
-                >
-                  {clipsLoading ? "…" : "↻"}
-                </button>
+                <div style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                  {clipsLoading ? (
+                    <span className="mutedSmall" style={{ opacity: 0.8 }}>
+                      …
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
               {clipsTop4.length === 0 ? (
                 <div className="mutedSmall" style={{ marginTop: 12 }}>
-                  {clipsLoading ? "Chargement…" : "Aucun clip pour le moment (on branchera l’API clips ensuite)."}
+                  {clipsLoading ? "Chargement…" : "Aucun clip pour le moment."}
                 </div>
               ) : (
                 <div className="clipsGrid">
@@ -697,21 +818,17 @@ export default function LivesPage() {
                     const raw = c.thumbUrl ? absolutize(c.thumbUrl) || c.thumbUrl : null;
                     const thumb = raw || svgThumb(c.streamerName || c.streamerSlug || "Clip");
 
-                    // likes badge corner per tile: TL, TR, BR, BL
-                    const corner: "tl" | "tr" | "br" | "bl" = (["tl", "tr", "bl", "br"] as const)[idx] ?? "tl";
+                    // likes badge corner per tile: TL, TR, BL, BR (comme tu l’as demandé)
+                    const corner: "tl" | "tr" | "bl" | "br" = (["tl", "tr", "bl", "br"] as const)[idx] ?? "tl";
 
                     return (
                       <a
                         key={c.id}
-                        href={c.url}
-                        target="_blank"
-                        rel="noreferrer"
+                        href={c.url || "#"}
+                        target={String(c.url || "").startsWith("http") ? "_blank" : undefined}
+                        rel={String(c.url || "").startsWith("http") ? "noreferrer" : undefined}
                         className="clipTile hoverGlow"
-                        style={{
-                          textDecoration: "none",
-                          color: "inherit",
-                          display: "block",
-                        }}
+                        style={{ textDecoration: "none", color: "inherit", display: "block" }}
                         title={c.streamerName ? `${c.streamerName} — ${c.likes} likes` : `${c.likes} likes`}
                       >
                         <div className="clipThumb" style={{ backgroundImage: `url(${thumb})` }} />
@@ -721,18 +838,24 @@ export default function LivesPage() {
 
                         <ClipLikesBadge likes={c.likes} corner={corner} />
 
-                        {/* Foundation: later we can drop streamer avatar in the center */}
-                        {/* {c.streamerAvatarUrl ? (
-                          <img ... />
-                        ) : null} */}
+                        {/* ✅ avatar streamer au centre (si dispo) */}
+                        {c.streamerAvatarUrl ? (
+                          <div className="clipMidAvatar" aria-hidden>
+                            <img
+                              src={absolutize(c.streamerAvatarUrl) || c.streamerAvatarUrl}
+                              alt=""
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                          </div>
+                        ) : null}
                       </a>
                     );
                   })}
 
-                  {/* cross marker (nice visual for your "superposition" idea) */}
                   {extraClipsCount > 0 ? <div className="clipsCross" aria-hidden /> : null}
 
-                  {/* +N overlay if there are more clips */}
                   {extraClipsCount > 0 ? (
                     <div className="clipsMoreOverlay" aria-hidden>
                       <div className="bubble">
@@ -746,6 +869,7 @@ export default function LivesPage() {
           </aside>
 
           <section className="livesMain">
+            {/* ✅ Initial loading only if nothing is on screen yet */}
             {loading && lives.length === 0 ? (
               <div className="muted" style={{ marginTop: 12 }}>
                 Chargement…
@@ -780,7 +904,9 @@ export default function LivesPage() {
                                   ✨ FEATURED
                                 </Pill>
                                 {live.durationLabel ? (
-                                  <Pill tone="neutral" title="Durée du live">⏱ {live.durationLabel}</Pill>
+                                  <Pill tone="neutral" title="Durée du live">
+                                    ⏱ {live.durationLabel}
+                                  </Pill>
                                 ) : (
                                   <span />
                                 )}
@@ -790,7 +916,9 @@ export default function LivesPage() {
                                 <div className="liveName" title={live.displayName}>
                                   {live.displayName}
                                 </div>
-                                <Pill tone="neutral" title="Viewers">👁 {formatViewers(live.viewers)}</Pill>
+                                <Pill tone="neutral" title="Viewers">
+                                  👁 {formatViewers(live.viewers)}
+                                </Pill>
                               </div>
                             </div>
 
@@ -817,7 +945,6 @@ export default function LivesPage() {
                   </div>
                 ) : null}
 
-                {/* Normal lives */}
                 <div style={{ marginTop: featuredLives.length > 0 ? 16 : 8 }}>
                   <div className="sectionTitle">
                     <h2>🔴 Lives</h2>
@@ -841,21 +968,14 @@ export default function LivesPage() {
 
                             <div className="liveTopRow">
                               <Pill tone="live" title="En direct">
-                                <span
-                                  aria-hidden
-                                  style={{
-                                    width: 8,
-                                    height: 8,
-                                    borderRadius: 999,
-                                    background: "rgba(255,90,180,0.95)",
-                                    boxShadow: "0 0 0 6px rgba(255,90,180,0.14)",
-                                  }}
-                                />
+                                <span className="livePing" aria-hidden />
                                 LIVE
                               </Pill>
 
                               {live.durationLabel ? (
-                                <Pill tone="neutral" title="Durée du live">⏱ {live.durationLabel}</Pill>
+                                <Pill tone="neutral" title="Durée du live">
+                                  ⏱ {live.durationLabel}
+                                </Pill>
                               ) : (
                                 <span />
                               )}
@@ -865,7 +985,9 @@ export default function LivesPage() {
                               <div className="liveName" title={live.displayName}>
                                 {live.displayName}
                               </div>
-                              <Pill tone="neutral" title="Viewers">👁 {formatViewers(live.viewers)}</Pill>
+                              <Pill tone="neutral" title="Viewers">
+                                👁 {formatViewers(live.viewers)}
+                              </Pill>
                             </div>
                           </div>
 
