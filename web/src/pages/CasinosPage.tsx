@@ -2,6 +2,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { listCasinos, type CasinoListItem, type CasinoListResp } from "../lib/api_casinos";
+import { PartnerPlansModal } from "../components/PartnerPlansModal";
 
 /* ─────────────────────────────────────────────
    Utils + UI atoms (inline)
@@ -85,13 +86,7 @@ function Pill({
   );
 }
 
-function GlassCard({
-  children,
-  style,
-}: {
-  children: React.ReactNode;
-  style?: React.CSSProperties;
-}) {
+function GlassCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div
       style={{
@@ -120,13 +115,10 @@ function LogoBackdrop({
   variant?: "default" | "podium";
 }) {
   const hasUrl = Boolean(url);
-
-  // podium a un peu plus de présence
   const opacityImg = variant === "podium" ? 0.22 : 0.58;
 
   return (
     <>
-      {/* ✅ Fallback décoratif quand pas de logo */}
       {!hasUrl ? (
         <>
           <div
@@ -152,7 +144,6 @@ function LogoBackdrop({
         </>
       ) : (
         <>
-          {/* Image cover */}
           <div
             aria-hidden
             style={{
@@ -168,7 +159,6 @@ function LogoBackdrop({
               pointerEvents: "none",
             }}
           />
-          {/* Scrim pour lisibilité + “effet transparent” */}
           <div
             aria-hidden
             style={{
@@ -191,7 +181,6 @@ function CasinoCard({ c }: { c: CasinoListItem }) {
   const isPartner = c.featuredRank != null;
   const isWatch = c.watchLevel === "watch";
   const isAvoid = c.watchLevel === "avoid";
-
   const tone = isPartner ? "partner" : isAvoid ? "avoid" : isWatch ? "watch" : "neutral";
 
   return (
@@ -254,8 +243,7 @@ function CasinoCard({ c }: { c: CasinoListItem }) {
           </div>
 
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-            <div className="mutedSmall" style={{ fontWeight: 900 }}>
-            </div>
+            <div className="mutedSmall" style={{ fontWeight: 900 }}></div>
             <span
               style={{
                 display: "inline-flex",
@@ -348,9 +336,7 @@ function PodiumCard({ rank, c }: { rank: 1 | 2 | 3; c: CasinoListItem }) {
           ) : null}
 
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-            <div className="mutedSmall" style={{ fontWeight: 900 }}>
-              
-            </div>
+            <div className="mutedSmall" style={{ fontWeight: 900 }}></div>
             <span
               style={{
                 display: "inline-flex",
@@ -384,6 +370,8 @@ export default function CasinosPage() {
 
   const [q, setQ] = React.useState("");
   const [sort, setSort] = React.useState<"top" | "newest">("top");
+
+  const [partnerOpen, setPartnerOpen] = React.useState(false);
 
   async function load() {
     setLoading(true);
@@ -462,11 +450,13 @@ export default function CasinosPage() {
         }
       `}</style>
 
+      {/* Modal (external component, easier to maintain) */}
+      <PartnerPlansModal open={partnerOpen} onClose={() => setPartnerOpen(false)} />
+
       <div className="checktaslotWrap">
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "baseline" }}>
           <div style={{ display: "grid", gap: 6 }}>
-            {/* CheckTaSlot attaché (pas d'espace) */}
             <div className="checktaslotTitle" style={{ fontSize: 34, lineHeight: 1.05 }}>
               <span className="w1">Check</span>
               <span className="w2">Ta</span>
@@ -506,9 +496,9 @@ export default function CasinosPage() {
               </div>
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                <Link className="btnGhost" to="/contact">
+                <button className="btnGhost" type="button" onClick={() => setPartnerOpen(true)}>
                   Become partner
-                </Link>
+                </button>
                 <button className="btnPrimary" onClick={() => load()} disabled={loading}>
                   {loading ? "…" : "Explore"}
                 </button>
@@ -673,7 +663,6 @@ export default function CasinosPage() {
               )}
             </section>
 
-            {/* Disclaimer */}
             <div className="mutedSmall" style={{ marginTop: 16, opacity: 0.9 }}>
               18+ • Jouez responsable •
             </div>

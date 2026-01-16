@@ -12,6 +12,19 @@ import { shopTalents, buyTalent, type ApiTalentItem } from "../lib/api";
 import { billingCheckout, billingPortal } from "../lib/api_billing";
 
 type Kind = "username" | "badge" | "title" | "frame" | "hat";
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+
+function withAvatar<C extends ChatCosmetics | null>(c: C, userId: number | null | undefined): C {
+  if (!c) return c;
+  const uid = Number(userId || 0);
+  if (!uid) return c;
+
+  const url = `${API_BASE}/avatars/u/${uid}?v=${Date.now()}`;
+  return ({
+    ...(c as any),
+    avatar: { ...((c as any).avatar || {}), url },
+  } as any) as C;
+}
 
 const TOP_TABS = [
   { id: "skins", label: "Skins" },
@@ -20,12 +33,12 @@ const TOP_TABS = [
   { id: "rubis", label: "Rubis" },
 ] as const;
 
-const SKIN_CATS: Array<{ id: Kind; label: string }> = [
-  { id: "username", label: "Pseudo" },
-  { id: "badge", label: "Badges" },
-  { id: "hat", label: "Chapeaux" },
-  { id: "frame", label: "Cadrans message" },
-  { id: "title", label: "Titres" },
+const SKIN_CATS: Array<{ id: Kind; label: string; emoji: string }> = [
+  { id: "username", label: "Pseudo", emoji: "✨" },
+  { id: "badge", label: "Badges", emoji: "🏷️" },
+  { id: "hat", label: "Chapeaux", emoji: "🧢" },
+  { id: "frame", label: "Cadrans message", emoji: "💬" },
+  { id: "title", label: "Titres", emoji: "🏆" },
 ];
 
 const TITLE_LABELS: Record<string, string> = {
@@ -43,6 +56,13 @@ function titleLabelFromCode(code: string) {
   if (TITLE_LABELS[code]) return TITLE_LABELS[code];
   if (code.startsWith("title_")) return code.replace(/^title_/, "").replace(/_/g, " ");
   return code;
+}
+
+/** IMPORTANT: même parsing que PersonalisationSection (sinon cadrans noirs) */
+function frameIdFromCode(code: string) {
+  return String(code || "")
+    .replace(/^m?frame_/, "") // ✅ supporte frame_ et mframe_
+    .replace(/_(shop|event|master)$/, "");
 }
 
 /** mêmes mappings que PersonalisationSection (v1) */
@@ -102,7 +122,7 @@ function applyPreview(kind: Kind, code: string | null, c: any) {
   }
 
   if (kind === "frame") {
-    const frameId = code.replace(/^frame_/, "").replace(/_(shop|event|master)$/, "");
+    const frameId = frameIdFromCode(code); // ✅ FIX
     c.frame = { frameId };
     return;
   }
@@ -126,22 +146,38 @@ function rarityToTier(rarity: string) {
 function badgeTextFromCode(code: string) {
   if (code === "badge_luna") return "LUNA";
   if (code === "badge_777") return "777";
-  return code.replace(/^badge_/, "").toUpperCase();
+  if (code.startsWith("badge_")) return code.replace(/^badge_/, "").toUpperCase();
+  return code.toUpperCase();
+}
+
+function kindEmoji(kind: Kind) {
+  if (kind === "username") return "✨";
+  if (kind === "badge") return "🏷️";
+  if (kind === "hat") return "🧢";
+  if (kind === "frame") return "💬";
+  if (kind === "title") return "🏆";
+  return "🎁";
 }
 
 function renderItemTitle(it: ShopCosmeticItem) {
   if (it.kind === "badge") {
     const tier = rarityToTier((it as any).rarity);
     return (
-      <span className="shopTitleBadgeRow">
+      <span className="shopTitleRow">
         <span className="shopTitleKind">Badge</span>
         <span className={`chatBadge badge--${tier}`}>{badgeTextFromCode(it.code)}</span>
       </span>
     );
   }
 
-  // default (pseudo / hat / frame / title)
-  return <span className="shopTitleText">{it.name}</span>;
+  return (
+    <span className="shopTitleRow">
+      <span className="shopTitleIcon" aria-hidden>
+        {kindEmoji(it.kind as Kind)}
+      </span>
+      <span className="shopTitleText">{it.name}</span>
+    </span>
+  );
 }
 
 function buildCosmeticsPreview(equipped: {
@@ -273,7 +309,6 @@ function SubPlanCard({
         minHeight: 260,
       }}
     >
-      {/* header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ fontSize: 22 }}>{plan.icon}</div>
         <div style={{ minWidth: 0 }}>
@@ -317,7 +352,6 @@ function SubPlanCard({
         </div>
       </div>
 
-      {/* content */}
       <div
         style={{
           borderRadius: 14,
@@ -337,7 +371,6 @@ function SubPlanCard({
         </ul>
       </div>
 
-      {/* footer */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Dots count={plan.slides.length} active={page} onPick={setPage} />
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
@@ -360,6 +393,52 @@ function SubPlanCard({
 
 /* ------------------------------ PAGE ------------------------------ */
 
+function PricePill({
+  rubis,
+  prestige,
+  owned,
+  equipped,
+}: {
+  rubis: number | null;
+  prestige: number | null;
+  owned: boolean;
+  equipped: boolean;
+}) {
+  if (equipped) {
+    return (
+      <span className="spPill spPill--eq" title="Équipé">
+        ✅ Équipé
+      </span>
+    );
+  }
+  if (owned) {
+    return (
+      <span className="spPill spPill--owned" title="Possédé">
+        🧾 Possédé
+      </span>
+    );
+  }
+  if (prestige != null && Number.isFinite(prestige) && prestige > 0) {
+    return (
+      <span className="spPill spPill--price" title="Prix prestige">
+        🏆 {Number(prestige).toLocaleString("fr-FR")}
+      </span>
+    );
+  }
+  if (rubis != null && Number.isFinite(rubis) && rubis > 0) {
+    return (
+      <span className="spPill spPill--price" title="Prix rubis">
+        💎 {Number(rubis).toLocaleString("fr-FR")}
+      </span>
+    );
+  }
+  return (
+    <span className="spPill spPill--muted" title="Non achetable">
+      —
+    </span>
+  );
+}
+
 export function ShopPage({
   streamerAppearance = DEFAULT_STREAMER_APPEARANCE,
 }: {
@@ -368,7 +447,6 @@ export function ShopPage({
   const authAny = useAuth() as any;
   const token: string | null = authAny.token ?? null;
 
-  // ⬇️ on élargit le type pour inclure role (utilisé pour masquer l’abonnement streamer)
   const user = authAny.user as { id: number; username: string; rubis: number; role?: string } | null;
 
   const [topTab, setTopTab] = React.useState<(typeof TOP_TABS)[number]["id"]>("skins");
@@ -492,7 +570,8 @@ export function ShopPage({
   function previewForItem(it: ShopCosmeticItem): ChatCosmetics | null {
     const base = { ...equipped };
     (base as any)[it.kind] = it.code;
-    return buildCosmeticsPreview(base);
+    return withAvatar(buildCosmeticsPreview(base), user?.id);
+
   }
 
   function isOwnedItem(it: ShopCosmeticItem) {
@@ -586,7 +665,6 @@ export function ShopPage({
     }
   }
 
-  // ✅ définition des plans (prix texte editable plus tard)
   const SUB_PLANS: SubPlan[] = [
     {
       id: "viewer",
@@ -639,8 +717,282 @@ export function ShopPage({
   const visiblePlans = SUB_PLANS.filter((p) => p.visibleIf(user));
 
   return (
-    <div className="panel" style={{ marginTop: 14 }}>
-      <div className="panelTitle">Shop</div>
+    <div className="panel shopPage" style={{ marginTop: 14 }}>
+      <style>{`
+        .shopPage{
+          position: relative;
+          overflow: hidden;
+        }
+        .shopPage:before{
+          content:"";
+          position:absolute;
+          inset:-2px;
+          pointer-events:none;
+          background:
+            radial-gradient(1100px 520px at 12% 0%, rgba(255,90,180,0.22), rgba(0,0,0,0) 62%),
+            radial-gradient(1100px 520px at 88% 10%, rgba(80,160,255,0.22), rgba(0,0,0,0) 62%),
+            radial-gradient(1200px 620px at 50% 100%, rgba(140,90,255,0.22), rgba(0,0,0,0) 66%);
+          z-index:0;
+        }
+        .shopPage > * { position: relative; z-index: 1; }
+
+        .shopHeaderRow{
+          display:flex;
+          align-items:flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .shopTitle{
+          margin:0;
+          font-weight: 1500;
+          letter-spacing: -0.9px;
+          font-size: 34px;
+          line-height: 1.05;
+          background: linear-gradient(90deg, rgba(255,90,180,1), rgba(180,140,255,1), rgba(80,160,255,1));
+          -webkit-background-clip:text;
+          background-clip:text;
+          color: transparent;
+          filter: drop-shadow(0 10px 24px rgba(0,0,0,0.35));
+        }
+        .shopChips{
+          display:flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items:center;
+          justify-content:flex-end;
+        }
+        .shopChip{
+          display:inline-flex;
+          gap:8px;
+          align-items:center;
+          padding: 8px 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(0,0,0,0.18);
+          backdrop-filter: blur(10px);
+          font-weight: 1100;
+          font-size: 13px;
+          white-space: nowrap;
+        }
+        .shopTabs{
+          display:flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items:center;
+          margin-top: 10px;
+        }
+        .shopLayout{
+          margin-top: 14px;
+          display:grid;
+          grid-template-columns: 320px 1fr;
+          gap: 14px;
+          align-items:start;
+        }
+        @media (max-width: 980px){
+          .shopLayout{ grid-template-columns: 1fr; }
+        }
+
+        .shopSideCard{
+          border-radius: 20px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.12));
+          box-shadow: 0 16px 44px rgba(0,0,0,0.24);
+          backdrop-filter: blur(10px);
+          padding: 12px;
+        }
+
+        .shopCatBtn{
+          width: 100%;
+          display:flex;
+          align-items:center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 11px 12px;
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.16);
+          color: white;
+          cursor:pointer;
+          transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+        }
+        .shopCatBtn:hover{
+          transform: translateY(-1px);
+          border-color: rgba(255,255,255,0.18);
+          box-shadow: 0 18px 44px rgba(0,0,0,0.22);
+        }
+        .shopCatBtn.isActive{
+          border-color: rgba(255,255,255,0.24);
+          background: linear-gradient(90deg, rgba(140,90,255,0.22), rgba(80,160,255,0.18), rgba(255,90,180,0.14));
+        }
+        .shopCatLeft{
+          display:flex;
+          align-items:center;
+          gap: 10px;
+          min-width:0;
+        }
+        .shopCatLabel{
+          font-weight: 1100;
+          white-space: nowrap;
+          overflow:hidden;
+          text-overflow: ellipsis;
+        }
+        .shopCatCount{
+          opacity: 0.7;
+          font-weight: 1000;
+          font-size: 12px;
+        }
+
+        .shopGrid2{
+          margin-top: 12px;
+          display:grid;
+          gap: 12px;
+          grid-template-columns: repeat(2, minmax(0, 1fr)); /* ✅ 2 par ligne */
+          align-items:start;
+        }
+        @media (max-width: 980px){
+          .shopGrid2{ grid-template-columns: 1fr; }
+        }
+
+        .shopItemCard{
+          border-radius: 18px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.12));
+          box-shadow: 0 16px 44px rgba(0,0,0,0.22);
+          backdrop-filter: blur(10px);
+          padding: 12px;
+          cursor: pointer;
+          transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+        }
+        .shopItemCard:hover{
+          transform: translateY(-2px);
+          border-color: rgba(255,255,255,0.18);
+          box-shadow: 0 24px 70px rgba(0,0,0,0.30);
+        }
+        .shopItemCard.isSelected{
+          border-color: rgba(255,255,255,0.26);
+          box-shadow: 0 26px 80px rgba(0,0,0,0.34);
+        }
+
+        .shopItemHead{
+          display:flex;
+          align-items:flex-start;
+          justify-content: space-between;
+          gap: 10px;
+        }
+
+        .shopTitleRow{
+          display:inline-flex;
+          align-items:center;
+          gap: 10px;
+          min-width:0;
+        }
+        .shopTitleIcon{
+          width: 28px;
+          height: 28px;
+          border-radius: 12px;
+          display:grid;
+          place-items:center;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(0,0,0,0.18);
+          box-shadow: 0 10px 26px rgba(0,0,0,0.22);
+          flex: 0 0 auto;
+        }
+        .shopTitleText{
+          font-weight: 1350;
+          letter-spacing: -0.35px;
+          font-size: 15px;
+          min-width:0;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .shopTitleKind{
+          font-weight: 1000;
+          opacity: 0.72;
+        }
+
+        .spPill{
+          display:inline-flex;
+          align-items:center;
+          gap: 8px;
+          padding: 7px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(0,0,0,0.18);
+          font-size: 12px;
+          font-weight: 1200;
+          white-space: nowrap;
+          backdrop-filter: blur(10px);
+        }
+        .spPill--price{
+          border-color: rgba(255,255,255,0.14);
+          background: linear-gradient(90deg, rgba(140,90,255,0.22), rgba(80,160,255,0.18), rgba(255,90,180,0.14));
+        }
+        .spPill--owned{
+          background: rgba(255,255,255,0.06);
+        }
+        .spPill--eq{
+          border-color: rgba(124,77,255,0.28);
+          background: rgba(124,77,255,0.16);
+        }
+        .spPill--muted{
+          opacity: 0.65;
+        }
+
+        .shopMetaRow{
+          margin-top: 8px;
+          display:flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          align-items:center;
+        }
+        .shopMiniPill{
+          font-size: 11px;
+          font-weight: 1100;
+          padding: "4px 8px";
+        }
+
+        .shopTryHint{
+          font-size: 11px;
+          opacity: 0.75;
+          font-weight: 900;
+        }
+
+        .shopPreviewBox{
+          margin-top: 10px;
+          border-radius: 16px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(0,0,0,0.20);
+          padding: 10px;
+        }
+
+        .shopActionsRow{
+          margin-top: 10px;
+          display:flex;
+          gap: 8px;
+          justify-content: flex-end;
+          align-items:center;
+        }
+      `}</style>
+
+      <div className="shopHeaderRow">
+        <div style={{ display: "grid", gap: 6, minWidth: 280 }}>
+          <div className="shopTitle">Shop</div>
+          <div className="muted">
+            Skins de chat, talents, abonnements — preview en direct.
+          </div>
+        </div>
+
+        <div className="shopChips">
+          <span className="shopChip" title="Rubis disponibles">
+            💎 <b>{Number(effectiveRubis).toLocaleString("fr-FR")}</b> rubis
+          </span>
+          <span className="shopChip" title="Prestige disponible">
+            🏆 <b>{Number(effectivePrestige).toLocaleString("fr-FR")}</b> prestige
+          </span>
+        </div>
+      </div>
 
       {!token ? <div className="muted">Connecte-toi pour accéder au shop.</div> : null}
 
@@ -650,8 +1002,7 @@ export function ShopPage({
         </div>
       ) : null}
 
-      {/* Top Tabs */}
-      <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center" }}>
+      <div className="shopTabs">
         {TOP_TABS.map((t) => (
           <button
             key={t.id}
@@ -662,11 +1013,6 @@ export function ShopPage({
             {t.label}
           </button>
         ))}
-
-        <div style={{ marginLeft: "auto", opacity: 0.9, fontWeight: 900, display: "flex", gap: 14 }}>
-          <span>💎 {Number(effectiveRubis).toLocaleString("fr-FR")} rubis</span>
-          <span>🏆 {Number(effectivePrestige).toLocaleString("fr-FR")} prestige</span>
-        </div>
       </div>
 
       {/* UPGRADES */}
@@ -807,199 +1153,209 @@ export function ShopPage({
 
       {/* SKINS */}
       {topTab === "skins" ? (
-        <>
-          <div
-            className="shopPreviewNoTruncate cosPreview"
-            style={{
-              marginTop: 12,
-              padding: 12,
-              borderRadius: 16,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(0,0,0,0.18)",
-              ...({
-                ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
-                ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
-              } as any),
-            }}
-          >
-            <div style={{ fontWeight: 950 }}>Aperçu</div>
-            <div style={{ marginTop: 10 }}>
-              <ChatMessageBubble
-                streamerAppearance={streamerAppearance}
-                msg={{
-                  id: "shop-preview",
-                  userId: previewUserId,
-                  username,
-                  body: "Exemple de message — “ça rend comment ?”",
-                  createdAt: new Date().toISOString(),
-                  cosmetics: selectedPreviewCosmetics,
-                }}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 14, marginTop: 14 }}>
-            <div
-              style={{
-                borderRadius: 16,
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: "rgba(0,0,0,0.18)",
-                padding: 10,
-              }}
-            >
-              <div style={{ fontWeight: 950, marginBottom: 8 }}>Catégories</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {SKIN_CATS.map((c) => (
-                  <button
-                    key={c.id}
-                    className={cat === c.id ? "btnPrimary" : "btnGhost"}
-                    onClick={() => setCat(c.id)}
-                    disabled={loading || buying || subsBusy}
-                    style={{ textAlign: "left" }}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-                <button className="btnGhost" onClick={load} disabled={loading || buying || subsBusy}>
-                  {loading ? "Chargement…" : "Recharger"}
+        <div className="shopLayout">
+          {/* LEFT */}
+          <div style={{ display: "grid", gap: 12 }}>
+            <div className="shopSideCard">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div style={{ fontWeight: 1200 }}>Catégories</div>
+                <button className="btnGhostSmall" onClick={load} disabled={!token || loading || buying || subsBusy} title="Recharger">
+                  ↻
                 </button>
               </div>
-            </div>
 
-            <div
-              style={{
-                borderRadius: 16,
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: "rgba(0,0,0,0.18)",
-                padding: 12,
-                minHeight: 240,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <div style={{ fontWeight: 950 }}>{SKIN_CATS.find((x) => x.id === cat)?.label}</div>
-                <div className="muted" style={{ fontSize: 12 }}>
-                  {buying ? "Achat…" : ""}
-                </div>
+              <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.85 }}>
+                Choisis une catégorie, clique un item pour prévisualiser.
               </div>
 
-              <div
-                className="cosGrid"
-                style={{
-                  marginTop: 12,
-                  display: "grid",
-                  gap: 12,
-                  gridTemplateColumns: "repeat(auto-fill, minmax(300px, 420px))",
-                  justifyContent: "start",
-                  alignItems: "start",
-                }}
-              >
-                {visible.map((it) => {
-                  const ownedNow = isOwnedItem(it);
-
-                  const pr = Number(it.priceRubis ?? 0);
-                  const pp = Number((it as any).pricePrestige ?? 0);
-
-                  const isRubis = Number.isFinite(pr) && pr > 0;
-                  const isPrestige = Number.isFinite(pp) && pp > 0;
-
-                  const buyable = it.unlock === "shop" && (isRubis || isPrestige);
-                  const canAfford = isPrestige ? pp <= effectivePrestige : pr <= effectiveRubis;
-
-                  const selectedNow = selected?.kind === it.kind && selected?.code === it.code;
-
+              <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                {SKIN_CATS.map((c) => {
+                  const count = items.filter((x) => x.kind === c.id).length;
                   return (
-                    <div
-                      key={`${it.kind}:${it.code}`}
-                      className={[
-                        "cosCard",
-                        `cosCard--${it.kind}`,
-                        selectedNow ? "isSelected" : "",
-                        ownedNow ? "isOwned" : "",
-                      ].join(" ")}
-                      onClick={() => setSelected({ kind: it.kind as Kind, code: it.code })}
-                      style={{
-                        cursor: "pointer",
-                        border: selectedNow
-                          ? "1px solid rgba(255,255,255,0.24)"
-                          : "1px solid rgba(255,255,255,0.08)",
-                      }}
-                      title="Cliquer pour prévisualiser"
+                    <button
+                      key={c.id}
+                      className={`shopCatBtn ${cat === c.id ? "isActive" : ""}`}
+                      onClick={() => setCat(c.id)}
+                      disabled={loading || buying || subsBusy}
                     >
-                      <div className="cosCardHead">
-                        <div style={{ minWidth: 0 }}>
-                          <div className="cosCardTitle">{renderItemTitle(it)}</div>
-
-                          <div className="cosCardMeta">
-                            <span className={`cosPill ${ownedNow ? "cosPillOwned" : ""}`}>
-                              {ownedNow
-                                ? "Possédé"
-                                : it.unlock === "shop"
-                                ? "Shop"
-                                : it.unlock === "achievement"
-                                ? "Succès"
-                                : it.unlock === "system"
-                                ? "Agenda"
-                                : it.unlock}
-                            </span>
-
-                            {it.unlock === "shop" && isRubis ? (
-                              <span className="cosPrice">{pr.toLocaleString("fr-FR")} rubis</span>
-                            ) : null}
-
-                            {it.unlock === "shop" && isPrestige ? (
-                              <span className="cosPrice">🏆 {pp.toLocaleString("fr-FR")} prestige</span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div
-                        className="cosPreview"
-                        style={{
-                          ...({
-                            ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
-                            ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
-                          } as any),
-                        }}
-                      >
-                        <ChatMessageBubble
-                          streamerAppearance={streamerAppearance}
-                          msg={{
-                            id: `shop-card:${it.kind}:${it.code}`,
-                            userId: previewUserId,
-                            username,
-                            body: "…",
-                            createdAt: new Date().toISOString(),
-                            cosmetics: previewForItem(it),
-                          }}
-                        />
-                      </div>
-
-                      <div style={{ display: "flex", gap: 8 }}>
-                        {buyable ? (
-                          <button
-                            className={!token || buying || loading || subsBusy || ownedNow || !canAfford ? "btnGhostSmall" : "btnPrimarySmall"}
-                            disabled={!token || buying || loading || subsBusy || ownedNow || !canAfford}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              buy(it);
-                            }}
-                          >
-                            {ownedNow ? "Possédé" : !canAfford ? "Pas assez" : "Acheter"}
-                          </button>
-                        ) : (
-                          <button className="btnGhostSmall" disabled>
-                            Indisponible
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                      <span className="shopCatLeft">
+                        <span aria-hidden style={{ opacity: 0.9 }}>{c.emoji}</span>
+                        <span className="shopCatLabel">{c.label}</span>
+                      </span>
+                      <span className="shopCatCount">{count}</span>
+                    </button>
                   );
                 })}
               </div>
             </div>
+
+            <div className="shopSideCard">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                <div style={{ fontWeight: 1200 }}>Aperçu</div>
+                <div className="mutedSmall" style={{ opacity: 0.75 }}>
+                  {selected ? "sélectionné" : ""}
+                </div>
+              </div>
+
+              <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.8 }}>
+                {SKIN_CATS.find((x) => x.id === cat)?.emoji} {SKIN_CATS.find((x) => x.id === cat)?.label} — rendu sur un message.
+              </div>
+
+              <div
+                className="shopPreviewBox"
+                style={{
+                  ...({
+                    ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
+                    ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
+                  } as any),
+                }}
+              >
+                <ChatMessageBubble
+                  streamerAppearance={streamerAppearance}
+                  msg={{
+                    id: "shop-preview",
+                    userId: previewUserId,
+                    username: user?.username ?? "Invité",
+                    body: "Exemple de message — “ça rend comment ?”",
+                    createdAt: new Date().toISOString(),
+                    cosmetics: withAvatar(selectedPreviewCosmetics, user?.id),
+                  }}
+                />
+              </div>
+
+              <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.75 }}>
+                Astuce: clique un item pour le “try-on”, puis achète si ça te plaît.
+              </div>
+            </div>
           </div>
-        </>
+
+          {/* RIGHT */}
+          <div className="shopSideCard" style={{ minHeight: 300 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 1250 }}>
+                {SKIN_CATS.find((x) => x.id === cat)?.emoji}{" "}
+                {String(SKIN_CATS.find((x) => x.id === cat)?.label || "")?.toUpperCase()}
+              </div>
+              <div className="mutedSmall" style={{ opacity: 0.75 }}>
+                {loading ? "Chargement…" : `${visible.length} items`}
+              </div>
+            </div>
+
+            <div className="shopGrid2">
+              {visible.map((it) => {
+                const ownedNow = isOwnedItem(it);
+                const isEquipped = (equipped as any)?.[it.kind] === it.code;
+
+                const pr = Number(it.priceRubis ?? 0);
+                const pp = Number((it as any).pricePrestige ?? 0);
+
+                const isRubis = Number.isFinite(pr) && pr > 0;
+                const isPrestige = Number.isFinite(pp) && pp > 0;
+
+                const buyable = it.unlock === "shop" && (isRubis || isPrestige);
+                const canAfford = isPrestige ? pp <= effectivePrestige : pr <= effectiveRubis;
+
+                const selectedNow = selected?.kind === it.kind && selected?.code === it.code;
+
+                const lock = !ownedNow && it.unlock !== "shop"; // non achetable et pas possédé
+                const disabledBuy = !token || buying || loading || subsBusy || ownedNow || !canAfford;
+
+                return (
+                  <div
+                    key={`${it.kind}:${it.code}`}
+                    className={`shopItemCard ${selectedNow ? "isSelected" : ""}`}
+                    onClick={() => setSelected({ kind: it.kind as Kind, code: it.code })}
+                    title="Cliquer pour prévisualiser"
+                    style={{
+                      opacity: lock ? 0.62 : 1,
+                      cursor: lock ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    <div className="shopItemHead">
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                          <div style={{ minWidth: 0 }}>{renderItemTitle(it)}</div>
+                        </div>
+
+                        <div className="shopMetaRow">
+                          {/* statut */}
+
+
+                          {/* unlock / rarity seulement si utile */}
+                          {it.unlock && it.unlock !== "shop" ? (
+                            <span className="spPill" style={{ opacity: 0.85 }}>
+                              {String(it.unlock)}
+                              {(it as any).rarity ? ` • ${(it as any).rarity}` : ""}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+                        <PricePill
+                          rubis={isRubis ? pr : null}
+                          prestige={isPrestige ? pp : null}
+                          owned={ownedNow}
+                          equipped={isEquipped}
+                        />
+                      </div>
+                    </div>
+
+                    <div
+                      className="shopPreviewBox"
+                      style={{
+                        marginTop: 10,
+                        pointerEvents: "none",
+                        ...({
+                          ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
+                          ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
+                        } as any),
+                      }}
+                    >
+                      <ChatMessageBubble
+                        streamerAppearance={streamerAppearance}
+                        msg={{
+                          id: `shop-card:${it.kind}:${it.code}`,
+                          userId: previewUserId,
+                          username,
+                          body: "…",
+                          createdAt: new Date().toISOString(),
+                          cosmetics: previewForItem(it),
+                        }}
+                      />
+                    </div>
+
+                    <div className="shopActionsRow">
+                      {buyable ? (
+                        <button
+                          className={disabledBuy ? "btnGhostSmall" : "btnPrimarySmall"}
+                          disabled={disabledBuy}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            buy(it);
+                          }}
+                          title={
+                            ownedNow
+                              ? "Déjà possédé"
+                              : !canAfford
+                              ? "Pas assez"
+                              : "Acheter"
+                          }
+                        >
+                          {ownedNow ? "Possédé" : !canAfford ? "Pas assez" : "Acheter"}
+                        </button>
+                      ) : (
+                        <button className="btnGhostSmall" disabled title="Indisponible">
+                          Indisponible
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
