@@ -1,3 +1,4 @@
+// web/src/components/Dashboard/sections/StatsSection.tsx
 import * as React from "react";
 import type {
   ApiMyStreamer,
@@ -46,9 +47,7 @@ function addMonthsISO(iso: string, months: number) {
   d.setUTCMonth(d.getUTCMonth() + months);
 
   // clamp au dernier jour du mois
-  const lastDay = new Date(
-    Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)
-  ).getUTCDate();
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
   d.setUTCDate(Math.min(day, lastDay));
 
   return d.toISOString().slice(0, 10);
@@ -68,36 +67,177 @@ function fmtMinutes(x: number) {
   return `${Math.round(x)}m`;
 }
 
+function niceNum(v: number) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${Math.round((n / 1_000_000) * 10) / 10}M`;
+  if (abs >= 1_000) return `${Math.round((n / 1_000) * 10) / 10}k`;
+  // valeurs petites
+  if (abs < 10 && abs !== 0) return String(Math.round(n * 10) / 10);
+  return String(Math.round(n));
+}
+
+function formatXLabel(t: string) {
+  const s = String(t || "");
+  // YYYY-MM-DD => MM-DD
+  const m1 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m1) return `${m1[2]}-${m1[3]}`;
+  // YYYY-MM => YYYY-MM
+  const m2 = s.match(/^(\d{4})-(\d{2})$/);
+  if (m2) return `${m2[1]}-${m2[2]}`;
+  // ISO date-time => YYYY-MM-DD
+  const m3 = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m3) return m3[1].slice(5);
+  // fallback court
+  return s.length > 10 ? s.slice(0, 10) : s;
+}
+
 function MiniLine({ points }: { points: { t: string; v: number }[] }) {
+  // un peu plus haut pour laisser place aux axes/labels
   const w = 520;
-  const h = 140;
-  const pad = 12;
+  const h = 180;
 
-  const vals = points.map((p) => p.v);
-  const min = Math.min(0, ...vals);
-  const max = Math.max(1, ...vals);
+  // paddings pour labels
+  const padL = 52;
+  const padR = 14;
+  const padT = 14;
+  const padB = 34;
 
-  const X = (i: number) =>
-    pad + (i * (w - pad * 2)) / Math.max(1, points.length - 1);
-  const Y = (v: number) => {
-    const t = (v - min) / (max - min || 1);
-    return h - pad - t * (h - pad * 2);
-  };
+  const n = points?.length ?? 0;
+  const vals = (points || []).map((p) => Number(p.v)).filter((x) => Number.isFinite(x));
 
-  const d = points
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${X(i).toFixed(2)} ${Y(p.v).toFixed(2)}`)
-    .join(" ");
+  const rawMin = vals.length ? Math.min(...vals) : 0;
+  const rawMax = vals.length ? Math.max(...vals) : 1;
+
+  // garde un minimum de range
+  const min = Math.min(0, rawMin);
+  const max = Math.max(1, rawMax);
+  const range = max - min || 1;
+
+  const plotW = w - padL - padR;
+  const plotH = h - padT - padB;
+
+  const X = (i: number) => padL + (i * plotW) / Math.max(1, n - 1);
+  const Y = (v: number) => padT + ((max - v) / range) * plotH;
+
+  // Path
+  const d =
+    n >= 1
+      ? points
+          .map((p, i) => {
+            const xx = X(i).toFixed(2);
+            const yy = Y(Number(p.v)).toFixed(2);
+            return `${i === 0 ? "M" : "L"} ${xx} ${yy}`;
+          })
+          .join(" ")
+      : "";
+
+  // ticks Y : max / mid / min
+  const yTicks = [
+    { v: max, y: Y(max) },
+    { v: min + range * 0.5, y: Y(min + range * 0.5) },
+    { v: min, y: Y(min) },
+  ];
+
+  // ticks X : start / mid / end (si dispo)
+  const xIdxs =
+    n <= 1
+      ? [0]
+      : n === 2
+      ? [0, 1]
+      : [0, Math.floor((n - 1) / 2), n - 1];
+
+  const axisColor = "currentColor";
 
   return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      <path d={d} fill="none" stroke="currentColor" strokeWidth="2.2" opacity="0.9" />
+    <svg
+      width="100%"
+      viewBox={`0 0 ${w} ${h}`}
+      style={{ display: "block" }}
+      aria-label="Graphique"
+      role="img"
+    >
+      {/* Grille horizontale */}
+      {yTicks.map((t, i) => (
+        <path
+          key={i}
+          d={`M ${padL} ${t.y.toFixed(2)} L ${(w - padR).toFixed(2)} ${t.y.toFixed(2)}`}
+          fill="none"
+          stroke={axisColor}
+          strokeWidth="1"
+          opacity="0.10"
+        />
+      ))}
+
+      {/* Axes */}
       <path
-        d={`M ${pad} ${h - pad} L ${w - pad} ${h - pad}`}
+        d={`M ${padL} ${padT} L ${padL} ${padT + plotH}`}
         fill="none"
-        stroke="currentColor"
+        stroke={axisColor}
         strokeWidth="1"
-        opacity="0.18"
+        opacity="0.22"
       />
+      <path
+        d={`M ${padL} ${padT + plotH} L ${w - padR} ${padT + plotH}`}
+        fill="none"
+        stroke={axisColor}
+        strokeWidth="1"
+        opacity="0.22"
+      />
+
+      {/* Labels Y */}
+      {yTicks.map((t, i) => (
+        <text
+          key={i}
+          x={padL - 8}
+          y={t.y}
+          textAnchor="end"
+          dominantBaseline="middle"
+          fontSize="11"
+          opacity="0.70"
+          fill={axisColor}
+        >
+          {niceNum(t.v)}
+        </text>
+      ))}
+
+      {/* Courbe */}
+      {d ? (
+        <path d={d} fill="none" stroke={axisColor} strokeWidth="2.2" opacity="0.9" />
+      ) : (
+        <text
+          x={padL + 8}
+          y={padT + 16}
+          fontSize="12"
+          opacity="0.55"
+          fill={axisColor}
+        >
+          —
+        </text>
+      )}
+
+      {/* Labels X */}
+      {xIdxs.map((i) => {
+        const p = points[i];
+        if (!p) return null;
+        const x = X(i);
+        const y = padT + plotH + 18;
+        return (
+          <text
+            key={i}
+            x={x}
+            y={y}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontSize="11"
+            opacity="0.70"
+            fill={axisColor}
+          >
+            {formatXLabel(p.t)}
+          </text>
+        );
+      })}
     </svg>
   );
 }
@@ -138,7 +278,7 @@ export function StatsSection({ streamer }: { streamer: ApiMyStreamer }) {
         if (!mounted) return;
         setSum(s);
         setSeries(g.points || []);
-      } catch (e) {
+      } catch {
         if (mounted) {
           setSum(null);
           setSeries([]);

@@ -12,7 +12,7 @@ type SubBadge = {
 
 type Appearance = {
   chat: {
-    viewerSkinsLevel?: 1 | 2 | 3; // ✅ NEW
+    viewerSkinsLevel?: 1 | 2 | 3;
     usernameColor: string;
     messageColor: string;
     sub: {
@@ -52,19 +52,15 @@ function pickAppearance(j: any): Appearance | null {
 }
 
 function pickOfflineBgUrl(j: any): string | null {
-  // attendu: { ok:true, appearance, offlineBgUrl }
   const u = j?.offlineBgUrl ?? j?.streamer?.offlineBgUrl ?? null;
   return typeof u === "string" && u.trim() ? u : null;
 }
 
 async function loadImageBitmap(file: File): Promise<ImageBitmap | HTMLImageElement> {
-  // createImageBitmap est top si dispo
   const anyGlobal: any = globalThis as any;
   if (typeof anyGlobal.createImageBitmap === "function") {
     return await anyGlobal.createImageBitmap(file);
   }
-
-  // fallback Image()
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -92,10 +88,6 @@ function blobFromCanvas(canvas: HTMLCanvasElement, quality = 0.82): Promise<Blob
   });
 }
 
-/**
- * Resize + crop "cover" vers du 16:9 (1600x900 par défaut)
- * => renvoie un Blob JPEG + une URL de preview
- */
 async function makeOfflineBgJpeg(
   file: File,
   opts: { w: number; h: number; quality?: number }
@@ -103,12 +95,9 @@ async function makeOfflineBgJpeg(
   const { w, h, quality = 0.82 } = opts;
 
   const src = await loadImageBitmap(file);
-
-  // dimensions source
   const sw = (src as any).width as number;
   const sh = (src as any).height as number;
 
-  // cover crop
   const targetRatio = w / h;
   const srcRatio = sw / sh;
 
@@ -118,11 +107,9 @@ async function makeOfflineBgJpeg(
   let sy = 0;
 
   if (srcRatio > targetRatio) {
-    // trop large => crop horizontal
     cropW = Math.round(sh * targetRatio);
     sx = Math.round((sw - cropW) / 2);
   } else {
-    // trop haut => crop vertical
     cropH = Math.round(sw / targetRatio);
     sy = Math.round((sh - cropH) / 2);
   }
@@ -136,12 +123,49 @@ async function makeOfflineBgJpeg(
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-
   ctx.drawImage(src as any, sx, sy, cropW, cropH, 0, 0, w, h);
 
   const blob = await blobFromCanvas(canvas, quality);
   const previewUrl = URL.createObjectURL(blob);
   return { blob, previewUrl };
+}
+
+function SectionCard({
+  title,
+  subtitle,
+  right,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        padding: 14,
+        borderRadius: 18,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(0,0,0,0.12)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontWeight: 1100, letterSpacing: -0.2 }}>{title}</div>
+          {subtitle ? (
+            <div className="mutedSmall" style={{ marginTop: 4, opacity: 0.8 }}>
+              {subtitle}
+            </div>
+          ) : null}
+        </div>
+        {right ? <div>{right}</div> : null}
+      </div>
+
+      <div style={{ marginTop: 12 }}>{children}</div>
+    </div>
+  );
 }
 
 function ColorRow({
@@ -156,29 +180,29 @@ function ColorRow({
   help?: string;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ fontWeight: 900 }}>{label}</div>
-        <div style={{ fontSize: 12, opacity: 0.7 }}>{value.toUpperCase()}</div>
+        <div style={{ fontWeight: 1000 }}>{label}</div>
+        <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>{value.toUpperCase()}</div>
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         {PRESETS.map((p) => (
           <button
             key={p.id}
             onClick={() => onChange(p.hex)}
             title={p.name}
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: 10,
+              width: 30,
+              height: 30,
+              borderRadius: 12,
               border:
                 value.toUpperCase() === p.hex
-                  ? "2px solid rgba(255,255,255,0.65)"
+                  ? "2px solid rgba(255,255,255,0.70)"
                   : "1px solid rgba(255,255,255,0.14)",
               background: p.hex,
               cursor: "pointer",
-              boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
+              boxShadow: "0 10px 22px rgba(0,0,0,0.35)",
             }}
           />
         ))}
@@ -195,21 +219,21 @@ function ColorRow({
             onChange={(e) => onChange(e.target.value)}
             placeholder="#RRGGBB"
             style={{
-              width: 110,
+              width: 120,
               padding: "10px 10px",
-              borderRadius: 12,
+              borderRadius: 14,
               border: "1px solid rgba(255,255,255,0.10)",
               background: "rgba(0,0,0,0.25)",
               color: "white",
               outline: "none",
-              fontWeight: 800,
+              fontWeight: 900,
             }}
           />
         </div>
       </div>
 
       {help ? (
-        <div className="muted" style={{ fontSize: 12 }}>
+        <div className="mutedSmall" style={{ fontSize: 12, opacity: 0.8 }}>
           {help}
         </div>
       ) : null}
@@ -224,7 +248,6 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
   const [err, setErr] = React.useState<string | null>(null);
   const [ok, setOk] = React.useState<string | null>(null);
 
-  // OFFLINE BG
   const [offlineBgUrl, setOfflineBgUrl] = React.useState<string | null>(null);
   const [offlineUploading, setOfflineUploading] = React.useState(false);
   const [offlineDeleting, setOfflineDeleting] = React.useState(false);
@@ -299,9 +322,7 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
       if (!ap) throw new Error("save_ok_but_no_appearance");
       setAppearance(ap);
 
-      // au cas où l'API le renvoie aussi ici
       setOfflineBgUrl(pickOfflineBgUrl(j) ?? offlineBgUrl);
-
       toastOk("Enregistré ✅");
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -315,7 +336,6 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
     setErr(null);
     setOk(null);
 
-    // cleanup ancienne preview locale
     if (offlineLocalPreview) {
       try {
         URL.revokeObjectURL(offlineLocalPreview);
@@ -325,7 +345,6 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
 
     setOfflineUploading(true);
     try {
-      // 16:9 — on standardise pour ton player (tu peux passer à 1920x1080 si tu veux)
       const { blob, previewUrl } = await makeOfflineBgJpeg(file, { w: 1600, h: 900, quality: 0.82 });
       setOfflineLocalPreview(previewUrl);
 
@@ -334,21 +353,15 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
 
       const r = await fetch(`${apiBase()}/streamer/me/offline-bg`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
 
       const j = await r.json().catch(() => null);
       if (!r.ok || !j?.ok) throw new Error(j?.error || "upload_failed");
 
-      if (typeof j.offlineBgUrl === "string") {
-        setOfflineBgUrl(j.offlineBgUrl);
-      } else {
-        // fallback: reload pour récupérer l'url
-        await load();
-      }
+      if (typeof j.offlineBgUrl === "string") setOfflineBgUrl(j.offlineBgUrl);
+      else await load();
 
       toastOk("Image offline mise à jour ✅");
     } catch (e: any) {
@@ -408,319 +421,342 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
 
   return (
     <div className="panel">
-      <div className="panelTitle">Apparence</div>
+      <style>{`
+        .llSplit2{
+          display:grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+          align-items:start;
+        }
+        @media (max-width: 980px){
+          .llSplit2{ grid-template-columns: 1fr; }
+        }
+        .llPreview{
+          border-radius: 18px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.16);
+          overflow:hidden;
+        }
+      `}</style>
 
-      <div className="muted" style={{ marginBottom: 10 }}>
-        Chaîne : @{streamer.slug} • Chat + écran OFFLINE.
+      <div className="panelTitle">Apparence</div>
+      <div className="mutedSmall" style={{ marginTop: 6 }}>
+        Chaîne : <b>@{streamer.slug}</b> • Chat + écran OFFLINE.
       </div>
 
       {err ? (
-        <div className="hint" style={{ opacity: 0.95 }}>
+        <div className="hint" style={{ opacity: 0.95, marginTop: 10 }}>
           ⚠️ {err}
         </div>
       ) : null}
       {ok ? (
-        <div className="hint" style={{ opacity: 0.95 }}>
+        <div className="hint" style={{ opacity: 0.95, marginTop: 10 }}>
           ✨ {ok}
         </div>
       ) : null}
-      {loading ? <div className="muted">Chargement…</div> : null}
+      {loading ? (
+        <div className="muted" style={{ marginTop: 10 }}>
+          Chargement…
+        </div>
+      ) : null}
 
       {!loading ? (
         <>
-          {/* ================= OFFLINE BACKGROUND ================= */}
-          <div style={{ marginTop: 6, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-              <div style={{ fontWeight: 950 }}>Image OFFLINE</div>
-              <div className="muted" style={{ fontSize: 12 }}>
-                Recommandé : 16:9 • Export auto 1600×900 (JPEG)
+          {/* OFFLINE BG */}
+          <SectionCard
+            title="Image OFFLINE"
+            subtitle="Recommandé : 16:9 • Export auto 1600×900 (JPEG)"
+            right={
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  className="btnPrimarySmall"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={!token || offlineUploading || offlineDeleting}
+                >
+                  {offlineUploading ? "Upload…" : shownBg ? "Changer" : "Ajouter"}
+                </button>
+                <button
+                  className="btnGhostSmall"
+                  onClick={deleteOfflineBg}
+                  disabled={!token || !offlineBgUrl || offlineUploading || offlineDeleting}
+                  title={!offlineBgUrl ? "Aucune image enregistrée" : "Supprimer l'image"}
+                >
+                  {offlineDeleting ? "Suppression…" : "Supprimer"}
+                </button>
+                <button className="btnGhostSmall" onClick={load} disabled={loading || saving || offlineUploading || offlineDeleting}>
+                  Recharger
+                </button>
               </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  const f = e.currentTarget.files?.[0] || null;
-                  e.currentTarget.value = ""; // permet re-select same file
-                  if (!f) return;
-                  uploadOfflineBg(f);
-                }}
-              />
-
-              <button
-                className="btnPrimary"
-                onClick={() => fileRef.current?.click()}
-                disabled={!token || offlineUploading || offlineDeleting}
-              >
-                {offlineUploading ? "Upload…" : shownBg ? "Changer l'image" : "Ajouter une image"}
-              </button>
-
-              <button
-                className="btnGhost"
-                onClick={deleteOfflineBg}
-                disabled={!token || !offlineBgUrl || offlineUploading || offlineDeleting}
-                title={!offlineBgUrl ? "Aucune image enregistrée" : "Supprimer l'image"}
-              >
-                {offlineDeleting ? "Suppression…" : "Supprimer"}
-              </button>
-
-              <button className="btnGhost" onClick={load} disabled={loading || saving || offlineUploading || offlineDeleting}>
-                Recharger
-              </button>
-            </div>
-
-            <div
-              style={{
-                marginTop: 12,
-                borderRadius: 16,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.18)",
-                overflow: "hidden",
+            }
+          >
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.currentTarget.files?.[0] || null;
+                e.currentTarget.value = "";
+                if (!f) return;
+                uploadOfflineBg(f);
               }}
-            >
+            />
+
+            <div className="llPreview">
               <div
                 style={{
                   aspectRatio: "16/9",
                   background: shownBg
-                    ? `linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0.15)), url(${shownBg}) center/cover no-repeat`
+                    ? `linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0.12)), url(${shownBg}) center/cover no-repeat`
                     : "rgba(255,255,255,0.04)",
                   display: "flex",
                   alignItems: "flex-end",
                 }}
               >
                 <div style={{ padding: 14 }}>
-                  <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>
+                  <div style={{ fontWeight: 1100 }}>
                     {shownBg ? "Preview OFFLINE" : "Aucune image OFFLINE"}
                   </div>
-                  <div className="mutedSmall" style={{ marginTop: 6, maxWidth: 520 }}>
+                  <div className="mutedSmall" style={{ marginTop: 6, maxWidth: 620, opacity: 0.85 }}>
                     {shownBg
-                      ? "C’est ce visuel qui s’affichera sur la page streamer quand il n’est pas en live."
+                      ? "Ce visuel s’affiche sur ta page streamer quand tu es hors ligne."
                       : "Ajoute une image : on la crop/resize en 16:9 et on l’upload en JPEG optimisé."}
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          </SectionCard>
 
-          {/* ================= CHAT APPEARANCE ================= */}
-          <div style={{ marginTop: 18, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ fontWeight: 950 }}>Apparence — Chat</div>
-            <div className="muted" style={{ marginTop: 6 }}>
-              Animation : fade-left (globale, non configurable).
-            </div>
-          </div>
-          
-          {/* ================= VIEWERS SKINS POLICY ================= */}
-          <div style={{ marginTop: 12, padding: 12, borderRadius: 16, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.18)" }}>
-            <div style={{ fontWeight: 950 }}>Skins des viewers</div>
-            <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-              Choisis si tu laisses les viewers afficher leurs cosmétiques (couleur pseudo / cadrans) ou si tu imposes ton style.
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
-              {([
-                {
-                  v: 1,
-                  title: "Niveau 1 — Libre",
-                  desc: "Les viewers avec skin gardent leur skin. Les viewers sans skin prennent ta couleur de pseudo / ton style.",
-                },
-                {
-                  v: 2,
-                  title: "Niveau 2 — Bloquer couleurs de pseudo",
-                  desc: "Tout le monde a la couleur de pseudo définie par le streamer (skins pseudo ignorés).",
-                },
-                {
-                  v: 3,
-                  title: "Niveau 3 — Bloquer couleurs + cadrans",
-                  desc: "Couleurs de pseudo + cadrans viewers ignorés. Le chat reste homogène au style streamer.",
-                },
-              ] as const).map((o) => (
-                <label
-                  key={o.v}
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    alignItems: "flex-start",
-                    padding: 10,
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    background: "rgba(255,255,255,0.03)",
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="viewerSkinsLevel"
-                    checked={Number(appearance.chat.viewerSkinsLevel ?? 1) === o.v}
-                    onChange={() =>
-                      setAppearance((a) => ({
-                        ...a,
-                        chat: { ...a.chat, viewerSkinsLevel: o.v },
-                      }))
-                    }
-                    style={{ marginTop: 3 }}
-                  />
-
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <div style={{ fontWeight: 950 }}>{o.title}</div>
-                    <div className="muted" style={{ fontSize: 12 }}>
-                      {o.desc}
-                    </div>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Section pseudo */}
-          <div style={{ marginTop: 6, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ fontWeight: 950, marginBottom: 6 }}>Section pseudo</div>
-            <ColorRow
-              label="Couleur des pseudos"
-              value={appearance.chat.usernameColor}
-              onChange={(hex) => setAppearance((a) => ({ ...a, chat: { ...a.chat, usernameColor: hex } }))}
-              help="S’applique à tous les viewers (skins viewers plus tard)."
-            />
-          </div>
-
-          {/* Section message */}
-          <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ fontWeight: 950, marginBottom: 6 }}>Section message</div>
-            <ColorRow
-              label="Couleur du texte des messages"
-              value={appearance.chat.messageColor}
-              onChange={(hex) => setAppearance((a) => ({ ...a, chat: { ...a.chat, messageColor: hex } }))}
-            />
-          </div>
-
-          {/* Section sub */}
-          <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-              <div style={{ fontWeight: 950 }}>Section SUB</div>
-              <div className="muted" style={{ fontSize: 12 }}>
-                (préparé maintenant, appliqué quand on branche le système sub)
-              </div>
-            </div>
-
-            <ColorRow
-              label="Couleur pseudo SUB"
-              value={appearance.chat.sub.usernameColor}
-              onChange={(hex) =>
-                setAppearance((a) => ({
-                  ...a,
-                  chat: { ...a.chat, sub: { ...a.chat.sub, usernameColor: hex } },
-                }))
-              }
-            />
-
-            <ColorRow
-              label="Couleur message SUB"
-              value={appearance.chat.sub.messageColor}
-              onChange={(hex) =>
-                setAppearance((a) => ({
-                  ...a,
-                  chat: { ...a.chat, sub: { ...a.chat.sub, messageColor: hex } },
-                }))
-              }
-            />
-
-            <div style={{ marginTop: 12, fontWeight: 900, opacity: 0.95 }}>Badge SUB (tag)</div>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <input
-                  type="checkbox"
-                  checked={appearance.chat.sub.badge.enabled}
-                  onChange={(e) =>
-                    setAppearance((a) => ({
-                      ...a,
-                      chat: {
-                        ...a.chat,
-                        sub: { ...a.chat.sub, badge: { ...a.chat.sub.badge, enabled: e.target.checked } },
-                      },
-                    }))
-                  }
-                />
-                <span style={{ fontWeight: 900 }}>Activé</span>
-              </label>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div className="muted" style={{ fontSize: 12, fontWeight: 800 }}>
-                  Texte (≤ 8)
+          {/* CHAT */}
+          <SectionCard title="Apparence — Chat" subtitle="Animation : fade-left (globale, non configurable).">
+            <div className="llSplit2">
+              {/* VIEWERS SKINS POLICY */}
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 16,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(0,0,0,0.14)",
+                }}
+              >
+                <div style={{ fontWeight: 1100 }}>Skins des viewers</div>
+                <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.85 }}>
+                  Choisis si tu laisses les viewers afficher leurs cosmétiques ou si tu imposes ton style.
                 </div>
-                <input
-                  value={appearance.chat.sub.badge.text}
-                  onChange={(e) =>
-                    setAppearance((a) => ({
-                      ...a,
-                      chat: {
-                        ...a.chat,
-                        sub: { ...a.chat.sub, badge: { ...a.chat.sub.badge, text: clampBadgeText(e.target.value) } },
-                      },
-                    }))
-                  }
-                  style={{
-                    width: 110,
-                    padding: "10px 10px",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(0,0,0,0.25)",
-                    color: "white",
-                    outline: "none",
-                    fontWeight: 900,
-                    textTransform: "uppercase",
-                  }}
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+                  {([
+                    {
+                      v: 1,
+                      title: "Niveau 1 — Libre",
+                      desc: "Les viewers avec skin gardent leur skin. Sans skin → ton style.",
+                    },
+                    {
+                      v: 2,
+                      title: "Niveau 2 — Bloquer couleurs de pseudo",
+                      desc: "Couleur pseudo imposée par le streamer (skins pseudo ignorés).",
+                    },
+                    {
+                      v: 3,
+                      title: "Niveau 3 — Bloquer couleurs + cadrans",
+                      desc: "Couleurs + cadrans viewers ignorés. Chat homogène.",
+                    },
+                  ] as const).map((o) => (
+                    <label
+                      key={o.v}
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "flex-start",
+                        padding: 10,
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "rgba(255,255,255,0.03)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="viewerSkinsLevel"
+                        checked={Number(appearance.chat.viewerSkinsLevel ?? 1) === o.v}
+                        onChange={() =>
+                          setAppearance((a) => ({
+                            ...a,
+                            chat: { ...a.chat, viewerSkinsLevel: o.v },
+                          }))
+                        }
+                        style={{ marginTop: 3 }}
+                      />
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        <div style={{ fontWeight: 1050 }}>{o.title}</div>
+                        <div className="mutedSmall" style={{ fontSize: 12, opacity: 0.82 }}>
+                          {o.desc}
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* COLORS */}
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 16,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(0,0,0,0.14)",
+                }}
+              >
+                <div style={{ fontWeight: 1100 }}>Couleurs</div>
+                <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.85 }}>
+                  Ces couleurs s’appliquent au chat selon ta politique skins.
+                </div>
+
+                <ColorRow
+                  label="Couleur des pseudos"
+                  value={appearance.chat.usernameColor}
+                  onChange={(hex) => setAppearance((a) => ({ ...a, chat: { ...a.chat, usernameColor: hex } }))}
+                />
+
+                <ColorRow
+                  label="Couleur du texte des messages"
+                  value={appearance.chat.messageColor}
+                  onChange={(hex) => setAppearance((a) => ({ ...a, chat: { ...a.chat, messageColor: hex } }))}
                 />
               </div>
             </div>
+          </SectionCard>
 
-            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <ColorRow
-                label="Couleur bordure badge"
-                value={appearance.chat.sub.badge.borderColor}
-                onChange={(hex) =>
-                  setAppearance((a) => ({
-                    ...a,
-                    chat: {
-                      ...a.chat,
-                      sub: { ...a.chat.sub, badge: { ...a.chat.sub.badge, borderColor: hex } },
-                    },
-                  }))
-                }
-              />
-              <ColorRow
-                label="Couleur texte badge"
-                value={appearance.chat.sub.badge.textColor}
-                onChange={(hex) =>
-                  setAppearance((a) => ({
-                    ...a,
-                    chat: {
-                      ...a.chat,
-                      sub: { ...a.chat.sub, badge: { ...a.chat.sub.badge, textColor: hex } },
-                    },
-                  }))
-                }
-              />
-            </div>
-
-            <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>
-              Hat avatar (bordure / crown) : placeholder stocké en DB (on branchera plus tard).
-            </div>
-          </div>
-
-          {/* Preview */}
-          <div style={{ marginTop: 16, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ fontWeight: 950, marginBottom: 8 }}>Aperçu</div>
+          {/* SUB */}
+          <SectionCard title="Section SUB" subtitle="Préparé maintenant, appliqué quand on branche le système SUB.">
             <div
               style={{
                 padding: 12,
-                borderRadius: 14,
+                borderRadius: 16,
+                border: "1px solid rgba(255,255,255,0.08)",
+                background: "rgba(0,0,0,0.14)",
+              }}
+            >
+              <div className="llSplit2">
+                <div>
+                  <ColorRow
+                    label="Couleur pseudo SUB"
+                    value={appearance.chat.sub.usernameColor}
+                    onChange={(hex) =>
+                      setAppearance((a) => ({
+                        ...a,
+                        chat: { ...a.chat, sub: { ...a.chat.sub, usernameColor: hex } },
+                      }))
+                    }
+                  />
+                  <ColorRow
+                    label="Couleur message SUB"
+                    value={appearance.chat.sub.messageColor}
+                    onChange={(hex) =>
+                      setAppearance((a) => ({
+                        ...a,
+                        chat: { ...a.chat, sub: { ...a.chat.sub, messageColor: hex } },
+                      }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <div style={{ fontWeight: 1000, marginTop: 12 }}>Badge SUB</div>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10, alignItems: "center" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <input
+                        type="checkbox"
+                        checked={appearance.chat.sub.badge.enabled}
+                        onChange={(e) =>
+                          setAppearance((a) => ({
+                            ...a,
+                            chat: {
+                              ...a.chat,
+                              sub: { ...a.chat.sub, badge: { ...a.chat.sub.badge, enabled: e.target.checked } },
+                            },
+                          }))
+                        }
+                      />
+                      <span style={{ fontWeight: 1000 }}>Activé</span>
+                    </label>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div className="mutedSmall" style={{ fontSize: 12, fontWeight: 900 }}>
+                        Texte (≤ 8)
+                      </div>
+                      <input
+                        value={appearance.chat.sub.badge.text}
+                        onChange={(e) =>
+                          setAppearance((a) => ({
+                            ...a,
+                            chat: {
+                              ...a.chat,
+                              sub: { ...a.chat.sub, badge: { ...a.chat.sub.badge, text: clampBadgeText(e.target.value) } },
+                            },
+                          }))
+                        }
+                        style={{
+                          width: 120,
+                          padding: "10px 10px",
+                          borderRadius: 14,
+                          border: "1px solid rgba(255,255,255,0.10)",
+                          background: "rgba(0,0,0,0.25)",
+                          color: "white",
+                          outline: "none",
+                          fontWeight: 1000,
+                          textTransform: "uppercase",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="llSplit2" style={{ marginTop: 12 }}>
+                    <ColorRow
+                      label="Couleur bordure badge"
+                      value={appearance.chat.sub.badge.borderColor}
+                      onChange={(hex) =>
+                        setAppearance((a) => ({
+                          ...a,
+                          chat: {
+                            ...a.chat,
+                            sub: { ...a.chat.sub, badge: { ...a.chat.sub.badge, borderColor: hex } },
+                          },
+                        }))
+                      }
+                    />
+                    <ColorRow
+                      label="Couleur texte badge"
+                      value={appearance.chat.sub.badge.textColor}
+                      onChange={(hex) =>
+                        setAppearance((a) => ({
+                          ...a,
+                          chat: {
+                            ...a.chat,
+                            sub: { ...a.chat.sub, badge: { ...a.chat.sub.badge, textColor: hex } },
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.8 }}>
+                    Hat avatar : placeholder stocké en DB (on branchera plus tard).
+                  </div>
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+
+          {/* PREVIEW */}
+          <SectionCard title="Aperçu">
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 16,
                 background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.08)",
               }}
             >
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -728,19 +764,20 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
                   <span
                     style={{
                       fontSize: 11,
-                      fontWeight: 900,
-                      padding: "4px 8px",
+                      fontWeight: 1000,
+                      padding: "5px 10px",
                       borderRadius: 999,
                       border: `1px solid ${appearance.chat.sub.badge.borderColor}`,
                       color: appearance.chat.sub.badge.textColor,
                       letterSpacing: 0.6,
+                      background: "rgba(0,0,0,0.18)",
                     }}
                   >
                     {appearance.chat.sub.badge.text}
                   </span>
                 ) : null}
 
-                <span style={{ fontWeight: 950, color: appearance.chat.usernameColor }}>PseudoViewer</span>
+                <span style={{ fontWeight: 1100, color: appearance.chat.usernameColor }}>PseudoViewer</span>
                 <span style={{ opacity: 0.6, fontSize: 12 }}>12:34</span>
               </div>
 
@@ -748,9 +785,10 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
                 Exemple de message — “ça rend comment ?”
               </div>
             </div>
-          </div>
+          </SectionCard>
 
-          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+          {/* ACTIONS */}
+          <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
             <button className="btnPrimary" onClick={save} disabled={saving || offlineUploading || offlineDeleting}>
               {saving ? "Enregistrement…" : "Enregistrer"}
             </button>

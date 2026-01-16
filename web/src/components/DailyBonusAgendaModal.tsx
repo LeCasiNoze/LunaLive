@@ -335,9 +335,6 @@ export function DailyBonusAgendaModal({
           {tab === "agenda" ? (
             <>
               <div className="panelTitle">Agenda hebdo</div>
-              <div className="mutedSmall" style={{ opacity: 0.85, marginTop: 4 }}>
-                Gris = futur / déjà pris / raté • Bordure = récupérable
-              </div>
 
               <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
                 {state.week.map((d) => (

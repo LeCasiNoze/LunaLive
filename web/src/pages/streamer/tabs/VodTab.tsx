@@ -74,9 +74,6 @@ export function VodTab({ slug }: { slug: string }) {
   return (
     <div>
       <div className="panelTitle">VOD</div>
-      <div className="mutedSmall" style={{ opacity: 0.85, marginTop: 6 }}>
-        Replays DLive (lecture directe en popup, sans stockage).
-      </div>
 
       {error ? (
         <div className="mutedSmall" style={{ marginTop: 10, color: "rgba(255,90,90,0.95)" }}>

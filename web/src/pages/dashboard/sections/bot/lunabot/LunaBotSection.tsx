@@ -51,7 +51,7 @@ type ActiveModule =
   | "calls"
   | "bot-wheel"
   | "bot-rain"
-  | "predictions"   // ✅ À AJOUTER
+  | "predictions"
   | null;
 
 const CATEGORY_LABEL: Record<ModuleCategory, string> = {
@@ -78,13 +78,14 @@ function Chip({
 }) {
   const base: React.CSSProperties = {
     fontSize: 11,
-    fontWeight: 900,
-    padding: "4px 8px",
+    fontWeight: 950,
+    padding: "5px 9px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.12)",
     background: "rgba(0,0,0,0.20)",
     opacity: 0.95,
     whiteSpace: "nowrap",
+    letterSpacing: -0.1,
   };
 
   if (kind === "ready") {
@@ -94,6 +95,7 @@ function Chip({
           ...base,
           border: "1px solid rgba(60, 240, 180, 0.30)",
           background: "rgba(60, 240, 180, 0.10)",
+          color: "rgba(230,255,248,0.92)",
         }}
       >
         {children}
@@ -107,6 +109,7 @@ function Chip({
         ...base,
         border: "1px solid rgba(255, 190, 60, 0.35)",
         background: "rgba(255, 190, 60, 0.10)",
+        color: "rgba(255,235,210,0.92)",
       }}
     >
       {children}
@@ -124,17 +127,7 @@ function CategoryTabs({
   onChange: (c: ModuleCategory) => void;
 }) {
   return (
-    <div
-      style={{
-        display: "inline-flex",
-        flexWrap: "wrap",
-        gap: 8,
-        padding: 6,
-        borderRadius: 999,
-        border: "1px solid rgba(255,255,255,0.10)",
-        background: "rgba(0,0,0,0.14)",
-      }}
-    >
+    <div className="llBotCats">
       {categories.map((cat) => {
         const isActive = active === cat;
         return (
@@ -142,16 +135,7 @@ function CategoryTabs({
             key={cat}
             type="button"
             onClick={() => onChange(cat)}
-            className="btnGhostInline"
-            style={{
-              padding: "8px 12px",
-              borderRadius: 999,
-              fontWeight: 900,
-              border: isActive
-                ? "1px solid rgba(124,77,255,0.55)"
-                : "1px solid rgba(255,255,255,0.10)",
-              background: isActive ? "rgba(124,77,255,0.14)" : "rgba(0,0,0,0.12)",
-            }}
+            className={`llBotCat ${isActive ? "isActive" : ""}`}
           >
             {CATEGORY_LABEL[cat]}
           </button>
@@ -175,68 +159,48 @@ function QuickCard({
   onOpen?: () => void;
 }) {
   const locked = status !== "ready";
-
   return (
-    <div
-      className="panel"
-      style={{
-        padding: 14,
-        borderRadius: 18,
-        opacity: locked ? 0.7 : 1,
-        border: "1px solid rgba(255,255,255,0.08)",
-        background: "rgba(0,0,0,0.10)",
+    <button
+      type="button"
+      className={`llBotCard ${locked ? "isLocked" : ""}`}
+      onClick={() => {
+        if (locked) return;
+        onOpen?.();
       }}
+      disabled={locked || !onOpen}
+      aria-disabled={locked || !onOpen}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 14,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "rgba(124,77,255,0.10)",
-            }}
-          >
-            <span style={{ fontSize: 18 }}>{icon}</span>
+      <div className="llBotCardTop">
+        <div className="llBotCardLeft">
+          <div className="llBotIconWrap" aria-hidden>
+            <span className="llBotIcon">{icon}</span>
           </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 950, fontSize: 14, lineHeight: 1.1 }}>{title}</div>
-            {desc ? (
-              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                {desc}
-              </div>
-            ) : null}
+
+          <div className="llBotCardText">
+            <div className="llBotCardTitle">{title}</div>
+            {desc ? <div className="llBotCardDesc">{desc}</div> : null}
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "flex-start" }}>
+        <div className="llBotCardRight">
           {status === "ready" ? <Chip kind="ready">DISPO</Chip> : <Chip kind="soon">BIENTÔT</Chip>}
         </div>
       </div>
 
-      <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          className="btnGhostInline"
-          onClick={() => {
-            if (locked) return;
-            onOpen?.();
-          }}
-          disabled={locked || !onOpen}
-          style={{ padding: "10px 12px", borderRadius: 14, fontWeight: 950 }}
-        >
-          {locked ? "Bientôt" : "Ouvrir"}
-        </button>
+      <div className="llBotCardCtaRow">
+        <span className="llBotCardCta">{locked ? "Bientôt" : "Ouvrir"}</span>
+        <span className="llBotCardArrow" aria-hidden>
+          →
+        </span>
       </div>
-    </div>
+
+      {locked ? <div className="llBotLockedOverlay" aria-hidden /> : null}
+    </button>
   );
 }
 
 // ──────────────────────────────────────────
-// Modal (popup) — style NozeBot-like
+// Modal — LunaLive style
 // ──────────────────────────────────────────
 
 function Modal({
@@ -275,64 +239,29 @@ function Modal({
     <div
       role="dialog"
       aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 9999,
-        background: "rgba(0,0,0,0.65)",
-        backdropFilter: "blur(6px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-      }}
+      className="llBotModalOverlay"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div
-        className="panel"
-        style={{
-          width: "min(980px, 96vw)",
-          maxHeight: "92vh",
-          overflow: "hidden",
-          borderRadius: 22,
-          border: "1px solid rgba(255,255,255,0.10)",
-          background: "rgba(10,10,10,0.92)",
-          boxShadow: "0 20px 80px rgba(0,0,0,0.55)",
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div
-          style={{
-            padding: 16,
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
+      <div className="llBotModal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="llBotModalHead">
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 950, fontSize: 16, lineHeight: 1.1 }}>{title}</div>
-            {desc ? (
-              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                {desc}
-              </div>
-            ) : null}
+            <div className="llBotModalTitle">{title}</div>
+            {desc ? <div className="llBotModalDesc">{desc}</div> : null}
           </div>
 
           <button
-            className="btnGhostInline"
+            className="llBotModalClose"
             onClick={onClose}
-            style={{ borderRadius: 14, padding: "10px 12px", fontWeight: 950 }}
             aria-label="Fermer"
+            type="button"
           >
             ✕
           </button>
         </div>
 
-        <div style={{ padding: 16, overflow: "auto", maxHeight: "calc(92vh - 70px)" }}>{children}</div>
+        <div className="llBotModalBody">{children}</div>
       </div>
     </div>
   );
@@ -357,6 +286,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
 
   const [activeCategory, setActiveCategory] = React.useState<ModuleCategory>("general");
   const [activeModule, setActiveModule] = React.useState<ActiveModule>(null);
+
+  const [q, setQ] = React.useState(""); // 🔎 search modules
 
   const isAdmin = user?.role === "admin";
 
@@ -466,8 +397,6 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       icon: "🎰",
       onOpen: () => setActiveModule("calls"),
     },
-
-    // ✅ module “tirage roue streamer” = bot_wheel (pas la roue quotidienne)
     {
       id: "bot-wheel",
       category: "rubis",
@@ -477,7 +406,6 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       icon: "🎡",
       onOpen: () => setActiveModule("bot-wheel"),
     },
-
     {
       id: "bot-rain",
       category: "rubis",
@@ -496,6 +424,7 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       icon: "📊",
       onOpen: () => setActiveModule("predictions"),
     },
+
     { id: "chest", category: "rubis", status: "soon", title: "Coffre streamer", desc: "Ouvertures + rewards.", icon: "📦" },
 
     { id: "discord-setup", category: "discord", status: "soon", title: "Setup Discord", desc: "Lier / rôles.", icon: "🔗" },
@@ -516,7 +445,16 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
   }
 
   const availableCategories = CATEGORY_ORDER.filter((c) => (isAdmin ? true : c !== "admin"));
-  const visibleModules = modules.filter((m) => m.category === activeCategory);
+
+  const visibleModulesRaw = modules.filter((m) => m.category === activeCategory);
+
+  const qNorm = q.trim().toLowerCase();
+  const visibleModules = qNorm
+    ? visibleModulesRaw.filter((m) => {
+        const hay = `${m.title} ${m.desc ?? ""}`.toLowerCase();
+        return hay.includes(qNorm);
+      })
+    : visibleModulesRaw;
 
   const modalTitle =
     activeModule === "commands"
@@ -535,6 +473,10 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       ? "Calls & Hunt"
       : activeModule === "bot-wheel"
       ? "Roue (tirage stream)"
+      : activeModule === "bot-rain"
+      ? "Rain (distribution)"
+      : activeModule === "predictions"
+      ? "Prédictions"
       : "Module";
 
   const modalDesc =
@@ -554,43 +496,357 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       ? "Queue calls, limites par user, bans (users/machines/providers) + mode “autoriser seulement ces providers”."
       : activeModule === "bot-wheel"
       ? "Module bot_wheel: inscriptions + tirage (ne touche pas la roue quotidienne)."
+      : activeModule === "bot-rain"
+      ? "Distribution automatique de rubis (live-only) + réglages."
+      : activeModule === "predictions"
+      ? "Crée et gère des prédictions rubis (live-only)."
       : undefined;
 
+  const countsText = overview?.ok
+    ? `Commandes: ${overview.counts.commands} • Auto: ${overview.counts.autoposts} • Logs: ${overview.counts.logs}`
+    : "Stats indisponibles";
+
   return (
-    <div className="panel" style={{ padding: 14 }}>
-      <div className="panelTitle" style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-        <span>LunaBot</span>
-        <span style={{ opacity: 0.7, fontSize: 12, fontWeight: 900 }}>@{streamer.slug}</span>
+    <div className="panel llBotPanel" style={{ padding: 14 }}>
+      <style>{`
+        .llBotPanel{
+          border-radius: 20px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background:
+            radial-gradient(520px 220px at 10% 0%, rgba(124,77,255,0.18), rgba(0,0,0,0) 60%),
+            linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0.14));
+          box-shadow: 0 18px 60px rgba(0,0,0,0.30);
+          backdrop-filter: blur(10px);
+        }
+
+        .llBotTop{
+          display:flex;
+          align-items:flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .llBotTitleRow{
+          display:flex;
+          gap: 10px;
+          align-items: baseline;
+          flex-wrap: wrap;
+        }
+        .llBotTitle{
+          font-weight: 1100;
+          letter-spacing: -0.2px;
+          font-size: 16px;
+        }
+        .llBotSlug{
+          opacity: 0.7;
+          font-size: 12px;
+          font-weight: 900;
+        }
+
+        .llBotActions{
+          display:flex;
+          gap: 10px;
+          align-items:center;
+          flex-wrap: wrap;
+        }
+        .llBotStatPill{
+          padding: 8px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.14);
+          font-size: 12px;
+          opacity: 0.9;
+          white-space: nowrap;
+        }
+        .llBotSearch{
+          height: 38px;
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.14);
+          color: rgba(255,255,255,0.90);
+          padding: 0 12px;
+          outline: none;
+          min-width: 220px;
+        }
+        .llBotSearch::placeholder{
+          color: rgba(255,255,255,0.45);
+        }
+        .llBotSearch:focus-visible{
+          border-color: rgba(124,77,255,0.50);
+          box-shadow: 0 0 0 2px rgba(124,77,255,0.14);
+        }
+
+        .llBotCats{
+          display:flex;
+          gap: 8px;
+          padding: 6px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.14);
+          flex-wrap: wrap;
+        }
+        .llBotCat{
+          border-radius: 999px;
+          padding: 8px 12px;
+          font-weight: 950;
+          font-size: 12px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.12);
+          color: rgba(255,255,255,0.82);
+          cursor: pointer;
+          transition: transform .08s ease, border-color .12s ease, background .12s ease, box-shadow .12s ease;
+        }
+        .llBotCat:hover{
+          transform: translateY(-1px);
+          border-color: rgba(255,255,255,0.16);
+          background: rgba(255,255,255,0.05);
+        }
+        .llBotCat.isActive{
+          border-color: rgba(124,77,255,0.55);
+          background: rgba(124,77,255,0.14);
+          color: rgba(255,255,255,0.92);
+          box-shadow: 0 0 0 2px rgba(124,77,255,0.10);
+        }
+        .llBotCat:focus-visible{
+          outline: none;
+          box-shadow: 0 0 0 2px rgba(124,77,255,0.18);
+          border-color: rgba(124,77,255,0.55);
+        }
+
+        .llBotGrid{
+          margin-top: 14px;
+          display: grid;
+          gap: 12px;
+          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        }
+
+        .llBotCard{
+          position: relative;
+          width: 100%;
+          text-align: left;
+          padding: 14px;
+          border-radius: 18px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background:
+            radial-gradient(180px 90px at 18% 0%, rgba(255,255,255,0.07), rgba(0,0,0,0) 62%),
+            rgba(0,0,0,0.18);
+          color: rgba(255,255,255,0.90);
+          cursor: pointer;
+          transition: transform .10s ease, border-color .14s ease, background .14s ease, box-shadow .14s ease;
+          outline: none;
+          backdrop-filter: blur(10px);
+        }
+        .llBotCard:hover{
+          transform: translateY(-1px);
+          border-color: rgba(255,255,255,0.16);
+          background:
+            radial-gradient(180px 90px at 18% 0%, rgba(255,255,255,0.10), rgba(0,0,0,0) 62%),
+            rgba(255,255,255,0.05);
+          box-shadow: 0 16px 40px rgba(0,0,0,0.28);
+        }
+        .llBotCard:focus-visible{
+          box-shadow:
+            0 0 0 2px rgba(124,77,255,0.18),
+            0 16px 40px rgba(0,0,0,0.28);
+          border-color: rgba(124,77,255,0.55);
+        }
+        .llBotCard.isLocked{
+          opacity: 0.75;
+          cursor: not-allowed;
+        }
+        .llBotLockedOverlay{
+          position:absolute;
+          inset:0;
+          border-radius: 18px;
+          background: linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.22));
+          pointer-events:none;
+        }
+
+        .llBotCardTop{
+          display:flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: flex-start;
+        }
+        .llBotCardLeft{
+          display:flex;
+          gap: 12px;
+          align-items: flex-start;
+          min-width: 0;
+        }
+        .llBotIconWrap{
+          width: 44px;
+          height: 44px;
+          border-radius: 16px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(124,77,255,0.10);
+          box-shadow: inset 0 -10px 18px rgba(0,0,0,0.18);
+          flex: 0 0 44px;
+        }
+        .llBotIcon{
+          font-size: 18px;
+        }
+        .llBotCardText{
+          min-width: 0;
+        }
+        .llBotCardTitle{
+          font-weight: 1050;
+          letter-spacing: -0.2px;
+          font-size: 14px;
+          line-height: 1.15;
+          color: rgba(255,255,255,0.92);
+        }
+        .llBotCardDesc{
+          margin-top: 6px;
+          font-size: 12px;
+          line-height: 1.35;
+          color: rgba(255,255,255,0.66);
+        }
+
+        .llBotCardCtaRow{
+          margin-top: 14px;
+          display:flex;
+          justify-content: space-between;
+          align-items:center;
+          gap: 10px;
+          padding-top: 12px;
+          border-top: 1px solid rgba(255,255,255,0.08);
+          opacity: 0.95;
+        }
+        .llBotCardCta{
+          font-weight: 950;
+          font-size: 12px;
+          color: rgba(255,255,255,0.82);
+        }
+        .llBotCardArrow{
+          font-weight: 950;
+          opacity: 0.6;
+        }
+
+        .llBotHint{
+          margin-top: 10px;
+          padding: 10px 12px;
+          border-radius: 14px;
+          border: 1px solid rgba(255,90,90,0.22);
+          background: rgba(255,90,90,0.10);
+          color: rgba(255,200,200,0.92);
+          font-size: 12px;
+          font-weight: 850;
+        }
+
+        /* Modal */
+        .llBotModalOverlay{
+          position: fixed;
+          inset: 0;
+          z-index: 9999;
+          background: rgba(0,0,0,0.62);
+          backdrop-filter: blur(8px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+        }
+        .llBotModal{
+          width: min(1020px, 96vw);
+          max-height: 92vh;
+          overflow: hidden;
+          border-radius: 22px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background:
+            radial-gradient(520px 240px at 10% 0%, rgba(124,77,255,0.16), rgba(0,0,0,0) 60%),
+            rgba(10,10,14,0.94);
+          box-shadow: 0 30px 110px rgba(0,0,0,0.60);
+        }
+        .llBotModalHead{
+          padding: 16px;
+          border-bottom: 1px solid rgba(255,255,255,0.08);
+          display:flex;
+          align-items:flex-start;
+          justify-content: space-between;
+          gap: 12px;
+        }
+        .llBotModalTitle{
+          font-weight: 1100;
+          font-size: 16px;
+          letter-spacing: -0.2px;
+          color: rgba(255,255,255,0.92);
+          line-height: 1.15;
+        }
+        .llBotModalDesc{
+          margin-top: 6px;
+          font-size: 12px;
+          line-height: 1.35;
+          color: rgba(255,255,255,0.65);
+        }
+        .llBotModalClose{
+          border-radius: 14px;
+          padding: 10px 12px;
+          font-weight: 950;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.18);
+          color: rgba(255,255,255,0.86);
+          cursor: pointer;
+          transition: transform .08s ease, border-color .12s ease, background .12s ease, box-shadow .12s ease;
+        }
+        .llBotModalClose:hover{
+          transform: translateY(-1px);
+          border-color: rgba(255,255,255,0.16);
+          background: rgba(255,255,255,0.06);
+        }
+        .llBotModalClose:focus-visible{
+          outline: none;
+          box-shadow: 0 0 0 2px rgba(124,77,255,0.16);
+          border-color: rgba(124,77,255,0.55);
+        }
+        .llBotModalBody{
+          padding: 16px;
+          overflow: auto;
+          max-height: calc(92vh - 70px);
+        }
+
+        @media (prefers-reduced-motion: reduce){
+          .llBotCard, .llBotCat, .llBotModalClose{ transition: border-color .12s ease, background .12s ease, box-shadow .12s ease; }
+          .llBotCard:hover, .llBotCat:hover, .llBotModalClose:hover{ transform: none; }
+        }
+      `}</style>
+
+      <div className="llBotTop">
+        <div>
+          <div className="llBotTitleRow">
+            <span className="llBotTitle">LunaBot</span>
+            <span className="llBotSlug">@{streamer.slug}</span>
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 6, opacity: 0.8 }}>
+            Modules & outils pour piloter ton bot (chat, automation, rubis, OBS…)
+          </div>
+        </div>
+
+        <div className="llBotActions">
+          <button className="btnGhostInline" onClick={() => reloadAll()} disabled={loading}>
+            {loading ? "Chargement…" : "Rafraîchir"}
+          </button>
+
+          <span className="llBotStatPill">{countsText}</span>
+
+          <input
+            className="llBotSearch"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Rechercher un module…"
+          />
+        </div>
       </div>
 
-      {err && (
-        <div className="hint" style={{ marginTop: 10 }}>
-          ⚠️ {err}
-        </div>
-      )}
-
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
-        <button className="btnGhostInline" onClick={() => reloadAll()} disabled={loading}>
-          {loading ? "Chargement…" : "Rafraîchir"}
-        </button>
-
-        <div className="muted" style={{ fontSize: 12 }}>
-          {overview?.ok ? (
-            <>
-              Commandes: <b>{overview.counts.commands}</b> • Auto: <b>{overview.counts.autoposts}</b> • Logs:{" "}
-              <b>{overview.counts.logs}</b>
-            </>
-          ) : (
-            <>Stats indisponibles</>
-          )}
-        </div>
-      </div>
+      {err ? <div className="llBotHint">⚠️ {err}</div> : null}
 
       <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontWeight: 950, fontSize: 13 }}>Modules par catégorie</div>
-          <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-            Choisis une catégorie pour afficher les modules associés.
+          <div className="muted" style={{ fontSize: 12, marginTop: 4, opacity: 0.85 }}>
+            Choisis une catégorie puis ouvre un module. (Astuce : utilise la recherche 🔎)
           </div>
         </div>
 
@@ -604,25 +860,19 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
         />
       </div>
 
-      <div
-        style={{
-          marginTop: 14,
-          display: "grid",
-          gap: 12,
-          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-        }}
-      >
-        {visibleModules.map((m) => (
-          <QuickCard key={m.id} icon={m.icon} title={m.title} desc={m.desc} status={m.status} onOpen={m.onOpen} />
-        ))}
+      <div className="llBotGrid">
+        {visibleModules.length ? (
+          visibleModules.map((m) => (
+            <QuickCard key={m.id} icon={m.icon} title={m.title} desc={m.desc} status={m.status} onOpen={m.onOpen} />
+          ))
+        ) : (
+          <div className="muted" style={{ opacity: 0.75, padding: 12 }}>
+            Aucun module ne correspond à ta recherche.
+          </div>
+        )}
       </div>
 
-      <Modal
-        open={!!activeModule}
-        title={modalTitle}
-        desc={modalDesc}
-        onClose={() => setActiveModule(null)}
-      >
+      <Modal open={!!activeModule} title={modalTitle} desc={modalDesc} onClose={() => setActiveModule(null)}>
         {activeModule === "commands" ? (
           <CommandsModule token={token} commands={commands} onReload={reloadAll} />
         ) : activeModule === "autoposts" ? (
@@ -645,16 +895,9 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
         ) : activeModule === "bot-wheel" ? (
           <BotWheelModule token={token} />
         ) : activeModule === "bot-rain" ? (
-          <BotRainModule
-            token={token}
-            streamerSlug={streamer.slug}
-          />
+          <BotRainModule token={token} streamerSlug={streamer.slug} />
         ) : activeModule === "predictions" ? (
-          <PredictionsModule
-            token={token}
-            streamerId={Number(streamer.id)}
-            streamerSlug={streamer.slug}
-          />
+          <PredictionsModule token={token} streamerId={Number(streamer.id)} streamerSlug={streamer.slug} />
         ) : null}
       </Modal>
     </div>

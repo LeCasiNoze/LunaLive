@@ -1,4 +1,4 @@
-// ModerationSection.tsx
+// web/src/components/dashboard/sections/ModerationSection.tsx
 import * as React from "react";
 import type { ApiMyStreamer } from "../../../lib/api";
 import { useAuth } from "../../../auth/AuthProvider";
@@ -48,7 +48,6 @@ function fmtDate(iso: string) {
   return d.toLocaleString();
 }
 
-// ✅ accepte "ban~6" OU "ban|6"
 function parseEventId(id: string): { kind: string; key: string } | null {
   const raw = String(id || "");
   const m = raw.match(/^([a-z_]+)(?:~|\|)(.+)$/i);
@@ -67,7 +66,7 @@ function AvatarPlaceholder({ name }: { name: string }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontWeight: 950,
+        fontWeight: 1050,
         border: "1px solid rgba(255,255,255,0.14)",
         background: "rgba(255,255,255,0.06)",
         flex: "0 0 34px",
@@ -75,6 +74,21 @@ function AvatarPlaceholder({ name }: { name: string }) {
       title="Avatar (TODO)"
     >
       {letter}
+    </div>
+  );
+}
+
+function CardShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        padding: 12,
+        borderRadius: 18,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(0,0,0,0.12)",
+      }}
+    >
+      {children}
     </div>
   );
 }
@@ -88,22 +102,18 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
 
-  // Search MODS
   const [q, setQ] = React.useState("");
   const [results, setResults] = React.useState<ApiUserSearchRow[]>([]);
   const [searching, setSearching] = React.useState(false);
 
-  // Search BANS
   const [qBan, setQBan] = React.useState("");
   const [banResults, setBanResults] = React.useState<ApiUserSearchRow[]>([]);
   const [banSearching, setBanSearching] = React.useState(false);
 
-  // Details modal
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [detail, setDetail] = React.useState<ApiModerationEventDetail | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
 
-  // Actions
   const [actionLoading, setActionLoading] = React.useState(false);
   const [actionErr, setActionErr] = React.useState<string | null>(null);
 
@@ -132,7 +142,6 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Debounce search mods
   React.useEffect(() => {
     if (!token) return;
     const qq = q.trim();
@@ -157,7 +166,6 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     return () => window.clearTimeout(id);
   }, [q, token]);
 
-  // Debounce search bans
   React.useEffect(() => {
     if (!token) return;
     const qq = qBan.trim();
@@ -297,151 +305,148 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     return (id: number) => s.has(id);
   }, [bans]);
 
-  const layout: React.CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: "1fr 1.2fr",
-    gap: 14,
-    alignItems: "start",
-  };
+  const useMobile = typeof window !== "undefined" && window.matchMedia?.("(max-width: 980px)")?.matches;
 
-  const mobileLayout: React.CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: "1fr",
-    gap: 14,
-  };
-
-  const useMobile =
-    typeof window !== "undefined" && window.matchMedia?.("(max-width: 980px)")?.matches;
-
-  // ✅ Cadre + scroll pour la liste des events
-  const eventsFrame: React.CSSProperties = {
-    marginTop: 10,
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.14)",
-    padding: 10,
-  };
-
-  const eventsScroll: React.CSSProperties = {
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-    maxHeight: useMobile ? 320 : 560, // ajuste si tu veux
-    overflowY: "auto",
-    paddingRight: 6,
-    WebkitOverflowScrolling: "touch",
-    overscrollBehavior: "contain",
-  };
-
-  // ---- Status “actif ?” pour les boutons (basé sur meta)
   const parsedOpen = openId ? parseEventId(openId) : null;
   const metaAny: any = detail?.meta || {};
   const timeoutExpiresAt = metaAny?.expiresAt ? String(metaAny.expiresAt) : null;
 
   const banIsActive = !!detail && parsedOpen?.kind === "ban" && (metaAny?.isActive ?? true);
   const muteIsActive =
-    !!detail &&
-    parsedOpen?.kind === "mute" &&
-    !!timeoutExpiresAt &&
-    new Date(timeoutExpiresAt).getTime() > Date.now();
+    !!detail && parsedOpen?.kind === "mute" && !!timeoutExpiresAt && new Date(timeoutExpiresAt).getTime() > Date.now();
 
   return (
     <div>
+      <style>{`
+        .llGridMod{
+          display:grid;
+          grid-template-columns: 1fr 1.1fr;
+          gap: 14px;
+          align-items:start;
+          margin-top: 12px;
+        }
+        @media (max-width: 980px){
+          .llGridMod{ grid-template-columns: 1fr; }
+        }
+        .llInput{
+          width: 100%;
+          padding: 10px 12px;
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.20);
+          color: white;
+          outline: none;
+          font-weight: 850;
+        }
+        .llInput:focus{
+          border-color: rgba(124,77,255,0.45);
+          box-shadow: 0 0 0 2px rgba(124,77,255,0.10);
+        }
+        .llList{
+          display:flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-top: 10px;
+        }
+        .llRow{
+          display:flex;
+          align-items:center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 10px 10px;
+          border-radius: 16px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(255,255,255,0.03);
+        }
+        .llRow:hover{
+          border-color: rgba(255,255,255,0.14);
+          background: rgba(255,255,255,0.06);
+        }
+        .llScroll{
+          display:flex;
+          flex-direction: column;
+          gap: 8px;
+          max-height: ${useMobile ? 360 : 620}px;
+          overflow-y: auto;
+          padding-right: 6px;
+          WebkitOverflowScrolling: touch;
+          overscroll-behavior: contain;
+        }
+      `}</style>
+
       <div className="panel">
         <div className="panelTitle">Modération</div>
-        <div className="muted">Chaîne : @{streamer.slug}</div>
+        <div className="mutedSmall" style={{ marginTop: 6 }}>
+          Chaîne : <b>@{streamer.slug}</b>
+        </div>
         {err ? (
-          <div className="hint" style={{ opacity: 0.9 }}>
+          <div className="hint" style={{ opacity: 0.95, marginTop: 10 }}>
             ⚠️ {err}
           </div>
         ) : null}
       </div>
 
-      {loading ? <div className="muted">Chargement…</div> : null}
+      {loading ? <div className="muted" style={{ marginTop: 10 }}>Chargement…</div> : null}
 
-      <div style={useMobile ? mobileLayout : layout}>
-        {/* LEFT: MODS + BANS */}
+      <div className="llGridMod" style={loading ? { opacity: 0.85 } : undefined}>
+        {/* LEFT */}
         <div className="panel">
           <div className="panelTitle">Modérateurs</div>
 
-          <div className="field" style={{ marginTop: 10 }}>
-            <label>Ajouter un modérateur</label>
+          <CardShell>
+            <div className="mutedSmall" style={{ marginBottom: 8 }}>
+              Ajouter un modérateur
+            </div>
+
             <input
+              className="llInput"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Rechercher un utilisateur…"
             />
-          </div>
 
-          {searching ? <div className="hint">Recherche…</div> : null}
+            {searching ? <div className="mutedSmall" style={{ marginTop: 10 }}>Recherche…</div> : null}
 
-          {results.length > 0 ? (
-            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-              {results.map((u) => (
-                <div
-                  key={u.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    padding: "10px 10px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(255,255,255,0.03)",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                    <AvatarPlaceholder name={u.username} />
-                    <div style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {u.username}
+            {results.length > 0 ? (
+              <div className="llList">
+                {results.map((u) => (
+                  <div key={u.id} className="llRow">
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <AvatarPlaceholder name={u.username} />
+                      <div style={{ fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis" }}>{u.username}</div>
                     </div>
+
+                    <button
+                      className="btnPrimarySmall"
+                      disabled={isAlreadyMod(u.id)}
+                      onClick={() => onAdd(u.id)}
+                      title={isAlreadyMod(u.id) ? "Déjà modérateur" : "Ajouter"}
+                    >
+                      Ajouter
+                    </button>
                   </div>
+                ))}
+              </div>
+            ) : q.trim().length >= 2 && !searching ? (
+              <div className="hint" style={{ marginTop: 10 }}>Aucun résultat.</div>
+            ) : null}
+          </CardShell>
 
-                  <button
-                    className="btnPrimarySmall"
-                    disabled={isAlreadyMod(u.id)}
-                    onClick={() => onAdd(u.id)}
-                    title={isAlreadyMod(u.id) ? "Déjà modérateur" : "Ajouter"}
-                  >
-                    Ajouter
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : q.trim().length >= 2 && !searching ? (
-            <div className="hint">Aucun résultat.</div>
-          ) : null}
-
-          <div style={{ marginTop: 14, fontWeight: 950 }}>Liste</div>
+          <div style={{ marginTop: 12, fontWeight: 1100 }}>Liste</div>
 
           {mods.length === 0 ? (
-            <div className="hint">Aucun modérateur pour le moment.</div>
+            <div className="hint" style={{ marginTop: 10 }}>Aucun modérateur pour le moment.</div>
           ) : (
-            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="llList">
               {mods.map((m) => (
-                <div
-                  key={m.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    padding: "10px 10px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(255,255,255,0.03)",
-                  }}
-                >
+                <div key={m.id} className="llRow">
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                     <AvatarPlaceholder name={m.username} />
                     <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}
-                      >
-                        {m.username}
+                      <div style={{ fontWeight: 1050, overflow: "hidden", textOverflow: "ellipsis" }}>{m.username}</div>
+                      <div className="mutedSmall" style={{ opacity: 0.8 }}>
+                        Ajouté le {fmtDate(m.createdAt)}
                       </div>
-                      <div className="mutedSmall">Ajouté le {fmtDate(m.createdAt)}</div>
                     </div>
                   </div>
 
@@ -453,100 +458,66 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
             </div>
           )}
 
-          {/* ✅ BANS SECTION (copie du système mods) */}
-          <div
-            style={{
-              marginTop: 18,
-              borderTop: "1px solid rgba(255,255,255,0.08)",
-              paddingTop: 14,
-            }}
-          >
+          {/* BANS */}
+          <div style={{ marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 14 }}>
             <div className="panelTitle">Bannis</div>
 
-            <div className="field" style={{ marginTop: 10 }}>
-              <label>Bannir un utilisateur</label>
+            <CardShell>
+              <div className="mutedSmall" style={{ marginBottom: 8 }}>
+                Bannir un utilisateur
+              </div>
+
               <input
+                className="llInput"
                 value={qBan}
                 onChange={(e) => setQBan(e.target.value)}
                 placeholder="Rechercher un utilisateur…"
               />
-            </div>
 
-            {banSearching ? <div className="hint">Recherche…</div> : null}
+              {banSearching ? <div className="mutedSmall" style={{ marginTop: 10 }}>Recherche…</div> : null}
 
-            {banResults.length > 0 ? (
-              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                {banResults.map((u) => (
-                  <div
-                    key={u.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      padding: "10px 10px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(255,255,255,0.03)",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                      <AvatarPlaceholder name={u.username} />
-                      <div style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {u.username}
+              {banResults.length > 0 ? (
+                <div className="llList">
+                  {banResults.map((u) => (
+                    <div key={u.id} className="llRow">
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <AvatarPlaceholder name={u.username} />
+                        <div style={{ fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis" }}>{u.username}</div>
                       </div>
+
+                      <button
+                        className="btnPrimarySmall"
+                        disabled={isAlreadyBanned(u.id)}
+                        onClick={() => onBan(u.id)}
+                        title={isAlreadyBanned(u.id) ? "Déjà banni" : "Bannir"}
+                      >
+                        Bannir
+                      </button>
                     </div>
+                  ))}
+                </div>
+              ) : qBan.trim().length >= 2 && !banSearching ? (
+                <div className="hint" style={{ marginTop: 10 }}>Aucun résultat.</div>
+              ) : null}
+            </CardShell>
 
-                    <button
-                      className="btnPrimarySmall"
-                      disabled={isAlreadyBanned(u.id)}
-                      onClick={() => onBan(u.id)}
-                      title={isAlreadyBanned(u.id) ? "Déjà banni" : "Bannir"}
-                    >
-                      Bannir
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : qBan.trim().length >= 2 && !banSearching ? (
-              <div className="hint">Aucun résultat.</div>
-            ) : null}
-
-            <div style={{ marginTop: 14, fontWeight: 950 }}>Liste</div>
+            <div style={{ marginTop: 12, fontWeight: 1100 }}>Liste</div>
 
             {bans.length === 0 ? (
-              <div className="hint">Aucun banni pour le moment.</div>
+              <div className="hint" style={{ marginTop: 10 }}>Aucun banni pour le moment.</div>
             ) : (
-              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="llList">
                 {bans.map((b) => (
-                  <div
-                    key={b.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      padding: "10px 10px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(255,255,255,0.03)",
-                    }}
-                  >
+                  <div key={b.id} className="llRow">
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                       <AvatarPlaceholder name={b.username} />
                       <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontWeight: 950,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {b.username}
+                        <div style={{ fontWeight: 1050, overflow: "hidden", textOverflow: "ellipsis" }}>{b.username}</div>
+                        <div className="mutedSmall" style={{ opacity: 0.8 }}>
+                          Banni le {fmtDate(b.createdAt)}
                         </div>
-                        <div className="mutedSmall">Banni le {fmtDate(b.createdAt)}</div>
                         {b.reason ? (
-                          <div className="mutedSmall" style={{ opacity: 0.85 }}>
+                          <div className="mutedSmall" style={{ opacity: 0.75 }}>
                             Raison : {b.reason}
                           </div>
                         ) : null}
@@ -563,39 +534,24 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
           </div>
         </div>
 
-        {/* RIGHT: EVENTS */}
+        {/* RIGHT */}
         <div className="panel">
           <div className="panelTitle">Events modération</div>
 
           {events.length === 0 ? (
-            <div className="hint">Aucun event pour le moment.</div>
+            <div className="hint" style={{ marginTop: 10 }}>Aucun event pour le moment.</div>
           ) : (
-            <div style={eventsFrame}>
-              <div style={eventsScroll}>
+            <CardShell>
+              <div className="llScroll">
                 {events.map((e) => (
-                  <div
-                    key={e.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      padding: "10px 10px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(255,255,255,0.03)",
-                    }}
-                  >
+                  <div key={e.id} className="llRow">
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 950 }}>
-                        {typeLabel(e.type)}
-                        <span style={{ opacity: 0.6, fontWeight: 800 }}>
-                          {" "}
-                          · {fmtDate(e.createdAt)}
-                        </span>
+                      <div style={{ fontWeight: 1050 }}>
+                        {typeLabel(e.type)}{" "}
+                        <span style={{ opacity: 0.65, fontWeight: 900 }}>· {fmtDate(e.createdAt)}</span>
                       </div>
 
-                      <div className="mutedSmall" style={{ marginTop: 2 }}>
+                      <div className="mutedSmall" style={{ marginTop: 2, opacity: 0.85 }}>
                         {e.actorUsername ? <b>{e.actorUsername}</b> : "—"}
                         {e.targetUsername ? (
                           <span>
@@ -606,19 +562,19 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                       </div>
 
                       {e.messagePreview ? (
-                        <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.8 }}>
+                        <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.78 }}>
                           “{e.messagePreview}”
                         </div>
                       ) : null}
                     </div>
 
                     <button className="btnGhostSmall" onClick={() => openDetails(e.id)}>
-                      Plus de détail
+                      Détails
                     </button>
                   </div>
                 ))}
               </div>
-            </div>
+            </CardShell>
           )}
         </div>
       </div>
@@ -641,10 +597,12 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                 <div className="hint">Impossible de charger le détail.</div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div className="panel" style={{ marginTop: 0 }}>
-                    <div style={{ fontWeight: 950 }}>{typeLabel(detail.type)}</div>
-                    <div className="mutedSmall">{fmtDate(detail.createdAt)}</div>
-                    <div className="mutedSmall" style={{ marginTop: 6 }}>
+                  <CardShell>
+                    <div style={{ fontWeight: 1050 }}>{typeLabel(detail.type)}</div>
+                    <div className="mutedSmall" style={{ opacity: 0.8 }}>
+                      {fmtDate(detail.createdAt)}
+                    </div>
+                    <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.85 }}>
                       {detail.actorUsername ? <b>{detail.actorUsername}</b> : "—"}
                       {detail.targetUsername ? (
                         <span>
@@ -653,20 +611,19 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                         </span>
                       ) : null}
                     </div>
-                  </div>
+                  </CardShell>
 
-                  {/* ACTIONS */}
                   {parsedOpen?.kind === "ban" || parsedOpen?.kind === "mute" ? (
-                    <div className="panel" style={{ marginTop: 0 }}>
-                      <div style={{ fontWeight: 950 }}>Actions</div>
+                    <CardShell>
+                      <div style={{ fontWeight: 1050 }}>Actions</div>
 
                       {actionErr ? (
-                        <div className="hint" style={{ opacity: 0.95, marginTop: 8 }}>
+                        <div className="hint" style={{ opacity: 0.95, marginTop: 10 }}>
                           ⚠️ {actionErr}
                         </div>
                       ) : null}
 
-                      <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
                         {parsedOpen?.kind === "ban" ? (
                           <button
                             className="btnPrimarySmall"
@@ -697,17 +654,17 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                           Expire : <b>{fmtDate(timeoutExpiresAt)}</b>
                         </div>
                       ) : null}
-                    </div>
+                    </CardShell>
                   ) : null}
 
                   {detail.messageContent ? (
-                    <div className="panel" style={{ marginTop: 0 }}>
-                      <div style={{ fontWeight: 950 }}>Message concerné</div>
+                    <CardShell>
+                      <div style={{ fontWeight: 1050 }}>Message concerné</div>
                       <div
                         style={{
-                          marginTop: 8,
-                          padding: 10,
-                          borderRadius: 14,
+                          marginTop: 10,
+                          padding: 12,
+                          borderRadius: 16,
                           border: "1px solid rgba(255,255,255,0.10)",
                           background: "rgba(0,0,0,0.18)",
                           whiteSpace: "pre-wrap",
@@ -717,15 +674,15 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                       >
                         {detail.messageContent}
                       </div>
-                    </div>
+                    </CardShell>
                   ) : null}
 
                   {detail.meta ? (
-                    <div className="panel" style={{ marginTop: 0 }}>
-                      <div style={{ fontWeight: 950 }}>Meta</div>
+                    <CardShell>
+                      <div style={{ fontWeight: 1050 }}>Meta</div>
                       <pre
                         style={{
-                          marginTop: 8,
+                          marginTop: 10,
                           fontSize: 12,
                           opacity: 0.9,
                           whiteSpace: "pre-wrap",
@@ -733,7 +690,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
                       >
                         {JSON.stringify(detail.meta, null, 2)}
                       </pre>
-                    </div>
+                    </CardShell>
                   ) : null}
                 </div>
               )}

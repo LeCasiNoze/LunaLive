@@ -6,14 +6,22 @@
   border-bottom: 1px solid rgba(255,255,255,0.08);
   background: rgba(17, 10, 23, 0.62);
   backdrop-filter: blur(10px);
+
+  /* ✅ IMPORTANT: laisse le dropdown dépasser */
+  overflow: visible;
 }
+
 .topbarInner{
   display: grid;
   grid-template-columns: var(--sideW) 1fr var(--sideW);
   align-items: center;
   gap: 12px;
   padding: 14px 18px;
+
+  /* ✅ IMPORTANT: laisse le dropdown dépasser */
+  overflow: visible;
 }
+
 .leftSlot{ display:flex; align-items:center; }
 .rightSlot{ display:flex; justify-content: flex-end; align-items:center; }
 .rightRow{ display:flex; gap: 10px; align-items:center; }

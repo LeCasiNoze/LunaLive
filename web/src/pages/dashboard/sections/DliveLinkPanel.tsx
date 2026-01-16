@@ -1,3 +1,4 @@
+// web/src/components/dashboard/sections/DliveLinkPanel.tsx
 import * as React from "react";
 import { useAuth } from "../../../auth/AuthProvider";
 import {
@@ -7,6 +8,41 @@ import {
   dliveLinkToggle,
   dliveLinkUnlink,
 } from "../../../lib/api";
+
+function Chip({
+  tone = "neutral",
+  children,
+}: {
+  tone?: "neutral" | "pink" | "green" | "blue";
+  children: React.ReactNode;
+}) {
+  const tones: Record<string, { bg: string; bd: string }> = {
+    neutral: { bg: "rgba(255,255,255,0.06)", bd: "rgba(255,255,255,0.10)" },
+    pink: { bg: "rgba(255,90,180,0.14)", bd: "rgba(255,90,180,0.26)" },
+    green: { bg: "rgba(80,240,170,0.12)", bd: "rgba(80,240,170,0.22)" },
+    blue: { bg: "rgba(80,160,255,0.14)", bd: "rgba(80,160,255,0.26)" },
+  };
+  const t = tones[tone] ?? tones.neutral;
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "7px 12px",
+        borderRadius: 999,
+        border: `1px solid ${t.bd}`,
+        background: t.bg,
+        fontWeight: 950,
+        fontSize: 12,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
 
 export function DliveLinkPanel() {
   const { token } = useAuth();
@@ -93,25 +129,23 @@ export function DliveLinkPanel() {
     }
   }
 
-  // pas connecté
   if (!token) {
     return (
       <div className="panel">
-        <div className="panelTitle">Chaîne DLive (poll)</div>
+        <div className="panelTitle">Chaîne DLive</div>
         <div className="muted">Connecte-toi pour lier ta chaîne DLive.</div>
       </div>
     );
   }
 
-  // loading initial
   if (!me?.ok) {
     return (
       <div className="panel">
-        <div className="panelTitle">Chaîne DLive (poll)</div>
+        <div className="panelTitle">Chaîne DLive</div>
         <div className="muted">Chargement…</div>
         {err ? (
-          <div style={{ marginTop: 12, fontWeight: 800, color: "rgba(220,60,80,0.95)" }}>
-            Erreur : {err}
+          <div className="hint" style={{ marginTop: 10, opacity: 0.95 }}>
+            ⚠️ {err}
           </div>
         ) : null}
       </div>
@@ -123,118 +157,140 @@ export function DliveLinkPanel() {
 
   return (
     <div className="panel">
-      <div className="panelTitle">Chaîne DLive (poll)</div>
+      <style>{`
+        .llRowCard{
+          border-radius: 18px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.12);
+          padding: 14px;
+        }
+        .llMono{
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+        .llInput{
+          min-width: 320px;
+          padding: 10px 12px;
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.20);
+          color: white;
+          outline: none;
+          font-weight: 850;
+        }
+        .llInput:focus{
+          border-color: rgba(124,77,255,0.45);
+          box-shadow: 0 0 0 2px rgba(124,77,255,0.10);
+        }
+      `}</style>
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={!!me.useLinked}
-            disabled={!linked || loading}
-            onChange={(e) => onToggle(e.target.checked)}
-          />
-          <span>
-            <b>Utiliser ma chaîne DLive</b>
-          </span>
-        </label>
+      <div className="panelTitle">Chaîne DLive</div>
 
-        <span className="muted">
-          {me.useLinked ? (
+      <div className="llRowCard" style={{ marginTop: 10 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={!!me.useLinked}
+              disabled={!linked || loading}
+              onChange={(e) => onToggle(e.target.checked)}
+            />
+            <span style={{ fontWeight: 950 }}>Utiliser ma chaîne DLive</span>
+          </label>
+
+          <div style={{ flex: 1 }} />
+
+          <Chip tone={linked ? "green" : "neutral"}>{linked ? "✅ Liée" : "⚠️ Non liée"}</Chip>
+          <Chip tone={me.useLinked ? "blue" : "neutral"}>
+            {me.useLinked ? `📡 Poll sur ${me.linkedDisplayname}` : "🏷️ Poll provider assigné"}
+          </Chip>
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          {linked ? (
+            <div className="mutedSmall">
+              Liée : <b>{me.linkedDisplayname}</b>{" "}
+              <span className="mutedSmall" style={{ opacity: 0.75 }}>
+                ({me.linkedUsername || "username inconnu"})
+              </span>
+              <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button className="btnGhostSmall" onClick={onUnlink} disabled={loading}>
+                  ❌ Dissocier
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mutedSmall">Aucune chaîne DLive liée pour le moment.</div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 14 }}>
+          {pending ? (
             <>
-              → poll sur <b>{me.linkedDisplayname}</b>
+              <div className="mutedSmall">
+                1) Envoie ce code dans le chat de <b>{pending.requestedDisplayname}</b> :
+              </div>
+
+              <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div
+                  className="llMono"
+                  style={{
+                    fontWeight: 1000,
+                    padding: "10px 12px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "rgba(0,0,0,0.18)",
+                  }}
+                >
+                  {pending.code}
+                </div>
+
+                <button className="btnGhostSmall" onClick={() => navigator.clipboard?.writeText(pending.code)}>
+                  📋 Copier
+                </button>
+              </div>
+
+              <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85 }}>
+                2) Puis clique “Vérifier”. (Si tu l’as déjà envoyé avant de cliquer, renvoie-le une 2e fois.)
+              </div>
+
+              <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button className="btnPrimarySmall" onClick={onVerify} disabled={loading}>
+                  ✅ Vérifier
+                </button>
+                <button className="btnGhostSmall" onClick={reload} disabled={loading}>
+                  🔄 Rafraîchir
+                </button>
+              </div>
             </>
           ) : (
             <>
-              → poll sur le <b>provider assigné</b>
-            </>
-          )}
-        </span>
-      </div>
-
-      <div style={{ marginTop: 10 }}>
-        {linked ? (
-          <div className="muted">
-            Liée : <b>{me.linkedDisplayname}</b>
-            <span className="muted">({me.linkedUsername || "username inconnu"})</span>
-            <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button className="btnGhostInline" onClick={onUnlink} disabled={loading}>
-                ❌ Dissocier
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="muted">Aucune chaîne DLive liée pour le moment.</div>
-        )}
-      </div>
-
-      <div style={{ marginTop: 14, borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: 14 }}>
-        {pending ? (
-          <>
-            <div className="muted">
-              1) Envoie ce code dans le chat de <b>{pending.requestedDisplayname}</b> :
-            </div>
-
-            <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <div
-                style={{
-                  fontFamily: "monospace",
-                  fontWeight: 900,
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  background: "rgba(0,0,0,0.06)",
-                }}
-              >
-                {pending.code}
+              <div className="mutedSmall">
+                Entre ton <b>nom de chaîne DLive</b> ou l’URL (ex:{" "}
+                <span className="llMono">https://dlive.tv/LeCasinoze</span>)
               </div>
 
-              <button className="btnGhostInline" onClick={() => navigator.clipboard?.writeText(pending.code)}>
-                📋 Copier
-              </button>
-            </div>
-
-            <div className="muted" style={{ marginTop: 8 }}>
-              2) Puis clique “Vérifier”.
-              <br />
-              <span className="muted">(Si tu l’as déjà envoyé avant de cliquer, renvoie-le une 2e fois.)</span>
-            </div>
-
-            <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button className="btnPrimary" onClick={onVerify} disabled={loading}>
-                ✅ Vérifier
-              </button>
-              <button className="btnGhostInline" onClick={reload} disabled={loading}>
-                🔄 Rafraîchir
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="muted">
-              Entre ton <b>nom de chaîne DLive</b> ou l’URL (ex:{" "}
-              <span style={{ fontFamily: "monospace" }}>https://dlive.tv/LeCasinoze</span>)
-            </div>
-
-            <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <input
-                value={channel}
-                onChange={(e) => setChannel(e.target.value)}
-                placeholder="LeCasinoze ou https://dlive.tv/LeCasinoze"
-                style={{ minWidth: 320 }}
-                disabled={loading}
-              />
-              <button className="btnPrimary" onClick={onRequest} disabled={loading || channel.trim().length < 2}>
-                🔗 Générer un code
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-
-      {err ? (
-        <div style={{ marginTop: 12, fontWeight: 800, color: "rgba(220,60,80,0.95)" }}>
-          Erreur : {err}
+              <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <input
+                  value={channel}
+                  onChange={(e) => setChannel(e.target.value)}
+                  placeholder="LeCasinoze ou https://dlive.tv/LeCasinoze"
+                  className="llInput"
+                  disabled={loading}
+                />
+                <button className="btnPrimarySmall" onClick={onRequest} disabled={loading || channel.trim().length < 2}>
+                  🔗 Générer un code
+                </button>
+              </div>
+            </>
+          )}
         </div>
-      ) : null}
+
+        {err ? (
+          <div className="hint" style={{ marginTop: 12, opacity: 0.95 }}>
+            ⚠️ {err}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
