@@ -3,6 +3,17 @@
 function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
 }
+export type ApiTopClip = ApiClip & {
+  streamerDisplayName: string;
+  ownerUserId: number | null;
+  avatarUrl: string | null;
+};
+
+export type GetTopClipsResp = {
+  ok: boolean;
+  total: number;
+  clips: ApiTopClip[];
+};
 
 export type ApiClip = {
   id: number;
@@ -110,4 +121,11 @@ export async function deleteStreamerClip(clipId: number, token: string) {
     {},
     token
   );
+}
+export async function getTopClips(range: "month" | "30d", limit: number, token?: string | null) {
+  const qs = new URLSearchParams();
+  qs.set("range", range);
+  qs.set("limit", String(Math.max(1, Math.min(50, Number(limit || 24)))));
+
+  return await getJson<GetTopClipsResp>(`/clips/top?${qs.toString()}`, token);
 }

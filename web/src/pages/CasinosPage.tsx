@@ -501,7 +501,7 @@ export default function CasinosPage() {
                   <span className="mutedSmall">Apparaissez ici.</span>
                 </div>
                 <div className="mutedSmall" style={{ opacity: 0.95 }}>
-                  🇬🇧 <b>Serious casino?</b> Get featured here — premium visibility on LunaLive.
+                  🇬🇧 <b>Serious casino?</b> Get featured here.
                 </div>
               </div>
 
