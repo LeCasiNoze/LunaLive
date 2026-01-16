@@ -70,14 +70,34 @@ publicRouter.get(
   "/streamers",
   a(async (_req, res) => {
     const { rows } = await pool.query(
-      `SELECT id::text AS id, slug, display_name AS "displayName", title, viewers, is_live AS "isLive", featured
-       FROM streamers
-       WHERE (suspended_until IS NULL OR suspended_until < NOW())
-       ORDER BY LOWER(display_name) ASC`
+      `SELECT
+         s.id::text AS id,
+         s.slug,
+         s.display_name AS "displayName",
+         s.title,
+         s.viewers,
+         s.is_live AS "isLive",
+         s.featured,
+         s.user_id AS "ownerUserId",
+
+         -- optionnel mais pratique: URL directe si avatar existe
+         CASE
+           WHEN ua.user_id IS NOT NULL THEN ('/avatars/u/' || s.user_id::text)
+           ELSE NULL
+         END AS "avatarUrl"
+
+       FROM streamers s
+       LEFT JOIN user_avatars ua
+         ON ua.user_id = s.user_id
+
+       WHERE (s.suspended_until IS NULL OR s.suspended_until < NOW())
+       ORDER BY LOWER(s.display_name) ASC`
     );
+
     res.json(rows);
   })
 );
+
 
 publicRouter.get(
   "/streamers/:slug",

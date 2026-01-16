@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { getStreamers } from "../lib/api";
 import { svgThumb } from "../lib/thumb";
 
-const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
 
 function norm(s: any) {
@@ -48,15 +48,19 @@ function pickStreamerAvatarUrlFromStreamer(s: any) {
     s?.owner_id ??
     null;
 
-  const direct = s?.avatarUrl ? absolutize(s.avatarUrl) || s.avatarUrl : null;
+  const directRaw = s?.avatarUrl ?? s?.avatar_url ?? null;
+  const direct = directRaw ? absolutize(String(directRaw)) || String(directRaw) : null;
+
+  // cache-bust soft (1/min)
   const byUid = uid ? absolutize(`/avatars/u/${uid}?v=${Math.floor(Date.now() / 60000)}`) : null;
 
   return {
     url: direct || byUid,
     uid,
-    directAvatarUrl: s?.avatarUrl ?? null,
+    directAvatarUrl: directRaw,
   };
 }
+
 
 function Pill({
   tone,
@@ -248,10 +252,15 @@ export default function BrowsePage() {
 
         return {
           ...s,
+
+          // ✅ fields attendus par le resolver (comme CasinoPage)
+          ownerUserId: s.ownerUserId ?? s.owner_user_id ?? null,
+          userId: s.userId ?? s.user_id ?? null,
+          avatarUrl: s.avatarUrl ?? s.avatar_url ?? null,
+
           thumb: svgThumb(s.displayName),
           previewUrl: liveThumbFinal,
           thumbUrl: s.thumbUrl ?? s.thumb_url ?? null,
-          avatarUrl: s.avatarUrl ?? s.avatar_url ?? null,
         };
       });
 
@@ -515,8 +524,27 @@ export default function BrowsePage() {
                             >
                               {s.displayName}
                             </div>
-                            <div className="mutedSmall" style={{ opacity: 0.95, marginTop: 4 }}>
-                              {s.title ? s.title : s.isLive ? "Live en cours" : "Hors ligne"}
+                            <div
+                              className="mutedSmall"
+                              style={{
+                                opacity: 0.95,
+                                marginTop: 4,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                maxWidth: "100%",
+                              }}
+                              title={s.title || undefined}
+                            >
+                              {(s.title
+                                ? String(s.title).trim()
+                                : s.isLive
+                                ? "Live en cours"
+                                : "Hors ligne"
+                              ).length > 30
+                                ? (s.title ? String(s.title).trim() : s.isLive ? "Live en cours" : "Hors ligne")
+                                    .slice(0, 27) + "..."
+                                : (s.title ? String(s.title).trim() : s.isLive ? "Live en cours" : "Hors ligne")}
                             </div>
                           </div>
                         </div>

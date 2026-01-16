@@ -52,11 +52,7 @@ function pickBestCapIndex(levels: any[], maxHeight: number): number {
 function GearIcon({ size = 18 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
+      <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" strokeWidth="1.8" />
       <path
         d="M19.4 13a7.8 7.8 0 0 0 .05-2l2-1.2-2-3.4-2.3.7a8.2 8.2 0 0 0-1.7-1L15.3 3h-4L8.6 6.1a8.2 8.2 0 0 0-1.7 1l-2.3-.7-2 3.4 2 1.2a7.8 7.8 0 0 0 0 2l-2 1.2 2 3.4 2.3-.7a8.2 8.2 0 0 0 1.7 1L11.3 21h4l1.7-3.1a8.2 8.2 0 0 0 1.7-1l2.3.7 2-3.4-2-1.2Z"
         stroke="currentColor"
@@ -65,6 +61,14 @@ function GearIcon({ size = 18 }: { size?: number }) {
       />
     </svg>
   );
+}
+
+function forceRate1(video: HTMLVideoElement) {
+  // Important: playbackRate peut rester “collé” entre deux loads
+  try {
+    video.defaultPlaybackRate = 1;
+    video.playbackRate = 1;
+  } catch {}
 }
 
 export function DlivePlayer({
@@ -82,8 +86,7 @@ export function DlivePlayer({
   const menuRef = React.useRef<HTMLDivElement>(null);
 
   // ✅ Debug uniquement en DEV + ?debug=1 (aucun texte UI)
-  const debugEnabled =
-    !!import.meta.env.DEV && new URLSearchParams(window.location.search).has("debug");
+  const debugEnabled = !!import.meta.env.DEV && new URLSearchParams(window.location.search).has("debug");
   const dbgLog = (...args: any[]) => {
     if (debugEnabled) console.debug("[DlivePlayer]", ...args);
   };
@@ -98,6 +101,39 @@ export function DlivePlayer({
 
   const ios = isIOS();
   const safari = isSafariUA();
+
+  // ✅ LOCK vitesse en LIVE (empêche un user de rester en 1.1/1.15)
+  const lockingRateRef = React.useRef(false);
+
+  React.useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // On force 1x au montage
+    if (isLive) forceRate1(video);
+
+    const onRateChange = () => {
+      if (!isLive) return;
+      if (lockingRateRef.current) return;
+
+      const r = Number(video.playbackRate);
+      if (!Number.isFinite(r) || Math.abs(r - 1) > 0.001) {
+        lockingRateRef.current = true;
+        forceRate1(video);
+        // libère au tick suivant (évite boucle infinie)
+        window.setTimeout(() => {
+          lockingRateRef.current = false;
+        }, 0);
+      }
+    };
+
+    // Si le navigateur propose “vitesse” dans les controls, on neutralise en live
+    video.addEventListener("ratechange", onRateChange);
+
+    return () => {
+      video.removeEventListener("ratechange", onRateChange);
+    };
+  }, [isLive, channelSlug, channelUsername]);
 
   // Close popover on outside click / ESC
   React.useEffect(() => {
@@ -162,16 +198,13 @@ export function DlivePlayer({
     try {
       video.pause();
     } catch {}
+    forceRate1(video); // ✅ important
     video.removeAttribute("src");
     video.load();
 
     const username = String(channelUsername || "").trim();
     if (!username) {
       dbgLog("missing channelUsername (cannot play)", { channelSlug });
-      return;
-    }
-    if (!username) {
-      dbgLog("username=∅");
       return;
     }
     if (!isLive) {
@@ -203,6 +236,8 @@ export function DlivePlayer({
     // Native
     if (mode === "native-ios" || mode === "native") {
       video.src = upstream;
+      // ✅ force encore une fois 1x (certains navigateurs gardent un playbackRate précédent)
+      forceRate1(video);
       video.play().catch(() => {});
       setCanChooseQuality(false);
       setLevelsUI([{ key: "auto", label: "Auto" }]);
@@ -214,10 +249,14 @@ export function DlivePlayer({
     const hls = new Hls({
       lowLatencyMode: true,
 
-      // live-edge + réduit DVR (pas une “interdiction” totale, mais beaucoup moins de backbuffer)
+      // live-edge + réduit DVR
       liveSyncDurationCount: 2,
       liveMaxLatencyDurationCount: 6,
-      maxLiveSyncPlaybackRate: 1.2,
+
+      // ✅ IMPORTANT: on désactive le catch-up “speed” (cause 1.1/1.15)
+      // maxLiveSyncPlaybackRate: 1.2,
+      maxLiveSyncPlaybackRate: 1.0,
+
       backBufferLength: 0,
       maxBufferLength: 10,
     });
@@ -238,45 +277,38 @@ export function DlivePlayer({
         bitrate: typeof lvl?.bitrate === "number" ? lvl.bitrate : undefined,
       }));
 
-      // uniq par height (sinon menu chelou)
       const unique = uniqBy(lvls, (x) => String(x.height || x.label));
-
-      // tri desc
       unique.sort((a, b) => (b.height || 0) - (a.height || 0));
 
-      // Cap 720 uniquement si possible
       const capIdx720 = pickBestCapIndex(hls.levels || [], 720);
       const autoLabel = capIdx720 >= 0 ? "Auto (max 720p)" : "Auto (recommandé)";
-
       const opts: LevelOpt[] = [{ key: "auto", label: autoLabel }, ...unique];
 
       setLevelsUI(opts);
-
-      // Afficher l'engrenage seulement si on a un vrai choix (au moins 2 qualités distinctes)
       setCanChooseQuality(unique.length >= 2);
 
-      // Si la préférence stockée n'existe plus, fallback auto
       const validKeys = new Set(opts.map((o) => o.key));
       if (!validKeys.has(q)) setQ("auto");
 
-      // Appliquer auto par défaut (avec cap 720 si possible)
       try {
         hls.currentLevel = -1;
         hls.autoLevelCapping = capIdx720 >= 0 ? capIdx720 : -1;
       } catch {}
 
+      // ✅ force 1x au moment où ça démarre réellement
+      forceRate1(video);
       video.play().catch(() => {});
     });
 
     hls.on(Hls.Events.ERROR, (_evt, data) => {
-          if (data?.fatal) {
-            try {
-              if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-              else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-              else hls.destroy();
-            } catch {}
-          }
-        });
+      if (data?.fatal) {
+        try {
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+          else hls.destroy();
+        } catch {}
+      }
+    });
 
     return () => {
       try {
@@ -343,9 +375,7 @@ export function DlivePlayer({
                   boxShadow: "0 14px 40px rgba(0,0,0,0.55)",
                 }}
               >
-                <div style={{ padding: "10px 12px", fontSize: 12, opacity: 0.8 }}>
-                  Qualité
-                </div>
+                <div style={{ padding: "10px 12px", fontSize: 12, opacity: 0.8 }}>Qualité</div>
                 <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
 
                 {levelsUI.map((opt) => {
@@ -371,9 +401,7 @@ export function DlivePlayer({
                     >
                       {opt.label}
                       {opt.key !== "auto" && opt.height ? (
-                        <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.7 }}>
-                          ({opt.height}p)
-                        </span>
+                        <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.7 }}>({opt.height}p)</span>
                       ) : null}
                     </button>
                   );
