@@ -53,6 +53,15 @@ function tryGetAuthUser(req: express.Request): AuthUser | null {
   }
 }
 
+/**
+ * TS normalization:
+ * Some old bot data may have created_ts in seconds (10 digits),
+ * while new code uses ms (13 digits). We normalize in SQL.
+ */
+const TS_MS_THRESHOLD = 100000000000; // 1e11
+const createdMsExpr = (alias = "bc") =>
+  `CASE WHEN ${alias}.created_ts < ${TS_MS_THRESHOLD} THEN ${alias}.created_ts*1000 ELSE ${alias}.created_ts END`;
+
 // ensure tables
 clipsPublicRouter.use(async (_req, _res, next) => {
   try {
@@ -68,24 +77,30 @@ clipsPublicRouter.use(async (_req, _res, next) => {
     `);
 
     // ✅ upgrade si ancienne version en INTEGER (int4)
-    await pool.query(`
+    await pool
+      .query(`
       ALTER TABLE clip_likes
       ALTER COLUMN created_ts TYPE BIGINT
       USING created_ts::bigint;
-    `).catch(() => {});
+    `)
+      .catch(() => {});
 
     // ✅ bot_clips: très probablement là que ça casse sur ton range "month"
-    await pool.query(`
+    await pool
+      .query(`
       ALTER TABLE bot_clips
       ALTER COLUMN created_ts TYPE BIGINT
       USING created_ts::bigint;
-    `).catch(() => {});
+    `)
+      .catch(() => {});
 
-    await pool.query(`
+    await pool
+      .query(`
       ALTER TABLE bot_clips
       ALTER COLUMN deleted_ts TYPE BIGINT
       USING deleted_ts::bigint;
-    `).catch(() => {});
+    `)
+      .catch(() => {});
 
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_clip_likes_clip ON clip_likes(clip_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_clip_likes_user ON clip_likes(user_id);`);
@@ -123,13 +138,13 @@ clipsPublicRouter.get("/streamers/:slug/clips", async (req, res) => {
   if (cursorRaw) {
     const parts = cursorRaw.split(":").map((x) => x.trim());
     if (sort === "recent") {
-      // created_ts:id
+      // created_ms:id
       if (parts.length >= 2) {
         cTs = Number(parts[0]);
         cId = Number(parts[1]);
       }
     } else {
-      // likes:created_ts:id
+      // likes:created_ms:id
       if (parts.length >= 3) {
         cLikes = Number(parts[0]);
         cTs = Number(parts[1]);
@@ -151,9 +166,11 @@ clipsPublicRouter.get("/streamers/:slug/clips", async (req, res) => {
 
   where.push(`bc.deleted_ts IS NULL`);
 
+  const bcCreatedMs = createdMsExpr("bc");
+
   // cursor where
   if (sort === "recent" && cTs != null && cId != null) {
-    where.push(`(bc.created_ts < $${p} OR (bc.created_ts = $${p} AND bc.id < $${p + 1}))`);
+    where.push(`(${bcCreatedMs} < $${p} OR (${bcCreatedMs} = $${p} AND bc.id < $${p + 1}))`);
     params.push(cTs, cId);
     p += 2;
   }
@@ -163,8 +180,8 @@ clipsPublicRouter.get("/streamers/:slug/clips", async (req, res) => {
     where.push(
       `(
         COALESCE(cnt.cnt,0) < $${p}
-        OR (COALESCE(cnt.cnt,0) = $${p} AND bc.created_ts < $${p + 1})
-        OR (COALESCE(cnt.cnt,0) = $${p} AND bc.created_ts = $${p + 1} AND bc.id < $${p + 2})
+        OR (COALESCE(cnt.cnt,0) = $${p} AND ${bcCreatedMs} < $${p + 1})
+        OR (COALESCE(cnt.cnt,0) = $${p} AND ${bcCreatedMs} = $${p + 1} AND bc.id < $${p + 2})
       )`
     );
     params.push(cLikes, cTs, cId);
@@ -175,15 +192,15 @@ clipsPublicRouter.get("/streamers/:slug/clips", async (req, res) => {
 
   const orderBy =
     sort === "top"
-      ? `ORDER BY COALESCE(cnt.cnt,0) DESC, bc.created_ts DESC, bc.id DESC`
-      : `ORDER BY bc.created_ts DESC, bc.id DESC`;
+      ? `ORDER BY COALESCE(cnt.cnt,0) DESC, ${bcCreatedMs} DESC, bc.id DESC`
+      : `ORDER BY ${bcCreatedMs} DESC, bc.id DESC`;
 
   // query
   const q = `
     SELECT
       bc.id,
       bc.title,
-      bc.created_ts,
+      ${bcCreatedMs} AS created_ms,
       bc.vod_url,
       bc.at_sec,
       bc.pre_sec,
@@ -226,7 +243,7 @@ clipsPublicRouter.get("/streamers/:slug/clips", async (req, res) => {
       streamerSlug: String(slug),
 
       title: x.title ?? null,
-      createdAtMs: Number(x.created_ts || 0),
+      createdAtMs: Number(x.created_ms || 0),
 
       vodUrl: x.vod_url ?? null,
       startSec,
@@ -240,7 +257,7 @@ clipsPublicRouter.get("/streamers/:slug/clips", async (req, res) => {
   });
 
   let endCursor: string | null = null;
-  let hasNextPage = rows.length > limit;
+  const hasNextPage = rows.length > limit;
 
   if (clips.length) {
     const last = clips[clips.length - 1];
@@ -320,6 +337,7 @@ clipsPublicRouter.post("/clips/:id/delete", requireAuth, async (req: any, res) =
   const n = await markClipDeletedById(clipId, nowMs());
   return res.json({ ok: true, removed: n > 0 });
 });
+
 /**
  * GET /clips/top?range=month|30d&limit=24
  * - auth optionnelle (renvoie myLiked)
@@ -344,13 +362,15 @@ clipsPublicRouter.get("/clips/top", async (req, res) => {
     startMs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0, 0);
   }
 
+  const bcCreatedMs = createdMsExpr("bc");
+
   // Total (pour overlay +N)
   const totalQ = await pool.query(
     `
     SELECT COUNT(*)::int AS n
     FROM bot_clips bc
     WHERE bc.deleted_ts IS NULL
-      AND bc.created_ts >= $1
+      AND ${bcCreatedMs} >= $1
     `,
     [startMs]
   );
@@ -364,7 +384,7 @@ clipsPublicRouter.get("/clips/top", async (req, res) => {
     SELECT
       bc.id,
       bc.title,
-      bc.created_ts,
+      ${bcCreatedMs} AS created_ms,
       bc.vod_url,
       bc.at_sec,
       bc.pre_sec,
@@ -396,9 +416,9 @@ clipsPublicRouter.get("/clips/top", async (req, res) => {
       ON ua.user_id = s.user_id
 
     WHERE bc.deleted_ts IS NULL
-      AND bc.created_ts >= $2
+      AND ${bcCreatedMs} >= $2
 
-    ORDER BY COALESCE(cnt.cnt,0) DESC, bc.created_ts DESC, bc.id DESC
+    ORDER BY COALESCE(cnt.cnt,0) DESC, created_ms DESC, bc.id DESC
     LIMIT $3
     `,
     [myUserId, startMs, limit]
@@ -412,8 +432,7 @@ clipsPublicRouter.get("/clips/top", async (req, res) => {
     const durationSec = Math.max(1, pre + post);
 
     const ownerUserId = x.owner_user_id != null ? Number(x.owner_user_id) : null;
-    const avatarUrl =
-      ownerUserId && x.has_avatar ? `${base}/avatars/u/${ownerUserId}` : null;
+    const avatarUrl = ownerUserId && x.has_avatar ? `${base}/avatars/u/${ownerUserId}` : null;
 
     return {
       id: Number(x.id),
@@ -423,7 +442,7 @@ clipsPublicRouter.get("/clips/top", async (req, res) => {
       ownerUserId,
 
       title: x.title ?? null,
-      createdAtMs: Number(x.created_ts || 0),
+      createdAtMs: Number(x.created_ms || 0),
 
       vodUrl: x.vod_url ?? null,
       startSec,

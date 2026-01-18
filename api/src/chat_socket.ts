@@ -288,6 +288,47 @@ async function readSettings(streamerId: number) {
   return s;
 }
 
+async function sendBotChat(io: Server, meta: { id: number; slug: string; appearance: any }, body: string) {
+  const botUserId = Number(process.env.BOT_USER_ID || 0);
+  const botUsername = String(process.env.BOT_USERNAME || "LunaBot");
+
+  // si pas configuré => on skip (mais pas de crash)
+  if (!botUserId) {
+    console.warn("[chat_socket] BOT_USER_ID missing, skip bot chat");
+    return;
+  }
+
+  const text = String(body || "").replace(/\r/g, "").trim().slice(0, 500);
+  if (!text) return;
+
+  const ins = await pool.query(
+    `INSERT INTO chat_messages (streamer_id, user_id, username, body)
+     VALUES ($1,$2,$3,$4)
+     RETURNING id, created_at AS "createdAt"`,
+    [meta.id, botUserId, botUsername, text]
+  );
+  const row = ins.rows?.[0];
+
+  const cosmeticsByUser = await getChatCosmeticsForUsers([botUserId]);
+  const cosmetics = cosmeticsByUser.get(botUserId) ?? null;
+
+  const appearance = normalizeAppearance(meta.appearance || {});
+  const msg = {
+    id: Number(row.id),
+    userId: botUserId,
+    username: botUsername,
+    body: text,
+    createdAt: new Date(row.createdAt).toISOString(),
+    cosmetics,
+    style: {
+      nameColor: appearance.chat.usernameColor,
+      msgColor: appearance.chat.messageColor,
+    },
+  };
+
+  io.to(`chat:${meta.slug}`).emit("chat:message", msg);
+}
+
 export function attachChat(io: Server) {
   chatIo = io;
 
@@ -436,8 +477,7 @@ export function attachChat(io: Server) {
               actorRole: rp.role || "viewer",
               changed,
             });
-            const sys = chatStore.addSystem(meta.slug, sysText);
-            io.to(`chat:${meta.slug}`).emit("chat:message", sys);
+            await sendBotChat(io, meta, sysText);
           }
 
           cb?.({ ok: true, settings: next });
@@ -684,8 +724,7 @@ export function attachChat(io: Server) {
           );
 
           const targetUsername = await getUsernameById(targetId);
-          const sys = chatStore.addSystem(meta.slug, `⏳ ${targetUsername} timeout ${sec}s${r ? ` — ${r}` : ""}`);
-          io.to(`chat:${meta.slug}`).emit("chat:message", sys);
+          await sendBotChat(io, meta, `⏳ ${targetUsername} timeout ${sec}s${r ? ` — ${r}` : ""}`);
 
           io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "timeout", userId: targetId });
           await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
@@ -728,8 +767,7 @@ export function attachChat(io: Server) {
           );
 
           const targetUsername = await getUsernameById(targetId);
-          const sys = chatStore.addSystem(meta.slug, `🚫 ${targetUsername} banni${r ? ` — ${r}` : ""}`);
-          io.to(`chat:${meta.slug}`).emit("chat:message", sys);
+          await sendBotChat(io, meta, `🚫 ${targetUsername} banni${r ? ` — ${r}` : ""}`);
 
           io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "ban", userId: targetId });
           await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
@@ -766,8 +804,7 @@ export function attachChat(io: Server) {
         );
 
         const targetUsername = await getUsernameById(targetId);
-        const sys = chatStore.addSystem(meta.slug, `✅ ${targetUsername} untimeout`);
-        io.to(`chat:${meta.slug}`).emit("chat:message", sys);
+        await sendBotChat(io, meta, `✅ ${targetUsername} untimeout`);
 
         io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "untimeout", userId: targetId });
         await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
@@ -798,8 +835,7 @@ export function attachChat(io: Server) {
         await pool.query(`DELETE FROM chat_bans WHERE streamer_id=$1 AND user_id=$2`, [meta.id, targetId]);
 
         const targetUsername = await getUsernameById(targetId);
-        const sys = chatStore.addSystem(meta.slug, `✅ ${targetUsername} débanni`);
-        io.to(`chat:${meta.slug}`).emit("chat:message", sys);
+        await sendBotChat(io, meta, `✅ ${targetUsername} débanni`);
 
         io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "unban", userId: targetId });
         await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
@@ -908,11 +944,13 @@ export function attachChat(io: Server) {
           }
 
           const targetUsername = await getUsernameById(targetId);
-          const sys = chatStore.addSystem(
-            meta.slug,
-            enabled ? `🛡️ ${targetUsername} est maintenant modérateur` : `🛡️ ${targetUsername} n'est plus modérateur`
+          await sendBotChat(
+            io,
+            meta,
+            enabled
+              ? `🛡️ ${targetUsername} est maintenant modérateur`
+              : `🛡️ ${targetUsername} n'est plus modérateur`
           );
-          io.to(`chat:${meta.slug}`).emit("chat:message", sys);
 
           io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "mod_set", userId: targetId, enabled: !!enabled });
 

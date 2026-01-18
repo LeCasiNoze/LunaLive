@@ -18,7 +18,9 @@ import {
   setCallPay,
 } from "./queue.js";
 import { normText } from "./normalize.js";
-import { chatStore } from "../chat_store.js";
+
+// ✅ NEW: pour envoyer un vrai message bot (DB + broadcast)
+import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
 
 export function parseBangCommand(text: string): { cmd: string; arg: string } | null {
   const s = normText(text);
@@ -49,6 +51,43 @@ async function getUserTalentLevel(pool: Pool, userId: number, code: string): Pro
     // table pas migrée / pas dispo => no bonus
     return 0;
   }
+}
+
+/* =========================================================
+   ✅ Bot chat helper (remplace les messages "system")
+   ========================================================= */
+async function sendBotChat(pool: Pool, io: Server, opts: { streamerId: number; slug: string }, body: string) {
+  const botUserId = Number(process.env.BOT_USER_ID || 0);
+  const botUsername = String(process.env.BOT_USERNAME || "LunaBot");
+  if (!botUserId) {
+    console.warn("[calls] BOT_USER_ID missing, skip bot chat:", body);
+    return;
+  }
+
+  const text = String(body || "").replace(/\r/g, "").trim().slice(0, 500);
+  if (!text) return;
+
+  const ins = await pool.query(
+    `INSERT INTO chat_messages (streamer_id, user_id, username, body)
+     VALUES ($1,$2,$3,$4)
+     RETURNING id, created_at AS "createdAt"`,
+    [opts.streamerId, botUserId, botUsername, text]
+  );
+
+  const row = ins.rows?.[0];
+  const cosmeticsByUser = await getChatCosmeticsForUsers([botUserId]);
+  const cosmetics = cosmeticsByUser.get(botUserId) ?? null;
+
+  const msg = {
+    id: Number(row?.id || 0),
+    userId: botUserId,
+    username: botUsername,
+    body: text,
+    createdAt: row?.createdAt ? new Date(row.createdAt).toISOString() : new Date().toISOString(),
+    cosmetics,
+  };
+
+  io.to(`chat:${opts.slug}`).emit("chat:message", msg);
 }
 
 async function ensurePcallSchema(pool: Pool) {
@@ -115,10 +154,11 @@ async function setHuntPhase(pool: Pool, ownerUserId: number, phase: "edit" | "op
     `,
     [ownerUserId]
   );
-  await pool.query(
-    `UPDATE hunt_sessions SET phase=$2, opened=$3, updated_at=NOW() WHERE user_id=$1`,
-    [ownerUserId, phase, phase === "open"]
-  );
+  await pool.query(`UPDATE hunt_sessions SET phase=$2, opened=$3, updated_at=NOW() WHERE user_id=$1`, [
+    ownerUserId,
+    phase,
+    phase === "open",
+  ]);
 }
 
 export async function handleCallsCommand(opts: {
@@ -136,10 +176,7 @@ export async function handleCallsCommand(opts: {
 
   cmd: string;
   arg: string;
-}): Promise<
-  | { handled: true; showOriginalInChat: boolean }
-  | { handled: false }
-> {
+}): Promise<{ handled: true; showOriginalInChat: boolean } | { handled: false }> {
   const {
     pool,
     io,
@@ -199,7 +236,11 @@ export async function handleCallsCommand(opts: {
   // ──────────────────────────────────────────
   if (cmd === "open") {
     if (!canHuntControl) {
-      emitUserToast(io, actorUserId, { kind: "error", title: "Accès refusé", message: "Réservé aux mods/streamer." });
+      emitUserToast(io, actorUserId, {
+        kind: "error",
+        title: "Accès refusé",
+        message: "Réservé aux mods/streamer.",
+      });
       return { handled: true, showOriginalInChat };
     }
 
@@ -230,8 +271,7 @@ export async function handleCallsCommand(opts: {
 
     await setHuntPhase(pool, ownerUserId!, "open");
 
-    const sys = chatStore.addSystem(slug, `🔓 Hunt OPEN par @${actorUsername}`);
-    io.to(`chat:${slug}`).emit("chat:message", sys);
+    await sendBotChat(pool, io, { streamerId, slug }, `🔓 Hunt OPEN par @${actorUsername}`);
 
     io.to(`chat:${slug}`).emit("calls:changed", { action: "hunt_open" });
     io.to(`chat:${slug}`).emit("hunt:changed", { action: "open" });
@@ -267,11 +307,12 @@ export async function handleCallsCommand(opts: {
 
     await setCallBet(pool, streamerId, cur.id, bet);
 
-    const sys = chatStore.addSystem(
-      slug,
+    await sendBotChat(
+      pool,
+      io,
+      { streamerId, slug },
       `✅ Bet enregistrée: "${cur.slotName}"${cur.provider ? ` (${cur.provider})` : ""} — ${bet}€ (GG 🎉)`
     );
-    io.to(`chat:${slug}`).emit("chat:message", sys);
 
     io.to(`chat:${slug}`).emit("calls:changed", { action: "bet" });
     io.to(`chat:${slug}`).emit("hunt:changed", { action: "bet" });
@@ -301,8 +342,7 @@ export async function handleCallsCommand(opts: {
 
     await deleteCallById(pool, streamerId, cur.id);
 
-    const sys = chatStore.addSystem(slug, `⏭️ Pass: "${cur.slotName}" — supprimé de la liste.`);
-    io.to(`chat:${slug}`).emit("chat:message", sys);
+    await sendBotChat(pool, io, { streamerId, slug }, `⏭️ Pass: "${cur.slotName}" — supprimé de la liste.`);
 
     io.to(`chat:${slug}`).emit("calls:changed", { action: "pass" });
     io.to(`chat:${slug}`).emit("hunt:changed", { action: "pass" });
@@ -345,11 +385,12 @@ export async function handleCallsCommand(opts: {
 
     await setCallPay(pool, streamerId, cur.id, pay);
 
-    const sys = chatStore.addSystem(
-      slug,
+    await sendBotChat(
+      pool,
+      io,
+      { streamerId, slug },
       `💰 Pay: "${cur.slotName}"${cur.provider ? ` (${cur.provider})` : ""} — ${pay}€`
     );
-    io.to(`chat:${slug}`).emit("chat:message", sys);
 
     io.to(`chat:${slug}`).emit("calls:changed", { action: "pay" });
     io.to(`chat:${slug}`).emit("hunt:changed", { action: "pay" });
@@ -368,8 +409,8 @@ export async function handleCallsCommand(opts: {
 
     await resetCalls(pool, streamerId);
 
-    const sys = chatStore.addSystem(slug, `🧹 Calls reset par @${actorUsername}`);
-    io.to(`chat:${slug}`).emit("chat:message", sys);
+    await sendBotChat(pool, io, { streamerId, slug }, `🧹 Calls reset par @${actorUsername}`);
+
     io.to(`chat:${slug}`).emit("calls:changed", { action: "reset" });
     io.to(`chat:${slug}`).emit("hunt:changed", { action: "reset" });
 
@@ -386,8 +427,7 @@ export async function handleCallsCommand(opts: {
     const items = await listCalls(pool, streamerId, max + 1, 0);
 
     if (!items.length) {
-      const sys = chatStore.addSystem(slug, `📋 Calls: aucun call en file.`);
-      io.to(`chat:${slug}`).emit("chat:message", sys);
+      await sendBotChat(pool, io, { streamerId, slug }, `📋 Calls: aucun call en file.`);
       return { handled: true, showOriginalInChat };
     }
 
@@ -398,8 +438,7 @@ export async function handleCallsCommand(opts: {
       .map((x, i) => `${i + 1}) ${x.slotName}${x.provider ? ` (${x.provider})` : ""} — @${x.username}`)
       .join(" • ");
 
-    const sys = chatStore.addSystem(slug, `📋 Calls: ${line}${extra ? ` • … +${extra}` : ""}`);
-    io.to(`chat:${slug}`).emit("chat:message", sys);
+    await sendBotChat(pool, io, { streamerId, slug }, `📋 Calls: ${line}${extra ? ` • … +${extra}` : ""}`);
 
     return { handled: true, showOriginalInChat };
   }
@@ -492,24 +531,33 @@ export async function handleCallsCommand(opts: {
 
   if (!add.ok) {
     const m = add.error;
-    if (m === "already_in_queue") emitUserToast(io, actorUserId, { kind: "error", title: "Déjà en file", message: "Cette machine est déjà call." });
-    else if (m === "limit_reached") emitUserToast(io, actorUserId, { kind: "error", title: "Limite atteinte", message: "Tu as atteint ta limite de calls." });
-    else if (m === "user_banned") emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Tu ne peux pas utiliser les calls." });
-    else if (m === "slot_banned") emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Machine interdite." });
-    else if (m === "provider_banned") emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Provider interdit." });
-    else if (m === "provider_not_allowed") emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Ce provider n’est pas autorisé ici." });
+    if (m === "already_in_queue")
+      emitUserToast(io, actorUserId, { kind: "error", title: "Déjà en file", message: "Cette machine est déjà call." });
+    else if (m === "limit_reached")
+      emitUserToast(io, actorUserId, { kind: "error", title: "Limite atteinte", message: "Tu as atteint ta limite de calls." });
+    else if (m === "user_banned")
+      emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Tu ne peux pas utiliser les calls." });
+    else if (m === "slot_banned")
+      emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Machine interdite." });
+    else if (m === "provider_banned")
+      emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Provider interdit." });
+    else if (m === "provider_not_allowed")
+      emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message: "Ce provider n’est pas autorisé ici." });
     else emitUserToast(io, actorUserId, { kind: "error", title: "Erreur", message: "Impossible d'ajouter le call." });
     return { handled: true, showOriginalInChat };
   }
-    if (cmd === "pcall") {
-      await setPcallCooldown(pool, streamerId, actorUserId, Date.now() + 90 * 60 * 1000);
-    }
+
+  if (cmd === "pcall") {
+    await setPcallCooldown(pool, streamerId, actorUserId, Date.now() + 90 * 60 * 1000);
+  }
+
   if (settings.showAcceptPublic) {
-    const sys = chatStore.addSystem(
-      slug,
+    await sendBotChat(
+      pool,
+      io,
+      { streamerId, slug },
       `🎰 Call ajouté : "${add.item.slotName}"${add.item.provider ? ` (${add.item.provider})` : ""} — @${actorUsername}`
     );
-    io.to(`chat:${slug}`).emit("chat:message", sys);
   }
 
   io.to(`chat:${slug}`).emit("calls:changed", { action: "add" });

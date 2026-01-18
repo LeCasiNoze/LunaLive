@@ -96,6 +96,32 @@ function errMessage(e: unknown) {
   return String(e || "error");
 }
 
+type ViewerRow = { userId: number; username: string };
+
+function normKey(s: any) {
+  return String(s ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function computeMentionCtx(value: string, caret: number) {
+  const left = value.slice(0, caret);
+  const at = left.lastIndexOf("@");
+  if (at < 0) return null;
+
+  const prev = at === 0 ? " " : left[at - 1];
+  // faut que @ démarre un "mot" (début ou espace)
+  if (prev && !/\s/.test(prev)) return null;
+
+  const q = left.slice(at + 1);
+  // si y'a un espace dans la partie tapée => pas une mention active
+  if (/\s/.test(q)) return null;
+
+  return { start: at, end: caret, q };
+}
+
 /* =========================================================
    Component
    ========================================================= */
@@ -129,10 +155,69 @@ export function ChatPanel({
      ------------------------- */
   const [messages, setMessages] = React.useState<ChatMsg[]>([]);
   const [input, setInput] = React.useState("");
+
+  const [viewers] = React.useState<ViewerRow[]>([]);
+  const [mention, setMention] = React.useState<null | { start: number; end: number; q: string; active: number }>(
+    null
+  );
+
   const [sending, setSending] = React.useState(false);
 
+  // ✅ IMPORTANT: join DOIT être déclaré avant viewerCandidates/useMemo
   const [join, setJoin] = React.useState<JoinAck | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+
+  const lastCaretRef = React.useRef<number>(0);
+
+  function viewerCandidates(): ViewerRow[] {
+    // ✅ Si l’API renvoie la vraie présence, on l’utilise
+    const base = Array.isArray(viewers) && viewers.length ? viewers : [];
+
+    if (base.length) {
+      // dédoublonne / nettoie
+      const seen = new Set<string>();
+      const out: ViewerRow[] = [];
+      for (const v of base) {
+        const k = normKey(v?.username);
+        if (!k) continue;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push({ userId: Number(v.userId || 0), username: String(v.username) });
+      }
+      out.sort((a, b) => a.username.localeCompare(b.username));
+      return out;
+    }
+
+    // 🔁 Fallback : si pas de présence dispo, au moins chatters + moi
+    const seen = new Set<string>();
+    const out: ViewerRow[] = [];
+
+    const me = join?.me?.username ? String(join.me.username) : "";
+    if (me) {
+      seen.add(normKey(me));
+      out.push({ userId: join?.me?.id ? Number(join.me.id) : 0, username: me });
+    }
+
+    for (const m of messages) {
+      if (!m || !m.username) continue;
+      const k = normKey(m.username);
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      out.push({ userId: Number((m as any).userId || 0), username: String(m.username) });
+    }
+
+    out.sort((a, b) => a.username.localeCompare(b.username));
+    return out;
+  }
+
+  const mentionList = React.useMemo(() => {
+    if (!mention) return [];
+    const q = normKey(mention.q);
+    const list = viewerCandidates();
+    const filtered = q ? list.filter((u) => normKey(u.username).startsWith(q)) : list;
+    return filtered.slice(0, 10);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mention, viewers, messages.length, join?.me?.username]);
 
   const { token } = useAuth();
   const navigate = useNavigate();
@@ -1067,31 +1152,37 @@ React.useLayoutEffect(() => {
             const effectiveCosmetics = applyViewerPolicy(baseCosmetics, viewerSkinsLevel);
 
             return (
-              <div
-                key={m.id}
-                className={
-                  animatedMsgIdsRef.current.has(m.id)
-                    ? `chat-enter ${CHAT_ENTER_ANIM}`
-                    : undefined
-                }
-                onAnimationEnd={() => {
-                  animatedMsgIdsRef.current.delete(m.id);
+            <div
+              key={m.id}
+              className={
+                animatedMsgIdsRef.current.has(m.id)
+                  ? `chat-enter ${CHAT_ENTER_ANIM}`
+                  : undefined
+              }
+              onAnimationEnd={() => {
+                animatedMsgIdsRef.current.delete(m.id);
+              }}
+              onClick={(e) => {
+                // ✅ clic gauche ouvre aussi le menu
+                e.stopPropagation();
+                openMenuAt(e.clientX, e.clientY, m);
+              }}
+              onContextMenu={(e) => openMenuMouse(e, m)} // clic droit
+              onTouchStart={(e) => onTouchStartMsg(e, m)}
+              onTouchEnd={cancelLongPress}
+              onTouchCancel={cancelLongPress}
+              onTouchMove={cancelLongPress}
+              style={{ cursor: "pointer" }}
+            >
+              <ChatMessageBubble
+                streamerAppearance={appearance}
+                currentUsername={join?.me?.username ?? null}
+                msg={{
+                  ...m,
+                  cosmetics: effectiveCosmetics,
                 }}
-                onContextMenu={(e) => openMenuMouse(e, m)}
-                onTouchStart={(e) => onTouchStartMsg(e, m)}
-                onTouchEnd={cancelLongPress}
-                onTouchCancel={cancelLongPress}
-                onTouchMove={cancelLongPress}
-                style={{ cursor: "context-menu" }}
-              >
-                <ChatMessageBubble
-                  streamerAppearance={appearance}
-                  msg={{
-                    ...m,
-                    cosmetics: effectiveCosmetics,
-                  }}
-                />
-              </div>
+              />
+            </div>
             );
           })}
         </div>
@@ -1138,7 +1229,7 @@ React.useLayoutEffect(() => {
           <div style={{ marginBottom: 10, fontSize: 12, color: "rgba(255,120,150,0.95)" }}>{error}</div>
         ) : null}
 
-        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: 10, position: "relative" }}>
           <button
             type="button"
             onClick={() => {
@@ -1163,23 +1254,161 @@ React.useLayoutEffect(() => {
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
+          {mention && mentionList.length ? (
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 56,
+              zIndex: 50,
+              padding: 8,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(18,14,26,0.98)",
+              boxShadow: "0 18px 70px rgba(0,0,0,0.55)",
+              maxHeight: 260,
+              overflow: "auto",
+            }}
+            onMouseDown={(e) => e.preventDefault()} // empêche blur input
+          >
+            <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900, padding: "2px 6px 8px" }}>
+              Mentionner quelqu’un
+            </div>
+
+            {mentionList.map((u, i) => {
+              const active = i === (mention.active ?? 0);
+              return (
+                <button
+                  key={`${u.userId}:${u.username}`}
+                  type="button"
+                  onClick={() => {
+                    const before = input.slice(0, mention.start);
+                    const after = input.slice(mention.end);
+                    const inserted = `${before}@${u.username} ${after}`;
+                    setInput(inserted);
+                    setMention(null);
+
+                    window.setTimeout(() => {
+                      const pos = (before + "@" + u.username + " ").length;
+                      inputRef.current?.focus();
+                      inputRef.current?.setSelectionRange(pos, pos);
+                    }, 0);
+                  }}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "10px 10px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: active ? "rgba(124,77,255,0.22)" : "rgba(255,255,255,0.04)",
+                    color: "white",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    marginBottom: 6,
+                    outline: "none",
+                  }}
+                >
+                  @{u.username}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
           <input
             ref={inputRef}
             disabled={!canSend || sending}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              const caret = e.target.selectionStart ?? v.length;
+              lastCaretRef.current = caret;
+              setInput(v);
+
+              const ctx = computeMentionCtx(v, caret);
+              if (!ctx) return setMention(null);
+
+              // ouvre mention si @ vient d'être tapé OU si on est dedans
+              setMention((prev) => ({
+                start: ctx.start,
+                end: ctx.end,
+                q: ctx.q,
+                active: prev?.active != null ? prev.active : 0,
+              }));
+            }}
+            onClick={(e) => {
+              const el = e.currentTarget;
+              const caret = el.selectionStart ?? input.length;
+              lastCaretRef.current = caret;
+              const ctx = computeMentionCtx(input, caret);
+              setMention((prev) => {
+                if (!ctx) return null;
+                return { start: ctx.start, end: ctx.end, q: ctx.q, active: prev?.active ?? 0 };
+              });
+            }}
+            onKeyUp={(e) => {
+              const el = e.currentTarget;
+              const caret = el.selectionStart ?? input.length;
+              lastCaretRef.current = caret;
+              const ctx = computeMentionCtx(input, caret);
+              setMention((prev) => {
+                if (!ctx) return null;
+                return { start: ctx.start, end: ctx.end, q: ctx.q, active: prev?.active ?? 0 };
+              });
+            }}
             onFocus={() => {
               focusedRef.current = true;
-              requestAnimationFrame(() => {
-                if (atBottomRef.current) scrollToBottom("auto");
-              });
             }}
             onBlur={() => {
               focusedRef.current = false;
+              // optionnel: fermer la popover quand on perd le focus
+              // setMention(null);
             }}
             enterKeyHint="send"
             inputMode="text"
             onKeyDown={(e) => {
+              // mention navigation
+              if (mention && mentionList.length) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setMention((m) =>
+                    m ? { ...m, active: Math.min((m.active ?? 0) + 1, mentionList.length - 1) } : m
+                  );
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setMention((m) => (m ? { ...m, active: Math.max((m.active ?? 0) - 1, 0) } : m));
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setMention(null);
+                  return;
+                }
+                if (e.key === "Tab" || e.key === "Enter") {
+                  e.preventDefault();
+                  const pick = mentionList[mention.active ?? 0] || mentionList[0];
+                  if (pick) {
+                    // insert mention
+                    const before = input.slice(0, mention.start);
+                    const after = input.slice(mention.end);
+                    const inserted = `${before}@${pick.username} ${after}`;
+                    setInput(inserted);
+                    setMention(null);
+
+                    // place caret
+                    window.setTimeout(() => {
+                      const pos = (before + "@" + pick.username + " ").length;
+                      inputRef.current?.focus();
+                      inputRef.current?.setSelectionRange(pos, pos);
+                    }, 0);
+                  }
+                  return;
+                }
+              }
+
+              // ton envoi normal
               if (e.key === "Enter") {
                 e.preventDefault();
                 send();
@@ -1402,194 +1631,307 @@ React.useLayoutEffect(() => {
         </div>
       ) : null}
 
-      {/* menu */}
+      {/* menu (rework + draggable) */}
       {menu.open && menu.msg ? (
         <div
           style={{
             position: "fixed",
             left: menu.x,
             top: menu.y,
-            transform: "translate(6px, 6px)",
             zIndex: 90,
-            minWidth: 240,
-            padding: 10,
-            borderRadius: 14,
-            background: "rgba(20,20,30,0.98)",
-            border: "1px solid rgba(255,255,255,0.10)",
-            boxShadow: "0 12px 50px rgba(0,0,0,0.45)",
+            minWidth: 260,
+            maxWidth: 320,
+            borderRadius: 16,
+            background: "rgba(18,14,26,0.98)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: "0 18px 70px rgba(0,0,0,0.60)",
+            overflow: "hidden",
+            transform: "translate(6px, 6px)",
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div style={{ fontWeight: 900, fontSize: 13, marginBottom: 8, opacity: 0.95 }}>
-            {menu.msg.username}
+          {/* Header draggable */}
+          <div
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+
+              const startX = e.clientX;
+              const startY = e.clientY;
+              const startLeft = menu.x;
+              const startTop = menu.y;
+
+              const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
+
+              const onMove = (ev: MouseEvent) => {
+                const dx = ev.clientX - startX;
+                const dy = ev.clientY - startY;
+
+                const nextX = startLeft + dx;
+                const nextY = startTop + dy;
+
+                // limite dans l’écran (un peu safe)
+                const w = 320; // approx maxWidth
+                const h = 420; // approx hauteur menu max
+                const maxX = window.innerWidth - 20;
+                const maxY = window.innerHeight - 20;
+
+                setMenu((m) => ({
+                  ...m,
+                  x: clamp(nextX, 8, maxX - w),
+                  y: clamp(nextY, 8, maxY - h),
+                }));
+              };
+
+              const onUp = () => {
+                window.removeEventListener("mousemove", onMove);
+                window.removeEventListener("mouseup", onUp);
+              };
+
+              window.addEventListener("mousemove", onMove);
+              window.addEventListener("mouseup", onUp);
+            }}
+            style={{
+              padding: "10px 12px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              background: "linear-gradient(135deg, rgba(124,77,255,0.22), rgba(80,200,255,0.10))",
+              borderBottom: "1px solid rgba(255,255,255,0.10)",
+              cursor: "grab",
+              userSelect: "none",
+            }}
+            title="Glisse pour déplacer"
+          >
+            <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
+              <div style={{ fontWeight: 950, fontSize: 13, color: "rgba(255,255,255,0.95)", lineHeight: 1.1 }}>
+                {menu.msg.username}
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 800, marginTop: 2 }}>
+                Actions utilisateur
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeMenu();
+              }}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.06)",
+                color: "white",
+                fontWeight: 950,
+                cursor: "pointer",
+              }}
+              aria-label="Fermer"
+              title="Fermer"
+            >
+              ✕
+            </button>
           </div>
 
-          <button
-            onClick={() => goProfile(menu.msg!)}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "rgba(255,255,255,0.06)",
-              color: "white",
-              textAlign: "left",
-              fontWeight: 900,
-              cursor: "pointer",
-              marginBottom: 8,
-            }}
-          >
-            Voir le profil
-          </button>
-
-          {!targetIsSelf && menu.isTargetSub !== true ? (
+          {/* Body */}
+          <div style={{ padding: 12 }}>
+            {/* Primary */}
             <button
-              onClick={() => doGiftSub(menu.msg!)}
-              disabled={!!menu.giftSubLoading}
+              onClick={() => goProfile(menu.msg!)}
               style={{
                 width: "100%",
                 padding: "10px 12px",
-                borderRadius: 12,
+                borderRadius: 14,
                 border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(80,255,160,0.12)",
+                background: "rgba(255,255,255,0.06)",
                 color: "white",
                 textAlign: "left",
-                fontWeight: 900,
+                fontWeight: 950,
                 cursor: "pointer",
-                marginBottom: 8,
-                opacity: menu.giftSubLoading ? 0.75 : 1,
-              }}
-              title="Offrir un sub"
-            >
-              {menu.giftSubLoading ? "Offre en cours…" : "Offrir un sub"}
-            </button>
-          ) : null}
-
-          {!targetIsSelf && isAuthed && menu.subLoading ? (
-            <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800, marginBottom: 8 }}>
-              Vérification sub…
-            </div>
-          ) : null}
-
-          {!targetIsSelf && isAuthed && menu.isTargetSub === true ? (
-            <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800, marginBottom: 8 }}>
-              Déjà abonné ✅
-            </div>
-          ) : null}
-
-          {perms?.canTimeout && !targetIsSelf && targetIsTimedOut ? (
-            <button
-              onClick={() => doUnmute(menu.msg!)}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(124,77,255,0.14)",
-                color: "white",
-                textAlign: "left",
-                fontWeight: 900,
-                cursor: "pointer",
-                marginBottom: 8,
+                marginBottom: 10,
               }}
             >
-              Démute (untimeout)
+              👤 Voir le profil
             </button>
-          ) : null}
 
-          {perms?.canManageMods ? (
-            <button
-              onClick={() => doSetMod(menu.msg!, !(menu.isTargetMod === true))}
-              disabled={!!menu.modLoading || menu.isTargetMod == null}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(80,200,255,0.12)",
-                color: "white",
-                textAlign: "left",
-                fontWeight: 900,
-                cursor: "pointer",
-                marginBottom: 8,
-                opacity: menu.isTargetMod == null ? 0.7 : 1,
-              }}
-            >
-              {menu.modLoading ? "Chargement…" : menu.isTargetMod ? "Retirer des modérateurs" : "Mettre modérateur"}
-            </button>
-          ) : null}
+            {!targetIsSelf && menu.isTargetSub !== true ? (
+              <button
+                onClick={() => doGiftSub(menu.msg!)}
+                disabled={!!menu.giftSubLoading}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(80,255,160,0.12)",
+                  color: "white",
+                  textAlign: "left",
+                  fontWeight: 950,
+                  cursor: "pointer",
+                  marginBottom: 10,
+                  opacity: menu.giftSubLoading ? 0.75 : 1,
+                }}
+                title="Offrir un sub"
+              >
+                {menu.giftSubLoading ? "🎁 Offre en cours…" : "🎁 Offrir un sub"}
+              </button>
+            ) : null}
 
-          {perms?.canDelete ? (
-            <button
-              onClick={() => doDelete(menu.msg!)}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(255,120,150,0.10)",
-                color: "white",
-                textAlign: "left",
-                fontWeight: 800,
-                cursor: "pointer",
-                marginBottom: 8,
-              }}
-            >
-              Supprimer le message
-            </button>
-          ) : null}
+            {!targetIsSelf && isAuthed && menu.subLoading ? (
+              <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 850, marginBottom: 10 }}>
+                Vérification sub…
+              </div>
+            ) : null}
 
-          {perms?.canTimeout && !targetIsSelf ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
-              <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Timeout</div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {[
-                  { label: "10s", sec: 10 },
-                  { label: "1m", sec: 60 },
-                  { label: "10m", sec: 600 },
-                  { label: "1h", sec: 3600 },
-                  { label: "24h", sec: 86400 },
-                ].map((x) => (
+            {!targetIsSelf && isAuthed && menu.isTargetSub === true ? (
+              <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 850, marginBottom: 10 }}>
+                Déjà abonné ✅
+              </div>
+            ) : null}
+
+            {/* Mod tools */}
+            {(perms?.canManageMods || perms?.canDelete || perms?.canTimeout || perms?.canBan) ? (
+              <div
+                style={{
+                  marginTop: 6,
+                  marginBottom: 10,
+                  paddingTop: 10,
+                  borderTop: "1px solid rgba(255,255,255,0.10)",
+                }}
+              >
+                <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 950, marginBottom: 8 }}>
+                  Modération
+                </div>
+
+                {perms?.canManageMods ? (
                   <button
-                    key={x.sec}
-                    onClick={() => doTimeout(menu.msg!, x.sec)}
+                    onClick={() => doSetMod(menu.msg!, !(menu.isTargetMod === true))}
+                    disabled={!!menu.modLoading || menu.isTargetMod == null}
                     style={{
-                      padding: "8px 10px",
-                      borderRadius: 12,
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(80,200,255,0.12)",
+                      color: "white",
+                      textAlign: "left",
+                      fontWeight: 950,
+                      cursor: "pointer",
+                      marginBottom: 10,
+                      opacity: menu.isTargetMod == null ? 0.7 : 1,
+                    }}
+                  >
+                    {menu.modLoading
+                      ? "Chargement…"
+                      : menu.isTargetMod
+                      ? "🛡️ Retirer des modérateurs"
+                      : "🛡️ Mettre modérateur"}
+                  </button>
+                ) : null}
+
+                {perms?.canDelete ? (
+                  <button
+                    onClick={() => doDelete(menu.msg!)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(255,120,150,0.10)",
+                      color: "white",
+                      textAlign: "left",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                      marginBottom: 10,
+                    }}
+                  >
+                    🗑️ Supprimer le message
+                  </button>
+                ) : null}
+
+                {perms?.canTimeout && !targetIsSelf && targetIsTimedOut ? (
+                  <button
+                    onClick={() => doUnmute(menu.msg!)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 14,
                       border: "1px solid rgba(255,255,255,0.10)",
                       background: "rgba(124,77,255,0.14)",
                       color: "white",
-                      fontWeight: 800,
+                      textAlign: "left",
+                      fontWeight: 950,
                       cursor: "pointer",
+                      marginBottom: 10,
                     }}
                   >
-                    {x.label}
+                    🔊 Démute (untimeout)
                   </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
+                ) : null}
 
-          {perms?.canBan && !targetIsSelf ? (
-            <button
-              onClick={() => doBan(menu.msg!)}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(255,60,90,0.18)",
-                color: "white",
-                textAlign: "left",
-                fontWeight: 900,
-                cursor: "pointer",
-              }}
-            >
-              Bannir
-            </button>
-          ) : null}
+                {/* ✅ BAN au-dessus des timeouts */}
+                {perms?.canBan && !targetIsSelf ? (
+                  <button
+                    onClick={() => doBan(menu.msg!)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(255,60,90,0.20)",
+                      color: "white",
+                      textAlign: "left",
+                      fontWeight: 1000,
+                      cursor: "pointer",
+                      marginBottom: 10,
+                    }}
+                  >
+                    ⛔ Bannir
+                  </button>
+                ) : null}
+
+                {/* Timeouts */}
+                {perms?.canTimeout && !targetIsSelf ? (
+                  <div style={{ marginBottom: 4 }}>
+                    <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 950, marginBottom: 8 }}>
+                      Timeout
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {[
+                        { label: "10s", sec: 10 },
+                        { label: "1m", sec: 60 },
+                        { label: "10m", sec: 600 },
+                        { label: "1h", sec: 3600 },
+                        { label: "24h", sec: 86400 },
+                      ].map((x) => (
+                        <button
+                          key={x.sec}
+                          onClick={() => doTimeout(menu.msg!, x.sec)}
+                          style={{
+                            padding: "8px 10px",
+                            borderRadius: 12,
+                            border: "1px solid rgba(255,255,255,0.10)",
+                            background: "rgba(124,77,255,0.14)",
+                            color: "white",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {x.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
+
             <BotMenu
         open={botOpen}
         onClose={() => setBotOpen(false)}

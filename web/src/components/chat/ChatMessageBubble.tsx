@@ -61,22 +61,85 @@ function normalizeTitle(title: any): { code: string; text: string; tier?: string
 }
 
 function badgeLabel(b: any): string {
-  const v =
-    b?.label ??
-    b?.text ??
-    b?.badgeText ??
-    b?.meta?.badgeText ??
-    b?.code ??
-    "";
+  const v = b?.label ?? b?.text ?? b?.badgeText ?? b?.meta?.badgeText ?? b?.code ?? "";
   return String(v);
+}
+
+function normKey(s: any) {
+  return String(s ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function extractMentions(body: string): string[] {
+  // capture @token jusqu'au prochain espace
+  // (on ignore @ seul)
+  const out: string[] = [];
+  const re = /@([^\s@]{1,32})/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body))) {
+    const token = String(m[1] ?? "").trim();
+    if (token) out.push(token);
+  }
+  return out;
+}
+
+function renderBodyWithMentions(body: string, currentUsername?: string | null) {
+  const me = currentUsername ? normKey(currentUsername) : "";
+  const re = /@([^\s@]{1,32})/g;
+
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+
+  while ((m = re.exec(body))) {
+    const start = m.index;
+    const end = re.lastIndex;
+    const token = String(m[1] ?? "");
+    const tokenKey = normKey(token);
+
+    if (start > last) parts.push(body.slice(last, start));
+
+    const isMe = !!me && tokenKey === me;
+
+    parts.push(
+      <span
+        key={`${start}-${end}`}
+        className="chatMention"
+        style={{
+          display: "inline-block",
+          padding: "0 6px",
+          borderRadius: 999,
+          margin: "0 1px",
+          fontWeight: 900,
+          border: "1px solid rgba(255,255,255,0.10)",
+          background: isMe ? "rgba(124,77,255,0.28)" : "rgba(255,255,255,0.06)",
+          boxShadow: isMe ? "0 0 0 2px rgba(124,77,255,0.12)" : "none",
+        }}
+        title={isMe ? "Tu as été mentionné" : token}
+      >
+        @{token}
+      </span>
+    );
+
+    last = end;
+  }
+
+  if (last < body.length) parts.push(body.slice(last));
+
+  return parts.length ? parts : body;
 }
 
 export function ChatMessageBubble({
   msg,
   streamerAppearance,
+  currentUsername,
 }: {
   msg: ChatMsgLike;
   streamerAppearance: StreamerAppearance;
+  currentUsername?: string | null;
 }) {
   const c = msg.cosmetics ?? null;
   const lvl = (streamerAppearance?.chat?.viewerSkinsLevel ?? 1) as 1 | 2 | 3;
@@ -89,27 +152,19 @@ export function ChatMessageBubble({
   const unameEffect = c?.username?.effect ?? "none";
   const skinUnameColor = c?.username?.color ?? null;
 
-  // lvl 1: viewers skinnés gardent leur skin, sinon fallback streamer
-  // lvl 2: bloque couleurs pseudo
-  // lvl 3: bloque couleurs pseudo + cadrans
   const allowViewerNameColor = lvl < 2;
   const effectiveUnameColor = allowViewerNameColor ? skinUnameColor : null;
 
   const avatarUrl =
-    (msg as any)?.avatarUrl ??
-    (c as any)?.avatarUrl ??
-    (c as any)?.avatar?.url ??
-    (c as any)?.avatar?.imageUrl ??
-    null;
+    (msg as any)?.avatarUrl ?? (c as any)?.avatarUrl ?? (c as any)?.avatar?.url ?? (c as any)?.avatar?.imageUrl ?? null;
 
   const [imgErr, setImgErr] = React.useState(false);
   React.useEffect(() => setImgErr(false), [avatarUrl]);
 
-  // hat: supporte "hat_carton_crown" ET "carton_crown"
   const hatIdNorm = avatar?.hatId ? String(avatar.hatId).replace(/^hat_/, "") : null;
 
   const hatEmoji =
-    avatar.hatEmoji ||
+    (avatar as any)?.hatEmoji ||
     (hatIdNorm
       ? ({
           luna_cap: "🧢",
@@ -121,8 +176,24 @@ export function ChatMessageBubble({
         } as Record<string, string>)[hatIdNorm] || null
       : null);
 
+  const meKey = currentUsername ? normKey(currentUsername) : "";
+  const mentions = extractMentions(String(msg.body ?? ""));
+  const isPinged = !!meKey && mentions.some((t) => normKey(t) === meKey);
+
   return (
-    <div className={`chatMsgRow ${frameClass(frame?.frameId)}`}>
+    <div
+      className={`chatMsgRow ${frameClass(frame?.frameId)} ${isPinged ? "chatPinged" : ""}`}
+      style={
+        isPinged
+          ? {
+              borderRadius: 16,
+              outline: "1px solid rgba(124,77,255,0.28)",
+              boxShadow: "0 0 0 2px rgba(124,77,255,0.10), 0 12px 30px rgba(0,0,0,0.25)",
+              background: "rgba(124,77,255,0.06)",
+            }
+          : undefined
+      }
+    >
       <div className="chatMsgInner">
         {/* Avatar */}
         <div className={`chatAvatarBorder ${avatarBorderClass((avatar as any).borderId)}`}>
@@ -212,7 +283,7 @@ export function ChatMessageBubble({
           ) : null}
 
           {/* Body */}
-          <div className="chatBodyText">{msg.body}</div>
+          <div className="chatBodyText">{renderBodyWithMentions(String(msg.body ?? ""), currentUsername)}</div>
         </div>
       </div>
     </div>
