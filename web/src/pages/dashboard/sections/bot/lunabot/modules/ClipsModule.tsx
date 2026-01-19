@@ -178,7 +178,7 @@ async function fetchBlobWithProgress(
   }
 
   const reader = r.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const chunks: BlobPart[] = [];
   let loaded = 0;
 
   onProgress(total ? 0 : null, 0, total);
@@ -187,7 +187,8 @@ async function fetchBlobWithProgress(
     const { value, done } = await reader.read();
     if (done) break;
     if (value) {
-      chunks.push(value);
+      // force un Uint8Array basé sur ArrayBuffer (évite ArrayBufferLike/SharedArrayBuffer côté TS)
+      chunks.push(new Uint8Array(value));
       loaded += value.byteLength;
 
       if (total) {
