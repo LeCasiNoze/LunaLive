@@ -20,7 +20,6 @@ type ClipItem = {
   vod_link: string | null;
   timecode_str: string;
 
-  // ✅ NEW (R2 mp4)
   mp4_key?: string | null;
   mp4_url?: string | null;
   mp4_ready_ts?: number | null;
@@ -75,7 +74,7 @@ async function apiJson<T>(token: string, url: string, init?: RequestInit): Promi
 }
 
 /**
- * SSE via fetch streaming (car EventSource ne supporte pas Authorization header)
+ * SSE via fetch streaming (EventSource ne supporte pas Authorization)
  * On lit "event: tick" + "data: {...}"
  */
 async function consumeSseTicks(
@@ -109,7 +108,6 @@ async function consumeSseTicks(
 
     buf += dec.decode(value, { stream: true });
 
-    // split by SSE messages (blank line)
     let idx = buf.indexOf("\n\n");
     while (idx >= 0) {
       const chunk = buf.slice(0, idx);
@@ -135,9 +133,10 @@ async function consumeSseTicks(
   }
 }
 
-function openDownload(url: string) {
-  // download natif (pas blob) => R2 public URL
-  window.open(url, "_blank", "noopener,noreferrer");
+function openMp4ViaApi(clipId: number) {
+  // ✅ IMPORTANT: on passe par l'API (même origin que le site), qui redirect vers R2
+  // => pas de blob, pas de CORS, téléchargement natif
+  window.open(`${API_BASE}/clips/${clipId}/mp4`, "_blank", "noopener,noreferrer");
 }
 
 function copyText(text: string) {
@@ -194,10 +193,10 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
     const cur = dl[cid];
     if (cur?.status === "starting" || cur?.status === "running") return;
 
-    // si déjà prêt => download direct
-    const readyUrl = String(clip.mp4_url || "").trim();
-    if (readyUrl) {
-      openDownload(readyUrl);
+    // déjà prêt => open direct
+    const mp4Key = String(clip.mp4_key || "").trim();
+    if (mp4Key) {
+      openMp4ViaApi(cid);
       return;
     }
 
@@ -207,16 +206,14 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
     }));
 
     try {
-      // START render job
       const start = await apiJson<any>(token, "/me/bot/clips/download/start", {
         method: "POST",
         body: JSON.stringify({ id: cid }),
       });
 
-      // already rendered (backend can return this)
-      if (start?.already && start?.mp4_url) {
-        setDl((m) => ({ ...m, [cid]: { status: "done", percent: 100, message: "Prêt ✓", publicUrl: start.mp4_url } }));
-        openDownload(String(start.mp4_url));
+      if (start?.already) {
+        setDl((m) => ({ ...m, [cid]: { status: "done", percent: 100, message: "Prêt ✓" } }));
+        openMp4ViaApi(cid);
         await refresh();
         return;
       }
@@ -229,15 +226,12 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
         [cid]: { ...(m[cid] || {}), status: "running", job, percent: 5, message: "Extraction…" },
       }));
 
-      // Progress via SSE (fetch streaming with Authorization)
       const ac = new AbortController();
       const stop = () => {
         try {
           ac.abort();
         } catch {}
       };
-
-      let gotPublicUrl: string | null = null;
 
       await consumeSseTicks(
         token,
@@ -246,14 +240,12 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
           const status = String(payload?.status || "");
           const pct = Math.max(0, Math.min(100, Number(payload?.percent || 0)));
           const msg = String(payload?.message || "");
-          const pub = payload?.publicUrl ? String(payload.publicUrl) : null;
-
-          if (pub) gotPublicUrl = pub;
+          const errMsg = payload?.error ? String(payload.error) : null;
 
           if (status === "error") {
             setDl((m) => ({
               ...m,
-              [cid]: { ...(m[cid] || {}), status: "error", error: String(payload?.error || "error"), message: msg, percent: pct },
+              [cid]: { ...(m[cid] || {}), status: "error", error: errMsg || "error", message: msg, percent: pct },
             }));
             stop();
             return;
@@ -262,7 +254,7 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
           if (status === "done") {
             setDl((m) => ({
               ...m,
-              [cid]: { ...(m[cid] || {}), status: "done", message: "Prêt ✓", percent: 100, publicUrl: pub || gotPublicUrl },
+              [cid]: { ...(m[cid] || {}), status: "done", message: "Prêt ✓", percent: 100 },
             }));
             stop();
             return;
@@ -270,22 +262,19 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
 
           setDl((m) => ({
             ...m,
-            [cid]: { ...(m[cid] || {}), status: "running", message: msg || "Extraction…", percent: pct, publicUrl: pub || gotPublicUrl },
+            [cid]: { ...(m[cid] || {}), status: "running", message: msg || "Rendu…", percent: pct },
           }));
         },
         ac.signal
       ).catch((e) => {
-        // si le stream se ferme sans erreur, on continue
         const msg = String((e as any)?.message || "");
         if (!msg.includes("aborted")) {
           setDl((m) => ({ ...m, [cid]: { ...(m[cid] || {}), status: "error", error: msg || "sse_failed" } }));
         }
       });
 
-      // si on a une URL publique => download direct
-      if (gotPublicUrl) openDownload(gotPublicUrl);
-
-      // refresh to pick mp4_url in list
+      // mp4 prêt => open
+      openMp4ViaApi(cid);
       await refresh();
     } catch (e: any) {
       const reason = String(e?.message || "error");
@@ -341,8 +330,8 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
               const clipStartSec = Math.max(0, Math.floor((c.at_sec || 0) - (c.pre_sec || 105)));
               const directVodUrl = c.vod_url ? `${c.vod_url}#t=${clipStartSec}` : null;
 
-              const mp4Url = String(c.mp4_url || st?.publicUrl || "").trim() || null;
-              const mp4Ready = !!mp4Url;
+              const mp4Key = String(c.mp4_key || "").trim();
+              const mp4Ready = !!mp4Key;
 
               return (
                 <div
@@ -399,7 +388,7 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                       <button
                         className="btnGhostInline"
                         onClick={() => {
-                          if (mp4Url) openDownload(mp4Url);
+                          if (mp4Ready) openMp4ViaApi(c.id);
                           else void handleRenderAndDownload(c);
                         }}
                         disabled={(!c.vod_url && !mp4Ready) || st?.status === "starting" || st?.status === "running"}
@@ -409,15 +398,15 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                           fontWeight: 950,
                           opacity: !c.vod_url && !mp4Ready ? 0.6 : 1,
                         }}
-                        title={!c.vod_url && !mp4Ready ? "VOD pas encore prête" : mp4Ready ? "Télécharger le MP4 (R2)" : "Rendre + télécharger"}
+                        title={!c.vod_url && !mp4Ready ? "VOD pas encore prête" : mp4Ready ? "Télécharger le MP4" : "Rendre + télécharger"}
                       >
                         {mp4Ready ? "Télécharger" : "Rendre + télécharger"}
                       </button>
 
-                      {mp4Url ? (
+                      {mp4Ready ? (
                         <button
                           className="btnGhostInline"
-                          onClick={() => copyText(mp4Url)}
+                          onClick={() => copyText(`${API_BASE}/clips/${c.id}/mp4`)}
                           style={{
                             padding: "10px 12px",
                             borderRadius: 14,
@@ -425,7 +414,7 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                             background: "rgba(255,255,255,0.06)",
                             border: "1px solid rgba(255,255,255,0.12)",
                           }}
-                          title="Copier le lien"
+                          title="Copier le lien API (redirect)"
                         >
                           Copier lien
                         </button>
@@ -447,12 +436,7 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                           </button>
                         </a>
                       ) : c.vod_permlink ? (
-                        <a
-                          href={buildDliveVodPage(c.vod_permlink, c.at_sec)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ textDecoration: "none" }}
-                        >
+                        <a href={buildDliveVodPage(c.vod_permlink, c.at_sec)} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
                           <button
                             className="btnGhostInline"
                             style={{
@@ -491,7 +475,7 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
       </div>
 
       <div className="muted" style={{ marginTop: 14, fontSize: 12 }}>
-        Note: le téléchargement est <b>natif</b> via l’URL publique R2 (pas de blob, pas de stockage Render).
+        Note: téléchargement <b>natif</b> via <b>/clips/:id/mp4</b> (redirect vers R2). Pas de blob, pas de stockage Render.
       </div>
     </div>
   );

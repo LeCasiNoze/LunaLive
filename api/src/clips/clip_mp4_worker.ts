@@ -25,7 +25,6 @@ function envNum(name: string, def: number) {
   const v = Number(process.env[name]);
   return Number.isFinite(v) ? v : def;
 }
-
 function nowMs() {
   return Date.now();
 }
@@ -36,7 +35,7 @@ const RENDER_CONCURRENCY = Math.max(1, Math.floor(envNum("CLIPS_RENDER_CONCURREN
 const CLEANUP_INTERVAL_MIN = Math.max(5, Math.floor(envNum("CLIPS_CLEANUP_INTERVAL_MIN", 60)));
 
 const CRF = Math.max(18, Math.min(35, Math.floor(envNum("CLIPS_CRF", 28))));
-const AAC_K = Math.max(64, Math.min(256, Math.floor(envNum("CLIPS_AAC_K", 128)))); // kbps
+const AAC_K = Math.max(64, Math.min(256, Math.floor(envNum("CLIPS_AAC_K", 128))));
 
 function ttlMs() {
   return TTL_DAYS * 24 * 3600 * 1000;
@@ -101,8 +100,8 @@ async function renderAndUploadClip(clip: BotClipRow) {
   const startSec = Math.max(0, at - pre);
   const durSec = Math.max(1, pre + post);
 
-  // on garde une marge large pour les timeouts (HLS)
-  const timeoutMs = Math.max(60_000, durSec * 2500);
+  // marge large (HLS)
+  const timeoutMs = Math.max(90_000, durSec * 3000);
 
   const key = `clips/${Number(clip.id)}.mp4`;
 
@@ -119,7 +118,7 @@ async function renderAndUploadClip(clip: BotClipRow) {
       "Referer: https://dlive.tv/\r\n" +
       "User-Agent: Mozilla/5.0\r\n";
 
-    // 1) tentative la plus simple/rapide : stream copy
+    // 1) stream copy (rapide)
     const argsCopy = [
       "-hide_banner",
       "-loglevel",
@@ -155,7 +154,7 @@ async function renderAndUploadClip(clip: BotClipRow) {
 
     let r = await runFfmpeg(argsCopy, timeoutMs);
 
-    // 2) fallback : ré-encode (plus compatible, souvent plus léger)
+    // 2) fallback re-encode (plus robuste)
     if (!r.ok) {
       const argsRe = [
         "-hide_banner",
@@ -195,7 +194,7 @@ async function renderAndUploadClip(clip: BotClipRow) {
         "-y",
         outPath,
       ];
-      r = await runFfmpeg(argsRe, Math.max(timeoutMs, durSec * 3500));
+      r = await runFfmpeg(argsRe, Math.max(timeoutMs, durSec * 4000));
       if (!r.ok) throw new Error(r.err || "ffmpeg_failed");
     }
 
@@ -217,7 +216,7 @@ async function renderAndUploadClip(clip: BotClipRow) {
 }
 
 /* ─────────────────────────────────────────────
-   Public: start renderer loop
+   Renderer loop
 ───────────────────────────────────────────── */
 
 let renderStarted = false;
@@ -231,7 +230,7 @@ export function startClipsMp4Renderer() {
     return;
   }
 
-  const maxAgeMs = ttlMs(); // on ne rend pas les clips plus vieux que le TTL
+  const maxAgeMs = ttlMs();
   const minCreatedTs = nowMs() - maxAgeMs;
 
   let running = 0;
@@ -239,7 +238,6 @@ export function startClipsMp4Renderer() {
   const tick = async () => {
     if (running >= RENDER_CONCURRENCY) return;
 
-    // on prend un clip à render (claim atomique)
     const clip = await claimOneClipToRenderMp4({ minCreatedTs, maxAgeMs }).catch(() => null);
     if (!clip) return;
 
@@ -247,12 +245,17 @@ export function startClipsMp4Renderer() {
 
     (async () => {
       try {
+        if (!clip.vod_url) {
+          await setClipMp4Error(Number(clip.id), "vod_missing").catch(() => {});
+          return;
+        }
+
         await renderAndUploadClip(clip);
-        console.log(`[clips-mp4] rendered clip=${clip.id} => ok`);
+        console.log(`[clips-mp4] rendered clip=${clip.id} ok`);
       } catch (e: any) {
         const msg = String(e?.message || e || "render_failed").slice(0, 500);
-        console.warn(`[clips-mp4] rendered clip=${clip.id} => error`, msg);
-        await setClipMp4Error(Number(clip.id), msg).catch(() => {});
+        console.warn(`[clips-mp4] rendered clip=${clip?.id} error`, msg);
+        await setClipMp4Error(Number(clip?.id || 0), msg).catch(() => {});
       } finally {
         running--;
       }
@@ -261,23 +264,19 @@ export function startClipsMp4Renderer() {
     });
   };
 
-  // ensure schema first
   ensureBotClips()
     .catch(() => {})
     .finally(() => {
       setInterval(() => void tick(), Math.max(2, RENDER_INTERVAL_SEC) * 1000);
-      // petit kick au boot
-      setTimeout(() => void tick(), 2000);
-      setTimeout(() => void tick(), 5000);
+      setTimeout(() => void tick(), 1500);
+      setTimeout(() => void tick(), 3500);
     });
 
-  console.log(
-    `[clips-mp4] renderer started ttlDays=${TTL_DAYS} intervalSec=${RENDER_INTERVAL_SEC} concurrency=${RENDER_CONCURRENCY}`
-  );
+  console.log(`[clips-mp4] renderer started ttlDays=${TTL_DAYS} intervalSec=${RENDER_INTERVAL_SEC} concurrency=${RENDER_CONCURRENCY}`);
 }
 
 /* ─────────────────────────────────────────────
-   Cleanup: expire after TTL + delete from R2
+   Cleanup TTL (delete R2 + clear DB)
 ───────────────────────────────────────────── */
 
 let cleanupStarted = false;
@@ -296,8 +295,7 @@ export function startClipsMp4Cleanup() {
 
     const cutoff = nowMs() - ttlMs();
 
-    // 1) mark expired clips as deleted_ts (+ hide)
-    // (simple, pas besoin de nouvelle fonction store)
+    // mark expired clips deleted + hide
     await pool
       .query(
         `
@@ -311,29 +309,23 @@ export function startClipsMp4Cleanup() {
       )
       .catch(() => {});
 
-    // 2) delete mp4 keys (expired OR deleted)
+    // delete mp4 keys for expired/deleted rows
     const keys = await listMp4KeysToCleanup(cutoff, 500).catch(() => []);
-    for (const it of keys) {
-      const key = String((it as any).mp4_key || "").trim();
-      if (!key) continue;
+    for (const it of keys as any[]) {
+      const id = Number(it?.id || 0);
+      const key = String(it?.mp4_key || "").trim();
+      if (!id || !key) continue;
 
       try {
         await deleteFromR2(key);
-      } catch {
-        // ignore (idempotent / already deleted)
-      }
+      } catch {}
 
-      // clear DB fields (so it won't be served)
-      await clearMp4Key(Number((it as any).id)).catch(() => {});
+      await clearMp4Key(id).catch(() => {});
     }
 
-    // 3) optional: purge old likes (si tu veux, sinon laisse)
-    // await pool.query(`DELETE FROM clip_likes WHERE clip_id IN (SELECT id FROM bot_clips WHERE deleted_ts IS NOT NULL AND deleted_ts < $1)`, [cutoff]).catch(()=>{});
-
-    console.log(`[clips-cleanup] done cutoff=${new Date(cutoff).toISOString()} keys=${keys.length}`);
+    console.log(`[clips-cleanup] done cutoff=${new Date(cutoff).toISOString()} keys=${(keys as any[]).length}`);
   };
 
-  // run now + interval
   run().catch((e) => console.warn("[clips-cleanup] first run failed", e?.message || e));
   setInterval(() => run().catch((e) => console.warn("[clips-cleanup] run failed", e?.message || e)), CLEANUP_INTERVAL_MIN * 60_000);
 

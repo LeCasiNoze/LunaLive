@@ -3,6 +3,31 @@
 function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
 }
+
+export type ApiClip = {
+  id: number;
+  streamerSlug: string;
+
+  title: string | null;
+  createdAtMs: number;
+
+  // lecture
+  vodUrl: string | null; // m3u8 (fallback)
+  startSec: number; // début du clip (at - pre)
+  durationSec: number; // pre + post
+
+  // ✅ NEW: MP4 clip (2 min) via l'API => redirect R2
+  // ex: https://lunalive-api.onrender.com/clips/123/mp4
+  clipUrl?: string | null;
+
+  // preview (pris ~1min dans le clip)
+  thumbUrl: string | null;
+
+  // social
+  likesCount: number;
+  myLiked: boolean;
+};
+
 export type ApiTopClip = ApiClip & {
   streamerDisplayName: string;
   ownerUserId: number | null;
@@ -13,26 +38,6 @@ export type GetTopClipsResp = {
   ok: boolean;
   total: number;
   clips: ApiTopClip[];
-};
-
-export type ApiClip = {
-  id: number;
-  streamerSlug: string;
-
-  title: string | null;
-  createdAtMs: number;
-
-  // lecture
-  vodUrl: string | null;     // m3u8
-  startSec: number;          // début du clip (at - pre)
-  durationSec: number;       // pre + post
-
-  // preview (pris ~1min dans le clip)
-  thumbUrl: string | null;
-
-  // social
-  likesCount: number;
-  myLiked: boolean;
 };
 
 export type ApiPageInfo = {
@@ -122,6 +127,7 @@ export async function deleteStreamerClip(clipId: number, token: string) {
     token
   );
 }
+
 export async function getTopClips(range: "month" | "30d", limit: number, token?: string | null) {
   const qs = new URLSearchParams();
   qs.set("range", range);

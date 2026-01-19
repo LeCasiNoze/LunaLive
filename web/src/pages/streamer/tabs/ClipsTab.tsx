@@ -62,7 +62,6 @@ export function ClipsTab({
     setError(null);
     try {
       const r = await getStreamerClips(slug, reset ? null : cursor, 24, sort, token);
-
       if (!r?.ok) throw new Error(String((r as any)?.error || "Erreur"));
 
       const list = Array.isArray(r.clips) ? r.clips : [];
@@ -91,41 +90,21 @@ export function ClipsTab({
 
     const nextLike = !c.myLiked;
 
-    // optimistic
     setBusyId(c.id);
     setClips((prev) =>
       prev.map((x) =>
         x.id === c.id
-          ? {
-              ...x,
-              myLiked: nextLike,
-              likesCount: Math.max(0, Number(x.likesCount || 0) + (nextLike ? 1 : -1)),
-            }
+          ? { ...x, myLiked: nextLike, likesCount: Math.max(0, Number(x.likesCount || 0) + (nextLike ? 1 : -1)) }
           : x
       )
     );
 
     try {
       const r = await toggleClipLike(c.id, nextLike, token);
-      setClips((prev) =>
-        prev.map((x) => (x.id === c.id ? { ...x, myLiked: r.myLiked, likesCount: r.likesCount } : x))
-      );
-      if (openClip?.id === c.id) {
-        setOpenClip((p) => (p ? { ...p, myLiked: r.myLiked, likesCount: r.likesCount } : p));
-      }
+      setClips((prev) => prev.map((x) => (x.id === c.id ? { ...x, myLiked: r.myLiked, likesCount: r.likesCount } : x)));
+      if (openClip?.id === c.id) setOpenClip((p) => (p ? { ...p, myLiked: r.myLiked, likesCount: r.likesCount } : p));
     } catch (e: any) {
-      // rollback
-      setClips((prev) =>
-        prev.map((x) =>
-          x.id === c.id
-            ? {
-                ...x,
-                myLiked: c.myLiked,
-                likesCount: c.likesCount,
-              }
-            : x
-        )
-      );
+      setClips((prev) => prev.map((x) => (x.id === c.id ? { ...x, myLiked: c.myLiked, likesCount: c.likesCount } : x)));
       setError(String(e?.message || "Erreur"));
     } finally {
       setBusyId(null);
@@ -159,24 +138,14 @@ export function ClipsTab({
     <div>
       <div className="panelTitle">Clips</div>
       <div className="mutedSmall" style={{ opacity: 0.85, marginTop: 6 }}>
-        Clips du stream (lecture directe en popup). Tri par date ou popularité.
+        Clips du stream (lecture en popup). Tri par date ou popularité.
       </div>
 
       <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          className={sort === "recent" ? "btnPrimarySmall" : "btnGhostSmall"}
-          disabled={loading}
-          onClick={() => setSort("recent")}
-        >
+        <button type="button" className={sort === "recent" ? "btnPrimarySmall" : "btnGhostSmall"} disabled={loading} onClick={() => setSort("recent")}>
           Récents
         </button>
-        <button
-          type="button"
-          className={sort === "top" ? "btnPrimarySmall" : "btnGhostSmall"}
-          disabled={loading}
-          onClick={() => setSort("top")}
-        >
+        <button type="button" className={sort === "top" ? "btnPrimarySmall" : "btnGhostSmall"} disabled={loading} onClick={() => setSort("top")}>
           Populaires
         </button>
 
@@ -239,12 +208,7 @@ export function ClipsTab({
                 }}
               >
                 {c.thumbUrl ? (
-                  <img
-                    src={c.thumbUrl}
-                    alt=""
-                    loading="lazy"
-                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                  />
+                  <img src={c.thumbUrl} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                 ) : null}
 
                 <div
@@ -282,20 +246,16 @@ export function ClipsTab({
                 </div>
               </div>
 
-              <div
-                style={{
-                  marginTop: 10,
-                  fontWeight: 950,
-                  lineHeight: 1.25,
-                  fontSize: "0.95rem",
-                  ...whiteStroke,
-                }}
-              >
+              <div style={{ marginTop: 10, fontWeight: 950, lineHeight: 1.25, fontSize: "0.95rem", ...whiteStroke }}>
                 {c.title || "(sans titre)"}
               </div>
 
               <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.85 }}>
                 {timeAgo(c.createdAtMs)}
+              </div>
+
+              <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.85 }}>
+                {c.clipUrl ? "MP4 ✅" : "VOD (fallback)"}
               </div>
             </button>
           ))}
@@ -351,19 +311,34 @@ function ClipModal({
     const video = videoRef.current;
     if (!video) return;
 
+    // ✅ priorité: MP4 clipUrl (2 min)
+    const clipUrl = String((clip as any).clipUrl || "").trim();
+    if (clipUrl) {
+      video.src = clipUrl;
+      const onMeta = () => {
+        video.play().catch(() => {});
+      };
+      video.addEventListener("loadedmetadata", onMeta);
+      return () => {
+        video.removeEventListener("loadedmetadata", onMeta);
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      };
+    }
+
+    // fallback VOD (seek)
     const url = clip.vodUrl;
     if (!url) return;
 
     let hls: Hls | null = null;
     const seekTo = Math.max(0, Math.floor(clip.startSec || 0));
-
     const trySeek = () => {
       try {
         if (Number.isFinite(seekTo) && seekTo > 0) video.currentTime = seekTo;
       } catch {}
     };
 
-    // Safari iOS/macOS HLS natif
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = url;
       const onMeta = () => {
@@ -413,13 +388,7 @@ function ClipModal({
 
   return (
     <div className="chatSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex: 80 }}>
-      <div
-        className="chatSheet"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        style={{ maxWidth: 980 }}
-      >
+      <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 980 }}>
         <div className="chatSheetTop" style={{ gap: 10 }}>
           <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {clip.title || "Clip"}
@@ -435,11 +404,7 @@ function ClipModal({
               }}
               disabled={busy}
               title={!token ? "Connecte-toi pour liker" : "Like"}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-              }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
             >
               <span>{clip.myLiked ? "❤️" : "🤍"}</span>
               <span>{Number(clip.likesCount || 0)}</span>
@@ -451,10 +416,7 @@ function ClipModal({
                 className="btnGhostSmall"
                 onClick={onDelete}
                 disabled={busy}
-                style={{
-                  background: "rgba(255, 70, 70, 0.14)",
-                  border: "1px solid rgba(255, 70, 70, 0.28)",
-                }}
+                style={{ background: "rgba(255, 70, 70, 0.14)", border: "1px solid rgba(255, 70, 70, 0.28)" }}
                 title="Supprimer le clip"
               >
                 {busy ? "…" : "Supprimer"}
@@ -468,7 +430,7 @@ function ClipModal({
         </div>
 
         <div className="chatSheetBody" style={{ padding: 14 }}>
-          {!clip.vodUrl ? (
+          {!(clip as any).clipUrl && !clip.vodUrl ? (
             <div className="mutedSmall" style={{ opacity: 0.85 }}>
               Vidéo indisponible (VOD pas prête).
             </div>
@@ -488,7 +450,8 @@ function ClipModal({
 
           <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85 }}>
             Durée: <strong style={{ color: "rgba(255,255,255,0.9)" }}>{fmtDuration(clip.durationSec)}</strong> •{" "}
-            Publié: <strong style={{ color: "rgba(255,255,255,0.9)" }}>{timeAgo(clip.createdAtMs)}</strong>
+            Publié: <strong style={{ color: "rgba(255,255,255,0.9)" }}>{timeAgo(clip.createdAtMs)}</strong> •{" "}
+            Source: <strong style={{ color: "rgba(255,255,255,0.9)" }}>{(clip as any).clipUrl ? "MP4" : "VOD"}</strong>
           </div>
         </div>
       </div>
