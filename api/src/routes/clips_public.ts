@@ -5,6 +5,7 @@ import { pool } from "../db.js";
 import { requireAuth, type AuthUser } from "../auth.js";
 import { ensureBotClips, markClipDeletedById } from "../bot_clips/store.js";
 import { buildPublicUrl, r2Enabled } from "../clips/r2.js";
+import { Readable } from "node:stream";
 
 export const clipsPublicRouter = express.Router();
 
@@ -122,9 +123,41 @@ clipsPublicRouter.get("/clips/:id/mp4", async (req, res) => {
   const url = buildPublicUrl(key);
   if (!url) return res.status(404).json({ ok: false, error: "mp4_not_ready" });
 
-  // redirect cacheable
+  // ✅ PROXY STREAM: évite CORS (le browser ne touche plus R2 directement)
+  const range = req.headers.range;
+
+  const upstream = await fetch(url, {
+    headers: range ? { range: String(range) } : undefined,
+  });
+
+  if (!upstream.ok || !upstream.body) {
+    const txt = await upstream.text().catch(() => "");
+    return res.status(502).json({
+      ok: false,
+      error: `upstream_${upstream.status}`,
+      detail: txt.slice(0, 200),
+    });
+  }
+
+  // mirror status + headers utiles (progress + seek)
+  res.status(upstream.status); // 200 ou 206
+  const ct = upstream.headers.get("content-type") || "video/mp4";
+  res.setHeader("Content-Type", ct);
+
+  const ar = upstream.headers.get("accept-ranges");
+  if (ar) res.setHeader("Accept-Ranges", ar);
+
+  const cr = upstream.headers.get("content-range");
+  if (cr) res.setHeader("Content-Range", cr);
+
+  const cl = upstream.headers.get("content-length");
+  if (cl) res.setHeader("Content-Length", cl);
+
+  // cache OK côté API (tu peux ajuster)
   res.setHeader("Cache-Control", "public, max-age=600");
-  return res.redirect(302, url);
+
+  // stream sans buffer RAM
+  Readable.fromWeb(upstream.body as any).pipe(res);
 });
 
 /**
