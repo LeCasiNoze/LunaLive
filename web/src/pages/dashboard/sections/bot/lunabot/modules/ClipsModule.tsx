@@ -1,6 +1,5 @@
 // web/src/pages/dashboard/sections/bot/modules/ClipsModule.tsx
 import * as React from "react";
-import Hls from "hls.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
@@ -30,15 +29,18 @@ type ClipItem = {
 };
 
 type DlState = {
-  status?: "idle" | "starting" | "running" | "done" | "error" | "not_ready";
+  status?: "idle" | "starting" | "running" | "downloading" | "done" | "error" | "not_ready";
   error?: string | null;
   message?: string | null;
   job?: string;
   percent?: number;
-  publicUrl?: string | null;
 };
 
 type DlMap = Record<number, DlState>;
+
+function safeTitle(v: any) {
+  return String(v || "clip").trim().replace(/[^a-z0-9-_]+/gi, "_").slice(0, 80) || "clip";
+}
 
 function buildDliveVodPage(permlink: string, atSec: number) {
   const p = encodeURIComponent(permlink);
@@ -134,157 +136,86 @@ async function consumeSseTicks(
   }
 }
 
-function openMp4ViaApi(clipId: number) {
-  // ✅ IMPORTANT: on passe par l'API (même origin que le site), qui redirect vers R2
-  // => pas de blob, pas de CORS, téléchargement natif
-  window.open(`${API_BASE}/clips/${clipId}/mp4`, "_blank", "noopener,noreferrer");
-}
-
-function clipMp4Url(clipId: number) {
-  // ✅ utilisé pour <video> (pas besoin d'Authorization)
-  return `${API_BASE}/clips/${clipId}/mp4`;
-}
-
 function copyText(text: string) {
   if (!text) return;
   navigator.clipboard?.writeText(text).catch(() => {});
 }
 
-function fmtDuration(sec: number) {
-  sec = Math.max(0, Math.floor(sec || 0));
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  if (h) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return `${m}:${String(s).padStart(2, "0")}`;
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-function ClipViewerModal({
+/**
+ * Téléchargement avec progression (streaming).
+ * Nécessite que la réponse soit lisible (CORS OK sur l’URL finale).
+ */
+async function fetchBlobWithProgress(
+  url: string,
+  onProgress: (pct: number | null, loaded: number, total: number | null) => void,
+  signal?: AbortSignal
+): Promise<Blob> {
+  const r = await fetch(url, { method: "GET", signal });
+
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`download_http_${r.status}${t ? `:${t.slice(0, 120)}` : ""}`);
+  }
+
+  const total = Number(r.headers.get("content-length") || "") || null;
+
+  if (!r.body) {
+    // fallback sans stream
+    const b = await r.blob();
+    onProgress(100, total ?? b.size, total ?? b.size);
+    return b;
+  }
+
+  const reader = r.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+
+  onProgress(total ? 0 : null, 0, total);
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (value) {
+      chunks.push(value);
+      loaded += value.byteLength;
+
+      if (total) {
+        const pct = Math.max(0, Math.min(100, Math.round((loaded / total) * 100)));
+        onProgress(pct, loaded, total);
+      } else {
+        onProgress(null, loaded, null); // indéterminé
+      }
+    }
+  }
+
+  const blob = new Blob(chunks, { type: r.headers.get("content-type") || "video/mp4" });
+  if (total) onProgress(100, loaded, total);
+  return blob;
+}
+
+function ClipViewModal({
   clip,
   onClose,
 }: {
   clip: ClipItem;
   onClose: () => void;
 }) {
-  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const mp4Key = String(clip.mp4_key || "").trim();
+  const mp4Url = String(clip.mp4_url || "").trim();
 
-  React.useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const mp4Ready = !!String(clip.mp4_key || "").trim();
-    const mp4 = mp4Ready ? clipMp4Url(clip.id) : null;
-    const hlsUrl = clip.vod_url ? String(clip.vod_url) : null;
-
-    // fenêtre clip
-    const start = Math.max(0, Math.floor((clip.at_sec || 0) - (clip.pre_sec || 105)));
-    const duration = Math.max(1, Math.floor((clip.pre_sec || 105) + (clip.post_sec || 15)));
-    const end = start + duration;
-    const EPS = 0.25;
-
-    let hls: Hls | null = null;
-
-    const cleanup = () => {
-      try {
-        video.pause();
-      } catch {}
-      try {
-        video.removeEventListener("timeupdate", onTimeUpdate);
-        video.removeEventListener("seeking", onSeeking);
-        video.removeEventListener("loadedmetadata", onLoadedMeta);
-      } catch {}
-      try {
-        hls?.destroy();
-      } catch {}
-      hls = null;
-      try {
-        video.removeAttribute("src");
-        video.load();
-      } catch {}
-    };
-
-    const onTimeUpdate = () => {
-      try {
-        if (video.currentTime >= end - EPS) {
-          video.pause();
-          video.currentTime = end - EPS;
-        }
-      } catch {}
-    };
-
-    const onSeeking = () => {
-      try {
-        if (video.currentTime < start - EPS) video.currentTime = start;
-        if (video.currentTime > end - EPS) video.currentTime = end - EPS;
-      } catch {}
-    };
-
-    const onLoadedMeta = () => {
-      try {
-        // si HLS fallback, on se place sur le start
-        if (!mp4) video.currentTime = start;
-      } catch {}
-      video.play().catch(() => {});
-    };
-
-    // IMPORTANT: éviter de précharger trop
-    video.preload = "metadata";
-
-    // ✅ MP4 ready -> lecture directe
-    if (mp4) {
-      video.src = mp4;
-      video.addEventListener("loadedmetadata", onLoadedMeta);
-      return () => cleanup();
-    }
-
-    // ✅ fallback HLS (si VOD dispo)
-    if (!hlsUrl) return () => cleanup();
-
-    video.addEventListener("timeupdate", onTimeUpdate);
-    video.addEventListener("seeking", onSeeking);
-
-    // Safari iOS/macOS HLS natif
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = hlsUrl;
-      video.addEventListener("loadedmetadata", onLoadedMeta);
-      return () => cleanup();
-    }
-
-    if (Hls.isSupported()) {
-      hls = new Hls({
-        autoStartLoad: false,
-        startPosition: start,
-        maxBufferLength: 30,
-        backBufferLength: 0,
-      });
-
-      hls.loadSource(hlsUrl);
-      hls.attachMedia(video);
-
-      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-        try {
-          hls?.startLoad(start);
-        } catch {}
-      });
-
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        try {
-          video.currentTime = start;
-        } catch {}
-        video.play().catch(() => {});
-      });
-
-      return () => cleanup();
-    }
-
-    // fallback basique
-    video.src = hlsUrl;
-    video.addEventListener("loadedmetadata", onLoadedMeta);
-    return () => cleanup();
-  }, [clip]);
-
-  const mp4Ready = !!String(clip.mp4_key || "").trim();
-  const duration = Math.max(1, Math.floor((clip.pre_sec || 105) + (clip.post_sec || 15)));
+  // On préfère mp4_url (R2 public), sinon on passe par l’API redirect
+  const src = mp4Url || (mp4Key ? `${API_BASE}/clips/${clip.id}/mp4` : "");
 
   return (
     <div
@@ -293,11 +224,11 @@ function ClipViewerModal({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 999,
         background: "rgba(0,0,0,0.62)",
         display: "grid",
         placeItems: "center",
         padding: 18,
+        zIndex: 90,
         backdropFilter: "blur(10px)",
       }}
     >
@@ -320,59 +251,54 @@ function ClipViewerModal({
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            gap: 10,
             padding: "12px 14px",
             borderBottom: "1px solid rgba(255,255,255,0.08)",
+            gap: 10,
           }}
         >
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 1100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {clip.title || "Clip"}
             </div>
-            <div style={{ marginTop: 4, fontSize: 12, opacity: 0.78, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <span>
-                Durée: <b style={{ opacity: 0.95 }}>{fmtDuration(duration)}</b>
-              </span>
-              <span style={{ opacity: 0.7 }}>•</span>
-              <span>{mp4Ready ? "MP4" : clip.vod_url ? "HLS (fallback VOD)" : "Indisponible"}</span>
+            <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
               {clip.author ? (
                 <>
-                  <span style={{ opacity: 0.7 }}>•</span>
-                  <span>
-                    par <b style={{ opacity: 0.95 }}>@{clip.author}</b>
-                  </span>
+                  par <b>@{clip.author}</b> •{" "}
                 </>
               ) : null}
+              <span style={{ opacity: 0.9 }}>timecode</span> <b>{clip.timecode_str || ""}</b>
             </div>
           </div>
 
           <button
-            type="button"
+            className="btnGhostInline"
             onClick={onClose}
             style={{
-              width: 34,
-              height: 34,
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.05)",
-              color: "rgba(255,255,255,0.92)",
-              cursor: "pointer",
+              width: 38,
+              height: 38,
+              borderRadius: 14,
               fontWeight: 1100,
+              display: "grid",
+              placeItems: "center",
             }}
+            type="button"
             aria-label="Fermer"
           >
             ✕
           </button>
         </div>
 
-        <div style={{ padding: 14, overflow: "auto", maxHeight: "calc(92vh - 60px)" }}>
-          {!mp4Ready && !clip.vod_url ? (
-            <div style={{ fontSize: 12, opacity: 0.85 }}>Vidéo indisponible (VOD pas prête).</div>
+        <div style={{ padding: 14 }}>
+          {!mp4Key && !mp4Url ? (
+            <div className="muted" style={{ fontSize: 12 }}>
+              MP4 pas prêt (rendu en attente). Reviens dans quelques secondes et clique sur “Télécharger”.
+            </div>
           ) : (
             <video
-              ref={videoRef}
               controls
               playsInline
+              preload="metadata"
+              src={src}
               style={{
                 width: "100%",
                 borderRadius: 16,
@@ -393,8 +319,6 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
   const [err, setErr] = React.useState<string | null>(null);
 
   const [dl, setDl] = React.useState<DlMap>({});
-
-  // ✅ NEW: viewer modal
   const [openClip, setOpenClip] = React.useState<ClipItem | null>(null);
 
   const missingVod = React.useMemo(() => items.some((c) => !c.vod_url), [items]);
@@ -434,21 +358,70 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
     }
   }
 
+  async function downloadMp4WithProgress(clip: ClipItem) {
+    const cid = clip.id;
+
+    // URL à télécharger : on préfère R2 public (mp4_url) pour éviter de faire passer le binaire par Render
+    // Si absent, fallback API redirect (/clips/:id/mp4) — peut être bloqué selon CORS.
+    const mp4Url = String(clip.mp4_url || "").trim();
+    const url = mp4Url || `${API_BASE}/clips/${cid}/mp4`;
+
+    const filename = `clip-${cid}-${safeTitle(clip.title)}.mp4`;
+
+    setDl((m) => ({
+      ...m,
+      [cid]: { status: "downloading", percent: 0, message: "Téléchargement…", error: null },
+    }));
+
+    try {
+      const ac = new AbortController();
+
+      const blob = await fetchBlobWithProgress(
+        url,
+        (pct) => {
+          setDl((m) => ({
+            ...m,
+            [cid]: {
+              ...(m[cid] || {}),
+              status: "downloading",
+              percent: pct == null ? Number(m[cid]?.percent || 0) : pct,
+              message: pct == null ? "Téléchargement…" : `Téléchargement…`,
+            },
+          }));
+        },
+        ac.signal
+      );
+
+      setDl((m) => ({
+        ...m,
+        [cid]: { ...(m[cid] || {}), status: "done", percent: 100, message: "Terminé ✓", error: null },
+      }));
+
+      downloadBlob(blob, filename);
+    } catch (e: any) {
+      const msg = String(e?.message || "download_failed");
+      setDl((m) => ({
+        ...m,
+        [cid]: { ...(m[cid] || {}), status: "error", error: msg, message: "Erreur téléchargement" },
+      }));
+    }
+  }
+
   async function handleRenderAndDownload(clip: ClipItem) {
     const cid = clip.id;
     const cur = dl[cid];
-    if (cur?.status === "starting" || cur?.status === "running") return;
+    if (cur?.status === "starting" || cur?.status === "running" || cur?.status === "downloading") return;
 
-    // déjà prêt => open direct
     const mp4Key = String(clip.mp4_key || "").trim();
     if (mp4Key) {
-      openMp4ViaApi(cid);
+      // déjà prêt => download direct (avec progress)
+      await downloadMp4WithProgress(clip);
       return;
     }
 
     setDl((m) => ({
       ...m,
-      [cid]: { status: "starting", error: null, message: "Démarrage…", percent: 2, publicUrl: null },
+      [cid]: { status: "starting", error: null, message: "Démarrage…", percent: 2 },
     }));
 
     try {
@@ -459,8 +432,11 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
 
       if (start?.already) {
         setDl((m) => ({ ...m, [cid]: { status: "done", percent: 100, message: "Prêt ✓" } }));
-        openMp4ViaApi(cid);
         await refresh();
+
+        // re-prend le clip pour récupérer mp4_url si dispo
+        const updated = (items.find((x) => x.id === cid) || clip) as ClipItem;
+        await downloadMp4WithProgress(updated);
         return;
       }
 
@@ -519,19 +495,15 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
         }
       });
 
-      // mp4 prêt => open
-      openMp4ViaApi(cid);
+      // refresh pour récupérer mp4_key/mp4_url puis download direct
       await refresh();
+      const updated = (items.find((x) => x.id === cid) || clip) as ClipItem;
+      await downloadMp4WithProgress(updated);
     } catch (e: any) {
       const reason = String(e?.message || "error");
       setDl((m) => ({
         ...m,
-        [cid]: {
-          ...(m[cid] || {}),
-          status: reason === "vod_not_ready" ? "not_ready" : "error",
-          error: reason,
-          message: null,
-        },
+        [cid]: { ...(m[cid] || {}), status: reason === "vod_not_ready" ? "not_ready" : "error", error: reason, message: null },
       }));
     }
   }
@@ -578,8 +550,13 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
               const st = dl[c.id];
               const pct = Math.max(0, Math.min(100, Number(st?.percent || 0)));
 
+              const clipStartSec = Math.max(0, Math.floor((c.at_sec || 0) - (c.pre_sec || 105)));
+              const directVodUrl = c.vod_url ? `${c.vod_url}#t=${clipStartSec}` : null;
+
               const mp4Key = String(c.mp4_key || "").trim();
               const mp4Ready = !!mp4Key;
+
+              const busy = st?.status === "starting" || st?.status === "running" || st?.status === "downloading";
 
               return (
                 <div
@@ -616,28 +593,17 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                         </div>
                       ) : null}
 
-                      {st &&
-                      (st.status === "starting" ||
-                        st.status === "running" ||
-                        st.status === "done" ||
-                        st.status === "error" ||
-                        st.status === "not_ready") ? (
+                      {st && (st.status === "starting" || st.status === "running" || st.status === "downloading" || st.status === "done" || st.status === "error" || st.status === "not_ready") ? (
                         <div style={{ marginTop: 10 }}>
-                          <div
-                            style={{
-                              height: 6,
-                              borderRadius: 999,
-                              overflow: "hidden",
-                              background: "rgba(255,255,255,0.08)",
-                            }}
-                          >
+                          <div style={{ height: 6, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,0.08)" }}>
                             <div style={{ height: "100%", width: `${pct}%`, background: "rgba(60, 240, 180, 0.70)" }} />
                           </div>
                           <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
                             {st.status === "starting" ? "Démarrage…" : null}
                             {st.status === "running" ? `${st.message || "Rendu…"} ${pct}%` : null}
+                            {st.status === "downloading" ? `${st.message || "Téléchargement…"} ${pct ? `${pct}%` : ""}` : null}
                             {st.status === "not_ready" ? "VOD pas encore disponible (réessayer plus tard)" : null}
-                            {st.status === "done" ? "Prêt ✓" : null}
+                            {st.status === "done" ? "Terminé ✓" : null}
                             {st.status === "error" ? `Erreur: ${String(st.error || "échec")}` : null}
                           </div>
                         </div>
@@ -645,47 +611,41 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                     </div>
 
                     <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-                      {/* ✅ CHANGEMENT: Télécharger => lance le download du clip (render si besoin) */}
+                      {/* ✅ Télécharger = download direct + progress (sans nouvel onglet) */}
                       <button
                         className="btnGhostInline"
-                        onClick={() => void handleRenderAndDownload(c)}
-                        disabled={(!c.vod_url && !mp4Ready) || st?.status === "starting" || st?.status === "running"}
+                        onClick={() => {
+                          if (mp4Ready) void downloadMp4WithProgress(c);
+                          else void handleRenderAndDownload(c);
+                        }}
+                        disabled={(!c.vod_url && !mp4Ready) || busy}
                         style={{
                           padding: "10px 12px",
                           borderRadius: 14,
                           fontWeight: 950,
                           opacity: !c.vod_url && !mp4Ready ? 0.6 : 1,
                         }}
-                        title={
-                          !c.vod_url && !mp4Ready
-                            ? "VOD pas encore prête"
-                            : mp4Ready
-                            ? "Télécharger le MP4"
-                            : "Rendre le MP4 puis télécharger"
-                        }
+                        title={!c.vod_url && !mp4Ready ? "VOD pas encore prête" : mp4Ready ? "Télécharger le MP4" : "Rendre + télécharger"}
                       >
-                        Télécharger
+                        {mp4Ready ? "Télécharger" : "Rendre + télécharger"}
                       </button>
 
-                      {/* ✅ CHANGEMENT: Voir => visionnage dans une modale */}
+                      {/* ✅ Voir = modale clip (mp4) */}
                       <button
                         className="btnGhostInline"
                         onClick={() => setOpenClip(c)}
-                        disabled={!mp4Ready && !c.vod_url}
                         style={{
                           padding: "10px 12px",
                           borderRadius: 14,
                           fontWeight: 950,
                           background: "rgba(59, 130, 246, 0.18)",
                           border: "1px solid rgba(59, 130, 246, 0.35)",
-                          opacity: !mp4Ready && !c.vod_url ? 0.6 : 1,
                         }}
-                        title={mp4Ready ? "Voir le clip (MP4)" : c.vod_url ? "Voir (fallback VOD)" : "Indisponible"}
+                        title={mp4Ready ? "Voir le clip (MP4)" : "Voir (MP4 pas prêt)"}
                       >
                         Voir
                       </button>
 
-                      {/* optionnel: copier lien direct */}
                       {mp4Ready ? (
                         <button
                           className="btnGhostInline"
@@ -703,27 +663,35 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                         </button>
                       ) : null}
 
-                      {/* fallback: si pas de mp4 et tu veux encore un accès DLive direct (garde-le discret) */}
-                      {!mp4Ready && c.vod_permlink ? (
-                        <a
-                          href={buildDliveVodPage(c.vod_permlink, c.at_sec)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ textDecoration: "none" }}
-                        >
+                      {/* (optionnel) garder accès VOD pour debug */}
+                      {directVodUrl ? (
+                        <a href={directVodUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
                           <button
                             className="btnGhostInline"
                             style={{
                               padding: "10px 12px",
                               borderRadius: 14,
                               fontWeight: 950,
-                              background: "rgba(255,255,255,0.04)",
-                              border: "1px solid rgba(255,255,255,0.10)",
-                              opacity: 0.9,
+                              background: "rgba(255,255,255,0.06)",
+                              border: "1px solid rgba(255,255,255,0.12)",
                             }}
-                            title="Ouvrir la page DLive (fallback)"
                           >
-                            DLive
+                            Voir VOD
+                          </button>
+                        </a>
+                      ) : c.vod_permlink ? (
+                        <a href={buildDliveVodPage(c.vod_permlink, c.at_sec)} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+                          <button
+                            className="btnGhostInline"
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 14,
+                              fontWeight: 950,
+                              background: "rgba(255,255,255,0.06)",
+                              border: "1px solid rgba(255,255,255,0.12)",
+                            }}
+                          >
+                            Voir VOD
                           </button>
                         </a>
                       ) : null}
@@ -751,11 +719,11 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
       </div>
 
       <div className="muted" style={{ marginTop: 14, fontSize: 12 }}>
-        Note: téléchargement <b>natif</b> via <b>/clips/:id/mp4</b> (redirect vers R2). Pas de blob, pas de stockage Render.
+        Note: “Télécharger” fait un <b>fetch streaming</b> + <b>progress</b> puis déclenche un download (pas de nouvel onglet).
       </div>
 
-      {/* ✅ MODALE "VOIR" */}
-      {openClip ? <ClipViewerModal clip={openClip} onClose={() => setOpenClip(null)} /> : null}
+      {/* ✅ Modale lecteur */}
+      {openClip ? <ClipViewModal clip={openClip} onClose={() => setOpenClip(null)} /> : null}
     </div>
   );
 }

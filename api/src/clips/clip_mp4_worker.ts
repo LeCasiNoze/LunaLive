@@ -29,7 +29,7 @@ function nowMs() {
   return Date.now();
 }
 
-const TTL_DAYS = envNum("CLIPS_TTL_DAYS", 30);
+const TTL_DAYS = envNum("CLIPS_TTL_DAYS", 15);
 const RENDER_INTERVAL_SEC = envNum("CLIPS_RENDER_INTERVAL_SEC", 10);
 const RENDER_CONCURRENCY = Math.max(1, Math.floor(envNum("CLIPS_RENDER_CONCURRENCY", 1)));
 const CLEANUP_INTERVAL_MIN = Math.max(5, Math.floor(envNum("CLIPS_CLEANUP_INTERVAL_MIN", 60)));
