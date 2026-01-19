@@ -30,9 +30,13 @@ type ClipVM = {
   title: string | null;
   createdAtMs: number;
 
+  // legacy (HLS)
   vodUrl: string | null;
   startSec: number;
   durationSec: number;
+
+  // ✅ NEW: MP4 (2 min) — preferred
+  clipUrl?: string | null; // ex: "/clips/123/mp4" or full https url
 
   thumbUrl: string | null;
   likesCount: number;
@@ -260,6 +264,17 @@ async function fetchTopClipsMonth(): Promise<{ total: number; clips: ClipVM[] }>
         const startSec = Number(x?.startSec ?? x?.start_sec ?? 0) || 0;
         const durationSec = Number(x?.durationSec ?? x?.duration_sec ?? 0) || 0;
 
+        const clipUrlRaw =
+          x?.clipUrl != null
+            ? String(x.clipUrl)
+            : x?.clip_url != null
+            ? String(x.clip_url)
+            : x?.mp4_url != null
+            ? String(x.mp4_url)
+            : x?.mp4Url != null
+            ? String(x.mp4Url)
+            : null;
+
         const createdAtMs = Number(x?.createdAtMs ?? x?.created_at_ms ?? x?.created_ts ?? 0) || 0;
 
         const avatarUrl =
@@ -283,6 +298,10 @@ async function fetchTopClipsMonth(): Promise<{ total: number; clips: ClipVM[] }>
           vodUrl,
           startSec,
           durationSec,
+
+          // ✅ prefer mp4 url if provided by API
+          clipUrl: clipUrlRaw ? absolutize(clipUrlRaw) : null,
+
           thumbUrl,
           likesCount,
         } satisfies ClipVM;
@@ -342,17 +361,45 @@ function ClipPlayerModal({
     const video = videoRef.current;
     if (!video) return;
 
-    const url = clip.vodUrl;
-    if (!url) return;
+    const mp4 = String((clip as any).clipUrl || "").trim() || null;
+    const hlsUrl = clip.vodUrl;
 
     let hls: Hls | null = null;
+
+    // IMPORTANT: éviter de précharger tout le flux
+    video.preload = "metadata";
+
+    // ✅ MP4 (déjà “coupé”) => pas de start/end clamp
+    if (mp4) {
+      const onMp4Meta = () => {
+        video.play().catch(() => {});
+      };
+
+      // cleanup existant va gérer pause/remove src
+      video.src = mp4;
+      video.addEventListener("loadedmetadata", onMp4Meta);
+
+      return () => {
+        try {
+          video.removeEventListener("loadedmetadata", onMp4Meta);
+        } catch {}
+        try {
+          video.pause();
+        } catch {}
+        try {
+          video.removeAttribute("src");
+          video.load();
+        } catch {}
+      };
+    }
+
+    // ✅ fallback HLS si pas de mp4
+    const url = hlsUrl;
+    if (!url) return;
 
     const start = Math.max(0, Number(clip.startSec || 0));
     const end = Math.max(start + 1, start + Math.max(1, Number(clip.durationSec || 0))); // start+duration
     const EPS = 0.25; // marge anti-jitter
-
-    // IMPORTANT: éviter de précharger tout le flux
-    video.preload = "metadata";
 
     const cleanupVideo = () => {
       try {
@@ -484,6 +531,8 @@ function ClipPlayerModal({
               </span>
               <span style={{ opacity: 0.9 }}>•</span>
               <span>❤️ {Number(clip.likesCount || 0)}</span>
+              <span style={{ opacity: 0.9 }}>•</span>
+              <span>{String((clip as any).clipUrl || "").trim() ? "MP4" : "HLS"}</span>
             </div>
           </div>
 

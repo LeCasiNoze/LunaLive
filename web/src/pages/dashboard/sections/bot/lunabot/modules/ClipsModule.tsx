@@ -1,5 +1,6 @@
 // web/src/pages/dashboard/sections/bot/modules/ClipsModule.tsx
 import * as React from "react";
+import Hls from "hls.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
@@ -139,9 +140,251 @@ function openMp4ViaApi(clipId: number) {
   window.open(`${API_BASE}/clips/${clipId}/mp4`, "_blank", "noopener,noreferrer");
 }
 
+function clipMp4Url(clipId: number) {
+  // ✅ utilisé pour <video> (pas besoin d'Authorization)
+  return `${API_BASE}/clips/${clipId}/mp4`;
+}
+
 function copyText(text: string) {
   if (!text) return;
   navigator.clipboard?.writeText(text).catch(() => {});
+}
+
+function fmtDuration(sec: number) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function ClipViewerModal({
+  clip,
+  onClose,
+}: {
+  clip: ClipItem;
+  onClose: () => void;
+}) {
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+
+  React.useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const mp4Ready = !!String(clip.mp4_key || "").trim();
+    const mp4 = mp4Ready ? clipMp4Url(clip.id) : null;
+    const hlsUrl = clip.vod_url ? String(clip.vod_url) : null;
+
+    // fenêtre clip
+    const start = Math.max(0, Math.floor((clip.at_sec || 0) - (clip.pre_sec || 105)));
+    const duration = Math.max(1, Math.floor((clip.pre_sec || 105) + (clip.post_sec || 15)));
+    const end = start + duration;
+    const EPS = 0.25;
+
+    let hls: Hls | null = null;
+
+    const cleanup = () => {
+      try {
+        video.pause();
+      } catch {}
+      try {
+        video.removeEventListener("timeupdate", onTimeUpdate);
+        video.removeEventListener("seeking", onSeeking);
+        video.removeEventListener("loadedmetadata", onLoadedMeta);
+      } catch {}
+      try {
+        hls?.destroy();
+      } catch {}
+      hls = null;
+      try {
+        video.removeAttribute("src");
+        video.load();
+      } catch {}
+    };
+
+    const onTimeUpdate = () => {
+      try {
+        if (video.currentTime >= end - EPS) {
+          video.pause();
+          video.currentTime = end - EPS;
+        }
+      } catch {}
+    };
+
+    const onSeeking = () => {
+      try {
+        if (video.currentTime < start - EPS) video.currentTime = start;
+        if (video.currentTime > end - EPS) video.currentTime = end - EPS;
+      } catch {}
+    };
+
+    const onLoadedMeta = () => {
+      try {
+        // si HLS fallback, on se place sur le start
+        if (!mp4) video.currentTime = start;
+      } catch {}
+      video.play().catch(() => {});
+    };
+
+    // IMPORTANT: éviter de précharger trop
+    video.preload = "metadata";
+
+    // ✅ MP4 ready -> lecture directe
+    if (mp4) {
+      video.src = mp4;
+      video.addEventListener("loadedmetadata", onLoadedMeta);
+      return () => cleanup();
+    }
+
+    // ✅ fallback HLS (si VOD dispo)
+    if (!hlsUrl) return () => cleanup();
+
+    video.addEventListener("timeupdate", onTimeUpdate);
+    video.addEventListener("seeking", onSeeking);
+
+    // Safari iOS/macOS HLS natif
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = hlsUrl;
+      video.addEventListener("loadedmetadata", onLoadedMeta);
+      return () => cleanup();
+    }
+
+    if (Hls.isSupported()) {
+      hls = new Hls({
+        autoStartLoad: false,
+        startPosition: start,
+        maxBufferLength: 30,
+        backBufferLength: 0,
+      });
+
+      hls.loadSource(hlsUrl);
+      hls.attachMedia(video);
+
+      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+        try {
+          hls?.startLoad(start);
+        } catch {}
+      });
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        try {
+          video.currentTime = start;
+        } catch {}
+        video.play().catch(() => {});
+      });
+
+      return () => cleanup();
+    }
+
+    // fallback basique
+    video.src = hlsUrl;
+    video.addEventListener("loadedmetadata", onLoadedMeta);
+    return () => cleanup();
+  }, [clip]);
+
+  const mp4Ready = !!String(clip.mp4_key || "").trim();
+  const duration = Math.max(1, Math.floor((clip.pre_sec || 105) + (clip.post_sec || 15)));
+
+  return (
+    <div
+      role="presentation"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 999,
+        background: "rgba(0,0,0,0.62)",
+        display: "grid",
+        placeItems: "center",
+        padding: 18,
+        backdropFilter: "blur(10px)",
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(980px, 100%)",
+          maxHeight: "min(92vh, 860px)",
+          overflow: "hidden",
+          borderRadius: 18,
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "linear-gradient(180deg, rgba(30,30,40,0.85), rgba(10,10,14,0.92))",
+          boxShadow: "0 30px 90px rgba(0,0,0,0.55)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 10,
+            padding: "12px 14px",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 1100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {clip.title || "Clip"}
+            </div>
+            <div style={{ marginTop: 4, fontSize: 12, opacity: 0.78, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <span>
+                Durée: <b style={{ opacity: 0.95 }}>{fmtDuration(duration)}</b>
+              </span>
+              <span style={{ opacity: 0.7 }}>•</span>
+              <span>{mp4Ready ? "MP4" : clip.vod_url ? "HLS (fallback VOD)" : "Indisponible"}</span>
+              {clip.author ? (
+                <>
+                  <span style={{ opacity: 0.7 }}>•</span>
+                  <span>
+                    par <b style={{ opacity: 0.95 }}>@{clip.author}</b>
+                  </span>
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(255,255,255,0.05)",
+              color: "rgba(255,255,255,0.92)",
+              cursor: "pointer",
+              fontWeight: 1100,
+            }}
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ padding: 14, overflow: "auto", maxHeight: "calc(92vh - 60px)" }}>
+          {!mp4Ready && !clip.vod_url ? (
+            <div style={{ fontSize: 12, opacity: 0.85 }}>Vidéo indisponible (VOD pas prête).</div>
+          ) : (
+            <video
+              ref={videoRef}
+              controls
+              playsInline
+              style={{
+                width: "100%",
+                borderRadius: 16,
+                background: "black",
+                border: "1px solid rgba(255,255,255,0.10)",
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function ClipsModule({ token, onReload }: { token: string; onReload?: () => void }) {
@@ -150,6 +393,9 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
   const [err, setErr] = React.useState<string | null>(null);
 
   const [dl, setDl] = React.useState<DlMap>({});
+
+  // ✅ NEW: viewer modal
+  const [openClip, setOpenClip] = React.useState<ClipItem | null>(null);
 
   const missingVod = React.useMemo(() => items.some((c) => !c.vod_url), [items]);
 
@@ -280,7 +526,12 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
       const reason = String(e?.message || "error");
       setDl((m) => ({
         ...m,
-        [cid]: { ...(m[cid] || {}), status: reason === "vod_not_ready" ? "not_ready" : "error", error: reason, message: null },
+        [cid]: {
+          ...(m[cid] || {}),
+          status: reason === "vod_not_ready" ? "not_ready" : "error",
+          error: reason,
+          message: null,
+        },
       }));
     }
   }
@@ -327,9 +578,6 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
               const st = dl[c.id];
               const pct = Math.max(0, Math.min(100, Number(st?.percent || 0)));
 
-              const clipStartSec = Math.max(0, Math.floor((c.at_sec || 0) - (c.pre_sec || 105)));
-              const directVodUrl = c.vod_url ? `${c.vod_url}#t=${clipStartSec}` : null;
-
               const mp4Key = String(c.mp4_key || "").trim();
               const mp4Ready = !!mp4Key;
 
@@ -368,9 +616,21 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                         </div>
                       ) : null}
 
-                      {st && (st.status === "starting" || st.status === "running" || st.status === "done" || st.status === "error" || st.status === "not_ready") ? (
+                      {st &&
+                      (st.status === "starting" ||
+                        st.status === "running" ||
+                        st.status === "done" ||
+                        st.status === "error" ||
+                        st.status === "not_ready") ? (
                         <div style={{ marginTop: 10 }}>
-                          <div style={{ height: 6, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,0.08)" }}>
+                          <div
+                            style={{
+                              height: 6,
+                              borderRadius: 999,
+                              overflow: "hidden",
+                              background: "rgba(255,255,255,0.08)",
+                            }}
+                          >
                             <div style={{ height: "100%", width: `${pct}%`, background: "rgba(60, 240, 180, 0.70)" }} />
                           </div>
                           <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
@@ -385,12 +645,10 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                     </div>
 
                     <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+                      {/* ✅ CHANGEMENT: Télécharger => lance le download du clip (render si besoin) */}
                       <button
                         className="btnGhostInline"
-                        onClick={() => {
-                          if (mp4Ready) openMp4ViaApi(c.id);
-                          else void handleRenderAndDownload(c);
-                        }}
+                        onClick={() => void handleRenderAndDownload(c)}
                         disabled={(!c.vod_url && !mp4Ready) || st?.status === "starting" || st?.status === "running"}
                         style={{
                           padding: "10px 12px",
@@ -398,11 +656,36 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                           fontWeight: 950,
                           opacity: !c.vod_url && !mp4Ready ? 0.6 : 1,
                         }}
-                        title={!c.vod_url && !mp4Ready ? "VOD pas encore prête" : mp4Ready ? "Télécharger le MP4" : "Rendre + télécharger"}
+                        title={
+                          !c.vod_url && !mp4Ready
+                            ? "VOD pas encore prête"
+                            : mp4Ready
+                            ? "Télécharger le MP4"
+                            : "Rendre le MP4 puis télécharger"
+                        }
                       >
-                        {mp4Ready ? "Télécharger" : "Rendre + télécharger"}
+                        Télécharger
                       </button>
 
+                      {/* ✅ CHANGEMENT: Voir => visionnage dans une modale */}
+                      <button
+                        className="btnGhostInline"
+                        onClick={() => setOpenClip(c)}
+                        disabled={!mp4Ready && !c.vod_url}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 14,
+                          fontWeight: 950,
+                          background: "rgba(59, 130, 246, 0.18)",
+                          border: "1px solid rgba(59, 130, 246, 0.35)",
+                          opacity: !mp4Ready && !c.vod_url ? 0.6 : 1,
+                        }}
+                        title={mp4Ready ? "Voir le clip (MP4)" : c.vod_url ? "Voir (fallback VOD)" : "Indisponible"}
+                      >
+                        Voir
+                      </button>
+
+                      {/* optionnel: copier lien direct */}
                       {mp4Ready ? (
                         <button
                           className="btnGhostInline"
@@ -420,34 +703,27 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                         </button>
                       ) : null}
 
-                      {directVodUrl ? (
-                        <a href={directVodUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+                      {/* fallback: si pas de mp4 et tu veux encore un accès DLive direct (garde-le discret) */}
+                      {!mp4Ready && c.vod_permlink ? (
+                        <a
+                          href={buildDliveVodPage(c.vod_permlink, c.at_sec)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ textDecoration: "none" }}
+                        >
                           <button
                             className="btnGhostInline"
                             style={{
                               padding: "10px 12px",
                               borderRadius: 14,
                               fontWeight: 950,
-                              background: "rgba(59, 130, 246, 0.18)",
-                              border: "1px solid rgba(59, 130, 246, 0.35)",
+                              background: "rgba(255,255,255,0.04)",
+                              border: "1px solid rgba(255,255,255,0.10)",
+                              opacity: 0.9,
                             }}
+                            title="Ouvrir la page DLive (fallback)"
                           >
-                            Voir VOD
-                          </button>
-                        </a>
-                      ) : c.vod_permlink ? (
-                        <a href={buildDliveVodPage(c.vod_permlink, c.at_sec)} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
-                          <button
-                            className="btnGhostInline"
-                            style={{
-                              padding: "10px 12px",
-                              borderRadius: 14,
-                              fontWeight: 950,
-                              background: "rgba(59, 130, 246, 0.18)",
-                              border: "1px solid rgba(59, 130, 246, 0.35)",
-                            }}
-                          >
-                            Voir VOD
+                            DLive
                           </button>
                         </a>
                       ) : null}
@@ -477,6 +753,9 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
       <div className="muted" style={{ marginTop: 14, fontSize: 12 }}>
         Note: téléchargement <b>natif</b> via <b>/clips/:id/mp4</b> (redirect vers R2). Pas de blob, pas de stockage Render.
       </div>
+
+      {/* ✅ MODALE "VOIR" */}
+      {openClip ? <ClipViewerModal clip={openClip} onClose={() => setOpenClip(null)} /> : null}
     </div>
   );
 }
