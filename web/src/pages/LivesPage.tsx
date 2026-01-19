@@ -1,6 +1,7 @@
 // web/src/pages/LivesPage.tsx
 import * as React from "react";
 import { Link } from "react-router-dom";
+import Hls from "hls.js";
 
 import { formatViewers } from "../lib/format";
 import { getLives } from "../lib/api";
@@ -20,13 +21,21 @@ type LiveCardVM = LiveCard & {
 };
 
 type ClipVM = {
-  id: string;
-  url: string; // target video link (or future clip page)
+  id: number;
+
+  streamerSlug: string;
+  streamerName: string | null;
+  avatarUrl: string | null;
+
+  title: string | null;
+  createdAtMs: number;
+
+  vodUrl: string | null;
+  startSec: number;
+  durationSec: number;
+
   thumbUrl: string | null;
-  likes: number;
-  streamerSlug?: string | null;
-  streamerName?: string | null;
-  streamerAvatarUrl?: string | null;
+  likesCount: number;
 };
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
@@ -61,6 +70,25 @@ function preloadImage(url: string): Promise<boolean> {
     img.onerror = () => done(false);
     img.src = url;
   });
+}
+
+function timeAgo(ms: number) {
+  const d = Date.now() - (ms || 0);
+  const mins = Math.floor(d / 60000);
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `${h} h`;
+  const days = Math.floor(h / 24);
+  return `${days} j`;
+}
+
+function fmtDuration(sec: number) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function Pill({
@@ -185,16 +213,12 @@ async function fetchFeaturedLiveSlugs(): Promise<Set<string>> {
 }
 
 /**
- * Clips du mois
- * ✅ On essaye l’API "propre" /clips/top (celle que tu vas brancher dans clips_public.ts)
- * ✅ Fallback: rien (ne casse pas la page)
- *
- * Attendu (propre):
- * { ok:true, total:number, clips:[{ id, thumbUrl, likesCount, streamerSlug, streamerDisplayName, avatarUrl, ... }] }
+ * Clips du mois (public):
+ * GET /clips/top?range=month&limit=24
+ * -> { ok:true, total:number, clips:[ ... ] }
  */
 async function fetchTopClipsMonth(): Promise<{ total: number; clips: ClipVM[] }> {
   try {
-    // ✅ endpoint prévu (à brancher côté API)
     const res = await fetch(`${API_BASE}/clips/top?range=month&limit=24`, {
       headers: { "content-type": "application/json" },
     });
@@ -207,11 +231,15 @@ async function fetchTopClipsMonth(): Promise<{ total: number; clips: ClipVM[] }>
 
     const clips = arr
       .map((x: any) => {
-        const id = String(x?.id ?? "");
-        if (!id) return null;
+        const id = Number(x?.id);
+        if (!Number.isFinite(id) || id <= 0) return null;
 
         const streamerSlug =
-          x?.streamerSlug != null ? String(x.streamerSlug) : x?.streamer_slug != null ? String(x.streamer_slug) : null;
+          x?.streamerSlug != null
+            ? String(x.streamerSlug)
+            : x?.streamer_slug != null
+            ? String(x.streamer_slug)
+            : "";
 
         const streamerName =
           x?.streamerDisplayName != null
@@ -224,21 +252,17 @@ async function fetchTopClipsMonth(): Promise<{ total: number; clips: ClipVM[] }>
             ? String(x.streamer_name)
             : null;
 
-        const likes =
-          Number(x?.likesCount ?? x?.likes_count ?? x?.likes ?? x?.likeCount ?? x?.like_count ?? 0) || 0;
+        const likesCount = Number(x?.likesCount ?? x?.likes_count ?? x?.likes ?? 0) || 0;
 
         const thumbUrl = x?.thumbUrl ? String(x.thumbUrl) : x?.thumb_url ? String(x.thumb_url) : null;
 
-        // URL cible : pour l’instant, on peut ouvrir la page streamer + onglet clips
-        // (tu pourras ensuite faire une vraie page /clips/:id)
-        const url =
-          x?.url && String(x.url).startsWith("http")
-            ? String(x.url)
-            : streamerSlug
-            ? `/s/${encodeURIComponent(streamerSlug)}?tab=clips`
-            : "#";
+        const vodUrl = x?.vodUrl != null ? String(x.vodUrl) : x?.vod_url != null ? String(x.vod_url) : null;
+        const startSec = Number(x?.startSec ?? x?.start_sec ?? 0) || 0;
+        const durationSec = Number(x?.durationSec ?? x?.duration_sec ?? 0) || 0;
 
-        const streamerAvatarUrl =
+        const createdAtMs = Number(x?.createdAtMs ?? x?.created_at_ms ?? x?.created_ts ?? 0) || 0;
+
+        const avatarUrl =
           x?.avatarUrl != null
             ? String(x.avatarUrl)
             : x?.streamerAvatarUrl != null
@@ -247,14 +271,20 @@ async function fetchTopClipsMonth(): Promise<{ total: number; clips: ClipVM[] }>
             ? String(x.streamer_avatar_url)
             : null;
 
+        const title = x?.title != null ? String(x.title) : null;
+
         return {
           id,
-          url,
-          thumbUrl,
-          likes,
-          streamerSlug,
+          streamerSlug: String(streamerSlug || ""),
           streamerName,
-          streamerAvatarUrl,
+          avatarUrl,
+          title,
+          createdAtMs,
+          vodUrl,
+          startSec,
+          durationSec,
+          thumbUrl,
+          likesCount,
         } satisfies ClipVM;
       })
       .filter(Boolean) as ClipVM[];
@@ -297,6 +327,344 @@ function ClipLikesBadge({ likes, corner }: { likes: number; corner: "tl" | "tr" 
   );
 }
 
+function ClipPlayerModal({
+  clip,
+  onClose,
+  zIndex,
+}: {
+  clip: ClipVM;
+  onClose: () => void;
+  zIndex: number;
+}) {
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+
+  React.useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const url = clip.vodUrl;
+    if (!url) return;
+
+    let hls: Hls | null = null;
+
+    const start = Math.max(0, Number(clip.startSec || 0));
+    const end = Math.max(start + 1, start + Math.max(1, Number(clip.durationSec || 0))); // start+duration
+    const EPS = 0.25; // marge anti-jitter
+
+    // IMPORTANT: éviter de précharger tout le flux
+    video.preload = "metadata";
+
+    const cleanupVideo = () => {
+      try {
+        video.pause();
+      } catch {}
+      try {
+        video.removeEventListener("timeupdate", onTimeUpdate);
+        video.removeEventListener("seeking", onSeeking);
+        video.removeEventListener("loadedmetadata", onLoadedMeta);
+      } catch {}
+      try {
+        video.removeAttribute("src");
+        video.load();
+      } catch {}
+    };
+
+    const onTimeUpdate = () => {
+      try {
+        if (video.currentTime >= end - EPS) {
+          video.pause();
+          // soit tu fermes automatiquement:
+          // onClose();
+          // soit tu restes sur la modale, juste en pause à la fin:
+          video.currentTime = end - EPS;
+        }
+      } catch {}
+    };
+
+    // Empêche l’utilisateur de sortir de la fenêtre du clip
+    const onSeeking = () => {
+      try {
+        if (video.currentTime < start - EPS) video.currentTime = start;
+        if (video.currentTime > end - EPS) video.currentTime = end - EPS;
+      } catch {}
+    };
+
+    const onLoadedMeta = () => {
+      try {
+        video.currentTime = start;
+      } catch {}
+      video.play().catch(() => {});
+    };
+
+    video.addEventListener("timeupdate", onTimeUpdate);
+    video.addEventListener("seeking", onSeeking);
+
+    // Safari iOS/macOS HLS natif
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = url;
+      video.addEventListener("loadedmetadata", onLoadedMeta);
+      return () => {
+        cleanupVideo();
+      };
+    }
+
+    if (Hls.isSupported()) {
+      hls = new Hls({
+        // ✅ clé : ne démarre pas à 0
+        autoStartLoad: false,
+        // certains env respectent startPosition; on force aussi startLoad
+        startPosition: start,
+        // bonus: réduit buffering
+        maxBufferLength: 30,
+        backBufferLength: 0,
+      });
+
+      hls.loadSource(url);
+      hls.attachMedia(video);
+
+      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+        // ✅ force le chargement à partir de start
+        try {
+          hls?.startLoad(start);
+        } catch {}
+      });
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        // ✅ positionne et play
+        try {
+          video.currentTime = start;
+        } catch {}
+        video.play().catch(() => {});
+      });
+
+      return () => {
+        try {
+          hls?.destroy();
+        } catch {}
+        cleanupVideo();
+      };
+    }
+
+    // fallback basique
+    video.src = url;
+    video.addEventListener("loadedmetadata", onLoadedMeta);
+    return () => {
+      cleanupVideo();
+    };
+  }, [clip /* (+ onClose si tu auto-close) */]);
+
+
+  return (
+    <div className="chatSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
+      <div
+        className="chatSheet"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        style={{ maxWidth: 980 }}
+      >
+        <div className="chatSheetTop" style={{ gap: 10 }}>
+          <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+            <div style={{ fontWeight: 1050, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {clip.title || "Clip"}
+            </div>
+            <div className="mutedSmall" style={{ opacity: 0.8, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <span>
+                Par{" "}
+                <Link
+                  to={clip.streamerSlug ? `/s/${encodeURIComponent(clip.streamerSlug)}` : "#"}
+                  style={{ color: "rgba(255,255,255,0.92)", fontWeight: 950, textDecoration: "none" }}
+                  onClick={() => {
+                    // fermer la modale quand on navigue
+                    onClose();
+                  }}
+                >
+                  {clip.streamerName || clip.streamerSlug || "Streamer"}
+                </Link>
+              </span>
+              <span style={{ opacity: 0.9 }}>•</span>
+              <span>❤️ {Number(clip.likesCount || 0)}</span>
+            </div>
+          </div>
+
+          <div style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+            <button className="iconBtn" onClick={onClose} type="button" aria-label="Fermer">
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div className="chatSheetBody" style={{ padding: 14 }}>
+          {!clip.vodUrl ? (
+            <div className="mutedSmall" style={{ opacity: 0.85 }}>
+              Vidéo indisponible (VOD pas prête).
+            </div>
+          ) : (
+            <video
+              ref={videoRef}
+              controls
+              playsInline
+              style={{
+                width: "100%",
+                borderRadius: 16,
+                background: "black",
+                border: "1px solid rgba(255,255,255,0.10)",
+              }}
+            />
+          )}
+
+          <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <span>
+              Durée: <strong style={{ color: "rgba(255,255,255,0.9)" }}>{fmtDuration(clip.durationSec)}</strong>
+            </span>
+            <span style={{ opacity: 0.9 }}>•</span>
+            <span>
+              Publié: <strong style={{ color: "rgba(255,255,255,0.9)" }}>{timeAgo(clip.createdAtMs)}</strong>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MonthClipsListModal({
+  title,
+  clips,
+  total,
+  onClose,
+  onPickClip,
+  zIndex,
+}: {
+  title: string;
+  clips: ClipVM[];
+  total: number;
+  onClose: () => void;
+  onPickClip: (c: ClipVM) => void;
+  zIndex: number;
+}) {
+  return (
+    <div className="chatSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
+      <div
+        className="chatSheet"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        style={{ maxWidth: 860 }}
+      >
+        <div className="chatSheetTop" style={{ gap: 10 }}>
+          <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+            <div style={{ fontWeight: 1100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {title}
+            </div>
+            <div className="mutedSmall" style={{ opacity: 0.8 }}>
+              Liste des clips du mois • tri par ❤️ (top) • {total || clips.length} clip(s)
+            </div>
+          </div>
+
+          <div style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+            <button className="iconBtn" onClick={onClose} type="button" aria-label="Fermer">
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div className="chatSheetBody" style={{ padding: 14 }}>
+          {clips.length === 0 ? (
+            <div className="mutedSmall" style={{ opacity: 0.85 }}>
+              Aucun clip pour le moment.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {clips.map((c) => {
+                const name = c.streamerName || c.streamerSlug || "Streamer";
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="panel"
+                    onClick={() => onPickClip(c)}
+                    style={{
+                      textAlign: "left",
+                      cursor: "pointer",
+                      padding: 12,
+                      borderRadius: 16,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(255,255,255,0.03)",
+                      display: "grid",
+                      gridTemplateColumns: "44px 1fr auto",
+                      gap: 12,
+                      alignItems: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 16,
+                        overflow: "hidden",
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background: "rgba(0,0,0,0.35)",
+                      }}
+                      aria-hidden
+                    >
+                      {c.avatarUrl ? (
+                        <img
+                          src={absolutize(c.avatarUrl) || c.avatarUrl}
+                          alt=""
+                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      ) : null}
+                    </div>
+
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                        <div style={{ fontWeight: 1100, letterSpacing: -0.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {c.title || "(sans titre)"}
+                        </div>
+                        <span className="mutedSmall" style={{ opacity: 0.8 }}>
+                          — {name}
+                        </span>
+                      </div>
+                      <div className="mutedSmall" style={{ opacity: 0.8, marginTop: 4 }}>
+                        {timeAgo(c.createdAtMs)} • {fmtDuration(c.durationSec)}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", justifyItems: "end", gap: 6 }}>
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          gap: 6,
+                          alignItems: "center",
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          background: "rgba(0,0,0,0.45)",
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          fontWeight: 1100,
+                        }}
+                        title="Likes"
+                      >
+                        ❤️ {Number(c.likesCount || 0)}
+                      </div>
+                      <div className="mutedSmall" style={{ opacity: 0.75 }}>
+                        ▶ Ouvrir
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function LivesPage() {
   const [lives, setLives] = React.useState<LiveCardVM[]>([]);
   const [loading, setLoading] = React.useState(true); // initial only
@@ -306,6 +674,10 @@ export default function LivesPage() {
   const [clips, setClips] = React.useState<ClipVM[]>([]);
   const [clipsTotal, setClipsTotal] = React.useState(0);
   const [clipsLoading, setClipsLoading] = React.useState(false);
+
+  // modals (clips du mois)
+  const [openMonthList, setOpenMonthList] = React.useState(false);
+  const [openClip, setOpenClip] = React.useState<ClipVM | null>(null);
 
   // ✅ lock pour éviter refresh concurrents
   const refreshLockRef = React.useRef(false);
@@ -364,7 +736,6 @@ export default function LivesPage() {
         setLives((prev) => mergeThumbFinal(prev, vmWithFeatured));
 
         // ✅ now: preload any "new" thumbs and only then swap thumbFinal for that card
-        // (best effort: if preload fails, keep old)
         const preloadJobs = vmWithFeatured.map(async (live) => {
           const nowThumb = absolutize((live as any).thumbUrl || (live as any).thumb_url || null);
           const url = nowThumb ? withMinuteBust(String(nowThumb), nowMs) : null;
@@ -378,10 +749,8 @@ export default function LivesPage() {
           );
         });
 
-        // run in background but awaited so lock releases cleanly
         await Promise.allSettled(preloadJobs);
       } catch (e: any) {
-        // ✅ silent refresh: keep UI visible, just show alert if you want
         setErr(e?.message || String(e));
       } finally {
         refreshLockRef.current = false;
@@ -441,6 +810,15 @@ export default function LivesPage() {
 
   const clipsTop4 = React.useMemo(() => clips.slice(0, 4), [clips]);
   const extraClipsCount = Math.max(0, clipsTotal - clipsTop4.length);
+  const hasMoreThan4 = clipsTotal > 4;
+
+  function onClickMonthClip(c: ClipVM) {
+    if (hasMoreThan4) {
+      setOpenMonthList(true);
+      return;
+    }
+    setOpenClip(c);
+  }
 
   return (
     <main className="container livesPage">
@@ -747,6 +1125,47 @@ export default function LivesPage() {
           pointer-events:none;
           opacity: 0.9;
         }
+
+        /* Minimal modal fallback (si pas déjà défini globalement) */
+        .chatSheetBackdrop{
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.62);
+          display: grid;
+          place-items: center;
+          padding: 18px;
+          backdrop-filter: blur(10px);
+        }
+        .chatSheet{
+          width: min(980px, 100%);
+          max-height: min(92vh, 860px);
+          overflow: hidden;
+          border-radius: 18px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: linear-gradient(180deg, rgba(30,30,40,0.85), rgba(10,10,14,0.92));
+          box-shadow: 0 30px 90px rgba(0,0,0,0.55);
+        }
+        .chatSheetTop{
+          display:flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 14px;
+          border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .chatSheetBody{
+          overflow: auto;
+          max-height: calc(92vh - 60px);
+        }
+        .iconBtn{
+          width: 34px;
+          height: 34px;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.05);
+          color: rgba(255,255,255,0.92);
+          cursor: pointer;
+          font-weight: 1100;
+        }
       `}</style>
 
       <div className="livesWrap">
@@ -818,31 +1237,42 @@ export default function LivesPage() {
                     const raw = c.thumbUrl ? absolutize(c.thumbUrl) || c.thumbUrl : null;
                     const thumb = raw || svgThumb(c.streamerName || c.streamerSlug || "Clip");
 
-                    // likes badge corner per tile: TL, TR, BL, BR (comme tu l’as demandé)
+                    // likes badge corner per tile: TL, TR, BL, BR
                     const corner: "tl" | "tr" | "bl" | "br" = (["tl", "tr", "bl", "br"] as const)[idx] ?? "tl";
 
                     return (
-                      <a
+                      <button
                         key={c.id}
-                        href={c.url || "#"}
-                        target={String(c.url || "").startsWith("http") ? "_blank" : undefined}
-                        rel={String(c.url || "").startsWith("http") ? "noreferrer" : undefined}
+                        type="button"
                         className="clipTile hoverGlow"
-                        style={{ textDecoration: "none", color: "inherit", display: "block" }}
-                        title={c.streamerName ? `${c.streamerName} — ${c.likes} likes` : `${c.likes} likes`}
+                        onClick={() => onClickMonthClip(c)}
+                        style={{
+                          textDecoration: "none",
+                          color: "inherit",
+                          display: "block",
+                          padding: 0,
+                          cursor: "pointer",
+                        }}
+                        title={
+                          hasMoreThan4
+                            ? "Ouvrir la liste des clips du mois"
+                            : c.title
+                            ? `${c.title} — ${c.likesCount} likes`
+                            : `${c.likesCount} likes`
+                        }
                       >
                         <div className="clipThumb" style={{ backgroundImage: `url(${thumb})` }} />
                         <div className="clipPlay">
                           <span>▶</span>
                         </div>
 
-                        <ClipLikesBadge likes={c.likes} corner={corner} />
+                        <ClipLikesBadge likes={c.likesCount} corner={corner} />
 
                         {/* ✅ avatar streamer au centre (si dispo) */}
-                        {c.streamerAvatarUrl ? (
+                        {c.avatarUrl ? (
                           <div className="clipMidAvatar" aria-hidden>
                             <img
-                              src={absolutize(c.streamerAvatarUrl) || c.streamerAvatarUrl}
+                              src={absolutize(c.avatarUrl) || c.avatarUrl}
                               alt=""
                               onError={(e) => {
                                 (e.currentTarget as HTMLImageElement).style.display = "none";
@@ -850,18 +1280,24 @@ export default function LivesPage() {
                             />
                           </div>
                         ) : null}
-                      </a>
+                      </button>
                     );
                   })}
 
                   {extraClipsCount > 0 ? <div className="clipsCross" aria-hidden /> : null}
 
                   {extraClipsCount > 0 ? (
-                    <div className="clipsMoreOverlay" aria-hidden>
+                    <button
+                      type="button"
+                      className="clipsMoreOverlay"
+                      onClick={() => setOpenMonthList(true)}
+                      style={{ background: "transparent", border: 0, cursor: "pointer" }}
+                      title="Voir tous les clips du mois"
+                    >
                       <div className="bubble">
                         <strong>+{extraClipsCount}</strong> clips
                       </div>
-                    </div>
+                    </button>
                   ) : null}
                 </div>
               )}
@@ -1024,6 +1460,27 @@ export default function LivesPage() {
           </section>
         </div>
       </div>
+
+      {/* Modale #1 (liste) si >4 */}
+      {openMonthList ? (
+        <MonthClipsListModal
+          title="🎬 Clips du mois"
+          clips={clips}
+          total={clipsTotal || clips.length}
+          onClose={() => setOpenMonthList(false)}
+          onPickClip={(c) => setOpenClip(c)}
+          zIndex={79}
+        />
+      ) : null}
+
+      {/* Modale #2 (lecteur) */}
+      {openClip ? (
+        <ClipPlayerModal
+          clip={openClip}
+          onClose={() => setOpenClip(null)}
+          zIndex={80}
+        />
+      ) : null}
     </main>
   );
 }

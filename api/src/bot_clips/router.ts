@@ -14,8 +14,12 @@ import {
   getClipForStreamer,
   listClipsForStreamer,
   removeClipForStreamer,
+  setClipMp4Error,
+  setClipMp4Success,
   type BotClipRow,
 } from "./store.js";
+
+import { r2Enabled, buildPublicUrl, putFileToR2 } from "../clips/r2.js";
 
 /* ---------------- util ---------------- */
 
@@ -41,6 +45,12 @@ function hhmmss(t: number) {
   return h > 0
     ? `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
     : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function getFfmpegPath(): string {
+  const envPath = process.env.FFMPEG_PATH && String(process.env.FFMPEG_PATH).trim();
+  if (envPath) return envPath;
+  return "ffmpeg";
 }
 
 /* ---------------- auth: streamer ---------------- */
@@ -82,6 +92,9 @@ type Job = {
   outSize?: number;
   stderrTail?: string;
 
+  r2Key?: string | null;
+  publicUrl?: string | null;
+
   _proc?: any;
   _events: EventEmitter;
 };
@@ -98,9 +111,14 @@ function snapshot(job: Job) {
     secondsDone: job.secondsDone,
     secondsTotal: job.secondsTotal,
     etaSec: typeof job.etaSec === "number" ? Math.max(0, Math.floor(job.etaSec)) : null,
+
     outReady: !!(job.outPath && fs.existsSync(job.outPath)),
     outPath: job.outPath || null,
     outSize: job.outSize || null,
+
+    r2Key: job.r2Key || null,
+    publicUrl: job.publicUrl || null,
+
     clipId: job.clipId,
     streamerId: job.streamerId,
     startedAt: job.startedAt || null,
@@ -141,14 +159,9 @@ function removeJob(job: Job) {
   JOBS.delete(job.id);
 }
 
-function getFfmpegPath(): string {
-  const envPath = process.env.FFMPEG_PATH && String(process.env.FFMPEG_PATH).trim();
-  if (envPath) return envPath;
-  // ⚠️ si tu veux ffmpeg-static: installe-le et remplace ici
-  return "ffmpeg";
-}
+/* ---------------- ffmpeg render -> upload R2 ---------------- */
 
-function startFfmpeg(job: Job, vodUrl: string, startSec: number, durSec: number, title: string) {
+function startFfmpegToMp4(job: Job, vodUrl: string, startSec: number, durSec: number, title: string, r2Key: string) {
   const tmpName = `clip-${job.clipId}-${safeName(title)}-${startSec}-${durSec}-${job.id}.mp4`;
   const outPath = path.join(os.tmpdir(), tmpName);
   try {
@@ -177,10 +190,11 @@ function startFfmpeg(job: Job, vodUrl: string, startSec: number, durSec: number,
   add("-headers", HLS_HEADERS);
   add("-user_agent", "Mozilla/5.0");
 
-  // ✅ FAST: input-seek
+  // ✅ FAST: input-seek (HLS)
   add("-ss", startSec);
   add("-i", vodUrl);
 
+  // ✅ only the clip duration
   add("-t", durSec);
 
   add("-map", "0:v:0");
@@ -194,7 +208,14 @@ function startFfmpeg(job: Job, vodUrl: string, startSec: number, durSec: number,
   args.push(outPath);
 
   const startedAt = nowMs();
-  updateJob(job, { status: "running", message: "Démarrage ffmpeg", startedAt, outPath });
+  updateJob(job, {
+    status: "running",
+    message: "Extraction (ffmpeg)",
+    startedAt,
+    outPath,
+    r2Key,
+    publicUrl: null,
+  });
 
   const proc = spawn(ffmpegPath, args, { windowsHide: true });
   job._proc = proc;
@@ -229,13 +250,13 @@ function startFfmpeg(job: Job, vodUrl: string, startSec: number, durSec: number,
 
     if (done >= 0) {
       lastOutSec = Math.max(lastOutSec, Math.min(durSec, done));
-      const pct = (lastOutSec / durSec) * 100;
+      const pct = (lastOutSec / durSec) * 88; // 0..88% (upload gardé pour fin)
       const elapsed = Math.max(1, Math.floor((nowMs() - (job.startedAt || startedAt)) / 1000));
       const rate = lastOutSec / elapsed;
       const eta = rate > 0 ? Math.max(0, Math.ceil((durSec - lastOutSec) / rate)) : null;
 
       updateJob(job, {
-        message: progressFlag === "end" ? "Finalisation…" : "Extraction",
+        message: progressFlag === "end" ? "Finalisation…" : "Extraction (ffmpeg)",
         secondsDone: lastOutSec,
         percent: pct,
         etaSec: eta ?? undefined,
@@ -254,27 +275,62 @@ function startFfmpeg(job: Job, vodUrl: string, startSec: number, durSec: number,
   });
 
   proc.on("close", (code: number) => {
-    if (code === 0 && job.outPath && fs.existsSync(job.outPath)) {
-      const size = fs.statSync(job.outPath).size;
+    void (async () => {
+      if (code !== 0 || !job.outPath || !fs.existsSync(job.outPath)) {
+        const err = `ffmpeg exit ${code}`;
+        updateJob(job, { status: "error", message: err, error: err, stderrTail });
+        await setClipMp4Error(job.clipId, err).catch(() => {});
+        return;
+      }
+
+      // upload R2
+      let size = 0;
+      try {
+        size = fs.statSync(job.outPath).size;
+      } catch {}
+
       updateJob(job, {
-        status: "done",
-        message: "Terminé",
-        percent: 100,
-        secondsDone: durSec,
-        etaSec: 0,
-        outSize: size,
-        finishedAt: nowMs(),
-        stderrTail,
+        message: "Upload R2…",
+        percent: 92,
+        outSize: size || undefined,
+        etaSec: null as any,
       });
+
       try {
-        job._events.emit("tick", { ...snapshot(job), done: true });
-      } catch {}
-    } else {
-      updateJob(job, { status: "error", message: `ffmpeg exit ${code}`, error: `ffmpeg exit ${code}`, stderrTail });
-      try {
-        job._events.emit("tick", snapshot(job));
-      } catch {}
-    }
+        await putFileToR2({
+          key: r2Key,
+          contentType: "video/mp4",
+          filePath: job.outPath,
+        });
+
+        const pub = buildPublicUrl(r2Key) || null;
+
+        await setClipMp4Success(job.clipId, { mp4_key: r2Key, mp4_size: size }).catch(() => {});
+        updateJob(job, {
+          status: "done",
+          message: "Terminé (R2)",
+          percent: 100,
+          finishedAt: nowMs(),
+          r2Key,
+          publicUrl: pub,
+          outSize: size,
+          secondsDone: durSec,
+          etaSec: 0,
+        });
+
+        try {
+          job._events.emit("tick", { ...snapshot(job), done: true });
+        } catch {}
+      } catch (e: any) {
+        const msg = String(e?.message || e || "upload_failed");
+        await setClipMp4Error(job.clipId, msg).catch(() => {});
+        updateJob(job, { status: "error", message: "Upload R2 échoué", error: msg, stderrTail });
+      } finally {
+        try {
+          if (job.outPath && fs.existsSync(job.outPath)) fs.unlinkSync(job.outPath);
+        } catch {}
+      }
+    })();
   });
 }
 
@@ -315,6 +371,9 @@ botClipsRouter.get("/list", async (req: AuthedReq, res) => {
     const sep = base && base.includes("?") ? "&" : "?";
     const vod_link = base ? `${base}${sep}t=${startSec}s` : null;
 
+    const mp4_key = (r.mp4_key ? String(r.mp4_key) : "").trim() || null;
+    const mp4_url = mp4_key ? buildPublicUrl(mp4_key) : null;
+
     return {
       id: Number(r.id),
       streamer_id: Number(r.streamer_id),
@@ -329,13 +388,20 @@ botClipsRouter.get("/list", async (req: AuthedReq, res) => {
       vod_created_ts: r.vod_created_ts ?? null,
       vod_link,
       timecode_str: hhmmss(startSec),
+
+      mp4_key,
+      mp4_url,
+      mp4_ready_ts: (r.mp4_ready_ts as any) ?? null,
+      mp4_size: (r.mp4_size as any) ?? null,
+      mp4_error: (r.mp4_error as any) ?? null,
+      mp4_rendering: !!(r.mp4_rendering as any),
     };
   });
 
   return res.json({ ok: true, items });
 });
 
-/* (2) DELETE */
+/* (2) DELETE (hide) */
 botClipsRouter.post("/delete", express.json(), async (req: AuthedReq, res) => {
   const streamerId = Number(req.streamerId || 0);
   const id = Number(req.body?.id);
@@ -345,9 +411,16 @@ botClipsRouter.post("/delete", express.json(), async (req: AuthedReq, res) => {
   return res.json({ ok: true, hidden: n });
 });
 
-/* (3) DOWNLOAD START */
+/**
+ * (3) RENDER START (compat: endpoint inchangé)
+ * - extrait uniquement le clip (pre+post) depuis la VOD
+ * - upload MP4 sur R2
+ * - écrit mp4_key/mp4_ready_ts/mp4_size dans bot_clips
+ */
 botClipsRouter.post("/download/start", express.json(), async (req: AuthedReq, res) => {
   try {
+    if (!r2Enabled()) return res.status(409).json({ ok: false, reason: "r2_not_configured" });
+
     const streamerId = Number(req.streamerId || 0);
     const clipId = Number(req.body?.id);
     if (!Number.isFinite(clipId) || clipId <= 0) return res.status(400).json({ ok: false, reason: "id_required" });
@@ -356,15 +429,25 @@ botClipsRouter.post("/download/start", express.json(), async (req: AuthedReq, re
     if (!clip) return res.status(404).json({ ok: false, reason: "clip_not_found" });
     if (!clip.vod_url) return res.status(409).json({ ok: false, reason: "vod_not_ready" });
 
+    const existingKey = (clip.mp4_key ? String(clip.mp4_key) : "").trim();
+    if (existingKey) {
+      return res.json({
+        ok: true,
+        already: true,
+        mp4_key: existingKey,
+        mp4_url: buildPublicUrl(existingKey),
+      });
+    }
+
     const pre = Math.max(0, Number(clip.pre_sec || 105));
     const post = Math.max(0, Number(clip.post_sec || 15));
     const dur = Math.max(1, pre + post);
-
     const start = Math.max(0, Number(clip.at_sec || 0) - pre);
 
     const job = newJob(streamerId, clipId, dur);
-    updateJob(job, { status: "running", message: "Préparation…", percent: 3 });
+    updateJob(job, { status: "running", message: "Préparation…", percent: 2 });
 
+    // check vod reachable
     const head = await fetch(clip.vod_url, {
       method: "GET",
       headers: {
@@ -375,18 +458,22 @@ botClipsRouter.post("/download/start", express.json(), async (req: AuthedReq, re
     }).catch(() => null);
 
     if (!head || !head.ok) {
-      updateJob(job, { status: "error", message: `VOD inaccessible (HTTP ${head?.status || 0})`, error: "vod_unreachable" });
+      const msg = `VOD inaccessible (HTTP ${head?.status || 0})`;
+      updateJob(job, { status: "error", message: msg, error: "vod_unreachable" });
+      await setClipMp4Error(clipId, "vod_unreachable").catch(() => {});
       return res.json({ ok: true, job: job.id, started: false });
     }
 
-    startFfmpeg(job, clip.vod_url, start, dur, clip.title || "");
+    const r2Key = `clips/${clipId}.mp4`;
+    startFfmpegToMp4(job, clip.vod_url, start, dur, clip.title || "", r2Key);
+
     return res.json({ ok: true, job: job.id, started: true });
   } catch (e: any) {
     return res.status(500).json({ ok: false, reason: String(e?.message || e) });
   }
 });
 
-/* (4) DOWNLOAD PROGRESS (SSE) */
+/* (4) PROGRESS (SSE) */
 botClipsRouter.get("/download/progress", async (req, res) => {
   const id = String(req.query?.job || "");
   const job = JOBS.get(id);
@@ -422,41 +509,25 @@ botClipsRouter.get("/download/progress", async (req, res) => {
   });
 });
 
-/* (5) DOWNLOAD FILE */
+/**
+ * (5) DOWNLOAD FILE (compatible)
+ * - maintenant le fichier est sur R2 => redirect URL public
+ */
 botClipsRouter.get("/download/file", async (req: AuthedReq, res) => {
   try {
     const id = String(req.query?.job || "");
     const job = JOBS.get(id);
     if (!job) return res.status(404).json({ ok: false, reason: "job_not_found" });
 
-    const deadline = Date.now() + 2000;
-    while (job.status === "done" && job.outPath && !fs.existsSync(job.outPath) && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-
-    if (job.status !== "done" || !job.outPath || !fs.existsSync(job.outPath)) {
+    if (job.status !== "done" || !job.r2Key) {
       return res.status(409).json({ ok: false, reason: "not_ready", job: snapshot(job) });
     }
 
-    const stat = fs.statSync(job.outPath);
+    const url = buildPublicUrl(job.r2Key);
+    if (!url) return res.status(409).json({ ok: false, reason: "r2_not_ready", job: snapshot(job) });
 
-    const rawName = String(req.query?.dlname || "").trim();
-    const safe = rawName.replace(/[^\w.\-]+/g, "_").replace(/^_+|_+$/g, "") || path.basename(job.outPath);
-
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Length", String(stat.size));
-    res.setHeader("Content-Disposition", `attachment; filename="${safe}"`);
     res.setHeader("Cache-Control", "no-store");
-    res.setHeader("X-Accel-Buffering", "no");
-
-    const rs = fs.createReadStream(job.outPath);
-    rs.on("close", () => {
-      try {
-        fs.unlinkSync(job.outPath!);
-      } catch {}
-      removeJob(job);
-    });
-    rs.pipe(res);
+    return res.redirect(302, url);
   } catch (e: any) {
     return res.status(500).json({ ok: false, reason: String(e?.message || "send_failed") });
   }

@@ -14,13 +14,14 @@ import { ensureBotClips } from "./bot_clips/store.js";
 import { startClipsVodLinker } from "./bot_clips/vod_linker.js";
 
 import { ensureCallsSchema } from "./calls/schema.js";
-import { runSlotsUpdate } from "./calls/updater.js"; // ✅ CHANGÉ (plus startSlotsUpdater)
+import { runSlotsUpdate } from "./calls/updater.js";
+
+import { startClipsMp4Renderer, startClipsMp4Cleanup } from "./clips/clip_mp4_worker.js";
 
 const port = Number(process.env.PORT || 3001);
 
 function startStatsCleanup() {
   const run = async () => {
-    // ferme les viewer sessions inactives
     await pool.query(
       `UPDATE viewer_sessions
        SET ended_at = last_heartbeat_at
@@ -28,7 +29,6 @@ function startStatsCleanup() {
          AND last_heartbeat_at < (NOW() - (45 * INTERVAL '1 second'))`
     );
 
-    // si un streamer repasse offline => clôture la live_session ouverte
     await pool.query(
       `UPDATE live_sessions ls
        SET ended_at = COALESCE(s.updated_at, NOW())
@@ -51,9 +51,7 @@ function startSlotsCatalogUpdater(everyHours: number) {
     try {
       const r = await runSlotsUpdate(pool);
       if (r.ok) {
-        console.log(
-          `[slots-updater] ok fetched=${r.fetched} inserted=${r.inserted.length}`
-        );
+        console.log(`[slots-updater] ok fetched=${r.fetched} inserted=${r.inserted.length}`);
       } else {
         console.warn(`[slots-updater] failed ${r.error}`);
       }
@@ -75,30 +73,22 @@ function startSlotsCatalogUpdater(everyHours: number) {
   // ✅ calls + slots schema
   await ensureCallsSchema(pool);
 
-  // ✅ catalogue slots updater (12h)
   //startSlotsCatalogUpdater(12);
 
   const app = createApp();
 
-  // ✅ sert les uploads (alertes: images/gif/sons)
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
   const server = http.createServer(app);
 
-  // ✅ Socket.IO CORS aligné avec le front
   const io = new IOServer(server, {
     cors: {
-      origin: [
-        "https://lunalive.onrender.com",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-      ],
+      origin: ["https://lunalive.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"],
       credentials: true,
       methods: ["GET", "POST"],
     },
   });
 
-  // ✅ rendre io accessible aux routes (me_overlay -> /alert emit)
   app.locals.io = io;
   app.set("io", io);
 
@@ -109,6 +99,10 @@ function startSlotsCatalogUpdater(everyHours: number) {
 
   // ✅ worker: link VOD url to pending clips
   startClipsVodLinker();
+
+  // ✅ NEW: worker render mp4 clips to R2 + cleanup
+  startClipsMp4Renderer();
+  startClipsMp4Cleanup();
 
   server.listen(port, () => console.log(`[api] listening on :${port}`));
 })();

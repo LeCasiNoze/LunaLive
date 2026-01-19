@@ -2,8 +2,7 @@
 import type { Pool } from "pg";
 import type { ChatMsg, StreamerRow } from "../../core/types.js";
 
-const DLIVE_ENDPOINT =
-  process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
+const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
 
 // Produit (validé)
 const LATENCY_PAD_SEC = 15;
@@ -57,10 +56,7 @@ async function fetchLiveStart(displayName: string): Promise<LiveStart | null> {
   return { createdAtMs, permlink: String(ls.permlink || "") };
 }
 
-async function getDliveChannelSlugForStreamer(
-  pool: Pool,
-  streamerId: number
-): Promise<string | null> {
+async function getDliveChannelSlugForStreamer(pool: Pool, streamerId: number): Promise<string | null> {
   const r = await pool.query(
     `SELECT
        s.dlive_use_linked AS "useLinked",
@@ -82,7 +78,7 @@ async function getDliveChannelSlugForStreamer(
   const linked = row.linkedDisplayname ? String(row.linkedDisplayname) : "";
   const provider = row.providerChannelSlug ? String(row.providerChannelSlug) : "";
 
-  const channelSlug = (useLinked && linked) ? linked : provider;
+  const channelSlug = useLinked && linked ? linked : provider;
   return channelSlug.trim() ? channelSlug.trim() : null;
 }
 
@@ -90,8 +86,12 @@ async function getDliveChannelSlugForStreamer(
 
 let ensured = false;
 
+// threshold to detect "seconds" timestamps (10 digits) vs ms (13 digits)
+const TS_MS_THRESHOLD = 100000000000; // 1e11
+
 async function ensureBotClipsTable(pool: Pool) {
   if (ensured) return;
+
   // best effort (idempotent)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS bot_clips (
@@ -102,12 +102,51 @@ async function ensureBotClipsTable(pool: Pool) {
       at_sec INTEGER NOT NULL,
       pre_sec INTEGER NOT NULL DEFAULT 105,
       post_sec INTEGER NOT NULL DEFAULT 15,
-      created_ts INTEGER NOT NULL,
+      created_ts BIGINT NOT NULL,     -- ✅ ms
       vod_url TEXT,
       vod_permlink TEXT,
-      vod_created_ts INTEGER
+      vod_created_ts BIGINT           -- ✅ ms
     );
   `);
+
+  // upgrade if old schema used INTEGER
+  await pool
+    .query(`
+      ALTER TABLE bot_clips
+      ALTER COLUMN created_ts TYPE BIGINT
+      USING created_ts::bigint;
+    `)
+    .catch(() => {});
+  await pool
+    .query(`
+      ALTER TABLE bot_clips
+      ALTER COLUMN vod_created_ts TYPE BIGINT
+      USING vod_created_ts::bigint;
+    `)
+    .catch(() => {});
+
+  // migrate seconds -> ms (best effort, only if it looks like seconds)
+  await pool
+    .query(
+      `
+      UPDATE bot_clips
+      SET created_ts = created_ts * 1000
+      WHERE created_ts < $1
+      `,
+      [TS_MS_THRESHOLD]
+    )
+    .catch(() => {});
+  await pool
+    .query(
+      `
+      UPDATE bot_clips
+      SET vod_created_ts = vod_created_ts * 1000
+      WHERE vod_created_ts IS NOT NULL
+        AND vod_created_ts < $1
+      `,
+      [TS_MS_THRESHOLD]
+    )
+    .catch(() => {});
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_bot_clips_streamer_created
@@ -137,7 +176,7 @@ async function addClipPg(p: {
 
   await ensureBotClipsTable(pool);
 
-  const now = Math.floor(Date.now() / 1000);
+  const nowMs = Date.now(); // ✅ ms
   const at = Math.max(0, Math.floor(p.atSec));
   const pre = Math.max(0, Math.floor(p.preSec));
   const post = Math.max(0, Math.floor(p.postSec));
@@ -150,7 +189,7 @@ async function addClipPg(p: {
        AND ABS(at_sec - $2) <= 20
        AND created_ts >= $3
      LIMIT 1`,
-    [streamerId, at, now - 6 * 3600]
+    [streamerId, at, nowMs - 6 * 3600 * 1000]
   );
   if (dup.rows?.[0]?.id) return { ok: false as const, reason: "duplicate" };
 
@@ -158,7 +197,7 @@ async function addClipPg(p: {
     `INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts)
      VALUES($1,$2,$3,$4,$5,$6,$7)
      RETURNING id`,
-    [streamerId, p.title, p.author, at, pre, post, now]
+    [streamerId, p.title, p.author, at, pre, post, nowMs]
   );
 
   return { ok: true, id: Number(ins.rows?.[0]?.id || 0) };
@@ -222,9 +261,7 @@ export async function tryHandleClipCommand(p: {
       return true;
     }
 
-    await p.send(
-      `— 🎬 Clip enregistré${title ? ` : “${title}”` : ""} • ${hhmmss(offset)}`
-    );
+    await p.send(`— 🎬 Clip enregistré${title ? ` : “${title}”` : ""} • ${hhmmss(offset)}`);
     return true;
   } catch {
     // erreur interne = silence (comme NozeBot)

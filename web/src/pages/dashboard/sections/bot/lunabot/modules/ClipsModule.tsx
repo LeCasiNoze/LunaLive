@@ -19,6 +19,14 @@ type ClipItem = {
 
   vod_link: string | null;
   timecode_str: string;
+
+  // ✅ NEW (R2 mp4)
+  mp4_key?: string | null;
+  mp4_url?: string | null;
+  mp4_ready_ts?: number | null;
+  mp4_size?: number | null;
+  mp4_error?: string | null;
+  mp4_rendering?: boolean;
 };
 
 type DlState = {
@@ -26,8 +34,8 @@ type DlState = {
   error?: string | null;
   message?: string | null;
   job?: string;
-  percent?: number; // (soft)
-  downloading?: boolean;
+  percent?: number;
+  publicUrl?: string | null;
 };
 
 type DlMap = Record<number, DlState>;
@@ -54,7 +62,6 @@ async function apiJson<T>(token: string, url: string, init?: RequestInit): Promi
     },
   });
 
-  // ⚠️ si tu reçois de l'HTML (fallback SPA), on veut le voir direct
   const text = await r.text().catch(() => "");
   let j: any = null;
   try {
@@ -71,60 +78,91 @@ async function apiJson<T>(token: string, url: string, init?: RequestInit): Promi
   return j as T;
 }
 
-async function apiBlob(token: string, url: string): Promise<Blob> {
+/**
+ * SSE via fetch streaming (car EventSource ne supporte pas Authorization header)
+ * On lit "event: tick" + "data: {...}"
+ */
+async function consumeSseTicks(
+  token: string,
+  url: string,
+  onTick: (payload: any) => void,
+  signal: AbortSignal
+) {
   const fullUrl = url.startsWith("http") ? url : `${API_BASE}${url}`;
-
   const r = await fetch(fullUrl, {
     method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "text/event-stream",
+    },
+    signal,
   });
 
-  if (!r.ok) {
+  if (!r.ok || !r.body) {
     const txt = await r.text().catch(() => "");
-    throw new Error(`file_${r.status}${txt ? `:${txt.slice(0, 60)}` : ""}`);
+    throw new Error(`sse_${r.status}${txt ? `:${txt.slice(0, 80)}` : ""}`);
   }
 
-  return await r.blob();
+  const reader = r.body.getReader();
+  const dec = new TextDecoder("utf-8");
+
+  let buf = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buf += dec.decode(value, { stream: true });
+
+    // split by SSE messages (blank line)
+    let idx = buf.indexOf("\n\n");
+    while (idx >= 0) {
+      const chunk = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+
+      let eventName = "";
+      let dataLine = "";
+
+      for (const line of chunk.split(/\r?\n/)) {
+        if (line.startsWith("event:")) eventName = line.slice(6).trim();
+        if (line.startsWith("data:")) dataLine = line.slice(5).trim();
+      }
+
+      if (eventName === "tick" && dataLine) {
+        try {
+          const payload = JSON.parse(dataLine);
+          onTick(payload);
+        } catch {}
+      }
+
+      idx = buf.indexOf("\n\n");
+    }
+  }
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
+function openDownload(url: string) {
+  // download natif (pas blob) => R2 public URL
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
-export function ClipsModule({
-  token,
-  onReload,
-}: {
-  token: string;
-  onReload?: () => void;
-}) {
+function copyText(text: string) {
+  if (!text) return;
+  navigator.clipboard?.writeText(text).catch(() => {});
+}
+
+export function ClipsModule({ token, onReload }: { token: string; onReload?: () => void }) {
   const [items, setItems] = React.useState<ClipItem[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
   const [dl, setDl] = React.useState<DlMap>({});
 
-  const missingVod = React.useMemo(
-    () => items.some((c) => !c.vod_url),
-    [items]
-  );
+  const missingVod = React.useMemo(() => items.some((c) => !c.vod_url), [items]);
 
   async function refresh() {
     setLoading(true);
     setErr(null);
     try {
-      const j = await apiJson<{ ok: true; items: ClipItem[] }>(
-        token,
-        "/me/bot/clips/list?limit=200",
-        { method: "GET" }
-      );
+      const j = await apiJson<{ ok: true; items: ClipItem[] }>(token, "/me/bot/clips/list?limit=200", { method: "GET" });
       setItems(Array.isArray(j.items) ? j.items : []);
       onReload?.();
     } catch (e: any) {
@@ -148,45 +186,46 @@ export function ClipsModule({
 
   async function handleDelete(id: number) {
     try {
-      await apiJson(token, "/me/bot/clips/delete", {
-        method: "POST",
-        body: JSON.stringify({ id }),
-      });
+      await apiJson(token, "/me/bot/clips/delete", { method: "POST", body: JSON.stringify({ id }) });
       await refresh();
     } catch (e: any) {
       setErr(String(e?.message || "delete_failed"));
     }
   }
 
-  async function handleDownload(clip: ClipItem) {
+  async function handleRenderAndDownload(clip: ClipItem) {
     const cid = clip.id;
     const cur = dl[cid];
     if (cur?.status === "starting" || cur?.status === "running") return;
 
+    // si déjà prêt => download direct
+    const readyUrl = String(clip.mp4_url || "").trim();
+    if (readyUrl) {
+      openDownload(readyUrl);
+      return;
+    }
+
     setDl((m) => ({
       ...m,
-      [cid]: {
-        status: "starting",
-        error: null,
-        message: "Préparation…",
-        percent: 3,
-      },
+      [cid]: { status: "starting", error: null, message: "Démarrage…", percent: 2, publicUrl: null },
     }));
 
-    let job = "";
-
     try {
-      // START
-      const start = await apiJson<{ ok: true; job: string; started: boolean }>(
-        token,
-        "/me/bot/clips/download/start",
-        {
-          method: "POST",
-          body: JSON.stringify({ id: cid }),
-        }
-      );
+      // START render job
+      const start = await apiJson<any>(token, "/me/bot/clips/download/start", {
+        method: "POST",
+        body: JSON.stringify({ id: cid }),
+      });
 
-      job = String(start.job || "");
+      // already rendered (backend can return this)
+      if (start?.already && start?.mp4_url) {
+        setDl((m) => ({ ...m, [cid]: { status: "done", percent: 100, message: "Prêt ✓", publicUrl: start.mp4_url } }));
+        openDownload(String(start.mp4_url));
+        await refresh();
+        return;
+      }
+
+      const job = String(start?.job || "");
       if (!job) throw new Error("job_missing");
 
       setDl((m) => ({
@@ -194,56 +233,69 @@ export function ClipsModule({
         [cid]: { ...(m[cid] || {}), status: "running", job, percent: 5, message: "Extraction…" },
       }));
 
-      // Sans SSE (Authorization header obligatoire) => on “soft-progress” + retries file
-      const maxAttempts = 40; // ~40s
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        // tente fichier
+      // Progress via SSE (fetch streaming with Authorization)
+      const ac = new AbortController();
+      const stop = () => {
         try {
-          const dlname = encodeURIComponent(`clip-${clip.id}-${safeTitle(clip.title)}.mp4`);
-          const blob = await apiBlob(token, `/me/bot/clips/download/file?job=${encodeURIComponent(job)}&dlname=${dlname}`);
+          ac.abort();
+        } catch {}
+      };
 
-          setDl((m) => ({
-            ...m,
-            [cid]: { ...(m[cid] || {}), status: "done", percent: 100, downloading: true, message: "Téléchargement…" },
-          }));
+      let gotPublicUrl: string | null = null;
 
-          downloadBlob(blob, `clip-${clip.id}-${safeTitle(clip.title)}.mp4`);
+      await consumeSseTicks(
+        token,
+        `/me/bot/clips/download/progress?job=${encodeURIComponent(job)}`,
+        (payload) => {
+          const status = String(payload?.status || "");
+          const pct = Math.max(0, Math.min(100, Number(payload?.percent || 0)));
+          const msg = String(payload?.message || "");
+          const pub = payload?.publicUrl ? String(payload.publicUrl) : null;
 
-          setDl((m) => ({
-            ...m,
-            [cid]: { ...(m[cid] || {}), status: "done", percent: 100, downloading: false, message: "Terminé ✓" },
-          }));
+          if (pub) gotPublicUrl = pub;
 
-          return;
-        } catch (e: any) {
-          const msg = String(e?.message || "");
-          // 409 => pas prêt (le backend renvoie JSON 409; ici on a fetch text => "file_409...")
-          const isNotReady = msg.includes("file_409") || msg.includes("not_ready") || msg.includes("409");
-
-          if (!isNotReady) throw e;
-
-          // soft-progress
-          setDl((m) => {
-            const p = Math.min(95, Math.max(5, Number(m[cid]?.percent || 5) + (attempt < 10 ? 2 : 1)));
-            return {
+          if (status === "error") {
+            setDl((m) => ({
               ...m,
-              [cid]: { ...(m[cid] || {}), status: "running", percent: p, message: "Extraction…" },
-            };
-          });
+              [cid]: { ...(m[cid] || {}), status: "error", error: String(payload?.error || "error"), message: msg, percent: pct },
+            }));
+            stop();
+            return;
+          }
 
-          await new Promise((r) => setTimeout(r, attempt < 5 ? 500 : 900));
+          if (status === "done") {
+            setDl((m) => ({
+              ...m,
+              [cid]: { ...(m[cid] || {}), status: "done", message: "Prêt ✓", percent: 100, publicUrl: pub || gotPublicUrl },
+            }));
+            stop();
+            return;
+          }
+
+          setDl((m) => ({
+            ...m,
+            [cid]: { ...(m[cid] || {}), status: "running", message: msg || "Extraction…", percent: pct, publicUrl: pub || gotPublicUrl },
+          }));
+        },
+        ac.signal
+      ).catch((e) => {
+        // si le stream se ferme sans erreur, on continue
+        const msg = String((e as any)?.message || "");
+        if (!msg.includes("aborted")) {
+          setDl((m) => ({ ...m, [cid]: { ...(m[cid] || {}), status: "error", error: msg || "sse_failed" } }));
         }
-      }
+      });
 
-      setDl((m) => ({
-        ...m,
-        [cid]: { ...(m[cid] || {}), status: "error", error: "file_not_ready_timeout", message: "Timeout" },
-      }));
+      // si on a une URL publique => download direct
+      if (gotPublicUrl) openDownload(gotPublicUrl);
+
+      // refresh to pick mp4_url in list
+      await refresh();
     } catch (e: any) {
       const reason = String(e?.message || "error");
       setDl((m) => ({
         ...m,
-        [cid]: { ...(m[cid] || {}), status: reason === "vod_not_ready" ? "not_ready" : "error", error: reason },
+        [cid]: { ...(m[cid] || {}), status: reason === "vod_not_ready" ? "not_ready" : "error", error: reason, message: null },
       }));
     }
   }
@@ -255,10 +307,16 @@ export function ClipsModule({
           <div style={{ fontWeight: 950, fontSize: 13 }}>Clips</div>
           <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
             Commande chat: <b>!clip</b> + titre optionnel. Fenêtre: <b>1m45 avant</b> / <b>15s après</b>.
+            <span style={{ opacity: 0.9 }}> • MP4 (≈2 min) stocké sur R2</span>
           </div>
         </div>
 
-        <button className="btnGhostInline" onClick={() => void refresh()} disabled={loading} style={{ borderRadius: 14, padding: "10px 12px", fontWeight: 950 }}>
+        <button
+          className="btnGhostInline"
+          onClick={() => void refresh()}
+          disabled={loading}
+          style={{ borderRadius: 14, padding: "10px 12px", fontWeight: 950 }}
+        >
           {loading ? "Chargement…" : "Rafraîchir"}
         </button>
       </div>
@@ -283,8 +341,12 @@ export function ClipsModule({
             {items.map((c) => {
               const st = dl[c.id];
               const pct = Math.max(0, Math.min(100, Number(st?.percent || 0)));
-            const clipStartSec = Math.max(0, Math.floor((c.at_sec || 0) - (c.pre_sec || 105)));
-            const directVodUrl = c.vod_url ? `${c.vod_url}#t=${clipStartSec}` : null;
+
+              const clipStartSec = Math.max(0, Math.floor((c.at_sec || 0) - (c.pre_sec || 105)));
+              const directVodUrl = c.vod_url ? `${c.vod_url}#t=${clipStartSec}` : null;
+
+              const mp4Url = String(c.mp4_url || st?.publicUrl || "").trim() || null;
+              const mp4Ready = !!mp4Url;
 
               return (
                 <div
@@ -302,6 +364,7 @@ export function ClipsModule({
                       <div style={{ fontWeight: 950, fontSize: 14, lineHeight: 1.1 }}>
                         {c.title ? c.title : <span className="muted">Sans titre</span>}
                       </div>
+
                       <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
                         {c.author ? (
                           <>
@@ -310,7 +373,15 @@ export function ClipsModule({
                         ) : null}
                         timecode <b>{c.timecode_str || ""}</b>
                         {!c.vod_url ? <span> • VOD en préparation…</span> : null}
+                        {c.vod_url && !mp4Ready ? <span> • MP4 pas encore rendu</span> : null}
+                        {mp4Ready ? <span> • MP4 prêt ✅</span> : null}
                       </div>
+
+                      {c.mp4_error ? (
+                        <div className="muted" style={{ fontSize: 12, marginTop: 6, color: "rgba(255,90,90,0.95)" }}>
+                          Render error: {String(c.mp4_error).slice(0, 160)}
+                        </div>
+                      ) : null}
 
                       {st && (st.status === "starting" || st.status === "running" || st.status === "done" || st.status === "error" || st.status === "not_ready") ? (
                         <div style={{ marginTop: 10 }}>
@@ -318,10 +389,10 @@ export function ClipsModule({
                             <div style={{ height: "100%", width: `${pct}%`, background: "rgba(60, 240, 180, 0.70)" }} />
                           </div>
                           <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                            {st.status === "starting" ? "Préparation…" : null}
-                            {st.status === "running" ? `${st.message || "Extraction…"} ${pct}%` : null}
+                            {st.status === "starting" ? "Démarrage…" : null}
+                            {st.status === "running" ? `${st.message || "Rendu…"} ${pct}%` : null}
                             {st.status === "not_ready" ? "VOD pas encore disponible (réessayer plus tard)" : null}
-                            {st.status === "done" ? (st.downloading ? "Téléchargement…" : "Terminé ✓") : null}
+                            {st.status === "done" ? "Prêt ✓" : null}
                             {st.status === "error" ? `Erreur: ${String(st.error || "échec")}` : null}
                           </div>
                         </div>
@@ -331,55 +402,75 @@ export function ClipsModule({
                     <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
                       <button
                         className="btnGhostInline"
-                        onClick={() => void handleDownload(c)}
-                        disabled={st?.status === "starting" || st?.status === "running" || !c.vod_url}
+                        onClick={() => {
+                          if (mp4Url) openDownload(mp4Url);
+                          else void handleRenderAndDownload(c);
+                        }}
+                        disabled={(!c.vod_url && !mp4Ready) || st?.status === "starting" || st?.status === "running"}
                         style={{
                           padding: "10px 12px",
                           borderRadius: 14,
                           fontWeight: 950,
-                          opacity: !c.vod_url ? 0.6 : 1,
+                          opacity: !c.vod_url && !mp4Ready ? 0.6 : 1,
                         }}
-                        title={!c.vod_url ? "VOD pas encore prête" : "Télécharger le clip"}
+                        title={!c.vod_url && !mp4Ready ? "VOD pas encore prête" : mp4Ready ? "Télécharger le MP4 (R2)" : "Rendre + télécharger"}
                       >
-                        Télécharger
+                        {mp4Ready ? "Télécharger" : "Rendre + télécharger"}
                       </button>
 
-                    {directVodUrl ? (
-                    <a href={directVodUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+                      {mp4Url ? (
                         <button
-                        className="btnGhostInline"
-                        style={{
+                          className="btnGhostInline"
+                          onClick={() => copyText(mp4Url)}
+                          style={{
                             padding: "10px 12px",
                             borderRadius: 14,
                             fontWeight: 950,
-                            background: "rgba(59, 130, 246, 0.18)",
-                            border: "1px solid rgba(59, 130, 246, 0.35)",
-                        }}
+                            background: "rgba(255,255,255,0.06)",
+                            border: "1px solid rgba(255,255,255,0.12)",
+                          }}
+                          title="Copier le lien"
                         >
-                        Voir
+                          Copier lien
                         </button>
-                    </a>
-                    ) : c.vod_permlink ? (
-                    <a
-                        href={buildDliveVodPage(c.vod_permlink, c.at_sec)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ textDecoration: "none" }}
-                    >
-                        <button
-                        className="btnGhostInline"
-                        style={{
-                            padding: "10px 12px",
-                            borderRadius: 14,
-                            fontWeight: 950,
-                            background: "rgba(59, 130, 246, 0.18)",
-                            border: "1px solid rgba(59, 130, 246, 0.35)",
-                        }}
+                      ) : null}
+
+                      {directVodUrl ? (
+                        <a href={directVodUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+                          <button
+                            className="btnGhostInline"
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 14,
+                              fontWeight: 950,
+                              background: "rgba(59, 130, 246, 0.18)",
+                              border: "1px solid rgba(59, 130, 246, 0.35)",
+                            }}
+                          >
+                            Voir VOD
+                          </button>
+                        </a>
+                      ) : c.vod_permlink ? (
+                        <a
+                          href={buildDliveVodPage(c.vod_permlink, c.at_sec)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ textDecoration: "none" }}
                         >
-                        Voir
-                        </button>
-                    </a>
-                    ) : null}
+                          <button
+                            className="btnGhostInline"
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 14,
+                              fontWeight: 950,
+                              background: "rgba(59, 130, 246, 0.18)",
+                              border: "1px solid rgba(59, 130, 246, 0.35)",
+                            }}
+                          >
+                            Voir VOD
+                          </button>
+                        </a>
+                      ) : null}
 
                       <button
                         className="btnGhostInline"
@@ -404,8 +495,7 @@ export function ClipsModule({
       </div>
 
       <div className="muted" style={{ marginTop: 14, fontSize: 12 }}>
-        Note: le téléchargement passe par <b>fetch</b> (JWT header), donc le navigateur ne peut pas faire un “download natif”
-        sans passer par le blob.
+        Note: le téléchargement est <b>natif</b> via l’URL publique R2 (pas de blob, pas de stockage Render).
       </div>
     </div>
   );

@@ -8,13 +8,12 @@ import {
   type BotClipRow,
 } from "./store.js";
 
-const ENDPOINT =
-  process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
+const ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
 
 type VodLite = {
   permlink: string;
   title: string;
-  createdAtSec: number; // epoch seconds
+  createdAtMs: number; // ✅ epoch ms
   lengthSec: number;
   playbackUrl: string | null;
   resolution?: Array<{ resolution: string; url: string }>;
@@ -45,7 +44,7 @@ async function fetchRecentVods(displayName: string, first = 8): Promise<VodLite[
   return (list || []).map((x: any) => ({
     permlink: String(x?.permlink || ""),
     title: String(x?.title || ""),
-    createdAtSec: Math.floor(Number(x?.createdAt || 0) / 1000),
+    createdAtMs: Number(x?.createdAt || 0), // dlive returns ms
     lengthSec: Number(x?.length || 0),
     playbackUrl: (String(x?.playbackUrl || "").trim() || null),
     resolution: Array.isArray(x?.resolution)
@@ -64,16 +63,19 @@ function matchVod(
 ): VodLite | null {
   if (!vods.length) return null;
 
-  const liveStartEst = Math.floor(clip.created_ts - Math.max(0, clip.at_sec));
+  // clip.created_ts = ms ; at_sec = sec
+  const clipCreatedSec = Math.floor(Number(clip.created_ts || 0) / 1000);
+  const liveStartEstSec = Math.floor(clipCreatedSec - Math.max(0, Number(clip.at_sec || 0)));
+
   let best: VodLite | null = null;
   let bestDelta = Number.POSITIVE_INFINITY;
 
   for (const v of vods) {
-    const start = v.createdAtSec;
-    const end = start + Math.max(0, v.lengthSec || 0);
+    const startSec = Math.floor(Number(v.createdAtMs || 0) / 1000);
+    const endSec = startSec + Math.max(0, Number(v.lengthSec || 0));
 
-    const inRange = clip.created_ts >= (start - 60) && clip.created_ts <= (end + 600);
-    const delta = Math.abs(start - liveStartEst);
+    const inRange = clipCreatedSec >= startSec - 60 && clipCreatedSec <= endSec + 600;
+    const delta = Math.abs(startSec - liveStartEstSec);
     const better = delta < bestDelta || (delta === bestDelta && inRange);
 
     if (better) {
@@ -129,7 +131,7 @@ export function startClipsVodLinker() {
               await setClipVodInfo(streamerId, c.id, {
                 vod_url: url,
                 vod_permlink: v.permlink,
-                vod_created_ts: v.createdAtSec,
+                vod_created_ts: Number(v.createdAtMs || 0), // ✅ ms
               });
             } catch {
               // ignore clip-level errors

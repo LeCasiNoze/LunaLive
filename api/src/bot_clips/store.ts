@@ -9,14 +9,21 @@ export type BotClipRow = {
   at_sec: number;
   pre_sec: number;
   post_sec: number;
-  created_ts: number;
+  created_ts: number; // ms
 
   vod_url: string | null;
   vod_permlink: string | null;
-  vod_created_ts: number | null;
+  vod_created_ts: number | null; // ms
 
   hidden_by_streamer?: boolean;
-  deleted_ts?: number | null;
+  deleted_ts?: number | null; // ms
+
+  // ✅ rendered mp4 in R2/S3
+  mp4_key?: string | null; // e.g. "clips/1234.mp4"
+  mp4_ready_ts?: number | null; // ms
+  mp4_size?: number | null; // bytes
+  mp4_error?: string | null;
+  mp4_rendering?: boolean; // claim flag
 };
 
 let ensured = false;
@@ -33,14 +40,14 @@ export async function ensureBotClips() {
       at_sec INTEGER NOT NULL,
       pre_sec INTEGER NOT NULL DEFAULT 105,
       post_sec INTEGER NOT NULL DEFAULT 15,
-      created_ts BIGINT NOT NULL,
+      created_ts BIGINT NOT NULL,         -- ms
       vod_url TEXT,
       vod_permlink TEXT,
-      vod_created_ts BIGINT
+      vod_created_ts BIGINT               -- ms
     );
   `);
 
-  // ✅ nouvelles colonnes (pour tes règles)
+  // ✅ dashboard / suppression
   await pool.query(`
     ALTER TABLE bot_clips
       ADD COLUMN IF NOT EXISTS hidden_by_streamer BOOLEAN NOT NULL DEFAULT false;
@@ -51,6 +58,29 @@ export async function ensureBotClips() {
       ADD COLUMN IF NOT EXISTS deleted_ts BIGINT;
   `);
 
+  // ✅ mp4 render fields (R2/S3)
+  await pool.query(`
+    ALTER TABLE bot_clips
+      ADD COLUMN IF NOT EXISTS mp4_key TEXT;
+  `);
+  await pool.query(`
+    ALTER TABLE bot_clips
+      ADD COLUMN IF NOT EXISTS mp4_ready_ts BIGINT;
+  `);
+  await pool.query(`
+    ALTER TABLE bot_clips
+      ADD COLUMN IF NOT EXISTS mp4_size BIGINT;
+  `);
+  await pool.query(`
+    ALTER TABLE bot_clips
+      ADD COLUMN IF NOT EXISTS mp4_error TEXT;
+  `);
+  await pool.query(`
+    ALTER TABLE bot_clips
+      ADD COLUMN IF NOT EXISTS mp4_rendering BOOLEAN NOT NULL DEFAULT false;
+  `);
+
+  // indices existants
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_bot_clips_streamer_created
       ON bot_clips(streamer_id, created_ts DESC, id DESC);
@@ -67,6 +97,17 @@ export async function ensureBotClips() {
       ON bot_clips(streamer_id, deleted_ts);
   `);
 
+  // ✅ speed up renderer selection
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_bot_clips_mp4_pending
+      ON bot_clips(created_ts DESC, id DESC)
+      WHERE deleted_ts IS NULL
+        AND hidden_by_streamer = false
+        AND vod_url IS NOT NULL
+        AND (mp4_key IS NULL OR mp4_key = '')
+        AND mp4_rendering = false;
+  `);
+
   ensured = true;
 }
 
@@ -80,7 +121,8 @@ export async function listClipsForStreamer(streamerId: number, limit = 200) {
   const r = await pool.query(
     `SELECT id, streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts,
             vod_url, vod_permlink, vod_created_ts,
-            hidden_by_streamer, deleted_ts
+            hidden_by_streamer, deleted_ts,
+            mp4_key, mp4_ready_ts, mp4_size, mp4_error, mp4_rendering
      FROM bot_clips
      WHERE streamer_id=$1
        AND deleted_ts IS NULL
@@ -96,7 +138,8 @@ export async function getClipForStreamer(streamerId: number, clipId: number) {
   const r = await pool.query(
     `SELECT id, streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts,
             vod_url, vod_permlink, vod_created_ts,
-            hidden_by_streamer, deleted_ts
+            hidden_by_streamer, deleted_ts,
+            mp4_key, mp4_ready_ts, mp4_size, mp4_error, mp4_rendering
      FROM bot_clips
      WHERE streamer_id=$1 AND id=$2
        AND deleted_ts IS NULL
@@ -121,8 +164,7 @@ export async function removeClipForStreamer(streamerId: number, clipId: number) 
 }
 
 /**
- * ✅ Delete "public" (page streamer) = delete_ts + hide
- * (utilisé par /clips/:id/delete côté routes public)
+ * ✅ Delete "public" (page streamer) = deleted_ts + hide
  */
 export async function markClipDeletedById(clipId: number, nowTs: number) {
   const r = await pool.query(
@@ -175,6 +217,112 @@ export async function setClipVodInfo(
      WHERE streamer_id=$4 AND id=$5
        AND deleted_ts IS NULL`,
     [info.vod_url, info.vod_permlink ?? null, info.vod_created_ts ?? null, streamerId, clipId]
+  );
+}
+
+/**
+ * ✅ NEW: renderer claims one pending clip
+ * - robust PG pattern: CTE + FOR UPDATE SKIP LOCKED
+ */
+export async function claimOneClipToRenderMp4(opts: { minCreatedTs: number; maxAgeMs: number }) {
+  const now = Date.now();
+  const minTs = Math.max(0, Number(opts.minCreatedTs || 0));
+  const maxAge = Math.max(1, Number(opts.maxAgeMs || 30 * 24 * 3600 * 1000));
+  const oldestAllowed = now - maxAge;
+
+  const r = await pool.query(
+    `
+    WITH picked AS (
+      SELECT id
+      FROM bot_clips
+      WHERE deleted_ts IS NULL
+        AND hidden_by_streamer = false
+        AND vod_url IS NOT NULL
+        AND (mp4_key IS NULL OR mp4_key = '')
+        AND mp4_rendering = false
+        AND created_ts >= $1
+        AND created_ts >= $2
+      ORDER BY created_ts DESC, id DESC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    UPDATE bot_clips b
+    SET mp4_rendering = true,
+        mp4_error = NULL
+    FROM picked
+    WHERE b.id = picked.id
+    RETURNING
+      b.id, b.streamer_id, b.title, b.author, b.at_sec, b.pre_sec, b.post_sec, b.created_ts,
+      b.vod_url, b.vod_permlink, b.vod_created_ts,
+      b.hidden_by_streamer, b.deleted_ts,
+      b.mp4_key, b.mp4_ready_ts, b.mp4_size, b.mp4_error, b.mp4_rendering
+    `,
+    [minTs, oldestAllowed]
+  );
+
+  return (r.rows?.[0] as BotClipRow | undefined) ?? null;
+}
+
+export async function setClipMp4Success(clipId: number, info: { mp4_key: string; mp4_size: number }) {
+  await pool.query(
+    `
+    UPDATE bot_clips
+    SET mp4_key = $2,
+        mp4_ready_ts = $3,
+        mp4_size = $4,
+        mp4_error = NULL,
+        mp4_rendering = false
+    WHERE id = $1
+    `,
+    [clipId, String(info.mp4_key || "").slice(0, 500), Date.now(), Math.max(0, Number(info.mp4_size || 0))]
+  );
+}
+
+export async function setClipMp4Error(clipId: number, error: string) {
+  await pool.query(
+    `
+    UPDATE bot_clips
+    SET mp4_error = $2,
+        mp4_rendering = false
+    WHERE id = $1
+    `,
+    [clipId, String(error || "render_failed").slice(0, 500)]
+  );
+}
+
+export async function listMp4KeysToCleanup(cutoffMs: number, limit = 500) {
+  const lim = Math.min(2000, Math.max(1, Math.floor(Number(limit) || 500)));
+  const r = await pool.query(
+    `
+    SELECT id, mp4_key
+    FROM bot_clips
+    WHERE mp4_key IS NOT NULL
+      AND mp4_key <> ''
+      AND (
+        deleted_ts IS NOT NULL
+        OR created_ts < $1
+      )
+    ORDER BY created_ts ASC
+    LIMIT $2
+    `,
+    [cutoffMs, lim]
+  );
+
+  return (r.rows || []).map((x: any) => ({ id: Number(x.id), mp4_key: String(x.mp4_key || "") }));
+}
+
+export async function clearMp4Key(clipId: number) {
+  await pool.query(
+    `
+    UPDATE bot_clips
+    SET mp4_key = NULL,
+        mp4_ready_ts = NULL,
+        mp4_size = NULL,
+        mp4_error = NULL,
+        mp4_rendering = false
+    WHERE id = $1
+    `,
+    [clipId]
   );
 }
 
