@@ -156,53 +156,36 @@ function downloadBlob(blob: Blob, filename: string) {
  * Téléchargement avec progression (streaming).
  * Nécessite que la réponse soit lisible (CORS OK sur l’URL finale).
  */
-async function fetchBlobWithProgress(
-  url: string,
-  onProgress: (pct: number | null, loaded: number, total: number | null) => void,
-  signal?: AbortSignal
-): Promise<Blob> {
-  const r = await fetch(url, { method: "GET", signal });
+async function fetchBlobWithProgress(token: string, clipId: number, onProgress: (loaded: number, total: number | null) => void) {
+  const url = `${API_BASE}/clips/${clipId}/mp4`; // ✅ API (pas R2)
+  const r = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
-  if (!r.ok) {
-    const t = await r.text().catch(() => "");
-    throw new Error(`download_http_${r.status}${t ? `:${t.slice(0, 120)}` : ""}`);
+  if (!r.ok || !r.body) {
+    const txt = await r.text().catch(() => "");
+    throw new Error(`download_${r.status}${txt ? `:${txt.slice(0, 80)}` : ""}`);
   }
 
-  const total = Number(r.headers.get("content-length") || "") || null;
-
-  if (!r.body) {
-    // fallback sans stream
-    const b = await r.blob();
-    onProgress(100, total ?? b.size, total ?? b.size);
-    return b;
-  }
-
+  const total = Number(r.headers.get("content-length") || 0) || null;
   const reader = r.body.getReader();
-  const chunks: BlobPart[] = [];
-  let loaded = 0;
 
-  onProgress(total ? 0 : null, 0, total);
+  let loaded = 0;
+  const parts: BlobPart[] = [];
 
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
-    if (value) {
-      // force un Uint8Array basé sur ArrayBuffer (évite ArrayBufferLike/SharedArrayBuffer côté TS)
-      chunks.push(new Uint8Array(value));
-      loaded += value.byteLength;
+    if (!value) continue;
 
-      if (total) {
-        const pct = Math.max(0, Math.min(100, Math.round((loaded / total) * 100)));
-        onProgress(pct, loaded, total);
-      } else {
-        onProgress(null, loaded, null); // indéterminé
-      }
-    }
+    parts.push(new Uint8Array(value));
+    loaded += value.byteLength;
+    onProgress(loaded, total);
   }
 
-  const blob = new Blob(chunks, { type: r.headers.get("content-type") || "video/mp4" });
-  if (total) onProgress(100, loaded, total);
-  return blob;
+  const type = r.headers.get("content-type") || "video/mp4";
+  return new Blob(parts, { type });
 }
 
 function ClipViewModal({
@@ -361,12 +344,6 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
 
   async function downloadMp4WithProgress(clip: ClipItem) {
     const cid = clip.id;
-
-    // URL à télécharger : on préfère R2 public (mp4_url) pour éviter de faire passer le binaire par Render
-    // Si absent, fallback API redirect (/clips/:id/mp4) — peut être bloqué selon CORS.
-    const mp4Url = String(clip.mp4_url || "").trim();
-    const url = mp4Url || `${API_BASE}/clips/${cid}/mp4`;
-
     const filename = `clip-${cid}-${safeTitle(clip.title)}.mp4`;
 
     setDl((m) => ({
@@ -375,30 +352,23 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
     }));
 
     try {
-      const ac = new AbortController();
+      const blob = await fetchBlobWithProgress(token, cid, (loaded: number, total: number | null) => {
+        const pct = total
+          ? Math.max(1, Math.min(99, Math.round((loaded / total) * 100)))
+          : Math.max(1, Math.min(99, Math.round((loaded / (1024 * 1024)) * 6))); // fallback si pas de content-length
 
-      const blob = await fetchBlobWithProgress(
-        url,
-        (pct) => {
-          setDl((m) => ({
-            ...m,
-            [cid]: {
-              ...(m[cid] || {}),
-              status: "downloading",
-              percent: pct == null ? Number(m[cid]?.percent || 0) : pct,
-              message: pct == null ? "Téléchargement…" : `Téléchargement…`,
-            },
-          }));
-        },
-        ac.signal
-      );
+        setDl((m) => ({
+          ...m,
+          [cid]: { ...(m[cid] || {}), status: "downloading", percent: pct, message: "Téléchargement…" },
+        }));
+      });
+
+      downloadBlob(blob, filename);
 
       setDl((m) => ({
         ...m,
-        [cid]: { ...(m[cid] || {}), status: "done", percent: 100, message: "Terminé ✓", error: null },
+        [cid]: { ...(m[cid] || {}), status: "done", percent: 100, message: "Téléchargé ✓", error: null },
       }));
-
-      downloadBlob(blob, filename);
     } catch (e: any) {
       const msg = String(e?.message || "download_failed");
       setDl((m) => ({
@@ -434,11 +404,9 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
       if (start?.already) {
         setDl((m) => ({ ...m, [cid]: { status: "done", percent: 100, message: "Prêt ✓" } }));
         await refresh();
-
-        // re-prend le clip pour récupérer mp4_url si dispo
-        const updated = (items.find((x) => x.id === cid) || clip) as ClipItem;
-        await downloadMp4WithProgress(updated);
+        await downloadMp4WithProgress(clip);
         return;
+
       }
 
       const job = String(start?.job || "");
@@ -498,8 +466,7 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
 
       // refresh pour récupérer mp4_key/mp4_url puis download direct
       await refresh();
-      const updated = (items.find((x) => x.id === cid) || clip) as ClipItem;
-      await downloadMp4WithProgress(updated);
+      await downloadMp4WithProgress(clip);
     } catch (e: any) {
       const reason = String(e?.message || "error");
       setDl((m) => ({
@@ -557,8 +524,6 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
               const mp4Key = String(c.mp4_key || "").trim();
               const mp4Ready = !!mp4Key;
 
-              const busy = st?.status === "starting" || st?.status === "running" || st?.status === "downloading";
-
               return (
                 <div
                   key={c.id}
@@ -615,17 +580,8 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                       {/* ✅ Télécharger = download direct + progress (sans nouvel onglet) */}
                       <button
                         className="btnGhostInline"
-                        onClick={() => {
-                          if (mp4Ready) void downloadMp4WithProgress(c);
-                          else void handleRenderAndDownload(c);
-                        }}
-                        disabled={(!c.vod_url && !mp4Ready) || busy}
-                        style={{
-                          padding: "10px 12px",
-                          borderRadius: 14,
-                          fontWeight: 950,
-                          opacity: !c.vod_url && !mp4Ready ? 0.6 : 1,
-                        }}
+                        onClick={() => void handleRenderAndDownload(c)}
+
                         title={!c.vod_url && !mp4Ready ? "VOD pas encore prête" : mp4Ready ? "Télécharger le MP4" : "Rendre + télécharger"}
                       >
                         {mp4Ready ? "Télécharger" : "Rendre + télécharger"}
