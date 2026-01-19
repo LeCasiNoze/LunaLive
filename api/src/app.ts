@@ -75,6 +75,8 @@ import { hunt2Router } from "./routes/hunt2.js";
 // Billing
 import { billingRouter } from "./routes/billing.js";
 import { uploadsRouter } from "./routes/uploads.js";
+import { emotesRouter } from "./emotes/emotes.router.js";
+import { streamerEmotesRouter } from "./emotes/streamer_emotes.router.js";
 
 export function createApp() {
   const app = express();
@@ -85,7 +87,7 @@ export function createApp() {
   app.set("trust proxy", 1);
 
   app.use(cors());
-  app.use(express.json({ limit: "300kb" }));
+  app.use(express.json({ limit: "3mb" }));
 
   // Billing (souvent webhook / needs early mount)
   app.use("/billing", billingRouter);
@@ -93,6 +95,8 @@ export function createApp() {
   // uploads/avatars (middlewares globaux existants)
   app.use(streamerUploadsRouter);
   app.use(avatarRouter);
+  app.use(emotesRouter);
+  app.use(streamerEmotesRouter);
 
   // ─────────────────────────────────────────────
   // ✅ TEMP: Admin debug (logs only for /admin*)

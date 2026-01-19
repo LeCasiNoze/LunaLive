@@ -10,6 +10,7 @@ import type { LiveCard } from "../lib/types";
 
 import { DailyWheelCard } from "../components/DailyWheelCard";
 import { DailyBonusAccessCard } from "../components/DailyBonusAccessCard";
+import { useAuth } from "../auth/AuthProvider";
 
 type LiveCardVM = LiveCard & {
   thumbFallback: string; // svg
@@ -40,6 +41,9 @@ type ClipVM = {
 
   thumbUrl: string | null;
   likesCount: number;
+
+  // ✅ NEW
+  myLiked?: boolean;
 };
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
@@ -93,6 +97,58 @@ function fmtDuration(sec: number) {
   const s = sec % 60;
   if (h) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function safeTitle(v: any) {
+  return (
+    String(v || "clip")
+      .trim()
+      .replace(/[^a-z0-9-_]+/gi, "_")
+      .slice(0, 80) || "clip"
+  );
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function fetchMp4BlobWithProgress(
+  clipId: number,
+  onProgress: (loaded: number, total: number | null) => void
+) {
+  const url = `${API_BASE}/clips/${clipId}/mp4`;
+  const r = await fetch(url, { method: "GET" });
+
+  if (!r.ok || !r.body) {
+    const txt = await r.text().catch(() => "");
+    throw new Error(`download_${r.status}${txt ? `:${txt.slice(0, 120)}` : ""}`);
+  }
+
+  const total = Number(r.headers.get("content-length") || 0) || null;
+  const reader = r.body.getReader();
+
+  let loaded = 0;
+  const parts: BlobPart[] = [];
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+
+    parts.push(new Uint8Array(value));
+    loaded += value.byteLength;
+    onProgress(loaded, total);
+  }
+
+  const type = r.headers.get("content-type") || "video/mp4";
+  return new Blob(parts, { type });
 }
 
 function Pill({
@@ -191,11 +247,6 @@ function LiveBackdrop({ url }: { url: string }) {
   );
 }
 
-/**
- * Featured foundation:
- * - source of truth currently = /streamers (returns {slug,isLive,featured})
- * - we only need it for LIVE ones.
- */
 async function fetchFeaturedLiveSlugs(): Promise<Set<string>> {
   try {
     const res = await fetch(`${API_BASE}/streamers`, { headers: { "content-type": "application/json" } });
@@ -216,17 +267,12 @@ async function fetchFeaturedLiveSlugs(): Promise<Set<string>> {
   }
 }
 
-/**
- * Clips du mois (public):
- * GET /clips/top?range=month&limit=24
- * -> { ok:true, total:number, clips:[ ... ] }
- */
-async function fetchTopClipsMonth(): Promise<{ total: number; clips: ClipVM[] }> {
+async function fetchTopClipsMonth(token?: string | null): Promise<{ total: number; clips: ClipVM[] }> {
   try {
-    const res = await fetch(`${API_BASE}/clips/top?range=month&limit=24`, {
-      headers: { "content-type": "application/json" },
-    });
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
 
+    const res = await fetch(`${API_BASE}/clips/top?range=month&limit=24`, { headers });
     const j = await res.json().catch(() => null);
     if (!res.ok || !j || j.ok === false) return { total: 0, clips: [] };
 
@@ -239,11 +285,7 @@ async function fetchTopClipsMonth(): Promise<{ total: number; clips: ClipVM[] }>
         if (!Number.isFinite(id) || id <= 0) return null;
 
         const streamerSlug =
-          x?.streamerSlug != null
-            ? String(x.streamerSlug)
-            : x?.streamer_slug != null
-            ? String(x.streamer_slug)
-            : "";
+          x?.streamerSlug != null ? String(x.streamerSlug) : x?.streamer_slug != null ? String(x.streamer_slug) : "";
 
         const streamerName =
           x?.streamerDisplayName != null
@@ -257,6 +299,8 @@ async function fetchTopClipsMonth(): Promise<{ total: number; clips: ClipVM[] }>
             : null;
 
         const likesCount = Number(x?.likesCount ?? x?.likes_count ?? x?.likes ?? 0) || 0;
+
+        const myLiked = x?.myLiked != null ? !!x.myLiked : x?.my_liked != null ? !!x.my_liked : undefined;
 
         const thumbUrl = x?.thumbUrl ? String(x.thumbUrl) : x?.thumb_url ? String(x.thumb_url) : null;
 
@@ -298,12 +342,10 @@ async function fetchTopClipsMonth(): Promise<{ total: number; clips: ClipVM[] }>
           vodUrl,
           startSec,
           durationSec,
-
-          // ✅ prefer mp4 url if provided by API
           clipUrl: clipUrlRaw ? absolutize(clipUrlRaw) : null,
-
           thumbUrl,
           likesCount,
+          myLiked,
         } satisfies ClipVM;
       })
       .filter(Boolean) as ClipVM[];
@@ -348,35 +390,52 @@ function ClipLikesBadge({ likes, corner }: { likes: number; corner: "tl" | "tr" 
 
 function ClipPlayerModal({
   clip,
+  token,
+  canModerate,
+  onPatchClip,
+  onRemoveClip,
   onClose,
   zIndex,
 }: {
   clip: ClipVM;
+  token: string | null;
+  canModerate: boolean; // admin / LeCasiNoze
+  onPatchClip: (id: number, patch: Partial<ClipVM>) => void;
+  onRemoveClip: (id: number) => void;
   onClose: () => void;
   zIndex: number;
 }) {
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
 
+  const [busy, setBusy] = React.useState<null | "liking" | "downloading" | "deleting">(null);
+  const [status, setStatus] = React.useState<string | null>(null);
+  const [pct, setPct] = React.useState<number>(0);
+
+  const mp4 = String((clip as any).clipUrl || "").trim() || null;
+
+  // ✅ Like: tout user connecté, seulement si pas déjà liké
+  const canLike = !!token && !clip.myLiked;
+
+  // ✅ Download/Delete: seulement admin/LeCasiNoze (+ connecté pour delete)
+  const canDownload = canModerate && !!mp4;
+  const canDelete = canModerate && !!token;
+
   React.useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const mp4 = String((clip as any).clipUrl || "").trim() || null;
+    const mp4Url = String((clip as any).clipUrl || "").trim() || null;
     const hlsUrl = clip.vodUrl;
 
     let hls: Hls | null = null;
-
-    // IMPORTANT: éviter de précharger tout le flux
     video.preload = "metadata";
 
-    // ✅ MP4 (déjà “coupé”) => pas de start/end clamp
-    if (mp4) {
+    if (mp4Url) {
       const onMp4Meta = () => {
         video.play().catch(() => {});
       };
 
-      // cleanup existant va gérer pause/remove src
-      video.src = mp4;
+      video.src = mp4Url;
       video.addEventListener("loadedmetadata", onMp4Meta);
 
       return () => {
@@ -393,13 +452,12 @@ function ClipPlayerModal({
       };
     }
 
-    // ✅ fallback HLS si pas de mp4
     const url = hlsUrl;
     if (!url) return;
 
     const start = Math.max(0, Number(clip.startSec || 0));
-    const end = Math.max(start + 1, start + Math.max(1, Number(clip.durationSec || 0))); // start+duration
-    const EPS = 0.25; // marge anti-jitter
+    const end = Math.max(start + 1, start + Math.max(1, Number(clip.durationSec || 0)));
+    const EPS = 0.25;
 
     const cleanupVideo = () => {
       try {
@@ -420,15 +478,11 @@ function ClipPlayerModal({
       try {
         if (video.currentTime >= end - EPS) {
           video.pause();
-          // soit tu fermes automatiquement:
-          // onClose();
-          // soit tu restes sur la modale, juste en pause à la fin:
           video.currentTime = end - EPS;
         }
       } catch {}
     };
 
-    // Empêche l’utilisateur de sortir de la fenêtre du clip
     const onSeeking = () => {
       try {
         if (video.currentTime < start - EPS) video.currentTime = start;
@@ -446,22 +500,16 @@ function ClipPlayerModal({
     video.addEventListener("timeupdate", onTimeUpdate);
     video.addEventListener("seeking", onSeeking);
 
-    // Safari iOS/macOS HLS natif
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = url;
       video.addEventListener("loadedmetadata", onLoadedMeta);
-      return () => {
-        cleanupVideo();
-      };
+      return () => cleanupVideo();
     }
 
     if (Hls.isSupported()) {
       hls = new Hls({
-        // ✅ clé : ne démarre pas à 0
         autoStartLoad: false,
-        // certains env respectent startPosition; on force aussi startLoad
         startPosition: start,
-        // bonus: réduit buffering
         maxBufferLength: 30,
         backBufferLength: 0,
       });
@@ -470,14 +518,12 @@ function ClipPlayerModal({
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-        // ✅ force le chargement à partir de start
         try {
           hls?.startLoad(start);
         } catch {}
       });
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        // ✅ positionne et play
         try {
           video.currentTime = start;
         } catch {}
@@ -492,14 +538,114 @@ function ClipPlayerModal({
       };
     }
 
-    // fallback basique
     video.src = url;
     video.addEventListener("loadedmetadata", onLoadedMeta);
-    return () => {
-      cleanupVideo();
-    };
-  }, [clip /* (+ onClose si tu auto-close) */]);
+    return () => cleanupVideo();
+  }, [clip]);
 
+  async function doLike() {
+    if (!token) {
+      setStatus("Connecte-toi pour liker.");
+      return;
+    }
+    if (!canLike || busy) return;
+
+    setBusy("liking");
+    setStatus(null);
+
+    // optimistic
+    onPatchClip(clip.id, {
+      myLiked: true,
+      likesCount: Math.max(0, Number(clip.likesCount || 0) + 1),
+    });
+
+    try {
+      const res = await fetch(`${API_BASE}/clips/${clip.id}/like`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ like: true }),
+      });
+
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j || j.ok === false) throw new Error(String(j?.error || `http_${res.status}`));
+
+      onPatchClip(clip.id, {
+        myLiked: !!j.myLiked,
+        likesCount: Number(j.likesCount || 0) || 0,
+      });
+
+      setStatus("Liké ✅");
+    } catch (e: any) {
+      // rollback
+      onPatchClip(clip.id, {
+        myLiked: clip.myLiked,
+        likesCount: clip.likesCount,
+      });
+      setStatus(`Erreur like: ${String(e?.message || "failed")}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function doDownload() {
+    if (!canDownload || busy) return;
+
+    setBusy("downloading");
+    setStatus("Téléchargement…");
+    setPct(0);
+
+    try {
+      const blob = await fetchMp4BlobWithProgress(clip.id, (loaded, total) => {
+        const p = total
+          ? Math.max(1, Math.min(99, Math.round((loaded / total) * 100)))
+          : Math.max(1, Math.min(99, Math.round((loaded / (1024 * 1024)) * 6)));
+        setPct(p);
+      });
+
+      const filename = `top-clip-${clip.id}-${safeTitle(clip.title)}.mp4`;
+      downloadBlob(blob, filename);
+
+      setPct(100);
+      setStatus("Téléchargé ✓");
+    } catch (e: any) {
+      setStatus(`Erreur download: ${String(e?.message || "failed")}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function doDelete() {
+    if (!canDelete || !token || busy) return;
+
+    const ok = window.confirm("Supprimer ce clip ? (soft-delete, puis cleanup TTL)");
+    if (!ok) return;
+
+    setBusy("deleting");
+    setStatus(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/clips/${clip.id}/delete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+      });
+
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j || j.ok === false) throw new Error(String(j?.error || `http_${res.status}`));
+
+      onRemoveClip(clip.id);
+      onClose();
+    } catch (e: any) {
+      setStatus(`Erreur delete: ${String(e?.message || "failed")}`);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <div className="chatSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
@@ -521,10 +667,7 @@ function ClipPlayerModal({
                 <Link
                   to={clip.streamerSlug ? `/s/${encodeURIComponent(clip.streamerSlug)}` : "#"}
                   style={{ color: "rgba(255,255,255,0.92)", fontWeight: 950, textDecoration: "none" }}
-                  onClick={() => {
-                    // fermer la modale quand on navigue
-                    onClose();
-                  }}
+                  onClick={() => onClose()}
                 >
                   {clip.streamerName || clip.streamerSlug || "Streamer"}
                 </Link>
@@ -532,21 +675,64 @@ function ClipPlayerModal({
               <span style={{ opacity: 0.9 }}>•</span>
               <span>❤️ {Number(clip.likesCount || 0)}</span>
               <span style={{ opacity: 0.9 }}>•</span>
-              <span>{String((clip as any).clipUrl || "").trim() ? "MP4" : "HLS"}</span>
+              <span>{mp4 ? "MP4" : "HLS"}</span>
             </div>
           </div>
 
-          <div style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-            <button className="iconBtn" onClick={onClose} type="button" aria-label="Fermer">
+          <div style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {/* ✅ Like: tout user connecté, seulement si pas déjà liké */}
+            <button
+              type="button"
+              className="btnGhostSmall"
+              onClick={() => void doLike()}
+              disabled={!!busy || !canLike}
+              title={!token ? "Connecte-toi pour liker" : clip.myLiked ? "Déjà liké" : "Liker"}
+              style={{ display: "inline-flex", alignItems: "center", gap: 8, opacity: canLike ? 1 : 0.6 }}
+            >
+              <span>{clip.myLiked ? "❤️" : "🤍"}</span>
+              <span>{Number(clip.likesCount || 0)}</span>
+            </button>
+
+            {/* ✅ Download/Delete: admin/LeCasiNoze uniquement */}
+            {canModerate ? (
+              <>
+                <button
+                  type="button"
+                  className="btnGhostSmall"
+                  onClick={() => void doDownload()}
+                  disabled={!canDownload || !!busy}
+                  title={!mp4 ? "MP4 pas dispo" : "Télécharger le MP4"}
+                >
+                  {busy === "downloading" ? `Download… ${pct ? `${pct}%` : ""}` : "Download"}
+                </button>
+
+                <button
+                  type="button"
+                  className="btnGhostSmall"
+                  onClick={() => void doDelete()}
+                  disabled={!canDelete || !!busy}
+                  style={{
+                    background: "rgba(255, 70, 70, 0.14)",
+                    border: "1px solid rgba(255, 70, 70, 0.28)",
+                    opacity: canDelete ? 1 : 0.6,
+                  }}
+                  title={!token ? "Connecte-toi" : "Supprimer le clip"}
+                >
+                  {busy === "deleting" ? "Suppression…" : "Supprimer"}
+                </button>
+              </>
+            ) : null}
+
+            <button className="iconBtn" onClick={onClose} type="button" aria-label="Fermer" disabled={!!busy}>
               ✕
             </button>
           </div>
         </div>
 
         <div className="chatSheetBody" style={{ padding: 14 }}>
-          {!clip.vodUrl ? (
+          {!mp4 && !clip.vodUrl ? (
             <div className="mutedSmall" style={{ opacity: 0.85 }}>
-              Vidéo indisponible (VOD pas prête).
+              Vidéo indisponible (MP4/VOD pas prête).
             </div>
           ) : (
             <video
@@ -571,6 +757,12 @@ function ClipPlayerModal({
               Publié: <strong style={{ color: "rgba(255,255,255,0.9)" }}>{timeAgo(clip.createdAtMs)}</strong>
             </span>
           </div>
+
+          {status ? (
+            <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.9 }}>
+              {status}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -594,18 +786,10 @@ function MonthClipsListModal({
 }) {
   return (
     <div className="chatSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
-      <div
-        className="chatSheet"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        style={{ maxWidth: 860 }}
-      >
+      <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 860 }}>
         <div className="chatSheetTop" style={{ gap: 10 }}>
           <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
-            <div style={{ fontWeight: 1100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {title}
-            </div>
+            <div style={{ fontWeight: 1100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
             <div className="mutedSmall" style={{ opacity: 0.8 }}>
               Liste des clips du mois • tri par ❤️ (top) • {total || clips.length} clip(s)
             </div>
@@ -716,31 +900,33 @@ function MonthClipsListModal({
 
 export default function LivesPage() {
   const [lives, setLives] = React.useState<LiveCardVM[]>([]);
-  const [loading, setLoading] = React.useState(true); // initial only
-  const [refreshing, setRefreshing] = React.useState(false); // silent refresh
+  const [loading, setLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
   const [clips, setClips] = React.useState<ClipVM[]>([]);
   const [clipsTotal, setClipsTotal] = React.useState(0);
   const [clipsLoading, setClipsLoading] = React.useState(false);
 
-  // modals (clips du mois)
   const [openMonthList, setOpenMonthList] = React.useState(false);
   const [openClip, setOpenClip] = React.useState<ClipVM | null>(null);
 
-  // ✅ lock pour éviter refresh concurrents
   const refreshLockRef = React.useRef(false);
 
+  const authAny = useAuth() as any;
+  const token: string | null = authAny?.token || null;
+  const user = authAny?.user as any | null;
+  const username = String(user?.username || "");
+  const role = String(user?.role || "");
+  const isAdmin = role === "admin";
+  const canModerateClips = isAdmin || username.toLowerCase() === "lecasinoze";
+
   const mergeThumbFinal = React.useCallback((prev: LiveCardVM[], nextBase: LiveCardVM[]) => {
-    // on garde l’ancienne thumbFinal si la nouvelle n’est pas encore préloadée
     const prevMap = new Map(prev.map((x) => [String(x.slug || x.id), x] as const));
     return nextBase.map((x) => {
       const k = String(x.slug || x.id);
       const old = prevMap.get(k);
-      return {
-        ...x,
-        thumbFinal: old?.thumbFinal || x.thumbFinal,
-      };
+      return { ...x, thumbFinal: old?.thumbFinal || x.thumbFinal };
     });
   }, []);
 
@@ -759,13 +945,10 @@ export default function LivesPage() {
         const nowMs = Date.now();
         const data = await getLives();
 
-        // base mapping
         const vmBase: LiveCardVM[] = (data as any[]).map((x: any) => {
           const fallback = svgThumb(x.displayName);
           const rawThumbUrl = absolutize(x.thumbUrl || x.thumb_url || null);
           const thumbUrl = rawThumbUrl ? withMinuteBust(String(rawThumbUrl), nowMs) : null;
-
-          // IMPORTANT: thumbFinal initial = old thumb (merge), sinon fallback
           const thumbFinal = thumbUrl || fallback;
 
           const started = x.liveStartedAt || x.live_started_at || null;
@@ -774,17 +957,14 @@ export default function LivesPage() {
           return { ...x, thumbFallback: fallback, thumbFinal, durationLabel };
         });
 
-        // featured foundation
         const featuredSlugs = await fetchFeaturedLiveSlugs();
         const vmWithFeatured = vmBase.map((x) => ({
           ...x,
           featured: x?.featured != null ? !!(x as any).featured : featuredSlugs.has(String(x.slug || "")),
         }));
 
-        // ✅ merge thumbs so we never blink to fallback during refresh
         setLives((prev) => mergeThumbFinal(prev, vmWithFeatured));
 
-        // ✅ now: preload any "new" thumbs and only then swap thumbFinal for that card
         const preloadJobs = vmWithFeatured.map(async (live) => {
           const nowThumb = absolutize((live as any).thumbUrl || (live as any).thumb_url || null);
           const url = nowThumb ? withMinuteBust(String(nowThumb), nowMs) : null;
@@ -813,21 +993,19 @@ export default function LivesPage() {
   const loadClips = React.useCallback(async () => {
     setClipsLoading(true);
     try {
-      const r = await fetchTopClipsMonth();
+      const r = await fetchTopClipsMonth(token);
       setClips(r.clips);
       setClipsTotal(r.total || r.clips.length);
     } finally {
       setClipsLoading(false);
     }
-  }, []);
+  }, [token]);
 
-  // initial load
   React.useEffect(() => {
     load();
     loadClips();
   }, [load, loadClips]);
 
-  // auto-refresh: poll while tab is visible
   React.useEffect(() => {
     const EVERY_MS = 20_000;
 
@@ -868,6 +1046,16 @@ export default function LivesPage() {
     }
     setOpenClip(c);
   }
+
+  const patchClip = React.useCallback((id: number, patch: Partial<ClipVM>) => {
+    setClips((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    setOpenClip((prev) => (prev && prev.id === id ? { ...prev, ...patch } : prev));
+  }, []);
+
+  const removeClip = React.useCallback((id: number) => {
+    setClips((prev) => prev.filter((x) => x.id !== id));
+    setClipsTotal((n) => Math.max(0, (Number(n) || 0) - 1));
+  }, []);
 
   return (
     <main className="container livesPage">
@@ -1027,7 +1215,6 @@ export default function LivesPage() {
           min-height: 34px;
         }
 
-        /* Flashy hover */
         .hoverGlow{
           transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
         }
@@ -1037,7 +1224,6 @@ export default function LivesPage() {
           border-color: rgba(255,90,180,0.25);
         }
 
-        /* Header live ping */
         .livePing{
           width: 8px;
           height: 8px;
@@ -1049,7 +1235,6 @@ export default function LivesPage() {
           margin-right: 6px;
         }
 
-        /* Clips */
         .sidebarDivider{
           height: 1px;
           margin: 10px 2px 2px;
@@ -1057,9 +1242,7 @@ export default function LivesPage() {
           opacity: 0.9;
         }
 
-        .clipsCard{
-          padding: 14px;
-        }
+        .clipsCard{ padding: 14px; }
         .clipsGrid{
           margin-top: 12px;
           position: relative;
@@ -1129,12 +1312,7 @@ export default function LivesPage() {
           box-shadow: 0 18px 50px rgba(0,0,0,0.35);
           pointer-events:none;
         }
-        .clipMidAvatar img{
-          width:100%;
-          height:100%;
-          object-fit: cover;
-          display:block;
-        }
+        .clipMidAvatar img{ width:100%; height:100%; object-fit: cover; display:block; }
 
         .clipsMoreOverlay{
           position:absolute;
@@ -1175,7 +1353,6 @@ export default function LivesPage() {
           opacity: 0.9;
         }
 
-        /* Minimal modal fallback (si pas déjà défini globalement) */
         .chatSheetBackdrop{
           position: fixed;
           inset: 0;
@@ -1218,15 +1395,14 @@ export default function LivesPage() {
       `}</style>
 
       <div className="livesWrap">
-        {/* Header */}
         <div className="livesHeader">
           <div style={{ display: "grid", gap: 6, minWidth: 280 }}>
             <h1 className="livesH1">Lives</h1>
             <div className="mutedSmall" style={{ maxWidth: 760 }}>
-              Les streams en direct sur LunaLive. Miniatures live, viewers, durée.
+              Bienvenue sur votre plateforme dédiée à la commu casino Fr.
               {refreshing ? (
                 <span style={{ marginLeft: 10, opacity: 0.8, fontWeight: 900 }}>
-                  <span className="livePing" aria-hidden /> update…
+                  <span className="livePing" aria-hidden />
                 </span>
               ) : null}
             </div>
@@ -1255,7 +1431,6 @@ export default function LivesPage() {
 
             <div className="sidebarDivider" />
 
-            {/* ✅ Clips du mois */}
             <GlassCard className="clipsCard">
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
                 <div style={{ display: "grid", gap: 4 }}>
@@ -1263,7 +1438,6 @@ export default function LivesPage() {
                     <span style={{ opacity: 0.85 }}>🎬</span> Clips du mois
                   </div>
                   <div className="mutedSmall" style={{ opacity: 0.8 }}>
-                    Top clips (likes). 4 max + indicateur si plus.
                   </div>
                 </div>
 
@@ -1285,8 +1459,6 @@ export default function LivesPage() {
                   {clipsTop4.map((c, idx) => {
                     const raw = c.thumbUrl ? absolutize(c.thumbUrl) || c.thumbUrl : null;
                     const thumb = raw || svgThumb(c.streamerName || c.streamerSlug || "Clip");
-
-                    // likes badge corner per tile: TL, TR, BL, BR
                     const corner: "tl" | "tr" | "bl" | "br" = (["tl", "tr", "bl", "br"] as const)[idx] ?? "tl";
 
                     return (
@@ -1317,7 +1489,6 @@ export default function LivesPage() {
 
                         <ClipLikesBadge likes={c.likesCount} corner={corner} />
 
-                        {/* ✅ avatar streamer au centre (si dispo) */}
                         {c.avatarUrl ? (
                           <div className="clipMidAvatar" aria-hidden>
                             <img
@@ -1354,14 +1525,12 @@ export default function LivesPage() {
           </aside>
 
           <section className="livesMain">
-            {/* ✅ Initial loading only if nothing is on screen yet */}
             {loading && lives.length === 0 ? (
               <div className="muted" style={{ marginTop: 12 }}>
-                Chargement…
+
               </div>
             ) : (
               <>
-                {/* ✅ Featured section only if needed */}
                 {featuredLives.length > 0 ? (
                   <div style={{ marginTop: 8 }}>
                     <div className="sectionTitle">
@@ -1432,7 +1601,7 @@ export default function LivesPage() {
 
                 <div style={{ marginTop: featuredLives.length > 0 ? 16 : 8 }}>
                   <div className="sectionTitle">
-                    <h2>🔴 Lives</h2>
+            
                     <div className="sectionHint">{normalLives.length} en direct</div>
                   </div>
 
@@ -1497,11 +1666,7 @@ export default function LivesPage() {
                       </Link>
                     ))}
 
-                    {sorted.length === 0 ? (
-                      <GlassCard style={{ padding: 14 }}>
-                        <div className="mutedSmall">Aucun streamer en live pour le moment.</div>
-                      </GlassCard>
-                    ) : null}
+
                   </section>
                 </div>
               </>
@@ -1510,7 +1675,6 @@ export default function LivesPage() {
         </div>
       </div>
 
-      {/* Modale #1 (liste) si >4 */}
       {openMonthList ? (
         <MonthClipsListModal
           title="🎬 Clips du mois"
@@ -1522,10 +1686,13 @@ export default function LivesPage() {
         />
       ) : null}
 
-      {/* Modale #2 (lecteur) */}
       {openClip ? (
         <ClipPlayerModal
           clip={openClip}
+          token={token}
+          canModerate={canModerateClips}
+          onPatchClip={patchClip}
+          onRemoveClip={removeClip}
           onClose={() => setOpenClip(null)}
           zIndex={80}
         />

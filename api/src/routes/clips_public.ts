@@ -53,6 +53,36 @@ function tryGetAuthUser(req: express.Request): AuthUser | null {
   }
 }
 
+/** CORS local pour cette route (au cas où ton app cors middleware n’expose pas certains headers) */
+function setMp4Cors(req: express.Request, res: express.Response) {
+  const origin = String(req.headers.origin || "");
+  // si tu veux restreindre :
+  // const allow = origin === "https://lunalive.onrender.com" || origin === "http://localhost:5173";
+  // if (allow) res.setHeader("Access-Control-Allow-Origin", origin);
+
+  // Sinon permissif (ok pour un mp4 public)
+  res.setHeader("Access-Control-Allow-Origin", origin || "*");
+  res.setHeader("Vary", "Origin");
+
+  res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Authorization,Range,Content-Type,Accept,Origin"
+  );
+  res.setHeader(
+    "Access-Control-Expose-Headers",
+    "Content-Length,Content-Type,Content-Range,Accept-Ranges,Content-Disposition,ETag"
+  );
+  res.setHeader("Access-Control-Max-Age", "86400");
+}
+
+function safeFilename(v: any) {
+  return String(v || "clip")
+    .trim()
+    .replace(/[^a-z0-9-_]+/gi, "_")
+    .slice(0, 80) || "clip";
+}
+
 // ensure tables
 clipsPublicRouter.use(async (_req, _res, next) => {
   try {
@@ -99,16 +129,34 @@ clipsPublicRouter.use(async (_req, _res, next) => {
 });
 
 /**
+ * ✅ OPTIONS /clips/:id/mp4
+ * (préflight si fetch() avec Authorization/Range)
+ */
+clipsPublicRouter.options("/clips/:id/mp4", (req, res) => {
+  setMp4Cors(req, res);
+  return res.status(204).end();
+});
+
+/**
  * ✅ GET /clips/:id/mp4
- * - redirect vers l'URL publique R2 si dispo
- * - sinon 404
+ *
+ * Modes:
+ * - par défaut: peut REDIRECT vers R2 (perf) si c’est une navigation "normale"
+ * - si ?proxy=1 OU ?dl=1 OU header Authorization OU header Range => PROXY STREAM (évite CORS R2)
+ *
+ * ?dl=1 => ajoute Content-Disposition attachment (force download)
  */
 clipsPublicRouter.get("/clips/:id/mp4", async (req, res) => {
-  const clipId = Number(req.params.id || 0);
-  if (!Number.isFinite(clipId) || clipId <= 0) return res.status(400).json({ ok: false, error: "id_required" });
+  setMp4Cors(req, res);
 
+  const clipId = Number(req.params.id || 0);
+  if (!Number.isFinite(clipId) || clipId <= 0) {
+    return res.status(400).json({ ok: false, error: "id_required" });
+  }
+
+  // On récupère aussi le titre pour filename si dl=1
   const r = await pool.query(
-    `SELECT mp4_key
+    `SELECT mp4_key, title
      FROM bot_clips
      WHERE id=$1
        AND deleted_ts IS NULL
@@ -118,16 +166,38 @@ clipsPublicRouter.get("/clips/:id/mp4", async (req, res) => {
   );
 
   const key = String(r.rows?.[0]?.mp4_key || "").trim();
+  const title = r.rows?.[0]?.title ?? null;
+
   if (!key) return res.status(404).json({ ok: false, error: "mp4_not_ready" });
 
   const url = buildPublicUrl(key);
   if (!url) return res.status(404).json({ ok: false, error: "mp4_not_ready" });
 
+  const wantProxy =
+    String(req.query.proxy || "") === "1" ||
+    String(req.query.dl || "") === "1" ||
+    !!req.headers.authorization ||
+    !!req.headers.range;
+
+  // Si dl=1 => force download (même en proxy)
+  const wantDl = String(req.query.dl || "") === "1";
+
+  // ✅ Mode redirect (perf) seulement si on ne veut PAS proxy
+  // Note: une navigation (click <a>, window.location) n’est pas bloquée par CORS comme un fetch().
+  if (!wantProxy) {
+    if (wantDl) {
+      // même si dl=1, sans proxy ça re-tombe sur le CORS fetch côté client
+      // donc on garde proxy pour dl=1 (sécurité)
+    } else {
+      return res.redirect(302, url);
+    }
+  }
+
   // ✅ PROXY STREAM: évite CORS (le browser ne touche plus R2 directement)
-  const range = req.headers.range;
+  const range = req.headers.range ? String(req.headers.range) : "";
 
   const upstream = await fetch(url, {
-    headers: range ? { range: String(range) } : undefined,
+    headers: range ? { range } : undefined,
   });
 
   if (!upstream.ok || !upstream.body) {
@@ -153,8 +223,16 @@ clipsPublicRouter.get("/clips/:id/mp4", async (req, res) => {
   const cl = upstream.headers.get("content-length");
   if (cl) res.setHeader("Content-Length", cl);
 
-  // cache OK côté API (tu peux ajuster)
+  const etag = upstream.headers.get("etag");
+  if (etag) res.setHeader("ETag", etag);
+
+  // cache (ajuste si tu veux)
   res.setHeader("Cache-Control", "public, max-age=600");
+
+  if (wantDl) {
+    const filename = `clip-${clipId}-${safeFilename(title)}.mp4`;
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  }
 
   // stream sans buffer RAM
   Readable.fromWeb(upstream.body as any).pipe(res);

@@ -521,7 +521,7 @@ export function DailyBonusAgendaModal({
               className={`llBonusTab ${tab === "agenda" ? "isActive" : ""}`}
               onClick={() => setTab("agenda")}
             >
-              Chemin du retour
+              Bonus quotidien
             </button>
 
             <button
@@ -554,7 +554,7 @@ export function DailyBonusAgendaModal({
             <>
               <div className="llBonusHeadRow">
                 <div className="llBonusH1">Agenda hebdo</div>
-                <div className="llBonusSub">Clique uniquement sur aujourd’hui quand c’est disponible.</div>
+                <div className="llBonusSub"></div>
               </div>
 
               <div className="llBonusWeekGrid">
@@ -603,7 +603,6 @@ export function DailyBonusAgendaModal({
 
               <div className="llBonusPanel">
                 <div className="llBonusSub" style={{ opacity: 0.85 }}>
-                  Paliers mensuels (5 / 10 / 20 / 30)
                 </div>
 
                 <div className="llBonusMilestonesRow">

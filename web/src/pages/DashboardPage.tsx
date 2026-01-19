@@ -9,6 +9,7 @@ import {
   type ApiMyStreamer,
   type ApiStreamConnection,
 } from "../lib/api";
+import { EmotesSection } from "./dashboard/sections/EmotesSection";
 
 import { DashboardSidebar, type DashboardTab } from "./dashboard/DashboardSidebar";
 import { OverviewSection } from "./dashboard/sections/OverviewSection";
@@ -307,6 +308,8 @@ export default function DashboardPage() {
                 {tab === "moderation" && <ModerationSection streamer={streamer} />}
 
                 {tab === "appearance" && <AppearanceSection streamer={streamer} />}
+                
+                {tab === "emotes" && <EmotesSection streamer={streamer} />}
 
                 {tab === "earnings" && <EarningsSection streamer={streamer} />}
 

@@ -1,3 +1,4 @@
+// web/src/components/ChatPanel.tsx
 import * as React from "react";
 import { io, type Socket } from "socket.io-client";
 import { useAuth } from "../auth/AuthProvider";
@@ -125,6 +126,94 @@ function computeMentionCtx(value: string, caret: number) {
 /* =========================================================
    Component
    ========================================================= */
+// ✅ Emotes picker (API-backed v1)
+type EmoteKind = "emoji" | "gif";
+type EmoteScope = "native" | "global" | "channel";
+
+type EmoteItem = {
+  id?: number; // ✅ présent pour DB emotes (global/channel/native en DB)
+  kind: EmoteKind;
+  scope: EmoteScope;
+  streamer_id?: number | null;
+
+  name: string;          // token
+  label?: string | null; // UI
+  url?: string | null;   // image url (custom/gif/emoji image)
+  char?: string | null;  // unicode emoji (front-only natives)
+  status?: "active" | "disabled" | "banned" | "deleted";
+};
+
+type EmotesPayload = {
+  ok: boolean;
+  streamerId?: number | null;
+  emotes?: EmoteItem[];
+  favorites?: EmoteItem[];
+};
+
+function safeTokenName(s: string) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .slice(0, 32);
+}
+
+// tiny animated SVGs (demo “GIFs” légers)
+function svgGif(label: string, glyph: string) {
+  const svg = `
+  <svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+    <defs>
+      <radialGradient id="g" cx="30%" cy="30%">
+        <stop offset="0%" stop-color="rgba(255,255,255,0.85)"/>
+        <stop offset="60%" stop-color="rgba(124,77,255,0.25)"/>
+        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+      </radialGradient>
+    </defs>
+    <rect x="0" y="0" width="96" height="96" rx="22" fill="rgba(255,255,255,0.06)"/>
+    <circle cx="48" cy="48" r="34" fill="url(#g)">
+      <animate attributeName="r" values="28;36;28" dur="1.1s" repeatCount="indefinite"/>
+    </circle>
+    <text x="48" y="58" text-anchor="middle" font-size="40">${glyph}</text>
+    <text x="48" y="86" text-anchor="middle" font-size="12" opacity="0.75">${label}</text>
+  </svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+const NATIVE_EMOJIS: EmoteItem[] = [
+  { kind: "emoji", scope: "native", name: "smile", label: "Smile", char: "😀" },
+  { kind: "emoji", scope: "native", name: "heart", label: "Heart", char: "❤️" },
+  { kind: "emoji", scope: "native", name: "fire", label: "Fire", char: "🔥" },
+  { kind: "emoji", scope: "native", name: "clap", label: "Clap", char: "👏" },
+  { kind: "emoji", scope: "native", name: "skull", label: "Skull", char: "💀" },
+  { kind: "emoji", scope: "native", name: "lol", label: "LOL", char: "😂" },
+  { kind: "emoji", scope: "native", name: "cry", label: "Cry", char: "😭" },
+  { kind: "emoji", scope: "native", name: "star", label: "Sparkles", char: "✨" },
+];
+
+const NATIVE_GIFS: EmoteItem[] = [
+  { kind: "gif", scope: "native", name: "party", label: "party", url: svgGif("party", "🎉") },
+  { kind: "gif", scope: "native", name: "gg", label: "gg", url: svgGif("gg", "🏆") },
+  { kind: "gif", scope: "native", name: "rage", label: "rage", url: svgGif("rage", "😤") },
+];
+
+// favs : only global/native (viewer requirement)
+const FAV_KEY = "ll_emote_favs_v1";
+function readFavs(): { emoji: string[]; gif: string[] } {
+  try {
+    const j = JSON.parse(String(localStorage.getItem(FAV_KEY) || "{}"));
+    return {
+      emoji: Array.isArray(j.emoji) ? j.emoji.map(String) : [],
+      gif: Array.isArray(j.gif) ? j.gif.map(String) : [],
+    };
+  } catch {
+    return { emoji: [], gif: [] };
+  }
+}
+
+function favKeyOf(e: EmoteItem) {
+  return e.id != null ? String(e.id) : ""; // ✅ DB id uniquement
+}
+
 export function ChatPanel({
   slug,
   onRequireLogin,
@@ -238,6 +327,16 @@ export function ChatPanel({
     return el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx;
   }
   const [botOpen, setBotOpen] = React.useState(false);
+  // 😀 Emotes picker
+  const [emoteOpen, setEmoteOpen] = React.useState(false);
+  const [emoteTab, setEmoteTab] = React.useState<EmoteKind>("emoji");
+  const [emoteSearch, setEmoteSearch] = React.useState("");
+  const [emotesChannel, setEmotesChannel] = React.useState<EmoteItem[]>([]);
+  const [emotesGlobal, setEmotesGlobal] = React.useState<EmoteItem[]>([]);
+  const [favs, setFavs] = React.useState(() => readFavs());
+
+  // cache resolver map (token -> url)
+  const emoteMapRef = React.useRef<Map<string, { url: string; title?: string }>>(new Map());
 
   const myId = join?.me?.id != null ? Number(join.me.id) : null;
 
@@ -631,6 +730,126 @@ React.useLayoutEffect(() => {
     } catch {}
   }
 
+  async function fetchEmotes() {
+  try {
+    const r = await fetch(`${apiBase()}/chat/${encodeURIComponent(String(slug))}/emotes`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    }).then((x) => x.json());
+
+    const j = r as EmotesPayload;
+    if (!j?.ok) throw new Error("bad_payload");
+
+    const all = Array.isArray(j.emotes) ? j.emotes : [];
+    const favorites = Array.isArray(j.favorites) ? j.favorites : [];
+
+    // ✅ garde seulement active
+    const act = all.filter((e) => (e as any).status ? (e as any).status === "active" : true);
+
+    setEmotesChannel(act.filter((e) => e.scope === "channel"));
+    setEmotesGlobal(act.filter((e) => e.scope === "global" || e.scope === "native"));
+
+    // ✅ favorites DB (global/native only)
+    // (si ton backend renvoie déjà les rows complètes, c’est top)
+    setFavs({
+      emoji: favorites.filter((e) => e.kind === "emoji" && e.id != null).map((e) => String(e.id)),
+      gif: favorites.filter((e) => e.kind === "gif" && e.id != null).map((e) => String(e.id)),
+    });
+  } catch {
+    setEmotesChannel([]);
+    setEmotesGlobal([]);
+    setFavs({ emoji: [], gif: [] });
+  }
+}
+
+  React.useEffect(() => {
+    // refresh map whenever lists change
+    const map = new Map<string, { url: string; title?: string }>();
+
+    const all = [
+      ...NATIVE_GIFS,
+      ...emotesGlobal.filter((x) => x.kind === "gif"),
+      ...emotesChannel.filter((x) => x.kind === "gif"),
+      ...emotesGlobal.filter((x) => x.kind === "emoji"),
+      ...emotesChannel.filter((x) => x.kind === "emoji"),
+    ];
+
+    for (const e of all) {
+      if (e.url) {
+        const key = `${e.kind}:${safeTokenName(e.name)}`;
+        map.set(key, { url: e.url, title: e.label || e.name });
+      }
+    }
+
+    emoteMapRef.current = map;
+  }, [emotesChannel, emotesGlobal]);
+
+  const resolveEmote = React.useCallback(
+    (p: { kind: "emoji" | "gif"; name: string }) => {
+      const k = `${p.kind}:${safeTokenName(p.name)}`;
+      return emoteMapRef.current.get(k) || null;
+    },
+    []
+  );
+
+  function insertAtCaret(text: string) {
+    const el = inputRef.current;
+    const cur = String(input || "");
+
+    const start = el?.selectionStart ?? lastCaretRef.current ?? cur.length;
+    const end = el?.selectionEnd ?? start;
+
+    const next = cur.slice(0, start) + text + cur.slice(end);
+    setInput(next);
+
+    window.setTimeout(() => {
+      const pos = start + text.length;
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(pos, pos);
+      lastCaretRef.current = pos;
+    }, 0);
+  }
+
+async function toggleFav(item: EmoteItem) {
+  // spec: favorites only global/native + doit venir DB (id)
+  if (item.scope === "channel") return;
+  if (!token) return onRequireLogin();
+  if (item.id == null) return; // ✅ pas de favorites sur “natif unicode front-only”
+
+  const id = Number(item.id);
+  if (!id) return;
+
+  const listKey = item.kind === "emoji" ? "emoji" : "gif";
+  const isFav = (listKey === "emoji" ? favs.emoji : favs.gif).includes(String(id));
+
+  try {
+    if (isFav) {
+      await fetch(`${apiBase()}/me/emotes/favorites/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((x) => x.json());
+    } else {
+      await fetch(`${apiBase()}/me/emotes/favorites/${id}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((x) => x.json());
+    }
+
+    // ✅ update local state (optimistic)
+    setFavs((prev) => {
+      const nextList = listKey === "emoji" ? [...prev.emoji] : [...prev.gif];
+      const sid = String(id);
+      const idx = nextList.indexOf(sid);
+
+      if (idx >= 0) nextList.splice(idx, 1);
+      else nextList.unshift(sid);
+
+      return listKey === "emoji" ? { ...prev, emoji: nextList } : { ...prev, gif: nextList };
+    });
+  } catch {
+    // ignore
+  }
+}
+
   /* =========================================================
      Auto-refresh when my timeout ends
      ========================================================= */
@@ -780,6 +999,8 @@ React.useLayoutEffect(() => {
       if (ack?.role === "mod" || ack?.role === "streamer" || ack?.role === "admin") {
         await fetchSettings();
       }
+      // ✅ emotes lists
+      fetchEmotes();
 
       if (autoFocus) {
         window.setTimeout(() => inputRef.current?.focus(), 50);
@@ -1174,14 +1395,15 @@ React.useLayoutEffect(() => {
               onTouchMove={cancelLongPress}
               style={{ cursor: "pointer" }}
             >
-              <ChatMessageBubble
-                streamerAppearance={appearance}
-                currentUsername={join?.me?.username ?? null}
-                msg={{
-                  ...m,
-                  cosmetics: effectiveCosmetics,
-                }}
-              />
+            <ChatMessageBubble
+              streamerAppearance={appearance}
+              currentUsername={join?.me?.username ?? null}
+              resolveEmote={resolveEmote}
+              msg={{
+                ...m,
+                cosmetics: effectiveCosmetics,
+              }}
+            />
             </div>
             );
           })}
@@ -1252,6 +1474,246 @@ React.useLayoutEffect(() => {
             🤖 Bot
           </button>
         </div>
+        {emoteOpen ? (
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 56,
+              zIndex: 60,
+              padding: 10,
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(18,14,26,0.98)",
+              boxShadow: "0 18px 70px rgba(0,0,0,0.55)",
+              overflow: "hidden",
+            }}
+            onMouseDown={(e) => e.preventDefault()} // keep focus
+          >
+            {/* tabs */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              {([
+                { k: "emoji", label: "Emojis" },
+                { k: "gif", label: "GIFs" },
+              ] as const).map((t) => {
+                const active = emoteTab === t.k;
+                return (
+                  <button
+                    key={t.k}
+                    type="button"
+                    onClick={() => setEmoteTab(t.k)}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: active ? "rgba(124,77,255,0.22)" : "rgba(255,255,255,0.06)",
+                      color: "white",
+                      fontWeight: 950,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+
+              <div style={{ flex: 1 }} />
+
+              <button
+                type="button"
+                onClick={() => setEmoteOpen(false)}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "white",
+                  fontWeight: 950,
+                  cursor: "pointer",
+                }}
+                title="Fermer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* search */}
+            <input
+              value={emoteSearch}
+              onChange={(e) => setEmoteSearch(e.target.value)}
+              placeholder={`Rechercher ${emoteTab === "gif" ? "un GIF" : "un emoji"}…`}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(0,0,0,0.25)",
+                color: "white",
+                outline: "none",
+                marginBottom: 10,
+              }}
+            />
+
+            {(() => {
+              const q = safeTokenName(emoteSearch).replace(/_/g, "");
+              const isGif = emoteTab === "gif";
+
+              const native = (isGif ? NATIVE_GIFS : NATIVE_EMOJIS).filter((e) => {
+                if (!q) return true;
+                const hay = (e.name + (e.label || "")).toLowerCase().replace(/[^a-z0-9]+/g, "");
+                return hay.includes(q);
+              });
+
+              const global = emotesGlobal
+                .filter((e) => e.kind === emoteTab)
+                .filter((e) => {
+                  if (!q) return true;
+                  const hay = (e.name + (e.label || "")).toLowerCase().replace(/[^a-z0-9]+/g, "");
+                  return hay.includes(q);
+                });
+
+              const channel = emotesChannel
+                .filter((e) => e.kind === emoteTab)
+                .filter((e) => {
+                  if (!q) return true;
+                  const hay = (e.name + (e.label || "")).toLowerCase().replace(/[^a-z0-9]+/g, "");
+                  return hay.includes(q);
+                });
+
+              const favKeys = isGif ? favs.gif : favs.emoji;
+
+              const byKey = new Map<string, EmoteItem>();
+              for (const e of [...native, ...global, ...channel]) byKey.set(favKeyOf(e), e);
+
+              const favItems = favKeys.map((k) => byKey.get(k)).filter(Boolean) as EmoteItem[];
+
+              const sections: Array<{ title: string; items: EmoteItem[]; note?: string }> = [
+                { title: "⭐ Favoris", items: favItems, note: "Favoris = natifs/globaux (DB)" },
+                { title: "🌍 Global", items: global },
+                { title: "🎯 Chaîne", items: channel },
+                { title: "🌙 Natifs", items: native },
+              ];
+
+              const gridBtn: React.CSSProperties = {
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(255,255,255,0.05)",
+                color: "white",
+                fontWeight: 950,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                padding: "10px 10px",
+                width: "100%",
+              };
+
+              return (
+                <div style={{ maxHeight: 320, overflow: "auto", paddingRight: 2 }}>
+                  {sections.map((sec) => (
+                    <div key={sec.title} style={{ marginBottom: 12 }}>
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+                        <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, marginBottom: 8 }}>
+                          {sec.title}
+                        </div>
+                        {sec.note ? (
+                          <div style={{ fontSize: 11, opacity: 0.55, fontWeight: 800 }}>{sec.note}</div>
+                        ) : null}
+                      </div>
+
+                      {sec.items.length === 0 ? (
+                        <div style={{ fontSize: 12, opacity: 0.6, fontWeight: 800, padding: "6px 2px" }}>
+                          —
+                        </div>
+                      ) : (
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                          {sec.items.slice(0, 60).map((e) => {
+                            const canFav = e.scope !== "channel" && e.id != null;
+                            const fk = favKeyOf(e);
+                            const isFav = (isGif ? favs.gif : favs.emoji).includes(fk);
+
+                            return (
+                              <button
+                                key={`${e.scope}:${e.kind}:${e.name}`}
+                                type="button"
+                                style={gridBtn}
+                                title={`:${e.kind === "gif" ? "g" : "e"}:${e.name}:`}
+                                onClick={() => {
+                                  // insert
+                                  if (e.kind === "emoji" && e.scope === "native" && e.char) {
+                                    insertAtCaret(e.char);
+                                  } else {
+                                    insertAtCaret(`:${e.kind === "gif" ? "g" : "e"}:${e.name}:`);
+                                  }
+                                  setEmoteOpen(false);
+                                }}
+                              >
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                                  {e.kind === "emoji" && e.scope === "native" && e.char ? (
+                                    <span style={{ fontSize: 18 }}>{e.char}</span>
+                                  ) : e.url ? (
+                                    <img
+                                      src={e.url}
+                                      alt=""
+                                      style={{
+                                        width: e.kind === "gif" ? 28 : 20,
+                                        height: e.kind === "gif" ? 28 : 20,
+                                        borderRadius: e.kind === "gif" ? 10 : 6,
+                                        border: e.kind === "gif" ? "1px solid rgba(255,255,255,0.10)" : "none",
+                                        background: e.kind === "gif" ? "rgba(255,255,255,0.04)" : "transparent",
+                                      }}
+                                    />
+                                  ) : (
+                                    <span style={{ fontSize: 18 }}>{e.kind === "gif" ? "🎞️" : "🙂"}</span>
+                                  )}
+
+                                  <span
+                                    style={{
+                                      fontSize: 12,
+                                      opacity: 0.85,
+                                      fontWeight: 950,
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {e.kind === "emoji" && e.scope === "native" ? (e.name || "emoji") : (e.label || e.name)}
+                                  </span>
+                                </div>
+
+                                <span
+                                  onClick={(ev) => {
+                                    ev.preventDefault();
+                                    ev.stopPropagation();
+                                    if (!canFav) return;
+                                    toggleFav(e);
+                                  }}
+                                  title={canFav ? (isFav ? "Retirer des favoris" : "Ajouter aux favoris") : "Favoris globaux uniquement"}
+                                  style={{
+                                    padding: "4px 6px",
+                                    borderRadius: 10,
+                                    border: "1px solid rgba(255,255,255,0.10)",
+                                    background: canFav && isFav ? "rgba(255,210,110,0.18)" : "rgba(0,0,0,0.20)",
+                                    opacity: canFav ? 1 : 0.35,
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  ⭐
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        ) : null}
 
         <div style={{ display: "flex", gap: 10 }}>
           {mention && mentionList.length ? (
@@ -1434,6 +1896,30 @@ React.useLayoutEffect(() => {
               color: "white",
             }}
           />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEmoteOpen((v) => !v);
+              setEmoteSearch("");
+              // auto-refresh (when API exists)
+              fetchEmotes();
+              window.setTimeout(() => inputRef.current?.focus(), 0);
+            }}
+            style={{
+              padding: "12px 14px",
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: emoteOpen ? "rgba(124,77,255,0.22)" : "rgba(255,255,255,0.06)",
+              color: "white",
+              fontWeight: 950,
+              cursor: "pointer",
+            }}
+            title="Emojis & GIFs"
+            aria-label="Emojis & GIFs"
+          >
+            😀
+          </button>
 
           {canManageSettings ? (
             <button

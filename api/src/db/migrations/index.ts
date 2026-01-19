@@ -33,6 +33,7 @@ import { mig028_user_talents } from "./mig028_user_upgrades.js";
 import { mig029_stripe_subscriptions } from "./mig029_stripe_subscriptions.js";
 import { mig030_comment_images_blob } from "./mig030_comment_images_blob.js";
 import { mig031_streamer_offline_bg_blob } from "./mig031_streamer_offline_bg_blob.js";
+import { mig032_emotes_gifs } from "./mig032_emotes_gifs.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -82,4 +83,5 @@ export async function migrateAll(pool: Pool) {
   await mig029_stripe_subscriptions(pool)
   await mig030_comment_images_blob(pool)
   await mig031_streamer_offline_bg_blob(pool);
+  await mig032_emotes_gifs(pool);
 }

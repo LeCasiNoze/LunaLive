@@ -154,10 +154,14 @@ function downloadBlob(blob: Blob, filename: string) {
 
 /**
  * Téléchargement avec progression (streaming).
- * Nécessite que la réponse soit lisible (CORS OK sur l’URL finale).
+ * IMPORTANT: on force ?proxy=1&dl=1 pour éviter tout redirect vers R2 (CORS).
  */
-async function fetchBlobWithProgress(token: string, clipId: number, onProgress: (loaded: number, total: number | null) => void) {
-  const url = `${API_BASE}/clips/${clipId}/mp4`; // ✅ API (pas R2)
+async function fetchBlobWithProgress(
+  token: string,
+  clipId: number,
+  onProgress: (loaded: number, total: number | null) => void
+) {
+  const url = `${API_BASE}/clips/${clipId}/mp4?proxy=1&dl=1`;
   const r = await fetch(url, {
     method: "GET",
     headers: { Authorization: `Bearer ${token}` },
@@ -198,8 +202,8 @@ function ClipViewModal({
   const mp4Key = String(clip.mp4_key || "").trim();
   const mp4Url = String(clip.mp4_url || "").trim();
 
-  // On préfère mp4_url (R2 public), sinon on passe par l’API redirect
-  const src = mp4Url || (mp4Key ? `${API_BASE}/clips/${clip.id}/mp4` : "");
+  // Pour éviter surprises CORS, on privilégie l’API (redirect possible pour lecture normale)
+  const src = mp4Key || mp4Url ? `${API_BASE}/clips/${clip.id}/mp4` : "";
 
   return (
     <div
@@ -355,7 +359,7 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
       const blob = await fetchBlobWithProgress(token, cid, (loaded: number, total: number | null) => {
         const pct = total
           ? Math.max(1, Math.min(99, Math.round((loaded / total) * 100)))
-          : Math.max(1, Math.min(99, Math.round((loaded / (1024 * 1024)) * 6))); // fallback si pas de content-length
+          : Math.max(1, Math.min(99, Math.round((loaded / (1024 * 1024)) * 6)));
 
         setDl((m) => ({
           ...m,
@@ -385,7 +389,6 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
 
     const mp4Key = String(clip.mp4_key || "").trim();
     if (mp4Key) {
-      // déjà prêt => download direct (avec progress)
       await downloadMp4WithProgress(clip);
       return;
     }
@@ -406,7 +409,6 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
         await refresh();
         await downloadMp4WithProgress(clip);
         return;
-
       }
 
       const job = String(start?.job || "");
@@ -464,7 +466,6 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
         }
       });
 
-      // refresh pour récupérer mp4_key/mp4_url puis download direct
       await refresh();
       await downloadMp4WithProgress(clip);
     } catch (e: any) {
@@ -577,17 +578,14 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                     </div>
 
                     <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-                      {/* ✅ Télécharger = download direct + progress (sans nouvel onglet) */}
                       <button
                         className="btnGhostInline"
                         onClick={() => void handleRenderAndDownload(c)}
-
                         title={!c.vod_url && !mp4Ready ? "VOD pas encore prête" : mp4Ready ? "Télécharger le MP4" : "Rendre + télécharger"}
                       >
                         {mp4Ready ? "Télécharger" : "Rendre + télécharger"}
                       </button>
 
-                      {/* ✅ Voir = modale clip (mp4) */}
                       <button
                         className="btnGhostInline"
                         onClick={() => setOpenClip(c)}
@@ -614,13 +612,12 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
                             background: "rgba(255,255,255,0.06)",
                             border: "1px solid rgba(255,255,255,0.12)",
                           }}
-                          title="Copier le lien API (redirect)"
+                          title="Copier le lien API"
                         >
                           Copier lien
                         </button>
                       ) : null}
 
-                      {/* (optionnel) garder accès VOD pour debug */}
                       {directVodUrl ? (
                         <a href={directVodUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
                           <button
@@ -679,7 +676,6 @@ export function ClipsModule({ token, onReload }: { token: string; onReload?: () 
         Note: “Télécharger” fait un <b>fetch streaming</b> + <b>progress</b> puis déclenche un download (pas de nouvel onglet).
       </div>
 
-      {/* ✅ Modale lecteur */}
       {openClip ? <ClipViewModal clip={openClip} onClose={() => setOpenClip(null)} /> : null}
     </div>
   );

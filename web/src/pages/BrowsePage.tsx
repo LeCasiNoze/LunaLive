@@ -372,7 +372,6 @@ export default function BrowsePage() {
           <div style={{ display: "grid", gap: 6, minWidth: 280 }}>
             <h1 className="browseH1">Browse</h1>
             <div className="mutedSmall" style={{ maxWidth: 760 }}>
-              Tous les streamers (live + offline). Recherche instant, tri, filtres.
             </div>
           </div>
 
@@ -572,23 +571,9 @@ export default function BrowsePage() {
 
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
                         <div className="mutedSmall" style={{ fontWeight: 900 }}>
-                          /s/{s.slug}
+                         
                         </div>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: "8px 12px",
-                            borderRadius: 999,
-                            border: "1px solid rgba(255,255,255,0.12)",
-                            background: "rgba(255,255,255,0.06)",
-                            fontSize: 12,
-                            fontWeight: 1100,
-                          }}
-                        >
-                          Ouvrir →
-                        </span>
+
                       </div>
 
                       <div

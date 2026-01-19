@@ -535,6 +535,14 @@ export default function AdminPage() {
               />
 
               <NavButton
+                active={tab === "emotes"}
+                icon="😀"
+                label="Emojis & GIFs"
+                hint="Catalogue natif • global • streamers (ban/suppr)"
+                onClick={() => goto("emotes")}
+              />
+
+              <NavButton
                 active={tab === "slots"}
                 icon="🎰"
                 label="MàJ Slots (Shuffle)"
@@ -853,6 +861,26 @@ export default function AdminPage() {
                     ✅ fetched <b>{slotsRes.fetched}</b> • ajoutées <b>{slotsRes.added}</b>
                   </Pill>
                 ) : null}
+              </div>
+            </Card>
+          ) : null}
+
+          {tab === "emotes" ? (
+            <Card
+              title={
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>😀</span>
+                  Emojis & GIFs — modération
+                </span>
+              }
+              subtitle="Ici: gestion des emotes natives/globaux + emotes ajoutés par streamers. (ban/suppression/purge)"
+              right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
+            >
+              <div className="mutedSmall" style={{ opacity: 0.85, lineHeight: 1.5 }}>
+                À brancher à la fin ✅<br />
+                - Liste des emotes (natif / global / streamer)<br />
+                - Actions admin: <b>Disable</b>, <b>Ban</b>, <b>Delete</b> (+ purge storage)<br />
+                - Recherche + filtres + tri + preview
               </div>
             </Card>
           ) : null}

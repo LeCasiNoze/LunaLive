@@ -40,7 +40,7 @@ export function DailyBonusAccessCard() {
             Bonus quotidien
           </div>
           <div className="mutedSmall" style={{ opacity: 0.8 }}>
-            Agenda hebdo + paliers mensuels
+            
           </div>
         </div>
 

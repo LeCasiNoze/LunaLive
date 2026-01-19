@@ -7,6 +7,7 @@ export type DashboardTab =
   | "stream"
   | "moderation"
   | "appearance"
+  | "emotes"
   | "earnings"
   | "stats"
   | "settings";
@@ -17,6 +18,7 @@ const ICONS: Record<DashboardTab, string> = {
   stream: "🎬",
   moderation: "🛡️",
   appearance: "🎨",
+  emotes: "😀",
   earnings: "💰",
   stats: "📈",
   settings: "⚙️",
@@ -37,6 +39,7 @@ export function DashboardSidebar({
     { id: "stream", label: "Stream", hint: "Titre + clés RTMP" },
     { id: "moderation", label: "Modération", hint: "Modos / bans / règles chat" },
     { id: "appearance", label: "Apparence", hint: "Offline + chat + skins" },
+    { id: "emotes", label: "Emojis & GIFs", hint: "Ajouter • supprimer • limites" },
     { id: "earnings", label: "Revenus", hint: "Solde • répartition • cashout" },
     { id: "stats", label: "Stats", hint: "Analytics / périodes" },
     { id: "settings", label: "Paramètres" },

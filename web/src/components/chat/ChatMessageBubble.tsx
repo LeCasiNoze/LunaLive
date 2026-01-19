@@ -74,8 +74,6 @@ function normKey(s: any) {
 }
 
 function extractMentions(body: string): string[] {
-  // capture @token jusqu'au prochain espace
-  // (on ignore @ seul)
   const out: string[] = [];
   const re = /@([^\s@]{1,32})/g;
   let m: RegExpExecArray | null;
@@ -86,43 +84,158 @@ function extractMentions(body: string): string[] {
   return out;
 }
 
-function renderBodyWithMentions(body: string, currentUsername?: string | null) {
+/* =========================================================
+   Emotes tokens : :e:name: / :g:name:
+   ========================================================= */
+type EmoteKind = "emoji" | "gif";
+type ResolveEmote = (p: { kind: EmoteKind; name: string }) => { url: string; title?: string } | null;
+
+function safeTokenName(s: string) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .slice(0, 32);
+}
+
+const MAX_EMOTES_PER_MSG = 20;
+const MAX_RICH_PARTS = 220; // safety against pathological bodies
+
+function EmoteImg({
+  src,
+  title,
+  alt,
+  kind,
+}: {
+  src: string;
+  title?: string;
+  alt: string;
+  kind: EmoteKind;
+}) {
+  const [err, setErr] = React.useState(false);
+
+  if (err) {
+    return (
+      <span style={{ opacity: 0.9, fontWeight: 800 }} title={title || alt}>
+        {alt}
+      </span>
+    );
+  }
+
+  const isGif = kind === "gif";
+  const size = isGif ? 34 : 22;
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      title={title || alt}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      draggable={false}
+      style={{
+        display: "inline-block",
+        width: size,
+        height: size,
+        verticalAlign: "middle",
+        margin: isGif ? "0 3px" : "0 2px",
+        borderRadius: isGif ? 10 : 6,
+        border: isGif ? "1px solid rgba(255,255,255,0.10)" : "none",
+        background: isGif ? "rgba(255,255,255,0.04)" : "transparent",
+        boxShadow: isGif ? "0 8px 18px rgba(0,0,0,0.22)" : "none",
+      }}
+      onError={() => setErr(true)}
+    />
+  );
+}
+
+// parsing inline (mentions + emotes)
+function renderBodyRich(
+  body: string,
+  currentUsername: string | null | undefined,
+  resolveEmote: ResolveEmote | undefined
+) {
   const me = currentUsername ? normKey(currentUsername) : "";
-  const re = /@([^\s@]{1,32})/g;
+
+  // captures either @mention OR :e:name: / :g:name:
+  const re = /@([^\s@]{1,32})|:(e|g):([a-z0-9_]{1,32}):/gi;
 
   const parts: React.ReactNode[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
 
+  let emotesCount = 0;
+
   while ((m = re.exec(body))) {
+    if (parts.length > MAX_RICH_PARTS) break;
+
     const start = m.index;
     const end = re.lastIndex;
-    const token = String(m[1] ?? "");
-    const tokenKey = normKey(token);
 
     if (start > last) parts.push(body.slice(last, start));
 
-    const isMe = !!me && tokenKey === me;
+    // mention
+    if (m[1]) {
+      const token = String(m[1] ?? "");
+      const tokenKey = normKey(token);
+      const isMe = !!me && tokenKey === me;
 
-    parts.push(
-      <span
-        key={`${start}-${end}`}
-        className="chatMention"
-        style={{
-          display: "inline-block",
-          padding: "0 6px",
-          borderRadius: 999,
-          margin: "0 1px",
-          fontWeight: 900,
-          border: "1px solid rgba(255,255,255,0.10)",
-          background: isMe ? "rgba(124,77,255,0.28)" : "rgba(255,255,255,0.06)",
-          boxShadow: isMe ? "0 0 0 2px rgba(124,77,255,0.12)" : "none",
-        }}
-        title={isMe ? "Tu as été mentionné" : token}
-      >
-        @{token}
-      </span>
-    );
+      parts.push(
+        <span
+          key={`m-${start}-${end}`}
+          className="chatMention"
+          style={{
+            display: "inline-block",
+            padding: "0 6px",
+            borderRadius: 999,
+            margin: "0 1px",
+            fontWeight: 900,
+            border: "1px solid rgba(255,255,255,0.10)",
+            background: isMe ? "rgba(124,77,255,0.28)" : "rgba(255,255,255,0.06)",
+            boxShadow: isMe ? "0 0 0 2px rgba(124,77,255,0.12)" : "none",
+          }}
+          title={isMe ? "Tu as été mentionné" : token}
+        >
+          @{token}
+        </span>
+      );
+
+      last = end;
+      continue;
+    }
+
+    // emote token
+    const kindToken = String(m[2] ?? "").toLowerCase(); // e|g
+    const nameRaw = String(m[3] ?? "");
+    const name = safeTokenName(nameRaw);
+
+    const kind: EmoteKind = kindToken === "g" ? "gif" : "emoji";
+
+    // anti-spam
+    if (emotesCount >= MAX_EMOTES_PER_MSG) {
+      parts.push(`:${kindToken}:${name}:`);
+      last = end;
+      continue;
+    }
+
+    const hit = resolveEmote?.({ kind, name });
+
+    if (hit?.url) {
+      emotesCount += 1;
+      parts.push(
+        <EmoteImg
+          key={`e-${start}-${end}`}
+          src={hit.url}
+          kind={kind}
+          alt={`:${kindToken}:${name}:`}
+          title={hit.title || `:${kindToken}:${name}:`}
+        />
+      );
+    } else {
+      // unknown => keep token as text
+      parts.push(`:${kindToken}:${name}:`);
+    }
 
     last = end;
   }
@@ -136,10 +249,12 @@ export function ChatMessageBubble({
   msg,
   streamerAppearance,
   currentUsername,
+  resolveEmote,
 }: {
   msg: ChatMsgLike;
   streamerAppearance: StreamerAppearance;
   currentUsername?: string | null;
+  resolveEmote?: ResolveEmote;
 }) {
   const c = msg.cosmetics ?? null;
   const lvl = (streamerAppearance?.chat?.viewerSkinsLevel ?? 1) as 1 | 2 | 3;
@@ -156,7 +271,11 @@ export function ChatMessageBubble({
   const effectiveUnameColor = allowViewerNameColor ? skinUnameColor : null;
 
   const avatarUrl =
-    (msg as any)?.avatarUrl ?? (c as any)?.avatarUrl ?? (c as any)?.avatar?.url ?? (c as any)?.avatar?.imageUrl ?? null;
+    (msg as any)?.avatarUrl ??
+    (c as any)?.avatarUrl ??
+    (c as any)?.avatar?.url ??
+    (c as any)?.avatar?.imageUrl ??
+    null;
 
   const [imgErr, setImgErr] = React.useState(false);
   React.useEffect(() => setImgErr(false), [avatarUrl]);
@@ -283,7 +402,9 @@ export function ChatMessageBubble({
           ) : null}
 
           {/* Body */}
-          <div className="chatBodyText">{renderBodyWithMentions(String(msg.body ?? ""), currentUsername)}</div>
+          <div className="chatBodyText">
+            {renderBodyRich(String(msg.body ?? ""), currentUsername, resolveEmote)}
+          </div>
         </div>
       </div>
     </div>
