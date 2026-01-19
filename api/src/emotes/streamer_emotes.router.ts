@@ -129,23 +129,24 @@ streamerEmotesRouter.post(
         url = buildPublicUrl(assetKey);
       }
 
-      const up = await pool.query(
-        `
-        INSERT INTO emotes(kind, scope, streamer_id, name, label, asset_key, url, mime, size_bytes, status, created_by)
-        VALUES($1,'channel',$2,$3,$4,$5,$6,$7,$8,'active',$9)
-        ON CONFLICT (scope, kind, streamer_id, name)
-        DO UPDATE SET label=EXCLUDED.label,
-                      asset_key=EXCLUDED.asset_key,
-                      url=EXCLUDED.url,
-                      mime=EXCLUDED.mime,
-                      size_bytes=EXCLUDED.size_bytes,
-                      status='active',
-                      updated_at=now()
-        RETURNING id, kind, scope, streamer_id, name, label, url, mime, size_bytes, status
-        `,
-        [kind, streamerId, name, label, assetKey, url, mime, buf.length, userId]
-      );
-
+    const up = await pool.query(
+    `
+    INSERT INTO emotes(kind, scope, streamer_id, name, label, asset_key, url, mime, size_bytes, status, created_by)
+    VALUES($1,'channel',$2,$3,$4,$5,$6,$7,$8,'active',$9)
+    ON CONFLICT (scope, kind, streamer_id, name)
+    WHERE (scope='channel' AND status <> 'deleted')
+    DO UPDATE SET label=EXCLUDED.label,
+                    asset_key=EXCLUDED.asset_key,
+                    url=EXCLUDED.url,
+                    mime=EXCLUDED.mime,
+                    size_bytes=EXCLUDED.size_bytes,
+                    status='active',
+                    updated_at=now()
+    RETURNING id, kind, scope, streamer_id, name, label, url, mime, size_bytes, status
+    `,
+    [kind, streamerId, name, label, assetKey, url, mime, buf.length, userId]
+    );
+    
       res.json({ ok: true, item: up.rows[0] });
     } catch (e: any) {
       res.status(400).json({ ok: false, error: String(e?.message || e) });

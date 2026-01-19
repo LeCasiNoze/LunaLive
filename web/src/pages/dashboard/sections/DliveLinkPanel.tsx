@@ -201,7 +201,7 @@ export function DliveLinkPanel() {
 
           <Chip tone={linked ? "green" : "neutral"}>{linked ? "✅ Liée" : "⚠️ Non liée"}</Chip>
           <Chip tone={me.useLinked ? "blue" : "neutral"}>
-            {me.useLinked ? `📡 Poll sur ${me.linkedDisplayname}` : "🏷️ Poll provider assigné"}
+            {me.useLinked ? `📡 Restream Dlive : ${me.linkedDisplayname}` : "🏷️ Uniquement LunaLive"}
           </Chip>
         </div>
 
@@ -209,9 +209,6 @@ export function DliveLinkPanel() {
           {linked ? (
             <div className="mutedSmall">
               Liée : <b>{me.linkedDisplayname}</b>{" "}
-              <span className="mutedSmall" style={{ opacity: 0.75 }}>
-                ({me.linkedUsername || "username inconnu"})
-              </span>
               <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button className="btnGhostSmall" onClick={onUnlink} disabled={loading}>
                   ❌ Dissocier
@@ -227,7 +224,7 @@ export function DliveLinkPanel() {
           {pending ? (
             <>
               <div className="mutedSmall">
-                1) Envoie ce code dans le chat de <b>{pending.requestedDisplayname}</b> :
+                1) Clique sur Vérifier PUIS envoie ce code dans le chat de <b>{pending.requestedDisplayname}</b> :
               </div>
 
               <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>

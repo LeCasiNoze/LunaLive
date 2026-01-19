@@ -139,24 +139,6 @@ export function OverviewSection({
           <DliveLinkPanel />
         </div>
       </div>
-
-      <div className="panel">
-        <div className="panelTitle">Connexion stream (RTMP)</div>
-        {!connection ? (
-          <div className="hint" style={{ opacity: 0.9 }}>
-            Aucune connexion trouvée (compte provider non assigné ?)
-          </div>
-        ) : (
-          <div className="llRowCard" style={{ marginTop: 10 }}>
-            <div className="mutedSmall">
-              Provider : <b>{connection.provider}</b>
-            </div>
-            <div className="mutedSmall" style={{ marginTop: 6 }}>
-              Channel : <b>{connection.channelSlug}</b>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

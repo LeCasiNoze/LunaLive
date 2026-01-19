@@ -45,10 +45,6 @@ export function StreamKeysCard({
         </div>
       ) : (
         <>
-          <div className="muted" style={{ marginBottom: 10 }}>
-            Provider : <b>{connection.provider}</b> — chaîne : <b>{connection.channelSlug}</b>
-          </div>
-
           <div className="field">
             <label>RTMP URL</label>
             <input value={connection.rtmpUrl} readOnly />

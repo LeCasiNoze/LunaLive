@@ -819,9 +819,6 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
             <span className="llBotTitle">LunaBot</span>
             <span className="llBotSlug">@{streamer.slug}</span>
           </div>
-          <div className="muted" style={{ fontSize: 12, marginTop: 6, opacity: 0.8 }}>
-            Modules & outils pour piloter ton bot (chat, automation, rubis, OBS…)
-          </div>
         </div>
 
         <div className="llBotActions">
