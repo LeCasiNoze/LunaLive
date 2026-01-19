@@ -40,10 +40,6 @@ type DlState = {
 
 type DlMap = Record<number, DlState>;
 
-function safeTitle(v: any) {
-  return String(v || "no-title").replace(/[^a-z0-9-_]+/gi, "_");
-}
-
 function buildDliveVodPage(permlink: string, atSec: number) {
   const p = encodeURIComponent(permlink);
   const t = Math.max(0, Math.floor(atSec || 0));
