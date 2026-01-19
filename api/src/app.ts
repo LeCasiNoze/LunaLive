@@ -95,8 +95,6 @@ export function createApp() {
   // uploads/avatars (middlewares globaux existants)
   app.use(streamerUploadsRouter);
   app.use(avatarRouter);
-  app.use(emotesRouter);
-  app.use(streamerEmotesRouter);
 
   // ─────────────────────────────────────────────
   // ✅ TEMP: Admin debug (logs only for /admin*)
@@ -225,6 +223,8 @@ export function createApp() {
   app.use("/shop/talents", shopTalentsRouter);
   app.use(cosmeticsCatalogRoutes);
 
+  app.use(emotesRouter);
+  app.use(streamerEmotesRouter);
   // ─────────────────────────────────────────────
   // ✅ Overlay + Bot dashboard (auth)
   // ─────────────────────────────────────────────

@@ -441,7 +441,7 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
 
       <div className="panelTitle">Apparence</div>
       <div className="mutedSmall" style={{ marginTop: 6 }}>
-        Chaîne : <b>@{streamer.slug}</b> • Chat + écran OFFLINE.
+        Chaîne : <b>@{streamer.slug}</b> 
       </div>
 
       {err ? (
@@ -528,7 +528,7 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
           </SectionCard>
 
           {/* CHAT */}
-          <SectionCard title="Apparence — Chat" subtitle="Animation : fade-left (globale, non configurable).">
+          <SectionCard title="Apparence — Chat">
             <div className="llSplit2">
               {/* VIEWERS SKINS POLICY */}
               <div
@@ -627,6 +627,44 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
             </div>
           </SectionCard>
 
+          {/* PREVIEW */}
+          <SectionCard title="Aperçu">
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 16,
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                {appearance.chat.sub.badge.enabled ? (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 1000,
+                      padding: "5px 10px",
+                      borderRadius: 999,
+                      border: `1px solid ${appearance.chat.sub.badge.borderColor}`,
+                      color: appearance.chat.sub.badge.textColor,
+                      letterSpacing: 0.6,
+                      background: "rgba(0,0,0,0.18)",
+                    }}
+                  >
+                    {appearance.chat.sub.badge.text}
+                  </span>
+                ) : null}
+
+                <span style={{ fontWeight: 1100, color: appearance.chat.usernameColor }}>PseudoViewer</span>
+                <span style={{ opacity: 0.6, fontSize: 12 }}>12:34</span>
+              </div>
+
+              <div style={{ marginTop: 8, color: appearance.chat.messageColor, opacity: 0.95 }}>
+                Exemple de message — “ça rend comment ?”
+              </div>
+            </div>
+          </SectionCard>
+          
           {/* SUB */}
           <SectionCard title="Section SUB" subtitle="Préparé maintenant, appliqué quand on branche le système SUB.">
             <div
@@ -745,44 +783,6 @@ export function AppearanceSection({ streamer }: { streamer: ApiMyStreamer }) {
                     Hat avatar : placeholder stocké en DB (on branchera plus tard).
                   </div>
                 </div>
-              </div>
-            </div>
-          </SectionCard>
-
-          {/* PREVIEW */}
-          <SectionCard title="Aperçu">
-            <div
-              style={{
-                padding: 14,
-                borderRadius: 16,
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.08)",
-              }}
-            >
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                {appearance.chat.sub.badge.enabled ? (
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 1000,
-                      padding: "5px 10px",
-                      borderRadius: 999,
-                      border: `1px solid ${appearance.chat.sub.badge.borderColor}`,
-                      color: appearance.chat.sub.badge.textColor,
-                      letterSpacing: 0.6,
-                      background: "rgba(0,0,0,0.18)",
-                    }}
-                  >
-                    {appearance.chat.sub.badge.text}
-                  </span>
-                ) : null}
-
-                <span style={{ fontWeight: 1100, color: appearance.chat.usernameColor }}>PseudoViewer</span>
-                <span style={{ opacity: 0.6, fontSize: 12 }}>12:34</span>
-              </div>
-
-              <div style={{ marginTop: 8, color: appearance.chat.messageColor, opacity: 0.95 }}>
-                Exemple de message — “ça rend comment ?”
               </div>
             </div>
           </SectionCard>
