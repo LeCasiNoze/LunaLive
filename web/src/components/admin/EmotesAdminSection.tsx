@@ -26,9 +26,6 @@ export type AdminEmoteItem = {
   missing_file?: boolean; // si backend détecte 404 en storage
 };
 
-function cx(...arr: Array<string | false | null | undefined>) {
-  return arr.filter(Boolean).join(" ");
-}
 
 function bytesLabel(n: number | null | undefined) {
   const v = Number(n);
