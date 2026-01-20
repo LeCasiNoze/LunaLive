@@ -131,6 +131,12 @@ export function createApp() {
   app.use("/admin/casinos/comments", adminCasinoCommentsRouter);
 
   // ─────────────────────────────────────────────
+  // ✅ Casinos PUBLIC + /me/casinos (auth)
+  // ─────────────────────────────────────────────
+  app.use(casinosPublicRouter);
+  app.use("/me/casinos", requireAuth, casinosMeRouter);
+
+  // ─────────────────────────────────────────────
   // ✅ Public VODs (doit matcher AVANT streamerRouter)
   // ─────────────────────────────────────────────
   app.use(streamerVodsRouter);
@@ -165,12 +171,6 @@ export function createApp() {
   );
 
   // ─────────────────────────────────────────────
-  // ✅ Casinos PUBLIC + /me/casinos (auth)
-  // ─────────────────────────────────────────────
-  app.use(casinosPublicRouter);
-  app.use("/me/casinos", requireAuth, casinosMeRouter);
-
-  // ─────────────────────────────────────────────
   // ✅ Other public routers
   // ─────────────────────────────────────────────
   app.use(pushRouter);
@@ -190,7 +190,7 @@ export function createApp() {
   app.use(streamerRouter);
   app.use(adminRouter);
   app.use(adminImpersonateRouter);
-  
+
   // Streamer tabs (/streamers/:slug/about, /agenda, etc.)
   app.use("/streamers", streamerTabsRouter);
 
