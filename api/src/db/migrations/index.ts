@@ -34,6 +34,7 @@ import { mig030_comment_images_blob } from "./mig030_comment_images_blob.js";
 import { mig031_streamer_offline_bg_blob } from "./mig031_streamer_offline_bg_blob.js";
 import { mig032_emotes_gifs } from "./mig032_emotes_gifs.js";
 import { mig033_account_actions } from "./mig033_account_actions.js";
+import { mig034_agenda_notifs } from "./mig034_agenda_notifs.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -87,4 +88,5 @@ export async function migrateAll(pool: Pool) {
 
   // ✅ Account actions (rename/password/forgot)
   await mig033_account_actions(pool);
+  await mig034_agenda_notifs(pool);
 }

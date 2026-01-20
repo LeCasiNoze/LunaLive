@@ -251,6 +251,14 @@ streamerTabsRouter.get(
 
     const core = await getStreamerCore(slug);
     if (!core) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    await pool.query(
+      `DELETE FROM streamer_agenda_rules
+      WHERE streamer_id=$1
+        AND kind='event'
+        AND date_ymd IS NOT NULL
+        AND date_ymd < to_char((now() AT TIME ZONE 'Europe/Paris')::date, 'YYYY-MM-DD')`,
+      [core.id]
+    );
 
     const { rows } = await pool.query(
       `SELECT id, kind, title, color, day_of_week, date_ymd, start_time, end_time
@@ -341,5 +349,88 @@ streamerTabsRouter.put(
     } finally {
       client.release();
     }
+  })
+);
+
+/* =========================
+ *  AGENDA SUBS (NEW)
+ * ========================= */
+
+streamerTabsRouter.get(
+  "/:slug/agenda/subs/me",
+  requireAuth,
+  a(async (req, res) => {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "BAD_SLUG" });
+
+    const core = await getStreamerCore(slug);
+    if (!core) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+
+    const uid = Number(req.user!.id);
+
+    const { rows } = await pool.query(
+      `SELECT rule_id
+       FROM agenda_subscriptions
+       WHERE streamer_id=$1 AND user_id=$2
+       ORDER BY rule_id ASC`,
+      [core.id, uid]
+    );
+
+    return res.json({ ok: true, ruleIds: rows.map((r: any) => Number(r.rule_id)) });
+  })
+);
+
+streamerTabsRouter.post(
+  "/:slug/agenda/subs",
+  requireAuth,
+  a(async (req, res) => {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "BAD_SLUG" });
+
+    const core = await getStreamerCore(slug);
+    if (!core) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+
+    const uid = Number(req.user!.id);
+    const ruleId = Number(req.body?.ruleId);
+    if (!Number.isFinite(ruleId) || ruleId <= 0) return res.status(400).json({ ok: false, error: "BAD_RULE_ID" });
+
+    // rule doit appartenir au streamer
+    const own = await pool.query(
+      `SELECT id FROM streamer_agenda_rules WHERE id=$1 AND streamer_id=$2 LIMIT 1`,
+      [ruleId, core.id]
+    );
+    if (!own.rows?.length) return res.status(404).json({ ok: false, error: "RULE_NOT_FOUND" });
+
+    await pool.query(
+      `INSERT INTO agenda_subscriptions(streamer_id, rule_id, user_id)
+       VALUES ($1,$2,$3)
+       ON CONFLICT (streamer_id, rule_id, user_id) DO NOTHING`,
+      [core.id, ruleId, uid]
+    );
+
+    return res.json({ ok: true });
+  })
+);
+
+streamerTabsRouter.delete(
+  "/:slug/agenda/subs",
+  requireAuth,
+  a(async (req, res) => {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "BAD_SLUG" });
+
+    const core = await getStreamerCore(slug);
+    if (!core) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+
+    const uid = Number(req.user!.id);
+    const ruleId = Number(req.body?.ruleId);
+    if (!Number.isFinite(ruleId) || ruleId <= 0) return res.status(400).json({ ok: false, error: "BAD_RULE_ID" });
+
+    await pool.query(
+      `DELETE FROM agenda_subscriptions WHERE streamer_id=$1 AND rule_id=$2 AND user_id=$3`,
+      [core.id, ruleId, uid]
+    );
+
+    return res.json({ ok: true });
   })
 );

@@ -112,3 +112,37 @@ export async function getStreamerVods(slug: string, cursor?: string | null, limi
   qs.set("limit", String(limit));
   return j(`${API}/streamers/${encodeURIComponent(slug)}/vods?${qs.toString()}`);
 }
+
+export async function getStreamerAgendaMySubs(
+  slug: string,
+  token: string
+): Promise<{ ok: true; ruleIds: number[] } | { ok: false; error: string }> {
+  return j(`${API}/streamers/${encodeURIComponent(slug)}/agenda/subs/me`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function subscribeStreamerAgenda(
+  slug: string,
+  token: string,
+  ruleId: number
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return j(`${API}/streamers/${encodeURIComponent(slug)}/agenda/subs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ ruleId }),
+  });
+}
+
+export async function unsubscribeStreamerAgenda(
+  slug: string,
+  token: string,
+  ruleId: number
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return j(`${API}/streamers/${encodeURIComponent(slug)}/agenda/subs`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ ruleId }),
+  });
+}

@@ -17,6 +17,7 @@ import { ensureCallsSchema } from "./calls/schema.js";
 import { runSlotsUpdate } from "./calls/updater.js";
 
 import { startClipsMp4Renderer, startClipsMp4Cleanup } from "./clips/clip_mp4_worker.js";
+import { startAgendaNotifPoller } from "./agenda_notif_poller.js";
 
 const port = Number(process.env.PORT || 3001);
 
@@ -96,7 +97,7 @@ function startSlotsCatalogUpdater(everyHours: number) {
   startStatsCleanup();
   startDlivePoller(io);
   startChestJobs(io);
-
+  startAgendaNotifPoller(30_000);
   // ✅ worker: link VOD url to pending clips
   startClipsVodLinker();
 

@@ -1,6 +1,14 @@
 // web/src/pages/streamer/tabs/AgendaTab.tsx
 import * as React from "react";
-import { getStreamerAgenda, putStreamerAgenda, type AgendaRule } from "../../../lib/api_streamer_tabs";
+import {
+  getStreamerAgenda,
+  putStreamerAgenda,
+  getStreamerAgendaMySubs,
+  subscribeStreamerAgenda,
+  unsubscribeStreamerAgenda,
+  type AgendaRule,
+} from "../../../lib/api_streamer_tabs";
+import { enablePushNotifications } from "../../../lib/push"; // adapte le chemin exact
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -65,6 +73,10 @@ export function AgendaTab({
   const [edit, setEdit] = React.useState(false);
   const [rules, setRules] = React.useState<AgendaRule[]>([]);
 
+  // ✅ subscriptions (viewer)
+  const [subsLoading, setSubsLoading] = React.useState(false);
+  const [mySubs, setMySubs] = React.useState<Set<number>>(new Set());
+
   async function load() {
     setLoading(true);
     setError(null);
@@ -79,11 +91,35 @@ export function AgendaTab({
     }
   }
 
+  async function loadSubs() {
+    if (!token) {
+      setMySubs(new Set());
+      return;
+    }
+    setSubsLoading(true);
+    try {
+      const r = await getStreamerAgendaMySubs(slug, token);
+      if (!("ok" in r) || !r.ok) throw new Error((r as any)?.error || "Erreur");
+      const ids = Array.isArray((r as any).ruleIds) ? (r as any).ruleIds : [];
+      setMySubs(new Set(ids.map((x: any) => Number(x)).filter((n: any) => Number.isFinite(n))));
+    } catch {
+      // silencieux : pas bloquant pour l’agenda
+      setMySubs(new Set());
+    } finally {
+      setSubsLoading(false);
+    }
+  }
+
   React.useEffect(() => {
     setEdit(false);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
+
+  React.useEffect(() => {
+    loadSubs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, token]);
 
   function updateRule(i: number, patch: Partial<AgendaRule>) {
     setRules((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -154,6 +190,8 @@ export function AgendaTab({
 
       setEdit(false);
       await load();
+      // (optionnel) reload subs, au cas où des rule.id changent
+      await loadSubs();
     } catch (e: any) {
       setError(String(e?.message || "Erreur"));
     } finally {
@@ -193,21 +231,66 @@ export function AgendaTab({
     return byDay;
   }, [next7, rules]);
 
+  // ✅ Légende = ce qui est réellement affiché dans les 7 jours (donc plus d’event “passé” qui traine)
   const legend = React.useMemo(() => {
     const reg = new Map<string, string>();
     const ev = new Map<string, string>();
-    for (const r of rules) {
-      const t = String(r.title || "").trim();
-      if (!t) continue;
-      const c = ensurePresetColor(r.color);
-      if (r.kind === "regular") reg.set(t, c);
-      else ev.set(t, c);
+
+    for (const d of next7) {
+      const ymd = toLocalYMD(d);
+      const arr = occurrences[ymd] || [];
+      for (const r of arr) {
+        const t = String(r.title || "").trim();
+        if (!t) continue;
+        const c = ensurePresetColor(r.color);
+        if (r._special) ev.set(t, c);
+        else reg.set(t, c);
+      }
     }
+
     return {
       regular: Array.from(reg.entries()).map(([title, color]) => ({ title, color })),
       event: Array.from(ev.entries()).map(([title, color]) => ({ title, color })),
     };
-  }, [rules]);
+  }, [next7, occurrences]);
+
+  async function toggleSub(ruleId: number | null | undefined) {
+    const rid = Number(ruleId);
+    if (!token || !Number.isFinite(rid) || rid <= 0) return;
+
+    const was = mySubs.has(rid);
+
+    // optimiste
+    setMySubs((prev) => {
+      const n = new Set(prev);
+      if (was) n.delete(rid);
+      else n.add(rid);
+      return n;
+    });
+
+    try {
+      if (!was) {
+        // ✅ s'assurer que le navigateur est prêt à recevoir
+        await enablePushNotifications(token);
+      }
+
+      if (was) {
+        const r = await unsubscribeStreamerAgenda(slug, token, rid);
+        if (!("ok" in r) || !r.ok) throw new Error((r as any)?.error || "Erreur");
+      } else {
+        const r = await subscribeStreamerAgenda(slug, token, rid);
+        if (!("ok" in r) || !r.ok) throw new Error((r as any)?.error || "Erreur");
+      }
+    } catch {
+      // revert
+      setMySubs((prev) => {
+        const n = new Set(prev);
+        if (was) n.add(rid);
+        else n.delete(rid);
+        return n;
+      });
+    }
+  }
 
   return (
     <div>
@@ -261,6 +344,12 @@ export function AgendaTab({
               Prochains 7 jours
             </div>
 
+            {!token ? (
+              <div className="mutedSmall" style={{ marginBottom: 10, opacity: 0.75 }}>
+                Connecte-toi pour t’inscrire et recevoir une notif 10 minutes avant.
+              </div>
+            ) : null}
+
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {next7.map((d) => {
                 const ymd = toLocalYMD(d);
@@ -278,34 +367,54 @@ export function AgendaTab({
 
                     {arr.length ? (
                       <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                        {arr.map((r, i) => (
-                          <div
-                            key={(r.id ?? i) + "_" + ymd}
-                            style={{
-                              borderRadius: 12,
-                              padding: "10px 10px",
-                              border: "1px solid rgba(255,255,255,0.08)",
-                              background: "rgba(255,255,255,0.03)",
-                              display: "flex",
-                              gap: 10,
-                              alignItems: "center",
-                              borderLeft: `6px solid ${ensurePresetColor(r.color)}`,
-                            }}
-                          >
-                            <div style={{ minWidth: 86, fontWeight: 950 }}>
-                              {r.startTime}–{r.endTime}
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 950, display: "flex", gap: 8, alignItems: "center" }}>
-                                {r._special ? <span title="Événement">⭐</span> : <span title="Régulier">🟣</span>}
-                                <span>{r.title}</span>
+                        {arr.map((r, i) => {
+                          const rid = Number(r.id);
+                          const canSub = token && Number.isFinite(rid) && rid > 0;
+                          const isSub = canSub ? mySubs.has(rid) : false;
+
+                          return (
+                            <div
+                              key={(r.id ?? i) + "_" + ymd}
+                              style={{
+                                borderRadius: 12,
+                                padding: "10px 10px",
+                                border: "1px solid rgba(255,255,255,0.08)",
+                                background: "rgba(255,255,255,0.03)",
+                                display: "flex",
+                                gap: 10,
+                                alignItems: "center",
+                                borderLeft: `6px solid ${ensurePresetColor(r.color)}`,
+                              }}
+                            >
+                              <div style={{ minWidth: 86, fontWeight: 950 }}>
+                                {r.startTime}–{r.endTime}
                               </div>
-                              <div className="mutedSmall" style={{ opacity: 0.8, marginTop: 2 }}>
-                                {r._special ? "Événement (date précise)" : "Régulier (hebdo)"}
+
+                              <div style={{ flex: 1, minWidth: 160 }}>
+                                <div style={{ fontWeight: 950, display: "flex", gap: 8, alignItems: "center" }}>
+                                  {r._special ? <span title="Événement">⭐</span> : <span title="Régulier">🟣</span>}
+                                  <span>{r.title}</span>
+                                </div>
+                                <div className="mutedSmall" style={{ opacity: 0.8, marginTop: 2 }}>
+                                  {r._special ? "Événement (date précise)" : "Régulier (hebdo)"}
+                                </div>
                               </div>
+
+                              {token ? (
+                                <button
+                                  type="button"
+                                  className={isSub ? "btnPrimarySmall" : "btnGhostSmall"}
+                                  disabled={!canSub || subsLoading}
+                                  onClick={() => toggleSub(rid)}
+                                  title="Recevoir une notif 10 minutes avant"
+                                  style={{ whiteSpace: "nowrap" }}
+                                >
+                                  {isSub ? "Inscrit ✓" : "S’inscrire"}
+                                </button>
+                              ) : null}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.8 }}>
