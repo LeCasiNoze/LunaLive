@@ -1,9 +1,32 @@
 import type { Express, Request, Response } from "express";
 import { Readable } from "stream";
 
+function hostMatches(host: string, pattern: string) {
+  const h = host.toLowerCase();
+  const p = pattern.toLowerCase().trim();
+  if (!p) return false;
+  if (p.startsWith("*.")) return h === p.slice(2) || h.endsWith(p.slice(1)); // "*.dlive.tv"
+  return h === p;
+}
+
+const DEFAULT_ALLOWED = [
+  "live.prd.dlive.tv",
+  "*.dlive.tv",        // ✅ important (segments/keys peuvent venir d’un autre subdomain)
+  "*.dlivecdn.com",
+  "dlivecdn.com",
+];
+
 function isAllowedHost(host: string) {
   const h = host.toLowerCase();
-  return h === "live.prd.dlive.tv" || h.endsWith("dlivecdn.com");
+
+  // env optionnelle: "a.com,*.b.com"
+  const extra = String(process.env.HLS_PROXY_ALLOW_HOSTS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const patterns = [...DEFAULT_ALLOWED, ...extra];
+  return patterns.some((p) => hostMatches(h, p));
 }
 
 function proxyUrl(u: string) {

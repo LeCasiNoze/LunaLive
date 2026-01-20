@@ -4,6 +4,7 @@ import type { Request as ExRequest, Response as ExResponse } from "express";
 import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { pool } from "../db.js";
+import { r2Enabled, buildPublicUrl } from "../clips/r2.js";
 
 export const thumbsRouter = express.Router();
 
@@ -31,8 +32,8 @@ function canRun(bin: string) {
 
 const candidates = [
   (process.env.FFMPEG_PATH || "").trim() || null, // override explicite
-  "ffmpeg",                                      // binaire système (Render native)
-  ffmpegStatic,                                  // fallback local (Windows/dev)
+  "ffmpeg", // binaire système (Render native)
+  ffmpegStatic, // fallback local (Windows/dev)
 ].filter(Boolean) as string[];
 
 const FFMPEG_BIN = (candidates.find(canRun) || candidates[0] || "ffmpeg").trim();
@@ -44,8 +45,21 @@ console.log(`[thumbs] ffmpeg selected bin=${FFMPEG_BIN} ok=${FFMPEG_OK}`);
 /* cache + fallback                                                */
 /* ───────────────────────────────────────────────────────────── */
 
-const CACHE_MS = 60_000;
+const CACHE_MS = 300_000; // ✅ 5 min
 const cache = new Map<string, { exp: number; buf: Buffer; contentType: string }>();
+
+function sendCached(res: ExResponse, hit: { buf: Buffer; contentType: string }) {
+  res.set("Content-Type", hit.contentType);
+  // ✅ aligné avec le bust front (5 min)
+  res.set("Cache-Control", "public, max-age=300");
+  return res.end(hit.buf);
+}
+
+function sendSvg(res: ExResponse, svg: string) {
+  res.set("Content-Type", "image/svg+xml; charset=utf-8");
+  res.set("Cache-Control", "public, max-age=300");
+  return res.end(svg);
+}
 
 function svgFallback(label: string) {
   const text = String(label || "live").slice(0, 24);
@@ -93,10 +107,8 @@ async function resolveDliveUsernameFromSlug(slug: string): Promise<string> {
 
 function proxiedHlsUrl(dliveUsername: string) {
   const proxyBase = (process.env.HLS_PROXY_BASE || "https://lunalive-hls.lunalive.workers.dev/hls").replace(/\/$/, "");
-
   const manifest = `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(dliveUsername)}.m3u8?mobileweb`;
   const u = encodeURIComponent(manifest);
-
   return proxyBase.includes("?") ? `${proxyBase}&u=${u}` : `${proxyBase}?u=${u}`;
 }
 
@@ -112,18 +124,10 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
 
   // cache
   const hit = cache.get(key);
-  if (hit && hit.exp > Date.now()) {
-    res.set("Content-Type", hit.contentType);
-    res.set("Cache-Control", "public, max-age=30");
-    return res.end(hit.buf);
-  }
+  if (hit && hit.exp > Date.now()) return sendCached(res, hit);
 
   // pas de ffmpeg => SVG
-  if (!FFMPEG_OK) {
-    res.set("Content-Type", "image/svg+xml; charset=utf-8");
-    res.set("Cache-Control", "public, max-age=30");
-    return res.end(svgFallback(slug));
-  }
+  if (!FFMPEG_OK) return sendSvg(res, svgFallback(slug));
 
   const dliveUser = await resolveDliveUsernameFromSlug(slug);
   const hlsUrl = proxiedHlsUrl(dliveUser);
@@ -134,14 +138,10 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     "error",
     "-y",
     "-nostdin",
-
-    // évite de rester bloqué trop longtemps
     "-rw_timeout",
-    "8000000",
-
+    "15000000", // ✅ 15s
     "-i",
     hlsUrl,
-
     "-an",
     "-frames:v",
     "1",
@@ -165,9 +165,8 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     try {
       p.kill("SIGKILL");
     } catch {}
-  }, 9000);
+  }, 12_000);
 
-  // si le client coupe, on stop ffmpeg
   req.on("close", () => {
     try {
       p.kill("SIGKILL");
@@ -180,9 +179,7 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
   p.on("error", (e) => {
     clearTimeout(killTimer);
     console.warn(`[thumbs] ffmpeg spawn error bin=${FFMPEG_BIN} slug=${slug} user=${dliveUser}`, e);
-    res.set("Content-Type", "image/svg+xml; charset=utf-8");
-    res.set("Cache-Control", "public, max-age=30");
-    return res.end(svgFallback(slug));
+    return sendSvg(res, svgFallback(slug));
   });
 
   p.on("close", (code, signal) => {
@@ -194,19 +191,17 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     if (ok) {
       cache.set(key, { exp: Date.now() + CACHE_MS, buf, contentType: "image/jpeg" });
       res.set("Content-Type", "image/jpeg");
-      res.set("Cache-Control", "public, max-age=30");
+      res.set("Cache-Control", "public, max-age=300");
       return res.end(buf);
     }
 
     console.warn(
       `[thumbs] ffmpeg failed bin=${FFMPEG_BIN} slug=${slug} user=${dliveUser} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 400) || ""}`
     );
-
-    res.set("Content-Type", "image/svg+xml; charset=utf-8");
-    res.set("Cache-Control", "public, max-age=30");
-    return res.end(svgFallback(slug));
+    return sendSvg(res, svgFallback(slug));
   });
 });
+
 // ✅ Thumb clip: /thumbs/clips/:id.jpg
 thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse) => {
   const clipId = Number(req.params.id || 0);
@@ -216,22 +211,14 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
 
   // cache
   const hit = cache.get(key);
-  if (hit && hit.exp > Date.now()) {
-    res.set("Content-Type", hit.contentType);
-    res.set("Cache-Control", "public, max-age=30");
-    return res.end(hit.buf);
-  }
+  if (hit && hit.exp > Date.now()) return sendCached(res, hit);
 
   // pas de ffmpeg => SVG
-  if (!FFMPEG_OK) {
-    res.set("Content-Type", "image/svg+xml; charset=utf-8");
-    res.set("Cache-Control", "public, max-age=30");
-    return res.end(svgFallback(`clip ${clipId}`));
-  }
+  if (!FFMPEG_OK) return sendSvg(res, svgFallback(`clip ${clipId}`));
 
   // charge clip
   const { rows } = await pool.query(
-    `SELECT id, vod_url, at_sec, pre_sec, post_sec, title
+    `SELECT id, vod_url, at_sec, pre_sec, post_sec, title, mp4_key
      FROM bot_clips
      WHERE id=$1 AND deleted_ts IS NULL
      LIMIT 1`,
@@ -239,18 +226,92 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
   );
 
   const clip = rows?.[0] || null;
-  if (!clip) {
-    res.set("Content-Type", "image/svg+xml; charset=utf-8");
-    res.set("Cache-Control", "public, max-age=30");
-    return res.end(svgFallback(`clip ${clipId}`));
+  if (!clip) return sendSvg(res, svgFallback(`clip ${clipId}`));
+
+  const title = String(clip.title || `clip ${clipId}`);
+
+  // ✅ priorité MP4 (R2) si dispo -> thumb fiable + rapide
+  const mp4Key = clip.mp4_key ? String(clip.mp4_key).trim() : "";
+  const mp4Url = mp4Key && r2Enabled() ? String(buildPublicUrl(mp4Key) || "").trim() : "";
+
+  if (mp4Url) {
+    const args = [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-nostdin",
+      "-rw_timeout",
+      "15000000",
+      "-ss",
+      "1",
+      "-i",
+      mp4Url,
+      "-an",
+      "-frames:v",
+      "1",
+      "-vf",
+      "scale=640:-1",
+      "-q:v",
+      "5",
+      "-f",
+      "image2pipe",
+      "-vcodec",
+      "mjpeg",
+      "pipe:1",
+    ];
+
+    const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
+
+    const chunks: Buffer[] = [];
+    let stderr = "";
+
+    const killTimer = setTimeout(() => {
+      try {
+        p.kill("SIGKILL");
+      } catch {}
+    }, 15_000);
+
+    req.on("close", () => {
+      try {
+        p.kill("SIGKILL");
+      } catch {}
+    });
+
+    p.stdout.on("data", (d: Buffer) => chunks.push(Buffer.from(d)));
+    p.stderr.on("data", (d: Buffer) => (stderr += String(d)));
+
+    p.on("error", (e) => {
+      clearTimeout(killTimer);
+      console.warn(`[thumbs] clip(mp4) ffmpeg spawn error bin=${FFMPEG_BIN} clipId=${clipId}`, e);
+      return sendSvg(res, svgFallback(title));
+    });
+
+    p.on("close", (code, signal) => {
+      clearTimeout(killTimer);
+
+      const buf = Buffer.concat(chunks);
+      const ok = code === 0 && buf.length > 5_000;
+
+      if (ok) {
+        cache.set(key, { exp: Date.now() + CACHE_MS, buf, contentType: "image/jpeg" });
+        res.set("Content-Type", "image/jpeg");
+        res.set("Cache-Control", "public, max-age=300");
+        return res.end(buf);
+      }
+
+      console.warn(
+        `[thumbs] clip(mp4) ffmpeg failed bin=${FFMPEG_BIN} clipId=${clipId} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 400) || ""}`
+      );
+      return sendSvg(res, svgFallback(title));
+    });
+
+    return;
   }
 
+  // fallback VOD HLS
   const vodUrl = clip.vod_url ? String(clip.vod_url) : "";
-  if (!vodUrl) {
-    res.set("Content-Type", "image/svg+xml; charset=utf-8");
-    res.set("Cache-Control", "public, max-age=30");
-    return res.end(svgFallback(String(clip.title || `clip ${clipId}`)));
-  }
+  if (!vodUrl) return sendSvg(res, svgFallback(title));
 
   const at = Math.max(0, Number(clip.at_sec || 0));
   const pre = Math.max(0, Number(clip.pre_sec || 105));
@@ -258,14 +319,10 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
 
   const startSec = Math.max(0, at - pre);
   const durationSec = Math.max(1, pre + post);
-
-  // preview = ~ +60s dans le clip, clamp
   const previewSec = Math.min(startSec + 60, startSec + durationSec - 1);
 
   const HLS_HEADERS =
-    "Origin: https://dlive.tv\r\n" +
-    "Referer: https://dlive.tv/\r\n" +
-    "User-Agent: Mozilla/5.0\r\n";
+    "Origin: https://dlive.tv\r\n" + "Referer: https://dlive.tv/\r\n" + "User-Agent: Mozilla/5.0\r\n";
 
   const args = [
     "-hide_banner",
@@ -273,23 +330,18 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
     "error",
     "-y",
     "-nostdin",
-
     "-protocol_whitelist",
     "file,http,https,tcp,tls",
-
     "-headers",
     HLS_HEADERS,
     "-user_agent",
     "Mozilla/5.0",
-
     "-rw_timeout",
-    "8000000",
-
+    "15000000",
     "-ss",
     String(previewSec),
     "-i",
     vodUrl,
-
     "-an",
     "-frames:v",
     "1",
@@ -313,7 +365,7 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
     try {
       p.kill("SIGKILL");
     } catch {}
-  }, 9000);
+  }, 15_000);
 
   req.on("close", () => {
     try {
@@ -326,10 +378,8 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
 
   p.on("error", (e) => {
     clearTimeout(killTimer);
-    console.warn(`[thumbs] clip ffmpeg spawn error bin=${FFMPEG_BIN} clipId=${clipId}`, e);
-    res.set("Content-Type", "image/svg+xml; charset=utf-8");
-    res.set("Cache-Control", "public, max-age=30");
-    return res.end(svgFallback(String(clip.title || `clip ${clipId}`)));
+    console.warn(`[thumbs] clip(vod) ffmpeg spawn error bin=${FFMPEG_BIN} clipId=${clipId}`, e);
+    return sendSvg(res, svgFallback(title));
   });
 
   p.on("close", (code, signal) => {
@@ -341,16 +391,13 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
     if (ok) {
       cache.set(key, { exp: Date.now() + CACHE_MS, buf, contentType: "image/jpeg" });
       res.set("Content-Type", "image/jpeg");
-      res.set("Cache-Control", "public, max-age=30");
+      res.set("Cache-Control", "public, max-age=300");
       return res.end(buf);
     }
 
     console.warn(
-      `[thumbs] clip ffmpeg failed bin=${FFMPEG_BIN} clipId=${clipId} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 400) || ""}`
+      `[thumbs] clip(vod) ffmpeg failed bin=${FFMPEG_BIN} clipId=${clipId} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 400) || ""}`
     );
-
-    res.set("Content-Type", "image/svg+xml; charset=utf-8");
-    res.set("Cache-Control", "public, max-age=30");
-    return res.end(svgFallback(String(clip.title || `clip ${clipId}`)));
+    return sendSvg(res, svgFallback(title));
   });
 });

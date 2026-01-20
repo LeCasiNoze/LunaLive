@@ -561,6 +561,16 @@ export function AgendaTab({
                         fontWeight: 900,
                       }}
                     />
+                    <button
+                      type="button"
+                      className="btnGhostSmall"
+                      onClick={() => removeRule(i)}
+                      title="Supprimer cet événement/règle"
+                      style={{ marginLeft: "auto" }}
+                    >
+                      Supprimer
+                    </button>
+
                   </div>
 
                   <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>

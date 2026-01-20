@@ -57,8 +57,8 @@ function formatDurationDot(startIso: string, nowMs: number) {
   return `${h}.${String(m).padStart(2, "0")}`;
 }
 
-function withMinuteBust(url: string, nowMs: number) {
-  const t = Math.floor(nowMs / 60000);
+function with5MinBust(url: string, nowMs: number) {
+  const t = Math.floor(nowMs / 300000); // 5 minutes
   return url.includes("?") ? `${url}&t=${t}` : `${url}?t=${t}`;
 }
 
@@ -912,6 +912,7 @@ export default function LivesPage() {
   const [openClip, setOpenClip] = React.useState<ClipVM | null>(null);
 
   const refreshLockRef = React.useRef(false);
+  const preloadedRef = React.useRef<Set<string>>(new Set());
 
   const authAny = useAuth() as any;
   const token: string | null = authAny?.token || null;
@@ -948,7 +949,7 @@ export default function LivesPage() {
         const vmBase: LiveCardVM[] = (data as any[]).map((x: any) => {
           const fallback = svgThumb(x.displayName);
           const rawThumbUrl = absolutize(x.thumbUrl || x.thumb_url || null);
-          const thumbUrl = rawThumbUrl ? withMinuteBust(String(rawThumbUrl), nowMs) : null;
+          const thumbUrl = rawThumbUrl ? with5MinBust(String(rawThumbUrl), nowMs) : null;
           const thumbFinal = thumbUrl || fallback;
 
           const started = x.liveStartedAt || x.live_started_at || null;
@@ -967,8 +968,10 @@ export default function LivesPage() {
 
         const preloadJobs = vmWithFeatured.map(async (live) => {
           const nowThumb = absolutize((live as any).thumbUrl || (live as any).thumb_url || null);
-          const url = nowThumb ? withMinuteBust(String(nowThumb), nowMs) : null;
+          const url = nowThumb ? with5MinBust(String(nowThumb), nowMs) : null;
           if (!url) return;
+          if (preloadedRef.current.has(url)) return;
+          preloadedRef.current.add(url);
 
           const ok = await preloadImage(url);
           if (!ok) return;
