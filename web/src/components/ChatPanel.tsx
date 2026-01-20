@@ -147,6 +147,9 @@ type EmotesPayload = {
   ok: boolean;
   streamerId?: number | null;
   emotes?: EmoteItem[];
+  channel?: EmoteItem[];
+  global?: EmoteItem[];
+  native?: EmoteItem[];
   favorites?: EmoteItem[];
 };
 
@@ -730,7 +733,7 @@ React.useLayoutEffect(() => {
     } catch {}
   }
 
-  async function fetchEmotes() {
+async function fetchEmotes() {
   try {
     const r = await fetch(`${apiBase()}/chat/${encodeURIComponent(String(slug))}/emotes`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -739,17 +742,22 @@ React.useLayoutEffect(() => {
     const j = r as EmotesPayload;
     if (!j?.ok) throw new Error("bad_payload");
 
-    const all = Array.isArray(j.emotes) ? j.emotes : [];
+    // ✅ support 2 formats: (emotes[]) OU (channel/global/native)
+    const all = Array.isArray(j.emotes)
+      ? j.emotes
+      : [
+          ...(Array.isArray(j.channel) ? j.channel : []),
+          ...(Array.isArray(j.global) ? j.global : []),
+          ...(Array.isArray(j.native) ? j.native : []),
+        ];
+
     const favorites = Array.isArray(j.favorites) ? j.favorites : [];
 
-    // ✅ garde seulement active
-    const act = all.filter((e) => (e as any).status ? (e as any).status === "active" : true);
+    const act = all.filter((e) => ((e as any).status ? (e as any).status === "active" : true));
 
     setEmotesChannel(act.filter((e) => e.scope === "channel"));
     setEmotesGlobal(act.filter((e) => e.scope === "global" || e.scope === "native"));
 
-    // ✅ favorites DB (global/native only)
-    // (si ton backend renvoie déjà les rows complètes, c’est top)
     setFavs({
       emoji: favorites.filter((e) => e.kind === "emoji" && e.id != null).map((e) => String(e.id)),
       gif: favorites.filter((e) => e.kind === "gif" && e.id != null).map((e) => String(e.id)),

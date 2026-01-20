@@ -5,11 +5,9 @@ import os from "node:os";
 import { promises as fsp } from "node:fs";
 
 import { pool } from "../db.js";
-import { requireAdminKey } from "../auth.js";
 import { r2Enabled, putFileToR2, buildPublicUrl } from "../clips/r2.js";
 
 export const adminEmotesRouter = express.Router();
-adminEmotesRouter.use(requireAdminKey);
 
 function normName(s: any) {
   return String(s ?? "")

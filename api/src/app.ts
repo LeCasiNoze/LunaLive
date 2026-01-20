@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 
-import { requireAuth } from "./auth.js";
+import { requireAuth, requireAdminKey } from "./auth.js";
 
 import { registerChatRoutes } from "./chat_routes.js";
 import { registerHlsProxy } from "./hls_proxy.js";
@@ -189,7 +189,10 @@ export function createApp() {
   // ✅ Main routers
   // ─────────────────────────────────────────────
   app.use(streamerRouter);
-  app.use(adminEmotesRouter);
+  
+  // ✅ Admin emotes (protégé, mais UNIQUEMENT sur /admin/emotes/*)
+  app.use("/admin/emotes", requireAdminKey, adminEmotesRouter);
+
   app.use(adminRouter);
   app.use(adminImpersonateRouter);
   
