@@ -79,6 +79,7 @@ import { emotesRouter } from "./emotes/emotes.router.js";
 import { streamerEmotesRouter } from "./emotes/streamer_emotes.router.js";
 import { accountActionsRouter } from "./routes/account_actions.js";
 import { adminImpersonateRouter } from "./routes/admin_impersonate.js";
+import { adminEmotesRouter } from "./emotes/admin_emotes.router.js";
 
 export function createApp() {
   const app = express();
@@ -188,6 +189,7 @@ export function createApp() {
   // ✅ Main routers
   // ─────────────────────────────────────────────
   app.use(streamerRouter);
+  app.use(adminEmotesRouter);
   app.use(adminRouter);
   app.use(adminImpersonateRouter);
   
