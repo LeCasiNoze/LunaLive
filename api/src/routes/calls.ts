@@ -10,6 +10,17 @@ import { resolveSlot } from "../calls/catalog.js";
 
 export const callsRouter = express.Router();
 
+/**
+ * ✅ Soft auth:
+ * - si Authorization Bearer est présent => on tente requireAuth
+ * - sinon => on laisse passer (req.user restera undefined)
+ */
+function softAuth(req: any, res: any, next: any) {
+  const h = String(req.headers?.authorization || "");
+  if (/^Bearer\s+.+/i.test(h)) return requireAuth(req, res, next);
+  return next();
+}
+
 // helper: slug -> streamer meta
 async function getStreamerBySlug(slug: string) {
   const s = String(slug || "").trim();
@@ -30,10 +41,26 @@ async function getStreamerBySlug(slug: string) {
   };
 }
 
-function canModOnStreamer(user: any, meta: { ownerUserId: number | null }) {
+// ✅ owner / admin / mod (si table existe)
+async function canModOnStreamer(user: any, meta: { id: number; ownerUserId: number | null }) {
   if (!user) return false;
+  const uid = Number(user.id || 0);
+  if (!uid) return false;
+
   if (user.role === "admin") return true;
-  if (meta.ownerUserId != null && Number(meta.ownerUserId) === Number(user.id)) return true;
+  if (meta.ownerUserId != null && Number(meta.ownerUserId) === uid) return true;
+
+  // modérateur de la chaîne (si table existe)
+  try {
+    const r = await pool.query(
+      `SELECT 1 FROM streamer_moderators WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`,
+      [meta.id, uid]
+    );
+    if ((r.rowCount ?? 0) > 0) return true;
+  } catch {
+    // table absente => pas de crash
+  }
+
   return false;
 }
 
@@ -89,7 +116,7 @@ callsRouter.patch("/:slug/config", requireAuth, async (req: any, res) => {
     const meta = await getStreamerBySlug(String(req.params.slug));
     if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
-    if (!canModOnStreamer(u, meta)) return res.status(403).json({ ok: false, error: "forbidden" });
+    if (!(await canModOnStreamer(u, meta))) return res.status(403).json({ ok: false, error: "forbidden" });
 
     const p = req.body || {};
     const enabled = p.enabled != null ? !!p.enabled : null;
@@ -154,15 +181,18 @@ callsRouter.patch("/:slug/config", requireAuth, async (req: any, res) => {
 // Queue (list / reset / delete)
 // ──────────────────────────────────────────
 
-callsRouter.get("/:slug/list", requireAuth, async (req: any, res) => {
+/**
+ * ✅ PUBLIC LIST
+ * GET /calls/:slug/list
+ * - accessible sans login
+ * - si token présent => softAuth => renvoie canModerate
+ */
+callsRouter.get("/:slug/list", softAuth, async (req: any, res) => {
   try {
-    const u = req.user;
-    if (!u) return res.status(401).json({ ok: false, error: "unauthorized" });
-
     const meta = await getStreamerBySlug(String(req.params.slug));
     if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
-    if (!canModOnStreamer(u, meta)) return res.status(403).json({ ok: false, error: "forbidden" });
+    const canModerate = await canModOnStreamer(req.user, meta);
 
     const limitRaw = Number(req.query.limit || 50);
     const offsetRaw = Number(req.query.offset || 0);
@@ -206,7 +236,7 @@ callsRouter.get("/:slug/list", requireAuth, async (req: any, res) => {
       id: String(r.id),
       slotName: String(r.slotName),
       provider: r.provider ? String(r.provider) : null,
-      username: String(r.username),
+      username: r.username != null ? String(r.username) : "",
       pos: Number(r.pos) || 0,
       imageUrl: r.imageUrl ? String(r.imageUrl) : null,
 
@@ -217,7 +247,8 @@ callsRouter.get("/:slug/list", requireAuth, async (req: any, res) => {
       isBonus: !!r.isBonus, // ✅ debug/robuste
     }));
 
-    res.json({ ok: true, items });
+    // ✅ on garde compat: { ok:true, items } ; + champ bonus non cassant
+    res.json({ ok: true, items, canModerate });
   } catch (e: any) {
     res.status(500).json({ ok: false, error: String(e?.message || "list_failed") });
   }
@@ -231,7 +262,7 @@ callsRouter.post("/:slug/reset", requireAuth, async (req: any, res) => {
     const meta = await getStreamerBySlug(String(req.params.slug));
     if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
-    if (!canModOnStreamer(u, meta)) return res.status(403).json({ ok: false, error: "forbidden" });
+    if (!(await canModOnStreamer(u, meta))) return res.status(403).json({ ok: false, error: "forbidden" });
 
     await resetCalls(pool, meta.id);
     res.json({ ok: true });
@@ -248,7 +279,7 @@ callsRouter.delete("/:slug/item/:id", requireAuth, async (req: any, res) => {
     const meta = await getStreamerBySlug(String(req.params.slug));
     if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
-    if (!canModOnStreamer(u, meta)) return res.status(403).json({ ok: false, error: "forbidden" });
+    if (!(await canModOnStreamer(u, meta))) return res.status(403).json({ ok: false, error: "forbidden" });
 
     const ok = await deleteCallById(pool, meta.id, String(req.params.id));
     res.json({ ok: true, deleted: ok });
@@ -268,7 +299,7 @@ callsRouter.get("/:slug/bans", requireAuth, async (req: any, res) => {
 
     const meta = await getStreamerBySlug(String(req.params.slug));
     if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
-    if (!canModOnStreamer(u, meta)) return res.status(403).json({ ok: false, error: "forbidden" });
+    if (!(await canModOnStreamer(u, meta))) return res.status(403).json({ ok: false, error: "forbidden" });
 
     await ensureCallsBansCols(); // ✅ AJOUTE ÇA
 
@@ -306,11 +337,10 @@ callsRouter.get("/:slug/bans", requireAuth, async (req: any, res) => {
       const kind = String(r.kind) as "user" | "slot" | "provider";
       const banKey = String(r.banKey);
 
-      const label =
-        kind === "slot" ? slotNameByKey.get(banKey) ?? banKey : banKey;
+      const label = kind === "slot" ? slotNameByKey.get(banKey) ?? banKey : banKey;
 
       return {
-        id: `${kind}:${banKey}`,          // pas d'id en DB -> id stable
+        id: `${kind}:${banKey}`,
         kind,
         banKey,
         label,
@@ -327,7 +357,8 @@ callsRouter.get("/:slug/bans", requireAuth, async (req: any, res) => {
 
       if (kind === "user") out.users.push({ username: banKey, note });
       else if (kind === "provider") out.providers.push({ provider: banKey, note });
-      else if (kind === "slot") out.slots.push({ slotKey: banKey, name: slotNameByKey.get(banKey) ?? banKey, note });
+      else if (kind === "slot")
+        out.slots.push({ slotKey: banKey, name: slotNameByKey.get(banKey) ?? banKey, note });
     }
 
     res.json({ ok: true, items, bans: out });
@@ -343,12 +374,11 @@ callsRouter.post("/:slug/ban", requireAuth, express.json(), async (req: any, res
 
     const meta = await getStreamerBySlug(String(req.params.slug));
     if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
-    if (!canModOnStreamer(u, meta)) return res.status(403).json({ ok: false, error: "forbidden" });
+    if (!(await canModOnStreamer(u, meta))) return res.status(403).json({ ok: false, error: "forbidden" });
 
-    await ensureCallsBansCols(); // ✅ AJOUTE ÇA
+    await ensureCallsBansCols();
 
     const p = req.body || {};
-
     const kind = String(p.kind || "").trim();
     const note = p.note != null ? String(p.note).trim() : null;
 
@@ -356,15 +386,16 @@ callsRouter.post("/:slug/ban", requireAuth, express.json(), async (req: any, res
       return res.json({ ok: false, error: "bad_kind" });
     }
 
-    // value (compat old + new payloads)
-    const value =
-      String(
-        p.value ??
-          (kind === "slot" ? (p.slotName ?? p.slot) : kind === "provider" ? (p.provider ?? p.providerKey) : p.username) ??
-          ""
-      ).trim();
+    const value = String(
+      p.value ??
+        (kind === "slot"
+          ? (p.slotName ?? p.slot)
+          : kind === "provider"
+          ? (p.provider ?? p.providerKey)
+          : p.username) ??
+        ""
+    ).trim();
 
-    // slotKey override (compat old + new)
     const slotKeyOverride = String(p.slotKey ?? p.slot_key ?? "").trim();
 
     let banKey = "";
@@ -410,7 +441,7 @@ callsRouter.post("/:slug/unban", requireAuth, express.json(), async (req: any, r
 
     const meta = await getStreamerBySlug(String(req.params.slug));
     if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
-    if (!canModOnStreamer(u, meta)) return res.status(403).json({ ok: false, error: "forbidden" });
+    if (!(await canModOnStreamer(u, meta))) return res.status(403).json({ ok: false, error: "forbidden" });
 
     const p = req.body || {};
     const kind = String(p.kind || "").trim();
@@ -447,7 +478,7 @@ callsRouter.get("/:slug/provider-policy", requireAuth, async (req: any, res) => 
 
     const meta = await getStreamerBySlug(String(req.params.slug));
     if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
-    if (!canModOnStreamer(u, meta)) return res.status(403).json({ ok: false, error: "forbidden" });
+    if (!(await canModOnStreamer(u, meta))) return res.status(403).json({ ok: false, error: "forbidden" });
 
     await ensureProviderPolicyRow(meta.id);
 
@@ -473,7 +504,7 @@ callsRouter.patch("/:slug/provider-policy", requireAuth, express.json(), async (
 
     const meta = await getStreamerBySlug(String(req.params.slug));
     if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
-    if (!canModOnStreamer(u, meta)) return res.status(403).json({ ok: false, error: "forbidden" });
+    if (!(await canModOnStreamer(u, meta))) return res.status(403).json({ ok: false, error: "forbidden" });
 
     await ensureProviderPolicyRow(meta.id);
 
@@ -492,14 +523,12 @@ callsRouter.patch("/:slug/provider-policy", requireAuth, express.json(), async (
       [meta.id, mode]
     );
 
-    // replace allowlist si fourni
     if (Array.isArray(p.allowedProviders)) {
       const cleaned = p.allowedProviders
         .map((x: any) => normalizeProvider(String(x || "")))
         .map((x: any) => String(x || "").trim())
         .filter(Boolean);
 
-      // dedup + stable
       const uniq = Array.from(new Set(cleaned));
 
       await pool.query(`DELETE FROM calls_allowed_providers WHERE streamer_id=$1`, [meta.id]);
