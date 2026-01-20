@@ -1,5 +1,6 @@
 // api/src/routes/account_actions.ts
 import { Router } from "express";
+import type { PoolClient } from "pg";
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
 import { hashPassword, verifyPassword, requireAuth, signToken } from "../auth.js";
@@ -14,9 +15,7 @@ function genCode6() {
 
 function isValidUsername(u: string) {
   const s = String(u || "").trim();
-  if (s.length < 3 || s.length > 32) return false;
-  // permissif mais safe (si tu veux plus strict, dis-moi)
-  return /^[a-zA-Z0-9_]+$/.test(s);
+  return s.length >= 3 && s.length <= 32;
 }
 
 function isValidPassword(p: string) {
@@ -82,15 +81,16 @@ async function insertCode(p: {
   return { minutes, expiresAt };
 }
 
-async function verifyConsumeCodeByUser(userId: number, kind: string, code: string) {
+async function getLatestCodeForUserTx(client: PoolClient, userId: number, kind: string) {
   const MAX_ATTEMPTS = 6;
 
-  const { rows } = await pool.query(
+  const { rows } = await client.query(
     `SELECT id, code_hash, attempts, expires_at
      FROM account_action_codes
      WHERE user_id=$1 AND kind=$2 AND consumed_at IS NULL
      ORDER BY created_at DESC
-     LIMIT 1`,
+     LIMIT 1
+     FOR UPDATE`,
     [userId, String(kind)]
   );
 
@@ -99,18 +99,29 @@ async function verifyConsumeCodeByUser(userId: number, kind: string, code: strin
   if (Number(row.attempts || 0) >= MAX_ATTEMPTS) throw new Error("too_many_attempts");
 
   if (new Date(row.expires_at).getTime() < Date.now()) {
-    await pool.query(`UPDATE account_action_codes SET consumed_at=NOW() WHERE id=$1`, [row.id]);
+    await client.query(`UPDATE account_action_codes SET consumed_at=NOW() WHERE id=$1`, [row.id]);
     throw new Error("code_expired");
   }
 
+  return row as { id: number; code_hash: string; attempts: number; expires_at: any };
+}
+
+async function badAttemptTx(client: PoolClient, codeId: number) {
+  await client.query(`UPDATE account_action_codes SET attempts=attempts+1 WHERE id=$1`, [codeId]);
+}
+
+async function consumeCodeTx(client: PoolClient, codeId: number) {
+  await client.query(`UPDATE account_action_codes SET consumed_at=NOW() WHERE id=$1`, [codeId]);
+}
+
+async function verifyLatestCodeUserTx(client: PoolClient, userId: number, kind: string, code: string) {
+  const row = await getLatestCodeForUserTx(client, userId, kind);
   const ok = await verifyPassword(String(code || "").trim(), String(row.code_hash));
   if (!ok) {
-    await pool.query(`UPDATE account_action_codes SET attempts=attempts+1 WHERE id=$1`, [row.id]);
+    await badAttemptTx(client, row.id);
     throw new Error("bad_code");
   }
-
-  await pool.query(`UPDATE account_action_codes SET consumed_at=NOW() WHERE id=$1`, [row.id]);
-  return true;
+  return row.id;
 }
 
 async function verifyConsumeCodeByEmail(email: string, kind: string, code: string) {
@@ -188,18 +199,10 @@ accountActionsRouter.post(
     if (!isValidUsername(newUsername)) return res.status(400).json({ ok: false, error: "username_invalid" });
     if (code.length < 4) return res.status(400).json({ ok: false, error: "code_required" });
 
-    // verify code (consomme)
-    try {
-      await verifyConsumeCodeByUser(userId, "rename", code);
-    } catch (e: any) {
-      return res.status(400).json({ ok: false, error: String(e?.message || "bad_code") });
-    }
-
-    // username unique
+    // username unique (avant tx: ok)
     const u1 = await pool.query(`SELECT 1 FROM users WHERE lower(username)=lower($1) LIMIT 1`, [newUsername]);
     if (u1.rows[0]) return res.status(400).json({ ok: false, error: "username_taken" });
 
-    // cooldown check
     const u = await pool.query(`SELECT username, rubis, role, last_rename_at FROM users WHERE id=$1 LIMIT 1`, [userId]);
     const me = u.rows[0];
     if (!me) return res.status(401).json({ ok: false, error: "unauthorized" });
@@ -210,22 +213,32 @@ accountActionsRouter.post(
 
     const needsPay = Number.isFinite(days) && days < COOLDOWN_DAYS;
 
-    if (needsPay && !payIfNeeded) {
-      const remainingDays = Math.max(1, Math.ceil(COOLDOWN_DAYS - days));
-      return res.status(409).json({
-        ok: false,
-        error: "cooldown",
-        remainingDays,
-        price: PRICE,
-      });
-    }
-
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
 
+      // ✅ vérifie le code (mais ne le consomme pas si cooldown sans paiement)
+      let codeId: number;
+      try {
+        codeId = await verifyLatestCodeUserTx(client, userId, "rename", code);
+      } catch (e: any) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ ok: false, error: String(e?.message || "bad_code") });
+      }
+
+      if (needsPay && !payIfNeeded) {
+        const remainingDays = Math.max(1, Math.ceil(COOLDOWN_DAYS - days));
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          ok: false,
+          error: "cooldown",
+          remainingDays,
+          price: PRICE,
+        });
+      }
+
       if (needsPay) {
-        await spendRubisTx(client as any, {
+        await spendRubisTx(client, {
           userId,
           amount: PRICE,
           spendKind: "sink",
@@ -241,6 +254,17 @@ accountActionsRouter.post(
          WHERE id=$1`,
         [userId, newUsername]
       );
+
+        // ✅ si l'utilisateur est streamer, on sync le display_name streamer
+       await client.query(
+        `UPDATE streamers
+        SET display_name=$2, updated_at=NOW()
+        WHERE user_id=$1`,
+        [userId, newUsername]
+        );
+
+      // ✅ consume code seulement si action OK
+      await consumeCodeTx(client, codeId);
 
       const updated = await client.query(
         `SELECT id, username, rubis, role
@@ -315,14 +339,21 @@ accountActionsRouter.post(
     if (code.length < 4) return res.status(400).json({ ok: false, error: "code_required" });
     if (!isValidPassword(newPassword)) return res.status(400).json({ ok: false, error: "password_too_short" });
 
+    // ici on peut consommer directement, pas de branche "cooldown"
+    const client = await pool.connect();
     try {
-      await verifyConsumeCodeByUser(userId, "password", code);
+      await client.query("BEGIN");
+      const codeId = await verifyLatestCodeUserTx(client, userId, "password", code);
+      const passwordHash = await hashPassword(newPassword);
+      await client.query(`UPDATE users SET password_hash=$2 WHERE id=$1`, [userId, passwordHash]);
+      await consumeCodeTx(client, codeId);
+      await client.query("COMMIT");
     } catch (e: any) {
+      try { await client.query("ROLLBACK"); } catch {}
       return res.status(400).json({ ok: false, error: String(e?.message || "bad_code") });
+    } finally {
+      client.release();
     }
-
-    const passwordHash = await hashPassword(newPassword);
-    await pool.query(`UPDATE users SET password_hash=$2 WHERE id=$1`, [userId, passwordHash]);
 
     res.json({ ok: true });
   })
@@ -338,13 +369,11 @@ accountActionsRouter.post(
     const email = String(req.body.email || "").trim();
     const IS_DEV = (process.env.NODE_ENV || "development") !== "production";
 
-    // réponse neutre (évite enum)
     const neutralOk = (devCode?: string) => res.json(devCode ? { ok: true, devCode } : { ok: true });
-
     if (!email) return neutralOk();
 
     const { rows } = await pool.query(
-      `SELECT id, email, email_verified
+      `SELECT id, email
        FROM users
        WHERE lower(email)=lower($1)
        LIMIT 1`,
@@ -354,7 +383,6 @@ accountActionsRouter.post(
     const u = rows[0];
     if (!u) return neutralOk();
 
-    // tu peux choisir d'exiger verified; là je laisse OK même si non
     await invalidatePreviousCodesByEmail(email, "forgot");
 
     const code = genCode6();
@@ -368,7 +396,7 @@ accountActionsRouter.post(
       return neutralOk();
     }
 
-    return neutralOk(IS_DEV ? undefined : undefined);
+    return neutralOk();
   })
 );
 

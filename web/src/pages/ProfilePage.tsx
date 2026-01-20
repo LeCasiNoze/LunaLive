@@ -12,6 +12,8 @@ import {
   type ApiProfileStats,
 } from "../lib/api_profile";
 
+const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+
 type Tab = "overview" | "personalisation" | "social" | "stats";
 
 function initials(name: string) {
@@ -143,8 +145,7 @@ function StatTile({
       style={{
         borderRadius: 18,
         border: "1px solid rgba(255,255,255,0.10)",
-        background:
-          "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+        background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
         padding: 14,
         boxShadow: "0 14px 40px rgba(0,0,0,0.25)",
         backdropFilter: "blur(10px)",
@@ -168,9 +169,7 @@ function StatTile({
         </div>
         <div style={{ fontWeight: 900, opacity: 0.9 }}>{label}</div>
       </div>
-      <div style={{ fontSize: 22, fontWeight: 1000, letterSpacing: -0.2 }}>
-        {value}
-      </div>
+      <div style={{ fontSize: 22, fontWeight: 1000, letterSpacing: -0.2 }}>{value}</div>
       {sub ? <div className="muted">{sub}</div> : null}
     </div>
   );
@@ -233,15 +232,22 @@ function MiniBarList({
       style={{
         borderRadius: 22,
         border: "1px solid rgba(255,255,255,0.10)",
-        background:
-          "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+        background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
         padding: 16,
         boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
         backdropFilter: "blur(10px)",
         minHeight: 220,
       }}
     >
-      <div style={{ fontWeight: 1000, letterSpacing: -0.2, display: "flex", justifyContent: "space-between", gap: 10 }}>
+      <div
+        style={{
+          fontWeight: 1000,
+          letterSpacing: -0.2,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
         <span>{title}</span>
         <span style={{ opacity: 0.6 }}>🏁</span>
       </div>
@@ -264,7 +270,14 @@ function MiniBarList({
 
             return (
               <div key={`${x.slug ?? idx}`} style={{ display: "grid", gap: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "center",
+                  }}
+                >
                   <div style={{ minWidth: 0 }}>
                     <div
                       style={{
@@ -317,11 +330,373 @@ function MiniBarList({
   );
 }
 
+/* =========================
+   ⚙️ Account Settings Modal
+========================= */
+
+function AccountSettingsModal({
+  open,
+  onClose,
+  token,
+  onAfterChange,
+}: {
+  open: boolean;
+  onClose: () => void;
+  token: string;
+  onAfterChange: () => Promise<void> | void;
+}) {
+  const [tab, setTab] = React.useState<"rename" | "password">("rename");
+
+  // rename
+  const [newUsername, setNewUsername] = React.useState("");
+  const [renameCodeSent, setRenameCodeSent] = React.useState(false);
+  const [renameCode, setRenameCode] = React.useState("");
+  const [renamePay, setRenamePay] = React.useState(false);
+  const [renameHint, setRenameHint] = React.useState<string | null>(null);
+  const [renameBusy, setRenameBusy] = React.useState(false);
+
+  // password
+  const [passCodeSent, setPassCodeSent] = React.useState(false);
+  const [passCode, setPassCode] = React.useState("");
+  const [p1, setP1] = React.useState("");
+  const [p2, setP2] = React.useState("");
+  const [showP1, setShowP1] = React.useState(false);
+  const [showP2, setShowP2] = React.useState(false);
+  const [passHint, setPassHint] = React.useState<string | null>(null);
+  const [passBusy, setPassBusy] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setTab("rename");
+    setRenameHint(null);
+    setPassHint(null);
+    setRenameCodeSent(false);
+    setPassCodeSent(false);
+    setRenameCode("");
+    setPassCode("");
+    setNewUsername("");
+    setRenamePay(false);
+    setP1("");
+    setP2("");
+    setShowP1(false);
+    setShowP2(false);
+  }, [open]);
+
+  if (!open) return null;
+
+  async function post(path: string, body: any) {
+    const r = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body ?? {}),
+    });
+    const data = await r.json().catch(() => ({}));
+    return { r, data };
+  }
+
+  async function sendRenameCode() {
+    setRenameBusy(true);
+    setRenameHint(null);
+    try {
+      const { r, data } = await post("/me/rename/request-code", { newUsername });
+      if (!r.ok || (data && data.ok === false)) throw new Error(data?.error || `HTTP ${r.status}`);
+      setRenameCodeSent(true);
+      setRenameHint("Code envoyé par email ✅");
+    } catch (e: any) {
+      setRenameHint(String(e?.message || "Erreur envoi code"));
+    } finally {
+      setRenameBusy(false);
+    }
+  }
+
+  async function confirmRename() {
+    setRenameBusy(true);
+    setRenameHint(null);
+    try {
+      const { r, data } = await post("/me/rename/confirm", {
+        newUsername,
+        code: renameCode,
+        payIfNeeded: renamePay,
+      });
+
+      if (r.status === 409 && data?.error === "cooldown") {
+        setRenameHint(
+          `Cooldown: encore ${data.remainingDays}j. Coche “payer ${data.price} rubis” pour rename maintenant.`
+        );
+        return;
+      }
+
+      if (!r.ok || (data && data.ok === false)) throw new Error(data?.error || `HTTP ${r.status}`);
+
+      // update token + hard refresh (garanti que tout suit le nouveau pseudo)
+      try {
+        localStorage.setItem("token", String(data.token || ""));
+      } catch {}
+
+      setRenameHint(`Pseudo mis à jour ✅${data.paid ? ` (payé ${data.paid} rubis)` : ""} — refresh…`);
+      await Promise.resolve(onAfterChange());
+      window.location.reload();
+    } catch (e: any) {
+      setRenameHint(String(e?.message || "Erreur rename"));
+    } finally {
+      setRenameBusy(false);
+    }
+  }
+
+  async function sendPasswordCode() {
+    setPassBusy(true);
+    setPassHint(null);
+    try {
+      const { r, data } = await post("/me/password/request-code", {});
+      if (!r.ok || (data && data.ok === false)) throw new Error(data?.error || `HTTP ${r.status}`);
+      setPassCodeSent(true);
+      setPassHint("Code envoyé par email ✅");
+    } catch (e: any) {
+      setPassHint(String(e?.message || "Erreur envoi code"));
+    } finally {
+      setPassBusy(false);
+    }
+  }
+
+  async function confirmPassword() {
+    setPassBusy(true);
+    setPassHint(null);
+    try {
+      if (!p1 || p1.length < 6) throw new Error("password_too_short");
+      if (p1 !== p2) throw new Error("password_mismatch");
+
+      const { r, data } = await post("/me/password/confirm", { code: passCode, newPassword: p1 });
+      if (!r.ok || (data && data.ok === false)) throw new Error(data?.error || `HTTP ${r.status}`);
+
+      setPassHint("Mot de passe mis à jour ✅");
+      setPassCode("");
+      setP1("");
+      setP2("");
+    } catch (e: any) {
+      const msg = String(e?.message || "Erreur mot de passe");
+      if (msg === "password_mismatch") setPassHint("Les mots de passe ne matchent pas.");
+      else if (msg === "password_too_short") setPassHint("Mot de passe trop court (min 6).");
+      else setPassHint(msg);
+    } finally {
+      setPassBusy(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.55)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 9999,
+        padding: 14,
+      }}
+    >
+      <div
+        style={{
+          width: "min(720px, 96vw)",
+          borderRadius: 24,
+          border: "1px solid rgba(255,255,255,0.12)",
+          background:
+            "radial-gradient(900px 300px at 20% 0%, rgba(140,90,255,0.30), rgba(0,0,0,0) 60%), radial-gradient(700px 260px at 85% 20%, rgba(255,90,180,0.18), rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.18))",
+          boxShadow: "0 28px 90px rgba(0,0,0,0.45)",
+          backdropFilter: "blur(12px)",
+          padding: 16,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+          <div style={{ fontWeight: 1100, letterSpacing: -0.2, fontSize: 18 }}>⚙️ Paramètres du compte</div>
+          <button className="btnGhost" onClick={onClose}>
+            ✖
+          </button>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+          <button className={tab === "rename" ? "btnPrimary" : "btnGhost"} onClick={() => setTab("rename")}>
+            ✍️ Pseudo
+          </button>
+          <button className={tab === "password" ? "btnPrimary" : "btnGhost"} onClick={() => setTab("password")}>
+            🔒 Mot de passe
+          </button>
+        </div>
+
+        {tab === "rename" ? (
+          <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+            <div className="muted">
+              Rename gratuit tous les 30 jours. Sinon tu peux payer <b>1000 rubis</b>.
+            </div>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <input
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                placeholder="Nouveau pseudo"
+                style={{
+                  flex: "1 1 240px",
+                  minWidth: 220,
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: "inherit",
+                  outline: "none",
+                }}
+              />
+              <button className="btnGhost" onClick={sendRenameCode} disabled={renameBusy || !newUsername.trim()}>
+                📩 Envoyer code
+              </button>
+            </div>
+
+            {renameCodeSent ? (
+              <div style={{ display: "grid", gap: 10 }}>
+                <input
+                  value={renameCode}
+                  onChange={(e) => setRenameCode(e.target.value)}
+                  placeholder="Code (6 chiffres)"
+                  style={{
+                    width: "min(280px, 100%)",
+                    padding: "10px 12px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(255,255,255,0.05)",
+                    color: "inherit",
+                    outline: "none",
+                  }}
+                />
+
+                <label style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 900 }}>
+                  <input type="checkbox" checked={renamePay} onChange={(e) => setRenamePay(e.target.checked)} />
+                  Payer 1000 rubis si cooldown
+                </label>
+
+                <button
+                  className="btnPrimary"
+                  onClick={confirmRename}
+                  disabled={renameBusy || !renameCode.trim() || !newUsername.trim()}
+                >
+                  ✅ Valider le rename
+                </button>
+              </div>
+            ) : null}
+
+            {renameHint ? (
+              <div className="muted" style={{ opacity: 0.95 }}>
+                {renameHint}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {tab === "password" ? (
+          <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+            <div className="muted">Changement de mot de passe via code email.</div>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <button className="btnGhost" onClick={sendPasswordCode} disabled={passBusy}>
+                📩 Envoyer code
+              </button>
+              {passCodeSent ? <span className="muted">Code envoyé ✅</span> : null}
+            </div>
+
+            {passCodeSent ? (
+              <div style={{ display: "grid", gap: 10 }}>
+                <input
+                  value={passCode}
+                  onChange={(e) => setPassCode(e.target.value)}
+                  placeholder="Code (6 chiffres)"
+                  style={{
+                    width: "min(280px, 100%)",
+                    padding: "10px 12px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(255,255,255,0.05)",
+                    color: "inherit",
+                    outline: "none",
+                  }}
+                />
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <input
+                      value={p1}
+                      onChange={(e) => setP1(e.target.value)}
+                      type={showP1 ? "text" : "password"}
+                      placeholder="Nouveau mot de passe"
+                      style={{
+                        flex: "1 1 260px",
+                        minWidth: 220,
+                        padding: "10px 12px",
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: "rgba(255,255,255,0.05)",
+                        color: "inherit",
+                        outline: "none",
+                      }}
+                    />
+                    <button className="btnGhost" onClick={() => setShowP1((v) => !v)} type="button">
+                      {showP1 ? "🙈" : "👁️"}
+                    </button>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <input
+                      value={p2}
+                      onChange={(e) => setP2(e.target.value)}
+                      type={showP2 ? "text" : "password"}
+                      placeholder="Confirmer"
+                      style={{
+                        flex: "1 1 260px",
+                        minWidth: 220,
+                        padding: "10px 12px",
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: "rgba(255,255,255,0.05)",
+                        color: "inherit",
+                        outline: "none",
+                      }}
+                    />
+                    <button className="btnGhost" onClick={() => setShowP2((v) => !v)} type="button">
+                      {showP2 ? "🙈" : "👁️"}
+                    </button>
+                  </div>
+                </div>
+
+                <button className="btnPrimary" onClick={confirmPassword} disabled={passBusy}>
+                  ✅ Mettre à jour le mot de passe
+                </button>
+              </div>
+            ) : null}
+
+            {passHint ? (
+              <div className="muted" style={{ opacity: 0.95 }}>
+                {passHint}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const { user, token, refreshMe } = useAuth();
 
   const [tab, setTab] = React.useState<Tab>("overview");
   const [achOpen, setAchOpen] = React.useState(false);
+
+  // ✅ NEW: account settings modal
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
 
   // streamer request status
   const [reqStatus, setReqStatus] = React.useState<string | null>(null);
@@ -477,7 +852,8 @@ export default function ProfilePage() {
                   width: 180,
                   height: 180,
                   borderRadius: 999,
-                  background: "radial-gradient(circle at 30% 30%, rgba(80,160,255,0.55), rgba(140,90,255,0.10) 70%, rgba(0,0,0,0) 72%)",
+                  background:
+                    "radial-gradient(circle at 30% 30%, rgba(80,160,255,0.55), rgba(140,90,255,0.10) 70%, rgba(0,0,0,0) 72%)",
                   transform: "rotate(12deg)",
                   pointerEvents: "none",
                 }}
@@ -490,7 +866,8 @@ export default function ProfilePage() {
                   width: 220,
                   height: 220,
                   borderRadius: 999,
-                  background: "radial-gradient(circle at 40% 35%, rgba(255,90,180,0.45), rgba(255,210,110,0.10) 62%, rgba(0,0,0,0) 72%)",
+                  background:
+                    "radial-gradient(circle at 40% 35%, rgba(255,90,180,0.45), rgba(255,210,110,0.10) 62%, rgba(0,0,0,0) 72%)",
                   transform: "rotate(-18deg)",
                   pointerEvents: "none",
                 }}
@@ -506,9 +883,15 @@ export default function ProfilePage() {
                   pointerEvents: "none",
                 }}
               >
-                <span className="ll-float" style={{ fontSize: 18 }}>✨</span>
-                <span className="ll-float2" style={{ fontSize: 18 }}>🌙</span>
-                <span className="ll-float" style={{ fontSize: 18 }}>💎</span>
+                <span className="ll-float" style={{ fontSize: 18 }}>
+                  ✨
+                </span>
+                <span className="ll-float2" style={{ fontSize: 18 }}>
+                  🌙
+                </span>
+                <span className="ll-float" style={{ fontSize: 18 }}>
+                  💎
+                </span>
               </div>
 
               <div style={{ display: "grid", gap: 14, position: "relative" }}>
@@ -587,6 +970,13 @@ export default function ProfilePage() {
                       🏆 Succès
                     </button>
 
+                    {/* ✅ NEW */}
+                    {token ? (
+                      <button className="btnGhost" onClick={() => setSettingsOpen(true)}>
+                        ⚙️ Paramètres
+                      </button>
+                    ) : null}
+
                     {(user.role === "streamer" || user.role === "admin") ? (
                       <Link to="/dashboard" className="btnPrimary">
                         🚀 Dashboard streamer
@@ -647,17 +1037,14 @@ export default function ProfilePage() {
                     style={{
                       borderRadius: 22,
                       border: "1px solid rgba(255,255,255,0.10)",
-                      background:
-                        "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+                      background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
                       padding: 16,
                       boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
                       backdropFilter: "blur(10px)",
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                      <div style={{ fontWeight: 1100, letterSpacing: -0.2 }}>
-                        ✨ Ton espace
-                      </div>
+                      <div style={{ fontWeight: 1100, letterSpacing: -0.2 }}>✨ Ton espace</div>
                       <div className="muted">Raccourcis & vibe</div>
                     </div>
 
@@ -669,24 +1056,9 @@ export default function ProfilePage() {
                         gap: 12,
                       }}
                     >
-                      <StatTile
-                        emoji="🏆"
-                        label="Succès"
-                        value="Collection"
-                        sub="Bronze / Silver / Gold / Master"
-                      />
-                      <StatTile
-                        emoji="🎨"
-                        label="Style"
-                        value="Personnalise"
-                        sub="Pseudos, badges, frames…"
-                      />
-                      <StatTile
-                        emoji="🤝"
-                        label="Following"
-                        value="Social"
-                        sub="Voir tes streamers favoris"
-                      />
+                      <StatTile emoji="🏆" label="Succès" value="Collection" sub="Bronze / Silver / Gold / Master" />
+                      <StatTile emoji="🎨" label="Style" value="Personnalise" sub="Pseudos, badges, frames…" />
+                      <StatTile emoji="🤝" label="Following" value="Social" sub="Voir tes streamers favoris" />
                     </div>
 
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
@@ -773,9 +1145,7 @@ export default function ProfilePage() {
                         <div style={{ fontWeight: 1100, letterSpacing: -0.2 }}>🟢 Espace streamer</div>
                         <div className="muted">Tout est prêt</div>
                       </div>
-                      <div className="muted" style={{ marginTop: 10 }}>
-                        Gère ton live, ton bot, tes features et tes outils.
-                      </div>
+                      <div className="muted" style={{ marginTop: 10 }}>Gère ton live, ton bot, tes features et tes outils.</div>
                       <div style={{ marginTop: 12 }}>
                         <Link to="/dashboard" className="btnPrimary">
                           🚀 Ouvrir le Dashboard
@@ -791,8 +1161,7 @@ export default function ProfilePage() {
                     style={{
                       borderRadius: 22,
                       border: "1px solid rgba(255,255,255,0.10)",
-                      background:
-                        "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+                      background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
                       padding: 16,
                       boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
                       backdropFilter: "blur(10px)",
@@ -1195,8 +1564,7 @@ export default function ProfilePage() {
                         sub={
                           typeof s.dailyWheelRubisTotal === "number" || typeof s.chestRubisWonTotal === "number" ? (
                             <>
-                              Wheel: <b>{fmtRubis(s.dailyWheelRubisTotal)}</b> • Coffres:{" "}
-                              <b>{fmtRubis(s.chestRubisWonTotal)}</b>
+                              Wheel: <b>{fmtRubis(s.dailyWheelRubisTotal)}</b> • Coffres: <b>{fmtRubis(s.chestRubisWonTotal)}</b>
                             </>
                           ) : undefined
                         }
@@ -1208,29 +1576,17 @@ export default function ProfilePage() {
                         sub={
                           typeof s.rubisSupportTotal === "number" || typeof s.rubisBurnTotal === "number" ? (
                             <>
-                              Support: <b>{fmtRubis(s.rubisSupportTotal)}</b> • Sink/Burn:{" "}
-                              <b>{fmtRubis(s.rubisBurnTotal)}</b>
+                              Support: <b>{fmtRubis(s.rubisSupportTotal)}</b> • Sink/Burn: <b>{fmtRubis(s.rubisBurnTotal)}</b>
                             </>
                           ) : undefined
                         }
                       />
-                      <StatTile
-                        emoji="🧮"
-                        label="Net rubis"
-                        value={netRubis == null ? "—" : fmt(netRubis)}
-                        sub="Fun stat (pas un solde)."
-                      />
+                      <StatTile emoji="🧮" label="Net rubis" value={netRubis == null ? "—" : fmt(netRubis)} sub="Fun stat (pas un solde)." />
                       <StatTile
                         emoji="🎡"
                         label="Daily Wheel"
                         value={typeof s.dailyWheelSpinsTotal === "number" ? `${fmt(s.dailyWheelSpinsTotal)} spins` : "—"}
-                        sub={
-                          typeof s.dailyWheelRubisTotal === "number" ? (
-                            <>
-                              Total gagné: <b>{fmt(s.dailyWheelRubisTotal)}</b> rubis
-                            </>
-                          ) : undefined
-                        }
+                        sub={typeof s.dailyWheelRubisTotal === "number" ? <>Total gagné: <b>{fmt(s.dailyWheelRubisTotal)}</b> rubis</> : undefined}
                       />
                       <StatTile
                         emoji="🗓️"
@@ -1242,13 +1598,7 @@ export default function ProfilePage() {
                         emoji="🎁"
                         label="Collectibles"
                         value={typeof s.entitlementsTotal === "number" ? `${fmt(s.entitlementsTotal)} objets` : "—"}
-                        sub={
-                          typeof s.achievementsUnlockedTotal === "number" ? (
-                            <>
-                              Succès débloqués: <b>{fmt(s.achievementsUnlockedTotal)}</b>
-                            </>
-                          ) : undefined
-                        }
+                        sub={typeof s.achievementsUnlockedTotal === "number" ? <>Succès débloqués: <b>{fmt(s.achievementsUnlockedTotal)}</b></> : undefined}
                       />
                       <StatTile
                         emoji="🎁"
@@ -1300,6 +1650,16 @@ export default function ProfilePage() {
       </div>
 
       <AchievementsModal open={achOpen} onClose={() => setAchOpen(false)} />
+
+      {/* ✅ NEW */}
+      {token ? (
+        <AccountSettingsModal
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          token={token}
+          onAfterChange={refreshMe}
+        />
+      ) : null}
     </main>
   );
 }

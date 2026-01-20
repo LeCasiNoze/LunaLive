@@ -2,13 +2,10 @@
 import type { Pool } from "pg";
 
 export async function mig033_account_actions(pool: Pool) {
-  // ✅ cooldown rename
-  await pool.query(`
-    ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS last_rename_at TIMESTAMPTZ NULL;
-  `);
+  // cooldown rename
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_rename_at TIMESTAMPTZ;`);
 
-  // ✅ table codes actions compte (rename/password/forgot)
+  // codes d'actions compte (rename/password/forgot)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS account_action_codes (
       id BIGSERIAL PRIMARY KEY,
@@ -20,12 +17,16 @@ export async function mig033_account_actions(pool: Pool) {
       expires_at TIMESTAMPTZ NOT NULL,
       consumed_at TIMESTAMPTZ NULL,
       created_ip TEXT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+  `);
 
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS account_action_codes_user_kind_idx
       ON account_action_codes (user_id, kind, created_at DESC);
+  `);
 
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS account_action_codes_email_kind_idx
       ON account_action_codes (email, kind, created_at DESC);
   `);
