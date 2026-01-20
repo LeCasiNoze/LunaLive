@@ -124,10 +124,10 @@ streamerEmotesRouter.post(
         url = buildPublicUrl(assetKey);
         if (!url) throw new Error("r2_public_base_missing");
       } else {
-        // fallback: si tu as un CDN / public base local, buildPublicUrl peut marcher
-        // sinon ça renverra null et tu verras direct le problème côté UI
-        url = buildPublicUrl(assetKey);
+        // sinon tu vas perdre les fichiers au redeploy Render
+        return res.status(400).json({ ok: false, error: "r2_required_for_emotes" });
       }
+
 
     const up = await pool.query(
     `

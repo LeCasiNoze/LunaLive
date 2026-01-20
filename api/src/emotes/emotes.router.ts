@@ -33,7 +33,7 @@ emotesRouter.get("/chat/:slug/emotes", requireAuth, async (req, res) => {
 
     const streamerId = await getStreamerIdBySlug(pool, slug);
     if (!streamerId) {
-      return res.json({ ok: true, streamerId: null, channel: [], global: [], favorites: [] });
+      return res.json({ ok: true, streamerId: null, channel: [], global: [], native: [], favorites: [] });
     }
 
     const [rows, favRows] = await Promise.all([
@@ -43,11 +43,11 @@ emotesRouter.get("/chat/:slug/emotes", requireAuth, async (req, res) => {
 
     const channel = rows.filter((x) => x.scope === "channel").map(toItem);
     const global = rows.filter((x) => x.scope === "global").map(toItem);
-    // native = géré côté front pour l’instant
+    const native = rows.filter((x) => x.scope === "native").map(toItem);
 
     const favorites = favRows.map(toItem);
 
-    res.json({ ok: true, streamerId, channel, global, favorites });
+    res.json({ ok: true, streamerId, channel, global, native, favorites });
   } catch (e: any) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }

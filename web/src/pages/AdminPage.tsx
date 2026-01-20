@@ -20,7 +20,7 @@ import { UsersAdminSection } from "../components/admin/UsersAdminSection";
 import { ProviderAccountsAdminSection } from "../components/admin/ProviderAccountsAdminSection";
 import { CasinosAdminSection } from "../components/admin/CasinosAdminSection";
 import { Link } from "react-router-dom";
-
+import { EmotesAdminSection } from "../components/admin/EmotesAdminSection";
 const SS_KEY = "lunalive_admin_key_v1";
 const SS_TAB = "lunalive_admin_tab_v1";
 
@@ -876,12 +876,7 @@ export default function AdminPage() {
               subtitle="Ici: gestion des emotes natives/globaux + emotes ajoutés par streamers. (ban/suppression/purge)"
               right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
             >
-              <div className="mutedSmall" style={{ opacity: 0.85, lineHeight: 1.5 }}>
-                À brancher à la fin ✅<br />
-                - Liste des emotes (natif / global / streamer)<br />
-                - Actions admin: <b>Disable</b>, <b>Ban</b>, <b>Delete</b> (+ purge storage)<br />
-                - Recherche + filtres + tri + preview
-              </div>
+            <EmotesAdminSection adminKey={key} />
             </Card>
           ) : null}
 
