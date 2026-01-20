@@ -695,6 +695,66 @@ export async function spinWheel(token: string) {
   });
 }
 
+// ──────────────────────────────────────────
+// ✅ Account actions (rename / password / forgot)
+// ──────────────────────────────────────────
+
+export async function requestRenameCode(token: string) {
+  return j<{ ok: true; devCode?: string }>("/me/rename/request-code", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function confirmRename(
+  token: string,
+  payload: { newUsername: string; code: string; payIfNeeded?: boolean }
+) {
+  return j<
+    | { ok: true; token: string; user: ApiUser; paid?: number }
+    | { ok: false; error: string; remainingDays?: number; price?: number }
+  >("/me/rename/confirm", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function requestPasswordCode(token: string) {
+  return j<{ ok: true; devCode?: string }>("/me/password/request-code", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function confirmPasswordChange(token: string, payload: { code: string; newPassword: string }) {
+  return j<{ ok: true }>("/me/password/confirm", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function forgotPasswordRequestCode(email: string) {
+  return j<{ ok: true; devCode?: string }>("/auth/forgot/request-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function forgotPasswordConfirm(payload: {
+  email: string;
+  code: string;
+  newPassword: string;
+}) {
+  return j<{ ok: true; token: string; user: ApiUser }>("/auth/forgot/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 // (optionnel) alias si tu as déjà du code qui appelle getWheelState()
 export const getWheelState = getMyWheel;
 

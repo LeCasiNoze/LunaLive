@@ -77,6 +77,7 @@ import { billingRouter } from "./routes/billing.js";
 import { uploadsRouter } from "./routes/uploads.js";
 import { emotesRouter } from "./emotes/emotes.router.js";
 import { streamerEmotesRouter } from "./emotes/streamer_emotes.router.js";
+import { accountActionsRouter } from "./routes/account_actions.js";
 
 export function createApp() {
   const app = express();
@@ -180,7 +181,8 @@ export function createApp() {
   // ─────────────────────────────────────────────
   app.use(publicRouter);
   app.use(authRouter);
-
+  app.use(accountActionsRouter);
+  
   // ─────────────────────────────────────────────
   // ✅ Main routers
   // ─────────────────────────────────────────────
