@@ -1,13 +1,24 @@
 // api/src/emotes/admin_emotes.router.ts
-import express from "express";
-import path from "node:path";
+import { Router } from "express";
 import os from "node:os";
+import path from "node:path";
+import fs from "node:fs";
 import { promises as fsp } from "node:fs";
 
 import { pool } from "../db.js";
-import { r2Enabled, putFileToR2, buildPublicUrl } from "../clips/r2.js";
+import { a } from "../utils/async.js";
+import { r2Enabled, putFileToR2, buildPublicUrl, deleteFromR2 } from "../clips/r2.js";
 
-export const adminEmotesRouter = express.Router();
+/**
+ * IMPORTANT:
+ * - Ce router NE DOIT PAS faire requireAuth.
+ * - Il est protégé par requireAdminKey au mount dans app.ts:
+ *     app.use("/admin/emotes", requireAdminKey, adminEmotesRouter);
+ */
+
+export const adminEmotesRouter = Router();
+
+/* ---------------- utils ---------------- */
 
 function normName(s: any) {
   return String(s ?? "")
@@ -18,228 +29,284 @@ function normName(s: any) {
     .slice(0, 32);
 }
 
-function parseDataUrl(dataUrl: string) {
-  const m = String(dataUrl).match(/^data:([^;]+);base64,(.+)$/);
-  if (!m) throw new Error("bad_dataurl");
-  const mime = m[1];
-  const b64 = m[2];
-  const buf = Buffer.from(b64, "base64");
-  return { mime, buf };
+function bytesLenFromB64(b64: string) {
+  // approx exact for base64 (padding aware)
+  const s = String(b64 || "");
+  const pad = s.endsWith("==") ? 2 : s.endsWith("=") ? 1 : 0;
+  return Math.floor((s.length * 3) / 4) - pad;
 }
 
-function extFromMime(mime: string) {
+function parseDataUrl(dataUrl: string): { mime: string; buffer: Buffer } {
+  const s = String(dataUrl || "");
+  const m = s.match(/^data:([^;]+);base64,(.+)$/i);
+  if (!m) throw new Error("bad_dataurl");
+
+  const mime = String(m[1] || "").trim().toLowerCase();
+  const b64 = String(m[2] || "").trim();
+  if (!mime || !b64) throw new Error("bad_dataurl");
+
+  // hard cap ~ 3MB decoded (tu peux ajuster)
+  const n = bytesLenFromB64(b64);
+  if (!Number.isFinite(n) || n <= 0) throw new Error("bad_dataurl");
+  if (n > 3_000_000) throw new Error("file_too_large");
+
+  return { mime, buffer: Buffer.from(b64, "base64") };
+}
+
+function extFromMime(mime: string): string {
   if (mime === "image/png") return "png";
   if (mime === "image/webp") return "webp";
   if (mime === "image/gif") return "gif";
-  return null;
+  return "";
 }
 
-function tmpFilePath(ext: string) {
-  const name = `ll_emote_${Date.now()}_${Math.random().toString(16).slice(2)}.${ext}`;
-  return path.join(os.tmpdir(), name);
+function ensureKindMime(kind: "emoji" | "gif", mime: string) {
+  if (kind === "gif") {
+    if (mime !== "image/gif") throw new Error("gif_must_be_gif");
+    return;
+  }
+  // emoji
+  if (mime === "image/gif") throw new Error("emoji_cannot_be_gif");
+  if (mime !== "image/png" && mime !== "image/webp") throw new Error("unsupported_mime");
 }
 
-function asText(v: any) {
-  return String(v ?? "").trim();
+function pickStorage(url: string | null, assetKey: string | null): "r2" | "local" | "unknown" {
+  if (assetKey && r2Enabled()) return "r2";
+  if (url && url.startsWith("/")) return "local";
+  if (url) return "unknown";
+  return "unknown";
 }
 
-function clampInt(n: any, a: number, b: number, def: number) {
-  const x = Math.floor(Number(n));
-  if (!Number.isFinite(x)) return def;
-  return Math.max(a, Math.min(b, x));
-}
+/* ---------------- routes ---------------- */
 
 /**
  * GET /admin/emotes?limit=300&q=&scope=&kind=&status=&streamer=
- * - streamer peut être un id numérique ou un slug
+ * (router est monté sur /admin/emotes)
  */
-adminEmotesRouter.get("/admin/emotes", async (req, res) => {
-  try {
-    const limit = clampInt(req.query.limit, 1, 500, 300);
-    const q = asText(req.query.q);
-    const scope = asText(req.query.scope);
-    const kind = asText(req.query.kind);
-    const status = asText(req.query.status);
-    const streamer = asText(req.query.streamer);
+adminEmotesRouter.get(
+  "/",
+  a(async (req, res) => {
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit || 300) || 300));
+    const q = String(req.query.q || "").trim();
+    const scope = String(req.query.scope || "").trim(); // native|global|channel
+    const kind = String(req.query.kind || "").trim(); // emoji|gif
+    const status = String(req.query.status || "").trim(); // active|disabled|banned|deleted
+    const streamer = String(req.query.streamer || "").trim(); // slug ou id
 
     const where: string[] = [];
-    const args: any[] = [];
+    const params: any[] = [];
     let i = 1;
 
-    if (scope) {
-      where.push(`e.scope = $${i++}`);
-      args.push(scope);
-    }
-    if (kind) {
-      where.push(`e.kind = $${i++}`);
-      args.push(kind);
-    }
-    if (status) {
-      where.push(`e.status = $${i++}`);
-      args.push(status);
-    }
     if (q) {
-      where.push(`(e.name ILIKE $${i} OR COALESCE(e.label,'') ILIKE $${i} OR COALESCE(s.slug,'') ILIKE $${i})`);
-      args.push(`%${q}%`);
+      where.push(`(
+        e.name ILIKE $${i} OR
+        COALESCE(e.label,'') ILIKE $${i} OR
+        COALESCE(s.slug,'') ILIKE $${i}
+      )`);
+      params.push(`%${q}%`);
       i++;
     }
-
-    // streamer filter (id ou slug)
+    if (scope) {
+      where.push(`e.scope = $${i}`);
+      params.push(scope);
+      i++;
+    }
+    if (kind) {
+      where.push(`e.kind = $${i}`);
+      params.push(kind);
+      i++;
+    }
+    if (status) {
+      where.push(`e.status = $${i}`);
+      params.push(status);
+      i++;
+    }
     if (streamer) {
-      const isId = /^\d+$/.test(streamer);
-      if (isId) {
-        where.push(`e.streamer_id = $${i++}`);
-        args.push(Number(streamer));
+      // accepte slug ou id
+      if (/^\d+$/.test(streamer)) {
+        where.push(`e.streamer_id = $${i}`);
+        params.push(Number(streamer));
+        i++;
       } else {
-        where.push(`s.slug = $${i++}`);
-        args.push(streamer);
+        where.push(`LOWER(s.slug) = LOWER($${i})`);
+        params.push(streamer);
+        i++;
       }
     }
 
     const sql = `
       SELECT
-        e.id, e.kind, e.scope, e.streamer_id,
+        e.id,
+        e.kind,
+        e.scope,
+        e.streamer_id,
         s.slug AS streamer_slug,
-        e.name, e.label, e.asset_key, e.url, e.mime, e.size_bytes, e.status, e.created_at
+        e.name,
+        e.label,
+        e.url,
+        e.mime,
+        e.size_bytes,
+        e.status,
+        e.created_at,
+        COALESCE(e.asset_key, NULL) AS asset_key
       FROM emotes e
       LEFT JOIN streamers s ON s.id = e.streamer_id
       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-      ORDER BY e.scope ASC, e.kind ASC, e.name ASC
+      ORDER BY e.created_at DESC
       LIMIT ${limit}
     `;
 
-    const r = await pool.query(sql, args);
-    res.json({ ok: true, items: r.rows });
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: String(e?.message || e) });
-  }
-});
+    const { rows } = await pool.query(sql, params);
+
+    const items = rows.map((r: any) => {
+      const assetKey = r.asset_key ? String(r.asset_key) : null;
+      const url = r.url ? String(r.url) : null;
+
+      return {
+        id: Number(r.id),
+        kind: r.kind,
+        scope: r.scope,
+        streamer_id: r.streamer_id != null ? Number(r.streamer_id) : null,
+        streamer_slug: r.streamer_slug ? String(r.streamer_slug) : null,
+        name: String(r.name),
+        label: r.label != null ? String(r.label) : null,
+        url,
+        mime: r.mime != null ? String(r.mime) : null,
+        size_bytes: r.size_bytes != null ? Number(r.size_bytes) : null,
+        status: r.status,
+        created_at: r.created_at,
+        storage: pickStorage(url, assetKey),
+        // missing_file: (optionnel) on évite de ping des URLs ici (trop lourd)
+      };
+    });
+
+    res.json({ ok: true, items });
+  })
+);
 
 /**
  * POST /admin/emotes
  * body: { scope:"native"|"global", kind:"emoji"|"gif", name, label?, dataUrl }
  */
-adminEmotesRouter.post("/admin/emotes", express.json({ limit: "3mb" }), async (req, res) => {
-  let tmpPath: string | null = null;
+adminEmotesRouter.post(
+  "/",
+  a(async (req, res) => {
+    const scopeRaw = String(req.body.scope || "").trim();
+    const kindRaw = String(req.body.kind || "").trim();
+    const name = normName(req.body.name);
 
-  try {
-    const scope = String(req.body?.scope || "");
-    if (scope !== "native" && scope !== "global") {
-      return res.status(400).json({ ok: false, error: "bad_scope" });
-    }
+    const scope = (scopeRaw === "native" || scopeRaw === "global") ? scopeRaw : "";
+    const kind = (kindRaw === "emoji" || kindRaw === "gif") ? (kindRaw as "emoji" | "gif") : null;
 
-    const kind = String(req.body?.kind || "");
-    if (kind !== "emoji" && kind !== "gif") {
-      return res.status(400).json({ ok: false, error: "bad_kind" });
-    }
+    const label = req.body.label != null ? String(req.body.label).trim().slice(0, 64) : null;
+    const dataUrl = String(req.body.dataUrl || "");
 
-    const name = normName(req.body?.name);
+    if (!scope) return res.status(400).json({ ok: false, error: "bad_scope" });
+    if (!kind) return res.status(400).json({ ok: false, error: "bad_kind" });
     if (!name) return res.status(400).json({ ok: false, error: "bad_name" });
+    if (!dataUrl) return res.status(400).json({ ok: false, error: "missing_dataurl" });
 
-    const label = req.body?.label != null ? String(req.body.label).slice(0, 64) : null;
+    if (!r2Enabled()) return res.status(400).json({ ok: false, error: "r2_required_for_emotes" });
 
-    const dataUrl = String(req.body?.dataUrl || "");
-    const { mime, buf } = parseDataUrl(dataUrl);
+    const { mime, buffer } = parseDataUrl(dataUrl);
+    ensureKindMime(kind, mime);
 
     const ext = extFromMime(mime);
     if (!ext) return res.status(400).json({ ok: false, error: "unsupported_mime" });
 
-    const max = kind === "gif" ? 600_000 : 160_000;
-    if (buf.length > max) return res.status(400).json({ ok: false, error: "file_too_large" });
-
-    if (kind === "emoji" && mime === "image/gif") return res.status(400).json({ ok: false, error: "emoji_cannot_be_gif" });
-    if (kind === "gif" && mime !== "image/gif") return res.status(400).json({ ok: false, error: "gif_must_be_gif" });
-
-    // 🔑 assetKey natif/global
-    const assetKey = `emotes/${scope}/${kind}/${name}.${ext}`;
-
-    // 👉 on force R2 (sinon tu vas retomber dans ton souci “redeploy => file perdu”)
-    if (!r2Enabled()) {
-      return res.status(400).json({ ok: false, error: "r2_required_for_emotes" });
+    // check uniqueness
+    {
+      const { rows } = await pool.query(
+        `SELECT 1 FROM emotes WHERE scope=$1 AND kind=$2 AND lower(name)=lower($3) LIMIT 1`,
+        [scope, kind, name]
+      );
+      if (rows[0]) return res.status(400).json({ ok: false, error: "already_exists" });
     }
 
-    tmpPath = tmpFilePath(ext);
-    await fsp.writeFile(tmpPath, buf);
+    // temp file
+    const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "ll-emote-"));
+    const tmpPath = path.join(tmpDir, `${name}.${ext}`);
+    await fsp.writeFile(tmpPath, buffer);
 
-    await putFileToR2({
-      key: assetKey,
-      contentType: mime,
-      filePath: tmpPath,
-    });
+    try {
+      const key = `emotes/${scope}/${kind}/${name}-${Date.now()}.${ext}`;
 
-    const url = buildPublicUrl(assetKey);
-    if (!url) throw new Error("r2_public_base_missing");
+      await putFileToR2({
+        key,
+        contentType: mime,
+        filePath: tmpPath,
+      });
 
-    const up = await pool.query(
-      `
-      INSERT INTO emotes(kind, scope, streamer_id, name, label, asset_key, url, mime, size_bytes, status, created_by)
-      VALUES($1,$2,NULL,$3,$4,$5,$6,$7,$8,'active',NULL)
-      ON CONFLICT (scope, kind, name)
-      WHERE (scope IN ('native','global') AND status <> 'deleted')
-      DO UPDATE SET
-        label=EXCLUDED.label,
-        asset_key=EXCLUDED.asset_key,
-        url=EXCLUDED.url,
-        mime=EXCLUDED.mime,
-        size_bytes=EXCLUDED.size_bytes,
-        status='active',
-        updated_at=now()
-      RETURNING id, kind, scope, streamer_id, name, label, url, mime, size_bytes, status, created_at
-      `,
-      [kind, scope, name, label, assetKey, url, mime, buf.length]
-    );
+      const url = buildPublicUrl(key);
+      if (!url) throw new Error("r2_public_base_missing");
 
-    res.json({ ok: true, item: up.rows[0] });
-  } catch (e: any) {
-    res.status(400).json({ ok: false, error: String(e?.message || e) });
-  } finally {
-    if (tmpPath) {
-      try {
-        await fsp.unlink(tmpPath);
-      } catch {}
+      const ins = await pool.query(
+        `INSERT INTO emotes (kind, scope, streamer_id, name, label, url, mime, size_bytes, status, asset_key)
+         VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,'active',$8)
+         RETURNING id, kind, scope, streamer_id, name, label, url, mime, size_bytes, status, created_at`,
+        [kind, scope, name, label, url, mime, buffer.length, key]
+      );
+
+      res.json({ ok: true, item: ins.rows[0] });
+    } finally {
+      try { await fsp.rm(tmpDir, { recursive: true, force: true }); } catch {}
+      try { fs.unlinkSync(tmpPath); } catch {}
     }
-  }
-});
+  })
+);
 
 /**
- * POST /admin/emotes/:id/status  body:{status}
+ * POST /admin/emotes/:id/status
+ * body: { status:"active"|"disabled"|"banned"|"deleted" }
  */
-adminEmotesRouter.post("/admin/emotes/:id/status", express.json(), async (req, res) => {
-  try {
-    const id = Number(req.params.id);
+adminEmotesRouter.post(
+  "/:id/status",
+  a(async (req, res) => {
+    const id = Number(req.params.id || 0);
+    const next = String(req.body.status || "").trim();
+
     if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
-
-    const status = String(req.body?.status || "");
-    if (!["active", "disabled", "banned", "deleted"].includes(status)) {
+    if (!["active", "disabled", "banned", "deleted"].includes(next))
       return res.status(400).json({ ok: false, error: "bad_status" });
-    }
 
-    await pool.query(`UPDATE emotes SET status=$2, updated_at=now() WHERE id=$1`, [id, status]);
+    await pool.query(`UPDATE emotes SET status=$1 WHERE id=$2`, [next, id]);
     res.json({ ok: true });
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: String(e?.message || e) });
-  }
-});
+  })
+);
 
 /**
  * POST /admin/emotes/:id/purge
- * Base version: on “décroche” le fichier (url=null, asset_key=null) + on met deleted.
- * (Si tu veux la suppression réelle sur R2, il faudra une fonction deleteObjectR2.)
+ * - supprime le fichier du storage si on a asset_key
+ * - puis met url=NULL / asset_key=NULL (soft purge)
  */
-adminEmotesRouter.post("/admin/emotes/:id/purge", async (req, res) => {
-  try {
-    const id = Number(req.params.id);
+adminEmotesRouter.post(
+  "/:id/purge",
+  a(async (req, res) => {
+    const id = Number(req.params.id || 0);
     if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
 
+    const { rows } = await pool.query(
+      `SELECT id, asset_key FROM emotes WHERE id=$1 LIMIT 1`,
+      [id]
+    );
+    const row = rows[0];
+    if (!row) return res.status(404).json({ ok: false, error: "not_found" });
+
+    const assetKey = row.asset_key ? String(row.asset_key) : "";
+    if (assetKey && r2Enabled()) {
+      try {
+        await deleteFromR2(assetKey);
+      } catch (e) {
+        console.warn("[admin/emotes/purge] deleteFromR2 failed:", e);
+        // on continue, car parfois l’objet n’existe déjà plus
+      }
+    }
+
     await pool.query(
-      `UPDATE emotes
-       SET status='deleted', url=NULL, asset_key=NULL, updated_at=now()
-       WHERE id=$1`,
+      `UPDATE emotes SET url=NULL, asset_key=NULL, status='deleted' WHERE id=$1`,
       [id]
     );
 
     res.json({ ok: true });
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: String(e?.message || e) });
-  }
-});
+  })
+);
