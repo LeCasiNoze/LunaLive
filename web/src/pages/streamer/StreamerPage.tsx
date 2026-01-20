@@ -178,6 +178,22 @@ export default function StreamerPage() {
       await refreshMeIfPossible();
     },
   });
+  // ✅ Bridge: actions du toast "coffre" (ui:toast -> handlers)
+  React.useEffect(() => {
+    const onJoin = () => chest.join();
+    const onView = () => chest.setChestModalOpen(true);
+    const onDismiss = () => chest.setToast(null);
+
+    window.addEventListener("ui:chest_join", onJoin as any);
+    window.addEventListener("ui:chest_view", onView as any);
+    window.addEventListener("ui:chest_dismiss", onDismiss as any);
+
+    return () => {
+      window.removeEventListener("ui:chest_join", onJoin as any);
+      window.removeEventListener("ui:chest_view", onView as any);
+      window.removeEventListener("ui:chest_dismiss", onDismiss as any);
+    };
+  }, [chest]);
 
   // heartbeat viewers
   React.useEffect(() => {

@@ -339,6 +339,34 @@ export function attachChat(io: Server) {
 
   io.on("connection", (socket: Socket) => {
     const data = socket.data as SocketData;
+    
+    function joinUserRoom() {
+      if (data.user?.id) socket.join(`user:${data.user.id}`);
+    }
+
+    joinUserRoom();
+
+    // Permet au client de pousser un token après login sans recréer le socket
+    socket.on("auth:refresh", async ({ token }: { token?: string }, cb?: (ack: any) => void) => {
+      try {
+        if (token) {
+          // on “simule” un handshake token
+          (socket.handshake.auth as any) = { ...(socket.handshake.auth as any), token };
+        }
+
+        // re-run auth
+        tryAuth(socket);
+
+        joinUserRoom();
+
+        cb?.({
+          ok: true,
+          me: data.user ? { id: data.user.id, username: data.user.username, role: data.user.role } : null,
+        });
+      } catch (e: any) {
+        cb?.({ ok: false, error: String(e?.message || "auth_refresh_failed") });
+      }
+    });
 
     // ✅ 3.A — Room "user:{id}" pour envoyer des notifs (go-live) à l'utilisateur
     if (data.user?.id) {
