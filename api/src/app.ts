@@ -78,6 +78,7 @@ import { uploadsRouter } from "./routes/uploads.js";
 import { emotesRouter } from "./emotes/emotes.router.js";
 import { streamerEmotesRouter } from "./emotes/streamer_emotes.router.js";
 import { accountActionsRouter } from "./routes/account_actions.js";
+import { adminImpersonateRouter } from "./routes/admin_impersonate.js";
 
 export function createApp() {
   const app = express();
@@ -188,7 +189,8 @@ export function createApp() {
   // ─────────────────────────────────────────────
   app.use(streamerRouter);
   app.use(adminRouter);
-
+  app.use(adminImpersonateRouter);
+  
   // Streamer tabs (/streamers/:slug/about, /agenda, etc.)
   app.use("/streamers", streamerTabsRouter);
 

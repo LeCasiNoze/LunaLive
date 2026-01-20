@@ -1623,3 +1623,18 @@ export type AdminUserDetails = {
   siteSpentEur: number | null;
 };
 
+export async function adminImpersonateUser(adminKey: string, userId: number): Promise<{ ok: true; token: string }> {
+  const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+
+  const res = await fetch(`${BASE}/admin/users/${userId}/impersonate`, {
+    method: "GET",
+    headers: {
+      "content-type": "application/json",
+      "x-admin-key": adminKey,
+    },
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+  return data as { ok: true; token: string };
+}

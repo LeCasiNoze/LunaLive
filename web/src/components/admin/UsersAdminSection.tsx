@@ -4,6 +4,7 @@ import {
   adminGetUserDetails,
   adminListUsers,
   adminSetUserRole,
+  adminImpersonateUser,
   type AdminUserRow,
   type AdminUserDetails,
 } from "../../lib/api";
@@ -17,6 +18,8 @@ const ORIGINS: { origin: string; label: string }[] = [
   { origin: "chest_streamer", label: "chest_streamer (0.20)" },
   { origin: "event_platform", label: "event_platform (0.10)" },
 ];
+
+const MAIN_SITE = (import.meta.env.VITE_MAIN_SITE_BASE ?? "https://lunalive.onrender.com/").replace(/\/$/, "");
 
 const uiInputStyle: React.CSSProperties = {
   width: "100%",
@@ -319,6 +322,33 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
       >
         {detailErr ? <div className="hint">⚠️ {detailErr}</div> : null}
         {detailLoading && !detail ? <div className="mutedSmall">Chargement…</div> : null}
+
+        {openedUser ? (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <button
+              className="btnPrimary"
+              type="button"
+              disabled={detailLoading}
+              onClick={async () => {
+                try {
+                  setDetailErr(null);
+                  const r = await adminImpersonateUser(adminKey, openedUser.id);
+                  const url = `${MAIN_SITE}/impersonate?token=${encodeURIComponent(r.token)}`;
+                  window.open(url, "_blank", "noopener,noreferrer");
+                } catch (e: any) {
+                  setDetailErr(String(e?.message || e));
+                }
+              }}
+              title="Ouvre le site principal en étant connecté comme cet utilisateur"
+            >
+              🔐 Se connecter avec ce compte
+            </button>
+
+            <div className="mutedSmall" style={{ opacity: 0.85 }}>
+              (token court ~2 min)
+            </div>
+          </div>
+        ) : null}
 
         <div style={{ display: "grid", gap: 12 }}>
           <div

@@ -18,6 +18,9 @@ import HuntPage from "./pages/HuntPage";
 // ✅ NEW
 import AdminCasinoCommentsPage from "./pages/admin/AdminCasinoCommentsPage";
 
+// ✅ NEW (impersonate)
+import ImpersonatePage from "./pages/ImpersonatePage";
+
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
 import { GoLiveNotifier } from "./components/GoLiveNotifier";
@@ -46,6 +49,9 @@ function AppInner() {
       <CallsToast />
 
       <Routes>
+        {/* ✅ token -> saveToken -> redirect / */}
+        <Route path="/impersonate" element={<ImpersonatePage />} />
+
         <Route path="/" element={<LivesPage />} />
         <Route path="/browse" element={<BrowsePage />} />
         <Route path="/shop" element={<ShopPage />} />
