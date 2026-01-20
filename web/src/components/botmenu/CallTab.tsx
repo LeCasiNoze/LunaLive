@@ -500,7 +500,7 @@ export function CallTab({
                 Reset
               </button>
             ) : (
-              <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Suppression/reset: mod/streamer/admin</div>
+              <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}></div>
             )}
           </div>
         </div>

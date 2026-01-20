@@ -3,7 +3,6 @@ import * as React from "react";
 import { Settings } from "lucide-react";
 import {
   getCallsHuntState,
-  callsHuntPass,
   callsHuntBonusDrop,
   callsHuntOpen,
   callsHuntPay,
@@ -14,7 +13,6 @@ import {
   type ApiHuntBonusDrop,
 } from "../../lib/api";
 
-// ✅ On réutilise les mêmes helpers/API que CallsHuntModule (déjà branchés / déjà OK)
 import {
   getCallsBans,
   banCalls,
@@ -30,10 +28,11 @@ import {
 const fmtEur = (n: any) => `${(Number(n) || 0).toFixed(2)}€`;
 
 const API_BASE = ((import.meta as any).env?.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
-
 function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
 }
+
+const CALLS_QUEUE_CHANGED_EVT = "calls:queue-changed";
 
 type SlotItem = { name: string; provider: string | null; imageUrl?: string | null };
 
@@ -48,9 +47,7 @@ async function syncHunt2Start(token: string, startEur: number) {
       },
       body: JSON.stringify({ start: startEur }),
     });
-  } catch {
-    // ignore
-  }
+  } catch {}
 }
 
 function asArr<T>(v: any): T[] {
@@ -183,28 +180,20 @@ export function HuntTabs({
 
   const [showOpts, setShowOpts] = React.useState(false);
 
-  // ✅ options sections
   const [optsSection, setOptsSection] = React.useState<"options" | "bans">("options");
   const [bansTab, setBansTab] = React.useState<"slot" | "provider">("slot");
 
-  // inputs
   const [startInp, setStartInp] = React.useState("");
   const [payInp, setPayInp] = React.useState("");
 
-  // ✅ start edit dans engrenage (bouton -> input)
   const [showStartEdit, setShowStartEdit] = React.useState(false);
 
-  // ✅ bonus -> ask bet (farm only)
   const [askBet, setAskBet] = React.useState(false);
   const [bonusBetInp, setBonusBetInp] = React.useState("");
 
-  // ✅ GG toast
   const [gg, setGg] = React.useState(false);
 
-  // ✅ FIX: éviter que le polling écrase l'input start pendant qu'on tape
   const editingStartRef = React.useRef(false);
-
-  // ✅ Polling plus léger (évite les appels en rafale + pause quand onglet caché)
   const inFlightRef = React.useRef(false);
 
   // ===== BANS (slots/providers) =====
@@ -228,23 +217,51 @@ export function HuntTabs({
   const [allowedProviders, setAllowedProviders] = React.useState<string[]>([]);
   const [policyLoading, setPolicyLoading] = React.useState(false);
 
+  // ✅ Bonus edit/delete UI state
+  const [editBonusId, setEditBonusId] = React.useState<string | null>(null);
+  const [editBonusBetInp, setEditBonusBetInp] = React.useState<string>("");
+  const bonusListRef = React.useRef<HTMLDivElement | null>(null);
+  const prevBonusLenRef = React.useRef<number>(0);
+
   function flashGg() {
     setGg(true);
     window.setTimeout(() => setGg(false), 1300);
+  }
+
+  function emitQueueChanged(removedId?: string | null, action?: string) {
+    try {
+      window.dispatchEvent(
+        new CustomEvent(CALLS_QUEUE_CHANGED_EVT, {
+          detail: { slug: streamerSlug, removedId: removedId ?? null, action: action ?? "update" },
+        })
+      );
+    } catch {}
+  }
+
+  async function apiJson<T>(path: string, init: RequestInit): Promise<T> {
+    const r = await fetch(`${apiBase()}${path}`, {
+      ...init,
+      headers: {
+        ...(init.headers || {}),
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j?.ok === false) throw new Error(j?.error || `HTTP ${r.status}`);
+    return j as T;
   }
 
   async function load() {
     const s = await getCallsHuntState(streamerSlug, token);
     setState(s);
 
-    // ✅ ne pas écraser l'input si l'utilisateur est en train d'écrire
     if (!editingStartRef.current && !showStartEdit) {
       const startRaw = getStartRaw(s);
       setStartInp(startRaw !== null ? String(startRaw) : "");
     }
   }
 
-  // ✅ Polling léger + smart pause
   React.useEffect(() => {
     let alive = true;
     let t: number | null = null;
@@ -265,10 +282,9 @@ export function HuntTabs({
       }
     }
 
-    // initial load
     void tick();
 
-    const pollMs = showOpts ? 4500 : 2500; // ✅ moins agressif, et encore plus lent en mode options
+    const pollMs = showOpts ? 4500 : 2500;
     t = window.setInterval(() => void tick(), pollMs);
 
     const onVis = () => {
@@ -306,7 +322,6 @@ export function HuntTabs({
 
   const bonusCount = Number((state as any)?.bonusCount) || bonusDrops.length;
 
-  // ✅ construit un catalogue providers “best-effort” (si backend renvoie une liste complète dans provider-policy, on l’utilise)
   function mergeProviderCatalog(extra?: string[]) {
     const fromState = uniqStr(
       [
@@ -324,13 +339,33 @@ export function HuntTabs({
     setProviderCatalog(merged);
   }
 
+  // ✅ Auto-scroll bonus list to bottom when a new bonus is added
+  React.useEffect(() => {
+    const len = bonusDrops.length;
+    const prev = prevBonusLenRef.current;
+    prevBonusLenRef.current = len;
+
+    if (!bonusListRef.current) return;
+    if (len <= prev) return; // only when new items are added
+
+    // scroll to bottom (last added)
+    const el = bonusListRef.current;
+    el.scrollTop = el.scrollHeight;
+  }, [bonusDrops.length]);
+
   // ====== actions hunt ======
   async function doPass() {
     if (!canModerate) return;
     setErr(null);
     setBusy(true);
     try {
-      await callsHuntPass(streamerSlug, token);
+      // ✅ force delete via Hunt API (supprime le call en cours)
+      const out = await apiJson<{ ok: true; removed?: boolean; removedId?: string }>(
+        `/calls/${encodeURIComponent(streamerSlug)}/hunt/pass`,
+        { method: "POST" }
+      );
+
+      emitQueueChanged(out?.removedId ?? null, "pass");
       setAskBet(false);
       setBonusBetInp("");
       await load();
@@ -361,11 +396,14 @@ export function HuntTabs({
     setBusy(true);
     try {
       await callsHuntSetBet(streamerSlug, token, v);
-      await callsHuntBonusDrop(streamerSlug, token);
+      const r: any = await callsHuntBonusDrop(streamerSlug, token);
 
       setAskBet(false);
       setBonusBetInp("");
       flashGg();
+
+      // ✅ best-effort: sync queue-changed + auto scroll handled by useEffect after load
+      emitQueueChanged(String(r?.bonusId ?? r?.id ?? null) || null, "bonus");
       await load();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -400,6 +438,7 @@ export function HuntTabs({
     try {
       await callsHuntPay(streamerSlug, token, v);
       setPayInp("");
+      emitQueueChanged(currentOpen?.id ?? null, "pay");
       await load();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -440,12 +479,76 @@ export function HuntTabs({
     setBusy(true);
     try {
       await callsHuntReset(streamerSlug, token);
+      emitQueueChanged(null, "reset");
       setPayInp("");
       setStartInp("");
       setAskBet(false);
       setBonusBetInp("");
       setShowStartEdit(false);
       editingStartRef.current = false;
+      await load();
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ✅ Bonus edit/delete actions
+  async function startEditBonus(b: ApiHuntBonusDrop) {
+    setEditBonusId(String(b.id));
+    setEditBonusBetInp(String((b as any).betEur ?? (b as any).bet ?? ""));
+  }
+
+  async function cancelEditBonus() {
+    setEditBonusId(null);
+    setEditBonusBetInp("");
+  }
+
+  async function saveEditBonus(id: string) {
+    if (!canModerate) return;
+    const v = Number(String(editBonusBetInp).replace(",", "."));
+    if (!Number.isFinite(v) || v <= 0) {
+      setErr("Bet invalide");
+      return;
+    }
+
+    setErr(null);
+    setBusy(true);
+    try {
+      await apiJson(`/calls/${encodeURIComponent(streamerSlug)}/hunt/bonus/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ betEur: v }),
+      });
+
+      emitQueueChanged(id, "bonus_edit");
+      setEditBonusId(null);
+      setEditBonusBetInp("");
+      await load();
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteBonus(id: string) {
+    if (!canModerate) return;
+    const ok = window.confirm("Supprimer ce bonus drop ?");
+    if (!ok) return;
+
+    setErr(null);
+    setBusy(true);
+    try {
+      await apiJson(`/calls/${encodeURIComponent(streamerSlug)}/hunt/bonus/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+
+      emitQueueChanged(id, "bonus_delete");
+      if (editBonusId === id) {
+        setEditBonusId(null);
+        setEditBonusBetInp("");
+      }
       await load();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -471,13 +574,11 @@ export function HuntTabs({
       if (slots) setSlotBans(asArr<ApiCallBanRow>((slots as any)?.items));
       if (provs) setProviderBans(asArr<ApiCallBanRow>((provs as any)?.items));
 
-      // provider-policy (best effort)
       const mode = (pol as any)?.mode === "allow_only" ? "allow_only" : "allow_all";
       const allowed = asArr<string>((pol as any)?.allowed);
       setPolicyMode(mode);
       setAllowedProviders(allowed);
 
-      // ✅ si backend renvoie une liste complète, on la prend (sinon fallback sur merge)
       const allFromApi = asArr<string>((pol as any)?.providers ?? (pol as any)?.allProviders ?? (pol as any)?.items ?? []);
       mergeProviderCatalog(allFromApi);
     } catch (e: any) {
@@ -487,17 +588,16 @@ export function HuntTabs({
     }
   }
 
-  // ✅ Load bans/policy uniquement quand on ouvre l’engrenage (et pas en permanence)
   React.useEffect(() => {
     if (!showOpts) return;
     if (!canModerate) return;
 
-    // reset UI states
     setErr(null);
     setAskBet(false);
     setBonusBetInp("");
+    setEditBonusId(null);
+    setEditBonusBetInp("");
     setOptsSection((s) => s || "options");
-    // initial load (slots + policy, puis providers au besoin)
     void reloadBansAndPolicy("slot");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showOpts, streamerSlug]);
@@ -512,51 +612,49 @@ export function HuntTabs({
   }, [optsSection, bansTab]);
 
   // ====== slot suggestions (ban slot) ======
-async function fetchSlotSuggestions(text: string) {
-  const s = String(text || "").trim();
-  if (s.length < 2) {
-    setSlotSug([]);
-    return;
-  }
-  setSlotSugLoading(true);
-  try {
-    const r = await fetch(`${apiBase()}/slots/search?q=${encodeURIComponent(s)}&limit=10`);
-    const j = await r.json();
-    if (j?.ok) {
-      const list = asArr<SlotItem>(j.items);
-      setSlotSug(list);
-
-      // enrich providers catalog best-effort
-      mergeProviderCatalog(list.map((it) => normProvider(it.provider)).filter(Boolean) as string[]);
-    } else {
+  async function fetchSlotSuggestions(text: string) {
+    const s = String(text || "").trim();
+    if (s.length < 2) {
       setSlotSug([]);
+      return;
     }
-  } catch {
-    setSlotSug([]);
-  } finally {
-    setSlotSugLoading(false);
+    setSlotSugLoading(true);
+    try {
+      const r = await fetch(`${apiBase()}/slots/search?q=${encodeURIComponent(s)}&limit=10`);
+      const j = await r.json();
+      if (j?.ok) {
+        const list = asArr<SlotItem>(j.items);
+        setSlotSug(list);
+        mergeProviderCatalog(list.map((it) => normProvider(it.provider)).filter(Boolean) as string[]);
+      } else {
+        setSlotSug([]);
+      }
+    } catch {
+      setSlotSug([]);
+    } finally {
+      setSlotSugLoading(false);
+    }
   }
-}
 
-React.useEffect(() => {
-  if (!showOpts) return;
-  if (!canModerate) return;
-  if (optsSection !== "bans") return;
-  if (bansTab !== "slot") return;
+  React.useEffect(() => {
+    if (!showOpts) return;
+    if (!canModerate) return;
+    if (optsSection !== "bans") return;
+    if (bansTab !== "slot") return;
 
-  const s = slotQ.trim();
-  if (s.length < 2 || slotPick) {
-    setSlotSug([]);
-    return;
-  }
+    const s = slotQ.trim();
+    if (s.length < 2 || slotPick) {
+      setSlotSug([]);
+      return;
+    }
 
-  const t = window.setTimeout(() => {
-    void fetchSlotSuggestions(s);
-  }, 120);
+    const t = window.setTimeout(() => {
+      void fetchSlotSuggestions(s);
+    }, 120);
 
-  return () => window.clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [slotQ, slotPick, showOpts, optsSection, bansTab, canModerate]);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slotQ, slotPick, showOpts, optsSection, bansTab, canModerate]);
 
   // ====== provider suggestions (from catalog, no extra requests) ======
   const providerSug = React.useMemo(() => {
@@ -568,42 +666,40 @@ React.useEffect(() => {
   }, [providerQ, providerCatalog]);
 
   // ====== bans actions ======
-async function addSlotBan() {
-  if (!canModerate) return;
+  async function addSlotBan() {
+    if (!canModerate) return;
 
-  const pick = slotPick;
-  const slotName = String(pick?.name ?? "").trim();
-  const provider = pick?.provider ? String(pick.provider).trim() : null;
+    const pick = slotPick;
+    const slotName = String(pick?.name ?? "").trim();
+    const provider = pick?.provider ? String(pick.provider).trim() : null;
 
-  if (!slotName) {
-    setErr("Choisis une machine (suggestions)");
-    return;
+    if (!slotName) {
+      setErr("Choisis une machine (suggestions)");
+      return;
+    }
+
+    setErr(null);
+    setBusy(true);
+    try {
+      await banCalls(streamerSlug, token, {
+        kind: "slot",
+        slot: slotName,
+        slotName,
+        label: slotName,
+        provider,
+      });
+
+      setSlotPick(null);
+      setSlotQ("");
+      setSlotSug([]);
+
+      await reloadBansAndPolicy("slot");
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur"));
+    } finally {
+      setBusy(false);
+    }
   }
-
-  setErr(null);
-  setBusy(true);
-  try {
-    // ✅ on envoie TOUTES les clés possibles -> plus de "missing_slot"
-    await banCalls(streamerSlug, token, {
-      kind: "slot",
-      slot: slotName,
-      slotName,
-      label: slotName,
-      provider,
-    });
-
-    setSlotPick(null);
-    setSlotQ("");
-    setSlotSug([]);
-
-    // ✅ refresh seulement ce qu'il faut
-    await reloadBansAndPolicy("slot");
-  } catch (e: any) {
-    setErr(String(e?.message || "Erreur"));
-  } finally {
-    setBusy(false);
-  }
-}
 
   async function removeSlotBanKey(banKey: string) {
     if (!canModerate) return;
@@ -639,36 +735,35 @@ async function addSlotBan() {
     }
   }
 
-async function addProviderBan() {
-  if (!canModerate) return;
+  async function addProviderBan() {
+    if (!canModerate) return;
 
-  const provider = String(providerPick ?? providerQ ?? "").trim();
-  if (!provider) {
-    setErr("Provider requis");
-    return;
+    const provider = String(providerPick ?? providerQ ?? "").trim();
+    if (!provider) {
+      setErr("Provider requis");
+      return;
+    }
+
+    setErr(null);
+    setBusy(true);
+    try {
+      await banCalls(streamerSlug, token, {
+        kind: "provider",
+        provider,
+        providerKey: provider,
+        label: provider,
+      });
+
+      setProviderPick(null);
+      setProviderQ("");
+
+      await reloadBansAndPolicy("provider");
+    } catch (e: any) {
+      setErr(String(e?.message || "Erreur"));
+    } finally {
+      setBusy(false);
+    }
   }
-
-  setErr(null);
-  setBusy(true);
-  try {
-    // ✅ on envoie provider + providerKey -> plus de "missing_provider"
-    await banCalls(streamerSlug, token, {
-      kind: "provider",
-      provider,
-      providerKey: provider,
-      label: provider,
-    });
-
-    setProviderPick(null);
-    setProviderQ("");
-
-    await reloadBansAndPolicy("provider");
-  } catch (e: any) {
-    setErr(String(e?.message || "Erreur"));
-  } finally {
-    setBusy(false);
-  }
-}
 
   async function removeProviderBanKey(banKey: string) {
     if (!canModerate) return;
@@ -801,8 +896,7 @@ async function addProviderBan() {
     }
   }
 
-  // ===== UI helpers =====
-  const showBonusDropsPanel = !showOpts; // ✅ demandé: quand engrenage ouvert, on masque Bonus drops pour gagner de la place
+  const showBonusDropsPanel = !showOpts;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, position: "relative" }}>
@@ -858,7 +952,6 @@ async function addProviderBan() {
             <button
               onClick={() => {
                 setShowOpts((v) => !v);
-                // UX: quand on ouvre, on commence sur options
                 if (!showOpts) {
                   setOptsSection("options");
                   setBansTab("slot");
@@ -895,7 +988,6 @@ async function addProviderBan() {
           </div>
         </div>
 
-        {/* ✅ Setup start visible direct si pas de start */}
         {canModerate && !hasStart ? (
           <div
             style={{
@@ -938,7 +1030,6 @@ async function addProviderBan() {
           </div>
         ) : null}
 
-        {/* ✅ Options engrenage */}
         {canModerate && showOpts ? (
           <div
             style={{
@@ -953,7 +1044,6 @@ async function addProviderBan() {
               alignItems: "flex-start",
             }}
           >
-            {/* Section switch */}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", width: "100%" }}>
               {(["options", "bans"] as const).map((k) => (
                 <button
@@ -978,14 +1068,13 @@ async function addProviderBan() {
                   onClick={() => reloadBansAndPolicy()}
                   style={{ opacity: 0.95 }}
                 >
-                  {(bansLoading || policyLoading) ? "…" : "Rafraîchir"}
+                  {bansLoading || policyLoading ? "…" : "Rafraîchir"}
                 </SmallBtn>
               </div>
             </div>
 
             {optsSection === "options" ? (
               <>
-                {/* Start edit: bouton -> input */}
                 <div style={{ flex: "1 1 280px", minWidth: 240 }}>
                   <div style={{ fontWeight: 950, fontSize: 12 }}>Start</div>
 
@@ -1063,7 +1152,6 @@ async function addProviderBan() {
               </>
             ) : (
               <>
-                {/* BANS tabs */}
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", width: "100%" }}>
                   {(["slot", "provider"] as const).map((k) => (
                     <button
@@ -1088,7 +1176,6 @@ async function addProviderBan() {
                   <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
                     <div style={{ fontWeight: 950 }}>Slots bannies</div>
 
-                    {/* Search + suggestions */}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
                       <div style={{ flex: "1 1 360px", minWidth: 260 }}>
                         <input
@@ -1153,11 +1240,7 @@ async function addProviderBan() {
                                   }}
                                 >
                                   {s.imageUrl ? (
-                                    <img
-                                      src={s.imageUrl}
-                                      alt=""
-                                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                                    />
+                                    <img src={s.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                                   ) : null}
                                 </div>
                                 <div style={{ minWidth: 0 }}>
@@ -1198,7 +1281,6 @@ async function addProviderBan() {
                       </SmallBtn>
                     </div>
 
-                    {/* List */}
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       {slotBans.length === 0 ? (
                         <div className="muted">Aucune slot bannie.</div>
@@ -1239,7 +1321,6 @@ async function addProviderBan() {
                   <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
                     <div style={{ fontWeight: 950 }}>Providers</div>
 
-                    {/* Provider input + suggestions */}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
                       <div style={{ flex: "1 1 360px", minWidth: 260 }}>
                         <input
@@ -1247,6 +1328,11 @@ async function addProviderBan() {
                           onChange={(e) => {
                             setProviderQ(e.target.value);
                             setProviderPick(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && providerSug.length && !providerPick) {
+                              setProviderPick(providerSug[0]);
+                            }
                           }}
                           placeholder="Rechercher un provider (ex: pragmaticplay, hacksaw)"
                           style={{
@@ -1311,7 +1397,6 @@ async function addProviderBan() {
                       </SmallBtn>
                     </div>
 
-                    {/* Banned providers list */}
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       {providerBans.length === 0 ? (
                         <div className="muted">Aucun provider banni.</div>
@@ -1347,7 +1432,6 @@ async function addProviderBan() {
 
                     <div style={{ height: 1, background: "rgba(255,255,255,0.08)" }} />
 
-                    {/* Provider policy: ban all except one */}
                     <div>
                       <div style={{ fontWeight: 950 }}>Ban tous les providers sauf…</div>
                       <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
@@ -1361,12 +1445,7 @@ async function addProviderBan() {
                         </label>
 
                         <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                          <input
-                            type="radio"
-                            checked={policyMode === "allow_only"}
-                            onChange={() => setMode("allow_only")}
-                            disabled={policyLoading}
-                          />
+                          <input type="radio" checked={policyMode === "allow_only"} onChange={() => setMode("allow_only")} disabled={policyLoading} />
                           <span style={{ fontWeight: 950 }}>Autoriser seulement</span>
                         </label>
                       </div>
@@ -1376,11 +1455,7 @@ async function addProviderBan() {
                           Ajouter whitelist
                         </SmallBtn>
 
-                        <SmallBtn
-                          disabled={policyLoading}
-                          onClick={allowOnlyOneProvider}
-                          style={{ border: "1px solid rgba(255,190,60,0.35)" }}
-                        >
+                        <SmallBtn disabled={policyLoading} onClick={allowOnlyOneProvider} style={{ border: "1px solid rgba(255,190,60,0.35)" }}>
                           Tout interdire sauf celui-là
                         </SmallBtn>
                       </div>
@@ -1441,7 +1516,6 @@ async function addProviderBan() {
                   call par @{currentFarm.username || "?"}
                 </div>
 
-                {/* ✅ input bet inline quand on clique "Bonus" */}
                 {canModerate && askBet ? (
                   <div
                     style={{
@@ -1491,7 +1565,7 @@ async function addProviderBan() {
                   <SmallBtn disabled={busy} onClick={onClickBonus} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
                     Bonus
                   </SmallBtn>
-                  <SmallBtn disabled={busy} onClick={doPass}>
+                  <SmallBtn disabled={busy} onClick={doPass} style={{ border: "1px solid rgba(255,80,80,0.35)", background: "rgba(255,80,80,0.10)" }}>
                     Pass
                   </SmallBtn>
                 </div>
@@ -1556,39 +1630,106 @@ async function addProviderBan() {
               (Quand une machine a une bet, elle doit apparaître ici.)
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {bonusDrops.map((b: any, idx) => (
-                <div
-                  key={String(b.id ?? `${b.slotName}-${idx}`)}
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    alignItems: "center",
-                    padding: 10,
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    background: "rgba(0,0,0,0.10)",
-                  }}
-                >
-                  <Thumb url={b.imageUrl} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 950, fontSize: 13, lineHeight: 1.2 }}>
-                      #{idx + 1} — {b.slotName || "—"}
-                      {b.provider ? <span className="muted"> ({b.provider})</span> : null}
-                    </div>
-                    <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                      bet: <b>{fmtEur(b.betEur ?? 0)}</b>
-                      {Number(b.payEur) >= 0 ? (
-                        <span className="muted">
-                          {" "}
-                          — pay: <b>{fmtEur(b.payEur)}</b>
-                        </span>
+            <>
+              {/* ✅ Liste scrollable, visible 5 items approx */}
+              <div
+                ref={bonusListRef}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                  maxHeight: 5 * 64 + 4 * 8, // ~5 items
+                  overflowY: "auto",
+                  paddingRight: 4,
+                }}
+              >
+                {bonusDrops.map((b: any, idx) => {
+                  const id = String(b.id ?? `${b.slotName}-${idx}`);
+                  const isEditing = editBonusId === id;
+
+                  return (
+                    <div
+                      key={id}
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "center",
+                        padding: 10,
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "rgba(0,0,0,0.10)",
+                      }}
+                    >
+                      <Thumb url={b.imageUrl} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 950, fontSize: 13, lineHeight: 1.2 }}>
+                          #{idx + 1} — {b.slotName || "—"}
+                          {b.provider ? <span className="muted"> ({b.provider})</span> : null}
+                        </div>
+
+                        {!isEditing ? (
+                          <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                            bet: <b>{fmtEur(b.betEur ?? 0)}</b>
+                            {Number(b.payEur) >= 0 ? (
+                              <span className="muted">
+                                {" "}
+                                — pay: <b>{fmtEur(b.payEur)}</b>
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                            <div className="muted" style={{ fontSize: 12, fontWeight: 850 }}>
+                              Modifier bet:
+                            </div>
+                            <input
+                              value={editBonusBetInp}
+                              onChange={(e) => setEditBonusBetInp(e.target.value)}
+                              placeholder="ex: 0.30"
+                              style={{
+                                width: 140,
+                                padding: "10px 12px",
+                                borderRadius: 12,
+                                border: "1px solid rgba(255,255,255,0.12)",
+                                background: "rgba(0,0,0,0.12)",
+                                color: "inherit",
+                              }}
+                            />
+                            <SmallBtn disabled={busy} onClick={() => saveEditBonus(id)} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
+                              Sauver
+                            </SmallBtn>
+                            <SmallBtn disabled={busy} onClick={cancelEditBonus}>
+                              Annuler
+                            </SmallBtn>
+                          </div>
+                        )}
+                      </div>
+
+                      {canModerate ? (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                          {!isEditing ? (
+                            <SmallBtn disabled={busy} onClick={() => startEditBonus(b)}>
+                              Modifier
+                            </SmallBtn>
+                          ) : null}
+                          <SmallBtn
+                            disabled={busy}
+                            onClick={() => deleteBonus(id)}
+                            style={{ border: "1px solid rgba(255,80,80,0.35)", background: "rgba(255,80,80,0.10)" }}
+                          >
+                            Supprimer
+                          </SmallBtn>
+                        </div>
                       ) : null}
                     </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+
+              <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+                Astuce: la liste est scrollable (max ~5 éléments visibles).
+              </div>
+            </>
           )}
         </Panel>
       ) : null}

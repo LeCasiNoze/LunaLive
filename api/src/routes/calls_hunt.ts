@@ -7,17 +7,6 @@ type AuthedReq = any;
 
 type StreamerRow = { id: number; ownerUserId: number };
 
-/**
- * ✅ Soft auth:
- * - si Authorization Bearer est présent => on tente requireAuth
- * - sinon => on laisse passer (req.user restera undefined)
- */
-function softAuth(req: any, res: any, next: any) {
-  const h = String(req.headers?.authorization || "");
-  if (/^Bearer\s+.+/i.test(h)) return requireAuth(req, res, next);
-  return next();
-}
-
 async function ensureSchema() {
   // table session
   await pool.query(`
@@ -36,6 +25,13 @@ async function ensureSchema() {
   await pool.query(`
     ALTER TABLE calls_hunt_sessions
     ADD COLUMN IF NOT EXISTS bet_default NUMERIC NULL;
+  `);
+}
+
+async function ensureCallsQueueIsBonusCol() {
+  await pool.query(`
+    ALTER TABLE calls_queue
+    ADD COLUMN IF NOT EXISTS is_bonus BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 }
 
@@ -142,6 +138,8 @@ async function setSession(
 }
 
 async function loadQueue(streamerId: number) {
+  await ensureCallsQueueIsBonusCol();
+
   const r = await pool.query(
     `
     SELECT
@@ -192,14 +190,12 @@ function isUnpaid(it: any) {
 }
 
 export const callsHuntRouter = express.Router();
+callsHuntRouter.use(requireAuth);
 
 /**
- * ✅ PUBLIC
  * GET /calls/:slug/hunt/state
- * - accessible sans login
- * - si token présent => softAuth => canModerate calculé
  */
-callsHuntRouter.get("/:slug/hunt/state", softAuth, async (req: AuthedReq, res) => {
+callsHuntRouter.get("/:slug/hunt/state", async (req: AuthedReq, res) => {
   try {
     const slug = String(req.params.slug || "");
     const streamer = await getStreamerBySlug(slug);
@@ -289,10 +285,10 @@ callsHuntRouter.get("/:slug/hunt/state", softAuth, async (req: AuthedReq, res) =
 });
 
 /**
- * 🔒 PROTECTED (requireAuth)
  * POST /calls/:slug/hunt/close
+ * Force fermeture => farm
  */
-callsHuntRouter.post("/:slug/hunt/close", requireAuth, async (req: AuthedReq, res) => {
+callsHuntRouter.post("/:slug/hunt/close", async (req: AuthedReq, res) => {
   try {
     const slug = String(req.params.slug || "");
     const streamer = await getStreamerBySlug(slug);
@@ -310,10 +306,10 @@ callsHuntRouter.post("/:slug/hunt/close", requireAuth, async (req: AuthedReq, re
 });
 
 /**
- * 🔒 PROTECTED
  * POST /calls/:slug/hunt/revert
+ * Alias "revenir en édition" => farm
  */
-callsHuntRouter.post("/:slug/hunt/revert", requireAuth, async (req: AuthedReq, res) => {
+callsHuntRouter.post("/:slug/hunt/revert", async (req: AuthedReq, res) => {
   try {
     const slug = String(req.params.slug || "");
     const streamer = await getStreamerBySlug(slug);
@@ -331,10 +327,10 @@ callsHuntRouter.post("/:slug/hunt/revert", requireAuth, async (req: AuthedReq, r
 });
 
 /**
- * 🔒 PROTECTED
  * POST /calls/:slug/hunt/open
+ * ✅ toggle: si déjà open -> repasse farm
  */
-callsHuntRouter.post("/:slug/hunt/open", requireAuth, async (req: AuthedReq, res) => {
+callsHuntRouter.post("/:slug/hunt/open", async (req: AuthedReq, res) => {
   try {
     const slug = String(req.params.slug || "");
     const streamer = await getStreamerBySlug(slug);
@@ -360,10 +356,9 @@ callsHuntRouter.post("/:slug/hunt/open", requireAuth, async (req: AuthedReq, res
 });
 
 /**
- * 🔒 PROTECTED
  * POST /calls/:slug/hunt/start  { startEur }
  */
-callsHuntRouter.post("/:slug/hunt/start", requireAuth, async (req: AuthedReq, res) => {
+callsHuntRouter.post("/:slug/hunt/start", async (req: AuthedReq, res) => {
   try {
     const slug = String(req.params.slug || "");
     const streamer = await getStreamerBySlug(slug);
@@ -386,10 +381,10 @@ callsHuntRouter.post("/:slug/hunt/start", requireAuth, async (req: AuthedReq, re
 });
 
 /**
- * 🔒 PROTECTED
  * POST /calls/:slug/hunt/bet { betEur }
+ * Stocke la bet par défaut utilisée par /hunt/bonus
  */
-callsHuntRouter.post("/:slug/hunt/bet", requireAuth, async (req: AuthedReq, res) => {
+callsHuntRouter.post("/:slug/hunt/bet", async (req: AuthedReq, res) => {
   try {
     const slug = String(req.params.slug || "");
     const streamer = await getStreamerBySlug(slug);
@@ -412,10 +407,10 @@ callsHuntRouter.post("/:slug/hunt/bet", requireAuth, async (req: AuthedReq, res)
 });
 
 /**
- * 🔒 PROTECTED
  * POST /calls/:slug/hunt/pass
+ * ✅ Doit SUPPRIMER la machine en cours (première non-bonus).
  */
-callsHuntRouter.post("/:slug/hunt/pass", requireAuth, async (req: AuthedReq, res) => {
+callsHuntRouter.post("/:slug/hunt/pass", async (req: AuthedReq, res) => {
   try {
     const slug = String(req.params.slug || "");
     const streamer = await getStreamerBySlug(slug);
@@ -426,13 +421,14 @@ callsHuntRouter.post("/:slug/hunt/pass", requireAuth, async (req: AuthedReq, res
 
     const items = await loadQueue(streamer.id);
     const curCall = items.find((x) => !isBonus(x)) || null;
-    if (!curCall) return res.json({ ok: true });
+    if (!curCall) return res.json({ ok: true, removed: false });
 
     await pool.query(`DELETE FROM calls_queue WHERE streamer_id=$1 AND id=$2`, [
       streamer.id,
       curCall.id,
     ]);
-    return res.json({ ok: true });
+
+    return res.json({ ok: true, removed: true, removedId: curCall.id });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ ok: false, error: "server_error" });
@@ -440,10 +436,10 @@ callsHuntRouter.post("/:slug/hunt/pass", requireAuth, async (req: AuthedReq, res
 });
 
 /**
- * 🔒 PROTECTED
  * POST /calls/:slug/hunt/bonus
+ * Convertit la machine en cours -> bonus drop en lui assignant bet_default
  */
-callsHuntRouter.post("/:slug/hunt/bonus", requireAuth, async (req: AuthedReq, res) => {
+callsHuntRouter.post("/:slug/hunt/bonus", async (req: AuthedReq, res) => {
   try {
     const slug = String(req.params.slug || "");
     const streamer = await getStreamerBySlug(slug);
@@ -460,10 +456,7 @@ callsHuntRouter.post("/:slug/hunt/bonus", requireAuth, async (req: AuthedReq, re
     const curCall = items.find((x) => !isBonus(x)) || null;
     if (!curCall) return res.json({ ok: true });
 
-    await pool.query(`
-      ALTER TABLE calls_queue
-      ADD COLUMN IF NOT EXISTS is_bonus BOOLEAN NOT NULL DEFAULT FALSE;
-    `);
+    await ensureCallsQueueIsBonusCol();
 
     await pool.query(
       `UPDATE calls_queue
@@ -472,7 +465,7 @@ callsHuntRouter.post("/:slug/hunt/bonus", requireAuth, async (req: AuthedReq, re
       [streamer.id, curCall.id, bet]
     );
 
-    return res.json({ ok: true });
+    return res.json({ ok: true, bonusId: curCall.id });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ ok: false, error: "server_error" });
@@ -480,10 +473,79 @@ callsHuntRouter.post("/:slug/hunt/bonus", requireAuth, async (req: AuthedReq, re
 });
 
 /**
- * 🔒 PROTECTED
+ * PATCH /calls/:slug/hunt/bonus/:id  { betEur }
+ * ✅ modifier la bet d'un bonus drop
+ */
+callsHuntRouter.patch("/:slug/hunt/bonus/:id", express.json(), async (req: AuthedReq, res) => {
+  try {
+    const slug = String(req.params.slug || "");
+    const id = String(req.params.id || "");
+    const streamer = await getStreamerBySlug(slug);
+    if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    const okCtl = await canControlStreamer(streamer.id, streamer.ownerUserId, req.user);
+    if (!okCtl) return res.status(403).json({ ok: false, error: "forbidden" });
+
+    const betEur = Number(req.body?.betEur);
+    if (!Number.isFinite(betEur) || betEur <= 0) {
+      return res.status(400).json({ ok: false, error: "bad_bet" });
+    }
+
+    await ensureCallsQueueIsBonusCol();
+
+    const r = await pool.query(
+      `
+      UPDATE calls_queue
+      SET bet=$3, is_bonus=TRUE
+      WHERE streamer_id=$1 AND id=$2 AND COALESCE(is_bonus,FALSE)=TRUE
+      RETURNING id::text AS id
+      `,
+      [streamer.id, id, betEur]
+    );
+
+    if ((r.rowCount ?? 0) === 0) {
+      return res.status(404).json({ ok: false, error: "bonus_not_found" });
+    }
+
+    return res.json({ ok: true, id });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+/**
+ * DELETE /calls/:slug/hunt/bonus/:id
+ * ✅ supprimer un bonus drop
+ */
+callsHuntRouter.delete("/:slug/hunt/bonus/:id", async (req: AuthedReq, res) => {
+  try {
+    const slug = String(req.params.slug || "");
+    const id = String(req.params.id || "");
+    const streamer = await getStreamerBySlug(slug);
+    if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    const okCtl = await canControlStreamer(streamer.id, streamer.ownerUserId, req.user);
+    if (!okCtl) return res.status(403).json({ ok: false, error: "forbidden" });
+
+    await ensureCallsQueueIsBonusCol();
+
+    const r = await pool.query(
+      `DELETE FROM calls_queue WHERE streamer_id=$1 AND id=$2 AND COALESCE(is_bonus,FALSE)=TRUE`,
+      [streamer.id, id]
+    );
+
+    return res.json({ ok: true, deleted: (r.rowCount ?? 0) > 0, id });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+/**
  * POST /calls/:slug/hunt/pay { payEur }
  */
-callsHuntRouter.post("/:slug/hunt/pay", requireAuth, async (req: AuthedReq, res) => {
+callsHuntRouter.post("/:slug/hunt/pay", async (req: AuthedReq, res) => {
   try {
     const slug = String(req.params.slug || "");
     const streamer = await getStreamerBySlug(slug);
@@ -540,10 +602,10 @@ callsHuntRouter.post("/:slug/hunt/pay", requireAuth, async (req: AuthedReq, res)
 });
 
 /**
- * 🔒 PROTECTED
  * POST /calls/:slug/hunt/reset
+ * Reset total: enlève start, repasse farm, ferme, vide la queue.
  */
-callsHuntRouter.post("/:slug/hunt/reset", requireAuth, async (req: AuthedReq, res) => {
+callsHuntRouter.post("/:slug/hunt/reset", async (req: AuthedReq, res) => {
   try {
     const slug = String(req.params.slug || "");
     const streamer = await getStreamerBySlug(slug);
