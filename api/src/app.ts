@@ -127,9 +127,22 @@ export function createApp() {
   });
 
   // ─────────────────────────────────────────────
-  // ✅ Admin comments router monté AVANT admin casinos router
+  // ✅ Admin routes "spécifiques" AVANT adminRouter (évite collisions / 401)
   // ─────────────────────────────────────────────
-  app.use("/admin/casinos/comments", adminCasinoCommentsRouter);
+
+  // ✅ Admin comments (déjà monté comme ça chez toi)
+  app.use("/admin/casinos/comments", requireAdminKey, adminCasinoCommentsRouter);
+
+  // ✅ Casinos ADMIN (ordre CRITIQUE)
+  // NOTE: on les protège aussi ici par requireAdminKey pour être sûr
+  app.use("/admin/casinos/listings", requireAdminKey, adminCasinosRouter);
+  app.use("/admin/casinos", requireAdminKey, adminCasinosRouter);
+
+  // setup admin casinos (si ce router est admin-only)
+  app.use("/admin/casinos/setup", requireAdminKey, adminCasinosSetupRouter);
+
+  // ✅ Admin emotes (protégé, mais UNIQUEMENT sur /admin/emotes/*)
+  app.use("/admin/emotes", requireAdminKey, adminEmotesRouter);
 
   // ─────────────────────────────────────────────
   // ✅ Public VODs (doit matcher AVANT streamerRouter)
@@ -184,18 +197,16 @@ export function createApp() {
   app.use(publicRouter);
   app.use(authRouter);
   app.use(accountActionsRouter);
-  
+
   // ─────────────────────────────────────────────
   // ✅ Main routers
   // ─────────────────────────────────────────────
   app.use(streamerRouter);
-  
-  // ✅ Admin emotes (protégé, mais UNIQUEMENT sur /admin/emotes/*)
-  app.use("/admin/emotes", requireAdminKey, adminEmotesRouter);
 
+  // ⚠️ adminRouter APRÈS les mounts admin spécifiques
   app.use(adminRouter);
   app.use(adminImpersonateRouter);
-  
+
   // Streamer tabs (/streamers/:slug/about, /agenda, etc.)
   app.use("/streamers", streamerTabsRouter);
 
@@ -234,6 +245,7 @@ export function createApp() {
 
   app.use(emotesRouter);
   app.use(streamerEmotesRouter);
+
   // ─────────────────────────────────────────────
   // ✅ Overlay + Bot dashboard (auth)
   // ─────────────────────────────────────────────
@@ -245,17 +257,6 @@ export function createApp() {
 
   // Clips dashboard
   app.use("/me/bot/clips", botClipsRouter);
-
-  // ─────────────────────────────────────────────
-  // ✅ Casinos ADMIN (ordre CRITIQUE)
-  // ─────────────────────────────────────────────
-  app.use("/admin/casinos/listings", adminCasinosRouter);
-  app.use("/admin/casinos", adminCasinosRouter);
-
-  // ❌ IMPORTANT: on ne monte PAS un router admin sur un chemin public
-  // app.use("/casinos/listings", adminCasinosRouter);
-
-  app.use(adminCasinosSetupRouter);
 
   // ─────────────────────────────────────────────
   // ✅ Misc routers
