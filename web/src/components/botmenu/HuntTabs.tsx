@@ -126,19 +126,28 @@ function Panel({ title, right, children }: any) {
 }
 
 function SmallBtn(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  const disabled = !!props.disabled;
+
   return (
     <button
+      type={(props as any).type ?? "button"}
       {...props}
-      className="btnGhostInline"
+      className={`btnGhostInline ${props.className ?? ""}`.trim()}
       style={{
         padding: "10px 12px",
         borderRadius: 14,
         fontWeight: 950,
+
+        // ✅ force comportement bouton
+        cursor: disabled ? "not-allowed" : "pointer",
+        pointerEvents: disabled ? "none" : "auto",
+
         ...(props.style || {}),
       }}
     />
   );
 }
+
 
 function Thumb({ url }: { url?: string | null }) {
   return (
@@ -354,27 +363,43 @@ export function HuntTabs({
   }, [bonusDrops.length]);
 
   // ====== actions hunt ======
-  async function doPass() {
-    if (!canModerate) return;
-    setErr(null);
-    setBusy(true);
-    try {
-      // ✅ force delete via Hunt API (supprime le call en cours)
-      const out = await apiJson<{ ok: true; removed?: boolean; removedId?: string }>(
-        `/calls/${encodeURIComponent(streamerSlug)}/hunt/pass`,
-        { method: "POST" }
-      );
+async function doPass() {
+  if (!canModerate) return;
+  setErr(null);
+  setBusy(true);
 
-      emitQueueChanged(out?.removedId ?? null, "pass");
-      setAskBet(false);
-      setBonusBetInp("");
-      await load();
-    } catch (e: any) {
-      setErr(String(e?.message || "Erreur"));
-    } finally {
-      setBusy(false);
+  // mini helper: essaie plusieurs chemins
+  async function postTry<T>(paths: string[]): Promise<T> {
+    let lastErr: any = null;
+    for (const p of paths) {
+      try {
+        return await apiJson<T>(p, { method: "POST" });
+      } catch (e: any) {
+        lastErr = e;
+      }
     }
+    throw lastErr;
   }
+
+  try {
+    const slug = encodeURIComponent(streamerSlug);
+
+    // ✅ essaie /calls puis /api/calls (compat selon ton mounting Express)
+    const out = await postTry<{ ok: true; removed?: boolean; removedId?: string }>([
+      `/calls/${slug}/hunt/pass`,
+      `/api/calls/${slug}/hunt/pass`,
+    ]);
+
+    emitQueueChanged(out?.removedId ?? null, "pass");
+    setAskBet(false);
+    setBonusBetInp("");
+    await load();
+  } catch (e: any) {
+    setErr(String(e?.message || "Erreur"));
+  } finally {
+    setBusy(false);
+  }
+}
 
   function onClickBonus() {
     if (!canModerate) return;

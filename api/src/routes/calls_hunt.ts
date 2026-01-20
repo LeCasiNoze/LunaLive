@@ -409,31 +409,127 @@ callsHuntRouter.post("/:slug/hunt/bet", async (req: AuthedReq, res) => {
 /**
  * POST /calls/:slug/hunt/pass
  * ✅ Doit SUPPRIMER la machine en cours (première non-bonus).
+ * Version atomique: lock + select current + delete + renum pos
  */
 callsHuntRouter.post("/:slug/hunt/pass", async (req: AuthedReq, res) => {
+  const slug = String(req.params.slug || "");
+
   try {
-    const slug = String(req.params.slug || "");
     const streamer = await getStreamerBySlug(slug);
     if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
     const okCtl = await canControlStreamer(streamer.id, streamer.ownerUserId, req.user);
     if (!okCtl) return res.status(403).json({ ok: false, error: "forbidden" });
 
-    const items = await loadQueue(streamer.id);
-    const curCall = items.find((x) => !isBonus(x)) || null;
-    if (!curCall) return res.json({ ok: true, removed: false });
+    await ensureCallsQueueIsBonusCol();
 
-    await pool.query(`DELETE FROM calls_queue WHERE streamer_id=$1 AND id=$2`, [
-      streamer.id,
-      curCall.id,
-    ]);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
 
-    return res.json({ ok: true, removed: true, removedId: curCall.id });
+      // 🔒 lock par streamer (évite les courses avec add/reorder/etc.)
+      await client.query(`SELECT pg_advisory_xact_lock($1)`, [Number(streamer.id)]);
+
+      // snapshot avant
+      const before = await client.query(
+        `
+        SELECT
+          COUNT(*)::int AS total,
+          SUM(CASE WHEN COALESCE(is_bonus,FALSE)=FALSE AND (bet IS NULL OR bet <= 0) THEN 1 ELSE 0 END)::int AS farm
+        FROM calls_queue
+        WHERE streamer_id=$1
+        `,
+        [streamer.id]
+      );
+
+      // 🎯 current = 1er call FARM (non-bonus, bet null/<=0), par pos
+      const cur = await client.query(
+        `
+        SELECT id::text AS id
+        FROM calls_queue
+        WHERE streamer_id=$1
+          AND COALESCE(is_bonus,FALSE)=FALSE
+          AND (bet IS NULL OR bet <= 0)
+        ORDER BY pos ASC, id ASC
+        LIMIT 1
+        FOR UPDATE
+        `,
+        [streamer.id]
+      );
+
+      const curId = cur.rows?.[0]?.id ? String(cur.rows[0].id) : null;
+      if (!curId) {
+        await client.query("COMMIT");
+        return res.json({
+          ok: true,
+          removed: false,
+          removedId: null,
+          snapshot: { before: before.rows?.[0] ?? null, after: before.rows?.[0] ?? null },
+        });
+      }
+
+      // 🗑️ delete exact du current
+      const del = await client.query(
+        `
+        DELETE FROM calls_queue
+        WHERE streamer_id=$1 AND id::text=$2
+        RETURNING id::text AS id
+        `,
+        [streamer.id, curId]
+      );
+
+      const removedId = del.rows?.[0]?.id ? String(del.rows[0].id) : null;
+
+      // 🔢 renumérote les pos (évite états bizarres / current qui “revient”)
+      await client.query(
+        `
+        WITH ordered AS (
+          SELECT id, ROW_NUMBER() OVER (ORDER BY pos ASC, id ASC) AS rn
+          FROM calls_queue
+          WHERE streamer_id=$1
+        )
+        UPDATE calls_queue q
+        SET pos = ordered.rn
+        FROM ordered
+        WHERE q.streamer_id=$1 AND q.id = ordered.id
+        `,
+        [streamer.id]
+      );
+
+      // snapshot après
+      const after = await client.query(
+        `
+        SELECT
+          COUNT(*)::int AS total,
+          SUM(CASE WHEN COALESCE(is_bonus,FALSE)=FALSE AND (bet IS NULL OR bet <= 0) THEN 1 ELSE 0 END)::int AS farm
+        FROM calls_queue
+        WHERE streamer_id=$1
+        `,
+        [streamer.id]
+      );
+
+      await client.query("COMMIT");
+
+      return res.json({
+        ok: true,
+        removed: !!removedId,
+        removedId,
+        snapshot: { before: before.rows?.[0] ?? null, after: after.rows?.[0] ?? null },
+      });
+    } catch (e) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
+      throw e;
+    } finally {
+      client.release();
+    }
   } catch (e) {
     console.error(e);
     return res.status(500).json({ ok: false, error: "server_error" });
   }
 });
+
 
 /**
  * POST /calls/:slug/hunt/bonus
