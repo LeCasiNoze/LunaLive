@@ -237,6 +237,27 @@ export function HuntTabs({
     window.setTimeout(() => setGg(false), 1300);
   }
 
+  async function copySlotName(name: string) {
+  const t = String(name || "").trim();
+  if (!t) return;
+  try {
+    await navigator.clipboard.writeText(t);
+  } catch {
+    // fallback old browsers
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = t;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    } catch {}
+  }
+}
+
   function emitQueueChanged(removedId?: string | null, action?: string) {
     try {
       window.dispatchEvent(
@@ -365,32 +386,19 @@ export function HuntTabs({
   // ====== actions hunt ======
 async function doPass() {
   if (!canModerate) return;
-  setErr(null);
-  setBusy(true);
 
-  // mini helper: essaie plusieurs chemins
-  async function postTry<T>(paths: string[]): Promise<T> {
-    let lastErr: any = null;
-    for (const p of paths) {
-      try {
-        return await apiJson<T>(p, { method: "POST" });
-      } catch (e: any) {
-        lastErr = e;
-      }
-    }
-    throw lastErr;
+  // 🎯 on supprime EXACTEMENT comme CallTab (DELETE /calls/:slug/item/:id)
+  const id = String((currentFarm as any)?.id ?? "").trim();
+  if (!id) {
+    setErr("Impossible de passer: aucun call courant.");
+    return;
   }
 
+  setErr(null);
+  setBusy(true);
   try {
-    const slug = encodeURIComponent(streamerSlug);
-
-    // ✅ essaie /calls puis /api/calls (compat selon ton mounting Express)
-    const out = await postTry<{ ok: true; removed?: boolean; removedId?: string }>([
-      `/calls/${slug}/hunt/pass`,
-      `/api/calls/${slug}/hunt/pass`,
-    ]);
-
-    emitQueueChanged(out?.removedId ?? null, "pass");
+    // refresh UI + sync CallTab
+    emitQueueChanged(id, "pass");
     setAskBet(false);
     setBonusBetInp("");
     await load();
@@ -645,7 +653,9 @@ async function doPass() {
     }
     setSlotSugLoading(true);
     try {
-      const r = await fetch(`${apiBase()}/slots/search?q=${encodeURIComponent(s)}&limit=10`);
+      const r = await fetch(`${apiBase()}/slots/search?q=${encodeURIComponent(s)}&limit=10`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       const j = await r.json();
       if (j?.ok) {
         const list = asArr<SlotItem>(j.items);
@@ -1585,16 +1595,30 @@ async function doPass() {
                 ) : null}
               </div>
 
-              {canModerate ? (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  <SmallBtn disabled={busy} onClick={onClickBonus} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
-                    Bonus
-                  </SmallBtn>
-                  <SmallBtn disabled={busy} onClick={doPass} style={{ border: "1px solid rgba(255,80,80,0.35)", background: "rgba(255,80,80,0.10)" }}>
-                    Pass
-                  </SmallBtn>
-                </div>
-              ) : null}
+            {canModerate ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <SmallBtn
+                  disabled={busy}
+                  onClick={() => void copySlotName(currentFarm?.slotName)}
+                  title="Copier le nom"
+                  style={{ border: "1px solid rgba(255,255,255,0.16)", background: "rgba(255,255,255,0.06)" }}
+                >
+                  📋
+                </SmallBtn>
+
+                <SmallBtn disabled={busy} onClick={onClickBonus} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
+                  Bonus
+                </SmallBtn>
+
+                <SmallBtn
+                  disabled={busy}
+                  onClick={doPass}
+                  style={{ border: "1px solid rgba(255,80,80,0.35)", background: "rgba(255,80,80,0.10)" }}
+                >
+                  Pass
+                </SmallBtn>
+              </div>
+            ) : null}
             </div>
           ) : (
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
@@ -1619,26 +1643,35 @@ async function doPass() {
               </div>
             </div>
 
-            {canModerate ? (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
-                <input
-                  value={payInp}
-                  onChange={(e) => setPayInp(e.target.value)}
-                  placeholder="Pay du bonus (ex: 45.20)"
-                  style={{
-                    width: 220,
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background: "rgba(0,0,0,0.12)",
-                    color: "inherit",
-                  }}
-                />
-                <SmallBtn disabled={busy} onClick={doPay} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
-                  Valider
-                </SmallBtn>
-              </div>
-            ) : null}
+          {canModerate ? (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
+              <SmallBtn
+                disabled={busy}
+                onClick={() => void copySlotName(currentOpen?.slotName ?? currentOpen?.name)}
+                title="Copier le nom"
+                style={{ border: "1px solid rgba(255,255,255,0.16)", background: "rgba(255,255,255,0.06)" }}
+              >
+                📋
+              </SmallBtn>
+
+              <input
+                value={payInp}
+                onChange={(e) => setPayInp(e.target.value)}
+                placeholder="Pay du bonus (ex: 45.20)"
+                style={{
+                  width: 220,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(0,0,0,0.12)",
+                  color: "inherit",
+                }}
+              />
+              <SmallBtn disabled={busy} onClick={doPay} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
+                Valider
+              </SmallBtn>
+            </div>
+          ) : null}
           </div>
         ) : (
           <div className="muted">Aucun bonus à ouvrir.</div>
@@ -1663,7 +1696,7 @@ async function doPass() {
                   display: "flex",
                   flexDirection: "column",
                   gap: 8,
-                  maxHeight: 5 * 64 + 4 * 8, // ~5 items
+                  maxHeight: 3 * 64 + 2 * 8, // ~3 items
                   overflowY: "auto",
                   paddingRight: 4,
                 }}

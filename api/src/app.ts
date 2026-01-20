@@ -265,7 +265,7 @@ export function createApp() {
   // ✅ Slots / Calls / Hunt
   // ─────────────────────────────────────────────
   app.use("/slots", slotsRouter);
-  app.use("/calls-hunt", callsHuntRouter);
+  app.use("/calls", callsHuntRouter);
   app.use("/calls", callsRouter);
   app.use("/calls", callsPcallRouter);
   app.use(hunt2Router);

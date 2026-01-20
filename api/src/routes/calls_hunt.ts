@@ -593,7 +593,9 @@ callsHuntRouter.patch("/:slug/hunt/bonus/:id", express.json(), async (req: Authe
       `
       UPDATE calls_queue
       SET bet=$3, is_bonus=TRUE
-      WHERE streamer_id=$1 AND id=$2 AND COALESCE(is_bonus,FALSE)=TRUE
+WHERE streamer_id=$1
+  AND id=$2
+  AND (COALESCE(is_bonus,FALSE)=TRUE OR (bet IS NOT NULL AND bet > 0))
       RETURNING id::text AS id
       `,
       [streamer.id, id, betEur]
@@ -627,7 +629,11 @@ callsHuntRouter.delete("/:slug/hunt/bonus/:id", async (req: AuthedReq, res) => {
     await ensureCallsQueueIsBonusCol();
 
     const r = await pool.query(
-      `DELETE FROM calls_queue WHERE streamer_id=$1 AND id=$2 AND COALESCE(is_bonus,FALSE)=TRUE`,
+      `DELETE FROM calls_queue
+        WHERE streamer_id=$1
+          AND id=$2
+          AND (COALESCE(is_bonus,FALSE)=TRUE OR (bet IS NOT NULL AND bet > 0))
+        `,
       [streamer.id, id]
     );
 
