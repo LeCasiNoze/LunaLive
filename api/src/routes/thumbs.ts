@@ -167,6 +167,36 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     "pipe:1",
   ];
 
+  function isJpeg(buf: Buffer) {
+  return buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+}
+
+// parse largeur/hauteur d’un JPEG (SOF0/SOF2)
+function jpegSize(buf: Buffer): { w: number; h: number } | null {
+  try {
+    if (!isJpeg(buf)) return null;
+    let i = 2;
+    while (i < buf.length) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      const marker = buf[i + 1];
+      // SOF0 (C0) ou SOF2 (C2) = dimensions
+      if (marker === 0xc0 || marker === 0xc2) {
+        const h = buf.readUInt16BE(i + 5);
+        const w = buf.readUInt16BE(i + 7);
+        if (w > 0 && h > 0) return { w, h };
+        return null;
+      }
+      // skip segment
+      const len = buf.readUInt16BE(i + 2);
+      if (!len || len < 2) break;
+      i += 2 + len;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
   const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
 
   const chunks: Buffer[] = [];
@@ -197,7 +227,16 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     clearTimeout(killTimer);
 
     const buf = Buffer.concat(chunks);
-    const ok = code === 0 && buf.length > 10_000;
+    const dim = jpegSize(buf);
+
+    // on accepte seulement si c’est un vrai jpeg + dimensions cohérentes
+    const ok =
+      code === 0 &&
+      isJpeg(buf) &&
+      dim != null &&
+      dim.w >= 320 &&
+      dim.h >= 180 &&
+      buf.length > 1500; // sécurité mini
 
     if (ok) {
       cache.set(key, { exp: Date.now() + CACHE_MS, buf, contentType: "image/jpeg" });
