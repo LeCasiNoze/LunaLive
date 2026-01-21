@@ -9,6 +9,11 @@ function isLeCasinoze(username?: string | null) {
   return String(username || "").trim().toLowerCase() === "lecasinoze";
 }
 
+function num(v: any, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export function DailyWheelCard() {
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
@@ -20,6 +25,7 @@ export function DailyWheelCard() {
   const [loading, setLoading] = React.useState(false);
   const [canSpin, setCanSpin] = React.useState(false);
   const [segments, setSegments] = React.useState<ApiWheelMe["segments"] | undefined>(undefined);
+  const [tickets, setTickets] = React.useState<number>(0);
 
   const [loginOpen, setLoginOpen] = React.useState(false);
   const [wheelOpen, setWheelOpen] = React.useState(false);
@@ -31,6 +37,7 @@ export function DailyWheelCard() {
   React.useEffect(() => {
     if (!token) {
       setRubisLive(null);
+      setTickets(0);
       return;
     }
     const v = Number(user?.rubis ?? 0);
@@ -56,16 +63,26 @@ export function DailyWheelCard() {
     if (!token) {
       setCanSpin(false);
       setSegments(undefined);
+      setTickets(0);
       return;
     }
     setLoading(true);
     try {
       const r: any = await getWheelState(token);
-      setCanSpin(god ? true : !!r?.canSpin);
+
+      const t = Math.max(0, Math.floor(num(r?.tickets, 0)));
+      setTickets(t);
+
+      // ✅ backend: canSpin = !usedToday || tickets>0
+      // mais on sécurise côté front au cas où
+      const can = god ? true : !!r?.canSpin || t > 0;
+      setCanSpin(can);
+
       setSegments(Array.isArray(r?.segments) ? r.segments : undefined);
     } catch {
       setCanSpin(god ? true : false);
       setSegments(undefined);
+      setTickets(0);
     } finally {
       setLoading(false);
     }
@@ -75,13 +92,15 @@ export function DailyWheelCard() {
     refresh();
   }, [refresh]);
 
+  const ticketSuffix = token && tickets > 0 ? ` (🎡 x${tickets})` : "";
+
   const subtitle = !token
     ? "Connecte-toi pour tourner"
     : loading
     ? "Chargement…"
     : canSpin
-    ? "Prête"
-    : "Déjà utilisée aujourd’hui";
+    ? `Prête${ticketSuffix}`
+    : `Déjà utilisée aujourd’hui${ticketSuffix}`;
 
   const displayRubis = Number(rubisLive ?? user?.rubis ?? 0);
 
@@ -109,6 +128,7 @@ export function DailyWheelCard() {
             type="button"
             onClick={() => {
               if (!token) return setLoginOpen(true);
+              // ✅ canSpin intègre maintenant les tickets => si tickets>0, le bouton reste ok même en cooldown
               if (!god && !canSpin) return;
               setWheelOpen(true);
             }}

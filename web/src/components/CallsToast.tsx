@@ -38,16 +38,37 @@ type UiToast = {
 const DEFAULT_SHOW_MS = 5000;
 const CHEST_SHOW_MS = 10_000;
 
+// ⚠️ important: pas de window au top-level (SSR / build safe)
+let _toastAudioCtx: AudioContext | null = null;
+
+function getToastAudioCtx(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+
+  const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+  if (!AC) return null;
+
+  try {
+    if (_toastAudioCtx && _toastAudioCtx.state !== "closed") return _toastAudioCtx;
+    _toastAudioCtx = new AC();
+    return _toastAudioCtx;
+  } catch {
+    return null;
+  }
+}
+
 /** Sons placeholder (sans asset). */
 function playPlaceholderSound(kind: ToastSound) {
   if (typeof window === "undefined") return;
   if (document.visibilityState !== "visible") return;
 
-  const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
-  if (!AC) return;
+  const ctx = getToastAudioCtx();
+  if (!ctx) return;
+
+  if (ctx.state === "suspended") {
+    ctx.resume().catch(() => {});
+  }
 
   try {
-    const ctx = new AC();
     const o = ctx.createOscillator();
     const g = ctx.createGain();
 
@@ -84,12 +105,6 @@ function playPlaceholderSound(kind: ToastSound) {
 
     o.start(t0);
     o.stop(t1);
-
-    o.onended = () => {
-      try {
-        ctx.close();
-      } catch {}
-    };
   } catch {}
 }
 
@@ -226,6 +241,28 @@ export function CallsToast() {
   const top = useToastLane();
   const bottom = useToastLane();
 
+  // ✅ refs pour éviter de ré-attacher le listener à chaque render
+  const topRef = React.useRef(top);
+  const bottomRef = React.useRef(bottom);
+  React.useEffect(() => {
+    topRef.current = top;
+    bottomRef.current = bottom;
+  });
+
+  // 🔊 Unlock audio au premier geste utilisateur (sinon WebAudio est muet)
+  React.useEffect(() => {
+    const unlock = () => {
+      const ctx = getToastAudioCtx();
+      if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
+    };
+    window.addEventListener("pointerdown", unlock, { once: true, passive: true } as any);
+    window.addEventListener("keydown", unlock, { once: true } as any);
+    return () => {
+      window.removeEventListener("pointerdown", unlock as any);
+      window.removeEventListener("keydown", unlock as any);
+    };
+  }, []);
+
   // drag states (un par lane)
   const topDrag = React.useRef<DragState>({ active: false, startX: 0, dx: 0, pointerId: null });
   const botDrag = React.useRef<DragState>({ active: false, startX: 0, dx: 0, pointerId: null });
@@ -233,6 +270,9 @@ export function CallsToast() {
 
   function onPointerDownFactory(drag: React.MutableRefObject<DragState>) {
     return (e: React.PointerEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el?.closest?.("button,[data-toast-nodrag='1']")) return;
+
       drag.current.active = true;
       drag.current.startX = e.clientX;
       drag.current.dx = 0;
@@ -240,6 +280,7 @@ export function CallsToast() {
       (e.currentTarget as any).setPointerCapture?.(e.pointerId);
     };
   }
+
   function onPointerMoveFactory(drag: React.MutableRefObject<DragState>) {
     return (e: React.PointerEvent) => {
       if (!drag.current.active) return;
@@ -247,6 +288,7 @@ export function CallsToast() {
       force((x) => x + 1);
     };
   }
+
   function onPointerUpFactory(drag: React.MutableRefObject<DragState>, dismiss: () => void) {
     return (_e: React.PointerEvent) => {
       if (!drag.current.active) return;
@@ -260,7 +302,7 @@ export function CallsToast() {
     };
   }
 
-  // listener global
+  // ✅ listener global (UNE SEULE FOIS)
   React.useEffect(() => {
     const onToast = (e: any) => {
       const t = e?.detail as UiToast | undefined;
@@ -278,18 +320,21 @@ export function CallsToast() {
         sound: t.sound ?? undefined, // undefined => defaultSound(kind), null => silencieux
       };
 
+      const T = topRef.current;
+      const B = bottomRef.current;
+
       if (slot === "top") {
-        top.queue.current.push(normalized);
-        top.pump();
+        T.queue.current.push(normalized);
+        T.pump();
       } else {
-        bottom.queue.current.push(normalized);
-        bottom.pump();
+        B.queue.current.push(normalized);
+        B.pump();
       }
     };
 
     window.addEventListener("ui:toast", onToast as any);
     return () => window.removeEventListener("ui:toast", onToast as any);
-  }, [top, bottom]);
+  }, []);
 
   function RenderLane(p: {
     current: UiToast | null;
@@ -353,8 +398,13 @@ export function CallsToast() {
 
               {(current.dismissible || current.sticky) ? (
                 <button
+                  data-toast-nodrag="1"
                   type="button"
-                  onClick={() => setCurrent(null)}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCurrent(null);
+                  }}
                   style={{
                     marginLeft: "auto",
                     borderRadius: 10,
@@ -382,8 +432,11 @@ export function CallsToast() {
             {current.action ? (
               <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center" }}>
                 <button
+                  data-toast-nodrag="1"
                   type="button"
-                  onClick={() => {
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     window.dispatchEvent(
                       new CustomEvent(current.action!.event, {
                         detail: current.action!.detail,
@@ -405,14 +458,10 @@ export function CallsToast() {
                   {current.action.label}
                 </button>
 
-                <div style={{ fontSize: 12, opacity: 0.65, fontWeight: 800 }}>
-                  (glisse pour fermer)
-                </div>
+                <div style={{ fontSize: 12, opacity: 0.65, fontWeight: 800 }}>(glisse pour fermer)</div>
               </div>
             ) : (
-              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.65, fontWeight: 800 }}>
-                (glisse pour fermer)
-              </div>
+              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.65, fontWeight: 800 }}>(glisse pour fermer)</div>
             )}
           </div>
         </div>

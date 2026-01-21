@@ -3,6 +3,7 @@
 // + Talent bonus (lvl 1/2/3): petits gains +1/+2/+3 ; gains >=10 => +10%/+25%/+50% (arrondi au dessus)
 // + /wheel/me renvoie les segments "boostés" (affichage cohérent)
 // + 500 doit être 2x plus rare que 250
+// + Tickets roue: affichage + bypass cooldown (consomme 1 ticket si cooldown actif)
 
 import express from "express";
 import { pool } from "../db.js";
@@ -51,6 +52,41 @@ function isTestGod(req: any) {
 async function todayParisDate(): Promise<string> {
   const r = await pool.query(`SELECT (NOW() AT TIME ZONE 'Europe/Paris')::date::text AS d`);
   return String(r.rows?.[0]?.d || "");
+}
+
+/* ─────────────────────────────────────────────
+   🎟️ Tokens (wheel_ticket) — stockage: user_tokens(user_id, token, amount)
+───────────────────────────────────────────── */
+
+async function getUserTokenAmount(clientOrPool: any, userId: number, token: string): Promise<number> {
+  try {
+    const r = await clientOrPool.query(
+      `SELECT COALESCE(amount, 0) AS n
+       FROM user_tokens
+       WHERE user_id=$1 AND token=$2
+       LIMIT 1`,
+      [userId, token]
+    );
+    return Math.max(0, Math.floor(Number(r.rows?.[0]?.n ?? 0) || 0));
+  } catch {
+    return 0;
+  }
+}
+
+async function consumeUserTokenOne(client: any, userId: number, token: string): Promise<{ ok: boolean; left: number }> {
+  // Décrémente si >0 (atomique)
+  const r = await client.query(
+    `UPDATE user_tokens
+     SET amount = amount - 1,
+         updated_at = NOW()
+     WHERE user_id=$1 AND token=$2 AND amount > 0
+     RETURNING amount AS left`,
+    [userId, token]
+  );
+
+  if ((r.rowCount ?? 0) <= 0) return { ok: false, left: 0 };
+  const left = Math.max(0, Math.floor(Number(r.rows?.[0]?.left ?? 0) || 0));
+  return { ok: true, left };
 }
 
 // ─────────────────────────────────────────────
@@ -149,12 +185,15 @@ wheelRouter.get("/wheel/me", async (req, res) => {
     return { label: formatLabel(calc.final), amount: calc.final };
   });
 
+  const tickets = await getUserTokenAmount(pool, userId, "wheel_ticket");
+
   if (god) {
     return res.json({
       ok: true,
       day,
       canSpin: true,
       usedToday: false,
+      tickets,
       segments: displaySegments,
       talentLevel,
     });
@@ -170,8 +209,9 @@ wheelRouter.get("/wheel/me", async (req, res) => {
   return res.json({
     ok: true,
     day,
-    canSpin: !usedToday,
+    canSpin: !usedToday || tickets > 0, // ✅ tickets bypass cooldown
     usedToday,
+    tickets,
     segments: displaySegments,
     talentLevel,
   });
@@ -202,15 +242,26 @@ wheelRouter.post("/wheel/spin", async (req, res) => {
   try {
     await client.query("BEGIN");
 
+    let usedTicket = false;
+    let ticketsLeft: number | null = null;
+
     if (!god) {
       const exists = await client.query(`SELECT 1 FROM daily_wheel_spins WHERE user_id=$1 AND day=$2::date LIMIT 1`, [
         userId,
         day,
       ]);
 
-      if ((exists.rowCount ?? 0) > 0) {
-        await client.query("ROLLBACK");
-        return res.status(409).json({ ok: false, error: "already_used" });
+      const usedToday = (exists.rowCount ?? 0) > 0;
+
+      if (usedToday) {
+        // ✅ cooldown actif => on tente de consommer 1 ticket
+        const c = await consumeUserTokenOne(client, userId, "wheel_ticket");
+        if (!c.ok) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({ ok: false, error: "already_used" });
+        }
+        usedTicket = true;
+        ticketsLeft = c.left;
       }
     }
 
@@ -227,9 +278,14 @@ wheelRouter.post("/wheel/spin", async (req, res) => {
       finalReward,
       day,
       talent: { code: WHEEL_TALENT_CODE, level: talentLevel, kind: bonusCalc.kind, pct: bonusCalc.pct },
+
+      // ticket info
+      usedTicket,
+      ticketsLeft,
     });
 
-    if (!god) {
+    // ✅ On n'enregistre un "daily spin" que si c'est le spin gratuit du jour (pas via ticket)
+    if (!god && !usedTicket) {
       await client.query(
         `INSERT INTO daily_wheel_spins (user_id, day, segment_index, reward_rubis)
          VALUES ($1,$2::date,$3,$4)`,
@@ -251,6 +307,9 @@ wheelRouter.post("/wheel/spin", async (req, res) => {
       bonusReward,
       talentLevel,
       bonusKind: bonusCalc.kind,
+
+      usedTicket,
+      ticketsLeft,
     });
   } catch (e: any) {
     try {

@@ -4,29 +4,20 @@ import type { ApiUser } from "../lib/api";
 import { loadToken, saveToken } from "../lib/storage";
 import { me, claimDailyBonus } from "../lib/api";
 
+import { DailyBonusAgendaModal, type DailyBonusState } from "../components/DailyBonusAgendaModal";
+
 type AuthCtx = {
   token: string | null;
   user: ApiUser | null;
   setAuth: (token: string, user: ApiUser) => void;
   logout: () => void;
   refreshMe: () => Promise<void>;
-
-  // ✅ patch local du user (ex: rubis)
   patchUser: (patch: Partial<ApiUser>) => void;
 };
 
 const Ctx = React.createContext<AuthCtx | null>(null);
 
-function normalizeUser(u: any): ApiUser {
-  if (!u) return u;
-  // évite des crashs si certaines clés sont absentes
-  if (!u.tokens) u.tokens = {};
-  if (!u.breakdown) u.breakdown = {};
-  return u as ApiUser;
-}
-
 function parisDayISO() {
-  // en-CA => YYYY-MM-DD
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Paris",
     year: "numeric",
@@ -35,9 +26,41 @@ function parisDayISO() {
   }).format(new Date());
 }
 
+function looksLikeDailyBonusState(x: any): x is DailyBonusState {
+  if (!x || x.ok !== true) return false;
+  if (!Array.isArray(x.week)) return false;
+  if (!Array.isArray(x.milestones)) return false;
+  if (!x.tokens) return false;
+  return true;
+}
+
+function normalizeUser(u: any): ApiUser {
+  if (!u) return u;
+  if (!u.tokens) u.tokens = {};
+  if (!u.breakdown) u.breakdown = {};
+  return u as ApiUser;
+}
+
+// helpers storage (localStorage safe)
+function lsGet(k: string) {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+}
+function lsSet(k: string, v: string) {
+  try {
+    localStorage.setItem(k, v);
+  } catch {}
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = React.useState<string | null>(() => loadToken());
   const [user, setUser] = React.useState<ApiUser | null>(null);
+
+  // ✅ popup daily bonus (state complet)
+  const [dailyBonusPopup, setDailyBonusPopup] = React.useState<DailyBonusState | null>(null);
 
   const logout = React.useCallback(() => {
     setToken(null);
@@ -63,37 +86,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!token) return;
     try {
       const r = await me(token);
-      setUser(normalizeUser((r as any)?.user));
+      setUser(normalizeUser(r.user));
     } catch {
       logout();
     }
   }, [token, logout]);
 
-  // ✅ On garde l'auto-claim (qui déclenche le toast via l'event "dailyBonus:result"),
-  // mais on RETIRE tout ce qui ouvre la DailyBonusAgendaModal.
   const tryClaimDailyBonus = React.useCallback(async () => {
     if (!token || !user) return;
 
     const today = parisDayISO();
-    const attemptKey = `dailyBonus:lastAttempt:${user.id}`;
 
-    // évite de spammer l'API à chaque refreshMe() (interval + focus)
-    if (sessionStorage.getItem(attemptKey) === today) return;
+    // 🔒 IMPORTANT: localStorage => persiste entre onglets
+    const attemptKey = `dailyBonus:lastAttempt:${user.id}`; // value = YYYY-MM-DD
+    const shownKey = `dailyBonus:lastShown:${user.id}:${today}`; // "1"
+    const dismissedKey = `dailyBonus:dismissed:${user.id}:${today}`; // "1"
+
+    // si déjà dismiss aujourd'hui => ne rien auto-ouvrir
+    if (lsGet(dismissedKey) === "1") return;
+
+    // si déjà tenté aujourd'hui (dans un autre onglet) => ne pas relancer
+    if (lsGet(attemptKey) === today) return;
 
     try {
       const r: any = await claimDailyBonus(token);
 
-      const day = String(r?.state?.day || r?.day || today);
-      sessionStorage.setItem(attemptKey, day);
+      // quoi qu'il arrive, on marque "tenté aujourd'hui" pour éviter relance multi-onglets
+      lsSet(attemptKey, today);
 
-      // Event global -> DailyBonusToast s'en occupe
+      // si le backend dit explicitement claimed=false, on n'affiche rien
+      if (r?.claimed === false) return;
+
+      // Event global (DailyBonusToast s'abonne à ça)
       window.dispatchEvent(new CustomEvent("dailyBonus:result", { detail: { ...r, source: "auto" } }));
 
-      // update solde
+      // ✅ on ouvre la modal AGENDA si on a un state complet et pas déjà affiché aujourd'hui
+      const s = r?.state;
+      if (looksLikeDailyBonusState(s)) {
+        if (lsGet(shownKey) !== "1") {
+          lsSet(shownKey, "1");
+          setDailyBonusPopup(s);
+        }
+      }
+
       await refreshMe();
     } catch {
-      // silencieux (pas bloquant)
-      sessionStorage.setItem(attemptKey, today);
+      // même en erreur, on marque tenté pour pas spammer sur refresh/focus
+      lsSet(attemptKey, today);
     }
   }, [token, user, refreshMe]);
 
@@ -101,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshMe();
   }, [refreshMe]);
 
-  // claim dès que user est dispo (après refreshMe / login)
+  // claim dès que user est dispo
   React.useEffect(() => {
     if (!token || !user) return;
     tryClaimDailyBonus();
@@ -127,7 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [token, refreshMe, tryClaimDailyBonus]);
 
-  // ✅ écoute globale: mise à jour instant du solde rubis partout
+  // ✅ écoute globale: mise à jour instant du solde rubis
   React.useEffect(() => {
     const onRubisUpdate = (ev: any) => {
       const v = Number(ev?.detail?.rubis);
@@ -139,7 +178,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("rubis:update", onRubisUpdate as any);
   }, [patchUser]);
 
-  return <Ctx.Provider value={{ token, user, setAuth, logout, refreshMe, patchUser }}>{children}</Ctx.Provider>;
+  // ✅ ouverture explicite de l'agenda via event (bouton "Voir" du toast)
+  React.useEffect(() => {
+    const onOpen = (ev: any) => {
+      const s = ev?.detail?.state;
+      if (looksLikeDailyBonusState(s)) setDailyBonusPopup(s);
+    };
+    window.addEventListener("ui:daily_bonus_agenda_open", onOpen as any);
+    return () => window.removeEventListener("ui:daily_bonus_agenda_open", onOpen as any);
+  }, []);
+
+  return (
+    <Ctx.Provider value={{ token, user, setAuth, logout, refreshMe, patchUser }}>
+      {children}
+
+      {dailyBonusPopup ? (
+        <DailyBonusAgendaModal
+          state={dailyBonusPopup}
+          onClose={() => {
+            if (user) {
+              const today = parisDayISO();
+              const dismissedKey = `dailyBonus:dismissed:${user.id}:${today}`;
+              lsSet(dismissedKey, "1"); // ✅ ne se ré-ouvre plus auto aujourd'hui
+            }
+            setDailyBonusPopup(null);
+          }}
+          onState={(s) => setDailyBonusPopup(s)}
+        />
+      ) : null}
+    </Ctx.Provider>
+  );
 }
 
 export function useAuth() {
