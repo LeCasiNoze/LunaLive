@@ -33,9 +33,9 @@ function canRun(bin: string) {
 }
 
 const candidates = [
-  (process.env.FFMPEG_PATH || "").trim() || null, // override explicite
-  "ffmpeg", // binaire système (Render native)
-  ffmpegStatic, // fallback local (Windows/dev)
+  (process.env.FFMPEG_PATH || "").trim() || null,
+  "ffmpeg",
+  ffmpegStatic,
 ].filter(Boolean) as string[];
 
 const FFMPEG_BIN = (candidates.find(canRun) || candidates[0] || "ffmpeg").trim();
@@ -110,30 +110,69 @@ function jpegSize(buf: Buffer): { w: number; h: number } | null {
   }
 }
 
-/* ───────────────────────────────────────────────────────────── */
-/* DLive resolve + manifest discovery                              */
-/* ───────────────────────────────────────────────────────────── */
+function normalizeUrl(u: any): string {
+  const s = String(u || "").trim();
+  if (!s) return "";
+  if (s.startsWith("//")) return `https:${s}`;
+  return s;
+}
 
-type LiveResolve = {
-  channelSlug: string; // ce qu'on donne à fetchDliveLiveInfo()
-  username?: string | null; // optionnel
-};
+async function fetchImageToBuffer(url: string): Promise<{ ok: boolean; buf: Buffer; ct: string; status: number }> {
+  const u = normalizeUrl(url);
+  if (!u) return { ok: false, buf: Buffer.alloc(0), ct: "", status: 0 };
+
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), 6500);
+
+  try {
+    const r = await fetch(u, {
+      method: "GET",
+      redirect: "follow",
+      signal: ac.signal,
+      headers: {
+        accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        "user-agent": "Mozilla/5.0",
+        referer: "https://dlive.tv/",
+        origin: "https://dlive.tv",
+      },
+    });
+
+    clearTimeout(t);
+
+    const ct = r.headers.get("content-type") || "";
+    const status = r.status;
+    if (!r.ok) return { ok: false, buf: Buffer.alloc(0), ct, status };
+
+    const ab = await r.arrayBuffer();
+    const buf = Buffer.from(ab);
+
+    // garde-fous: il faut une vraie image
+    const looksImage = ct.startsWith("image/");
+    if (!looksImage || buf.length < 1500) return { ok: false, buf, ct, status };
+
+    return { ok: true, buf, ct, status };
+  } catch {
+    clearTimeout(t);
+    return { ok: false, buf: Buffer.alloc(0), ct: "", status: 0 };
+  }
+}
 
 /**
- * - respecte le mode "dlive_use_linked"
- * - sinon utilise provider_accounts.channel_slug (ce que tu as en DB)
+ * IMPORTANT:
+ * - slug (site) != displayname DLive
+ * - on récupère channel_slug côté provider_accounts (displayname)
+ * - support dlive_use_linked (si tu l’utilises)
  */
-async function resolveDliveFromStreamerSlug(slug: string): Promise<LiveResolve> {
+async function resolveDliveDisplaynameFromSlug(slug: string): Promise<string> {
   try {
     const { rows } = await pool.query(
       `
       SELECT
-        s.slug,
-        s.dlive_use_linked AS "useLinked",
-        s.dlive_link_displayname AS "linkedDisplayname",
-        s.dlive_link_username AS "linkedUsername",
-        pa.channel_slug AS "providerChannelSlug",
-        pa.channel_username AS "providerChannelUsername"
+        CASE
+          WHEN s.dlive_use_linked = TRUE AND s.dlive_link_displayname IS NOT NULL
+            THEN s.dlive_link_displayname
+          ELSE COALESCE(pa.channel_slug, s.slug)
+        END AS displayname
       FROM streamers s
       LEFT JOIN provider_accounts pa
         ON pa.provider='dlive'
@@ -143,154 +182,15 @@ async function resolveDliveFromStreamerSlug(slug: string): Promise<LiveResolve> 
       `,
       [slug]
     );
-
-    const r = rows?.[0];
-    if (!r) return { channelSlug: slug };
-
-    const useLinked = !!r.useLinked;
-    const channelSlug = String(
-      (useLinked && r.linkedDisplayname) ? r.linkedDisplayname : (r.providerChannelSlug || slug)
-    ).trim();
-
-    const username = String(
-      (useLinked && r.linkedUsername) ? r.linkedUsername : (r.providerChannelUsername || "")
-    ).trim();
-
-    return { channelSlug: channelSlug || slug, username: username || null };
+    const dn = rows?.[0]?.displayname;
+    return String(dn || slug).trim();
   } catch {
-    return { channelSlug: slug };
+    return slug;
   }
-}
-
-function normalizeUrl(u: string): string {
-  const s = String(u || "").trim();
-  if (!s) return "";
-  if (s.startsWith("//")) return `https:${s}`;
-  return s;
-}
-
-/**
- * Extraction ultra robuste : récupère toutes les strings contenant ".m3u8"
- * dans l'objet info (y compris nested).
- */
-function extractM3u8UrlsDeep(obj: any, out: Set<string>) {
-  if (!obj) return;
-
-  if (typeof obj === "string") {
-    const s = normalizeUrl(obj);
-    if (s.includes(".m3u8")) out.add(s);
-    return;
-  }
-
-  if (Array.isArray(obj)) {
-    for (const x of obj) extractM3u8UrlsDeep(x, out);
-    return;
-  }
-
-  if (typeof obj === "object") {
-    for (const k of Object.keys(obj)) extractM3u8UrlsDeep(obj[k], out);
-  }
-}
-
-async function quickProbeUrl(url: string): Promise<{ ok: boolean; status: number; ct: string; err?: string }> {
-  const u = normalizeUrl(url);
-  if (!u) return { ok: false, status: 0, ct: "", err: "empty" };
-
-  const headers: Record<string, string> = {
-    "user-agent": "Mozilla/5.0",
-    "referer": "https://dlive.tv/",
-    "origin": "https://dlive.tv",
-    "accept": "*/*",
-  };
-
-  // HEAD parfois refusé → on tente HEAD puis GET court
-  const tries: Array<"HEAD" | "GET"> = ["HEAD", "GET"];
-
-  for (const method of tries) {
-    const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), 2500);
-
-    try {
-      const res = await fetch(u, {
-        method,
-        headers,
-        redirect: "follow",
-        signal: ac.signal,
-      });
-
-      clearTimeout(t);
-
-      const ct = res.headers.get("content-type") || "";
-      // si 200 et ressemble à m3u8 -> ok
-      const isPlaylist = ct.includes("mpegurl") || u.includes(".m3u8");
-
-      if (res.ok && isPlaylist) return { ok: true, status: res.status, ct };
-      // 403/400/404 => on laisse tomber cette candidate
-      if (!res.ok) return { ok: false, status: res.status, ct, err: `http_${res.status}` };
-
-      // ok mais ct bizarre → on accepte quand même si .m3u8
-      if (res.ok && u.includes(".m3u8")) return { ok: true, status: res.status, ct };
-
-      return { ok: false, status: res.status, ct, err: "not_playlist" };
-    } catch (e: any) {
-      clearTimeout(t);
-      const msg = String(e?.name === "AbortError" ? "timeout" : (e?.message || "fetch_error"));
-      // continue sur l'autre méthode
-      if (method === "HEAD") continue;
-      return { ok: false, status: 0, ct: "", err: msg };
-    }
-  }
-
-  return { ok: false, status: 0, ct: "", err: "probe_failed" };
-}
-
-async function resolveBestLiveManifest(slug: string): Promise<{ url: string; debug: string }> {
-  const r = await resolveDliveFromStreamerSlug(slug);
-
-  // 1) API DLive : récupère une URL de playback signée si dispo
-  let info: any = null;
-  try {
-    info = await fetchDliveLiveInfo(r.channelSlug);
-  } catch (e: any) {
-    return { url: "", debug: `dlive_api_failed:${String(e?.message || e)}` };
-  }
-
-  const set = new Set<string>();
-
-  // tout ce qui ressemble à une m3u8 dans l'objet
-  extractM3u8UrlsDeep(info, set);
-
-  // 2) Fallbacks (en dernier) — peuvent marcher si DLive re-ouvre l’endpoint
-  // (on met sans mobileweb aussi)
-  const userCandidates = [
-    r.username ? `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(r.username)}.m3u8?mobileweb` : "",
-    r.username ? `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(r.username)}.m3u8` : "",
-    r.channelSlug ? `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(r.channelSlug)}.m3u8?mobileweb` : "",
-    r.channelSlug ? `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(r.channelSlug)}.m3u8` : "",
-  ].map(normalizeUrl).filter(Boolean);
-
-  for (const u of userCandidates) set.add(u);
-
-  const candidates = Array.from(set);
-
-  // si rien trouvé via API → on log
-  if (!candidates.length) {
-    return { url: "", debug: `no_m3u8_in_info channelSlug=${r.channelSlug} username=${r.username || ""}` };
-  }
-
-  // 3) Probe candidates, prend le premier OK
-  const attempts: string[] = [];
-  for (const u of candidates.slice(0, 12)) {
-    const p = await quickProbeUrl(u);
-    attempts.push(`${u} :: ${p.ok ? "ok" : (p.err || "bad")}`);
-    if (p.ok) return { url: u, debug: attempts.join(" | ") };
-  }
-
-  return { url: "", debug: attempts.join(" | ") };
 }
 
 /* ───────────────────────────────────────────────────────────── */
-/* Route: live thumb                                               */
+/* route LIVE : utilise thumbnailUrl (robuste)                    */
 /* ───────────────────────────────────────────────────────────── */
 
 thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) => {
@@ -299,112 +199,46 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
 
   const key = `live:${slug.toLowerCase()}`;
 
-  // cache
   const hit = cache.get(key);
   if (hit && hit.exp > Date.now()) return sendCached(res, hit);
 
-  // pas de ffmpeg => SVG
-  if (!FFMPEG_OK) return sendSvg(res, svgFallback(slug));
+  const displayname = await resolveDliveDisplaynameFromSlug(slug);
 
-  const { url: hlsUrl, debug } = await resolveBestLiveManifest(slug);
-
-  if (!hlsUrl) {
-    console.warn(`[thumbs] live manifest not usable slug=${slug} tried=${debug}`);
+  let info: any = null;
+  try {
+    info = await fetchDliveLiveInfo(displayname);
+  } catch (e: any) {
+    console.warn(`[thumbs] dlive fetch failed slug=${slug} displayname=${displayname}`, String(e?.message || e));
     return sendSvg(res, svgFallback(slug));
   }
 
-  // headers HLS
-  const HLS_HEADERS =
-    "Origin: https://dlive.tv\r\n" +
-    "Referer: https://dlive.tv/\r\n" +
-    "User-Agent: Mozilla/5.0\r\n";
+  const thumbUrl = normalizeUrl(info?.thumbnailUrl);
 
-  const args = [
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-y",
-    "-nostdin",
-    "-protocol_whitelist",
-    "file,http,https,tcp,tls",
-    "-headers",
-    HLS_HEADERS,
-    "-user_agent",
-    "Mozilla/5.0",
-    "-rw_timeout",
-    "15000000",
-    "-i",
-    hlsUrl,
-    "-an",
-    "-frames:v",
-    "1",
-    "-vf",
-    "scale=640:-1",
-    "-q:v",
-    "5",
-    "-f",
-    "image2pipe",
-    "-vcodec",
-    "mjpeg",
-    "pipe:1",
-  ];
-
-  const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
-
-  const chunks: Buffer[] = [];
-  let stderr = "";
-
-  const killTimer = setTimeout(() => {
-    try {
-      p.kill("SIGKILL");
-    } catch {}
-  }, 12_000);
-
-  req.on("close", () => {
-    try {
-      p.kill("SIGKILL");
-    } catch {}
-  });
-
-  p.stdout.on("data", (d: Buffer) => chunks.push(Buffer.from(d)));
-  p.stderr.on("data", (d: Buffer) => (stderr += String(d)));
-
-  p.on("error", (e) => {
-    clearTimeout(killTimer);
-    console.warn(`[thumbs] ffmpeg spawn error bin=${FFMPEG_BIN} slug=${slug} url=${hlsUrl}`, e);
+  // si pas live ou pas de thumb => fallback SVG
+  if (!thumbUrl) {
+    // (optionnel) log léger
+    // console.log(`[thumbs] no thumbnailUrl slug=${slug} displayname=${displayname} live=${!!info?.isLive}`);
     return sendSvg(res, svgFallback(slug));
-  });
+  }
 
-  p.on("close", (code, signal) => {
-    clearTimeout(killTimer);
+  // récupère l'image DLive
+  const img = await fetchImageToBuffer(thumbUrl);
 
-    const buf = Buffer.concat(chunks);
-    const dim = jpegSize(buf);
+  if (img.ok) {
+    cache.set(key, { exp: Date.now() + CACHE_MS, buf: img.buf, contentType: img.ct || "image/jpeg" });
+    res.set("Content-Type", img.ct || "image/jpeg");
+    res.set("Cache-Control", "public, max-age=300");
+    return res.end(img.buf);
+  }
 
-    const ok =
-      code === 0 &&
-      isJpeg(buf) &&
-      dim != null &&
-      dim.w >= 320 &&
-      dim.h >= 180 &&
-      buf.length > 1500;
-
-    if (ok) {
-      cache.set(key, { exp: Date.now() + CACHE_MS, buf, contentType: "image/jpeg" });
-      res.set("Content-Type", "image/jpeg");
-      res.set("Cache-Control", "public, max-age=300");
-      return res.end(buf);
-    }
-
-    console.warn(
-      `[thumbs] ffmpeg failed bin=${FFMPEG_BIN} slug=${slug} code=${code} signal=${signal} bytes=${buf.length} url=${hlsUrl} err=${stderr?.slice(0, 900) || ""}`
-    );
-    return sendSvg(res, svgFallback(slug));
-  });
+  console.warn(
+    `[thumbs] thumbnail fetch failed slug=${slug} displayname=${displayname} status=${img.status} ct=${img.ct} url=${thumbUrl}`
+  );
+  return sendSvg(res, svgFallback(slug));
 });
 
 /* ───────────────────────────────────────────────────────────── */
-/* Route: clip thumb                                               */
+/* route CLIPS : inchangé (mp4 r2 -> vod hls)                     */
 /* ───────────────────────────────────────────────────────────── */
 
 thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse) => {
@@ -413,14 +247,11 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
 
   const key = `clip:${clipId}`;
 
-  // cache
   const hit = cache.get(key);
   if (hit && hit.exp > Date.now()) return sendCached(res, hit);
 
-  // pas de ffmpeg => SVG
   if (!FFMPEG_OK) return sendSvg(res, svgFallback(`clip ${clipId}`));
 
-  // charge clip
   const { rows } = await pool.query(
     `SELECT id, vod_url, at_sec, pre_sec, post_sec, title, mp4_key
      FROM bot_clips
@@ -434,7 +265,6 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
 
   const title = String(clip.title || `clip ${clipId}`);
 
-  // priorité MP4 (R2)
   const mp4Key = clip.mp4_key ? String(clip.mp4_key).trim() : "";
   const mp4Url = mp4Key && r2Enabled() ? String(buildPublicUrl(mp4Key) || "").trim() : "";
 
@@ -513,7 +343,6 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
     return;
   }
 
-  // fallback VOD HLS
   const vodUrl = clip.vod_url ? String(clip.vod_url) : "";
   if (!vodUrl) return sendSvg(res, svgFallback(title));
 
