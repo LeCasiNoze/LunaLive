@@ -81,6 +81,7 @@ import { accountActionsRouter } from "./routes/account_actions.js";
 import { adminImpersonateRouter } from "./routes/admin_impersonate.js";
 import { adminEmotesRouter } from "./emotes/admin_emotes.router.js";
 import { reportsRouter } from "./routes/reports.js";
+import { adminReportsRouter } from "./routes/admin_reports.js";
 
 export function createApp() {
   const app = express();
@@ -133,7 +134,7 @@ export function createApp() {
 
   // ✅ Admin comments (déjà monté comme ça chez toi)
   app.use("/admin/casinos/comments", requireAdminKey, adminCasinoCommentsRouter);
-
+  app.use("/admin/reports", requireAdminKey, adminReportsRouter);
   // ✅ Casinos ADMIN (ordre CRITIQUE)
   // NOTE: on les protège aussi ici par requireAdminKey pour être sûr
   app.use("/admin/casinos/listings", requireAdminKey, adminCasinosRouter);
