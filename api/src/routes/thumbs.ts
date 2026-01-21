@@ -3,13 +3,15 @@ import express from "express";
 import type { Request as ExRequest, Response as ExResponse } from "express";
 import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
+
 import { pool } from "../db.js";
 import { r2Enabled, buildPublicUrl } from "../clips/r2.js";
+import { fetchDliveLiveInfo } from "../dlive.js";
 
 export const thumbsRouter = express.Router();
 
 /* ───────────────────────────────────────────────────────────── */
-/* ffmpeg: préfère le binaire système sur Render (évite SIGSEGV)   */
+/* ffmpeg: préfère le binaire système sur Render (évite SIGSEGV)  */
 /* ───────────────────────────────────────────────────────────── */
 
 const require = createRequire(import.meta.url);
@@ -31,9 +33,9 @@ function canRun(bin: string) {
 }
 
 const candidates = [
-  (process.env.FFMPEG_PATH || "").trim() || null,
-  "ffmpeg",
-  ffmpegStatic,
+  (process.env.FFMPEG_PATH || "").trim() || null, // override explicite
+  "ffmpeg", // binaire système (Render native)
+  ffmpegStatic, // fallback local (Windows/dev)
 ].filter(Boolean) as string[];
 
 const FFMPEG_BIN = (candidates.find(canRun) || candidates[0] || "ffmpeg").trim();
@@ -42,7 +44,7 @@ const FFMPEG_OK = canRun(FFMPEG_BIN);
 console.log(`[thumbs] ffmpeg selected bin=${FFMPEG_BIN} ok=${FFMPEG_OK}`);
 
 /* ───────────────────────────────────────────────────────────── */
-/* cache + fallback                                                */
+/* cache + fallback                                               */
 /* ───────────────────────────────────────────────────────────── */
 
 const CACHE_MS = 300_000; // 5 min
@@ -77,24 +79,6 @@ function svgFallback(label: string) {
 </svg>`;
 }
 
-/* ───────────────────────────────────────────────────────────── */
-/* helpers                                                        */
-/* ───────────────────────────────────────────────────────────── */
-
-function uniqStrings(arr: Array<string | null | undefined>) {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const x of arr) {
-    const s = String(x || "").trim();
-    if (!s) continue;
-    const k = s.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(s);
-  }
-  return out;
-}
-
 function isJpeg(buf: Buffer) {
   return buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
 }
@@ -126,100 +110,194 @@ function jpegSize(buf: Buffer): { w: number; h: number } | null {
   }
 }
 
-function hlsUrlForUser(user: string, withMobileweb: boolean) {
-  const base = `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(user)}.m3u8`;
-  return withMobileweb ? `${base}?mobileweb` : base;
-}
+/* ───────────────────────────────────────────────────────────── */
+/* DLive resolve + manifest discovery                              */
+/* ───────────────────────────────────────────────────────────── */
 
-async function fetchManifestOk(url: string): Promise<{ ok: boolean; status: number; why?: string }> {
-  const AC = new AbortController();
-  const t = setTimeout(() => AC.abort(), 3500);
-
-  try {
-    const headers: Record<string, string> = {
-      accept: "application/vnd.apple.mpegurl,application/x-mpegurl,text/plain,*/*",
-      "user-agent": "Mozilla/5.0",
-      referer: "https://dlive.tv/",
-      origin: "https://dlive.tv",
-    };
-
-    const r = await fetch(url, { headers, redirect: "follow", signal: AC.signal });
-    const status = r.status;
-
-    if (!r.ok) return { ok: false, status, why: `http_${status}` };
-
-    // playlist doit être un texte m3u8
-    const text = await r.text();
-    const head = text.slice(0, 200).trim();
-
-    if (!head.startsWith("#EXTM3U")) return { ok: false, status, why: "not_m3u8" };
-
-    return { ok: true, status };
-  } catch (e: any) {
-    const msg = String(e?.name || e?.message || "fetch_error");
-    return { ok: false, status: 0, why: msg };
-  } finally {
-    clearTimeout(t);
-  }
-}
+type LiveResolve = {
+  channelSlug: string; // ce qu'on donne à fetchDliveLiveInfo()
+  username?: string | null; // optionnel
+};
 
 /**
- * IMPORTANT:
- * - slug (site) != username DLive (HLS)
- * - on récupère plusieurs candidats et on valide par un fetch manifest (#EXTM3U)
+ * - respecte le mode "dlive_use_linked"
+ * - sinon utilise provider_accounts.channel_slug (ce que tu as en DB)
  */
-async function resolveDliveUserCandidates(slug: string): Promise<string[]> {
+async function resolveDliveFromStreamerSlug(slug: string): Promise<LiveResolve> {
   try {
     const { rows } = await pool.query(
       `
       SELECT
-        s.slug AS site_slug,
-        pa.channel_username AS pa_username,
-        pa.channel_slug AS pa_slug
+        s.slug,
+        s.dlive_use_linked AS "useLinked",
+        s.dlive_link_displayname AS "linkedDisplayname",
+        s.dlive_link_username AS "linkedUsername",
+        pa.channel_slug AS "providerChannelSlug",
+        pa.channel_username AS "providerChannelUsername"
       FROM streamers s
       LEFT JOIN provider_accounts pa
-        ON pa.assigned_to_streamer_id = s.id
-       AND pa.provider = 'dlive'
+        ON pa.provider='dlive'
+       AND pa.assigned_to_streamer_id = s.id
       WHERE s.slug = $1
       LIMIT 1
       `,
       [slug]
     );
 
-    const r = rows?.[0] || {};
-    return uniqStrings([r.pa_username, r.pa_slug, r.site_slug, slug]);
+    const r = rows?.[0];
+    if (!r) return { channelSlug: slug };
+
+    const useLinked = !!r.useLinked;
+    const channelSlug = String(
+      (useLinked && r.linkedDisplayname) ? r.linkedDisplayname : (r.providerChannelSlug || slug)
+    ).trim();
+
+    const username = String(
+      (useLinked && r.linkedUsername) ? r.linkedUsername : (r.providerChannelUsername || "")
+    ).trim();
+
+    return { channelSlug: channelSlug || slug, username: username || null };
   } catch {
-    return uniqStrings([slug]);
+    return { channelSlug: slug };
   }
 }
 
-async function pickWorkingLiveHlsUrl(slug: string) {
-  const candidates = await resolveDliveUserCandidates(slug);
+function normalizeUrl(u: string): string {
+  const s = String(u || "").trim();
+  if (!s) return "";
+  if (s.startsWith("//")) return `https:${s}`;
+  return s;
+}
 
-  // on essaye user + (avec/sans mobileweb)
-  const attempts: Array<{ user: string; url: string; result?: any }> = [];
+/**
+ * Extraction ultra robuste : récupère toutes les strings contenant ".m3u8"
+ * dans l'objet info (y compris nested).
+ */
+function extractM3u8UrlsDeep(obj: any, out: Set<string>) {
+  if (!obj) return;
 
-  for (const user of candidates) {
-    const urls = [hlsUrlForUser(user, true), hlsUrlForUser(user, false)];
-    for (const url of urls) {
-      const r = await fetchManifestOk(url);
-      attempts.push({ user, url, result: r });
-      if (r.ok) return { ok: true as const, user, url, attempts };
+  if (typeof obj === "string") {
+    const s = normalizeUrl(obj);
+    if (s.includes(".m3u8")) out.add(s);
+    return;
+  }
+
+  if (Array.isArray(obj)) {
+    for (const x of obj) extractM3u8UrlsDeep(x, out);
+    return;
+  }
+
+  if (typeof obj === "object") {
+    for (const k of Object.keys(obj)) extractM3u8UrlsDeep(obj[k], out);
+  }
+}
+
+async function quickProbeUrl(url: string): Promise<{ ok: boolean; status: number; ct: string; err?: string }> {
+  const u = normalizeUrl(url);
+  if (!u) return { ok: false, status: 0, ct: "", err: "empty" };
+
+  const headers: Record<string, string> = {
+    "user-agent": "Mozilla/5.0",
+    "referer": "https://dlive.tv/",
+    "origin": "https://dlive.tv",
+    "accept": "*/*",
+  };
+
+  // HEAD parfois refusé → on tente HEAD puis GET court
+  const tries: Array<"HEAD" | "GET"> = ["HEAD", "GET"];
+
+  for (const method of tries) {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 2500);
+
+    try {
+      const res = await fetch(u, {
+        method,
+        headers,
+        redirect: "follow",
+        signal: ac.signal,
+      });
+
+      clearTimeout(t);
+
+      const ct = res.headers.get("content-type") || "";
+      // si 200 et ressemble à m3u8 -> ok
+      const isPlaylist = ct.includes("mpegurl") || u.includes(".m3u8");
+
+      if (res.ok && isPlaylist) return { ok: true, status: res.status, ct };
+      // 403/400/404 => on laisse tomber cette candidate
+      if (!res.ok) return { ok: false, status: res.status, ct, err: `http_${res.status}` };
+
+      // ok mais ct bizarre → on accepte quand même si .m3u8
+      if (res.ok && u.includes(".m3u8")) return { ok: true, status: res.status, ct };
+
+      return { ok: false, status: res.status, ct, err: "not_playlist" };
+    } catch (e: any) {
+      clearTimeout(t);
+      const msg = String(e?.name === "AbortError" ? "timeout" : (e?.message || "fetch_error"));
+      // continue sur l'autre méthode
+      if (method === "HEAD") continue;
+      return { ok: false, status: 0, ct: "", err: msg };
     }
   }
 
-  return { ok: false as const, user: candidates[0] || slug, url: "", attempts };
+  return { ok: false, status: 0, ct: "", err: "probe_failed" };
+}
+
+async function resolveBestLiveManifest(slug: string): Promise<{ url: string; debug: string }> {
+  const r = await resolveDliveFromStreamerSlug(slug);
+
+  // 1) API DLive : récupère une URL de playback signée si dispo
+  let info: any = null;
+  try {
+    info = await fetchDliveLiveInfo(r.channelSlug);
+  } catch (e: any) {
+    return { url: "", debug: `dlive_api_failed:${String(e?.message || e)}` };
+  }
+
+  const set = new Set<string>();
+
+  // tout ce qui ressemble à une m3u8 dans l'objet
+  extractM3u8UrlsDeep(info, set);
+
+  // 2) Fallbacks (en dernier) — peuvent marcher si DLive re-ouvre l’endpoint
+  // (on met sans mobileweb aussi)
+  const userCandidates = [
+    r.username ? `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(r.username)}.m3u8?mobileweb` : "",
+    r.username ? `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(r.username)}.m3u8` : "",
+    r.channelSlug ? `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(r.channelSlug)}.m3u8?mobileweb` : "",
+    r.channelSlug ? `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(r.channelSlug)}.m3u8` : "",
+  ].map(normalizeUrl).filter(Boolean);
+
+  for (const u of userCandidates) set.add(u);
+
+  const candidates = Array.from(set);
+
+  // si rien trouvé via API → on log
+  if (!candidates.length) {
+    return { url: "", debug: `no_m3u8_in_info channelSlug=${r.channelSlug} username=${r.username || ""}` };
+  }
+
+  // 3) Probe candidates, prend le premier OK
+  const attempts: string[] = [];
+  for (const u of candidates.slice(0, 12)) {
+    const p = await quickProbeUrl(u);
+    attempts.push(`${u} :: ${p.ok ? "ok" : (p.err || "bad")}`);
+    if (p.ok) return { url: u, debug: attempts.join(" | ") };
+  }
+
+  return { url: "", debug: attempts.join(" | ") };
 }
 
 /* ───────────────────────────────────────────────────────────── */
-/* route: LIVE thumb                                                */
+/* Route: live thumb                                               */
 /* ───────────────────────────────────────────────────────────── */
 
 thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) => {
   const slug = String(req.params.slug || "").trim();
   if (!slug) return res.status(400).end();
 
-  const key = slug.toLowerCase();
+  const key = `live:${slug.toLowerCase()}`;
 
   // cache
   const hit = cache.get(key);
@@ -228,22 +306,18 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
   // pas de ffmpeg => SVG
   if (!FFMPEG_OK) return sendSvg(res, svgFallback(slug));
 
-  // 1) on trouve une URL HLS "vraiment" valide (évite 400 et mauvais user)
-  const picked = await pickWorkingLiveHlsUrl(slug);
-  if (!picked.ok) {
-    const dbg = picked.attempts
-      .slice(0, 8)
-      .map((a) => `${a.user} => ${a.url} :: ${a.result?.why || a.result?.status || "?"}`)
-      .join(" | ");
-    console.warn(`[thumbs] live manifest not usable slug=${slug} tried=${dbg}`);
+  const { url: hlsUrl, debug } = await resolveBestLiveManifest(slug);
+
+  if (!hlsUrl) {
+    console.warn(`[thumbs] live manifest not usable slug=${slug} tried=${debug}`);
     return sendSvg(res, svgFallback(slug));
   }
 
-  const dliveUser = picked.user;
-  const hlsUrl = picked.url;
-
+  // headers HLS
   const HLS_HEADERS =
-    "Origin: https://dlive.tv\r\n" + "Referer: https://dlive.tv/\r\n" + "User-Agent: Mozilla/5.0\r\n";
+    "Origin: https://dlive.tv\r\n" +
+    "Referer: https://dlive.tv/\r\n" +
+    "User-Agent: Mozilla/5.0\r\n";
 
   const args = [
     "-hide_banner",
@@ -297,7 +371,7 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
 
   p.on("error", (e) => {
     clearTimeout(killTimer);
-    console.warn(`[thumbs] ffmpeg spawn error bin=${FFMPEG_BIN} slug=${slug} user=${dliveUser}`, e);
+    console.warn(`[thumbs] ffmpeg spawn error bin=${FFMPEG_BIN} slug=${slug} url=${hlsUrl}`, e);
     return sendSvg(res, svgFallback(slug));
   });
 
@@ -307,14 +381,13 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     const buf = Buffer.concat(chunks);
     const dim = jpegSize(buf);
 
-    // ✅ accepte uniquement un "vrai" jpeg avec dimensions plausibles
     const ok =
       code === 0 &&
       isJpeg(buf) &&
       dim != null &&
       dim.w >= 320 &&
       dim.h >= 180 &&
-      buf.length >= 2500;
+      buf.length > 1500;
 
     if (ok) {
       cache.set(key, { exp: Date.now() + CACHE_MS, buf, contentType: "image/jpeg" });
@@ -324,14 +397,14 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     }
 
     console.warn(
-      `[thumbs] ffmpeg failed bin=${FFMPEG_BIN} slug=${slug} user=${dliveUser} code=${code} signal=${signal} bytes=${buf.length} hls=${hlsUrl} err=${stderr?.slice(0, 900) || ""}`
+      `[thumbs] ffmpeg failed bin=${FFMPEG_BIN} slug=${slug} code=${code} signal=${signal} bytes=${buf.length} url=${hlsUrl} err=${stderr?.slice(0, 900) || ""}`
     );
     return sendSvg(res, svgFallback(slug));
   });
 });
 
 /* ───────────────────────────────────────────────────────────── */
-/* route: CLIP thumb                                               */
+/* Route: clip thumb                                               */
 /* ───────────────────────────────────────────────────────────── */
 
 thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse) => {
@@ -340,11 +413,14 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
 
   const key = `clip:${clipId}`;
 
+  // cache
   const hit = cache.get(key);
   if (hit && hit.exp > Date.now()) return sendCached(res, hit);
 
+  // pas de ffmpeg => SVG
   if (!FFMPEG_OK) return sendSvg(res, svgFallback(`clip ${clipId}`));
 
+  // charge clip
   const { rows } = await pool.query(
     `SELECT id, vod_url, at_sec, pre_sec, post_sec, title, mp4_key
      FROM bot_clips
@@ -358,10 +434,10 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
 
   const title = String(clip.title || `clip ${clipId}`);
 
+  // priorité MP4 (R2)
   const mp4Key = clip.mp4_key ? String(clip.mp4_key).trim() : "";
   const mp4Url = mp4Key && r2Enabled() ? String(buildPublicUrl(mp4Key) || "").trim() : "";
 
-  // ✅ priorité MP4
   if (mp4Url) {
     const args = [
       "-hide_banner",
@@ -450,7 +526,9 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
   const previewSec = Math.min(startSec + 60, startSec + durationSec - 1);
 
   const HLS_HEADERS =
-    "Origin: https://dlive.tv\r\n" + "Referer: https://dlive.tv/\r\n" + "User-Agent: Mozilla/5.0\r\n";
+    "Origin: https://dlive.tv\r\n" +
+    "Referer: https://dlive.tv/\r\n" +
+    "User-Agent: Mozilla/5.0\r\n";
 
   const args = [
     "-hide_banner",
