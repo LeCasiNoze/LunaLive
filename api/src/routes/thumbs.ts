@@ -132,12 +132,27 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
   const dliveUser = await resolveDliveUsernameFromSlug(slug);
   const hlsUrl = proxiedHlsUrl(dliveUser);
 
+  // ✅ IMPORTANT: user-agent + headers "web" (sinon DLive peut répondre 400)
+  const HLS_HEADERS =
+    "Origin: https://dlive.tv\r\n" +
+    "Referer: https://dlive.tv/\r\n" +
+    "User-Agent: Mozilla/5.0\r\n";
+
   const args = [
     "-hide_banner",
     "-loglevel",
     "error",
     "-y",
     "-nostdin",
+
+    // ✅ HLS over https + stable UA
+    "-protocol_whitelist",
+    "file,http,https,tcp,tls",
+    "-headers",
+    HLS_HEADERS,
+    "-user_agent",
+    "Mozilla/5.0",
+
     "-rw_timeout",
     "15000000", // ✅ 15s
     "-i",
@@ -196,7 +211,7 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     }
 
     console.warn(
-      `[thumbs] ffmpeg failed bin=${FFMPEG_BIN} slug=${slug} user=${dliveUser} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 400) || ""}`
+      `[thumbs] ffmpeg failed bin=${FFMPEG_BIN} slug=${slug} user=${dliveUser} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 1200) || ""}`
     );
     return sendSvg(res, svgFallback(slug));
   });
@@ -301,7 +316,7 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
       }
 
       console.warn(
-        `[thumbs] clip(mp4) ffmpeg failed bin=${FFMPEG_BIN} clipId=${clipId} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 400) || ""}`
+        `[thumbs] clip(mp4) ffmpeg failed bin=${FFMPEG_BIN} clipId=${clipId} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 1200) || ""}`
       );
       return sendSvg(res, svgFallback(title));
     });
@@ -396,7 +411,7 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
     }
 
     console.warn(
-      `[thumbs] clip(vod) ffmpeg failed bin=${FFMPEG_BIN} clipId=${clipId} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 400) || ""}`
+      `[thumbs] clip(vod) ffmpeg failed bin=${FFMPEG_BIN} clipId=${clipId} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 1200) || ""}`
     );
     return sendSvg(res, svgFallback(title));
   });

@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response as ExResponse } from "express";
 import { Readable } from "stream";
 
 function hostMatches(host: string, pattern: string) {
@@ -11,7 +11,7 @@ function hostMatches(host: string, pattern: string) {
 
 const DEFAULT_ALLOWED = [
   "live.prd.dlive.tv",
-  "*.dlive.tv",        // ✅ important (segments/keys peuvent venir d’un autre subdomain)
+  "*.dlive.tv", // ✅ important (segments/keys peuvent venir d’un autre subdomain)
   "*.dlivecdn.com",
   "dlivecdn.com",
 ];
@@ -54,6 +54,24 @@ function rewriteM3u8(text: string, base: URL) {
     .join("\n");
 }
 
+/** decode “u” si jamais on reçoit encore un string encodé (selon runtime/query parser) */
+function normalizeRawU(raw: string) {
+  let s = String(raw || "").trim();
+  if (!s) return s;
+
+  // certains runtimes donnent déjà décodé, d’autres non → on tente 1-2 passes “safe”
+  for (let i = 0; i < 2; i++) {
+    if (/^https?:\/\//i.test(s)) break;
+    if (!/%[0-9a-f]{2}/i.test(s)) break;
+    try {
+      s = decodeURIComponent(s);
+    } catch {
+      break;
+    }
+  }
+  return s;
+}
+
 export function registerHlsProxy(app: Express) {
   app.options("/hls", (_req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -62,7 +80,7 @@ export function registerHlsProxy(app: Express) {
     res.status(204).end();
   });
 
-  app.get("/hls", async (req: Request, res: Response) => {
+  app.get("/hls", async (req: Request, res: ExResponse) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
     res.setHeader(
@@ -70,8 +88,10 @@ export function registerHlsProxy(app: Express) {
       "content-type,content-length,accept-ranges,content-range,cache-control"
     );
 
-    const raw = String(req.query.u || "");
-    if (!raw) return res.status(400).send("missing_u");
+    const raw0 = String(req.query.u || "");
+    if (!raw0) return res.status(400).send("missing_u");
+
+    const raw = normalizeRawU(raw0);
 
     let target: URL;
     try {
@@ -83,17 +103,26 @@ export function registerHlsProxy(app: Express) {
     if (target.protocol !== "https:") return res.status(400).send("bad_protocol");
     if (!isAllowedHost(target.hostname)) return res.status(400).send("host_not_allowed");
 
+    // ✅ IMPORTANT: on FORCE un “browser-like” UA au lieu de relayer Lavf/ffmpeg
     const headers: Record<string, string> = {
-      accept: String(req.headers.accept || "*/*"),
-      "user-agent": String(req.headers["user-agent"] || "Mozilla/5.0"),
+      accept:
+        "application/vnd.apple.mpegurl, application/x-mpegURL, application/octet-stream, */*",
+      "user-agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+      "accept-language": "en-US,en;q=0.9",
       referer: "https://dlive.tv/",
-      origin: "https://dlive.tv"
+      origin: "https://dlive.tv",
     };
 
     const range = req.headers.range ? String(req.headers.range) : "";
     if (range) headers.range = range;
 
-    const upstream = await fetch(target.toString(), { headers, redirect: "follow" });
+    let upstream: globalThis.Response;
+    try {
+      upstream = await fetch(target.toString(), { headers, redirect: "follow" });
+    } catch {
+      return res.status(502).send("upstream_fetch_failed");
+    }
 
     res.status(upstream.status);
 
@@ -101,7 +130,11 @@ export function registerHlsProxy(app: Express) {
     if (ct) res.setHeader("content-type", ct);
 
     // ✅ cache-friendly (playlist court, segments long)
-    const isPlaylist = ct.includes("application/vnd.apple.mpegurl") || target.pathname.endsWith(".m3u8");
+    const isPlaylist =
+      ct.includes("application/vnd.apple.mpegurl") ||
+      ct.includes("application/x-mpegurl") ||
+      target.pathname.endsWith(".m3u8");
+
     if (isPlaylist) {
       res.setHeader("Cache-Control", "public, max-age=1, s-maxage=2, must-revalidate");
       const text = await upstream.text();
