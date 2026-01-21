@@ -4,8 +4,6 @@ import type { ApiUser } from "../lib/api";
 import { loadToken, saveToken } from "../lib/storage";
 import { me, claimDailyBonus } from "../lib/api";
 
-import { DailyBonusAgendaModal, type DailyBonusState } from "../components/DailyBonusAgendaModal";
-
 type AuthCtx = {
   token: string | null;
   user: ApiUser | null;
@@ -13,11 +11,19 @@ type AuthCtx = {
   logout: () => void;
   refreshMe: () => Promise<void>;
 
-  // ✅ Nouveau: patch local du user (ex: rubis)
+  // ✅ patch local du user (ex: rubis)
   patchUser: (patch: Partial<ApiUser>) => void;
 };
 
 const Ctx = React.createContext<AuthCtx | null>(null);
+
+function normalizeUser(u: any): ApiUser {
+  if (!u) return u;
+  // évite des crashs si certaines clés sont absentes
+  if (!u.tokens) u.tokens = {};
+  if (!u.breakdown) u.breakdown = {};
+  return u as ApiUser;
+}
 
 function parisDayISO() {
   // en-CA => YYYY-MM-DD
@@ -29,29 +35,9 @@ function parisDayISO() {
   }).format(new Date());
 }
 
-function looksLikeDailyBonusState(x: any): x is DailyBonusState {
-  if (!x || x.ok !== true) return false;
-  if (!Array.isArray(x.week)) return false;
-  if (!Array.isArray(x.milestones)) return false;
-  if (!x.tokens) return false;
-  return true;
-}
-
-function normalizeUser(u: any): ApiUser {
-  if (!u) return u;
-  // évite les crashes du style user.tokens.wheel_ticket
-  if (!u.tokens) u.tokens = {};
-  // optionnel: si tu as d'autres maps parfois undefined
-  if (!u.breakdown) u.breakdown = {};
-  return u as ApiUser;
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = React.useState<string | null>(() => loadToken());
   const [user, setUser] = React.useState<ApiUser | null>(null);
-
-  // ✅ popup daily bonus (UI unique)
-  const [dailyBonusPopup, setDailyBonusPopup] = React.useState<DailyBonusState | null>(null);
 
   const logout = React.useCallback(() => {
     setToken(null);
@@ -77,18 +63,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!token) return;
     try {
       const r = await me(token);
-      setUser(normalizeUser(r.user));
+      setUser(normalizeUser((r as any)?.user));
     } catch {
       logout();
     }
   }, [token, logout]);
 
+  // ✅ On garde l'auto-claim (qui déclenche le toast via l'event "dailyBonus:result"),
+  // mais on RETIRE tout ce qui ouvre la DailyBonusAgendaModal.
   const tryClaimDailyBonus = React.useCallback(async () => {
     if (!token || !user) return;
 
     const today = parisDayISO();
     const attemptKey = `dailyBonus:lastAttempt:${user.id}`;
-    const shownKey = `dailyBonus:lastShown:${user.id}:${today}`;
 
     // évite de spammer l'API à chaque refreshMe() (interval + focus)
     if (sessionStorage.getItem(attemptKey) === today) return;
@@ -96,21 +83,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const r: any = await claimDailyBonus(token);
 
-      // jour (on garde le même système anti-spam)
       const day = String(r?.state?.day || r?.day || today);
       sessionStorage.setItem(attemptKey, day);
 
-      // Event global (inchangé)
+      // Event global -> DailyBonusToast s'en occupe
       window.dispatchEvent(new CustomEvent("dailyBonus:result", { detail: { ...r, source: "auto" } }));
-
-      // ✅ on ouvre la modal AGENDA si on a un state complet
-      const s = r?.state;
-      if (looksLikeDailyBonusState(s)) {
-        if (sessionStorage.getItem(shownKey) !== "1") {
-          sessionStorage.setItem(shownKey, "1");
-          setDailyBonusPopup(s);
-        }
-      }
 
       // update solde
       await refreshMe();
@@ -162,19 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("rubis:update", onRubisUpdate as any);
   }, [patchUser]);
 
-  return (
-    <Ctx.Provider value={{ token, user, setAuth, logout, refreshMe, patchUser }}>
-      {children}
-
-      {dailyBonusPopup ? (
-        <DailyBonusAgendaModal
-          state={dailyBonusPopup}
-          onClose={() => setDailyBonusPopup(null)}
-          onState={(s) => setDailyBonusPopup(s)}
-        />
-      ) : null}
-    </Ctx.Provider>
-  );
+  return <Ctx.Provider value={{ token, user, setAuth, logout, refreshMe, patchUser }}>{children}</Ctx.Provider>;
 }
 
 export function useAuth() {

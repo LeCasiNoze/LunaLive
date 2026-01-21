@@ -24,7 +24,7 @@ export type DailyBonusState = {
   todayClaimed: boolean;
   week: WeekDay[];
   milestones: Milestone[];
-  tokens: { wheel_ticket: number; prestige_token: number };
+  tokens?: { wheel_ticket?: number; prestige_token?: number };
 };
 
 function rewardLabel(r: WeekDay["reward"]) {
@@ -105,6 +105,13 @@ export function DailyBonusAgendaModal({
   // toast interne
   const [toast, setToast] = React.useState<string | null>(null);
   const toastTimer = React.useRef<number | null>(null);
+
+  const tokensAny = (state as any)?.tokens ?? {};
+  const wheelTickets = Number(tokensAny?.wheel_ticket ?? 0);
+  const prestigeTokens = Number(tokensAny?.prestige_token ?? 0);
+
+  const week = Array.isArray((state as any)?.week) ? (state as any).week : [];
+  const milestones = Array.isArray((state as any)?.milestones) ? (state as any).milestones : [];
 
   const showToast = React.useCallback((text: string) => {
     setToast(text);
@@ -510,9 +517,21 @@ export function DailyBonusAgendaModal({
         <div className="llBonusSide">
           <div className="llBonusSideTop">
             <div className="llBonusTitle">Bonus</div>
-            <button type="button" className="llBonusClose" onClick={onClose}>
-              ✕
-            </button>
+              <button
+                type="button"
+                className="llBonusClose"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onClose();
+                }}
+              >
+                ✕
+              </button>
           </div>
 
           <div className="llBonusTabs">
@@ -542,9 +561,9 @@ export function DailyBonusAgendaModal({
             <br />
             Jours claimés ce mois: <strong>{state.monthClaimedDays}</strong>
             <br />
-            Tickets roue: <strong>{state.tokens.wheel_ticket}</strong>
+            Tickets roue: <strong>{wheelTickets}</strong>
             <br />
-            Prestige: <strong>{state.tokens.prestige_token}</strong>
+            Prestige: <strong>{prestigeTokens}</strong>
           </div>
         </div>
 
@@ -558,7 +577,7 @@ export function DailyBonusAgendaModal({
               </div>
 
               <div className="llBonusWeekGrid">
-                {state.week.map((d) => {
+                {week.map((d: any) => {
                   const clickable = d.status === "today_claimable" && !busy;
                   const pill = statusPill(d.status);
 
@@ -606,7 +625,7 @@ export function DailyBonusAgendaModal({
                 </div>
 
                 <div className="llBonusMilestonesRow">
-                  {state.milestones.map((m) => {
+                  {milestones.map((m: any) => {
                     const isClaimable = m.status === "claimable" && !busy;
                     const cls =
                       m.status === "locked"

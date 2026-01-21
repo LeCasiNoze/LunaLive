@@ -1,5 +1,6 @@
+// web/src/App.tsx
 import * as React from "react";
-import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 
 import { useIsMobile } from "./hooks/useIsMobile";
 import { Topbar } from "./layout/Topbar";
@@ -28,53 +29,26 @@ import { DailyBonusToast } from "./components/DailyBonusToast";
 import { AchievementsToast } from "./components/AchievementsToast";
 import { CallsToast } from "./components/CallsToast";
 import { AchievementsModal } from "./components/AchievementsModal";
-import { DailyBonusAgendaModal } from "./components/DailyBonusAgendaModal";
 
 function AppInner() {
   const location = useLocation();
-  const nav = useNavigate();
-
-  const [achievementsOpen, setAchievementsOpen] = React.useState(false);
-  // DailyBonusAgendaModal fonctionne en "state machine"
-  const [dailyAgendaState, setDailyAgendaState] = React.useState<any>({ open: false });
-
   const isMobile = useIsMobile();
   const { logout } = useAuth();
 
   const [loginOpen, setLoginOpen] = React.useState(false);
+  const [achievementsOpen, setAchievementsOpen] = React.useState(false);
 
   React.useEffect(() => {
     setLoginOpen(false);
     setAchievementsOpen(false);
-    setDailyAgendaState((s: any) => ({ ...(s || {}), open: false }));
-
   }, [location.pathname]);
 
+  // ✅ listeners globaux (si tu les utilises avec CallsToast actions)
   React.useEffect(() => {
-  const onGoLive = (e: any) => {
-    const target = String(e?.detail?.target || "").trim();
-    if (!target) return;
-
-    if (/^https?:\/\//i.test(target)) window.location.href = target;
-    else nav(target);
-  };
-
-  const onAchievements = () => setAchievementsOpen(true);
-  const onDailyAgenda = () => {
-  setDailyAgendaState((s: any) => ({ ...(s || {}), open: true }));
-    };
-
-
-  window.addEventListener("ui:go_live_open", onGoLive as any);
-  window.addEventListener("ui:achievements_open", onAchievements as any);
-  window.addEventListener("ui:daily_bonus_agenda_open", onDailyAgenda as any);
-
-  return () => {
-    window.removeEventListener("ui:go_live_open", onGoLive as any);
-    window.removeEventListener("ui:achievements_open", onAchievements as any);
-    window.removeEventListener("ui:daily_bonus_agenda_open", onDailyAgenda as any);
-  };
-}, [nav]);
+    const onAchievements = () => setAchievementsOpen(true);
+    window.addEventListener("ui:achievements_open", onAchievements as any);
+    return () => window.removeEventListener("ui:achievements_open", onAchievements as any);
+  }, []);
 
   return (
     <div className="app">
@@ -86,7 +60,6 @@ function AppInner() {
       <CallsToast />
 
       <Routes>
-        {/* ✅ token -> saveToken -> redirect / */}
         <Route path="/impersonate" element={<ImpersonatePage />} />
 
         <Route path="/" element={<LivesPage />} />
@@ -101,7 +74,6 @@ function AppInner() {
         <Route path="/profile" element={<ProfilePage />} />
 
         <Route path="/admin" element={<AdminPage />} />
-        {/* ✅ NEW: modération avis casinos */}
         <Route path="/admin/casinos/comments" element={<AdminCasinoCommentsPage />} />
 
         <Route path="/dashboard" element={<DashboardPage />} />
@@ -111,12 +83,6 @@ function AppInner() {
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
       <AchievementsModal open={achievementsOpen} onClose={() => setAchievementsOpen(false)} />
-      <DailyBonusAgendaModal
-        state={dailyAgendaState}
-        onState={setDailyAgendaState}
-        onClose={() => setDailyAgendaState((s: any) => ({ ...(s || {}), open: false }))}
-      />
-
     </div>
   );
 }
