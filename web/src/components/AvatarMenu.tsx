@@ -38,9 +38,11 @@ function buildApiAvatarUrl(userId: number, cacheKey?: string | number | null) {
 export function AvatarMenu({
   user,
   onLogout,
+  onOpenReport,
 }: {
   user: User;
   onLogout: () => void;
+  onOpenReport?: () => void; // ✅ NEW
 }) {
   const [open, setOpen] = React.useState(false);
   const btnRef = React.useRef<HTMLButtonElement>(null);
@@ -151,6 +153,12 @@ export function AvatarMenu({
           margin: 6px;
           border: 1px solid rgba(255,255,255,0.10);
           background: rgba(255,255,255,0.03);
+          cursor: pointer;
+          padding: 10px 12px;
+          color: inherit;
+          text-decoration: none;
+          display: block;
+          font-weight: 900;
         }
         .llAvatarWrap .dropdownItem:hover{
           border-color: rgba(255,255,255,0.16);
@@ -199,6 +207,19 @@ export function AvatarMenu({
           <Link to="/profile" className="dropdownItem" onClick={() => setOpen(false)}>
             Profil
           </Link>
+
+          {/* ✅ NEW: signalement / retour */}
+          {onOpenReport && (
+            <button
+              className="dropdownItem"
+              onClick={() => {
+                setOpen(false);
+                onOpenReport();
+              }}
+            >
+              Un problème ?
+            </button>
+          )}
 
           <button
             className="dropdownItem danger"

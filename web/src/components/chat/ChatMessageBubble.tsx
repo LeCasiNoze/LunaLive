@@ -149,8 +149,7 @@ function EmoteImg({
     />
   );
 }
-
-// parsing inline (mentions + emotes)
+// parsing inline (links + mentions + emotes)
 function renderBodyRich(
   body: string,
   currentUsername: string | null | undefined,
@@ -158,8 +157,31 @@ function renderBodyRich(
 ) {
   const me = currentUsername ? normKey(currentUsername) : "";
 
-  // captures either @mention OR :e:name: / :g:name:
-  const re = /@([^\s@]{1,32})|:(e|g):([a-z0-9_]{1,32}):/gi;
+  // coupe la ponctuation finale typique qui "colle" aux URLs dans le chat
+  function splitUrl(raw: string): { url: string; tail: string } {
+    let url = String(raw || "");
+    let tail = "";
+    // retire les ponctuations finales fréquentes, et les parenthèses fermantes
+    // (ex: https://x.com). => lien = https://x.com, tail = ")."
+    while (url.length) {
+      const last = url[url.length - 1];
+      if (/[)\].,!?;:}]/.test(last)) {
+        tail = last + tail;
+        url = url.slice(0, -1);
+        continue;
+      }
+      break;
+    }
+    return { url, tail };
+  }
+
+  // captures: URL OR @mention OR :e:name: / :g:name:
+  // groups:
+  //  m[1] = url
+  //  m[2] = mention name
+  //  m[3] = e|g
+  //  m[4] = emote name
+  const re = /(https?:\/\/[^\s<]+)|@([^\s@]{1,32})|:(e|g):([a-z0-9_]{1,32}):/gi;
 
   const parts: React.ReactNode[] = [];
   let last = 0;
@@ -175,9 +197,46 @@ function renderBodyRich(
 
     if (start > last) parts.push(body.slice(last, start));
 
-    // mention
+    // URL
     if (m[1]) {
-      const token = String(m[1] ?? "");
+      const raw = String(m[1] ?? "");
+      const { url, tail } = splitUrl(raw);
+
+      // double sécurité : on ne rend cliquable que http(s)
+      if (/^https?:\/\//i.test(url)) {
+        parts.push(
+          <a
+            key={`u-${start}-${end}`}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="chatLink"
+            style={{
+              textDecoration: "underline",
+              fontWeight: 800,
+              wordBreak: "break-word",
+              WebkitTapHighlightColor: "transparent",
+            }}
+            onClick={(e) => {
+              // évite que des handlers parent “capturent” le tap/click sur mobile
+              e.stopPropagation();
+            }}
+          >
+            {url}
+          </a>
+        );
+        if (tail) parts.push(tail);
+      } else {
+        parts.push(raw);
+      }
+
+      last = end;
+      continue;
+    }
+
+    // mention
+    if (m[2]) {
+      const token = String(m[2] ?? "");
       const tokenKey = normKey(token);
       const isMe = !!me && tokenKey === me;
 
@@ -206,8 +265,8 @@ function renderBodyRich(
     }
 
     // emote token
-    const kindToken = String(m[2] ?? "").toLowerCase(); // e|g
-    const nameRaw = String(m[3] ?? "");
+    const kindToken = String(m[3] ?? "").toLowerCase(); // e|g
+    const nameRaw = String(m[4] ?? "");
     const name = safeTokenName(nameRaw);
 
     const kind: EmoteKind = kindToken === "g" ? "gif" : "emoji";
@@ -233,7 +292,6 @@ function renderBodyRich(
         />
       );
     } else {
-      // unknown => keep token as text
       parts.push(`:${kindToken}:${name}:`);
     }
 
@@ -244,6 +302,7 @@ function renderBodyRich(
 
   return parts.length ? parts : body;
 }
+
 
 export function ChatMessageBubble({
   msg,

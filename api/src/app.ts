@@ -80,6 +80,7 @@ import { streamerEmotesRouter } from "./emotes/streamer_emotes.router.js";
 import { accountActionsRouter } from "./routes/account_actions.js";
 import { adminImpersonateRouter } from "./routes/admin_impersonate.js";
 import { adminEmotesRouter } from "./emotes/admin_emotes.router.js";
+import { reportsRouter } from "./routes/reports.js";
 
 export function createApp() {
   const app = express();
@@ -143,7 +144,7 @@ export function createApp() {
 
   // ✅ Admin emotes (protégé, mais UNIQUEMENT sur /admin/emotes/*)
   app.use("/admin/emotes", requireAdminKey, adminEmotesRouter);
-
+  app.use("/reports", reportsRouter);
   // ─────────────────────────────────────────────
   // ✅ Public VODs (doit matcher AVANT streamerRouter)
   // ─────────────────────────────────────────────

@@ -21,6 +21,9 @@ import { ProviderAccountsAdminSection } from "../components/admin/ProviderAccoun
 import { CasinosAdminSection } from "../components/admin/CasinosAdminSection";
 import { Link } from "react-router-dom";
 import { EmotesAdminSection } from "../components/admin/EmotesAdminSection";
+import { ReportsAdminSection } from "../components/admin/ReportsAdminSection";
+
+
 const SS_KEY = "lunalive_admin_key_v1";
 const SS_TAB = "lunalive_admin_tab_v1";
 
@@ -532,6 +535,14 @@ export default function AdminPage() {
                 hint="Modération des commentaires"
                 badge={pendingCasinoComments > 0 ? <Pill tone="warn"><b>{pendingCasinoComments}</b></Pill> : <Pill tone="neutral">0</Pill>}
                 onClick={() => goto("casino_comments")}
+              />
+
+              <NavButton
+                active={tab === "reports"}
+                icon="⚑"
+                label="Signalements / Feedback"
+                hint="Réception + tri + marquer traité"
+                onClick={() => goto("reports")}
               />
 
               <NavButton
@@ -1101,6 +1112,21 @@ export default function AdminPage() {
               right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
             >
               <UsersAdminSection adminKey={key} />
+            </Card>
+          ) : null}
+
+          {tab === "reports" ? (
+            <Card
+              title={
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>⚑</span>
+                  Signalements / Feedback
+                </span>
+              }
+              subtitle="Inbox des retours: ouvrir, traiter, supprimer."
+              right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
+            >
+              <ReportsAdminSection adminKey={key} />
             </Card>
           ) : null}
 

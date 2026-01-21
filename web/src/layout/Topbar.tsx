@@ -1,8 +1,10 @@
 // web/src/layout/Topbar.tsx
+import * as React from "react";
 import { NavLink, Link } from "react-router-dom";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { AvatarMenu } from "../components/AvatarMenu";
 import { useAuth } from "../auth/AuthProvider";
+import { ReportModal } from "../components/ReportModal";
 
 export function Topbar({
   onOpenLogin,
@@ -14,6 +16,8 @@ export function Topbar({
   const isMobile = useIsMobile();
   const authAny = useAuth() as any;
   const user = authAny.user as { rubis: number; username?: string } | null;
+
+  const [reportOpen, setReportOpen] = React.useState(false);
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `llNavBtn ${isActive ? "active" : ""}`;
@@ -121,8 +125,8 @@ export function Topbar({
           display:inline-flex;
           align-items:center;
           justify-content:center;
-          height: 42px;                 /* 👈 gros */
-          padding: 0 16px;              /* 👈 gros */
+          height: 42px;
+          padding: 0 16px;
           border-radius: 999px;
           text-decoration: none;
           color: inherit;
@@ -135,7 +139,7 @@ export function Topbar({
           transition: transform .15s ease, opacity .15s ease, background .15s ease, border-color .15s ease;
           cursor: pointer;
           user-select: none;
-          min-width: 104px;             /* 👈 boutons bien visibles */
+          min-width: 104px;
         }
         .llNavBtn:hover{
           opacity: 1;
@@ -212,6 +216,39 @@ export function Topbar({
         .llLoginBtn:hover{ filter: brightness(1.05); transform: translateY(-1px); }
         .llLoginBtn:active{ transform: translateY(0px); }
 
+        /* ✅ NEW: bouton signalement */
+        .llReportBtn{
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          height: 40px;
+          width: 40px;                 /* ✅ carré, icône only */
+          padding: 0;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.05);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          cursor:pointer;
+          font-weight: 1100;
+        }
+        .llReportBtn:hover{
+          border-color: rgba(255,255,255,0.18);
+          background: rgba(255,255,255,0.07);
+          transform: translateY(-1px);
+        }
+        .llReportBtn:active{ transform: translateY(0px); }
+
+        .llReportFlag{
+          font-size: 16px;
+          line-height: 1;
+          opacity: .95;
+          /* ✅ rend le drapeau lisible sur fond sombre */
+          filter: drop-shadow(0 6px 14px rgba(0,0,0,0.55));
+          /* optionnel: léger glow clair pour contraste */
+          text-shadow: 0 0 14px rgba(255,255,255,0.10);
+        }
+
         /* Responsive: hide center nav on mobile (your existing behavior) */
         @media (max-width: 820px){
           .llTopbarInner{ padding: 10px 12px; }
@@ -262,12 +299,27 @@ export function Topbar({
 
         {/* Right side */}
         <div className="rightSlot llRight">
+          {/* ✅ NEW: bouton toujours visible */}
+          <button
+            className="llReportBtn"
+            onClick={() => setReportOpen(true)}
+            title="Signalement / retour"
+            aria-label="Ouvrir signalement / retour"
+          >
+            <span className="llReportFlag" aria-hidden>⚑</span>
+          </button>
+
           {user ? (
             <>
               <div className="pill llPill llPillRuby" title="Rubis">
                 💎 <strong>{Number(user.rubis || 0).toLocaleString("fr-FR")}</strong>
               </div>
-              <AvatarMenu user={user as any} onLogout={onLogout} />
+
+              <AvatarMenu
+                user={user as any}
+                onLogout={onLogout}
+                onOpenReport={() => setReportOpen(true)}
+              />
             </>
           ) : (
             <button className="btnPrimary llLoginBtn" onClick={onOpenLogin}>
@@ -276,6 +328,9 @@ export function Topbar({
           )}
         </div>
       </div>
+
+      {/* ✅ NEW: modale */}
+      <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} preset={null} />
     </header>
   );
 }

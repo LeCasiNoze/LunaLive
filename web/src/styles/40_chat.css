@@ -241,6 +241,7 @@
   font-size: 13px;
   line-height: 1.25;
   word-break: break-word;
+  white-space: pre-wrap;
 }
 
 /* ✅ FIX: empêcher le titre de récupérer une anim/gradient/filter du pseudo (même si CSS avec !important) */
@@ -302,4 +303,38 @@
 
   filter: none !important;
   text-shadow: none !important;
+}
+
+/* ─────────────────────────────────────────────
+   Links in chat (clickable)
+───────────────────────────────────────────── */
+.chatLink{
+  color: rgba(190,240,255,0.95); /* bleu lotus */
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(190,240,255,0.55);
+  font-weight: 900;
+  word-break: break-word;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.chatLink:hover{
+  text-decoration-color: rgba(255,255,255,0.75);
+  filter: drop-shadow(0 6px 14px rgba(190,240,255,0.18));
+}
+
+.chatLink:active{
+  filter: drop-shadow(0 6px 14px rgba(190,240,255,0.26));
+}
+
+.chatLink:focus-visible{
+  outline: 2px solid rgba(190,240,255,0.35);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* si jamais un parent met un style global sur <a> */
+.chatBodyText a{
+  color: inherit;
 }
