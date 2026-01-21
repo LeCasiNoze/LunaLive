@@ -815,31 +815,29 @@ export async function chestClose(slug: string, token: string) {
   });
 }
 
-export type ApiDailyBonusClaim = {
-  ok: true;
-  alreadyClaimed: boolean;
-  day: string;        // "YYYY-MM-DD" (Europe/Paris)
-  monthStart: string; // "YYYY-MM-DD"
-  claimedDays: number;
-  granted: ApiDailyBonusGranted[];
-};
-
-export async function claimDailyBonus(token: string) {
-  return j<ApiDailyBonusClaim>("/me/daily-bonus/claim", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
+// ──────────────────────────────────────────
+// 🎁 Daily Bonus (API v2)
+// ──────────────────────────────────────────
 
 export type ApiDailyBonusWeekDay = {
   isodow: number;
   label: string;
   date: string;
-  reward: { type: "rubis"; amount: number; origin: string; weight_bp: number } | { type: "token"; token: "wheel_ticket"; amount: number };
+  reward:
+    | { type: "rubis"; amount: number; origin: string; weight_bp: number }
+    | { type: "token"; token: "wheel_ticket"; amount: number };
   status: "future" | "missed" | "claimed" | "today_claimable" | "today_claimed";
 };
 
-export type ApiDailyBonusMilestone = { milestone: 5 | 10 | 20 | 30; status: "locked" | "claimable" | "claimed" };
+export type ApiDailyBonusMilestone = {
+  milestone: 5 | 10 | 20 | 30;
+  status: "locked" | "claimable" | "claimed";
+};
+
+export type ApiDailyBonusGranted =
+  | { type: "rubis"; amount: number; origin: string; weight_bp: number; tx_id?: number }
+  | { type: "token"; token: "wheel_ticket" | "prestige_token"; amount: number }
+  | { type: "entitlement"; kind: "skin" | "title"; code: string; fallback?: boolean };
 
 export type ApiDailyBonusState = {
   ok: true;
@@ -854,11 +852,6 @@ export type ApiDailyBonusState = {
   tokens: { wheel_ticket: number; prestige_token: number };
 };
 
-export type ApiDailyBonusGranted =
-  | { type: "rubis"; amount: number; origin: string; weight_bp: number; tx_id?: number }
-  | { type: "token"; token: "wheel_ticket" | "prestige_token"; amount: number }
-  | { type: "entitlement"; kind: "skin" | "title"; code: string; fallback?: boolean };
-
 export async function getDailyBonusState(token: string) {
   return j<ApiDailyBonusState>("/me/daily-bonus/state", {
     headers: { Authorization: `Bearer ${token}` },
@@ -866,21 +859,31 @@ export async function getDailyBonusState(token: string) {
 }
 
 export async function claimDailyBonusToday(token: string) {
-  return j<{ ok: true; alreadyClaimed: boolean; granted: ApiDailyBonusGranted[]; state: ApiDailyBonusState }>(
-    "/me/daily-bonus/claim",
-    { method: "POST", headers: { Authorization: `Bearer ${token}` } }
-  );
+  return j<{
+    ok: true;
+    alreadyClaimed: boolean;
+    granted: ApiDailyBonusGranted[];
+    state: ApiDailyBonusState;
+  }>("/me/daily-bonus/claim", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
+// ✅ alias rétro-compat si tu as déjà du code qui appelle claimDailyBonus()
+export const claimDailyBonus = claimDailyBonusToday;
+
 export async function claimDailyBonusMilestone(token: string, milestone: 5 | 10 | 20 | 30) {
-  return j<{ ok: true; milestone: 5 | 10 | 20 | 30; granted: ApiDailyBonusGranted[]; state: ApiDailyBonusState }>(
-    "/me/daily-bonus/claim-milestone",
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ milestone }),
-    }
-  );
+  return j<{
+    ok: true;
+    milestone: 5 | 10 | 20 | 30;
+    granted: ApiDailyBonusGranted[];
+    state: ApiDailyBonusState;
+  }>("/me/daily-bonus/claim-milestone", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ milestone }),
+  });
 }
 
 // web/src/lib/api.ts

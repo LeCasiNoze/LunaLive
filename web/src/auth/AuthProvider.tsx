@@ -37,6 +37,15 @@ function looksLikeDailyBonusState(x: any): x is DailyBonusState {
   return true;
 }
 
+function normalizeUser(u: any): ApiUser {
+  if (!u) return u;
+  // évite les crashes du style user.tokens.wheel_ticket
+  if (!u.tokens) u.tokens = {};
+  // optionnel: si tu as d'autres maps parfois undefined
+  if (!u.breakdown) u.breakdown = {};
+  return u as ApiUser;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = React.useState<string | null>(() => loadToken());
   const [user, setUser] = React.useState<ApiUser | null>(null);
@@ -52,14 +61,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const setAuth = React.useCallback((t: string, u: ApiUser) => {
     setToken(t);
-    setUser(u);
+    setUser(normalizeUser(u));
     saveToken(t);
   }, []);
 
   const patchUser = React.useCallback((patch: Partial<ApiUser>) => {
     setUser((prev) => {
       if (!prev) return prev;
-      return { ...prev, ...patch };
+      const merged: any = { ...prev, ...patch };
+      return normalizeUser(merged);
     });
   }, []);
 
@@ -67,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!token) return;
     try {
       const r = await me(token);
-      setUser(r.user);
+      setUser(normalizeUser(r.user));
     } catch {
       logout();
     }
