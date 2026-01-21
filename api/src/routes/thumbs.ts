@@ -130,9 +130,8 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
   if (!FFMPEG_OK) return sendSvg(res, svgFallback(slug));
 
   const dliveUser = await resolveDliveUsernameFromSlug(slug);
-  const hlsUrl = proxiedHlsUrl(dliveUser);
+  const hlsUrl = `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(dliveUser)}.m3u8?mobileweb`;
 
-  // ✅ IMPORTANT: user-agent + headers "web" (sinon DLive peut répondre 400)
   const HLS_HEADERS =
     "Origin: https://dlive.tv\r\n" +
     "Referer: https://dlive.tv/\r\n" +
@@ -144,17 +143,14 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     "error",
     "-y",
     "-nostdin",
-
-    // ✅ HLS over https + stable UA
     "-protocol_whitelist",
     "file,http,https,tcp,tls",
     "-headers",
     HLS_HEADERS,
     "-user_agent",
     "Mozilla/5.0",
-
     "-rw_timeout",
-    "15000000", // ✅ 15s
+    "15000000",
     "-i",
     hlsUrl,
     "-an",
