@@ -50,7 +50,6 @@ const cache = new Map<string, { exp: number; buf: Buffer; contentType: string }>
 
 function sendCached(res: ExResponse, hit: { buf: Buffer; contentType: string }) {
   res.set("Content-Type", hit.contentType);
-  // ✅ aligné avec le bust front (5 min)
   res.set("Cache-Control", "public, max-age=300");
   return res.end(hit.buf);
 }
@@ -77,6 +76,47 @@ function svgFallback(label: string) {
   </text>
 </svg>`;
 }
+
+/* ───────────────────────────────────────────────────────────── */
+/* helpers JPEG robustesse                                         */
+/* ───────────────────────────────────────────────────────────── */
+
+function isJpeg(buf: Buffer) {
+  return buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+}
+
+// parse largeur/hauteur d’un JPEG (SOF0/SOF2)
+function jpegSize(buf: Buffer): { w: number; h: number } | null {
+  try {
+    if (!isJpeg(buf)) return null;
+    let i = 2;
+    while (i < buf.length) {
+      if (buf[i] !== 0xff) {
+        i++;
+        continue;
+      }
+      const marker = buf[i + 1];
+      // SOF0 (C0) ou SOF2 (C2) = dimensions
+      if (marker === 0xc0 || marker === 0xc2) {
+        const h = buf.readUInt16BE(i + 5);
+        const w = buf.readUInt16BE(i + 7);
+        if (w > 0 && h > 0) return { w, h };
+        return null;
+      }
+      // skip segment
+      const len = buf.readUInt16BE(i + 2);
+      if (!len || len < 2) break;
+      i += 2 + len;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────── */
+/* DLive / HLS                                                     */
+/* ───────────────────────────────────────────────────────────── */
 
 /**
  * IMPORTANT:
@@ -112,8 +152,15 @@ function proxiedHlsUrl(dliveUsername: string) {
   return proxyBase.includes("?") ? `${proxyBase}&u=${u}` : `${proxyBase}?u=${u}`;
 }
 
+// headers “browser-like” (DLive renvoie parfois 400 sans ça)
+const HLS_HEADERS =
+  "Origin: https://dlive.tv\r\n" +
+  "Referer: https://dlive.tv/\r\n" +
+  "User-Agent: Mozilla/5.0\r\n" +
+  "Accept: */*\r\n";
+
 /* ───────────────────────────────────────────────────────────── */
-/* route                                                          */
+/* route LIVE: /thumbs/:slug.jpg                                   */
 /* ───────────────────────────────────────────────────────────── */
 
 thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) => {
@@ -130,12 +177,12 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
   if (!FFMPEG_OK) return sendSvg(res, svgFallback(slug));
 
   const dliveUser = await resolveDliveUsernameFromSlug(slug);
-  const hlsUrl = `https://live.prd.dlive.tv/hls/live/${encodeURIComponent(dliveUser)}.m3u8?mobileweb`;
 
-  const HLS_HEADERS =
-    "Origin: https://dlive.tv\r\n" +
-    "Referer: https://dlive.tv/\r\n" +
-    "User-Agent: Mozilla/5.0\r\n";
+  // ✅ TOUJOURS via proxy (robuste + évite les 400 / CORS / host changes)
+  const hlsUrl = proxiedHlsUrl(dliveUser);
+
+  // debug utile
+  // console.log(`[thumbs] live input slug=${slug} dliveUser=${dliveUser} hlsUrl=${hlsUrl}`);
 
   const args = [
     "-hide_banner",
@@ -143,16 +190,30 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     "error",
     "-y",
     "-nostdin",
+
+    // ✅ requis pour HLS + certains builds ffmpeg
     "-protocol_whitelist",
     "file,http,https,tcp,tls",
+
+    // ✅ headers / UA (DLive sinon 400 aléatoire)
     "-headers",
     HLS_HEADERS,
     "-user_agent",
     "Mozilla/5.0",
+
+    // ✅ meilleure résilience réseau
     "-rw_timeout",
     "15000000",
+    "-reconnect",
+    "1",
+    "-reconnect_streamed",
+    "1",
+    "-reconnect_delay_max",
+    "2",
+
     "-i",
     hlsUrl,
+
     "-an",
     "-frames:v",
     "1",
@@ -166,36 +227,6 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
     "mjpeg",
     "pipe:1",
   ];
-
-  function isJpeg(buf: Buffer) {
-  return buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
-}
-
-// parse largeur/hauteur d’un JPEG (SOF0/SOF2)
-function jpegSize(buf: Buffer): { w: number; h: number } | null {
-  try {
-    if (!isJpeg(buf)) return null;
-    let i = 2;
-    while (i < buf.length) {
-      if (buf[i] !== 0xff) { i++; continue; }
-      const marker = buf[i + 1];
-      // SOF0 (C0) ou SOF2 (C2) = dimensions
-      if (marker === 0xc0 || marker === 0xc2) {
-        const h = buf.readUInt16BE(i + 5);
-        const w = buf.readUInt16BE(i + 7);
-        if (w > 0 && h > 0) return { w, h };
-        return null;
-      }
-      // skip segment
-      const len = buf.readUInt16BE(i + 2);
-      if (!len || len < 2) break;
-      i += 2 + len;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
 
   const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
 
@@ -229,14 +260,14 @@ function jpegSize(buf: Buffer): { w: number; h: number } | null {
     const buf = Buffer.concat(chunks);
     const dim = jpegSize(buf);
 
-    // on accepte seulement si c’est un vrai jpeg + dimensions cohérentes
+    // ✅ on accepte seulement si c’est un vrai jpeg + dimensions cohérentes
     const ok =
       code === 0 &&
       isJpeg(buf) &&
       dim != null &&
       dim.w >= 320 &&
       dim.h >= 180 &&
-      buf.length > 1500; // sécurité mini
+      buf.length > 1500;
 
     if (ok) {
       cache.set(key, { exp: Date.now() + CACHE_MS, buf, contentType: "image/jpeg" });
@@ -252,7 +283,10 @@ function jpegSize(buf: Buffer): { w: number; h: number } | null {
   });
 });
 
-// ✅ Thumb clip: /thumbs/clips/:id.jpg
+/* ───────────────────────────────────────────────────────────── */
+/* route CLIP: /thumbs/clips/:id.jpg                                */
+/* ───────────────────────────────────────────────────────────── */
+
 thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse) => {
   const clipId = Number(req.params.id || 0);
   if (!Number.isFinite(clipId) || clipId <= 0) return res.status(400).end();
@@ -370,9 +404,6 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
   const startSec = Math.max(0, at - pre);
   const durationSec = Math.max(1, pre + post);
   const previewSec = Math.min(startSec + 60, startSec + durationSec - 1);
-
-  const HLS_HEADERS =
-    "Origin: https://dlive.tv\r\n" + "Referer: https://dlive.tv/\r\n" + "User-Agent: Mozilla/5.0\r\n";
 
   const args = [
     "-hide_banner",
