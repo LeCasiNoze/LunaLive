@@ -246,7 +246,9 @@ billingRouter.post(
 
         // Stripe a déplacé le lien subscription dans inv.parent.subscription_details.subscription
         const subId =
+          String((inv as any)?.subscription || "") ||
           String((inv as any)?.parent?.subscription_details?.subscription || "") ||
+          String((inv as any)?.lines?.data?.[0]?.subscription || "") ||
           "";
 
         if (!subId) return res.json({ received: true });

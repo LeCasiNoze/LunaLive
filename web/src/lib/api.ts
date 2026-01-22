@@ -5,7 +5,13 @@ export type ApiUser = {
   rubis: number;
   role: string;
   emailVerified?: boolean;
+
+  // ✅ NEW (optionnel) : coupons/tickets renvoyés par /me
+  coupons?: Record<string, number>; // ex: { sub_ticket: 3 }
+  tokens?: Record<string, number>;  // déjà utilisé ailleurs (daily bonus)
+  breakdown?: Record<string, any>;  // déjà utilisé ailleurs
 };
+
 
 export type ApiLive = {
   id: string;

@@ -12,6 +12,9 @@ export function SubModal({
   loading,
   error,
 
+  // ✅ NEW: afficher tickets (sub_ticket)
+  mySubTickets,
+
   // ✅ NEW (gift pool)
   onPayGiftSubs,
   giftLoading,
@@ -26,6 +29,9 @@ export function SubModal({
   onGoShop: () => void;
   loading?: boolean;
   error?: string | null;
+
+  // ✅ NEW: tickets disponibles (si > 0 on affiche)
+  mySubTickets?: number | null;
 
   onPayGiftSubs?: (count: number) => void;
   giftLoading?: boolean;
@@ -46,6 +52,10 @@ export function SubModal({
 
   const giftTotal = Math.max(0, Math.floor(giftCount || 0)) * priceRubis;
   const canPayGift = giftTotal > 0 && myRubis >= giftTotal;
+
+  const tickets = Math.max(0, Math.floor(Number(mySubTickets ?? 0) || 0));
+  const showTickets = tickets > 0;
+  const ticketLabel = tickets === 1 ? "ticket" : "tickets";
 
   return (
     <div className="chatSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex: 50 }}>
@@ -102,9 +112,16 @@ export function SubModal({
               <div className="panel" style={{ marginTop: 12 }}>
                 <div className="mutedSmall">Prix</div>
                 <div style={{ fontWeight: 950, fontSize: 18 }}>{priceRubis.toLocaleString()} rubis</div>
+
                 <div className="mutedSmall" style={{ marginTop: 6 }}>
                   Ton solde :{" "}
                   <strong style={{ color: "rgba(255,255,255,0.9)" }}>{myRubis.toLocaleString()}</strong>
+                  {showTickets ? (
+                    <span style={{ opacity: 0.9 }}>
+                      {" "}
+                      ({tickets.toLocaleString()} {ticketLabel})
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
@@ -167,13 +184,20 @@ export function SubModal({
                     }}
                   />
                   <div className="mutedSmall" style={{ opacity: 0.9 }}>
-                    Total : <strong style={{ color: "rgba(255,255,255,0.9)" }}>{giftTotal.toLocaleString()}</strong> rubis
+                    Total :{" "}
+                    <strong style={{ color: "rgba(255,255,255,0.9)" }}>{giftTotal.toLocaleString()}</strong> rubis
                   </div>
                 </div>
 
                 <div className="mutedSmall" style={{ marginTop: 10 }}>
                   Ton solde :{" "}
                   <strong style={{ color: "rgba(255,255,255,0.9)" }}>{myRubis.toLocaleString()}</strong>
+                  {showTickets ? (
+                    <span style={{ opacity: 0.9 }}>
+                      {" "}
+                      ({tickets.toLocaleString()} {ticketLabel})
+                    </span>
+                  ) : null}
                 </div>
               </div>
 

@@ -37,6 +37,7 @@ function looksLikeDailyBonusState(x: any): x is DailyBonusState {
 function normalizeUser(u: any): ApiUser {
   if (!u) return u;
   if (!u.tokens) u.tokens = {};
+  if (!u.coupons) u.coupons = {};   // ✅ NEW
   if (!u.breakdown) u.breakdown = {};
   return u as ApiUser;
 }

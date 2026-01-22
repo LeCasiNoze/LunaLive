@@ -285,6 +285,12 @@ export default function StreamerPage() {
   const myRubis = Number(auth?.user?.rubis ?? 0);
   const SUB_PRICE_RUBIS = 500;
 
+  const mySubTickets = Number(
+    auth?.user?.coupons?.sub_ticket ??
+    auth?.user?.tokens?.sub_ticket ?? // fallback si jamais
+    0
+  );
+
   const followersInline = followsCount == null ? "" : ` (${fmt(followsCount)} followers)`;
 
   const PlayerBlock = (
@@ -841,6 +847,7 @@ export default function StreamerPage() {
         streamerName={streamer.displayName ? streamer.displayName : `@${String(slug || "")}`}
         priceRubis={SUB_PRICE_RUBIS}
         myRubis={myRubis}
+        mySubTickets={mySubTickets}   // ✅ NEW
         loading={subLoading}
         error={subError}
         onGoShop={() => {

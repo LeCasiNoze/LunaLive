@@ -206,14 +206,36 @@ authRouter.get(
   "/me",
   requireAuth,
   a(async (req, res) => {
+    const userId = Number(req.user!.id);
+
     const { rows } = await pool.query(
       `SELECT id, username, rubis, role, email_verified AS "emailVerified"
        FROM users
        WHERE id = $1
        LIMIT 1`,
-      [req.user!.id]
+      [userId]
     );
     if (!rows[0]) return res.status(401).json({ ok: false, error: "unauthorized" });
-    res.json({ ok: true, user: rows[0] });
+
+    // ✅ NEW: coupons/tickets (sub_ticket, etc.)
+    let coupons: Record<string, number> = {};
+    try {
+      const cr = await pool.query(
+        `SELECT code, qty FROM user_coupons WHERE user_id=$1`,
+        [userId]
+      );
+
+      coupons = {};
+      for (const r of cr.rows || []) {
+        const code = String(r.code || "").trim();
+        if (!code) continue;
+        coupons[code] = Number(r.qty || 0);
+      }
+    } catch {
+      // si table pas encore migrée sur un env, on ignore (ne casse pas /me)
+      coupons = {};
+    }
+
+    res.json({ ok: true, user: { ...rows[0], coupons } });
   })
 );
