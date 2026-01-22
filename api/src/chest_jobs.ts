@@ -4,8 +4,12 @@ import { pool } from "./db.js";
 
 const OUT_WEIGHT_BP = 2000; // 0.20
 const BUCKET_MINUTES = 5;
+
 const PREMIUM_VIEWERS_FACTOR = 0.20;  // +20% par premium
 const PREMIUM_VIEWERS_CAP_PCT = 0.30; // cap +30% du total viewers sur la fenêtre
+
+// ✅ NEW: boost passive chest si streamer sub (sans impacter le bonus premium viewers)
+const STREAMER_SUB_MULT = 1.5; // +50% (ex: 1.25 pour +25%)
 
 /**
  * Règle de génération par tranche de spectateurs
@@ -30,6 +34,11 @@ async function ensureChest(client: any, streamerId: number) {
   );
 }
 
+function roundDown(n: number) {
+  const x = Math.floor(Number(n || 0));
+  return Number.isFinite(x) ? x : 0;
+}
+
 async function autoMintTick() {
   // borne supérieure : minute pleine précédente
   const toTsRes = await pool.query(
@@ -38,14 +47,17 @@ async function autoMintTick() {
   const toTs = toTsRes.rows?.[0]?.t ? new Date(toTsRes.rows[0].t).toISOString() : null;
   if (!toTs) return;
 
+  // ✅ on récupère aussi user_id pour savoir si le streamer est abonné "streamer"
   const live = await pool.query(
-    `SELECT id
+    `SELECT id, user_id AS "userId"
      FROM streamers
      WHERE is_live=TRUE`
   );
 
   for (const row of live.rows || []) {
     const streamerId = Number(row.id);
+    const streamerUserId = Number(row.userId || 0);
+
     const client = await pool.connect();
 
     try {
@@ -125,8 +137,37 @@ async function autoMintTick() {
       const extra = Math.min(premiumViewers * PREMIUM_VIEWERS_FACTOR, viewers * PREMIUM_VIEWERS_CAP_PCT);
       const effectiveViewers = Math.floor(viewers + extra);
 
-      const minted = viewersToRubis(effectiveViewers);
+      // ✅ NEW: streamer sub actif ?
+      let streamerSubActive = false;
+      if (streamerUserId > 0) {
+        const ss = await client.query(
+          `
+          SELECT 1
+          FROM user_subscriptions us
+          WHERE us.user_id=$1
+            AND us.plan_code='streamer'
+            AND us.status IN ('active','trialing')
+            AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
+          LIMIT 1
+          `,
+          [streamerUserId]
+        );
+        streamerSubActive = !!ss.rows?.[0];
+      }
 
+      /**
+       * ✅ Règle demandée:
+       * - base = viewersToRubis(viewers)
+       * - premium delta = viewersToRubis(effectiveViewers) - base
+       * - streamerSub boost = +50% sur la BASE uniquement
+       * => total = floor(base * mult) + premiumDelta
+       */
+      const baseMinted = viewersToRubis(viewers);
+      const mintedWithPremium = viewersToRubis(effectiveViewers);
+      const premiumDelta = Math.max(0, mintedWithPremium - baseMinted);
+
+      const boostedBase = streamerSubActive ? roundDown(baseMinted * STREAMER_SUB_MULT) : baseMinted;
+      const minted = Math.max(0, boostedBase + premiumDelta);
 
       await client.query(
         `UPDATE streamer_chest_auto_state
@@ -144,16 +185,25 @@ async function autoMintTick() {
             streamerId,
             OUT_WEIGHT_BP,
             minted,
-              JSON.stringify({
-                rule: "viewers_per_5min",
-                viewers,
-                premiumViewers,
-                effectiveViewers,
-                premiumFactor: PREMIUM_VIEWERS_FACTOR,
-                premiumCapPct: PREMIUM_VIEWERS_CAP_PCT,
-                bucketMinutes: BUCKET_MINUTES,
-                toTs,
-              }),
+            JSON.stringify({
+              rule: "viewers_per_5min",
+              bucketMinutes: BUCKET_MINUTES,
+              toTs,
+
+              viewers,
+              premiumViewers,
+              effectiveViewers,
+              premiumFactor: PREMIUM_VIEWERS_FACTOR,
+              premiumCapPct: PREMIUM_VIEWERS_CAP_PCT,
+
+              streamerSubActive,
+              streamerSubMult: STREAMER_SUB_MULT,
+
+              baseMinted,
+              premiumDelta,
+              boostedBase,
+              minted,
+            }),
           ]
         );
 

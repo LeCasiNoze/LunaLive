@@ -25,8 +25,23 @@ const PRESETS = [
   { intervalMin: 120 as const, rubiesPerUser: 50 },
 ];
 
+const LOCKED_INTERVALS = new Set<number>([10, 120]);
+
 function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
+}
+
+type SubItem = {
+  plan_code?: string;
+  status?: string;
+  current_period_end?: string | null;
+};
+
+function isActiveSub(s: SubItem): boolean {
+  const st = String(s?.status || "").toLowerCase();
+  if (st !== "active" && st !== "trialing") return false;
+  const end = s?.current_period_end ? new Date(s.current_period_end).getTime() : null;
+  return !end || end > Date.now();
 }
 
 export function BotRainModule({
@@ -40,6 +55,25 @@ export function BotRainModule({
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
   const [state, setState] = React.useState<RainState | null>(null);
+
+  const [streamerSubActive, setStreamerSubActive] = React.useState<boolean>(false);
+
+  async function loadMeSubs() {
+    try {
+      const r = await fetch(`${apiBase()}/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const j = await r.json();
+      const subs: SubItem[] = j?.user?.user_subscriptions || [];
+      const ok = Array.isArray(subs)
+        ? subs.some((s) => String(s?.plan_code || "") === "streamer" && isActiveSub(s))
+        : false;
+      setStreamerSubActive(ok);
+    } catch {
+      // si /me casse, on préfère ne PAS débloquer
+      setStreamerSubActive(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -61,6 +95,7 @@ export function BotRainModule({
 
   React.useEffect(() => {
     void load();
+    void loadMeSubs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -77,8 +112,18 @@ export function BotRainModule({
     );
   }
 
+  function isPresetLocked(intervalMin: number) {
+    return LOCKED_INTERVALS.has(intervalMin) && !streamerSubActive;
+  }
+
   async function save() {
     if (!state) return;
+
+    if (isPresetLocked(state.intervalMin)) {
+      setErr("🔒 Les rain 10 min et 120 min sont réservées à l’abonnement streamer.");
+      return;
+    }
+
     setSaving(true);
     setErr(null);
     try {
@@ -97,6 +142,7 @@ export function BotRainModule({
       const j = await r.json();
       if (!j?.ok) throw new Error(j?.error || "save_failed");
       await load(); // recharge l’état serveur
+      await loadMeSubs(); // au cas où statut sub change
     } catch (e: any) {
       setErr(String(e?.message || "Erreur sauvegarde"));
     } finally {
@@ -124,6 +170,12 @@ export function BotRainModule({
         <>
           {err ? <div className="hint">⚠️ {err}</div> : null}
 
+          {!streamerSubActive ? (
+            <div className="muted" style={{ fontSize: 12 }}>
+              🔒 Les presets <b>10 min</b> et <b>120 min</b> sont réservés à l’abonnement streamer.
+            </div>
+          ) : null}
+
           {/* Activation */}
           <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <input
@@ -131,9 +183,7 @@ export function BotRainModule({
               checked={state.enabled}
               disabled={!state.canManage}
               onChange={(e) =>
-                setState((old) =>
-                  old ? { ...old, enabled: e.target.checked } : old
-                )
+                setState((old) => (old ? { ...old, enabled: e.target.checked } : old))
               }
             />
             <span style={{ fontWeight: 900 }}>
@@ -145,20 +195,27 @@ export function BotRainModule({
           <div style={{ display: "grid", gap: 8 }}>
             {PRESETS.map((p) => {
               const active = state.intervalMin === p.intervalMin;
+              const locked = isPresetLocked(p.intervalMin);
+              const disabled = !state.canManage || locked;
+
               return (
                 <button
                   key={p.intervalMin}
                   className="btnGhostInline"
-                  disabled={!state.canManage}
+                  disabled={disabled}
                   onClick={() => setPreset(p.intervalMin)}
                   style={{
                     borderRadius: 14,
                     padding: "10px 12px",
                     fontWeight: 900,
+                    opacity: locked ? 0.55 : 1,
+                    cursor: disabled ? "not-allowed" : "pointer",
                     border: active ? "1px solid rgba(34,197,94,0.6)" : undefined,
                     background: active ? "rgba(34,197,94,0.08)" : undefined,
                   }}
+                  title={locked ? "Réservé à l’abonnement streamer" : undefined}
                 >
+                  {locked ? "🔒 " : ""}
                   {p.rubiesPerUser} rubis toutes les {p.intervalMin} minutes
                 </button>
               );
@@ -180,9 +237,7 @@ export function BotRainModule({
             <div className="muted">
               ≈ <b>{perHour} rubis / heure</b> par viewer actif
             </div>
-            <div className="muted">
-              Fenêtre d’inscription : {state.joinWindowSec}s
-            </div>
+            <div className="muted">Fenêtre d’inscription : {state.joinWindowSec}s</div>
             <div className="muted">
               État : <b>{state.phase}</b>
             </div>

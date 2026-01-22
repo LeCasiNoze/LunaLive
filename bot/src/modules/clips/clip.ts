@@ -163,6 +163,43 @@ async function ensureBotClipsTable(pool: Pool) {
   ensured = true;
 }
 
+const CLIPS_LIMIT_NO_SUB = 10;
+
+async function getStreamerOwnerUserId(pool: Pool, streamerId: number): Promise<number | null> {
+  const r = await pool.query(`SELECT user_id FROM streamers WHERE id=$1 LIMIT 1`, [streamerId]);
+  const id = Number(r.rows?.[0]?.user_id || 0);
+  return id > 0 ? id : null;
+}
+
+async function hasActiveStreamerSub(pool: Pool, userId: number): Promise<boolean> {
+  const uid = Number(userId || 0);
+  if (!uid) return false;
+
+  try {
+    const r = await pool.query(
+      `
+      SELECT 1
+      FROM user_subscriptions us
+      WHERE us.user_id=$1
+        AND us.plan_code='streamer'
+        AND us.status IN ('active','trialing')
+        AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
+      LIMIT 1
+      `,
+      [uid]
+    );
+    return !!r.rows?.[0];
+  } catch {
+    return false;
+  }
+}
+
+async function streamerHasUnlimitedClips(pool: Pool, streamerId: number): Promise<boolean> {
+  const ownerId = await getStreamerOwnerUserId(pool, streamerId);
+  if (!ownerId) return false;
+  return hasActiveStreamerSub(pool, ownerId);
+}
+
 async function addClipPg(p: {
   pool: Pool;
   streamerId: number;
@@ -181,26 +218,65 @@ async function addClipPg(p: {
   const pre = Math.max(0, Math.floor(p.preSec));
   const post = Math.max(0, Math.floor(p.postSec));
 
-  // dédoublonnage ±20s dans les 6 dernières heures (par streamer)
-  const dup = await pool.query(
-    `SELECT id
-     FROM bot_clips
-     WHERE streamer_id=$1
-       AND ABS(at_sec - $2) <= 20
-       AND created_ts >= $3
-     LIMIT 1`,
-    [streamerId, at, nowMs - 6 * 3600 * 1000]
-  );
-  if (dup.rows?.[0]?.id) return { ok: false as const, reason: "duplicate" };
+  // 🔥 on décide si on applique une limite (owner streamer sub => illimité)
+  const unlimited = await streamerHasUnlimitedClips(pool, streamerId);
 
-  const ins = await pool.query(
-    `INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts)
-     VALUES($1,$2,$3,$4,$5,$6,$7)
-     RETURNING id`,
-    [streamerId, p.title, p.author, at, pre, post, nowMs]
-  );
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
 
-  return { ok: true, id: Number(ins.rows?.[0]?.id || 0) };
+    // dédoublonnage ±20s dans les 6 dernières heures (par streamer)
+    const dup = await client.query(
+      `SELECT id
+       FROM bot_clips
+       WHERE streamer_id=$1
+         AND ABS(at_sec - $2) <= 20
+         AND created_ts >= $3
+       LIMIT 1`,
+      [streamerId, at, nowMs - 6 * 3600 * 1000]
+    );
+    if (dup.rows?.[0]?.id) {
+      await client.query("ROLLBACK");
+      return { ok: false as const, reason: "duplicate" };
+    }
+
+    const ins = await client.query(
+      `INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts)
+       VALUES($1,$2,$3,$4,$5,$6,$7)
+       RETURNING id`,
+      [streamerId, p.title, p.author, at, pre, post, nowMs]
+    );
+
+    const newId = Number(ins.rows?.[0]?.id || 0);
+
+    // ✅ limite 10 clips si pas d’abonnement streamer: on garde les + récents
+    if (!unlimited) {
+      await client.query(
+        `
+        WITH to_del AS (
+          SELECT id
+          FROM bot_clips
+          WHERE streamer_id = $1
+          ORDER BY created_ts DESC
+          OFFSET $2
+        )
+        DELETE FROM bot_clips
+        WHERE id IN (SELECT id FROM to_del)
+        `,
+        [streamerId, CLIPS_LIMIT_NO_SUB]
+      );
+    }
+
+    await client.query("COMMIT");
+    return { ok: true, id: newId };
+  } catch (e) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 /* ------------------ public handler ------------------ */

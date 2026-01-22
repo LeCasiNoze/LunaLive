@@ -5,30 +5,24 @@ import type { PredictionRow } from "./predictions.types.js";
 
 const TAX_RATE = 0.10;
 
-// ─────────────────────────────────────────────
-// 🛡️ Shields (option 1) — reset tous les 14 jours
-// - lvl0: 0 shield
-// - lvl1: 1 shield / 14j
-// - lvl2: 2 shields / 14j
-// - lvl3: 3 shields / 14j
-// Refund % (modifiable)
-// - lvl1: 25%
-// - lvl2: 50%
-// - lvl3: 75%
-// Refund arrondi AU DESSUS (ceil) et jamais > mise
-// ─────────────────────────────────────────────
+const TZ = "Europe/Paris";
 
+// ✅ on réutilise l’upgrade existant "bet cap"
+const BET_UPGRADE_KEY = "predictions.bet_cap" as const;
+
+// ─────────────────────────────────────────────
+// 🛡️ Shields (nouvelle règle)
+// - 1 shield / 14j si betLevel == 3
+// - +1 shield / 14j si viewer premium (sub 'viewer' active)
+// - Refund = 50% (comme avant), ceil, jamais > mise
+// ─────────────────────────────────────────────
 const SHIELD_PERIOD_DAYS = 14;
-const SHIELD_UPGRADE_KEY = "predictions.shields" as const;
 
-function shieldMaxByLevel(level: number) {
-  const lv = Math.max(0, Math.min(3, Number(level || 0)));
-  return lv; // 0->0, 1->1, 2->2, 3->3
-}
+const SHIELD_REFUND_PCT = 1.0; // garde ton comportement actuel (50%)
 
-function shieldRefundPct(level: number) {
-  const lv = Math.max(0, Math.min(3, Number(level || 0)));
-  return lv >= 1 ? 0.5 : 0; // ✅ 50% fixe dès lvl1
+async function ensurePredictionsSchema(pool: Pool) {
+  // resolved_at est requis pour compter “par jour” au moment de la résolution
+  await pool.query(`ALTER TABLE predictions ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;`);
 }
 
 async function ensureShieldsSchema(pool: Pool) {
@@ -41,16 +35,11 @@ async function ensureShieldsSchema(pool: Pool) {
   `);
 }
 
-async function getShieldLevel(pool: Pool, userId: number): Promise<number> {
+async function getBetLevel(pool: Pool, userId: number): Promise<number> {
   try {
     const r = await pool.query(
-      `
-      SELECT level
-      FROM user_upgrades
-      WHERE user_id=$1 AND upgrade_key=$2
-      LIMIT 1
-      `,
-      [userId, SHIELD_UPGRADE_KEY]
+      `SELECT level FROM user_upgrades WHERE user_id=$1 AND upgrade_key=$2 LIMIT 1`,
+      [userId, BET_UPGRADE_KEY]
     );
     return Math.max(0, Number(r.rows?.[0]?.level || 0));
   } catch {
@@ -58,8 +47,32 @@ async function getShieldLevel(pool: Pool, userId: number): Promise<number> {
   }
 }
 
+async function isPremiumViewer(client: any, userId: number): Promise<boolean> {
+  try {
+    const r = await client.query(
+      `
+      SELECT 1
+      FROM user_subscriptions us
+      WHERE us.user_id=$1
+        AND us.plan_code='viewer'
+        AND us.status IN ('active','trialing')
+        AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
+      LIMIT 1
+      `,
+      [userId]
+    );
+    return !!r.rows?.[0];
+  } catch {
+    return false;
+  }
+}
+
+function shieldMax(betLevel: number, premium: boolean) {
+  const hasLvl3 = Number(betLevel) >= 3;
+  return (hasLvl3 ? 1 : 0) + (premium ? 1 : 0);
+}
+
 async function getAndMaybeResetShieldState(client: any, userId: number) {
-  // lock row
   const r = await client.query(
     `
     SELECT user_id, period_start, used
@@ -102,6 +115,8 @@ async function consumeShield(client: any, userId: number) {
 // ─────────────────────────────────────────────
 
 export async function getActivePrediction(pool: Pool, streamerId: number): Promise<PredictionRow | null> {
+  await ensurePredictionsSchema(pool);
+
   const r = await pool.query(
     `
     SELECT *
@@ -125,6 +140,8 @@ export async function createPrediction(
   durationSec: number,
   fixedStake: number
 ): Promise<PredictionRow> {
+  await ensurePredictionsSchema(pool);
+
   const r = await pool.query(
     `
     INSERT INTO predictions (
@@ -144,11 +161,6 @@ export async function createPrediction(
   return r.rows[0];
 }
 
-/**
- * IMPORTANT:
- * - addBet ne DOIT PAS dépenser (sinon double spend).
- * - La dépense est faite dans predictions.routes.ts (wallet_engine).
- */
 export async function addBet(pool: Pool, pred: PredictionRow, userId: number, choice: 1 | 2, stake: number) {
   await pool.query(
     `
@@ -167,6 +179,7 @@ export async function addBet(pool: Pool, pred: PredictionRow, userId: number, ch
 }
 
 export async function resolvePrediction(pool: Pool, pred: PredictionRow, winning: 1 | 2) {
+  await ensurePredictionsSchema(pool);
   await ensureShieldsSchema(pool);
 
   const client = await pool.connect();
@@ -183,7 +196,7 @@ export async function resolvePrediction(pool: Pool, pred: PredictionRow, winning
 
     if (potTotal <= 0) {
       await client.query(
-        `UPDATE predictions SET status='resolved', resolved_option=$1 WHERE id=$2`,
+        `UPDATE predictions SET status='resolved', resolved_option=$1, resolved_at=NOW() WHERE id=$2`,
         [winning, pred.id]
       );
       await client.query("COMMIT");
@@ -211,28 +224,24 @@ export async function resolvePrediction(pool: Pool, pred: PredictionRow, winning
       }
     }
 
-    // ✅ shields refund losers (option 1)
-    // Refund = ceil(stake * pct(level)), consume 1 shield if refund>0
+    // ✅ shields refund losers (nouvelle règle)
     for (const l of losers) {
       const userId = Number(l.user_id);
       const stake = Number(l.amount);
-
       if (!(stake > 0)) continue;
 
-      const level = await getShieldLevel(pool, userId);
-      const max = shieldMaxByLevel(level);
-      const pct = shieldRefundPct(level);
+      const betLevel = await getBetLevel(pool, userId);
+      const premium = await isPremiumViewer(client, userId);
 
-      if (!(max > 0) || !(pct > 0)) continue;
+      const max = shieldMax(betLevel, premium);
+      if (max <= 0) continue;
 
-      // lock + maybe reset in current period
       const state = await getAndMaybeResetShieldState(client, userId);
       const used = Number(state.used || 0);
       const left = Math.max(0, max - used);
-
       if (left <= 0) continue;
 
-      const refund = Math.min(stake, Math.ceil(stake * pct));
+      const refund = Math.min(stake, Math.ceil(stake * SHIELD_REFUND_PCT));
       if (refund <= 0) continue;
 
       await consumeShield(client, userId);
@@ -241,16 +250,19 @@ export async function resolvePrediction(pool: Pool, pred: PredictionRow, winning
         weight_bp: 2000,
         predictionId: pred.id,
         stake,
-        shieldLevel: level,
-        refundPct: pct,
+        betLevel,
+        premiumViewer: premium,
+        refundPct: SHIELD_REFUND_PCT,
+        shieldPeriodDays: SHIELD_PERIOD_DAYS,
+        shieldMax: max,
       });
     }
 
-    // 🔒 finalise
+    // 🔒 finalise (+ resolved_at)
     await client.query(
       `
       UPDATE predictions
-      SET status='resolved', resolved_option=$1
+      SET status='resolved', resolved_option=$1, resolved_at=NOW()
       WHERE id=$2
       `,
       [winning, pred.id]

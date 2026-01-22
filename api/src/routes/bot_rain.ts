@@ -15,7 +15,8 @@ const PRESETS: Record<number, number> = {
   120: 50,
 };
 
-const ALLOWED_INTERVALS = new Set([10, 30, 60]);
+const ALLOWED_INTERVALS = new Set([10, 30, 60, 120]);
+const STREAMER_LOCKED_INTERVALS = new Set([10, 120]);
 
 let schemaReady = false;
 
@@ -63,6 +64,29 @@ async function getPremiumViewerSet(client: PoolClient, userIds: number[]) {
   }
 
   return set;
+}
+
+async function hasActiveStreamerSub(userId: number): Promise<boolean> {
+  const uid = Number(userId || 0);
+  if (!uid) return false;
+
+  try {
+    const r = await pool.query(
+      `
+      SELECT 1
+      FROM user_subscriptions us
+      WHERE us.user_id = $1
+        AND us.plan_code = 'streamer'
+        AND us.status IN ('active','trialing')
+        AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
+      LIMIT 1
+      `,
+      [uid]
+    );
+    return !!r.rows?.[0];
+  } catch {
+    return false;
+  }
 }
 
 // Bonus premium "créé de nulle part" (après talent)
@@ -703,6 +727,19 @@ botRainRouter.post("/config", async (req: any, res: any) => {
 
     const enabled = asBool(req.body?.enabled);
     const intervalMin = clampInterval(req.body?.intervalMin);
+
+    // 🔒 10 & 120 => réservés à l’abonnement streamer
+    if (STREAMER_LOCKED_INTERVALS.has(intervalMin)) {
+      const okSub = await hasActiveStreamerSub(Number(req.user?.id || 0));
+      if (!okSub) {
+        return res.status(403).json({
+          ok: false,
+          error: "streamer_subscription_required",
+          locked: intervalMin,
+        });
+      }
+    }
+
     const rubiesPerUser = PRESETS[intervalMin] ?? 5;
 
     await pool.query(

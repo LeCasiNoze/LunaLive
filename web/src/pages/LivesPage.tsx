@@ -11,17 +11,17 @@ import type { LiveCard } from "../lib/types";
 import { DailyWheelCard } from "../components/DailyWheelCard";
 import { DailyBonusAccessCard } from "../components/DailyBonusAccessCard";
 import { useAuth } from "../auth/AuthProvider";
+import { useIsMobile } from "../hooks/useIsMobile";
+import LivesPageMobile from "./LivesPage.mobile";
 
-type LiveCardVM = LiveCard & {
-  thumbFallback: string; // svg
-  thumbFinal: string; // what we display (never "blink" during refresh)
+export type LiveCardVM = LiveCard & {
+  thumbFallback: string;
+  thumbFinal: string;
   durationLabel?: string | null;
-
-  // premium / featured (foundation)
   featured?: boolean;
 };
 
-type ClipVM = {
+export type ClipVM = {
   id: number;
 
   streamerSlug: string;
@@ -31,18 +31,15 @@ type ClipVM = {
   title: string | null;
   createdAtMs: number;
 
-  // legacy (HLS)
   vodUrl: string | null;
   startSec: number;
   durationSec: number;
 
-  // ✅ NEW: MP4 (2 min) — preferred
-  clipUrl?: string | null; // ex: "/clips/123/mp4" or full https url
+  clipUrl?: string | null;
 
   thumbUrl: string | null;
   likesCount: number;
 
-  // ✅ NEW
   myLiked?: boolean;
 };
 
@@ -921,6 +918,7 @@ export default function LivesPage() {
   const role = String(user?.role || "");
   const isAdmin = role === "admin";
   const canModerateClips = isAdmin || username.toLowerCase() === "lecasinoze";
+  const isMobile = useIsMobile();
 
   const mergeThumbFinal = React.useCallback((prev: LiveCardVM[], nextBase: LiveCardVM[]) => {
     const prevMap = new Map(prev.map((x) => [String(x.slug || x.id), x] as const));
@@ -1059,6 +1057,54 @@ export default function LivesPage() {
     setClips((prev) => prev.filter((x) => x.id !== id));
     setClipsTotal((n) => Math.max(0, (Number(n) || 0) - 1));
   }, []);
+
+    if (isMobile) {
+    return (
+      <>
+        <LivesPageMobile
+          apiBase={API_BASE}
+          lives={lives}
+          loading={loading}
+          refreshing={refreshing}
+          err={err}
+          totals={totals}
+          featuredLives={featuredLives as any}
+          normalLives={normalLives as any}
+          clipsTop4={clipsTop4 as any}
+          clipsTotal={clipsTotal}
+          clipsLoading={clipsLoading}
+          extraClipsCount={extraClipsCount}
+          hasMoreThan4={hasMoreThan4}
+          onOpenMonthList={() => setOpenMonthList(true)}
+          onOpenClip={(c) => setOpenClip(c)}
+        />
+
+        {/* ✅ on garde tes modales existantes (inchangées) */}
+        {openMonthList ? (
+          <MonthClipsListModal
+            title="🎬 Clips du mois"
+            clips={clips}
+            total={clipsTotal || clips.length}
+            onClose={() => setOpenMonthList(false)}
+            onPickClip={(c) => setOpenClip(c)}
+            zIndex={79}
+          />
+        ) : null}
+
+        {openClip ? (
+          <ClipPlayerModal
+            clip={openClip}
+            token={token}
+            canModerate={canModerateClips}
+            onPatchClip={patchClip}
+            onRemoveClip={removeClip}
+            onClose={() => setOpenClip(null)}
+            zIndex={80}
+          />
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <main className="container livesPage">
@@ -1702,4 +1748,5 @@ export default function LivesPage() {
       ) : null}
     </main>
   );
+  
 }

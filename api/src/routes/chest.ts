@@ -346,7 +346,6 @@ async function closeOpeningAndPayout(openingId: number, closedBy: "streamer" | "
       payouts.push({ userId: a.userId, amount: gain });
     }
 
-
     // le coffre est consommé entièrement
     await client.query(`DELETE FROM streamer_chest_lots WHERE streamer_id=$1`, [streamerId]);
     await touchChest(client, streamerId);
