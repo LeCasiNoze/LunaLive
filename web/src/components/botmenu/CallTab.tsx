@@ -63,6 +63,13 @@ export function CallTab({
   const pcallOnCooldown = pcallNextAtMs > 0 && nowMs < pcallNextAtMs;
   const pcallLeftMin = pcallOnCooldown ? msToMinLeft(pcallNextAtMs - nowMs) : 0;
 
+  function afterSend() {
+    setQ("");
+    setItems([]);
+    window.setTimeout(() => void loadQueue(), 150);
+    window.setTimeout(() => void loadPcallStatus(), 600);
+  }
+
   function toast(kind: "success" | "error" | "info", title: string, message?: string) {
     window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind, title, message } }));
   }
@@ -195,7 +202,7 @@ export function CallTab({
 
     // envoi cmd
     sendBang(`!pcall ${t}`);
-    onClose();
+    afterSend();
 
     // optimiste: bloque local 1h30 + refresh status best-effort
     const optimistic = Date.now() + 90 * 60 * 1000;
@@ -305,7 +312,7 @@ export function CallTab({
                 const text = q.trim();
                 if (!text) return;
                 sendBang(`!call ${text}`);
-                onClose();
+                afterSend();
               }
             }}
           />
@@ -376,7 +383,7 @@ export function CallTab({
                       type="button"
                       onClick={() => {
                         sendBang(`!call ${it.name}`);
-                        onClose();
+                        afterSend();
                       }}
                       style={{
                         flex: 1,

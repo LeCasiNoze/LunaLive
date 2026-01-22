@@ -22,6 +22,7 @@ import { CasinosAdminSection } from "../components/admin/CasinosAdminSection";
 import { Link } from "react-router-dom";
 import { EmotesAdminSection } from "../components/admin/EmotesAdminSection";
 import { ReportsAdminSection } from "../components/admin/ReportsAdminSection";
+import { SubscriptionsAdminSection } from "../components/admin/SubscriptionsAdminSection";
 
 
 const SS_KEY = "lunalive_admin_key_v1";
@@ -581,6 +582,14 @@ export default function AdminPage() {
               />
 
               <NavButton
+                active={tab === "subscriptions"}
+                icon="★"
+                label="Abonnements"
+                hint="Lister • ajouter • arrêter (viewer/streamer)"
+                onClick={() => goto("subscriptions")}
+              />
+
+              <NavButton
                 active={tab === "providers"}
                 icon="🔗"
                 label="Ajout de compte DLive"
@@ -665,6 +674,21 @@ export default function AdminPage() {
               right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
             >
               <CasinosAdminSection adminKey={key} />
+            </Card>
+          ) : null}
+
+          {tab === "subscriptions" ? (
+            <Card
+              title={
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>★</span>
+                  Abonnements
+                </span>
+              }
+              subtitle="Gestion des abonnements viewer/streamer (liste + search + add/stop)."
+              right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
+            >
+              <SubscriptionsAdminSection adminKey={key} />
             </Card>
           ) : null}
 

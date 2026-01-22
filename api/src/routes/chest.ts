@@ -226,28 +226,126 @@ async function closeOpeningAndPayout(openingId: number, closedBy: "streamer" | "
       return { alreadyClosed: false, payouts: [] };
     }
 
-    const base = Math.floor(total / users.length);
-    const rest = total - base * users.length;
+    // =========================
+    // ✅ PAYOUT PONDÉRÉ (premium + activité) avec cap 1.35
+    // =========================
+    const PREMIUM_MULT = 1.15;          // premium viewer => +15%
+    const ACTIVITY_MAX_BONUS = 0.20;    // activité => +20% max
+    const ACTIVITY_FULL_MIN = 30;       // 30 minutes (dans la fenêtre) => bonus max
+    const SCORE_CAP = 1.35;
 
-    // vrai random : les "rest" premiers du shuffle prennent +1
-    const shuffled = [...users].sort(() => Math.random() - 0.5);
-    const bonusSet = new Set(shuffled.slice(0, rest));
+    // ---- premium flags (batch)
+    const premRes = await client.query(
+      `
+      SELECT DISTINCT user_id::bigint AS user_id
+      FROM user_subscriptions
+      WHERE user_id = ANY($1::int[])
+        AND plan_code = 'viewer'
+        AND status IN ('active','trialing')
+        AND (current_period_end IS NULL OR current_period_end > NOW())
+      `,
+      [users]
+    );
+    const premiumSet = new Set<number>((premRes.rows || []).map((r: any) => Number(r.user_id)));
 
-    const payouts: Array<{ userId: number; amount: number }> = [];
+    // ---- activité (watch minutes dans la fenêtre récente)
+    // viewer_key attendu: "u:<id>" (si absent, activité = 1)
+    const keys = users.map((id) => `u:${id}`);
+
+    const actRes = await client.query(
+      `
+      SELECT viewer_key, COUNT(*)::int AS n
+      FROM stream_viewer_minutes
+      WHERE streamer_id = $1
+        AND viewer_key = ANY($2::text[])
+        AND bucket_ts >= (NOW() - ($3::int * INTERVAL '1 hour'))
+      GROUP BY viewer_key
+      `,
+      [streamerId, keys, WATCH_WINDOW_HOURS]
+    );
+
+    const watchedByUser = new Map<number, number>();
+    for (const row of actRes.rows || []) {
+      const vk = String(row.viewer_key || "");
+      const m = vk.match(/^u:(\d+)$/);
+      if (!m) continue;
+      const uid = Number(m[1]);
+      watchedByUser.set(uid, Number(row.n || 0));
+    }
+
+    // ---- scores
+    const scoreByUser = new Map<number, number>();
+    let sumScore = 0;
 
     for (const userId of users) {
-      let gain = base + (bonusSet.has(userId) ? 1 : 0);
+      const watchedMin = watchedByUser.get(userId) ?? 0;
+
+      // activité: 1 -> 1.2 max
+      const t = Math.max(0, Math.min(1, watchedMin / ACTIVITY_FULL_MIN));
+      const activityMult = 1 + t * ACTIVITY_MAX_BONUS;
+
+      const premMult = premiumSet.has(userId) ? PREMIUM_MULT : 1;
+      let score = 1 * activityMult * premMult;
+
+      if (score > SCORE_CAP) score = SCORE_CAP;
+      if (score < 0) score = 0;
+
+      scoreByUser.set(userId, score);
+      sumScore += score;
+    }
+
+    // fallback si bug (évite division 0)
+    if (!(sumScore > 0)) {
+      sumScore = users.length;
+      for (const userId of users) scoreByUser.set(userId, 1);
+    }
+
+    // ---- allocation proportionnelle + rest via "largest remainder"
+    type Alloc = { userId: number; floor: number; frac: number };
+
+    const allocs: Alloc[] = [];
+    let used = 0;
+
+    for (const userId of users) {
+      const s = scoreByUser.get(userId) ?? 1;
+      const raw = (total * s) / sumScore;
+      const f = Math.floor(raw);
+      const frac = raw - f;
+
+      allocs.push({ userId, floor: f, frac });
+      used += f;
+    }
+
+    let remaining = total - used;
+
+    // distribue les restants aux plus grosses fractions (shuffle pour départager les égalités)
+    allocs.sort((a, b) => (b.frac - a.frac) || (Math.random() - 0.5));
+
+    for (let i = 0; i < allocs.length && remaining > 0; i++) {
+      allocs[i].floor += 1;
+      remaining -= 1;
+    }
+
+    // ---- payouts effectifs
+    const payouts: Array<{ userId: number; amount: number }> = [];
+
+    for (const a of allocs) {
+      const gain = Number(a.floor || 0);
       if (gain <= 0) continue;
 
-      await earnRubisTx(client, userId, "chest_streamer", gain, {
+      await earnRubisTx(client, a.userId, "chest_streamer", gain, {
         weight_bp: MAX_OUT_WEIGHT_BP,
         streamerId,
         openingId,
         closedBy,
+        premiumViewer: premiumSet.has(a.userId),
+        watchedMinutes: watchedByUser.get(a.userId) ?? 0,
+        score: scoreByUser.get(a.userId) ?? 1,
       });
 
-      payouts.push({ userId, amount: gain });
+      payouts.push({ userId: a.userId, amount: gain });
     }
+
 
     // le coffre est consommé entièrement
     await client.query(`DELETE FROM streamer_chest_lots WHERE streamer_id=$1`, [streamerId]);

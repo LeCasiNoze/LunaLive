@@ -4,6 +4,8 @@ import { pool } from "./db.js";
 
 const OUT_WEIGHT_BP = 2000; // 0.20
 const BUCKET_MINUTES = 5;
+const PREMIUM_VIEWERS_FACTOR = 0.20;  // +20% par premium
+const PREMIUM_VIEWERS_CAP_PCT = 0.30; // cap +30% du total viewers sur la fenêtre
 
 /**
  * Règle de génération par tranche de spectateurs
@@ -95,7 +97,36 @@ async function autoMintTick() {
       );
 
       const viewers = Number(viewersRes.rows?.[0]?.n || 0);
-      const minted = viewersToRubis(viewers);
+
+      // ✅ Premium viewers présents dans la fenêtre (uniquement viewer_key "u:<id>")
+      const premiumRes = await client.query(
+        `
+        WITH u AS (
+          SELECT DISTINCT substring(viewer_key from 3)::bigint AS user_id
+          FROM stream_viewer_minutes
+          WHERE streamer_id=$1
+            AND viewer_key LIKE 'u:%'
+            AND bucket_ts > COALESCE($2::timestamptz, '1970-01-01'::timestamptz)
+            AND bucket_ts <= $3::timestamptz
+        )
+        SELECT COUNT(*)::int AS n
+        FROM u
+        JOIN user_subscriptions us ON us.user_id = u.user_id
+        WHERE us.plan_code = 'viewer'
+          AND us.status IN ('active','trialing')
+          AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
+        `,
+        [streamerId, lastBucketTs, toTs]
+      );
+
+      const premiumViewers = Number(premiumRes.rows?.[0]?.n || 0);
+
+      // ✅ boost safe (cap)
+      const extra = Math.min(premiumViewers * PREMIUM_VIEWERS_FACTOR, viewers * PREMIUM_VIEWERS_CAP_PCT);
+      const effectiveViewers = Math.floor(viewers + extra);
+
+      const minted = viewersToRubis(effectiveViewers);
+
 
       await client.query(
         `UPDATE streamer_chest_auto_state
@@ -113,12 +144,16 @@ async function autoMintTick() {
             streamerId,
             OUT_WEIGHT_BP,
             minted,
-            JSON.stringify({
-              rule: "viewers_per_5min",
-              viewers,
-              bucketMinutes: BUCKET_MINUTES,
-              toTs,
-            }),
+              JSON.stringify({
+                rule: "viewers_per_5min",
+                viewers,
+                premiumViewers,
+                effectiveViewers,
+                premiumFactor: PREMIUM_VIEWERS_FACTOR,
+                premiumCapPct: PREMIUM_VIEWERS_CAP_PCT,
+                bucketMinutes: BUCKET_MINUTES,
+                toTs,
+              }),
           ]
         );
 

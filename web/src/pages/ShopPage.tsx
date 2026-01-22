@@ -635,7 +635,7 @@ export function ShopPage({
   const username = user?.username ?? "Invité";
   const previewUserId = user?.id ?? 999999;
 
-  const disabledSubsReason = "Paiement + activation/annulation seront branchés après validation du front.";
+  const disabledSubsReason = "Les abonnements sont annulables à tout moment.";
 
   async function onSubscribe(plan: "viewer" | "streamer") {
     if (!token) return;
@@ -677,22 +677,22 @@ export function ShopPage({
       slides: [
         {
           title: "Inclus à chaque cycle",
-          points: ["🎁 1 ticket “sub offert” (équiv. 1 sub)", "💎 +500 rubis offerts (à chaque renouvellement)", "✨ Cosmétique exclusif (à définir)"],
+          points: ["🎁 1 ticket “sub offert”", "💎 +500 rubis offerts (à chaque renouvellement)", "✨ Cosmétique exclusif"],
         },
         {
           title: "Boost coffres & gains",
-          points: ["🧰 + génération passive dans les coffres de stream (ex: +1 rubis / tick)", "💰 Bonus sur la récupération des rubis des coffres", "🌧️ Boost sur les rain", "🎯 Bonus sur les gains quand tu remportes une prédiction"],
+          points: ["🧰 + génération passive dans les coffres de stream", "💰 Bonus sur la récupération des rubis des coffres", "🌧️ Boost sur les rain"],
         },
         {
           title: "Bonus quotidiens & accès",
-          points: ["📅 Bonus quotidien supplémentaire (Daily bonus/agenda)", "🎡 Tickets de roue supplémentaires (logique à définir)", "📣 Accès à PCall (bypass comme talent Calls niv 3)", "⚡ Boost XP (sera branché plus tard avec le système XP)"],
+          points: ["📅 Bonus quotidien supplémentaire", "🎡 Tickets de roue supplémentaires", "📣 Accès à PCall et RandomCall", "⚡ Boost XP (à venir)"],
         },
       ],
     },
     {
       id: "streamer",
       label: "Abonnement Streamer",
-      badge: "Streamer only — 30 jours",
+      badge: "30 jours",
       icon: "🎥",
       priceText: "49,99 € / 30 jours — renouvellement automatique",
       visibleIf: (u) => isStreamerRole(u?.role),

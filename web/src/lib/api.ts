@@ -1647,3 +1647,63 @@ export async function adminImpersonateUser(adminKey: string, userId: number): Pr
   if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
   return data as { ok: true; token: string };
 }
+export type AdminSubscriptionRow = {
+  id: number;
+  userId: number;
+  username: string;
+  planCode: "viewer" | "streamer";
+  provider: string;
+  providerSubscriptionId: string;
+  status: string;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function adminListSubscriptions(
+  adminKey: string,
+  opts: { status: "active" | "all"; q: string | null; limit?: number; offset?: number }
+): Promise<{ ok: true; total: number; items: AdminSubscriptionRow[] }> {
+  const params = new URLSearchParams();
+  params.set("status", opts.status);
+  if (opts.q) params.set("q", opts.q);
+  if (opts.limit != null) params.set("limit", String(opts.limit));
+  if (opts.offset != null) params.set("offset", String(opts.offset));
+
+  const res = await fetch(`${BASE}/admin/subscriptions?${params.toString()}`, {
+    headers: { "x-admin-key": adminKey },
+  });
+  if (!res.ok) throw new Error(`adminListSubscriptions ${res.status}`);
+  return await res.json();
+}
+
+export async function adminGrantSubscription(
+  adminKey: string,
+  userId: number,
+  planCode: "viewer" | "streamer",
+  days: number
+): Promise<{ ok: true; sub: AdminSubscriptionRow | null }> {
+  const res = await fetch(`${BASE}/admin/subscriptions/grant`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-admin-key": adminKey },
+    body: JSON.stringify({ userId, planCode, days }),
+  });
+  if (!res.ok) throw new Error(`adminGrantSubscription ${res.status}`);
+  return await res.json();
+}
+
+export async function adminCancelSubscription(
+  adminKey: string,
+  userId: number,
+  planCode: "viewer" | "streamer"
+): Promise<{ ok: true; updated: number }> {
+  const res = await fetch(`${BASE}/admin/subscriptions/cancel`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-admin-key": adminKey },
+    body: JSON.stringify({ userId, planCode }),
+  });
+  if (!res.ok) throw new Error(`adminCancelSubscription ${res.status}`);
+  return await res.json();
+}

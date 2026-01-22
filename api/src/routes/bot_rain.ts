@@ -38,6 +38,42 @@ function applyRainBoost(base: number, level: number) {
   return Math.max(1, v);
 }
 
+// Premium viewer (abonnement viewer actif)
+async function getPremiumViewerSet(client: PoolClient, userIds: number[]) {
+  const ids = (userIds || []).map((x) => Number(x)).filter((x) => x > 0);
+  const set = new Set<number>();
+  if (!ids.length) return set;
+
+  try {
+    const r = await client.query<{ user_id: number }>(
+      `
+      SELECT DISTINCT user_id::int AS user_id
+      FROM user_subscriptions
+      WHERE user_id = ANY($1::int[])
+        AND plan_code = 'viewer'
+        AND status IN ('active','trialing')
+        AND (current_period_end IS NULL OR current_period_end > NOW())
+      `,
+      [ids]
+    );
+
+    for (const row of r.rows || []) set.add(Number(row.user_id));
+  } catch {
+    // si table pas dispo, aucun premium bonus
+  }
+
+  return set;
+}
+
+// Bonus premium "créé de nulle part" (après talent)
+const RAIN_PREMIUM_BONUS_MULT = 0.10; // +10% du payout final
+function applyPremiumBonus(payoutAfterTalent: number) {
+  const base = Math.max(0, Math.floor(Number(payoutAfterTalent || 0)));
+  if (base <= 0) return 0;
+  // arrondi pour que les petits montants voient un effet
+  return Math.max(1, Math.round(base * RAIN_PREMIUM_BONUS_MULT));
+}
+
 async function getRainBoostLevels(client: PoolClient, userIds: number[]) {
   const ids = (userIds || []).map((x) => Number(x)).filter((x) => x > 0);
   const map = new Map<number, number>();
@@ -454,17 +490,30 @@ async function advanceIfNeeded(req: any, streamer: any, cfg: any) {
 
       const userIds = (joins.rows || []).map((x: any) => Number(x.user_id)).filter((x: number) => x > 0);
       const boostByUser = await getRainBoostLevels(client, userIds);
+      const premiumSet = await getPremiumViewerSet(client, userIds);
 
       for (const r of joins.rows || []) {
         const uid = Number(r.user_id);
         if (!uid) continue;
 
         const level = boostByUser.get(uid) ?? 0;
-        const payout = applyRainBoost(cfg.rubiesPerUser, level);
 
-        await earnRubisTx(client, uid, "event_platform", payout, {
+        // payout normal (base + talent)
+        const payoutBase = applyRainBoost(cfg.rubiesPerUser, level);
+
+        // bonus premium "mint" (créé de nulle part, en plus)
+        const isPremium = premiumSet.has(uid);
+        const premiumBonus = isPremium ? applyPremiumBonus(payoutBase) : 0;
+
+        const payoutTotal = payoutBase + premiumBonus;
+
+        await earnRubisTx(client, uid, "event_platform", payoutTotal, {
           kind: "rain",
           base: cfg.rubiesPerUser,
+          payoutBase,
+          premiumBonus,
+          premiumViewer: isPremium,
+          premiumBonusMult: RAIN_PREMIUM_BONUS_MULT,
           talent: { code: RAIN_TALENT_CODE, level },
           streamerId: streamer.streamerId,
           slug: streamer.slug,

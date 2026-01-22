@@ -296,25 +296,30 @@ export async function addCall(
   const maxPos = Number(maxPosRes.rows?.[0]?.m ?? 0);
 
   if (opts?.insertAfterCurrent) {
-    // “current” = plus petit pos (le call en cours)
-    const minPosRes = await client.query(
-      `SELECT COALESCE(MIN(pos),0)::bigint AS m FROM calls_queue WHERE streamer_id=$1`,
+    // ✅ pcall = toujours après le 1er item affiché (ORDER BY pos ASC)
+    const firstRes = await client.query(
+      `SELECT pos::bigint AS p
+       FROM calls_queue
+       WHERE streamer_id=$1
+       ORDER BY pos ASC
+       LIMIT 1`,
       [streamerId]
     );
-    const minPos = Number(minPosRes.rows?.[0]?.m ?? 0);
 
-    if (maxPos <= 0) {
-      // queue vide => pas de "2e", on met en 1
+    if (!firstRes.rows?.length) {
+      // queue vide => on met en 1
       nextPos = 1;
     } else {
-      // queue non vide => insérer juste après le current
-      nextPos = Math.max(2, minPos + 1);
+      const firstPos = Number(firstRes.rows[0].p || 1);
+
+      // ✅ insert juste après le premier
+      nextPos = firstPos + 1;
 
       // décale tous les éléments à partir de nextPos
       await client.query(
         `UPDATE calls_queue
-        SET pos = pos + 1
-        WHERE streamer_id=$1 AND pos >= $2`,
+         SET pos = pos + 1
+         WHERE streamer_id=$1 AND pos >= $2`,
         [streamerId, nextPos]
       );
     }

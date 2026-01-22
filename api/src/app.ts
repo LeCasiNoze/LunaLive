@@ -82,6 +82,7 @@ import { adminImpersonateRouter } from "./routes/admin_impersonate.js";
 import { adminEmotesRouter } from "./emotes/admin_emotes.router.js";
 import { reportsRouter } from "./routes/reports.js";
 import { adminReportsRouter } from "./routes/admin_reports.js";
+import { adminSubscriptionsRouter } from "./routes/admin_subscriptions.js";
 
 export function createApp() {
   const app = express();
@@ -142,7 +143,7 @@ export function createApp() {
 
   // setup admin casinos (si ce router est admin-only)
   app.use("/admin/casinos/setup", requireAdminKey, adminCasinosSetupRouter);
-
+  app.use("/admin/subscriptions", adminSubscriptionsRouter);
   // ✅ Admin emotes (protégé, mais UNIQUEMENT sur /admin/emotes/*)
   app.use("/admin/emotes", requireAdminKey, adminEmotesRouter);
   app.use("/reports", reportsRouter);

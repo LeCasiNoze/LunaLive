@@ -6,44 +6,66 @@ import { AvatarMenu } from "../components/AvatarMenu";
 import { useAuth } from "../auth/AuthProvider";
 import { ReportModal } from "../components/ReportModal";
 
-function isActiveSubLike(x: any): boolean {
-  // accepte plusieurs shapes possibles (objet, array, etc.)
+type ActivePlans = { viewer: boolean; streamer: boolean };
+
+function isActiveSubEntry(s: any): boolean {
   const now = Date.now();
+  if (!s) return false;
 
-  const checkOne = (s: any) => {
-    if (!s) return false;
-    const status = String(s.status || s.state || "").toLowerCase();
-    const endRaw = s.current_period_end ?? s.currentPeriodEnd ?? s.end ?? null;
+  const status = String(s.status || s.state || "").toLowerCase();
+  const endRaw = s.current_period_end ?? s.currentPeriodEnd ?? s.end ?? null;
 
-    // si pas de date: on se base juste sur le status
-    if (!endRaw) return status === "active" || status === "trialing";
+  if (!endRaw) return status === "active" || status === "trialing";
 
-    const endMs =
-      typeof endRaw === "number"
-        ? endRaw * (endRaw > 1e12 ? 1 : 1000) // tolère seconds/ms
-        : new Date(String(endRaw)).getTime();
+  const endMs =
+    typeof endRaw === "number"
+      ? endRaw * (endRaw > 1e12 ? 1 : 1000)
+      : new Date(String(endRaw)).getTime();
 
-    return (status === "active" || status === "trialing") && Number.isFinite(endMs) && endMs > now;
-  };
+  return (status === "active" || status === "trialing") && Number.isFinite(endMs) && endMs > now;
+}
+
+function addPlan(out: ActivePlans, planCode: string | null | undefined, active: boolean) {
+  if (!active) return;
+  const p = String(planCode || "").toLowerCase();
+  if (p === "viewer") out.viewer = true;
+  if (p === "streamer") out.streamer = true;
+}
+
+function getActivePlansFrom(x: any): ActivePlans {
+  const out: ActivePlans = { viewer: false, streamer: false };
+  if (!x) return out;
 
   // array: [{plan_code,status,...}, ...]
   if (Array.isArray(x)) {
-    return x.some((s) => checkOne(s));
+    for (const s of x) addPlan(out, s?.plan_code ?? s?.planCode, isActiveSubEntry(s));
+    return out;
   }
 
   // object map: { viewer: {...}, streamer: {...} }
   if (typeof x === "object") {
-    if (x.viewer || x.streamer) return checkOne(x.viewer) || checkOne(x.streamer);
+    if (x.viewer || x.streamer) {
+      addPlan(out, "viewer", isActiveSubEntry(x.viewer));
+      addPlan(out, "streamer", isActiveSubEntry(x.streamer));
+      return out;
+    }
 
     // shape: { plans: {...} } ou { subscriptions: {...} }
-    if (x.plans) return checkOne(x.plans.viewer) || checkOne(x.plans.streamer);
-    if (x.subscriptions) return checkOne(x.subscriptions.viewer) || checkOne(x.subscriptions.streamer);
+    if (x.plans) return getActivePlansFrom(x.plans);
+    if (x.subscriptions) return getActivePlansFrom(x.subscriptions);
 
-    // shape: { plan_code: 'viewer', ... }
-    return checkOne(x);
+    // single entry: { plan_code:'viewer', status:'active', ... }
+    if (x.plan_code || x.planCode) {
+      addPlan(out, x.plan_code ?? x.planCode, isActiveSubEntry(x));
+      return out;
+    }
   }
 
-  return false;
+  return out;
+}
+
+function mergePlans(a: ActivePlans, b: ActivePlans): ActivePlans {
+  return { viewer: a.viewer || b.viewer, streamer: a.streamer || b.streamer };
 }
 
 export function Topbar({
@@ -59,23 +81,43 @@ export function Topbar({
   const userAny = authAny?.user ?? null;
   const user = userAny as { rubis: number; username?: string } | null;
 
-  // ✅ marqueur premium (robuste sur plusieurs shapes de payload)
-  const isPremium =
-    Boolean(
-      userAny?.premiumActive ??
-        userAny?.isPremium ??
-        userAny?.is_premium ??
-        userAny?.premium ??
-        userAny?.subActive
-    ) ||
-    isActiveSubLike(userAny?.subscriptions) ||
-    isActiveSubLike(userAny?.subs) ||
-    isActiveSubLike(userAny?.user_subscriptions) ||
-    isActiveSubLike(userAny?.userSubscriptions);
+  // ✅ plans actifs (viewer/streamer) depuis plusieurs shapes possibles
+  const plans = React.useMemo(() => {
+    let p: ActivePlans = { viewer: false, streamer: false };
+    p = mergePlans(p, getActivePlansFrom(userAny?.subscriptions));
+    p = mergePlans(p, getActivePlansFrom(userAny?.subs));
+    p = mergePlans(p, getActivePlansFrom(userAny?.user_subscriptions));
+    p = mergePlans(p, getActivePlansFrom(userAny?.userSubscriptions));
+    return p;
+  }, [userAny]);
+
+  // ✅ fallback legacy (si ton backend envoie encore des flags)
+  const legacyPremium = Boolean(
+    userAny?.premiumActive ??
+      userAny?.isPremium ??
+      userAny?.is_premium ??
+      userAny?.premium ??
+      userAny?.subActive
+  );
+
+  type StarKind = "none" | "viewer" | "streamer" | "both" | "legacy";
+  const starKind: StarKind =
+    plans.viewer && plans.streamer
+      ? "both"
+      : plans.viewer
+      ? "viewer"
+      : plans.streamer
+      ? "streamer"
+      : legacyPremium
+      ? "legacy"
+      : "none";
+
+  const showStar = starKind !== "none";
 
   const [reportOpen, setReportOpen] = React.useState(false);
 
   const linkClass = ({ isActive }: { isActive: boolean }) => `llNavBtn ${isActive ? "active" : ""}`;
+
   React.useEffect(() => {
     console.log("[Topbar:user]", authAny?.user);
   }, [authAny?.user]);
@@ -305,41 +347,74 @@ export function Topbar({
           text-shadow: 0 0 14px rgba(255,255,255,0.10);
         }
 
-        /* ✅ NEW: wrapper avatar + marqueur premium */
+        /* ✅ NEW: wrapper avatar + marqueur */
+        .llAvatarWrap{ position: relative; }
+
         .llPremiumStar{
           position: absolute;
           left: -4px;
           bottom: -4px;
-
           width: 18px;
           height: 18px;
           border-radius: 999px;
           display: grid;
           place-items: center;
-
-          /* ✅ IMPORTANT: au premier plan */
           z-index: 5;
-
-          /* ✅ jaune */
-          border: 1px solid rgba(255, 210, 110, 0.75);
-          background:
-            radial-gradient(circle at 30% 30%, rgba(255,255,255,0.28), rgba(0,0,0,0) 60%),
-            linear-gradient(135deg, rgba(255, 220, 120, 0.55), rgba(255, 190, 60, 0.35)),
-            rgba(0,0,0,0.20);
           box-shadow: 0 14px 36px rgba(0,0,0,0.40);
           backdrop-filter: blur(10px);
           -webkit-backdrop-filter: blur(10px);
-          pointer-events: none; /* ne bloque pas le click avatar */
+          pointer-events: none;
+          border: 1px solid rgba(255,255,255,0.22);
+          background: rgba(0,0,0,0.20);
         }
 
         .llPremiumStar span{
           font-size: 12px;
           line-height: 1;
-          color: #ffd66a;
           text-shadow:
-            0 0 10px rgba(255, 210, 110, 0.45),
+            0 0 10px rgba(255,255,255,0.20),
             0 10px 18px rgba(0,0,0,0.55);
         }
+
+        /* Viewer = jaune */
+        .llPremiumStar.star--viewer{
+          border-color: rgba(255, 210, 110, 0.75);
+          background:
+            radial-gradient(circle at 30% 30%, rgba(255,255,255,0.28), rgba(0,0,0,0) 60%),
+            linear-gradient(135deg, rgba(255, 220, 120, 0.55), rgba(255, 190, 60, 0.35)),
+            rgba(0,0,0,0.20);
+        }
+        .llPremiumStar.star--viewer span{ color: #ffd66a; }
+
+        /* Streamer = bleu */
+        .llPremiumStar.star--streamer{
+          border-color: rgba(110, 185, 255, 0.70);
+          background:
+            radial-gradient(circle at 30% 30%, rgba(255,255,255,0.24), rgba(0,0,0,0) 60%),
+            linear-gradient(135deg, rgba(90, 170, 255, 0.52), rgba(60, 120, 255, 0.30)),
+            rgba(0,0,0,0.20);
+        }
+        .llPremiumStar.star--streamer span{ color: #8fd0ff; }
+
+        /* Both = violet */
+        .llPremiumStar.star--both{
+          border-color: rgba(180, 120, 255, 0.75);
+          background:
+            radial-gradient(circle at 30% 30%, rgba(255,255,255,0.24), rgba(0,0,0,0) 60%),
+            linear-gradient(135deg, rgba(170, 110, 255, 0.55), rgba(255, 90, 180, 0.22)),
+            rgba(0,0,0,0.20);
+        }
+        .llPremiumStar.star--both span{ color: #d7a6ff; }
+
+        /* Legacy = rouge */
+        .llPremiumStar.star--legacy{
+          border-color: rgba(255, 110, 110, 0.75);
+          background:
+            radial-gradient(circle at 30% 30%, rgba(255,255,255,0.24), rgba(0,0,0,0) 60%),
+            linear-gradient(135deg, rgba(255, 120, 120, 0.50), rgba(255, 60, 60, 0.28)),
+            rgba(0,0,0,0.20);
+        }
+        .llPremiumStar.star--legacy span{ color: #ffb2b2; }
 
         /* Responsive: hide center nav on mobile (your existing behavior) */
         @media (max-width: 820px){
@@ -410,8 +485,36 @@ export function Topbar({
               </div>
 
               <div className="llAvatarWrap">
-                {isPremium ? (
-                  <div className="llPremiumStar" title="Abonnement premium actif" aria-label="Abonnement premium actif">
+                {showStar ? (
+                  <div
+                    className={`llPremiumStar ${
+                      starKind === "viewer"
+                        ? "star--viewer"
+                        : starKind === "streamer"
+                        ? "star--streamer"
+                        : starKind === "both"
+                        ? "star--both"
+                        : "star--legacy"
+                    }`}
+                    title={
+                      starKind === "both"
+                        ? "Abonné Viewer + Streamer"
+                        : starKind === "viewer"
+                        ? "Abonné Viewer"
+                        : starKind === "streamer"
+                        ? "Abonné Streamer"
+                        : "Premium (legacy)"
+                    }
+                    aria-label={
+                      starKind === "both"
+                        ? "Abonné Viewer + Streamer"
+                        : starKind === "viewer"
+                        ? "Abonné Viewer"
+                        : starKind === "streamer"
+                        ? "Abonné Streamer"
+                        : "Premium legacy"
+                    }
+                  >
                     <span aria-hidden>★</span>
                   </div>
                 ) : null}
