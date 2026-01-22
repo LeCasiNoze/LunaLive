@@ -6,6 +6,46 @@ import { AvatarMenu } from "../components/AvatarMenu";
 import { useAuth } from "../auth/AuthProvider";
 import { ReportModal } from "../components/ReportModal";
 
+function isActiveSubLike(x: any): boolean {
+  // accepte plusieurs shapes possibles (objet, array, etc.)
+  const now = Date.now();
+
+  const checkOne = (s: any) => {
+    if (!s) return false;
+    const status = String(s.status || s.state || "").toLowerCase();
+    const endRaw = s.current_period_end ?? s.currentPeriodEnd ?? s.end ?? null;
+
+    // si pas de date: on se base juste sur le status
+    if (!endRaw) return status === "active" || status === "trialing";
+
+    const endMs =
+      typeof endRaw === "number"
+        ? endRaw * (endRaw > 1e12 ? 1 : 1000) // tolère seconds/ms
+        : new Date(String(endRaw)).getTime();
+
+    return (status === "active" || status === "trialing") && Number.isFinite(endMs) && endMs > now;
+  };
+
+  // array: [{plan_code,status,...}, ...]
+  if (Array.isArray(x)) {
+    return x.some((s) => checkOne(s));
+  }
+
+  // object map: { viewer: {...}, streamer: {...} }
+  if (typeof x === "object") {
+    if (x.viewer || x.streamer) return checkOne(x.viewer) || checkOne(x.streamer);
+
+    // shape: { plans: {...} } ou { subscriptions: {...} }
+    if (x.plans) return checkOne(x.plans.viewer) || checkOne(x.plans.streamer);
+    if (x.subscriptions) return checkOne(x.subscriptions.viewer) || checkOne(x.subscriptions.streamer);
+
+    // shape: { plan_code: 'viewer', ... }
+    return checkOne(x);
+  }
+
+  return false;
+}
+
 export function Topbar({
   onOpenLogin,
   onLogout,
@@ -15,12 +55,30 @@ export function Topbar({
 }) {
   const isMobile = useIsMobile();
   const authAny = useAuth() as any;
-  const user = authAny.user as { rubis: number; username?: string } | null;
+
+  const userAny = authAny?.user ?? null;
+  const user = userAny as { rubis: number; username?: string } | null;
+
+  // ✅ marqueur premium (robuste sur plusieurs shapes de payload)
+  const isPremium =
+    Boolean(
+      userAny?.premiumActive ??
+        userAny?.isPremium ??
+        userAny?.is_premium ??
+        userAny?.premium ??
+        userAny?.subActive
+    ) ||
+    isActiveSubLike(userAny?.subscriptions) ||
+    isActiveSubLike(userAny?.subs) ||
+    isActiveSubLike(userAny?.user_subscriptions) ||
+    isActiveSubLike(userAny?.userSubscriptions);
 
   const [reportOpen, setReportOpen] = React.useState(false);
 
-  const linkClass = ({ isActive }: { isActive: boolean }) =>
-    `llNavBtn ${isActive ? "active" : ""}`;
+  const linkClass = ({ isActive }: { isActive: boolean }) => `llNavBtn ${isActive ? "active" : ""}`;
+  React.useEffect(() => {
+    console.log("[Topbar:user]", authAny?.user);
+  }, [authAny?.user]);
 
   return (
     <header className="topbar llTopbar">
@@ -222,7 +280,7 @@ export function Topbar({
           align-items:center;
           justify-content:center;
           height: 40px;
-          width: 40px;                 /* ✅ carré, icône only */
+          width: 40px;
           padding: 0;
           border-radius: 999px;
           border: 1px solid rgba(255,255,255,0.12);
@@ -243,10 +301,40 @@ export function Topbar({
           font-size: 16px;
           line-height: 1;
           opacity: .95;
-          /* ✅ rend le drapeau lisible sur fond sombre */
           filter: drop-shadow(0 6px 14px rgba(0,0,0,0.55));
-          /* optionnel: léger glow clair pour contraste */
           text-shadow: 0 0 14px rgba(255,255,255,0.10);
+        }
+
+        /* ✅ NEW: wrapper avatar + marqueur premium */
+        .llAvatarWrap{
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .llPremiumStar{
+          position: absolute;
+          left: -4px;
+          bottom: -4px;
+          width: 18px;
+          height: 18px;
+          border-radius: 999px;
+          display: grid;
+          place-items: center;
+          border: 1px solid rgba(255,255,255,0.18);
+          background:
+            radial-gradient(circle at 30% 30%, rgba(255,255,255,0.22), rgba(0,0,0,0) 60%),
+            linear-gradient(135deg, rgba(140,90,255,0.30), rgba(80,160,255,0.18), rgba(255,90,180,0.14)),
+            rgba(0,0,0,0.25);
+          box-shadow: 0 14px 36px rgba(0,0,0,0.40);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          pointer-events: none; /* ne bloque pas le click avatar */
+        }
+        .llPremiumStar span{
+          font-size: 12px;
+          line-height: 1;
+          filter: drop-shadow(0 10px 18px rgba(0,0,0,0.55));
         }
 
         /* Responsive: hide center nav on mobile (your existing behavior) */
@@ -306,7 +394,9 @@ export function Topbar({
             title="Signalement / retour"
             aria-label="Ouvrir signalement / retour"
           >
-            <span className="llReportFlag" aria-hidden>⚑</span>
+            <span className="llReportFlag" aria-hidden>
+              ⚑
+            </span>
           </button>
 
           {user ? (
@@ -315,11 +405,15 @@ export function Topbar({
                 💎 <strong>{Number(user.rubis || 0).toLocaleString("fr-FR")}</strong>
               </div>
 
-              <AvatarMenu
-                user={user as any}
-                onLogout={onLogout}
-                onOpenReport={() => setReportOpen(true)}
-              />
+              <div className="llAvatarWrap">
+                {isPremium ? (
+                  <div className="llPremiumStar" title="Abonnement premium actif" aria-label="Abonnement premium actif">
+                    <span aria-hidden>★</span>
+                  </div>
+                ) : null}
+
+                <AvatarMenu user={userAny as any} onLogout={onLogout} onOpenReport={() => setReportOpen(true)} />
+              </div>
             </>
           ) : (
             <button className="btnPrimary llLoginBtn" onClick={onOpenLogin}>

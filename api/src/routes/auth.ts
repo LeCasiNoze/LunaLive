@@ -23,6 +23,17 @@ async function getUserWithWalletBits(userId: number) {
         u.rubis,
         u.role,
         u.email_verified AS "emailVerified",
+
+        -- ✅ Premium viewer actif (source de vérité = user_subscriptions)
+        EXISTS (
+          SELECT 1
+          FROM user_subscriptions us
+          WHERE us.user_id = u.id
+            AND us.plan_code = 'viewer'
+            AND us.status IN ('active','trialing')
+            AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
+        ) AS "premiumActive",
+
         COALESCE((
           SELECT jsonb_object_agg(code, qty)
           FROM user_coupons
