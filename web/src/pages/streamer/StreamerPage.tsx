@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { watchHeartbeat, subscribeStreamer, me, getLives } from "../../lib/api";
+import { watchHeartbeat, me, getLives } from "../../lib/api";
 import { DlivePlayer } from "../../components/DlivePlayer";
 import { ChatPanel } from "../../components/ChatPanel";
 import { LoginModal } from "../../components/LoginModal";
@@ -178,6 +178,7 @@ export default function StreamerPage() {
       await refreshMeIfPossible();
     },
   });
+
   // ✅ Bridge: actions du toast "coffre" (ui:toast -> handlers)
   React.useEffect(() => {
     const onJoin = () => chest.join();
@@ -285,10 +286,16 @@ export default function StreamerPage() {
   const myRubis = Number(auth?.user?.rubis ?? 0);
   const SUB_PRICE_RUBIS = 500;
 
-  const mySubTickets = Number(
-    auth?.user?.coupons?.sub_ticket ??
-    auth?.user?.tokens?.sub_ticket ?? // fallback si jamais
-    0
+  // ✅ NEW: tickets sub (via /me -> coupons.sub_ticket)
+  const mySubTickets = Math.max(
+    0,
+    Math.floor(
+      Number(
+        auth?.user?.coupons?.sub_ticket ??
+          auth?.user?.tokens?.sub_ticket ?? // fallback si jamais
+          0
+      )
+    )
   );
 
   const followersInline = followsCount == null ? "" : ` (${fmt(followsCount)} followers)`;
@@ -435,8 +442,7 @@ export default function StreamerPage() {
                   padding: 14,
                   display: "flex",
                   alignItems: "center",
-                  background:
-                    "linear-gradient(135deg, rgba(126,76,179,0.16), rgba(63,86,203,0.10))",
+                  background: "linear-gradient(135deg, rgba(126,76,179,0.16), rgba(63,86,203,0.10))",
                   border: "1px solid rgba(255,255,255,0.12)",
                 }}
               >
@@ -847,19 +853,35 @@ export default function StreamerPage() {
         streamerName={streamer.displayName ? streamer.displayName : `@${String(slug || "")}`}
         priceRubis={SUB_PRICE_RUBIS}
         myRubis={myRubis}
-        mySubTickets={mySubTickets}   // ✅ NEW
+        mySubTickets={mySubTickets}
+        disableSelfTicket={isOwner} // ✅ règle: pas de ticket pour se sub à sa propre chaîne
+
         loading={subLoading}
         error={subError}
+
         onGoShop={() => {
           setSubOpen(false);
           window.location.href = "/shop";
         }}
-        onPayRubis={async () => {
+
+        // ✅ NEW: self sub (rubis ou ticket)
+        onPaySelf={async (mode) => {
           if (!token || !slug) return;
           setSubLoading(true);
           setSubError(null);
+
           try {
-            const r: any = await subscribeStreamer(String(slug), token);
+            const useTicket = mode === "ticket";
+
+            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/subscribe`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                ...(useTicket ? { "Content-Type": "application/json" } : {}),
+              },
+              body: useTicket ? JSON.stringify({ useTicket: true }) : undefined,
+            }).then((x) => x.json());
+
             if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
 
             await refreshMeIfPossible();
@@ -871,10 +893,38 @@ export default function StreamerPage() {
             setSubLoading(false);
           }
         }}
-        onPayGiftSubs={async (count) => {
+
+        // legacy fallback (si jamais)
+        onPayRubis={async () => {
+          if (!token || !slug) return;
+          setSubLoading(true);
+          setSubError(null);
+          try {
+            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/subscribe`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+            }).then((x) => x.json());
+
+            if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+
+            await refreshMeIfPossible();
+            await fetchGiftStatus();
+            setSubOpen(false);
+          } catch (e: any) {
+            setSubError(String(e?.message || "Erreur"));
+          } finally {
+            setSubLoading(false);
+          }
+        }}
+
+        // ✅ Gift subs: tickets peuvent réduire le total (ex: 5 subs => 2000 + 1 ticket)
+        onPayGiftSubs={async (count, useTicketsMaybe) => {
           if (!token || !slug) return;
           setGiftLoading(true);
           setGiftError(null);
+
+          const useTickets = Math.max(0, Math.floor(Number(useTicketsMaybe || 0)));
+
           try {
             const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs`, {
               method: "POST",
@@ -882,7 +932,7 @@ export default function StreamerPage() {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${token}`,
               },
-              body: JSON.stringify({ count }),
+              body: JSON.stringify({ count, useTickets }),
             }).then((x) => x.json());
 
             if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
@@ -895,6 +945,7 @@ export default function StreamerPage() {
             setGiftLoading(false);
           }
         }}
+
         giftLoading={giftLoading}
         giftError={giftError}
       />

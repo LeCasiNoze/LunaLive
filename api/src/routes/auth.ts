@@ -14,6 +14,33 @@ function genCode6() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+// ✅ helper: fetch user + coupons/tokens
+async function getUserWithWalletBits(userId: number) {
+  const { rows } = await pool.query(
+    `SELECT
+        u.id,
+        u.username,
+        u.rubis,
+        u.role,
+        u.email_verified AS "emailVerified",
+        COALESCE((
+          SELECT jsonb_object_agg(code, qty)
+          FROM user_coupons
+          WHERE user_id = u.id AND qty > 0
+        ), '{}'::jsonb) AS coupons,
+        COALESCE((
+          SELECT jsonb_object_agg(token, amount)
+          FROM user_tokens
+          WHERE user_id = u.id AND amount > 0
+        ), '{}'::jsonb) AS tokens
+     FROM users u
+     WHERE u.id = $1
+     LIMIT 1`,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
 authRouter.post(
   "/auth/register",
   a(async (req, res) => {
@@ -111,7 +138,7 @@ authRouter.post(
       created = await pool.query(
         `INSERT INTO users (username, email, email_verified, password_hash, role, rubis, created_ip, last_login_ip, last_login_at)
          VALUES ($1,$2,TRUE,$3,'viewer',0,$4,$4,NOW())
-         RETURNING id, username, rubis, role, email_verified AS "emailVerified"`,
+         RETURNING id`,
         [p.username, p.email, p.password_hash, req.ip]
       );
     } catch {
@@ -121,7 +148,9 @@ authRouter.post(
 
     await pool.query(`DELETE FROM pending_registrations WHERE id=$1`, [p.id]);
 
-    const user = created.rows[0];
+    const userId = Number(created.rows[0].id);
+    const user = await getUserWithWalletBits(userId);
+
     const token = signToken({ id: user.id, username: user.username, rubis: user.rubis, role: user.role });
 
     res.json({ ok: true, token, user });
@@ -195,10 +224,10 @@ authRouter.post(
 
     await pool.query(`UPDATE users SET last_login_at=NOW(), last_login_ip=$1 WHERE id=$2`, [req.ip, u.id]);
 
-    const user = { id: u.id, username: u.username, rubis: u.rubis, role: u.role };
-    const token = signToken(user);
+    const fullUser = await getUserWithWalletBits(Number(u.id));
+    const token = signToken({ id: fullUser.id, username: fullUser.username, rubis: fullUser.rubis, role: fullUser.role });
 
-    res.json({ ok: true, token, user });
+    res.json({ ok: true, token, user: fullUser });
   })
 );
 
@@ -207,35 +236,8 @@ authRouter.get(
   requireAuth,
   a(async (req, res) => {
     const userId = Number(req.user!.id);
-
-    const { rows } = await pool.query(
-      `SELECT id, username, rubis, role, email_verified AS "emailVerified"
-       FROM users
-       WHERE id = $1
-       LIMIT 1`,
-      [userId]
-    );
-    if (!rows[0]) return res.status(401).json({ ok: false, error: "unauthorized" });
-
-    // ✅ NEW: coupons/tickets (sub_ticket, etc.)
-    let coupons: Record<string, number> = {};
-    try {
-      const cr = await pool.query(
-        `SELECT code, qty FROM user_coupons WHERE user_id=$1`,
-        [userId]
-      );
-
-      coupons = {};
-      for (const r of cr.rows || []) {
-        const code = String(r.code || "").trim();
-        if (!code) continue;
-        coupons[code] = Number(r.qty || 0);
-      }
-    } catch {
-      // si table pas encore migrée sur un env, on ignore (ne casse pas /me)
-      coupons = {};
-    }
-
-    res.json({ ok: true, user: { ...rows[0], coupons } });
+    const user = await getUserWithWalletBits(userId);
+    if (!user) return res.status(401).json({ ok: false, error: "unauthorized" });
+    res.json({ ok: true, user });
   })
 );

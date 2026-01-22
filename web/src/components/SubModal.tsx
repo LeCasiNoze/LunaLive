@@ -12,8 +12,13 @@ export function SubModal({
   loading,
   error,
 
-  // ✅ NEW: afficher tickets (sub_ticket)
-  mySubTickets,
+  // ✅ tickets (sub_ticket)
+  mySubTickets = 0,
+  // ✅ si true: interdit d'utiliser un ticket pour "pour moi" (ex: owner de la chaîne)
+  disableSelfTicket = false,
+
+  // ✅ NEW (self mode)
+  onPaySelf,
 
   // ✅ NEW (gift pool)
   onPayGiftSubs,
@@ -25,15 +30,23 @@ export function SubModal({
   streamerName: string;
   priceRubis: number;
   myRubis: number;
+
+  // legacy (rubis)
   onPayRubis: () => void;
+
   onGoShop: () => void;
   loading?: boolean;
   error?: string | null;
 
-  // ✅ NEW: tickets disponibles (si > 0 on affiche)
-  mySubTickets?: number | null;
+  // ✅ tickets
+  mySubTickets?: number;
+  disableSelfTicket?: boolean;
 
-  onPayGiftSubs?: (count: number) => void;
+  // ✅ self: "rubis" | "ticket"
+  onPaySelf?: (mode: "rubis" | "ticket") => void;
+
+  // gift: on peut passer le nb de tickets à consommer
+  onPayGiftSubs?: (count: number, useTickets?: number) => void;
   giftLoading?: boolean;
   giftError?: string | null;
 }) {
@@ -48,14 +61,38 @@ export function SubModal({
 
   if (!open) return null;
 
-  const canPaySelf = myRubis >= priceRubis;
+  const tickets = Math.max(0, Math.floor(Number(mySubTickets || 0)));
 
-  const giftTotal = Math.max(0, Math.floor(giftCount || 0)) * priceRubis;
-  const canPayGift = giftTotal > 0 && myRubis >= giftTotal;
+  // ──────────────────────────────────────────
+  // SELF
+  // ──────────────────────────────────────────
+  const selfTicketUsable = tickets > 0 && !disableSelfTicket;
+  const canPaySelf = selfTicketUsable || myRubis >= priceRubis;
 
-  const tickets = Math.max(0, Math.floor(Number(mySubTickets ?? 0) || 0));
-  const showTickets = tickets > 0;
-  const ticketLabel = tickets === 1 ? "ticket" : "tickets";
+  // ──────────────────────────────────────────
+  // GIFT
+  // ──────────────────────────────────────────
+  const giftCountInt = Math.max(0, Math.min(100, Math.floor(Number(giftCount || 0))));
+  const giftTotal = giftCountInt * priceRubis;
+
+  // 1 ticket = 1 sub => réduit priceRubis par ticket utilisé
+  const giftTicketsUsable = Math.min(tickets, giftCountInt);
+  const giftRubisNeeded = Math.max(0, giftTotal - giftTicketsUsable * priceRubis);
+  const canPayGift = giftCountInt > 0 && myRubis >= giftRubisNeeded;
+
+  function ticketsSuffix(n: number) {
+    if (n <= 0) return "";
+    return n === 1 ? "1 ticket" : `${n} tickets`;
+  }
+
+  function formatPayLabel(rubisNeeded: number, ticketsUsed: number) {
+    const parts: string[] = [];
+    parts.push(String(rubisNeeded.toLocaleString()));
+    if (ticketsUsed > 0) parts.push(ticketsSuffix(ticketsUsed));
+    return parts.join(" + ");
+  }
+
+  const showTicketsInline = tickets > 0;
 
   return (
     <div className="chatSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex: 50 }}>
@@ -116,13 +153,20 @@ export function SubModal({
                 <div className="mutedSmall" style={{ marginTop: 6 }}>
                   Ton solde :{" "}
                   <strong style={{ color: "rgba(255,255,255,0.9)" }}>{myRubis.toLocaleString()}</strong>
-                  {showTickets ? (
-                    <span style={{ opacity: 0.9 }}>
-                      {" "}
-                      ({tickets.toLocaleString()} {ticketLabel})
-                    </span>
-                  ) : null}
+                  {showTicketsInline ? <span style={{ opacity: 0.85 }}> ({ticketsSuffix(tickets)})</span> : null}
                 </div>
+
+                {disableSelfTicket && tickets > 0 ? (
+                  <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.9 }}>
+                    ⚠️ Tu ne peux pas utiliser un ticket pour te sub à ta propre chaîne.
+                  </div>
+                ) : null}
+
+                {selfTicketUsable ? (
+                  <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.9 }}>
+                    ✅ Un ticket est disponible : coût en rubis = <strong>0</strong>
+                  </div>
+                ) : null}
               </div>
 
               {error ? (
@@ -136,11 +180,18 @@ export function SubModal({
                   type="button"
                   className="btnPrimarySmall"
                   disabled={loading || !canPaySelf}
-                  onClick={onPayRubis}
-                  title={!canPaySelf ? "Solde insuffisant" : "Payer en rubis"}
+                  onClick={() => {
+                    if (selfTicketUsable) {
+                      if (onPaySelf) return onPaySelf("ticket");
+                      return onPayRubis();
+                    }
+                    if (onPaySelf) return onPaySelf("rubis");
+                    return onPayRubis();
+                  }}
+                  title={!canPaySelf ? "Solde insuffisant" : selfTicketUsable ? "Utiliser ton ticket" : "Payer en rubis"}
                   style={{ flex: 1 }}
                 >
-                  {loading ? "…" : `Payer en rubis (${priceRubis})`}
+                  {loading ? "…" : selfTicketUsable ? "Utiliser ton ticket" : `Payer en rubis (${priceRubis})`}
                 </button>
 
                 <button type="button" className="btnGhostSmall" disabled={loading} onClick={onGoShop} style={{ flex: 1 }}>
@@ -183,21 +234,23 @@ export function SubModal({
                       fontWeight: 800,
                     }}
                   />
+
                   <div className="mutedSmall" style={{ opacity: 0.9 }}>
                     Total :{" "}
-                    <strong style={{ color: "rgba(255,255,255,0.9)" }}>{giftTotal.toLocaleString()}</strong> rubis
+                    <strong style={{ color: "rgba(255,255,255,0.9)" }}>
+                      {formatPayLabel(giftRubisNeeded, giftTicketsUsable)}
+                    </strong>{" "}
+                    rubis
+                    {giftTicketsUsable > 0 ? (
+                      <span style={{ opacity: 0.85 }}> (au lieu de {giftTotal.toLocaleString()})</span>
+                    ) : null}
                   </div>
                 </div>
 
                 <div className="mutedSmall" style={{ marginTop: 10 }}>
                   Ton solde :{" "}
                   <strong style={{ color: "rgba(255,255,255,0.9)" }}>{myRubis.toLocaleString()}</strong>
-                  {showTickets ? (
-                    <span style={{ opacity: 0.9 }}>
-                      {" "}
-                      ({tickets.toLocaleString()} {ticketLabel})
-                    </span>
-                  ) : null}
+                  {showTicketsInline ? <span style={{ opacity: 0.85 }}> ({ticketsSuffix(tickets)})</span> : null}
                 </div>
               </div>
 
@@ -211,12 +264,12 @@ export function SubModal({
                 <button
                   type="button"
                   className="btnPrimarySmall"
-                  disabled={giftLoading || !canPayGift || !onPayGiftSubs}
-                  onClick={() => onPayGiftSubs?.(Math.max(1, Math.min(100, Math.floor(giftCount || 0))))}
+                  disabled={giftLoading || !canPayGift || !onPayGiftSubs || giftCountInt <= 0}
+                  onClick={() => onPayGiftSubs?.(giftCountInt, giftTicketsUsable)}
                   title={!canPayGift ? "Solde insuffisant" : "Payer le pack"}
                   style={{ flex: 1 }}
                 >
-                  {giftLoading ? "…" : `Payer (${giftTotal.toLocaleString()})`}
+                  {giftLoading ? "…" : `Payer (${formatPayLabel(giftRubisNeeded, giftTicketsUsable)})`}
                 </button>
 
                 <button type="button" className="btnGhostSmall" disabled={giftLoading} onClick={onGoShop} style={{ flex: 1 }}>
@@ -224,11 +277,7 @@ export function SubModal({
                 </button>
               </div>
 
-              {!canPayGift ? (
-                <div className="mutedSmall" style={{ marginTop: 10 }}>
-                  Solde insuffisant pour ce pack.
-                </div>
-              ) : null}
+              {!canPayGift ? <div className="mutedSmall" style={{ marginTop: 10 }}>Solde insuffisant pour ce pack.</div> : null}
             </>
           )}
         </div>
