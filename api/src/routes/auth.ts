@@ -14,7 +14,7 @@ function genCode6() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-// ✅ helper: fetch user + coupons/tokens
+// ✅ helper: fetch user + coupons/tokens + subscriptions
 async function getUserWithWalletBits(userId: number) {
   const { rows } = await pool.query(
     `SELECT
@@ -24,7 +24,7 @@ async function getUserWithWalletBits(userId: number) {
         u.role,
         u.email_verified AS "emailVerified",
 
-        -- ✅ Premium viewer actif (source de vérité = user_subscriptions)
+        -- ✅ legacy/facile: viewer actif (tu peux le garder)
         EXISTS (
           SELECT 1
           FROM user_subscriptions us
@@ -34,21 +34,42 @@ async function getUserWithWalletBits(userId: number) {
             AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
         ) AS "premiumActive",
 
+        -- ✅ NEW: liste complète des subs (viewer + streamer)
+        COALESCE((
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'plan_code', us.plan_code,
+              'status', us.status,
+              'current_period_start', us.current_period_start,
+              'current_period_end', us.current_period_end,
+              'cancel_at_period_end', us.cancel_at_period_end,
+              'provider', us.provider,
+              'provider_subscription_id', us.provider_subscription_id
+            )
+            ORDER BY us.plan_code
+          )
+          FROM user_subscriptions us
+          WHERE us.user_id = u.id
+        ), '[]'::jsonb) AS "user_subscriptions",
+
         COALESCE((
           SELECT jsonb_object_agg(code, qty)
           FROM user_coupons
           WHERE user_id = u.id AND qty > 0
         ), '{}'::jsonb) AS coupons,
+
         COALESCE((
           SELECT jsonb_object_agg(token, amount)
           FROM user_tokens
           WHERE user_id = u.id AND amount > 0
         ), '{}'::jsonb) AS tokens
+
      FROM users u
      WHERE u.id = $1
      LIMIT 1`,
     [userId]
   );
+
   return rows[0] || null;
 }
 
