@@ -116,6 +116,12 @@ export function Topbar({
 
   const [reportOpen, setReportOpen] = React.useState(false);
 
+  React.useEffect(() => {
+  const onOpen = () => setReportOpen(true);
+  window.addEventListener("ui:report_open", onOpen as any);
+  return () => window.removeEventListener("ui:report_open", onOpen as any);
+}, []);
+
   const linkClass = ({ isActive }: { isActive: boolean }) => `llNavBtn ${isActive ? "active" : ""}`;
 
   React.useEffect(() => {

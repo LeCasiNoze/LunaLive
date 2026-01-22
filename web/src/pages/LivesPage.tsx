@@ -1,6 +1,6 @@
 // web/src/pages/LivesPage.tsx
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import Hls from "hls.js";
 
 import { formatViewers } from "../lib/format";
@@ -244,23 +244,62 @@ function LiveBackdrop({ url }: { url: string }) {
   );
 }
 
-async function fetchFeaturedLiveSlugs(): Promise<Set<string>> {
+async function fetchStreamersIndex(): Promise<{
+  featuredLiveSlugs: Set<string>;
+  metaBySlug: Map<string, { avatarUrl: string | null; followersCount: number }>;
+}> {
   try {
-    const res = await fetch(`${API_BASE}/streamers`, { headers: { "content-type": "application/json" } });
+    const res = await fetch(`${API_BASE}/streamers`, {
+      headers: { "content-type": "application/json" },
+    });
     const data = await res.json().catch(() => null);
-    if (!res.ok || !Array.isArray(data)) return new Set();
+    if (!res.ok || !Array.isArray(data)) {
+      return { featuredLiveSlugs: new Set(), metaBySlug: new Map() };
+    }
 
-    const set = new Set<string>();
+    const featuredLiveSlugs = new Set<string>();
+    const metaBySlug = new Map<string, { avatarUrl: string | null; followersCount: number }>();
+
     for (const s of data) {
       if (!s) continue;
+
       const slug = String(s.slug || "").trim();
+      if (!slug) continue;
+
       const isLive = !!s.isLive;
       const featured = !!s.featured;
-      if (slug && isLive && featured) set.add(slug);
+      if (isLive && featured) featuredLiveSlugs.add(slug);
+
+      const avatarUrlRaw =
+        s.avatarUrl != null
+          ? String(s.avatarUrl)
+          : s.avatar_url != null
+          ? String(s.avatar_url)
+          : s.profilePictureUrl != null
+          ? String(s.profilePictureUrl)
+          : s.profile_picture_url != null
+          ? String(s.profile_picture_url)
+          : null;
+
+      const followersCount =
+        Number(
+          s.followersCount ??
+            s.followers_count ??
+            s.followers ??
+            s.followersTotal ??
+            s.followers_total ??
+            0
+        ) || 0;
+
+      metaBySlug.set(slug, {
+        avatarUrl: avatarUrlRaw ? absolutize(avatarUrlRaw) : null,
+        followersCount,
+      });
     }
-    return set;
+
+    return { featuredLiveSlugs, metaBySlug };
   } catch {
-    return new Set();
+    return { featuredLiveSlugs: new Set(), metaBySlug: new Map() };
   }
 }
 
@@ -920,6 +959,14 @@ export default function LivesPage() {
   const canModerateClips = isAdmin || username.toLowerCase() === "lecasinoze";
   const isMobile = useIsMobile();
 
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  React.useEffect(() => {
+    const open = new URLSearchParams(location.search).get("open");
+    if (open === "clips") setOpenMonthList(true);
+  }, [location.search]);
+
   const mergeThumbFinal = React.useCallback((prev: LiveCardVM[], nextBase: LiveCardVM[]) => {
     const prevMap = new Map(prev.map((x) => [String(x.slug || x.id), x] as const));
     return nextBase.map((x) => {
@@ -956,11 +1003,23 @@ export default function LivesPage() {
           return { ...x, thumbFallback: fallback, thumbFinal, durationLabel };
         });
 
-        const featuredSlugs = await fetchFeaturedLiveSlugs();
-        const vmWithFeatured = vmBase.map((x) => ({
-          ...x,
-          featured: x?.featured != null ? !!(x as any).featured : featuredSlugs.has(String(x.slug || "")),
-        }));
+        const { featuredLiveSlugs, metaBySlug } = await fetchStreamersIndex();
+
+        const vmWithFeatured = vmBase.map((x) => {
+          const slug = String(x.slug || "").trim();
+          const meta = slug ? metaBySlug.get(slug) : undefined;
+
+          return {
+            ...x,
+            // featured
+            featured: x?.featured != null ? !!(x as any).featured : featuredLiveSlugs.has(slug),
+            // meta avatar + followers (si dispo)
+            avatarUrl: (x as any).avatarUrl ?? (x as any).avatar_url ?? meta?.avatarUrl ?? null,
+            followersCount:
+              Number((x as any).followersCount ?? (x as any).followers_count ?? (x as any).followers ?? meta?.followersCount ?? 0) ||
+              0,
+          } as any;
+        });
 
         setLives((prev) => mergeThumbFinal(prev, vmWithFeatured));
 
@@ -1085,7 +1144,11 @@ export default function LivesPage() {
             title="🎬 Clips du mois"
             clips={clips}
             total={clipsTotal || clips.length}
-            onClose={() => setOpenMonthList(false)}
+            onClose={() => {
+              setOpenMonthList(false);
+              // nettoie ?open=clips
+              if (location.search) navigate(location.pathname, { replace: true });
+            }}
             onPickClip={(c) => setOpenClip(c)}
             zIndex={79}
           />
@@ -1616,9 +1679,7 @@ export default function LivesPage() {
                               </div>
 
                               <div className="liveBottomRow">
-                                <div className="liveName" title={live.displayName}>
-                                  {live.displayName}
-                                </div>
+                                <span />
                                 <Pill tone="neutral" title="Viewers">
                                   👁 {formatViewers(live.viewers)}
                                 </Pill>
@@ -1629,6 +1690,53 @@ export default function LivesPage() {
                               <div className="liveTitle" title={live.title || ""}>
                                 {live.title || "—"}
                               </div>
+                              <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                                <div
+                                  style={{
+                                    width: 34,
+                                    height: 34,
+                                    borderRadius: 14,
+                                    overflow: "hidden",
+                                    border: "1px solid rgba(255,255,255,0.16)",
+                                    background: "rgba(0,0,0,0.35)",
+                                    flex: "0 0 auto",
+                                  }}
+                                  aria-hidden
+                                >
+                                  <img
+                                    src={
+                                      absolutize((live as any).avatarUrl || (live as any).avatar_url || null) ||
+                                      svgThumb(live.displayName || "Streamer")
+                                    }
+                                    alt=""
+                                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                    onError={(e) => {
+                                      (e.currentTarget as HTMLImageElement).src = svgThumb(live.displayName || "Streamer");
+                                    }}
+                                  />
+                                </div>
+
+                                <div style={{ minWidth: 0, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                                  <div
+                                    style={{
+                                      fontWeight: 1150,
+                                      letterSpacing: -0.2,
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      maxWidth: 220,
+                                    }}
+                                    title={live.displayName}
+                                  >
+                                    {live.displayName}
+                                  </div>
+
+                                  <div className="mutedSmall" style={{ opacity: 0.8, fontWeight: 950 }}>
+                                    ({formatViewers(Number((live as any).followersCount || 0))} follow)
+                                  </div>
+                                </div>
+                              </div>
+
                               <div
                                 aria-hidden
                                 style={{
@@ -1685,9 +1793,7 @@ export default function LivesPage() {
                             </div>
 
                             <div className="liveBottomRow">
-                              <div className="liveName" title={live.displayName}>
-                                {live.displayName}
-                              </div>
+                              <span />
                               <Pill tone="neutral" title="Viewers">
                                 👁 {formatViewers(live.viewers)}
                               </Pill>
@@ -1697,6 +1803,52 @@ export default function LivesPage() {
                           <div style={{ padding: "10px 8px 6px" }}>
                             <div className="liveTitle" title={live.title || ""}>
                               {live.title || "—"}
+                            </div>
+                            <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                              <div
+                                style={{
+                                  width: 34,
+                                  height: 34,
+                                  borderRadius: 14,
+                                  overflow: "hidden",
+                                  border: "1px solid rgba(255,255,255,0.16)",
+                                  background: "rgba(0,0,0,0.35)",
+                                  flex: "0 0 auto",
+                                }}
+                                aria-hidden
+                              >
+                                <img
+                                  src={
+                                    absolutize((live as any).avatarUrl || (live as any).avatar_url || null) ||
+                                    svgThumb(live.displayName || "Streamer")
+                                  }
+                                  alt=""
+                                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).src = svgThumb(live.displayName || "Streamer");
+                                  }}
+                                />
+                              </div>
+
+                              <div style={{ minWidth: 0, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                                <div
+                                  style={{
+                                    fontWeight: 1150,
+                                    letterSpacing: -0.2,
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    maxWidth: 220,
+                                  }}
+                                  title={live.displayName}
+                                >
+                                  {live.displayName}
+                                </div>
+
+                                <div className="mutedSmall" style={{ opacity: 0.8, fontWeight: 950 }}>
+                                  ({formatViewers(Number((live as any).followersCount || 0))} follow)
+                                </div>
+                              </div>
                             </div>
 
                             <div
