@@ -25,6 +25,11 @@ export type DailyBonusState = {
   week: WeekDay[];
   milestones: Milestone[];
   tokens?: { wheel_ticket?: number; prestige_token?: number };
+
+  // ✅ Premium (optionnel) — côté API tu peux renvoyer:
+  // { premiumActive:true } ou { premium:{active:true, multiplier:2} }
+  premiumActive?: boolean;
+  premium?: { active?: boolean; multiplier?: number; label?: string; plan?: string };
 };
 
 function rewardLabel(r: WeekDay["reward"]) {
@@ -112,6 +117,16 @@ export function DailyBonusAgendaModal({
 
   const week = Array.isArray((state as any)?.week) ? (state as any).week : [];
   const milestones = Array.isArray((state as any)?.milestones) ? (state as any).milestones : [];
+
+  // ✅ Premium flag (robuste: supporte plusieurs formats de payload)
+  const premiumActive = Boolean(
+    (state as any)?.premiumActive ??
+      (state as any)?.premium?.active ??
+      (state as any)?.premium?.isActive ??
+      false
+  );
+  const premiumLabel =
+    String((state as any)?.premium?.label ?? "").trim() || "Abonnement actif";
 
   const showToast = React.useCallback((text: string) => {
     setToast(text);
@@ -340,6 +355,37 @@ export function DailyBonusAgendaModal({
           color: rgba(255,255,255,0.62);
         }
 
+        /* ✅ Premium pill */
+        .llBonusPremiumPill{
+          display:inline-flex;
+          align-items:center;
+          gap: 8px;
+          padding: 8px 10px;
+          border-radius: 999px;
+          font-weight: 950;
+          font-size: 12px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background:
+            radial-gradient(160px 80px at 20% 0%, rgba(255,255,255,0.12), rgba(0,0,0,0) 60%),
+            rgba(124,77,255,0.14);
+          color: rgba(255,255,255,0.92);
+          box-shadow: 0 0 0 2px rgba(124,77,255,0.10);
+          user-select: none;
+        }
+        .llBonusPremiumPill .star{
+          font-weight: 1100;
+          opacity: 0.95;
+        }
+        .llBonusPremiumPill .x2{
+          margin-left: 2px;
+          opacity: 0.92;
+          padding: 2px 8px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(0,0,0,0.18);
+          font-size: 11px;
+        }
+
         .llBonusWeekGrid{
           margin-top: 12px;
           display: grid;
@@ -368,6 +414,29 @@ export function DailyBonusAgendaModal({
           cursor: default;
         }
 
+        /* ✅ Star top-right inside each day card (premium) */
+        .llBonusPremiumStar{
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          width: 26px;
+          height: 26px;
+          border-radius: 999px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(0,0,0,0.18);
+          box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+          color: rgba(255,255,255,0.92);
+          font-weight: 1100;
+          pointer-events: none;
+          opacity: 0.92;
+        }
+        .llBonusPremiumStar span{
+          transform: translateY(-0.5px);
+        }
+
         .llBonusDayTop{
           display:flex;
           justify-content: space-between;
@@ -383,15 +452,40 @@ export function DailyBonusAgendaModal({
         .llBonusDayMark{
           font-weight: 1100;
           opacity: 0.75;
+          padding-right: 30px; /* laisse la place à l'étoile premium */
+        }
+
+        .llBonusRewardRow{
+          margin-top: 10px;
+          display:flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
         }
 
         .llBonusReward{
-          margin-top: 10px;
           font-weight: 1100;
           font-size: 18px;
           letter-spacing: -0.2px;
           line-height: 1.1;
         }
+
+        /* ✅ Small "x2" chip near reward */
+        .llBonusX2Chip{
+          display:inline-flex;
+          align-items:center;
+          gap: 6px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          font-weight: 950;
+          font-size: 12px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(124,77,255,0.12);
+          color: rgba(255,255,255,0.92);
+          user-select: none;
+          white-space: nowrap;
+        }
+
         .llBonusDate{
           margin-top: 6px;
           font-size: 12px;
@@ -517,21 +611,21 @@ export function DailyBonusAgendaModal({
         <div className="llBonusSide">
           <div className="llBonusSideTop">
             <div className="llBonusTitle">Bonus</div>
-              <button
-                type="button"
-                className="llBonusClose"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onClose();
-                }}
-              >
-                ✕
-              </button>
+            <button
+              type="button"
+              className="llBonusClose"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose();
+              }}
+            >
+              ✕
+            </button>
           </div>
 
           <div className="llBonusTabs">
@@ -564,6 +658,8 @@ export function DailyBonusAgendaModal({
             Tickets roue: <strong>{wheelTickets}</strong>
             <br />
             Prestige: <strong>{prestigeTokens}</strong>
+            <br />
+            Premium: <strong>{premiumActive ? "actif" : "—"}</strong>
           </div>
         </div>
 
@@ -573,7 +669,16 @@ export function DailyBonusAgendaModal({
             <>
               <div className="llBonusHeadRow">
                 <div className="llBonusH1">Agenda hebdo</div>
-                <div className="llBonusSub"></div>
+
+                {premiumActive ? (
+                  <div className="llBonusPremiumPill" title="Vos récompenses quotidiennes sont doublées">
+                    <span className="star">★</span>
+                    <span>{premiumLabel}</span>
+                    <span className="x2">x2</span>
+                  </div>
+                ) : (
+                  <div className="llBonusSub"></div>
+                )}
               </div>
 
               <div className="llBonusWeekGrid">
@@ -604,12 +709,25 @@ export function DailyBonusAgendaModal({
                       }}
                       title={d.status === "today_claimable" ? "Cliquer pour récupérer" : undefined}
                     >
+                      {/* ✅ étoile premium en haut à droite */}
+                      {premiumActive ? (
+                        <div className="llBonusPremiumStar" aria-hidden="true" title="Premium actif">
+                          <span>★</span>
+                        </div>
+                      ) : null}
+
                       <div className="llBonusDayTop">
                         <div className="llBonusDayLabel">{d.label}</div>
                         <div className="llBonusDayMark">{dayBadge(d.status)}</div>
                       </div>
 
-                      <div className="llBonusReward">{rewardLabel(d.reward)}</div>
+                      <div className="llBonusRewardRow">
+                        <div className="llBonusReward">{rewardLabel(d.reward)}</div>
+
+                        {/* ✅ affichage x2 (sans re-multiplier les montants, l’API les renvoie déjà x2) */}
+                        {premiumActive ? <div className="llBonusX2Chip">x2</div> : null}
+                      </div>
+
                       <div className="llBonusDate">{d.date}</div>
 
                       <div className={`llBonusPill ${pill.kind}`}>
@@ -621,8 +739,7 @@ export function DailyBonusAgendaModal({
               </div>
 
               <div className="llBonusPanel">
-                <div className="llBonusSub" style={{ opacity: 0.85 }}>
-                </div>
+                <div className="llBonusSub" style={{ opacity: 0.85 }}></div>
 
                 <div className="llBonusMilestonesRow">
                   {milestones.map((m: any) => {
@@ -681,6 +798,13 @@ export function DailyBonusAgendaModal({
             <>
               <div className="llBonusHeadRow">
                 <div className="llBonusH1">Informations</div>
+                {premiumActive ? (
+                  <div className="llBonusPremiumPill" title="Vos récompenses quotidiennes sont doublées">
+                    <span className="star">★</span>
+                    <span>{premiumLabel}</span>
+                    <span className="x2">x2</span>
+                  </div>
+                ) : null}
               </div>
 
               <div className="llBonusPanel" style={{ marginTop: 12 }}>
@@ -692,6 +816,12 @@ export function DailyBonusAgendaModal({
                   • Les paliers 5/10/20/30 = nombre de jours claimés dans le mois (pas forcément en streak).
                   <br />
                   • Skins/titres seront visibles plus tard (shop/collections).
+                  {premiumActive ? (
+                    <>
+                      <br />
+                      • Premium actif : récompenses quotidiennes x2.
+                    </>
+                  ) : null}
                 </div>
               </div>
             </>
