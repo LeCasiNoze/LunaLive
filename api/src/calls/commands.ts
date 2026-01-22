@@ -161,6 +161,44 @@ async function setHuntPhase(pool: Pool, ownerUserId: number, phase: "edit" | "op
   ]);
 }
 
+type PlanCode = "viewer" | "streamer";
+
+async function hasActivePremiumViewer(pool: Pool, userId: number): Promise<boolean> {
+  const r = await pool.query<{ ok: boolean }>(
+    `
+    SELECT EXISTS (
+      SELECT 1
+      FROM user_subscriptions
+      WHERE user_id = $1
+        AND plan_code = 'viewer'
+        AND status IN ('active','trialing')
+        AND (current_period_end IS NULL OR current_period_end > NOW())
+    ) AS ok;
+    `,
+    [userId]
+  );
+  return Boolean(r.rows?.[0]?.ok);
+}
+
+// TODO: tu branches quand tu auras la table de "sub à la chaîne"
+async function hasChannelSub(pool: Pool, userId: number, streamerId: number): Promise<boolean> {
+  return false;
+}
+
+// règle cooldown:
+// - talent lvl3 OU premium viewer => 1h30 (par chaîne)
+// - sub à la chaîne => 6h (cooldown partagé entre toutes les chaînes subbed)
+function pcallCooldownMs(channelSub: boolean) {
+  return channelSub ? 6 * 60 * 60 * 1000 : 90 * 60 * 1000;
+}
+
+// clé cooldown:
+// - sub à la chaîne => scope global (streamer_id=0)
+// - sinon => par chaîne
+function pcallScopeStreamerId(streamerId: number, channelSub: boolean) {
+  return channelSub ? 0 : streamerId;
+}
+
 export async function handleCallsCommand(opts: {
   pool: Pool;
   io: Server;
@@ -193,7 +231,7 @@ export async function handleCallsCommand(opts: {
 
   // ✅ NEW: hunt commands live here (because same source of truth = calls_queue)
   const isHuntCmd = cmd === "bonus" || cmd === "pass" || cmd === "open" || cmd === "pay";
-  const isCallCmd = cmd === "call" || cmd === "pcall" || cmd === "listec" || cmd === "resetc";
+  const isCallCmd = cmd === "call" || cmd === "pcall" || cmd === "rcall" || cmd === "listec" || cmd === "resetc";
   if (!isCallCmd && !isHuntCmd) return { handled: false };
 
   const settings = await getCallsSettings(pool, streamerId);
@@ -487,27 +525,45 @@ export async function handleCallsCommand(opts: {
   // pcall (paycall): unlock lvl 3 + cooldown 1h30 + insertion 2e
   // ──────────────────────────────────────────
   const isPcall = cmd === "pcall";
+  const isRcall = cmd === "rcall";
 
-  if (isPcall) {
+  if (isPcall || isRcall) {
     const level = await getUserTalentLevel(pool, actorUserId, CALLS_TALENT_CODE);
-    if (Number(level) < 3) {
+
+    const premiumViewer = await hasActivePremiumViewer(pool, actorUserId);
+    const channelSub = await hasChannelSub(pool, actorUserId, streamerId);
+
+    const unlocked = premiumViewer || channelSub || Number(level) >= 3;
+
+    if (!unlocked) {
       emitUserToast(io, actorUserId, {
         kind: "error",
-        title: "Pay Call verrouillé",
-        message: "Il faut le talent Calls niveau 3.",
+        title: isPcall ? "Pay Call verrouillé" : "Random Call verrouillé",
+        message: "Il faut talent Calls niveau 3, être sub à la chaîne, ou avoir Premium viewer.",
       });
       return { handled: true, showOriginalInChat };
     }
 
-    const nextAt = await getPcallNextAt(pool, streamerId, actorUserId);
+    const scopeId = pcallScopeStreamerId(streamerId, channelSub);
+    const nextAt = await getPcallNextAt(pool, scopeId, actorUserId);
     const now = Date.now();
+
     if (nextAt && now < nextAt) {
       const leftMin = Math.max(1, Math.ceil((nextAt - now) / 60000));
       emitUserToast(io, actorUserId, {
         kind: "error",
-        title: "Pay Call en cooldown",
+        title: (isPcall ? "Pay Call" : "Random Call") + " en cooldown",
         message: `Reviens dans ${leftMin} min.`,
       });
+      return { handled: true, showOriginalInChat };
+    }
+
+    // Random call = placeholder pour l’instant (pas de logique de choix encore)
+    if (isRcall) {
+      emitUserToast(io, actorUserId, { kind: "info", title: "🎲 Random Call", message: "Bientôt dispo." });
+
+      // on met quand même le cooldown (même gate que pcall)
+      await setPcallCooldown(pool, scopeId, actorUserId, now + pcallCooldownMs(channelSub));
       return { handled: true, showOriginalInChat };
     }
   }
@@ -548,7 +604,9 @@ export async function handleCallsCommand(opts: {
   }
 
   if (cmd === "pcall") {
-    await setPcallCooldown(pool, streamerId, actorUserId, Date.now() + 90 * 60 * 1000);
+    const channelSub = await hasChannelSub(pool, actorUserId, streamerId);
+    const scopeId = pcallScopeStreamerId(streamerId, channelSub);
+    await setPcallCooldown(pool, scopeId, actorUserId, Date.now() + pcallCooldownMs(channelSub));
   }
 
   if (settings.showAcceptPublic) {

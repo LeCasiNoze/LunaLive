@@ -306,35 +306,39 @@ export function Topbar({
         }
 
         /* ✅ NEW: wrapper avatar + marqueur premium */
-        .llAvatarWrap{
-          position: relative;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-        }
         .llPremiumStar{
           position: absolute;
           left: -4px;
           bottom: -4px;
+
           width: 18px;
           height: 18px;
           border-radius: 999px;
           display: grid;
           place-items: center;
-          border: 1px solid rgba(255,255,255,0.18);
+
+          /* ✅ IMPORTANT: au premier plan */
+          z-index: 5;
+
+          /* ✅ jaune */
+          border: 1px solid rgba(255, 210, 110, 0.75);
           background:
-            radial-gradient(circle at 30% 30%, rgba(255,255,255,0.22), rgba(0,0,0,0) 60%),
-            linear-gradient(135deg, rgba(140,90,255,0.30), rgba(80,160,255,0.18), rgba(255,90,180,0.14)),
-            rgba(0,0,0,0.25);
+            radial-gradient(circle at 30% 30%, rgba(255,255,255,0.28), rgba(0,0,0,0) 60%),
+            linear-gradient(135deg, rgba(255, 220, 120, 0.55), rgba(255, 190, 60, 0.35)),
+            rgba(0,0,0,0.20);
           box-shadow: 0 14px 36px rgba(0,0,0,0.40);
           backdrop-filter: blur(10px);
           -webkit-backdrop-filter: blur(10px);
           pointer-events: none; /* ne bloque pas le click avatar */
         }
+
         .llPremiumStar span{
           font-size: 12px;
           line-height: 1;
-          filter: drop-shadow(0 10px 18px rgba(0,0,0,0.55));
+          color: #ffd66a;
+          text-shadow:
+            0 0 10px rgba(255, 210, 110, 0.45),
+            0 10px 18px rgba(0,0,0,0.55);
         }
 
         /* Responsive: hide center nav on mobile (your existing behavior) */

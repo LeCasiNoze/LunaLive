@@ -5,6 +5,31 @@ import { a } from "../utils/async.js";
 
 export const callsPcallRouter = Router();
 
+// ajoute en haut (helper premium viewer)
+async function hasActivePremiumViewer(userId: number): Promise<boolean> {
+  const r = await pool.query<{ ok: boolean }>(
+    `
+    SELECT EXISTS (
+      SELECT 1
+      FROM user_subscriptions
+      WHERE user_id = $1
+        AND plan_code = 'viewer'
+        AND status IN ('active','trialing')
+        AND (current_period_end IS NULL OR current_period_end > NOW())
+    ) AS ok;
+    `,
+    [userId]
+  );
+  return Boolean(r.rows?.[0]?.ok);
+}
+
+// option future : sub à la chaîne (placeholder simple pour l’instant)
+async function hasChannelSub(userId: number, streamerId: number): Promise<boolean> {
+  // TODO: quand tu auras la table channel_subscriptions (ou équivalent), tu branches ici.
+  return false;
+}
+
+
 async function ensurePcallSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS calls_pcall_cooldowns (
@@ -45,7 +70,6 @@ async function getNextAtMs(streamerId: number, userId: number): Promise<number> 
   return Number(r.rows?.[0]?.next_at_ms || 0);
 }
 
-// GET /calls/:slug/pcall/status
 callsPcallRouter.get(
   "/:slug/pcall/status",
   requireAuth,
@@ -58,16 +82,44 @@ callsPcallRouter.get(
     if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
     const level = await getTalentLevel(userId, "talent_calls_limit");
-    const unlocked = level >= 3;
 
-    const nextAtMs = await getNextAtMs(streamerId, userId);
+    // ✅ source de vérité premium viewer = user_subscriptions
+    const premiumViewer = await hasActivePremiumViewer(userId);
+
+    // ✅ sub à la chaîne (plus tard)
+    const channelSub = await hasChannelSub(userId, streamerId);
+
+    // ✅ unlocked si un des 3 (talent3 / sub chaîne / premium viewer)
+    const unlocked = premiumViewer || channelSub || level >= 3;
+
+    const unlockedReason = premiumViewer
+      ? "premium_viewer"
+      : channelSub
+      ? "channel_sub"
+      : level >= 3
+      ? "talent_lvl3"
+      : "none";
+
+    // ✅ cooldown policy (prêt pour ton futur “6h partagé”)
+    const cooldownMs = channelSub ? 6 * 60 * 60 * 1000 : 90 * 60 * 1000;
+
+    // Si sub à la chaîne => cooldown partagé (streamer_id=0), sinon par chaîne
+    const scopeStreamerId = channelSub ? 0 : streamerId;
+
+    const nextAtMs = await getNextAtMs(scopeStreamerId, userId);
 
     return res.json({
       ok: true,
       unlocked,
+      unlockedReason,
+      premiumViewer,
+      channelSub,
       level,
       nextAtMs,
+      cooldownMs,
+      cooldownScope: channelSub ? "subbed_pool" : "per_channel",
       serverNowMs: Date.now(),
     });
   })
 );
+
