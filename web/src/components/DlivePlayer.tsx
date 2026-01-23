@@ -235,8 +235,7 @@ export function DlivePlayer({
 
     // Native
     if (mode === "native-ios" || mode === "native") {
-      video.src = upstream;
-      // ✅ force encore une fois 1x (certains navigateurs gardent un playbackRate précédent)
+      video.src = proxied; // ✅ passe par ton proxy (headers + CORS + rewrite m3u8)
       forceRate1(video);
       video.play().catch(() => {});
       setCanChooseQuality(false);

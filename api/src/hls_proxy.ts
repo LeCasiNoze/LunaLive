@@ -2,6 +2,22 @@
 import type { Express, Request, Response as ExResponse } from "express";
 import { Readable } from "stream";
 
+const DESKTOP_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+function isIOSUA(ua: string) {
+  const s = (ua || "").toLowerCase();
+  // iPhone/iPad/iPod + iPadOS qui se présente comme Mac
+  const isi = /iphone|ipad|ipod/.test(s);
+  const isIpadOs = /macintosh/.test(s) && /mobile/.test(s);
+  return isi || isIpadOs;
+}
+
+function isDliveHost(host: string) {
+  const h = host.toLowerCase();
+  return h.endsWith("dlive.tv") || h.endsWith("dlivecdn.com") || h === "live.prd.dlive.tv";
+}
+
 function hostMatches(host: string, pattern: string) {
   const h = host.toLowerCase();
   const p = pattern.toLowerCase().trim();
@@ -80,10 +96,13 @@ export function registerHlsProxy(app: Express) {
 
     if (target.protocol !== "https:") return res.status(400).send("bad_protocol");
     if (!isAllowedHost(target.hostname)) return res.status(400).send("host_not_allowed");
+    
+    const uaIn = String(req.headers["user-agent"] || "Mozilla/5.0");
+    const ua = isIOSUA(uaIn) && isDliveHost(target.hostname) ? DESKTOP_UA : uaIn;
 
     const headers: Record<string, string> = {
       accept: String(req.headers.accept || "*/*"),
-      "user-agent": String(req.headers["user-agent"] || "Mozilla/5.0"),
+      "user-agent": ua,                  // ✅ override iOS -> desktop
       referer: "https://dlive.tv/",
       origin: "https://dlive.tv",
     };

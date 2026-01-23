@@ -234,6 +234,16 @@ export async function equipCosmetic(
   });
 }
 
+export type ApiUserSub = {
+  plan_code: "viewer" | "streamer";
+  status: string;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  provider: string;
+  provider_subscription_id: string;
+};
+
 export type ApiStreamerPage = {
   id: string;
   slug: string;
@@ -241,6 +251,14 @@ export type ApiStreamerPage = {
   title: string;
   viewers: number;
   isLive: boolean;
+
+  ownerUserId?: number; // <= utile
+  user?: {
+    id: number;
+    username: string;
+    role: string;
+    user_subscriptions: ApiUserSub[];
+  };
 
   channelSlug?: string | null;
   channelUsername?: string | null;

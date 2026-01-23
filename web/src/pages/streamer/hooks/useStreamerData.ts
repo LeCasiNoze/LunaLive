@@ -15,11 +15,16 @@ export type StreamerNormalized = {
   liveStartedAtMs: number | null;
   ownerUserId: number;
 
+  // ✅ SUBS owner
+  ownerHasViewerSub: boolean;
+  ownerHasStreamerSub: boolean;
+
   // ✅ HOST
   hostTargetSlug: string | null;
   hostTargetDisplayName: string | null;
   hostTargetIsLive: boolean;
 };
+
 
 function normalizeStreamer(response: any): StreamerNormalized {
   const s = response?.streamer || response;
@@ -45,6 +50,33 @@ function normalizeStreamer(response: any): StreamerNormalized {
   const hostTargetSlug = (s?.hostTargetSlug ?? s?.host_target_slug) || null;
   const hostTargetDisplayName = (s?.hostTargetDisplayName ?? s?.host_target_display_name) || null;
   const hostTargetIsLive = !!(s?.hostTargetIsLive ?? s?.host_target_is_live);
+  const subsRaw =
+    s?.user?.user_subscriptions ??
+    s?.user?.subscriptions ??
+    s?.user_subscriptions ??
+    response?.user?.user_subscriptions ??
+    [];
+
+  const subs = Array.isArray(subsRaw) ? subsRaw : [];
+
+  const isSubActive = (x: any) => {
+    const status = String(x?.status || "").toLowerCase();
+    if (status === "active" || status === "trialing") return true;
+
+    // fallback: si t’as pas status fiable, check end date
+    const end = x?.current_period_end ?? x?.currentPeriodEnd ?? null;
+    if (end) return new Date(end).getTime() > Date.now();
+
+    return false;
+  };
+
+  const ownerHasViewerSub = subs.some(
+    (x: any) => String(x?.plan_code ?? x?.planCode ?? "").toLowerCase() === "viewer" && isSubActive(x)
+  );
+
+  const ownerHasStreamerSub = subs.some(
+    (x: any) => String(x?.plan_code ?? x?.planCode ?? "").toLowerCase() === "streamer" && isSubActive(x)
+  );
 
   return {
     raw: s,
@@ -61,6 +93,9 @@ function normalizeStreamer(response: any): StreamerNormalized {
     hostTargetSlug: hostTargetSlug ? String(hostTargetSlug) : null,
     hostTargetDisplayName: hostTargetDisplayName ? String(hostTargetDisplayName) : null,
     hostTargetIsLive: !!hostTargetIsLive,
+    ownerHasViewerSub,
+    ownerHasStreamerSub,
+
   };
 }
 
@@ -84,7 +119,6 @@ export function useStreamerData(slug: string | null | undefined, token: string |
 
         const r = await getStreamer(String(slug), token);
         if (!mounted) return;
-
         setStreamer(normalizeStreamer(r));
 
         const following = !!(r?.isFollowing ?? false);

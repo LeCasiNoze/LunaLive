@@ -27,7 +27,68 @@ function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
 }
 
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+
+function absolutize(url: string | null) {
+  if (!url) return null;
+  const u = String(url);
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  if (u.startsWith("/") && API_BASE) return `${API_BASE}${u}`;
+  return u;
+}
+
+/**
+ * Avatar resolver (comme BrowsePage):
+ * - priorité à streamer.avatarUrl si présent
+ * - sinon fallback sur /avatars/u/:ownerUserId (cache-bust soft 1/min)
+ */
+function pickStreamerAvatarUrlFromStreamer(streamer: any) {
+  const uid =
+    streamer?.ownerUserId ??
+    streamer?.owner_user_id ??
+    streamer?.userId ??
+    streamer?.user_id ??
+    streamer?.ownerId ??
+    streamer?.owner_id ??
+    streamer?.user?.id ??
+    streamer?.ownerUser?.id ??
+    null;
+
+  const directRaw =
+    streamer?.avatarUrl ??
+    streamer?.avatar_url ??
+    streamer?.avatar ??
+    streamer?.profilePicUrl ??
+    streamer?.profile_pic_url ??
+    streamer?.profile?.avatarUrl ??
+    streamer?.user?.avatarUrl ??
+    null;
+
+  const direct = directRaw ? absolutize(String(directRaw)) || String(directRaw) : null;
+
+  // cache-bust soft (1/min)
+  const byUid = uid ? absolutize(`/avatars/u/${uid}?v=${Math.floor(Date.now() / 60000)}`) : null;
+
+  return direct || byUid;
+}
+
 type MobileTabKey = "chat" | "about" | "vod" | "clips" | "agenda";
+
+const TAB_ORDER: MobileTabKey[] = ["chat", "about", "vod", "clips", "agenda"];
+
+function clampTabIndex(i: number) {
+  return Math.max(0, Math.min(TAB_ORDER.length - 1, i));
+}
+function tabIndexOf(t: MobileTabKey) {
+  const i = TAB_ORDER.indexOf(t);
+  return i >= 0 ? i : 0;
+}
+function nextTab(t: MobileTabKey) {
+  return TAB_ORDER[clampTabIndex(tabIndexOf(t) + 1)];
+}
+function prevTab(t: MobileTabKey) {
+  return TAB_ORDER[clampTabIndex(tabIndexOf(t) - 1)];
+}
 
 type GiftStatus = {
   remaining: number;
@@ -49,6 +110,7 @@ function isActiveSubEntry(s: any): boolean {
   const status = String(s.status || s.state || "").toLowerCase();
   const endRaw = s.current_period_end ?? s.currentPeriodEnd ?? s.end ?? null;
 
+  // si pas de date: on se base sur le status
   if (!endRaw) return status === "active" || status === "trialing";
 
   const endMs =
@@ -56,7 +118,9 @@ function isActiveSubEntry(s: any): boolean {
       ? endRaw * (endRaw > 1e12 ? 1 : 1000)
       : new Date(String(endRaw)).getTime();
 
-  return (status === "active" || status === "trialing") && Number.isFinite(endMs) && endMs > now;
+  if (!Number.isFinite(endMs)) return false;
+
+  return endMs > now;
 }
 
 function addPlan(out: ActivePlans, planCode: string | null | undefined, active: boolean) {
@@ -70,13 +134,11 @@ function getActivePlansFrom(x: any): ActivePlans {
   const out: ActivePlans = { viewer: false, streamer: false };
   if (!x) return out;
 
-  // array: [{plan_code,status,...}, ...]
   if (Array.isArray(x)) {
     for (const s of x) addPlan(out, s?.plan_code ?? s?.planCode, isActiveSubEntry(s));
     return out;
   }
 
-  // object map: { viewer: {...}, streamer: {...} }
   if (typeof x === "object") {
     if (x.viewer || x.streamer) {
       addPlan(out, "viewer", isActiveSubEntry(x.viewer));
@@ -84,11 +146,9 @@ function getActivePlansFrom(x: any): ActivePlans {
       return out;
     }
 
-    // shape: { plans: {...} } ou { subscriptions: {...} }
     if (x.plans) return getActivePlansFrom(x.plans);
     if (x.subscriptions) return getActivePlansFrom(x.subscriptions);
 
-    // single entry: { plan_code:'viewer', status:'active', ... }
     if (x.plan_code || x.planCode) {
       addPlan(out, x.plan_code ?? x.planCode, isActiveSubEntry(x));
       return out;
@@ -111,6 +171,8 @@ function pillBase(active: boolean): React.CSSProperties {
     color: active ? "rgba(255,255,255,0.94)" : "rgba(255,255,255,0.78)",
     fontWeight: 950,
     whiteSpace: "nowrap",
+    transition: "background 160ms ease, border-color 160ms ease, transform 160ms ease",
+    transform: active ? "translateY(-1px)" : "translateY(0px)",
   };
 }
 
@@ -157,8 +219,30 @@ export default function StreamerPageMobile() {
 
   const [loginOpen, setLoginOpen] = React.useState(false);
 
-  // Onglet principal façon Dlive
+  // Onglet principal
   const [tab, setTab] = React.useState<MobileTabKey>("chat");
+
+  // Onglet effectivement rendu (pour l’anim)
+  const [tabView, setTabView] = React.useState<MobileTabKey>("chat");
+  const [tabAnim, setTabAnim] = React.useState<{ stage: "idle" | "leaving" | "entering"; dir: -1 | 1 }>({
+    stage: "idle",
+    dir: 1,
+  });
+
+  // keep latest tabAnim in ref (évite closures)
+  const tabAnimRef = React.useRef(tabAnim);
+  React.useEffect(() => {
+    tabAnimRef.current = tabAnim;
+  }, [tabAnim]);
+
+  // timers cleanup (évite timeouts orphelins)
+  const timersRef = React.useRef<number[]>([]);
+  React.useEffect(() => {
+    return () => {
+      for (const id of timersRef.current) window.clearTimeout(id);
+      timersRef.current = [];
+    };
+  }, []);
 
   // viewers heartbeat
   const [liveViewersNow, setLiveViewersNow] = React.useState<number | null>(null);
@@ -336,106 +420,184 @@ export default function StreamerPageMobile() {
     if (!streamer?.isLive) setLiveViewersNow(null);
   }, [streamer?.isLive]);
 
-  if (loading) return <div className="panel">Chargement…</div>;
-  if (!streamer) return <div className="panel">Streamer introuvable</div>;
+  // reset tabs on slug change
+  React.useEffect(() => {
+    setTab("chat");
+    setTabView("chat");
+    setTabAnim({ stage: "idle", dir: 1 });
+  }, [slug]);
 
-  const viewersFromApi = streamer.viewers;
-  const viewers = streamer.isLive ? (liveViewersNow ?? viewersFromApi) : 0;
+  // ──────────────────────────────────────────
+  // Tabs: goTab avec animation (slide + fade)
+  // ──────────────────────────────────────────
+  const LEAVE_MS = 140;
+  const ENTER_MS = 170;
 
-  const myRubis = Number(auth?.user?.rubis ?? 0);
-  const SUB_PRICE_RUBIS = 500;
+  const goTab = React.useCallback(
+    (next: MobileTabKey) => {
+      if (next === tab) return;
 
-  const mySubTickets = Math.max(0, Math.floor(Number(auth?.user?.coupons?.sub_ticket ?? auth?.user?.tokens?.sub_ticket ?? 0)));
+      const curI = tabIndexOf(tab);
+      const nextI = tabIndexOf(next);
+      const dir: -1 | 1 = nextI > curI ? 1 : -1;
 
-  const PlayerBlock = (
-    <>
-      {streamer.isLive ? (
-        <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
-      ) : (
-        <div
-          className="panel"
-          style={{
-            padding: 0,
-            overflow: "hidden",
-            borderRadius: 18,
-            aspectRatio: "16/9",
-            background: streamer.offlineBgUrl
-              ? `linear-gradient(to top, rgba(0,0,0,0.70), rgba(0,0,0,0.20)), url(${streamer.offlineBgUrl}) center/cover no-repeat`
-              : "rgba(255,255,255,0.04)",
-            display: "flex",
-            alignItems: "stretch",
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              display: "flex",
-              alignItems: "flex-end",
-              background: "linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0.00))",
-            }}
-          >
-            <div style={{ padding: 16 }}>
-              <div style={{ fontWeight: 950, fontSize: 18 }}>OFFLINE</div>
-              <div className="mutedSmall" style={{ marginTop: 6 }}>
-                {streamer.title}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+      setTab(next);
+
+      // si anim en cours, on force sans glitch
+      if (tabAnimRef.current.stage !== "idle") {
+        setTabView(next);
+        setTabAnim({ stage: "entering", dir });
+        const id = window.setTimeout(() => setTabAnim({ stage: "idle", dir }), 0);
+        timersRef.current.push(id);
+        return;
+      }
+
+      setTabAnim({ stage: "leaving", dir });
+      const id = window.setTimeout(() => {
+        setTabView(next);
+        setTabAnim({ stage: "entering", dir });
+        const id2 = window.setTimeout(() => setTabAnim({ stage: "idle", dir }), 0);
+        timersRef.current.push(id2);
+      }, LEAVE_MS);
+
+      timersRef.current.push(id);
+    },
+    [tab]
   );
 
-  // Cinema mode (plein écran)
-  if (cinema) {
-    return (
-      <>
-        <div className="cinemaRoot">
-          <div className="cinemaStage">
-            <div className="cinemaPlayerCard">{PlayerBlock}</div>
-          </div>
+  // Auto-center du tab actif dans la barre (smooth)
+  const tabRowRef = React.useRef<HTMLDivElement | null>(null);
+  const tabBtnRefs = React.useRef<Partial<Record<MobileTabKey, HTMLButtonElement | null>>>({});
+  React.useEffect(() => {
+    const el = tabBtnRefs.current[tab];
+    if (!el) return;
+    try {
+      el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    } catch {}
+  }, [tab]);
 
-          <div className="cinemaTopBar">
-            <button className="btnGhostSmall" type="button" onClick={leaveCinema}>
-              ✕ Quitter
-            </button>
+  // ──────────────────────────────────────────
+  // Swipe tabs (mobile): propre + safe
+  // ──────────────────────────────────────────
+  const swipeEnabled = !actionsOpen && !hostOpen && !subOpen && !loginOpen && !chest.chestModalOpen;
 
-            <button className="btnPrimarySmall" type="button" onClick={openCinemaChat} title="Ouvrir le chat">
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                <ChatIcon /> Chat
-              </span>
-            </button>
-          </div>
+  const swipeRef = React.useRef({
+    x0: 0,
+    y0: 0,
+    t0: 0,
+    active: false,
+    tracking: false,
+    locked: false as false | "x" | "y",
+  });
 
-          {chatOpen ? (
-            <div className="chatSheetBackdrop" onClick={closeCinemaChat} role="presentation">
-              <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-                <div className="chatSheetTop">
-                  <div style={{ fontWeight: 950 }}></div>
-                  <button className="iconBtn" onClick={closeCinemaChat} type="button" aria-label="Fermer">
-                    ✕
-                  </button>
-                </div>
+  const SWIPE_MIN_X = 60;
+  const SWIPE_MAX_Y = 70;
+  const SWIPE_MAX_MS = 650;
+  const EDGE_GUARD = 8;
 
-                <div className="chatSheetBody">
-                  <ChatPanel
-                    slug={String(slug || "")}
-                    onRequireLogin={() => setLoginOpen(true)}
-                    compact
-                    autoFocus={false}
-                    onFollowsCount={handleFollowsCount}
-                  />
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
-      </>
-    );
+  function isInteractiveTarget(target: any) {
+    const tag = String(target?.tagName || "").toLowerCase();
+    if (!tag) return false;
+    if (tag === "input" || tag === "textarea" || tag === "select" || tag === "button" || tag === "a") return true;
+    if (target?.closest?.("[data-no-swipe='1']")) return true;
+    return false;
   }
 
+  function onSwipeStart(e: React.TouchEvent) {
+    if (!swipeEnabled) return;
+    const t = e.touches?.[0];
+    if (!t) return;
+
+    if (isInteractiveTarget(e.target)) return;
+    if (t.clientX < EDGE_GUARD || t.clientX > window.innerWidth - EDGE_GUARD) return;
+
+    swipeRef.current = {
+      x0: t.clientX,
+      y0: t.clientY,
+      t0: Date.now(),
+      active: true,
+      tracking: true,
+      locked: false,
+    };
+  }
+
+  function onSwipeMove(e: React.TouchEvent) {
+    if (!swipeRef.current.active) return;
+
+    const t = e.touches?.[0];
+    if (!t) return;
+
+    const dx = t.clientX - swipeRef.current.x0;
+    const dy = t.clientY - swipeRef.current.y0;
+
+    if (!swipeRef.current.locked) {
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        swipeRef.current.locked = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      }
+    }
+
+    if (swipeRef.current.locked === "y") {
+      swipeRef.current.active = false;
+      swipeRef.current.tracking = false;
+      return;
+    }
+  }
+
+  function onSwipeEnd(e: React.TouchEvent) {
+    if (!swipeRef.current.tracking) return;
+
+    const t = e.changedTouches?.[0];
+    if (!t) return;
+
+    const dx = t.clientX - swipeRef.current.x0;
+    const dy = t.clientY - swipeRef.current.y0;
+    const dt = Date.now() - swipeRef.current.t0;
+
+    swipeRef.current.active = false;
+    swipeRef.current.tracking = false;
+
+    if (dt > SWIPE_MAX_MS) return;
+    if (Math.abs(dx) < SWIPE_MIN_X) return;
+    if (Math.abs(dy) > SWIPE_MAX_Y) return;
+    if (Math.abs(dx) < Math.abs(dy)) return;
+
+    if (dx < 0) goTab(nextTab(tab));
+    else goTab(prevTab(tab));
+  }
+
+  // style animation content
+  const contentAnimStyle: React.CSSProperties = React.useMemo(() => {
+    const base: React.CSSProperties = { willChange: "transform, opacity" };
+
+    if (tabAnim.stage === "leaving") {
+      return {
+        ...base,
+        transition: `transform ${LEAVE_MS}ms ease, opacity ${LEAVE_MS}ms ease`,
+        transform: `translateX(${tabAnim.dir === 1 ? -28 : 28}px)`,
+        opacity: 0,
+      };
+    }
+
+    if (tabAnim.stage === "entering") {
+      return {
+        ...base,
+        transition: "none",
+        transform: `translateX(${tabAnim.dir === 1 ? 28 : -28}px)`,
+        opacity: 0,
+      };
+    }
+
+    return {
+      ...base,
+      transition: `transform ${ENTER_MS}ms ease, opacity ${ENTER_MS}ms ease`,
+      transform: "translateX(0px)",
+      opacity: 1,
+    };
+  }, [tabAnim.stage, tabAnim.dir]);
+
+  // ──────────────────────────────────────────
+  // Render branches (SANS early return => hooks OK)
+  // ──────────────────────────────────────────
   const openSub = () => {
     if (!token) return setLoginOpen(true);
     setSubError(null);
@@ -448,780 +610,897 @@ export default function StreamerPageMobile() {
     chest.setChestModalOpen(true);
   };
 
-    // ✅ Avatar (fallback safe + support plein de shapes)
-    const rawAvatar =
-    (streamer as any)?.avatarUrl ??
-    (streamer as any)?.avatar_url ??
-    (streamer as any)?.avatar ??
-    (streamer as any)?.profilePicUrl ??
-    (streamer as any)?.profile_pic_url ??
-    (streamer as any)?.profile?.avatarUrl ??
-    (streamer as any)?.user?.avatarUrl ??
-    null;
-
-    const avatarUrl = (() => {
-    const s = String(rawAvatar || "").trim();
-    if (!s) return null;
-    if (/^https?:\/\//i.test(s)) return s;
-    // si jamais ton API renvoie un chemin relatif
-    if (s.startsWith("/")) return `${apiBase()}${s}`;
-    return s;
-    })();
-
-    const displayName = streamer.displayName ? String(streamer.displayName) : `@${String(slug || "")}`;
-    const initials = String(displayName || "S").replace(/^@/, "").trim().slice(0, 1).toUpperCase();
-
-// ✅ Star logic (user-centric, SANS hook)
-// Règles demandées:
-// - bleu si abo streamer
-// - violet si viewer + streamer
-// - sinon pas d’étoile
-
-// Le "compte streamer" est un user -> on essaye les clés les plus probables
-const streamerUser =
-  (streamer as any)?.user ??
-  (streamer as any)?.owner ??
-  (streamer as any)?.ownerUser ??
-  (streamer as any)?.account ??
-  null;
-
-// On lit en priorité `user_subscriptions` (comme /me)
-let ownerPlans: ActivePlans = { viewer: false, streamer: false };
-ownerPlans = mergePlans(ownerPlans, getActivePlansFrom(streamerUser?.user_subscriptions));
-ownerPlans = mergePlans(ownerPlans, getActivePlansFrom(streamerUser?.userSubscriptions));
-
-// Fallbacks au cas où ton API renvoie encore autre chose
-ownerPlans = mergePlans(ownerPlans, getActivePlansFrom((streamer as any)?.user_subscriptions));
-ownerPlans = mergePlans(ownerPlans, getActivePlansFrom((streamer as any)?.ownerSubscriptions));
-ownerPlans = mergePlans(ownerPlans, getActivePlansFrom((streamer as any)?.owner_subscriptions));
-
-type StarKind = "none" | "streamer" | "both";
-const starKind: StarKind =
-  ownerPlans.viewer && ownerPlans.streamer ? "both" : ownerPlans.streamer ? "streamer" : "none";
-
-const showStar = starKind !== "none";
-
-const badgeStyle: React.CSSProperties =
-  starKind === "streamer"
-    ? { ...smallBadge(), borderColor: "rgba(110,185,255,0.70)", background: "rgba(90,170,255,0.18)" } // bleu
-    : { ...smallBadge(), borderColor: "rgba(180,120,255,0.75)", background: "rgba(170,110,255,0.18)" }; // violet
-
-  // Hauteur chat: fixe + scroll interne (objectif ~8 messages visibles)
   const chatHeightStyle: React.CSSProperties = {
     height: "min(52vh, 520px)",
     minHeight: 330,
   };
 
-  const ActionsSheet = actionsOpen ? (
-    <div className="chatSheetBackdrop" onClick={() => setActionsOpen(false)} role="presentation" style={{ zIndex: 70 }}>
-      <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 560 }}>
-        <div className="chatSheetTop">
-          <div style={{ fontWeight: 950 }}>Actions</div>
-          <button className="iconBtn" onClick={() => setActionsOpen(false)} type="button" aria-label="Fermer">
-            ✕
-          </button>
-        </div>
+  // placeholder minimal (loading / not found)
+  let content: React.ReactNode = null;
 
-        <div className="chatSheetBody" style={{ padding: 14 }}>
-          {claimError ? (
-            <div className="mutedSmall" style={{ marginBottom: 10, color: "rgba(255,90,90,0.95)" }}>
-              {claimError}
-            </div>
-          ) : null}
+  if (loading) {
+    content = <div className="panel">Chargement…</div>;
+  } else if (!streamer) {
+    content = <div className="panel">Streamer introuvable</div>;
+  } else {
+    const viewersFromApi = streamer.viewers;
+    const viewers = streamer.isLive ? (liveViewersNow ?? viewersFromApi) : 0;
 
-          <div className="panel" style={{ marginBottom: 12 }}>
-            <div className="mutedSmall">Ton solde</div>
-            <div style={{ marginTop: 6, fontWeight: 950, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <span style={smallBadge()}>💎 {fmt(myRubis)} rubis</span>
-              <span style={smallBadge()}>🎟️ {fmt(mySubTickets)} ticket</span>
+    const myRubis = Number(auth?.user?.rubis ?? 0);
+    const SUB_PRICE_RUBIS = 500;
+    const mySubTickets = Math.max(0, Math.floor(Number(auth?.user?.coupons?.sub_ticket ?? auth?.user?.tokens?.sub_ticket ?? 0)));
+
+    const PlayerBlock = (
+      <>
+        {streamer.isLive ? (
+          <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
+        ) : (
+          <div
+            className="panel"
+            style={{
+              padding: 0,
+              overflow: "hidden",
+              borderRadius: 18,
+              aspectRatio: "16/9",
+              background: streamer.offlineBgUrl
+                ? `linear-gradient(to top, rgba(0,0,0,0.70), rgba(0,0,0,0.20)), url(${streamer.offlineBgUrl}) center/cover no-repeat`
+                : "rgba(255,255,255,0.04)",
+              display: "flex",
+              alignItems: "stretch",
+            }}
+          >
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "flex-end",
+                background: "linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0.00))",
+              }}
+            >
+              <div style={{ padding: 16 }}>
+                <div style={{ fontWeight: 950, fontSize: 18 }}>OFFLINE</div>
+                <div className="mutedSmall" style={{ marginTop: 6 }}>
+                  {streamer.title}
+                </div>
+              </div>
             </div>
           </div>
+        )}
+      </>
+    );
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <button
-              type="button"
-              className={isFollowing ? "btnGhostSmall" : "btnPrimarySmall"}
-              disabled={followLoading}
-              onClick={async () => {
-                await toggleFollow();
-              }}
-              style={{ justifyContent: "space-between", display: "flex" }}
-            >
-              <span style={{ fontWeight: 950 }}>{followLoading ? "…" : isFollowing ? "✅ Suivi" : "➕ Suivre"}</span>
-              <span className="mutedSmall">{isFollowing ? "Actif" : "Inactif"}</span>
+    // star logic
+    const avatarUrl = pickStreamerAvatarUrlFromStreamer(streamer);
+    const displayName = streamer.displayName ? String(streamer.displayName) : `@${String(slug || "")}`;
+    const initials = String(displayName || "S").replace(/^@/, "").trim().slice(0, 1).toUpperCase();
+
+    const streamerUser = (streamer as any)?.raw?.user ?? (streamer as any)?.raw?.owner ?? (streamer as any)?.raw?.ownerUser ?? null;
+
+    let ownerPlans: ActivePlans = { viewer: false, streamer: false };
+    ownerPlans = mergePlans(ownerPlans, getActivePlansFrom(streamerUser?.user_subscriptions));
+    ownerPlans = mergePlans(ownerPlans, getActivePlansFrom(streamerUser?.userSubscriptions));
+    ownerPlans = mergePlans(ownerPlans, getActivePlansFrom((streamer as any)?.raw?.user_subscriptions));
+    ownerPlans = mergePlans(ownerPlans, getActivePlansFrom((streamer as any)?.raw?.ownerSubscriptions));
+    ownerPlans = mergePlans(ownerPlans, getActivePlansFrom((streamer as any)?.raw?.owner_subscriptions));
+
+    type StarKind = "none" | "streamer" | "both";
+    const starKind: StarKind =
+      ownerPlans.viewer && ownerPlans.streamer ? "both" : ownerPlans.streamer ? "streamer" : "none";
+    const showStar = starKind !== "none";
+
+    const badgeStyle: React.CSSProperties =
+      starKind === "streamer"
+        ? { ...smallBadge(), borderColor: "rgba(110,185,255,0.70)", background: "rgba(90,170,255,0.18)" }
+        : { ...smallBadge(), borderColor: "rgba(180,120,255,0.75)", background: "rgba(170,110,255,0.18)" };
+
+    const ActionsSheet = actionsOpen ? (
+      <div className="chatSheetBackdrop" onClick={() => setActionsOpen(false)} role="presentation" style={{ zIndex: 70 }}>
+        <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 560 }}>
+          <div className="chatSheetTop">
+            <div style={{ fontWeight: 950 }}>Actions</div>
+            <button className="iconBtn" onClick={() => setActionsOpen(false)} type="button" aria-label="Fermer">
+              ✕
             </button>
+          </div>
 
-            {isFollowing ? (
-              <button
-                type="button"
-                className="btnGhostSmall"
-                disabled={followLoading}
-                onClick={toggleNotify}
-                style={{ justifyContent: "space-between", display: "flex" }}
-                title="Notifications"
-              >
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 950 }}>
-                  <BellIcon on={notifyEnabled} /> Notifications
-                </span>
-                <span className="mutedSmall">{notifyEnabled ? "On" : "Off"}</span>
-              </button>
+          <div className="chatSheetBody" style={{ padding: 14 }}>
+            {claimError ? (
+              <div className="mutedSmall" style={{ marginBottom: 10, color: "rgba(255,90,90,0.95)" }}>
+                {claimError}
+              </div>
             ) : null}
 
-            <button type="button" className="btnPrimarySmall" onClick={openSub} style={{ justifyContent: "space-between", display: "flex" }}>
-              <span style={{ fontWeight: 950 }}>💎 Sub</span>
-              <span className="mutedSmall">{SUB_PRICE_RUBIS} rubis</span>
-            </button>
+            <div className="panel" style={{ marginBottom: 12 }}>
+              <div className="mutedSmall">Ton solde</div>
+              <div style={{ marginTop: 6, fontWeight: 950, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <span style={smallBadge()}>💎 {fmt(myRubis)} rubis</span>
+                <span style={smallBadge()}>🎟️ {fmt(mySubTickets)} ticket</span>
+              </div>
+            </div>
 
-            {giftStatus?.remaining ? (
-              token && giftStatus.canClaim ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                type="button"
+                className={isFollowing ? "btnGhostSmall" : "btnPrimarySmall"}
+                disabled={followLoading}
+                onClick={async () => {
+                  await toggleFollow();
+                }}
+                style={{ justifyContent: "space-between", display: "flex" }}
+              >
+                <span style={{ fontWeight: 950 }}>{followLoading ? "…" : isFollowing ? "✅ Suivi" : "➕ Suivre"}</span>
+                <span className="mutedSmall">{isFollowing ? "Actif" : "Inactif"}</span>
+              </button>
+
+              {isFollowing ? (
+                <button
+                  type="button"
+                  className="btnGhostSmall"
+                  disabled={followLoading}
+                  onClick={toggleNotify}
+                  style={{ justifyContent: "space-between", display: "flex" }}
+                  title="Notifications"
+                >
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 950 }}>
+                    <BellIcon on={notifyEnabled} /> Notifications
+                  </span>
+                  <span className="mutedSmall">{notifyEnabled ? "On" : "Off"}</span>
+                </button>
+              ) : null}
+
+              <button type="button" className="btnPrimarySmall" onClick={openSub} style={{ justifyContent: "space-between", display: "flex" }}>
+                <span style={{ fontWeight: 950 }}>💎 Sub</span>
+                <span className="mutedSmall">{SUB_PRICE_RUBIS} rubis</span>
+              </button>
+
+              {giftStatus?.remaining ? (
+                token && giftStatus.canClaim ? (
+                  <button
+                    type="button"
+                    className="btnPrimarySmall"
+                    disabled={claimLoading}
+                    onClick={async () => {
+                      if (!token || !slug) return;
+                      setClaimLoading(true);
+                      setClaimError(null);
+                      try {
+                        const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/claim`, {
+                          method: "POST",
+                          headers: { Authorization: `Bearer ${token}` },
+                        }).then((x) => x.json());
+                        if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+                        await refreshMeIfPossible();
+                        await fetchGiftStatus();
+                      } catch (e: any) {
+                        setClaimError(String(e?.message || "Erreur"));
+                      } finally {
+                        setClaimLoading(false);
+                      }
+                    }}
+                    style={{ justifyContent: "space-between", display: "flex" }}
+                  >
+                    <span style={{ fontWeight: 950 }}>{claimLoading ? "…" : `🎁 Claim`}</span>
+                    <span className="mutedSmall">{fmt(giftStatus.remaining)}</span>
+                  </button>
+                ) : (
+                  <button type="button" className="btnGhostSmall" onClick={openSub} style={{ justifyContent: "space-between", display: "flex" }}>
+                    <span style={{ fontWeight: 950 }}>🎁 Subs offerts</span>
+                    <span className="mutedSmall">{fmt(giftStatus.remaining)}</span>
+                  </button>
+                )
+              ) : null}
+
+              <button type="button" className="btnGhostSmall" onClick={openChest} style={{ justifyContent: "space-between", display: "flex" }}>
+                <span style={{ fontWeight: 950 }}>
+                  🎁 Coffre{chest.chestLoading ? "…" : chest.chestBalance > 0 ? ` (${chest.chestBalance})` : ""}
+                </span>
+                <span className="mutedSmall">Ouvrir</span>
+              </button>
+
+              {isOwner && !chest.chestHasOpen ? (
                 <button
                   type="button"
                   className="btnPrimarySmall"
-                  disabled={claimLoading}
-                  onClick={async () => {
-                    if (!token || !slug) return;
-                    setClaimLoading(true);
-                    setClaimError(null);
-                    try {
-                      const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/claim`, {
-                        method: "POST",
-                        headers: { Authorization: `Bearer ${token}` },
-                      }).then((x) => x.json());
-                      if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
-                      await refreshMeIfPossible();
-                      await fetchGiftStatus();
-                    } catch (e: any) {
-                      setClaimError(String(e?.message || "Erreur"));
-                    } finally {
-                      setClaimLoading(false);
-                    }
+                  disabled={chest.ownerLoading || !streamer.isLive}
+                  onClick={chest.open}
+                  style={{ justifyContent: "space-between", display: "flex" }}
+                  title={!streamer.isLive ? "Stream offline" : "Ouvre 2 minutes (fermeture auto)"}
+                >
+                  <span style={{ fontWeight: 950 }}>{chest.ownerLoading ? "…" : "Ouvrir coffre"}</span>
+                  <span className="mutedSmall">{streamer.isLive ? "2 min" : "Offline"}</span>
+                </button>
+              ) : null}
+
+              {!isOwner && chest.chestHasOpen ? (
+                <button
+                  type="button"
+                  className="btnPrimarySmall"
+                  disabled={chest.joinLoading || chest.alreadyJoined}
+                  onClick={chest.join}
+                  style={{ justifyContent: "space-between", display: "flex" }}
+                >
+                  <span style={{ fontWeight: 950 }}>
+                    {chest.alreadyJoined ? "✅ Inscrit" : chest.joinLoading ? "…" : "Participer"}
+                  </span>
+                  <span className="mutedSmall">{chest.alreadyJoined ? "OK" : "Go"}</span>
+                </button>
+              ) : null}
+
+              {isOwner ? (
+                <button
+                  type="button"
+                  className="btnGhostSmall"
+                  onClick={() => {
+                    if (!token) return setLoginOpen(true);
+                    setHostError(null);
+                    setHostOpen(true);
+                    setActionsOpen(false);
                   }}
                   style={{ justifyContent: "space-between", display: "flex" }}
                 >
-                  <span style={{ fontWeight: 950 }}>{claimLoading ? "…" : `🎁 Claim`}</span>
-                  <span className="mutedSmall">{fmt(giftStatus.remaining)}</span>
+                  <span style={{ fontWeight: 950 }}>📺 Host</span>
+                  <span className="mutedSmall">Gérer</span>
                 </button>
-              ) : (
-                <button type="button" className="btnGhostSmall" onClick={openSub} style={{ justifyContent: "space-between", display: "flex" }}>
-                  <span style={{ fontWeight: 950 }}>🎁 Subs offerts</span>
-                  <span className="mutedSmall">{fmt(giftStatus.remaining)}</span>
-                </button>
-              )
-            ) : null}
+              ) : null}
 
-            <button type="button" className="btnGhostSmall" onClick={openChest} style={{ justifyContent: "space-between", display: "flex" }}>
-              <span style={{ fontWeight: 950 }}>
-                🎁 Coffre{chest.chestLoading ? "…" : chest.chestBalance > 0 ? ` (${chest.chestBalance})` : ""}
-              </span>
-              <span className="mutedSmall">Ouvrir</span>
-            </button>
-
-            {isOwner && !chest.chestHasOpen ? (
-              <button
-                type="button"
-                className="btnPrimarySmall"
-                disabled={chest.ownerLoading || !streamer.isLive}
-                onClick={chest.open}
-                style={{ justifyContent: "space-between", display: "flex" }}
-                title={!streamer.isLive ? "Stream offline" : "Ouvre 2 minutes (fermeture auto)"}
-              >
-                <span style={{ fontWeight: 950 }}>{chest.ownerLoading ? "…" : "Ouvrir coffre"}</span>
-                <span className="mutedSmall">{streamer.isLive ? "2 min" : "Offline"}</span>
-              </button>
-            ) : null}
-
-            {!isOwner && chest.chestHasOpen ? (
-              <button
-                type="button"
-                className="btnPrimarySmall"
-                disabled={chest.joinLoading || chest.alreadyJoined}
-                onClick={chest.join}
-                style={{ justifyContent: "space-between", display: "flex" }}
-              >
-                <span style={{ fontWeight: 950 }}>{chest.alreadyJoined ? "✅ Inscrit" : chest.joinLoading ? "…" : "Participer"}</span>
-                <span className="mutedSmall">{chest.alreadyJoined ? "OK" : "Go"}</span>
-              </button>
-            ) : null}
-
-            {isOwner ? (
               <button
                 type="button"
                 className="btnGhostSmall"
                 onClick={() => {
-                  if (!token) return setLoginOpen(true);
-                  setHostError(null);
-                  setHostOpen(true);
                   setActionsOpen(false);
+                  enterCinema();
                 }}
                 style={{ justifyContent: "space-between", display: "flex" }}
               >
-                <span style={{ fontWeight: 950 }}>📺 Host</span>
-                <span className="mutedSmall">Gérer</span>
-              </button>
-            ) : null}
-
-            <button
-              type="button"
-              className="btnGhostSmall"
-              onClick={() => {
-                setActionsOpen(false);
-                enterCinema();
-              }}
-              style={{ justifyContent: "space-between", display: "flex" }}
-            >
-              <span style={{ fontWeight: 950 }}>⛶ Plein écran</span>
-              <span className="mutedSmall">Cinéma</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  ) : null;
-
-  return (
-    <div
-      className="streamPage streamPageMobile"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-        paddingBottom: "calc(88px + env(safe-area-inset-bottom))",
-      }}
-    >
-      <ChestToast
-        toast={chest.toast}
-        isOwner={isOwner}
-        canJoinNow={chest.canJoinNow}
-        alreadyJoined={chest.alreadyJoined}
-        joinLoading={chest.joinLoading}
-        onJoin={chest.join}
-        onView={() => chest.setChestModalOpen(true)}
-        error={chest.chestError}
-        onClose={() => chest.setToast(null)}
-      />
-
-      {/* host banners */}
-      {hostedBy ? (
-        <div className="panel" style={{ marginTop: 0, padding: 10 }}>
-          <div className="mutedSmall">
-            📺 Hosté par <strong style={{ color: "rgba(255,255,255,0.92)" }}>{hostedBy}</strong>
-          </div>
-        </div>
-      ) : null}
-
-      {!isOwner && hostTargetSlug && hostTargetIsLive ? (
-        <div className="panel" style={{ marginTop: 0, padding: 10 }}>
-          <div className="mutedSmall">
-            📺 Chaîne hostée → redirection vers{" "}
-            <strong style={{ color: "rgba(255,255,255,0.92)" }}>{hostTargetDisplayName ? hostTargetDisplayName : hostTargetSlug}</strong>…
-          </div>
-        </div>
-      ) : null}
-
-      {/* PLAYER */}
-      <div className="panel" style={{ padding: 0, borderRadius: 18, overflow: "hidden" }}>
-        {PlayerBlock}
-      </div>
-
-    {/* PROFILE ROW (avatar + name + followers + badge + actions compact) */}
-    <div
-    className="panel"
-    style={{
-        marginTop: 0,
-        padding: 12,
-        borderRadius: 18,
-        background: "linear-gradient(135deg, rgba(126,76,179,0.16), rgba(63,86,203,0.10))",
-        border: "1px solid rgba(255,255,255,0.12)",
-    }}
-    >
-    {/* Row 1: avatar + name block + actions */}
-    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        {/* Avatar */}
-        <div
-        style={{
-            width: 46,
-            height: 46,
-            borderRadius: 999,
-            overflow: "hidden",
-            border: "1px solid rgba(255,255,255,0.14)",
-            background: "rgba(0,0,0,0.22)",
-            display: "grid",
-            placeItems: "center",
-            flex: "0 0 auto",
-        }}
-        >
-        {avatarUrl ? (
-            <img src={String(avatarUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-        ) : (
-            <span style={{ fontWeight: 1000, opacity: 0.92 }}>{initials}</span>
-        )}
-        </div>
-
-        {/* Name block (2 lines max, clean) */}
-        <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-    <div
-    style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4, // "collée" (mets 2 si tu veux encore plus serré)
-        minWidth: 0,
-        maxWidth: "100%",
-    }}
-    >
-    {showStar ? (
-    <span style={{ ...badgeStyle, padding: "4px 7px", fontSize: 12, fontWeight: 950, lineHeight: 1 }}>
-        ★
-    </span>
-    ) : null}
-
-
-    <div
-        style={{
-        fontWeight: 1000,
-        fontSize: 15,
-        lineHeight: 1.05,
-        minWidth: 0,
-        flex: "1 1 auto",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-        maxWidth: "100%",
-        }}
-        title={displayName}
-    >
-        {displayName}
-    </div>
-    </div>
-
-
-      {/* Followers line (one clean line, never wraps into chaos) */}
-      {typeof followsCount === "number" ? (
-        <div className="mutedSmall" style={{ opacity: 0.9, fontWeight: 850, lineHeight: 1.1 }}>
-          {fmt(followsCount)} abonnés
-        </div>
-      ) : null}
-    </div>
-
-    {/* Actions compact (never crush the text) */}
-    <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
-      <button
-        type="button"
-        className={isFollowing ? "btnGhostSmall" : "btnPrimarySmall"}
-        disabled={followLoading}
-        onClick={toggleFollow}
-        title={isFollowing ? "Suivi" : "Suivre"}
-        style={{ ...iconBtn(), padding: "9px 11px" }}
-      >
-        {followLoading ? "…" : isFollowing ? "✓" : "+"}
-      </button>
-
-      <button type="button" className="btnPrimarySmall" onClick={openSub} style={iconBtn()} title="Sub">
-        💎
-      </button>
-
-      <button type="button" className="btnGhostSmall" onClick={() => setActionsOpen(true)} style={iconBtn()} title="Plus">
-        ⋯
-      </button>
-    </div>
-  </div>
-
-  {/* Row 2: small stats chips (wrap nicely, smaller text, airy) */}
-  <div
-    className="mutedSmall"
-    style={{
-      marginTop: 10,
-      display: "flex",
-      gap: 8,
-      flexWrap: "wrap",
-      alignItems: "center",
-    }}
-  >
-    <span style={{ ...smallBadge(), padding: "6px 10px", fontSize: 12, fontWeight: 900 }}>
-      👁️ {fmt(viewers)}
-    </span>
-    <span style={{ ...smallBadge(), padding: "6px 10px", fontSize: 12, fontWeight: 900 }}>
-      ⏱️ <LiveDurationText isLive={streamer.isLive} startedAtMs={streamer.liveStartedAtMs} />
-    </span>
-
-    {giftStatus?.myClaimed ? (
-      <span
-        style={{
-          ...smallBadge(),
-          padding: "6px 10px",
-          fontSize: 12,
-          fontWeight: 900,
-          background: "rgba(20,255,170,0.07)",
-          borderColor: "rgba(20,255,170,0.20)",
-        }}
-      >
-        ✅ Sub offert
-      </span>
-    ) : null}
-  </div>
-
-
-      </div>
-
-      {/* TABS ROW (Dlive-like) */}
-      <div
-        className="panel"
-        style={{
-          marginTop: 0,
-          padding: 10,
-          borderRadius: 18,
-          overflowX: "auto",
-          WebkitOverflowScrolling: "touch",
-        }}
-      >
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <button type="button" style={pillBase(tab === "chat")} onClick={() => setTab("chat")}>
-            Chat
-          </button>
-          <button type="button" style={pillBase(tab === "about")} onClick={() => setTab("about")}>
-            À propos
-          </button>
-          <button type="button" style={pillBase(tab === "vod")} onClick={() => setTab("vod")}>
-            Rediffusions
-          </button>
-          <button type="button" style={pillBase(tab === "clips")} onClick={() => setTab("clips")}>
-            Clips
-          </button>
-          <button type="button" style={pillBase(tab === "agenda")} onClick={() => setTab("agenda")}>
-            Agenda
-          </button>
-
-          <div style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <span className="mutedSmall" style={{ opacity: 0.85 }}>
-              rôle : <strong style={{ color: "rgba(255,255,255,0.92)" }}>{String(myRole)}</strong>
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* CONTENT */}
-      {tab === "chat" ? (
-        <div
-          className="panel"
-          style={{
-            padding: 0,
-            borderRadius: 18,
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-            ...chatHeightStyle,
-          }}
-        >
-          {/* Chat header mini */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "10px 12px",
-              borderBottom: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(0,0,0,0.16)",
-            }}
-          >
-            <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>Chat</div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {giftStatus?.myClaimed ? <span style={smallBadge()}>✅ Sub offert</span> : null}
-              <button
-                type="button"
-                className="btnGhostSmall"
-                onClick={enterCinema}
-                style={{ borderRadius: 12, padding: "8px 10px", fontWeight: 950 }}
-                title="Plein écran"
-              >
-                ⛶
+                <span style={{ fontWeight: 950 }}>⛶ Plein écran</span>
+                <span className="mutedSmall">Cinéma</span>
               </button>
             </div>
           </div>
-
-          {/* KEY: parent height fixed + minHeight:0 => scroll interne dans ChatPanel */}
-          <div style={{ flex: 1, minHeight: 0 }}>
-            <ChatPanel
-              slug={String(slug || "")}
-              onRequireLogin={() => setLoginOpen(true)}
-              compact
-              autoFocus={false}
-              onFollowsCount={handleFollowsCount}
-            />
-          </div>
         </div>
-      ) : (
-        <div className="panel" style={{ padding: 12, borderRadius: 18 }}>
-          {tab === "about" && slug ? <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
-          {tab === "clips" && slug ? <ClipsTab slug={String(slug)} token={token} isOwner={isOwner} onRequireLogin={() => setLoginOpen(true)} /> : null}
-          {tab === "vod" && slug ? <VodTab slug={String(slug)} /> : null}
-          {tab === "agenda" && slug ? <AgendaTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
-        </div>
-      )}
+      </div>
+    ) : null;
 
-      {ActionsSheet}
+    // CINEMA view
+    if (cinema) {
+      content = (
+        <>
+          <div className="cinemaRoot">
+            <div className="cinemaStage">
+              <div className="cinemaPlayerCard">{PlayerBlock}</div>
+            </div>
 
-      <ChestModal
-        open={chest.chestModalOpen}
-        onClose={() => chest.setChestModalOpen(false)}
-        chestLoading={chest.chestLoading}
-        chestBalance={chest.chestBalance}
-        chest={chest.chest}
-        opening={chest.opening}
-        remainingSec={chest.remainingSec}
-        progress={chest.progress}
-        error={chest.chestError}
-        onRefresh={chest.refreshChest}
-        isOwner={isOwner}
-        openingId={chest.openingId}
-        alreadyJoined={chest.alreadyJoined}
-        joinLoading={chest.joinLoading}
-        onJoin={chest.join}
-        isLive={streamer.isLive}
-        chestHasOpen={chest.chestHasOpen}
-        ownerLoading={chest.ownerLoading}
-        onOpen={chest.open}
-        depositAmount={chest.depositAmount}
-        setDepositAmount={chest.setDepositAmount}
-        depositNote={chest.depositNote}
-        setDepositNote={chest.setDepositNote}
-        depositLoading={chest.depositLoading}
-        onDeposit={chest.deposit}
-      />
+            <div className="cinemaTopBar">
+              <button className="btnGhostSmall" type="button" onClick={leaveCinema}>
+                ✕ Quitter
+              </button>
 
-      <SubModal
-        open={subOpen}
-        onClose={() => setSubOpen(false)}
-        streamerName={streamer.displayName ? streamer.displayName : `@${String(slug || "")}`}
-        priceRubis={SUB_PRICE_RUBIS}
-        myRubis={myRubis}
-        mySubTickets={mySubTickets}
-        disableSelfTicket={isOwner}
-        loading={subLoading}
-        error={subError}
-        onGoShop={() => {
-          setSubOpen(false);
-          window.location.href = "/shop";
-        }}
-        onPaySelf={async (mode) => {
-          if (!token || !slug) return;
-          setSubLoading(true);
-          setSubError(null);
-          try {
-            const useTicket = mode === "ticket";
-            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/subscribe`, {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                ...(useTicket ? { "Content-Type": "application/json" } : {}),
-              },
-              body: useTicket ? JSON.stringify({ useTicket: true }) : undefined,
-            }).then((x) => x.json());
-            if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
-            await refreshMeIfPossible();
-            await fetchGiftStatus();
-            setSubOpen(false);
-          } catch (e: any) {
-            setSubError(String(e?.message || "Erreur"));
-          } finally {
-            setSubLoading(false);
-          }
-        }}
-        onPayRubis={async () => {
-          if (!token || !slug) return;
-          setSubLoading(true);
-          setSubError(null);
-          try {
-            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/subscribe`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}` },
-            }).then((x) => x.json());
-            if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
-            await refreshMeIfPossible();
-            await fetchGiftStatus();
-            setSubOpen(false);
-          } catch (e: any) {
-            setSubError(String(e?.message || "Erreur"));
-          } finally {
-            setSubLoading(false);
-          }
-        }}
-        onPayGiftSubs={async (count, useTicketsMaybe) => {
-          if (!token || !slug) return;
-          setGiftLoading(true);
-          setGiftError(null);
-
-          const useTickets = Math.max(0, Math.floor(Number(useTicketsMaybe || 0)));
-          try {
-            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({ count, useTickets }),
-            }).then((x) => x.json());
-            if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
-            await refreshMeIfPossible();
-            await fetchGiftStatus();
-            setSubOpen(false);
-          } catch (e: any) {
-            setGiftError(String(e?.message || "Erreur"));
-          } finally {
-            setGiftLoading(false);
-          }
-        }}
-        giftLoading={giftLoading}
-        giftError={giftError}
-      />
-
-      {/* Host modal (inchangé) */}
-      {hostOpen ? (
-        <div className="chatSheetBackdrop" onClick={() => setHostOpen(false)} role="presentation" style={{ zIndex: 80 }}>
-          <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 560 }}>
-            <div className="chatSheetTop">
-              <div style={{ fontWeight: 950 }}>Host</div>
-              <button className="iconBtn" onClick={() => setHostOpen(false)} type="button" aria-label="Fermer">
-                ✕
+              <button className="btnPrimarySmall" type="button" onClick={openCinemaChat} title="Ouvrir le chat">
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <ChatIcon /> Chat
+                </span>
               </button>
             </div>
 
-            <div className="chatSheetBody" style={{ padding: 16 }}>
-              {hostTargetSlug ? (
-                <div className="panel" style={{ marginBottom: 12 }}>
-                  <div className="mutedSmall">Host actuel</div>
-                  <div style={{ fontWeight: 950, marginTop: 4 }}>{hostTargetDisplayName ? hostTargetDisplayName : `@${hostTargetSlug}`}</div>
-
-                  <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-                    <button
-                      type="button"
-                      className="btnPrimarySmall"
-                      disabled={hostBusy}
-                      onClick={async () => {
-                        if (!token || !slug) return;
-                        setHostBusy(true);
-                        setHostError(null);
-                        try {
-                          const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/host`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                            body: JSON.stringify({ targetSlug: null }),
-                          }).then((x) => x.json());
-                          if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
-                          setHostOverride({ slug: null, displayName: null });
-                        } catch (e: any) {
-                          setHostError(String(e?.message || "Erreur"));
-                        } finally {
-                          setHostBusy(false);
-                        }
-                      }}
-                    >
-                      {hostBusy ? "…" : "Stop host"}
+            {chatOpen ? (
+              <div className="chatSheetBackdrop" onClick={closeCinemaChat} role="presentation">
+                <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+                  <div className="chatSheetTop">
+                    <div style={{ fontWeight: 950 }}></div>
+                    <button className="iconBtn" onClick={closeCinemaChat} type="button" aria-label="Fermer">
+                      ✕
                     </button>
                   </div>
-                </div>
-              ) : null}
 
-              <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-                <input
-                  value={hostQuery}
-                  onChange={(e) => setHostQuery(e.target.value)}
-                  placeholder="Rechercher un streamer live…"
-                  style={{
-                    flex: 1,
-                    padding: "12px 12px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(0,0,0,0.25)",
-                    color: "white",
-                    fontWeight: 800,
-                  }}
-                />
-                <button
-                  type="button"
-                  className="btnGhostSmall"
-                  disabled={hostBusy}
-                  onClick={async () => {
-                    setHostBusy(true);
-                    setHostError(null);
-                    try {
-                      const lives = await getLives();
-                      const arr = (lives as any[]).filter((x) => String(x.slug || "").toLowerCase() !== String(slug || "").toLowerCase());
-                      setHostLives(arr);
-                    } catch (e: any) {
-                      setHostError(String(e?.message || "Erreur"));
-                    } finally {
-                      setHostBusy(false);
-                    }
-                  }}
-                >
-                  {hostBusy ? "…" : "Refresh"}
-                </button>
+                  <div className="chatSheetBody">
+                    <ChatPanel
+                      slug={String(slug || "")}
+                      onRequireLogin={() => setLoginOpen(true)}
+                      compact
+                      autoFocus={false}
+                      onFollowsCount={handleFollowsCount}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+        </>
+      );
+    } else {
+      // NORMAL view
+      content = (
+        <div
+          className="streamPage streamPageMobile"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            paddingBottom: "calc(88px + env(safe-area-inset-bottom))",
+          }}
+        >
+          <ChestToast
+            toast={chest.toast}
+            isOwner={isOwner}
+            canJoinNow={chest.canJoinNow}
+            alreadyJoined={chest.alreadyJoined}
+            joinLoading={chest.joinLoading}
+            onJoin={chest.join}
+            onView={() => chest.setChestModalOpen(true)}
+            error={chest.chestError}
+            onClose={() => chest.setToast(null)}
+          />
+
+          {hostedBy ? (
+            <div className="panel" style={{ marginTop: 0, padding: 10 }}>
+              <div className="mutedSmall">
+                📺 Hosté par <strong style={{ color: "rgba(255,255,255,0.92)" }}>{hostedBy}</strong>
+              </div>
+            </div>
+          ) : null}
+
+          {!isOwner && hostTargetSlug && hostTargetIsLive ? (
+            <div className="panel" style={{ marginTop: 0, padding: 10 }}>
+              <div className="mutedSmall">
+                📺 Chaîne hostée → redirection vers{" "}
+                <strong style={{ color: "rgba(255,255,255,0.92)" }}>
+                  {hostTargetDisplayName ? hostTargetDisplayName : hostTargetSlug}
+                </strong>
+                …
+              </div>
+            </div>
+          ) : null}
+
+          {/* PLAYER */}
+          <div className="panel" style={{ padding: 0, borderRadius: 18, overflow: "hidden" }}>
+            {PlayerBlock}
+          </div>
+
+          {/* PROFILE ROW */}
+          <div
+            className="panel"
+            style={{
+              marginTop: 0,
+              padding: 12,
+              borderRadius: 18,
+              background: "linear-gradient(135deg, rgba(126,76,179,0.16), rgba(63,86,203,0.10))",
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 999,
+                  overflow: "hidden",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(0,0,0,0.22)",
+                  display: "grid",
+                  placeItems: "center",
+                  flex: "0 0 auto",
+                }}
+              >
+                {avatarUrl ? (
+                  <img src={String(avatarUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  <span style={{ fontWeight: 1000, opacity: 0.92 }}>{initials}</span>
+                )}
               </div>
 
-              {hostError ? (
-                <div className="mutedSmall" style={{ marginBottom: 10, color: "rgba(255,90,90,0.95)" }}>
-                  {hostError}
-                </div>
-              ) : null}
+              <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    minWidth: 0,
+                    maxWidth: "100%",
+                  }}
+                >
+                  {showStar ? (
+                    <span style={{ ...badgeStyle, padding: "4px 7px", fontSize: 12, fontWeight: 950, lineHeight: 1 }}>
+                      ★
+                    </span>
+                  ) : null}
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {(hostLives || [])
-                  .filter((x) => {
-                    const q = hostQuery.trim().toLowerCase();
-                    if (!q) return true;
-                    return String(x.displayName || x.slug || "").toLowerCase().includes(q) || String(x.slug || "").toLowerCase().includes(q);
-                  })
-                  .slice(0, 30)
-                  .map((x) => (
+                  <div
+                    style={{
+                      fontWeight: 1000,
+                      fontSize: 15,
+                      lineHeight: 1.05,
+                      minWidth: 0,
+                      flex: "1 1 auto",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      maxWidth: "100%",
+                    }}
+                    title={displayName}
+                  >
+                    {displayName}
+                  </div>
+                </div>
+
+                {typeof followsCount === "number" ? (
+                  <div className="mutedSmall" style={{ opacity: 0.9, fontWeight: 850, lineHeight: 1.1 }}>
+                    {fmt(followsCount)} abonnés
+                  </div>
+                ) : null}
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
+                <button
+                  type="button"
+                  className={isFollowing ? "btnGhostSmall" : "btnPrimarySmall"}
+                  disabled={followLoading}
+                  onClick={() => toggleFollow()}
+                  title={isFollowing ? "Suivi" : "Suivre"}
+                  style={{ ...iconBtn(), padding: "9px 11px" }}
+                >
+                  {followLoading ? "…" : isFollowing ? "✓" : "+"}
+                </button>
+
+                <button type="button" className="btnPrimarySmall" onClick={openSub} style={iconBtn()} title="Sub">
+                  💎
+                </button>
+
+                <button type="button" className="btnGhostSmall" onClick={() => setActionsOpen(true)} style={iconBtn()} title="Plus">
+                  ⋯
+                </button>
+              </div>
+            </div>
+
+            <div
+              className="mutedSmall"
+              style={{
+                marginTop: 10,
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              <span style={{ ...smallBadge(), padding: "6px 10px", fontSize: 12, fontWeight: 900 }}>👁️ {fmt(viewers)}</span>
+              <span style={{ ...smallBadge(), padding: "6px 10px", fontSize: 12, fontWeight: 900 }}>
+                ⏱️ <LiveDurationText isLive={streamer.isLive} startedAtMs={streamer.liveStartedAtMs} />
+              </span>
+
+              {giftStatus?.myClaimed ? (
+                <span
+                  style={{
+                    ...smallBadge(),
+                    padding: "6px 10px",
+                    fontSize: 12,
+                    fontWeight: 900,
+                    background: "rgba(20,255,170,0.07)",
+                    borderColor: "rgba(20,255,170,0.20)",
+                  }}
+                >
+                  ✅ Sub offert
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          {/* TABS ROW */}
+          <div
+            className="panel"
+            style={{
+              marginTop: 0,
+              padding: 10,
+              borderRadius: 18,
+              overflowX: "auto",
+              WebkitOverflowScrolling: "touch",
+            }}
+          >
+            <div ref={tabRowRef} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <button
+                ref={(el) => {
+                  tabBtnRefs.current.chat = el;
+                }}
+                type="button"
+                style={pillBase(tab === "chat")}
+                onClick={() => goTab("chat")}
+              >
+                Chat
+              </button>
+
+              <button
+                ref={(el) => {
+                  tabBtnRefs.current.about = el;
+                }}
+                type="button"
+                style={pillBase(tab === "about")}
+                onClick={() => goTab("about")}
+              >
+                À propos
+              </button>
+
+              <button
+                ref={(el) => {
+                  tabBtnRefs.current.vod = el;
+                }}
+                type="button"
+                style={pillBase(tab === "vod")}
+                onClick={() => goTab("vod")}
+              >
+                Rediffusions
+              </button>
+
+              <button
+                ref={(el) => {
+                  tabBtnRefs.current.clips = el;
+                }}
+                type="button"
+                style={pillBase(tab === "clips")}
+                onClick={() => goTab("clips")}
+              >
+                Clips
+              </button>
+
+              <button
+                ref={(el) => {
+                  tabBtnRefs.current.agenda = el;
+                }}
+                type="button"
+                style={pillBase(tab === "agenda")}
+                onClick={() => goTab("agenda")}
+              >
+                Agenda
+              </button>
+            </div>
+          </div>
+
+          {/* CONTENT (swipe + anim) */}
+          <div
+            onTouchStart={onSwipeStart}
+            onTouchMove={onSwipeMove}
+            onTouchEnd={onSwipeEnd}
+            style={{
+              touchAction: "pan-y",
+            }}
+          >
+            <div style={contentAnimStyle}>
+              {tabView === "chat" ? (
+                <div
+                  className="panel"
+                  style={{
+                    padding: 0,
+                    borderRadius: 18,
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
+                    ...chatHeightStyle,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "10px 12px",
+                      borderBottom: "1px solid rgba(255,255,255,0.08)",
+                      background: "rgba(0,0,0,0.16)",
+                    }}
+                  >
+                    <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>Chat</div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {giftStatus?.myClaimed ? <span style={smallBadge()}>✅ Sub offert</span> : null}
+                      <button
+                        type="button"
+                        className="btnGhostSmall"
+                        onClick={enterCinema}
+                        style={{ borderRadius: 12, padding: "8px 10px", fontWeight: 950 }}
+                        title="Plein écran"
+                      >
+                        ⛶
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, minHeight: 0 }}>
+                    <ChatPanel
+                      slug={String(slug || "")}
+                      onRequireLogin={() => setLoginOpen(true)}
+                      compact
+                      autoFocus={false}
+                      onFollowsCount={handleFollowsCount}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="panel" style={{ padding: 12, borderRadius: 18 }}>
+                  {tabView === "about" && slug ? <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
+                  {tabView === "clips" && slug ? (
+                    <ClipsTab slug={String(slug)} token={token} isOwner={isOwner} onRequireLogin={() => setLoginOpen(true)} />
+                  ) : null}
+                  {tabView === "vod" && slug ? <VodTab slug={String(slug)} /> : null}
+                  {tabView === "agenda" && slug ? <AgendaTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {ActionsSheet}
+
+          <ChestModal
+            open={chest.chestModalOpen}
+            onClose={() => chest.setChestModalOpen(false)}
+            chestLoading={chest.chestLoading}
+            chestBalance={chest.chestBalance}
+            chest={chest.chest}
+            opening={chest.opening}
+            remainingSec={chest.remainingSec}
+            progress={chest.progress}
+            error={chest.chestError}
+            onRefresh={chest.refreshChest}
+            isOwner={isOwner}
+            openingId={chest.openingId}
+            alreadyJoined={chest.alreadyJoined}
+            joinLoading={chest.joinLoading}
+            onJoin={chest.join}
+            isLive={streamer.isLive}
+            chestHasOpen={chest.chestHasOpen}
+            ownerLoading={chest.ownerLoading}
+            onOpen={chest.open}
+            depositAmount={chest.depositAmount}
+            setDepositAmount={chest.setDepositAmount}
+            depositNote={chest.depositNote}
+            setDepositNote={chest.setDepositNote}
+            depositLoading={chest.depositLoading}
+            onDeposit={chest.deposit}
+          />
+
+          <SubModal
+            open={subOpen}
+            onClose={() => setSubOpen(false)}
+            streamerName={streamer.displayName ? streamer.displayName : `@${String(slug || "")}`}
+            priceRubis={SUB_PRICE_RUBIS}
+            myRubis={myRubis}
+            mySubTickets={mySubTickets}
+            disableSelfTicket={isOwner}
+            loading={subLoading}
+            error={subError}
+            onGoShop={() => {
+              setSubOpen(false);
+              window.location.href = "/shop";
+            }}
+            onPaySelf={async (mode) => {
+              if (!token || !slug) return;
+              setSubLoading(true);
+              setSubError(null);
+              try {
+                const useTicket = mode === "ticket";
+                const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/subscribe`, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    ...(useTicket ? { "Content-Type": "application/json" } : {}),
+                  },
+                  body: useTicket ? JSON.stringify({ useTicket: true }) : undefined,
+                }).then((x) => x.json());
+                if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+                await refreshMeIfPossible();
+                await fetchGiftStatus();
+                setSubOpen(false);
+              } catch (e: any) {
+                setSubError(String(e?.message || "Erreur"));
+              } finally {
+                setSubLoading(false);
+              }
+            }}
+            onPayRubis={async () => {
+              if (!token || !slug) return;
+              setSubLoading(true);
+              setSubError(null);
+              try {
+                const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/subscribe`, {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${token}` },
+                }).then((x) => x.json());
+                if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+                await refreshMeIfPossible();
+                await fetchGiftStatus();
+                setSubOpen(false);
+              } catch (e: any) {
+                setSubError(String(e?.message || "Erreur"));
+              } finally {
+                setSubLoading(false);
+              }
+            }}
+            onPayGiftSubs={async (count, useTicketsMaybe) => {
+              if (!token || !slug) return;
+              setGiftLoading(true);
+              setGiftError(null);
+
+              const useTickets = Math.max(0, Math.floor(Number(useTicketsMaybe || 0)));
+              try {
+                const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                  },
+                  body: JSON.stringify({ count, useTickets }),
+                }).then((x) => x.json());
+                if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+                await refreshMeIfPossible();
+                await fetchGiftStatus();
+                setSubOpen(false);
+              } catch (e: any) {
+                setGiftError(String(e?.message || "Erreur"));
+              } finally {
+                setGiftLoading(false);
+              }
+            }}
+            giftLoading={giftLoading}
+            giftError={giftError}
+          />
+
+          {/* Host modal (inchangé) */}
+          {hostOpen ? (
+            <div className="chatSheetBackdrop" onClick={() => setHostOpen(false)} role="presentation" style={{ zIndex: 80 }}>
+              <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 560 }}>
+                <div className="chatSheetTop">
+                  <div style={{ fontWeight: 950 }}>Host</div>
+                  <button className="iconBtn" onClick={() => setHostOpen(false)} type="button" aria-label="Fermer">
+                    ✕
+                  </button>
+                </div>
+
+                <div className="chatSheetBody" style={{ padding: 16 }}>
+                  {hostTargetSlug ? (
+                    <div className="panel" style={{ marginBottom: 12 }}>
+                      <div className="mutedSmall">Host actuel</div>
+                      <div style={{ fontWeight: 950, marginTop: 4 }}>
+                        {hostTargetDisplayName ? hostTargetDisplayName : `@${hostTargetSlug}`}
+                      </div>
+
+                      <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                        <button
+                          type="button"
+                          className="btnPrimarySmall"
+                          disabled={hostBusy}
+                          onClick={async () => {
+                            if (!token || !slug) return;
+                            setHostBusy(true);
+                            setHostError(null);
+                            try {
+                              const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/host`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ targetSlug: null }),
+                              }).then((x) => x.json());
+                              if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+                              setHostOverride({ slug: null, displayName: null });
+                            } catch (e: any) {
+                              setHostError(String(e?.message || "Erreur"));
+                            } finally {
+                              setHostBusy(false);
+                            }
+                          }}
+                        >
+                          {hostBusy ? "…" : "Stop host"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                    <input
+                      value={hostQuery}
+                      onChange={(e) => setHostQuery(e.target.value)}
+                      placeholder="Rechercher un streamer live…"
+                      style={{
+                        flex: 1,
+                        padding: "12px 12px",
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: "rgba(0,0,0,0.25)",
+                        color: "white",
+                        fontWeight: 800,
+                      }}
+                    />
                     <button
-                      key={String(x.id || x.slug)}
                       type="button"
                       className="btnGhostSmall"
                       disabled={hostBusy}
                       onClick={async () => {
-                        if (!token || !slug) return;
-                        const target = String(x.slug || "").trim();
-                        if (!target) return;
-
                         setHostBusy(true);
                         setHostError(null);
                         try {
-                          const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/host`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                            body: JSON.stringify({ targetSlug: target }),
-                          }).then((xx) => xx.json());
-
-                          if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
-                          setHostOverride({ slug: r.hostTargetSlug, displayName: r.hostTargetDisplayName });
-                          setHostOpen(false);
+                          const lives = await getLives();
+                          const arr = (lives as any[]).filter(
+                            (x) => String(x.slug || "").toLowerCase() !== String(slug || "").toLowerCase()
+                          );
+                          setHostLives(arr);
                         } catch (e: any) {
                           setHostError(String(e?.message || "Erreur"));
                         } finally {
                           setHostBusy(false);
                         }
                       }}
-                      style={{ justifyContent: "space-between", display: "flex" }}
                     >
-                      <span style={{ fontWeight: 950 }}>{x.displayName || `@${x.slug}`}</span>
-                      <span className="mutedSmall" style={{ opacity: 0.85 }}>
-                        {Number(x.viewers || 0)} viewers
-                      </span>
+                      {hostBusy ? "…" : "Refresh"}
                     </button>
-                  ))}
-              </div>
+                  </div>
 
-              {!hostLives?.length ? (
-                <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.8 }}>
-                  Clique “Refresh” pour charger la liste des lives.
+                  {hostError ? (
+                    <div className="mutedSmall" style={{ marginBottom: 10, color: "rgba(255,90,90,0.95)" }}>
+                      {hostError}
+                    </div>
+                  ) : null}
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {(hostLives || [])
+                      .filter((x) => {
+                        const q = hostQuery.trim().toLowerCase();
+                        if (!q) return true;
+                        return (
+                          String(x.displayName || x.slug || "").toLowerCase().includes(q) ||
+                          String(x.slug || "").toLowerCase().includes(q)
+                        );
+                      })
+                      .slice(0, 30)
+                      .map((x) => (
+                        <button
+                          key={String(x.id || x.slug)}
+                          type="button"
+                          className="btnGhostSmall"
+                          disabled={hostBusy}
+                          onClick={async () => {
+                            if (!token || !slug) return;
+                            const target = String(x.slug || "").trim();
+                            if (!target) return;
+
+                            setHostBusy(true);
+                            setHostError(null);
+                            try {
+                              const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/host`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ targetSlug: target }),
+                              }).then((xx) => xx.json());
+
+                              if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+                              setHostOverride({ slug: r.hostTargetSlug, displayName: r.hostTargetDisplayName });
+                              setHostOpen(false);
+                            } catch (e: any) {
+                              setHostError(String(e?.message || "Erreur"));
+                            } finally {
+                              setHostBusy(false);
+                            }
+                          }}
+                          style={{ justifyContent: "space-between", display: "flex" }}
+                        >
+                          <span style={{ fontWeight: 950 }}>{x.displayName || `@${x.slug}`}</span>
+                          <span className="mutedSmall" style={{ opacity: 0.85 }}>
+                            {Number(x.viewers || 0)} viewers
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+
+                  {!hostLives?.length ? (
+                    <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.8 }}>
+                      Clique “Refresh” pour charger la liste des lives.
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
+              </div>
             </div>
-          </div>
-        </div>
-      ) : null}
+          ) : null}
 
-      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
-    </div>
-  );
+          <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+        </div>
+      );
+    }
+  }
+
+  // wrapper unique (hooks OK)
+  return <>{content}</>;
 }
