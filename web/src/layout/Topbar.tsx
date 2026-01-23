@@ -444,8 +444,7 @@ export function Topbar({
             <div className="llBrandMark" aria-hidden />
             <div className="llBrandText">
               <b>LunaLive</b>
-              <span>live • casinos • communauté</span>
-            </div>
+              </div>
           </Link>
         </div>
 

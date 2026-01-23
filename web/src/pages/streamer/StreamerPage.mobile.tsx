@@ -1,4 +1,4 @@
-// web/src/pages/streamer/StreamerPage.tsx
+// web/src/pages/streamer/StreamerPage.mobile.tsx
 import * as React from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -9,7 +9,7 @@ import { LoginModal } from "../../components/LoginModal";
 import { SubModal } from "../../components/SubModal";
 import { useAuth } from "../../auth/AuthProvider";
 
-import { EyeIcon, ChatIcon, BellIcon } from "./components/icons";
+import { ChatIcon, BellIcon } from "./components/icons";
 import { LiveDurationText, getAnonId } from "./utils";
 import { useResponsive } from "./hooks/useResponsive";
 import { useCinema } from "./hooks/useCinema";
@@ -18,18 +18,16 @@ import { useChest } from "./hooks/useChest";
 import { ChestToast } from "./components/ChestToast";
 import { ChestModal } from "./components/ChestModal";
 
-// ✅ NEW tabs
 import { AboutTab } from "./tabs/AboutTab";
 import { VodTab } from "./tabs/VodTab";
 import { AgendaTab } from "./tabs/AgendaTab";
 import { ClipsTab } from "./tabs/ClipsTab";
-import StreamerPageMobile from "./StreamerPage.mobile";
 
 function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
 }
 
-type TabKey = "about" | "clips" | "vod" | "agenda";
+type MobileTabKey = "chat" | "about" | "vod" | "clips" | "agenda";
 
 type GiftStatus = {
   remaining: number;
@@ -42,7 +40,111 @@ function fmt(n: any) {
   return Number.isFinite(x) ? x.toLocaleString() : "0";
 }
 
-export default function StreamerPage() {
+type ActivePlans = { viewer: boolean; streamer: boolean };
+
+function isActiveSubEntry(s: any): boolean {
+  const now = Date.now();
+  if (!s) return false;
+
+  const status = String(s.status || s.state || "").toLowerCase();
+  const endRaw = s.current_period_end ?? s.currentPeriodEnd ?? s.end ?? null;
+
+  if (!endRaw) return status === "active" || status === "trialing";
+
+  const endMs =
+    typeof endRaw === "number"
+      ? endRaw * (endRaw > 1e12 ? 1 : 1000)
+      : new Date(String(endRaw)).getTime();
+
+  return (status === "active" || status === "trialing") && Number.isFinite(endMs) && endMs > now;
+}
+
+function addPlan(out: ActivePlans, planCode: string | null | undefined, active: boolean) {
+  if (!active) return;
+  const p = String(planCode || "").toLowerCase();
+  if (p === "viewer") out.viewer = true;
+  if (p === "streamer") out.streamer = true;
+}
+
+function getActivePlansFrom(x: any): ActivePlans {
+  const out: ActivePlans = { viewer: false, streamer: false };
+  if (!x) return out;
+
+  // array: [{plan_code,status,...}, ...]
+  if (Array.isArray(x)) {
+    for (const s of x) addPlan(out, s?.plan_code ?? s?.planCode, isActiveSubEntry(s));
+    return out;
+  }
+
+  // object map: { viewer: {...}, streamer: {...} }
+  if (typeof x === "object") {
+    if (x.viewer || x.streamer) {
+      addPlan(out, "viewer", isActiveSubEntry(x.viewer));
+      addPlan(out, "streamer", isActiveSubEntry(x.streamer));
+      return out;
+    }
+
+    // shape: { plans: {...} } ou { subscriptions: {...} }
+    if (x.plans) return getActivePlansFrom(x.plans);
+    if (x.subscriptions) return getActivePlansFrom(x.subscriptions);
+
+    // single entry: { plan_code:'viewer', status:'active', ... }
+    if (x.plan_code || x.planCode) {
+      addPlan(out, x.plan_code ?? x.planCode, isActiveSubEntry(x));
+      return out;
+    }
+  }
+
+  return out;
+}
+
+function mergePlans(a: ActivePlans, b: ActivePlans): ActivePlans {
+  return { viewer: a.viewer || b.viewer, streamer: a.streamer || b.streamer };
+}
+
+function pillBase(active: boolean): React.CSSProperties {
+  return {
+    padding: "10px 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)",
+    color: active ? "rgba(255,255,255,0.94)" : "rgba(255,255,255,0.78)",
+    fontWeight: 950,
+    whiteSpace: "nowrap",
+  };
+}
+
+function iconBtn(): React.CSSProperties {
+  return {
+    borderRadius: 14,
+    padding: "9px 10px",
+    minHeight: 38,
+    minWidth: 38,
+    fontWeight: 950,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  };
+}
+
+function smallBadge(): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 10px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.06)",
+    fontWeight: 950,
+    color: "rgba(255,255,255,0.86)",
+    lineHeight: 1,
+    whiteSpace: "nowrap",
+  };
+}
+
+export default function StreamerPageMobile() {
   const { slug } = useParams();
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
@@ -54,22 +156,26 @@ export default function StreamerPage() {
   const hostedBy = React.useMemo(() => new URLSearchParams(location.search).get("hostedBy"), [location.search]);
 
   const [loginOpen, setLoginOpen] = React.useState(false);
-  const [tab, setTab] = React.useState<TabKey>("about");
+
+  // Onglet principal façon Dlive
+  const [tab, setTab] = React.useState<MobileTabKey>("chat");
+
+  // viewers heartbeat
   const [liveViewersNow, setLiveViewersNow] = React.useState<number | null>(null);
 
-  // ✅ Sub modal state
+  // sub modal
   const [subOpen, setSubOpen] = React.useState(false);
   const [subLoading, setSubLoading] = React.useState(false);
   const [subError, setSubError] = React.useState<string | null>(null);
 
-  // ✅ Gift subs state
+  // gift subs
   const [giftLoading, setGiftLoading] = React.useState(false);
   const [giftError, setGiftError] = React.useState<string | null>(null);
   const [giftStatus, setGiftStatus] = React.useState<GiftStatus | null>(null);
   const [claimLoading, setClaimLoading] = React.useState(false);
   const [claimError, setClaimError] = React.useState<string | null>(null);
 
-  // ✅ HOST state (owner only)
+  // owner host
   const [hostOpen, setHostOpen] = React.useState(false);
   const [hostBusy, setHostBusy] = React.useState(false);
   const [hostError, setHostError] = React.useState<string | null>(null);
@@ -77,11 +183,10 @@ export default function StreamerPage() {
   const [hostLives, setHostLives] = React.useState<any[]>([]);
   const [hostOverride, setHostOverride] = React.useState<{ slug: string | null; displayName: string | null } | null>(null);
 
-  const { isMobile, isPortrait } = useResponsive();
-    if (isMobile) {
-    return <StreamerPageMobile />;
-  }
+  // actions sheet
+  const [actionsOpen, setActionsOpen] = React.useState(false);
 
+  const { isMobile } = useResponsive();
   const { cinema, chatOpen, enterCinema, leaveCinema, openCinemaChat, closeCinemaChat } = useCinema(isMobile);
 
   const {
@@ -96,15 +201,9 @@ export default function StreamerPage() {
     toggleNotify,
   } = useStreamerData(slug ?? null, token, () => setLoginOpen(true));
 
-  const handleFollowsCount = React.useCallback(
-    (n: number) => {
-      setFollowsCount(n);
-    },
-    [setFollowsCount]
-  );
+  const handleFollowsCount = React.useCallback((n: number) => setFollowsCount(n), [setFollowsCount]);
 
   const isOwner = !!(myUserId != null && streamer?.ownerUserId != null && Number(streamer.ownerUserId) === Number(myUserId));
-
   const isAdmin = String(myRole) === "admin";
   const canEditTabs = isOwner || isAdmin;
 
@@ -117,7 +216,7 @@ export default function StreamerPage() {
     setHostOverride(null);
   }, [slug]);
 
-  // ✅ viewer redirect if host active
+  // viewer redirect if host active
   React.useEffect(() => {
     if (!slug) return;
     if (!streamer) return;
@@ -128,9 +227,7 @@ export default function StreamerPage() {
     if (String(hostTargetSlug).toLowerCase() === String(slug).toLowerCase()) return;
 
     const t = window.setTimeout(() => {
-      navigate(`/s/${encodeURIComponent(String(hostTargetSlug))}?hostedBy=${encodeURIComponent(String(slug))}`, {
-        replace: true,
-      });
+      navigate(`/s/${encodeURIComponent(String(hostTargetSlug))}?hostedBy=${encodeURIComponent(String(slug))}`, { replace: true });
     }, 900);
 
     return () => window.clearTimeout(t);
@@ -184,7 +281,7 @@ export default function StreamerPage() {
     },
   });
 
-  // ✅ Bridge: actions du toast "coffre" (ui:toast -> handlers)
+  // toast bridge
   React.useEffect(() => {
     const onJoin = () => chest.join();
     const onView = () => chest.setChestModalOpen(true);
@@ -239,51 +336,8 @@ export default function StreamerPage() {
     if (!streamer?.isLive) setLiveViewersNow(null);
   }, [streamer?.isLive]);
 
-  // ✅ PC sizing: chat = player + metaBar
-  const playerWrapRef = React.useRef<HTMLDivElement | null>(null);
-  const metaWrapRef = React.useRef<HTMLDivElement | null>(null);
-  const [leftStackH, setLeftStackH] = React.useState<number>(0);
-
-  const measureLeftStack = React.useCallback(() => {
-    const a = playerWrapRef.current?.getBoundingClientRect?.().height ?? 0;
-    const b = metaWrapRef.current?.getBoundingClientRect?.().height ?? 0;
-    const total = Math.max(0, Math.round(a + b));
-    if (total && Math.abs(total - leftStackH) > 2) setLeftStackH(total);
-    if (!total && leftStackH !== 0) setLeftStackH(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leftStackH]);
-
-  React.useLayoutEffect(() => {
-    // on mount + after streamer changes
-    measureLeftStack();
-  }, [measureLeftStack, streamer?.isLive, streamer?.title, streamer?.displayName]);
-
-  React.useEffect(() => {
-    let ro: ResizeObserver | null = null;
-
-    const RO = (window as any).ResizeObserver as (new (cb: () => void) => ResizeObserver) | undefined;
-
-    if (RO) {
-      ro = new RO(() => measureLeftStack());
-      if (playerWrapRef.current) ro.observe(playerWrapRef.current);
-      if (metaWrapRef.current) ro.observe(metaWrapRef.current);
-    }
-
-    const onResize = () => measureLeftStack();
-    window.addEventListener("resize", onResize);
-
-    return () => {
-      window.removeEventListener("resize", onResize);
-      try {
-        ro?.disconnect();
-      } catch {}
-    };
-  }, [measureLeftStack]);
-
   if (loading) return <div className="panel">Chargement…</div>;
   if (!streamer) return <div className="panel">Streamer introuvable</div>;
-
-  const showMiniChat = isMobile && isPortrait && !cinema;
 
   const viewersFromApi = streamer.viewers;
   const viewers = streamer.isLive ? (liveViewersNow ?? viewersFromApi) : 0;
@@ -291,19 +345,7 @@ export default function StreamerPage() {
   const myRubis = Number(auth?.user?.rubis ?? 0);
   const SUB_PRICE_RUBIS = 500;
 
-  // ✅ NEW: tickets sub (via /me -> coupons.sub_ticket)
-  const mySubTickets = Math.max(
-    0,
-    Math.floor(
-      Number(
-        auth?.user?.coupons?.sub_ticket ??
-          auth?.user?.tokens?.sub_ticket ?? // fallback si jamais
-          0
-      )
-    )
-  );
-
-  const followersInline = followsCount == null ? "" : ` (${fmt(followsCount)} followers)`;
+  const mySubTickets = Math.max(0, Math.floor(Number(auth?.user?.coupons?.sub_ticket ?? auth?.user?.tokens?.sub_ticket ?? 0)));
 
   const PlayerBlock = (
     <>
@@ -324,7 +366,6 @@ export default function StreamerPage() {
             alignItems: "stretch",
           }}
         >
-          {/* overlay full-size */}
           <div
             style={{
               width: "100%",
@@ -345,6 +386,7 @@ export default function StreamerPage() {
     </>
   );
 
+  // Cinema mode (plein écran)
   if (cinema) {
     return (
       <>
@@ -380,7 +422,7 @@ export default function StreamerPage() {
                     slug={String(slug || "")}
                     onRequireLogin={() => setLoginOpen(true)}
                     compact
-                    autoFocus={!isMobile}
+                    autoFocus={false}
                     onFollowsCount={handleFollowsCount}
                   />
                 </div>
@@ -394,8 +436,258 @@ export default function StreamerPage() {
     );
   }
 
+  const openSub = () => {
+    if (!token) return setLoginOpen(true);
+    setSubError(null);
+    setGiftError(null);
+    setSubOpen(true);
+  };
+
+  const openChest = () => {
+    chest.setChestError(null);
+    chest.setChestModalOpen(true);
+  };
+
+    // ✅ Avatar (fallback safe + support plein de shapes)
+    const rawAvatar =
+    (streamer as any)?.avatarUrl ??
+    (streamer as any)?.avatar_url ??
+    (streamer as any)?.avatar ??
+    (streamer as any)?.profilePicUrl ??
+    (streamer as any)?.profile_pic_url ??
+    (streamer as any)?.profile?.avatarUrl ??
+    (streamer as any)?.user?.avatarUrl ??
+    null;
+
+    const avatarUrl = (() => {
+    const s = String(rawAvatar || "").trim();
+    if (!s) return null;
+    if (/^https?:\/\//i.test(s)) return s;
+    // si jamais ton API renvoie un chemin relatif
+    if (s.startsWith("/")) return `${apiBase()}${s}`;
+    return s;
+    })();
+
+    const displayName = streamer.displayName ? String(streamer.displayName) : `@${String(slug || "")}`;
+    const initials = String(displayName || "S").replace(/^@/, "").trim().slice(0, 1).toUpperCase();
+
+// ✅ Star logic (user-centric, SANS hook)
+// Règles demandées:
+// - bleu si abo streamer
+// - violet si viewer + streamer
+// - sinon pas d’étoile
+
+// Le "compte streamer" est un user -> on essaye les clés les plus probables
+const streamerUser =
+  (streamer as any)?.user ??
+  (streamer as any)?.owner ??
+  (streamer as any)?.ownerUser ??
+  (streamer as any)?.account ??
+  null;
+
+// On lit en priorité `user_subscriptions` (comme /me)
+let ownerPlans: ActivePlans = { viewer: false, streamer: false };
+ownerPlans = mergePlans(ownerPlans, getActivePlansFrom(streamerUser?.user_subscriptions));
+ownerPlans = mergePlans(ownerPlans, getActivePlansFrom(streamerUser?.userSubscriptions));
+
+// Fallbacks au cas où ton API renvoie encore autre chose
+ownerPlans = mergePlans(ownerPlans, getActivePlansFrom((streamer as any)?.user_subscriptions));
+ownerPlans = mergePlans(ownerPlans, getActivePlansFrom((streamer as any)?.ownerSubscriptions));
+ownerPlans = mergePlans(ownerPlans, getActivePlansFrom((streamer as any)?.owner_subscriptions));
+
+type StarKind = "none" | "streamer" | "both";
+const starKind: StarKind =
+  ownerPlans.viewer && ownerPlans.streamer ? "both" : ownerPlans.streamer ? "streamer" : "none";
+
+const showStar = starKind !== "none";
+
+const badgeStyle: React.CSSProperties =
+  starKind === "streamer"
+    ? { ...smallBadge(), borderColor: "rgba(110,185,255,0.70)", background: "rgba(90,170,255,0.18)" } // bleu
+    : { ...smallBadge(), borderColor: "rgba(180,120,255,0.75)", background: "rgba(170,110,255,0.18)" }; // violet
+
+  // Hauteur chat: fixe + scroll interne (objectif ~8 messages visibles)
+  const chatHeightStyle: React.CSSProperties = {
+    height: "min(52vh, 520px)",
+    minHeight: 330,
+  };
+
+  const ActionsSheet = actionsOpen ? (
+    <div className="chatSheetBackdrop" onClick={() => setActionsOpen(false)} role="presentation" style={{ zIndex: 70 }}>
+      <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 560 }}>
+        <div className="chatSheetTop">
+          <div style={{ fontWeight: 950 }}>Actions</div>
+          <button className="iconBtn" onClick={() => setActionsOpen(false)} type="button" aria-label="Fermer">
+            ✕
+          </button>
+        </div>
+
+        <div className="chatSheetBody" style={{ padding: 14 }}>
+          {claimError ? (
+            <div className="mutedSmall" style={{ marginBottom: 10, color: "rgba(255,90,90,0.95)" }}>
+              {claimError}
+            </div>
+          ) : null}
+
+          <div className="panel" style={{ marginBottom: 12 }}>
+            <div className="mutedSmall">Ton solde</div>
+            <div style={{ marginTop: 6, fontWeight: 950, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <span style={smallBadge()}>💎 {fmt(myRubis)} rubis</span>
+              <span style={smallBadge()}>🎟️ {fmt(mySubTickets)} ticket</span>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <button
+              type="button"
+              className={isFollowing ? "btnGhostSmall" : "btnPrimarySmall"}
+              disabled={followLoading}
+              onClick={async () => {
+                await toggleFollow();
+              }}
+              style={{ justifyContent: "space-between", display: "flex" }}
+            >
+              <span style={{ fontWeight: 950 }}>{followLoading ? "…" : isFollowing ? "✅ Suivi" : "➕ Suivre"}</span>
+              <span className="mutedSmall">{isFollowing ? "Actif" : "Inactif"}</span>
+            </button>
+
+            {isFollowing ? (
+              <button
+                type="button"
+                className="btnGhostSmall"
+                disabled={followLoading}
+                onClick={toggleNotify}
+                style={{ justifyContent: "space-between", display: "flex" }}
+                title="Notifications"
+              >
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 950 }}>
+                  <BellIcon on={notifyEnabled} /> Notifications
+                </span>
+                <span className="mutedSmall">{notifyEnabled ? "On" : "Off"}</span>
+              </button>
+            ) : null}
+
+            <button type="button" className="btnPrimarySmall" onClick={openSub} style={{ justifyContent: "space-between", display: "flex" }}>
+              <span style={{ fontWeight: 950 }}>💎 Sub</span>
+              <span className="mutedSmall">{SUB_PRICE_RUBIS} rubis</span>
+            </button>
+
+            {giftStatus?.remaining ? (
+              token && giftStatus.canClaim ? (
+                <button
+                  type="button"
+                  className="btnPrimarySmall"
+                  disabled={claimLoading}
+                  onClick={async () => {
+                    if (!token || !slug) return;
+                    setClaimLoading(true);
+                    setClaimError(null);
+                    try {
+                      const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/claim`, {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${token}` },
+                      }).then((x) => x.json());
+                      if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+                      await refreshMeIfPossible();
+                      await fetchGiftStatus();
+                    } catch (e: any) {
+                      setClaimError(String(e?.message || "Erreur"));
+                    } finally {
+                      setClaimLoading(false);
+                    }
+                  }}
+                  style={{ justifyContent: "space-between", display: "flex" }}
+                >
+                  <span style={{ fontWeight: 950 }}>{claimLoading ? "…" : `🎁 Claim`}</span>
+                  <span className="mutedSmall">{fmt(giftStatus.remaining)}</span>
+                </button>
+              ) : (
+                <button type="button" className="btnGhostSmall" onClick={openSub} style={{ justifyContent: "space-between", display: "flex" }}>
+                  <span style={{ fontWeight: 950 }}>🎁 Subs offerts</span>
+                  <span className="mutedSmall">{fmt(giftStatus.remaining)}</span>
+                </button>
+              )
+            ) : null}
+
+            <button type="button" className="btnGhostSmall" onClick={openChest} style={{ justifyContent: "space-between", display: "flex" }}>
+              <span style={{ fontWeight: 950 }}>
+                🎁 Coffre{chest.chestLoading ? "…" : chest.chestBalance > 0 ? ` (${chest.chestBalance})` : ""}
+              </span>
+              <span className="mutedSmall">Ouvrir</span>
+            </button>
+
+            {isOwner && !chest.chestHasOpen ? (
+              <button
+                type="button"
+                className="btnPrimarySmall"
+                disabled={chest.ownerLoading || !streamer.isLive}
+                onClick={chest.open}
+                style={{ justifyContent: "space-between", display: "flex" }}
+                title={!streamer.isLive ? "Stream offline" : "Ouvre 2 minutes (fermeture auto)"}
+              >
+                <span style={{ fontWeight: 950 }}>{chest.ownerLoading ? "…" : "Ouvrir coffre"}</span>
+                <span className="mutedSmall">{streamer.isLive ? "2 min" : "Offline"}</span>
+              </button>
+            ) : null}
+
+            {!isOwner && chest.chestHasOpen ? (
+              <button
+                type="button"
+                className="btnPrimarySmall"
+                disabled={chest.joinLoading || chest.alreadyJoined}
+                onClick={chest.join}
+                style={{ justifyContent: "space-between", display: "flex" }}
+              >
+                <span style={{ fontWeight: 950 }}>{chest.alreadyJoined ? "✅ Inscrit" : chest.joinLoading ? "…" : "Participer"}</span>
+                <span className="mutedSmall">{chest.alreadyJoined ? "OK" : "Go"}</span>
+              </button>
+            ) : null}
+
+            {isOwner ? (
+              <button
+                type="button"
+                className="btnGhostSmall"
+                onClick={() => {
+                  if (!token) return setLoginOpen(true);
+                  setHostError(null);
+                  setHostOpen(true);
+                  setActionsOpen(false);
+                }}
+                style={{ justifyContent: "space-between", display: "flex" }}
+              >
+                <span style={{ fontWeight: 950 }}>📺 Host</span>
+                <span className="mutedSmall">Gérer</span>
+              </button>
+            ) : null}
+
+            <button
+              type="button"
+              className="btnGhostSmall"
+              onClick={() => {
+                setActionsOpen(false);
+                enterCinema();
+              }}
+              style={{ justifyContent: "space-between", display: "flex" }}
+            >
+              <span style={{ fontWeight: 950 }}>⛶ Plein écran</span>
+              <span className="mutedSmall">Cinéma</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
-    <div className="streamPage">
+    <div
+      className="streamPage streamPageMobile"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        paddingBottom: "calc(88px + env(safe-area-inset-bottom))",
+      }}
+    >
       <ChestToast
         toast={chest.toast}
         isOwner={isOwner}
@@ -408,9 +700,9 @@ export default function StreamerPage() {
         onClose={() => chest.setToast(null)}
       />
 
-      {/* ✅ mini info (host) — compact */}
+      {/* host banners */}
       {hostedBy ? (
-        <div className="panel" style={{ marginBottom: 10, padding: 10 }}>
+        <div className="panel" style={{ marginTop: 0, padding: 10 }}>
           <div className="mutedSmall">
             📺 Hosté par <strong style={{ color: "rgba(255,255,255,0.92)" }}>{hostedBy}</strong>
           </div>
@@ -418,411 +710,255 @@ export default function StreamerPage() {
       ) : null}
 
       {!isOwner && hostTargetSlug && hostTargetIsLive ? (
-        <div className="panel" style={{ marginBottom: 10, padding: 10 }}>
+        <div className="panel" style={{ marginTop: 0, padding: 10 }}>
           <div className="mutedSmall">
             📺 Chaîne hostée → redirection vers{" "}
-            <strong style={{ color: "rgba(255,255,255,0.92)" }}>
-              {hostTargetDisplayName ? hostTargetDisplayName : hostTargetSlug}
-            </strong>
-            …
+            <strong style={{ color: "rgba(255,255,255,0.92)" }}>{hostTargetDisplayName ? hostTargetDisplayName : hostTargetSlug}</strong>…
           </div>
         </div>
       ) : null}
 
-      {/* Stage */}
-      <div className="streamGrid">
-        <div className="streamMain">
-          <div ref={playerWrapRef}>{PlayerBlock}</div>
-
-          {/* ✅ meta bar UNDER stream split in 2 panels */}
-          <div ref={metaWrapRef} style={{ marginTop: 12 }}>
-            <div style={{ display: "flex", gap: 12, alignItems: "stretch", justifyContent: "space-between" }}>
-              {/* LEFT: stream info */}
-              <div
-                className="panel"
-                style={{
-                  marginTop: 0,
-                  width: "fit-content",
-                  maxWidth: "100%",
-                  padding: 14,
-                  display: "flex",
-                  alignItems: "center",
-                  background: "linear-gradient(135deg, rgba(126,76,179,0.16), rgba(63,86,203,0.10))",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                }}
-              >
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {/* Title line with color accents */}
-                  <div style={{ fontWeight: 950, fontSize: 18, lineHeight: 1.15 }}>
-                    <span style={{ color: "rgba(255,255,255,0.92)" }}>{streamer.title}</span>
-                    {streamer.displayName ? (
-                      <>
-                        <span style={{ opacity: 0.55 }}> — </span>
-                        <span
-                          style={{
-                            background: "linear-gradient(135deg, rgba(180,140,255,0.95), rgba(110,170,255,0.92))",
-                            WebkitBackgroundClip: "text",
-                            backgroundClip: "text",
-                            color: "transparent",
-                            fontWeight: 1000,
-                          }}
-                        >
-                          {streamer.displayName}
-                        </span>
-                        {followsCount != null ? (
-                          <span style={{ opacity: 0.85, fontWeight: 900, color: "rgba(255,255,255,0.82)" }}>
-                            {followersInline}
-                          </span>
-                        ) : null}
-                      </>
-                    ) : followsCount != null ? (
-                      <span style={{ opacity: 0.85, fontWeight: 900, color: "rgba(255,255,255,0.82)" }}>
-                        {followersInline}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="mutedSmall" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "7px 10px",
-                        borderRadius: 999,
-                        border: "1px solid rgba(255,255,255,0.12)",
-                        background: "rgba(255,255,255,0.06)",
-                        fontWeight: 900,
-                        color: "rgba(255,255,255,0.86)",
-                      }}
-                    >
-                      <span style={{ opacity: 0.9 }}>
-                        <EyeIcon />
-                      </span>
-                      <span>{fmt(viewers)} viewers</span>
-                    </span>
-
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "7px 10px",
-                        borderRadius: 999,
-                        border: "1px solid rgba(255,255,255,0.12)",
-                        background: "rgba(255,255,255,0.06)",
-                        fontWeight: 900,
-                        color: "rgba(255,255,255,0.86)",
-                      }}
-                    >
-                      <span style={{ opacity: 0.9 }}>⏱️</span>
-                      <span>
-                        <LiveDurationText isLive={streamer.isLive} startedAtMs={streamer.liveStartedAtMs} />
-                      </span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* RIGHT: interactions */}
-              <div
-                className="panel"
-                style={{
-                  marginTop: 0,
-                  padding: 14,
-                  width: "fit-content",
-                  maxWidth: "100%",
-                  marginLeft: "auto",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  minHeight: 92,
-                }}
-              >
-                {claimError ? (
-                  <div className="mutedSmall" style={{ marginBottom: 8, color: "rgba(255,90,90,0.95)" }}>
-                    {claimError}
-                  </div>
-                ) : null}
-
-                <div
-                  className="streamMetaActionsRow"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  {/* FOLLOW */}
-                  <button
-                    type="button"
-                    className={isFollowing ? "btnGhostSmall" : "btnPrimarySmall"}
-                    disabled={followLoading}
-                    onClick={toggleFollow}
-                    title={isFollowing ? "Tu suis déjà" : "Suivre"}
-                    style={{
-                      borderRadius: 14,
-                      padding: "9px 12px",
-                      fontWeight: 950,
-                      boxShadow: isFollowing ? "none" : "0 10px 28px rgba(0,0,0,0.28)",
-                    }}
-                  >
-                    {followLoading ? "…" : isFollowing ? "✅ Suivi" : "➕ Suivre"}
-                  </button>
-
-                  {/* SUB */}
-                  <button
-                    type="button"
-                    className="btnPrimarySmall"
-                    disabled={followLoading}
-                    onClick={() => {
-                      if (!token) return setLoginOpen(true);
-                      setSubError(null);
-                      setGiftError(null);
-                      setSubOpen(true);
-                    }}
-                    style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
-                    title="S'abonner"
-                  >
-                    💎 Sub
-                  </button>
-
-                  {/* CHEST */}
-                  <button
-                    type="button"
-                    className="btnGhostSmall"
-                    onClick={() => {
-                      chest.setChestError(null);
-                      chest.setChestModalOpen(true);
-                    }}
-                    title="Voir le coffre"
-                    style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
-                  >
-                    🎁 Coffre{chest.chestLoading ? "…" : chest.chestBalance > 0 ? ` (${chest.chestBalance})` : ""}
-                  </button>
-
-                  {/* Owner: open chest */}
-                  {isOwner && !chest.chestHasOpen ? (
-                    <button
-                      type="button"
-                      className="btnPrimarySmall"
-                      disabled={chest.ownerLoading || !streamer.isLive}
-                      onClick={chest.open}
-                      title={!streamer.isLive ? "Stream offline" : "Ouvre 2 minutes (fermeture auto)"}
-                      style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
-                    >
-                      {chest.ownerLoading ? "…" : "Ouvrir coffre"}
-                    </button>
-                  ) : null}
-
-                  {/* Viewer: join chest */}
-                  {!isOwner && chest.chestHasOpen ? (
-                    <button
-                      type="button"
-                      className="btnPrimarySmall"
-                      disabled={chest.joinLoading || chest.alreadyJoined}
-                      onClick={chest.join}
-                      style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
-                    >
-                      {chest.alreadyJoined ? "✅ Inscrit" : chest.joinLoading ? "…" : "Participer"}
-                    </button>
-                  ) : null}
-
-                  {/* Gift subs */}
-                  {giftStatus?.remaining ? (
-                    token && giftStatus.canClaim ? (
-                      <button
-                        type="button"
-                        className="btnPrimarySmall"
-                        disabled={claimLoading}
-                        onClick={async () => {
-                          if (!token || !slug) return;
-                          setClaimLoading(true);
-                          setClaimError(null);
-                          try {
-                            const r = await fetch(
-                              `${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/claim`,
-                              { method: "POST", headers: { Authorization: `Bearer ${token}` } }
-                            ).then((x) => x.json());
-                            if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
-                            await refreshMeIfPossible();
-                            await fetchGiftStatus();
-                          } catch (e: any) {
-                            setClaimError(String(e?.message || "Erreur"));
-                          } finally {
-                            setClaimLoading(false);
-                          }
-                        }}
-                        title="Claim un sub offert"
-                        style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
-                      >
-                        {claimLoading ? "…" : `🎁 Claim (${giftStatus.remaining})`}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="btnGhostSmall"
-                        onClick={() => {
-                          if (!token) return setLoginOpen(true);
-                          setSubOpen(true);
-                        }}
-                        title="Des subs sont disponibles"
-                        style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
-                      >
-                        🎁 Subs offerts ({giftStatus.remaining})
-                      </button>
-                    )
-                  ) : null}
-
-                  {/* HOST */}
-                  {isOwner ? (
-                    <button
-                      type="button"
-                      className="btnGhostSmall"
-                      onClick={() => {
-                        if (!token) return setLoginOpen(true);
-                        setHostError(null);
-                        setHostOpen(true);
-                      }}
-                      title="Host quelqu’un"
-                      style={{ borderRadius: 14, padding: "9px 12px", fontWeight: 950 }}
-                    >
-                      📺 Host
-                    </button>
-                  ) : null}
-
-                  {/* NOTIF */}
-                  {isFollowing ? (
-                    <button
-                      type="button"
-                      className="btnGhostSmall"
-                      disabled={followLoading}
-                      onClick={toggleNotify}
-                      style={{
-                        borderRadius: 14,
-                        padding: "9px 12px",
-                        fontWeight: 950,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                      title="Notifications"
-                    >
-                      <BellIcon on={notifyEnabled} /> {notifyEnabled ? "Notif" : "Muet"}
-                    </button>
-                  ) : null}
-
-                  {/* FULLSCREEN (in group) */}
-                  <button
-                    type="button"
-                    className="btnGhostSmall"
-                    onClick={enterCinema}
-                    title="Plein écran"
-                    style={{
-                      borderRadius: 14,
-                      padding: "9px 12px",
-                      fontWeight: 950,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    ⛶ Plein écran
-                  </button>
-                </div>
-
-                {giftStatus?.myClaimed ? (
-                  <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.92 }}>
-                    ✅ Sub offert claim
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          {/* Mobile mini chat (unchanged for later) */}
-          {showMiniChat ? (
-            <div className="panel mobileMiniChat" style={{ padding: 0, marginTop: 12 }}>
-              <div className="streamChatHeader">
-                <div className="streamChatHeaderLeft">
-                  <div className="mutedSmall" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ opacity: 0.9 }}>
-                      <EyeIcon />
-                    </span>
-                    <span>{fmt(viewers)} viewer</span>
-                  </div>
-                </div>
-
-                <div className="mutedSmall">
-                  rôle : <strong style={{ color: "rgba(255,255,255,0.9)" }}>{String(myRole)}</strong>
-                </div>
-              </div>
-
-              <div className="streamChatBody">
-                <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} compact onFollowsCount={handleFollowsCount} />
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        {/* ✅ Chat fixed height = (player + meta bar) */}
-        <aside
-          className="panel streamChat streamChatFixed"
-          style={{
-            padding: 0,
-            height: leftStackH > 0 ? leftStackH : undefined,
-            maxHeight: leftStackH > 0 ? leftStackH : undefined,
-          }}
-        >
-          <div className="streamChatHeader" style={{ justifyContent: "space-between" }}>
-            <div className="streamChatHeaderLeft">
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>
-                  {streamer.displayName ? streamer.displayName : ""}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ paddingRight: 10 }} />
-          </div>
-
-          <div className="streamChatBody" style={{ flex: 1, minHeight: 0 }}>
-            <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} onFollowsCount={handleFollowsCount} />
-          </div>
-        </aside>
+      {/* PLAYER */}
+      <div className="panel" style={{ padding: 0, borderRadius: 18, overflow: "hidden" }}>
+        {PlayerBlock}
       </div>
 
-      {/* Bottom tabs */}
-      <div className="panel streamBottomPanel">
-        <div className="streamTabsRow">
-          <button type="button" className={`streamTabBtn ${tab === "about" ? "active" : ""}`} onClick={() => setTab("about")}>
+    {/* PROFILE ROW (avatar + name + followers + badge + actions compact) */}
+    <div
+    className="panel"
+    style={{
+        marginTop: 0,
+        padding: 12,
+        borderRadius: 18,
+        background: "linear-gradient(135deg, rgba(126,76,179,0.16), rgba(63,86,203,0.10))",
+        border: "1px solid rgba(255,255,255,0.12)",
+    }}
+    >
+    {/* Row 1: avatar + name block + actions */}
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {/* Avatar */}
+        <div
+        style={{
+            width: 46,
+            height: 46,
+            borderRadius: 999,
+            overflow: "hidden",
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: "rgba(0,0,0,0.22)",
+            display: "grid",
+            placeItems: "center",
+            flex: "0 0 auto",
+        }}
+        >
+        {avatarUrl ? (
+            <img src={String(avatarUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+            <span style={{ fontWeight: 1000, opacity: 0.92 }}>{initials}</span>
+        )}
+        </div>
+
+        {/* Name block (2 lines max, clean) */}
+        <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+    <div
+    style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4, // "collée" (mets 2 si tu veux encore plus serré)
+        minWidth: 0,
+        maxWidth: "100%",
+    }}
+    >
+    {showStar ? (
+    <span style={{ ...badgeStyle, padding: "4px 7px", fontSize: 12, fontWeight: 950, lineHeight: 1 }}>
+        ★
+    </span>
+    ) : null}
+
+
+    <div
+        style={{
+        fontWeight: 1000,
+        fontSize: 15,
+        lineHeight: 1.05,
+        minWidth: 0,
+        flex: "1 1 auto",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        maxWidth: "100%",
+        }}
+        title={displayName}
+    >
+        {displayName}
+    </div>
+    </div>
+
+
+      {/* Followers line (one clean line, never wraps into chaos) */}
+      {typeof followsCount === "number" ? (
+        <div className="mutedSmall" style={{ opacity: 0.9, fontWeight: 850, lineHeight: 1.1 }}>
+          {fmt(followsCount)} abonnés
+        </div>
+      ) : null}
+    </div>
+
+    {/* Actions compact (never crush the text) */}
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
+      <button
+        type="button"
+        className={isFollowing ? "btnGhostSmall" : "btnPrimarySmall"}
+        disabled={followLoading}
+        onClick={toggleFollow}
+        title={isFollowing ? "Suivi" : "Suivre"}
+        style={{ ...iconBtn(), padding: "9px 11px" }}
+      >
+        {followLoading ? "…" : isFollowing ? "✓" : "+"}
+      </button>
+
+      <button type="button" className="btnPrimarySmall" onClick={openSub} style={iconBtn()} title="Sub">
+        💎
+      </button>
+
+      <button type="button" className="btnGhostSmall" onClick={() => setActionsOpen(true)} style={iconBtn()} title="Plus">
+        ⋯
+      </button>
+    </div>
+  </div>
+
+  {/* Row 2: small stats chips (wrap nicely, smaller text, airy) */}
+  <div
+    className="mutedSmall"
+    style={{
+      marginTop: 10,
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap",
+      alignItems: "center",
+    }}
+  >
+    <span style={{ ...smallBadge(), padding: "6px 10px", fontSize: 12, fontWeight: 900 }}>
+      👁️ {fmt(viewers)}
+    </span>
+    <span style={{ ...smallBadge(), padding: "6px 10px", fontSize: 12, fontWeight: 900 }}>
+      ⏱️ <LiveDurationText isLive={streamer.isLive} startedAtMs={streamer.liveStartedAtMs} />
+    </span>
+
+    {giftStatus?.myClaimed ? (
+      <span
+        style={{
+          ...smallBadge(),
+          padding: "6px 10px",
+          fontSize: 12,
+          fontWeight: 900,
+          background: "rgba(20,255,170,0.07)",
+          borderColor: "rgba(20,255,170,0.20)",
+        }}
+      >
+        ✅ Sub offert
+      </span>
+    ) : null}
+  </div>
+
+
+      </div>
+
+      {/* TABS ROW (Dlive-like) */}
+      <div
+        className="panel"
+        style={{
+          marginTop: 0,
+          padding: 10,
+          borderRadius: 18,
+          overflowX: "auto",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <button type="button" style={pillBase(tab === "chat")} onClick={() => setTab("chat")}>
+            Chat
+          </button>
+          <button type="button" style={pillBase(tab === "about")} onClick={() => setTab("about")}>
             À propos
           </button>
-          <button type="button" className={`streamTabBtn ${tab === "clips" ? "active" : ""}`} onClick={() => setTab("clips")}>
-            Clip
+          <button type="button" style={pillBase(tab === "vod")} onClick={() => setTab("vod")}>
+            Rediffusions
           </button>
-          <button type="button" className={`streamTabBtn ${tab === "vod" ? "active" : ""}`} onClick={() => setTab("vod")}>
-            VOD
+          <button type="button" style={pillBase(tab === "clips")} onClick={() => setTab("clips")}>
+            Clips
           </button>
-          <button type="button" className={`streamTabBtn ${tab === "agenda" ? "active" : ""}`} onClick={() => setTab("agenda")}>
+          <button type="button" style={pillBase(tab === "agenda")} onClick={() => setTab("agenda")}>
             Agenda
           </button>
-        </div>
 
-        <div className="streamTabContent">
-          {tab === "about" && slug ? <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
-
-          {tab === "clips" && slug ? (
-            <ClipsTab slug={String(slug)} token={token} isOwner={isOwner} onRequireLogin={() => setLoginOpen(true)} />
-          ) : null}
-
-          {tab === "vod" && slug ? <VodTab slug={String(slug)} /> : null}
-
-          {tab === "agenda" && slug ? <AgendaTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
+          <div style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <span className="mutedSmall" style={{ opacity: 0.85 }}>
+              rôle : <strong style={{ color: "rgba(255,255,255,0.92)" }}>{String(myRole)}</strong>
+            </span>
+          </div>
         </div>
       </div>
+
+      {/* CONTENT */}
+      {tab === "chat" ? (
+        <div
+          className="panel"
+          style={{
+            padding: 0,
+            borderRadius: 18,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            ...chatHeightStyle,
+          }}
+        >
+          {/* Chat header mini */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 12px",
+              borderBottom: "1px solid rgba(255,255,255,0.08)",
+              background: "rgba(0,0,0,0.16)",
+            }}
+          >
+            <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>Chat</div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {giftStatus?.myClaimed ? <span style={smallBadge()}>✅ Sub offert</span> : null}
+              <button
+                type="button"
+                className="btnGhostSmall"
+                onClick={enterCinema}
+                style={{ borderRadius: 12, padding: "8px 10px", fontWeight: 950 }}
+                title="Plein écran"
+              >
+                ⛶
+              </button>
+            </div>
+          </div>
+
+          {/* KEY: parent height fixed + minHeight:0 => scroll interne dans ChatPanel */}
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <ChatPanel
+              slug={String(slug || "")}
+              onRequireLogin={() => setLoginOpen(true)}
+              compact
+              autoFocus={false}
+              onFollowsCount={handleFollowsCount}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="panel" style={{ padding: 12, borderRadius: 18 }}>
+          {tab === "about" && slug ? <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
+          {tab === "clips" && slug ? <ClipsTab slug={String(slug)} token={token} isOwner={isOwner} onRequireLogin={() => setLoginOpen(true)} /> : null}
+          {tab === "vod" && slug ? <VodTab slug={String(slug)} /> : null}
+          {tab === "agenda" && slug ? <AgendaTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
+        </div>
+      )}
+
+      {ActionsSheet}
 
       <ChestModal
         open={chest.chestModalOpen}
@@ -859,25 +995,19 @@ export default function StreamerPage() {
         priceRubis={SUB_PRICE_RUBIS}
         myRubis={myRubis}
         mySubTickets={mySubTickets}
-        disableSelfTicket={isOwner} // ✅ règle: pas de ticket pour se sub à sa propre chaîne
-
+        disableSelfTicket={isOwner}
         loading={subLoading}
         error={subError}
-
         onGoShop={() => {
           setSubOpen(false);
           window.location.href = "/shop";
         }}
-
-        // ✅ NEW: self sub (rubis ou ticket)
         onPaySelf={async (mode) => {
           if (!token || !slug) return;
           setSubLoading(true);
           setSubError(null);
-
           try {
             const useTicket = mode === "ticket";
-
             const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/subscribe`, {
               method: "POST",
               headers: {
@@ -886,9 +1016,7 @@ export default function StreamerPage() {
               },
               body: useTicket ? JSON.stringify({ useTicket: true }) : undefined,
             }).then((x) => x.json());
-
             if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
-
             await refreshMeIfPossible();
             await fetchGiftStatus();
             setSubOpen(false);
@@ -898,8 +1026,6 @@ export default function StreamerPage() {
             setSubLoading(false);
           }
         }}
-
-        // legacy fallback (si jamais)
         onPayRubis={async () => {
           if (!token || !slug) return;
           setSubLoading(true);
@@ -909,9 +1035,7 @@ export default function StreamerPage() {
               method: "POST",
               headers: { Authorization: `Bearer ${token}` },
             }).then((x) => x.json());
-
             if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
-
             await refreshMeIfPossible();
             await fetchGiftStatus();
             setSubOpen(false);
@@ -921,15 +1045,12 @@ export default function StreamerPage() {
             setSubLoading(false);
           }
         }}
-
-        // ✅ Gift subs: tickets peuvent réduire le total (ex: 5 subs => 2000 + 1 ticket)
         onPayGiftSubs={async (count, useTicketsMaybe) => {
           if (!token || !slug) return;
           setGiftLoading(true);
           setGiftError(null);
 
           const useTickets = Math.max(0, Math.floor(Number(useTicketsMaybe || 0)));
-
           try {
             const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs`, {
               method: "POST",
@@ -939,7 +1060,6 @@ export default function StreamerPage() {
               },
               body: JSON.stringify({ count, useTickets }),
             }).then((x) => x.json());
-
             if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
             await refreshMeIfPossible();
             await fetchGiftStatus();
@@ -950,14 +1070,13 @@ export default function StreamerPage() {
             setGiftLoading(false);
           }
         }}
-
         giftLoading={giftLoading}
         giftError={giftError}
       />
 
-      {/* ✅ HOST modal (unchanged) */}
+      {/* Host modal (inchangé) */}
       {hostOpen ? (
-        <div className="chatSheetBackdrop" onClick={() => setHostOpen(false)} role="presentation" style={{ zIndex: 60 }}>
+        <div className="chatSheetBackdrop" onClick={() => setHostOpen(false)} role="presentation" style={{ zIndex: 80 }}>
           <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 560 }}>
             <div className="chatSheetTop">
               <div style={{ fontWeight: 950 }}>Host</div>

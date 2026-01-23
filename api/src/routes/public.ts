@@ -104,50 +104,78 @@ publicRouter.get(
   a(async (req, res) => {
     const slug = String(req.params.slug || "");
 
-    const { rows } = await pool.query(
-      `SELECT
-        s.id::text AS id,
-        s.slug,
-        s.display_name AS "displayName",
-        s.title,
-        s.viewers,
-        s.is_live AS "isLive",
-        s.live_started_at AS "liveStartedAt",
-        s.appearance AS "appearance",
-        s.offline_bg_path AS "offlineBgPath",
-        s.user_id AS "ownerUserId",
+  const { rows } = await pool.query(
+    `SELECT
+      s.id::text AS id,
+      s.slug,
+      s.display_name AS "displayName",
+      s.title,
+      s.viewers,
+      s.is_live AS "isLive",
+      s.live_started_at AS "liveStartedAt",
+      s.appearance AS "appearance",
+      s.offline_bg_path AS "offlineBgPath",
+      s.user_id AS "ownerUserId",
 
-        -- ✅ DLive linked
-        s.dlive_use_linked AS "dliveUseLinked",
-        s.dlive_link_displayname AS "dliveLinkedDisplayname",
-        s.dlive_link_username AS "dliveLinkedUsername",
+      -- ✅ USER (source de vérité des subs)
+      jsonb_build_object(
+        'id', u.id,
+        'username', u.username,
+        'role', u.role,
+        'user_subscriptions', COALESCE((
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'plan_code', us.plan_code,
+              'status', us.status,
+              'current_period_start', us.current_period_start,
+              'current_period_end', us.current_period_end,
+              'cancel_at_period_end', us.cancel_at_period_end,
+              'provider', us.provider,
+              'provider_subscription_id', us.provider_subscription_id
+            )
+            ORDER BY us.plan_code
+          )
+          FROM user_subscriptions us
+          WHERE us.user_id = u.id
+        ), '[]'::jsonb)
+      ) AS "user",
 
-        -- provider assigné
-        pa.channel_slug AS "providerChannelSlug",
-        pa.channel_username AS "providerChannelUsername",
+      -- ✅ DLive linked
+      s.dlive_use_linked AS "dliveUseLinked",
+      s.dlive_link_displayname AS "dliveLinkedDisplayname",
+      s.dlive_link_username AS "dliveLinkedUsername",
 
-        -- ✅ HOST
-        hs.slug AS "hostTargetSlug",
-        hs.display_name AS "hostTargetDisplayName",
-        hs.is_live AS "hostTargetIsLive"
+      -- provider assigné
+      pa.channel_slug AS "providerChannelSlug",
+      pa.channel_username AS "providerChannelUsername",
 
-      FROM streamers s
-      LEFT JOIN provider_accounts pa
-        ON pa.assigned_to_streamer_id = s.id
-      AND pa.provider='dlive'
+      -- ✅ HOST
+      hs.slug AS "hostTargetSlug",
+      hs.display_name AS "hostTargetDisplayName",
+      hs.is_live AS "hostTargetIsLive"
 
-      LEFT JOIN streamer_hosts h
-        ON h.hoster_streamer_id = s.id
-      LEFT JOIN streamers hs
-        ON hs.id = h.target_streamer_id
-      AND (hs.suspended_until IS NULL OR hs.suspended_until < NOW())
+    FROM streamers s
 
-      WHERE s.slug = $1
-        AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
-      LIMIT 1
-      `,
-      [slug]
-    );
+    -- ✅ join user (compte streamer)
+    LEFT JOIN users u
+      ON u.id = s.user_id
+
+    LEFT JOIN provider_accounts pa
+      ON pa.assigned_to_streamer_id = s.id
+    AND pa.provider='dlive'
+
+    LEFT JOIN streamer_hosts h
+      ON h.hoster_streamer_id = s.id
+    LEFT JOIN streamers hs
+      ON hs.id = h.target_streamer_id
+    AND (hs.suspended_until IS NULL OR hs.suspended_until < NOW())
+
+    WHERE s.slug = $1
+      AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
+    LIMIT 1
+    `,
+    [slug]
+  );
 
     if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
 
