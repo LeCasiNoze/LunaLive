@@ -1,4 +1,3 @@
-// api/src/predictions/predictions.service.ts
 import type { Pool } from "pg";
 import { getActivePrediction, createPrediction } from "./predictions.store.js";
 

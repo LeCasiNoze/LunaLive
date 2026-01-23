@@ -1,4 +1,3 @@
-// api/src/predictions/predictions.store.ts
 import type { Pool } from "pg";
 import { earnRubisTx } from "../wallet_engine.js";
 import type { PredictionRow } from "./predictions.types.js";
@@ -14,11 +13,12 @@ const BET_UPGRADE_KEY = "predictions.bet_cap" as const;
 // 🛡️ Shields (nouvelle règle)
 // - 1 shield / 14j si betLevel == 3
 // - +1 shield / 14j si viewer premium (sub 'viewer' active)
-// - Refund = 50% (comme avant), ceil, jamais > mise
+// - Refund = 50% (ceil), jamais > mise
 // ─────────────────────────────────────────────
 const SHIELD_PERIOD_DAYS = 14;
 
-const SHIELD_REFUND_PCT = 1.0; // garde ton comportement actuel (50%)
+// ✅ 50% (et pas 100%)
+const SHIELD_REFUND_PCT = 0.5;
 
 async function ensurePredictionsSchema(pool: Pool) {
   // resolved_at est requis pour compter “par jour” au moment de la résolution
@@ -84,10 +84,7 @@ async function getAndMaybeResetShieldState(client: any, userId: number) {
   );
 
   if (!r.rows?.[0]) {
-    await client.query(
-      `INSERT INTO prediction_shields(user_id, period_start, used) VALUES ($1, NOW(), 0)`,
-      [userId]
-    );
+    await client.query(`INSERT INTO prediction_shields(user_id, period_start, used) VALUES ($1, NOW(), 0)`, [userId]);
     return { periodStart: new Date().toISOString(), used: 0 };
   }
 
@@ -98,10 +95,7 @@ async function getAndMaybeResetShieldState(client: any, userId: number) {
   const days = ms / (24 * 3600 * 1000);
 
   if (days >= SHIELD_PERIOD_DAYS) {
-    await client.query(
-      `UPDATE prediction_shields SET period_start=NOW(), used=0 WHERE user_id=$1`,
-      [userId]
-    );
+    await client.query(`UPDATE prediction_shields SET period_start=NOW(), used=0 WHERE user_id=$1`, [userId]);
     return { periodStart: new Date().toISOString(), used: 0 };
   }
 
@@ -128,7 +122,27 @@ export async function getActivePrediction(pool: Pool, streamerId: number): Promi
     `,
     [streamerId]
   );
-  return r.rows[0] ?? null;
+
+  const pred = r.rows[0] ?? null;
+  if (!pred) return null;
+
+  // ✅ auto-lock si la fenêtre de pari est terminée
+  if (pred.status === "open" && pred.bets_close_at) {
+    const upd = await pool.query(
+      `
+      UPDATE predictions
+      SET status='locked'
+      WHERE id=$1
+        AND status='open'
+        AND bets_close_at <= NOW()
+      RETURNING *
+      `,
+      [pred.id]
+    );
+    if (upd.rows?.[0]) return upd.rows[0];
+  }
+
+  return pred;
 }
 
 export async function createPrediction(
@@ -186,19 +200,18 @@ export async function resolvePrediction(pool: Pool, pred: PredictionRow, winning
   try {
     await client.query("BEGIN");
 
-    const r = await client.query(
-      `SELECT user_id, amount, choice FROM prediction_bets WHERE prediction_id=$1`,
-      [pred.id]
-    );
+    const r = await client.query(`SELECT user_id, amount, choice FROM prediction_bets WHERE prediction_id=$1`, [
+      pred.id,
+    ]);
 
     const bets = r.rows || [];
     const potTotal = bets.reduce((a, b) => a + Number(b.amount), 0);
 
     if (potTotal <= 0) {
-      await client.query(
-        `UPDATE predictions SET status='resolved', resolved_option=$1, resolved_at=NOW() WHERE id=$2`,
-        [winning, pred.id]
-      );
+      await client.query(`UPDATE predictions SET status='resolved', resolved_option=$1, resolved_at=NOW() WHERE id=$2`, [
+        winning,
+        pred.id,
+      ]);
       await client.query("COMMIT");
       return;
     }
@@ -224,7 +237,7 @@ export async function resolvePrediction(pool: Pool, pred: PredictionRow, winning
       }
     }
 
-    // ✅ shields refund losers (nouvelle règle)
+    // ✅ shields refund losers
     for (const l of losers) {
       const userId = Number(l.user_id);
       const stake = Number(l.amount);

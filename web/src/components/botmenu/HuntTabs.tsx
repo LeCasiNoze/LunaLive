@@ -387,18 +387,17 @@ export function HuntTabs({
 async function doPass() {
   if (!canModerate) return;
 
-  // 🎯 on supprime EXACTEMENT comme CallTab (DELETE /calls/:slug/item/:id)
-  const id = String((currentFarm as any)?.id ?? "").trim();
-  if (!id) {
-    setErr("Impossible de passer: aucun call courant.");
-    return;
-  }
-
   setErr(null);
   setBusy(true);
   try {
-    // refresh UI + sync CallTab
-    emitQueueChanged(id, "pass");
+    // ✅ appelle l'API qui supprime le current farm
+    const r: any = await apiJson(`/calls/${encodeURIComponent(streamerSlug)}/hunt/pass`, {
+      method: "POST",
+    });
+
+    // r.removedId est renvoyé par ton endpoint
+    emitQueueChanged(String(r?.removedId ?? null) || null, "pass");
+
     setAskBet(false);
     setBonusBetInp("");
     await load();
@@ -408,6 +407,7 @@ async function doPass() {
     setBusy(false);
   }
 }
+
 
   function onClickBonus() {
     if (!canModerate) return;

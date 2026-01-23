@@ -13,6 +13,9 @@ export type PredictionRow = {
   resolved_option: 1 | 2 | null;
   total_pool_1: number;
   total_pool_2: number;
+
+  // ajout schema safe
+  resolved_at?: string | null;
 };
 
 export type PredictionBetRow = {
