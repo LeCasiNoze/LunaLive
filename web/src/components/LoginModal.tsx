@@ -42,7 +42,7 @@ export function LoginModal({
 
   const [step, setStep] = React.useState<Step>("login");
 
-  const [username, setUsername] = React.useState("LeCasiNoze");
+  const [username, setUsername] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [code, setCode] = React.useState("");
