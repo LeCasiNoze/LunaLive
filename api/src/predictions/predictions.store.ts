@@ -1,27 +1,25 @@
+// api/src/predictions/predictions.store.ts
 import type { Pool } from "pg";
 import { earnRubisTx } from "../wallet_engine.js";
 import type { PredictionRow } from "./predictions.types.js";
 
 const TAX_RATE = 0.10;
-
 const TZ = "Europe/Paris";
 
-// ✅ on réutilise l’upgrade existant "bet cap"
-const BET_UPGRADE_KEY = "predictions.bet_cap" as const;
+// ✅ compat talents + legacy
+const TALENT_BET_CAP = "talent_prediction_bet_cap" as const;
+const UPGRADE_BET_CAP = "predictions.bet_cap" as const;
 
 // ─────────────────────────────────────────────
-// 🛡️ Shields (nouvelle règle)
+// 🛡️ Shields
 // - 1 shield / 14j si betLevel == 3
 // - +1 shield / 14j si viewer premium (sub 'viewer' active)
 // - Refund = 50% (ceil), jamais > mise
 // ─────────────────────────────────────────────
 const SHIELD_PERIOD_DAYS = 14;
-
-// ✅ 50% (et pas 100%)
-const SHIELD_REFUND_PCT = 0.5;
+const SHIELD_REFUND_PCT = 0.5; // ✅ 50%
 
 async function ensurePredictionsSchema(pool: Pool) {
-  // resolved_at est requis pour compter “par jour” au moment de la résolution
   await pool.query(`ALTER TABLE predictions ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;`);
 }
 
@@ -36,12 +34,23 @@ async function ensureShieldsSchema(pool: Pool) {
 }
 
 async function getBetLevel(pool: Pool, userId: number): Promise<number> {
+  // 1) talents
+  try {
+    const r = await pool.query(
+      `SELECT level FROM user_talents WHERE user_id=$1 AND talent_code=$2 LIMIT 1`,
+      [userId, TALENT_BET_CAP]
+    );
+    const lv = Math.max(0, Number(r.rows?.[0]?.level || 0));
+    if (lv > 0) return Math.min(3, lv);
+  } catch {}
+
+  // 2) legacy
   try {
     const r = await pool.query(
       `SELECT level FROM user_upgrades WHERE user_id=$1 AND upgrade_key=$2 LIMIT 1`,
-      [userId, BET_UPGRADE_KEY]
+      [userId, UPGRADE_BET_CAP]
     );
-    return Math.max(0, Number(r.rows?.[0]?.level || 0));
+    return Math.max(0, Math.min(3, Number(r.rows?.[0]?.level || 0)));
   } catch {
     return 0;
   }
@@ -122,27 +131,7 @@ export async function getActivePrediction(pool: Pool, streamerId: number): Promi
     `,
     [streamerId]
   );
-
-  const pred = r.rows[0] ?? null;
-  if (!pred) return null;
-
-  // ✅ auto-lock si la fenêtre de pari est terminée
-  if (pred.status === "open" && pred.bets_close_at) {
-    const upd = await pool.query(
-      `
-      UPDATE predictions
-      SET status='locked'
-      WHERE id=$1
-        AND status='open'
-        AND bets_close_at <= NOW()
-      RETURNING *
-      `,
-      [pred.id]
-    );
-    if (upd.rows?.[0]) return upd.rows[0];
-  }
-
-  return pred;
+  return r.rows[0] ?? null;
 }
 
 export async function createPrediction(
@@ -237,7 +226,7 @@ export async function resolvePrediction(pool: Pool, pred: PredictionRow, winning
       }
     }
 
-    // ✅ shields refund losers
+    // ✅ shields refund losers (50%)
     for (const l of losers) {
       const userId = Number(l.user_id);
       const stake = Number(l.amount);
@@ -271,7 +260,6 @@ export async function resolvePrediction(pool: Pool, pred: PredictionRow, winning
       });
     }
 
-    // 🔒 finalise (+ resolved_at)
     await client.query(
       `
       UPDATE predictions

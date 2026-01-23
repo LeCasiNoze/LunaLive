@@ -1,3 +1,4 @@
+// api/src/predictions/predictions.service.ts
 import type { Pool } from "pg";
 import { getActivePrediction, createPrediction } from "./predictions.store.js";
 
@@ -31,7 +32,6 @@ async function hasActiveStreamerSub(pool: Pool, userId: number): Promise<boolean
 }
 
 async function countResolvedToday(pool: Pool, streamerId: number): Promise<number> {
-  // basé sur resolved_at (timezone Paris)
   const r = await pool.query(
     `
     SELECT COUNT(*)::int AS n

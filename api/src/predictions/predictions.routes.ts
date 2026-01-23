@@ -1,3 +1,4 @@
+// api/src/predictions/predictions.routes.ts
 import express from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
@@ -9,7 +10,15 @@ import { spendRubis } from "../wallet_engine.js";
 
 export const predictionsRouter = express.Router();
 
-const BET_UPGRADE_KEY = "predictions.bet_cap" as const; // (ton upgrade existant)
+/**
+ * ⚠️ IMPORTANT
+ * Ton shop utilise user_talents (talent_prediction_bet_cap),
+ * mais l’ancien système utilisait user_upgrades (predictions.bet_cap).
+ * -> On supporte les deux, priorité à user_talents.
+ */
+const TALENT_BET_CAP = "talent_prediction_bet_cap" as const;
+const UPGRADE_BET_CAP = "predictions.bet_cap" as const;
+
 function allowedStakesFromLevel(level: number): number[] {
   const lv = Math.max(0, Math.min(3, Number(level || 0)));
   if (lv <= 0) return [10];
@@ -19,12 +28,23 @@ function allowedStakesFromLevel(level: number): number[] {
 }
 
 async function getBetLevel(userId: number): Promise<number> {
+  // 1) NEW: talents
+  try {
+    const r = await pool.query(
+      `SELECT level FROM user_talents WHERE user_id=$1 AND talent_code=$2 LIMIT 1`,
+      [userId, TALENT_BET_CAP]
+    );
+    const lv = Math.max(0, Number(r.rows?.[0]?.level || 0));
+    if (lv > 0) return Math.min(3, lv);
+  } catch {}
+
+  // 2) FALLBACK: upgrades (legacy)
   try {
     const r = await pool.query(
       `SELECT level FROM user_upgrades WHERE user_id=$1 AND upgrade_key=$2 LIMIT 1`,
-      [userId, BET_UPGRADE_KEY]
+      [userId, UPGRADE_BET_CAP]
     );
-    return Math.max(0, Number(r.rows?.[0]?.level || 0));
+    return Math.max(0, Math.min(3, Number(r.rows?.[0]?.level || 0)));
   } catch {
     return 0;
   }
@@ -68,58 +88,6 @@ async function getStreamerIdFromReq(req: any): Promise<number | null> {
   return null;
 }
 
-/* ─────────────────────────────────────────────────────────────
-   ✅ Permissions: mod/admin/owner pour create/resolve
-   - admin : ok
-   - owner : streamers.user_id === req.user.id
-   - mod : best-effort via tables streamer_mods / streamer_moderators (si existent)
-   ───────────────────────────────────────────────────────────── */
-
-async function isOwnerOrAdmin(poolAny: any, streamerId: number, user: any): Promise<boolean> {
-  const role = String(user?.role || "viewer");
-  if (role === "admin") return true;
-
-  const uid = Number(user?.id || 0);
-  if (uid <= 0) return false;
-
-  const r = await poolAny.query(`SELECT user_id FROM streamers WHERE id=$1 LIMIT 1`, [streamerId]);
-  const ownerUserId = Number(r.rows?.[0]?.user_id || 0);
-  return ownerUserId > 0 && ownerUserId === uid;
-}
-
-async function isModerator(poolAny: any, streamerId: number, userId: number): Promise<boolean> {
-  // essaie streamer_mods(streamer_id,user_id)
-  try {
-    const r = await poolAny.query(
-      `SELECT 1 FROM streamer_mods WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`,
-      [streamerId, userId]
-    );
-    if (r.rows?.[0]) return true;
-  } catch {}
-
-  // fallback streamer_moderators(streamer_id,user_id)
-  try {
-    const r = await poolAny.query(
-      `SELECT 1 FROM streamer_moderators WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`,
-      [streamerId, userId]
-    );
-    if (r.rows?.[0]) return true;
-  } catch {}
-
-  return false;
-}
-
-async function assertCanManagePrediction(poolAny: any, streamerId: number, user: any) {
-  const uid = Number(user?.id || 0);
-  if (uid <= 0) throw new Error("forbidden");
-
-  if (await isOwnerOrAdmin(poolAny, streamerId, user)) return;
-
-  if (await isModerator(poolAny, streamerId, uid)) return;
-
-  throw new Error("forbidden");
-}
-
 /**
  * GET /api/bot/predictions/stake
  */
@@ -132,7 +100,7 @@ predictionsRouter.get("/api/bot/predictions/stake", requireAuth, async (req, res
     let selected = await getLastStake(userId);
     if (!isAllowedStake(selected, allowed)) selected = allowed[0];
 
-    // auto-fix en DB si hors allowed
+    // auto-fix DB si hors allowed
     const raw = await getLastStake(userId);
     if (!isAllowedStake(raw, allowed)) {
       try {
@@ -180,9 +148,6 @@ predictionsRouter.post("/api/bot/predictions/create", requireAuth, async (req, r
       return res.status(400).json({ ok: false, reason: "invalid_params" });
     }
 
-    // ✅ droits: mod/admin/owner
-    await assertCanManagePrediction(pool, Number(streamerId), req.user);
-
     const pred = await createPredictionSafe(
       pool,
       Number(streamerId),
@@ -195,8 +160,6 @@ predictionsRouter.post("/api/bot/predictions/create", requireAuth, async (req, r
 
     return res.json({ ok: true, prediction: pred });
   } catch (e: any) {
-    const msg = String(e?.message || "");
-    if (msg === "forbidden") return res.status(403).json({ ok: false, reason: "forbidden" });
     return res.status(400).json({ ok: false, reason: e?.message || "create_failed" });
   }
 });
@@ -216,67 +179,6 @@ predictionsRouter.get("/api/bot/predictions/current", requireAuth, async (req, r
     return res.json({ ok: true, prediction: pred });
   } catch {
     return res.status(500).json({ ok: false, reason: "current_failed" });
-  }
-});
-
-/**
- * GET /api/bot/predictions/summary?predictionId=...&limit=200
- * retourne counts + totals + liste bets (username, choice, amount)
- */
-predictionsRouter.get("/api/bot/predictions/summary", requireAuth, async (req, res) => {
-  try {
-    const predictionId = Number(req.query?.predictionId);
-    if (!(predictionId > 0)) return res.status(400).json({ ok: false, reason: "bad_prediction" });
-
-    const limit = Math.max(10, Math.min(500, Number(req.query?.limit || 200)));
-
-    const a = await pool.query(
-      `
-      SELECT
-        COALESCE(SUM(CASE WHEN choice=1 THEN 1 ELSE 0 END),0)::int AS count1,
-        COALESCE(SUM(CASE WHEN choice=2 THEN 1 ELSE 0 END),0)::int AS count2,
-        COALESCE(SUM(CASE WHEN choice=1 THEN amount ELSE 0 END),0)::int AS total1,
-        COALESCE(SUM(CASE WHEN choice=2 THEN amount ELSE 0 END),0)::int AS total2
-      FROM prediction_bets
-      WHERE prediction_id=$1
-      `,
-      [predictionId]
-    );
-
-    const b = await pool.query(
-      `
-      SELECT
-        pb.user_id AS "userId",
-        u.username AS "username",
-        pb.choice AS "choice",
-        pb.amount AS "amount",
-        pb.created_at AS "createdAt"
-      FROM prediction_bets pb
-      JOIN users u ON u.id = pb.user_id
-      WHERE pb.prediction_id=$1
-      ORDER BY pb.created_at DESC
-      LIMIT $2
-      `,
-      [predictionId, limit]
-    );
-
-    return res.json({
-      ok: true,
-      predictionId,
-      count1: Number(a.rows?.[0]?.count1 || 0),
-      count2: Number(a.rows?.[0]?.count2 || 0),
-      total1: Number(a.rows?.[0]?.total1 || 0),
-      total2: Number(a.rows?.[0]?.total2 || 0),
-      bets: (b.rows || []).map((x: any) => ({
-        userId: Number(x.userId),
-        username: String(x.username || ""),
-        choice: Number(x.choice) === 2 ? 2 : 1,
-        amount: Number(x.amount || 0),
-        createdAt: x.createdAt ? String(x.createdAt) : new Date().toISOString(),
-      })),
-    });
-  } catch (e: any) {
-    return res.status(500).json({ ok: false, reason: e?.message || "summary_failed" });
   }
 });
 
@@ -309,7 +211,7 @@ predictionsRouter.post("/api/bot/predictions/bet", requireAuth, async (req, res)
     let stake = bodyStake != null ? bodyStake : Number(last) || allowed[0];
 
     if (!isAllowedStake(stake, allowed)) {
-      if (bodyStake != null) return res.status(400).json({ ok: false, reason: "stake_not_allowed", allowed });
+      if (bodyStake != null) return res.status(400).json({ ok: false, reason: "stake_not_allowed", allowed, level });
       stake = allowed[0];
     }
 
@@ -332,7 +234,6 @@ predictionsRouter.post("/api/bot/predictions/bet", requireAuth, async (req, res)
   } catch (e: any) {
     const msg = String(e?.message || "");
     if (msg === "insufficient_rubis") return res.status(400).json({ ok: false, reason: "not_enough_rubis" });
-    if (msg === "stream_not_live") return res.status(400).json({ ok: false, reason: "stream_not_live" });
     return res.status(400).json({ ok: false, reason: msg || "bet_failed" });
   }
 });
@@ -348,9 +249,6 @@ predictionsRouter.post("/api/bot/predictions/resolve", requireAuth, async (req, 
 
     if (!streamerId) return res.status(400).json({ ok: false, reason: "bad_streamer" });
 
-    // ✅ droits: mod/admin/owner
-    await assertCanManagePrediction(pool, streamerId, req.user);
-
     await assertStreamerLive(pool, streamerId);
 
     const pred = await getActivePrediction(pool, streamerId);
@@ -361,8 +259,6 @@ predictionsRouter.post("/api/bot/predictions/resolve", requireAuth, async (req, 
 
     return res.json({ ok: true });
   } catch (e: any) {
-    const msg = String(e?.message || "");
-    if (msg === "forbidden") return res.status(403).json({ ok: false, reason: "forbidden" });
-    return res.status(400).json({ ok: false, reason: msg || "resolve_failed" });
+    return res.status(400).json({ ok: false, reason: e?.message || "resolve_failed" });
   }
 });

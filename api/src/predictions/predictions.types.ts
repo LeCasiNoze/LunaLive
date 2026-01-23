@@ -1,3 +1,4 @@
+// api/src/predictions/predictions.types.ts
 export type PredictionStatus = "open" | "locked" | "resolved";
 
 export type PredictionRow = {
@@ -13,9 +14,6 @@ export type PredictionRow = {
   resolved_option: 1 | 2 | null;
   total_pool_1: number;
   total_pool_2: number;
-
-  // ajout schema safe
-  resolved_at?: string | null;
 };
 
 export type PredictionBetRow = {
