@@ -177,7 +177,8 @@ clipsPublicRouter.get("/clips/:id/mp4", async (req, res) => {
     String(req.query.proxy || "") === "1" ||
     String(req.query.dl || "") === "1" ||
     !!req.headers.authorization ||
-    !!req.headers.range;
+    !!req.headers.range ||
+    !!req.headers.origin; // ✅ IMPORTANT: évite redirect vers R2 (CORS media)
 
   // Si dl=1 => force download (même en proxy)
   const wantDl = String(req.query.dl || "") === "1";

@@ -11,6 +11,8 @@ import {
   type ApiFollowing,
   type ApiProfileStats,
 } from "../lib/api_profile";
+import { useIsMobile } from "../hooks/useIsMobile";
+import ProfilePageMobile from "./ProfilePage.mobile";
 
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
@@ -689,7 +691,7 @@ function AccountSettingsModal({
   );
 }
 
-export default function ProfilePage() {
+function ProfilePageDesktop() {
   const { user, token, refreshMe } = useAuth();
 
   const [tab, setTab] = React.useState<Tab>("overview");
@@ -1662,4 +1664,9 @@ export default function ProfilePage() {
       ) : null}
     </main>
   );
+}
+
+export default function ProfilePage() {
+  const isMobile = useIsMobile();
+  return isMobile ? <ProfilePageMobile /> : <ProfilePageDesktop />;
 }

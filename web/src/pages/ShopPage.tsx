@@ -10,6 +10,8 @@ import {
 import { buyShopCosmetic, shopCosmetics, type ShopCosmeticItem } from "../lib/api";
 import { shopTalents, buyTalent, type ApiTalentItem } from "../lib/api";
 import { billingCheckout, billingPortal } from "../lib/api_billing";
+import { useIsMobile } from "../hooks/useIsMobile";
+import ShopPageMobile from "./ShopPage.mobile";
 
 type Kind = "username" | "badge" | "title" | "frame" | "hat";
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
@@ -448,6 +450,10 @@ export function ShopPage({
   const token: string | null = authAny.token ?? null;
 
   const user = authAny.user as { id: number; username: string; rubis: number; role?: string } | null;
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return <ShopPageMobile streamerAppearance={streamerAppearance} />;
+  }
 
   const [topTab, setTopTab] = React.useState<(typeof TOP_TABS)[number]["id"]>("skins");
   const [cat, setCat] = React.useState<Kind>("username");
