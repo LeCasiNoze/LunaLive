@@ -273,6 +273,42 @@ export default function StreamerPageMobile() {
   const { isMobile } = useResponsive();
   const { cinema, chatOpen, enterCinema, leaveCinema, openCinemaChat, closeCinemaChat } = useCinema(isMobile);
 
+    // ✅ détecte orientation (portrait/paysage) pour le chat en mode cinéma
+  const [isLandscape, setIsLandscape] = React.useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.matchMedia?.("(orientation: landscape)")?.matches ?? window.innerWidth > window.innerHeight;
+    } catch {
+      return window.innerWidth > window.innerHeight;
+    }
+  });
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia?.("(orientation: landscape)");
+    const recompute = () => {
+      try {
+        setIsLandscape(mq?.matches ?? window.innerWidth > window.innerHeight);
+      } catch {
+        setIsLandscape(window.innerWidth > window.innerHeight);
+      }
+    };
+
+    recompute();
+
+    if (mq?.addEventListener) mq.addEventListener("change", recompute);
+    else if (mq?.addListener) mq.addListener(recompute);
+
+    window.addEventListener("resize", recompute);
+
+    return () => {
+      if (mq?.removeEventListener) mq.removeEventListener("change", recompute);
+      else if (mq?.removeListener) mq.removeListener(recompute);
+      window.removeEventListener("resize", recompute);
+    };
+  }, []);
+
   const {
     loading,
     streamer,
@@ -882,28 +918,76 @@ export default function StreamerPageMobile() {
               </button>
             </div>
 
-            {chatOpen ? (
-              <div className="chatSheetBackdrop" onClick={closeCinemaChat} role="presentation">
-                <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-                  <div className="chatSheetTop">
-                    <div style={{ fontWeight: 950 }}></div>
-                    <button className="iconBtn" onClick={closeCinemaChat} type="button" aria-label="Fermer">
-                      ✕
-                    </button>
-                  </div>
+          {chatOpen ? (
+            <div className="chatSheetBackdrop" onClick={closeCinemaChat} role="presentation">
+              <div
+                className="chatSheet"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                style={
+                  isLandscape
+                    ? {
+                        // ✅ paysage: side panel à droite, full height
+                        width: "min(460px, 56vw)",
+                        maxWidth: "92vw",
+                        height: "calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+                        maxHeight: "calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+                        alignSelf: "stretch",
+                        marginLeft: "auto",
+                        marginRight: 10,
+                        marginTop: 10,
+                        marginBottom: 10,
+                        borderRadius: 18,
+                        display: "flex",
+                        flexDirection: "column",
+                        overflow: "hidden",
+                      }
+                    : {
+                        // ✅ portrait: comportement actuel (bottom sheet)
+                        maxWidth: 560,
+                        display: "flex",
+                        flexDirection: "column",
+                        overflow: "hidden",
+                      }
+                }
+              >
+                <div
+                  className="chatSheetTop"
+                  style={{
+                    // ✅ header compact (surtout paysage)
+                    padding: isLandscape ? "10px 12px" : undefined,
+                    minHeight: isLandscape ? 44 : undefined,
+                  }}
+                >
+                  <div style={{ fontWeight: 950 }}>{isLandscape ? "Chat" : ""}</div>
+                  <button className="iconBtn" onClick={closeCinemaChat} type="button" aria-label="Fermer">
+                    ✕
+                  </button>
+                </div>
 
-                  <div className="chatSheetBody">
-                    <ChatPanel
-                      slug={String(slug || "")}
-                      onRequireLogin={() => setLoginOpen(true)}
-                      compact
-                      autoFocus={false}
-                      onFollowsCount={handleFollowsCount}
-                    />
-                  </div>
+                <div
+                  className="chatSheetBody"
+                  style={{
+                    // ✅ le point clé: laisser le ChatPanel respirer
+                    padding: 0,
+                    flex: 1,
+                    minHeight: 0, // important pour que le scroll interne marche
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <ChatPanel
+                    slug={String(slug || "")}
+                    onRequireLogin={() => setLoginOpen(true)}
+                    compact
+                    autoFocus={false}
+                    onFollowsCount={handleFollowsCount}
+                  />
                 </div>
               </div>
-            ) : null}
+            </div>
+          ) : null}
           </div>
 
           <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
