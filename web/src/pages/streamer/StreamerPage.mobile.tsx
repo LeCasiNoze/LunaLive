@@ -969,21 +969,46 @@ export default function StreamerPageMobile() {
                 <div
                   className="chatSheetBody"
                   style={{
-                    // ✅ le point clé: laisser le ChatPanel respirer
                     padding: 0,
                     flex: 1,
-                    minHeight: 0, // important pour que le scroll interne marche
+                    minHeight: 0,
                     display: "flex",
                     flexDirection: "column",
+                    overflow: "hidden",
                   }}
                 >
-                  <ChatPanel
-                    slug={String(slug || "")}
-                    onRequireLogin={() => setLoginOpen(true)}
-                    compact
-                    autoFocus={false}
-                    onFollowsCount={handleFollowsCount}
-                  />
+                  {/* ✅ shrink uniquement en cinéma+paysage */}
+                  <div
+                    style={
+                      isLandscape
+                        ? {
+                            flex: 1,
+                            minHeight: 0,
+                            overflow: "hidden",
+
+                            // réduit tout le UI du chat (messages + input + boutons)
+                            transform: "scale(0.82)",
+                            transformOrigin: "top left",
+
+                            // compense le scale pour garder la surface visible
+                            width: "calc(100% / 0.82)",
+                            height: "calc(100% / 0.82)",
+                          }
+                        : {
+                            flex: 1,
+                            minHeight: 0,
+                            overflow: "hidden",
+                          }
+                    }
+                  >
+                    <ChatPanel
+                      slug={String(slug || "")}
+                      onRequireLogin={() => setLoginOpen(true)}
+                      compact
+                      autoFocus={false}
+                      onFollowsCount={handleFollowsCount}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

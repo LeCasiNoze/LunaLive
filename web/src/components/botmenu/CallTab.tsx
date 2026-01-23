@@ -54,6 +54,22 @@ export function CallTab({
   const [pcallUnlocked, setPcallUnlocked] = React.useState<boolean>(false);
   const [pcallNextAtMs, setPcallNextAtMs] = React.useState<number>(0);
   const [nowMs, setNowMs] = React.useState<number>(() => Date.now());
+  // ✅ Queue scroll (focus sur les plus anciens)
+  const queueListRef = React.useRef<HTMLDivElement | null>(null);
+  const prevCallsLenRef = React.useRef<number>(0);
+
+  // ✅ Toujours rester en haut (plus anciens) quand la liste change
+  React.useEffect(() => {
+    const el = queueListRef.current;
+    if (!el) return;
+
+    const len = calls.length;
+    prevCallsLenRef.current = len;
+
+    // on force le focus sur les plus anciens (top)
+    // (que ce soit ajout / delete / reset / refresh)
+    el.scrollTop = 0;
+  }, [calls.length, calls?.[0]?.id]);
 
   function msToMinLeft(ms: number) {
     const n = Math.max(0, ms);
@@ -516,8 +532,21 @@ export function CallTab({
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Chargement…</div>
         ) : !calls.length ? (
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Aucun call.</div>
-        ) : (
-          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+               ) : (
+          <div
+            ref={queueListRef}
+            style={{
+              marginTop: 10,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+
+              // ✅ Scroll seulement si > 3
+              maxHeight: calls.length > 3 ? 3 * 68 + 2 * 8 : undefined, // ~3 items visibles
+              overflowY: calls.length > 3 ? "auto" : "visible",
+              paddingRight: calls.length > 3 ? 4 : 0,
+            }}
+          >
             {calls.map((c) => (
               <div
                 key={c.id}
