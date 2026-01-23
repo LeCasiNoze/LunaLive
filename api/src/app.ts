@@ -193,7 +193,7 @@ export function createApp() {
   app.use(pushRouter);
   app.use(thumbsRouter);
   app.use(moderationRouter);
-
+  app.use(clipsPublicRouter);
   // ─────────────────────────────────────────────
   // ✅ Public + Auth
   // ─────────────────────────────────────────────
@@ -268,7 +268,7 @@ export function createApp() {
   app.use(meProfileRouter);
   app.use(internalBotRouter);
   app.use("/overlay/api", overlayApiRouter);
-  app.use(clipsPublicRouter);
+  
 
   // ─────────────────────────────────────────────
   // ✅ Slots / Calls / Hunt
