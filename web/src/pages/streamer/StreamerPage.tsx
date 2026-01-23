@@ -23,6 +23,7 @@ import { AboutTab } from "./tabs/AboutTab";
 import { VodTab } from "./tabs/VodTab";
 import { AgendaTab } from "./tabs/AgendaTab";
 import { ClipsTab } from "./tabs/ClipsTab";
+
 import StreamerPageMobile from "./StreamerPage.mobile";
 
 function apiBase() {
@@ -42,7 +43,22 @@ function fmt(n: any) {
   return Number.isFinite(x) ? x.toLocaleString() : "0";
 }
 
+/**
+ * ✅ IMPORTANT
+ * Wrapper qui choisit Mobile/Desktop.
+ * Comme ça, en rotation fullscreen iOS (viewport change),
+ * React ne casse pas l’ordre des hooks (unmount/remount au lieu de switcher branch).
+ */
 export default function StreamerPage() {
+  const { isMobile } = useResponsive();
+  return isMobile ? <StreamerPageMobile /> : <StreamerPageDesktop />;
+}
+
+/* =======================================================================================
+   Desktop impl (ancien StreamerPage sans le early-return mobile)
+   ======================================================================================= */
+
+function StreamerPageDesktop() {
   const { slug } = useParams();
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
@@ -78,10 +94,6 @@ export default function StreamerPage() {
   const [hostOverride, setHostOverride] = React.useState<{ slug: string | null; displayName: string | null } | null>(null);
 
   const { isMobile, isPortrait } = useResponsive();
-    if (isMobile) {
-    return <StreamerPageMobile />;
-  }
-
   const { cinema, chatOpen, enterCinema, leaveCinema, openCinemaChat, closeCinemaChat } = useCinema(isMobile);
 
   const {
@@ -104,7 +116,6 @@ export default function StreamerPage() {
   );
 
   const isOwner = !!(myUserId != null && streamer?.ownerUserId != null && Number(streamer.ownerUserId) === Number(myUserId));
-
   const isAdmin = String(myRole) === "admin";
   const canEditTabs = isOwner || isAdmin;
 
@@ -294,13 +305,7 @@ export default function StreamerPage() {
   // ✅ NEW: tickets sub (via /me -> coupons.sub_ticket)
   const mySubTickets = Math.max(
     0,
-    Math.floor(
-      Number(
-        auth?.user?.coupons?.sub_ticket ??
-          auth?.user?.tokens?.sub_ticket ?? // fallback si jamais
-          0
-      )
-    )
+    Math.floor(Number(auth?.user?.coupons?.sub_ticket ?? auth?.user?.tokens?.sub_ticket ?? 0))
   );
 
   const followersInline = followsCount == null ? "" : ` (${fmt(followsCount)} followers)`;
@@ -642,10 +647,10 @@ export default function StreamerPage() {
                           setClaimLoading(true);
                           setClaimError(null);
                           try {
-                            const r = await fetch(
-                              `${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/claim`,
-                              { method: "POST", headers: { Authorization: `Bearer ${token}` } }
-                            ).then((x) => x.json());
+                            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/claim`, {
+                              method: "POST",
+                              headers: { Authorization: `Bearer ${token}` },
+                            }).then((x) => x.json());
                             if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
                             await refreshMeIfPossible();
                             await fetchGiftStatus();
@@ -761,7 +766,12 @@ export default function StreamerPage() {
               </div>
 
               <div className="streamChatBody">
-                <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} compact onFollowsCount={handleFollowsCount} />
+                <ChatPanel
+                  slug={String(slug || "")}
+                  onRequireLogin={() => setLoginOpen(true)}
+                  compact
+                  onFollowsCount={handleFollowsCount}
+                />
               </div>
             </div>
           ) : null}
@@ -779,9 +789,7 @@ export default function StreamerPage() {
           <div className="streamChatHeader" style={{ justifyContent: "space-between" }}>
             <div className="streamChatHeaderLeft">
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>
-                  {streamer.displayName ? streamer.displayName : ""}
-                </div>
+                <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>{streamer.displayName ? streamer.displayName : ""}</div>
               </div>
             </div>
 
@@ -860,15 +868,12 @@ export default function StreamerPage() {
         myRubis={myRubis}
         mySubTickets={mySubTickets}
         disableSelfTicket={isOwner} // ✅ règle: pas de ticket pour se sub à sa propre chaîne
-
         loading={subLoading}
         error={subError}
-
         onGoShop={() => {
           setSubOpen(false);
           window.location.href = "/shop";
         }}
-
         // ✅ NEW: self sub (rubis ou ticket)
         onPaySelf={async (mode) => {
           if (!token || !slug) return;
@@ -898,7 +903,6 @@ export default function StreamerPage() {
             setSubLoading(false);
           }
         }}
-
         // legacy fallback (si jamais)
         onPayRubis={async () => {
           if (!token || !slug) return;
@@ -921,7 +925,6 @@ export default function StreamerPage() {
             setSubLoading(false);
           }
         }}
-
         // ✅ Gift subs: tickets peuvent réduire le total (ex: 5 subs => 2000 + 1 ticket)
         onPayGiftSubs={async (count, useTicketsMaybe) => {
           if (!token || !slug) return;
@@ -950,7 +953,6 @@ export default function StreamerPage() {
             setGiftLoading(false);
           }
         }}
-
         giftLoading={giftLoading}
         giftError={giftError}
       />
@@ -1050,7 +1052,10 @@ export default function StreamerPage() {
                   .filter((x) => {
                     const q = hostQuery.trim().toLowerCase();
                     if (!q) return true;
-                    return String(x.displayName || x.slug || "").toLowerCase().includes(q) || String(x.slug || "").toLowerCase().includes(q);
+                    return (
+                      String(x.displayName || x.slug || "").toLowerCase().includes(q) ||
+                      String(x.slug || "").toLowerCase().includes(q)
+                    );
                   })
                   .slice(0, 30)
                   .map((x) => (

@@ -897,28 +897,77 @@ export default function StreamerPageMobile() {
       </div>
     ) : null;
 
-    // CINEMA view
     if (cinema) {
-      content = (
+    content = (
         <>
-          <div className="cinemaRoot">
-            <div className="cinemaStage">
-              <div className="cinemaPlayerCard">{PlayerBlock}</div>
+        <div
+            className="cinemaRoot"
+            style={{
+            position: "fixed",
+            inset: 0,
+            width: "100vw",
+            height: "100dvh",
+            minHeight: "100vh",
+            zIndex: 9999,
+            background: "rgba(35, 12, 60, 1)", // ou ton fond
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            }}
+        >
+            <div
+            className="cinemaStage"
+            style={{
+                flex: 1,
+                minHeight: 0, // CRUCIAL (sinon flex peut collapse)
+                display: "flex",
+                alignItems: "stretch",
+                justifyContent: "stretch",
+            }}
+            >
+            <div
+                className="cinemaPlayerCard"
+                style={{
+                flex: 1,
+                minHeight: 0,
+                display: "flex",
+                overflow: "hidden",
+                borderRadius: 0,
+                }}
+            >
+                {/* IMPORTANT: on donne une vraie hauteur au bloc */}
+                <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+                {PlayerBlock}
+                </div>
+            </div>
             </div>
 
-            <div className="cinemaTopBar">
-              <button className="btnGhostSmall" type="button" onClick={leaveCinema}>
+            <div
+            className="cinemaTopBar"
+            style={{
+                position: "absolute",
+                top: 10,
+                left: 10,
+                right: 10,
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                zIndex: 2,
+                pointerEvents: "auto",
+            }}
+            >
+            <button className="btnGhostSmall" type="button" onClick={leaveCinema}>
                 ✕ Quitter
-              </button>
+            </button>
 
-              <button className="btnPrimarySmall" type="button" onClick={openCinemaChat} title="Ouvrir le chat">
+            <button className="btnPrimarySmall" type="button" onClick={openCinemaChat} title="Ouvrir le chat">
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                  <ChatIcon /> Chat
+                <ChatIcon /> Chat
                 </span>
-              </button>
+            </button>
             </div>
 
-          {chatOpen ? (
+            {chatOpen ? (
             <div className="chatSheetBackdrop" onClick={closeCinemaChat} role="presentation">
               <div
                 className="chatSheet"
@@ -931,8 +980,8 @@ export default function StreamerPageMobile() {
                         // ✅ paysage: side panel à droite, full height
                         width: "min(460px, 56vw)",
                         maxWidth: "92vw",
-                        height: "calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
-                        maxHeight: "calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+                        height: "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+                        maxHeight: "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
                         alignSelf: "stretch",
                         marginLeft: "auto",
                         marginRight: 10,
@@ -1149,11 +1198,11 @@ export default function StreamerPageMobile() {
                   title={isFollowing ? "Suivi" : "Suivre"}
                   style={{ ...iconBtn(), padding: "9px 11px" }}
                 >
-                  {followLoading ? "…" : isFollowing ? "✓" : "+"}
+                  {followLoading ? "…" : isFollowing ? "✓" : "Suivre"}
                 </button>
 
                 <button type="button" className="btnPrimarySmall" onClick={openSub} style={iconBtn()} title="Sub">
-                  💎
+                  SUB
                 </button>
 
                 <button type="button" className="btnGhostSmall" onClick={() => setActionsOpen(true)} style={iconBtn()} title="Plus">
