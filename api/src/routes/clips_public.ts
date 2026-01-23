@@ -468,6 +468,91 @@ clipsPublicRouter.post("/clips/:id/delete", requireAuth, async (req: any, res) =
   return res.json({ ok: true, removed: n > 0 });
 });
 
+clipsPublicRouter.options("/public/clips/:id/mp4", (req, res) => {
+  setMp4Cors(req, res);
+  return res.status(204).end();
+});
+
+clipsPublicRouter.get("/public/clips/:id/mp4", async (req, res) => {
+  setMp4Cors(req, res);
+
+  const clipId = Number(req.params.id || 0);
+  if (!Number.isFinite(clipId) || clipId <= 0) {
+    return res.status(400).json({ ok: false, error: "id_required" });
+  }
+
+  const r = await pool.query(
+    `SELECT mp4_key, title
+     FROM bot_clips
+     WHERE id=$1
+       AND deleted_ts IS NULL
+       AND hidden_by_streamer = false
+     LIMIT 1`,
+    [clipId]
+  );
+
+  const key = String(r.rows?.[0]?.mp4_key || "").trim();
+  const title = r.rows?.[0]?.title ?? null;
+
+  if (!key) return res.status(404).json({ ok: false, error: "mp4_not_ready" });
+
+  const url = buildPublicUrl(key);
+  if (!url) return res.status(404).json({ ok: false, error: "mp4_not_ready" });
+
+  const wantProxy =
+    String(req.query.proxy || "") === "1" ||
+    String(req.query.dl || "") === "1" ||
+    !!req.headers.authorization ||
+    !!req.headers.range ||
+    !!req.headers.origin;
+
+  const wantDl = String(req.query.dl || "") === "1";
+
+  if (!wantProxy) {
+    if (!wantDl) return res.redirect(302, url);
+  }
+
+  const range = req.headers.range ? String(req.headers.range) : "";
+
+  const upstream = await fetch(url, {
+    headers: range ? { range } : undefined,
+  });
+
+  if (!upstream.ok || !upstream.body) {
+    const txt = await upstream.text().catch(() => "");
+    return res.status(502).json({
+      ok: false,
+      error: `upstream_${upstream.status}`,
+      detail: txt.slice(0, 200),
+    });
+  }
+
+  res.status(upstream.status);
+  const ct = upstream.headers.get("content-type") || "video/mp4";
+  res.setHeader("Content-Type", ct);
+
+  const ar = upstream.headers.get("accept-ranges");
+  if (ar) res.setHeader("Accept-Ranges", ar);
+
+  const cr = upstream.headers.get("content-range");
+  if (cr) res.setHeader("Content-Range", cr);
+
+  const cl = upstream.headers.get("content-length");
+  if (cl) res.setHeader("Content-Length", cl);
+
+  const etag = upstream.headers.get("etag");
+  if (etag) res.setHeader("ETag", etag);
+
+  res.setHeader("Cache-Control", "public, max-age=600");
+
+  if (wantDl) {
+    const filename = `clip-${clipId}-${safeFilename(title)}.mp4`;
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  }
+
+  Readable.fromWeb(upstream.body as any).pipe(res);
+});
+
 /**
  * GET /clips/top?range=month|30d&limit=24
  * - auth optionnelle (renvoie myLiked)
@@ -562,7 +647,7 @@ clipsPublicRouter.get("/clips/top", async (req, res) => {
     const avatarUrl = ownerUserId && x.has_avatar ? `${base}/avatars/u/${ownerUserId}` : null;
 
     const mp4Key = String(x.mp4_key || "").trim();
-    const clipUrl = mp4Key && r2Enabled() ? `${base}/clips/${Number(x.id)}/mp4` : null;
+    const clipUrl = mp4Key && r2Enabled() ? `${base}/public/clips/${Number(x.id)}/mp4?proxy=1` : null;
 
     return {
       id: Number(x.id),
