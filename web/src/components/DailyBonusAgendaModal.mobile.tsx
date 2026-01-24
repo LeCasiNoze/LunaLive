@@ -1,7 +1,7 @@
 // web/src/components/DailyBonusAgendaModal.mobile.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { claimDailyBonusToday, claimDailyBonusMilestone } from "../lib/api";
+import { claimDailyBonusToday, claimDailyBonusMilestone, publicGetContent } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
 
 type WeekDay = {
@@ -102,6 +102,28 @@ function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
 
+function sanitizeHtmlLite(input: string) {
+  const html = String(input || "");
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.querySelectorAll("script, iframe, object, embed").forEach((n) => n.remove());
+
+    doc.querySelectorAll("*").forEach((el) => {
+      [...el.attributes].forEach((a) => {
+        const name = a.name.toLowerCase();
+        const val = String(a.value || "");
+
+        if (name.startsWith("on")) el.removeAttribute(a.name);
+        if ((name === "href" || name === "src") && /^\s*javascript:/i.test(val)) el.removeAttribute(a.name);
+      });
+    });
+
+    return doc.body.innerHTML || "";
+  } catch {
+    return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+  }
+}
+
 export function DailyBonusAgendaModalMobile({
   state,
   onClose,
@@ -189,6 +211,33 @@ export function DailyBonusAgendaModalMobile({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // ✅ Infos dynamiques (CMS)
+  const [infosHtml, setInfosHtml] = React.useState<string | null>(null);
+  const [infosLoading, setInfosLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    let dead = false;
+
+    async function loadInfos() {
+      if (tab !== "infos") return;
+      setInfosLoading(true);
+      try {
+        const r: any = await publicGetContent("daily_bonus_infos");
+        const html = r?.item?.html ? sanitizeHtmlLite(String(r.item.html)) : null;
+        if (!dead) setInfosHtml(html);
+      } catch {
+        if (!dead) setInfosHtml(null);
+      } finally {
+        if (!dead) setInfosLoading(false);
+      }
+    }
+
+    loadInfos();
+    return () => {
+      dead = true;
+    };
+  }, [tab]);
+
   // Swipe tabs
   const touch = React.useRef<{
     x0: number;
@@ -253,15 +302,9 @@ export function DailyBonusAgendaModalMobile({
 
   // UI helpers
   const today = week.find((d) => d.status === "today_claimable" || d.status === "today_claimed") ?? null;
-
   const canClaimToday = today?.status === "today_claimable" && !busy;
 
-  const slidePct = React.useMemo(() => {
-    // translate en % + offset px pour drag
-    const base = -activeIndex * 100;
-    return base;
-  }, [activeIndex]);
-
+  const slidePct = React.useMemo(() => -activeIndex * 100, [activeIndex]);
   const dragPx = clamp(dragDx, -120, 120);
 
   return createPortal(
@@ -286,7 +329,6 @@ export function DailyBonusAgendaModalMobile({
           padding: 0;
         }
 
-        /* Toast */
         .llDBmToast{
           position: fixed;
           top: 14px;
@@ -305,7 +347,6 @@ export function DailyBonusAgendaModalMobile({
           text-align:center;
         }
 
-        /* Sheet */
         .llDBmSheet{
           width: 100%;
           max-width: 980px;
@@ -334,7 +375,6 @@ export function DailyBonusAgendaModalMobile({
           background: rgba(255,255,255,0.16);
         }
 
-        /* Header */
         .llDBmHeader{
           padding: 10px 14px 10px;
           border-bottom: 1px solid rgba(255,255,255,0.08);
@@ -376,7 +416,6 @@ export function DailyBonusAgendaModalMobile({
         }
         .llDBmClose:active{ transform: scale(0.98); }
 
-        /* Premium badge (mobile) */
         .llDBmPremium{
           display:inline-flex;
           align-items:center;
@@ -406,7 +445,6 @@ export function DailyBonusAgendaModalMobile({
           font-size: 11px;
         }
 
-        /* Tabs (sticky) */
         .llDBmTabsWrap{
           padding: 10px 14px;
           border-bottom: 1px solid rgba(255,255,255,0.08);
@@ -436,30 +474,27 @@ export function DailyBonusAgendaModalMobile({
           box-shadow: 0 0 0 2px rgba(124,77,255,0.10);
         }
 
-        /* Content slider */
         .llDBmContent{
           flex: 1;
           overflow: hidden;
           position: relative;
         }
         .llDBmSlides{
-        height: 100%;
-        width: 100%;              /* ✅ au lieu de 300% */
-        display:flex;
-        will-change: transform;
-        transform: translate3d(0,0,0);
+          height: 100%;
+          width: 100%;
+          display:flex;
+          will-change: transform;
+          transform: translate3d(0,0,0);
         }
-
         .llDBmSlide{
-        flex: 0 0 100%;           /* ✅ 1 slide = 1 écran */
-        width: 100%;
-        height: 100%;
-        overflow: auto;
-        padding: 12px 14px 18px;
-        -webkit-overflow-scrolling: touch;
+          flex: 0 0 100%;
+          width: 100%;
+          height: 100%;
+          overflow: auto;
+          padding: 12px 14px 18px;
+          -webkit-overflow-scrolling: touch;
         }
 
-        /* Top stats chips */
         .llDBmChips{
           display:flex;
           gap: 8px;
@@ -483,7 +518,6 @@ export function DailyBonusAgendaModalMobile({
           color: rgba(255,255,255,0.94);
         }
 
-        /* Today card */
         .llDBmToday{
           border-radius: 18px;
           border: 1px solid rgba(255,255,255,0.12);
@@ -556,7 +590,6 @@ export function DailyBonusAgendaModalMobile({
         }
         .llDBmCTA:active{ transform: scale(0.99); }
 
-        /* Week list */
         .llDBmList{
           display:flex;
           flex-direction: column;
@@ -647,7 +680,6 @@ export function DailyBonusAgendaModalMobile({
           box-shadow: 0 0 0 2px rgba(124,77,255,0.10);
         }
 
-        /* Milestones */
         .llDBmSectionTitle{
           margin: 14px 2px 10px;
           font-weight: 1100;
@@ -687,7 +719,6 @@ export function DailyBonusAgendaModalMobile({
           background: rgba(124,77,255,0.14);
         }
 
-        /* Infos blocks */
         .llDBmInfoCard{
           border-radius: 18px;
           border: 1px solid rgba(255,255,255,0.10);
@@ -704,6 +735,27 @@ export function DailyBonusAgendaModalMobile({
           font-weight: 800;
           color: rgba(255,255,255,0.70);
         }
+
+        /* ✅ rendu HTML CMS */
+        .llDBmCms{
+          font-size: 13px;
+          color: rgba(255,255,255,0.90);
+          line-height: 1.75;
+          font-weight: 850;
+        }
+        .llDBmCms a{
+          color: rgba(200,185,255,0.95);
+          text-decoration: underline;
+        }
+        .llDBmCms h1,.llDBmCms h2,.llDBmCms h3{
+          margin: 10px 0 6px;
+          color: rgba(255,255,255,0.95);
+          font-weight: 1100;
+          letter-spacing: -0.2px;
+        }
+        .llDBmCms p{ margin: 8px 0; }
+        .llDBmCms ul{ margin: 8px 0 8px 18px; }
+        .llDBmCms li{ margin: 4px 0; }
 
         @media (prefers-reduced-motion: reduce){
           .llDBmSlides{ transition: none !important; }
@@ -794,13 +846,14 @@ export function DailyBonusAgendaModalMobile({
                 ) : null}
               </div>
 
-              {/* Today highlight */}
               {today ? (
                 <div className="llDBmToday">
                   <div className="llDBmTodayTop">
                     <div>
                       <div className="llDBmTodayTitle">Aujourd’hui</div>
-                      <div className="llDBmTodayDate">{today.label} • {today.date}</div>
+                      <div className="llDBmTodayDate">
+                        {today.label} • {today.date}
+                      </div>
                     </div>
                     <div className="llDBmBadge" title="Statut">
                       {statusChip(today.status).label}
@@ -820,12 +873,15 @@ export function DailyBonusAgendaModalMobile({
                     }}
                     disabled={!canClaimToday || busy === "today"}
                   >
-                    {busy === "today" ? "Récupération…" : today.status === "today_claimed" ? "Déjà récupéré" : "Récupérer maintenant"}
+                    {busy === "today"
+                      ? "Récupération…"
+                      : today.status === "today_claimed"
+                      ? "Déjà récupéré"
+                      : "Récupérer maintenant"}
                   </button>
                 </div>
               ) : null}
 
-              {/* Week list */}
               <div className="llDBmList">
                 {week.map((d) => {
                   const chip = statusChip(d.status);
@@ -835,11 +891,7 @@ export function DailyBonusAgendaModalMobile({
                   return (
                     <div
                       key={d.date}
-                      className={[
-                        "llDBmDay",
-                        dim ? "isDim" : "",
-                        missed ? "isMissed" : "",
-                      ].join(" ")}
+                      className={["llDBmDay", dim ? "isDim" : "", missed ? "isMissed" : ""].join(" ")}
                     >
                       <div className="llDBmDayHead">
                         <div className="llDBmDayLeft">
@@ -910,33 +962,44 @@ export function DailyBonusAgendaModalMobile({
               <div style={{ marginTop: 10 }} className="llDBmInfoCard">
                 <div className="llDBmInfoText">
                   <small>
-                    • 20j = Skin (unique, sinon +20 rubis)<br />
-                    • 30j = Titre (unique, sinon +1 jeton prestige)
+                    • 20j = Skin (unique, sinon +20 rubis)
+                    <br />• 30j = Titre (unique, sinon +1 jeton prestige)
                   </small>
                 </div>
               </div>
             </div>
 
-            {/* Slide 2: Infos */}
+            {/* Slide 2: Infos (CMS) */}
             <div className="llDBmSlide">
               <div className="llDBmInfoCard">
-                <div className="llDBmInfoText">
-                  • 1 récupération par jour <small>(timezone Europe/Paris)</small>.<br />
-                  • Cycle hebdo : <strong>Lun 3</strong> / <strong>Mar 3</strong> / <strong>Mer 🎡</strong> / <strong>Jeu 5</strong> / <strong>Ven 5</strong> / <strong>Sam 🎡</strong> / <strong>Dim 10</strong>.<br />
-                  • Les paliers <strong>5/10/20/30</strong> = nombre de jours claimés dans le mois (pas forcément en streak).<br />
-                  • Skins/titres seront visibles plus tard (shop/collections).
-                  {premiumActive ? (
-                    <>
-                      <br />• Premium actif : récompenses quotidiennes <strong>x2</strong>.
-                    </>
-                  ) : null}
-                </div>
+                {infosLoading ? (
+                  <div className="llDBmInfoText">Chargement…</div>
+                ) : infosHtml ? (
+                  <div className="llDBmCms" dangerouslySetInnerHTML={{ __html: infosHtml }} />
+                ) : (
+                  <div className="llDBmInfoText">
+                    • 1 récupération par jour <small>(timezone Europe/Paris)</small>.<br />
+                    • Cycle hebdo : <strong>Lun 3</strong> / <strong>Mar 3</strong> / <strong>Mer 🎡</strong> /{" "}
+                    <strong>Jeu 5</strong> / <strong>Ven 5</strong> / <strong>Sam 🎡</strong> / <strong>Dim 10</strong>.
+                    <br />
+                    • Les paliers <strong>5/10/20/30</strong> = nombre de jours claimés dans le mois (pas forcément en
+                    streak).
+                    <br />
+                    • Skins/titres seront visibles plus tard (shop/collections).
+                    {premiumActive ? (
+                      <>
+                        <br />• Premium actif : récompenses quotidiennes <strong>x2</strong>.
+                      </>
+                    ) : null}
+                  </div>
+                )}
               </div>
 
               <div style={{ marginTop: 12 }} className="llDBmInfoCard">
                 <div className="llDBmInfoText">
-                  <strong>Conseil :</strong> ouvre ce menu chaque jour et récupère direct.<br />
-                  <small>(Tu peux swipe en haut pour passer Bonus / Infos / Events.)</small>
+                  <strong>Conseil :</strong> ouvre ce menu chaque jour et récupère direct.
+                  <br />
+                  <small>(Tu peux swipe pour passer Bonus / Infos / Events.)</small>
                 </div>
               </div>
             </div>
@@ -944,9 +1007,7 @@ export function DailyBonusAgendaModalMobile({
             {/* Slide 3: Events */}
             <div className="llDBmSlide">
               <div className="llDBmInfoCard">
-                <div className="llDBmInfoText">
-                  Onglet réservé pour plus tard (events, annonces, promos, etc.).
-                </div>
+                <div className="llDBmInfoText">Onglet réservé pour plus tard (events, annonces, promos, etc.).</div>
               </div>
 
               <div style={{ marginTop: 12 }} className="llDBmInfoCard">

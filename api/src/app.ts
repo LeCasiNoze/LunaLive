@@ -84,6 +84,7 @@ import { reportsRouter } from "./routes/reports.js";
 import { adminReportsRouter } from "./routes/admin_reports.js";
 import { adminSubscriptionsRouter } from "./routes/admin_subscriptions.js";
 import { adminContentRouter } from "./routes/admin_content.js";
+import { publicContentRouter } from "./routes/public_content.js";
 
 export function createApp() {
   const app = express();
@@ -199,6 +200,7 @@ export function createApp() {
   // ─────────────────────────────────────────────
   // ✅ Public + Auth
   // ─────────────────────────────────────────────
+  app.use(publicContentRouter);
   app.use(publicRouter);
   app.use(authRouter);
   app.use(accountActionsRouter);
