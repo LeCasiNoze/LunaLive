@@ -31,6 +31,21 @@ export type DailyBonusState = {
   premium?: { active?: boolean; multiplier?: number; label?: string; plan?: string };
 };
 
+type Role = "viewer" | "moderator" | "streamer" | "admin";
+type TabKey = "agenda" | "content" | "event";
+type ContentKey = "daily_bonus_infos" | "guide_viewer" | "guide_streamer";
+
+function roleRank(r: any): number {
+  const v = String(r || "viewer").toLowerCase();
+  if (v === "admin") return 3;
+  if (v === "streamer") return 2;
+  if (v === "moderator" || v === "mod") return 1;
+  return 0; // viewer
+}
+function canSee(minRole: Role, userRole: any) {
+  return roleRank(userRole) >= roleRank(minRole);
+}
+
 function rewardLabel(r: WeekDay["reward"]) {
   if (r.type === "rubis") return `💎 ${r.amount}`;
   return `🎡 x${r.amount}`;
@@ -90,14 +105,6 @@ function dayBadge(status: WeekDay["status"]) {
   return "";
 }
 
-const TABS = [
-  { key: "agenda", label: "Bonus" },
-  { key: "infos", label: "Infos" },
-  { key: "event", label: "Events" },
-] as const;
-
-type TabKey = (typeof TABS)[number]["key"];
-
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
@@ -112,7 +119,6 @@ function sanitizeHtmlLite(input: string) {
       [...el.attributes].forEach((a) => {
         const name = a.name.toLowerCase();
         const val = String(a.value || "");
-
         if (name.startsWith("on")) el.removeAttribute(a.name);
         if ((name === "href" || name === "src") && /^\s*javascript:/i.test(val)) el.removeAttribute(a.name);
       });
@@ -136,12 +142,7 @@ export function DailyBonusAgendaModalMobile({
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
   const refreshMe = auth?.refreshMe ?? (async () => {});
-
-  const [tab, setTab] = React.useState<TabKey>("agenda");
-  const [busy, setBusy] = React.useState<string | null>(null);
-
-  const [toast, setToast] = React.useState<string | null>(null);
-  const toastTimer = React.useRef<number | null>(null);
+  const userRole: Role = String(auth?.user?.role || "viewer").toLowerCase() as any;
 
   const tokensAny = (state as any)?.tokens ?? {};
   const wheelTickets = Number(tokensAny?.wheel_ticket ?? 0);
@@ -151,19 +152,33 @@ export function DailyBonusAgendaModalMobile({
   const milestones: Milestone[] = Array.isArray((state as any)?.milestones) ? (state as any).milestones : [];
 
   const premiumActive = Boolean(
-    (state as any)?.premiumActive ??
-      (state as any)?.premium?.active ??
-      (state as any)?.premium?.isActive ??
-      false
+    (state as any)?.premiumActive ?? (state as any)?.premium?.active ?? (state as any)?.premium?.isActive ?? false
   );
   const premiumLabel = String((state as any)?.premium?.label ?? "").trim() || "Abonnement actif";
 
-  const activeIndex = React.useMemo(() => TABS.findIndex((t) => t.key === tab), [tab]);
+  // ✅ Tabs HTML (align desktop) + filtrage rôle
+  const contentTabs = React.useMemo(() => {
+    const tabs: Array<{ key: ContentKey; fallbackLabel: string; minRole: Role }> = [
+      { key: "daily_bonus_infos", fallbackLabel: "Informations", minRole: "viewer" },
+      { key: "guide_viewer", fallbackLabel: "Guide Viewer", minRole: "viewer" },
+      { key: "guide_streamer", fallbackLabel: "Guide Streamer", minRole: "streamer" },
+    ];
+    return tabs.filter((t) => canSee(t.minRole, userRole));
+  }, [userRole]);
+
+  // UI state
+  const [tab, setTab] = React.useState<TabKey>("agenda");
+  const [activeContentKey, setActiveContentKey] = React.useState<ContentKey>("daily_bonus_infos");
+  const [busy, setBusy] = React.useState<string | null>(null);
+
+  // toast
+  const [toast, setToast] = React.useState<string | null>(null);
+  const toastTimer = React.useRef<number | null>(null);
 
   const showToast = React.useCallback((text: string) => {
     setToast(text);
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 2600);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2800);
   }, []);
 
   React.useEffect(() => {
@@ -202,7 +217,7 @@ export function DailyBonusAgendaModalMobile({
     }
   }
 
-  // ESC (utile sur desktop même si fichier mobile)
+  // ESC
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -211,34 +226,64 @@ export function DailyBonusAgendaModalMobile({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // ✅ Infos dynamiques (CMS)
-  const [infosHtml, setInfosHtml] = React.useState<string | null>(null);
-  const [infosLoading, setInfosLoading] = React.useState(false);
+  // ✅ garde-fou: si role change et onglet non dispo
+  React.useEffect(() => {
+    const ok = contentTabs.some((t) => t.key === activeContentKey);
+    if (!ok) setActiveContentKey(contentTabs[0]?.key || "daily_bonus_infos");
+  }, [contentTabs, activeContentKey]);
+
+  // ✅ Contenu HTML + titres dynamiques (align desktop)
+  const [contentHtml, setContentHtml] = React.useState<string | null>(null);
+  const [contentLoading, setContentLoading] = React.useState(false);
+  const [contentTitles, setContentTitles] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
     let dead = false;
 
-    async function loadInfos() {
-      if (tab !== "infos") return;
-      setInfosLoading(true);
+    async function load() {
+      if (tab !== "content") return;
+
+      const key = activeContentKey;
+      setContentLoading(true);
       try {
-        const r: any = await publicGetContent("daily_bonus_infos");
+        const r: any = await publicGetContent(key);
         const html = r?.item?.html ? sanitizeHtmlLite(String(r.item.html)) : null;
-        if (!dead) setInfosHtml(html);
+
+        const title = String(r?.item?.title || "").trim();
+        if (title && !dead) setContentTitles((m) => ({ ...m, [key]: title }));
+
+        if (!dead) setContentHtml(html);
       } catch {
-        if (!dead) setInfosHtml(null);
+        if (!dead) setContentHtml(null);
       } finally {
-        if (!dead) setInfosLoading(false);
+        if (!dead) setContentLoading(false);
       }
     }
 
-    loadInfos();
+    load();
     return () => {
       dead = true;
     };
-  }, [tab]);
+  }, [tab, activeContentKey]);
 
-  // Swipe tabs
+  const activeContentLabel = React.useMemo(() => {
+    const found = contentTabs.find((t) => t.key === activeContentKey);
+    const fallback = found?.fallbackLabel || "Contenu";
+    return contentTitles[activeContentKey] || fallback;
+  }, [activeContentKey, contentTabs, contentTitles]);
+
+  // Swipe tabs (agenda/content/event)
+  const TABS: Array<{ key: TabKey; label: string }> = React.useMemo(
+    () => [
+      { key: "agenda", label: "Bonus" },
+      { key: "content", label: "Infos" },
+      { key: "event", label: "Events" },
+    ],
+    []
+  );
+
+  const activeIndex = React.useMemo(() => TABS.findIndex((t) => t.key === tab), [tab, TABS]);
+
   const touch = React.useRef<{
     x0: number;
     y0: number;
@@ -249,10 +294,13 @@ export function DailyBonusAgendaModalMobile({
 
   const [dragDx, setDragDx] = React.useState(0);
 
-  const setTabByIndex = React.useCallback((idx: number) => {
-    const i = clamp(idx, 0, TABS.length - 1);
-    setTab(TABS[i].key);
-  }, []);
+  const setTabByIndex = React.useCallback(
+    (idx: number) => {
+      const i = clamp(idx, 0, TABS.length - 1);
+      setTab(TABS[i].key);
+    },
+    [TABS]
+  );
 
   const onTouchStart = (e: React.TouchEvent) => {
     const t = e.touches?.[0];
@@ -290,7 +338,6 @@ export function DailyBonusAgendaModalMobile({
 
     setDragDx(0);
 
-    // seuil: soit distance, soit flick rapide
     const distOk = Math.abs(dx) >= 60;
     const flickOk = Math.abs(dx) >= 35 && dt <= 220;
 
@@ -350,7 +397,10 @@ export function DailyBonusAgendaModalMobile({
         .llDBmSheet{
           width: 100%;
           max-width: 980px;
+
+          /* ✅ align desktop: hauteur claire => scroll interne fiable */
           height: min(92vh, 820px);
+
           background:
             radial-gradient(520px 260px at 12% 0%, rgba(124,77,255,0.18), rgba(0,0,0,0) 60%),
             rgba(10,10,14,0.98);
@@ -361,6 +411,7 @@ export function DailyBonusAgendaModalMobile({
           overflow: hidden;
           display:flex;
           flex-direction: column;
+          min-height: 0; /* ✅ important en flex */
         }
 
         .llDBmGrab{
@@ -478,6 +529,7 @@ export function DailyBonusAgendaModalMobile({
           flex: 1;
           overflow: hidden;
           position: relative;
+          min-height: 0; /* ✅ important: permet le scroll interne */
         }
         .llDBmSlides{
           height: 100%;
@@ -490,6 +542,7 @@ export function DailyBonusAgendaModalMobile({
           flex: 0 0 100%;
           width: 100%;
           height: 100%;
+          min-height: 0;  /* ✅ important */
           overflow: auto;
           padding: 12px 14px 18px;
           -webkit-overflow-scrolling: touch;
@@ -757,6 +810,33 @@ export function DailyBonusAgendaModalMobile({
         .llDBmCms ul{ margin: 8px 0 8px 18px; }
         .llDBmCms li{ margin: 4px 0; }
 
+        /* ✅ mini switch contenu (align desktop: plusieurs contenus) */
+        .llDBmContentTabs{
+          display:flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-bottom: 10px;
+        }
+        .llDBmContentTab{
+          display:inline-flex;
+          align-items:center;
+          gap: 8px;
+          padding: 9px 10px;
+          border-radius: 999px;
+          font-weight: 950;
+          font-size: 12px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.14);
+          color: rgba(255,255,255,0.86);
+          cursor: pointer;
+          user-select: none;
+        }
+        .llDBmContentTab.isActive{
+          border-color: rgba(124,77,255,0.55);
+          background: rgba(124,77,255,0.14);
+          box-shadow: 0 0 0 2px rgba(124,77,255,0.10);
+        }
+
         @media (prefers-reduced-motion: reduce){
           .llDBmSlides{ transition: none !important; }
         }
@@ -773,7 +853,8 @@ export function DailyBonusAgendaModalMobile({
           <div className="llDBmTitleRow">
             <div className="llDBmTitle">Bonus</div>
             <div className="llDBmSub">
-              Aujourd’hui: {state.day} • {state.monthClaimedDays} jour(s) ce mois • 🎡 {wheelTickets} • 🏅 {prestigeTokens}
+              Aujourd’hui: {state.day} • {state.monthClaimedDays} jour(s) ce mois • 🎡 {wheelTickets} • 🏅{" "}
+              {prestigeTokens} • Rôle {String(userRole || "viewer")}
             </div>
           </div>
 
@@ -889,10 +970,7 @@ export function DailyBonusAgendaModalMobile({
                   const missed = d.status === "missed";
 
                   return (
-                    <div
-                      key={d.date}
-                      className={["llDBmDay", dim ? "isDim" : "", missed ? "isMissed" : ""].join(" ")}
-                    >
+                    <div key={d.date} className={["llDBmDay", dim ? "isDim" : "", missed ? "isMissed" : ""].join(" ")}>
                       <div className="llDBmDayHead">
                         <div className="llDBmDayLeft">
                           <div className="llDBmDayLabel">{d.label}</div>
@@ -922,8 +1000,7 @@ export function DailyBonusAgendaModalMobile({
               <div className="llDBmMilestones">
                 {milestones.map((m) => {
                   const isClaimable = m.status === "claimable" && !busy;
-                  const cls =
-                    m.status === "locked" ? "isLocked" : m.status === "claimed" ? "isClaimed" : "isClaimable";
+                  const cls = m.status === "locked" ? "isLocked" : m.status === "claimed" ? "isClaimed" : "isClaimable";
 
                   const right =
                     m.status === "claimed"
@@ -969,29 +1046,36 @@ export function DailyBonusAgendaModalMobile({
               </div>
             </div>
 
-            {/* Slide 2: Infos (CMS) */}
+            {/* Slide 2: Content (CMS) — align desktop (multi content + titles) */}
             <div className="llDBmSlide">
+              <div className="llDBmContentTabs">
+                {contentTabs.map((t) => {
+                  const label = contentTitles[t.key] || t.fallbackLabel;
+                  const active = activeContentKey === t.key;
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      className={`llDBmContentTab ${active ? "isActive" : ""}`}
+                      onClick={() => setActiveContentKey(t.key)}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="llDBmInfoCard">
-                {infosLoading ? (
+                <div className="llDBmSectionTitle" style={{ margin: "0 0 10px" }}>
+                  {activeContentLabel}
+                </div>
+
+                {contentLoading ? (
                   <div className="llDBmInfoText">Chargement…</div>
-                ) : infosHtml ? (
-                  <div className="llDBmCms" dangerouslySetInnerHTML={{ __html: infosHtml }} />
+                ) : contentHtml ? (
+                  <div className="llDBmCms" dangerouslySetInnerHTML={{ __html: contentHtml }} />
                 ) : (
-                  <div className="llDBmInfoText">
-                    • 1 récupération par jour <small>(timezone Europe/Paris)</small>.<br />
-                    • Cycle hebdo : <strong>Lun 3</strong> / <strong>Mar 3</strong> / <strong>Mer 🎡</strong> /{" "}
-                    <strong>Jeu 5</strong> / <strong>Ven 5</strong> / <strong>Sam 🎡</strong> / <strong>Dim 10</strong>.
-                    <br />
-                    • Les paliers <strong>5/10/20/30</strong> = nombre de jours claimés dans le mois (pas forcément en
-                    streak).
-                    <br />
-                    • Skins/titres seront visibles plus tard (shop/collections).
-                    {premiumActive ? (
-                      <>
-                        <br />• Premium actif : récompenses quotidiennes <strong>x2</strong>.
-                      </>
-                    ) : null}
-                  </div>
+                  <div className="llDBmInfoText">Contenu indisponible.</div>
                 )}
               </div>
 

@@ -350,6 +350,7 @@ function DailyBonusAgendaModalDesktop({
 
         .llBonusModal{
           width: min(980px, 96vw);
+          height: min(780px, 90vh);
           max-height: min(780px, 90vh);
           overflow: hidden;
           display: grid;
@@ -361,15 +362,20 @@ function DailyBonusAgendaModalDesktop({
             rgba(10,10,14,0.96);
           box-shadow: 0 26px 90px rgba(0,0,0,0.60);
         }
-
+          
         @media (max-width: 840px){
           .llBonusModal{
             grid-template-columns: 1fr;
+            height: 92vh;       /* ✅ idem */
             max-height: 92vh;
           }
         }
 
+
         .llBonusSide{
+          min-height: 0;
+          overflow: auto;
+          -webkit-overflow-scrolling: touch;
           border-right: 1px solid rgba(255,255,255,0.08);
           padding: 14px;
           display: flex;
@@ -467,6 +473,8 @@ function DailyBonusAgendaModalDesktop({
         .llBonusBody{
           padding: 14px;
           overflow: auto;
+          min-height: 0;                 /* ✅ permet au scroll de fonctionner en grid */
+          -webkit-overflow-scrolling: touch;
         }
 
         .llBonusHeadRow{
