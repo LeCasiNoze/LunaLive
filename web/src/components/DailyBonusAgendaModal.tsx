@@ -1,9 +1,13 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { claimDailyBonusToday, claimDailyBonusMilestone } from "../lib/api";
+import {
+  claimDailyBonusToday,
+  claimDailyBonusMilestone,
+  publicGetContent,
+} from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
 import { DailyBonusAgendaModalMobile } from "./DailyBonusAgendaModal.mobile";
-import { useIsMobile } from "../hooks/useIsMobile"; // si tu as déjà ce hook
+import { useIsMobile } from "../hooks/useIsMobile";
 
 type WeekDay = {
   isodow: number;
@@ -15,8 +19,10 @@ type WeekDay = {
   status: "future" | "missed" | "claimed" | "today_claimable" | "today_claimed";
 };
 
-
-type Milestone = { milestone: 5 | 10 | 20 | 30; status: "locked" | "claimable" | "claimed" };
+type Milestone = {
+  milestone: 5 | 10 | 20 | 30;
+  status: "locked" | "claimable" | "claimed";
+};
 
 export type DailyBonusState = {
   ok: true;
@@ -29,8 +35,6 @@ export type DailyBonusState = {
   milestones: Milestone[];
   tokens?: { wheel_ticket?: number; prestige_token?: number };
 
-  // ✅ Premium (optionnel) — côté API tu peux renvoyer:
-  // { premiumActive:true } ou { premium:{active:true, multiplier:2} }
   premiumActive?: boolean;
   premium?: { active?: boolean; multiplier?: number; label?: string; plan?: string };
 };
@@ -94,7 +98,48 @@ function statusPill(status: WeekDay["status"]) {
   return { label: "À venir", kind: "muted" as const };
 }
 
+function sanitizeHtmlLite(input: string) {
+  const html = String(input || "");
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.querySelectorAll("script, iframe, object, embed").forEach((n) => n.remove());
+
+    doc.querySelectorAll("*").forEach((el) => {
+      [...el.attributes].forEach((a) => {
+        const name = a.name.toLowerCase();
+        const val = String(a.value || "");
+
+        if (name.startsWith("on")) el.removeAttribute(a.name);
+        if ((name === "href" || name === "src") && /^\s*javascript:/i.test(val)) el.removeAttribute(a.name);
+      });
+    });
+
+    return doc.body.innerHTML || "";
+  } catch {
+    return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+  }
+}
+
 export function DailyBonusAgendaModal({
+  state,
+  onClose,
+  onState,
+}: {
+  state: DailyBonusState;
+  onClose: () => void;
+  onState: (s: DailyBonusState) => void;
+}) {
+  const isMobile = useIsMobile();
+
+  // ✅ Wrapper: aucun hook “conditionnel”
+  if (isMobile) {
+    return <DailyBonusAgendaModalMobile state={state} onClose={onClose} onState={onState} />;
+  }
+
+  return <DailyBonusAgendaModalDesktop state={state} onClose={onClose} onState={onState} />;
+}
+
+function DailyBonusAgendaModalDesktop({
   state,
   onClose,
   onState,
@@ -107,20 +152,34 @@ export function DailyBonusAgendaModal({
   const token = auth?.token ?? null;
   const refreshMe = auth?.refreshMe ?? (async () => {});
 
-  const isMobile = useIsMobile();
-
-  if (isMobile) {
-    return (
-      <DailyBonusAgendaModalMobile
-        state={state}
-        onClose={onClose}
-        onState={onState}
-      />
-    );
-  }
-
   const [tab, setTab] = React.useState<"agenda" | "infos" | "event">("agenda");
   const [busy, setBusy] = React.useState<string | null>(null);
+
+  const [infosHtml, setInfosHtml] = React.useState<string | null>(null);
+  const [infosLoading, setInfosLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    let dead = false;
+
+    async function load() {
+      if (tab !== "infos") return;
+      setInfosLoading(true);
+      try {
+        const r: any = await publicGetContent("daily_bonus_infos");
+        const html = r?.item?.html ? sanitizeHtmlLite(String(r.item.html)) : null;
+        if (!dead) setInfosHtml(html);
+      } catch {
+        if (!dead) setInfosHtml(null);
+      } finally {
+        if (!dead) setInfosLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      dead = true;
+    };
+  }, [tab]);
 
   // toast interne
   const [toast, setToast] = React.useState<string | null>(null);
@@ -133,15 +192,13 @@ export function DailyBonusAgendaModal({
   const week = Array.isArray((state as any)?.week) ? (state as any).week : [];
   const milestones = Array.isArray((state as any)?.milestones) ? (state as any).milestones : [];
 
-  // ✅ Premium flag (robuste: supporte plusieurs formats de payload)
   const premiumActive = Boolean(
     (state as any)?.premiumActive ??
       (state as any)?.premium?.active ??
       (state as any)?.premium?.isActive ??
       false
   );
-  const premiumLabel =
-    String((state as any)?.premium?.label ?? "").trim() || "Abonnement actif";
+  const premiumLabel = String((state as any)?.premium?.label ?? "").trim() || "Abonnement actif";
 
   const showToast = React.useCallback((text: string) => {
     setToast(text);
@@ -370,7 +427,6 @@ export function DailyBonusAgendaModal({
           color: rgba(255,255,255,0.62);
         }
 
-        /* ✅ Premium pill */
         .llBonusPremiumPill{
           display:inline-flex;
           align-items:center;
@@ -429,7 +485,6 @@ export function DailyBonusAgendaModal({
           cursor: default;
         }
 
-        /* ✅ Star top-right inside each day card (premium) */
         .llBonusPremiumStar{
           position: absolute;
           top: 10px;
@@ -467,7 +522,7 @@ export function DailyBonusAgendaModal({
         .llBonusDayMark{
           font-weight: 1100;
           opacity: 0.75;
-          padding-right: 30px; /* laisse la place à l'étoile premium */
+          padding-right: 30px;
         }
 
         .llBonusRewardRow{
@@ -485,7 +540,6 @@ export function DailyBonusAgendaModal({
           line-height: 1.1;
         }
 
-        /* ✅ Small "x2" chip near reward */
         .llBonusX2Chip{
           display:inline-flex;
           align-items:center;
@@ -724,7 +778,6 @@ export function DailyBonusAgendaModal({
                       }}
                       title={d.status === "today_claimable" ? "Cliquer pour récupérer" : undefined}
                     >
-                      {/* ✅ étoile premium en haut à droite */}
                       {premiumActive ? (
                         <div className="llBonusPremiumStar" aria-hidden="true" title="Premium actif">
                           <span>★</span>
@@ -738,8 +791,6 @@ export function DailyBonusAgendaModal({
 
                       <div className="llBonusRewardRow">
                         <div className="llBonusReward">{rewardLabel(d.reward)}</div>
-
-                        {/* ✅ affichage x2 (sans re-multiplier les montants, l’API les renvoie déjà x2) */}
                         {premiumActive ? <div className="llBonusX2Chip">x2</div> : null}
                       </div>
 
@@ -823,21 +874,21 @@ export function DailyBonusAgendaModal({
               </div>
 
               <div className="llBonusPanel" style={{ marginTop: 12 }}>
-                <div className="llBonusSub" style={{ opacity: 0.92, lineHeight: 1.65 }}>
-                  • 1 récupération par jour (timezone Europe/Paris).
-                  <br />
-                  • Cycle hebdo : Lun 3 / Mar 3 / Mer 🎡 / Jeu 5 / Ven 5 / Sam 🎡 / Dim 10.
-                  <br />
-                  • Les paliers 5/10/20/30 = nombre de jours claimés dans le mois (pas forcément en streak).
-                  <br />
-                  • Skins/titres seront visibles plus tard (shop/collections).
-                  {premiumActive ? (
-                    <>
-                      <br />
-                      • Premium actif : récompenses quotidiennes x2.
-                    </>
-                  ) : null}
-                </div>
+                {infosLoading ? (
+                  <div className="llBonusSub" style={{ opacity: 0.85 }}>
+                    Chargement…
+                  </div>
+                ) : infosHtml ? (
+                  <div
+                    className="llBonusSub"
+                    style={{ opacity: 0.92, lineHeight: 1.65 }}
+                    dangerouslySetInnerHTML={{ __html: infosHtml }}
+                  />
+                ) : (
+                  <div className="llBonusSub" style={{ opacity: 0.92, lineHeight: 1.65 }}>
+                    Contenu indisponible.
+                  </div>
+                )}
               </div>
             </>
           ) : null}

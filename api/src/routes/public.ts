@@ -28,6 +28,24 @@ function tryGetAuthUser(req: Request): AuthUser | null {
 /* Health */
 publicRouter.get("/health", (_req, res) => res.json({ ok: true }));
 
+publicRouter.get(
+  "/content/:key",
+  a(async (req, res) => {
+    const key = String(req.params.key || "").trim();
+    if (!key) return res.status(400).json({ ok: false, error: "missing_key" });
+
+    const { rows } = await pool.query(
+      `SELECT key, title, html, updated_at
+       FROM site_content
+       WHERE key = $1`,
+      [key]
+    );
+
+    const row = rows[0] || null;
+    return res.json({ ok: true, item: row });
+  })
+);
+
 /* Public */
 publicRouter.get(
   "/lives",

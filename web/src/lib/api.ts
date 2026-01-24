@@ -12,6 +12,15 @@ export type ApiUser = {
   breakdown?: Record<string, any>;  // déjà utilisé ailleurs
 };
 
+export type AdminUserDetails = {
+  ok: true;
+  userId: number;
+  createdAt: string | null;
+  lastLoginAt: string | null;
+  messagesCount: number | null;
+  rubisSpent: number | null;
+  siteSpentEur: number | null;
+};
 
 export type ApiLive = {
   id: string;
@@ -270,6 +279,17 @@ export type ApiStreamerPage = {
   // ✅ notif bell (si user connecté + follow)
   notifyEnabled?: boolean;
 };
+
+export type ApiContentItem = {
+  key: string;
+  title: string | null;
+  html: string;
+  updatedAt?: string | null;
+};
+
+export type ApiAdminListContent = { ok: true; items: ApiContentItem[] };
+export type ApiAdminGetContent = { ok: true; item: ApiContentItem | null };
+export type ApiPublicGetContent = { ok: true; item: ApiContentItem | null };
 
 /* Public */
 export const getLives = () => j<ApiLive[]>("/lives");
@@ -1640,16 +1660,6 @@ export async function adminAdjustUserRubis(
   });
 }
 
-export type AdminUserDetails = {
-  ok: true;
-  userId: number;
-  createdAt: string | null;
-  lastLoginAt: string | null;
-  messagesCount: number | null;
-  rubisSpent: number | null;
-  siteSpentEur: number | null;
-};
-
 export async function adminImpersonateUser(adminKey: string, userId: number): Promise<{ ok: true; token: string }> {
   const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
@@ -1724,4 +1734,42 @@ export async function adminCancelSubscription(
   });
   if (!res.ok) throw new Error(`adminCancelSubscription ${res.status}`);
   return await res.json();
+}
+// ──────────────────────────────────────────
+// 🧩 Content (public + admin)
+// ──────────────────────────────────────────
+
+export async function publicGetContent(key: string) {
+  return j<ApiPublicGetContent>(`/public/content/${encodeURIComponent(key)}`);
+}
+
+export async function adminListContent(adminKey: string) {
+  return j<ApiAdminListContent>(`/admin/content`, {
+    headers: { "x-admin-key": adminKey },
+  });
+}
+
+export async function adminGetContent(adminKey: string, key: string) {
+  return j<ApiAdminGetContent>(`/admin/content/${encodeURIComponent(key)}`, {
+    headers: { "x-admin-key": adminKey },
+  });
+}
+
+export async function adminUpsertContent(
+  adminKey: string,
+  key: string,
+  payload: { title?: string; html: string }
+) {
+  return j<{ ok: true; item?: ApiContentItem }>(`/admin/content/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminDeleteContent(adminKey: string, key: string) {
+  return j<{ ok: true }>(`/admin/content/${encodeURIComponent(key)}`, {
+    method: "DELETE",
+    headers: { "x-admin-key": adminKey },
+  });
 }

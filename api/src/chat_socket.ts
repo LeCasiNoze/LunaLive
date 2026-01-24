@@ -412,7 +412,23 @@ export function attachChat(io: Server) {
           try {
             const st = await readSettings(meta.id);
 
-            const dliveUsername = st.dliveUsername || null;
+            let dliveUsername = st.dliveUsername || null;
+
+            // ✅ fallback: si pas défini dans chat settings, prendre la chaîne liée
+            if (!dliveUsername) {
+              // ⚠️ à adapter à TA table/route: ici c'est l’idée
+              const r = await pool.query(
+                `SELECT linked_displayname AS "linkedDisplayname", use_linked AS "useLinked"
+                FROM dlive_links
+                WHERE user_id=$1
+                LIMIT 1`,
+                [meta.ownerUserId]
+              );
+              const row = r.rows?.[0];
+              if (row?.useLinked && row?.linkedDisplayname) {
+                dliveUsername = String(row.linkedDisplayname);
+              }
+            }
 
             ensureDliveBridge({
               io,
@@ -519,7 +535,7 @@ export function attachChat(io: Server) {
           } catch (e) {
             console.warn("[chat_socket] dlive bridge update failed", (e as any)?.message || e);
           }
-          
+
           const changed: ChatSettingsPatch = {};
           if (old.allowLinks !== next.allowLinks) changed.allowLinks = next.allowLinks;
           if (old.followOnly !== next.followOnly) changed.followOnly = next.followOnly;

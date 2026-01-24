@@ -15,7 +15,14 @@ import {
   adminApproveCasinoComment,
   adminRejectCasinoComment,
   type AdminCasinoCommentRow,
+
+  // ✅ content (HTML)
+  adminListContent,
+  adminGetContent,
+  adminUpsertContent,
+  adminDeleteContent,
 } from "../lib/api";
+
 import { UsersAdminSection } from "../components/admin/UsersAdminSection";
 import { ProviderAccountsAdminSection } from "../components/admin/ProviderAccountsAdminSection";
 import { CasinosAdminSection } from "../components/admin/CasinosAdminSection";
@@ -520,6 +527,14 @@ export default function AdminPage() {
           >
             <div style={{ display: "grid", gap: 10 }}>
               <NavButton active={tab === "overview"} icon="🏠" label="Aperçu" hint="Vue globale + raccourcis" onClick={() => goto("overview")} />
+
+              <NavButton
+                active={tab === "content"}
+                icon="🧩"
+                label="Contenu / Guides"
+                hint="Éditer du HTML affiché sur le site"
+                onClick={() => goto("content")}
+              />
 
               <NavButton
                 active={tab === "casinos"}
@@ -1154,6 +1169,21 @@ export default function AdminPage() {
             </Card>
           ) : null}
 
+          {tab === "content" ? (
+            <Card
+              title={
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>🧩</span>
+                  Contenu / Guides (HTML)
+                </span>
+              }
+              subtitle="Ex: daily_bonus_infos, guide_streamer, guide_viewer…"
+              right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
+            >
+              <AdminContentSection adminKey={key} />
+            </Card>
+          ) : null}
+
           {tab === "providers" ? (
             <Card
               title={
@@ -1171,5 +1201,201 @@ export default function AdminPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+function AdminContentSection({ adminKey }: { adminKey: string }) {
+  const [items, setItems] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(false);
+
+  const [selectedKey, setSelectedKey] = React.useState("daily_bonus_infos");
+  const [title, setTitle] = React.useState("");
+  const [html, setHtml] = React.useState("");
+  const [msg, setMsg] = React.useState<string | null>(null);
+
+  const [newKey, setNewKey] = React.useState("");
+
+  async function refreshList() {
+    setLoading(true);
+    setMsg(null);
+    try {
+      const r: any = await adminListContent(adminKey);
+      setItems(Array.isArray(r?.items) ? r.items : []);
+    } catch (e: any) {
+      setMsg(String(e?.message || e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadOne(k: string) {
+    setLoading(true);
+    setMsg(null);
+    try {
+      const r: any = await adminGetContent(adminKey, k);
+      const it = r?.item;
+      setSelectedKey(k);
+      setTitle(String(it?.title || ""));
+      setHtml(String(it?.html || ""));
+    } catch (e: any) {
+      setMsg(String(e?.message || e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  React.useEffect(() => {
+    refreshList();
+    loadOne(selectedKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 12, alignItems: "start" }}>
+      {/* LIST */}
+      <div style={{ display: "grid", gap: 10 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button className="btnSecondary" type="button" onClick={refreshList} disabled={loading}>
+            {loading ? "…" : "🔄 Rafraîchir"}
+          </button>
+          <Pill tone="info">items: <b>{items.length}</b></Pill>
+        </div>
+
+        <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)", overflow: "hidden" }}>
+          <div style={{ padding: 10, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <div className="mutedSmall" style={{ opacity: 0.85 }}>Sélectionne une clé</div>
+          </div>
+
+          <div style={{ maxHeight: 420, overflow: "auto" }}>
+            {items.map((it) => (
+              <button
+                key={it.key}
+                type="button"
+                onClick={() => loadOne(String(it.key))}
+                className="btnSecondary"
+                style={{
+                  width: "100%",
+                  textAlign: "left",
+                  borderRadius: 0,
+                  border: "none",
+                  borderBottom: "1px solid rgba(255,255,255,0.06)",
+                  background: selectedKey === it.key ? "rgba(167,139,250,0.12)" : "transparent",
+                  padding: "10px 10px",
+                }}
+              >
+                <div style={{ fontWeight: 950 }}>{it.key}</div>
+                <div className="mutedSmall" style={{ opacity: 0.8 }}>{it.title || "—"}</div>
+              </button>
+            ))}
+
+            {items.length === 0 && !loading ? (
+              <div className="mutedSmall" style={{ padding: 10, opacity: 0.85 }}>Aucun contenu.</div>
+            ) : null}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 8 }}>
+          <div className="field" style={{ margin: 0 }}>
+            <label>Créer une nouvelle clé</label>
+            <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="ex: guide_streamer" />
+          </div>
+
+          <button
+            className="btnPrimary"
+            type="button"
+            disabled={!newKey.trim()}
+            onClick={async () => {
+              const k = newKey.trim();
+              setNewKey("");
+              await adminUpsertContent(adminKey, k, { title: "", html: "<h2>Nouveau contenu</h2><p>…</p>" });
+              await refreshList();
+              await loadOne(k);
+            }}
+          >
+            ➕ Créer
+          </button>
+        </div>
+
+        {msg ? (
+          <div style={{ borderRadius: 12, padding: "10px 12px", border: "1px solid rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.10)" }} className="mutedSmall">
+            ⚠️ {msg}
+          </div>
+        ) : null}
+      </div>
+
+      {/* EDITOR */}
+      <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <Pill tone="brand">key: <b>{selectedKey}</b></Pill>
+
+          <button
+            className="btnPrimary"
+            type="button"
+            disabled={loading}
+            onClick={async () => {
+              setMsg(null);
+              try {
+                await adminUpsertContent(adminKey, selectedKey, { title, html });
+                setMsg("✅ Sauvegardé");
+                await refreshList();
+              } catch (e: any) {
+                setMsg(String(e?.message || e));
+              }
+            }}
+          >
+            💾 Sauvegarder
+          </button>
+
+          <button
+            className="btnGhostSmall"
+            type="button"
+            disabled={loading}
+            onClick={async () => {
+              setMsg(null);
+              try {
+                await adminDeleteContent(adminKey, selectedKey);
+                setMsg("🗑️ Supprimé");
+                setTitle("");
+                setHtml("");
+                await refreshList();
+              } catch (e: any) {
+                setMsg(String(e?.message || e));
+              }
+            }}
+            style={{ border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.10)", borderRadius: 12 }}
+          >
+            🗑️ Supprimer
+          </button>
+        </div>
+
+        <div className="field" style={{ margin: 0 }}>
+          <label>Titre (optionnel)</label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="ex: Guide Streamer — Démarrage" />
+        </div>
+
+        <div className="field" style={{ margin: 0 }}>
+          <label>HTML</label>
+          <textarea
+            value={html}
+            onChange={(e) => setHtml(e.target.value)}
+            rows={14}
+            style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}
+            placeholder="<h2>…</h2><p>…</p>"
+          />
+          <div className="mutedSmall" style={{ opacity: 0.85, marginTop: 6 }}>
+            HTML simple recommandé (titres, listes, liens). Scripts/iframes non.
+          </div>
+        </div>
+
+        <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)", overflow: "hidden" }}>
+          <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.08)", fontWeight: 950 }}>
+            👁️ Preview
+          </div>
+          <div style={{ padding: 12 }}>
+            <div style={{ lineHeight: 1.6, opacity: 0.95 }} dangerouslySetInnerHTML={{ __html: html }} />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
