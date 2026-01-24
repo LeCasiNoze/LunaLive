@@ -12,6 +12,14 @@ export type ApiUser = {
   breakdown?: Record<string, any>;  // déjà utilisé ailleurs
 };
 
+export type ContentMinRole = "viewer" | "moderator" | "streamer";
+
+export type AdminContentUpsertPayload = {
+  title?: string;
+  html?: string;
+  min_role?: ContentMinRole;
+};
+
 export type AdminUserDetails = {
   ok: true;
   userId: number;
@@ -284,6 +292,7 @@ export type ApiContentItem = {
   key: string;
   title: string | null;
   html: string;
+  min_role?: ContentMinRole | null; // ✅ NEW
   updatedAt?: string | null;
 };
 
@@ -1758,7 +1767,7 @@ export async function adminGetContent(adminKey: string, key: string) {
 export async function adminUpsertContent(
   adminKey: string,
   key: string,
-  payload: { title?: string; html: string }
+  payload: AdminContentUpsertPayload & { html: string } // ✅ html requis, min_role possible
 ) {
   return j<{ ok: true; item?: ApiContentItem }>(`/admin/content/${encodeURIComponent(key)}`, {
     method: "PUT",

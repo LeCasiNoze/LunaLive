@@ -1212,6 +1212,7 @@ function AdminContentSection({ adminKey }: { adminKey: string }) {
   const [title, setTitle] = React.useState("");
   const [html, setHtml] = React.useState("");
   const [msg, setMsg] = React.useState<string | null>(null);
+  const [minRole, setMinRole] = React.useState<"viewer" | "moderator" | "streamer">("viewer");
 
   const [newKey, setNewKey] = React.useState("");
 
@@ -1237,6 +1238,7 @@ function AdminContentSection({ adminKey }: { adminKey: string }) {
       setSelectedKey(k);
       setTitle(String(it?.title || ""));
       setHtml(String(it?.html || ""));
+      setMinRole((String(it?.min_role || "viewer") as any) || "viewer");
     } catch (e: any) {
       setMsg(String(e?.message || e));
     } finally {
@@ -1335,7 +1337,7 @@ function AdminContentSection({ adminKey }: { adminKey: string }) {
             onClick={async () => {
               setMsg(null);
               try {
-                await adminUpsertContent(adminKey, selectedKey, { title, html });
+                await adminUpsertContent(adminKey, selectedKey, { title, html, min_role: minRole });
                 setMsg("✅ Sauvegardé");
                 await refreshList();
               } catch (e: any) {
@@ -1371,6 +1373,18 @@ function AdminContentSection({ adminKey }: { adminKey: string }) {
         <div className="field" style={{ margin: 0 }}>
           <label>Titre (optionnel)</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="ex: Guide Streamer — Démarrage" />
+        </div>
+
+        <div className="field" style={{ margin: 0 }}>
+          <label>Visible à partir de</label>
+          <select value={minRole} onChange={(e) => setMinRole(e.target.value as any)}>
+            <option value="viewer">Tout le monde (viewer)</option>
+            <option value="moderator">Modérateurs + streamers</option>
+            <option value="streamer">Streamers uniquement</option>
+          </select>
+          <div className="mutedSmall" style={{ opacity: 0.85, marginTop: 6 }}>
+            Un rôle au-dessus voit tout ce qui est en dessous.
+          </div>
         </div>
 
         <div className="field" style={{ margin: 0 }}>

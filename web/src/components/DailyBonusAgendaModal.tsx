@@ -1,3 +1,4 @@
+// web/src/components/DailyBonusAgendaModal.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
 import {
@@ -38,6 +39,20 @@ export type DailyBonusState = {
   premiumActive?: boolean;
   premium?: { active?: boolean; multiplier?: number; label?: string; plan?: string };
 };
+
+type Role = "viewer" | "moderator" | "streamer" | "admin";
+
+function roleRank(r: any): number {
+  const v = String(r || "viewer").toLowerCase();
+  if (v === "admin") return 3;
+  if (v === "streamer") return 2;
+  if (v === "moderator" || v === "mod") return 1;
+  return 0; // viewer
+}
+
+function canSee(minRole: Role, userRole: any) {
+  return roleRank(userRole) >= roleRank(minRole);
+}
 
 function rewardLabel(r: WeekDay["reward"]) {
   if (r.type === "rubis") return `💎 ${r.amount}`;
@@ -108,9 +123,10 @@ function sanitizeHtmlLite(input: string) {
       [...el.attributes].forEach((a) => {
         const name = a.name.toLowerCase();
         const val = String(a.value || "");
-
         if (name.startsWith("on")) el.removeAttribute(a.name);
-        if ((name === "href" || name === "src") && /^\s*javascript:/i.test(val)) el.removeAttribute(a.name);
+        if ((name === "href" || name === "src") && /^\s*javascript:/i.test(val)) {
+          el.removeAttribute(a.name);
+        }
       });
     });
 
@@ -131,13 +147,16 @@ export function DailyBonusAgendaModal({
 }) {
   const isMobile = useIsMobile();
 
-  // ✅ Wrapper: aucun hook “conditionnel”
+  // ✅ Wrapper: aucun hook conditionnel
   if (isMobile) {
     return <DailyBonusAgendaModalMobile state={state} onClose={onClose} onState={onState} />;
   }
 
   return <DailyBonusAgendaModalDesktop state={state} onClose={onClose} onState={onState} />;
 }
+
+type TabKey = "agenda" | "content" | "event";
+type ContentKey = "daily_bonus_infos" | "guide_viewer" | "guide_streamer";
 
 function DailyBonusAgendaModalDesktop({
   state,
@@ -151,39 +170,7 @@ function DailyBonusAgendaModalDesktop({
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
   const refreshMe = auth?.refreshMe ?? (async () => {});
-
-  const [tab, setTab] = React.useState<"agenda" | "infos" | "event">("agenda");
-  const [busy, setBusy] = React.useState<string | null>(null);
-
-  const [infosHtml, setInfosHtml] = React.useState<string | null>(null);
-  const [infosLoading, setInfosLoading] = React.useState(false);
-
-  React.useEffect(() => {
-    let dead = false;
-
-    async function load() {
-      if (tab !== "infos") return;
-      setInfosLoading(true);
-      try {
-        const r: any = await publicGetContent("daily_bonus_infos");
-        const html = r?.item?.html ? sanitizeHtmlLite(String(r.item.html)) : null;
-        if (!dead) setInfosHtml(html);
-      } catch {
-        if (!dead) setInfosHtml(null);
-      } finally {
-        if (!dead) setInfosLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      dead = true;
-    };
-  }, [tab]);
-
-  // toast interne
-  const [toast, setToast] = React.useState<string | null>(null);
-  const toastTimer = React.useRef<number | null>(null);
+  const userRole: Role = String(auth?.user?.role || "viewer").toLowerCase() as any;
 
   const tokensAny = (state as any)?.tokens ?? {};
   const wheelTickets = Number(tokensAny?.wheel_ticket ?? 0);
@@ -199,6 +186,73 @@ function DailyBonusAgendaModalDesktop({
       false
   );
   const premiumLabel = String((state as any)?.premium?.label ?? "").trim() || "Abonnement actif";
+
+  // ✅ Tabs visibles selon rôle (un rôle “au-dessus” voit tout en dessous)
+  const contentTabs = React.useMemo(() => {
+    const tabs: Array<{ key: ContentKey; fallbackLabel: string; minRole: Role }> = [
+      { key: "daily_bonus_infos", fallbackLabel: "Informations", minRole: "viewer" },
+      { key: "guide_viewer", fallbackLabel: "Guide Viewer", minRole: "viewer" },
+      { key: "guide_streamer", fallbackLabel: "Guide Streamer", minRole: "streamer" },
+    ];
+    return tabs.filter((t) => canSee(t.minRole, userRole));
+  }, [userRole]);
+
+  // UI state
+  const [tab, setTab] = React.useState<TabKey>("agenda");
+  const [activeContentKey, setActiveContentKey] = React.useState<ContentKey>("daily_bonus_infos");
+
+  const [busy, setBusy] = React.useState<string | null>(null);
+
+  // ✅ Contenu HTML + titres dynamiques (utilise le title stocké en DB si présent)
+  const [contentHtml, setContentHtml] = React.useState<string | null>(null);
+  const [contentLoading, setContentLoading] = React.useState(false);
+  const [contentTitles, setContentTitles] = React.useState<Record<string, string>>({});
+
+  // garde-fou: si tu perds un onglet (role change), on revient sur un onglet safe
+  React.useEffect(() => {
+    if (tab !== "content") return;
+    const ok = contentTabs.some((t) => t.key === activeContentKey);
+    if (!ok) {
+      const first = contentTabs[0]?.key || "daily_bonus_infos";
+      setActiveContentKey(first);
+    }
+  }, [tab, contentTabs, activeContentKey]);
+
+  React.useEffect(() => {
+    let dead = false;
+
+    async function load() {
+      if (tab !== "content") return;
+
+      const key = activeContentKey;
+      setContentLoading(true);
+      try {
+        const r: any = await publicGetContent(key);
+        const html = r?.item?.html ? sanitizeHtmlLite(String(r.item.html)) : null;
+
+        // title DB => label d’onglet (sinon fallback)
+        const title = String(r?.item?.title || "").trim();
+        if (title && !dead) {
+          setContentTitles((m) => ({ ...m, [key]: title }));
+        }
+
+        if (!dead) setContentHtml(html);
+      } catch {
+        if (!dead) setContentHtml(null);
+      } finally {
+        if (!dead) setContentLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      dead = true;
+    };
+  }, [tab, activeContentKey]);
+
+  // toast interne
+  const [toast, setToast] = React.useState<string | null>(null);
+  const toastTimer = React.useRef<number | null>(null);
 
   const showToast = React.useCallback((text: string) => {
     setToast(text);
@@ -250,6 +304,12 @@ function DailyBonusAgendaModalDesktop({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const activeContentLabel = React.useMemo(() => {
+    const found = contentTabs.find((t) => t.key === activeContentKey);
+    const fallback = found?.fallbackLabel || "Contenu";
+    return contentTitles[activeContentKey] || fallback;
+  }, [activeContentKey, contentTabs, contentTitles]);
 
   return createPortal(
     <div
@@ -503,9 +563,7 @@ function DailyBonusAgendaModalDesktop({
           pointer-events: none;
           opacity: 0.92;
         }
-        .llBonusPremiumStar span{
-          transform: translateY(-0.5px);
-        }
+        .llBonusPremiumStar span{ transform: translateY(-0.5px); }
 
         .llBonusDayTop{
           display:flex;
@@ -706,15 +764,31 @@ function DailyBonusAgendaModalDesktop({
               Bonus quotidien
             </button>
 
+            {/* ✅ Onglets HTML (filtrés par rôle) */}
+            {contentTabs.map((t) => {
+              const label = contentTitles[t.key] || t.fallbackLabel;
+              const active = tab === "content" && activeContentKey === t.key;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={`llBonusTab ${active ? "isActive" : ""}`}
+                  onClick={() => {
+                    setActiveContentKey(t.key);
+                    setTab("content");
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+
             <button
               type="button"
-              className={`llBonusTab ${tab === "infos" ? "isActive" : ""}`}
-              onClick={() => setTab("infos")}
+              className="llBonusTab isSoon"
+              onClick={() => {}}
+              title="Bientôt"
             >
-              Informations
-            </button>
-
-            <button type="button" className="llBonusTab isSoon" onClick={() => {}} title="Bientôt">
               Événements (bientôt)
             </button>
           </div>
@@ -729,6 +803,8 @@ function DailyBonusAgendaModalDesktop({
             Prestige: <strong>{prestigeTokens}</strong>
             <br />
             Premium: <strong>{premiumActive ? "actif" : "—"}</strong>
+            <br />
+            Rôle: <strong>{String(userRole || "viewer")}</strong>
           </div>
         </div>
 
@@ -860,10 +936,10 @@ function DailyBonusAgendaModalDesktop({
             </>
           ) : null}
 
-          {tab === "infos" ? (
+          {tab === "content" ? (
             <>
               <div className="llBonusHeadRow">
-                <div className="llBonusH1">Informations</div>
+                <div className="llBonusH1">{activeContentLabel}</div>
                 {premiumActive ? (
                   <div className="llBonusPremiumPill" title="Vos récompenses quotidiennes sont doublées">
                     <span className="star">★</span>
@@ -874,15 +950,15 @@ function DailyBonusAgendaModalDesktop({
               </div>
 
               <div className="llBonusPanel" style={{ marginTop: 12 }}>
-                {infosLoading ? (
+                {contentLoading ? (
                   <div className="llBonusSub" style={{ opacity: 0.85 }}>
                     Chargement…
                   </div>
-                ) : infosHtml ? (
+                ) : contentHtml ? (
                   <div
                     className="llBonusSub"
                     style={{ opacity: 0.92, lineHeight: 1.65 }}
-                    dangerouslySetInnerHTML={{ __html: infosHtml }}
+                    dangerouslySetInnerHTML={{ __html: contentHtml }}
                   />
                 ) : (
                   <div className="llBonusSub" style={{ opacity: 0.92, lineHeight: 1.65 }}>
