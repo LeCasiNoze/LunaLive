@@ -29,6 +29,7 @@ import { DailyBonusToast } from "./components/DailyBonusToast";
 import { AchievementsToast } from "./components/AchievementsToast";
 import { CallsToast } from "./components/CallsToast";
 import { AchievementsModal } from "./components/AchievementsModal";
+import ChatPopupPage from "./pages/ChatPopupPage";
 
 function AppInner() {
   const location = useLocation();
@@ -61,6 +62,7 @@ function AppInner() {
 
       <Routes>
         <Route path="/impersonate" element={<ImpersonatePage />} />
+        <Route path="/popout/chat/:slug" element={<ChatPopupPage />} />
 
         <Route path="/" element={<LivesPage />} />
         <Route path="/browse" element={<BrowsePage />} />

@@ -733,7 +733,11 @@ function ChatSettingsModal(props: {
   emitSocket: (event: string, payload: any) => Promise<any>;
   slug: string;
   setError: (s: string | null) => void;
+
+  // ✅ NEW
+  onOpenPopup: () => void;
 }) {
+
   if (!props.open) return null;
 
   return (
@@ -798,6 +802,48 @@ function ChatSettingsModal(props: {
           <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 800, marginBottom: 10 }}>
             Modérateur / propriétaire / admin uniquement. Les changements sont instantanés.
           </div>
+<div
+  style={{
+    padding: 12,
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.04)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 12,
+  }}
+>
+  <div style={{ minWidth: 0 }}>
+    <div style={{ fontWeight: 950 }}>🗔 Chat pop-up</div>
+    <div style={{ marginTop: 4, fontSize: 12, opacity: 0.8, fontWeight: 700 }}>
+      Ouvre le chat dans une petite fenêtre séparée (skins, règles, emotes, etc.).
+    </div>
+  </div>
+
+  <button
+    type="button"
+    onClick={(e) => {
+      e.stopPropagation();
+      props.onOpenPopup();
+    }}
+    style={{
+      padding: "10px 12px",
+      borderRadius: 14,
+      border: "1px solid rgba(255,255,255,0.12)",
+      background: "rgba(124,77,255,0.22)",
+      color: "white",
+      fontWeight: 950,
+      cursor: "pointer",
+      whiteSpace: "nowrap",
+      minWidth: 92,
+      textAlign: "center",
+    }}
+  >
+    Ouvrir
+  </button>
+</div>
 
           {(
             [
@@ -1228,13 +1274,20 @@ export function ChatPanel({
   compact = false,
   autoFocus = false,
   onFollowsCount,
+
+  // ✅ NEW
+  botMenuVariant = "modal",
 }: {
   slug: string;
   onRequireLogin: () => void;
   compact?: boolean;
   autoFocus?: boolean;
   onFollowsCount?: (n: number) => void;
+
+  // ✅ NEW
+  botMenuVariant?: "modal" | "dock";
 }) {
+
   /* -------------------------
      Refs / callbacks
      ------------------------- */
@@ -2118,6 +2171,41 @@ export function ChatPanel({
     await fetchSettings();
   };
 
+  const popupRef = React.useRef<Window | null>(null);
+
+function openChatPopup() {
+  const url = `${window.location.origin}/popout/chat/${encodeURIComponent(String(slug))}`;
+
+  const w = 420;
+  const h = 740;
+  const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - w) * 0.5));
+  const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - h) * 0.2));
+
+  const features = [
+    `width=${w}`,
+    `height=${h}`,
+    `left=${left}`,
+    `top=${top}`,
+    "resizable=yes",
+    "scrollbars=yes",
+  ].join(",");
+
+  try {
+    if (popupRef.current && !popupRef.current.closed) {
+      popupRef.current.focus();
+      return;
+    }
+  } catch {}
+
+  const win = window.open(url, "lunalive_chat_popup", features);
+  if (!win) {
+    setError("Popup bloquée par le navigateur. Autorise les popups pour ce site.");
+    return;
+  }
+  popupRef.current = win;
+  win.focus();
+}
+
   /* =========================================================
      Render
      ========================================================= */
@@ -2525,6 +2613,7 @@ export function ChatPanel({
         emitSocket={emitSocket}
         slug={slug}
         setError={setError}
+        onOpenPopup={openChatPopup}
       />
 
       {/* menu */}
@@ -2559,6 +2648,7 @@ export function ChatPanel({
         sendBang={(text) => {
           sockRef.current?.emit("chat:send", { slug, body: text }, () => {});
         }}
+        variant={botMenuVariant}
       />
     </div>
   );
