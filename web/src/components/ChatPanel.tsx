@@ -66,7 +66,12 @@ type ChatSettings = {
   allowLinks: boolean;
   followOnly: boolean;
   subOnly: boolean;
+
+  // ✅ NEW: DLive sync routing
+  dliveSyncPublic: boolean;
+  dliveSyncPopup: boolean;
 };
+
 
 type ViewerRow = { userId: number; username: string };
 
@@ -330,10 +335,17 @@ function SystemMessageCard(props: {
       className={props.animated ? `chat-enter ${CHAT_ENTER_ANIM}` : undefined}
       style={{
         cursor: "default",
-        padding: 10,
+        padding: props.animated ? 11 : 10,
         borderRadius: 14,
         background: "rgba(124,77,255,0.10)",
         border: "1px solid rgba(255,255,255,0.06)",
+
+        // ✅ popup look
+        width: "100%",
+        maxWidth: 560,
+        margin: "0 auto",
+        transform: "scale(1.06)",
+        transformOrigin: "center top",
       }}
     >
       <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
@@ -343,7 +355,7 @@ function SystemMessageCard(props: {
         </div>
       </div>
 
-      <div style={{ marginTop: 6, fontSize: 13, opacity: 0.95, color: "white" }}>{body}</div>
+      <div style={{ marginTop: 6, fontSize: 15, opacity: 0.95, color: "white", textAlign: "center" }}>{body}</div>
 
       {isRain ? (
         <div style={{ marginTop: 10 }}>
@@ -729,7 +741,7 @@ function ChatSettingsModal(props: {
   settingsLoading: boolean;
   setSettingsLoading: (v: boolean) => void;
   chatSettings: ChatSettings;
-  setChatSettings: (v: ChatSettings) => void;
+  setChatSettings: React.Dispatch<React.SetStateAction<ChatSettings>>;
   emitSocket: (event: string, payload: any) => Promise<any>;
   slug: string;
   setError: (s: string | null) => void;
@@ -802,48 +814,48 @@ function ChatSettingsModal(props: {
           <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 800, marginBottom: 10 }}>
             Modérateur / propriétaire / admin uniquement. Les changements sont instantanés.
           </div>
-<div
-  style={{
-    padding: 12,
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.04)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 12,
-  }}
->
-  <div style={{ minWidth: 0 }}>
-    <div style={{ fontWeight: 950 }}>🗔 Chat pop-up</div>
-    <div style={{ marginTop: 4, fontSize: 12, opacity: 0.8, fontWeight: 700 }}>
-      Ouvre le chat dans une petite fenêtre séparée (skins, règles, emotes, etc.).
-    </div>
-  </div>
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(255,255,255,0.04)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              marginBottom: 12,
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 950 }}>🗔 Chat pop-up</div>
+              <div style={{ marginTop: 4, fontSize: 12, opacity: 0.8, fontWeight: 700 }}>
+                Ouvre le chat dans une petite fenêtre séparée (skins, règles, emotes, etc.).
+              </div>
+            </div>
 
-  <button
-    type="button"
-    onClick={(e) => {
-      e.stopPropagation();
-      props.onOpenPopup();
-    }}
-    style={{
-      padding: "10px 12px",
-      borderRadius: 14,
-      border: "1px solid rgba(255,255,255,0.12)",
-      background: "rgba(124,77,255,0.22)",
-      color: "white",
-      fontWeight: 950,
-      cursor: "pointer",
-      whiteSpace: "nowrap",
-      minWidth: 92,
-      textAlign: "center",
-    }}
-  >
-    Ouvrir
-  </button>
-</div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onOpenPopup();
+              }}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(124,77,255,0.22)",
+                color: "white",
+                fontWeight: 950,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                minWidth: 92,
+                textAlign: "center",
+              }}
+            >
+              Ouvrir
+            </button>
+          </div>
 
           {(
             [
@@ -864,6 +876,20 @@ function ChatSettingsModal(props: {
                 title: "Sub-only",
                 desc: "Seuls les subs actifs peuvent parler. (désactive follow-only si activé)",
                 value: props.chatSettings.subOnly,
+              },
+
+              // ✅ NEW: DLive sync routing
+              {
+                key: "dliveSyncPublic",
+                title: "Sync DLive → Chat public",
+                desc: "Réplique le chat DLive dans le chat public (page stream).",
+                value: props.chatSettings.dliveSyncPublic,
+              },
+              {
+                key: "dliveSyncPopup",
+                title: "Sync DLive → Chat pop-up",
+                desc: "Réplique le chat DLive dans le chat pop-up (popout).",
+                value: props.chatSettings.dliveSyncPopup,
               },
             ] as const
           ).map((it) => (
@@ -899,11 +925,14 @@ function ChatSettingsModal(props: {
                     if (!ack?.ok) throw new Error(String(ack?.error || "settings_failed"));
 
                     const s = ack.settings || {};
-                    props.setChatSettings({
+                    props.setChatSettings((prev) => ({
+                      ...prev,
                       allowLinks: !!s.allowLinks,
                       followOnly: !!s.followOnly,
                       subOnly: !!s.subOnly,
-                    });
+                      dliveSyncPublic: !!s.dliveSyncPublic,
+                      dliveSyncPopup: !!s.dliveSyncPopup,
+                    }));
                   } catch (e: any) {
                     props.setError(String(e?.message || "Erreur"));
                   } finally {
@@ -1275,8 +1304,10 @@ export function ChatPanel({
   autoFocus = false,
   onFollowsCount,
 
-  // ✅ NEW
   botMenuVariant = "modal",
+
+  // ✅ NEW
+  visualMode = "default",
 }: {
   slug: string;
   onRequireLogin: () => void;
@@ -1284,9 +1315,12 @@ export function ChatPanel({
   autoFocus?: boolean;
   onFollowsCount?: (n: number) => void;
 
-  // ✅ NEW
   botMenuVariant?: "modal" | "dock";
+
+  // ✅ NEW
+  visualMode?: "default" | "popup";
 }) {
+
 
   /* -------------------------
      Refs / callbacks
@@ -1418,6 +1452,7 @@ export function ChatPanel({
   const timeoutUntil = state?.timeoutUntil || null;
   const isTimedOut = !!timeoutUntil && new Date(timeoutUntil).getTime() > Date.now();
   const canSend = isAuthed && !isBanned && !isTimedOut;
+  const isPopup = visualMode === "popup";
 
   const nameColor = appearance.chat.usernameColor;
   const msgColor = appearance.chat.messageColor;
@@ -1600,6 +1635,8 @@ export function ChatPanel({
     allowLinks: true,
     followOnly: false,
     subOnly: false,
+    dliveSyncPublic: false,
+    dliveSyncPopup: false,
   });
 
   async function fetchSettings() {
@@ -1607,11 +1644,13 @@ export function ChatPanel({
     try {
       const st = await emitSocket("chat:settings_get", { slug });
       if (st?.ok && st.settings) {
-        setChatSettings({
-          allowLinks: !!st.settings.allowLinks,
-          followOnly: !!st.settings.followOnly,
-          subOnly: !!st.settings.subOnly,
-        });
+      setChatSettings({
+        allowLinks: !!st.settings.allowLinks,
+        followOnly: !!st.settings.followOnly,
+        subOnly: !!st.settings.subOnly,
+        dliveSyncPublic: !!st.settings.dliveSyncPublic,
+        dliveSyncPopup: !!st.settings.dliveSyncPopup,
+      });
       }
     } catch {}
   }
@@ -1830,6 +1869,8 @@ export function ChatPanel({
         allowLinks: !!st.allowLinks,
         followOnly: !!st.followOnly,
         subOnly: !!st.subOnly,
+        dliveSyncPublic: !!st.dliveSyncPublic,
+        dliveSyncPopup: !!st.dliveSyncPopup,
       });
     });
 
@@ -1870,7 +1911,7 @@ export function ChatPanel({
       socket.emit("chat:refresh", { slug: s });
     });
 
-    socket.emit("chat:join", { slug: s }, async (ack: JoinAck) => {
+    socket.emit("chat:join", { slug: s, mode: (isPopup ? "popup" : "public") }, async (ack: JoinAck) => {
       if (!ack?.ok) {
         setJoin(null);
         setError(ack?.error || "join_failed");
@@ -2249,10 +2290,11 @@ function openChatPopup() {
           style={{
             height: "100%",
             overflow: "auto",
-            padding: 12,
+            padding: isPopup ? 18 : 12,
             display: "flex",
             flexDirection: "column",
-            gap: 10,
+            gap: isPopup ? 14 : 10,
+            alignItems: isPopup ? "center" : "stretch",
             WebkitOverflowScrolling: "touch",
             ...({ ["--chat-name-color" as any]: nameColor, ["--chat-msg-color" as any]: msgColor } as any),
           }}
@@ -2302,7 +2344,20 @@ function openChatPopup() {
                 onTouchEnd={cancelLongPress}
                 onTouchCancel={cancelLongPress}
                 onTouchMove={cancelLongPress}
-                style={{ cursor: "pointer" }}
+                style={{
+                  cursor: "pointer",
+                  width: "100%",
+                  maxWidth: isPopup ? 560 : undefined,
+                  margin: isPopup ? "0 auto" : undefined,
+
+                  // “plus gros” sans toucher ChatMessageBubble
+                  transform: isPopup ? "scale(1.10)" : undefined,
+                  transformOrigin: "center top",
+
+                  // “plus léger” (léger visuellement)
+                  opacity: isPopup ? 0.96 : 1,
+                  filter: isPopup ? "brightness(1.08) saturate(0.92)" : undefined,
+                }}
               >
                 <ChatMessageBubble
                   streamerAppearance={appearance}

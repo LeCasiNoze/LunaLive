@@ -2,6 +2,8 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { claimDailyBonusToday, claimDailyBonusMilestone } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
+import { DailyBonusAgendaModalMobile } from "./DailyBonusAgendaModal.mobile";
+import { useIsMobile } from "../hooks/useIsMobile"; // si tu as déjà ce hook
 
 type WeekDay = {
   isodow: number;
@@ -12,6 +14,7 @@ type WeekDay = {
     | { type: "token"; token: "wheel_ticket"; amount: number };
   status: "future" | "missed" | "claimed" | "today_claimable" | "today_claimed";
 };
+
 
 type Milestone = { milestone: 5 | 10 | 20 | 30; status: "locked" | "claimable" | "claimed" };
 
@@ -103,6 +106,18 @@ export function DailyBonusAgendaModal({
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
   const refreshMe = auth?.refreshMe ?? (async () => {});
+
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return (
+      <DailyBonusAgendaModalMobile
+        state={state}
+        onClose={onClose}
+        onState={onState}
+      />
+    );
+  }
 
   const [tab, setTab] = React.useState<"agenda" | "infos" | "event">("agenda");
   const [busy, setBusy] = React.useState<string | null>(null);

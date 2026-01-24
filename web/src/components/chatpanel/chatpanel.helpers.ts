@@ -40,6 +40,8 @@ export type ChatSettings = {
   allowLinks: boolean;
   followOnly: boolean;
   subOnly: boolean;
+  dliveSyncPublic: boolean;
+  dliveSyncPopup: boolean;
 };
 
 export type ViewerRow = { userId: number; username: string };

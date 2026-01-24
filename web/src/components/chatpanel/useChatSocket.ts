@@ -1,7 +1,11 @@
 // web/src/components/chatpanel/useChatSocket.ts
 import * as React from "react";
 import { io, type Socket } from "socket.io-client";
-import { normalizeAppearance, type StreamerAppearance, DEFAULT_APPEARANCE as DEFAULT_STREAMER_APPEARANCE } from "../../lib/appearance";
+import {
+  normalizeAppearance,
+  type StreamerAppearance,
+  DEFAULT_APPEARANCE as DEFAULT_STREAMER_APPEARANCE,
+} from "../../lib/appearance";
 import { apiBase } from "./chatpanel.helpers";
 import type { ChatMsg, JoinAck, ChatSettings } from "./chatpanel.helpers";
 
@@ -21,13 +25,17 @@ export function useChatSocket(opts: {
   const [join, setJoin] = React.useState<JoinAck | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  const [appearance, setAppearance] = React.useState<StreamerAppearance>(DEFAULT_STREAMER_APPEARANCE);
+  const [appearance, setAppearance] = React.useState<StreamerAppearance>(
+    DEFAULT_STREAMER_APPEARANCE
+  );
   const [initialLoading, setInitialLoading] = React.useState(true);
 
   const [chatSettings, setChatSettings] = React.useState<ChatSettings>({
     allowLinks: true,
     followOnly: false,
     subOnly: false,
+    dliveSyncPublic: false,
+    dliveSyncPopup: false,
   });
 
   function emitSocket(event: string, payload: any) {
@@ -39,7 +47,9 @@ export function useChatSocket(opts: {
   async function loadLastMessages(s: string) {
     try {
       setInitialLoading(true);
-      const r = await fetch(`${apiBase()}/chat/${encodeURIComponent(s)}/messages?limit=50`);
+      const r = await fetch(
+        `${apiBase()}/chat/${encodeURIComponent(s)}/messages?limit=50`
+      );
       const j = await r.json();
       if (!j?.ok) throw new Error(j?.error || "messages_failed");
       setMessages(j.messages || []);
@@ -57,6 +67,8 @@ export function useChatSocket(opts: {
           allowLinks: !!st.settings.allowLinks,
           followOnly: !!st.settings.followOnly,
           subOnly: !!st.settings.subOnly,
+          dliveSyncPublic: !!st.settings.dliveSyncPublic,
+          dliveSyncPopup: !!st.settings.dliveSyncPopup,
         });
       }
     } catch {}
@@ -109,6 +121,8 @@ export function useChatSocket(opts: {
         allowLinks: !!st.allowLinks,
         followOnly: !!st.followOnly,
         subOnly: !!st.subOnly,
+        dliveSyncPublic: !!st.dliveSyncPublic,
+        dliveSyncPopup: !!st.dliveSyncPopup,
       });
     });
 

@@ -102,6 +102,37 @@ export function DlivePlayer({
   const ios = isIOS();
   const safari = isSafariUA();
 
+  // ✅ Anti-remute: certains navigateurs rebasculent en muted au relayout / fullscreen
+  React.useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const unmute = () => {
+      try {
+        if (video.muted) video.muted = false;
+        // si le volume est à 0 (cas rare), on le remet à un niveau normal
+        if (typeof video.volume === "number" && video.volume === 0) video.volume = 1;
+      } catch {}
+    };
+
+    const onFs = () => unmute();
+    const onMeta = () => unmute();
+    const onResize = () => unmute();
+
+    document.addEventListener("fullscreenchange", onFs);
+    video.addEventListener("loadedmetadata", onMeta);
+    window.addEventListener("resize", onResize);
+
+    // au montage
+    unmute();
+
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      video.removeEventListener("loadedmetadata", onMeta);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [channelSlug, channelUsername, isLive]);
+
   // ✅ LOCK vitesse en LIVE (empêche un user de rester en 1.1/1.15)
   const lockingRateRef = React.useRef(false);
 
@@ -331,7 +362,6 @@ export function DlivePlayer({
           controls
           playsInline
           autoPlay
-          muted
           style={{ width: "100%", display: "block", background: "rgba(0,0,0,0.25)" }}
         />
 

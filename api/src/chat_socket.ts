@@ -7,6 +7,7 @@ import type { AuthUser } from "./auth.js";
 import { normalizeAppearance, type Appearance } from "./appearance.js";
 import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
+import { ensureDliveBridge } from "./dlive_chat_bridge.js";
 
 // ✅ NEW
 import {
@@ -109,7 +110,6 @@ async function getStreamerMetaBySlug(
 }
 
 async function isStreamerMod(streamerId: number, userId: number) {
-  // ✅ IMPORTANT: ignore les mods soft-removed
   const r = await pool.query(
     `SELECT 1
      FROM streamer_mods
@@ -204,7 +204,7 @@ async function computeRolePerms(
 }
 
 // Push perms live au user ciblé (multi tabs ok)
-const socketsBySlugUser = new Map<string, Set<string>>(); // key = `${slug}:${userId}` => socketIds
+const socketsBySlugUser = new Map<string, Set<string>>();
 function keySlugUser(slug: string, userId: number) {
   return `${String(slug).toLowerCase()}:${Number(userId)}`;
 }
@@ -256,7 +256,7 @@ function clampInt(n: any, min: number, max: number) {
   return Math.max(min, Math.min(max, Math.floor(x)));
 }
 
-// ✅ NEW: follow/sub helpers
+// follow/sub helpers
 async function isFollowing(streamerId: number, userId: number) {
   const r = await pool.query(
     `SELECT 1 FROM streamer_follows WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`,
@@ -277,7 +277,7 @@ async function isActiveSub(streamerId: number, userId: number) {
   return !!ex && ex > Date.now();
 }
 
-// ✅ NEW: tiny cache settings (évite une query par message)
+// tiny cache settings
 const settingsCache = new Map<number, { at: number; settings: ChatSettings }>();
 async function readSettings(streamerId: number) {
   const now = Date.now();
@@ -292,7 +292,6 @@ async function sendBotChat(io: Server, meta: { id: number; slug: string; appeara
   const botUserId = Number(process.env.BOT_USER_ID || 0);
   const botUsername = String(process.env.BOT_USERNAME || "LunaBot");
 
-  // si pas configuré => on skip (mais pas de crash)
   if (!botUserId) {
     console.warn("[chat_socket] BOT_USER_ID missing, skip bot chat");
     return;
@@ -339,24 +338,20 @@ export function attachChat(io: Server) {
 
   io.on("connection", (socket: Socket) => {
     const data = socket.data as SocketData;
-    
+
     function joinUserRoom() {
       if (data.user?.id) socket.join(`user:${data.user.id}`);
     }
 
     joinUserRoom();
 
-    // Permet au client de pousser un token après login sans recréer le socket
     socket.on("auth:refresh", async ({ token }: { token?: string }, cb?: (ack: any) => void) => {
       try {
         if (token) {
-          // on “simule” un handshake token
           (socket.handshake.auth as any) = { ...(socket.handshake.auth as any), token };
         }
 
-        // re-run auth
         tryAuth(socket);
-
         joinUserRoom();
 
         cb?.({
@@ -368,58 +363,81 @@ export function attachChat(io: Server) {
       }
     });
 
-    // ✅ 3.A — Room "user:{id}" pour envoyer des notifs (go-live) à l'utilisateur
     if (data.user?.id) {
       socket.join(`user:${data.user.id}`);
     }
 
-    socket.on("chat:join", async ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
-      try {
-        const s = String(slug || "").trim();
-        if (!s) return cb?.({ ok: false, error: "bad_slug" });
+    // ✅ chat join (+ mode public/popup)
+    socket.on(
+      "chat:join",
+      async (
+        { slug, mode }: { slug: string; mode?: "public" | "popup" },
+        cb?: (ack: any) => void
+      ) => {
+        try {
+          const s = String(slug || "").trim();
+          if (!s) return cb?.({ ok: false, error: "bad_slug" });
 
-        const meta = await getStreamerMetaBySlug(s);
-        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+          const meta = await getStreamerMetaBySlug(s);
+          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
 
-        data.slug = meta.slug;
-        data.streamerId = meta.id;
+          data.slug = meta.slug;
+          data.streamerId = meta.id;
 
-        // ✅ appearance normalisée (même pour guest)
-        data.appearance = normalizeAppearance(meta.appearance);
+          data.appearance = normalizeAppearance(meta.appearance);
 
-        socket.join(`chat:${meta.slug}`);
+          // ✅ room principale (chat LunaLive)
+          socket.join(`chat:${meta.slug}`);
 
-        const rp = await computeRolePerms(meta.id, meta.ownerUserId, data.user);
-        data.role = rp.role;
-        data.perms = rp.perms;
-        data.state = rp.state;
+          // ✅ room mode (pour DLive sync sélectif)
+          const m: "public" | "popup" = mode === "popup" ? "popup" : "public";
+          socket.join(`chat:${meta.slug}:${m}`);
 
-        if (data.user) trackSocket(meta.slug, data.user.id, socket.id);
+          const rp = await computeRolePerms(meta.id, meta.ownerUserId, data.user);
+          data.role = rp.role;
+          data.perms = rp.perms;
+          data.state = rp.state;
 
-        cb?.({
-          ok: true,
-          role: rp.role,
-          perms: rp.perms,
-          state: rp.state,
-          appearance: data.appearance,
-          me: data.user ? { id: data.user.id, username: data.user.username, role: data.user.role } : null,
-        });
-      } catch (e: any) {
-        cb?.({ ok: false, error: String(e?.message || "join_failed") });
+          if (data.user) trackSocket(meta.slug, data.user.id, socket.id);
+
+          cb?.({
+            ok: true,
+            role: rp.role,
+            perms: rp.perms,
+            state: rp.state,
+            appearance: data.appearance,
+            me: data.user ? { id: data.user.id, username: data.user.username, role: data.user.role } : null,
+          });
+
+          // ✅ Optionnel : démarrer le bridge DLive si activé (selon settings)
+          // (Assure-toi que ensureDliveBridge accepte ces args)
+          try {
+            const st = await readSettings(meta.id);
+            const enabled = m === "public" ? !!(st as any).dliveSyncPublic : !!(st as any).dliveSyncPopup;
+            if (enabled) {
+              ensureDliveBridge({
+                io,
+                streamerId: meta.id,
+                slug: meta.slug,
+                mode: m,
+              } as any);
+            }
+          } catch {}
+        } catch (e: any) {
+          cb?.({ ok: false, error: String(e?.message || "join_failed") });
+        }
       }
-    });
+    );
 
-    // ✅ PUBLIC stream room (overlay OBS, pages, etc.)
+    // PUBLIC stream room
     socket.on("stream:join", async (payload: any, cb?: (ack: any) => void) => {
       try {
         const raw = String(payload?.slug || "").trim();
 
-        // safe: slug simple uniquement
         if (!raw || raw.length > 64 || !/^[a-z0-9_-]+$/i.test(raw)) {
           return cb?.({ ok: false, error: "bad_slug" });
         }
 
-        // canonical slug + snapshot live/viewers
         const meta = await getStreamerMetaBySlug(raw);
         if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
 
@@ -437,7 +455,7 @@ export function attachChat(io: Server) {
       }
     });
 
-    // ✅ NEW: settings get (mod/admin/owner)
+    // settings get
     socket.on("chat:settings_get", async ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
       try {
         const u = data.user;
@@ -459,13 +477,10 @@ export function attachChat(io: Server) {
       }
     });
 
-    // ✅ NEW: settings set (mod/admin/owner) + system message
+    // settings set
     socket.on(
       "chat:settings_set",
-      async (
-        { slug, patch }: { slug: string; patch: ChatSettingsPatch },
-        cb?: (ack: any) => void
-      ) => {
+      async ({ slug, patch }: { slug: string; patch: ChatSettingsPatch }, cb?: (ack: any) => void) => {
         try {
           const u = data.user;
           if (!u) return cb?.({ ok: false, error: "auth_required" });
@@ -481,7 +496,6 @@ export function attachChat(io: Server) {
 
           const old = await getChatSettings(pool, meta.id);
 
-          // ✅ exclusif: follow-only vs sub-only
           const p: ChatSettingsPatch = { ...(patch || {}) };
           if (p.subOnly === true) p.followOnly = false;
           if (p.followOnly === true) p.subOnly = false;
@@ -489,16 +503,15 @@ export function attachChat(io: Server) {
           const next = await patchChatSettings(pool, meta.id, p, u.id);
           settingsCache.set(meta.id, { at: Date.now(), settings: next });
 
-          // compute changed keys (pour message système propre)
           const changed: ChatSettingsPatch = {};
           if (old.allowLinks !== next.allowLinks) changed.allowLinks = next.allowLinks;
           if (old.followOnly !== next.followOnly) changed.followOnly = next.followOnly;
           if (old.subOnly !== next.subOnly) changed.subOnly = next.subOnly;
+          if ((old as any).dliveSyncPublic !== (next as any).dliveSyncPublic) (changed as any).dliveSyncPublic = (next as any).dliveSyncPublic;
+          if ((old as any).dliveSyncPopup !== (next as any).dliveSyncPopup) (changed as any).dliveSyncPopup = (next as any).dliveSyncPopup;
 
-          // broadcast settings to clients
           io.to(`chat:${meta.slug}`).emit("chat:settings", { ok: true, settings: next });
 
-          // system message only if real change
           if (Object.keys(changed).length > 0) {
             const sysText = formatSettingsChangeMessage({
               actorUsername: u.username,
@@ -526,7 +539,6 @@ export function attachChat(io: Server) {
         const meta = await getStreamerMetaBySlug(s);
         if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
 
-        // ban/timeout enforcement
         if (await isBanned(meta.id, u.id)) return cb?.({ ok: false, error: "banned" });
         const timeout = await getActiveTimeout(meta.id, u.id);
         if (timeout) return cb?.({ ok: false, error: "timed_out", expiresAt: timeout.expiresAt });
@@ -536,7 +548,6 @@ export function attachChat(io: Server) {
         if (!text) return cb?.({ ok: false, error: "empty" });
         if (text.length > 200) text = text.slice(0, 200);
 
-        // ✅ NEW: chat settings enforcement
         const settings = await readSettings(meta.id);
 
         if (!settings.allowLinks && containsLink(text)) {
@@ -551,7 +562,6 @@ export function attachChat(io: Server) {
           if (!ok) return cb?.({ ok: false, error: "sub_only" });
         }
 
-        // ✅ NEW: commandes !call / !listec / !resetc (intercept)
         const bang = parseBangCommand(text);
         if (bang) {
           const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
@@ -561,7 +571,7 @@ export function attachChat(io: Server) {
             io,
             slug: meta.slug,
             streamerId: meta.id,
-            streamerOwnerUserId: meta.ownerUserId, // ✅ FIX ICI
+            streamerOwnerUserId: meta.ownerUserId,
 
             actorUserId: u.id,
             actorUsername: u.username,
@@ -573,13 +583,10 @@ export function attachChat(io: Server) {
           });
 
           if (out.handled) {
-            // par défaut: on ne poste pas la commande dans le chat
-            // si tu actives show_cmd_in_chat plus tard => on laissera passer
             if (!out.showOriginalInChat) return cb?.({ ok: true });
           }
         }
 
-        // anti-spam: 1 msg / 200ms
         const t = Date.now();
         if (data.lastSendAt && t - data.lastSendAt < 200) return cb?.({ ok: false, error: "rate_limited" });
         data.lastSendAt = t;
@@ -593,7 +600,6 @@ export function attachChat(io: Server) {
 
         const row = ins.rows?.[0];
 
-        // ✅ pour l’instant: pas de skins viewers => style = thème streamer
         const appearance = data.appearance ?? normalizeAppearance(meta.appearance);
         const style = {
           nameColor: appearance.chat.usernameColor,
@@ -609,8 +615,8 @@ export function attachChat(io: Server) {
           username: u.username,
           body: text,
           createdAt: new Date(row.createdAt).toISOString(),
-          cosmetics, // ✅ IMPORTANT
-          style, // (pas utilisé côté front pour le moment, mais ok)
+          cosmetics,
+          style,
         };
 
         io.to(`chat:${meta.slug}`).emit("chat:message", msg);
@@ -657,7 +663,6 @@ export function attachChat(io: Server) {
         data.perms = rp.perms;
         data.state = rp.state;
 
-        // ✅ refresh aussi appearance (si streamer vient de changer ses couleurs)
         data.appearance = normalizeAppearance(meta.appearance);
 
         socket.emit("chat:perms", {
@@ -677,45 +682,42 @@ export function attachChat(io: Server) {
     // MODERATION (delete / timeout / ban) + MODS
     // ─────────────────────────────────────────────
 
-    socket.on(
-      "chat:delete",
-      async ({ slug, messageId }: { slug: string; messageId: number }, cb?: (ack: any) => void) => {
-        try {
-          const u = data.user;
-          if (!u) return cb?.({ ok: false, error: "auth_required" });
+    socket.on("chat:delete", async ({ slug, messageId }: { slug: string; messageId: number }, cb?: (ack: any) => void) => {
+      try {
+        const u = data.user;
+        if (!u) return cb?.({ ok: false, error: "auth_required" });
 
-          const s = String(slug || data.slug || "").trim();
-          if (!s) return cb?.({ ok: false, error: "bad_slug" });
+        const s = String(slug || data.slug || "").trim();
+        if (!s) return cb?.({ ok: false, error: "bad_slug" });
 
-          const meta = await getStreamerMetaBySlug(s);
-          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+        const meta = await getStreamerMetaBySlug(s);
+        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
 
-          const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
-          if (!rp.perms.canDelete) return cb?.({ ok: false, error: "forbidden" });
+        const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+        if (!rp.perms.canDelete) return cb?.({ ok: false, error: "forbidden" });
 
-          const mid = Number(messageId || 0);
-          if (!mid) return cb?.({ ok: false, error: "bad_message" });
+        const mid = Number(messageId || 0);
+        if (!mid) return cb?.({ ok: false, error: "bad_message" });
 
-          const upd = await pool.query(
-            `UPDATE chat_messages
-             SET deleted_at = NOW(),
-                 deleted_by = $3
-             WHERE id = $1
-               AND streamer_id = $2
-               AND deleted_at IS NULL
-             RETURNING id`,
-            [mid, meta.id, u.id]
-          );
+        const upd = await pool.query(
+          `UPDATE chat_messages
+           SET deleted_at = NOW(),
+               deleted_by = $3
+           WHERE id = $1
+             AND streamer_id = $2
+             AND deleted_at IS NULL
+           RETURNING id`,
+          [mid, meta.id, u.id]
+        );
 
-          if (!upd.rows?.[0]) return cb?.({ ok: false, error: "message_not_found" });
+        if (!upd.rows?.[0]) return cb?.({ ok: false, error: "message_not_found" });
 
-          io.to(`chat:${meta.slug}`).emit("chat:message_deleted", { ok: true, id: mid });
-          cb?.({ ok: true });
-        } catch (e: any) {
-          cb?.({ ok: false, error: String(e?.message || "delete_failed") });
-        }
+        io.to(`chat:${meta.slug}`).emit("chat:message_deleted", { ok: true, id: mid });
+        cb?.({ ok: true });
+      } catch (e: any) {
+        cb?.({ ok: false, error: String(e?.message || "delete_failed") });
       }
-    );
+    });
 
     socket.on(
       "chat:timeout",
@@ -803,190 +805,6 @@ export function attachChat(io: Server) {
           cb?.({ ok: true });
         } catch (e: any) {
           cb?.({ ok: false, error: String(e?.message || "ban_failed") });
-        }
-      }
-    );
-
-    socket.on("chat:untimeout", async ({ slug, userId }: { slug: string; userId: number }, cb?: (ack: any) => void) => {
-      try {
-        const u = data.user;
-        if (!u) return cb?.({ ok: false, error: "auth_required" });
-
-        const s = String(slug || data.slug || "").trim();
-        if (!s) return cb?.({ ok: false, error: "bad_slug" });
-
-        const meta = await getStreamerMetaBySlug(s);
-        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
-
-        const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
-        if (!rp.perms.canTimeout) return cb?.({ ok: false, error: "forbidden" });
-
-        const targetId = Number(userId || 0);
-        if (!targetId) return cb?.({ ok: false, error: "bad_user" });
-
-        await pool.query(
-          `UPDATE chat_timeouts
-           SET expires_at = NOW()
-           WHERE streamer_id=$1 AND user_id=$2 AND expires_at > NOW()`,
-          [meta.id, targetId]
-        );
-
-        const targetUsername = await getUsernameById(targetId);
-        await sendBotChat(io, meta, `✅ ${targetUsername} untimeout`);
-
-        io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "untimeout", userId: targetId });
-        await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
-
-        cb?.({ ok: true });
-      } catch (e: any) {
-        cb?.({ ok: false, error: String(e?.message || "untimeout_failed") });
-      }
-    });
-
-    socket.on("chat:unban", async ({ slug, userId }: { slug: string; userId: number }, cb?: (ack: any) => void) => {
-      try {
-        const u = data.user;
-        if (!u) return cb?.({ ok: false, error: "auth_required" });
-
-        const s = String(slug || data.slug || "").trim();
-        if (!s) return cb?.({ ok: false, error: "bad_slug" });
-
-        const meta = await getStreamerMetaBySlug(s);
-        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
-
-        const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
-        if (!rp.perms.canBan) return cb?.({ ok: false, error: "forbidden" });
-
-        const targetId = Number(userId || 0);
-        if (!targetId) return cb?.({ ok: false, error: "bad_user" });
-
-        await pool.query(`DELETE FROM chat_bans WHERE streamer_id=$1 AND user_id=$2`, [meta.id, targetId]);
-
-        const targetUsername = await getUsernameById(targetId);
-        await sendBotChat(io, meta, `✅ ${targetUsername} débanni`);
-
-        io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "unban", userId: targetId });
-        await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
-
-        cb?.({ ok: true });
-      } catch (e: any) {
-        cb?.({ ok: false, error: String(e?.message || "unban_failed") });
-      }
-    });
-
-    socket.on("chat:mod_status", async ({ slug, userId }: { slug: string; userId: number }, cb?: (ack: any) => void) => {
-      try {
-        const u = data.user;
-        if (!u) return cb?.({ ok: false, error: "auth_required" });
-
-        const s = String(slug || data.slug || "").trim();
-        if (!s) return cb?.({ ok: false, error: "bad_slug" });
-
-        const meta = await getStreamerMetaBySlug(s);
-        if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
-
-        const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
-        if (!rp.perms.canManageMods) return cb?.({ ok: false, error: "forbidden" });
-
-        const targetId = Number(userId || 0);
-        if (!targetId) return cb?.({ ok: false, error: "bad_user" });
-
-        const mod = await isStreamerMod(meta.id, targetId);
-        cb?.({ ok: true, isMod: mod });
-      } catch (e: any) {
-        cb?.({ ok: false, error: String(e?.message || "mod_status_failed") });
-      }
-    });
-
-    socket.on(
-      "chat:timeout_status",
-      async ({ slug, userId }: { slug: string; userId: number }, cb?: (ack: any) => void) => {
-        try {
-          const u = data.user;
-          if (!u) return cb?.({ ok: false, error: "auth_required" });
-
-          const s = String(slug || data.slug || "").trim();
-          if (!s) return cb?.({ ok: false, error: "bad_slug" });
-
-          const meta = await getStreamerMetaBySlug(s);
-          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
-
-          const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
-          if (!rp.perms.canTimeout) return cb?.({ ok: false, error: "forbidden" });
-
-          const targetId = Number(userId || 0);
-          if (!targetId) return cb?.({ ok: false, error: "bad_user" });
-
-          if (targetId === u.id) return cb?.({ ok: false, error: "cannot_self_timeout" });
-
-          const timeout = await getActiveTimeout(meta.id, targetId);
-          cb?.({ ok: true, expiresAt: timeout?.expiresAt || null, timeoutUntil: timeout?.expiresAt || null });
-        } catch (e: any) {
-          cb?.({ ok: false, error: String(e?.message || "timeout_status_failed") });
-        }
-      }
-    );
-
-    socket.on(
-      "chat:mod_set",
-      async ({ slug, userId, enabled }: { slug: string; userId: number; enabled: boolean }, cb?: (ack: any) => void) => {
-        try {
-          const u = data.user;
-          if (!u) return cb?.({ ok: false, error: "auth_required" });
-
-          const s = String(slug || data.slug || "").trim();
-          if (!s) return cb?.({ ok: false, error: "bad_slug" });
-
-          const meta = await getStreamerMetaBySlug(s);
-          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
-
-          const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
-          if (!rp.perms.canManageMods) return cb?.({ ok: false, error: "forbidden" });
-
-          const targetId = Number(userId || 0);
-          if (!targetId) return cb?.({ ok: false, error: "bad_user" });
-
-          if (meta.ownerUserId != null && Number(targetId) === Number(meta.ownerUserId)) {
-            return cb?.({ ok: false, error: "cannot_mod_owner" });
-          }
-
-          if (enabled) {
-            await pool.query(
-              `INSERT INTO streamer_mods (streamer_id, user_id, created_by, created_at, removed_at, removed_by)
-               VALUES ($1,$2,$3,NOW(),NULL,NULL)
-               ON CONFLICT (streamer_id, user_id) DO UPDATE
-                 SET created_at = NOW(),
-                     created_by = EXCLUDED.created_by,
-                     removed_at = NULL,
-                     removed_by = NULL`,
-              [meta.id, targetId, u.id]
-            );
-          } else {
-            await pool.query(
-              `UPDATE streamer_mods
-               SET removed_at = NOW(),
-                   removed_by = $3
-               WHERE streamer_id=$1 AND user_id=$2 AND removed_at IS NULL`,
-              [meta.id, targetId, u.id]
-            );
-          }
-
-          const targetUsername = await getUsernameById(targetId);
-          await sendBotChat(
-            io,
-            meta,
-            enabled
-              ? `🛡️ ${targetUsername} est maintenant modérateur`
-              : `🛡️ ${targetUsername} n'est plus modérateur`
-          );
-
-          io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "mod_set", userId: targetId, enabled: !!enabled });
-
-          await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
-
-          cb?.({ ok: true });
-        } catch (e: any) {
-          cb?.({ ok: false, error: String(e?.message || "mod_set_failed") });
         }
       }
     );

@@ -32,6 +32,7 @@ export default function ChatPopupPage() {
             slug={s}
             compact={false}
             autoFocus={true}
+            visualMode="popup"
             botMenuVariant="dock"   // ✅ important: bot menu décalé/draggable
             onRequireLogin={() => {
               window.dispatchEvent(

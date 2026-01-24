@@ -281,9 +281,14 @@ export function BottomTabs() {
           font-weight: 1150;
         }
         .reportBtn:active{ transform: translateY(1px); }
+        /* ✅ réserve de l’espace pour éviter que la barre fixe cache le bas des pages */
+        .bottomTabsSpacer{
+          height: calc(72px + env(safe-area-inset-bottom));
+        }
       `}</style>
 
       <nav className="bottomTabs" aria-label="Navigation">
+        
         <NavLink to="/" end className={tabClass}>
           <div className="tabIcon">●</div>
           <div className="tabLabel">Lives</div>
@@ -298,6 +303,7 @@ export function BottomTabs() {
           <div className="tabLabel">Browse</div>
         </NavLink>
       </nav>
+      <div className="bottomTabsSpacer" aria-hidden="true" />
 
       {open ? (
         <div className="sheetBackdrop" role="presentation" onClick={() => setOpen(false)}>

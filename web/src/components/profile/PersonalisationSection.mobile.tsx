@@ -173,12 +173,7 @@ function frameIdFromCode(code: string) {
   return code.replace(/^m?frame_/, "").replace(/_(shop|event|master)$/, "");
 }
 
-function applyPreview(
-  kind: Kind,
-  code: string | null,
-  c: any,
-  opts?: { titleNames?: Record<string, string> }
-) {
+function applyPreview(kind: Kind, code: string | null, c: any, opts?: { titleNames?: Record<string, string> }) {
   if (!code) return;
 
   if (!c.avatar) c.avatar = {};
@@ -189,9 +184,7 @@ function applyPreview(
   if (kind === "badge") {
     const txt = badgeTextFromCode(code);
     c.badges = [{ id: txt, code: txt, text: txt, label: txt }];
-    (c as any).badge = txt;
     (c as any).badgeText = txt;
-    (c as any).badgeLabel = txt;
     return;
   }
 
@@ -244,36 +237,20 @@ function applyPreview(
     const label = opts?.titleNames?.[code] ?? titleLabelFallback(code);
     c.title = { text: label, label };
     (c as any).titleText = label;
-    (c as any).titleLabel = label;
-    (c as any).titleCode = code;
     return;
   }
 }
 
 function buildCosmeticsPreview(
-  equipped: {
-    username: string | null;
-    badge: string | null;
-    title: string | null;
-    frame: string | null;
-    hat: string | null;
-  },
+  equipped: { username: string | null; badge: string | null; title: string | null; frame: string | null; hat: string | null },
   opts?: { titleNames?: Record<string, string> }
 ): ChatCosmetics | null {
-  const c: any = {
-    badges: [],
-    title: null,
-    frame: null,
-    avatar: { hatId: null },
-    username: {},
-  };
-
+  const c: any = { badges: [], title: null, frame: null, avatar: { hatId: null }, username: {} };
   applyPreview("username", equipped?.username ?? null, c, opts);
   applyPreview("badge", equipped?.badge ?? null, c, opts);
   applyPreview("title", equipped?.title ?? null, c, opts);
   applyPreview("frame", equipped?.frame ?? null, c, opts);
   applyPreview("hat", equipped?.hat ?? null, c, opts);
-
   return c as ChatCosmetics;
 }
 
@@ -358,6 +335,7 @@ function CatPill({
         opacity: disabled ? 0.6 : 1,
         backdropFilter: "blur(10px)",
         flex: "0 0 auto",
+        whiteSpace: "nowrap",
       }}
     >
       <span style={{ fontSize: 16 }}>{emoji}</span>
@@ -399,13 +377,7 @@ export function PersonalisationSectionMobile({
     title: string | null;
     frame: string | null;
     hat: string | null;
-  }>({
-    username: null,
-    badge: null,
-    title: null,
-    frame: null,
-    hat: null,
-  });
+  }>({ username: null, badge: null, title: null, frame: null, hat: null });
 
   React.useEffect(() => {
     if (!myUserId) return;
@@ -420,7 +392,6 @@ export function PersonalisationSectionMobile({
       const [c, m] = await Promise.all([cosmeticsCatalog(token), myCosmetics(token)]);
       if (!c?.ok) throw new Error("catalog_failed");
       if (!m?.ok) throw new Error((m as any)?.error || "load_failed");
-
       setCatalog(((c as any).items || []).filter((x: any) => x && x.active));
       setOwned(m.owned || {});
       setFree(m.free || {});
@@ -439,10 +410,8 @@ export function PersonalisationSectionMobile({
     try {
       const cur = (equipped as any)?.[kind] ?? null;
       const next = cur === code ? null : code;
-
       const j = await equipCosmetic(token, kind, next);
       if (!j?.ok) throw new Error(j?.error || "equip_failed");
-
       setEquipped((prev) => ({ ...(prev || {}), ...(j.equipped || {}) }));
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -467,18 +436,11 @@ export function PersonalisationSectionMobile({
   const ownedSet = new Set<string>([...(owned?.[tab] || []), ...(free?.[tab] || [])]);
 
   const items: UiItem[] = [
-    {
-      kind: tab,
-      code: null,
-      name: tab === "username" ? "Par défaut" : "Aucun",
-      free: true,
-      desc: "Retirer l’élément équipé.",
-    },
+    { kind: tab, code: null, name: tab === "username" ? "Par défaut" : "Aucun", free: true, desc: "Retirer l’élément équipé." },
     ...catalog
       .filter((x) => x.kind === tab)
       .map((x) => {
         const pricePrestige = Number((x as any).pricePrestige ?? 0) || null;
-
         const desc =
           x.unlock === "shop"
             ? x.priceRubis
@@ -488,20 +450,10 @@ export function PersonalisationSectionMobile({
               : "Shop"
             : `${niceUnlock(x.unlock)}${x.rarity ? ` — ${x.rarity}` : ""}`;
 
-        return {
-          kind: x.kind,
-          code: x.code,
-          name: x.name,
-          desc,
-          priceRubis: x.priceRubis,
-          pricePrestige,
-          rarity: x.rarity,
-          unlock: x.unlock,
-        };
+        return { kind: x.kind, code: x.code, name: x.name, desc, priceRubis: x.priceRubis, pricePrestige, rarity: x.rarity, unlock: x.unlock };
       }),
   ].sort((a, b) => byOwnedFirst(ownedSet, a, b));
 
-  // IMPORTANT: ne JAMAIS mettre le blob dans les cosmétiques (sinon blob partout)
   const effectiveAvatar = avatarUrl;
 
   function withAvatar<C extends ChatCosmetics | null>(c: C): C {
@@ -514,12 +466,153 @@ export function PersonalisationSectionMobile({
 
   const previewCosmetics = withAvatar(buildCosmeticsPreview(equipped, { titleNames }));
 
+  // ✅ Aperçu PAR ITEM (comme desktop) : on simule l'équipement du code de l'item sur l'onglet courant
+  function previewForItem(it: UiItem): ChatCosmetics | null {
+    const simulated = {
+      username: it.kind === "username" ? it.code : equipped.username,
+      badge: it.kind === "badge" ? it.code : equipped.badge,
+      title: it.kind === "title" ? it.code : equipped.title,
+      frame: it.kind === "frame" ? it.code : equipped.frame,
+      hat: it.kind === "hat" ? it.code : equipped.hat,
+    };
+    return withAvatar(buildCosmeticsPreview(simulated, { titleNames }));
+  }
+
   const curLabel = CATS.find((x) => x.id === tab)?.label ?? tab;
   const curEmoji = CATS.find((x) => x.id === tab)?.emoji ?? "🎨";
 
+  const nameByCode = React.useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const it of catalog) if (it?.code && it?.name) m[it.code] = it.name;
+    return m;
+  }, [catalog]);
+
+  function equippedLabel(kind: Kind, code: string | null) {
+    if (!code) return "—";
+    if (kind === "badge") return `Badge ${badgeTextFromCode(code)}`;
+    if (kind === "title") return nameByCode[code] || titleNames[code] || titleLabelFallback(code);
+    return nameByCode[code] || code;
+  }
+
+  // ✅ Swipe interne (uniquement pour changer Pseudo/Badge/Hat/Frame/Title)
+  // -> Pointer Events + capture pour BLOQUER le swipe du menu parent
+  const catsOrder = React.useMemo(() => CATS.map((c) => c.id), []);
+  const swipeRef = React.useRef({
+    active: false,
+    decided: false,
+    horizontal: false,
+    x0: 0,
+    y0: 0,
+    dx: 0,
+    dy: 0,
+    pointerId: -1,
+  });
+
+  function catIndex(id: Kind) {
+    const i = catsOrder.indexOf(id);
+    return i >= 0 ? i : 0;
+  }
+  function setCatByIndex(i: number) {
+    const n = catsOrder.length;
+    const clamped = Math.max(0, Math.min(n - 1, i));
+    setTab(catsOrder[clamped] as Kind);
+  }
+
+  function swipeStart(x: number, y: number, pointerId: number) {
+    swipeRef.current.active = true;
+    swipeRef.current.decided = false;
+    swipeRef.current.horizontal = false;
+    swipeRef.current.x0 = x;
+    swipeRef.current.y0 = y;
+    swipeRef.current.dx = 0;
+    swipeRef.current.dy = 0;
+    swipeRef.current.pointerId = pointerId;
+  }
+
+  function swipeMove(e: React.PointerEvent, x: number, y: number) {
+    if (!swipeRef.current.active) return;
+
+    const dx = x - swipeRef.current.x0;
+    const dy = y - swipeRef.current.y0;
+    swipeRef.current.dx = dx;
+    swipeRef.current.dy = dy;
+
+    const adx = Math.abs(dx);
+    const ady = Math.abs(dy);
+
+    if (!swipeRef.current.decided) {
+      if (adx > 8 || ady > 8) {
+        swipeRef.current.decided = true;
+        swipeRef.current.horizontal = adx > ady * 1.1;
+      }
+    }
+
+    // si horizontal => on bloque le parent (menu)
+    if (swipeRef.current.decided && swipeRef.current.horizontal) {
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+
+  function swipeEnd(e: React.PointerEvent) {
+    if (!swipeRef.current.active) return;
+
+    const { decided, horizontal, dx, dy } = swipeRef.current;
+    swipeRef.current.active = false;
+
+    if (!(decided && horizontal)) return;
+
+    e.stopPropagation();
+
+    const adx = Math.abs(dx);
+    const ady = Math.abs(dy);
+
+    if (adx < 45 || adx < ady * 1.2) return;
+
+    const idx = catIndex(tab);
+    if (dx < 0) setCatByIndex(idx + 1); // swipe gauche => next
+    else setCatByIndex(idx - 1); // swipe droite => prev
+  }
+
+  function onPointerDownCapture(e: React.PointerEvent) {
+    if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+    swipeStart(e.clientX, e.clientY, e.pointerId);
+
+    // lock sur le composant => le parent ne récupère plus le gesture
+    try {
+      (e.currentTarget as any).setPointerCapture?.(e.pointerId);
+    } catch {}
+  }
+  function onPointerMoveCapture(e: React.PointerEvent) {
+    if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+    swipeMove(e, e.clientX, e.clientY);
+  }
+  function onPointerUpCapture(e: React.PointerEvent) {
+    if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+    swipeEnd(e);
+    try {
+      (e.currentTarget as any).releasePointerCapture?.(e.pointerId);
+    } catch {}
+  }
+  function onPointerCancelCapture(e: React.PointerEvent) {
+    if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+    swipeRef.current.active = false;
+    try {
+      (e.currentTarget as any).releasePointerCapture?.(e.pointerId);
+    } catch {}
+  }
+
   return (
     <div
+      onPointerDownCapture={onPointerDownCapture}
+      onPointerMoveCapture={onPointerMoveCapture}
+      onPointerUpCapture={onPointerUpCapture}
+      onPointerCancelCapture={onPointerCancelCapture}
       style={{
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+        boxSizing: "border-box",
         borderRadius: 18,
         border: "1px solid rgba(255,255,255,0.10)",
         background:
@@ -527,13 +620,16 @@ export function PersonalisationSectionMobile({
         padding: 12,
         boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
         backdropFilter: "blur(10px)",
+        touchAction: "pan-y",           // ✅ scroll vertical ok
+        overscrollBehaviorX: "contain", // ✅ évite swipe parent/back
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-        <div style={{ display: "grid", gap: 6 }}>
+
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", minWidth: 0 }}>
+        <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
           <div style={{ fontWeight: 1200, letterSpacing: -0.2 }}>🎨 Personnalisation</div>
           <div className="muted" style={{ lineHeight: 1.3 }}>
-            Mobile: tu cliques une carte pour équiper / retirer. L’aperçu se met à jour.
+            Mobile: tu swipes dans la liste pour changer de catégorie (Pseudo/Badges/Chapeaux/Cadrans/Titres).
           </div>
         </div>
 
@@ -550,209 +646,224 @@ export function PersonalisationSectionMobile({
         </div>
       ) : null}
 
-      {/* Preview (full width) */}
-      <div
-        style={{
-          marginTop: 12,
-          borderRadius: 16,
-          border: "1px solid rgba(255,255,255,0.10)",
-          background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
-          padding: 12,
-          boxShadow: "0 14px 40px rgba(0,0,0,0.22)",
-          backdropFilter: "blur(10px)",
-          ...({
-            ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
-            ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
-          } as any),
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-          <div style={{ fontWeight: 1100 }}>✨ Aperçu</div>
-          <div className="muted" style={{ fontSize: 12 }}>{saving ? "Enregistrement…" : ""}</div>
-        </div>
-
-        <div style={{ marginTop: 10 }}>
-          <ChatMessageBubble
-            streamerAppearance={streamerAppearance}
-            msg={{
-              id: "preview",
-              userId: myUserId || 0,
-              username,
-              body: "Exemple de message — “ça rend comment ?”",
-              createdAt: new Date().toISOString(),
-              cosmetics: previewCosmetics,
-            }}
-          />
-        </div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-          <Chip tone="gold" title="Catégorie active">
-            {curEmoji} <b>{curLabel}</b>
-          </Chip>
-        </div>
-      </div>
-
-      {/* Avatar (stacked mobile) */}
-      <div
-        style={{
-          marginTop: 12,
-          borderRadius: 16,
-          border: "1px solid rgba(255,255,255,0.10)",
-          background:
-            "radial-gradient(600px 240px at 20% 0%, rgba(80,160,255,0.18), rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
-          padding: 12,
-          boxShadow: "0 14px 40px rgba(0,0,0,0.22)",
-          backdropFilter: "blur(10px)",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-          <div style={{ fontWeight: 1100 }}>🖼️ Avatar</div>
-          <div className="muted" style={{ fontSize: 12 }}>carré • auto-crop</div>
-        </div>
-
-        <div style={{ marginTop: 10, display: "flex", gap: 12, alignItems: "center" }}>
-          <div
-            style={{
-              width: 66,
-              height: 66,
-              borderRadius: 22,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background:
-                "linear-gradient(135deg, rgba(140,90,255,0.25), rgba(80,160,255,0.14), rgba(255,90,180,0.10))",
-              overflow: "hidden",
-              display: "grid",
-              placeItems: "center",
-              boxShadow: "0 18px 50px rgba(0,0,0,0.25)",
-              flex: "0 0 auto",
-            }}
-          >
-            {(avatarPreview || avatarUrl) ? (
-              <img
-                src={avatarPreview || `${avatarUrl}`}
-                alt=""
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            ) : (
-              <div style={{ fontWeight: 1200, letterSpacing: 1 }}>{getInitials(username)}</div>
-            )}
+      {/* ✅ IMPORTANT: wrapper vertical => Avatar puis Aperçu, jamais côte-à-côte */}
+      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr", gap: 12, minWidth: 0 }}>
+        {/* ✅ Avatar EN PREMIER */}
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "100%",
+            minWidth: 0,
+            borderRadius: 16,
+            border: "1px solid rgba(255,255,255,0.10)",
+            background:
+              "radial-gradient(600px 240px at 20% 0%, rgba(80,160,255,0.18), rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+            padding: 12,
+            boxShadow: "0 14px 40px rgba(0,0,0,0.22)",
+            backdropFilter: "blur(10px)",
+            boxSizing: "border-box",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", minWidth: 0 }}>
+            <div style={{ fontWeight: 1100 }}>🖼️ Avatar</div>
+            <div className="muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>carré • auto-crop</div>
           </div>
 
-          <div style={{ display: "grid", gap: 8, minWidth: 0, flex: 1 }}>
-            <button
-              className="btnGhost"
-              disabled={!token || avatarBusy}
-              onClick={() => fileRef.current?.click()}
-              style={{ justifyContent: "center" }}
+          {/* grid interne => pas de débordement horizontal */}
+          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "72px 1fr", gap: 12, alignItems: "center", minWidth: 0 }}>
+            <div
+              style={{
+                width: 66,
+                height: 66,
+                borderRadius: 22,
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "linear-gradient(135deg, rgba(140,90,255,0.25), rgba(80,160,255,0.14), rgba(255,90,180,0.10))",
+                overflow: "hidden",
+                display: "grid",
+                placeItems: "center",
+                boxShadow: "0 18px 50px rgba(0,0,0,0.25)",
+              }}
             >
-              {avatarPayload ? "🪄 Changer l’image" : "⬆️ Uploader une image"}
-            </button>
+              {(avatarPreview || avatarUrl) ? (
+                <img
+                  src={avatarPreview || `${avatarUrl}`}
+                  alt=""
+                  onError={(e) => (((e.currentTarget as HTMLImageElement).style.display = "none"))}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              ) : (
+                <div style={{ fontWeight: 1200, letterSpacing: 1 }}>{getInitials(username)}</div>
+              )}
+            </div>
 
-            {avatarPayload ? (
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+              <button
+                className="btnGhost"
+                disabled={!token || avatarBusy}
+                onClick={() => fileRef.current?.click()}
+                style={{ justifyContent: "center", minWidth: 0, whiteSpace: "normal", lineHeight: 1.2 }}
+              >
+                {avatarPayload ? "🪄 Changer l’image" : "⬆️ Uploader une image"}
+              </button>
+
+              {avatarPayload ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <button
+                    className="btnPrimary"
+                    disabled={!token || avatarBusy}
+                    onClick={async () => {
+                      if (!token || !avatarPayload) return;
+                      setAvatarBusy(true);
+                      setErr(null);
+                      try {
+                        const r = await fetch(`${API_BASE}/me/avatar`, {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ mime: avatarPayload.mime, data: avatarPayload.b64 }),
+                        });
+                        const j = await r.json();
+                        if (!j?.ok) throw new Error(j?.error || "upload_failed");
+
+                        const bust = Date.now();
+                        setAvatarUrl(String(j?.avatarUrl || `${API_BASE}/avatars/u/${myUserId}?v=${bust}`));
+
+                        setAvatarPayload(null);
+                        if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+                        setAvatarPreview(null);
+                      } catch (e: any) {
+                        setErr(String(e?.message || "Erreur"));
+                      } finally {
+                        setAvatarBusy(false);
+                      }
+                    }}
+                    style={{ minWidth: 0 }}
+                  >
+                    {avatarBusy ? "Upload…" : "✅ Valider"}
+                  </button>
+
+                  <button
+                    className="btnGhost"
+                    disabled={avatarBusy}
+                    onClick={() => {
+                      setAvatarPayload(null);
+                      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+                      setAvatarPreview(null);
+                    }}
+                    style={{ minWidth: 0 }}
+                  >
+                    Annuler
+                  </button>
+                </div>
+              ) : (
                 <button
-                  className="btnPrimary"
+                  className="btnGhost"
                   disabled={!token || avatarBusy}
                   onClick={async () => {
-                    if (!token || !avatarPayload) return;
+                    if (!token) return;
                     setAvatarBusy(true);
                     setErr(null);
                     try {
                       const r = await fetch(`${API_BASE}/me/avatar`, {
-                        method: "PUT",
-                        headers: {
-                          "Content-Type": "application/json",
-                          Authorization: `Bearer ${token}`,
-                        },
-                        body: JSON.stringify({ mime: avatarPayload.mime, data: avatarPayload.b64 }),
+                        method: "DELETE",
+                        headers: { Authorization: `Bearer ${token}` },
                       });
-                      const j = await r.json();
-                      if (!j?.ok) throw new Error(j?.error || "upload_failed");
-
-                      const bust = Date.now();
-                      setAvatarUrl(String(j?.avatarUrl || `${API_BASE}/avatars/u/${myUserId}?v=${bust}`));
-
-                      setAvatarPayload(null);
-                      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
-                      setAvatarPreview(null);
+                      const j = await r.json().catch(() => ({}));
+                      if (j?.ok !== true) throw new Error(j?.error || "delete_failed");
+                      setAvatarUrl(null);
                     } catch (e: any) {
                       setErr(String(e?.message || "Erreur"));
                     } finally {
                       setAvatarBusy(false);
                     }
                   }}
+                  style={{ minWidth: 0 }}
                 >
-                  {avatarBusy ? "Upload…" : "✅ Valider"}
+                  🗑️ Supprimer
                 </button>
-
-                <button
-                  className="btnGhost"
-                  disabled={avatarBusy}
-                  onClick={() => {
-                    setAvatarPayload(null);
-                    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
-                    setAvatarPreview(null);
-                  }}
-                >
-                  Annuler
-                </button>
-              </div>
-            ) : (
-              <button
-                className="btnGhost"
-                disabled={!token || avatarBusy}
-                onClick={async () => {
-                  if (!token) return;
-                  setAvatarBusy(true);
-                  setErr(null);
-                  try {
-                    const r = await fetch(`${API_BASE}/me/avatar`, {
-                      method: "DELETE",
-                      headers: { Authorization: `Bearer ${token}` },
-                    });
-                    const j = await r.json().catch(() => ({}));
-                    if (j?.ok !== true) throw new Error(j?.error || "delete_failed");
-                    setAvatarUrl(null);
-                  } catch (e: any) {
-                    setErr(String(e?.message || "Erreur"));
-                  } finally {
-                    setAvatarBusy(false);
-                  }
-                }}
-              >
-                🗑️ Supprimer
-              </button>
-            )}
+              )}
+            </div>
           </div>
+
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              setErr(null);
+              setAvatarBusy(true);
+              try {
+                const { mime, b64, previewUrl } = await makeSquareAvatar(f, 160);
+                setAvatarPayload({ mime, b64 });
+                if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+                setAvatarPreview(previewUrl);
+              } catch (err: any) {
+                setErr(String(err?.message || "avatar_prepare_failed"));
+              } finally {
+                setAvatarBusy(false);
+              }
+            }}
+          />
         </div>
 
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={async (e) => {
-            const f = e.target.files?.[0];
-            if (!f) return;
-            setErr(null);
-            setAvatarBusy(true);
-            try {
-              const { mime, b64, previewUrl } = await makeSquareAvatar(f, 160);
-              setAvatarPayload({ mime, b64 });
-              if (avatarPreview) URL.revokeObjectURL(avatarPreview);
-              setAvatarPreview(previewUrl);
-            } catch (err: any) {
-              setErr(String(err?.message || "avatar_prepare_failed"));
-            } finally {
-              setAvatarBusy(false);
-            }
+        {/* ✅ Aperçu JUSTE EN DESSOUS */}
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "100%",
+            minWidth: 0,
+            borderRadius: 16,
+            border: "1px solid rgba(255,255,255,0.10)",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
+            padding: 12,
+            boxShadow: "0 14px 40px rgba(0,0,0,0.22)",
+            backdropFilter: "blur(10px)",
+            boxSizing: "border-box",
+            ...({
+              ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
+              ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
+            } as any),
           }}
-        />
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", minWidth: 0 }}>
+            <div style={{ fontWeight: 1100 }}>✨ Aperçu</div>
+            <div className="muted" style={{ fontSize: 12 }}>{saving ? "Enregistrement…" : ""}</div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+            <Chip tone="gold" title="Catégorie active">
+              {curEmoji} <b>{curLabel}</b>
+            </Chip>
+            <Chip tone="neutral" title="Pseudo">
+              ✨ <span style={{ opacity: 0.85 }}>Pseudo:</span> <b>{equippedLabel("username", equipped.username)}</b>
+            </Chip>
+            <Chip tone="blue" title="Badge">
+              🏷️ <span style={{ opacity: 0.85 }}>Badge:</span> <b>{equippedLabel("badge", equipped.badge)}</b>
+            </Chip>
+            <Chip tone="pink" title="Titre">
+              🏆 <span style={{ opacity: 0.85 }}>Titre:</span> <b>{equippedLabel("title", equipped.title)}</b>
+            </Chip>
+          </div>
+
+          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            <ChatMessageBubble
+              streamerAppearance={streamerAppearance}
+              msg={{
+                id: "preview-1",
+                userId: myUserId || 0,
+                username,
+                body: "Exemple — “ça rend comment ?”",
+                createdAt: new Date().toISOString(),
+                cosmetics: previewCosmetics,
+              }}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Categories (horizontal scroll for mobile) */}
+      {/* Categories */}
       <div
         style={{
           marginTop: 12,
@@ -775,7 +886,7 @@ export function PersonalisationSectionMobile({
         ))}
       </div>
 
-      {/* Items list (1 column mobile) */}
+      {/* Items list + ✅ zone SWIPE (bloque le swipe des tabs globales) */}
       <div
         style={{
           marginTop: 12,
@@ -785,6 +896,8 @@ export function PersonalisationSectionMobile({
           padding: 12,
           boxShadow: "0 14px 40px rgba(0,0,0,0.22)",
           backdropFilter: "blur(10px)",
+          // 👇 crucial: laisse le scroll vertical, mais empêche le pan horizontal par défaut => on gère le swipe nous-mêmes
+          touchAction: "pan-y",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
@@ -808,6 +921,8 @@ export function PersonalisationSectionMobile({
             const bg = locked
               ? "rgba(0,0,0,0.42)"
               : "linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0.10))";
+
+            const cardPreviewCosmetics = previewForItem(it);
 
             return (
               <button
@@ -893,6 +1008,31 @@ export function PersonalisationSectionMobile({
                       </span>
                     ) : null}
                   </div>
+                </div>
+
+                {/* ✅ APERÇU de l'item (comme desktop) */}
+                <div
+                  style={{
+                    marginTop: 10,
+                    pointerEvents: "none",
+                    opacity: locked ? 0.75 : 0.95,
+                    ...({
+                      ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor,
+                      ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor,
+                    } as any),
+                  }}
+                >
+                  <ChatMessageBubble
+                    streamerAppearance={streamerAppearance}
+                    msg={{
+                      id: `cardpreview:${it.kind}:${String(it.code)}`,
+                      userId: myUserId || 0,
+                      username,
+                      body: "…",
+                      createdAt: new Date().toISOString(),
+                      cosmetics: cardPreviewCosmetics,
+                    }}
+                  />
                 </div>
               </button>
             );

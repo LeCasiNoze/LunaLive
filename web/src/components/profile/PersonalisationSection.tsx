@@ -9,6 +9,8 @@ import {
   type StreamerAppearance,
 } from "../../lib/appearance";
 import { getInitials } from "../../lib/cosmetics";
+import { useIsMobile } from "../../hooks/useIsMobile";
+import PersonalisationSectionMobile from "./PersonalisationSection.mobile";
 
 type Kind = "username" | "badge" | "title" | "frame" | "hat";
 
@@ -382,6 +384,15 @@ export function PersonalisationSection({
   streamerAppearance?: StreamerAppearance;
 }) {
   const { token } = useAuth();
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return (
+      <PersonalisationSectionMobile
+        username={username}
+        streamerAppearance={streamerAppearance}
+      />
+    );
+  }
 
   const me = React.useMemo(() => (token ? parseJwt(token) : null), [token]);
   const myUserId = Number(me?.id || 0);
