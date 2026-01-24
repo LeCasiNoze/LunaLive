@@ -8,12 +8,56 @@ import { DailyBonusAccessCard } from "../components/DailyBonusAccessCard";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
+/* ──────────────────────────────────────────
+   Avatar helpers (alignés sur ProfilePage.mobile)
+────────────────────────────────────────── */
 function absolutize(url: string | null) {
   if (!url) return null;
   const u = String(url);
   if (u.startsWith("http://") || u.startsWith("https://")) return u;
   if (u.startsWith("/")) return `${API_BASE}${u}`;
   return u;
+}
+
+function initials(name: string) {
+  const s = (name || "?").trim();
+  if (!s) return "?";
+  const parts = s.split(/[\s._-]+/g).filter(Boolean);
+  const a = parts[0]?.[0] ?? s[0];
+  const b = parts.length > 1 ? parts[parts.length - 1]?.[0] : s[1];
+  return (a + (b ?? "")).toUpperCase();
+}
+
+function getAvatarUrl(u: any): string | null {
+  // ✅ On essaye plusieurs champs possibles (selon backend/DB), sans rien casser.
+  const candidates = [
+    u?.avatarUrl,
+    u?.avatar_url,
+    u?.avatar,
+    u?.photoUrl,
+    u?.photo_url,
+    u?.picture,
+    u?.imageUrl,
+    u?.image_url,
+  ].filter(Boolean);
+
+  const v = candidates[0];
+  if (!v) return null;
+  const s = String(v);
+  if (!s) return null;
+  return absolutize(s) ?? s;
+}
+
+/**
+ * Avatar resolver user:
+ * - priorité à user.avatarUrl/etc.
+ * - sinon fallback sur /avatars/u/:id (cache-bust soft 1/min)
+ */
+function pickUserAvatarUrl(user: any) {
+  const uid = user?.id != null ? Number(user.id) : null;
+  const direct = getAvatarUrl(user);
+  const byUid = uid ? absolutize(`/avatars/u/${uid}?v=${Math.floor(Date.now() / 60000)}`) : null;
+  return direct || byUid;
 }
 
 type MenuLink = { kind: "link"; to: string; label: string; icon?: React.ReactNode };
@@ -26,20 +70,10 @@ export function BottomTabs() {
   const userAny = authAny?.user ?? null;
 
   const username = String(userAny?.username || "");
-  const avatarRaw =
-    userAny?.avatarUrl != null
-      ? String(userAny.avatarUrl)
-      : userAny?.avatar_url != null
-      ? String(userAny.avatar_url)
-      : userAny?.picture != null
-      ? String(userAny.picture)
-      : userAny?.photoUrl != null
-      ? String(userAny.photoUrl)
-      : userAny?.photo_url != null
-      ? String(userAny.photo_url)
-      : null;
+  const avatarSrc = pickUserAvatarUrl(userAny);
 
-  const avatarSrc = avatarRaw ? absolutize(avatarRaw) || avatarRaw : null;
+  const [avatarOk, setAvatarOk] = React.useState(true);
+  React.useEffect(() => setAvatarOk(true), [avatarSrc]);
 
   const [open, setOpen] = React.useState(false);
 
@@ -217,6 +251,8 @@ export function BottomTabs() {
           border: 1px solid rgba(255,255,255,0.14);
           background: rgba(0,0,0,0.35);
           flex: 0 0 auto;
+          display: grid;
+          place-items: center;
         }
         .meAva img{ width:100%; height:100%; object-fit: cover; display:block; }
         .meName{
@@ -288,7 +324,6 @@ export function BottomTabs() {
       `}</style>
 
       <nav className="bottomTabs" aria-label="Navigation">
-        
         <NavLink to="/" end className={tabClass}>
           <div className="tabIcon">●</div>
           <div className="tabLabel">Lives</div>
@@ -319,18 +354,18 @@ export function BottomTabs() {
               {/* Mon compte (unique, en haut) */}
               <Link to="/profile" className="meBtn" onClick={() => setOpen(false)} aria-label="Mon compte">
                 <div className="meAva" aria-hidden>
-                  {avatarSrc ? (
-                    <img
-                      src={avatarSrc}
-                      alt=""
-                      onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
-                    />
-                  ) : null}
+                  {avatarSrc && avatarOk ? (
+                    <img src={String(avatarSrc)} alt="" onError={() => setAvatarOk(false)} />
+                  ) : (
+                    <div style={{ fontWeight: 1100, opacity: 0.92 }}>{initials(username)}</div>
+                  )}
                 </div>
+
                 <div style={{ minWidth: 0 }}>
                   <div className="meName">{username || "Mon compte"}</div>
                   <div className="meSub">Profil • options</div>
                 </div>
+
                 <div className="menuHint">▶</div>
               </Link>
 

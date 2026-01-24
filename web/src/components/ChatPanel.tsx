@@ -67,10 +67,11 @@ type ChatSettings = {
   followOnly: boolean;
   subOnly: boolean;
 
-  // ✅ NEW: DLive sync routing
+  dliveUsername: string | null;
   dliveSyncPublic: boolean;
   dliveSyncPopup: boolean;
 };
+
 
 
 type ViewerRow = { userId: number; username: string };
@@ -1635,9 +1636,11 @@ export function ChatPanel({
     allowLinks: true,
     followOnly: false,
     subOnly: false,
+    dliveUsername: null,
     dliveSyncPublic: false,
     dliveSyncPopup: false,
   });
+
 
   async function fetchSettings() {
     if (!token) return;
@@ -1650,6 +1653,7 @@ export function ChatPanel({
         subOnly: !!st.settings.subOnly,
         dliveSyncPublic: !!st.settings.dliveSyncPublic,
         dliveSyncPopup: !!st.settings.dliveSyncPopup,
+        dliveUsername: st.settings.dliveUsername ? String(st.settings.dliveUsername) : null,
       });
       }
     } catch {}
@@ -1871,8 +1875,10 @@ export function ChatPanel({
         subOnly: !!st.subOnly,
         dliveSyncPublic: !!st.dliveSyncPublic,
         dliveSyncPopup: !!st.dliveSyncPopup,
+        dliveUsername: st.settings.dliveUsername ? String(st.settings.dliveUsername) : null,
       });
     });
+
 
     socket.on("stream:follows", (payload: any) => {
       const evSlug = String(payload?.slug || "").trim().toLowerCase();
@@ -1911,7 +1917,8 @@ export function ChatPanel({
       socket.emit("chat:refresh", { slug: s });
     });
 
-    socket.emit("chat:join", { slug: s, mode: (isPopup ? "popup" : "public") }, async (ack: JoinAck) => {
+    const mode = visualMode === "popup" ? "popup" : "public";
+    socket.emit("chat:join", { slug: s, mode }, async (ack: JoinAck) => {
       if (!ack?.ok) {
         setJoin(null);
         setError(ack?.error || "join_failed");

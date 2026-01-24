@@ -409,20 +409,23 @@ export function attachChat(io: Server) {
             me: data.user ? { id: data.user.id, username: data.user.username, role: data.user.role } : null,
           });
 
-          // ✅ Optionnel : démarrer le bridge DLive si activé (selon settings)
-          // (Assure-toi que ensureDliveBridge accepte ces args)
           try {
             const st = await readSettings(meta.id);
-            const enabled = m === "public" ? !!(st as any).dliveSyncPublic : !!(st as any).dliveSyncPopup;
-            if (enabled) {
-              ensureDliveBridge({
-                io,
-                streamerId: meta.id,
-                slug: meta.slug,
-                mode: m,
-              } as any);
-            }
-          } catch {}
+
+            const dliveUsername = st.dliveUsername || null;
+
+            ensureDliveBridge({
+              io,
+              pool,
+              slug: meta.slug,
+              dliveUsername,
+              publicOn: !!st.dliveSyncPublic,
+              popupOn:  !!st.dliveSyncPopup,
+            });
+
+          } catch (e) {
+            console.warn("[chat_socket] dlive bridge init failed", (e as any)?.message || e);
+          }
         } catch (e: any) {
           cb?.({ ok: false, error: String(e?.message || "join_failed") });
         }
@@ -503,12 +506,27 @@ export function attachChat(io: Server) {
           const next = await patchChatSettings(pool, meta.id, p, u.id);
           settingsCache.set(meta.id, { at: Date.now(), settings: next });
 
+          try {
+            const dliveUsername = next.dliveUsername || null;
+            ensureDliveBridge({
+              io,
+              pool,
+              slug: meta.slug,
+              dliveUsername,
+              publicOn: !!next.dliveSyncPublic,
+              popupOn: !!next.dliveSyncPopup,
+            });
+          } catch (e) {
+            console.warn("[chat_socket] dlive bridge update failed", (e as any)?.message || e);
+          }
+          
           const changed: ChatSettingsPatch = {};
           if (old.allowLinks !== next.allowLinks) changed.allowLinks = next.allowLinks;
           if (old.followOnly !== next.followOnly) changed.followOnly = next.followOnly;
           if (old.subOnly !== next.subOnly) changed.subOnly = next.subOnly;
-          if ((old as any).dliveSyncPublic !== (next as any).dliveSyncPublic) (changed as any).dliveSyncPublic = (next as any).dliveSyncPublic;
-          if ((old as any).dliveSyncPopup !== (next as any).dliveSyncPopup) (changed as any).dliveSyncPopup = (next as any).dliveSyncPopup;
+          if (old.dliveSyncPublic !== next.dliveSyncPublic) changed.dliveSyncPublic = next.dliveSyncPublic;
+          if (old.dliveSyncPopup !== next.dliveSyncPopup) changed.dliveSyncPopup = next.dliveSyncPopup;
+          if (old.dliveUsername !== next.dliveUsername) changed.dliveUsername = next.dliveUsername;
 
           io.to(`chat:${meta.slug}`).emit("chat:settings", { ok: true, settings: next });
 

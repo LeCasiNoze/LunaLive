@@ -604,6 +604,7 @@ export function PersonalisationSectionMobile({
 
   return (
     <div
+      data-noswipe-profiletabs="1"
       onPointerDownCapture={onPointerDownCapture}
       onPointerMoveCapture={onPointerMoveCapture}
       onPointerUpCapture={onPointerUpCapture}

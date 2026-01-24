@@ -731,8 +731,16 @@ export default function ProfilePageMobile() {
 
   function onSwipeStart(e: React.TouchEvent) {
     if (!swipeEnabled) return;
+
+    // ✅ IMPORTANT: pas de swipe global quand on est sur "style"
+    if (tabView === "style" || tab === "style") return;
+
     const t = e.touches?.[0];
     if (!t) return;
+
+    // ✅ si le swipe démarre dans la personnalisation (ou toute zone marquée), on ignore
+    const target = e.target as any;
+    if (target?.closest?.('[data-noswipe-profiletabs="1"]')) return;
 
     if (isInteractiveTarget(e.target)) return;
     if (t.clientX < EDGE_GUARD || t.clientX > window.innerWidth - EDGE_GUARD) return;
