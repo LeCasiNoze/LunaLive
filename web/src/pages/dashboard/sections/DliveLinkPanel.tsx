@@ -76,6 +76,15 @@ export function DliveLinkPanel() {
     setErr(null);
     try {
       await dliveLinkRequest(token, channel);
+
+      // ✅ SOUM SOUM: on "prime" la vérif immédiatement, comme si l'utilisateur avait cliqué sur Vérifier.
+      // L'appel peut échouer (normal si le code n'a pas encore été envoyé), donc on ignore l'erreur.
+      try {
+        await dliveLinkVerify(token);
+      } catch {
+        // ignore: on veut juste amorcer la fenêtre de vérif côté backend
+      }
+
       reload();
     } catch (e: any) {
       setErr(String(e?.message || "ERROR"));
@@ -224,7 +233,7 @@ export function DliveLinkPanel() {
           {pending ? (
             <>
               <div className="mutedSmall">
-                1) Clique sur Vérifier PUIS envoie ce code dans le chat de <b>{pending.requestedDisplayname}</b> :
+                1) Envoie ce code dans le chat de <b>{pending.requestedDisplayname}</b> :
               </div>
 
               <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -247,7 +256,7 @@ export function DliveLinkPanel() {
               </div>
 
               <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85 }}>
-                2) Puis clique “Vérifier”. (Si tu l’as déjà envoyé avant de cliquer, renvoie-le une 2e fois.)
+                2) Puis clique “Vérifier”.
               </div>
 
               <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
