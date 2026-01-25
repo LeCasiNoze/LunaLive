@@ -86,7 +86,8 @@ export function DlivePlayer({
   const menuRef = React.useRef<HTMLDivElement>(null);
 
   // ✅ Debug uniquement en DEV + ?debug=1 (aucun texte UI)
-  const debugEnabled = !!import.meta.env.DEV && new URLSearchParams(window.location.search).has("debug");
+  const debugEnabled =
+    !!import.meta.env.DEV && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
   const dbgLog = (...args: any[]) => {
     if (debugEnabled) console.debug("[DlivePlayer]", ...args);
   };
@@ -213,6 +214,170 @@ export function DlivePlayer({
     } catch {}
   }, [q]);
 
+  // ✅ LIVE EDGE / FREEZE watchdogs (stabilité + resync)
+  React.useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let tLiveEdge: number | null = null;
+    let tStall: number | null = null;
+
+    // réglages (tu peux ajuster)
+    const RESYNC_THRESHOLD_SEC = 10; // si > 10s derrière => resync
+    const IOS_LIVE_SAFETY_SEC = 1.5; // seek à end - 1.5s
+    const STALL_GRACE_MS = 8000; // si pas de progrès pendant 8s => recovery
+    const PROGRESS_EPS = 0.02; // 20ms de progrès = ok
+
+    let lastT = Number(video.currentTime || 0);
+    let lastProgressAt = Date.now();
+
+    const markProgress = () => {
+      const nowT = Number(video.currentTime || 0);
+      if (Math.abs(nowT - lastT) > PROGRESS_EPS) {
+        lastT = nowT;
+        lastProgressAt = Date.now();
+      }
+    };
+
+    // listeners utiles
+    const onTimeUpdate = () => markProgress();
+    const onPlaying = () => {
+      lastProgressAt = Date.now();
+      markProgress();
+    };
+    const onWaiting = () => dbgLog("video waiting", { rs: video.readyState, ns: video.networkState });
+    const onStalled = () => dbgLog("video stalled", { rs: video.readyState, ns: video.networkState });
+    const onError = () => dbgLog("video error", { err: (video as any).error });
+
+    video.addEventListener("timeupdate", onTimeUpdate);
+    video.addEventListener("playing", onPlaying);
+    video.addEventListener("waiting", onWaiting);
+    video.addEventListener("stalled", onStalled);
+    video.addEventListener("error", onError);
+
+    // 1) live-edge resync (toutes les 7s)
+    tLiveEdge = window.setInterval(() => {
+      if (!isLive) return;
+      if (!video || video.paused) return;
+
+      const hls = hlsRef.current;
+
+      // hls.js: liveSyncPosition
+      if (hls && typeof (hls as any).liveSyncPosition === "number" && Number.isFinite((hls as any).liveSyncPosition)) {
+        const livePos = Number((hls as any).liveSyncPosition);
+        const ct = Number(video.currentTime || 0);
+        const behind = livePos - ct;
+
+        if (Number.isFinite(behind) && behind > RESYNC_THRESHOLD_SEC) {
+          dbgLog("resync (hlsjs)", { behind: behind.toFixed(2), ct: ct.toFixed(2), livePos: livePos.toFixed(2) });
+          try {
+            // petit seek direct au live edge
+            video.currentTime = livePos;
+          } catch {}
+        }
+        return;
+      }
+
+      // native (iOS/Safari): seekable.end()
+      try {
+        const s = video.seekable;
+        if (!s || s.length <= 0) return;
+        const end = s.end(s.length - 1);
+        const ct = Number(video.currentTime || 0);
+        const behind = end - ct;
+
+        if (Number.isFinite(behind) && behind > RESYNC_THRESHOLD_SEC) {
+          const target = Math.max(0, end - IOS_LIVE_SAFETY_SEC);
+          dbgLog("resync (native)", { behind: behind.toFixed(2), ct: ct.toFixed(2), end: end.toFixed(2) });
+          video.currentTime = target;
+        }
+      } catch {}
+    }, 7000);
+
+    // 2) stall watchdog (toutes les 3s)
+    tStall = window.setInterval(() => {
+      if (!isLive) return;
+      if (!video) return;
+      if (video.paused) return;
+
+      // si le doc est hidden, on évite les actions agressives
+      if (typeof document !== "undefined" && (document as any).hidden) return;
+
+      const now = Date.now();
+      const since = now - lastProgressAt;
+
+      // ignore si pas encore démarré
+      if (Number(video.currentTime || 0) <= 0.01) return;
+
+      if (since < STALL_GRACE_MS) return;
+
+      const hls = hlsRef.current;
+      const rs = video.readyState;
+      const ns = video.networkState;
+
+      dbgLog("stall detected", {
+        sinceMs: since,
+        ct: Number(video.currentTime || 0).toFixed(2),
+        rs,
+        ns,
+        mode: hls ? "hlsjs" : "native",
+      });
+
+      // === Recovery escalier ===
+
+      // A) kick play()
+      video.play().catch(() => {});
+
+      // B) petit nudge (débloque parfois un trou)
+      try {
+        video.currentTime = Number(video.currentTime || 0) + 0.1;
+      } catch {}
+
+      // C) hls.js recover
+      if (hls) {
+        try {
+          // on tente d'abord un recover media
+          hls.recoverMediaError();
+        } catch {}
+        try {
+          // et on relance le chargement
+          hls.startLoad(-1);
+        } catch {}
+      } else {
+        // D) native hard refresh rare
+        try {
+          const cur = video.currentTime || 0;
+          const base = video.src || "";
+          if (base) {
+            const sep = base.includes("?") ? "&" : "?";
+            video.src = `${base}${sep}t=${Date.now()}`;
+            video.load();
+            // on essaye de revenir proche de la position (si possible)
+            try {
+              video.currentTime = cur;
+            } catch {}
+            video.play().catch(() => {});
+          }
+        } catch {}
+      }
+
+      // reset timer après tentative
+      lastProgressAt = Date.now();
+      lastT = Number(video.currentTime || 0);
+    }, 3000);
+
+    return () => {
+      if (tLiveEdge) window.clearInterval(tLiveEdge);
+      if (tStall) window.clearInterval(tStall);
+
+      video.removeEventListener("timeupdate", onTimeUpdate);
+      video.removeEventListener("playing", onPlaying);
+      video.removeEventListener("waiting", onWaiting);
+      video.removeEventListener("stalled", onStalled);
+      video.removeEventListener("error", onError);
+    };
+  }, [isLive, channelSlug, channelUsername]);
+
   React.useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -283,16 +448,64 @@ export function DlivePlayer({
       liveSyncDurationCount: 2,
       liveMaxLatencyDurationCount: 6,
 
-      // ✅ IMPORTANT: on désactive le catch-up “speed” (cause 1.1/1.15)
-      // maxLiveSyncPlaybackRate: 1.2,
+      // ✅ IMPORTANT: pas de catch-up en vitesse (cause 1.1/1.15)
       maxLiveSyncPlaybackRate: 1.0,
 
-      backBufferLength: 0,
-      maxBufferLength: 10,
+      // ✅ Buffer un poil plus stable (moins de micro-freezes)
+      backBufferLength: 30,
+      maxBufferLength: 20,
+
+      // ✅ ABR plus conservateur (moins de yo-yo)
+      abrBandWidthFactor: 0.8,
+      abrBandWidthUpFactor: 0.7,
+
+      // ✅ retries réseau (résilience)
+      fragLoadingMaxRetry: 6,
+      fragLoadingRetryDelay: 800,
+      fragLoadingMaxRetryTimeout: 6400,
+
+      levelLoadingMaxRetry: 6,
+      levelLoadingRetryDelay: 800,
+      levelLoadingMaxRetryTimeout: 6400,
+
+      manifestLoadingMaxRetry: 6,
+      manifestLoadingRetryDelay: 800,
+      manifestLoadingMaxRetryTimeout: 6400,
     });
 
     hlsRef.current = hls;
     hls.attachMedia(video);
+
+    // logs hls.js utiles en debug
+    if (debugEnabled) {
+      hls.on(Hls.Events.ERROR, (_e, data) => {
+        dbgLog("hls error", {
+          fatal: !!data?.fatal,
+          type: data?.type,
+          details: data?.details,
+          reason: data?.reason,
+          response: data?.response ? { code: data.response.code, text: data.response.text } : undefined,
+        });
+      });
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => dbgLog("level switched", data));
+      hls.on(Hls.Events.FRAG_LOADED, (_e, data) => dbgLog("frag loaded", { sn: data?.frag?.sn, lvl: data?.frag?.level }));
+      hls.on(Hls.Events.ERROR, (_e, data) => {
+      // log complet si tu veux
+      dbgLog("hls error", {
+        fatal: !!data?.fatal,
+        type: data?.type,
+        details: data?.details,
+        reason: data?.reason,
+        response: data?.response ? { code: data.response.code, text: data.response.text } : undefined,
+      });
+
+      // ✅ équivalent “buffer stalled”
+      if (data?.details === (Hls.ErrorDetails as any)?.BUFFER_STALLED_ERROR) {
+        dbgLog("buffer stalled error");
+      }
+    });
+
+    }
 
     hls.on(Hls.Events.MEDIA_ATTACHED, () => {
       hls.loadSource(proxied);
@@ -330,10 +543,11 @@ export function DlivePlayer({
       video.play().catch(() => {});
     });
 
+    // gardé: recovery fatal (déjà ok)
     hls.on(Hls.Events.ERROR, (_evt, data) => {
       if (data?.fatal) {
         try {
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad(-1);
           else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
           else hls.destroy();
         } catch {}
@@ -430,7 +644,9 @@ export function DlivePlayer({
                     >
                       {opt.label}
                       {opt.key !== "auto" && opt.height ? (
-                        <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.7 }}>({opt.height}p)</span>
+                        <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.7 }}>
+                          ({opt.height}p)
+                        </span>
                       ) : null}
                     </button>
                   );
