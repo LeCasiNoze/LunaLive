@@ -117,10 +117,10 @@ export function Topbar({
   const [reportOpen, setReportOpen] = React.useState(false);
 
   React.useEffect(() => {
-  const onOpen = () => setReportOpen(true);
-  window.addEventListener("ui:report_open", onOpen as any);
-  return () => window.removeEventListener("ui:report_open", onOpen as any);
-}, []);
+    const onOpen = () => setReportOpen(true);
+    window.addEventListener("ui:report_open", onOpen as any);
+    return () => window.removeEventListener("ui:report_open", onOpen as any);
+  }, []);
 
   const linkClass = ({ isActive }: { isActive: boolean }) => `llNavBtn ${isActive ? "active" : ""}`;
 
@@ -182,16 +182,19 @@ export function Topbar({
           position: relative;
           overflow: hidden;
           flex: 0 0 auto;
+          display: grid;
+          place-items: center;
         }
-        .llBrandMark:after{
-          content:"🌙";
-          position:absolute;
-          inset:0;
-          display:grid;
-          place-items:center;
-          font-size: 16px;
-          opacity: .95;
-          filter: drop-shadow(0 10px 18px rgba(0,0,0,0.4));
+
+        /* ✅ NEW: logo image inside */
+        .llBrandLogo{
+          width: 26px;
+          height: 26px;
+          object-fit: contain;
+          display: block;
+          filter: drop-shadow(0 10px 18px rgba(0,0,0,0.45));
+          user-select: none;
+          -webkit-user-drag: none;
         }
 
         .llBrandText{
@@ -441,10 +444,12 @@ export function Topbar({
         {/* Brand = cliquable => / */}
         <div className="leftSlot">
           <Link to="/" className="llBrandLink" aria-label="Aller à la page Lives">
-            <div className="llBrandMark" aria-hidden />
+            <div className="llBrandMark" aria-hidden>
+              <img className="llBrandLogo" src="/logo.png" alt="" aria-hidden />
+            </div>
             <div className="llBrandText">
               <b>LunaLive</b>
-              </div>
+            </div>
           </Link>
         </div>
 
