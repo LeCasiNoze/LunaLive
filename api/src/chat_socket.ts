@@ -9,7 +9,7 @@ import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 import { ensureDliveBridge } from "./dlive_chat_bridge.js";
 
-// ✅ NEW
+// ✅ chat settings
 import {
   getChatSettings,
   patchChatSettings,
@@ -33,8 +33,8 @@ type SocketData = {
     canTimeout: boolean;
     canBan: boolean;
     canClear: boolean;
-    canMod: boolean; // peut modérer (ban/timeout/delete/clear)
-    canManageMods: boolean; // peut add/remove mods (owner/admin)
+    canMod: boolean;
+    canManageMods: boolean;
   };
   state?: {
     banned: boolean;
@@ -65,7 +65,7 @@ function tryAuth(socket: Socket) {
   try {
     data.user = jwt.verify(String(token), getJwtSecret()) as AuthUser;
   } catch {
-    // token invalide => guest
+    // guest
   }
 }
 
@@ -78,20 +78,36 @@ async function getStreamerMetaBySlug(
   appearance: any;
   isLive: boolean;
   viewers: number;
+
+  // ✅ DLive channel source
+  dliveUseLinked: boolean;
+  dliveLinkedDisplayname: string | null;
+  dliveLinkedUsername: string | null;
+  providerChannelSlug: string | null;
 } | null> {
   const s = String(slug || "").trim();
   if (!s) return null;
 
+  // ✅ NO dlive_links here. Only streamers + provider_accounts
   const r = await pool.query(
     `SELECT
-        id,
-        slug,
-        user_id AS "ownerUserId",
-        appearance,
-        is_live AS "isLive",
-        viewers
-     FROM streamers
-     WHERE lower(slug)=lower($1)
+        s.id,
+        s.slug,
+        s.user_id AS "ownerUserId",
+        s.appearance,
+        s.is_live AS "isLive",
+        s.viewers,
+
+        s.dlive_use_linked AS "dliveUseLinked",
+        s.dlive_link_displayname AS "dliveLinkedDisplayname",
+        s.dlive_link_username AS "dliveLinkedUsername",
+
+        pa.channel_slug AS "providerChannelSlug"
+     FROM streamers s
+     LEFT JOIN provider_accounts pa
+       ON pa.provider='dlive'
+      AND pa.assigned_to_streamer_id = s.id
+     WHERE lower(s.slug)=lower($1)
      LIMIT 1`,
     [s]
   );
@@ -106,6 +122,11 @@ async function getStreamerMetaBySlug(
     appearance: row.appearance ?? {},
     isLive: !!row.isLive,
     viewers: Number(row.viewers ?? 0),
+
+    dliveUseLinked: !!row.dliveUseLinked,
+    dliveLinkedDisplayname: row.dliveLinkedDisplayname ? String(row.dliveLinkedDisplayname) : null,
+    dliveLinkedUsername: row.dliveLinkedUsername ? String(row.dliveLinkedUsername) : null,
+    providerChannelSlug: row.providerChannelSlug ? String(row.providerChannelSlug) : null,
   };
 }
 
@@ -325,7 +346,36 @@ async function sendBotChat(io: Server, meta: { id: number; slug: string; appeara
     },
   };
 
+  // 🔥 broadcast sur les 2 rooms (public/popup) + legacy
+  io.to(`chat:${meta.slug}:public`).emit("chat:message", msg);
+  io.to(`chat:${meta.slug}:popup`).emit("chat:message", msg);
   io.to(`chat:${meta.slug}`).emit("chat:message", msg);
+}
+
+function getDliveDisplaynameFromMeta(meta: {
+  dliveUseLinked: boolean;
+  dliveLinkedDisplayname: string | null;
+  providerChannelSlug: string | null;
+}) {
+  if (meta.dliveUseLinked && meta.dliveLinkedDisplayname) return meta.dliveLinkedDisplayname;
+  if (meta.providerChannelSlug) return meta.providerChannelSlug;
+  return null;
+}
+
+function safeInitDliveBridge(io: Server, meta: any, settings: ChatSettings) {
+  try {
+    const dliveName = getDliveDisplaynameFromMeta(meta);
+    ensureDliveBridge({
+      io,
+      pool,
+      slug: meta.slug,
+      dliveUsername: dliveName,
+      publicOn: !!(settings as any).dliveSyncPublic,
+      popupOn: !!(settings as any).dliveSyncPopup,
+    });
+  } catch (e: any) {
+    console.warn("[chat_socket] dlive bridge init failed", e?.message || e);
+  }
 }
 
 export function attachChat(io: Server) {
@@ -342,7 +392,6 @@ export function attachChat(io: Server) {
     function joinUserRoom() {
       if (data.user?.id) socket.join(`user:${data.user.id}`);
     }
-
     joinUserRoom();
 
     socket.on("auth:refresh", async ({ token }: { token?: string }, cb?: (ack: any) => void) => {
@@ -350,7 +399,6 @@ export function attachChat(io: Server) {
         if (token) {
           (socket.handshake.auth as any) = { ...(socket.handshake.auth as any), token };
         }
-
         tryAuth(socket);
         joinUserRoom();
 
@@ -363,11 +411,9 @@ export function attachChat(io: Server) {
       }
     });
 
-    if (data.user?.id) {
-      socket.join(`user:${data.user.id}`);
-    }
+    if (data.user?.id) socket.join(`user:${data.user.id}`);
 
-    // ✅ chat join (+ mode public/popup)
+    // ✅ chat join (mode public/popup)
     socket.on(
       "chat:join",
       async (
@@ -383,15 +429,13 @@ export function attachChat(io: Server) {
 
           data.slug = meta.slug;
           data.streamerId = meta.id;
-
           data.appearance = normalizeAppearance(meta.appearance);
 
-          // ✅ room principale (chat LunaLive)
-          socket.join(`chat:${meta.slug}`);
-
-          // ✅ room mode (pour DLive sync sélectif)
-          const m: "public" | "popup" = mode === "popup" ? "popup" : "public";
+          const m = mode === "popup" ? "popup" : "public";
           socket.join(`chat:${meta.slug}:${m}`);
+
+          // legacy room (si tu as encore du front qui écoute chat:${slug})
+          socket.join(`chat:${meta.slug}`);
 
           const rp = await computeRolePerms(meta.id, meta.ownerUserId, data.user);
           data.role = rp.role;
@@ -399,6 +443,10 @@ export function attachChat(io: Server) {
           data.state = rp.state;
 
           if (data.user) trackSocket(meta.slug, data.user.id, socket.id);
+
+          // ✅ init dlive bridge si settings ON
+          const settings = await readSettings(meta.id);
+          safeInitDliveBridge(io, meta, settings);
 
           cb?.({
             ok: true,
@@ -408,51 +456,16 @@ export function attachChat(io: Server) {
             appearance: data.appearance,
             me: data.user ? { id: data.user.id, username: data.user.username, role: data.user.role } : null,
           });
-
-          try {
-            const st = await readSettings(meta.id);
-
-            let dliveUsername = st.dliveUsername || null;
-
-            // ✅ fallback: si pas défini dans chat settings, prendre la chaîne liée
-            if (!dliveUsername) {
-              // ⚠️ à adapter à TA table/route: ici c'est l’idée
-              const r = await pool.query(
-                `SELECT linked_displayname AS "linkedDisplayname", use_linked AS "useLinked"
-                FROM dlive_links
-                WHERE user_id=$1
-                LIMIT 1`,
-                [meta.ownerUserId]
-              );
-              const row = r.rows?.[0];
-              if (row?.useLinked && row?.linkedDisplayname) {
-                dliveUsername = String(row.linkedDisplayname);
-              }
-            }
-
-            ensureDliveBridge({
-              io,
-              pool,
-              slug: meta.slug,
-              dliveUsername,
-              publicOn: !!st.dliveSyncPublic,
-              popupOn:  !!st.dliveSyncPopup,
-            });
-
-          } catch (e) {
-            console.warn("[chat_socket] dlive bridge init failed", (e as any)?.message || e);
-          }
         } catch (e: any) {
           cb?.({ ok: false, error: String(e?.message || "join_failed") });
         }
       }
     );
 
-    // PUBLIC stream room
+    // ✅ PUBLIC stream room
     socket.on("stream:join", async (payload: any, cb?: (ack: any) => void) => {
       try {
         const raw = String(payload?.slug || "").trim();
-
         if (!raw || raw.length > 64 || !/^[a-z0-9_-]+$/i.test(raw)) {
           return cb?.({ ok: false, error: "bad_slug" });
         }
@@ -496,10 +509,13 @@ export function attachChat(io: Server) {
       }
     });
 
-    // settings set
+    // settings set + system message + refresh dlive bridge
     socket.on(
       "chat:settings_set",
-      async ({ slug, patch }: { slug: string; patch: ChatSettingsPatch }, cb?: (ack: any) => void) => {
+      async (
+        { slug, patch }: { slug: string; patch: ChatSettingsPatch },
+        cb?: (ack: any) => void
+      ) => {
         try {
           const u = data.user;
           if (!u) return cb?.({ ok: false, error: "auth_required" });
@@ -522,29 +538,21 @@ export function attachChat(io: Server) {
           const next = await patchChatSettings(pool, meta.id, p, u.id);
           settingsCache.set(meta.id, { at: Date.now(), settings: next });
 
-          try {
-            const dliveUsername = next.dliveUsername || null;
-            ensureDliveBridge({
-              io,
-              pool,
-              slug: meta.slug,
-              dliveUsername,
-              publicOn: !!next.dliveSyncPublic,
-              popupOn: !!next.dliveSyncPopup,
-            });
-          } catch (e) {
-            console.warn("[chat_socket] dlive bridge update failed", (e as any)?.message || e);
-          }
-
           const changed: ChatSettingsPatch = {};
           if (old.allowLinks !== next.allowLinks) changed.allowLinks = next.allowLinks;
           if (old.followOnly !== next.followOnly) changed.followOnly = next.followOnly;
           if (old.subOnly !== next.subOnly) changed.subOnly = next.subOnly;
-          if (old.dliveSyncPublic !== next.dliveSyncPublic) changed.dliveSyncPublic = next.dliveSyncPublic;
-          if (old.dliveSyncPopup !== next.dliveSyncPopup) changed.dliveSyncPopup = next.dliveSyncPopup;
-          if (old.dliveUsername !== next.dliveUsername) changed.dliveUsername = next.dliveUsername;
 
+          // dlive flags (si tes types ChatSettings les incluent)
+          if ((old as any).dliveSyncPublic !== (next as any).dliveSyncPublic)
+            (changed as any).dliveSyncPublic = (next as any).dliveSyncPublic;
+          if ((old as any).dliveSyncPopup !== (next as any).dliveSyncPopup)
+            (changed as any).dliveSyncPopup = (next as any).dliveSyncPopup;
+
+          // broadcast settings to legacy room + new rooms
           io.to(`chat:${meta.slug}`).emit("chat:settings", { ok: true, settings: next });
+          io.to(`chat:${meta.slug}:public`).emit("chat:settings", { ok: true, settings: next });
+          io.to(`chat:${meta.slug}:popup`).emit("chat:settings", { ok: true, settings: next });
 
           if (Object.keys(changed).length > 0) {
             const sysText = formatSettingsChangeMessage({
@@ -555,6 +563,9 @@ export function attachChat(io: Server) {
             await sendBotChat(io, meta, sysText);
           }
 
+          // ✅ refresh dlive bridge state
+          safeInitDliveBridge(io, meta, next);
+
           cb?.({ ok: true, settings: next });
         } catch (e: any) {
           cb?.({ ok: false, error: String(e?.message || "settings_set_failed") });
@@ -562,6 +573,7 @@ export function attachChat(io: Server) {
       }
     );
 
+    // chat send
     socket.on("chat:send", async ({ slug, body }: { slug: string; body: string }, cb?: (ack: any) => void) => {
       try {
         const u = data.user;
@@ -653,7 +665,11 @@ export function attachChat(io: Server) {
           style,
         };
 
+        // broadcast legacy + new rooms
         io.to(`chat:${meta.slug}`).emit("chat:message", msg);
+        io.to(`chat:${meta.slug}:public`).emit("chat:message", msg);
+        io.to(`chat:${meta.slug}:popup`).emit("chat:message", msg);
+
         cb?.({ ok: true });
       } catch (e: any) {
         cb?.({ ok: false, error: String(e?.message || "send_failed") });
@@ -676,7 +692,11 @@ export function attachChat(io: Server) {
 
         await pool.query(`DELETE FROM chat_messages WHERE streamer_id=$1`, [meta.id]);
         chatStore.clear(meta.slug);
+
         io.to(`chat:${meta.slug}`).emit("chat:cleared");
+        io.to(`chat:${meta.slug}:public`).emit("chat:cleared");
+        io.to(`chat:${meta.slug}:popup`).emit("chat:cleared");
+
         cb?.({ ok: true });
       } catch (e: any) {
         cb?.({ ok: false, error: String(e?.message || "clear_failed") });
@@ -696,7 +716,6 @@ export function attachChat(io: Server) {
         data.role = rp.role;
         data.perms = rp.perms;
         data.state = rp.state;
-
         data.appearance = normalizeAppearance(meta.appearance);
 
         socket.emit("chat:perms", {
@@ -712,10 +731,7 @@ export function attachChat(io: Server) {
       }
     });
 
-    // ─────────────────────────────────────────────
-    // MODERATION (delete / timeout / ban) + MODS
-    // ─────────────────────────────────────────────
-
+    // MODERATION
     socket.on("chat:delete", async ({ slug, messageId }: { slug: string; messageId: number }, cb?: (ack: any) => void) => {
       try {
         const u = data.user;
@@ -747,6 +763,9 @@ export function attachChat(io: Server) {
         if (!upd.rows?.[0]) return cb?.({ ok: false, error: "message_not_found" });
 
         io.to(`chat:${meta.slug}`).emit("chat:message_deleted", { ok: true, id: mid });
+        io.to(`chat:${meta.slug}:public`).emit("chat:message_deleted", { ok: true, id: mid });
+        io.to(`chat:${meta.slug}:popup`).emit("chat:message_deleted", { ok: true, id: mid });
+
         cb?.({ ok: true });
       } catch (e: any) {
         cb?.({ ok: false, error: String(e?.message || "delete_failed") });
@@ -774,7 +793,6 @@ export function attachChat(io: Server) {
 
           const targetId = Number(userId || 0);
           if (!targetId) return cb?.({ ok: false, error: "bad_user" });
-
           if (targetId === u.id) return cb?.({ ok: false, error: "cannot_self_timeout" });
 
           const sec = clampInt(seconds, 1, 7 * 24 * 3600);
@@ -791,6 +809,9 @@ export function attachChat(io: Server) {
           await sendBotChat(io, meta, `⏳ ${targetUsername} timeout ${sec}s${r ? ` — ${r}` : ""}`);
 
           io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "timeout", userId: targetId });
+          io.to(`chat:${meta.slug}:public`).emit("chat:moderation_changed", { type: "timeout", userId: targetId });
+          io.to(`chat:${meta.slug}:popup`).emit("chat:moderation_changed", { type: "timeout", userId: targetId });
+
           await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
           cb?.({ ok: true, expiresAt: expiresAt.toISOString() });
@@ -818,7 +839,6 @@ export function attachChat(io: Server) {
 
           const targetId = Number(userId || 0);
           if (!targetId) return cb?.({ ok: false, error: "bad_user" });
-
           if (targetId === u.id) return cb?.({ ok: false, error: "cannot_self_ban" });
 
           const r = String(reason || "").trim();
@@ -834,6 +854,9 @@ export function attachChat(io: Server) {
           await sendBotChat(io, meta, `🚫 ${targetUsername} banni${r ? ` — ${r}` : ""}`);
 
           io.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "ban", userId: targetId });
+          io.to(`chat:${meta.slug}:public`).emit("chat:moderation_changed", { type: "ban", userId: targetId });
+          io.to(`chat:${meta.slug}:popup`).emit("chat:moderation_changed", { type: "ban", userId: targetId });
+
           await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
 
           cb?.({ ok: true });
