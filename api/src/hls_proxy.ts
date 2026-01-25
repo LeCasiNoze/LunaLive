@@ -1,6 +1,7 @@
 // api/src/hls_proxy.ts
 import type { Express, Request, Response as ExResponse } from "express";
 import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 
 const DESKTOP_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -26,12 +27,7 @@ function hostMatches(host: string, pattern: string) {
   return h === p;
 }
 
-const DEFAULT_ALLOWED = [
-  "live.prd.dlive.tv",
-  "*.dlive.tv",
-  "*.dlivecdn.com",
-  "dlivecdn.com",
-];
+const DEFAULT_ALLOWED = ["live.prd.dlive.tv", "*.dlive.tv", "*.dlivecdn.com", "dlivecdn.com"];
 
 function isAllowedHost(host: string) {
   const extra = String(process.env.HLS_PROXY_ALLOW_HOSTS || "")
@@ -55,6 +51,7 @@ function rewriteM3u8(text: string, base: URL) {
       const s = line.trim();
       if (!s) return line;
 
+      // rewrite URI="..." inside tags
       if (s.startsWith("#")) {
         return line.replace(/URI="([^"]+)"/g, (_m, uri) => {
           const abs = new URL(uri, base).toString();
@@ -62,27 +59,65 @@ function rewriteM3u8(text: string, base: URL) {
         });
       }
 
+      // rewrite segment / child playlist lines
       const abs = new URL(s, base).toString();
       return proxyUrl(abs);
     })
     .join("\n");
 }
 
+/**
+ * CORS: évite le wildcard sur Allow-Headers (pas fiable partout),
+ * et cache le preflight pour éviter la tempête d'OPTIONS (souvent déclenchée par Range).
+ */
+function setCors(req: Request, res: ExResponse) {
+  const acrh = String(req.headers["access-control-request-headers"] || "").trim();
+
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS");
+
+  // IMPORTANT: mieux que "*" => écho des headers demandés (Range, etc.)
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    acrh || "range,content-type,accept,origin,user-agent"
+  );
+
+  // Cache du preflight
+  res.setHeader("Access-Control-Max-Age", "86400");
+
+  // Expose utile pour hls.js / debug
+  res.setHeader(
+    "Access-Control-Expose-Headers",
+    "content-type,content-length,accept-ranges,content-range,cache-control,etag,last-modified"
+  );
+
+  // évite des soucis de caches/proxies en présence de preflight
+  res.setHeader("Vary", "Origin, Access-Control-Request-Headers");
+}
+
+function isPlaylist(target: URL, contentType: string) {
+  const ct = (contentType || "").toLowerCase();
+  return (
+    ct.includes("application/vnd.apple.mpegurl") ||
+    ct.includes("application/x-mpegurl") ||
+    target.pathname.toLowerCase().endsWith(".m3u8")
+  );
+}
+
 export function registerHlsProxy(app: Express) {
-  app.options("/hls", (_req, res: ExResponse) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS");
-    res.status(204).end();
+  app.options("/hls", (req, res: ExResponse) => {
+    setCors(req, res);
+    return res.status(204).end();
+  });
+
+  // Optionnel mais pratique
+  app.head("/hls", (req, res: ExResponse) => {
+    setCors(req, res);
+    return res.status(204).end();
   });
 
   app.get("/hls", async (req: Request, res: ExResponse) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "*");
-    res.setHeader(
-      "Access-Control-Expose-Headers",
-      "content-type,content-length,accept-ranges,content-range,cache-control"
-    );
+    setCors(req, res);
 
     const raw = String(req.query.u || "");
     if (!raw) return res.status(400).send("missing_u");
@@ -96,25 +131,45 @@ export function registerHlsProxy(app: Express) {
 
     if (target.protocol !== "https:") return res.status(400).send("bad_protocol");
     if (!isAllowedHost(target.hostname)) return res.status(400).send("host_not_allowed");
-    
+
+    // iOS + Dlive: user-agent desktop pour éviter certains comportements
     const uaIn = String(req.headers["user-agent"] || "Mozilla/5.0");
     const ua = isIOSUA(uaIn) && isDliveHost(target.hostname) ? DESKTOP_UA : uaIn;
 
     const headers: Record<string, string> = {
       accept: String(req.headers.accept || "*/*"),
-      "user-agent": ua,                  // ✅ override iOS -> desktop
+      "user-agent": ua,
       referer: "https://dlive.tv/",
       origin: "https://dlive.tv",
     };
 
+    // Range passthrough (hls.js peut l'utiliser selon navigateur)
     const range = req.headers.range ? String(req.headers.range) : "";
     if (range) headers.range = range;
 
+    // Abort upstream si le client coupe (évite congestion + stalls)
+    const ac = new AbortController();
+    const onClose = () => {
+      try {
+        ac.abort();
+      } catch {
+        // ignore
+      }
+    };
+    req.on("close", onClose);
+    req.on("aborted", onClose);
+
     let upstream: globalThis.Response;
     try {
-      upstream = await fetch(target.toString(), { headers, redirect: "follow" });
+      upstream = await fetch(target.toString(), {
+        headers,
+        redirect: "follow",
+        signal: ac.signal,
+      });
     } catch {
-      return res.status(502).send("upstream_fetch_failed");
+      // client a coupé ou upstream down
+      if (!res.headersSent) return res.status(502).send("upstream_fetch_failed");
+      return;
     }
 
     res.status(upstream.status);
@@ -122,29 +177,41 @@ export function registerHlsProxy(app: Express) {
     const ct = upstream.headers.get("content-type") || "";
     if (ct) res.setHeader("content-type", ct);
 
-    const isPlaylist =
-      ct.includes("application/vnd.apple.mpegurl") ||
-      ct.includes("application/x-mpegurl") ||
-      target.pathname.endsWith(".m3u8");
+    const playlist = isPlaylist(target, ct);
 
-    if (isPlaylist) {
-      res.setHeader("Cache-Control", "public, max-age=1, s-maxage=2, must-revalidate");
+    if (playlist) {
+      // En live: la playlist doit être fraîche => pas de cache
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
       const text = await upstream.text();
       const rewritten = rewriteM3u8(text, target);
       return res.send(rewritten);
     }
 
-    res.setHeader("Cache-Control", "public, max-age=600, s-maxage=3600, immutable");
+    // Segments TS / audio:
+    // Sur du live: éviter immutable/max-age long, et surtout éviter les caches bizarres avec Range/206.
+    res.setHeader("Cache-Control", "no-store");
 
-    const passthrough = ["content-length", "accept-ranges", "content-range"];
-    for (const k of passthrough) {
+    // Passe quelques headers utiles
+    for (const k of ["content-length", "accept-ranges", "content-range", "etag", "last-modified"]) {
       const v = upstream.headers.get(k);
       if (v) res.setHeader(k, v);
     }
 
     if (!upstream.body) return res.status(502).end();
 
-    const nodeStream = Readable.fromWeb(upstream.body as any);
-    nodeStream.pipe(res);
+    // Flush tôt (utile en prod avec proxies)
+    (res as any).flushHeaders?.();
+
+    try {
+      const nodeStream = Readable.fromWeb(upstream.body as any);
+      await pipeline(nodeStream, res);
+    } catch {
+      // Client coupé / abort / pipeline interrompue => normal
+      try {
+        res.end();
+      } catch {
+        // ignore
+      }
+    }
   });
 }

@@ -6,7 +6,11 @@ const HLS_BASE = (import.meta.env.VITE_HLS_BASE ?? API_BASE).replace(/\/$/, "");
 
 function isIOS(): boolean {
   if (typeof navigator === "undefined") return false;
-  return /iP(hone|ad|od)/i.test(navigator.userAgent || "");
+  const ua = (navigator.userAgent || "").toLowerCase();
+  const isi = /iphone|ipad|ipod/.test(ua);
+  // iPadOS qui se présente comme Mac
+  const isIpadOs = /macintosh/.test(ua) && /mobile/.test(ua);
+  return isi || isIpadOs;
 }
 
 function isSafariUA(): boolean {
@@ -36,7 +40,6 @@ function uniqBy<T>(arr: T[], keyFn: (x: T) => string) {
 }
 
 function pickBestCapIndex(levels: any[], maxHeight: number): number {
-  // pick highest height <= maxHeight
   let best = -1;
   let bestH = -1;
   for (let i = 0; i < levels.length; i++) {
@@ -64,10 +67,16 @@ function GearIcon({ size = 18 }: { size?: number }) {
 }
 
 function forceRate1(video: HTMLVideoElement) {
-  // Important: playbackRate peut rester “collé” entre deux loads
   try {
     video.defaultPlaybackRate = 1;
     video.playbackRate = 1;
+  } catch {}
+}
+
+function safePlay(video: HTMLVideoElement) {
+  try {
+    const p = video.play();
+    if (p && typeof (p as any).catch === "function") (p as any).catch(() => {});
   } catch {}
 }
 
@@ -111,27 +120,53 @@ export function DlivePlayer({
   const ios = isIOS();
   const safari = isSafariUA();
 
-  // ✅ Anti-remute: certains navigateurs rebasculent en muted au relayout / fullscreen
+  // ✅ "Sound unlock" : sur iOS/Safari, autoplay + son = souvent bloqué.
+  // On évite de forcer unmute tant que l'utilisateur n'a pas interagi.
+  const userInteractedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    const mark = () => {
+      userInteractedRef.current = true;
+      const v = videoRef.current;
+      if (!v) return;
+      try {
+        if (v.muted) v.muted = false;
+        if (typeof v.volume === "number" && v.volume === 0) v.volume = 1;
+      } catch {}
+      safePlay(v);
+    };
+
+    // premier geste utilisateur = on "unlock" le son
+    window.addEventListener("pointerdown", mark, { capture: true, passive: true });
+    window.addEventListener("touchstart", mark, { capture: true, passive: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", mark, { capture: true } as any);
+      window.removeEventListener("touchstart", mark, { capture: true } as any);
+    };
+  }, []);
+
+  // ✅ Anti-remute (mais safe)
   React.useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const unmute = () => {
+    const tryUnmute = () => {
+      // On ne force pas le son tant que l'utilisateur n'a pas interagi (évite les blocages iOS)
+      if (!userInteractedRef.current) return;
       try {
         if (video.muted) video.muted = false;
         if (typeof video.volume === "number" && video.volume === 0) video.volume = 1;
       } catch {}
     };
 
-    const onFs = () => unmute();
-    const onMeta = () => unmute();
-    const onResize = () => unmute();
+    const onFs = () => tryUnmute();
+    const onMeta = () => tryUnmute();
+    const onResize = () => tryUnmute();
 
     document.addEventListener("fullscreenchange", onFs);
     video.addEventListener("loadedmetadata", onMeta);
     window.addEventListener("resize", onResize);
-
-    unmute();
 
     return () => {
       document.removeEventListener("fullscreenchange", onFs);
@@ -223,7 +258,6 @@ export function DlivePlayer({
     let tLiveEdge: number | null = null;
     let tStall: number | null = null;
 
-    // réglages
     const RESYNC_THRESHOLD_SEC = 10; // si > 10s derrière => resync
     const IOS_LIVE_SAFETY_SEC = 1.5; // seek à end - 1.5s
     const STALL_GRACE_MS = 8000; // si pas de progrès pendant 8s => recovery
@@ -298,7 +332,6 @@ export function DlivePlayer({
       if (!isLive) return;
       if (!video) return;
       if (video.paused) return;
-
       if (typeof document !== "undefined" && (document as any).hidden) return;
 
       const now = Date.now();
@@ -318,7 +351,7 @@ export function DlivePlayer({
       });
 
       // Recovery escalier
-      video.play().catch(() => {});
+      safePlay(video);
       try {
         video.currentTime = Number(video.currentTime || 0) + 0.1;
       } catch {}
@@ -341,7 +374,7 @@ export function DlivePlayer({
             try {
               video.currentTime = cur;
             } catch {}
-            video.play().catch(() => {});
+            safePlay(video);
           }
         } catch {}
       }
@@ -379,7 +412,13 @@ export function DlivePlayer({
       video.pause();
     } catch {}
     forceRate1(video);
-    video.removeAttribute("src");
+
+    // important : reset source proprement
+    try {
+      video.removeAttribute("src");
+      // @ts-ignore
+      video.srcObject = null;
+    } catch {}
     video.load();
 
     const username = String(channelUsername || "").trim();
@@ -412,11 +451,12 @@ export function DlivePlayer({
       q,
     });
 
-    // Native
+    // Native iOS/Safari: le plus stable (pas hls.js)
     if (mode === "native-ios" || mode === "native") {
       video.src = proxied;
       forceRate1(video);
-      video.play().catch(() => {});
+      // sur iOS, autoplay son sera bloqué => ok, l'user clique et on unlock
+      safePlay(video);
       setCanChooseQuality(false);
       setLevelsUI([{ key: "auto", label: "Auto" }]);
       return;
@@ -425,35 +465,48 @@ export function DlivePlayer({
     if (mode !== "hlsjs-proxy") return;
 
     const hls = new Hls({
+      // ✅ stabilité globale
+      enableWorker: true,
       lowLatencyMode: true,
+      backBufferLength: 30,
 
-      // live-edge + réduit DVR
+      // ✅ live-edge (latence faible, DVR réduit)
       liveSyncDurationCount: 2,
       liveMaxLatencyDurationCount: 6,
+      liveDurationInfinity: true,
 
-      // pas de catch-up en vitesse
+      // ✅ pas de “catch-up speed”
       maxLiveSyncPlaybackRate: 1.0,
 
-      // Buffer plus stable
-      backBufferLength: 30,
+      // ✅ buffer (évite les trous / micro stalls)
+      maxBufferHole: 0.7,
       maxBufferLength: 20,
+      maxMaxBufferLength: 30,
+      maxFragLookUpTolerance: 0.2,
 
-      // ABR plus conservateur
+      // ✅ ABR plus conservateur (moins de ping-pong de qualité)
       abrBandWidthFactor: 0.8,
       abrBandWidthUpFactor: 0.7,
 
-      // retries réseau
-      fragLoadingMaxRetry: 6,
-      fragLoadingRetryDelay: 800,
-      fragLoadingMaxRetryTimeout: 6400,
+      // ✅ retries réseau (proxy + CF = parfois des micro ratés)
+      fragLoadingMaxRetry: 8,
+      fragLoadingRetryDelay: 700,
+      fragLoadingMaxRetryTimeout: 10000,
 
-      levelLoadingMaxRetry: 6,
-      levelLoadingRetryDelay: 800,
-      levelLoadingMaxRetryTimeout: 6400,
+      levelLoadingMaxRetry: 8,
+      levelLoadingRetryDelay: 700,
+      levelLoadingMaxRetryTimeout: 10000,
 
-      manifestLoadingMaxRetry: 6,
-      manifestLoadingRetryDelay: 800,
-      manifestLoadingMaxRetryTimeout: 6400,
+      manifestLoadingMaxRetry: 8,
+      manifestLoadingRetryDelay: 700,
+      manifestLoadingMaxRetryTimeout: 10000,
+
+      // ✅ “nudge” quand stuck sur un trou de buffer
+      nudgeMaxRetry: 8,
+      nudgeOffset: 0.1,
+
+      // ✅ meilleure reprise
+      startFragPrefetch: true,
     });
 
     hlsRef.current = hls;
@@ -494,10 +547,10 @@ export function DlivePlayer({
       } catch {}
 
       forceRate1(video);
-      video.play().catch(() => {});
+      safePlay(video);
     });
 
-    // ✅ UN SEUL handler ERROR : logs + stall + recovery fatal
+    // ✅ UN SEUL handler ERROR : logs + recovery
     hls.on(Hls.Events.ERROR, (_e, data) => {
       dbgWarn("hls error", {
         fatal: !!data?.fatal,
@@ -507,24 +560,25 @@ export function DlivePlayer({
         response: data?.response ? { code: data.response.code, text: data.response.text } : undefined,
       });
 
-      // équivalent “buffer stalled” (selon version hls.js)
-      if (data?.details === (Hls.ErrorDetails as any)?.BUFFER_STALLED_ERROR) {
-        dbgWarn("buffer stalled error (details)");
-      }
-
-      // recovery fatal
+      // Recovery fatal
       if (data?.fatal) {
         try {
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad(-1);
-          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-          else hls.destroy();
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            // relance chargement segments
+            hls.startLoad(-1);
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            hls.recoverMediaError();
+          } else {
+            hls.destroy();
+          }
         } catch {}
       }
     });
 
-    // logs utiles (non-bloquants)
     hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => dbgLog("level switched", data));
-    hls.on(Hls.Events.FRAG_LOADED, (_e, data) => dbgLog("frag loaded", { sn: data?.frag?.sn, lvl: data?.frag?.level }));
+    hls.on(Hls.Events.FRAG_LOADED, (_e, data) =>
+      dbgLog("frag loaded", { sn: data?.frag?.sn, lvl: data?.frag?.level })
+    );
 
     return () => {
       try {
@@ -548,6 +602,7 @@ export function DlivePlayer({
           controls
           playsInline
           autoPlay
+          preload="auto"
           style={{ width: "100%", display: "block", background: "rgba(0,0,0,0.25)" }}
         />
 

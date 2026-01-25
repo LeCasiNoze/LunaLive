@@ -16,6 +16,13 @@ function requireBotKey(req: express.Request, res: express.Response): boolean {
   return true;
 }
 
+function emitChatAll(io: any, slug: string, event: string, payload?: any) {
+  const s = String(slug).trim();
+  if (!s) return;
+  io.to(`chat:${s}:public`).emit(event, payload);
+  io.to(`chat:${s}:popup`).emit(event, payload);
+}
+
 function parseBoolish(v: any): boolean | null {
   if (v === undefined || v === null) return null;
   if (typeof v === "boolean") return v;
@@ -92,9 +99,9 @@ internalBotRouter.post(
       },
     };
 
-    // socket broadcast LIVE
     const io = req.app.locals.io;
-    if (io) io.to(`chat:${slug}`).emit("chat:message", msg);
+    if (io) emitChatAll(io, slug, "chat:message", msg);
+
 
     return res.json({ ok: true, id: msg.id });
   }

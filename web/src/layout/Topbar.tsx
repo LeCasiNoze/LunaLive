@@ -159,60 +159,95 @@ export function Topbar({
         .llBrandLink{
           display: inline-flex;
           align-items: center;
-          gap: 10px;
+          gap: 5px;
           text-decoration: none;
           color: inherit;
           user-select: none;
-          padding: 6px 8px;
-          border-radius: 14px;
+          padding: 10px 8px;
+          border-radius: 18px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(255,255,255,0.04);
+          box-shadow: 0 18px 50px rgba(0,0,0,0.22);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
         }
         .llBrandLink:hover{
-          background: rgba(255,255,255,0.04);
+          background: rgba(255,255,255,0.06);
+          border-color: rgba(255,255,255,0.14);
+          transform: translateY(-1px);
         }
+        .llBrandLink:active{ transform: translateY(0px); }
 
         .llBrandMark{
-          width: 34px;
-          height: 34px;
-          border-radius: 14px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background:
-            radial-gradient(circle at 30% 30%, rgba(255,255,255,0.18), rgba(0,0,0,0) 55%),
-            linear-gradient(135deg, rgba(140,90,255,0.28), rgba(80,160,255,0.14), rgba(255,90,180,0.10));
-          box-shadow: 0 14px 40px rgba(0,0,0,0.35);
-          position: relative;
-          overflow: hidden;
-          flex: 0 0 auto;
+          width: 44px;
+          height: 44px;
+          border-radius: 999px;         /* ✅ cercle parfait */
+          overflow: hidden;             /* ✅ crop */
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(255,255,255,0.04);
+          box-shadow: 0 18px 50px rgba(0,0,0,0.35);
           display: grid;
           place-items: center;
         }
 
-        /* ✅ NEW: logo image inside */
-        .llBrandLogo{
-          width: 26px;
-          height: 26px;
-          object-fit: contain;
-          display: block;
-          filter: drop-shadow(0 10px 18px rgba(0,0,0,0.45));
-          user-select: none;
-          -webkit-user-drag: none;
-        }
+
+.llBrandLogo{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;            /* ✅ remplit le cercle */
+  object-position: center;
+  border-radius: 999px;         /* ✅ au cas où */
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
 
         .llBrandText{
           display:flex;
           flex-direction: column;
           line-height: 1.05;
         }
-        .llBrandText b{
-          font-size: 14px;
-          letter-spacing: -0.2px;
-          font-weight: 1100;
-        }
+
+.llBrandText b{
+  font-size: 19px;
+  letter-spacing: -0.4px;
+  font-weight: 1200;
+
+  background: linear-gradient(
+    90deg,
+    rgba(170,110,255,1) 0%,
+    rgba(110,200,255,1) 25%,
+    rgba(255,120,200,1) 50%,
+    rgba(110,200,255,1) 75%,
+    rgba(170,110,255,1) 100%
+  );
+  background-size: 300% 100%;
+  background-position: 0% 50%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+
+  animation: llBrandGradient 6s linear infinite;
+  filter: drop-shadow(0 10px 20px rgba(0,0,0,0.45));
+}
+
+@keyframes llBrandGradient{
+  0%   { background-position: 0% 50%; }
+  50% { background-position: 50% 50%; }
+}
+@media (prefers-reduced-motion: reduce){
+  .llBrandText b{ animation: none; }
+}
+
+
         .llBrandText span{
           font-size: 12px;
-          opacity: .68;
-          margin-top: 2px;
+          opacity: .75;
+          margin-top: 3px;
           white-space: nowrap;
         }
+
 
         /* Center nav with big clickable buttons */
         .llNav{
@@ -445,7 +480,7 @@ export function Topbar({
         <div className="leftSlot">
           <Link to="/" className="llBrandLink" aria-label="Aller à la page Lives">
             <div className="llBrandMark" aria-hidden>
-              <img className="llBrandLogo" src="/logo.png" alt="" aria-hidden />
+              <img className="llBrandLogo" src="/logo_onglet.png" alt="" aria-hidden />
             </div>
             <div className="llBrandText">
               <b>LunaLive</b>
