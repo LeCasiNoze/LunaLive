@@ -189,7 +189,7 @@ export function createApp() {
   // ─────────────────────────────────────────────
   app.use(casinosPublicRouter);
   app.use("/me/casinos", requireAuth, casinosMeRouter);
-
+  app.use(internalBotRouter);
   // ─────────────────────────────────────────────
   // ✅ Other public routers
   // ─────────────────────────────────────────────
@@ -270,7 +270,6 @@ export function createApp() {
   // ─────────────────────────────────────────────
   app.use("/streamer/me/dlive-link", streamerDliveLinkRouter);
   app.use(meProfileRouter);
-  app.use(internalBotRouter);
   app.use("/overlay/api", overlayApiRouter);
   
 
