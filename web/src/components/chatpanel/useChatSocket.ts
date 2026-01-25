@@ -161,7 +161,7 @@ export function useChatSocket(opts: {
       socket.emit("chat:refresh", { slug: s });
     });
 
-    socket.emit("chat:join", { slug: s }, async (ack: JoinAck) => {
+    socket.emit("chat:join", { slug: s, mode: "public" }, async (ack: JoinAck) => {
       if (!ack?.ok) {
         setJoin(null);
         setError(ack?.error || "join_failed");
