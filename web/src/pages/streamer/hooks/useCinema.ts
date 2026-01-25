@@ -2,10 +2,20 @@
 import * as React from "react";
 import { exitFullscreenSafe, isFullscreen, requestFullscreenSafe } from "../utils";
 
+function isIOSUA(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = String(navigator.userAgent || "");
+  return /iP(hone|ad|od)/i.test(ua) || (/Macintosh/i.test(ua) && /Mobile/i.test(ua)); // iPadOS
+}
+
 export function useCinema(isMobile: boolean) {
   const [cinema, setCinema] = React.useState(false);
   const [chatOpen, setChatOpen] = React.useState(false);
   const fsWantedRef = React.useRef(false);
+
+  // ✅ iOS + in-app: Fullscreen API (documentElement) est source de bugs (zoom/crop à la rotation)
+  const ios = isIOSUA();
+  const blockFullscreenApi = isMobile || ios; // volontairement large pour stabiliser
 
   React.useEffect(() => {
     if (!cinema && !chatOpen) return;
@@ -22,6 +32,9 @@ export function useCinema(isMobile: boolean) {
       if (!fsWantedRef.current) return;
       if (chatOpen) return;
 
+      // Si on ne s’appuie pas sur la Fullscreen API (mobile/iOS), on ignore les events FS
+      if (blockFullscreenApi) return;
+
       if (!isFullscreen()) {
         fsWantedRef.current = false;
         setChatOpen(false);
@@ -35,31 +48,41 @@ export function useCinema(isMobile: boolean) {
       document.removeEventListener("fullscreenchange", onFs);
       document.removeEventListener("webkitfullscreenchange" as any, onFs);
     };
-  }, [cinema, chatOpen]);
+  }, [cinema, chatOpen, blockFullscreenApi]);
 
   const enterCinema = React.useCallback(() => {
     fsWantedRef.current = true;
-    requestFullscreenSafe(document.documentElement);
+
+    // ✅ IMPORTANT: sur mobile/iOS -> PAS de requestFullscreen (évite zoom/crop à la rotation)
+    if (!blockFullscreenApi) {
+      requestFullscreenSafe(document.documentElement);
+    }
+
     setChatOpen(false);
     setCinema(true);
-  }, []);
+  }, [blockFullscreenApi]);
 
   const leaveCinema = React.useCallback(() => {
     fsWantedRef.current = false;
     setChatOpen(false);
     setCinema(false);
-    exitFullscreenSafe();
-  }, []);
+
+    // ✅ on ne force pas exit fullscreen sur mobile/iOS (car on n’y est normalement pas)
+    if (!blockFullscreenApi) exitFullscreenSafe();
+  }, [blockFullscreenApi]);
 
   const openCinemaChat = React.useCallback(() => {
-    if (isMobile) exitFullscreenSafe();
+    // ✅ avant: sur mobile on exit fullscreen => re-enter => gros bugs iOS
+    // maintenant: on ne touche plus au Fullscreen API
     setChatOpen(true);
-  }, [isMobile]);
+  }, []);
 
   const closeCinemaChat = React.useCallback(() => {
     setChatOpen(false);
-    if (isMobile && fsWantedRef.current) requestFullscreenSafe(document.documentElement);
-  }, [isMobile]);
+
+    // ✅ avant: re-enter fullscreen sur mobile => bug iOS à la rotation
+    // maintenant: on ne touche plus au Fullscreen API
+  }, []);
 
   return { cinema, chatOpen, enterCinema, leaveCinema, openCinemaChat, closeCinemaChat };
 }
