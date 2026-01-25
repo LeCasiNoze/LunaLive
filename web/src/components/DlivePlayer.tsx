@@ -85,10 +85,12 @@ export function DlivePlayer({
 
   const menuRef = React.useRef<HTMLDivElement>(null);
 
-  // ✅ Logs DIRECT (sans ?debug=1) mais seulement en DEV (évite spam prod)
-  const debugEnabled = !!import.meta.env.DEV;
+  // ✅ Logs activables en PROD via localStorage (pas besoin de ?debug=1)
+  const debugEnabled =
+    typeof window !== "undefined" &&
+    (localStorage.getItem("ll_player_debug") === "1" ||
+      new URLSearchParams(window.location.search).has("debug"));
 
-  // ⚠️ console.debug est souvent filtré -> on log en console.log / warn
   const dbgLog = (...args: any[]) => {
     if (!debugEnabled) return;
     console.log("[DlivePlayer]", ...args);
