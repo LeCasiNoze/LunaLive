@@ -85,11 +85,17 @@ export function DlivePlayer({
 
   const menuRef = React.useRef<HTMLDivElement>(null);
 
-  // ✅ Debug uniquement en DEV + ?debug=1 (aucun texte UI)
-  const debugEnabled =
-    !!import.meta.env.DEV && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
+  // ✅ Logs DIRECT (sans ?debug=1) mais seulement en DEV (évite spam prod)
+  const debugEnabled = !!import.meta.env.DEV;
+
+  // ⚠️ console.debug est souvent filtré -> on log en console.log / warn
   const dbgLog = (...args: any[]) => {
-    if (debugEnabled) console.debug("[DlivePlayer]", ...args);
+    if (!debugEnabled) return;
+    console.log("[DlivePlayer]", ...args);
+  };
+  const dbgWarn = (...args: any[]) => {
+    if (!debugEnabled) return;
+    console.warn("[DlivePlayer]", ...args);
   };
 
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -111,7 +117,6 @@ export function DlivePlayer({
     const unmute = () => {
       try {
         if (video.muted) video.muted = false;
-        // si le volume est à 0 (cas rare), on le remet à un niveau normal
         if (typeof video.volume === "number" && video.volume === 0) video.volume = 1;
       } catch {}
     };
@@ -124,7 +129,6 @@ export function DlivePlayer({
     video.addEventListener("loadedmetadata", onMeta);
     window.addEventListener("resize", onResize);
 
-    // au montage
     unmute();
 
     return () => {
@@ -134,14 +138,13 @@ export function DlivePlayer({
     };
   }, [channelSlug, channelUsername, isLive]);
 
-  // ✅ LOCK vitesse en LIVE (empêche un user de rester en 1.1/1.15)
+  // ✅ LOCK vitesse en LIVE
   const lockingRateRef = React.useRef(false);
 
   React.useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    // On force 1x au montage
     if (isLive) forceRate1(video);
 
     const onRateChange = () => {
@@ -152,16 +155,13 @@ export function DlivePlayer({
       if (!Number.isFinite(r) || Math.abs(r - 1) > 0.001) {
         lockingRateRef.current = true;
         forceRate1(video);
-        // libère au tick suivant (évite boucle infinie)
         window.setTimeout(() => {
           lockingRateRef.current = false;
         }, 0);
       }
     };
 
-    // Si le navigateur propose “vitesse” dans les controls, on neutralise en live
     video.addEventListener("ratechange", onRateChange);
-
     return () => {
       video.removeEventListener("ratechange", onRateChange);
     };
@@ -202,7 +202,6 @@ export function DlivePlayer({
 
       if (q === "auto") {
         hls.currentLevel = -1;
-        // cap à 720 seulement si on a réellement une 720 (ou en dessous) dans le manifest
         hls.autoLevelCapping = capIdx720 >= 0 ? capIdx720 : -1;
         return;
       }
@@ -214,7 +213,7 @@ export function DlivePlayer({
     } catch {}
   }, [q]);
 
-  // ✅ LIVE EDGE / FREEZE watchdogs (stabilité + resync)
+  // ✅ LIVE EDGE / FREEZE watchdogs
   React.useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -222,7 +221,7 @@ export function DlivePlayer({
     let tLiveEdge: number | null = null;
     let tStall: number | null = null;
 
-    // réglages (tu peux ajuster)
+    // réglages
     const RESYNC_THRESHOLD_SEC = 10; // si > 10s derrière => resync
     const IOS_LIVE_SAFETY_SEC = 1.5; // seek à end - 1.5s
     const STALL_GRACE_MS = 8000; // si pas de progrès pendant 8s => recovery
@@ -239,15 +238,14 @@ export function DlivePlayer({
       }
     };
 
-    // listeners utiles
     const onTimeUpdate = () => markProgress();
     const onPlaying = () => {
       lastProgressAt = Date.now();
       markProgress();
     };
-    const onWaiting = () => dbgLog("video waiting", { rs: video.readyState, ns: video.networkState });
-    const onStalled = () => dbgLog("video stalled", { rs: video.readyState, ns: video.networkState });
-    const onError = () => dbgLog("video error", { err: (video as any).error });
+    const onWaiting = () => dbgWarn("video waiting", { rs: video.readyState, ns: video.networkState });
+    const onStalled = () => dbgWarn("video stalled", { rs: video.readyState, ns: video.networkState });
+    const onError = () => dbgWarn("video error", { err: (video as any).error });
 
     video.addEventListener("timeupdate", onTimeUpdate);
     video.addEventListener("playing", onPlaying);
@@ -255,30 +253,29 @@ export function DlivePlayer({
     video.addEventListener("stalled", onStalled);
     video.addEventListener("error", onError);
 
-    // 1) live-edge resync (toutes les 7s)
+    // 1) live-edge resync
     tLiveEdge = window.setInterval(() => {
       if (!isLive) return;
       if (!video || video.paused) return;
 
       const hls = hlsRef.current;
 
-      // hls.js: liveSyncPosition
+      // hls.js
       if (hls && typeof (hls as any).liveSyncPosition === "number" && Number.isFinite((hls as any).liveSyncPosition)) {
         const livePos = Number((hls as any).liveSyncPosition);
         const ct = Number(video.currentTime || 0);
         const behind = livePos - ct;
 
         if (Number.isFinite(behind) && behind > RESYNC_THRESHOLD_SEC) {
-          dbgLog("resync (hlsjs)", { behind: behind.toFixed(2), ct: ct.toFixed(2), livePos: livePos.toFixed(2) });
+          dbgWarn("resync (hlsjs)", { behind: behind.toFixed(2), ct: ct.toFixed(2), livePos: livePos.toFixed(2) });
           try {
-            // petit seek direct au live edge
             video.currentTime = livePos;
           } catch {}
         }
         return;
       }
 
-      // native (iOS/Safari): seekable.end()
+      // native iOS/Safari
       try {
         const s = video.seekable;
         if (!s || s.length <= 0) return;
@@ -288,63 +285,50 @@ export function DlivePlayer({
 
         if (Number.isFinite(behind) && behind > RESYNC_THRESHOLD_SEC) {
           const target = Math.max(0, end - IOS_LIVE_SAFETY_SEC);
-          dbgLog("resync (native)", { behind: behind.toFixed(2), ct: ct.toFixed(2), end: end.toFixed(2) });
+          dbgWarn("resync (native)", { behind: behind.toFixed(2), ct: ct.toFixed(2), end: end.toFixed(2) });
           video.currentTime = target;
         }
       } catch {}
     }, 7000);
 
-    // 2) stall watchdog (toutes les 3s)
+    // 2) stall watchdog
     tStall = window.setInterval(() => {
       if (!isLive) return;
       if (!video) return;
       if (video.paused) return;
 
-      // si le doc est hidden, on évite les actions agressives
       if (typeof document !== "undefined" && (document as any).hidden) return;
 
       const now = Date.now();
       const since = now - lastProgressAt;
 
-      // ignore si pas encore démarré
       if (Number(video.currentTime || 0) <= 0.01) return;
-
       if (since < STALL_GRACE_MS) return;
 
       const hls = hlsRef.current;
-      const rs = video.readyState;
-      const ns = video.networkState;
 
-      dbgLog("stall detected", {
+      dbgWarn("stall detected", {
         sinceMs: since,
         ct: Number(video.currentTime || 0).toFixed(2),
-        rs,
-        ns,
+        rs: video.readyState,
+        ns: video.networkState,
         mode: hls ? "hlsjs" : "native",
       });
 
-      // === Recovery escalier ===
-
-      // A) kick play()
+      // Recovery escalier
       video.play().catch(() => {});
-
-      // B) petit nudge (débloque parfois un trou)
       try {
         video.currentTime = Number(video.currentTime || 0) + 0.1;
       } catch {}
 
-      // C) hls.js recover
       if (hls) {
         try {
-          // on tente d'abord un recover media
           hls.recoverMediaError();
         } catch {}
         try {
-          // et on relance le chargement
           hls.startLoad(-1);
         } catch {}
       } else {
-        // D) native hard refresh rare
         try {
           const cur = video.currentTime || 0;
           const base = video.src || "";
@@ -352,7 +336,6 @@ export function DlivePlayer({
             const sep = base.includes("?") ? "&" : "?";
             video.src = `${base}${sep}t=${Date.now()}`;
             video.load();
-            // on essaye de revenir proche de la position (si possible)
             try {
               video.currentTime = cur;
             } catch {}
@@ -361,7 +344,6 @@ export function DlivePlayer({
         } catch {}
       }
 
-      // reset timer après tentative
       lastProgressAt = Date.now();
       lastT = Number(video.currentTime || 0);
     }, 3000);
@@ -394,13 +376,13 @@ export function DlivePlayer({
     try {
       video.pause();
     } catch {}
-    forceRate1(video); // ✅ important
+    forceRate1(video);
     video.removeAttribute("src");
     video.load();
 
     const username = String(channelUsername || "").trim();
     if (!username) {
-      dbgLog("missing channelUsername (cannot play)", { channelSlug });
+      dbgWarn("missing channelUsername (cannot play)", { channelSlug });
       return;
     }
     if (!isLive) {
@@ -414,7 +396,6 @@ export function DlivePlayer({
     const nativeHls = video.canPlayType("application/vnd.apple.mpegurl") !== "";
     const hlsJsSupported = Hls.isSupported();
 
-    // iOS => native only (pas de choix qualité manuel côté hls.js)
     const mode = ios && nativeHls ? "native-ios" : hlsJsSupported ? "hlsjs-proxy" : nativeHls ? "native" : "unsupported";
 
     dbgLog("init", {
@@ -431,7 +412,7 @@ export function DlivePlayer({
 
     // Native
     if (mode === "native-ios" || mode === "native") {
-      video.src = proxied; // ✅ passe par ton proxy (headers + CORS + rewrite m3u8)
+      video.src = proxied;
       forceRate1(video);
       video.play().catch(() => {});
       setCanChooseQuality(false);
@@ -448,18 +429,18 @@ export function DlivePlayer({
       liveSyncDurationCount: 2,
       liveMaxLatencyDurationCount: 6,
 
-      // ✅ IMPORTANT: pas de catch-up en vitesse (cause 1.1/1.15)
+      // pas de catch-up en vitesse
       maxLiveSyncPlaybackRate: 1.0,
 
-      // ✅ Buffer un poil plus stable (moins de micro-freezes)
+      // Buffer plus stable
       backBufferLength: 30,
       maxBufferLength: 20,
 
-      // ✅ ABR plus conservateur (moins de yo-yo)
+      // ABR plus conservateur
       abrBandWidthFactor: 0.8,
       abrBandWidthUpFactor: 0.7,
 
-      // ✅ retries réseau (résilience)
+      // retries réseau
       fragLoadingMaxRetry: 6,
       fragLoadingRetryDelay: 800,
       fragLoadingMaxRetryTimeout: 6400,
@@ -476,42 +457,14 @@ export function DlivePlayer({
     hlsRef.current = hls;
     hls.attachMedia(video);
 
-    // logs hls.js utiles en debug
-    if (debugEnabled) {
-      hls.on(Hls.Events.ERROR, (_e, data) => {
-        dbgLog("hls error", {
-          fatal: !!data?.fatal,
-          type: data?.type,
-          details: data?.details,
-          reason: data?.reason,
-          response: data?.response ? { code: data.response.code, text: data.response.text } : undefined,
-        });
-      });
-      hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => dbgLog("level switched", data));
-      hls.on(Hls.Events.FRAG_LOADED, (_e, data) => dbgLog("frag loaded", { sn: data?.frag?.sn, lvl: data?.frag?.level }));
-      hls.on(Hls.Events.ERROR, (_e, data) => {
-      // log complet si tu veux
-      dbgLog("hls error", {
-        fatal: !!data?.fatal,
-        type: data?.type,
-        details: data?.details,
-        reason: data?.reason,
-        response: data?.response ? { code: data.response.code, text: data.response.text } : undefined,
-      });
-
-      // ✅ équivalent “buffer stalled”
-      if (data?.details === (Hls.ErrorDetails as any)?.BUFFER_STALLED_ERROR) {
-        dbgLog("buffer stalled error");
-      }
-    });
-
-    }
-
     hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+      dbgLog("media attached -> loadSource");
       hls.loadSource(proxied);
     });
 
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      dbgLog("manifest parsed", { levels: (hls.levels || []).length });
+
       const lvls = (hls.levels || []).map((lvl: any, i: number) => ({
         key: String(i),
         label: lvl?.height ? `${lvl.height}p` : `Niveau ${i}`,
@@ -538,13 +491,26 @@ export function DlivePlayer({
         hls.autoLevelCapping = capIdx720 >= 0 ? capIdx720 : -1;
       } catch {}
 
-      // ✅ force 1x au moment où ça démarre réellement
       forceRate1(video);
       video.play().catch(() => {});
     });
 
-    // gardé: recovery fatal (déjà ok)
-    hls.on(Hls.Events.ERROR, (_evt, data) => {
+    // ✅ UN SEUL handler ERROR : logs + stall + recovery fatal
+    hls.on(Hls.Events.ERROR, (_e, data) => {
+      dbgWarn("hls error", {
+        fatal: !!data?.fatal,
+        type: data?.type,
+        details: data?.details,
+        reason: data?.reason,
+        response: data?.response ? { code: data.response.code, text: data.response.text } : undefined,
+      });
+
+      // équivalent “buffer stalled” (selon version hls.js)
+      if (data?.details === (Hls.ErrorDetails as any)?.BUFFER_STALLED_ERROR) {
+        dbgWarn("buffer stalled error (details)");
+      }
+
+      // recovery fatal
       if (data?.fatal) {
         try {
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad(-1);
@@ -553,6 +519,10 @@ export function DlivePlayer({
         } catch {}
       }
     });
+
+    // logs utiles (non-bloquants)
+    hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => dbgLog("level switched", data));
+    hls.on(Hls.Events.FRAG_LOADED, (_e, data) => dbgLog("frag loaded", { sn: data?.frag?.sn, lvl: data?.frag?.level }));
 
     return () => {
       try {
@@ -644,9 +614,7 @@ export function DlivePlayer({
                     >
                       {opt.label}
                       {opt.key !== "auto" && opt.height ? (
-                        <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.7 }}>
-                          ({opt.height}p)
-                        </span>
+                        <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.7 }}>({opt.height}p)</span>
                       ) : null}
                     </button>
                   );
