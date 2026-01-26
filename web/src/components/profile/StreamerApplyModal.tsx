@@ -501,6 +501,50 @@ export function StreamerApplyModal({
             border-color: rgba(124,77,255,0.45);
             box-shadow: 0 0 0 2px rgba(124,77,255,0.10);
           }
+          .llRuleBox{
+            margin-top: 12px;
+            border-radius: 18px;
+            border: 1px solid rgba(255,255,255,0.10);
+            background: rgba(0,0,0,0.14);
+            padding: 12px;
+            max-height: 260px;
+            overflow: auto;
+            line-height: 1.6;
+          }
+          .llRuleTitle{
+            display:flex;
+            align-items:center;
+            gap:10px;
+            justify-content:space-between;
+            margin-bottom: 10px;
+          }
+          .llRulePill{
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            padding:6px 10px;
+            border-radius:999px;
+            border:1px solid rgba(255,255,255,0.10);
+            background: rgba(255,255,255,0.05);
+            font-weight: 950;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0.95;
+          }
+          .llRuleList{
+            margin:0;
+            padding-left: 18px;
+            display:grid;
+            gap:10px;
+          }
+          .llRuleList li{
+            margin:0;
+          }
+          .llRuleHint{
+            margin-top: 10px;
+            opacity: 0.9;
+            font-size: 12px;
+          }
         `}</style>
 
         {/* Header */}
@@ -512,36 +556,53 @@ export function StreamerApplyModal({
         </div>
 
         {/* Rules */}
-        <div
-          style={{
-            marginTop: 12,
-            borderRadius: 18,
-            border: "1px solid rgba(255,255,255,0.10)",
-            background: "rgba(0,0,0,0.14)",
-            padding: 12,
-            maxHeight: 240,
-            overflow: "auto",
-            lineHeight: 1.6,
-          }}
-        >
-          <div style={{ fontWeight: 1100, marginBottom: 8 }}>📜 Règlement (essentiel)</div>
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
+        <div className="llRuleBox">
+          <div className="llRuleTitle">
+            <div style={{ fontWeight: 1100 }}>📜 En cliquant sur “J’ai lu et j’accepte”, je confirme que :</div>
+            <span className="llRulePill">⏱️ 30 secondes à lire</span>
+          </div>
+
+          <ul className="llRuleList">
             <li>
-              Objectif : construire une <b>communauté casino FR</b> propre + divertissante.
+              Mon objectif en tant que streamer est de construire une <b>communauté casino FR</b> <b>respectueuse</b> et{" "}
+              <b>croissante</b>.
             </li>
             <li>
-              <b>Interdit de botter</b> (zéro triche / gonflage artificiel).
+              Je refuse la <b>triche</b>, le <b>détournement d’affiliation</b>, la <b>pub non autorisée</b> chez un autre
+              streamer, ainsi que toute stratégie de “stats boosting” (ex : <b>botting</b>) ou pratique qui peut nuire à
+              l’image / l’ambiance de la communauté.
             </li>
             <li>
-              <b>Interdit</b> de faire des <b>dépôts offerts</b> à ta communauté (ou mécanique similaire).
+              Pour respecter streamers, viewers et managers, je m’engage à ne plus faire de <b>dépôts offerts</b> qui
+              encouragent la création de <b>multiples comptes</b>, freinent l’émergence de nouveaux streamers, ou créent
+              une communauté toxique / avare / irrespectueuse.
+              <div className="llRuleHint">
+                ✅ Seule offre “tolérée” : <b>1er dépôt remboursé</b> jusqu’à <b>50%</b> (max <b>50€</b>).
+              </div>
             </li>
             <li>
-              Tu t’engages à être <b>actif</b>. En cas d’inactivité / non-respect : révocation possible.
+              Je comprends que les places sur LunaLive sont <b>limitées</b> : je m’engage à être <b>actif</b> et à ne pas
+              gaspiller ma place.
+            </li>
+            <li>
+              Si je ne respecte pas l’un de ces points, j’accepte que ma chaîne et mes droits de streamer puissent être{" "}
+              <b>révoqués</b> à tout moment.
             </li>
           </ul>
         </div>
 
-        {/* Form */}
+        {/* ✅ Acceptance checkbox JUST under rules */}
+        <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, fontWeight: 950 }}>
+          <input
+            type="checkbox"
+            checked={rulesAccepted}
+            onChange={(e) => setRulesAccepted(e.target.checked)}
+            disabled={loading || verifying}
+          />
+          J’ai lu et j’accepte le règlement.
+        </label>
+
+        {/* Form (now below acceptance) */}
         <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
           <div style={{ fontWeight: 1100 }}>🧾 Formulaire</div>
 
@@ -593,9 +654,13 @@ export function StreamerApplyModal({
                       1) Ouvre le chat de <b>{pending.requestedDisplayname}</b> (sur DLive) et envoie ce code :
                     </div>
                     <div style={{ marginTop: 6, opacity: 0.92 }}>
-                      <b>Important :</b> envoie-le <b>depuis ton compte streamer</b>, et mets aussi le lien de la chaîne dans le message.
+                      <b>Important :</b> envoie-le <b>depuis ton compte streamer</b>, et mets aussi le lien de la chaîne
+                      dans le message.
                       <br />
-                      Exemple : <span className="llMono">{pending.code} https://dlive.tv/{pending.requestedDisplayname}</span>
+                      Exemple :{" "}
+                      <span className="llMono">
+                        {pending.code} https://dlive.tv/{pending.requestedDisplayname}
+                      </span>
                     </div>
                   </div>
 
@@ -625,17 +690,13 @@ export function StreamerApplyModal({
                     </button>
                   </div>
 
-                  <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.9 }}>
-                    2) Copie/colle <b>exactement</b> ce code dans ton chat DLive puis envoie-le.
-                  </div>
-
                   {verifying ? (
                     <div style={{ marginTop: 10, fontWeight: 950 }}>
                       ⏳ Lecture du chat en cours… <span className="llMono">{verifyLeftSec}s</span> restantes
                     </div>
                   ) : (
                     <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85 }}>
-                      3) Si tu l’as envoyé après la fenêtre, clique “Relancer l’écoute (2 min)”.
+                      Si tu l’as envoyé après la fenêtre, clique “Relancer l’écoute (2 min)”.
                     </div>
                   )}
 
@@ -699,7 +760,8 @@ export function StreamerApplyModal({
                     </div>
                   ) : (
                     <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.9 }}>
-                      (Après clic : on affiche le code, tu l’envoies dans ton chat, et on écoute automatiquement pendant 2 minutes.)
+                      (Après clic : on affiche le code, tu l’envoies dans ton chat, et on écoute automatiquement pendant 2
+                      minutes.)
                     </div>
                   )}
                 </>
@@ -712,17 +774,6 @@ export function StreamerApplyModal({
               ) : null}
             </div>
           ) : null}
-
-          {/* Rules acceptance */}
-          <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2, fontWeight: 950 }}>
-            <input
-              type="checkbox"
-              checked={rulesAccepted}
-              onChange={(e) => setRulesAccepted(e.target.checked)}
-              disabled={loading || verifying}
-            />
-            J’ai lu et j’accepte le règlement.
-          </label>
 
           {/* Actions */}
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>

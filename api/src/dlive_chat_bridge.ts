@@ -32,6 +32,33 @@ async function gql(query: string, variables?: any) {
   return j;
 }
 
+function normalizeRestream(senderDisplay: string, senderUsername: string, content: string): {
+  username: string;
+  body: string;
+  restreamFrom?: string | null;
+} {
+  const isRestream =
+    /^restreambot$/i.test(senderDisplay) ||
+    /^restreambot$/i.test(senderUsername) ||
+    /restream/i.test(senderDisplay);
+
+  if (!isRestream) return { username: senderDisplay, body: content, restreamFrom: null };
+
+  // Ex: "[Twitch: sinsin1005] salut" / "[Kick: joe67350] ..." / parfois espaces
+  const m = content.match(/^\[\s*([A-Za-z0-9_ -]+)\s*:\s*([^\]\s]+)\s*\]\s*/);
+  if (!m) return { username: senderDisplay, body: content, restreamFrom: null };
+
+  const platform = norm(m[1]);
+  const user = norm(m[2]);
+  const body = content.slice(m[0].length).trim();
+
+  return {
+    username: user || senderDisplay,
+    body: body || "", // si jamais c'est vide, on gardera le check plus bas
+    restreamFrom: platform || null,
+  };
+}
+
 /**
  * displayname/slug -> username immutable (dlive-xxxx)
  */
@@ -185,19 +212,24 @@ export function ensureDliveBridge(opts: {
     const senderUsername = norm(m.sender?.username);
     const senderDisplay = norm(m.sender?.displayname) || senderUsername || "DLive";
 
-    // marque seen
+    // ✅ normalize RestreamBot messages
+    const normed = normalizeRestream(senderDisplay, senderUsername, content);
+    if (!normed.body) return;
+
     if (dliveId) addSeen(dliveId);
 
     const chatMsg = {
       id: makeFrontId(),
-      userId: 0, // externe
-      username: senderDisplay, // ce que tu veux montrer
-      body: content,
+      userId: 0,
+      username: normed.username,
+      body: normed.body,
       createdAt: new Date(createdAtMs).toISOString(),
       cosmetics: null,
       dlive: true,
-      dliveSenderUsername: senderUsername || null, // debug / futur mapping
+      dliveSenderUsername: senderUsername || null,
       dliveMsgId: dliveId || null,
+      // optionnel si tu veux l’afficher/debug plus tard
+      dliveRestreamFrom: normed.restreamFrom ?? null,
     };
 
     if (publicOn) opts.io.to(`chat:${opts.slug}:public`).emit("chat:message", chatMsg);

@@ -143,6 +143,14 @@ function normKey(s: any) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+function isStreamerSender(msg: ChatMsg, currentSlug: string) {
+  if (!msg) return false;
+  if (Number(msg.userId) <= 0) return false; // externe
+  const a = normKey((msg as any).username);
+  const b = normKey(currentSlug);
+  return !!a && !!b && a === b;
+}
+
 function computeMentionCtx(value: string, caret: number) {
   const left = value.slice(0, caret);
   const at = left.lastIndexOf("@");
@@ -994,7 +1002,7 @@ function UserMenu(props: {
   token: string | null;
   slug: string;
 
-  navigateToProfile: (username: string) => void;
+  navigateToChannel: (streamerSlugOrUsername: string) => void;
 
   emitSocket: (event: string, payload: any) => Promise<any>;
   doGiftSub: (msg: ChatMsg) => void;
@@ -1007,6 +1015,8 @@ function UserMenu(props: {
   if (!props.menu.open || !props.menu.msg) return null;
 
   const msg = props.menu.msg;
+  const showGoChannel = isStreamerSender(msg, props.slug);
+
   const targetIsSelf = props.myId != null && Number(msg.userId) === Number(props.myId);
   const targetIsTimedOut =
     !!props.menu.targetTimeoutUntil && new Date(props.menu.targetTimeoutUntil).getTime() > Date.now();
@@ -1112,23 +1122,26 @@ function UserMenu(props: {
       </div>
 
       <div style={{ padding: 12 }}>
-        <button
-          onClick={() => props.navigateToProfile(msg.username)}
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: 14,
-            border: "1px solid rgba(255,255,255,0.10)",
-            background: "rgba(255,255,255,0.06)",
-            color: "white",
-            textAlign: "left",
-            fontWeight: 950,
-            cursor: "pointer",
-            marginBottom: 10,
-          }}
-        >
-          👤 Voir le profil
-        </button>
+        {showGoChannel ? (
+          <button
+            onClick={() => props.navigateToChannel(props.slug)}
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(80,200,255,0.10)",
+              color: "white",
+              textAlign: "left",
+              fontWeight: 950,
+              cursor: "pointer",
+              marginBottom: 10,
+            }}
+          >
+            📺 Voir la chaîne
+          </button>
+        ) : null}
+
 
         {!targetIsSelf && props.menu.isTargetSub !== true ? (
           <button
@@ -2055,12 +2068,22 @@ export function ChatPanel({
   }
 
   async function openMenuAt(x: number, y: number, msg: ChatMsg) {
-    if (msg.userId <= 0) return;
+    const hasUser = Number(msg.userId) > 0;
+
+    const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
+
+    const w = 320;   // largeur menu (comme dans ton drag)
+    const h = 420;   // hauteur menu (comme dans ton drag)
+    const maxX = window.innerWidth - 20;
+    const maxY = window.innerHeight - 20;
+
+    const cx = clamp(x, 8, maxX - w);
+    const cy = clamp(y, 8, maxY - h);
 
     setMenu({
       open: true,
-      x,
-      y,
+      x: cx,
+      y: cy,
       msg,
       isTargetMod: null,
       modLoading: false,
@@ -2070,6 +2093,9 @@ export function ChatPanel({
       isTargetSub: null,
       giftSubLoading: false,
     });
+
+    // ✅ si pas d'utilisateur (DLive/externe), on ne fait pas les checks user-based
+    if (!hasUser) return;
 
     const isSelf = myId != null && Number(msg.userId) === Number(myId);
 
@@ -2124,9 +2150,10 @@ export function ChatPanel({
     longPressTimer.current = null;
   }
 
-  function navigateToProfile(username: string) {
+  function navigateToChannel(streamerSlugOrUsername: string) {
     closeMenu();
-    navigate(`/users/${encodeURIComponent(username)}`);
+    // ⚠️ adapte si ta route n'est pas /streamer/:slug
+    navigate(`/s/${encodeURIComponent(streamerSlugOrUsername)}`);
   }
 
   async function doGiftSub(msg: ChatMsg) {
@@ -2690,7 +2717,7 @@ function openChatPopup() {
         myId={myId}
         token={token || null}
         slug={slug}
-        navigateToProfile={(username) => navigateToProfile(username)}
+        navigateToChannel={(s) => navigateToChannel(s)}
         emitSocket={emitSocket}
         doGiftSub={doGiftSub}
         doDelete={doDelete}

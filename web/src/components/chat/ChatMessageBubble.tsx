@@ -20,6 +20,10 @@ export type ChatMsgLike = {
 
   avatarUrl?: string | null;
   cosmetics?: ChatCosmetics | null;
+
+  // ✅ external bridge (DLive)
+  dlive?: boolean;
+  dliveRestreamFrom?: string | null;
 };
 
 function normalizeTitle(title: any): { code: string; text: string; tier?: string | null } | null {
@@ -149,6 +153,7 @@ function EmoteImg({
     />
   );
 }
+
 // parsing inline (links + mentions + emotes)
 function renderBodyRich(
   body: string,
@@ -157,12 +162,9 @@ function renderBodyRich(
 ) {
   const me = currentUsername ? normKey(currentUsername) : "";
 
-  // coupe la ponctuation finale typique qui "colle" aux URLs dans le chat
   function splitUrl(raw: string): { url: string; tail: string } {
     let url = String(raw || "");
     let tail = "";
-    // retire les ponctuations finales fréquentes, et les parenthèses fermantes
-    // (ex: https://x.com). => lien = https://x.com, tail = ")."
     while (url.length) {
       const last = url[url.length - 1];
       if (/[)\].,!?;:}]/.test(last)) {
@@ -175,13 +177,24 @@ function renderBodyRich(
     return { url, tail };
   }
 
-  // captures: URL OR @mention OR :e:name: / :g:name:
-  // groups:
-  //  m[1] = url
-  //  m[2] = mention name
-  //  m[3] = e|g
-  //  m[4] = emote name
-  const re = /(https?:\/\/[^\s<]+)|@([^\s@]{1,32})|:(e|g):([a-z0-9_]{1,32}):/gi;
+  // ✅ make href: add https:// for www. or bare domain
+  function toHref(u: string) {
+    const s = String(u || "").trim();
+    if (!s) return "";
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^www\./i.test(s)) return `https://${s}`;
+    // bare domains: example.com / example.com/abc
+    if (/[a-z0-9.-]+\.[a-z]{2,63}(\/|$)/i.test(s)) return `https://${s}`;
+    return s;
+  }
+
+  // ✅ URL OR @mention OR :e:name: / :g:name:
+  // - URLs can be:
+  //    - https://...
+  //    - www....
+  //    - domain.tld/path (without scheme)
+  const re =
+    /((?:https?:\/\/|www\.)[^\s<]+|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63})(?:\/[^\s<]*)?)|@([^\s@]{1,32})|:(e|g):([a-z0-9_]{1,32}):/gi;
 
   const parts: React.ReactNode[] = [];
   let last = 0;
@@ -202,12 +215,14 @@ function renderBodyRich(
       const raw = String(m[1] ?? "");
       const { url, tail } = splitUrl(raw);
 
-      // double sécurité : on ne rend cliquable que http(s)
-      if (/^https?:\/\//i.test(url)) {
+      const href = toHref(url);
+
+      // safety: only render clickable if we now have http(s)
+      if (/^https?:\/\//i.test(href)) {
         parts.push(
           <a
             key={`u-${start}-${end}`}
-            href={url}
+            href={href}
             target="_blank"
             rel="noopener noreferrer"
             className="chatLink"
@@ -215,10 +230,10 @@ function renderBodyRich(
               textDecoration: "underline",
               fontWeight: 800,
               wordBreak: "break-word",
+              overflowWrap: "anywhere",
               WebkitTapHighlightColor: "transparent",
             }}
             onClick={(e) => {
-              // évite que des handlers parent “capturent” le tap/click sur mobile
               e.stopPropagation();
             }}
           >
@@ -271,7 +286,6 @@ function renderBodyRich(
 
     const kind: EmoteKind = kindToken === "g" ? "gif" : "emoji";
 
-    // anti-spam
     if (emotesCount >= MAX_EMOTES_PER_MSG) {
       parts.push(`:${kindToken}:${name}:`);
       last = end;
@@ -303,7 +317,6 @@ function renderBodyRich(
   return parts.length ? parts : body;
 }
 
-
 export function ChatMessageBubble({
   msg,
   streamerAppearance,
@@ -315,6 +328,9 @@ export function ChatMessageBubble({
   currentUsername?: string | null;
   resolveEmote?: ResolveEmote;
 }) {
+  const isDlive = !!(msg as any)?.dlive;
+  const dliveFrom = ((msg as any)?.dliveRestreamFrom ?? null) as string | null;
+
   const c = msg.cosmetics ?? null;
   const lvl = (streamerAppearance?.chat?.viewerSkinsLevel ?? 1) as 1 | 2 | 3;
 
@@ -339,7 +355,7 @@ export function ChatMessageBubble({
   const [imgErr, setImgErr] = React.useState(false);
   React.useEffect(() => setImgErr(false), [avatarUrl]);
 
-  const hatIdNorm = avatar?.hatId ? String(avatar.hatId).replace(/^hat_/, "") : null;
+  const hatIdNorm = (avatar as any)?.hatId ? String((avatar as any).hatId).replace(/^hat_/, "") : null;
 
   const hatEmoji =
     (avatar as any)?.hatEmoji ||
@@ -360,7 +376,9 @@ export function ChatMessageBubble({
 
   return (
     <div
-      className={`chatMsgRow ${frameClass(frame?.frameId)} ${isPinged ? "chatPinged" : ""}`}
+      className={`chatMsgRow ${frameClass(frame?.frameId)} ${isPinged ? "chatPinged" : ""} ${
+        isDlive ? "chatMsgRow--dlive" : ""
+      }`}
       style={
         isPinged
           ? {
@@ -368,6 +386,12 @@ export function ChatMessageBubble({
               outline: "1px solid rgba(124,77,255,0.28)",
               boxShadow: "0 0 0 2px rgba(124,77,255,0.10), 0 12px 30px rgba(0,0,0,0.25)",
               background: "rgba(124,77,255,0.06)",
+            }
+          : isDlive
+          ? {
+              borderRadius: 16,
+              outline: "1px solid rgba(255,255,255,0.06)",
+              background: "rgba(255,255,255,0.03)",
             }
           : undefined
       }
@@ -399,9 +423,9 @@ export function ChatMessageBubble({
         </div>
 
         {/* Content */}
-        <div className="chatMsgContent">
+        <div className="chatMsgContent" style={{ minWidth: 0 }}>
           <div className="chatMsgTop">
-            <div className="chatMsgTopLeft">
+            <div className="chatMsgTopLeft" style={{ minWidth: 0 }}>
               {/* Badges */}
               {badges.length ? (
                 <div className="chatBadges">
@@ -428,15 +452,39 @@ export function ChatMessageBubble({
                 style={
                   ({
                     ["--uname-color" as any]: effectiveUnameColor ?? "var(--chat-name-color)",
+                    opacity: isDlive ? 0.92 : undefined,
                   } as React.CSSProperties)
                 }
                 title={msg.username}
               >
                 {msg.username}
+
+                {/* ✅ Small DLive pill (optional) */}
+                {isDlive ? (
+                  <span
+                    style={{
+                      display: "inline-block",
+                      marginLeft: 8,
+                      padding: "1px 8px",
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: 900,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(255,255,255,0.06)",
+                      opacity: 0.9,
+                      verticalAlign: "middle",
+                    }}
+                    title="Message retransmis depuis DLive"
+                  >
+                    {dliveFrom ? `DLive • ${dliveFrom}` : "DLive"}
+                  </span>
+                ) : null}
               </div>
             </div>
 
-            <div className="chatTimestamp">{formatHHMM(msg.createdAt)}</div>
+            <div className="chatTimestamp" style={{ opacity: isDlive ? 0.78 : undefined }}>
+              {formatHHMM(msg.createdAt)}
+            </div>
           </div>
 
           {/* Title UNDER username */}
@@ -461,7 +509,17 @@ export function ChatMessageBubble({
           ) : null}
 
           {/* Body */}
-          <div className="chatBodyText">
+          <div
+            className="chatBodyText"
+            style={{
+              minWidth: 0,
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
+              lineHeight: 1.25,
+              opacity: isDlive ? 0.92 : undefined,
+            }}
+          >
             {renderBodyRich(String(msg.body ?? ""), currentUsername, resolveEmote)}
           </div>
         </div>
