@@ -35,7 +35,6 @@ async function gql(query: string) {
 export async function fetchDliveLiveInfo(displayname: string): Promise<DliveLiveInfo> {
   const dn = esc(displayname);
 
-  // Query "riche" (watchingCount + thumbnail + title)
   const queryRich = `query{
     userByDisplayName(displayname:"${dn}") {
       username
@@ -52,31 +51,32 @@ export async function fetchDliveLiveInfo(displayname: string): Promise<DliveLive
     const u = j?.data?.userByDisplayName;
     const ls = u?.livestream || null;
 
-  return {
-    username: typeof u?.username === "string" ? u.username : null,
-    isLive: !!ls,
-    watchingCount: typeof ls?.watchingCount === "number" ? ls.watchingCount : null,
-    title: typeof ls?.title === "string" ? ls.title : null,
-    thumbnailUrl: typeof ls?.thumbnailUrl === "string" ? ls.thumbnailUrl : null,
+    return {
+      username: typeof u?.username === "string" ? u.username : null,
+      isLive: !!ls,
+      watchingCount: typeof ls?.watchingCount === "number" ? ls.watchingCount : null,
+      title: typeof ls?.title === "string" ? ls.title : null,
+      thumbnailUrl: typeof ls?.thumbnailUrl === "string" ? ls.thumbnailUrl : null,
     };
   } catch (e) {
-    // Fallback minimal (juste live/not live) — inspiré des impls publiques :contentReference[oaicite:1]{index=1}
+    // ✅ FIX: demander username aussi
     const queryLite = `query{
       userByDisplayName(displayname:"${dn}") {
+        username
         livestream { title }
       }
     }`;
+
     const j = await gql(queryLite);
-    const ls = j?.data?.userByDisplayName?.livestream || null;
+    const u = j?.data?.userByDisplayName;
+    const ls = u?.livestream || null;
 
     return {
-    username: typeof j?.data?.userByDisplayName?.username === "string"
-        ? j.data.userByDisplayName.username
-        : null,
-    isLive: !!ls,
-    watchingCount: null,
-    title: null,
-    thumbnailUrl: null,
+      username: typeof u?.username === "string" ? u.username : null,
+      isLive: !!ls,
+      watchingCount: null,
+      title: typeof ls?.title === "string" ? ls.title : null,
+      thumbnailUrl: null,
     };
   }
 }

@@ -3,7 +3,7 @@ import type { Pool } from "pg";
 
 export async function mig039_dlive_pre_streamer(pool: Pool) {
   await pool.query(`
-    -- 1) Stockage DLive côté users (pour pré-streamer)
+    -- 1) Stockage DLive côté users (pré-streamer)
     ALTER TABLE users
       ADD COLUMN IF NOT EXISTS dlive_use_linked BOOLEAN NOT NULL DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS dlive_link_displayname TEXT,
@@ -21,11 +21,11 @@ export async function mig039_dlive_pre_streamer(pool: Pool) {
     WHERE r.streamer_id = s.id
       AND r.user_id IS NULL;
 
-    -- 4) streamer_id doit être nullable (pré-streamer)
+    -- 4) streamer_id nullable (pré-streamer)
     ALTER TABLE streamer_dlive_link_requests
       ALTER COLUMN streamer_id DROP NOT NULL;
 
-    -- 5) user_id devient obligatoire (fail fast si données incohérentes)
+    -- 5) user_id obligatoire
     DO $$
     BEGIN
       IF EXISTS (SELECT 1 FROM streamer_dlive_link_requests WHERE user_id IS NULL) THEN
@@ -36,14 +36,13 @@ export async function mig039_dlive_pre_streamer(pool: Pool) {
     ALTER TABLE streamer_dlive_link_requests
       ALTER COLUMN user_id SET NOT NULL;
 
-    -- 6) Unicité: 1 pending par user (au lieu de streamer)
+    -- 6) Unicité: 1 pending par user
     DROP INDEX IF EXISTS uniq_sdlr_pending;
 
     CREATE UNIQUE INDEX IF NOT EXISTS uniq_sdlr_pending_user
       ON streamer_dlive_link_requests(user_id)
       WHERE status='pending';
 
-    -- (optionnel mais utile)
     CREATE INDEX IF NOT EXISTS idx_sdlr_user_status_created
       ON streamer_dlive_link_requests(user_id, status, created_at DESC);
   `);
