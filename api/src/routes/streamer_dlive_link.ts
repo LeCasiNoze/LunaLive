@@ -220,11 +220,50 @@ streamerDliveLinkRouter.post("/verify", requireAuth, async (req: AuthedReq, res)
     return res.status(400).json({ ok: false, error: "missing_requested_username" });
   }
 
-  const wait = await waitForDliveChatCode({
-    streamerUsername: row.requestedUsername,
+  // ✅ vérif websocket (chat)
+  const candidates = [
+    { label: "requestedUsername", value: row.requestedUsername },
+    { label: "requestedDisplayname", value: row.requestedDisplayname },
+  ].filter((c) => typeof c.value === "string" && c.value.trim().length > 0) as Array<{
+    label: string;
+    value: string;
+  }>;
+
+  console.log("[dlive-link][verify] start", {
+    streamerId,
     code: row.code,
-    timeoutMs: 90_000,
+    requestedDisplayname: row.requestedDisplayname,
+    requestedUsername: row.requestedUsername,
+    candidates: candidates.map((c) => c.label),
   });
+
+  let wait: any = { ok: false, error: "timeout" };
+  for (const c of candidates) {
+    console.log("[dlive-link][verify] listen", { label: c.label, streamerUsername: c.value });
+    const t0 = Date.now();
+
+    wait = await waitForDliveChatCode({
+      streamerUsername: c.value,
+      code: row.code,
+      timeoutMs: 25_000,
+    });
+
+    console.log("[dlive-link][verify] result", {
+      label: c.label,
+      ok: wait.ok,
+      error: wait.error,
+      ms: Date.now() - t0,
+    });
+
+    if (wait.ok) break;
+  }
+
+  if (!wait.ok) {
+    console.log("[dlive-link][verify] FAIL", { error: wait.error });
+    return res.status(400).json({ ok: false, error: wait.error });
+  }
+
+  console.log("[dlive-link][verify] SUCCESS -> writing DB");
 
   if (!wait.ok) return res.status(400).json({ ok: false, error: wait.error });
 
