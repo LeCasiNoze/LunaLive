@@ -35,6 +35,18 @@ function buildApiAvatarUrl(userId: number, cacheKey?: string | number | null) {
   return `${API_BASE}/avatars/u/${userId}?v=${encodeURIComponent(v)}`;
 }
 
+/** petit helper: transforme username -> slug safe pour /s/... */
+function slugifyUsername(v: any): string {
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export function AvatarMenu({
   user,
   onLogout,
@@ -73,6 +85,10 @@ export function AvatarMenu({
   React.useEffect(() => setImgOk(true), [direct, endpoint]);
 
   const src = direct ?? endpoint;
+
+  // ✅ route "Ma chaîne"
+  const myChannelSlug = slugifyUsername((user as any)?.streamerSlug ?? user.username);
+  const myChannelHref = myChannelSlug ? `/s/${myChannelSlug}` : "/";
 
   return (
     <div className="avatarWrap llAvatarWrap">
@@ -159,6 +175,8 @@ export function AvatarMenu({
           text-decoration: none;
           display: block;
           font-weight: 900;
+          width: calc(100% - 12px);
+          text-align: left;
         }
         .llAvatarWrap .dropdownItem:hover{
           border-color: rgba(255,255,255,0.16);
@@ -199,9 +217,16 @@ export function AvatarMenu({
           <div className="dropdownSep" />
 
           {canSeeDashboard && (
-            <Link to="/dashboard" className="dropdownItem" onClick={() => setOpen(false)}>
-              Dashboard
-            </Link>
+            <>
+              <Link to="/dashboard" className="dropdownItem" onClick={() => setOpen(false)}>
+                Dashboard
+              </Link>
+
+              {/* ✅ NEW: Ma chaîne */}
+              <Link to={myChannelHref} className="dropdownItem" onClick={() => setOpen(false)}>
+                Ma chaîne
+              </Link>
+            </>
           )}
 
           <Link to="/profile" className="dropdownItem" onClick={() => setOpen(false)}>

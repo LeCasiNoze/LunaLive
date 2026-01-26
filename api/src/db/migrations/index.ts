@@ -39,6 +39,7 @@ import { mig035_reports } from "./mig035_reports.js";
 import { mig036_reports_status_deleted } from "./mig036_reports_status_deleted.js";
 import { mig037_chat_settings_dlive } from "./mig037_chat_settings_dlive.js";
 import { mig038_site_content } from "./mig038_site_content.js";
+import { mig039_dlive_pre_streamer } from "./mig039_dlive_pre_streamer.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -98,5 +99,5 @@ export async function migrateAll(pool: Pool) {
   await mig036_reports_status_deleted(pool);
   await mig037_chat_settings_dlive(pool);
   await mig038_site_content(pool);
-
+  await mig039_dlive_pre_streamer(pool);
 }
