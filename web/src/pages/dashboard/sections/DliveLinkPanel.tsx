@@ -59,16 +59,13 @@ export function DliveLinkPanel() {
   const logIdRef = React.useRef<string>(
     `DliveLinkPanel:${Math.random().toString(16).slice(2, 8)}`
   );
-  const LOG = React.useCallback(
-    (event: string, data?: any) => {
-      // logs publics navigateur (on s'en fout)
-      try {
-        // eslint-disable-next-line no-console
-        console.log(`[${logIdRef.current}] ${safeNowIso()} ${event}`, data ?? "");
-      } catch {}
-    },
-    []
-  );
+  const LOG = React.useCallback((event: string, data?: any) => {
+    // logs publics navigateur (on s'en fout)
+    try {
+      // eslint-disable-next-line no-console
+      console.log(`[${logIdRef.current}] ${safeNowIso()} ${event}`, data ?? "");
+    } catch {}
+  }, []);
 
   const [me, setMe] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(false);
@@ -149,7 +146,7 @@ export function DliveLinkPanel() {
     try {
       LOG("dlive:request:start", { seq, input });
 
-      // ⚠️ IMPORTANT: on NE prime plus la vérif ici (ça bloquait 25s et flingue l'UX)
+      // ✅ IMPORTANT: on NE prime plus la vérif ici.
       // On fait UNIQUEMENT request + reload pour afficher le code.
       await dliveLinkRequest(token, channel);
 
@@ -192,7 +189,6 @@ export function DliveLinkPanel() {
     // Phases "humaines" (pour bien suivre ce qui se passe)
     setPhase("backend_connect_chat");
 
-    // mini logs d'étapes côté front (on ne sait pas côté serveur, mais on trace l'intention)
     setTimeout(() => {
       LOG("dlive:verify:phase", {
         seq,
@@ -225,7 +221,6 @@ export function DliveLinkPanel() {
       setErr(msg);
       setPhase("error_verify");
 
-      // Log explicite du cas TIMEOUT
       LOG("dlive:verify:err", {
         seq,
         ms,
@@ -237,7 +232,6 @@ export function DliveLinkPanel() {
         e,
       });
 
-      // on reload quand même pour voir si ça s'est lié malgré l'erreur
       try {
         reload();
       } catch {}
@@ -377,7 +371,6 @@ export function DliveLinkPanel() {
             {me.useLinked ? `📡 Restream Dlive : ${me.linkedDisplayname}` : "🏷️ Uniquement LunaLive"}
           </Chip>
 
-          {/* petit indicateur debug (optionnel) */}
           {phase ? <Chip tone="neutral">🧪 {phase}</Chip> : null}
         </div>
 
@@ -399,8 +392,20 @@ export function DliveLinkPanel() {
         <div style={{ marginTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 14 }}>
           {pending ? (
             <>
-              <div className="mutedSmall">
-                1) Envoie ce code dans le chat de <b>{pending.requestedDisplayname}</b> :
+              {/* ✅ Instructions améliorées (mêmes changements que StreamerApplyModal) */}
+              <div className="mutedSmall" style={{ lineHeight: 1.55 }}>
+                <div>
+                  1) Ouvre le chat de <b>{pending.requestedDisplayname}</b> (sur DLive) et envoie ce code :
+                </div>
+                <div style={{ marginTop: 6, opacity: 0.92 }}>
+                  <b>Important :</b> envoie-le <b>depuis ton compte streamer</b>, et mets aussi le lien de la chaîne dans
+                  le message.
+                  <br />
+                  Exemple :{" "}
+                  <span className="llMono">
+                    {pending.code} https://dlive.tv/{pending.requestedDisplayname}
+                  </span>
+                </div>
               </div>
 
               <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -421,8 +426,9 @@ export function DliveLinkPanel() {
                   className="btnGhostSmall"
                   onClick={() => {
                     LOG("dlive:code:copy", { code: pending.code });
-                    navigator.clipboard?.writeText(pending.code);
+                    navigator.clipboard?.writeText(String(pending.code || ""));
                   }}
+                  disabled={loading}
                 >
                   📋 Copier
                 </button>
@@ -432,8 +438,7 @@ export function DliveLinkPanel() {
                 Debug pending:{" "}
                 <span className="llMono" style={{ opacity: 0.95 }}>
                   displayname={String(pending.requestedDisplayname || "")} • username=
-                  {String(pending.requestedUsername || "")} • expires=
-                  {String(pending.expiresAt || "")}
+                  {String(pending.requestedUsername || "")} • expires={String(pending.expiresAt || "")}
                 </span>
               </div>
 

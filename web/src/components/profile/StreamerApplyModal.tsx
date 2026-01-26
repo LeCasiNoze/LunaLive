@@ -588,8 +588,15 @@ export function StreamerApplyModal({
                 </div>
               ) : pending ? (
                 <>
-                  <div className="mutedSmall" style={{ marginTop: 10 }}>
-                    1) Envoie ce code dans le chat de <b>{pending.requestedDisplayname}</b> :
+                  <div className="mutedSmall" style={{ marginTop: 10, lineHeight: 1.55 }}>
+                    <div>
+                      1) Ouvre le chat de <b>{pending.requestedDisplayname}</b> (sur DLive) et envoie ce code :
+                    </div>
+                    <div style={{ marginTop: 6, opacity: 0.92 }}>
+                      <b>Important :</b> envoie-le <b>depuis ton compte streamer</b>, et mets aussi le lien de la chaîne dans le message.
+                      <br />
+                      Exemple : <span className="llMono">{pending.code} https://dlive.tv/{pending.requestedDisplayname}</span>
+                    </div>
                   </div>
 
                   <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
