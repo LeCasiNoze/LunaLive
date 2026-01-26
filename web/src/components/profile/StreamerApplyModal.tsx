@@ -61,6 +61,18 @@ function normalizeChannelUrl(displayname: string | null | undefined) {
   return slug ? `https://dlive.tv/${slug}` : "";
 }
 
+function nowIso() {
+  try {
+    return new Date().toISOString();
+  } catch {
+    return String(Date.now());
+  }
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export function StreamerApplyModal({
   open,
   onClose,
@@ -91,16 +103,66 @@ export function StreamerApplyModal({
   const linked = !!me?.linkedDisplayname;
   const pending = me?.pending;
 
-  const reload = React.useCallback(() => {
+  // ----- DEBUG / LOGS
+  const reqSeqRef = React.useRef(0);
+  const mountIdRef = React.useRef(Math.random().toString(16).slice(2, 8));
+  function log(...args: any[]) {
+    // logs publics navigateur (on s’en fou)
+    // eslint-disable-next-line no-console
+    console.log(`[StreamerApplyModal:${mountIdRef.current}]`, nowIso(), ...args);
+  }
+  function warn(...args: any[]) {
+    // eslint-disable-next-line no-console
+    console.warn(`[StreamerApplyModal:${mountIdRef.current}]`, nowIso(), ...args);
+  }
+
+  const reload = React.useCallback(async () => {
+    const seq = ++reqSeqRef.current;
     setErr(null);
-    dliveLinkMe(token)
-      .then(setMe)
-      .catch((e: any) => setErr(String(e?.message || "ERROR")));
-  }, [token]);
+
+    log("reload:start", { seq, hasDlive, open });
+    const t0 = performance.now();
+    try {
+      const r = await dliveLinkMe(token);
+      const ms = Math.round(performance.now() - t0);
+
+      log("reload:ok", {
+        seq,
+        ms,
+        ok: !!(r as any)?.ok,
+        linkedDisplayname: (r as any)?.linkedDisplayname ?? null,
+        useLinked: (r as any)?.useLinked ?? null,
+        pending: (r as any)?.pending
+          ? {
+              requestedDisplayname: (r as any)?.pending?.requestedDisplayname,
+              requestedUsername: (r as any)?.pending?.requestedUsername,
+              code: (r as any)?.pending?.code,
+              expiresAt: (r as any)?.pending?.expiresAt,
+            }
+          : null,
+      });
+
+      setMe(r);
+    } catch (e: any) {
+      const ms = Math.round(performance.now() - t0);
+      const msg = String(e?.message || "ERROR");
+      warn("reload:err", { seq, ms, msg, e });
+      setErr(msg);
+    }
+  }, [token, hasDlive, open]);
+
+  React.useEffect(() => {
+    log("mount");
+    return () => {
+      log("unmount");
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   React.useEffect(() => {
     if (!open) return;
 
+    log("open:reset-form");
     // reset form on open
     setDiscord("");
     setRulesAccepted(false);
@@ -115,37 +177,128 @@ export function StreamerApplyModal({
 
   React.useEffect(() => {
     if (!open) return;
-    if (!hasDlive) return;
+    if (!hasDlive) {
+      log("hasDlive:false (no reload)");
+      return;
+    }
+    log("hasDlive:true -> reload");
     reload();
   }, [open, hasDlive, reload]);
 
+  // ✅ debug: log state changes (useful pour comprendre)
+  React.useEffect(() => {
+    if (!open) return;
+    log("state:update", {
+      hasDlive,
+      loading,
+      linked,
+      pending: pending ? true : false,
+      linkedDisplayname: me?.linkedDisplayname ?? null,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, hasDlive, loading, linked, !!pending, me?.linkedDisplayname]);
+
   async function onRequest() {
+    const seq = ++reqSeqRef.current;
     setLoading(true);
     setErr(null);
+
+    const input = String(channel || "").trim();
+    log("dlive:request:start", { seq, input });
+
+    const t0 = performance.now();
     try {
-      await dliveLinkRequest(token, channel);
+      await dliveLinkRequest(token, input);
+      log("dlive:request:ok", { seq, ms: Math.round(performance.now() - t0) });
 
-      // ✅ prime verify (comme ton DliveLinkPanel)
+      // ✅ prime verify (comme ton DliveLinkPanel) + LOGS
+      // ⚠️ ici c’est justement ce qui peut "prendre du temps" si le verify attend le chat.
+      // On le garde pour debug; on log chaque étape.
+      log("dlive:primeVerify:begin", { seq, note: "tentative verify immédiate après request (peut échouer si code pas envoyé)" });
+      const t1 = performance.now();
       try {
-        await dliveLinkVerify(token);
-      } catch {}
+        // Important: ce call côté backend peut "attendre" le code dans le chat.
+        log("dlive:primeVerify:waiting-chat", {
+          seq,
+          whatToDo: "Envoie le code dans le chat DLive puis ce call devrait passer",
+        });
 
-      reload();
+        await dliveLinkVerify(token);
+
+        log("dlive:primeVerify:ok", { seq, ms: Math.round(performance.now() - t1) });
+      } catch (e: any) {
+        warn("dlive:primeVerify:err (ignored)", { seq, ms: Math.round(performance.now() - t1), msg: String(e?.message || "ERROR"), e });
+        // ignore
+      }
+
+      await reload();
+      log("dlive:request:done", { seq });
     } catch (e: any) {
-      setErr(String(e?.message || "ERROR"));
+      const ms = Math.round(performance.now() - t0);
+      const msg = String(e?.message || "ERROR");
+      warn("dlive:request:err", { seq, ms, msg, e });
+      setErr(msg);
     } finally {
       setLoading(false);
     }
   }
 
   async function onVerify() {
+    const seq = ++reqSeqRef.current;
     setLoading(true);
     setErr(null);
+
+    // On log "comme si" on se connectait au chat, même si la connexion est côté backend.
+    // Ces logs te donnent les timestamps et aident à savoir si le navigateur "attend" trop longtemps.
+    log("dlive:verify:click", {
+      seq,
+      pending: pending
+        ? {
+            requestedDisplayname: (pending as any)?.requestedDisplayname,
+            requestedUsername: (pending as any)?.requestedUsername,
+            code: (pending as any)?.code,
+            expiresAt: (pending as any)?.expiresAt,
+          }
+        : null,
+    });
+
+    log("dlive:verify:phase", { seq, phase: "backend_connect_chat (server)", detail: "Le serveur va écouter le chat DLive via websocket." });
+    await sleep(50);
+    log("dlive:verify:phase", { seq, phase: "backend_ready_to_read_code (server)", detail: "Le serveur attend de voir le code dans le chat." });
+
+    const t0 = performance.now();
     try {
+      log("dlive:verify:waiting", { seq, note: "Appel API en cours... si timeout navigateur, le serveur peut quand même finir." });
+
       await dliveLinkVerify(token);
-      reload();
+
+      log("dlive:verify:seen_code", { seq, ms: Math.round(performance.now() - t0), detail: "✅ Le serveur a vu le code dans le chat." });
+      log("dlive:verify:linked", { seq, detail: "✅ Le serveur a enregistré le lien en DB (streamers.dlive_link_*)" });
+
+      await reload();
+      log("dlive:verify:done", { seq, linkedAfter: true });
     } catch (e: any) {
-      setErr(String(e?.message || "ERROR"));
+      const ms = Math.round(performance.now() - t0);
+      const msg = String(e?.message || "ERROR");
+
+      warn("dlive:verify:err", {
+        seq,
+        ms,
+        msg,
+        hint:
+          "Si tu refresh et que c’est vérifié, c’est probablement un timeout côté navigateur alors que le serveur a fini.",
+      });
+
+      setErr(msg);
+
+      // petit reload derrière pour voir si le serveur a quand même lié
+      try {
+        await reload();
+        log("dlive:verify:postErrReload", {
+          seq,
+          linkedNow: !!(me?.linkedDisplayname || (me as any)?.linkedDisplayname),
+        });
+      } catch {}
     } finally {
       setLoading(false);
     }
@@ -162,6 +315,9 @@ export function StreamerApplyModal({
     if (!canSubmit) return;
     setSubmitErr(null);
 
+    const seq = ++reqSeqRef.current;
+    log("submit:start", { seq, hasDlive, canSubmit });
+
     try {
       const url = hasDlive ? normalizeChannelUrl(me?.linkedDisplayname) : "";
       const payload: StreamerApplyPayload = {
@@ -173,10 +329,15 @@ export function StreamerApplyModal({
         rulesAccepted: true,
       };
 
+      log("submit:payload", { seq, payload });
+
       await Promise.resolve(onSubmit(payload));
+      log("submit:ok", { seq });
       onClose();
     } catch (e: any) {
-      setSubmitErr(String(e?.message || "ERROR"));
+      const msg = String(e?.message || "ERROR");
+      warn("submit:err", { seq, msg, e });
+      setSubmitErr(msg);
     }
   }
 
@@ -240,7 +401,14 @@ export function StreamerApplyModal({
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
           <div style={{ fontWeight: 1100, letterSpacing: -0.2, fontSize: 18 }}>🎥 Devenir streamer LunaLive</div>
-          <button className="btnGhost" onClick={onClose} disabled={loading}>
+          <button
+            className="btnGhost"
+            onClick={() => {
+              log("close:click");
+              onClose();
+            }}
+            disabled={loading}
+          >
             ✖
           </button>
         </div>
@@ -284,7 +452,10 @@ export function StreamerApplyModal({
             <div style={{ fontWeight: 900 }}>Ton Discord (obligatoire)</div>
             <input
               value={discord}
-              onChange={(e) => setDiscord(e.target.value)}
+              onChange={(e) => {
+                setDiscord(e.target.value);
+                log("form:discord:change", { v: e.target.value });
+              }}
               placeholder="Ex: lucas / lucas#1234"
               className="llInput"
               disabled={loading}
@@ -296,7 +467,10 @@ export function StreamerApplyModal({
             <input
               type="checkbox"
               checked={hasDlive}
-              onChange={(e) => setHasDlive(e.target.checked)}
+              onChange={(e) => {
+                setHasDlive(e.target.checked);
+                log("form:hasDlive:toggle", { v: e.target.checked });
+              }}
               disabled={loading}
             />
             Oui, j’ai déjà une chaîne DLive (vérification rapide)
@@ -313,7 +487,7 @@ export function StreamerApplyModal({
 
               {!me?.ok ? (
                 <div className="mutedSmall" style={{ marginTop: 10 }}>
-                  Chargement…
+                  Chargement… (logs dans la console)
                 </div>
               ) : pending ? (
                 <>
@@ -337,7 +511,10 @@ export function StreamerApplyModal({
 
                     <button
                       className="btnGhostSmall"
-                      onClick={() => navigator.clipboard?.writeText(String(pending.code || ""))}
+                      onClick={() => {
+                        log("dlive:code:copy", { code: String(pending.code || "") });
+                        navigator.clipboard?.writeText(String(pending.code || ""));
+                      }}
                       disabled={loading}
                     >
                       📋 Copier
@@ -352,7 +529,14 @@ export function StreamerApplyModal({
                     <button className="btnPrimarySmall" onClick={onVerify} disabled={loading}>
                       ✅ Vérifier
                     </button>
-                    <button className="btnGhostSmall" onClick={reload} disabled={loading}>
+                    <button
+                      className="btnGhostSmall"
+                      onClick={() => {
+                        log("dlive:reload:click");
+                        reload();
+                      }}
+                      disabled={loading}
+                    >
                       🔄 Rafraîchir
                     </button>
                   </div>
@@ -367,7 +551,10 @@ export function StreamerApplyModal({
                   <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                     <input
                       value={channel}
-                      onChange={(e) => setChannel(e.target.value)}
+                      onChange={(e) => {
+                        setChannel(e.target.value);
+                        log("dlive:channel:change", { v: e.target.value });
+                      }}
                       placeholder="LeCasinoze ou https://dlive.tv/LeCasinoze"
                       className="llInput"
                       disabled={loading}
@@ -375,7 +562,14 @@ export function StreamerApplyModal({
                     <button className="btnPrimarySmall" onClick={onRequest} disabled={loading || channel.trim().length < 2}>
                       🔗 Générer un code
                     </button>
-                    <button className="btnGhostSmall" onClick={reload} disabled={loading}>
+                    <button
+                      className="btnGhostSmall"
+                      onClick={() => {
+                        log("dlive:reload:click");
+                        reload();
+                      }}
+                      disabled={loading}
+                    >
                       🔄
                     </button>
                   </div>
@@ -405,7 +599,10 @@ export function StreamerApplyModal({
             <input
               type="checkbox"
               checked={rulesAccepted}
-              onChange={(e) => setRulesAccepted(e.target.checked)}
+              onChange={(e) => {
+                setRulesAccepted(e.target.checked);
+                log("form:rulesAccepted:toggle", { v: e.target.checked });
+              }}
               disabled={loading}
             />
             J’ai lu et j’accepte le règlement.
@@ -413,11 +610,22 @@ export function StreamerApplyModal({
 
           {/* Actions */}
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-            <button className="btnGhost" onClick={onClose} disabled={loading}>
+            <button
+              className="btnGhost"
+              onClick={() => {
+                log("cancel:click");
+                onClose();
+              }}
+              disabled={loading}
+            >
               Annuler
             </button>
             <button className="btnPrimary" onClick={submit} disabled={!canSubmit}>
-              {disabled ? "⛔ Indisponible" : hasDlive && (!linked || pending) ? "⚠️ Vérifie DLive d’abord" : "✅ Envoyer la demande"}
+              {disabled
+                ? "⛔ Indisponible"
+                : hasDlive && (!linked || pending)
+                ? "⚠️ Vérifie DLive d’abord"
+                : "✅ Envoyer la demande"}
             </button>
           </div>
 
