@@ -608,11 +608,11 @@ export function StreamerApplyModal({
 
           {/* Discord */}
           <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontWeight: 900 }}>Ton Discord (obligatoire)</div>
+            <div style={{ fontWeight: 900 }}>Ton Discord/Telegram (obligatoire)</div>
             <input
               value={discord}
               onChange={(e) => setDiscord(e.target.value)}
-              placeholder="Ex: lucas / lucas#1234"
+              placeholder="Ex: LeCasiNoze / LeCasiNoze#1234"
               className="llInput"
               disabled={loading || verifying}
             />
@@ -684,7 +684,6 @@ export function StreamerApplyModal({
                         LOG("dlive:code:copy", { code: pending?.code });
                         navigator.clipboard?.writeText(String(pending.code || ""));
                       }}
-                      disabled={loading || verifying}
                     >
                       📋 Copier
                     </button>

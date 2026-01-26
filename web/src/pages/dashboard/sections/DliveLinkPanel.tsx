@@ -52,72 +52,98 @@ function safeNowIso() {
   }
 }
 
+function getErrMsg(e: any) {
+  return String(e?.message || e?.error || "ERROR");
+}
+
 export function DliveLinkPanel() {
   const { token } = useAuth();
 
   // log prefix (stable)
-  const logIdRef = React.useRef<string>(
-    `DliveLinkPanel:${Math.random().toString(16).slice(2, 8)}`
-  );
+  const logIdRef = React.useRef<string>(`DliveLinkPanel:${Math.random().toString(16).slice(2, 8)}`);
   const LOG = React.useCallback((event: string, data?: any) => {
-    // logs publics navigateur (on s'en fout)
     try {
       // eslint-disable-next-line no-console
       console.log(`[${logIdRef.current}] ${safeNowIso()} ${event}`, data ?? "");
     } catch {}
   }, []);
 
+  const VERIFY_WINDOW_MS = 120_000;
+
   const [me, setMe] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(false);
   const [channel, setChannel] = React.useState("");
   const [err, setErr] = React.useState<string | null>(null);
 
-  // debug phases for UX + logs
+  // UX / debug phase
   const [phase, setPhase] = React.useState<string | null>(null);
+
+  // "écoute chat" UX
+  const [verifying, setVerifying] = React.useState(false);
+  const [verifyEndsAt, setVerifyEndsAt] = React.useState<number | null>(null);
+  const [verifyLeftSec, setVerifyLeftSec] = React.useState<number>(0);
+
+  // to prevent re-triggering auto listen in a loop
+  const autoStartedForCodeRef = React.useRef<string | null>(null);
 
   // sequence ids for logs
   const seqRef = React.useRef(0);
 
-  const reload = React.useCallback(() => {
-    const seq = ++seqRef.current;
+  // countdown
+  React.useEffect(() => {
+    if (!verifyEndsAt) {
+      setVerifyLeftSec(0);
+      return;
+    }
+    const tick = () => {
+      const leftMs = Math.max(0, verifyEndsAt - Date.now());
+      setVerifyLeftSec(Math.ceil(leftMs / 1000));
+    };
+    tick();
+    const it = setInterval(tick, 250);
+    return () => clearInterval(it);
+  }, [verifyEndsAt]);
 
+  const reload = React.useCallback(async () => {
+    const seq = ++seqRef.current;
     setErr(null);
 
     if (!token) {
       setMe(null);
       LOG("reload:skip:no-token", { seq });
-      return;
+      return null;
     }
 
     LOG("reload:start", { seq });
     const t0 = performance.now();
-
-    dliveLinkMe(token)
-      .then((data) => {
-        const ms = Math.round(performance.now() - t0);
-        setMe(data);
-        LOG("reload:ok", {
-          seq,
-          ms,
-          ok: !!data?.ok,
-          linkedDisplayname: data?.linkedDisplayname ?? null,
-          linkedUsername: data?.linkedUsername ?? null,
-          useLinked: !!data?.useLinked,
-          pending: data?.pending
-            ? {
-                requestedDisplayname: data.pending.requestedDisplayname,
-                requestedUsername: data.pending.requestedUsername,
-                code: data.pending.code,
-                expiresAt: data.pending.expiresAt,
-              }
-            : null,
-        });
-      })
-      .catch((e: any) => {
-        const ms = Math.round(performance.now() - t0);
-        setErr(String(e?.message || "ERROR"));
-        LOG("reload:err", { seq, ms, msg: String(e?.message || "ERROR"), e });
+    try {
+      const data = await dliveLinkMe(token);
+      const ms = Math.round(performance.now() - t0);
+      setMe(data);
+      LOG("reload:ok", {
+        seq,
+        ms,
+        ok: !!data?.ok,
+        linkedDisplayname: data?.linkedDisplayname ?? null,
+        linkedUsername: data?.linkedUsername ?? null,
+        useLinked: !!data?.useLinked,
+        pending: data?.pending
+          ? {
+              requestedDisplayname: data.pending.requestedDisplayname,
+              requestedUsername: data.pending.requestedUsername,
+              code: data.pending.code,
+              expiresAt: data.pending.expiresAt,
+            }
+          : null,
       });
+      return data;
+    } catch (e: any) {
+      const ms = Math.round(performance.now() - t0);
+      const msg = getErrMsg(e);
+      setErr(msg);
+      LOG("reload:err", { seq, ms, msg, e });
+      return null;
+    }
   }, [token, LOG]);
 
   React.useEffect(() => {
@@ -130,13 +156,98 @@ export function DliveLinkPanel() {
     reload();
   }, [reload]);
 
+  const startListenWindow = React.useCallback(
+    async (opts: { reason: string; expectedCode?: string | null }) => {
+      if (!token) return;
+
+      const seq = ++seqRef.current;
+      const reason = opts.reason;
+      const expectedCode = String(opts.expectedCode ?? "") || null;
+
+      LOG("dlive:listen:start", { seq, reason, expectedCode });
+
+      setErr(null);
+      setPhase("listening_chat");
+      setVerifying(true);
+      setVerifyEndsAt(Date.now() + VERIFY_WINDOW_MS);
+
+      const t0 = performance.now();
+      try {
+        // ✅ api.ts patch: dliveLinkVerify(token, { timeoutMs })
+        await dliveLinkVerify(token, { timeoutMs: VERIFY_WINDOW_MS });
+
+        const ms = Math.round(performance.now() - t0);
+        LOG("dlive:listen:ok", { seq, ms, reason });
+
+        setPhase("verified");
+        setVerifying(false);
+        setVerifyEndsAt(null);
+
+        await reload();
+      } catch (e: any) {
+        const ms = Math.round(performance.now() - t0);
+        const msg = getErrMsg(e);
+
+        LOG("dlive:listen:err", { seq, ms, msg, reason, e });
+
+        setVerifying(false);
+        setVerifyEndsAt(null);
+
+        // ✅ Important UX: au bout de 2 min => on considère "raté", et on demande de régénérer
+        // (côté serveur, le pending existe encore, mais on veut le flow simple: regen -> on remplace).
+        if (String(msg).toUpperCase().includes("TIMEOUT")) {
+          setPhase("timeout_need_regen");
+          setErr(
+            "On n’a pas vu le code dans les 2 minutes. Regénère un code, puis renvoie-le dans ton chat DLive."
+          );
+        } else {
+          setPhase("error_listen");
+          setErr(msg);
+        }
+
+        await reload();
+      }
+    },
+    [VERIFY_WINDOW_MS, LOG, reload, token]
+  );
+
+  // ✅ Auto-start listening if we already have a pending code (no “Vérifier” button)
+  React.useEffect(() => {
+    if (!token) return;
+    if (!me?.ok) return;
+
+    const linked = !!me?.linkedDisplayname;
+    const pending = me?.pending;
+
+    if (linked) return; // already linked
+    if (!pending?.code) return;
+    if (verifying) return;
+
+    const code = String(pending.code || "").trim();
+    if (!code) return;
+
+    // avoid loop: only auto-start once per code
+    if (autoStartedForCodeRef.current === code) return;
+    autoStartedForCodeRef.current = code;
+
+    LOG("dlive:autoListen:trigger", {
+      code,
+      requestedDisplayname: pending?.requestedDisplayname,
+      requestedUsername: pending?.requestedUsername,
+    });
+
+    startListenWindow({ reason: "auto-on-pending", expectedCode: code });
+  }, [me, token, verifying, LOG, startListenWindow]);
+
+  // ✅ Nouveau protocole:
+  // - "Générer un code" => crée le code + reload + écoute DIRECT 2 min
   async function onRequest() {
     if (!token) return;
 
     const seq = ++seqRef.current;
-    const input = String(channel || "");
+    const input = String(channel || "").trim();
 
-    LOG("dlive:request:click", { seq, input });
+    LOG("dlive:request+listen:click", { seq, input });
 
     setLoading(true);
     setErr(null);
@@ -144,97 +255,27 @@ export function DliveLinkPanel() {
 
     const t0 = performance.now();
     try {
-      LOG("dlive:request:start", { seq, input });
-
-      // ✅ IMPORTANT: on NE prime plus la vérif ici.
-      // On fait UNIQUEMENT request + reload pour afficher le code.
       await dliveLinkRequest(token, channel);
 
       const ms = Math.round(performance.now() - t0);
       LOG("dlive:request:ok", { seq, ms });
 
       setPhase("code_ready");
-      reload();
 
-      LOG("dlive:request:done", { seq });
+      const data = await reload();
+      const code = String(data?.pending?.code || "").trim();
+
+      // reset auto-start guard so we *can* start immediately for the new code
+      if (code) autoStartedForCodeRef.current = code;
+
+      // start listen now (single click flow)
+      await startListenWindow({ reason: "after-request", expectedCode: code || null });
     } catch (e: any) {
       const ms = Math.round(performance.now() - t0);
-      const msg = String(e?.message || "ERROR");
+      const msg = getErrMsg(e);
       setErr(msg);
       setPhase("error_request");
       LOG("dlive:request:err", { seq, ms, msg, e });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function onVerify() {
-    if (!token) return;
-
-    const seq = ++seqRef.current;
-    const pendingSnapshot = me?.pending
-      ? {
-          requestedDisplayname: me.pending.requestedDisplayname,
-          requestedUsername: me.pending.requestedUsername,
-          code: me.pending.code,
-          expiresAt: me.pending.expiresAt,
-        }
-      : null;
-
-    LOG("dlive:verify:click", { seq, pending: pendingSnapshot });
-
-    setLoading(true);
-    setErr(null);
-
-    // Phases "humaines" (pour bien suivre ce qui se passe)
-    setPhase("backend_connect_chat");
-
-    setTimeout(() => {
-      LOG("dlive:verify:phase", {
-        seq,
-        phase: "backend_connect_chat (server)",
-        detail: "Le serveur va écouter le chat DLive via websocket.",
-      });
-      setPhase("backend_ready_to_read_code");
-      LOG("dlive:verify:phase", {
-        seq,
-        phase: "backend_ready_to_read_code (server)",
-        detail: "Le serveur attend de voir le code dans le chat.",
-      });
-    }, 50);
-
-    const t0 = performance.now();
-    try {
-      LOG("dlive:verify:start", { seq });
-
-      await dliveLinkVerify(token);
-
-      const ms = Math.round(performance.now() - t0);
-      LOG("dlive:verify:ok", { seq, ms });
-
-      setPhase("verified");
-      reload();
-    } catch (e: any) {
-      const ms = Math.round(performance.now() - t0);
-      const msg = String(e?.message || "ERROR");
-
-      setErr(msg);
-      setPhase("error_verify");
-
-      LOG("dlive:verify:err", {
-        seq,
-        ms,
-        msg,
-        hint:
-          msg === "TIMEOUT"
-            ? "Timeout côté client/serveur. Le serveur peut encore finir: clique Rafraîchir ou attend 2-3s puis Rafraîchir."
-            : undefined,
-        e,
-      });
-
-      try {
-        reload();
-      } catch {}
     } finally {
       setLoading(false);
     }
@@ -256,10 +297,10 @@ export function DliveLinkPanel() {
       const ms = Math.round(performance.now() - t0);
       LOG("dlive:toggle:ok", { seq, ms, v });
       setPhase("idle");
-      reload();
+      await reload();
     } catch (e: any) {
       const ms = Math.round(performance.now() - t0);
-      const msg = String(e?.message || "ERROR");
+      const msg = getErrMsg(e);
       setErr(msg);
       setPhase("error_toggle");
       LOG("dlive:toggle:err", { seq, ms, msg, e });
@@ -284,10 +325,11 @@ export function DliveLinkPanel() {
       const ms = Math.round(performance.now() - t0);
       LOG("dlive:unlink:ok", { seq, ms });
       setPhase("idle");
-      reload();
+      autoStartedForCodeRef.current = null;
+      await reload();
     } catch (e: any) {
       const ms = Math.round(performance.now() - t0);
-      const msg = String(e?.message || "ERROR");
+      const msg = getErrMsg(e);
       setErr(msg);
       setPhase("error_unlink");
       LOG("dlive:unlink:err", { seq, ms, msg, e });
@@ -358,7 +400,7 @@ export function DliveLinkPanel() {
             <input
               type="checkbox"
               checked={!!me.useLinked}
-              disabled={!linked || loading}
+              disabled={!linked || loading || verifying}
               onChange={(e) => onToggle(e.target.checked)}
             />
             <span style={{ fontWeight: 950 }}>Utiliser ma chaîne DLive</span>
@@ -371,6 +413,7 @@ export function DliveLinkPanel() {
             {me.useLinked ? `📡 Restream Dlive : ${me.linkedDisplayname}` : "🏷️ Uniquement LunaLive"}
           </Chip>
 
+          {verifying ? <Chip tone="pink">{`🎧 Vérif en cours… ${verifyLeftSec}s`}</Chip> : null}
           {phase ? <Chip tone="neutral">🧪 {phase}</Chip> : null}
         </div>
 
@@ -379,7 +422,7 @@ export function DliveLinkPanel() {
             <div className="mutedSmall">
               Liée : <b>{me.linkedDisplayname}</b>{" "}
               <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button className="btnGhostSmall" onClick={onUnlink} disabled={loading}>
+                <button className="btnGhostSmall" onClick={onUnlink} disabled={loading || verifying}>
                   ❌ Dissocier
                 </button>
               </div>
@@ -392,19 +435,21 @@ export function DliveLinkPanel() {
         <div style={{ marginTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 14 }}>
           {pending ? (
             <>
-              {/* ✅ Instructions améliorées (mêmes changements que StreamerApplyModal) */}
+              {/* ✅ NO BUTTON "Vérifier" — on écoute automatiquement (ou juste après "Générer") */}
               <div className="mutedSmall" style={{ lineHeight: 1.55 }}>
                 <div>
                   1) Ouvre le chat de <b>{pending.requestedDisplayname}</b> (sur DLive) et envoie ce code :
                 </div>
                 <div style={{ marginTop: 6, opacity: 0.92 }}>
-                  <b>Important :</b> envoie-le <b>depuis ton compte streamer</b>, et mets aussi le lien de la chaîne dans
-                  le message.
+                  <b>Important :</b> envoie-le <b>depuis ton compte streamer</b>
                   <br />
                   Exemple :{" "}
                   <span className="llMono">
-                    {pending.code} https://dlive.tv/{pending.requestedDisplayname}
+                    {pending.code} sur https://dlive.tv/{pending.requestedDisplayname}
                   </span>
+                </div>
+                <div style={{ marginTop: 8, opacity: 0.85 }}>
+                  2) Dès que tu l’envoies, LunaLive écoute pendant <b>2 minutes</b> et valide automatiquement.
                 </div>
               </div>
 
@@ -428,38 +473,39 @@ export function DliveLinkPanel() {
                     LOG("dlive:code:copy", { code: pending.code });
                     navigator.clipboard?.writeText(String(pending.code || ""));
                   }}
-                  disabled={loading}
                 >
                   📋 Copier
                 </button>
-              </div>
 
-              <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.85 }}>
-                Debug pending:{" "}
-                <span className="llMono" style={{ opacity: 0.95 }}>
-                  displayname={String(pending.requestedDisplayname || "")} • username=
-                  {String(pending.requestedUsername || "")} • expires={String(pending.expiresAt || "")}
-                </span>
-              </div>
-
-              <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85 }}>
-                2) Puis clique “Vérifier”.
-              </div>
-
-              <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button className="btnPrimarySmall" onClick={onVerify} disabled={loading}>
-                  ✅ Vérifier
-                </button>
                 <button
                   className="btnGhostSmall"
                   onClick={() => {
                     LOG("reload:manual:click");
                     reload();
                   }}
-                  disabled={loading}
+                  disabled={loading || verifying}
+                  title="Rafraîchir"
                 >
                   🔄 Rafraîchir
                 </button>
+              </div>
+
+              {verifying ? (
+                <div style={{ marginTop: 10, fontWeight: 950 }}>
+                  🎧 Écoute du chat en cours… <span className="llMono">{verifyLeftSec}s</span> restantes
+                </div>
+              ) : (
+                <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.88 }}>
+                  Si tu n’as pas eu le temps : régénère un code et renvoie-le.
+                </div>
+              )}
+
+              {/* Optionnel: debug pending (tu peux enlever si tu veux) */}
+              <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.65 }}>
+                <span className="llMono">
+                  pending: {String(pending.requestedDisplayname || "")} • {String(pending.requestedUsername || "")} •{" "}
+                  {String(pending.expiresAt || "")}
+                </span>
               </div>
             </>
           ) : (
@@ -479,10 +525,15 @@ export function DliveLinkPanel() {
                   }}
                   placeholder="LeCasinoze ou https://dlive.tv/LeCasinoze"
                   className="llInput"
-                  disabled={loading}
+                  disabled={loading || verifying}
                 />
-                <button className="btnPrimarySmall" onClick={onRequest} disabled={loading || channel.trim().length < 2}>
-                  🔗 Générer un code
+                <button
+                  className="btnPrimarySmall"
+                  onClick={onRequest}
+                  disabled={loading || verifying || channel.trim().length < 2}
+                  title="Génère un code et lance l'écoute 2 minutes"
+                >
+                  🔗 Générer un code + vérifier (2 min)
                 </button>
                 <button
                   className="btnGhostSmall"
@@ -490,11 +541,15 @@ export function DliveLinkPanel() {
                     LOG("reload:manual:click");
                     reload();
                   }}
-                  disabled={loading}
+                  disabled={loading || verifying}
                   title="Rafraîchir"
                 >
                   🔄
                 </button>
+              </div>
+
+              <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.9 }}>
+                Après clic : on affiche un code, tu l’envoies dans ton chat DLive, et LunaLive valide automatiquement.
               </div>
             </>
           )}

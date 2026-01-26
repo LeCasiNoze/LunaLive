@@ -449,13 +449,17 @@ function StreamerPageDesktop() {
 
     try {
       // ✅ endpoint attendu côté API (à brancher si pas encore fait)
-      const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/title`, {
+      const res = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/title`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ title: next }),
-      }).then((x) => x.json());
+      });
 
-      if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+      // ✅ supporte 204 / body vide / body non-JSON
+      const raw = await res.text();
+      const r: any = raw ? (() => { try { return JSON.parse(raw); } catch { return { ok: res.ok }; } })() : { ok: res.ok };
+
+      if (!res.ok || r?.ok === false) throw new Error(String(r?.error || "Erreur"));
 
       // mise à jour locale simple (sans dépendre du hook)
       (streamer as any).title = next;

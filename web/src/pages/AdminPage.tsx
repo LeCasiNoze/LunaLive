@@ -261,6 +261,9 @@ export default function AdminPage() {
   const [slotsLoading, setSlotsLoading] = React.useState(false);
   const [slotsRes, setSlotsRes] = React.useState<AdminSlotsUpdateResp | null>(null);
 
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const [detailsReq, setDetailsReq] = React.useState<any | null>(null);
+
   function goto(next: string) {
     setTab(next);
     saveTab(next);
@@ -1200,6 +1203,15 @@ export default function AdminPage() {
           ) : null}
         </div>
       </div>
+      <RequestDetailsModal
+        open={detailsOpen}
+        onClose={() => {
+          setDetailsOpen(false);
+          setDetailsReq(null);
+        }}
+        req={detailsReq}
+      />
+
     </main>
   );
 }
@@ -1407,6 +1419,195 @@ function AdminContentSection({ adminKey }: { adminKey: string }) {
           </div>
           <div style={{ padding: 12 }}>
             <div style={{ lineHeight: 1.6, opacity: 0.95 }} dangerouslySetInnerHTML={{ __html: html }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+function fmtFrDate(d: any) {
+  try {
+    const dt = new Date(d);
+    if (!dt || isNaN(dt.getTime())) return "—";
+    return dt.toLocaleString("fr-FR");
+  } catch {
+    return "—";
+  }
+}
+
+function getFirst<T = any>(obj: any, keys: string[]): T | null {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v as T;
+  }
+  return null;
+}
+
+function RequestDetailsModal({
+  open,
+  onClose,
+  req,
+}: {
+  open: boolean;
+  onClose: () => void;
+  req: any | null;
+}) {
+  if (!open || !req) return null;
+
+  const username = String(getFirst(req, ["username", "userUsername"]) ?? "—");
+  const status = String(getFirst(req, ["status"]) ?? "—");
+  const userId = getFirst(req, ["userId", "user_id", "uid"]);
+  const createdAt = getFirst(req, ["createdAt", "created_at", "requestedAt", "requested_at", "appliedAt"]);
+
+  const discord = getFirst(req, ["discord", "discordTag", "discord_id", "discordId"]);
+
+  // DLive (selon tes champs actuels possibles)
+  const dliveDisplayname = getFirst(req, ["dliveDisplayname", "dlive_displayname", "linkedDisplayname", "dliveLinkedDisplayname"]);
+  const channelUrl =
+    getFirst(req, ["channelUrl", "channel_url", "dliveUrl", "dlive_url"]) ||
+    (dliveDisplayname ? `https://dlive.tv/${String(dliveDisplayname).replace(/^@/, "")}` : null);
+
+  // Follow count (si backend l’envoie)
+  const dliveFollowers =
+    getFirst<number>(req, ["dliveFollowers", "dlive_followers", "followers", "followersCount", "followsCount", "dliveFollowersCount"]) ?? null;
+
+  const tone =
+    status === "pending" ? "warn" : status === "approved" ? "good" : status === "rejected" ? "bad" : "neutral";
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.58)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 9999,
+        padding: 14,
+      }}
+    >
+      <div
+        style={{
+          width: "min(720px, 96vw)",
+          borderRadius: 20,
+          border: "1px solid rgba(255,255,255,0.12)",
+          background:
+            "radial-gradient(900px 320px at 20% 0%, rgba(140,90,255,0.28), rgba(0,0,0,0) 60%), radial-gradient(700px 260px at 85% 20%, rgba(56,189,248,0.18), rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.18))",
+          boxShadow: "0 28px 90px rgba(0,0,0,0.45)",
+          backdropFilter: "blur(12px)",
+          padding: 14,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ fontWeight: 1100, letterSpacing: -0.2, fontSize: 16 }}>🔎 Détails demande streamer</div>
+            {/* Pill existe déjà dans ton fichier */}
+            <Pill tone={tone as any}>
+              status: <b>{status}</b>
+            </Pill>
+          </div>
+
+          <button className="btnGhost" onClick={onClose} type="button">
+            ✖
+          </button>
+        </div>
+
+        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+          <div
+            style={{
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(0,0,0,0.14)",
+              padding: 12,
+              display: "grid",
+              gap: 6,
+            }}
+          >
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ fontWeight: 1000, fontSize: 15 }}>{username}</div>
+              <div className="mutedSmall" style={{ opacity: 0.85 }}>
+                {userId ? `userId ${userId}` : null}
+              </div>
+            </div>
+
+            <div className="mutedSmall" style={{ opacity: 0.9 }}>
+              📅 Demandé le : <b>{fmtFrDate(createdAt)}</b>
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(0,0,0,0.14)",
+              padding: 12,
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            <div style={{ fontWeight: 1000 }}>📞 Contact</div>
+
+            <div className="mutedSmall" style={{ opacity: 0.95, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div>
+                Discord : <b>{discord ? String(discord) : "—"}</b>
+              </div>
+
+              <div style={{ flex: 1 }} />
+
+              <button
+                className="btnGhostSmall"
+                type="button"
+                disabled={!discord}
+                onClick={() => navigator.clipboard?.writeText(String(discord || ""))}
+              >
+                📋 Copier
+              </button>
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(0,0,0,0.14)",
+              padding: 12,
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            <div style={{ fontWeight: 1000 }}>🎥 DLive</div>
+
+            <div className="mutedSmall" style={{ opacity: 0.95, display: "grid", gap: 6 }}>
+              <div>
+                Chaîne :{" "}
+                {channelUrl ? (
+                  <a href={String(channelUrl)} target="_blank" rel="noreferrer" style={{ fontWeight: 950 }}>
+                    {dliveDisplayname ? String(dliveDisplayname) : String(channelUrl)}
+                  </a>
+                ) : (
+                  <b>—</b>
+                )}
+              </div>
+
+              <div>
+                Followers : <b>{dliveFollowers !== null ? String(dliveFollowers) : "—"}</b>
+              </div>
+
+              <div className="mutedSmall" style={{ opacity: 0.8 }}>
+                (Si “Followers” est à —, il faut juste renvoyer le champ côté API adminListRequests.)
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+            <button className="btnSecondary" type="button" onClick={onClose}>
+              Fermer
+            </button>
           </div>
         </div>
       </div>
