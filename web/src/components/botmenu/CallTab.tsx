@@ -57,6 +57,8 @@ export function CallTab({
   // ✅ Queue scroll (focus sur les plus anciens)
   const queueListRef = React.useRef<HTMLDivElement | null>(null);
   const prevCallsLenRef = React.useRef<number>(0);
+  const inFlightRef = React.useRef(false);
+  const lastSigRef = React.useRef<string>("");
 
   // ✅ Toujours rester en haut (plus anciens) quand la liste change
   React.useEffect(() => {
@@ -144,6 +146,9 @@ export function CallTab({
   // ✅ IMPORTANT: queue visible par tout le monde
   // -> on tente l'appel sans token si pas connecté (header absent)
   async function loadQueue() {
+    if (inFlightRef.current) return; // évite les fetchs qui se chevauchent
+    inFlightRef.current = true;
+
     setCallsLoading(true);
     try {
       const headers: Record<string, string> = {};
@@ -154,12 +159,21 @@ export function CallTab({
       });
 
       const j = await r.json().catch(() => ({}));
-      if (j?.ok) setCalls(j.items || []);
-      else setCalls([]);
+      if (!j?.ok) return; // ✅ on garde la liste actuelle
+
+      const next: CallItem[] = j.items || [];
+
+      // ✅ signature légère pour éviter un "clignotement" si rien ne change
+      const sig = next.map((c) => `${c.id}:${c.pos}`).join("|");
+      if (sig !== lastSigRef.current) {
+        lastSigRef.current = sig;
+        setCalls(next);
+      }
     } catch {
-      setCalls([]);
+      // ✅ silence + on garde la liste actuelle
     } finally {
       setCallsLoading(false);
+      inFlightRef.current = false;
     }
   }
 
@@ -547,11 +561,16 @@ export function CallTab({
           </div>
         </div>
 
+        {/* ✅ petit indicateur discret, sans faire disparaître la liste */}
         {callsLoading ? (
-          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Chargement…</div>
-        ) : !calls.length ? (
+          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.6, fontWeight: 800 }}>
+            Mise à jour…
+          </div>
+        ) : null}
+
+        {!calls.length ? (
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Aucun call.</div>
-               ) : (
+        ) : (
           <div
             ref={queueListRef}
             style={{
@@ -559,9 +578,7 @@ export function CallTab({
               display: "flex",
               flexDirection: "column",
               gap: 8,
-
-              // ✅ Scroll seulement si > 3
-              maxHeight: calls.length > 3 ? 3 * 68 + 2 * 8 : undefined, // ~3 items visibles
+              maxHeight: calls.length > 3 ? 3 * 68 + 2 * 8 : undefined,
               overflowY: calls.length > 3 ? "auto" : "visible",
               paddingRight: calls.length > 3 ? 4 : 0,
             }}
