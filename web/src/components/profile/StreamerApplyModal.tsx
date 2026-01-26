@@ -1,6 +1,6 @@
 // web/src/components/profile/StreamerApplyModal.tsx
 import * as React from "react";
-import { dliveLinkMe, dliveLinkRequest, dliveLinkVerify, type ApiDliveLinkMe } from "../../lib/api";
+import { dliveLinkMe, dliveLinkRequest, dliveLinkVerify } from "../../lib/api";
 
 export type StreamerApplyPayload = {
   // requis
@@ -10,7 +10,7 @@ export type StreamerApplyPayload = {
   hasChannel: boolean;
   channelUrl: string;
 
-  // ✅ NEW (optionnel) : utile si tu veux logger/traiter côté backend plus tard
+  // ✅ NEW (optionnel)
   hasDlive?: boolean;
   dliveDisplayname?: string | null;
 
@@ -56,21 +56,16 @@ function Chip({
 function normalizeChannelUrl(displayname: string | null | undefined) {
   const dn = String(displayname ?? "").trim();
   if (!dn) return "";
-  // on ne prend que le slug “propre”
   const slug = dn.replace(/^https?:\/\/dlive\.tv\//i, "").replace(/^@/, "").trim();
   return slug ? `https://dlive.tv/${slug}` : "";
 }
 
-function nowIso() {
-  try {
-    return new Date().toISOString();
-  } catch {
-    return String(Date.now());
-  }
-}
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
+/**
+ * Petit parse “safe” pour extraire un message lisible
+ */
+function getErrMsg(e: any) {
+  const msg = String(e?.message || e?.error || "ERROR");
+  return msg;
 }
 
 export function StreamerApplyModal({
@@ -86,6 +81,23 @@ export function StreamerApplyModal({
   disabled?: boolean;
   onSubmit: (payload: StreamerApplyPayload) => Promise<void> | void;
 }) {
+  // ─────────────────────────────────────────────
+  // Debug logger (public console)
+  // ─────────────────────────────────────────────
+  const instRef = React.useRef<string>(Math.random().toString(16).slice(2, 8));
+  const seqRef = React.useRef<number>(0);
+  const LOG = React.useCallback((event: string, data?: any) => {
+    try {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[StreamerApplyModal:${instRef.current}]`,
+        new Date().toISOString(),
+        event,
+        data ?? ""
+      );
+    } catch {}
+  }, []);
+
   // form
   const [discord, setDiscord] = React.useState("");
   const [rulesAccepted, setRulesAccepted] = React.useState(false);
@@ -94,76 +106,126 @@ export function StreamerApplyModal({
   const [hasDlive, setHasDlive] = React.useState(false);
 
   // dlive link state
-  const [me, setMe] = React.useState<ApiDliveLinkMe | null>(null);
+  // ⚠️ IMPORTANT: on garde `any` ici pour éviter les erreurs TS si l’API renvoie des champs supplémentaires
+  // (linkedUsername / pending.requestedUsername etc.).
+  const [me, setMe] = React.useState<any>(null);
+
   const [channel, setChannel] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
   const [submitErr, setSubmitErr] = React.useState<string | null>(null);
 
+  // derived from `me`
   const linked = !!me?.linkedDisplayname;
   const pending = me?.pending;
 
-  // ----- DEBUG / LOGS
-  const reqSeqRef = React.useRef(0);
-  const mountIdRef = React.useRef(Math.random().toString(16).slice(2, 8));
-  function log(...args: any[]) {
-    // logs publics navigateur (on s’en fou)
-    // eslint-disable-next-line no-console
-    console.log(`[StreamerApplyModal:${mountIdRef.current}]`, nowIso(), ...args);
-  }
-  function warn(...args: any[]) {
-    // eslint-disable-next-line no-console
-    console.warn(`[StreamerApplyModal:${mountIdRef.current}]`, nowIso(), ...args);
-  }
-
+  // ─────────────────────────────────────────────
+  // Reload helper (with logs)
+  // ─────────────────────────────────────────────
   const reload = React.useCallback(async () => {
-    const seq = ++reqSeqRef.current;
+    const seq = ++seqRef.current;
+    const t0 = performance.now();
     setErr(null);
 
-    log("reload:start", { seq, hasDlive, open });
-    const t0 = performance.now();
+    LOG("reload:start", { seq, hasDlive, open });
+
     try {
-      const r = await dliveLinkMe(token);
+      const data: any = await dliveLinkMe(token);
       const ms = Math.round(performance.now() - t0);
 
-      log("reload:ok", {
+      setMe(data);
+
+      LOG("reload:ok", {
         seq,
         ms,
-        ok: !!(r as any)?.ok,
-        linkedDisplayname: (r as any)?.linkedDisplayname ?? null,
-        useLinked: (r as any)?.useLinked ?? null,
-        pending: (r as any)?.pending
-          ? {
-              requestedDisplayname: (r as any)?.pending?.requestedDisplayname,
-              requestedUsername: (r as any)?.pending?.requestedUsername,
-              code: (r as any)?.pending?.code,
-              expiresAt: (r as any)?.pending?.expiresAt,
-            }
-          : null,
+        ok: !!data?.ok,
+        linkedDisplayname: data?.linkedDisplayname ?? null,
+        useLinked: !!data?.useLinked,
+        pending: !!data?.pending,
+        pendingRequestedDisplayname: data?.pending?.requestedDisplayname ?? null,
+        pendingRequestedUsername: data?.pending?.requestedUsername ?? null,
       });
-
-      setMe(r);
     } catch (e: any) {
       const ms = Math.round(performance.now() - t0);
-      const msg = String(e?.message || "ERROR");
-      warn("reload:err", { seq, ms, msg, e });
+      const msg = getErrMsg(e);
       setErr(msg);
+      setMe(null);
+      LOG("reload:err", { seq, ms, msg, e });
     }
-  }, [token, hasDlive, open]);
+  }, [LOG, hasDlive, open, token]);
+
+  // ─────────────────────────────────────────────
+  // Auto poll (to fix “timeout but actually verified” UX)
+  // ─────────────────────────────────────────────
+  const pollTimerRef = React.useRef<any>(null);
+  const stopPoll = React.useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+      LOG("poll:stop");
+    }
+  }, [LOG]);
+
+  const startPollForLinked = React.useCallback(
+    (opts?: { maxMs?: number; everyMs?: number; reason?: string }) => {
+      stopPoll();
+
+      const maxMs = Math.max(4000, Number(opts?.maxMs ?? 25000));
+      const everyMs = Math.max(600, Number(opts?.everyMs ?? 1500));
+      const reason = String(opts?.reason ?? "unknown");
+
+      const startedAt = Date.now();
+      LOG("poll:start", { maxMs, everyMs, reason });
+
+      pollTimerRef.current = setInterval(async () => {
+        const elapsed = Date.now() - startedAt;
+        if (elapsed > maxMs) {
+          LOG("poll:timeout", { elapsed, maxMs });
+          stopPoll();
+          return;
+        }
+
+        try {
+          const data: any = await dliveLinkMe(token);
+          setMe(data);
+
+          const isLinked = !!data?.linkedDisplayname;
+          const isPending = !!data?.pending;
+
+          LOG("poll:tick", {
+            elapsed,
+            isLinked,
+            isPending,
+            linkedDisplayname: data?.linkedDisplayname ?? null,
+          });
+
+          if (isLinked && !isPending) {
+            LOG("poll:done", { elapsed, linkedDisplayname: data?.linkedDisplayname });
+            stopPoll();
+          }
+        } catch (e: any) {
+          LOG("poll:err", { elapsed, msg: getErrMsg(e) });
+          // on continue à poll, c’est du debug/UX
+        }
+      }, everyMs);
+    },
+    [LOG, stopPoll, token]
+  );
 
   React.useEffect(() => {
-    log("mount");
+    LOG("mount");
     return () => {
-      log("unmount");
+      stopPoll();
+      LOG("unmount");
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [LOG, stopPoll]);
 
+  // reset on open
   React.useEffect(() => {
     if (!open) return;
 
-    log("open:reset-form");
-    // reset form on open
+    LOG("open:reset-form");
+
     setDiscord("");
     setRulesAccepted(false);
 
@@ -173,132 +235,142 @@ export function StreamerApplyModal({
     setErr(null);
     setSubmitErr(null);
     setLoading(false);
-  }, [open]);
 
+    stopPoll();
+  }, [open, LOG, stopPoll]);
+
+  // when user toggles hasDlive -> reload
   React.useEffect(() => {
     if (!open) return;
     if (!hasDlive) {
-      log("hasDlive:false (no reload)");
+      LOG("hasDlive:false (no reload)");
+      stopPoll();
       return;
     }
-    log("hasDlive:true -> reload");
+    LOG("hasDlive:true -> reload");
     reload();
-  }, [open, hasDlive, reload]);
+  }, [open, hasDlive, reload, LOG, stopPoll]);
 
-  // ✅ debug: log state changes (useful pour comprendre)
+  // quick state snapshot logs (useful)
   React.useEffect(() => {
-    if (!open) return;
-    log("state:update", {
+    LOG("state:update", {
       hasDlive,
       loading,
-      linked,
-      pending: pending ? true : false,
+      linked: !!linked,
+      pending: !!pending,
       linkedDisplayname: me?.linkedDisplayname ?? null,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, hasDlive, loading, linked, !!pending, me?.linkedDisplayname]);
+  }, [hasDlive, loading, linked, pending, me?.linkedDisplayname]);
 
   async function onRequest() {
-    const seq = ++reqSeqRef.current;
+    const seq = ++seqRef.current;
+
     setLoading(true);
     setErr(null);
 
-    const input = String(channel || "").trim();
-    log("dlive:request:start", { seq, input });
+    LOG("dlive:request:start", { seq, input: channel });
 
     const t0 = performance.now();
     try {
-      await dliveLinkRequest(token, input);
-      log("dlive:request:ok", { seq, ms: Math.round(performance.now() - t0) });
+      await dliveLinkRequest(token, channel);
+      const ms = Math.round(performance.now() - t0);
+      LOG("dlive:request:ok", { seq, ms });
 
-      // ✅ prime verify (comme ton DliveLinkPanel) + LOGS
-      // ⚠️ ici c’est justement ce qui peut "prendre du temps" si le verify attend le chat.
-      // On le garde pour debug; on log chaque étape.
-      log("dlive:primeVerify:begin", { seq, note: "tentative verify immédiate après request (peut échouer si code pas envoyé)" });
+      // ✅ prime verify (peut timeout / échouer — on s’en fout, mais on log)
       const t1 = performance.now();
+      LOG("dlive:primeVerify:begin", {
+        seq,
+        note: "tentative verify immédiate après request (peut échouer si code pas encore envoyé)",
+      });
+
       try {
-        // Important: ce call côté backend peut "attendre" le code dans le chat.
-        log("dlive:primeVerify:waiting-chat", {
+        LOG("dlive:primeVerify:waiting-chat", {
           seq,
           whatToDo: "Envoie le code dans le chat DLive puis ce call devrait passer",
         });
-
         await dliveLinkVerify(token);
-
-        log("dlive:primeVerify:ok", { seq, ms: Math.round(performance.now() - t1) });
+        LOG("dlive:primeVerify:ok", { seq, ms: Math.round(performance.now() - t1) });
       } catch (e: any) {
-        warn("dlive:primeVerify:err (ignored)", { seq, ms: Math.round(performance.now() - t1), msg: String(e?.message || "ERROR"), e });
-        // ignore
+        LOG("dlive:primeVerify:err (ignored)", {
+          seq,
+          ms: Math.round(performance.now() - t1),
+          msg: getErrMsg(e),
+          e,
+        });
+
+        // UX: si c’est un TIMEOUT, on poll pour voir si le serveur finit en retard
+        if (String(getErrMsg(e)).toUpperCase().includes("TIMEOUT")) {
+          startPollForLinked({ reason: "primeVerify-timeout", maxMs: 25000, everyMs: 1500 });
+        }
       }
 
       await reload();
-      log("dlive:request:done", { seq });
+      LOG("dlive:request:done", { seq });
     } catch (e: any) {
       const ms = Math.round(performance.now() - t0);
-      const msg = String(e?.message || "ERROR");
-      warn("dlive:request:err", { seq, ms, msg, e });
+      const msg = getErrMsg(e);
       setErr(msg);
+      LOG("dlive:request:err", { seq, ms, msg, e });
     } finally {
       setLoading(false);
     }
   }
 
   async function onVerify() {
-    const seq = ++reqSeqRef.current;
+    const seq = ++seqRef.current;
+
     setLoading(true);
     setErr(null);
 
-    // On log "comme si" on se connectait au chat, même si la connexion est côté backend.
-    // Ces logs te donnent les timestamps et aident à savoir si le navigateur "attend" trop longtemps.
-    log("dlive:verify:click", {
-      seq,
-      pending: pending
-        ? {
-            requestedDisplayname: (pending as any)?.requestedDisplayname,
-            requestedUsername: (pending as any)?.requestedUsername,
-            code: (pending as any)?.code,
-            expiresAt: (pending as any)?.expiresAt,
-          }
-        : null,
-    });
-
-    log("dlive:verify:phase", { seq, phase: "backend_connect_chat (server)", detail: "Le serveur va écouter le chat DLive via websocket." });
-    await sleep(50);
-    log("dlive:verify:phase", { seq, phase: "backend_ready_to_read_code (server)", detail: "Le serveur attend de voir le code dans le chat." });
+    LOG("dlive:verify:click", { seq, pending });
 
     const t0 = performance.now();
     try {
-      log("dlive:verify:waiting", { seq, note: "Appel API en cours... si timeout navigateur, le serveur peut quand même finir." });
+      LOG("dlive:verify:phase", {
+        seq,
+        phase: "backend_connect_chat (server)",
+        detail: "Le serveur va écouter le chat DLive via websocket.",
+      });
+      LOG("dlive:verify:phase", {
+        seq,
+        phase: "backend_ready_to_read_code (server)",
+        detail: "Le serveur attend de voir le code dans le chat.",
+      });
+      LOG("dlive:verify:waiting", {
+        seq,
+        note: "Appel API en cours... si timeout navigateur, le serveur peut quand même finir.",
+      });
 
       await dliveLinkVerify(token);
 
-      log("dlive:verify:seen_code", { seq, ms: Math.round(performance.now() - t0), detail: "✅ Le serveur a vu le code dans le chat." });
-      log("dlive:verify:linked", { seq, detail: "✅ Le serveur a enregistré le lien en DB (streamers.dlive_link_*)" });
+      const ms = Math.round(performance.now() - t0);
+      LOG("dlive:verify:ok", { seq, ms });
 
+      stopPoll();
       await reload();
-      log("dlive:verify:done", { seq, linkedAfter: true });
     } catch (e: any) {
       const ms = Math.round(performance.now() - t0);
-      const msg = String(e?.message || "ERROR");
+      const msg = getErrMsg(e);
 
-      warn("dlive:verify:err", {
+      LOG("dlive:verify:err", {
         seq,
         ms,
         msg,
         hint:
-          "Si tu refresh et que c’est vérifié, c’est probablement un timeout côté navigateur alors que le serveur a fini.",
+          "Si tu refresh et que c’est vérifié, c’est probable: timeout côté navigateur alors que le serveur a fini.",
+        e,
       });
 
       setErr(msg);
 
-      // petit reload derrière pour voir si le serveur a quand même lié
-      try {
-        await reload();
-        log("dlive:verify:postErrReload", {
-          seq,
-          linkedNow: !!(me?.linkedDisplayname || (me as any)?.linkedDisplayname),
-        });
-      } catch {}
+      // ✅ Fix UX: au lieu de forcer l’utilisateur à refresh, on poll pour détecter si le serveur a fini.
+      if (String(msg).toUpperCase().includes("TIMEOUT")) {
+        startPollForLinked({ reason: "verify-timeout", maxMs: 35000, everyMs: 1500 });
+      }
+
+      await reload();
+      LOG("dlive:verify:postErrReload", { seq, linkedNow: !!me?.linkedDisplayname });
     } finally {
       setLoading(false);
     }
@@ -315,8 +387,12 @@ export function StreamerApplyModal({
     if (!canSubmit) return;
     setSubmitErr(null);
 
-    const seq = ++reqSeqRef.current;
-    log("submit:start", { seq, hasDlive, canSubmit });
+    LOG("submit:click", {
+      hasDlive,
+      linked,
+      pending: !!pending,
+      discord: discord.trim(),
+    });
 
     try {
       const url = hasDlive ? normalizeChannelUrl(me?.linkedDisplayname) : "";
@@ -329,15 +405,15 @@ export function StreamerApplyModal({
         rulesAccepted: true,
       };
 
-      log("submit:payload", { seq, payload });
+      LOG("submit:payload", payload);
 
       await Promise.resolve(onSubmit(payload));
-      log("submit:ok", { seq });
+      LOG("submit:ok");
       onClose();
     } catch (e: any) {
-      const msg = String(e?.message || "ERROR");
-      warn("submit:err", { seq, msg, e });
+      const msg = getErrMsg(e);
       setSubmitErr(msg);
+      LOG("submit:err", { msg, e });
     }
   }
 
@@ -401,14 +477,7 @@ export function StreamerApplyModal({
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
           <div style={{ fontWeight: 1100, letterSpacing: -0.2, fontSize: 18 }}>🎥 Devenir streamer LunaLive</div>
-          <button
-            className="btnGhost"
-            onClick={() => {
-              log("close:click");
-              onClose();
-            }}
-            disabled={loading}
-          >
+          <button className="btnGhost" onClick={onClose} disabled={loading}>
             ✖
           </button>
         </div>
@@ -452,10 +521,7 @@ export function StreamerApplyModal({
             <div style={{ fontWeight: 900 }}>Ton Discord (obligatoire)</div>
             <input
               value={discord}
-              onChange={(e) => {
-                setDiscord(e.target.value);
-                log("form:discord:change", { v: e.target.value });
-              }}
+              onChange={(e) => setDiscord(e.target.value)}
               placeholder="Ex: lucas / lucas#1234"
               className="llInput"
               disabled={loading}
@@ -468,8 +534,9 @@ export function StreamerApplyModal({
               type="checkbox"
               checked={hasDlive}
               onChange={(e) => {
-                setHasDlive(e.target.checked);
-                log("form:hasDlive:toggle", { v: e.target.checked });
+                const v = e.target.checked;
+                LOG("form:hasDlive:toggle", { v });
+                setHasDlive(v);
               }}
               disabled={loading}
             />
@@ -487,7 +554,7 @@ export function StreamerApplyModal({
 
               {!me?.ok ? (
                 <div className="mutedSmall" style={{ marginTop: 10 }}>
-                  Chargement… (logs dans la console)
+                  Chargement…
                 </div>
               ) : pending ? (
                 <>
@@ -512,7 +579,7 @@ export function StreamerApplyModal({
                     <button
                       className="btnGhostSmall"
                       onClick={() => {
-                        log("dlive:code:copy", { code: String(pending.code || "") });
+                        LOG("dlive:code:copy", { code: pending?.code });
                         navigator.clipboard?.writeText(String(pending.code || ""));
                       }}
                       disabled={loading}
@@ -532,7 +599,7 @@ export function StreamerApplyModal({
                     <button
                       className="btnGhostSmall"
                       onClick={() => {
-                        log("dlive:reload:click");
+                        LOG("dlive:refresh:click");
                         reload();
                       }}
                       disabled={loading}
@@ -552,20 +619,25 @@ export function StreamerApplyModal({
                     <input
                       value={channel}
                       onChange={(e) => {
-                        setChannel(e.target.value);
-                        log("dlive:channel:change", { v: e.target.value });
+                        const v = e.target.value;
+                        LOG("dlive:channel:change", { v });
+                        setChannel(v);
                       }}
                       placeholder="LeCasinoze ou https://dlive.tv/LeCasinoze"
                       className="llInput"
                       disabled={loading}
                     />
-                    <button className="btnPrimarySmall" onClick={onRequest} disabled={loading || channel.trim().length < 2}>
+                    <button
+                      className="btnPrimarySmall"
+                      onClick={onRequest}
+                      disabled={loading || channel.trim().length < 2}
+                    >
                       🔗 Générer un code
                     </button>
                     <button
                       className="btnGhostSmall"
                       onClick={() => {
-                        log("dlive:reload:click");
+                        LOG("dlive:reload:click");
                         reload();
                       }}
                       disabled={loading}
@@ -599,10 +671,7 @@ export function StreamerApplyModal({
             <input
               type="checkbox"
               checked={rulesAccepted}
-              onChange={(e) => {
-                setRulesAccepted(e.target.checked);
-                log("form:rulesAccepted:toggle", { v: e.target.checked });
-              }}
+              onChange={(e) => setRulesAccepted(e.target.checked)}
               disabled={loading}
             />
             J’ai lu et j’accepte le règlement.
@@ -610,14 +679,7 @@ export function StreamerApplyModal({
 
           {/* Actions */}
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-            <button
-              className="btnGhost"
-              onClick={() => {
-                log("cancel:click");
-                onClose();
-              }}
-              disabled={loading}
-            >
+            <button className="btnGhost" onClick={onClose} disabled={loading}>
               Annuler
             </button>
             <button className="btnPrimary" onClick={submit} disabled={!canSubmit}>

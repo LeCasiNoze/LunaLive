@@ -223,7 +223,7 @@ streamerDliveLinkRouter.post("/verify", requireAuth, async (req: AuthedReq, res)
   const wait = await waitForDliveChatCode({
     streamerUsername: row.requestedUsername,
     code: row.code,
-    timeoutMs: 25_000,
+    timeoutMs: 90_000,
   });
 
   if (!wait.ok) return res.status(400).json({ ok: false, error: wait.error });

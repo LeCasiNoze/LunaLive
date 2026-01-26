@@ -44,26 +44,90 @@ function Chip({
   );
 }
 
+function safeNowIso() {
+  try {
+    return new Date().toISOString();
+  } catch {
+    return String(Date.now());
+  }
+}
+
 export function DliveLinkPanel() {
   const { token } = useAuth();
+
+  // log prefix (stable)
+  const logIdRef = React.useRef<string>(
+    `DliveLinkPanel:${Math.random().toString(16).slice(2, 8)}`
+  );
+  const LOG = React.useCallback(
+    (event: string, data?: any) => {
+      // logs publics navigateur (on s'en fout)
+      try {
+        // eslint-disable-next-line no-console
+        console.log(`[${logIdRef.current}] ${safeNowIso()} ${event}`, data ?? "");
+      } catch {}
+    },
+    []
+  );
 
   const [me, setMe] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(false);
   const [channel, setChannel] = React.useState("");
   const [err, setErr] = React.useState<string | null>(null);
 
+  // debug phases for UX + logs
+  const [phase, setPhase] = React.useState<string | null>(null);
+
+  // sequence ids for logs
+  const seqRef = React.useRef(0);
+
   const reload = React.useCallback(() => {
+    const seq = ++seqRef.current;
+
     setErr(null);
 
     if (!token) {
       setMe(null);
+      LOG("reload:skip:no-token", { seq });
       return;
     }
 
+    LOG("reload:start", { seq });
+    const t0 = performance.now();
+
     dliveLinkMe(token)
-      .then(setMe)
-      .catch((e: any) => setErr(String(e?.message || "ERROR")));
-  }, [token]);
+      .then((data) => {
+        const ms = Math.round(performance.now() - t0);
+        setMe(data);
+        LOG("reload:ok", {
+          seq,
+          ms,
+          ok: !!data?.ok,
+          linkedDisplayname: data?.linkedDisplayname ?? null,
+          linkedUsername: data?.linkedUsername ?? null,
+          useLinked: !!data?.useLinked,
+          pending: data?.pending
+            ? {
+                requestedDisplayname: data.pending.requestedDisplayname,
+                requestedUsername: data.pending.requestedUsername,
+                code: data.pending.code,
+                expiresAt: data.pending.expiresAt,
+              }
+            : null,
+        });
+      })
+      .catch((e: any) => {
+        const ms = Math.round(performance.now() - t0);
+        setErr(String(e?.message || "ERROR"));
+        LOG("reload:err", { seq, ms, msg: String(e?.message || "ERROR"), e });
+      });
+  }, [token, LOG]);
+
+  React.useEffect(() => {
+    LOG("mount");
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   React.useEffect(() => {
     reload();
@@ -72,22 +136,36 @@ export function DliveLinkPanel() {
   async function onRequest() {
     if (!token) return;
 
+    const seq = ++seqRef.current;
+    const input = String(channel || "");
+
+    LOG("dlive:request:click", { seq, input });
+
     setLoading(true);
     setErr(null);
+    setPhase("requesting_code");
+
+    const t0 = performance.now();
     try {
+      LOG("dlive:request:start", { seq, input });
+
+      // ⚠️ IMPORTANT: on NE prime plus la vérif ici (ça bloquait 25s et flingue l'UX)
+      // On fait UNIQUEMENT request + reload pour afficher le code.
       await dliveLinkRequest(token, channel);
 
-      // ✅ SOUM SOUM: on "prime" la vérif immédiatement, comme si l'utilisateur avait cliqué sur Vérifier.
-      // L'appel peut échouer (normal si le code n'a pas encore été envoyé), donc on ignore l'erreur.
-      try {
-        await dliveLinkVerify(token);
-      } catch {
-        // ignore: on veut juste amorcer la fenêtre de vérif côté backend
-      }
+      const ms = Math.round(performance.now() - t0);
+      LOG("dlive:request:ok", { seq, ms });
 
+      setPhase("code_ready");
       reload();
+
+      LOG("dlive:request:done", { seq });
     } catch (e: any) {
-      setErr(String(e?.message || "ERROR"));
+      const ms = Math.round(performance.now() - t0);
+      const msg = String(e?.message || "ERROR");
+      setErr(msg);
+      setPhase("error_request");
+      LOG("dlive:request:err", { seq, ms, msg, e });
     } finally {
       setLoading(false);
     }
@@ -96,13 +174,73 @@ export function DliveLinkPanel() {
   async function onVerify() {
     if (!token) return;
 
+    const seq = ++seqRef.current;
+    const pendingSnapshot = me?.pending
+      ? {
+          requestedDisplayname: me.pending.requestedDisplayname,
+          requestedUsername: me.pending.requestedUsername,
+          code: me.pending.code,
+          expiresAt: me.pending.expiresAt,
+        }
+      : null;
+
+    LOG("dlive:verify:click", { seq, pending: pendingSnapshot });
+
     setLoading(true);
     setErr(null);
+
+    // Phases "humaines" (pour bien suivre ce qui se passe)
+    setPhase("backend_connect_chat");
+
+    // mini logs d'étapes côté front (on ne sait pas côté serveur, mais on trace l'intention)
+    setTimeout(() => {
+      LOG("dlive:verify:phase", {
+        seq,
+        phase: "backend_connect_chat (server)",
+        detail: "Le serveur va écouter le chat DLive via websocket.",
+      });
+      setPhase("backend_ready_to_read_code");
+      LOG("dlive:verify:phase", {
+        seq,
+        phase: "backend_ready_to_read_code (server)",
+        detail: "Le serveur attend de voir le code dans le chat.",
+      });
+    }, 50);
+
+    const t0 = performance.now();
     try {
+      LOG("dlive:verify:start", { seq });
+
       await dliveLinkVerify(token);
+
+      const ms = Math.round(performance.now() - t0);
+      LOG("dlive:verify:ok", { seq, ms });
+
+      setPhase("verified");
       reload();
     } catch (e: any) {
-      setErr(String(e?.message || "ERROR"));
+      const ms = Math.round(performance.now() - t0);
+      const msg = String(e?.message || "ERROR");
+
+      setErr(msg);
+      setPhase("error_verify");
+
+      // Log explicite du cas TIMEOUT
+      LOG("dlive:verify:err", {
+        seq,
+        ms,
+        msg,
+        hint:
+          msg === "TIMEOUT"
+            ? "Timeout côté client/serveur. Le serveur peut encore finir: clique Rafraîchir ou attend 2-3s puis Rafraîchir."
+            : undefined,
+        e,
+      });
+
+      // on reload quand même pour voir si ça s'est lié malgré l'erreur
+      try {
+        reload();
+      } catch {}
     } finally {
       setLoading(false);
     }
@@ -111,13 +249,26 @@ export function DliveLinkPanel() {
   async function onToggle(v: boolean) {
     if (!token) return;
 
+    const seq = ++seqRef.current;
+    LOG("dlive:toggle:click", { seq, v });
+
     setLoading(true);
     setErr(null);
+    setPhase("toggling");
+
+    const t0 = performance.now();
     try {
       await dliveLinkToggle(token, v);
+      const ms = Math.round(performance.now() - t0);
+      LOG("dlive:toggle:ok", { seq, ms, v });
+      setPhase("idle");
       reload();
     } catch (e: any) {
-      setErr(String(e?.message || "ERROR"));
+      const ms = Math.round(performance.now() - t0);
+      const msg = String(e?.message || "ERROR");
+      setErr(msg);
+      setPhase("error_toggle");
+      LOG("dlive:toggle:err", { seq, ms, msg, e });
     } finally {
       setLoading(false);
     }
@@ -126,13 +277,26 @@ export function DliveLinkPanel() {
   async function onUnlink() {
     if (!token) return;
 
+    const seq = ++seqRef.current;
+    LOG("dlive:unlink:click", { seq });
+
     setLoading(true);
     setErr(null);
+    setPhase("unlinking");
+
+    const t0 = performance.now();
     try {
       await dliveLinkUnlink(token);
+      const ms = Math.round(performance.now() - t0);
+      LOG("dlive:unlink:ok", { seq, ms });
+      setPhase("idle");
       reload();
     } catch (e: any) {
-      setErr(String(e?.message || "ERROR"));
+      const ms = Math.round(performance.now() - t0);
+      const msg = String(e?.message || "ERROR");
+      setErr(msg);
+      setPhase("error_unlink");
+      LOG("dlive:unlink:err", { seq, ms, msg, e });
     } finally {
       setLoading(false);
     }
@@ -212,6 +376,9 @@ export function DliveLinkPanel() {
           <Chip tone={me.useLinked ? "blue" : "neutral"}>
             {me.useLinked ? `📡 Restream Dlive : ${me.linkedDisplayname}` : "🏷️ Uniquement LunaLive"}
           </Chip>
+
+          {/* petit indicateur debug (optionnel) */}
+          {phase ? <Chip tone="neutral">🧪 {phase}</Chip> : null}
         </div>
 
         <div style={{ marginTop: 10 }}>
@@ -250,9 +417,24 @@ export function DliveLinkPanel() {
                   {pending.code}
                 </div>
 
-                <button className="btnGhostSmall" onClick={() => navigator.clipboard?.writeText(pending.code)}>
+                <button
+                  className="btnGhostSmall"
+                  onClick={() => {
+                    LOG("dlive:code:copy", { code: pending.code });
+                    navigator.clipboard?.writeText(pending.code);
+                  }}
+                >
                   📋 Copier
                 </button>
+              </div>
+
+              <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.85 }}>
+                Debug pending:{" "}
+                <span className="llMono" style={{ opacity: 0.95 }}>
+                  displayname={String(pending.requestedDisplayname || "")} • username=
+                  {String(pending.requestedUsername || "")} • expires=
+                  {String(pending.expiresAt || "")}
+                </span>
               </div>
 
               <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85 }}>
@@ -263,7 +445,14 @@ export function DliveLinkPanel() {
                 <button className="btnPrimarySmall" onClick={onVerify} disabled={loading}>
                   ✅ Vérifier
                 </button>
-                <button className="btnGhostSmall" onClick={reload} disabled={loading}>
+                <button
+                  className="btnGhostSmall"
+                  onClick={() => {
+                    LOG("reload:manual:click");
+                    reload();
+                  }}
+                  disabled={loading}
+                >
                   🔄 Rafraîchir
                 </button>
               </div>
@@ -278,13 +467,28 @@ export function DliveLinkPanel() {
               <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 <input
                   value={channel}
-                  onChange={(e) => setChannel(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setChannel(v);
+                    LOG("dlive:channel:change", { v });
+                  }}
                   placeholder="LeCasinoze ou https://dlive.tv/LeCasinoze"
                   className="llInput"
                   disabled={loading}
                 />
                 <button className="btnPrimarySmall" onClick={onRequest} disabled={loading || channel.trim().length < 2}>
                   🔗 Générer un code
+                </button>
+                <button
+                  className="btnGhostSmall"
+                  onClick={() => {
+                    LOG("reload:manual:click");
+                    reload();
+                  }}
+                  disabled={loading}
+                  title="Rafraîchir"
+                >
+                  🔄
                 </button>
               </div>
             </>

@@ -1020,11 +1020,15 @@ export async function buyShopCosmetic(token: string, kind: string, code: string)
 export type ApiDliveLinkMe = {
   ok: true;
   useLinked: boolean;
+
   linkedDisplayname: string | null;
+  linkedUsername?: string | null; // ✅ NEW: renvoyé par l’API
   linkedAt: string | null;
+
   pending: null | {
     id: number;
     requestedDisplayname: string;
+    requestedUsername?: string | null; // ✅ NEW: renvoyé par l’API
     code: string;
     createdAt: string;
     expiresAt: string;
