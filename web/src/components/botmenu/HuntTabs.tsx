@@ -339,9 +339,16 @@ export function HuntTabs({
   const currentFarm = (state as any)?.currentCall ?? null;
   const rawCurrentOpen = (state as any)?.currentOpenItem ?? (state as any)?.currentBonus ?? (state as any)?.currentOpen ?? null;
 
+  const allBonusesPaid =
+    opening &&
+    bonusDrops.length > 0 &&
+    bonusDrops.every((b: any) => b && b.payEur !== null && typeof b.payEur !== "undefined");
+
   const currentOpen =
     rawCurrentOpen ||
-    (opening ? bonusDrops.find((b: any) => b && (b.payEur === null || typeof b.payEur === "undefined")) || bonusDrops[0] || null : null);
+    (opening
+      ? bonusDrops.find((b: any) => b && (b.payEur === null || typeof b.payEur === "undefined")) || null
+      : null);
 
   const startRaw = getStartRaw(state);
   const hasStart = startRaw !== null && startRaw > 0;
@@ -351,6 +358,68 @@ export function HuntTabs({
     Number((state as any)?.callsCount) || asArr<any>((state as any)?.queue).filter((x) => !(Number(x?.betEur ?? 0) > 0)).length;
 
   const bonusCount = Number((state as any)?.bonusCount) || bonusDrops.length;
+
+  // ===== stats (comme HuntPage) =====
+  const totalBetAll = React.useMemo(
+    () => bonusDrops.reduce((s: number, b: any) => s + (Number(b?.betEur ?? 0) || 0), 0),
+    [bonusDrops]
+  );
+
+  const totalPayAll = React.useMemo(
+    () => bonusDrops.reduce((s: number, b: any) => s + (Number(b?.payEur) || 0), 0),
+    [bonusDrops]
+  );
+
+  // multi moyen des bonus : UNIQUEMENT bonus déjà ouverts (pay renseigné)
+  const openedBonuses = React.useMemo(
+    () => bonusDrops.filter((b: any) => b && b.payEur !== null && typeof b.payEur !== "undefined"),
+    [bonusDrops]
+  );
+
+  const totalPayOpened = React.useMemo(
+    () => openedBonuses.reduce((s: number, b: any) => s + (Number(b.payEur) || 0), 0),
+    [openedBonuses]
+  );
+
+  const profitOpened = React.useMemo(() => totalPayOpened - startEur, [totalPayOpened, startEur]);
+
+  const openedBetAll = React.useMemo(
+    () => openedBonuses.reduce((s: number, b: any) => s + (Number(b?.betEur ?? 0) || 0), 0),
+    [openedBonuses]
+  );
+
+  const openedPayAll = React.useMemo(
+    () => openedBonuses.reduce((s: number, b: any) => s + (Number(b?.payEur) || 0), 0),
+    [openedBonuses]
+  );
+
+  const avgBonusMulti = React.useMemo(
+    () => (openedBetAll > 0 ? openedPayAll / openedBetAll : 0),
+    [openedBetAll, openedPayAll]
+  );
+
+  // BE global (base) = start / totalBet
+  const beGlobal = React.useMemo(() => {
+    if (!(startEur > 0) || !(totalBetAll > 0)) return 0;
+    return startEur / totalBetAll;
+  }, [startEur, totalBetAll]);
+
+  // BE actuel (reste) = (start - totalPay) / remainingBet
+  const remainingBet = React.useMemo(
+    () => bonusDrops.filter((b: any) => b?.payEur === null || typeof b?.payEur === "undefined")
+      .reduce((s: number, b: any) => s + (Number(b?.betEur ?? 0) || 0), 0),
+    [bonusDrops]
+  );
+
+  const remainingToRecoup = React.useMemo(() => {
+    const left = (Number(startEur) || 0) - (Number(totalPayAll) || 0);
+    return left > 0 ? left : 0;
+  }, [startEur, totalPayAll]);
+
+  const beCurrent = React.useMemo(() => {
+    if (!(remainingToRecoup > 0) || !(remainingBet > 0)) return 0;
+    return remainingToRecoup / remainingBet;
+  }, [remainingToRecoup, remainingBet]);
 
   function mergeProviderCatalog(extra?: string[]) {
     const fromState = uniqStr(
@@ -1004,22 +1073,33 @@ async function doPass() {
       >
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
           <div>
-            <div className="muted" style={{ fontSize: 12 }}>
-              Start
-            </div>
+            <div className="muted" style={{ fontSize: 12 }}>Start</div>
             <div style={{ fontWeight: 950 }}>{fmtEur(startEur)}</div>
           </div>
+
           <div>
-            <div className="muted" style={{ fontSize: 12 }}>
-              Calls en cours
-            </div>
+            <div className="muted" style={{ fontSize: 12 }}>Calls en cours</div>
             <div style={{ fontWeight: 950 }}>{callsCount}</div>
           </div>
+
           <div>
-            <div className="muted" style={{ fontSize: 12 }}>
-              Bonus drops
-            </div>
+            <div className="muted" style={{ fontSize: 12 }}>Bonus drops</div>
             <div style={{ fontWeight: 950 }}>{bonusCount}</div>
+          </div>
+
+          <div>
+            <div className="muted" style={{ fontSize: 12 }}>BE actuel</div>
+            <div style={{ fontWeight: 950 }}>{`x${beCurrent.toFixed(2)}`}</div>
+          </div>
+
+          <div>
+            <div className="muted" style={{ fontSize: 12 }}>BE global</div>
+            <div style={{ fontWeight: 950 }}>{`x${beGlobal.toFixed(2)}`}</div>
+          </div>
+
+          <div>
+            <div className="muted" style={{ fontSize: 12 }}>Multi moyen bonus</div>
+            <div style={{ fontWeight: 950 }}>{`x${avgBonusMulti.toFixed(2)}`}</div>
           </div>
         </div>
 
@@ -1545,11 +1625,14 @@ async function doPass() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 950, fontSize: 14, lineHeight: 1.2 }}>
                   {currentFarm.slotName || "—"}
-                  {currentFarm.provider ? <span className="muted"> ({currentFarm.provider})</span> : null}
+                  {currentFarm.username ? <span className="muted"> — @{currentFarm.username}</span> : null}
                 </div>
-                <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                  call par @{currentFarm.username || "?"}
-                </div>
+
+                {currentFarm.provider ? (
+                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                    ({currentFarm.provider})
+                  </div>
+                ) : null}
 
                 {canModerate && askBet ? (
                   <div
@@ -1630,14 +1713,43 @@ async function doPass() {
               ) : null}
             </div>
           )
+        ) : allBonusesPaid ? (
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(0,0,0,0.10)",
+              display: "grid",
+              gap: 6,
+            }}
+          >
+            <div style={{ fontWeight: 950, fontSize: 14 }}>
+              {profitOpened > 0 ? "Fin du hunt — GG ✅" : profitOpened === 0 ? "Fin du hunt — break even 😅" : "Fin du hunt — unlucky 😭"}
+            </div>
+
+            <div className="muted" style={{ fontSize: 12 }}>
+              Profit : <b>{fmtEur(profitOpened)}</b>
+            </div>
+
+            <div className="muted" style={{ fontSize: 12 }}>
+              Total pay : <b>{fmtEur(totalPayOpened)}</b> • Start : <b>{fmtEur(startEur)}</b>
+            </div>
+          </div>
         ) : currentOpen ? (
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <Thumb url={currentOpen.imageUrl ?? currentOpen.image_url} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 950, fontSize: 14, lineHeight: 1.2 }}>
                 {currentOpen.slotName ?? currentOpen.name ?? "—"}
-                {currentOpen.provider ? <span className="muted"> ({currentOpen.provider})</span> : null}
+                {currentOpen.username ? <span className="muted"> — @{currentOpen.username}</span> : null}
               </div>
+
+              {currentOpen.provider ? (
+                <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                  ({currentOpen.provider})
+                </div>
+              ) : null}
               <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                 bet: <b>{fmtEur((currentOpen.betEur ?? currentOpen.bet) ?? 0)}</b>
               </div>
@@ -1722,8 +1834,14 @@ async function doPass() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 950, fontSize: 13, lineHeight: 1.2 }}>
                           #{idx + 1} — {b.slotName || "—"}
-                          {b.provider ? <span className="muted"> ({b.provider})</span> : null}
+                          {b.username ? <span className="muted"> — @{b.username}</span> : null}
                         </div>
+
+                        {b.provider ? (
+                          <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                            ({b.provider})
+                          </div>
+                        ) : null}
 
                         {!isEditing ? (
                           <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>

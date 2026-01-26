@@ -13,6 +13,7 @@ import {
 } from "../lib/api_profile";
 import { useIsMobile } from "../hooks/useIsMobile";
 import ProfilePageMobile from "./ProfilePage.mobile";
+import { StreamerApplyModal, type StreamerApplyPayload } from "../components/profile/StreamerApplyModal";
 
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
@@ -338,168 +339,6 @@ function MiniBarList({
 /* =========================
    🎥 Streamer Apply Modal
 ========================= */
-
-function StreamerApplyModal({
-  open,
-  onClose,
-  disabled,
-  onSubmit,
-}: {
-  open: boolean;
-  onClose: () => void;
-  token: string;
-  disabled?: boolean;
-  onSubmit: (contact: string) => Promise<void>;
-}) {
-  const [contact, setContact] = React.useState("");
-  const [accepted, setAccepted] = React.useState(false);
-  const [busy, setBusy] = React.useState(false);
-  const [hint, setHint] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!open) return;
-    setContact("");
-    setAccepted(false);
-    setBusy(false);
-    setHint(null);
-  }, [open]);
-
-  if (!open) return null;
-
-  async function submit() {
-    if (busy) return;
-    setHint(null);
-
-    const c = (contact || "").trim();
-    if (!accepted) return setHint("Tu dois accepter le règlement.");
-    if (!c) return setHint("Ajoute un contact (Discord ou Telegram) pour qu’on puisse te joindre.");
-
-    setBusy(true);
-    try {
-      await onSubmit(c);
-      setHint("Demande envoyée ✅");
-      onClose();
-    } catch (e: any) {
-      setHint(String(e?.message || "Erreur envoi demande"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.58)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 9999,
-        padding: 14,
-      }}
-    >
-      <div
-        style={{
-          width: "min(760px, 96vw)",
-          borderRadius: 24,
-          border: "1px solid rgba(255,255,255,0.12)",
-          background:
-            "radial-gradient(900px 320px at 20% 0%, rgba(140,90,255,0.32), rgba(0,0,0,0) 60%), radial-gradient(700px 260px at 85% 20%, rgba(255,90,180,0.20), rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.18))",
-          boxShadow: "0 28px 90px rgba(0,0,0,0.45)",
-          backdropFilter: "blur(12px)",
-          padding: 16,
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-          <div style={{ fontWeight: 1100, letterSpacing: -0.2, fontSize: 18 }}>🎥 Demande pour devenir streamer</div>
-          <button className="btnGhost" onClick={onClose}>
-            ✖
-          </button>
-        </div>
-
-        <div className="muted" style={{ marginTop: 10 }}>
-          Lis le règlement, ajoute un contact, puis envoie la demande. On te recontacte rapidement.
-        </div>
-
-        {/* Règlement */}
-        <div
-          style={{
-            marginTop: 12,
-            borderRadius: 18,
-            border: "1px solid rgba(255,255,255,0.10)",
-            background: "rgba(0,0,0,0.14)",
-            padding: 12,
-            maxHeight: 260,
-            overflow: "auto",
-            lineHeight: 1.6,
-          }}
-        >
-          <div style={{ fontWeight: 1100, marginBottom: 8 }}>📜 Règlement (résumé)</div>
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            <li>Respect total : pas de harcèlement, pas de drama toxique, pas de propos haineux.</li>
-            <li>Pas de scam / arnaques / liens douteux / demandes de money en DM.</li>
-            <li>Contenu casino : reste responsable, pas de promesses de gains, pas d’incitation agressive.</li>
-            <li>Pas d’usurpation d’identité, pas de multi-comptes pour contourner une décision.</li>
-            <li>Ton profil doit être clean (pseudo OK, idéalement un avatar).</li>
-            <li>En envoyant la demande, tu acceptes qu’un admin te contacte via le contact fourni.</li>
-          </ul>
-          <div className="muted" style={{ marginTop: 10, opacity: 0.95 }}>
-            (Tu peux mettre la version complète ici plus tard si tu veux.)
-          </div>
-        </div>
-
-        {/* Contact */}
-        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-          <div style={{ fontWeight: 1000 }}>📩 Contact</div>
-          <input
-            value={contact}
-            onChange={(e) => setContact(e.target.value)}
-            placeholder="Discord (ex: lucas#1234) ou Telegram (ex: @lucas)"
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.05)",
-              color: "inherit",
-              outline: "none",
-            }}
-          />
-          <div className="muted" style={{ fontSize: 13 }}>
-            On utilise ça uniquement pour te joindre au sujet de la demande.
-          </div>
-        </div>
-
-        {/* Accept */}
-        <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, fontWeight: 900 }}>
-          <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
-          J’ai lu et j’accepte le règlement.
-        </label>
-
-        {/* Actions */}
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 14 }}>
-          <button className="btnGhost" onClick={onClose} disabled={busy}>
-            Annuler
-          </button>
-          <button className="btnPrimary" onClick={submit} disabled={busy || disabled}>
-            {busy ? "…" : "✅ Envoyer la demande"}
-          </button>
-        </div>
-
-        {hint ? (
-          <div className="muted" style={{ marginTop: 10, opacity: 0.95 }}>
-            {hint}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
 
 function AccountSettingsModal({
   open,
@@ -895,15 +734,39 @@ function ProfilePageDesktop() {
     })();
   }, [token]);
 
-  async function onApplyWithContact(contact: string) {
-    if (!token) return;
-    setBusyApply(true);
+async function onApplyWithContact(payload: StreamerApplyPayload) {
+  if (!token) return;
+  setBusyApply(true);
 
+  try {
+    const discord = (payload.discord || "").trim();
+    const url = (payload.channelUrl || "").trim();
+
+    // ✅ pour garder l’info même si le backend ne stocke qu’un champ "contact" pour l’instant
+    const contactForBackend = url ? `Discord: ${discord} | Chaîne: ${url}` : `Discord: ${discord}`;
+
+    let r: any = null;
+
+    // 1) tentative avec payload enrichi (si backend accepte des champs en plus)
     try {
-      // ✅ tentative "nouvelle" : POST /me/streamer-request avec { contact }
-      // (si ton backend ne l'a pas encore, on fallback sur applyStreamer(token) qui existait déjà)
-      let r: any = null;
-
+      const resp = await fetch(`${BASE}/me/streamer-request`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          contact: contactForBackend,
+          discord,
+          channelUrl: url || null,
+          hasChannel: !!payload.hasChannel,
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || (data && data.ok === false)) throw new Error(data?.error || `HTTP ${resp.status}`);
+      r = data;
+    } catch {
+      // 2) retry minimal (au cas où le backend refuse les champs extra)
       try {
         const resp = await fetch(`${BASE}/me/streamer-request`, {
           method: "POST",
@@ -911,24 +774,24 @@ function ProfilePageDesktop() {
             "content-type": "application/json",
             authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ contact }),
+          body: JSON.stringify({ contact: contactForBackend }),
         });
         const data = await resp.json().catch(() => ({}));
-        if (!resp.ok || (data && data.ok === false)) {
-          throw new Error(data?.error || `HTTP ${resp.status}`);
-        }
+        if (!resp.ok || (data && data.ok === false)) throw new Error(data?.error || `HTTP ${resp.status}`);
         r = data;
       } catch {
-        // ✅ fallback : ancienne requête (celle du bouton actuel)
+        // 3) fallback legacy
         r = await applyStreamer(token);
       }
-
-      setReqStatus(r?.request?.status ?? "pending");
-      await refreshMe();
-    } finally {
-      setBusyApply(false);
     }
+
+    setReqStatus(r?.request?.status ?? "pending");
+    await refreshMe();
+  } finally {
+    setBusyApply(false);
   }
+}
+
 
   // Load following when Social tab opens or query changes
   React.useEffect(() => {
@@ -1860,7 +1723,6 @@ function ProfilePageDesktop() {
           onSubmit={onApplyWithContact}
         />
       ) : null}
-
     </main>
   );
 }

@@ -247,9 +247,28 @@ export function CallTab({
 
   // ✅ auto load queue quand on ouvre CallTab (même sans token)
   React.useEffect(() => {
-    void loadQueue();
+    let alive = true;
+
+    const tick = async () => {
+      if (!alive) return;
+      // optionnel: évite de spammer quand l’onglet est pas visible
+      if (document.visibilityState !== "visible") return;
+      await loadQueue();
+    };
+
+    // load immédiat
+    void tick();
+
+    // refresh auto toutes les 2s (ajuste: 1500–4000ms selon ce que tu veux)
+    const t = window.setInterval(() => void tick(), 2000);
+
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, token]);
+  }, [slug]); // (pas besoin de token ici)
+
 
   // ✅ SYNC: si Hunt valide un bonus (ou pass), on refresh la queue sans action manuelle
   React.useEffect(() => {
@@ -572,10 +591,13 @@ export function CallTab({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {c.pos}. {c.slotName}
-                      {c.provider ? <span style={{ opacity: 0.75, fontWeight: 800 }}> — {c.provider}</span> : null}
+                    {c.pos}. {c.slotName} <span style={{ opacity: 0.85, fontWeight: 950 }}>— @{c.username}</span>
                     </div>
-                    <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>@ {c.username}</div>
+                    {c.provider ? (
+                      <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
+                        ({c.provider})
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 

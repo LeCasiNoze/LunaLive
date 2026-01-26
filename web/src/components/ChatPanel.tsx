@@ -634,6 +634,7 @@ function EmotePicker(props: {
           background: "rgba(0,0,0,0.25)",
           color: "white",
           outline: "none",
+          fontSize: 16,
           marginBottom: 10,
         }}
       />
@@ -2631,6 +2632,7 @@ function openChatPopup() {
               border: "1px solid rgba(255,255,255,0.08)",
               background: "rgba(0,0,0,0.25)",
               color: "white",
+              fontSize: 16, 
               resize: "none",
               minHeight: 44,
               maxHeight: 110,

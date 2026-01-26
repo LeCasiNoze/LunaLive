@@ -61,6 +61,14 @@ async function ensureCallsSchema(pool: Pool) {
     DO $$
     BEGIN
       IF to_regclass('public.calls_queue') IS NOT NULL THEN
+        
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='calls_queue' AND column_name='is_bonus'
+        ) THEN
+          ALTER TABLE calls_queue ADD COLUMN is_bonus BOOLEAN NOT NULL DEFAULT FALSE;
+        END IF;
+
         IF NOT EXISTS (
           SELECT 1 FROM information_schema.columns
           WHERE table_schema='public' AND table_name='calls_queue' AND column_name='bet'
@@ -201,10 +209,20 @@ export async function isProviderBanned(pool: Pool, streamerId: number, provider:
 }
 
 export async function countUserCalls(pool: Pool, streamerId: number, userId: number): Promise<number> {
-  const r = await pool.query(`SELECT COUNT(*)::int AS n FROM calls_queue WHERE streamer_id=$1 AND user_id=$2`, [
-    streamerId,
-    userId,
-  ]);
+  await ensureCallsSchema(pool);
+
+  const r = await pool.query(
+    `
+    SELECT COUNT(*)::int AS n
+    FROM calls_queue
+    WHERE streamer_id=$1
+      AND user_id=$2
+      AND COALESCE(is_bonus,FALSE)=FALSE
+      AND (bet IS NULL OR bet <= 0)
+    `,
+    [streamerId, userId]
+  );
+
   return Number(r.rows?.[0]?.n ?? 0);
 }
 
@@ -329,8 +347,8 @@ export async function addCall(
 
   const ins = await client.query(
     `
-    INSERT INTO calls_queue (streamer_id, slot_name, slot_key, provider, user_id, username, pos, bet, pay, bounty)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NULL)
+    INSERT INTO calls_queue (streamer_id, slot_name, slot_key, provider, user_id, username, pos, bet, pay, bounty, is_bonus)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NULL,FALSE)
     RETURNING id, created_at AS "createdAt"
     `,
     [streamerId, slotName, slotKey, providerLower, userId, username, nextPos]
