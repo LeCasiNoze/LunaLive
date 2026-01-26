@@ -14,13 +14,67 @@ streamerRouter.post(
   a(async (req, res) => {
     const userId = req.user!.id;
 
+    const discord = String(req.body?.discord ?? "").trim() || null;
+    const channelUrl = String(req.body?.channelUrl ?? req.body?.channel_url ?? "").trim() || null;
+    const dliveDisplayname =
+      String(req.body?.dliveDisplayname ?? req.body?.dlive_displayname ?? "").trim() || null;
+
+    const hasDlive = !!req.body?.hasDlive;
+    const rulesAccepted = !!req.body?.rulesAccepted;
+
+    // "hasChannel" peut venir du front, sinon on déduit du channelUrl
+    const hasChannel = typeof req.body?.hasChannel === "boolean" ? req.body.hasChannel : !!channelUrl;
+
+    // mini validations anti-boulette
+    if (!rulesAccepted) {
+      return res.status(400).json({ ok: false, error: "rules_not_accepted" });
+    }
+    if (discord && discord.length > 120) {
+      return res.status(400).json({ ok: false, error: "discord_too_long" });
+    }
+    if (channelUrl && channelUrl.length > 400) {
+      return res.status(400).json({ ok: false, error: "channel_url_too_long" });
+    }
+    if (dliveDisplayname && dliveDisplayname.length > 120) {
+      return res.status(400).json({ ok: false, error: "dlive_displayname_too_long" });
+    }
+
+    const payload = {
+      discord,
+      channelUrl,
+      hasChannel,
+      hasDlive,
+      dliveDisplayname,
+      rulesAccepted,
+    };
+
     const { rows } = await pool.query(
-      `INSERT INTO streamer_requests (user_id, status)
-       VALUES ($1, 'pending')
+      `INSERT INTO streamer_requests
+         (user_id, status, discord, channel_url, has_channel, has_dlive, dlive_displayname, rules_accepted, payload)
+       VALUES
+         ($1, 'pending', $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (user_id) DO UPDATE
-         SET status='pending', updated_at = NOW()
-       RETURNING id, status, created_at AS "createdAt"`,
-      [userId]
+         SET status='pending',
+             discord = EXCLUDED.discord,
+             channel_url = EXCLUDED.channel_url,
+             has_channel = EXCLUDED.has_channel,
+             has_dlive = EXCLUDED.has_dlive,
+             dlive_displayname = EXCLUDED.dlive_displayname,
+             rules_accepted = EXCLUDED.rules_accepted,
+             payload = EXCLUDED.payload,
+             updated_at = NOW()
+       RETURNING
+         id,
+         status,
+         created_at AS "createdAt",
+         updated_at AS "updatedAt",
+         discord,
+         channel_url AS "channelUrl",
+         has_channel AS "hasChannel",
+         has_dlive AS "hasDlive",
+         dlive_displayname AS "dliveDisplayname",
+         rules_accepted AS "rulesAccepted"`,
+      [userId, discord, channelUrl, hasChannel, hasDlive, dliveDisplayname, rulesAccepted, payload]
     );
 
     res.json({ ok: true, request: rows[0] });
@@ -33,7 +87,17 @@ streamerRouter.get(
   a(async (req, res) => {
     const userId = req.user!.id;
     const { rows } = await pool.query(
-      `SELECT id, status, created_at AS "createdAt"
+      `SELECT
+         id,
+         status,
+         created_at AS "createdAt",
+         updated_at AS "updatedAt",
+         discord,
+         channel_url AS "channelUrl",
+         has_channel AS "hasChannel",
+         has_dlive AS "hasDlive",
+         dlive_displayname AS "dliveDisplayname",
+         rules_accepted AS "rulesAccepted"
        FROM streamer_requests
        WHERE user_id = $1
        LIMIT 1`,

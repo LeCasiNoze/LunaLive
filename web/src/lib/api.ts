@@ -46,7 +46,39 @@ export type ApiStreamerRequest = {
   id: number;
   status: "pending" | "approved" | "rejected";
   createdAt: string;
+
+  // ✅ NEW
+  updatedAt?: string;
+  discord?: string | null;
+  channelUrl?: string | null;
+  hasChannel?: boolean;
+  hasDlive?: boolean;
+  dliveDisplayname?: string | null;
+  rulesAccepted?: boolean;
 };
+
+export type ApplyStreamerPayload = {
+  discord?: string | null;
+  channelUrl?: string | null;
+  hasChannel?: boolean;
+  hasDlive?: boolean;
+  dliveDisplayname?: string | null;
+  rulesAccepted?: boolean;
+};
+
+export async function applyStreamer(token: string, payload?: ApplyStreamerPayload) {
+  // compat: si tu appelles encore applyStreamer(token) sans payload, ça marche pareil (ça remet juste pending)
+  const hasBody = payload && Object.keys(payload).length > 0;
+
+  return j<{ ok: true; request: ApiStreamerRequest }>("/streamer/apply", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    },
+    body: hasBody ? JSON.stringify(payload) : undefined,
+  });
+}
 
 export type AdminRequestRow = {
   id: number;
@@ -361,13 +393,6 @@ export async function login(username: string, password: string) {
 
 export async function me(token: string) {
   return j<{ ok: true; user: ApiUser }>("/me", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-export async function applyStreamer(token: string) {
-  return j<{ ok: true; request: ApiStreamerRequest }>("/streamer/apply", {
-    method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   });
 }

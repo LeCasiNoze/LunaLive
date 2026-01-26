@@ -1,3 +1,4 @@
+// api/src/db/migrations/index.ts (ou ton fichier migrateAll)
 import type { Pool } from "pg";
 
 import { mig001_core } from "./mig001_core.js";
@@ -41,6 +42,9 @@ import { mig037_chat_settings_dlive } from "./mig037_chat_settings_dlive.js";
 import { mig038_site_content } from "./mig038_site_content.js";
 import { mig039_dlive_pre_streamer } from "./mig039_dlive_pre_streamer.js";
 
+// ✅ NEW
+import { mig040_streamer_requests_fields } from "./mig040_streamer_requests_fields.js";
+
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
   await mig002_chat_tables(pool);
@@ -79,10 +83,8 @@ export async function migrateAll(pool: Pool) {
   await mig024_calls_bans_policy(pool);
   await mig025_calls_settings_hunt(pool);
 
-  // ✅ Bot wheel (tirage stream)
   await mig026_bot_wheel(pool);
 
-  // ✅ Prédictions (rubis – live only)
   await mig027_predictions(pool);
   await mig028_user_talents(pool);
 
@@ -91,13 +93,15 @@ export async function migrateAll(pool: Pool) {
   await mig031_streamer_offline_bg_blob(pool);
   await mig032_emotes_gifs(pool);
 
-  // ✅ Account actions (rename/password/forgot)
   await mig033_account_actions(pool);
   await mig034_agenda_notifs(pool);
-    // ✅ Reports / Feedback
+
   await mig035_reports(pool);
   await mig036_reports_status_deleted(pool);
   await mig037_chat_settings_dlive(pool);
   await mig038_site_content(pool);
   await mig039_dlive_pre_streamer(pool);
+
+  // ✅ NEW: fields candidature streamer
+  await mig040_streamer_requests_fields(pool);
 }
