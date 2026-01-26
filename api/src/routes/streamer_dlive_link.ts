@@ -187,7 +187,7 @@ streamerDliveLinkRouter.post("/request", requireAuth, async (req: AuthedReq, res
   });
 });
 
-// POST /streamer/me/dlive-link/verify
+// POST /streamer/me/dlive-link/verify  { timeoutMs?: number }
 streamerDliveLinkRouter.post("/verify", requireAuth, async (req: AuthedReq, res) => {
   const userId = Number(req.user?.id || 0);
   if (!userId) return res.status(401).json({ ok: false, error: "unauthorized" });
@@ -220,6 +220,10 @@ streamerDliveLinkRouter.post("/verify", requireAuth, async (req: AuthedReq, res)
     return res.status(400).json({ ok: false, error: "missing_requested_username" });
   }
 
+  // ✅ timeout paramétrable (UI: 120s)
+  const rawTimeout = Number(req.body?.timeoutMs ?? req.body?.timeout_ms ?? 120_000);
+  const timeoutMs = Math.min(180_000, Math.max(5_000, Math.floor(rawTimeout || 120_000)));
+
   // ✅ vérif websocket (chat)
   const candidates = [
     { label: "requestedUsername", value: row.requestedUsername },
@@ -235,17 +239,18 @@ streamerDliveLinkRouter.post("/verify", requireAuth, async (req: AuthedReq, res)
     requestedDisplayname: row.requestedDisplayname,
     requestedUsername: row.requestedUsername,
     candidates: candidates.map((c) => c.label),
+    timeoutMs,
   });
 
   let wait: any = { ok: false, error: "timeout" };
   for (const c of candidates) {
-    console.log("[dlive-link][verify] listen", { label: c.label, streamerUsername: c.value });
+    console.log("[dlive-link][verify] listen", { label: c.label, streamerUsername: c.value, timeoutMs });
     const t0 = Date.now();
 
     wait = await waitForDliveChatCode({
       streamerUsername: c.value,
       code: row.code,
-      timeoutMs: 25_000,
+      timeoutMs,
     });
 
     console.log("[dlive-link][verify] result", {
@@ -264,8 +269,6 @@ streamerDliveLinkRouter.post("/verify", requireAuth, async (req: AuthedReq, res)
   }
 
   console.log("[dlive-link][verify] SUCCESS -> writing DB");
-
-  if (!wait.ok) return res.status(400).json({ ok: false, error: wait.error });
 
   const client = await pool.connect();
   try {
@@ -304,7 +307,9 @@ streamerDliveLinkRouter.post("/verify", requireAuth, async (req: AuthedReq, res)
 
     await client.query("COMMIT");
   } catch (e) {
-    try { await client.query("ROLLBACK"); } catch {}
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
     throw e;
   } finally {
     client.release();

@@ -1077,11 +1077,11 @@ export async function dliveLinkRequest(token: string, channel: string) {
   );
 }
 
-export async function dliveLinkVerify(token: string) {
+export async function dliveLinkVerify(token: string, opts?: { timeoutMs?: number }) {
   return j<{ ok: true }>("/streamer/me/dlive-link/verify", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: "{}",
+    body: JSON.stringify({ timeoutMs: opts?.timeoutMs ?? 120000 }),
   });
 }
 
