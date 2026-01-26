@@ -123,7 +123,7 @@ function EmoteImg({
   }
 
   const isGif = kind === "gif";
-  const size = isGif ? 34 : 22;
+  const size = isGif ? 96 : 128;
 
   return (
     <img
