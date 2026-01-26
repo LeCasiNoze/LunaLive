@@ -564,7 +564,6 @@ export function CallTab({
         {/* ✅ petit indicateur discret, sans faire disparaître la liste */}
         {callsLoading ? (
           <div style={{ marginTop: 8, fontSize: 12, opacity: 0.6, fontWeight: 800 }}>
-            Mise à jour…
           </div>
         ) : null}
 
