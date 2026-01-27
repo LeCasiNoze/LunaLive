@@ -142,7 +142,8 @@ export function AboutTab({
             style={{
               width: "100%",
               height: "100%",
-              objectFit: "cover",
+              objectFit: "contain",  // ✅ aucun crop
+              background: "rgba(0,0,0,0.25)", // optionnel si tu veux un fond derrière
               display: "block",
             }}
             onError={(e) => {

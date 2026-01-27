@@ -150,11 +150,15 @@ streamerTabsRouter.post(
       .resize({
         width: 800,
         height: 800,
-        fit: "cover",
-        position: "centre",
+        fit: "inside",            // ✅ rentre dans la box
+        withoutEnlargement: true, // ✅ évite d’upscale les petites images
       })
       .webp({ quality: 82 })
       .toBuffer();
+      
+    const outMeta = await sharp(out).metadata();
+    const outW = Number(outMeta.width || 0) || null;
+    const outH = Number(outMeta.height || 0) || null;
 
     // on réutilise votre helper putFileToR2(filePath)
     const key = makeAboutR2Key(core.id);
