@@ -206,6 +206,22 @@ function smallBadge(): React.CSSProperties {
   };
 }
 
+// helpers viewport
+function getViewportMeta(): HTMLMetaElement | null {
+  if (typeof document === "undefined") return null;
+  return document.querySelector('meta[name="viewport"]');
+}
+function readViewportContent(): string | null {
+  const m = getViewportMeta();
+  const c = m?.getAttribute("content");
+  return c && String(c).trim() ? String(c) : null;
+}
+function writeViewportContent(content: string) {
+  const m = getViewportMeta();
+  if (!m) return;
+  m.setAttribute("content", content);
+}
+
 export default function StreamerPageMobile() {
   const { slug } = useParams();
   const auth = useAuth() as any;
@@ -273,7 +289,86 @@ export default function StreamerPageMobile() {
   const { isMobile } = useResponsive();
   const { cinema, chatOpen, enterCinema, leaveCinema, openCinemaChat, closeCinemaChat } = useCinema(isMobile);
 
-    // ✅ détecte orientation (portrait/paysage) pour le chat en mode cinéma
+  // ✅ ANTI-ZOOM / ANTI-AUTOSIZE pendant CINEMA (plein écran logique)
+  const cinemaGuardRef = React.useRef<{
+    viewport: string | null;
+    htmlWebkitAdjust: string;
+    htmlAdjust: string;
+    bodyTouchAction: string;
+    bodyOverscroll: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    // capture une seule fois
+    if (!cinemaGuardRef.current) {
+      const de: any = document.documentElement;
+      const bs: any = document.body?.style || ({} as any);
+      cinemaGuardRef.current = {
+        viewport: readViewportContent(),
+        htmlWebkitAdjust: String(de?.style?.webkitTextSizeAdjust ?? ""),
+        htmlAdjust: String(de?.style?.textSizeAdjust ?? ""),
+        bodyTouchAction: String(bs?.touchAction ?? ""),
+        bodyOverscroll: String(bs?.overscrollBehavior ?? ""),
+      };
+    }
+
+    const snap = cinemaGuardRef.current!;
+    const de: any = document.documentElement;
+    const bs: any = document.body?.style || ({} as any);
+
+    const lockViewport =
+      "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
+
+    const apply = () => {
+      try {
+        if (snap.viewport != null) writeViewportContent(lockViewport);
+      } catch {}
+
+      // stop “text boosting”
+      try {
+        de.style.webkitTextSizeAdjust = "100%";
+        de.style.textSizeAdjust = "100%";
+      } catch {}
+
+      // évite certains double-tap zoom / gestures bizarres en overlay fixed
+      try {
+        bs.touchAction = "manipulation";
+        bs.overscrollBehavior = "none";
+      } catch {}
+
+      // blur si un input était focus (souvent déclencheur de zoom)
+      try {
+        const ae: any = document.activeElement;
+        if (ae && typeof ae.blur === "function") ae.blur();
+      } catch {}
+    };
+
+    const restore = () => {
+      try {
+        if (snap.viewport != null) writeViewportContent(snap.viewport);
+      } catch {}
+      try {
+        de.style.webkitTextSizeAdjust = snap.htmlWebkitAdjust;
+        de.style.textSizeAdjust = snap.htmlAdjust;
+      } catch {}
+      try {
+        bs.touchAction = snap.bodyTouchAction;
+        bs.overscrollBehavior = snap.bodyOverscroll;
+      } catch {}
+    };
+
+    if (cinema) apply();
+    else restore();
+
+    return () => {
+      // sécurité: si on unmount pendant cinema
+      restore();
+    };
+  }, [cinema]);
+
+  // ✅ détecte orientation (portrait/paysage) pour le chat en mode cinéma
   const [isLandscape, setIsLandscape] = React.useState(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -898,53 +993,50 @@ export default function StreamerPageMobile() {
     ) : null;
 
     if (cinema) {
-    content = (
+      content = (
         <>
-        <div
+          <div
             className="cinemaRoot"
             style={{
-            position: "fixed",
-            inset: 0,
-            width: "100vw",
-            height: "100dvh",
-            minHeight: "100vh",
-            zIndex: 9999,
-            background: "rgba(35, 12, 60, 1)", // ou ton fond
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
+              position: "fixed",
+              inset: 0,
+              width: "100vw",
+              height: "100dvh",
+              minHeight: "100vh",
+              zIndex: 9999,
+              background: "rgba(35, 12, 60, 1)",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
             }}
-        >
+          >
             <div
-            className="cinemaStage"
-            style={{
-                flex: 1,
-                minHeight: 0, // CRUCIAL (sinon flex peut collapse)
-                display: "flex",
-                alignItems: "stretch",
-                justifyContent: "stretch",
-            }}
-            >
-            <div
-                className="cinemaPlayerCard"
-                style={{
+              className="cinemaStage"
+              style={{
                 flex: 1,
                 minHeight: 0,
                 display: "flex",
-                overflow: "hidden",
-                borderRadius: 0,
-                }}
+                alignItems: "stretch",
+                justifyContent: "stretch",
+              }}
             >
-                {/* IMPORTANT: on donne une vraie hauteur au bloc */}
-                <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-                {PlayerBlock}
-                </div>
-            </div>
+              <div
+                className="cinemaPlayerCard"
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  display: "flex",
+                  overflow: "hidden",
+                  borderRadius: 0,
+                }}
+              >
+                <div style={{ flex: 1, minHeight: 0, display: "flex" }}>{PlayerBlock}</div>
+              </div>
             </div>
 
             <div
-            className="cinemaTopBar"
-            style={{
+              className="cinemaTopBar"
+              style={{
                 position: "absolute",
                 top: 10,
                 left: 10,
@@ -954,121 +1046,102 @@ export default function StreamerPageMobile() {
                 gap: 10,
                 zIndex: 2,
                 pointerEvents: "auto",
-            }}
+              }}
             >
-            <button className="btnGhostSmall" type="button" onClick={leaveCinema}>
+              <button className="btnGhostSmall" type="button" onClick={leaveCinema}>
                 ✕ Quitter
-            </button>
+              </button>
 
-            <button className="btnPrimarySmall" type="button" onClick={openCinemaChat} title="Ouvrir le chat">
+              <button className="btnPrimarySmall" type="button" onClick={openCinemaChat} title="Ouvrir le chat">
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                <ChatIcon /> Chat
+                  <ChatIcon /> Chat
                 </span>
-            </button>
+              </button>
             </div>
 
             {chatOpen ? (
-            <div className="chatSheetBackdrop" onClick={closeCinemaChat} role="presentation">
-              <div
-                className="chatSheet"
-                onClick={(e) => e.stopPropagation()}
-                role="dialog"
-                aria-modal="true"
-                style={
-                  isLandscape
-                    ? {
-                        // ✅ paysage: side panel à droite, full height
-                        width: "min(460px, 56vw)",
-                        maxWidth: "92vw",
-                        height: "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
-                        maxHeight: "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
-                        alignSelf: "stretch",
-                        marginLeft: "auto",
-                        marginRight: 10,
-                        marginTop: 10,
-                        marginBottom: 10,
-                        borderRadius: 18,
-                        display: "flex",
-                        flexDirection: "column",
-                        overflow: "hidden",
-                      }
-                    : {
-                        // ✅ portrait: comportement actuel (bottom sheet)
-                        maxWidth: 560,
-                        display: "flex",
-                        flexDirection: "column",
-                        overflow: "hidden",
-                      }
-                }
-              >
+              <div className="chatSheetBackdrop" onClick={closeCinemaChat} role="presentation">
                 <div
-                  className="chatSheetTop"
-                  style={{
-                    // ✅ header compact (surtout paysage)
-                    padding: isLandscape ? "10px 12px" : undefined,
-                    minHeight: isLandscape ? 44 : undefined,
-                  }}
+                  className="chatSheet"
+                  onClick={(e) => e.stopPropagation()}
+                  role="dialog"
+                  aria-modal="true"
+                  style={
+                    isLandscape
+                      ? {
+                          width: "min(460px, 56vw)",
+                          maxWidth: "92vw",
+                          height: "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+                          maxHeight: "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+                          alignSelf: "stretch",
+                          marginLeft: "auto",
+                          marginRight: 10,
+                          marginTop: 10,
+                          marginBottom: 10,
+                          borderRadius: 18,
+                          display: "flex",
+                          flexDirection: "column",
+                          overflow: "hidden",
+                        }
+                      : {
+                          maxWidth: 560,
+                          display: "flex",
+                          flexDirection: "column",
+                          overflow: "hidden",
+                        }
+                  }
                 >
-                  <div style={{ fontWeight: 950 }}>{isLandscape ? "Chat" : ""}</div>
-                  <button className="iconBtn" onClick={closeCinemaChat} type="button" aria-label="Fermer">
-                    ✕
-                  </button>
-                </div>
-
-                <div
-                  className="chatSheetBody"
-                  style={{
-                    padding: 0,
-                    flex: 1,
-                    minHeight: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    overflow: "hidden",
-                  }}
-                >
-                  {/* ✅ shrink uniquement en cinéma+paysage */}
                   <div
-                    style={
-                      isLandscape
-                        ? {
-                            flex: 1,
-                            minHeight: 0,
-                            overflow: "hidden",
-
-                            // réduit tout le UI du chat (messages + input + boutons)
-                            transform: "scale(0.82)",
-                            transformOrigin: "top left",
-
-                            // compense le scale pour garder la surface visible
-                            width: "calc(100% / 0.82)",
-                            height: "calc(100% / 0.82)",
-                          }
-                        : {
-                            flex: 1,
-                            minHeight: 0,
-                            overflow: "hidden",
-                          }
-                    }
+                    className="chatSheetTop"
+                    style={{
+                      padding: isLandscape ? "10px 12px" : undefined,
+                      minHeight: isLandscape ? 44 : undefined,
+                    }}
                   >
-                    <ChatPanel
-                      slug={String(slug || "")}
-                      onRequireLogin={() => setLoginOpen(true)}
-                      compact
-                      autoFocus={false}
-                      onFollowsCount={handleFollowsCount}
-                    />
+                    <div style={{ fontWeight: 950 }}>{isLandscape ? "Chat" : ""}</div>
+                    <button className="iconBtn" onClick={closeCinemaChat} type="button" aria-label="Fermer">
+                      ✕
+                    </button>
+                  </div>
+
+                  <div
+                    className="chatSheetBody"
+                    style={{
+                      padding: 0,
+                      flex: 1,
+                      minHeight: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {/* ✅ IMPORTANT: on SUPPRIME le transform: scale() (source de zoom/autosize) */}
+                    <div
+                      style={{
+                        flex: 1,
+                        minHeight: 0,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <ChatPanel
+                        slug={String(slug || "")}
+                        onRequireLogin={() => setLoginOpen(true)}
+                        compact
+                        autoFocus={false}
+                        onFollowsCount={handleFollowsCount}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
           </div>
 
           <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
         </>
       );
     } else {
-      // NORMAL view
+      // NORMAL view (inchangé)
       content = (
         <div
           className="streamPage streamPageMobile"

@@ -80,6 +80,31 @@ function safePlay(video: HTMLVideoElement) {
   } catch {}
 }
 
+/**
+ * Fullscreen Zoom Guard
+ * - Beaucoup de “zoom chelou” en fullscreen mobile vient du viewport ou du text autosize.
+ * - Ici on force un viewport stable uniquement pendant le fullscreen, puis on restaure.
+ */
+function getViewportMeta(): HTMLMetaElement | null {
+  if (typeof document === "undefined") return null;
+  return document.querySelector('meta[name="viewport"]');
+}
+function readViewportContent(): string | null {
+  const m = getViewportMeta();
+  const c = m?.getAttribute("content");
+  return c && String(c).trim() ? String(c) : null;
+}
+function writeViewportContent(content: string) {
+  const m = getViewportMeta();
+  if (!m) return;
+  m.setAttribute("content", content);
+}
+function isFullscreenNow(): boolean {
+  if (typeof document === "undefined") return false;
+  const d: any = document;
+  return !!(document.fullscreenElement || d.webkitFullscreenElement || d.mozFullScreenElement || d.msFullscreenElement);
+}
+
 export function DlivePlayer({
   channelSlug,
   channelUsername,
@@ -165,15 +190,114 @@ export function DlivePlayer({
     const onResize = () => tryUnmute();
 
     document.addEventListener("fullscreenchange", onFs);
+    // safari iOS old events
+    document.addEventListener("webkitfullscreenchange" as any, onFs);
     video.addEventListener("loadedmetadata", onMeta);
     window.addEventListener("resize", onResize);
 
     return () => {
       document.removeEventListener("fullscreenchange", onFs);
+      document.removeEventListener("webkitfullscreenchange" as any, onFs);
       video.removeEventListener("loadedmetadata", onMeta);
       window.removeEventListener("resize", onResize);
     };
   }, [channelSlug, channelUsername, isLive]);
+
+  // ✅ FULLSCREEN ZOOM GUARD (iOS + Android)
+  React.useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const originalViewport = readViewportContent();
+    const lockedViewport =
+      "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
+
+    const originalTextAdjust = (document.documentElement.style as any).webkitTextSizeAdjust || "";
+    const originalTextAdjustStd = (document.documentElement.style as any).textSizeAdjust || "";
+
+    let locked = false;
+
+    const preventGesture = (e: any) => {
+      // iOS Safari pinch events
+      if (!locked) return;
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
+    };
+
+    const applyLock = () => {
+      if (locked) return;
+      locked = true;
+
+      // 1) viewport lock (stop scale jump)
+      try {
+        if (originalViewport != null) writeViewportContent(lockedViewport);
+      } catch {}
+
+      // 2) stop text “boosting” during fullscreen transitions
+      try {
+        (document.documentElement.style as any).webkitTextSizeAdjust = "100%";
+        (document.documentElement.style as any).textSizeAdjust = "100%";
+      } catch {}
+
+      // 3) avoid weird zoom due to focused inputs
+      try {
+        const ae = document.activeElement as any;
+        if (ae && typeof ae.blur === "function") ae.blur();
+      } catch {}
+
+      // 4) block pinch gestures while fullscreen
+      window.addEventListener("gesturestart" as any, preventGesture, { passive: false } as any);
+      window.addEventListener("gesturechange" as any, preventGesture, { passive: false } as any);
+      window.addEventListener("gestureend" as any, preventGesture, { passive: false } as any);
+
+      // (Android Chrome) also block double-tap zoom quirks on some builds
+      try {
+        (document.body.style as any).touchAction = "manipulation";
+      } catch {}
+
+      // force reflow
+      try {
+        window.scrollTo(0, 0);
+      } catch {}
+    };
+
+    const restoreLock = () => {
+      if (!locked) return;
+      locked = false;
+
+      // restore viewport
+      try {
+        if (originalViewport != null) writeViewportContent(originalViewport);
+      } catch {}
+
+      // restore text adjust
+      try {
+        (document.documentElement.style as any).webkitTextSizeAdjust = originalTextAdjust;
+        (document.documentElement.style as any).textSizeAdjust = originalTextAdjustStd;
+      } catch {}
+
+      // restore gesture handlers
+      window.removeEventListener("gesturestart" as any, preventGesture as any);
+      window.removeEventListener("gesturechange" as any, preventGesture as any);
+      window.removeEventListener("gestureend" as any, preventGesture as any);
+
+      try {
+        (document.body.style as any).touchAction = "";
+      } catch {}
+    };
+
+    const onFs = () => {
+      if (isFullscreenNow()) applyLock();
+      else restoreLock();
+    };
+
+    document.addEventListener("fullscreenchange", onFs);
+    document.addEventListener("webkitfullscreenchange" as any, onFs);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      document.removeEventListener("webkitfullscreenchange" as any, onFs);
+      restoreLock();
+    };
+  }, []);
 
   // ✅ LOCK vitesse en LIVE
   const lockingRateRef = React.useRef(false);
