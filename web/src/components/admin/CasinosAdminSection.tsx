@@ -206,9 +206,641 @@ export function CasinosAdminSection({ adminKey }: Props) {
   const bonusLink = safeLinks.find((l: any) => l.kind === "bonus") || null;
   const streamerLinks = safeLinks.filter((l: any) => l.kind === "streamer");
 
+  const sortedStreamerLinks = React.useMemo(() => {
+    const arr = [...streamerLinks];
+    arr.sort((a: any, b: any) => {
+      const ra = a?.pinnedRank ?? 999999;
+      const rb = b?.pinnedRank ?? 999999;
+      if (ra !== rb) return ra - rb;
+      return String(a?.id ?? "").localeCompare(String(b?.id ?? ""));
+    });
+    return arr;
+  }, [streamerLinks]);
+
+  function nextStreamerPinnedRank() {
+    const nums = streamerLinks
+      .map((l: any) => Number(l?.pinnedRank))
+      .filter((n) => Number.isFinite(n));
+    const max = nums.length ? Math.max(...nums) : 0;
+    return max + 1;
+  }
+
+  // ✅ INVERSION : édition à gauche (large) / liste à droite (compact)
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 420px) minmax(0, 1fr)", gap: 14 }}>
-      {/* LEFT */}
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 420px)",
+        gap: 14,
+        alignItems: "stretch",
+      }}
+    >
+      {/* LEFT (EDITOR - LARGE) */}
+      <div
+        style={{
+          borderRadius: 16,
+          border: "1px solid rgba(255,255,255,0.10)",
+          background: "rgba(255,255,255,0.03)",
+          overflow: "hidden",
+          minHeight: 640,
+          display: "grid",
+          gridTemplateRows: "auto auto 1fr",
+        }}
+      >
+        {!selected ? (
+          <>
+            <div
+              style={{
+                padding: 14,
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ fontWeight: 1000, fontSize: 16 }}>Casinos (TrustPilot)</div>
+              {err ? (
+                <div className="hint" style={{ marginLeft: "auto" }}>
+                  ⚠️ {err}
+                </div>
+              ) : null}
+            </div>
+
+            <div
+              style={{
+                padding: 18,
+                display: "grid",
+                placeItems: "center",
+                textAlign: "center",
+                minHeight: 560,
+              }}
+            >
+              <div style={{ maxWidth: 520 }}>
+                <div style={{ fontWeight: 1000, fontSize: 18, marginBottom: 8 }}>
+                  Sélectionne un casino à droite
+                </div>
+                <div className="mutedSmall" style={{ lineHeight: 1.55 }}>
+                  La liste + création de casinos est maintenant dans la colonne de droite pour
+                  te laisser un vrai espace d’édition ici.
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* header */}
+            <div
+              style={{
+                padding: 14,
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 1000, fontSize: 16 }}>{selected.name}</div>
+                <div className="mutedSmall">
+                  {selected.slug} • id {selected.id}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  className="btnSecondary"
+                  type="button"
+                  onClick={async () => {
+                    const next = selected.status === "published" ? "hidden" : "published";
+                    patchSelected({ status: next as any });
+                    await adminUpdateCasino(adminKey, selected.id, { status: next as any } as any);
+                    await refreshList();
+                  }}
+                >
+                  {selected.status === "published" ? "Masquer" : "Publier"}
+                </button>
+
+                <button
+                  className="btnPrimary"
+                  type="button"
+                  onClick={async () => {
+                    setErr(null);
+                    try {
+                      const pros = linesToList(prosText);
+                      const cons = linesToList(consText);
+                      patchSelected({ pros: pros as any, cons: cons as any });
+                      await adminUpdateCasino(adminKey, selected.id, {
+                        ...selected,
+                        pros,
+                        cons,
+                      } as any);
+                      await refreshList();
+                      await refreshLinks(selected.id);
+                    } catch (e: any) {
+                      setErr(String(e?.message || e));
+                    }
+                  }}
+                >
+                  Enregistrer
+                </button>
+              </div>
+            </div>
+
+            {/* tabs */}
+            <div
+              style={{
+                padding: 12,
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <SegButton active={tab === "identity"} onClick={() => setTab("identity")}>
+                Identité
+              </SegButton>
+              <SegButton active={tab === "content"} onClick={() => setTab("content")}>
+                Contenu
+              </SegButton>
+              <SegButton active={tab === "links"} onClick={() => setTab("links")}>
+                Liens
+              </SegButton>
+              <SegButton
+                active={tab === "reviews"}
+                onClick={() => {
+                  setTab("reviews");
+                  if (!reviews.length) loadReviews({ reset: true });
+                }}
+              >
+                Avis publiés
+              </SegButton>
+
+              {err ? (
+                <div className="hint" style={{ marginLeft: "auto" }}>
+                  ⚠️ {err}
+                </div>
+              ) : null}
+            </div>
+
+            {/* body */}
+            <div style={{ padding: 14, overflow: "auto" }}>
+              {tab === "identity" ? (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div className="field">
+                      <label>Nom</label>
+                      <input
+                        className="input"
+                        value={selected.name}
+                        onChange={(e) => patchSelected({ name: e.target.value })}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Slug</label>
+                      <input
+                        className="input"
+                        value={selected.slug}
+                        onChange={(e) => patchSelected({ slug: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label>Logo URL</label>
+                    <input
+                      className="input"
+                      value={selected.logoUrl || ""}
+                      onChange={(e) => patchSelected({ logoUrl: e.target.value || null })}
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 160px", gap: 10 }}>
+                    <div className="field">
+                      <label>Status</label>
+                      <select
+                        className="select"
+                        style={selectStyle}
+                        value={selected.status}
+                        onChange={(e) => patchSelected({ status: e.target.value as any })}
+                      >
+                        <option style={optionStyle} value="published">
+                          published
+                        </option>
+                        <option style={optionStyle} value="hidden">
+                          hidden
+                        </option>
+                        <option style={optionStyle} value="disabled">
+                          disabled
+                        </option>
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Featured rank</label>
+                      <input
+                        className="input"
+                        value={selected.featuredRank ?? ""}
+                        onChange={(e) =>
+                          patchSelected({
+                            featuredRank: e.target.value === "" ? null : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Watch level</label>
+                      <select
+                        className="select"
+                        style={selectStyle}
+                        value={selected.watchLevel}
+                        onChange={(e) => patchSelected({ watchLevel: e.target.value as any })}
+                      >
+                        <option style={optionStyle} value="none">
+                          none
+                        </option>
+                        <option style={optionStyle} value="watch">
+                          watch
+                        </option>
+                        <option style={optionStyle} value="avoid">
+                          avoid
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label>Watch reason</label>
+                    <input
+                      className="input"
+                      value={selected.watchReason || ""}
+                      onChange={(e) => patchSelected({ watchReason: e.target.value || null })}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {tab === "content" ? (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div className="field">
+                    <label>Bonus headline</label>
+                    <input
+                      className="input"
+                      value={selected.bonusHeadline || ""}
+                      onChange={(e) => patchSelected({ bonusHeadline: e.target.value || null })}
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label>Description</label>
+                    <textarea
+                      className="textarea"
+                      value={selected.description || ""}
+                      onChange={(e) => patchSelected({ description: e.target.value || null })}
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div className="field">
+                      <label>Pros (1 ligne = 1 point)</label>
+                      <textarea
+                        className="textarea"
+                        value={prosText}
+                        onChange={(e) => setProsText(e.target.value)}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Cons (1 ligne = 1 point)</label>
+                      <textarea
+                        className="textarea"
+                        value={consText}
+                        onChange={(e) => setConsText(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10 }}>
+                    <div className="field">
+                      <label>Team rating</label>
+                      <input
+                        className="input"
+                        value={selected.teamRating ?? ""}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === "") return patchSelected({ teamRating: null as any });
+                          const n = Number(String(raw).replace(",", "."));
+                          patchSelected({ teamRating: Number.isFinite(n) ? (n as any) : (raw as any) });
+                        }}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Team review</label>
+                      <textarea
+                        className="textarea"
+                        value={selected.teamReview || ""}
+                        onChange={(e) => patchSelected({ teamReview: e.target.value || null })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {tab === "links" ? (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {linksLoading ? <div className="mutedSmall">Chargement…</div> : null}
+
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontWeight: 950 }}>Lien bonus (CTA principal)</div>
+                      <div className="mutedSmall" style={{ marginTop: 4 }}>
+                        (C’est le lien “Soutiens un streamer” / CTA principal)
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr minmax(220px, 320px) 120px", gap: 8 }}>
+                    <input
+                      className="input"
+                      value={bonusLink?.targetUrl || ""}
+                      placeholder="https://..."
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setLinks((prev) =>
+                          prev.map((l: any) => (l.id === bonusLink?.id ? { ...l, targetUrl: v } : l))
+                        );
+                      }}
+                    />
+                    <input
+                      className="input"
+                      value={bonusLink?.label || ""}
+                      placeholder="Label (optionnel)"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setLinks((prev) => prev.map((l: any) => (l.id === bonusLink?.id ? { ...l, label: v } : l)));
+                      }}
+                    />
+                    <button
+                      className="btnSecondary"
+                      type="button"
+                      onClick={async () => {
+                        if (!selected) return;
+                        if (!bonusLink) {
+                          await adminCreateCasinoLink(adminKey, selected.id, {
+                            kind: "bonus",
+                            targetUrl: "https://example.com",
+                            enabled: true,
+                            pinnedRank: 1,
+                            label: "Bonus LunaLive",
+                          } as any);
+                          await refreshLinks(selected.id);
+                          return;
+                        }
+                        await adminUpdateCasinoLink(adminKey, bonusLink.id, {
+                          targetUrl: bonusLink.targetUrl,
+                          label: bonusLink.label,
+                        } as any);
+                        await refreshLinks(selected.id);
+                      }}
+                    >
+                      {bonusLink ? "Sauver" : "Créer"}
+                    </button>
+                  </div>
+
+                  {bonusLink ? (
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!bonusLink.enabled}
+                        onChange={async (e) => {
+                          await adminUpdateCasinoLink(adminKey, bonusLink.id, { enabled: e.target.checked } as any);
+                          await refreshLinks(selected.id);
+                        }}
+                      />
+                      enabled
+                    </label>
+                  ) : null}
+
+                  <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontWeight: 950 }}>Liens créateurs</div>
+                      <div className="mutedSmall" style={{ marginTop: 4 }}>
+                        Ordre = “pinnedRank” (1 = tout en haut). Plus simple à gérer ici.
+                      </div>
+                    </div>
+                    <button
+                      className="btnSecondary"
+                      type="button"
+                      onClick={async () => {
+                        if (!selected) return;
+                        await adminCreateCasinoLink(adminKey, selected.id, {
+                          kind: "streamer",
+                          enabled: true,
+                          pinnedRank: nextStreamerPinnedRank(),
+                          streamerId: null,
+                          targetUrl: "https://example.com",
+                          label: "",
+                        } as any);
+                        await refreshLinks(selected.id);
+                      }}
+                    >
+                      + Ajouter un lien créateur
+                    </button>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {sortedStreamerLinks.map((l: any) => (
+                      <div
+                        key={l.id}
+                        style={{
+                          border: "1px solid rgba(255,255,255,0.10)",
+                          borderRadius: 14,
+                          padding: 12,
+                          background: "rgba(255,255,255,0.03)",
+                        }}
+                      >
+                        {/* Top row (wrap-friendly) */}
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                          <div style={{ flex: "1 1 260px", minWidth: 240 }}>
+                            <select
+                              className="select"
+                              style={{ ...selectStyle, width: "100%" }}
+                              value={l.streamerId ?? ""}
+                              onChange={(e) => {
+                                const v = e.target.value ? Number(e.target.value) : null;
+                                setLinks((prev) => prev.map((x: any) => (x.id === l.id ? { ...x, streamerId: v } : x)));
+                              }}
+                            >
+                              <option style={optionStyle} value="">
+                                — Choisir un streamer —
+                              </option>
+                              {streamers.map((s) => (
+                                <option key={s.id} style={optionStyle} value={s.id}>
+                                  {s.displayName}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div style={{ width: 140 }}>
+                            <input
+                              className="input"
+                              value={l.pinnedRank ?? ""}
+                              placeholder="Ordre"
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                const n = raw === "" ? null : Number(raw);
+                                setLinks((prev) =>
+                                  prev.map((x: any) =>
+                                    x.id === l.id ? { ...x, pinnedRank: Number.isFinite(n as any) ? n : raw } : x
+                                  )
+                                );
+                              }}
+                            />
+                          </div>
+
+                          <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
+                            <input
+                              type="checkbox"
+                              checked={!!l.enabled}
+                              onChange={(e) => {
+                                setLinks((prev) =>
+                                  prev.map((x: any) => (x.id === l.id ? { ...x, enabled: e.target.checked } : x))
+                                );
+                              }}
+                            />
+                            actif
+                          </label>
+
+                          <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button
+                              className="btnGhostSmall"
+                              type="button"
+                              onClick={async () => {
+                                await adminUpdateCasinoLink(adminKey, l.id, {
+                                  targetUrl: l.targetUrl,
+                                  label: l.label,
+                                  streamerId: l.streamerId,
+                                  enabled: l.enabled,
+                                  pinnedRank: l.pinnedRank,
+                                } as any);
+                                await refreshLinks(selected.id);
+                              }}
+                            >
+                              Save
+                            </button>
+                            <button
+                              className="btnGhostSmall"
+                              type="button"
+                              onClick={async () => {
+                                await adminUpdateCasinoLink(adminKey, l.id, { enabled: !l.enabled } as any);
+                                await refreshLinks(selected.id);
+                              }}
+                            >
+                              {l.enabled ? "Disable" : "Enable"}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Inputs (full width, easy to type) */}
+                        <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                          <input
+                            className="input"
+                            value={l.targetUrl || ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setLinks((prev) => prev.map((x: any) => (x.id === l.id ? { ...x, targetUrl: v } : x)));
+                            }}
+                            placeholder="Lien d'affiliation (https://...)"
+                          />
+                          <input
+                            className="input"
+                            value={l.label || ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setLinks((prev) => prev.map((x: any) => (x.id === l.id ? { ...x, label: v } : x)));
+                            }}
+                            placeholder="Label (optionnel) — ex: Déposer / Bonus / Voir l’offre"
+                          />
+                        </div>
+                      </div>
+                    ))}
+
+                    {sortedStreamerLinks.length === 0 ? <div className="mutedSmall">Aucun lien créateur.</div> : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {tab === "reviews" ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                      className="input"
+                      value={reviewsQ}
+                      onChange={(e) => setReviewsQ(e.target.value)}
+                      placeholder="Rechercher dans les avis…"
+                      style={{ flex: 1, minWidth: 260 }}
+                    />
+                    <button
+                      className="btnSecondary"
+                      type="button"
+                      onClick={() => loadReviews({ reset: true })}
+                      disabled={reviewsLoading}
+                    >
+                      {reviewsLoading ? "…" : "Rechercher"}
+                    </button>
+                  </div>
+
+                  {reviews.map((r) => (
+                    <div
+                      key={r.id}
+                      style={{
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        borderRadius: 14,
+                        padding: 12,
+                        background: "rgba(255,255,255,0.03)",
+                        display: "grid",
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                        <div>
+                          <b>{r.username}</b>{" "}
+                          <span className="mutedSmall">({new Date(r.createdAt).toLocaleString()})</span>
+                        </div>
+                        <button
+                          className="btnGhostSmall"
+                          type="button"
+                          onClick={async () => {
+                            if (!confirm("Supprimer cet avis ?")) return;
+                            await adminModerateCasinoComment(adminKey, r.id, { action: "delete" });
+                            setReviews((prev) => prev.filter((x) => x.id !== r.id));
+                          }}
+                          style={{
+                            borderColor: "rgba(239,68,68,0.30)",
+                            background: "rgba(239,68,68,0.10)",
+                          }}
+                        >
+                          🗑️ Supprimer
+                        </button>
+                      </div>
+                      <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{r.body}</div>
+                    </div>
+                  ))}
+
+                  {!reviews.length && !reviewsLoading ? <div className="mutedSmall">Aucun avis publié.</div> : null}
+
+                  {reviewsHasMore ? (
+                    <button className="btnSecondary" type="button" onClick={() => loadReviews()} disabled={reviewsLoading}>
+                      {reviewsLoading ? "…" : "Charger plus"}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* RIGHT (LIST - COMPACT) */}
       <div
         style={{
           borderRadius: 16,
@@ -222,16 +854,16 @@ export function CasinosAdminSection({ adminKey }: Props) {
       >
         <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
           <div style={{ display: "flex", gap: 8 }}>
-            <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher casino…" />
+            <input
+              className="input"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Rechercher casino…"
+            />
             <button className="btnPrimary" onClick={refreshList} disabled={loading}>
               OK
             </button>
           </div>
-          {err ? (
-            <div className="hint" style={{ marginTop: 10 }}>
-              ⚠️ {err}
-            </div>
-          ) : null}
         </div>
 
         <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
@@ -299,451 +931,6 @@ export function CasinosAdminSection({ adminKey }: Props) {
           ))}
           {!items.length && !loading ? <div className="mutedSmall">Aucun résultat</div> : null}
         </div>
-      </div>
-
-      {/* RIGHT */}
-      <div
-        style={{
-          borderRadius: 16,
-          border: "1px solid rgba(255,255,255,0.10)",
-          background: "rgba(255,255,255,0.03)",
-          overflow: "hidden",
-          minHeight: 640,
-          display: "grid",
-          gridTemplateRows: "auto auto 1fr",
-        }}
-      >
-        {!selected ? (
-          <div style={{ padding: 14 }} className="mutedSmall">
-            Sélectionne un casino.
-          </div>
-        ) : (
-          <>
-            {/* header */}
-            <div
-              style={{
-                padding: 14,
-                borderBottom: "1px solid rgba(255,255,255,0.08)",
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 10,
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 1000, fontSize: 16 }}>{selected.name}</div>
-                <div className="mutedSmall">
-                  {selected.slug} • id {selected.id}
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <button
-                  className="btnSecondary"
-                  type="button"
-                  onClick={async () => {
-                    const next = selected.status === "published" ? "hidden" : "published";
-                    patchSelected({ status: next as any });
-                    await adminUpdateCasino(adminKey, selected.id, { status: next as any } as any);
-                    await refreshList();
-                  }}
-                >
-                  {selected.status === "published" ? "Masquer" : "Publier"}
-                </button>
-
-                <button
-                  className="btnPrimary"
-                  type="button"
-                  onClick={async () => {
-                    setErr(null);
-                    try {
-                      const pros = linesToList(prosText);
-                      const cons = linesToList(consText);
-                      patchSelected({ pros: pros as any, cons: cons as any });
-                      await adminUpdateCasino(adminKey, selected.id, {
-                        ...selected,
-                        pros,
-                        cons,
-                      } as any);
-                      await refreshList();
-                      await refreshLinks(selected.id);
-                    } catch (e: any) {
-                      setErr(String(e?.message || e));
-                    }
-                  }}
-                >
-                  Enregistrer
-                </button>
-              </div>
-            </div>
-
-            {/* tabs */}
-            <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <SegButton active={tab === "identity"} onClick={() => setTab("identity")}>
-                Identité
-              </SegButton>
-              <SegButton active={tab === "content"} onClick={() => setTab("content")}>
-                Contenu
-              </SegButton>
-              <SegButton active={tab === "links"} onClick={() => setTab("links")}>
-                Liens
-              </SegButton>
-              <SegButton
-                active={tab === "reviews"}
-                onClick={() => {
-                  setTab("reviews");
-                  if (!reviews.length) loadReviews({ reset: true });
-                }}
-              >
-                Avis publiés
-              </SegButton>
-            </div>
-
-            {/* body */}
-            <div style={{ padding: 14, overflow: "auto" }}>
-              {tab === "identity" ? (
-                <div style={{ display: "grid", gap: 12 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <div className="field">
-                      <label>Nom</label>
-                      <input className="input" value={selected.name} onChange={(e) => patchSelected({ name: e.target.value })} />
-                    </div>
-                    <div className="field">
-                      <label>Slug</label>
-                      <input className="input" value={selected.slug} onChange={(e) => patchSelected({ slug: e.target.value })} />
-                    </div>
-                  </div>
-
-                  <div className="field">
-                    <label>Logo URL</label>
-                    <input
-                      className="input"
-                      value={selected.logoUrl || ""}
-                      onChange={(e) => patchSelected({ logoUrl: e.target.value || null })}
-                    />
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 160px", gap: 10 }}>
-                    <div className="field">
-                      <label>Status</label>
-                      <select
-                        className="select"
-                        style={selectStyle}
-                        value={selected.status}
-                        onChange={(e) => patchSelected({ status: e.target.value as any })}
-                      >
-                        <option style={optionStyle} value="published">published</option>
-                        <option style={optionStyle} value="hidden">hidden</option>
-                        <option style={optionStyle} value="disabled">disabled</option>
-                      </select>
-                    </div>
-                    <div className="field">
-                      <label>Featured rank</label>
-                      <input
-                        className="input"
-                        value={selected.featuredRank ?? ""}
-                        onChange={(e) => patchSelected({ featuredRank: e.target.value === "" ? null : Number(e.target.value) })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Watch level</label>
-                      <select
-                        className="select"
-                        style={selectStyle}
-                        value={selected.watchLevel}
-                        onChange={(e) => patchSelected({ watchLevel: e.target.value as any })}
-                      >
-                        <option style={optionStyle} value="none">none</option>
-                        <option style={optionStyle} value="watch">watch</option>
-                        <option style={optionStyle} value="avoid">avoid</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="field">
-                    <label>Watch reason</label>
-                    <input
-                      className="input"
-                      value={selected.watchReason || ""}
-                      onChange={(e) => patchSelected({ watchReason: e.target.value || null })}
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              {tab === "content" ? (
-                <div style={{ display: "grid", gap: 12 }}>
-                  <div className="field">
-                    <label>Bonus headline</label>
-                    <input
-                      className="input"
-                      value={selected.bonusHeadline || ""}
-                      onChange={(e) => patchSelected({ bonusHeadline: e.target.value || null })}
-                    />
-                  </div>
-
-                  <div className="field">
-                    <label>Description</label>
-                    <textarea
-                      className="textarea"
-                      value={selected.description || ""}
-                      onChange={(e) => patchSelected({ description: e.target.value || null })}
-                    />
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <div className="field">
-                      <label>Pros (1 ligne = 1 point)</label>
-                      <textarea className="textarea" value={prosText} onChange={(e) => setProsText(e.target.value)} />
-                    </div>
-                    <div className="field">
-                      <label>Cons (1 ligne = 1 point)</label>
-                      <textarea className="textarea" value={consText} onChange={(e) => setConsText(e.target.value)} />
-                    </div>
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10 }}>
-                    <div className="field">
-                      <label>Team rating</label>
-                      <input
-                        className="input"
-                        value={selected.teamRating ?? ""}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          if (raw === "") return patchSelected({ teamRating: null as any });
-                          const n = Number(String(raw).replace(",", "."));
-                          patchSelected({ teamRating: Number.isFinite(n) ? (n as any) : (raw as any) });
-                        }}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Team review</label>
-                      <textarea
-                        className="textarea"
-                        value={selected.teamReview || ""}
-                        onChange={(e) => patchSelected({ teamReview: e.target.value || null })}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {tab === "links" ? (
-                <div style={{ display: "grid", gap: 12 }}>
-                  {linksLoading ? <div className="mutedSmall">Chargement…</div> : null}
-
-                  <div style={{ fontWeight: 950 }}>Lien bonus (CTA principal)</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 220px 120px", gap: 8 }}>
-                    <input
-                      className="input"
-                      value={bonusLink?.targetUrl || ""}
-                      placeholder="https://..."
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setLinks((prev) => prev.map((l: any) => (l.id === bonusLink?.id ? { ...l, targetUrl: v } : l)));
-                      }}
-                    />
-                    <input
-                      className="input"
-                      value={bonusLink?.label || ""}
-                      placeholder="Label (optionnel)"
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setLinks((prev) => prev.map((l: any) => (l.id === bonusLink?.id ? { ...l, label: v } : l)));
-                      }}
-                    />
-                    <button
-                      className="btnSecondary"
-                      type="button"
-                      onClick={async () => {
-                        if (!selected) return;
-                        if (!bonusLink) {
-                          await adminCreateCasinoLink(adminKey, selected.id, {
-                            kind: "bonus",
-                            targetUrl: "https://example.com",
-                            enabled: true,
-                            pinnedRank: 1,
-                            label: "Bonus LunaLive",
-                          } as any);
-                          await refreshLinks(selected.id);
-                          return;
-                        }
-                        await adminUpdateCasinoLink(adminKey, bonusLink.id, {
-                          targetUrl: bonusLink.targetUrl,
-                          label: bonusLink.label,
-                        } as any);
-                        await refreshLinks(selected.id);
-                      }}
-                    >
-                      {bonusLink ? "Sauver" : "Créer"}
-                    </button>
-                  </div>
-
-                  {bonusLink ? (
-                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
-                      <input
-                        type="checkbox"
-                        checked={!!bonusLink.enabled}
-                        onChange={async (e) => {
-                          await adminUpdateCasinoLink(adminKey, bonusLink.id, { enabled: e.target.checked } as any);
-                          await refreshLinks(selected.id);
-                        }}
-                      />
-                      enabled
-                    </label>
-                  ) : null}
-
-                  <div style={{ marginTop: 10, fontWeight: 950 }}>Liens créateurs</div>
-
-                  <div style={{ display: "grid", gap: 10 }}>
-                    {streamerLinks.map((l: any) => (
-                      <div
-                        key={l.id}
-                        style={{
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          borderRadius: 14,
-                          padding: 12,
-                          background: "rgba(255,255,255,0.03)",
-                        }}
-                      >
-                        <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 160px 140px", gap: 8, alignItems: "center" }}>
-                          <select
-                            className="select"
-                            style={selectStyle}
-                            value={l.streamerId ?? ""}
-                            onChange={(e) => {
-                              const v = e.target.value ? Number(e.target.value) : null;
-                              setLinks((prev) => prev.map((x: any) => (x.id === l.id ? { ...x, streamerId: v } : x)));
-                            }}
-                          >
-                            <option style={optionStyle} value="">—</option>
-                            {streamers.map((s) => (
-                              <option key={s.id} style={optionStyle} value={s.id}>
-                                {s.displayName}
-                              </option>
-                            ))}
-                          </select>
-
-                          <input
-                            className="input"
-                            value={l.targetUrl || ""}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setLinks((prev) => prev.map((x: any) => (x.id === l.id ? { ...x, targetUrl: v } : x)));
-                            }}
-                            placeholder="https://..."
-                          />
-
-                          <input
-                            className="input"
-                            value={l.label || ""}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setLinks((prev) => prev.map((x: any) => (x.id === l.id ? { ...x, label: v } : x)));
-                            }}
-                            placeholder="Label"
-                          />
-
-                          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                            <button
-                              className="btnGhostSmall"
-                              type="button"
-                              onClick={async () => {
-                                await adminUpdateCasinoLink(adminKey, l.id, {
-                                  targetUrl: l.targetUrl,
-                                  label: l.label,
-                                  streamerId: l.streamerId,
-                                  enabled: l.enabled,
-                                  pinnedRank: l.pinnedRank,
-                                } as any);
-                                await refreshLinks(selected.id);
-                              }}
-                            >
-                              Save
-                            </button>
-                            <button
-                              className="btnGhostSmall"
-                              type="button"
-                              onClick={async () => {
-                                await adminUpdateCasinoLink(adminKey, l.id, { enabled: !l.enabled } as any);
-                                await refreshLinks(selected.id);
-                              }}
-                            >
-                              {l.enabled ? "Disable" : "Enable"}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-
-                    {streamerLinks.length === 0 ? <div className="mutedSmall">Aucun lien créateur.</div> : null}
-                  </div>
-                </div>
-              ) : null}
-
-              {tab === "reviews" ? (
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                    <input
-                      className="input"
-                      value={reviewsQ}
-                      onChange={(e) => setReviewsQ(e.target.value)}
-                      placeholder="Rechercher dans les avis…"
-                      style={{ flex: 1, minWidth: 260 }}
-                    />
-                    <button className="btnSecondary" type="button" onClick={() => loadReviews({ reset: true })} disabled={reviewsLoading}>
-                      {reviewsLoading ? "…" : "Rechercher"}
-                    </button>
-                  </div>
-
-                  {reviews.map((r) => (
-                    <div
-                      key={r.id}
-                      style={{
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        borderRadius: 14,
-                        padding: 12,
-                        background: "rgba(255,255,255,0.03)",
-                        display: "grid",
-                        gap: 8,
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                        <div>
-                          <b>{r.username}</b>{" "}
-                          <span className="mutedSmall">({new Date(r.createdAt).toLocaleString()})</span>
-                        </div>
-                        <button
-                          className="btnGhostSmall"
-                          type="button"
-                          onClick={async () => {
-                            if (!confirm("Supprimer cet avis ?")) return;
-                            await adminModerateCasinoComment(adminKey, r.id, { action: "delete" });
-                            setReviews((prev) => prev.filter((x) => x.id !== r.id));
-                          }}
-                          style={{
-                            borderColor: "rgba(239,68,68,0.30)",
-                            background: "rgba(239,68,68,0.10)",
-                          }}
-                        >
-                          🗑️ Supprimer
-                        </button>
-                      </div>
-                      <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{r.body}</div>
-                    </div>
-                  ))}
-
-                  {!reviews.length && !reviewsLoading ? <div className="mutedSmall">Aucun avis publié.</div> : null}
-
-                  {reviewsHasMore ? (
-                    <button className="btnSecondary" type="button" onClick={() => loadReviews()} disabled={reviewsLoading}>
-                      {reviewsLoading ? "…" : "Charger plus"}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          </>
-        )}
       </div>
     </div>
   );

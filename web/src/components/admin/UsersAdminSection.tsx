@@ -205,10 +205,12 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
   const [rubOrigin, setRubOrigin] = React.useState<string>("paid_topup");
   const [rubNote, setRubNote] = React.useState<string>("");
 
-  // ban controls (site + ip)
+  // ban controls (SITE USER only for now)
   const [banBusy, setBanBusy] = React.useState(false);
   const [banReason, setBanReason] = React.useState<string>("");
   const [banDuration, setBanDuration] = React.useState<"perm" | "10m" | "1h" | "24h" | "7d" | "30d">("perm");
+
+  // (kept in UI but disabled until IP-ban is properly secured)
   const [banIpText, setBanIpText] = React.useState<string>("");
 
   async function load() {
@@ -241,7 +243,7 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
       const r = await adminGetUserDetails(adminKey, userId);
       setDetail(r);
 
-      // essaye de pré-remplir une IP si le backend la fournit
+      // best-effort IP prefill if backend provides it
       const anyr = r as any;
       const ipGuess =
         anyr?.lastIp ||
@@ -280,7 +282,7 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
         note: rubNote.trim() ? rubNote.trim() : null,
       });
 
-      await load(); // refresh balance/roles list
+      await load();
       if (openedUser?.id) await openDetails(openedUser.id);
       setRubNote("");
     } catch (e: any) {
@@ -290,6 +292,7 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
     }
   }
 
+  // ✅ Ban COMPTE (site_user_bans)
   async function banUserAccountQuick() {
     if (!openedUser) return;
 
@@ -297,7 +300,10 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
     setDetailErr(null);
     try {
       const until = toIsoUntil(banDuration);
-      await adminPostJson(adminKey, "/admin/bans/user", {
+
+      // Backend attendu (nouveau):
+      // POST /admin/site-bans/users  { userId, until?, reason? }
+      await adminPostJson(adminKey, "/admin/site-bans/users", {
         userId: openedUser.id,
         until, // null => permanent
         reason: banReason?.trim() || "ban admin",
@@ -312,46 +318,18 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
     }
   }
 
-  async function banIpAngry() {
-    if (!openedUser) return;
-
-    const ip = String(banIpText || "").trim();
-    if (!ip) {
-      setDetailErr("IP introuvable. (Le backend doit renvoyer une IP dans les détails, ou tu la saisis à la main)");
-      return;
-    }
-
-    // “version énervée”
-    const ok = window.confirm(`BAN IP (ÉNERVÉ) : tu confirmes que tu veux bannir l'IP "${ip}" ?`);
-    if (!ok) return;
-
-    setBanBusy(true);
-    setDetailErr(null);
-    try {
-      const until = toIsoUntil(banDuration);
-      await adminPostJson(adminKey, "/admin/bans/ip", {
-        ip,
-        until, // null => permanent
-        reason: banReason?.trim() || "ban ip admin",
-        // optionnel: pour tracer à qui c'était lié
-        userId: openedUser.id,
-      });
-
-      await openDetails(openedUser.id);
-    } catch (e: any) {
-      setDetailErr(String(e?.message || e));
-    } finally {
-      setBanBusy(false);
-    }
-  }
-
+  // ✅ Unban COMPTE
   async function unbanUser() {
     if (!openedUser) return;
 
     setBanBusy(true);
     setDetailErr(null);
     try {
-      await adminPostJson(adminKey, "/admin/bans/user/unban", { userId: openedUser.id });
+      // Backend attendu (nouveau):
+      // POST /admin/site-bans/users/revoke  { userId }
+      await adminPostJson(adminKey, "/admin/site-bans/users/revoke", { userId: openedUser.id });
+
+      await load();
       await openDetails(openedUser.id);
     } catch (e: any) {
       setDetailErr(String(e?.message || e));
@@ -360,28 +338,32 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
     }
   }
 
+  // 🚫 IP-ban volontairement désactivé (on le fera propre et sécurisé après)
+  async function banIpAngry() {
+    setDetailErr("IP ban désactivé pour le moment (on le refait propre après).");
+  }
   async function unbanIp() {
-    const ip = String(banIpText || "").trim();
-    if (!ip) {
-      setDetailErr("IP vide.");
-      return;
-    }
-
-    setBanBusy(true);
-    setDetailErr(null);
-    try {
-      await adminPostJson(adminKey, "/admin/bans/ip/unban", { ip });
-      await openDetails(openedUser!.id);
-    } catch (e: any) {
-      setDetailErr(String(e?.message || e));
-    } finally {
-      setBanBusy(false);
-    }
+    setDetailErr("IP unban désactivé pour le moment (on le refait propre après).");
   }
 
   const anyDetail = detail as any;
-  const bannedUserUntil: string | null = anyDetail?.ban?.user?.until ?? anyDetail?.banUserUntil ?? anyDetail?.bannedUntil ?? null;
-  const bannedIpUntil: string | null = anyDetail?.ban?.ip?.until ?? anyDetail?.banIpUntil ?? null;
+
+  // On affiche ce que le backend renvoie (si tu ajoutes ban info dans /admin/users/:id/details plus tard)
+  const bannedUserUntil: string | null =
+    anyDetail?.ban?.user?.until ??
+    anyDetail?.banUserUntil ??
+    anyDetail?.bannedUntil ??
+    null;
+
+  const bannedUserBool: boolean =
+    anyDetail?.ban?.user?.banned === true ||
+    anyDetail?.banUser === true ||
+    anyDetail?.banned === true;
+
+  const bannedIpUntil: string | null =
+    anyDetail?.ban?.ip?.until ??
+    anyDetail?.banIpUntil ??
+    null;
 
   return (
     <div className="panel" style={{ marginTop: 14 }}>
@@ -430,7 +412,11 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
                 </div>
               </div>
 
-              <select value={role} onChange={(e) => setEdit((m) => ({ ...m, [u.id]: e.target.value as AdminUserRow["role"] }))}>
+              <select
+                style={uiSelectStyle}
+                value={role}
+                onChange={(e) => setEdit((m) => ({ ...m, [u.id]: e.target.value as AdminUserRow["role"] }))}
+              >
                 <option value="viewer">viewer</option>
                 <option value="streamer">streamer</option>
                 <option value="admin">admin</option>
@@ -525,7 +511,13 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
               IP (si dispo) : <b>{String((anyDetail?.lastIp || anyDetail?.lastLoginIp || anyDetail?.ip || "—") ?? "—")}</b>
               <br />
               Ban compte :{" "}
-              <b>{bannedUserUntil ? `jusqu'au ${new Date(bannedUserUntil).toLocaleString()}` : anyDetail?.banUser === true ? "oui" : "—"}</b>
+              <b>
+                {bannedUserUntil
+                  ? `jusqu'au ${new Date(bannedUserUntil).toLocaleString()}`
+                  : bannedUserBool
+                    ? "oui"
+                    : "—"}
+              </b>
               <br />
               Ban IP :{" "}
               <b>{bannedIpUntil ? `jusqu'au ${new Date(bannedIpUntil).toLocaleString()}` : anyDetail?.banIp === true ? "oui" : "—"}</b>
@@ -547,7 +539,12 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
               <label className="mutedSmall" style={uiLabelStyle}>
                 Durée
               </label>
-              <select style={uiSelectStyle} value={banDuration} onChange={(e) => setBanDuration(e.target.value as any)} disabled={banBusy}>
+              <select
+                style={uiSelectStyle}
+                value={banDuration}
+                onChange={(e) => setBanDuration(e.target.value as any)}
+                disabled={banBusy}
+              >
                 <option value="perm">Permanent</option>
                 <option value="10m">10 minutes</option>
                 <option value="1h">1 heure</option>
@@ -568,14 +565,14 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
               />
 
               <label className="mutedSmall" style={uiLabelStyle}>
-                IP à bannir
+                IP (à venir)
               </label>
               <input
                 style={uiInputStyle}
                 value={banIpText}
                 onChange={(e) => setBanIpText(e.target.value)}
-                placeholder="ex: 1.2.3.4 (auto si le backend l'envoie)"
-                disabled={banBusy}
+                placeholder="désactivé pour l'instant"
+                disabled={true}
               />
             </div>
 
@@ -585,40 +582,36 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
                 type="button"
                 disabled={!openedUser || banBusy}
                 onClick={banUserAccountQuick}
-                title="Bannir le compte du site (cash pistache)"
+                title="Bannir le compte du site (login + routes auth bloqués)"
               >
-                {banBusy ? "…" : "⛔ Bannir (cash pistache)"}
+                {banBusy ? "…" : "⛔ Bannir le compte"}
               </button>
 
               <button
                 className="btnSecondary"
                 type="button"
-                disabled={!openedUser || banBusy}
+                disabled={true}
                 onClick={banIpAngry}
-                title="Bannir l'IP (version énervée)"
+                title="Désactivé (on le refait propre après)"
               >
-                {banBusy ? "…" : "💥 Bannir IP (ÉNERVÉ)"}
+                💥 Bannir IP (désactivé)
               </button>
 
               <button className="btnGhost" type="button" disabled={!openedUser || banBusy} onClick={unbanUser} title="Retire le ban compte">
                 ✅ Unban compte
               </button>
 
-              <button className="btnGhost" type="button" disabled={!openedUser || banBusy} onClick={unbanIp} title="Retire le ban IP">
-                ✅ Unban IP
+              <button className="btnGhost" type="button" disabled={true} onClick={unbanIp} title="Désactivé (on le refait propre après)">
+                ✅ Unban IP (désactivé)
               </button>
             </div>
 
             <div className="mutedSmall" style={{ opacity: 0.85, marginTop: 10, lineHeight: 1.5 }}>
-              Endpoints attendus côté API :
+              Endpoints attendus côté API (ban compte seulement) :
               <br />
-              <b>POST /admin/bans/user</b> {"{ userId, until?, reason? }"}
+              <b>POST /admin/site-bans/users</b> {"{ userId, until?, reason? }"}
               <br />
-              <b>POST /admin/bans/ip</b> {"{ ip, until?, reason?, userId? }"}
-              <br />
-              <b>POST /admin/bans/user/unban</b> {"{ userId }"}
-              <br />
-              <b>POST /admin/bans/ip/unban</b> {"{ ip }"}
+              <b>POST /admin/site-bans/users/revoke</b> {"{ userId }"}
             </div>
           </div>
 
