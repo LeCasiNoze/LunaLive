@@ -1,9 +1,3 @@
-
-
-
-
-
-
 // api/src/chat_socket.ts
 import type { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
@@ -335,6 +329,7 @@ async function sendBotChat(io: Server, meta: { id: number; slug: string; appeara
     body: text,
     createdAt: new Date(row.createdAt).toISOString(),
     cosmetics,
+    isBot: true,
     style: {
       nameColor: appearance.chat.usernameColor,
       msgColor: appearance.chat.messageColor,

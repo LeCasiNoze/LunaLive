@@ -5,16 +5,12 @@ import { pool } from "./db.js";
 const OUT_WEIGHT_BP = 2000; // 0.20
 const BUCKET_MINUTES = 5;
 
-const PREMIUM_VIEWERS_FACTOR = 0.20;  // +20% par premium
+const PREMIUM_VIEWERS_FACTOR = 0.20; // +20% par premium
 const PREMIUM_VIEWERS_CAP_PCT = 0.30; // cap +30% du total viewers sur la fenêtre
 
-// ✅ NEW: boost passive chest si streamer sub (sans impacter le bonus premium viewers)
+// boost passive chest si streamer sub (sans impacter le bonus premium viewers)
 const STREAMER_SUB_MULT = 1.5; // +50% (ex: 1.25 pour +25%)
 
-/**
- * Règle de génération par tranche de spectateurs
- * Toutes les 5 minutes, selon le nombre moyen de viewers actifs
- */
 function viewersToRubis(viewers: number): number {
   if (viewers <= 0) return 0;
   if (viewers <= 10) return 2;
@@ -41,13 +37,13 @@ function roundDown(n: number) {
 
 async function autoMintTick() {
   // borne supérieure : minute pleine précédente
-  const toTsRes = await pool.query(
-    `SELECT (date_trunc('minute', NOW()) - INTERVAL '1 minute') AS t`
-  );
-  const toTs = toTsRes.rows?.[0]?.t ? new Date(toTsRes.rows[0].t).toISOString() : null;
-  if (!toTs) return;
+  const toTsRes = await pool.query(`SELECT (date_trunc('minute', NOW()) - INTERVAL '1 minute') AS t`);
+  const toTsRaw = toTsRes.rows?.[0]?.t ? new Date(toTsRes.rows[0].t) : null;
+  if (!toTsRaw) return;
 
-  // ✅ on récupère aussi user_id pour savoir si le streamer est abonné "streamer"
+  const toTsIso = toTsRaw.toISOString();
+
+  // streamers live + user_id (pour sub streamer)
   const live = await pool.query(
     `SELECT id, user_id AS "userId"
      FROM streamers
@@ -59,13 +55,12 @@ async function autoMintTick() {
     const streamerUserId = Number(row.userId || 0);
 
     const client = await pool.connect();
-
     try {
       await client.query("BEGIN");
       await ensureChest(client, streamerId);
 
       const st = await client.query(
-        `SELECT last_bucket_ts AS "lastBucketTs"
+        `SELECT last_bucket_ts AS "lastBucketTs", carry_minutes AS "carryMinutes"
          FROM streamer_chest_auto_state
          WHERE streamer_id=$1
          FOR UPDATE`,
@@ -78,39 +73,79 @@ async function autoMintTick() {
           `INSERT INTO streamer_chest_auto_state (streamer_id, last_bucket_ts, carry_minutes)
            VALUES ($1, $2::timestamptz, 0)
            ON CONFLICT (streamer_id) DO NOTHING`,
-          [streamerId, toTs]
+          [streamerId, toTsIso]
         );
         await client.query("COMMIT");
         continue;
       }
 
-      const lastBucketTs = st.rows[0].lastBucketTs
-        ? new Date(st.rows[0].lastBucketTs).toISOString()
-        : null;
+      const lastBucketTsIso = st.rows[0].lastBucketTs ? new Date(st.rows[0].lastBucketTs).toISOString() : null;
+      const carryMinutes = Number(st.rows[0].carryMinutes || 0);
 
       // rien de nouveau
-      if (lastBucketTs && new Date(toTs).getTime() <= new Date(lastBucketTs).getTime()) {
+      if (lastBucketTsIso && new Date(toTsIso).getTime() <= new Date(lastBucketTsIso).getTime()) {
         await client.query("COMMIT");
         continue;
       }
 
+      // minutes écoulées depuis le dernier bucket (borné pour éviter gros gap / explosion)
+      const lastMs = lastBucketTsIso ? new Date(lastBucketTsIso).getTime() : 0;
+      const toMs = new Date(toTsIso).getTime();
+      const diffMinRaw = lastMs > 0 ? Math.floor((toMs - lastMs) / 60_000) : 0;
+      const diffMin = Math.max(0, Math.min(60, diffMinRaw)); // cap 60 min par tick (sécurité)
+
+      if (diffMin <= 0) {
+        await client.query(
+          `UPDATE streamer_chest_auto_state
+           SET last_bucket_ts=$2::timestamptz, updated_at=NOW()
+           WHERE streamer_id=$1`,
+          [streamerId, toTsIso]
+        );
+        await client.query("COMMIT");
+        continue;
+      }
+
+      // cumule
+      const totalCarry = carryMinutes + diffMin;
+
+      // on ne mint que par paquets de 5 minutes
+      const bucketsToMint = Math.floor(totalCarry / BUCKET_MINUTES);
+      const remainingCarry = totalCarry - bucketsToMint * BUCKET_MINUTES;
+
+      // pas encore 5 minutes -> juste avancer l'état
+      if (bucketsToMint <= 0) {
+        await client.query(
+          `UPDATE streamer_chest_auto_state
+           SET last_bucket_ts=$2::timestamptz,
+               carry_minutes=$3,
+               updated_at=NOW()
+           WHERE streamer_id=$1`,
+          [streamerId, toTsIso, remainingCarry]
+        );
+        await client.query("COMMIT");
+        continue;
+      }
+
+      // fenêtre de calcul = [windowFrom ; windowTo] = BUCKET_MINUTES * bucketsToMint
+      const windowMinutes = bucketsToMint * BUCKET_MINUTES;
+      const windowToIso = toTsIso;
+      const windowFromIso = new Date(toMs - windowMinutes * 60_000).toISOString();
+
       /**
-       * On compte le nombre de viewers distincts
-       * ayant été présents AU MOINS une minute
-       * dans la fenêtre [lastBucketTs ; toTs]
+       * Viewers distinct ayant été présents AU MOINS une minute dans la fenêtre.
+       * (Option A = on conserve ta logique actuelle, mais on corrige la cadence)
        */
       const viewersRes = await client.query(
         `SELECT COUNT(DISTINCT viewer_key)::int AS n
          FROM stream_viewer_minutes
          WHERE streamer_id=$1
-           AND bucket_ts > COALESCE($2::timestamptz, '1970-01-01'::timestamptz)
+           AND bucket_ts > $2::timestamptz
            AND bucket_ts <= $3::timestamptz`,
-        [streamerId, lastBucketTs, toTs]
+        [streamerId, windowFromIso, windowToIso]
       );
-
       const viewers = Number(viewersRes.rows?.[0]?.n || 0);
 
-      // ✅ Premium viewers présents dans la fenêtre (uniquement viewer_key "u:<id>")
+      // Premium viewers présents dans la fenêtre (uniquement viewer_key "u:<id>")
       const premiumRes = await client.query(
         `
         WITH u AS (
@@ -118,7 +153,7 @@ async function autoMintTick() {
           FROM stream_viewer_minutes
           WHERE streamer_id=$1
             AND viewer_key LIKE 'u:%'
-            AND bucket_ts > COALESCE($2::timestamptz, '1970-01-01'::timestamptz)
+            AND bucket_ts > $2::timestamptz
             AND bucket_ts <= $3::timestamptz
         )
         SELECT COUNT(*)::int AS n
@@ -128,16 +163,15 @@ async function autoMintTick() {
           AND us.status IN ('active','trialing')
           AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
         `,
-        [streamerId, lastBucketTs, toTs]
+        [streamerId, windowFromIso, windowToIso]
       );
-
       const premiumViewers = Number(premiumRes.rows?.[0]?.n || 0);
 
-      // ✅ boost safe (cap)
+      // boost safe (cap)
       const extra = Math.min(premiumViewers * PREMIUM_VIEWERS_FACTOR, viewers * PREMIUM_VIEWERS_CAP_PCT);
       const effectiveViewers = Math.floor(viewers + extra);
 
-      // ✅ NEW: streamer sub actif ?
+      // streamer sub actif ?
       let streamerSubActive = false;
       if (streamerUserId > 0) {
         const ss = await client.query(
@@ -156,25 +190,29 @@ async function autoMintTick() {
       }
 
       /**
-       * ✅ Règle demandée:
+       * Règle:
        * - base = viewersToRubis(viewers)
        * - premium delta = viewersToRubis(effectiveViewers) - base
        * - streamerSub boost = +50% sur la BASE uniquement
-       * => total = floor(base * mult) + premiumDelta
+       * => mintedPerBucket = floor(base * mult) + premiumDelta
+       * => mintedTotal = mintedPerBucket * bucketsToMint
        */
       const baseMinted = viewersToRubis(viewers);
       const mintedWithPremium = viewersToRubis(effectiveViewers);
       const premiumDelta = Math.max(0, mintedWithPremium - baseMinted);
 
       const boostedBase = streamerSubActive ? roundDown(baseMinted * STREAMER_SUB_MULT) : baseMinted;
-      const minted = Math.max(0, boostedBase + premiumDelta);
+      const mintedPerBucket = Math.max(0, boostedBase + premiumDelta);
+      const minted = Math.max(0, mintedPerBucket * bucketsToMint);
 
+      // update state : on avance à toTs (borne minute), et on conserve le reste
       await client.query(
         `UPDATE streamer_chest_auto_state
          SET last_bucket_ts=$2::timestamptz,
+             carry_minutes=$3,
              updated_at=NOW()
          WHERE streamer_id=$1`,
-        [streamerId, toTs]
+        [streamerId, toTsIso, remainingCarry]
       );
 
       if (minted > 0) {
@@ -188,7 +226,13 @@ async function autoMintTick() {
             JSON.stringify({
               rule: "viewers_per_5min",
               bucketMinutes: BUCKET_MINUTES,
-              toTs,
+
+              // fenêtre réellement utilisée
+              windowFrom: windowFromIso,
+              windowTo: windowToIso,
+              bucketsToMint,
+              windowMinutes,
+              toTs: toTsIso,
 
               viewers,
               premiumViewers,
@@ -202,15 +246,13 @@ async function autoMintTick() {
               baseMinted,
               premiumDelta,
               boostedBase,
+              mintedPerBucket,
               minted,
             }),
           ]
         );
 
-        await client.query(
-          `UPDATE streamer_chests SET updated_at=NOW() WHERE streamer_id=$1`,
-          [streamerId]
-        );
+        await client.query(`UPDATE streamer_chests SET updated_at=NOW() WHERE streamer_id=$1`, [streamerId]);
       }
 
       await client.query("COMMIT");
@@ -238,10 +280,7 @@ async function closeExpiredOpenings(io?: IOServer) {
   if (!(r.rows || []).length) return;
 
   const mod = await import("./routes/chest.js");
-  const closeFn = (mod as any).closeOpeningAndPayout as (
-    openingId: number,
-    closedBy: "auto"
-  ) => Promise<any>;
+  const closeFn = (mod as any).closeOpeningAndPayout as (openingId: number, closedBy: "auto") => Promise<any>;
   if (typeof closeFn !== "function") return;
 
   for (const row of r.rows || []) {
@@ -264,7 +303,7 @@ export function startChestJobs(io?: IOServer) {
   // fermeture auto
   setInterval(() => closeExpiredOpenings(io).catch(() => {}), 5_000);
 
-  // génération coffre toutes les minutes
+  // tick chaque minute, mais mint uniquement par paquets de BUCKET_MINUTES
   autoMintTick().catch(() => {});
   setInterval(() => autoMintTick().catch(() => {}), 60_000);
 }

@@ -330,6 +330,10 @@ export function ChatMessageBubble({
 }) {
   const isDlive = !!(msg as any)?.dlive;
   const dliveFrom = ((msg as any)?.dliveRestreamFrom ?? null) as string | null;
+  const isBot =
+    !!(msg as any)?.isBot || // ✅ recommandé (message taggé côté API)
+    msg.username === "LunaBot" || // fallback simple
+    msg.userId === Number((import.meta as any)?.env?.VITE_BOT_USER_ID || 0); // fallback si tu exposes l’id
 
   const c = msg.cosmetics ?? null;
   const lvl = (streamerAppearance?.chat?.viewerSkinsLevel ?? 1) as 1 | 2 | 3;
@@ -378,7 +382,7 @@ export function ChatMessageBubble({
     <div
       className={`chatMsgRow ${frameClass(frame?.frameId)} ${isPinged ? "chatPinged" : ""} ${
         isDlive ? "chatMsgRow--dlive" : ""
-      }`}
+      } ${isBot ? "chatMsgRow--bot" : ""}`}
       style={
         isPinged
           ? {
@@ -386,6 +390,13 @@ export function ChatMessageBubble({
               outline: "1px solid rgba(124,77,255,0.28)",
               boxShadow: "0 0 0 2px rgba(124,77,255,0.10), 0 12px 30px rgba(0,0,0,0.25)",
               background: "rgba(124,77,255,0.06)",
+            }
+          : isBot
+          ? {
+              borderRadius: 16,
+              outline: "1px solid rgba(255,90,90,0.22)",
+              boxShadow: "0 0 0 2px rgba(255,70,70,0.10), 0 12px 30px rgba(0,0,0,0.25)",
+              background: "linear-gradient(135deg, rgba(255,60,60,0.10), rgba(255,140,140,0.04))",
             }
           : isDlive
           ? {
@@ -426,6 +437,21 @@ export function ChatMessageBubble({
         <div className="chatMsgContent" style={{ minWidth: 0 }}>
           <div className="chatMsgTop">
             <div className="chatMsgTopLeft" style={{ minWidth: 0 }}>
+              {isBot ? (
+                <span
+                  className="chatBadge badge--bot"
+                  style={{
+                    marginRight: 0,
+                    fontWeight: 950,
+                    border: "1px solid rgba(255,120,120,0.22)",
+                    background: "rgba(255,60,60,0.10)",
+                  }}
+                  title="Bot"
+                >
+                  BOT
+                </span>
+              ) : null}
+
               {/* Badges */}
               {badges.length ? (
                 <div className="chatBadges">
@@ -451,8 +477,17 @@ export function ChatMessageBubble({
                 className={`chatUsername ${usernameEffectClass(unameEffect as any)}`}
                 style={
                   ({
-                    ["--uname-color" as any]: effectiveUnameColor ?? "var(--chat-name-color)",
+                    ["--uname-color" as any]: isBot ? "rgba(255,120,120,0.95)" : (effectiveUnameColor ?? "var(--chat-name-color)"),
                     opacity: isDlive ? 0.92 : undefined,
+
+                    ...(isBot
+                      ? {
+                          fontWeight: 950,
+                          letterSpacing: "0.5px",
+                          textTransform: "uppercase",
+                          textShadow: "0 0 14px rgba(255,80,80,0.22)",
+                        }
+                      : null),
                   } as React.CSSProperties)
                 }
                 title={msg.username}

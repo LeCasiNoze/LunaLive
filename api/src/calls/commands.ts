@@ -56,7 +56,20 @@ async function getUserTalentLevel(pool: Pool, userId: number, code: string): Pro
 /* =========================================================
    ✅ Bot chat helper (remplace les messages "system")
    ========================================================= */
-async function sendBotChat(pool: Pool, io: Server, opts: { streamerId: number; slug: string }, body: string) {
+// helper identique à chat_socket.ts
+function emitChatAll(io: Server, slug: string, event: string, payload?: any) {
+  const s = String(slug).trim();
+  if (!s) return;
+  io.to(`chat:${s}:public`).emit(event as any, payload);
+  io.to(`chat:${s}:popup`).emit(event as any, payload);
+}
+
+async function sendBotChat(
+  pool: Pool,
+  io: Server,
+  opts: { streamerId: number; slug: string },
+  body: string
+) {
   const botUserId = Number(process.env.BOT_USER_ID || 0);
   const botUsername = String(process.env.BOT_USERNAME || "LunaBot");
   if (!botUserId) {
@@ -85,9 +98,11 @@ async function sendBotChat(pool: Pool, io: Server, opts: { streamerId: number; s
     body: text,
     createdAt: row?.createdAt ? new Date(row.createdAt).toISOString() : new Date().toISOString(),
     cosmetics,
+    isBot: true, // ✅ utile pour le style côté front
   };
 
-  io.to(`chat:${opts.slug}`).emit("chat:message", msg);
+  // ✅ IMPORTANT: broadcast sur les bonnes rooms
+  emitChatAll(io, opts.slug, "chat:message", msg);
 }
 
 async function ensurePcallSchema(pool: Pool) {
