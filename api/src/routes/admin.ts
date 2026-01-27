@@ -755,3 +755,105 @@ adminRouter.post(
     });
   })
 );
+
+// ─────────────────────────────────────────────
+// Site bans (USER) — v1: ban compte uniquement
+// ─────────────────────────────────────────────
+
+adminRouter.get(
+  "/admin/site-bans/users",
+  requireAdminKey,
+  a(async (_req, res) => {
+    const { rows } = await pool.query(
+      `
+      SELECT
+        b.id,
+        b.user_id AS "userId",
+        u.username,
+        b.until,
+        b.reason,
+        b.created_at AS "createdAt",
+        b.created_by AS "createdBy"
+      FROM site_user_bans b
+      JOIN users u ON u.id = b.user_id
+      WHERE b.revoked_at IS NULL
+        AND (b.until IS NULL OR b.until > NOW())
+      ORDER BY b.created_at DESC
+      `
+    );
+    res.json({ ok: true, bans: rows });
+  })
+);
+
+adminRouter.post(
+  "/admin/site-bans/users",
+  requireAdminKey,
+  a(async (req, res) => {
+    const username = String(req.body.username || "").trim();
+    const userIdRaw = req.body.userId != null ? Number(req.body.userId) : null;
+
+    const reason = req.body.reason != null ? String(req.body.reason).slice(0, 500) : null;
+
+    // until: null = permanent, sinon ISO/date parsable
+    const untilRaw = req.body.until != null ? String(req.body.until).trim() : "";
+    const until =
+      !untilRaw || untilRaw === "null"
+        ? null
+        : (() => {
+            const d = new Date(untilRaw);
+            return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+          })();
+
+    let userId: number | null = userIdRaw && userIdRaw > 0 ? userIdRaw : null;
+
+    if (!userId) {
+      if (!username) return res.status(400).json({ ok: false, error: "username_or_userId_required" });
+      const u = await pool.query(`SELECT id FROM users WHERE lower(username)=lower($1) LIMIT 1`, [username]);
+      userId = u.rows?.[0]?.id ? Number(u.rows[0].id) : null;
+    }
+
+    if (!userId) return res.status(404).json({ ok: false, error: "user_not_found" });
+
+    await pool.query(
+      `
+      INSERT INTO site_user_bans (user_id, until, reason, created_by)
+      VALUES ($1, $2::timestamptz, $3, $4)
+      `,
+      [userId, until, reason, "admin"]
+    );
+
+    res.json({ ok: true });
+  })
+);
+
+adminRouter.post(
+  "/admin/site-bans/users/revoke",
+  requireAdminKey,
+  a(async (req, res) => {
+    const username = String(req.body.username || "").trim();
+    const userIdRaw = req.body.userId != null ? Number(req.body.userId) : null;
+
+    let userId: number | null = userIdRaw && userIdRaw > 0 ? userIdRaw : null;
+
+    if (!userId) {
+      if (!username) return res.status(400).json({ ok: false, error: "username_or_userId_required" });
+      const u = await pool.query(`SELECT id FROM users WHERE lower(username)=lower($1) LIMIT 1`, [username]);
+      userId = u.rows?.[0]?.id ? Number(u.rows[0].id) : null;
+    }
+
+    if (!userId) return res.status(404).json({ ok: false, error: "user_not_found" });
+
+    await pool.query(
+      `
+      UPDATE site_user_bans
+      SET revoked_at = NOW()
+      WHERE user_id = $1
+        AND revoked_at IS NULL
+        AND (until IS NULL OR until > NOW())
+      `,
+      [userId]
+    );
+
+    res.json({ ok: true });
+  })
+);

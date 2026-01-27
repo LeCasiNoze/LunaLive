@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
-import { hashPassword, verifyPassword, signToken, requireAuth } from "../auth.js";
+import { hashPassword, verifyPassword, signToken, requireAuth, getActiveSiteUserBan } from "../auth.js";
 import { sendVerifyCode } from "../utils/mailer.js";
 
 export const authRouter = Router();
@@ -255,6 +255,9 @@ authRouter.post(
     if (!ok) return res.status(401).json({ ok: false, error: "bad_credentials" });
 
     await pool.query(`UPDATE users SET last_login_at=NOW(), last_login_ip=$1 WHERE id=$2`, [req.ip, u.id]);
+
+    const ban = await getActiveSiteUserBan(Number(u.id));
+    if (ban.banned) return res.status(403).json({ ok: false, error: "banned", until: ban.until });
 
     const fullUser = await getUserWithWalletBits(Number(u.id));
     const token = signToken({ id: fullUser.id, username: fullUser.username, rubis: fullUser.rubis, role: fullUser.role });

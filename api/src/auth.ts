@@ -63,10 +63,58 @@ export function signToken(u: AuthUser) {
   return jwt.sign(payload, secret, { expiresIn: "30d" });
 }
 
+import type { Pool } from "pg";
+import { pool } from "./db.js";
+
+// ─────────────────────────────────────────────
+// Site ban helpers (user ban only for now)
+// ─────────────────────────────────────────────
+type BanState = { banned: boolean; until: string | null };
+
+const banCache = new Map<number, { at: number; state: BanState }>();
+const BAN_CACHE_MS = 3000;
+
+export async function getActiveSiteUserBan(userId: number): Promise<BanState> {
+  const uid = Number(userId || 0);
+  if (!uid) return { banned: false, until: null };
+
+  const now = Date.now();
+  const hit = banCache.get(uid);
+  if (hit && now - hit.at < BAN_CACHE_MS) return hit.state;
+
+  try {
+    const r = await pool.query(
+      `
+      SELECT until
+      FROM site_user_bans
+      WHERE user_id = $1
+        AND revoked_at IS NULL
+        AND (until IS NULL OR until > NOW())
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [uid]
+    );
+
+    const row = r.rows?.[0];
+    const state: BanState = row
+      ? { banned: true, until: row.until ? new Date(row.until).toISOString() : null }
+      : { banned: false, until: null };
+
+    banCache.set(uid, { at: now, state });
+    return state;
+  } catch {
+    // si la table n'existe pas encore (avant mig), on ne bloque pas
+    const state: BanState = { banned: false, until: null };
+    banCache.set(uid, { at: now, state });
+    return state;
+  }
+}
+
 // ─────────────────────────────────────────────
 // Auth middleware (JWT)
 // ─────────────────────────────────────────────
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const debug = process.env.ADMIN_DEBUG === "1";
   if (debug) res.setHeader("x-auth-guard", "requireAuth");
 
@@ -80,11 +128,19 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     const secret = getJwtSecret();
     req.user = jwt.verify(token, secret) as AuthUser;
     if (debug) res.setHeader("x-auth-result", "ok");
-    return next();
   } catch {
     if (debug) res.setHeader("x-auth-result", "bad_token");
     return res.status(401).json({ ok: false, error: "unauthorized" });
   }
+
+  // ✅ BLOCK: site user ban
+  const ban = await getActiveSiteUserBan(req.user!.id);
+  if (ban.banned) {
+    if (debug) res.setHeader("x-auth-result", "banned");
+    return res.status(403).json({ ok: false, error: "banned", until: ban.until });
+  }
+
+  return next();
 }
 
 // ─────────────────────────────────────────────
