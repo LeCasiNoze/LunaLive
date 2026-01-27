@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
-import { hashPassword, verifyPassword, signToken, requireAuth, getActiveSiteBan, sendBanned } from "../auth.js";
+import { hashPassword, verifyPassword, signToken, requireAuth } from "../auth.js";
 import { sendVerifyCode } from "../utils/mailer.js";
 
 export const authRouter = Router();
@@ -24,6 +24,7 @@ async function getUserWithWalletBits(userId: number) {
         u.role,
         u.email_verified AS "emailVerified",
 
+        -- ✅ legacy/facile: viewer actif (tu peux le garder)
         EXISTS (
           SELECT 1
           FROM user_subscriptions us
@@ -33,6 +34,7 @@ async function getUserWithWalletBits(userId: number) {
             AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
         ) AS "premiumActive",
 
+        -- ✅ NEW: liste complète des subs (viewer + streamer)
         COALESCE((
           SELECT jsonb_agg(
             jsonb_build_object(
@@ -74,10 +76,6 @@ async function getUserWithWalletBits(userId: number) {
 authRouter.post(
   "/auth/register",
   a(async (req, res) => {
-    // ✅ ban IP => pas d'inscription
-    const banIp = await getActiveSiteBan({ ip: req.ip });
-    if (banIp && banIp.scope === "ip") return sendBanned(res, banIp);
-
     const username = String(req.body.username || "").trim();
     const email = String(req.body.email || "").trim();
     const password = String(req.body.password || "");
@@ -142,10 +140,6 @@ authRouter.post(
 authRouter.post(
   "/auth/register/verify",
   a(async (req, res) => {
-    // ✅ ban IP => pas de création de compte
-    const banIp = await getActiveSiteBan({ ip: req.ip });
-    if (banIp && banIp.scope === "ip") return sendBanned(res, banIp);
-
     const username = String(req.body.username || "").trim();
     const code = String(req.body.code || "").trim();
 
@@ -198,10 +192,6 @@ authRouter.post(
 authRouter.post(
   "/auth/register/resend",
   a(async (req, res) => {
-    // (optionnel) : bloquer resend si IP bannie
-    const banIp = await getActiveSiteBan({ ip: req.ip });
-    if (banIp && banIp.scope === "ip") return sendBanned(res, banIp);
-
     const username = String(req.body.username || "").trim();
     if (!username) return res.status(400).json({ ok: false, error: "username_required" });
 
@@ -263,10 +253,6 @@ authRouter.post(
 
     const ok = await verifyPassword(password, u.password_hash);
     if (!ok) return res.status(401).json({ ok: false, error: "bad_credentials" });
-
-    // ✅ ban check après password OK
-    const ban = await getActiveSiteBan({ userId: Number(u.id), ip: req.ip });
-    if (ban) return sendBanned(res, ban);
 
     await pool.query(`UPDATE users SET last_login_at=NOW(), last_login_ip=$1 WHERE id=$2`, [req.ip, u.id]);
 
