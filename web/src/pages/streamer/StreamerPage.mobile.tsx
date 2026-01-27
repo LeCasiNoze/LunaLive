@@ -222,6 +222,14 @@ function writeViewportContent(content: string) {
   m.setAttribute("content", content);
 }
 
+function isIOSLike(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const isi = /iP(hone|ad|od)/i.test(ua);
+  const isIpadOs = /Macintosh/i.test(ua) && /Mobile/i.test(ua);
+  return isi || isIpadOs;
+}
+
 export default function StreamerPageMobile() {
   const { slug } = useParams();
   const auth = useAuth() as any;
@@ -301,6 +309,9 @@ export default function StreamerPageMobile() {
   React.useEffect(() => {
     if (typeof document === "undefined") return;
 
+    // ✅ IMPORTANT: on ne lock que sur iOS (sinon Android peut basculer en fullscreen lecteur)
+    if (!isIOSLike()) return;
+
     // capture une seule fois
     if (!cinemaGuardRef.current) {
       const de: any = document.documentElement;
@@ -326,19 +337,16 @@ export default function StreamerPageMobile() {
         if (snap.viewport != null) writeViewportContent(lockViewport);
       } catch {}
 
-      // stop “text boosting”
       try {
         de.style.webkitTextSizeAdjust = "100%";
         de.style.textSizeAdjust = "100%";
       } catch {}
 
-      // évite certains double-tap zoom / gestures bizarres en overlay fixed
       try {
         bs.touchAction = "manipulation";
         bs.overscrollBehavior = "none";
       } catch {}
 
-      // blur si un input était focus (souvent déclencheur de zoom)
       try {
         const ae: any = document.activeElement;
         if (ae && typeof ae.blur === "function") ae.blur();
@@ -363,7 +371,6 @@ export default function StreamerPageMobile() {
     else restore();
 
     return () => {
-      // sécurité: si on unmount pendant cinema
       restore();
     };
   }, [cinema]);
@@ -1002,7 +1009,12 @@ export default function StreamerPageMobile() {
               inset: 0,
               width: "100vw",
               height: "100dvh",
-              minHeight: "100vh",
+
+              // ✅ iOS: évite que le bas passe sous la home-bar
+              paddingTop: "env(safe-area-inset-top)",
+              paddingBottom: "env(safe-area-inset-bottom)",
+              boxSizing: "border-box",
+
               zIndex: 9999,
               background: "rgba(35, 12, 60, 1)",
               display: "flex",
@@ -1038,7 +1050,7 @@ export default function StreamerPageMobile() {
               className="cinemaTopBar"
               style={{
                 position: "absolute",
-                top: 10,
+                top: "calc(10px + env(safe-area-inset-top))",
                 left: 10,
                 right: 10,
                 display: "flex",

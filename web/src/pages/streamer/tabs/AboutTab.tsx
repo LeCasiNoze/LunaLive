@@ -26,13 +26,6 @@ function moveItem<T>(arr: T[], from: number, to: number): T[] {
   return a;
 }
 
-type ImgMeta = { w: number; h: number; kind: "banner" | "square" };
-
-function detectKind(w: number, h: number): "banner" | "square" {
-  if (!w || !h) return "square";
-  return w / h >= 1.45 ? "banner" : "square";
-}
-
 export function AboutTab({
   slug,
   token,
@@ -49,9 +42,6 @@ export function AboutTab({
   const [edit, setEdit] = React.useState(false);
   const [blocks, setBlocks] = React.useState<AboutBlock[]>([]);
   const [uploadingIndex, setUploadingIndex] = React.useState<number | null>(null);
-
-  // key = imageUrl (absolute), meta = dims/kind
-  const [metaMap, setMetaMap] = React.useState<Record<string, ImgMeta>>({});
 
   const dragIndexRef = React.useRef<number | null>(null);
 
@@ -114,29 +104,11 @@ export function AboutTab({
       const r = await uploadStreamerAboutImage(slug, token, file);
       if (!("ok" in r) || !r.ok) throw new Error((r as any)?.error || "Upload error");
       updateBlock(i, { imageUrl: r.imageUrl });
-
-      // on peut pré-remplir meta si le backend renvoie width/height
-      if (r.width && r.height) {
-        const abs = absFromApiMaybe(r.imageUrl);
-        setMetaMap((p) => ({
-          ...p,
-          [abs]: { w: r.width!, h: r.height!, kind: detectKind(r.width!, r.height!) },
-        }));
-      }
     } catch (e: any) {
       setError(String(e?.message || "Erreur upload"));
     } finally {
       setUploadingIndex(null);
     }
-  }
-
-  function onImgLoad(absUrl: string, w: number, h: number) {
-    if (!absUrl || !w || !h) return;
-    setMetaMap((p) => {
-      const cur = p[absUrl];
-      if (cur && cur.w === w && cur.h === h) return p;
-      return { ...p, [absUrl]: { w, h, kind: detectKind(w, h) } };
-    });
   }
 
   function reorder(from: number, to: number) {
@@ -150,20 +122,12 @@ export function AboutTab({
     const desc = String(b.description || "").trim();
 
     const imgSrc = img ? absFromApiMaybe(img) : "";
-    const meta = imgSrc ? metaMap[imgSrc] : undefined;
-    const kind: "banner" | "square" = meta?.kind ?? "square";
-
-    const tileAspect = kind === "banner" ? "3 / 1" : "1 / 1";
-    const tileSpan =
-      kind === "banner"
-        ? ({ gridColumnEnd: "span 2" } as const) // ✅ 2 colonnes
-        : undefined;
 
     const ImgBox = (
       <div
         style={{
           width: "100%",
-          aspectRatio: tileAspect as any,
+          aspectRatio: "1 / 1" as any,
           borderRadius: 14,
           overflow: "hidden",
           border: "1px solid rgba(255,255,255,0.10)",
@@ -180,10 +144,6 @@ export function AboutTab({
               height: "100%",
               objectFit: "cover",
               display: "block",
-            }}
-            onLoad={(e) => {
-              const el = e.currentTarget;
-              onImgLoad(imgSrc, el.naturalWidth || 0, el.naturalHeight || 0);
             }}
             onError={(e) => {
               (e.currentTarget as any).style.display = "none";
@@ -216,7 +176,6 @@ export function AboutTab({
           borderRadius: 16,
           border: "1px solid rgba(255,255,255,0.08)",
           background: "rgba(255,255,255,0.03)",
-          ...tileSpan,
         }}
         draggable={mode === "edit"}
         onDragStart={() => {
@@ -239,11 +198,6 @@ export function AboutTab({
             <div className="mutedSmall" style={{ opacity: 0.85, display: "flex", gap: 10, alignItems: "center" }}>
               <span style={{ cursor: "grab", userSelect: "none", fontWeight: 950 }}>⠿</span>
               <span>Bloc #{i + 1}</span>
-              {imgSrc && meta ? (
-                <span style={{ opacity: 0.85 }}>
-                  • {meta.kind === "banner" ? "Bannière" : "Carré"} ({meta.w}×{meta.h})
-                </span>
-              ) : null}
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -260,7 +214,6 @@ export function AboutTab({
           </div>
         ) : null}
 
-        {/* Image cliquable si link */}
         {imgSrc && link ? (
           <a href={cleanUrl(link)} target="_blank" rel="noreferrer" style={{ textDecoration: "none", display: "block" }}>
             {ImgBox}
@@ -269,12 +222,8 @@ export function AboutTab({
           ImgBox
         )}
 
-        {/* Description */}
-        {desc ? (
-          <div style={{ marginTop: 10, whiteSpace: "pre-wrap", lineHeight: 1.35 }}>{desc}</div>
-        ) : null}
+        {desc ? <div style={{ marginTop: 10, whiteSpace: "pre-wrap", lineHeight: 1.35 }}>{desc}</div> : null}
 
-        {/* Lien affiché seulement si PAS d'image (sinon lien = clic image) */}
         {!imgSrc && link ? (
           <div style={{ marginTop: 10 }}>
             <a href={cleanUrl(link)} target="_blank" rel="noreferrer" style={{ fontWeight: 900, textDecoration: "none" }}>
@@ -286,11 +235,10 @@ export function AboutTab({
           </div>
         ) : null}
 
-        {/* EDIT FIELDS */}
         {mode === "edit" ? (
           <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
             <div className="mutedSmall" style={{ opacity: 0.85 }}>
-              Reco tailles : Carré <b>800×800</b> / Bannière <b>1200×400</b> (important centré).
+              Taille finale : Carré <b>800×800</b> (crop centré automatique).
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -311,12 +259,7 @@ export function AboutTab({
               </label>
 
               {imgSrc ? (
-                <button
-                  type="button"
-                  className="btnGhostSmall"
-                  onClick={() => updateBlock(i, { imageUrl: "" })}
-                  disabled={uploadingIndex === i}
-                >
+                <button type="button" className="btnGhostSmall" onClick={() => updateBlock(i, { imageUrl: "" })} disabled={uploadingIndex === i}>
                   Retirer l’image
                 </button>
               ) : null}
@@ -402,11 +345,7 @@ export function AboutTab({
         </div>
       ) : null}
 
-      {loading ? (
-        <div className="mutedSmall" style={{ marginTop: 10 }}>
-          Chargement…
-        </div>
-      ) : null}
+      {loading ? <div className="mutedSmall" style={{ marginTop: 10 }}>Chargement…</div> : null}
 
       {!loading && !blocks.length && !edit ? (
         <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85 }}>
@@ -415,16 +354,16 @@ export function AboutTab({
       ) : null}
 
       {!loading ? (
-        <div style={{
-          marginTop: 12,
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(200px, 220px))",
-          justifyContent: "start",
-          gap: 12,
-          alignItems: "start",
-          gridAutoFlow: "dense", // ✅ compacte autour des bannières
-        }}>
-
+        <div
+          style={{
+            marginTop: 12,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 220px))",
+            justifyContent: "start",
+            gap: 12,
+            alignItems: "start",
+          }}
+        >
           {blocks.map((b, i) => renderTile(b, i, edit ? "edit" : "view"))}
         </div>
       ) : null}

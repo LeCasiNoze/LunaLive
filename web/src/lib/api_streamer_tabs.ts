@@ -64,7 +64,7 @@ export async function uploadStreamerAboutImage(
   token: string,
   file: File
 ): Promise<
-  | { ok: true; imageUrl: string; kind?: "banner" | "square"; width?: number | null; height?: number | null }
+  | { ok: true; imageUrl: string; kind?: "square"; width?: number | null; height?: number | null }
   | { ok: false; error: string }
 > {
   const fd = new FormData();
@@ -94,7 +94,6 @@ export async function putStreamerAgenda(
     body: JSON.stringify({ rules }),
   });
 }
-
 
 export type ApiVod = {
   permlink: string;

@@ -4,10 +4,14 @@ import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
 import multer from "multer";
+import os from "node:os";
 
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
 import { requireAuth, type AuthUser } from "../auth.js";
+
+// ✅ on réutilise votre impl R2
+import { r2Enabled, buildPublicUrl, deleteFromR2, putFileToR2, getR2PublicBase } from "../clips/r2.js";
 
 export const streamerTabsRouter = Router();
 
@@ -54,7 +58,7 @@ function canEdit(user: AuthUser, ownerUserId: number | null) {
   return ownerUserId != null && Number(ownerUserId) === uid;
 }
 
-/** uniquement nos uploads about */
+/** uniquement nos anciens uploads about locaux (legacy) */
 function isLocalAboutUploadUrl(url: string, streamerId: number) {
   const u = String(url || "").trim();
   return u.startsWith(`/uploads/streamer_about/${streamerId}/`);
@@ -71,8 +75,40 @@ async function deleteFileSafe(absPath: string) {
   } catch {}
 }
 
+/** R2: extraire key depuis URL publique */
+function r2KeyFromPublicUrl(url: string): string | null {
+  const u = String(url || "").trim();
+  if (!u) return null;
+
+  const base = getR2PublicBase();
+  if (!base) return null;
+
+  const baseNoSlash = String(base).replace(/\/+$/, "");
+  if (!u.startsWith(baseNoSlash + "/")) return null;
+
+  const rest = u.slice((baseNoSlash + "/").length);
+  if (!rest) return null;
+
+  // buildPublicUrl encode chaque segment => ici on décode chaque segment
+  try {
+    const key = rest
+      .split("/")
+      .filter(Boolean)
+      .map((seg) => decodeURIComponent(seg))
+      .join("/");
+    return key || null;
+  } catch {
+    // si URL bizarre, on skip le delete
+    return null;
+  }
+}
+
+function makeAboutR2Key(streamerId: number) {
+  return `streamer_about/${streamerId}/about_${crypto.randomUUID()}.webp`;
+}
+
 /* =========================
- *  ABOUT: upload image
+ *  ABOUT: upload image (R2 + square 800x800)
  * ========================= */
 
 streamerTabsRouter.post(
@@ -88,6 +124,10 @@ streamerTabsRouter.post(
     if (!core) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
     if (!canEdit(user, core.owner_user_id)) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
 
+    if (!r2Enabled()) {
+      return res.status(500).json({ ok: false, error: "r2_disabled" });
+    }
+
     const file = (req as any).file as undefined | { buffer: Buffer; mimetype: string };
     if (!file?.buffer) return res.status(400).json({ ok: false, error: "NO_FILE" });
 
@@ -99,32 +139,53 @@ streamerTabsRouter.post(
     const sharp = await getSharp();
     if (!sharp) return res.status(500).json({ ok: false, error: "sharp_not_installed" });
 
-    // détecte square/banner (sur l'image source)
+    // meta source (info)
     const meta = await sharp(file.buffer).metadata();
-    const w = Number(meta.width || 0);
-    const h = Number(meta.height || 0);
-    const ratio = w > 0 && h > 0 ? w / h : 1;
-    const kind = ratio >= 1.45 ? "banner" : "square";
+    const srcW = Number(meta.width || 0) || null;
+    const srcH = Number(meta.height || 0) || null;
 
-    // optimisation: garder le ratio (fit inside), convertir webp
-    const maxW = kind === "banner" ? 1600 : 1200;
-    const maxH = kind === "banner" ? 900 : 1200;
-
+    // ✅ 1 type : carré 800×800 uniformisé
     const out = await sharp(file.buffer)
       .rotate()
-      .resize({ width: maxW, height: maxH, fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 80 })
+      .resize({
+        width: 800,
+        height: 800,
+        fit: "cover",
+        position: "centre",
+      })
+      .webp({ quality: 82 })
       .toBuffer();
 
-    const dir = path.resolve(process.cwd(), "uploads", "streamer_about", String(core.id));
-    await fs.mkdir(dir, { recursive: true });
+    // on réutilise votre helper putFileToR2(filePath)
+    const key = makeAboutR2Key(core.id);
+    const tmp = path.join(os.tmpdir(), `ll_about_${core.id}_${crypto.randomUUID()}.webp`);
+    try {
+      await fs.writeFile(tmp, out);
 
-    const name = `about_${crypto.randomUUID()}.webp`;
-    const abs = path.resolve(dir, name);
-    await fs.writeFile(abs, out);
+      await putFileToR2({
+        key,
+        contentType: "image/webp",
+        filePath: tmp,
+      });
+    } catch (e) {
+      console.error("[streamer_tabs/about] r2 upload error", e);
+      return res.status(500).json({ ok: false, error: "UPLOAD_FAILED" });
+    } finally {
+      try {
+        await fs.unlink(tmp);
+      } catch {}
+    }
 
-    const imageUrl = `/uploads/streamer_about/${core.id}/${name}`;
-    return res.json({ ok: true, imageUrl, kind, width: w || null, height: h || null });
+    const imageUrl = buildPublicUrl(key);
+    if (!imageUrl) return res.status(500).json({ ok: false, error: "R2_PUBLIC_BASE_MISSING" });
+
+    return res.json({
+      ok: true,
+      imageUrl,
+      width: srcW,
+      height: srcH,
+      kind: "square",
+    });
   })
 );
 
@@ -181,20 +242,38 @@ streamerTabsRouter.put(
     if (!blocks) return res.status(400).json({ ok: false, error: "BAD_BODY" });
     if (blocks.length > 30) return res.status(400).json({ ok: false, error: "TOO_MANY_BLOCKS" });
 
-    // images locales présentes avant (pour cleanup)
+    // images présentes avant (pour cleanup)
     const before = await pool.query(`SELECT image_url FROM streamer_about_blocks WHERE streamer_id=$1`, [core.id]);
+
     const prevLocal = new Set<string>();
+    const prevR2Keys = new Set<string>();
+
     for (const r of before.rows) {
       const u = String(r.image_url || "").trim();
-      if (u && isLocalAboutUploadUrl(u, core.id)) prevLocal.add(u);
+      if (!u) continue;
+
+      if (isLocalAboutUploadUrl(u, core.id)) {
+        prevLocal.add(u);
+      } else {
+        const k = r2KeyFromPublicUrl(u);
+        if (k) prevR2Keys.add(k);
+      }
     }
 
     const nextLocal = new Set<string>();
+    const nextR2Keys = new Set<string>();
+
     const payload = blocks.map((b: any) => {
       const imageUrl = String(b.imageUrl || "").trim() || null;
       const linkUrl = String(b.linkUrl || "").trim() || null;
       const description = String(b.description || "").trim() || null;
-      if (imageUrl && isLocalAboutUploadUrl(imageUrl, core.id)) nextLocal.add(imageUrl);
+
+      if (imageUrl) {
+        if (isLocalAboutUploadUrl(imageUrl, core.id)) nextLocal.add(imageUrl);
+        const k = r2KeyFromPublicUrl(imageUrl);
+        if (k) nextR2Keys.add(k);
+      }
+
       return { imageUrl, linkUrl, description };
     });
 
@@ -224,7 +303,7 @@ streamerTabsRouter.put(
       client.release();
     }
 
-    // cleanup fichiers plus utilisés
+    // cleanup local legacy
     for (const oldUrl of prevLocal) {
       if (nextLocal.has(oldUrl)) continue;
 
@@ -233,6 +312,14 @@ streamerTabsRouter.put(
       if (!abs.startsWith(allowedRoot)) continue;
 
       await deleteFileSafe(abs);
+    }
+
+    // cleanup R2
+    for (const oldKey of prevR2Keys) {
+      if (nextR2Keys.has(oldKey)) continue;
+      try {
+        await deleteFromR2(oldKey);
+      } catch {}
     }
 
     return res.json({ ok: true });
@@ -394,7 +481,6 @@ streamerTabsRouter.post(
     const ruleId = Number(req.body?.ruleId);
     if (!Number.isFinite(ruleId) || ruleId <= 0) return res.status(400).json({ ok: false, error: "BAD_RULE_ID" });
 
-    // rule doit appartenir au streamer
     const own = await pool.query(
       `SELECT id FROM streamer_agenda_rules WHERE id=$1 AND streamer_id=$2 LIMIT 1`,
       [ruleId, core.id]
