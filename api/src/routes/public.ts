@@ -8,6 +8,7 @@ import type { AuthUser } from "../auth.js";
 import { a } from "../utils/async.js";
 import { chatStore } from "../chat_store.js";
 import normalizeAppearance from "../appearance.js";
+import { emitChatAll, emitChatAndStream } from "../socket_emit.js";
 
 export const publicRouter = Router();
 
@@ -319,7 +320,7 @@ publicRouter.post(
       const io = req.app.locals.io;
       if (io) {
         const msg = chatStore.addSystem(String(hoster.slug), `🛑 Host arrêté.`);
-        io.to(`chat:${String(hoster.slug)}`).emit("chat:message", msg);
+        emitChatAll(io, String(hoster.slug), "chat:message", msg);
       }
 
       return res.json({ ok: true, hostTargetSlug: null, hostTargetDisplayName: null, hostTargetIsLive: false });
@@ -356,7 +357,7 @@ publicRouter.post(
         String(hoster.slug),
         `📺 ${String(hoster.displayName || hoster.slug)} host ${String(target.displayName || target.slug)} !`
       );
-      io.to(`chat:${String(hoster.slug)}`).emit("chat:message", msg);
+      emitChatAll(io, String(hoster.slug), "chat:message", msg);
     }
 
     return res.json({
@@ -405,7 +406,7 @@ publicRouter.post(
 
     const io = req.app.locals.io;
     if (io) {
-      io.to(`chat:${streamer.slug}`).to(`stream:${streamer.slug}`).emit("stream:follows", {
+      emitChatAndStream(io, streamer.slug, "stream:follows", {
         slug: streamer.slug,
         followsCount,
       });
@@ -423,7 +424,7 @@ publicRouter.post(
 
       if (io) {
         const msg = chatStore.addSystem(String(streamer.slug), body);
-        io.to(`chat:${streamer.slug}`).emit("chat:message", msg);
+        emitChatAll(io, String(streamer.slug), "chat:message", msg);
       }
     }
 
@@ -471,7 +472,7 @@ publicRouter.delete(
 
     const io = req.app.locals.io;
     if (io) {
-      io.to(`chat:${streamer.slug}`).to(`stream:${streamer.slug}`).emit("stream:follows", {
+      emitChatAndStream(io, streamer.slug, "stream:follows", {
         slug: streamer.slug,
         followsCount,
       });

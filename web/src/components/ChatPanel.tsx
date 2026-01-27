@@ -1889,10 +1889,9 @@ export function ChatPanel({
         subOnly: !!st.subOnly,
         dliveSyncPublic: !!st.dliveSyncPublic,
         dliveSyncPopup: !!st.dliveSyncPopup,
-        dliveUsername: st.settings.dliveUsername ? String(st.settings.dliveUsername) : null,
+        dliveUsername: st.dliveUsername ? String(st.dliveUsername) : null,
       });
     });
-
 
     socket.on("stream:follows", (payload: any) => {
       const evSlug = String(payload?.slug || "").trim().toLowerCase();

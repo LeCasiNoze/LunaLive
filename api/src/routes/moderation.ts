@@ -20,6 +20,14 @@ function normLimit(v: any, def = 30, max = 100) {
   return Math.min(max, Math.floor(n));
 }
 
+function emitChatAll(io: IOServer | null, slug: string, event: string, payload?: any) {
+  if (!io) return;
+  const s = String(slug || "").trim();
+  if (!s) return;
+  io.to(`chat:${s}:public`).emit(event as any, payload);
+  io.to(`chat:${s}:popup`).emit(event as any, payload);
+}
+
 function getIO(req: Request): IOServer | null {
   return ((req.app as any)?.locals?.io as IOServer) || null;
 }
@@ -146,7 +154,7 @@ moderationRouter.post(
     );
 
     const io = getIO(req as any);
-    io?.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "mod_add", userId });
+    emitChatAll(io, meta.slug, "chat:moderation_changed",  { type: "mod_add", userId });
 
     res.json({ ok: true });
   })
@@ -177,7 +185,7 @@ moderationRouter.delete(
     );
 
     const io = getIO(req as any);
-    io?.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "mod_remove", userId });
+    emitChatAll(io, meta.slug, "chat:moderation_changed",  { type: "mod_remove", userId });
 
     res.json({ ok: true });
   })
@@ -228,7 +236,7 @@ async function handleUnmute(req: Request, res: Response) {
   }
 
   const io = getIO(req as any);
-  io?.to(`chat:${meta.slug}`).emit("chat:moderation_changed", {
+  emitChatAll(io, meta.slug, "chat:moderation_changed", { 
     type: "unmute",
     userId: userId || null,
     timeoutId: timeoutId || null,
@@ -252,7 +260,7 @@ async function handleUnban(req: Request, res: Response) {
   );
 
   const io = getIO(req as any);
-  io?.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "unban", userId });
+  emitChatAll(io, meta.slug, "chat:moderation_changed",  { type: "unban", userId });
 
   res.json({ ok: true, changed: (r.rowCount || 0) > 0 });
 }
@@ -609,7 +617,7 @@ async function handleBan(req: Request, res: Response) {
   );
 
   const io = getIO(req as any);
-  io?.to(`chat:${meta.slug}`).emit("chat:moderation_changed", { type: "ban", userId });
+  emitChatAll(io, meta.slug, "chat:moderation_changed",  { type: "ban", userId });
 
   res.json({ ok: true, changed: (r.rowCount || 0) > 0 });
 }

@@ -441,6 +441,12 @@ export function attachChat(io: Server) {
 
           data.appearance = normalizeAppearance(meta.appearance);
 
+          try {
+            if (data.slug && data.chatMode) {
+              socket.leave(`chat:${data.slug}:${data.chatMode}`);
+            }
+          } catch {}
+          
           // ✅ IMPORTANT: join ONLY ONE chat room (no legacy room => no duplicates)
           socket.join(`chat:${meta.slug}:${m}`);
 
