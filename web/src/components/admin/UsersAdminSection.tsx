@@ -1,3 +1,4 @@
+// web/src/components/admin/UsersAdminSection.tsx
 import * as React from "react";
 import {
   adminAdjustUserRubis,
@@ -19,6 +20,7 @@ const ORIGINS: { origin: string; label: string }[] = [
   { origin: "event_platform", label: "event_platform (0.10)" },
 ];
 
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 const MAIN_SITE = (import.meta.env.VITE_MAIN_SITE_BASE ?? "https://lunalive.onrender.com/").replace(/\/$/, "");
 
 const uiInputStyle: React.CSSProperties = {
@@ -114,8 +116,7 @@ function Drawer({
             justifyContent: "space-between",
             gap: 10,
             alignItems: "center",
-            background:
-              "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)",
           }}
         >
           <div style={{ fontWeight: 950 }}>{title}</div>
@@ -138,6 +139,51 @@ function Drawer({
   );
 }
 
+async function adminPostJson<T>(adminKey: string, path: string, body: any): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-admin-key": adminKey,
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+
+  let data: any = null;
+  try {
+    data = await res.json();
+  } catch {
+    // ignore
+  }
+
+  if (!res.ok) {
+    const msg = data?.error || data?.message || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data as T;
+}
+
+function toIsoUntil(duration: string): string | null {
+  // duration values: "perm" | "10m" | "1h" | "24h" | "7d" | "30d"
+  if (duration === "perm") return null;
+
+  const now = Date.now();
+  const addMs =
+    duration === "10m"
+      ? 10 * 60 * 1000
+      : duration === "1h"
+        ? 60 * 60 * 1000
+        : duration === "24h"
+          ? 24 * 60 * 60 * 1000
+          : duration === "7d"
+            ? 7 * 24 * 60 * 60 * 1000
+            : duration === "30d"
+              ? 30 * 24 * 60 * 60 * 1000
+              : 0;
+
+  return new Date(now + addMs).toISOString();
+}
+
 export function UsersAdminSection({ adminKey }: { adminKey: string }) {
   const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<AdminUserRow[]>([]);
@@ -146,10 +192,7 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
   const [edit, setEdit] = React.useState<Record<number, AdminUserRow["role"]>>({});
 
   const [openUserId, setOpenUserId] = React.useState<number | null>(null);
-  const openedUser = React.useMemo(
-    () => rows.find((u) => u.id === openUserId) || null,
-    [rows, openUserId]
-  );
+  const openedUser = React.useMemo(() => rows.find((u) => u.id === openUserId) || null, [rows, openUserId]);
 
   // details state
   const [detail, setDetail] = React.useState<AdminUserDetails | null>(null);
@@ -161,6 +204,12 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
   const [rubAmount, setRubAmount] = React.useState<number>(500);
   const [rubOrigin, setRubOrigin] = React.useState<string>("paid_topup");
   const [rubNote, setRubNote] = React.useState<string>("");
+
+  // ban controls (site + ip)
+  const [banBusy, setBanBusy] = React.useState(false);
+  const [banReason, setBanReason] = React.useState<string>("");
+  const [banDuration, setBanDuration] = React.useState<"perm" | "10m" | "1h" | "24h" | "7d" | "30d">("perm");
+  const [banIpText, setBanIpText] = React.useState<string>("");
 
   async function load() {
     setBusy(true);
@@ -181,9 +230,7 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminKey]);
 
-  const filtered = rows.filter(
-    (u) => u.username.toLowerCase().includes(q.toLowerCase()) || String(u.id).includes(q)
-  );
+  const filtered = rows.filter((u) => u.username.toLowerCase().includes(q.toLowerCase()) || String(u.id).includes(q));
 
   async function openDetails(userId: number) {
     setOpenUserId(userId);
@@ -193,6 +240,19 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
     try {
       const r = await adminGetUserDetails(adminKey, userId);
       setDetail(r);
+
+      // essaye de pré-remplir une IP si le backend la fournit
+      const anyr = r as any;
+      const ipGuess =
+        anyr?.lastIp ||
+        anyr?.lastIP ||
+        anyr?.ip ||
+        anyr?.lastLoginIp ||
+        (Array.isArray(anyr?.recentIps) ? anyr.recentIps?.[0] : null) ||
+        (Array.isArray(anyr?.ips) ? anyr.ips?.[0] : null) ||
+        "";
+
+      setBanIpText(String(ipGuess || ""));
     } catch (e: any) {
       setDetailErr(String(e?.message || e));
     } finally {
@@ -221,6 +281,7 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
       });
 
       await load(); // refresh balance/roles list
+      if (openedUser?.id) await openDetails(openedUser.id);
       setRubNote("");
     } catch (e: any) {
       setDetailErr(String(e?.message || e));
@@ -228,6 +289,99 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
       setDetailLoading(false);
     }
   }
+
+  async function banUserAccountQuick() {
+    if (!openedUser) return;
+
+    setBanBusy(true);
+    setDetailErr(null);
+    try {
+      const until = toIsoUntil(banDuration);
+      await adminPostJson(adminKey, "/admin/bans/user", {
+        userId: openedUser.id,
+        until, // null => permanent
+        reason: banReason?.trim() || "ban admin",
+      });
+
+      await load();
+      await openDetails(openedUser.id);
+    } catch (e: any) {
+      setDetailErr(String(e?.message || e));
+    } finally {
+      setBanBusy(false);
+    }
+  }
+
+  async function banIpAngry() {
+    if (!openedUser) return;
+
+    const ip = String(banIpText || "").trim();
+    if (!ip) {
+      setDetailErr("IP introuvable. (Le backend doit renvoyer une IP dans les détails, ou tu la saisis à la main)");
+      return;
+    }
+
+    // “version énervée”
+    const ok = window.confirm(`BAN IP (ÉNERVÉ) : tu confirmes que tu veux bannir l'IP "${ip}" ?`);
+    if (!ok) return;
+
+    setBanBusy(true);
+    setDetailErr(null);
+    try {
+      const until = toIsoUntil(banDuration);
+      await adminPostJson(adminKey, "/admin/bans/ip", {
+        ip,
+        until, // null => permanent
+        reason: banReason?.trim() || "ban ip admin",
+        // optionnel: pour tracer à qui c'était lié
+        userId: openedUser.id,
+      });
+
+      await openDetails(openedUser.id);
+    } catch (e: any) {
+      setDetailErr(String(e?.message || e));
+    } finally {
+      setBanBusy(false);
+    }
+  }
+
+  async function unbanUser() {
+    if (!openedUser) return;
+
+    setBanBusy(true);
+    setDetailErr(null);
+    try {
+      await adminPostJson(adminKey, "/admin/bans/user/unban", { userId: openedUser.id });
+      await openDetails(openedUser.id);
+    } catch (e: any) {
+      setDetailErr(String(e?.message || e));
+    } finally {
+      setBanBusy(false);
+    }
+  }
+
+  async function unbanIp() {
+    const ip = String(banIpText || "").trim();
+    if (!ip) {
+      setDetailErr("IP vide.");
+      return;
+    }
+
+    setBanBusy(true);
+    setDetailErr(null);
+    try {
+      await adminPostJson(adminKey, "/admin/bans/ip/unban", { ip });
+      await openDetails(openedUser!.id);
+    } catch (e: any) {
+      setDetailErr(String(e?.message || e));
+    } finally {
+      setBanBusy(false);
+    }
+  }
+
+  const anyDetail = detail as any;
+  const bannedUserUntil: string | null = anyDetail?.ban?.user?.until ?? anyDetail?.banUserUntil ?? anyDetail?.bannedUntil ?? null;
+  const bannedIpUntil: string | null = anyDetail?.ban?.ip?.until ?? anyDetail?.banIpUntil ?? null;
 
   return (
     <div className="panel" style={{ marginTop: 14 }}>
@@ -276,10 +430,7 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
                 </div>
               </div>
 
-              <select
-                value={role}
-                onChange={(e) => setEdit((m) => ({ ...m, [u.id]: e.target.value as AdminUserRow["role"] }))}
-              >
+              <select value={role} onChange={(e) => setEdit((m) => ({ ...m, [u.id]: e.target.value as AdminUserRow["role"] }))}>
                 <option value="viewer">viewer</option>
                 <option value="streamer">streamer</option>
                 <option value="admin">admin</option>
@@ -370,9 +521,108 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
               Rubis dépensés : <b>{detail?.rubisSpent ?? "—"}</b>
               <br />
               Dépenses € (todo) : <b>{detail?.siteSpentEur ?? "—"}</b>
+              <br />
+              IP (si dispo) : <b>{String((anyDetail?.lastIp || anyDetail?.lastLoginIp || anyDetail?.ip || "—") ?? "—")}</b>
+              <br />
+              Ban compte :{" "}
+              <b>{bannedUserUntil ? `jusqu'au ${new Date(bannedUserUntil).toLocaleString()}` : anyDetail?.banUser === true ? "oui" : "—"}</b>
+              <br />
+              Ban IP :{" "}
+              <b>{bannedIpUntil ? `jusqu'au ${new Date(bannedIpUntil).toLocaleString()}` : anyDetail?.banIp === true ? "oui" : "—"}</b>
             </div>
           </div>
 
+          {/* BAN CARD */}
+          <div
+            style={{
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(255,255,255,0.03)",
+              padding: 12,
+            }}
+          >
+            <div style={{ fontWeight: 950, marginBottom: 10 }}>Bannissements (admin)</div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 10, alignItems: "center" }}>
+              <label className="mutedSmall" style={uiLabelStyle}>
+                Durée
+              </label>
+              <select style={uiSelectStyle} value={banDuration} onChange={(e) => setBanDuration(e.target.value as any)} disabled={banBusy}>
+                <option value="perm">Permanent</option>
+                <option value="10m">10 minutes</option>
+                <option value="1h">1 heure</option>
+                <option value="24h">24 heures</option>
+                <option value="7d">7 jours</option>
+                <option value="30d">30 jours</option>
+              </select>
+
+              <label className="mutedSmall" style={uiLabelStyle}>
+                Raison
+              </label>
+              <input
+                style={uiInputStyle}
+                value={banReason}
+                onChange={(e) => setBanReason(e.target.value)}
+                placeholder="optionnel (ex: spam, arnaque, multi-compte...)"
+                disabled={banBusy}
+              />
+
+              <label className="mutedSmall" style={uiLabelStyle}>
+                IP à bannir
+              </label>
+              <input
+                style={uiInputStyle}
+                value={banIpText}
+                onChange={(e) => setBanIpText(e.target.value)}
+                placeholder="ex: 1.2.3.4 (auto si le backend l'envoie)"
+                disabled={banBusy}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                className="btnPrimary"
+                type="button"
+                disabled={!openedUser || banBusy}
+                onClick={banUserAccountQuick}
+                title="Bannir le compte du site (cash pistache)"
+              >
+                {banBusy ? "…" : "⛔ Bannir (cash pistache)"}
+              </button>
+
+              <button
+                className="btnSecondary"
+                type="button"
+                disabled={!openedUser || banBusy}
+                onClick={banIpAngry}
+                title="Bannir l'IP (version énervée)"
+              >
+                {banBusy ? "…" : "💥 Bannir IP (ÉNERVÉ)"}
+              </button>
+
+              <button className="btnGhost" type="button" disabled={!openedUser || banBusy} onClick={unbanUser} title="Retire le ban compte">
+                ✅ Unban compte
+              </button>
+
+              <button className="btnGhost" type="button" disabled={!openedUser || banBusy} onClick={unbanIp} title="Retire le ban IP">
+                ✅ Unban IP
+              </button>
+            </div>
+
+            <div className="mutedSmall" style={{ opacity: 0.85, marginTop: 10, lineHeight: 1.5 }}>
+              Endpoints attendus côté API :
+              <br />
+              <b>POST /admin/bans/user</b> {"{ userId, until?, reason? }"}
+              <br />
+              <b>POST /admin/bans/ip</b> {"{ ip, until?, reason?, userId? }"}
+              <br />
+              <b>POST /admin/bans/user/unban</b> {"{ userId }"}
+              <br />
+              <b>POST /admin/bans/ip/unban</b> {"{ ip }"}
+            </div>
+          </div>
+
+          {/* RUBIS CARD */}
           <div
             style={{
               borderRadius: 14,
@@ -383,14 +633,18 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
           >
             <div style={{ fontWeight: 950, marginBottom: 10 }}>Rubis (admin)</div>
             <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 10, alignItems: "center" }}>
-              <label className="mutedSmall" style={uiLabelStyle}>Mode</label>
+              <label className="mutedSmall" style={uiLabelStyle}>
+                Mode
+              </label>
               <select style={uiSelectStyle} value={rubMode} onChange={(e) => setRubMode(e.target.value as any)}>
                 <option value="add">Ajouter</option>
                 <option value="remove">Retirer</option>
                 <option value="set">Set (valeur exacte)</option>
               </select>
 
-              <label className="mutedSmall" style={uiLabelStyle}>Montant</label>
+              <label className="mutedSmall" style={uiLabelStyle}>
+                Montant
+              </label>
               <input
                 style={uiInputStyle}
                 type="number"
@@ -402,7 +656,9 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
 
               {rubMode === "add" ? (
                 <>
-                  <label className="mutedSmall" style={uiLabelStyle}>Origine</label>
+                  <label className="mutedSmall" style={uiLabelStyle}>
+                    Origine
+                  </label>
                   <select style={uiSelectStyle} value={rubOrigin} onChange={(e) => setRubOrigin(String(e.target.value))}>
                     {ORIGINS.map((o) => (
                       <option key={o.origin} value={o.origin}>
@@ -413,18 +669,17 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
                 </>
               ) : (
                 <>
-                  <label className="mutedSmall" style={uiLabelStyle}>Origine</label>
+                  <label className="mutedSmall" style={uiLabelStyle}>
+                    Origine
+                  </label>
                   <input style={uiInputStyle} value="(backend)" readOnly />
                 </>
               )}
 
-              <label className="mutedSmall" style={uiLabelStyle}>Note</label>
-              <input
-                style={uiInputStyle}
-                value={rubNote}
-                onChange={(e) => setRubNote(e.target.value)}
-                placeholder="optionnel"
-              />
+              <label className="mutedSmall" style={uiLabelStyle}>
+                Note
+              </label>
+              <input style={uiInputStyle} value={rubNote} onChange={(e) => setRubNote(e.target.value)} placeholder="optionnel" />
             </div>
 
             <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>

@@ -44,6 +44,7 @@ import { mig039_dlive_pre_streamer } from "./mig039_dlive_pre_streamer.js";
 
 // ✅ NEW
 import { mig040_streamer_requests_fields } from "./mig040_streamer_requests_fields.js";
+import { mig041_site_bans } from "./mig041_site_bans.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -104,4 +105,5 @@ export async function migrateAll(pool: Pool) {
 
   // ✅ NEW: fields candidature streamer
   await mig040_streamer_requests_fields(pool);
+  await mig041_site_bans(pool);
 }

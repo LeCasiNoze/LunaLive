@@ -18,6 +18,20 @@ async function regclassExists(name: string): Promise<boolean> {
   return !!r.rows?.[0]?.reg;
 }
 
+function normIp(raw: any): string {
+  let s = String(raw || "").trim();
+  if (s.startsWith("::ffff:")) s = s.slice("::ffff:".length);
+  if (s.includes(",")) s = s.split(",")[0].trim();
+  return s;
+}
+
+function parseUntil(v: any): Date | null | "bad" {
+  if (v == null || v === "") return null; // permanent
+  const d = new Date(String(v));
+  if (!Number.isFinite(d.getTime())) return "bad";
+  return d;
+}
+
 async function safeScalar<T>(sql: string, params: any[], key: string): Promise<T | null> {
   try {
     const r = await pool.query(sql, params);
@@ -395,6 +409,90 @@ adminRouter.post(
 );
 
 // ─────────────────────────────────────────────
+// Site bans (user + ip) - cash pistache V1
+// ─────────────────────────────────────────────
+adminRouter.post(
+  "/admin/bans/user",
+  requireAdminKey,
+  a(async (req, res) => {
+    const userId = Number(req.body.userId || 0);
+    if (!userId) return res.status(400).json({ ok: false, error: "bad_userId" });
+
+    const untilParsed = parseUntil(req.body.until);
+    if (untilParsed === "bad") return res.status(400).json({ ok: false, error: "bad_until" });
+
+    const reason = req.body.reason != null ? String(req.body.reason).trim().slice(0, 300) : null;
+
+    await pool.query(
+      `INSERT INTO site_user_bans (user_id, until, reason, created_by)
+       VALUES ($1,$2,$3,$4)`,
+      [userId, untilParsed, reason, "admin"]
+    );
+
+    res.json({ ok: true });
+  })
+);
+
+adminRouter.post(
+  "/admin/bans/user/unban",
+  requireAdminKey,
+  a(async (req, res) => {
+    const userId = Number(req.body.userId || 0);
+    if (!userId) return res.status(400).json({ ok: false, error: "bad_userId" });
+
+    await pool.query(
+      `UPDATE site_user_bans
+       SET revoked_at = NOW()
+       WHERE user_id=$1 AND revoked_at IS NULL`,
+      [userId]
+    );
+
+    res.json({ ok: true });
+  })
+);
+
+adminRouter.post(
+  "/admin/bans/ip",
+  requireAdminKey,
+  a(async (req, res) => {
+    const ip = normIp(req.body.ip);
+    if (!ip) return res.status(400).json({ ok: false, error: "bad_ip" });
+
+    const untilParsed = parseUntil(req.body.until);
+    if (untilParsed === "bad") return res.status(400).json({ ok: false, error: "bad_until" });
+
+    const reason = req.body.reason != null ? String(req.body.reason).trim().slice(0, 300) : null;
+    const userId = req.body.userId ? Number(req.body.userId) : null;
+
+    await pool.query(
+      `INSERT INTO site_ip_bans (ip, until, reason, created_by, user_id)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [ip, untilParsed, reason, "admin", userId]
+    );
+
+    res.json({ ok: true });
+  })
+);
+
+adminRouter.post(
+  "/admin/bans/ip/unban",
+  requireAdminKey,
+  a(async (req, res) => {
+    const ip = normIp(req.body.ip);
+    if (!ip) return res.status(400).json({ ok: false, error: "bad_ip" });
+
+    await pool.query(
+      `UPDATE site_ip_bans
+       SET revoked_at = NOW()
+       WHERE ip=$1 AND revoked_at IS NULL`,
+      [ip]
+    );
+
+    res.json({ ok: true });
+  })
+);
+
+// ─────────────────────────────────────────────
 // Users
 // ─────────────────────────────────────────────
 adminRouter.get(
@@ -436,7 +534,9 @@ adminRouter.get(
       SELECT
         u.id            AS "userId",
         u.created_at    AS "createdAt",
-        u.last_login_at AS "lastLoginAt"
+        u.last_login_at AS "lastLoginAt",
+        u.created_ip    AS "createdIp",
+        u.last_login_ip AS "lastLoginIp"
       FROM users u
       WHERE u.id = $1
       LIMIT 1
@@ -479,6 +579,8 @@ adminRouter.get(
       messagesCount,
       rubisSpent,
       siteSpentEur: null,
+      createdIp: r.rows[0].createdIp ?? null,
+      lastLoginIp: r.rows[0].lastLoginIp ?? null,
     });
   })
 );
