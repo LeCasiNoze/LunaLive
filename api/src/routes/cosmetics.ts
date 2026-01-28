@@ -345,29 +345,30 @@ cosmeticsRouter.patch(
 
     const isFree = (FREE[kind] || []).includes(code);
 
-    // ✅ badge_sub_<slug> : autorisé si sub actif
-    if (kind === "badge") {
-      const slug = isSubBadgeCode(code);
-      if (slug && !unlockAll) {
-        const ok = await userHasActiveSubToSlug(userId, slug);
+    // ✅ badge_sub_<slug> : autorisé si sub actif (peu importe unlockAll)
+    const subSlug = kind === "badge" ? isSubBadgeCode(code) : null;
+    if (subSlug) {
+      // si pas unlockAll, on vérifie que l'utilisateur est bien sub
+      if (!unlockAll) {
+        const ok = await userHasActiveSubToSlug(userId, subSlug);
         if (!ok) return res.status(403).json({ ok: false, error: "not_owned" });
-
-        const upd = await pool.query(
-          `UPDATE user_equipped_cosmetics
-           SET ${col} = $2, updated_at = NOW()
-           WHERE user_id = $1
-           RETURNING username_code AS "username",
-                     badge_code    AS "badge",
-                     title_code    AS "title",
-                     frame_code    AS "frame",
-                     hat_code      AS "hat"`,
-          [userId, code]
-        );
-        return res.json({ ok: true, equipped: upd.rows?.[0] });
       }
+
+      const upd = await pool.query(
+        `UPDATE user_equipped_cosmetics
+        SET ${col} = $2, updated_at = NOW()
+        WHERE user_id = $1
+        RETURNING username_code AS "username",
+                  badge_code    AS "badge",
+                  title_code    AS "title",
+                  frame_code    AS "frame",
+                  hat_code      AS "hat"`,
+        [userId, code]
+      );
+      return res.json({ ok: true, equipped: upd.rows?.[0] });
     }
 
-    // ✅ validation catalogue statique (évite typos/cheat) — pour les non-sub
+    // ✅ validation catalogue statique (évite typos/cheat) — uniquement pour les non-sub
     if (!isFree) {
       const staticItems = (COSMETICS_CATALOG || []).filter((x: any) => x && x.active) as CatalogItem[];
       if (!catalogHas(staticItems, kind, code)) {
@@ -379,9 +380,9 @@ cosmeticsRouter.patch(
     if (!isFree && !unlockAll) {
       const check = await pool.query(
         `SELECT 1
-         FROM user_entitlements
-         WHERE user_id = $1 AND kind = $2 AND code = $3
-         LIMIT 1`,
+        FROM user_entitlements
+        WHERE user_id = $1 AND kind = $2 AND code = $3
+        LIMIT 1`,
         [userId, kind, code]
       );
       if (!check.rows?.[0]) return res.status(403).json({ ok: false, error: "not_owned" });
