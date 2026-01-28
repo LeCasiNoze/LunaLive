@@ -154,6 +154,7 @@ async function getActiveSubBadgesForUser(userId: number): Promise<CatalogItem[]>
     out.push({
       kind: "badge",
       code: `badge_sub_${slug.toLowerCase()}`,
+      // ✅ IMPORTANT: le front doit utiliser it.name OU meta.badgeText pour afficher
       name: `Badge sub ${badgeText} — ${displayName}`,
       rarity: "sub",
       unlock: "sub",
@@ -188,7 +189,7 @@ async function userHasActiveSubToSlug(userId: number, slug: string): Promise<boo
 // ──────────────────────────────────────────
 // GET /cosmetics/catalog
 // - Public : catalogue statique
-// - Si Bearer token : on ajoute les badges sub (avec meta style)
+// - Si Bearer token : on ajoute les badges sub dynamiques
 // ──────────────────────────────────────────
 cosmeticsRouter.get(
   "/cosmetics/catalog",
@@ -214,6 +215,7 @@ cosmeticsRouter.get(
 
 // ──────────────────────────────────────────
 // GET /me/cosmetics
+// - owned via user_entitlements + badges sub actifs
 // ──────────────────────────────────────────
 cosmeticsRouter.get(
   "/me/cosmetics",
@@ -290,6 +292,8 @@ cosmeticsRouter.get(
 
 // ──────────────────────────────────────────
 // PATCH /me/cosmetics/equip
+// - autorise badge_sub_<slug> si sub actif
+// - sinon, check catalog + entitlements
 // ──────────────────────────────────────────
 cosmeticsRouter.patch(
   "/me/cosmetics/equip",
@@ -342,7 +346,7 @@ cosmeticsRouter.patch(
 
     const isFree = (FREE[kind] || []).includes(code);
 
-    // ✅ badge_sub_<slug> : autorisé si sub actif (et badge activé côté streamer)
+    // ✅ badge_sub_<slug> : autorisé si sub actif
     if (kind === "badge") {
       const slug = isSubBadgeCode(code);
       if (slug && !unlockAll) {
@@ -364,7 +368,7 @@ cosmeticsRouter.patch(
       }
     }
 
-    // ✅ validation catalogue statique (évite typos/cheat) — pour les non-sub badges
+    // ✅ validation catalogue statique (évite typos/cheat) — pour les non-sub
     if (!isFree) {
       const staticItems = (COSMETICS_CATALOG || []).filter((x: any) => x && x.active) as CatalogItem[];
       if (!catalogHas(staticItems, kind, code)) {

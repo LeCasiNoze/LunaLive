@@ -147,10 +147,12 @@ function badgeTextFromCode(code: string) {
 function renderItemTitle(it: UiItem) {
   if (it.kind === "badge" && it.code) {
     const tier = rarityToTier(it.rarity || "");
+    const label = it.name || badgeTextFromCode(it.code);
+
     return (
       <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontWeight: 1000, opacity: 0.75 }}>Badge</span>
-        <span className={`chatBadge badge--${tier}`}>{badgeTextFromCode(it.code)}</span>
+        <span className={`chatBadge badge--${tier}`}>{label}</span>
       </span>
     );
   }
@@ -186,7 +188,7 @@ function applyPreview(
   kind: Kind,
   code: string | null,
   c: any,
-  opts?: { titleNames?: Record<string, string> }
+  opts?: { titleNames?: Record<string, string>; badgeNames?: Record<string, string> }
 ) {
   if (!code) return;
 
@@ -196,11 +198,14 @@ function applyPreview(
   if (c.title === undefined) c.title = null;
 
   if (kind === "badge") {
-    const txt = badgeTextFromCode(code);
-    c.badges = [{ id: txt, code: txt, text: txt, label: txt }];
-    (c as any).badge = txt;
-    (c as any).badgeText = txt;
-    (c as any).badgeLabel = txt;
+    const label =
+      (code && opts?.badgeNames?.[code]) ||
+      (code ? badgeTextFromCode(code) : ""); // fallback
+
+    c.badges = [{ id: label, code: label, text: label, label }];
+    (c as any).badge = label;
+    (c as any).badgeText = label;
+    (c as any).badgeLabel = label;
     return;
   }
 
@@ -260,15 +265,9 @@ function applyPreview(
 }
 
 function buildCosmeticsPreview(
-  equipped: {
-    username: string | null;
-    badge: string | null;
-    title: string | null;
-    frame: string | null;
-    hat: string | null;
-  },
-  opts?: { titleNames?: Record<string, string> }
-): ChatCosmetics | null {
+  equipped: { username: string | null; badge: string | null; title: string | null; frame: string | null; hat: string | null },
+  opts?: { titleNames?: Record<string, string>; badgeNames?: Record<string, string> }
+  ): ChatCosmetics | null {
   const c: any = {
     badges: [],
     title: null,
@@ -484,6 +483,14 @@ export function PersonalisationSection({
     return m;
   }, [catalog]);
 
+  const badgeNames = React.useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const it of catalog) {
+      if (it?.kind === "badge" && it.code && it.name) m[it.code] = it.name;
+    }
+    return m;
+}, [catalog]);
+
   const ownedSet = new Set<string>([...(owned?.[tab] || []), ...(free?.[tab] || [])]);
 
   const items: UiItem[] = [
@@ -532,7 +539,7 @@ export function PersonalisationSection({
     } as any) as C;
   }
 
-  const previewCosmetics = withAvatar(buildCosmeticsPreview(equipped, { titleNames }));
+  const previewCosmetics = withAvatar(buildCosmeticsPreview(equipped, { titleNames, badgeNames }));
 
   function previewForItem(it: UiItem): ChatCosmetics | null {
     const simulated = {
@@ -542,7 +549,7 @@ export function PersonalisationSection({
       frame: tab === "frame" ? it.code : equipped.frame,
       hat: tab === "hat" ? it.code : equipped.hat,
     };
-    return withAvatar(buildCosmeticsPreview(simulated, { titleNames }));
+    return withAvatar(buildCosmeticsPreview(simulated, { titleNames, badgeNames }));
   }
 
   const curLabel = CATS.find((x) => x.id === tab)?.label ?? tab;
