@@ -16,8 +16,10 @@ export function BotMenu({
   onRequireLogin,
   sendBang,
 
-  // ✅ NEW
   variant = "modal",
+
+  // ✅ NEW
+  dockWidth,
 }: {
   open: boolean;
   onClose: () => void;
@@ -28,9 +30,12 @@ export function BotMenu({
   onRequireLogin: () => void;
   sendBang: (text: string) => void;
 
-  // ✅ NEW
   variant?: "modal" | "dock";
+
+  // ✅ NEW (uniquement utilisé en dock)
+  dockWidth?: number;
 }) {
+
 
   // 👇 marque explicitement role comme “lu”
   void role;
@@ -51,8 +56,8 @@ export function BotMenu({
     if (variant !== "dock") return;
 
     // position par défaut: en haut à droite, avec marge
-    const w = 360;
-    const x = Math.max(8, window.innerWidth - w - 16);
+    const x = Math.max(8, window.innerWidth - panelW - 16);
+
     const y = Math.max(8, 16);
     setDockPos({ x, y });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,7 +65,7 @@ export function BotMenu({
 
   if (!open) return null;
 
-  const panelW = 360;
+  const panelW = Math.max(320, Math.min(520, Number(dockWidth ?? 360))); // ✅ ex: 420/440 en popup
   const panelH = 520;
 
   const PanelInner = (

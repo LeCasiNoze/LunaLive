@@ -28,20 +28,21 @@ export default function ChatPopupPage() {
 
       <div style={{ flex: 1, minHeight: 0 }}>
         {s ? (
-          <ChatPanel
-            slug={s}
-            compact={false}
-            autoFocus={true}
-            visualMode="popup"
-            botMenuVariant="dock"   // ✅ important: bot menu décalé/draggable
-            onRequireLogin={() => {
-              window.dispatchEvent(
-                new CustomEvent("ui:toast", {
-                  detail: { kind: "info", title: "Connexion", message: "Connecte-toi dans la fenêtre principale." },
-                })
-              );
-            }}
-          />
+        <ChatPanel
+          slug={s}
+          compact={false}
+          autoFocus={true}
+          visualMode="popup"
+          botMenuVariant="dock"
+          botMenuDockWidth={420} // ✅ ajuste (ex: 400, 420, 440)
+          onRequireLogin={() => {
+            window.dispatchEvent(
+              new CustomEvent("ui:toast", {
+                detail: { kind: "info", title: "Connexion", message: "Connecte-toi dans la fenêtre principale." },
+              })
+            );
+          }}
+        />
         ) : (
           <div style={{ padding: 12, color: "white", opacity: 0.75 }}>Slug manquant.</div>
         )}

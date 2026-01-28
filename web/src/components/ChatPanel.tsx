@@ -1318,11 +1318,11 @@ export function ChatPanel({
   compact = false,
   autoFocus = false,
   onFollowsCount,
-
   botMenuVariant = "modal",
+  visualMode = "default",
 
   // ✅ NEW
-  visualMode = "default",
+  botMenuDockWidth,
 }: {
   slug: string;
   onRequireLogin: () => void;
@@ -1331,10 +1331,12 @@ export function ChatPanel({
   onFollowsCount?: (n: number) => void;
 
   botMenuVariant?: "modal" | "dock";
+  visualMode?: "default" | "popup";
 
   // ✅ NEW
-  visualMode?: "default" | "popup";
+  botMenuDockWidth?: number;
 }) {
+
 
 
   /* -------------------------
@@ -2739,6 +2741,7 @@ function openChatPopup() {
           sockRef.current?.emit("chat:send", { slug, body: text }, () => {});
         }}
         variant={botMenuVariant}
+        dockWidth={isPopup ? (botMenuDockWidth ?? 420) : undefined} // ✅ NEW
       />
     </div>
   );
