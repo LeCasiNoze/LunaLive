@@ -11,9 +11,21 @@ function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
 
+// 1 décimale seulement si nécessaire (ex: 5 -> "5", 4.2 -> "4,2")
+function formatRatingFR(v: number) {
+  const x = Number(v);
+  if (!Number.isFinite(x)) return "—";
+  const r = Math.round(x * 10) / 10;
+  const hasDec = Math.abs(r - Math.round(r)) > 1e-9;
+  return r.toLocaleString("fr-FR", {
+    minimumFractionDigits: hasDec ? 1 : 0,
+    maximumFractionDigits: 1,
+  });
+}
+
 function Stars({ value }: { value: number }) {
   const v = clamp(value, 0, 5);
-  const full = Math.round(v);
+  const full = Math.round(v); // simple, cohérent avec ton style actuel
   return (
     <div aria-label={`Note ${v.toFixed(1)} sur 5`} style={{ display: "inline-flex", gap: 3 }}>
       {Array.from({ length: 5 }).map((_, i) => (
@@ -32,17 +44,48 @@ function Stars({ value }: { value: number }) {
   );
 }
 
-function RatingLine({ avg, count }: { avg: number; count: number }) {
-  if (!count) return <div className="mutedSmall">Aucun avis pour le moment</div>;
+function RatingLine({
+  label,
+  avg,
+  count,
+  emptyText,
+}: {
+  label: string;
+  avg: number | null | undefined;
+  count?: number | null | undefined;
+  emptyText?: string;
+}) {
+  const v = avg == null ? null : Number(avg);
+  const hasScore = v != null && Number.isFinite(v);
+
+  // Cas "communauté" sans avis
+  if ((count ?? null) === 0 || (count == null && !hasScore)) {
+    return (
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="mutedSmall" style={{ fontWeight: 950 }}>
+          {label}
+        </div>
+        <div className="mutedSmall">{emptyText ?? "Aucun avis pour le moment"}</div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-      <Stars value={avg} />
+      <div className="mutedSmall" style={{ fontWeight: 950 }}>
+        {label}
+      </div>
+
+      {hasScore ? <Stars value={v!} /> : <span className="mutedSmall">—</span>}
+
       <div style={{ fontSize: 13, fontWeight: 950 }}>
-        {avg.toFixed(1)}
+        {hasScore ? formatRatingFR(v!) : "—"}
         <span style={{ opacity: 0.72, fontWeight: 950 }}> /5</span>{" "}
-        <span className="mutedSmall" style={{ fontWeight: 900 }}>
-          • {count.toLocaleString("fr-FR")} avis
-        </span>
+        {typeof count === "number" && count > 0 ? (
+          <span className="mutedSmall" style={{ fontWeight: 900 }}>
+            • {count.toLocaleString("fr-FR")} avis
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -177,16 +220,43 @@ function LogoBackdrop({
   );
 }
 
+/**
+ * NOTE LUNALIVE: je gère plusieurs noms possibles en fallback.
+ * Ajuste si ton API a un champ précis.
+ */
+function getLunaRating(c: any): number | null {
+  const v =
+    c?.lunaRating ??
+    c?.lunaliveRating ??
+    c?.teamRating ??
+    c?.staffRating ??
+    c?.ratingLuna ??
+    null;
+  const n = v == null ? NaN : Number(v);
+  return Number.isFinite(n) ? clamp(n, 0, 5) : null;
+}
+
 function CasinoCard({ c }: { c: CasinoListItem }) {
   const isPartner = c.featuredRank != null;
   const isWatch = c.watchLevel === "watch";
   const isAvoid = c.watchLevel === "avoid";
   const tone = isPartner ? "partner" : isAvoid ? "avoid" : isWatch ? "watch" : "neutral";
 
+  const lunaRating = getLunaRating(c as any);
+
   return (
-    <Link to={`/casinos/${encodeURIComponent(c.slug)}`} style={{ textDecoration: "none", color: "inherit" }}>
+    <Link
+      to={`/casinos/${encodeURIComponent(c.slug)}`}
+      style={{
+        textDecoration: "none",
+        color: "inherit",
+        display: "block",
+        height: "100%",
+      }}
+    >
       <GlassCard
         style={{
+          height: "100%", // ✅ permet au grid de "stretch" correctement
           padding: 14,
           position: "relative",
           overflow: "hidden",
@@ -198,7 +268,7 @@ function CasinoCard({ c }: { c: CasinoListItem }) {
       >
         <LogoBackdrop url={c.logoUrl} variant="default" />
 
-        <div style={{ position: "relative", display: "grid", gap: 10 }}>
+        <div style={{ position: "relative", display: "grid", gap: 10, height: "100%" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
             <div style={{ minWidth: 0 }}>
               <div
@@ -214,8 +284,15 @@ function CasinoCard({ c }: { c: CasinoListItem }) {
                 {c.name}
               </div>
 
-              <div style={{ marginTop: 6 }}>
-                <RatingLine avg={c.avgRating} count={c.ratingsCount} />
+              {/* ✅ 2 notes: LunaLive au-dessus, communauté en dessous */}
+              <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+                <RatingLine label="LunaLive" avg={lunaRating} />
+                <RatingLine
+                  label="Communauté"
+                  avg={c.avgRating}
+                  count={c.ratingsCount}
+                  emptyText="Aucun avis pour le moment"
+                />
               </div>
 
               {c.bonusHeadline ? (
@@ -227,7 +304,12 @@ function CasinoCard({ c }: { c: CasinoListItem }) {
                     border: "1px solid rgba(255,255,255,0.10)",
                     background: "rgba(0,0,0,0.18)",
                     fontWeight: 950,
-                    maxWidth: 560,
+
+                    // ✅ évite que certaines cards deviennent plus hautes
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
                   }}
                 >
                   🎁 {c.bonusHeadline}
@@ -241,6 +323,9 @@ function CasinoCard({ c }: { c: CasinoListItem }) {
               {!isAvoid && isWatch ? <Pill tone="watch">👀 Surveillance</Pill> : null}
             </div>
           </div>
+
+          {/* push CTA en bas */}
+          <div style={{ flex: 1 }} />
 
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
             <div className="mutedSmall" style={{ fontWeight: 900 }}></div>
@@ -295,10 +380,16 @@ function PodiumCard({ rank, c }: { rank: 1 | 2 | 3; c: CasinoListItem }) {
 
   const crown = rank === 1 ? "👑" : rank === 2 ? "🥈" : "🥉";
 
+  const lunaRating = getLunaRating(c as any);
+
   return (
-    <Link to={`/casinos/${encodeURIComponent(c.slug)}`} style={{ textDecoration: "none", color: "inherit" }}>
+    <Link
+      to={`/casinos/${encodeURIComponent(c.slug)}`}
+      style={{ textDecoration: "none", color: "inherit", display: "block", height: "100%" }}
+    >
       <GlassCard
         style={{
+          height: "100%",
           padding: 16,
           position: "relative",
           overflow: "hidden",
@@ -308,7 +399,7 @@ function PodiumCard({ rank, c }: { rank: 1 | 2 | 3; c: CasinoListItem }) {
       >
         <LogoBackdrop url={c.logoUrl} variant="podium" />
 
-        <div style={{ position: "relative", display: "grid", gap: 12 }}>
+        <div style={{ position: "relative", display: "grid", gap: 12, height: "100%" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
             <Pill tone="partner">{crown} Top #{rank}</Pill>
             <Pill tone="neutral" title="Emplacement premium partenaire">
@@ -316,9 +407,19 @@ function PodiumCard({ rank, c }: { rank: 1 | 2 | 3; c: CasinoListItem }) {
             </Pill>
           </div>
 
-          <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ display: "grid", gap: 8 }}>
             <div style={{ fontSize: 18, fontWeight: 1300, letterSpacing: -0.35 }}>{c.name}</div>
-            <RatingLine avg={c.avgRating} count={c.ratingsCount} />
+
+            {/* Podium basé sur LunaLive, mais on affiche aussi la commu */}
+            <div style={{ display: "grid", gap: 6 }}>
+              <RatingLine label="LunaLive" avg={lunaRating} />
+              <RatingLine
+                label="Communauté"
+                avg={c.avgRating}
+                count={c.ratingsCount}
+                emptyText="Aucun avis pour le moment"
+              />
+            </div>
           </div>
 
           {c.bonusHeadline ? (
@@ -329,11 +430,19 @@ function PodiumCard({ rank, c }: { rank: 1 | 2 | 3; c: CasinoListItem }) {
                 border: "1px solid rgba(255,255,255,0.10)",
                 background: "rgba(0,0,0,0.18)",
                 fontWeight: 1000,
+
+                // clamp 2 lignes
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
               }}
             >
               🎁 Offre partenaire : <span style={{ opacity: 0.95 }}>{c.bonusHeadline}</span>
             </div>
           ) : null}
+
+          <div style={{ flex: 1 }} />
 
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
             <div className="mutedSmall" style={{ fontWeight: 900 }}></div>
@@ -363,21 +472,29 @@ function PodiumCard({ rank, c }: { rank: 1 | 2 | 3; c: CasinoListItem }) {
    Page
 ───────────────────────────────────────────── */
 
+type SortMode = "luna" | "community" | "newest";
+
 export default function CasinosPage() {
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
   const [data, setData] = React.useState<CasinoListResp | null>(null);
 
   const [q, setQ] = React.useState("");
-  const [sort, setSort] = React.useState<"top" | "newest">("top");
+  const [sortMode, setSortMode] = React.useState<SortMode>("luna");
 
   const [partnerOpen, setPartnerOpen] = React.useState(false);
 
-  async function load() {
+  async function load(next?: { q?: string; sortMode?: SortMode }) {
     setLoading(true);
     setErr(null);
     try {
-      const r = await listCasinos({ q: q.trim() || null, sort });
+      const qv = (next?.q ?? q).trim() || null;
+      const sm = next?.sortMode ?? sortMode;
+
+      // API: on garde "top/newest", et on trie côté client entre luna/community.
+      const apiSort = sm === "newest" ? "newest" : "top";
+
+      const r = await listCasinos({ q: qv, sort: apiSort as any });
       setData(r);
     } catch (e: any) {
       setErr(String(e?.message || e));
@@ -390,6 +507,56 @@ export default function CasinosPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Casinos triés (client-side) selon mode
+  const casinosSorted = React.useMemo(() => {
+    if (!data) return [];
+    const arr = [...data.casinos];
+
+    if (sortMode === "newest") return arr; // l’API s’en charge
+
+    const getKey = (c: CasinoListItem) => {
+      if (sortMode === "community") return Number.isFinite(Number(c.avgRating)) ? Number(c.avgRating) : -1;
+      const lr = getLunaRating(c as any);
+      return lr == null ? -1 : lr;
+    };
+
+    arr.sort((a, b) => {
+      const ka = getKey(a);
+      const kb = getKey(b);
+      if (kb !== ka) return kb - ka;
+      // tie-break: nombre d’avis (si community) sinon featuredRank puis nom
+      if (sortMode === "community") {
+        const ca = Number(a.ratingsCount ?? 0);
+        const cb = Number(b.ratingsCount ?? 0);
+        if (cb !== ca) return cb - ca;
+      }
+      const fa = a.featuredRank == null ? 999999 : a.featuredRank;
+      const fb = b.featuredRank == null ? 999999 : b.featuredRank;
+      if (fa !== fb) return fa - fb;
+      return String(a.name).localeCompare(String(b.name), "fr");
+    });
+
+    return arr;
+  }, [data, sortMode]);
+
+  // Podium: top 3 selon LunaLive (priorité)
+  const podium = React.useMemo(() => {
+    if (!data) return [];
+    const arr = [...data.casinos];
+    arr.sort((a, b) => {
+      const la = getLunaRating(a as any);
+      const lb = getLunaRating(b as any);
+      const ka = la == null ? -1 : la;
+      const kb = lb == null ? -1 : lb;
+      if (kb !== ka) return kb - ka;
+      const fa = a.featuredRank == null ? 999999 : a.featuredRank;
+      const fb = b.featuredRank == null ? 999999 : b.featuredRank;
+      if (fa !== fb) return fa - fb;
+      return String(a.name).localeCompare(String(b.name), "fr");
+    });
+    return arr.slice(0, 3);
+  }, [data]);
 
   return (
     <main className="container checktaslotPage">
@@ -450,7 +617,6 @@ export default function CasinosPage() {
         }
       `}</style>
 
-      {/* Modal (external component, easier to maintain) */}
       <PartnerPlansModal open={partnerOpen} onClose={() => setPartnerOpen(false)} />
 
       <div className="checktaslotWrap">
@@ -529,7 +695,7 @@ export default function CasinosPage() {
                   onChange={(e) => setQ(e.target.value)}
                   placeholder="Rechercher un casino…"
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") load();
+                    if (e.key === "Enter") load({ q: e.currentTarget.value, sortMode });
                   }}
                   style={{
                     width: "100%",
@@ -542,12 +708,21 @@ export default function CasinosPage() {
                 />
               </div>
 
-              <select className="select" value={sort} onChange={(e) => setSort(e.target.value as any)}>
-                <option value="top">Top du moment</option>
+              {/* ✅ tri: LunaLive / Communauté / Nouveaux */}
+              <select
+                className="select"
+                value={sortMode}
+                onChange={(e) => {
+                  const v = e.target.value as SortMode;
+                  setSortMode(v);
+                }}
+              >
+                <option value="luna">Top LunaLive</option>
+                <option value="community">Top Communauté</option>
                 <option value="newest">Nouveaux</option>
               </select>
 
-              <button className="btnPrimary" onClick={load} disabled={loading}>
+              <button className="btnPrimary" onClick={() => load()} disabled={loading}>
                 {loading ? "Chargement…" : "Rechercher"}
               </button>
             </div>
@@ -559,11 +734,12 @@ export default function CasinosPage() {
 
         {!loading && data && (
           <>
-            {/* PODIUM */}
-            {data.podium?.length > 0 && (
+            {/* PODIUM (basé sur LunaLive) */}
+            {podium?.length > 0 && (
               <section style={{ marginTop: 16 }}>
                 <div style={{ display: "grid", gap: 4 }}>
                   <h2 className="checktaslotH2">Podium</h2>
+                  <div className="mutedSmall">Basé sur la note LunaLive.</div>
                 </div>
 
                 <div
@@ -572,10 +748,10 @@ export default function CasinosPage() {
                     display: "grid",
                     gap: 14,
                     gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                    alignItems: "start",
+                    alignItems: "stretch", // ✅ uniformise les hauteurs dans la rangée
                   }}
                 >
-                  {data.podium.slice(0, 3).map((c, i) => (
+                  {podium.slice(0, 3).map((c, i) => (
                     <PodiumCard key={c.id} rank={((i + 1) as 1 | 2 | 3)} c={c} />
                   ))}
                 </div>
@@ -596,6 +772,7 @@ export default function CasinosPage() {
                     display: "grid",
                     gap: 12,
                     gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                    alignItems: "stretch",
                   }}
                 >
                   {data.watchlist.map((c) => {
@@ -604,6 +781,7 @@ export default function CasinosPage() {
                       <GlassCard
                         key={c.id}
                         style={{
+                          height: "100%",
                           padding: 14,
                           border: `1px solid ${
                             tone === "avoid" ? "rgba(255,90,120,0.22)" : "rgba(80,160,255,0.20)"
@@ -642,7 +820,7 @@ export default function CasinosPage() {
                 </div>
               </div>
 
-              {data.casinos.length === 0 ? (
+              {casinosSorted.length === 0 ? (
                 <GlassCard style={{ padding: 14, marginTop: 12 }}>
                   <div className="mutedSmall">Aucun casino ne correspond à ta recherche.</div>
                 </GlassCard>
@@ -653,10 +831,10 @@ export default function CasinosPage() {
                     display: "grid",
                     gap: 12,
                     gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                    alignItems: "start",
+                    alignItems: "stretch", // ✅ FIX: plus de card qui "grossit" seule
                   }}
                 >
-                  {data.casinos.map((c) => (
+                  {casinosSorted.map((c) => (
                     <CasinoCard key={c.id} c={c} />
                   ))}
                 </div>
