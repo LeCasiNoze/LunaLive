@@ -225,7 +225,13 @@ function LogoBackdrop({
  * Ajuste si ton API a un champ précis.
  */
 function getLunaRating(c: any): number | null {
-  const n = c?.teamRating == null ? NaN : Number(c.teamRating);
+  const raw =
+    c?.teamRating ??
+    c?.team_rating ??
+    c?.team_rating_value ??
+    null;
+
+  const n = raw == null ? NaN : Number(raw);
   return Number.isFinite(n) ? clamp(n, 0, 5) : null;
 }
 

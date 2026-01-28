@@ -63,6 +63,10 @@ export type CasinoListItem = {
   watchReason: string | null;
   avgRating: number;
   ratingsCount: number;
+
+  // ✅ AJOUT
+  teamRating?: number | null;
+  teamReview?: string | null;
 };
 
 export type CasinoListResp = {

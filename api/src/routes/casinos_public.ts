@@ -24,11 +24,11 @@ casinosPublicRouter.get(
     const sort = String(req.query.sort ?? "top");
 
     const params: any[] = [];
-    let where = `WHERE c.status='published'`;
+    let whereSql = `WHERE c.status='published'`;
 
     if (search) {
       params.push(`%${search}%`);
-      where += ` AND LOWER(c.name) LIKE $${params.length}`;
+      whereSql += ` AND LOWER(c.name) LIKE $${params.length}`;
     }
 
     const { rows } = await pool.query(
@@ -44,6 +44,11 @@ casinosPublicRouter.get(
         c.watch_level AS "watchLevel",
         c.watch_reason AS "watchReason",
         c.watch_updated_at AS "watchUpdatedAt",
+
+        -- ✅ LunaLive team
+        c.team_rating::float8 AS "teamRating",
+        c.team_review AS "teamReview",
+
         COALESCE(s.avg_rating, 0)::float AS "avgRating",
         COALESCE(s.ratings_count, 0)::int AS "ratingsCount"
       FROM casino_listings c
@@ -52,7 +57,7 @@ casinosPublicRouter.get(
         FROM casino_user_ratings
         GROUP BY casino_id
       ) s ON s.casino_id = c.id
-      ${where}
+      ${whereSql}
       `,
       params
     );
@@ -77,8 +82,8 @@ casinosPublicRouter.get(
 
     const casinos = [...rows].sort((a: any, b: any) => {
       if (sort === "new") return +new Date(b.createdAt) - +new Date(a.createdAt);
-      if (sort === "rating") return (b.avgRating - a.avgRating) || (b.ratingsCount - a.ratingsCount);
-      if (sort === "reviews") return (b.ratingsCount - a.ratingsCount) || (b.avgRating - a.avgRating);
+      if (sort === "rating") return b.avgRating - a.avgRating || b.ratingsCount - a.ratingsCount;
+      if (sort === "reviews") return b.ratingsCount - a.ratingsCount || b.avgRating - a.avgRating;
       if (sort === "featured") {
         const ar = a.featuredRank ?? 999999;
         const br = b.featuredRank ?? 999999;
@@ -181,8 +186,7 @@ casinosPublicRouter.get(
           ? "bonus"
           : "streamer";
 
-      const streamerUserId =
-        l.streamerUserId != null ? Number(l.streamerUserId) : null;
+      const streamerUserId = l.streamerUserId != null ? Number(l.streamerUserId) : null;
 
       return {
         id: String(l.id),
@@ -239,6 +243,7 @@ casinosPublicRouter.get(
     if (!casino) return res.status(404).json({ ok: false, error: "not_found" });
 
     const me = tryGetAuthUser(req);
+
     const params: any[] = [Number(casino.id), limit];
     let cursorSql = "";
 
@@ -302,9 +307,10 @@ casinosPublicRouter.get(
         const cid = String(im.commentId);
         const imageId = String(im.imageId);
 
-        const url = im.url && String(im.url).trim()
-          ? String(im.url).trim()
-          : `/casino-comment-images/${imageId}`;
+        const url =
+          im.url && String(im.url).trim()
+            ? String(im.url).trim()
+            : `/casino-comment-images/${imageId}`;
 
         imagesBy[cid] = imagesBy[cid] ?? [];
         imagesBy[cid].push({
@@ -330,7 +336,7 @@ casinosPublicRouter.get(
     const items = rows.map((x: any) => ({
       ...x,
       images: imagesBy[x.id] ?? [],
-      myReaction: me?.id ? (myBy[x.id] ?? null) : null,
+      myReaction: me?.id ? myBy[x.id] ?? null : null,
     }));
 
     const nextCursor = items.length ? items[items.length - 1].createdAt : null;
