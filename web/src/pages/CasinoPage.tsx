@@ -567,7 +567,7 @@ export default function CasinoPage() {
     setMyRating(v);
     setSavingRating(true);
     try {
-      await (setCasinoRating as any)((data as any). (data as any).casino.id, v, token);
+      await (setCasinoRating as any)((data as any).casino.id, v, token);
       // refresh pour avg/count + éventuellement myRating côté API
       const fresh = await getCasino((data as any).casino.slug);
       setData(fresh);
