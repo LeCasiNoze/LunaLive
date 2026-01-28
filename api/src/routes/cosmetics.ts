@@ -154,18 +154,17 @@ async function getActiveSubBadgesForUser(userId: number): Promise<CatalogItem[]>
     out.push({
       kind: "badge",
       code: `badge_sub_${slug.toLowerCase()}`,
-      // ✅ IMPORTANT: le front doit utiliser it.name OU meta.badgeText pour afficher
-      name: `Badge sub ${badgeText} — ${displayName}`,
+      name: badgeText, // ✅ LEQ / SPY (et basta)
       rarity: "sub",
       unlock: "sub",
       priceRubis: null,
       active: true,
       meta: {
-        badgeText,
+        badgeText,            // ✅ utile pour le rendu badge
         borderColor,
         textColor,
         streamerSlug: slug,
-        streamerName: displayName,
+        streamerName: displayName, // ✅ tu gardes l’info si tu veux l’afficher ailleurs
       },
     });
   }
