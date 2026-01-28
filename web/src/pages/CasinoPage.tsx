@@ -56,6 +56,23 @@ function linkHref(l: any): string {
   return abs || "#";
 }
 
+/** Format rating nicely:
+ * - drop trailing .0
+ * - keep 1 decimal when needed
+ * - FR decimal comma
+ */
+function fmtRating(v: number, decimals = 1) {
+  const n = Number.isFinite(v) ? v : 0;
+  const fixed = n.toFixed(decimals);
+  const cleaned = fixed.replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
+  return cleaned.replace(".", ",");
+}
+
+/** Badge text for ratings (no "5.0/5", just "5/5" or "4,6/5") */
+function fmtRatingOutOf5(v: number) {
+  return `${fmtRating(v, 1)}/5`;
+}
+
 /**
  * Avatar URL resolver (streamer links):
  * - priorité à streamer.avatarUrl si fourni par l’API
@@ -268,7 +285,9 @@ function StarsInline({
           </span>
         ))}
       </span>
-      {showNumber ? <span style={{ opacity: 0.9 }}>({r.toFixed(1)}/5)</span> : null}
+
+      {/* ✅ Clean numbers: show only "4,6/5" (no "(4.6/5)" and no 5.0) */}
+      {showNumber ? <span style={{ opacity: 0.9 }}>{fmtRatingOutOf5(r)}</span> : null}
     </span>
   );
 }
@@ -548,7 +567,7 @@ export default function CasinoPage() {
     setMyRating(v);
     setSavingRating(true);
     try {
-      await (setCasinoRating as any)((data as any).casino.id, v, token);
+      await (setCasinoRating as any)((data as any). (data as any).casino.id, v, token);
       // refresh pour avg/count + éventuellement myRating côté API
       const fresh = await getCasino((data as any).casino.slug);
       setData(fresh);
@@ -788,12 +807,12 @@ export default function CasinoPage() {
 
                 {/* Pills: user rating + LunaLive stars + watch labels */}
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                  <Pill tone="neutral" title={`Note moyenne ${avg.toFixed(1)}/5`}>
+                  <Pill tone="neutral" title={`Note moyenne ${fmtRatingOutOf5(avg)}`}>
                     ⭐ <StarsInline rating={avg} showNumber={true} />
                     <span style={{ opacity: 0.8 }}>• {rc.toLocaleString("fr-FR")} avis</span>
                   </Pill>
 
-                  <Pill tone="brand" title={`Avis LunaLive ${teamNum.toFixed(1)}/5`}>
+                  <Pill tone="brand" title={`Avis LunaLive ${fmtRatingOutOf5(teamNum)}`}>
                     💜 <StarsInline rating={teamNum} showNumber={true} />
                   </Pill>
 
@@ -938,7 +957,7 @@ export default function CasinoPage() {
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                     <div style={{ fontWeight: 1400 }}>💜 Avis LunaLive</div>
 
-                    <Pill tone="brand" title={`Avis LunaLive ${teamNum.toFixed(1)}/5`}>
+                    <Pill tone="brand" title={`Avis LunaLive ${fmtRatingOutOf5(teamNum)}`}>
                       <StarsInline rating={teamNum} showNumber={true} />
                     </Pill>
                   </div>
@@ -959,7 +978,9 @@ export default function CasinoPage() {
                 right={
                   myRating ? (
                     <Pill tone="brand" title={`Votre note ${myRating}/5`}>
-                      <StarsInline rating={myRating} showNumber={true} />
+                      {/* ✅ Just show stars (no extra "(x/5)") */}
+                      <StarsInline rating={myRating} showNumber={false} />
+                      <span style={{ opacity: 0.9 }}>{`${myRating}/5`}</span>
                     </Pill>
                   ) : (
                     <Pill tone="neutral">Votre note : —</Pill>
@@ -968,7 +989,6 @@ export default function CasinoPage() {
               />
 
               <div style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                {/* ✅ StarPicker maintenant pré-rempli via myRating (chargé depuis l'API si dispo) */}
                 <StarPicker value={myRating} onChange={onSaveRating} disabled={savingRating} />
                 <div className="mutedSmall" style={{ opacity: 0.95 }}>
                   {!user || !token ? "Connecte-toi pour noter." : savingRating ? "Enregistrement…" : "Clique sur une étoile ✨"}
@@ -1131,6 +1151,8 @@ export default function CasinoPage() {
                   const picked = pickUserAvatarUrlFromComment(c);
                   const avatar = picked.url;
 
+                  const authorRatingNum = c.authorRating != null ? numFromAny(c.authorRating) : null;
+
                   return (
                     <GlassCard
                       key={c.id}
@@ -1143,7 +1165,7 @@ export default function CasinoPage() {
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                          {/* ✅ comment avatar (like streamer) */}
+                          {/* comment avatar */}
                           <div
                             style={{
                               width: 36,
@@ -1177,9 +1199,11 @@ export default function CasinoPage() {
                               <span>{c.username}</span>
                               <span className="mutedSmall">• {new Date(c.createdAt).toLocaleString("fr-FR")}</span>
 
-                              {c.authorRating != null ? (
-                                <Pill tone="neutral" title={`Note ${Number(c.authorRating).toFixed(1)}/5`}>
-                                  <StarsInline rating={Number(c.authorRating)} showNumber={true} />
+                              {authorRatingNum != null ? (
+                                <Pill tone="neutral" title={`Note ${fmtRatingOutOf5(authorRatingNum)}`}>
+                                  {/* ✅ stars + "4/5" (clean) */}
+                                  <StarsInline rating={authorRatingNum} showNumber={false} />
+                                  <span style={{ opacity: 0.9 }}>{fmtRatingOutOf5(authorRatingNum)}</span>
                                 </Pill>
                               ) : null}
 
@@ -1190,7 +1214,7 @@ export default function CasinoPage() {
 
                         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                           <button
-                            className={`btnGhost`}
+                            className="btnGhost"
                             onClick={() => toggleReaction(c.id, c.myReaction, "up")}
                             disabled={!user || !token}
                             style={{
@@ -1205,7 +1229,7 @@ export default function CasinoPage() {
                             👍 <b>{c.upCount}</b>
                           </button>
                           <button
-                            className={`btnGhost`}
+                            className="btnGhost"
                             onClick={() => toggleReaction(c.id, c.myReaction, "down")}
                             disabled={!user || !token}
                             style={{
