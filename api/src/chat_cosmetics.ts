@@ -51,17 +51,10 @@ function basenameOnly(p: any): string {
 }
 
 function staticAvatarFilenameFromRow(row: any): string | null {
-  const code = String(row?.avatar_code || "").trim().toLowerCase();
-  if (code) return `avatar_${code}.png`;
-
-  const a = basenameOnly(row?.avatar);
-  const ap = basenameOnly(row?.avatar_path);
-  const pick = a || ap;
-
+  const pick = basenameOnly(row?.avatar);
   if (/^avatar_[a-z0-9_]+\.png$/i.test(pick)) return pick;
   return null;
 }
-
 
 function uniqInts(arr: any[]): number[] {
   const out: number[] = [];
@@ -193,10 +186,8 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
 
         ua.updated_at AS avatar_updated_at,
 
-        -- ✅ fallback static avatar
-        u.avatar_code,
-        u.avatar,
-        u.avatar_path
+        -- ✅ fallback static avatar (legacy)
+        u.avatar
 
     FROM user_equipped_cosmetics ue
     JOIN users u ON u.id = ue.user_id
