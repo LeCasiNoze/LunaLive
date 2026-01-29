@@ -106,7 +106,7 @@ export function AvatarMenu({
         .llAvatarWrap .avatarBtn{
           width: 40px;
           height: 40px;
-          border-radius: 14px;
+          border-radius: 999px;
           border: 1px solid rgba(255,255,255,0.12);
           background: rgba(255,255,255,0.05);
           backdrop-filter: blur(10px);
@@ -125,6 +125,7 @@ export function AvatarMenu({
           height: 100%;
           object-fit: cover;
           display: block;
+          border-radius: 999px;
         }
         .llAvatarFallback{
           width: 100%;
