@@ -51,7 +51,7 @@ function basenameOnly(p: any): string {
 }
 
 function staticAvatarFilenameFromRow(row: any): string | null {
-  const pick = basenameOnly(row?.avatar);
+  const pick = basenameOnly(row?.avatar_path);
   if (/^avatar_[a-z0-9_]+\.png$/i.test(pick)) return pick;
   return null;
 }
@@ -187,7 +187,7 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
         ua.updated_at AS avatar_updated_at,
 
         -- ✅ fallback static avatar (legacy)
-        u.avatar
+        u.avatar_path
 
     FROM user_equipped_cosmetics ue
     JOIN users u ON u.id = ue.user_id
@@ -288,13 +288,14 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
       const v = new Date(row.avatar_updated_at).getTime();
       cosmetics.avatar = cosmetics.avatar || {};
       cosmetics.avatar.url = `${PUBLIC_API_BASE}/avatars/u/${userId}?v=${v}`;
-    } else {
+      } else {
       const file = staticAvatarFilenameFromRow(row);
       if (file) {
         cosmetics.avatar = cosmetics.avatar || {};
         cosmetics.avatar.url = `${PUBLIC_SITE_BASE}/Avatar/${file}`;
       }
     }
+
 
     // badge
     if (badgeCode && badgeCode !== "none") {
