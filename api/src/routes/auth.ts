@@ -7,6 +7,14 @@ import { sendVerifyCode } from "../utils/mailer.js";
 
 export const authRouter = Router();
 
+// en haut du fichier (auth.ts)
+function defaultAvatarPath(userId: number) {
+  const count = Math.max(1, Number(process.env.DEFAULT_AVATAR_COUNT ?? 20));
+  const n = (userId % count) + 1;
+  const code = String(n).padStart(3, "0");
+  return `/Avatar/avatar_${code}.png`;
+}
+
 function isValidEmail(s: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 }
@@ -23,6 +31,8 @@ async function getUserWithWalletBits(userId: number) {
         u.rubis,
         u.role,
         u.email_verified AS "emailVerified",
+        u.avatar_path AS "avatarUrl",
+
 
         -- ✅ legacy/facile: viewer actif (tu peux le garder)
         EXISTS (
@@ -181,6 +191,10 @@ authRouter.post(
     await pool.query(`DELETE FROM pending_registrations WHERE id=$1`, [p.id]);
 
     const userId = Number(created.rows[0].id);
+    await pool.query(
+      `UPDATE users SET avatar_path = COALESCE(avatar_path, $2) WHERE id=$1`,
+      [userId, defaultAvatarPath(userId)]
+    );
     const user = await getUserWithWalletBits(userId);
 
     const token = signToken({ id: user.id, username: user.username, rubis: user.rubis, role: user.role });

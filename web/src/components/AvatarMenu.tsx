@@ -24,8 +24,15 @@ function getAvatarUrlFromUser(u: any): string | null {
 
   const v = candidates[0];
   if (!v) return null;
+
   const s = String(v).trim();
   if (!s) return null;
+
+  // ✅ si c’est un asset du FRONT (web/public), on le laisse tel quel
+  // (servi par le site web, pas par l'API)
+  if (s.startsWith("/Avatar/")) return s;
+
+  // ✅ sinon, routes API (avatars/u, uploads, etc.)
   if (s.startsWith("/")) return `${API_BASE}${s}`;
   return s;
 }
