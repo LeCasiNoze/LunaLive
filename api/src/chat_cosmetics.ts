@@ -27,6 +27,42 @@ export type ChatCosmetics = {
   title?: any; // ton ChatMessageBubble sait normaliser string/obj
 };
 
+// BASE public pour construire l’URL avatar (upload)
+const PUBLIC_API_BASE = String(
+  process.env.PUBLIC_API_BASE ||
+    process.env.RENDER_EXTERNAL_URL ||
+    "https://lunalive-api.onrender.com"
+).replace(/\/$/, "");
+
+// ✅ base du site (là où les fichiers /Avatar/* sont servis)
+const PUBLIC_SITE_BASE = String(
+  process.env.PUBLIC_SITE_BASE ||
+    process.env.PUBLIC_WEB_BASE ||
+    (PUBLIC_API_BASE.includes("lunalive-api.onrender.com")
+      ? PUBLIC_API_BASE.replace("lunalive-api.onrender.com", "lunalive.onrender.com")
+      : PUBLIC_API_BASE)
+).replace(/\/$/, "");
+
+function basenameOnly(p: any): string {
+  const s = String(p || "").trim();
+  if (!s) return "";
+  const parts = s.split(/[\/\\]/g);
+  return String(parts[parts.length - 1] || "").trim();
+}
+
+function staticAvatarFilenameFromRow(row: any): string | null {
+  const code = String(row?.avatar_code || "").trim().toLowerCase();
+  if (code) return `avatar_${code}.png`;
+
+  const a = basenameOnly(row?.avatar);
+  const ap = basenameOnly(row?.avatar_path);
+  const pick = a || ap;
+
+  if (/^avatar_[a-z0-9_]+\.png$/i.test(pick)) return pick;
+  return null;
+}
+
+
 function uniqInts(arr: any[]): number[] {
   const out: number[] = [];
   const seen = new Set<number>();
@@ -107,13 +143,6 @@ function mapHat(code: string | null): { hatId: string; hatEmoji: string } | null
   return { hatId, hatEmoji: EMOJI[hatId] ?? "🧢" };
 }
 
-// BASE public pour construire l’URL avatar
-const PUBLIC_API_BASE = String(
-  process.env.PUBLIC_API_BASE ||
-    process.env.RENDER_EXTERNAL_URL ||
-    "https://lunalive-api.onrender.com"
-).replace(/\/$/, "");
-
 type SubInfo = {
   slugLower: string;
   slug: string;
@@ -161,10 +190,18 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
         ue.title_code,
         ue.frame_code,
         ue.hat_code,
-        ua.updated_at AS avatar_updated_at
-     FROM user_equipped_cosmetics ue
-     LEFT JOIN user_avatars ua ON ua.user_id = ue.user_id
-     WHERE ue.user_id = ANY($1::int[])`,
+
+        ua.updated_at AS avatar_updated_at,
+
+        -- ✅ fallback static avatar
+        u.avatar_code,
+        u.avatar,
+        u.avatar_path
+
+    FROM user_equipped_cosmetics ue
+    JOIN users u ON u.id = ue.user_id
+    LEFT JOIN user_avatars ua ON ua.user_id = ue.user_id
+    WHERE ue.user_id = ANY($1::int[])`,
     [ids]
   );
 
@@ -260,6 +297,12 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
       const v = new Date(row.avatar_updated_at).getTime();
       cosmetics.avatar = cosmetics.avatar || {};
       cosmetics.avatar.url = `${PUBLIC_API_BASE}/avatars/u/${userId}?v=${v}`;
+    } else {
+      const file = staticAvatarFilenameFromRow(row);
+      if (file) {
+        cosmetics.avatar = cosmetics.avatar || {};
+        cosmetics.avatar.url = `${PUBLIC_SITE_BASE}/Avatar/${file}`;
+      }
     }
 
     // badge
