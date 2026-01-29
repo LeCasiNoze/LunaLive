@@ -177,22 +177,19 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
   // ✅ join user_avatars pour cache-bust
   const r = await pool.query(
     `SELECT
-        ue.user_id,
-        ue.username_code,
-        ue.badge_code,
-        ue.title_code,
-        ue.frame_code,
-        ue.hat_code,
-
-        ua.updated_at AS avatar_updated_at,
-
-        -- ✅ fallback static avatar (legacy)
-        u.avatar_path
-
-    FROM user_equipped_cosmetics ue
-    JOIN users u ON u.id = ue.user_id
-    LEFT JOIN user_avatars ua ON ua.user_id = ue.user_id
-    WHERE ue.user_id = ANY($1::int[])`,
+      ids.user_id,
+      ue.username_code,
+      ue.badge_code,
+      ue.title_code,
+      ue.frame_code,
+      ue.hat_code,
+      ua.updated_at AS avatar_updated_at,
+      u.avatar_path
+    FROM unnest($1::int[]) AS ids(user_id)
+    JOIN users u ON u.id = ids.user_id
+    LEFT JOIN user_equipped_cosmetics ue ON ue.user_id = ids.user_id
+    LEFT JOIN user_avatars ua ON ua.user_id = ids.user_id;
+    `,
     [ids]
   );
 
