@@ -1,14 +1,37 @@
+// web/src/components/DailyBonusAccessCard.tsx
 import * as React from "react";
 import { useAuth } from "../auth/AuthProvider";
-import { getDailyBonusState, publicGetContent } from "../lib/api";
+import { getDailyBonusState, publicListContentTabs, type ApiPublicContentTab } from "../lib/api";
 import { DailyBonusAgendaModal, type DailyBonusState } from "./DailyBonusAgendaModal";
 import { UnreadBadge } from "./UnreadBadge";
 import { contentVersionFromItem, isUnread } from "../lib/unread_seen";
 
+type Role = "viewer" | "moderator" | "streamer" | "admin";
+
+function roleRank(r: any): number {
+  const v = String(r || "viewer").toLowerCase();
+  if (v === "admin") return 3;
+  if (v === "streamer") return 2;
+  if (v === "moderator" || v === "mod") return 1;
+  return 0; // viewer
+}
+
+function canSee(minRole: Role, userRole: any) {
+  return roleRank(userRole) >= roleRank(minRole);
+}
+
+// version stable pour listing (updated_at)
+function versionFromAnyItem(item: any) {
+  return contentVersionFromItem({
+    ...item,
+    updatedAt: (item as any)?.updatedAt ?? (item as any)?.updated_at,
+  } as any);
+}
+
 export function DailyBonusAccessCard() {
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
-  const CONTENT_KEYS = ["daily_bonus_infos", "guide_viewer", "guide_streamer"] as const;
+  const userRole: Role = String(auth?.user?.role || "viewer").toLowerCase() as any;
 
   const [unreadAny, setUnreadAny] = React.useState(false);
 
@@ -18,20 +41,26 @@ export function DailyBonusAccessCard() {
       return;
     }
     try {
-      const results = await Promise.all(
-        CONTENT_KEYS.map(async (k) => {
-          const r: any = await publicGetContent(k);
-          const item = r?.item ?? null;
-          if (!item) return false;
-          const v = contentVersionFromItem(item);
-          return isUnread(`content:${k}`, v);
-        })
-      );
+      const r: any = await publicListContentTabs();
+      const items = Array.isArray(r?.items) ? (r.items as ApiPublicContentTab[]) : [];
+
+      const visible = items.filter((it: any) => {
+        const minRole = String(it?.min_role || "viewer").toLowerCase() as Role;
+        return canSee(minRole, userRole);
+      });
+
+      const results = visible.map((it: any) => {
+        const key = String(it?.key || "").trim();
+        if (!key) return false;
+        const v = versionFromAnyItem(it);
+        return v ? isUnread(`content:${key}`, v) : false;
+      });
+
       setUnreadAny(results.some(Boolean));
     } catch {
       setUnreadAny(false);
     }
-  }, [token]);
+  }, [token, userRole]);
 
   // load initial + token change
   React.useEffect(() => {
@@ -71,7 +100,6 @@ export function DailyBonusAccessCard() {
       setOpen(true);
     } catch (e) {
       console.error(e);
-      // si tu veux, on pourra afficher un toast ici plus tard
     } finally {
       setOpening(false);
     }
@@ -87,7 +115,6 @@ export function DailyBonusAccessCard() {
           <div className="mutedSmall" style={{ opacity: 0.8 }}>
             {token ? (unreadAny ? "Nouveautés disponibles" : "") : "Connecte-toi pour voir l’agenda"}
           </div>
-
         </div>
 
         <button
@@ -102,11 +129,7 @@ export function DailyBonusAccessCard() {
       </div>
 
       {open && state?.ok ? (
-        <DailyBonusAgendaModal
-          state={state}
-          onState={(s) => setState(s)}
-          onClose={() => setOpen(false)}
-        />
+        <DailyBonusAgendaModal state={state} onState={(s) => setState(s)} onClose={() => setOpen(false)} />
       ) : null}
     </div>
   );

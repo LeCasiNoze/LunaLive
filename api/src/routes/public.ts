@@ -117,6 +117,25 @@ publicRouter.get(
   })
 );
 
+// ✅ LIST public content tabs (for DailyBonus modal)
+publicRouter.get(
+  "/content-list",
+  a(async (_req, res) => {
+    // ✅ Ajoute ajoute un préfixe stable pour tes futurs onglets
+    // Exemple conseillé: bonus_
+    const ALLOW_PREFIX = ["guide_", "daily_bonus_", "bonus_"];
+
+    const { rows } = await pool.query(
+      `SELECT key, title, COALESCE(min_role,'viewer') as min_role, updated_at
+       FROM site_content
+       WHERE (${ALLOW_PREFIX.map((_, i) => `key LIKE $${i + 1}`).join(" OR ")})
+       ORDER BY key ASC`,
+      ALLOW_PREFIX.map((p) => `${p}%`)
+    );
+
+    res.json({ ok: true, items: rows });
+  })
+);
 
 publicRouter.get(
   "/streamers/:slug",

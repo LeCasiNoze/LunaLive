@@ -5,6 +5,8 @@ import {
   claimDailyBonusToday,
   claimDailyBonusMilestone,
   publicGetContent,
+  publicListContentTabs,
+  type ApiPublicContentTab,
 } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
 import { DailyBonusAgendaModalMobile } from "./DailyBonusAgendaModal.mobile";
@@ -138,6 +140,27 @@ function sanitizeHtmlLite(input: string) {
   }
 }
 
+// version "stable" pour le unread: accepte updated_at du listing
+function versionFromAnyItem(item: any) {
+  return contentVersionFromItem({
+    ...item,
+    updatedAt: (item as any)?.updatedAt ?? (item as any)?.updated_at,
+  } as any);
+}
+
+function humanizeKey(key: string) {
+  const s = String(key || "")
+    .replace(/^bonus_/, "")
+    .replace(/^daily_bonus_/, "")
+    .replace(/^guide_/, "")
+    .trim();
+  const t = s
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+  return t || "Contenu";
+}
+
 export function DailyBonusAgendaModal({
   state,
   onClose,
@@ -158,7 +181,7 @@ export function DailyBonusAgendaModal({
 }
 
 type TabKey = "agenda" | "content" | "event";
-type ContentKey = "daily_bonus_infos" | "guide_viewer" | "guide_streamer";
+type ContentKey = string;
 
 function DailyBonusAgendaModalDesktop({
   state,
@@ -184,22 +207,47 @@ function DailyBonusAgendaModalDesktop({
   const milestones = Array.isArray((state as any)?.milestones) ? (state as any).milestones : [];
 
   const premiumActive = Boolean(
-    (state as any)?.premiumActive ??
-      (state as any)?.premium?.active ??
-      (state as any)?.premium?.isActive ??
-      false
+    (state as any)?.premiumActive ?? (state as any)?.premium?.active ?? (state as any)?.premium?.isActive ?? false
   );
   const premiumLabel = String((state as any)?.premium?.label ?? "").trim() || "Abonnement actif";
 
+  // ✅ charge la liste des tabs depuis l'API (admin content)
+  const [contentList, setContentList] = React.useState<ApiPublicContentTab[]>([]);
+  React.useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        const r: any = await publicListContentTabs();
+        const items = Array.isArray(r?.items) ? (r.items as ApiPublicContentTab[]) : [];
+        if (!dead) setContentList(items);
+      } catch {
+        if (!dead) setContentList([]);
+      }
+    })();
+    return () => {
+      dead = true;
+    };
+  }, []);
+
   // ✅ Tabs visibles selon rôle (un rôle “au-dessus” voit tout en dessous)
   const contentTabs = React.useMemo(() => {
-    const tabs: Array<{ key: ContentKey; fallbackLabel: string; minRole: Role }> = [
-      { key: "daily_bonus_infos", fallbackLabel: "Informations", minRole: "viewer" },
-      { key: "guide_viewer", fallbackLabel: "Guide Viewer", minRole: "viewer" },
-      { key: "guide_streamer", fallbackLabel: "Guide Streamer", minRole: "streamer" },
-    ];
-    return tabs.filter((t) => canSee(t.minRole, userRole));
-  }, [userRole]);
+    const tabs = (contentList || [])
+      .map((it: any) => {
+        const key = String(it?.key || "").trim();
+        const minRole = String(it?.min_role || "viewer").toLowerCase() as Role;
+        const title = String(it?.title || "").trim();
+        return {
+          key,
+          minRole,
+          title,
+          updated_at: it?.updated_at ?? null,
+          fallbackLabel: title || humanizeKey(key),
+        };
+      })
+      .filter((t) => t.key && canSee(t.minRole, userRole));
+
+    return tabs;
+  }, [contentList, userRole]);
 
   // UI state
   const [tab, setTab] = React.useState<TabKey>("agenda");
@@ -211,53 +259,47 @@ function DailyBonusAgendaModalDesktop({
   const [contentHtml, setContentHtml] = React.useState<string | null>(null);
   const [contentLoading, setContentLoading] = React.useState(false);
   const [contentTitles, setContentTitles] = React.useState<Record<string, string>>({});
-// ✅ Précharge titres + unread pour afficher les "!" dans la sidebar (même sur l’onglet agenda)
-React.useEffect(() => {
-  let dead = false;
 
-  async function preload() {
+  // ✅ garde-fou: si tu switches role / la liste change, on garde un onglet safe
+  React.useEffect(() => {
+    if (tab !== "content") return;
+    if (contentTabs.some((t) => t.key === activeContentKey)) return;
+
+    const first = contentTabs[0]?.key;
+    if (first) setActiveContentKey(first);
+  }, [tab, contentTabs, activeContentKey]);
+
+  // ✅ Précharge titres + unread depuis la liste (sans fetch n fois)
+  React.useEffect(() => {
+    let dead = false;
+
     try {
-      const keys = contentTabs.map((t) => t.key);
+      for (const t of contentTabs) {
+        const key = t.key;
 
-      await Promise.all(
-        keys.map(async (key) => {
-          const r: any = await publicGetContent(key);
-          const item = r?.item ?? null;
-          if (!item) return;
+        // version d'après updated_at (listing)
+        const v = versionFromAnyItem(t);
+        if (v && !dead) {
+          setContentVersions((m) => ({ ...m, [key]: v }));
+          setContentUnread((m) => ({ ...m, [key]: isUnread(`content:${key}`, v) }));
+        }
 
-          const v = contentVersionFromItem(item);
-          if (v && !dead) {
-            setContentVersions((m) => ({ ...m, [key]: v }));
-            setContentUnread((m) => ({ ...m, [key]: isUnread(`content:${key}`, v) }));
-          }
-
-          const title = String(item?.title || "").trim();
-          if (title && !dead) {
-            setContentTitles((m) => ({ ...m, [key]: title }));
-          }
-        })
-      );
+        // titre (listing)
+        const title = String((t as any)?.title || "").trim();
+        if (title && !dead) {
+          setContentTitles((m) => ({ ...m, [key]: title }));
+        }
+      }
     } catch {
       // ignore
     }
-  }
 
-  preload();
-  return () => {
-    dead = true;
-  };
-}, [contentTabs]);
+    return () => {
+      dead = true;
+    };
+  }, [contentTabs]);
 
-  // garde-fou: si tu perds un onglet (role change), on revient sur un onglet safe
-  React.useEffect(() => {
-    if (tab !== "content") return;
-    const ok = contentTabs.some((t) => t.key === activeContentKey);
-    if (!ok) {
-      const first = contentTabs[0]?.key || "daily_bonus_infos";
-      setActiveContentKey(first);
-    }
-  }, [tab, contentTabs, activeContentKey]);
-
+  // ✅ charge HTML quand onglet "content"
   React.useEffect(() => {
     let dead = false;
 
@@ -270,13 +312,15 @@ React.useEffect(() => {
         const r: any = await publicGetContent(key);
         const html = r?.item?.html ? sanitizeHtmlLite(String(r.item.html)) : null;
         const item = r?.item ?? null;
+
+        // version d'après item (source of truth)
         const v = item ? contentVersionFromItem(item) : "";
         if (v && !dead) {
           setContentVersions((m) => ({ ...m, [key]: v }));
           setContentUnread((m) => ({ ...m, [key]: isUnread(`content:${key}`, v) }));
         }
 
-        // title DB => label d’onglet (sinon fallback)
+        // title DB => label d’onglet (sinon listing/fallback)
         const title = String(r?.item?.title || "").trim();
         if (title && !dead) {
           setContentTitles((m) => ({ ...m, [key]: title }));
@@ -326,17 +370,16 @@ React.useEffect(() => {
       setBusy(null);
     }
   }
+
+  // ✅ mark as seen quand on ouvre un onglet content (utilise version "item" si chargée)
   React.useEffect(() => {
     if (tab !== "content") return;
     const key = activeContentKey;
     const v = contentVersions[key];
     if (!v) return;
 
-    // mark as seen
     setSeenVersion(`content:${key}`, v);
     setContentUnread((m) => ({ ...m, [key]: false }));
-
-    // optionnel: si tu veux que la HomeCard se mette à jour direct dans la même session :
     window.dispatchEvent(new CustomEvent("ll:content-seen", { detail: { key } }));
   }, [tab, activeContentKey, contentVersions]);
 
@@ -366,7 +409,7 @@ React.useEffect(() => {
 
   const activeContentLabel = React.useMemo(() => {
     const found = contentTabs.find((t) => t.key === activeContentKey);
-    const fallback = found?.fallbackLabel || "Contenu";
+    const fallback = found?.fallbackLabel || humanizeKey(activeContentKey);
     return contentTitles[activeContentKey] || fallback;
   }, [activeContentKey, contentTabs, contentTitles]);
 
@@ -425,11 +468,10 @@ React.useEffect(() => {
         @media (max-width: 840px){
           .llBonusModal{
             grid-template-columns: 1fr;
-            height: 92vh;       /* ✅ idem */
+            height: 92vh;
             max-height: 92vh;
           }
         }
-
 
         .llBonusSide{
           min-height: 0;
@@ -532,7 +574,7 @@ React.useEffect(() => {
         .llBonusBody{
           padding: 14px;
           overflow: auto;
-          min-height: 0;                 /* ✅ permet au scroll de fonctionner en grid */
+          min-height: 0;
           -webkit-overflow-scrolling: touch;
         }
 
@@ -831,7 +873,7 @@ React.useEffect(() => {
               Bonus quotidien
             </button>
 
-            {/* ✅ Onglets HTML (filtrés par rôle) */}
+            {/* ✅ Onglets HTML (dynamiques depuis l'admin, filtrés par rôle) */}
             {contentTabs.map((t) => {
               const label = contentTitles[t.key] || t.fallbackLabel;
               const active = tab === "content" && activeContentKey === t.key;
@@ -854,12 +896,7 @@ React.useEffect(() => {
               );
             })}
 
-            <button
-              type="button"
-              className="llBonusTab isSoon"
-              onClick={() => {}}
-              title="Bientôt"
-            >
+            <button type="button" className="llBonusTab isSoon" onClick={() => {}} title="Bientôt">
               Événements (bientôt)
             </button>
           </div>
@@ -957,21 +994,10 @@ React.useEffect(() => {
                 <div className="llBonusMilestonesRow">
                   {milestones.map((m: any) => {
                     const isClaimable = m.status === "claimable" && !busy;
-                    const cls =
-                      m.status === "locked"
-                        ? "isLocked"
-                        : m.status === "claimed"
-                        ? "isClaimed"
-                        : "isClaimable";
+                    const cls = m.status === "locked" ? "isLocked" : m.status === "claimed" ? "isClaimed" : "isClaimable";
 
                     const right =
-                      m.status === "claimed"
-                        ? "✓"
-                        : m.status === "claimable"
-                        ? busy === `m${m.milestone}`
-                          ? "…"
-                          : "★"
-                        : "🔒";
+                      m.status === "claimed" ? "✓" : m.status === "claimable" ? (busy === `m${m.milestone}` ? "…" : "★") : "🔒";
 
                     return (
                       <div
@@ -1026,11 +1052,7 @@ React.useEffect(() => {
                     Chargement…
                   </div>
                 ) : contentHtml ? (
-                  <div
-                    className="llBonusSub"
-                    style={{ opacity: 0.92, lineHeight: 1.65 }}
-                    dangerouslySetInnerHTML={{ __html: contentHtml }}
-                  />
+                  <div className="llBonusSub" style={{ opacity: 0.92, lineHeight: 1.65 }} dangerouslySetInnerHTML={{ __html: contentHtml }} />
                 ) : (
                   <div className="llBonusSub" style={{ opacity: 0.92, lineHeight: 1.65 }}>
                     Contenu indisponible.

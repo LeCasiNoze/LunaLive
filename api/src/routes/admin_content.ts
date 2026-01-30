@@ -9,7 +9,7 @@ adminContentRouter.get(
   "/content",
   a(async (_req, res) => {
     const { rows } = await pool.query(
-      `SELECT key, title, updated_at
+      `SELECT key, title, min_role, updated_at
        FROM site_content
        ORDER BY updated_at DESC`
     );
@@ -25,7 +25,7 @@ adminContentRouter.get(
     if (!key) return res.status(400).json({ ok: false, error: "missing_key" });
 
     const { rows } = await pool.query(
-      `SELECT key, title, html, updated_at
+      `SELECT key, title, html, min_role, updated_at
        FROM site_content
        WHERE key = $1`,
       [key]
@@ -44,17 +44,19 @@ adminContentRouter.put(
 
     const title = String(req.body?.title ?? "").trim() || null;
     const html = String(req.body?.html ?? "");
+    const minRole = String(req.body?.min_role ?? req.body?.minRole ?? "viewer").trim() || "viewer";
 
     const { rows } = await pool.query(
-      `INSERT INTO site_content(key, title, html, updated_at)
-       VALUES ($1, $2, $3, now())
-       ON CONFLICT (key)
-       DO UPDATE SET
-         title = EXCLUDED.title,
-         html = EXCLUDED.html,
-         updated_at = now()
-       RETURNING key, title, html, updated_at`,
-      [key, title, html]
+      `INSERT INTO site_content(key, title, html, min_role, updated_at)
+      VALUES ($1, $2, $3, $4, now())
+      ON CONFLICT (key)
+      DO UPDATE SET
+        title = EXCLUDED.title,
+        html = EXCLUDED.html,
+        min_role = EXCLUDED.min_role,
+        updated_at = now()
+      RETURNING key, title, html, min_role, updated_at`,
+      [key, title, html, minRole]
     );
 
     res.json({ ok: true, item: rows[0] });

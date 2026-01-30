@@ -1811,3 +1811,14 @@ export async function adminDeleteContent(adminKey: string, key: string) {
     headers: { "x-admin-key": adminKey },
   });
 }
+
+export type ApiPublicContentTab = {
+  key: string;
+  title: string | null;
+  min_role: ContentMinRole | "admin"; // si tu veux
+  updated_at: string | null;
+};
+
+export async function publicListContentTabs() {
+  return j<{ ok: true; items: ApiPublicContentTab[] }>("/public/content-list");
+}
