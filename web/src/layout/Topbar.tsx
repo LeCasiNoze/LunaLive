@@ -5,6 +5,9 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import { AvatarMenu } from "../components/AvatarMenu";
 import { useAuth } from "../auth/AuthProvider";
 import { ReportModal } from "../components/ReportModal";
+import { UnreadBadge } from "../components/UnreadBadge";
+import { publicGetContent } from "../lib/api";
+import { contentVersionFromItem, isUnread } from "../lib/unread_seen";
 
 type ActivePlans = { viewer: boolean; streamer: boolean };
 
@@ -77,6 +80,48 @@ export function Topbar({
 }) {
   const isMobile = useIsMobile();
   const authAny = useAuth() as any;
+  const token = authAny?.token ?? null;
+
+  const CONTENT_KEYS = ["daily_bonus_infos", "guide_viewer", "guide_streamer"] as const;
+  const [unreadBonus, setUnreadBonus] = React.useState(false);
+
+  const reloadUnreadBonus = React.useCallback(async () => {
+    if (!token) {
+      setUnreadBonus(false);
+      return;
+    }
+    try {
+      const results = await Promise.all(
+        CONTENT_KEYS.map(async (k) => {
+          const r: any = await publicGetContent(k);
+          const item = r?.item ?? null;
+          if (!item) return false;
+          const v = contentVersionFromItem(item);
+          return isUnread(`content:${k}`, v);
+        })
+      );
+      setUnreadBonus(results.some(Boolean));
+    } catch {
+      setUnreadBonus(false);
+    }
+  }, [token]);
+
+  React.useEffect(() => {
+    reloadUnreadBonus();
+  }, [reloadUnreadBonus]);
+
+  React.useEffect(() => {
+    const onSeen = () => reloadUnreadBonus();
+    window.addEventListener("ll:content-seen", onSeen as any);
+
+    const onStorage = () => reloadUnreadBonus();
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener("ll:content-seen", onSeen as any);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [reloadUnreadBonus]);
 
   const userAny = authAny?.user ?? null;
   const user = userAny as { rubis: number; username?: string } | null;
@@ -492,7 +537,10 @@ export function Topbar({
         {!isMobile && (
           <nav className="navCentered llNav" aria-label="Navigation">
             <NavLink to="/" end className={linkClass}>
-              Lives
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                Lives
+                <UnreadBadge show={unreadBonus} title="Nouveautés • Bonus quotidien" />
+              </span>
             </NavLink>
             <NavLink to="/browse" className={linkClass}>
               Browse

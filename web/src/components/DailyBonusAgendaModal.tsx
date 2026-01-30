@@ -9,6 +9,8 @@ import {
 import { useAuth } from "../auth/AuthProvider";
 import { DailyBonusAgendaModalMobile } from "./DailyBonusAgendaModal.mobile";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { UnreadBadge } from "./UnreadBadge";
+import { contentVersionFromItem, isUnread, setSeenVersion } from "../lib/unread_seen";
 
 type WeekDay = {
   isodow: number;
@@ -175,6 +177,8 @@ function DailyBonusAgendaModalDesktop({
   const tokensAny = (state as any)?.tokens ?? {};
   const wheelTickets = Number(tokensAny?.wheel_ticket ?? 0);
   const prestigeTokens = Number(tokensAny?.prestige_token ?? 0);
+  const [contentVersions, setContentVersions] = React.useState<Record<string, string>>({});
+  const [contentUnread, setContentUnread] = React.useState<Record<string, boolean>>({});
 
   const week = Array.isArray((state as any)?.week) ? (state as any).week : [];
   const milestones = Array.isArray((state as any)?.milestones) ? (state as any).milestones : [];
@@ -229,6 +233,12 @@ function DailyBonusAgendaModalDesktop({
       try {
         const r: any = await publicGetContent(key);
         const html = r?.item?.html ? sanitizeHtmlLite(String(r.item.html)) : null;
+        const item = r?.item ?? null;
+        const v = item ? contentVersionFromItem(item) : "";
+        if (v && !dead) {
+          setContentVersions((m) => ({ ...m, [key]: v }));
+          setContentUnread((m) => ({ ...m, [key]: isUnread(`content:${key}`, v) }));
+        }
 
         // title DB => label d’onglet (sinon fallback)
         const title = String(r?.item?.title || "").trim();
@@ -280,6 +290,19 @@ function DailyBonusAgendaModalDesktop({
       setBusy(null);
     }
   }
+  React.useEffect(() => {
+    if (tab !== "content") return;
+    const key = activeContentKey;
+    const v = contentVersions[key];
+    if (!v) return;
+
+    // mark as seen
+    setSeenVersion(`content:${key}`, v);
+    setContentUnread((m) => ({ ...m, [key]: false }));
+
+    // optionnel: si tu veux que la HomeCard se mette à jour direct dans la même session :
+    window.dispatchEvent(new CustomEvent("ll:content-seen", { detail: { key } }));
+  }, [tab, activeContentKey, contentVersions]);
 
   async function claimMilestone(m: 5 | 10 | 20 | 30) {
     if (!token) return;
@@ -776,6 +799,7 @@ function DailyBonusAgendaModalDesktop({
             {contentTabs.map((t) => {
               const label = contentTitles[t.key] || t.fallbackLabel;
               const active = tab === "content" && activeContentKey === t.key;
+              const showBang = Boolean(contentUnread[t.key]);
               return (
                 <button
                   key={t.key}
@@ -787,6 +811,7 @@ function DailyBonusAgendaModalDesktop({
                   }}
                 >
                   {label}
+                  <UnreadBadge show={showBang} title="Nouveauté" />
                 </button>
               );
             })}

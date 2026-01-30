@@ -2,6 +2,9 @@
 import * as React from "react";
 import { NavLink, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
+import { UnreadBadge } from "../components/UnreadBadge";
+import { publicGetContent } from "../lib/api";
+import { contentVersionFromItem, isUnread } from "../lib/unread_seen";
 
 import { DailyWheelCard } from "../components/DailyWheelCard";
 import { DailyBonusAccessCard } from "../components/DailyBonusAccessCard";
@@ -68,6 +71,48 @@ export function BottomTabs() {
   const location = useLocation();
   const authAny = useAuth() as any;
   const userAny = authAny?.user ?? null;
+  const token = authAny?.token ?? null;
+
+  const CONTENT_KEYS = ["daily_bonus_infos", "guide_viewer", "guide_streamer"] as const;
+  const [unreadBonus, setUnreadBonus] = React.useState(false);
+
+  const reloadUnreadBonus = React.useCallback(async () => {
+    if (!token) {
+      setUnreadBonus(false);
+      return;
+    }
+    try {
+      const results = await Promise.all(
+        CONTENT_KEYS.map(async (k) => {
+          const r: any = await publicGetContent(k);
+          const item = r?.item ?? null;
+          if (!item) return false;
+          const v = contentVersionFromItem(item);
+          return isUnread(`content:${k}`, v);
+        })
+      );
+      setUnreadBonus(results.some(Boolean));
+    } catch {
+      setUnreadBonus(false);
+    }
+  }, [token]);
+
+  React.useEffect(() => {
+    reloadUnreadBonus();
+  }, [reloadUnreadBonus]);
+
+  React.useEffect(() => {
+    const onSeen = () => reloadUnreadBonus();
+    window.addEventListener("ll:content-seen", onSeen as any);
+
+    const onStorage = () => reloadUnreadBonus();
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener("ll:content-seen", onSeen as any);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [reloadUnreadBonus]);
 
   const username = String(userAny?.username || "");
   const avatarSrc = pickUserAvatarUrl(userAny);
@@ -326,7 +371,10 @@ export function BottomTabs() {
       <nav className="bottomTabs" aria-label="Navigation">
         <NavLink to="/" end className={tabClass}>
           <div className="tabIcon">●</div>
-          <div className="tabLabel">Lives</div>
+          <div className="tabLabel" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            Lives
+            <UnreadBadge show={unreadBonus} title="Nouveautés • Bonus quotidien" />
+          </div>
         </NavLink>
 
         <button type="button" className="menuBtn" onClick={() => setOpen(true)} aria-label="Ouvrir le menu">
@@ -410,6 +458,11 @@ export function BottomTabs() {
 
                 {/* Sections intégrées (cards) : bonus + roue */}
                 <div ref={bonusRef} style={{ display: "grid", gap: 10, marginTop: 2 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ fontWeight: 1150, letterSpacing: -0.2 }}>
+                      Bonus quotidien <UnreadBadge show={unreadBonus} title="Nouveautés à lire" />
+                    </div>
+                  </div>
                   <DailyBonusAccessCard />
                 </div>
 

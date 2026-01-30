@@ -2,6 +2,9 @@ import * as React from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { getDailyBonusState } from "../lib/api";
 import { DailyBonusAgendaModal, type DailyBonusState } from "./DailyBonusAgendaModal";
+import { publicGetContent } from "../lib/api";
+import { UnreadBadge } from "./UnreadBadge";
+import { contentVersionFromItem, isUnread } from "../lib/unread_seen";
 
 function rewardShort(r: any) {
   if (!r) return "—";
@@ -50,6 +53,51 @@ function smallCellStyle(status: string) {
 export function DailyBonusHomeCard() {
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
+
+  const CONTENT_KEYS = ["daily_bonus_infos", "guide_viewer", "guide_streamer"] as const;
+
+  const [unreadAny, setUnreadAny] = React.useState(false);
+
+  const reloadUnread = React.useCallback(async () => {
+    if (!token) {
+      setUnreadAny(false);
+      return;
+    }
+    try {
+      const results = await Promise.all(
+        CONTENT_KEYS.map(async (k) => {
+          const r: any = await publicGetContent(k);
+          const item = r?.item ?? null;
+          if (!item) return false;
+          const v = contentVersionFromItem(item);
+          return isUnread(`content:${k}`, v);
+        })
+      );
+      setUnreadAny(results.some(Boolean));
+    } catch {
+      setUnreadAny(false);
+    }
+  }, [token]);
+
+  // 1) load initial + quand token change
+  React.useEffect(() => {
+    reloadUnread();
+  }, [reloadUnread]);
+
+  // 2) refresh instant quand la modale marque "vu"
+  React.useEffect(() => {
+    const onSeen = () => reloadUnread();
+    window.addEventListener("ll:content-seen", onSeen as any);
+
+    // bonus: si plusieurs onglets
+    const onStorage = () => reloadUnread();
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener("ll:content-seen", onSeen as any);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [reloadUnread]);
 
   const [loading, setLoading] = React.useState(true);
   const [state, setState] = React.useState<DailyBonusState | null>(null);
@@ -117,7 +165,8 @@ export function DailyBonusHomeCard() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div>
           <div className="panelTitle" style={{ marginBottom: 0 }}>
-            Bonus quotidien
+            Quotidien
+            <UnreadBadge show={unreadAny} title="Nouveautés à lire" />
           </div>
           <div className="mutedSmall" style={{ opacity: 0.8 }}>
             {token ? (loading ? "Chargement…" : "Agenda hebdo + paliers mensuels") : "Connecte-toi pour voir l’agenda"}
