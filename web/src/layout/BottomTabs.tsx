@@ -371,14 +371,20 @@ export function BottomTabs() {
       <nav className="bottomTabs" aria-label="Navigation">
         <NavLink to="/" end className={tabClass}>
           <div className="tabIcon">●</div>
-          <div className="tabLabel" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            Lives
-            <UnreadBadge show={unreadBonus} title="Nouveautés • Bonus quotidien" />
-          </div>
+          <div className="tabLabel">Lives</div>
         </NavLink>
 
-        <button type="button" className="menuBtn" onClick={() => setOpen(true)} aria-label="Ouvrir le menu">
+        <button
+          type="button"
+          className="menuBtn"
+          onClick={() => setOpen(true)}
+          aria-label="Ouvrir le menu"
+          style={{ position: "relative" }}
+        >
           ⋯
+          <span style={{ position: "absolute", top: 6, right: 6 }}>
+            <UnreadBadge show={unreadBonus} title="Nouveautés • Bonus quotidien" />
+          </span>
         </button>
 
         <NavLink to="/browse" className={tabClass}>
