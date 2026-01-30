@@ -169,7 +169,7 @@ export function DailyBonusHomeCard() {
             <UnreadBadge show={unreadAny} title="Nouveautés à lire" />
           </div>
           <div className="mutedSmall" style={{ opacity: 0.8 }}>
-            {token ? (loading ? "Chargement…" : "Agenda hebdo + paliers mensuels") : "Connecte-toi pour voir l’agenda"}
+            {token ? (loading ? "Chargement…" : "") : "Connecte-toi pour voir l’agenda"}
           </div>
         </div>
 

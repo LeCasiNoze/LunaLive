@@ -211,6 +211,42 @@ function DailyBonusAgendaModalDesktop({
   const [contentHtml, setContentHtml] = React.useState<string | null>(null);
   const [contentLoading, setContentLoading] = React.useState(false);
   const [contentTitles, setContentTitles] = React.useState<Record<string, string>>({});
+// ✅ Précharge titres + unread pour afficher les "!" dans la sidebar (même sur l’onglet agenda)
+React.useEffect(() => {
+  let dead = false;
+
+  async function preload() {
+    try {
+      const keys = contentTabs.map((t) => t.key);
+
+      await Promise.all(
+        keys.map(async (key) => {
+          const r: any = await publicGetContent(key);
+          const item = r?.item ?? null;
+          if (!item) return;
+
+          const v = contentVersionFromItem(item);
+          if (v && !dead) {
+            setContentVersions((m) => ({ ...m, [key]: v }));
+            setContentUnread((m) => ({ ...m, [key]: isUnread(`content:${key}`, v) }));
+          }
+
+          const title = String(item?.title || "").trim();
+          if (title && !dead) {
+            setContentTitles((m) => ({ ...m, [key]: title }));
+          }
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  preload();
+  return () => {
+    dead = true;
+  };
+}, [contentTabs]);
 
   // garde-fou: si tu perds un onglet (role change), on revient sur un onglet safe
   React.useEffect(() => {
@@ -810,8 +846,10 @@ function DailyBonusAgendaModalDesktop({
                     setTab("content");
                   }}
                 >
-                  {label}
-                  <UnreadBadge show={showBang} title="Nouveauté" />
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <span>{label}</span>
+                    <UnreadBadge show={showBang} title="Nouveautés à lire" />
+                  </span>
                 </button>
               );
             })}
