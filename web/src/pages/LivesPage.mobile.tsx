@@ -17,6 +17,26 @@ function absolutize(apiBase: string, url: string | null) {
   return u;
 }
 
+function fmtDuration(sec: number) {
+  sec = Math.max(0, Math.floor(Number(sec || 0)));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  if (h) return `${h}:${String(mm).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${mm}:${String(s).padStart(2, "0")}`;
+}
+
+function timeAgo(ms: number) {
+  const d = Date.now() - (Number(ms || 0) || 0);
+  const mins = Math.floor(d / 60000);
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `${h} h`;
+  const days = Math.floor(h / 24);
+  return `${days} j`;
+}
+
 function Pill({
   tone,
   children,
@@ -211,10 +231,7 @@ export default function LivesPageMobile(props: {
   onOpenMonthList: () => void;
   onOpenClip: (c: ClipVM) => void;
 
-  // ✅ optionnel : mets tes vraies routes ici pour éviter les mauvais liens
   routes?: Routes;
-
-  // ✅ optionnel : si tu veux afficher avatar/username dans le menu
   me?: { username?: string | null; avatarUrl?: string | null } | null;
 }) {
   const {
@@ -250,6 +267,31 @@ export default function LivesPageMobile(props: {
 
   const canShowGrid = !(loading && lives.length === 0);
 
+  // --- Clips UI helpers
+  const clipsTop3 = React.useMemo(() => clipsTop4.slice(0, 3), [clipsTop4]);
+  const clipBig = clipsTop3[0] ?? null;
+  const clipSm1 = clipsTop3[1] ?? null;
+  const clipSm2 = clipsTop3[2] ?? null;
+
+  function onPickClipFromGrid(c: ClipVM | null) {
+    if (!c) return;
+    if (hasMoreThan4) onOpenMonthList();
+    else onOpenClip(c);
+  }
+
+  function clipThumb(c: ClipVM) {
+    const raw = c.thumbUrl ? absolutize(apiBase, c.thumbUrl) || c.thumbUrl : null;
+    return raw || svgThumb(c.streamerName || c.streamerSlug || "Clip");
+  }
+
+  function clipWho(c: ClipVM) {
+    return c.streamerName || c.streamerSlug || "Streamer";
+  }
+
+  function clipLikes(c: ClipVM) {
+    return Number((c as any).likesCount ?? 0) || 0;
+  }
+
   return (
     <main className="container livesMobile">
       <style>{`
@@ -274,9 +316,158 @@ export default function LivesPageMobile(props: {
           overflow:hidden;
         }
 
-        .mTop{
-          display:flex; justify-content:space-between; align-items:flex-start; gap:12px;
+        /* --- Clips hero (au-dessus de Lives) --- */
+        .mClipsCard{
+          border-radius: 22px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background:
+            radial-gradient(700px 240px at 20% 0%, rgba(255,90,180,0.16), rgba(0,0,0,0) 60%),
+            radial-gradient(700px 240px at 90% 20%, rgba(80,160,255,0.14), rgba(0,0,0,0) 62%),
+            linear-gradient(180deg, rgba(255,255,255,0.07), rgba(0,0,0,0.14));
+          box-shadow: 0 20px 65px rgba(0,0,0,0.35);
+          overflow:hidden;
         }
+        .mClipsTop{
+          display:flex; align-items:center; justify-content:space-between; gap:10px;
+          padding: 12px 12px 10px;
+        }
+        .mClipsTitle{
+          display:flex; align-items:baseline; gap:10px; min-width:0;
+          font-weight: 1300; letter-spacing:-0.2px;
+        }
+        .mClipsTitle span{ white-space:nowrap; }
+        .mClipsCount{
+          font-size: 12px; opacity: 0.8; font-weight: 1000; white-space: nowrap;
+          padding: 6px 10px; border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.25);
+          backdrop-filter: blur(10px);
+        }
+        .mClipsBtn{
+          display:inline-flex; align-items:center; justify-content:center;
+          padding: 10px 12px;
+          border-radius: 16px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.06);
+          color: rgba(255,255,255,0.92);
+          font-weight: 1150;
+          cursor:pointer;
+          text-decoration:none;
+          min-height: 40px;
+          white-space: nowrap;
+        }
+        .mClipsBtn:active{ transform: translateY(1px); }
+
+        .mClipsLayout{
+          padding: 0 12px 12px;
+          display:grid;
+          grid-template-columns: 1.35fr 1fr;
+          gap: 10px;
+        }
+        @media (max-width: 380px){
+          .mClipsLayout{ grid-template-columns: 1fr; }
+        }
+
+        .mClipBig, .mClipSm{
+          position: relative;
+          overflow: hidden;
+          border-radius: 18px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(0,0,0,0.18);
+          cursor: pointer;
+          padding: 0;
+        }
+        .mClipBig{ min-height: 180px; }
+        .mClipSm{ min-height: 86px; border-radius: 16px; }
+
+        .mClipBg{
+          position:absolute; inset:0;
+          background-position:center; background-size:cover; background-repeat:no-repeat;
+          opacity: 0.92;
+          transform: scale(1.03);
+          filter: contrast(1.05) saturate(1.15);
+        }
+        .mClipOverlay{
+          position:absolute; inset:0;
+          background:
+            radial-gradient(520px 200px at 30% 0%, rgba(255,90,180,0.18), rgba(0,0,0,0) 62%),
+            radial-gradient(520px 200px at 95% 20%, rgba(80,160,255,0.14), rgba(0,0,0,0) 60%),
+            linear-gradient(180deg, rgba(0,0,0,0.08), rgba(0,0,0,0.55));
+          pointer-events:none;
+        }
+        .mClipTopBadges{
+          position:absolute; top:10px; left:10px; right:10px;
+          display:flex; justify-content:space-between; align-items:center; gap:10px;
+          pointer-events:none;
+        }
+        .mClipBadge{
+          display:inline-flex; align-items:center; gap:6px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(0,0,0,0.52);
+          border: 1px solid rgba(255,255,255,0.12);
+          backdrop-filter: blur(10px);
+          font-weight: 1100;
+          font-size: 12px;
+          white-space: nowrap;
+        }
+        .mClipPlay{
+          width: 44px; height: 44px;
+          border-radius: 16px;
+          display:grid; place-items:center;
+          background: rgba(0,0,0,0.55);
+          border: 1px solid rgba(255,255,255,0.12);
+          backdrop-filter: blur(10px);
+          box-shadow: 0 16px 45px rgba(0,0,0,0.35);
+          pointer-events:none;
+        }
+        .mClipBottom{
+          position:absolute; left:12px; right:12px; bottom:12px;
+          display:grid; gap:4px;
+          pointer-events:none;
+        }
+        .mClipName{
+          font-weight: 1250;
+          letter-spacing: -0.2px;
+          font-size: 12px;
+          opacity: 0.95;
+          display:-webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+          overflow:hidden;
+        }
+        .mClipMeta{
+          font-size: 12px;
+          opacity: 0.78;
+          font-weight: 950;
+          overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+          display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+        }
+
+        .mClipsRightCol{ display:grid; gap:10px; }
+        .mClipsFooter{
+          padding: 0 12px 12px;
+          display:flex; align-items:center; justify-content:space-between; gap:10px;
+        }
+        .mClipsFooterNote{
+          font-size: 12px;
+          opacity: 0.80;
+          font-weight: 950;
+          display:flex; align-items:center; gap:8px;
+        }
+
+        /* --- Banner Lives (sous les clips) --- */
+        .mBanner{
+          margin-top: 12px;
+          padding: 12px 12px;
+          border-radius: 18px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background:
+            radial-gradient(900px 320px at 20% 0%, rgba(140,90,255,0.18), rgba(0,0,0,0) 60%),
+            linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.12));
+          box-shadow: 0 18px 55px rgba(0,0,0,0.25);
+          backdrop-filter: blur(10px);
+          display:flex; justify-content:space-between; align-items:center; gap:12px;
+        }
+        .mBannerLeft{ min-width:0; }
         .mH1{
           margin:0; font-weight:1500; letter-spacing:-0.6px; font-size: 26px; line-height:1.05;
           background: linear-gradient(90deg, rgba(255,90,180,1), rgba(180,140,255,1), rgba(80,160,255,1));
@@ -386,9 +577,7 @@ export default function LivesPageMobile(props: {
 
         /* Menu items */
         .mMenuGrid{ display:grid; gap:10px; }
-        .mMenuRow{
-          display:flex; gap:10px;
-        }
+        .mMenuRow{ display:flex; gap:10px; }
         .mMenuBtn{
           flex:1;
           display:flex; align-items:center; justify-content:space-between; gap:10px;
@@ -433,65 +622,6 @@ export default function LivesPageMobile(props: {
           border-top: 1px solid rgba(255,255,255,0.08);
         }
 
-        /* Clips inside menu */
-        .mClipsHeader{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
-        .mClipsGrid{ margin-top:10px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
-        .mClipTile{
-          position:relative; border-radius: 16px; overflow:hidden;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(255,255,255,0.06);
-          min-height: 92px;
-          cursor:pointer;
-        }
-        .mClipThumb{
-          position:absolute; inset:0;
-          background-position:center; background-size:cover; background-repeat:no-repeat;
-          opacity: 0.92;
-          transform: scale(1.03);
-          filter: contrast(1.03) saturate(1.12);
-        }
-        .mClipTile::before{
-          content:""; position:absolute; inset:0;
-          background: radial-gradient(420px 160px at 30% 0%, rgba(255,90,180,0.16), rgba(0,0,0,0) 60%),
-                      radial-gradient(420px 160px at 90% 20%, rgba(80,160,255,0.14), rgba(0,0,0,0) 60%),
-                      linear-gradient(180deg, rgba(0,0,0,0.10), rgba(0,0,0,0.38));
-          pointer-events:none;
-        }
-        .mClipTop{
-          position:absolute; top:8px; left:8px; right:8px;
-          display:flex; justify-content:space-between; gap:8px;
-          pointer-events:none;
-        }
-        .mClipBadge{
-          display:inline-flex; align-items:center; gap:6px;
-          padding: 6px 10px;
-          border-radius: 999px;
-          background: rgba(0,0,0,0.52);
-          border: 1px solid rgba(255,255,255,0.12);
-          backdrop-filter: blur(10px);
-          font-weight: 1100;
-          font-size: 12px;
-        }
-        .mClipBottom{
-          position:absolute; left:10px; right:10px; bottom:10px;
-          display:grid; gap:4px;
-          pointer-events:none;
-        }
-        .mClipTitle{
-          font-weight: 1200;
-          letter-spacing: -0.2px;
-          font-size: 12px;
-          opacity: 0.95;
-          display:-webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-          overflow:hidden;
-        }
-        .mClipSub{
-          font-size: 12px;
-          opacity: 0.78;
-          font-weight: 950;
-          overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-        }
-
         /* Profile mini */
         .mMeRow{
           display:flex; align-items:center; gap:10px;
@@ -516,8 +646,155 @@ export default function LivesPageMobile(props: {
       `}</style>
 
       <div className="mWrap">
-        <div className="mTop">
-          <div style={{ minWidth: 0 }}>
+        {/* ✅ CLIPS (AU-DESSUS DE TOUT) */}
+        <div className="mClipsCard">
+          <div className="mClipsTop">
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <div className="mClipsTitle" style={{ minWidth: 0 }}>
+                <span style={{ opacity: 0.9 }}>🎬</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>Clips du mois</span>
+              </div>
+              <div className="mClipsCount" title="Nombre de clips du mois">
+                {clipsLoading ? "…" : `${clipsTotal || 0} clip(s)`}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="mClipsBtn"
+              onClick={() => onOpenMonthList()}
+              aria-label="Voir tous les clips du mois"
+              title="Voir tous les clips du mois"
+            >
+              Voir tout
+            </button>
+          </div>
+
+          {clipsTop4.length === 0 ? (
+            <div style={{ padding: "0 12px 12px" }}>
+              <div className="mutedSmall" style={{ opacity: 0.85 }}>
+                {clipsLoading ? "Chargement…" : "Aucun clip pour le moment."}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="mClipsLayout">
+                {/* Big left */}
+                {clipBig ? (
+                  <button
+                    type="button"
+                    className="mClipBig"
+                    onClick={() => onPickClipFromGrid(clipBig)}
+                    style={{ border: 0, background: "transparent", textAlign: "left" }}
+                    title={clipBig.title || "Clip"}
+                  >
+                    <div className="mClipBg" style={{ backgroundImage: `url(${clipThumb(clipBig)})` }} />
+                    <div className="mClipOverlay" aria-hidden />
+                    <div className="mClipTopBadges">
+                      <span className="mClipBadge" title="Likes">
+                        ❤️ {clipLikes(clipBig)}
+                      </span>
+                      <span className="mClipPlay" aria-hidden>
+                        ▶
+                      </span>
+                    </div>
+                    <div className="mClipBottom">
+                      <div className="mClipName">{clipBig.title || "(sans titre)"}</div>
+                      <div className="mClipMeta">
+                        <span style={{ opacity: 0.92 }}>{clipWho(clipBig)}</span>
+                        <span style={{ opacity: 0.8 }}>•</span>
+                        <span>{fmtDuration(clipBig.durationSec)}</span>
+                        <span style={{ opacity: 0.8 }}>•</span>
+                        <span>{timeAgo(clipBig.createdAtMs)}</span>
+                      </div>
+                    </div>
+                  </button>
+                ) : (
+                  <div />
+                )}
+
+                {/* Right column (2 small) */}
+                <div className="mClipsRightCol">
+                  {[clipSm1, clipSm2].map((c, idx) => {
+                    if (!c) {
+                      return (
+                        <div
+                          key={`empty-${idx}`}
+                          className="mClipSm"
+                          style={{
+                            opacity: 0.25,
+                            display: "grid",
+                            placeItems: "center",
+                            pointerEvents: "none",
+                          }}
+                        >
+                          <span className="mutedSmall">—</span>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="mClipSm"
+                        onClick={() => onPickClipFromGrid(c)}
+                        style={{ border: 0, background: "transparent", textAlign: "left" }}
+                        title={c.title || "Clip"}
+                      >
+                        <div className="mClipBg" style={{ backgroundImage: `url(${clipThumb(c)})` }} />
+                        <div className="mClipOverlay" aria-hidden style={{ opacity: 0.9 }} />
+                        <div className="mClipTopBadges">
+                          <span className="mClipBadge" title="Likes">
+                            ❤️ {clipLikes(c)}
+                          </span>
+                          <span className="mClipBadge" title="Durée">
+                            ⏱ {fmtDuration(c.durationSec)}
+                          </span>
+                        </div>
+                        <div className="mClipBottom" style={{ bottom: 10, left: 10, right: 10 }}>
+                          <div className="mClipName" style={{ fontSize: 12, WebkitLineClamp: 1 as any }}>
+                            {c.title || "(sans titre)"}
+                          </div>
+                          <div className="mClipMeta" style={{ gap: 6 }}>
+                            <span style={{ opacity: 0.92 }}>{clipWho(c)}</span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mClipsFooter">
+                <div className="mClipsFooterNote">
+                  {extraClipsCount > 0 ? (
+                    <>
+                      <span style={{ opacity: 0.9 }}>＋{extraClipsCount}</span>
+                      <span style={{ opacity: 0.8 }}>autre(s) clip(s)</span>
+                    </>
+                  ) : (
+                    <span style={{ opacity: 0.8 }}>Top du mois • tri par ❤️</span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="mClipsBtn"
+                  onClick={() => onOpenMonthList()}
+                  style={{ padding: "10px 12px" }}
+                  title="Ouvrir la liste des clips du mois"
+                >
+                  Ouvrir ▶
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ✅ BANNIÈRE LIVES (SOUS LES CLIPS) */}
+        <div className="mBanner">
+          <div className="mBannerLeft">
             <h1 className="mH1">Lives</h1>
             <div className="mSub">
               <span>Plateforme casino FR</span>
@@ -656,7 +933,7 @@ export default function LivesPageMobile(props: {
         )}
       </div>
 
-      {/* ✅ Floating "3 dots" menu (atteignable + contient profil/menus) */}
+      {/* ✅ Floating "3 dots" menu */}
       <button className="mFab" type="button" onClick={() => setOpenMenu(true)} aria-label="Ouvrir le menu">
         ⋯
       </button>
@@ -666,12 +943,7 @@ export default function LivesPageMobile(props: {
           <div className="mMenuGrid">
             {/* ✅ Quick nav */}
             <div className="mMenuRow">
-              <Link
-                to={r.lives}
-                className="mMenuBtn"
-                onClick={() => setOpenMenu(false)}
-                aria-label="Aller à Lives"
-              >
+              <Link to={r.lives} className="mMenuBtn" onClick={() => setOpenMenu(false)} aria-label="Aller à Lives">
                 <span className="mMenuLeft">
                   <span aria-hidden>🔴</span>
                   <span className="mMenuLabel">Lives</span>
@@ -679,12 +951,7 @@ export default function LivesPageMobile(props: {
                 <span className="mMenuMeta">{totals.liveCount}</span>
               </Link>
 
-              <Link
-                to={r.browse}
-                className="mMenuBtn"
-                onClick={() => setOpenMenu(false)}
-                aria-label="Aller à Browse"
-              >
+              <Link to={r.browse} className="mMenuBtn" onClick={() => setOpenMenu(false)} aria-label="Aller à Browse">
                 <span className="mMenuLeft">
                   <span aria-hidden>🧭</span>
                   <span className="mMenuLabel">Browse</span>
@@ -701,91 +968,7 @@ export default function LivesPageMobile(props: {
               </div>
             </Section>
 
-            {/* ✅ Clips inside accordion (plus propre) */}
-            <Section
-              title="Clips du mois"
-              right={
-                clipsLoading ? (
-                  <span style={{ opacity: 0.75 }}>…</span>
-                ) : (
-                  <span style={{ opacity: 0.9 }}>{clipsTotal || 0}</span>
-                )
-              }
-              defaultOpen
-            >
-              <div>
-                <div className="mClipsHeader">
-                  <div style={{ fontWeight: 1200, letterSpacing: -0.2, opacity: 0.92 }}>
-                    <span style={{ opacity: 0.85 }}>🎬</span> Top clips
-                  </div>
-
-                  <button
-                    type="button"
-                    className="btnGhostSmall"
-                    onClick={() => {
-                      setOpenMenu(false);
-                      onOpenMonthList();
-                    }}
-                    style={{ minHeight: 40 }}
-                    title="Voir tous les clips du mois"
-                  >
-                    Voir tout
-                  </button>
-                </div>
-
-                {clipsTop4.length === 0 ? (
-                  <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85 }}>
-                    {clipsLoading ? "Chargement…" : "Aucun clip."}
-                  </div>
-                ) : (
-                  <div className="mClipsGrid">
-                    {clipsTop4.map((c) => {
-                      const raw = c.thumbUrl ? absolutize(apiBase, c.thumbUrl) || c.thumbUrl : null;
-                      const thumb = raw || svgThumb(c.streamerName || c.streamerSlug || "Clip");
-                      const who = c.streamerName || c.streamerSlug || "Streamer";
-                      const likes = Number((c as any).likesCount ?? 0) || 0;
-
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          className="mClipTile"
-                          onClick={() => {
-                            setOpenMenu(false);
-                            if (hasMoreThan4) onOpenMonthList();
-                            else onOpenClip(c);
-                          }}
-                          style={{ padding: 0, border: 0 }}
-                          title={c.title || "Clip"}
-                        >
-                          <div className="mClipThumb" style={{ backgroundImage: `url(${thumb})` }} />
-                          <div className="mClipTop">
-                            <span className="mClipBadge" title="Likes">
-                              ❤️ {likes}
-                            </span>
-                            <span className="mClipBadge" title="Ouvrir">
-                              ▶
-                            </span>
-                          </div>
-                          <div className="mClipBottom">
-                            <div className="mClipTitle">{c.title || "(sans titre)"}</div>
-                            <div className="mClipSub">{who}</div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {extraClipsCount > 0 ? (
-                  <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85 }}>
-                    +{extraClipsCount} autres clips
-                  </div>
-                ) : null}
-              </div>
-            </Section>
-
-            {/* ✅ Profil accessible (plus simple à atteindre que la topbar) */}
+            {/* ✅ Profil accessible */}
             <Section title="Mon compte" right={<span style={{ opacity: 0.8 }}>Profil • Dashboard</span>} defaultOpen>
               <div className="mMeRow">
                 <div className="mMeAva" aria-hidden>

@@ -1,6 +1,6 @@
 // web/src/layout/BottomTabs.tsx
 import * as React from "react";
-import { NavLink, Link, useLocation } from "react-router-dom";
+import { NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { UnreadBadge } from "../components/UnreadBadge";
 import { publicGetContent } from "../lib/api";
@@ -72,6 +72,7 @@ export function BottomTabs() {
   const authAny = useAuth() as any;
   const userAny = authAny?.user ?? null;
   const token = authAny?.token ?? null;
+  const navigate = useNavigate();
 
   const CONTENT_KEYS = ["daily_bonus_infos", "guide_viewer", "guide_streamer"] as const;
   const [unreadBonus, setUnreadBonus] = React.useState(false);
@@ -159,8 +160,16 @@ export function BottomTabs() {
   }
 
   const menuItems: MenuItem[] = [
-    // ✅ Remplacement Lives/Browse/Mon compte: => Clips + Bonus + Roue
-    // Liens principaux
+    {
+      kind: "action",
+      label: "Clips",
+      icon: "🎬",
+      onClick: () => {
+        navigate("/?open=clips");
+        setOpen(false);
+      },
+    },
+
     { kind: "link", to: "/casinos", label: "CheckTaSlot", icon: "🎰" },
     { kind: "link", to: "/hunt", label: "Hunt", icon: "🧿" },
     { kind: "link", to: "/shop", label: "Shop", icon: "🛍️" },
