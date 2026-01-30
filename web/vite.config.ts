@@ -10,25 +10,41 @@ export default defineConfig({
       srcDir: "src",
       filename: "sw.js",
 
-      // tu peux laisser auto, MAIS comme tu registers aussi à la main,
-      // je te conseille de couper l'auto-register :
+      // tu registers à la main -> pas d'auto inject
       injectRegister: null,
       registerType: "autoUpdate",
 
-      includeAssets: ["favicon.png", "logo.png", "pwa-192.png", "pwa-512.png"],
+      // Assets copiés tels quels dans le build (doivent exister dans /public)
+      // ⚠️ Mets bien ces fichiers dans web/public/pwa/
+      includeAssets: [
+        "favicon.png",
+        "logo.png",
+        "pwa/apple-touch-icon.png",
+        "pwa/icon-192.png",
+        "pwa/icon-512.png",
+      ],
+
       manifest: {
         name: "LunaLive",
         short_name: "LunaLive",
-        description: "Live casino streaming platform (MVP)",
-        start_url: "/",
+        start_url: "/?source=a2hs",
         scope: "/",
         display: "standalone",
-        background_color: "#1D1125",
-        theme_color: "#1D1125",
-        orientation: "portrait",
+        background_color: "#0a0a0e",
+        theme_color: "#7c4dff",
         icons: [
-          { src: "/pwa-192.png", sizes: "192x192", type: "image/png" },
-          { src: "/pwa-512.png", sizes: "512x512", type: "image/png" },
+          {
+            src: "/pwa/icon-192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any maskable",
+          },
+          {
+            src: "/pwa/icon-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any maskable",
+          },
         ],
       },
     }),
