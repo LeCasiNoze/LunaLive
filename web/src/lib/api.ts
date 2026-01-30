@@ -1820,5 +1820,5 @@ export type ApiPublicContentTab = {
 };
 
 export async function publicListContentTabs() {
-  return j<{ ok: true; items: ApiPublicContentTab[] }>("/public/content-list");
+  return j("/public/content-list"); // ✅ route publique
 }

@@ -201,7 +201,7 @@ export function createApp() {
   // ✅ Public + Auth
   // ─────────────────────────────────────────────
   app.use(publicContentRouter);
-  app.use(publicRouter);
+  app.use("/public", publicRouter);
   app.use(authRouter);
   app.use(accountActionsRouter);
 
