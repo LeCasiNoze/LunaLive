@@ -1,8 +1,16 @@
 // web/src/components/DailyBonusAgendaModal.mobile.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { claimDailyBonusToday, claimDailyBonusMilestone, publicGetContent } from "../lib/api";
+import {
+  claimDailyBonusToday,
+  claimDailyBonusMilestone,
+  publicGetContent,
+  publicListContentTabs,
+  type ApiPublicContentTab,
+} from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
+import { UnreadBadge } from "./UnreadBadge";
+import { contentVersionFromItem, isUnread, setSeenVersion } from "../lib/unread_seen";
 
 type WeekDay = {
   isodow: number;
@@ -33,7 +41,7 @@ export type DailyBonusState = {
 
 type Role = "viewer" | "moderator" | "streamer" | "admin";
 type TabKey = "agenda" | "content" | "event";
-type ContentKey = "daily_bonus_infos" | "guide_viewer" | "guide_streamer";
+type ContentKey = string;
 
 function roleRank(r: any): number {
   const v = String(r || "viewer").toLowerCase();
@@ -130,6 +138,27 @@ function sanitizeHtmlLite(input: string) {
   }
 }
 
+// version "stable" pour le unread: accepte updated_at du listing
+function versionFromAnyItem(item: any) {
+  return contentVersionFromItem({
+    ...item,
+    updatedAt: (item as any)?.updatedAt ?? (item as any)?.updated_at,
+  } as any);
+}
+
+function humanizeKey(key: string) {
+  const s = String(key || "")
+    .replace(/^bonus_/, "")
+    .replace(/^daily_bonus_/, "")
+    .replace(/^guide_/, "")
+    .trim();
+  const t = s
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+  return t || "Contenu";
+}
+
 export function DailyBonusAgendaModalMobile({
   state,
   onClose,
@@ -156,20 +185,90 @@ export function DailyBonusAgendaModalMobile({
   );
   const premiumLabel = String((state as any)?.premium?.label ?? "").trim() || "Abonnement actif";
 
-  // ✅ Tabs HTML (align desktop) + filtrage rôle
+  // ✅ charge la liste des tabs depuis l'API (admin content)
+  const [contentList, setContentList] = React.useState<ApiPublicContentTab[]>([]);
+  React.useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        const r: any = await publicListContentTabs();
+        const items = Array.isArray(r?.items) ? (r.items as ApiPublicContentTab[]) : [];
+        if (!dead) setContentList(items);
+      } catch {
+        if (!dead) setContentList([]);
+      }
+    })();
+    return () => {
+      dead = true;
+    };
+  }, []);
+
+  // ✅ Tabs visibles selon rôle (un rôle “au-dessus” voit tout en dessous)
   const contentTabs = React.useMemo(() => {
-    const tabs: Array<{ key: ContentKey; fallbackLabel: string; minRole: Role }> = [
-      { key: "daily_bonus_infos", fallbackLabel: "Informations", minRole: "viewer" },
-      { key: "guide_viewer", fallbackLabel: "Guide Viewer", minRole: "viewer" },
-      { key: "guide_streamer", fallbackLabel: "Guide Streamer", minRole: "streamer" },
-    ];
-    return tabs.filter((t) => canSee(t.minRole, userRole));
-  }, [userRole]);
+    const tabs = (contentList || [])
+      .map((it: any) => {
+        const key = String(it?.key || "").trim();
+        const minRole = String(it?.min_role || "viewer").toLowerCase() as Role;
+        const title = String(it?.title || "").trim();
+        return {
+          key,
+          minRole,
+          title,
+          updated_at: it?.updated_at ?? null,
+          fallbackLabel: title || humanizeKey(key),
+        };
+      })
+      .filter((t) => t.key && canSee(t.minRole, userRole));
+
+    return tabs;
+  }, [contentList, userRole]);
 
   // UI state
   const [tab, setTab] = React.useState<TabKey>("agenda");
   const [activeContentKey, setActiveContentKey] = React.useState<ContentKey>("daily_bonus_infos");
   const [busy, setBusy] = React.useState<string | null>(null);
+
+  // ✅ unread + versions (align desktop)
+  const [contentVersions, setContentVersions] = React.useState<Record<string, string>>({});
+  const [contentUnread, setContentUnread] = React.useState<Record<string, boolean>>({});
+  const [contentTitles, setContentTitles] = React.useState<Record<string, string>>({});
+
+  // ✅ Précharge titres + unread depuis la liste (sans fetch n fois)
+  React.useEffect(() => {
+    let dead = false;
+
+    try {
+      for (const t of contentTabs) {
+        const key = t.key;
+
+        const v = versionFromAnyItem(t);
+        if (v && !dead) {
+          setContentVersions((m) => ({ ...m, [key]: v }));
+          setContentUnread((m) => ({ ...m, [key]: isUnread(`content:${key}`, v) }));
+        }
+
+        const title = String((t as any)?.title || "").trim();
+        if (title && !dead) {
+          setContentTitles((m) => ({ ...m, [key]: title }));
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return () => {
+      dead = true;
+    };
+  }, [contentTabs]);
+
+  // ✅ garde-fou: si role change / liste change, on garde un onglet safe
+  React.useEffect(() => {
+    if (tab !== "content") return;
+    if (contentTabs.some((t) => t.key === activeContentKey)) return;
+
+    const first = contentTabs[0]?.key;
+    if (first) setActiveContentKey(first);
+  }, [tab, contentTabs, activeContentKey]);
 
   // toast
   const [toast, setToast] = React.useState<string | null>(null);
@@ -226,16 +325,9 @@ export function DailyBonusAgendaModalMobile({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // ✅ garde-fou: si role change et onglet non dispo
-  React.useEffect(() => {
-    const ok = contentTabs.some((t) => t.key === activeContentKey);
-    if (!ok) setActiveContentKey(contentTabs[0]?.key || "daily_bonus_infos");
-  }, [contentTabs, activeContentKey]);
-
-  // ✅ Contenu HTML + titres dynamiques (align desktop)
+  // ✅ Contenu HTML (align desktop)
   const [contentHtml, setContentHtml] = React.useState<string | null>(null);
   const [contentLoading, setContentLoading] = React.useState(false);
-  const [contentTitles, setContentTitles] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
     let dead = false;
@@ -248,7 +340,16 @@ export function DailyBonusAgendaModalMobile({
       try {
         const r: any = await publicGetContent(key);
         const html = r?.item?.html ? sanitizeHtmlLite(String(r.item.html)) : null;
+        const item = r?.item ?? null;
 
+        // version d'après item (source of truth)
+        const v = item ? contentVersionFromItem(item) : "";
+        if (v && !dead) {
+          setContentVersions((m) => ({ ...m, [key]: v }));
+          setContentUnread((m) => ({ ...m, [key]: isUnread(`content:${key}`, v) }));
+        }
+
+        // title DB => label d’onglet
         const title = String(r?.item?.title || "").trim();
         if (title && !dead) setContentTitles((m) => ({ ...m, [key]: title }));
 
@@ -266,11 +367,25 @@ export function DailyBonusAgendaModalMobile({
     };
   }, [tab, activeContentKey]);
 
+  // ✅ mark as seen quand on ouvre un onglet content (utilise version "item" si chargée)
+  React.useEffect(() => {
+    if (tab !== "content") return;
+    const key = activeContentKey;
+    const v = contentVersions[key];
+    if (!v) return;
+
+    setSeenVersion(`content:${key}`, v);
+    setContentUnread((m) => ({ ...m, [key]: false }));
+    window.dispatchEvent(new CustomEvent("ll:content-seen", { detail: { key } }));
+  }, [tab, activeContentKey, contentVersions]);
+
   const activeContentLabel = React.useMemo(() => {
     const found = contentTabs.find((t) => t.key === activeContentKey);
-    const fallback = found?.fallbackLabel || "Contenu";
+    const fallback = found?.fallbackLabel || humanizeKey(activeContentKey);
     return contentTitles[activeContentKey] || fallback;
   }, [activeContentKey, contentTabs, contentTitles]);
+
+  const anyContentUnread = React.useMemo(() => Object.values(contentUnread || {}).some(Boolean), [contentUnread]);
 
   // Swipe tabs (agenda/content/event)
   const TABS: Array<{ key: TabKey; label: string }> = React.useMemo(
@@ -317,7 +432,6 @@ export function DailyBonusAgendaModalMobile({
     const dx = t.clientX - st.x0;
     const dy = t.clientY - st.y0;
 
-    // si c'est plutôt un scroll vertical, on ne “lock” pas le swipe
     if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10) {
       st.dragging = false;
       setDragDx(0);
@@ -397,10 +511,7 @@ export function DailyBonusAgendaModalMobile({
         .llDBmSheet{
           width: 100%;
           max-width: 980px;
-
-          /* ✅ align desktop: hauteur claire => scroll interne fiable */
           height: min(92vh, 820px);
-
           background:
             radial-gradient(520px 260px at 12% 0%, rgba(124,77,255,0.18), rgba(0,0,0,0) 60%),
             rgba(10,10,14,0.98);
@@ -411,7 +522,7 @@ export function DailyBonusAgendaModalMobile({
           overflow: hidden;
           display:flex;
           flex-direction: column;
-          min-height: 0; /* ✅ important en flex */
+          min-height: 0;
         }
 
         .llDBmGrab{
@@ -529,7 +640,7 @@ export function DailyBonusAgendaModalMobile({
           flex: 1;
           overflow: hidden;
           position: relative;
-          min-height: 0; /* ✅ important: permet le scroll interne */
+          min-height: 0;
         }
         .llDBmSlides{
           height: 100%;
@@ -542,7 +653,7 @@ export function DailyBonusAgendaModalMobile({
           flex: 0 0 100%;
           width: 100%;
           height: 100%;
-          min-height: 0;  /* ✅ important */
+          min-height: 0;
           overflow: auto;
           padding: 12px 14px 18px;
           -webkit-overflow-scrolling: touch;
@@ -789,7 +900,6 @@ export function DailyBonusAgendaModalMobile({
           color: rgba(255,255,255,0.70);
         }
 
-        /* ✅ rendu HTML CMS */
         .llDBmCms{
           font-size: 13px;
           color: rgba(255,255,255,0.90);
@@ -810,7 +920,6 @@ export function DailyBonusAgendaModalMobile({
         .llDBmCms ul{ margin: 8px 0 8px 18px; }
         .llDBmCms li{ margin: 4px 0; }
 
-        /* ✅ mini switch contenu (align desktop: plusieurs contenus) */
         .llDBmContentTabs{
           display:flex;
           gap: 8px;
@@ -853,8 +962,8 @@ export function DailyBonusAgendaModalMobile({
           <div className="llDBmTitleRow">
             <div className="llDBmTitle">Bonus</div>
             <div className="llDBmSub">
-              Aujourd’hui: {state.day} • {state.monthClaimedDays} jour(s) ce mois • 🎡 {wheelTickets} • 🏅{" "}
-              {prestigeTokens} • Rôle {String(userRole || "viewer")}
+              Aujourd’hui: {state.day} • {state.monthClaimedDays} jour(s) ce mois • 🎡 {wheelTickets} • 🏅 {prestigeTokens} • Rôle{" "}
+              {String(userRole || "viewer")}
             </div>
           </div>
 
@@ -890,16 +999,22 @@ export function DailyBonusAgendaModalMobile({
           </div>
 
           <div className="llDBmTabs" style={{ marginTop: 10 }}>
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                className={`llDBmTab ${tab === t.key ? "isActive" : ""}`}
-                onClick={() => setTab(t.key)}
-              >
-                {t.label}
-              </button>
-            ))}
+            {TABS.map((t) => {
+              const isActive = tab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={`llDBmTab ${isActive ? "isActive" : ""}`}
+                  onClick={() => setTab(t.key)}
+                >
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8, justifyContent: "center", width: "100%" }}>
+                    <span>{t.label}</span>
+                    {t.key === "content" ? <UnreadBadge show={anyContentUnread} title="Nouveautés à lire" /> : null}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -1046,12 +1161,13 @@ export function DailyBonusAgendaModalMobile({
               </div>
             </div>
 
-            {/* Slide 2: Content (CMS) — align desktop (multi content + titles) */}
+            {/* Slide 2: Content (CMS) — align desktop */}
             <div className="llDBmSlide">
               <div className="llDBmContentTabs">
                 {contentTabs.map((t) => {
                   const label = contentTitles[t.key] || t.fallbackLabel;
                   const active = activeContentKey === t.key;
+                  const showBang = Boolean(contentUnread[t.key]);
                   return (
                     <button
                       key={t.key}
@@ -1059,7 +1175,10 @@ export function DailyBonusAgendaModalMobile({
                       className={`llDBmContentTab ${active ? "isActive" : ""}`}
                       onClick={() => setActiveContentKey(t.key)}
                     >
-                      {label}
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <span>{label}</span>
+                        <UnreadBadge show={showBang} title="Nouveautés à lire" />
+                      </span>
                     </button>
                   );
                 })}

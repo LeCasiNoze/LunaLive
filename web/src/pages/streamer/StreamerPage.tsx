@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { watchHeartbeat, me, getLives } from "../../lib/api";
+import { watchHeartbeat, me, getLives, updateMyStreamerTitle, updateStreamerTitleBySlug } from "../../lib/api";
 import { DlivePlayer } from "../../components/DlivePlayer";
 import { ChatPanel } from "../../components/ChatPanel";
 import { LoginModal } from "../../components/LoginModal";
@@ -438,6 +438,7 @@ function StreamerPageDesktop() {
 
   async function saveNewTitle() {
     if (!token || !slug) return;
+
     const next = String(editTitleDraft || "").trim();
     if (!next) {
       setEditTitleErr("Titre vide.");
@@ -448,20 +449,15 @@ function StreamerPageDesktop() {
     setEditTitleErr(null);
 
     try {
-      // ✅ endpoint attendu côté API (à brancher si pas encore fait)
-      const res = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/title`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: next }),
-      });
+      // ✅ Owner => route dashboard
+      // ✅ Mod/Admin => route publique par slug
+      if (isOwner) {
+        await updateMyStreamerTitle(String(token), next);
+      } else {
+        await updateStreamerTitleBySlug(String(token), String(slug), next);
+      }
 
-      // ✅ supporte 204 / body vide / body non-JSON
-      const raw = await res.text();
-      const r: any = raw ? (() => { try { return JSON.parse(raw); } catch { return { ok: res.ok }; } })() : { ok: res.ok };
-
-      if (!res.ok || r?.ok === false) throw new Error(String(r?.error || "Erreur"));
-
-      // mise à jour locale simple (sans dépendre du hook)
+      // refresh visuel
       (streamer as any).title = next;
       bump((x) => x + 1);
 
@@ -896,6 +892,7 @@ function StreamerPageDesktop() {
           <input
             value={editTitleDraft}
             onChange={(e) => setEditTitleDraft(e.target.value)}
+            maxLength={140}
             placeholder="Nouveau titre…"
             disabled={editTitleBusy}
             style={{
@@ -919,7 +916,7 @@ function StreamerPageDesktop() {
           </div>
 
           <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.65 }}>
-            (API attendue) POST /streamers/:slug/title {"{ title }"}
+            (API) updateMyStreamerTitle() (route “me”)
           </div>
         </div>
       </div>

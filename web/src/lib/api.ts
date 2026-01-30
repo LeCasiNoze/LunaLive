@@ -136,6 +136,14 @@ export async function updateMyStreamerTitle(token: string, title: string) {
   });
 }
 
+export async function updateStreamerTitleBySlug(token: string, slug: string, title: string) {
+  return j<{ ok: true; streamer: ApiMyStreamer }>(`/streamers/${encodeURIComponent(slug)}/title`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
 export async function getMyStreamConnection(token: string) {
   return j<{ ok: true; connection: ApiStreamConnection | null }>("/streamer/me/connection", {
     headers: { Authorization: `Bearer ${token}` },

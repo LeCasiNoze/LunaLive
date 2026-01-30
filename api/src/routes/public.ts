@@ -26,6 +26,11 @@ function tryGetAuthUser(req: Request): AuthUser | null {
   }
 }
 
+function isModLikeRole(role: any) {
+  const r = String(role || "").toLowerCase();
+  return ["mod", "moderator", "streamer_mod", "streamer_moderator"].includes(r);
+}
+
 /* Health */
 publicRouter.get("/health", (_req, res) => res.json({ ok: true }));
 
@@ -290,6 +295,67 @@ publicRouter.get(
       hostTargetDisplayName,
       hostTargetIsLive: hostTargetIsLive && !!hostTargetSlug,
     });
+  })
+);
+
+/**
+ * ✅ Edit stream title (admin/mod/owner)
+ * POST /streamers/:slug/title
+ * Body: { title: string }
+ */
+publicRouter.post(
+  "/streamers/:slug/title",
+  requireAuth,
+  a(async (req, res) => {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
+
+    const title = String(req.body?.title ?? "").trim();
+    if (!title) return res.status(400).json({ ok: false, error: "title_required" });
+    if (title.length > 140) return res.status(400).json({ ok: false, error: "title_too_long" });
+
+    const requesterId = Number(req.user!.id);
+    const requesterRole = String((req.user as any)?.role || "viewer");
+
+    // streamer target
+    const s = await pool.query(
+      `SELECT id, slug, display_name AS "displayName", user_id AS "ownerUserId"
+       FROM streamers
+       WHERE lower(slug)=lower($1)
+         AND (suspended_until IS NULL OR suspended_until < NOW())
+       LIMIT 1`,
+      [slug]
+    );
+    const streamer = s.rows?.[0];
+    if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    const isOwner = Number(streamer.ownerUserId) === requesterId;
+    const isAdmin = requesterRole === "admin";
+    const isModLike = isModLikeRole(requesterRole);
+
+    if (!isOwner && !isAdmin && !isModLike) {
+      return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+
+    const upd = await pool.query(
+      `UPDATE streamers
+       SET title = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING id::text AS id, slug, display_name AS "displayName",
+                 title, viewers, is_live AS "isLive", featured, user_id AS "ownerUserId"`,
+      [title, Number(streamer.id)]
+    );
+
+    const out = upd.rows?.[0];
+    if (!out) return res.status(404).json({ ok: false, error: "not_found" });
+
+    // (optionnel) broadcast si tu veux que les overlays réagissent
+    const io = req.app?.locals?.io;
+    if (io) {
+      emitChatAndStream(io, String(out.slug), "stream:title", { slug: String(out.slug), title: String(out.title) });
+    }
+
+    return res.json({ ok: true, streamer: out });
   })
 );
 
