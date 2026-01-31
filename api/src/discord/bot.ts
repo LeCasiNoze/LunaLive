@@ -23,6 +23,7 @@ import {
   type Guild,
   type GuildMember,
   type Interaction,
+  type TextChannel,
 } from "discord.js";
 
 type BotCtx = { log: (msg: string) => void };
@@ -31,47 +32,37 @@ let discordClient: Client | null = null;
 
 /**
  * ─────────────────────────────────────────────
- * CONFIG (IDs)
+ * IDs (tu m’as donné ces valeurs)
  * ─────────────────────────────────────────────
+ * Tu peux aussi les mettre en env si tu veux,
+ * mais là c'est “ready-to-run” direct.
  */
-const CFG = {
-  // Guild officiel
-  guildId: String(process.env.DISCORD_GUILD_ID || "1467139956249067717"),
+const GUILD_ID = "1467139956249067717";
 
-  // Où poster le bouton + message
-  applyChannelId: String(process.env.APPLY_CHANNEL_ID || "1467142148431413370"),
+// Tickets
+const STAFF_TICKETS_CATEGORY_ID = "1467141806922666034";
 
-  // Catégorie où créer les tickets
-  staffTicketsCategoryId: String(process.env.STAFF_TICKETS_CATEGORY_ID || "1467141806922666034"),
+// Channel où il y a le bouton “Faire une demande streamer”
+const APPLY_CHANNEL_ID = "1467142148431413370";
 
-  // Roles (IDs)
-  roleVerifiedId: String(process.env.ROLE_VERIFIED_ID || "1467140844233556231"),
-  roleViewerId: String(process.env.ROLE_VIEWER_ID || "1467140868288024742"),
-  roleStreamerId: String(process.env.ROLE_STREAMER_ID || "1467140886793027656"),
-  rolePartnerId: String(process.env.ROLE_PARTNER_ID || "1467140935954726984"),
-  roleModId: String(process.env.ROLE_MOD_LUNALIVE_ID || "1467140910771994801"),
-  roleRestrictedId: String(process.env.ROLE_RESTRICTED_ID || "1467140964773794005"),
+// Channel où on envoie UNIQUEMENT le message de décision (accept/refuse)
+const STAFF_DECISIONS_CHANNEL_ID = "1467142397816209530";
+const STAFF_DECISIONS_PING_ROLE_ID = "1467140795105546441";
 
-  // Qui peut approve/reject
-  staffRoleIds: String(process.env.STAFF_ROLE_IDS || "1467140769436405981,1467140795105546441")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean),
-} as const;
+// Roles
+const ROLE_VERIFIED_ID = "1467140844233556231";
+const ROLE_VIEWER_ID = "1467140868288024742";
+const ROLE_STREAMER_ID = "1467140886793027656";
+const ROLE_PARTNER_ID = "1467140935954726984";
+const ROLE_MOD_LUNALIVE_ID = "1467140910771994801";
+const ROLE_RESTRICTED_ID = "1467140964773794005";
+
+// Qui peut approuver/rejeter (dans le ticket)
+const STAFF_ROLE_IDS = ["1467140769436405981", "1467140795105546441"];
 
 /**
  * ─────────────────────────────────────────────
- * IDs Custom components
- * ─────────────────────────────────────────────
- */
-const APPLY_BUTTON_ID = "streamer_apply:open";
-const APPLY_MODAL_ID = "streamer_apply:modal";
-// format: streamer_req:approve:<requestId>:<discordUserId>
-const STAFF_BTN_PREFIX = "streamer_req";
-
-/**
- * ─────────────────────────────────────────────
- * Helpers (mask / secrets / codes)
+ * Helpers
  * ─────────────────────────────────────────────
  */
 function maskSecret(v: any) {
@@ -140,80 +131,47 @@ async function safeDm(userId: string, content: string, ctx: BotCtx) {
   }
 }
 
-/**
- * ─────────────────────────────────────────────
- * Discord role helpers (IDs)
- * ─────────────────────────────────────────────
- */
-function memberHasRole(member: any, roleId: string) {
-  try {
-    return !!roleId && member?.roles?.cache?.has?.(roleId);
-  } catch {
-    return false;
-  }
+function hasAnyRole(member: GuildMember, roleIds: string[]) {
+  return roleIds.some((rid) => member.roles.cache.has(rid));
 }
 
-function isStaff(member: any) {
-  try {
-    const cache = member?.roles?.cache;
-    if (!cache) return false;
-    return CFG.staffRoleIds.some((rid) => cache.has(rid));
-  } catch {
-    return false;
-  }
+function isVerified(member: GuildMember) {
+  return member.roles.cache.has(ROLE_VERIFIED_ID);
 }
 
-/**
- * Applique UNIQUEMENT les rôles "gérés par le bot" :
- * Verified / Viewer / Streamer / Partner / Mod / Restricted
- * => on ajoute ET on retire pour que ça colle au rôle LunaLive
- */
+function isRestricted(member: GuildMember) {
+  return member.roles.cache.has(ROLE_RESTRICTED_ID);
+}
+
 async function applyRolesAndNick(guild: Guild, member: GuildMember, userRow: any, ctx: BotCtx) {
-  const managed = new Set<string>(
-    [
-      CFG.roleVerifiedId,
-      CFG.roleViewerId,
-      CFG.roleStreamerId,
-      CFG.rolePartnerId,
-      CFG.roleModId,
-      CFG.roleRestrictedId,
-    ].filter(Boolean)
-  );
-
   const want = new Set<string>();
 
-  // Verified toujours si le compte est lié (on est en syncUserEverywhere)
-  if (CFG.roleVerifiedId) want.add(CFG.roleVerifiedId);
+  // Always verified once linked
+  want.add(ROLE_VERIFIED_ID);
 
   const role = String(userRow?.role || "viewer");
 
-  // rôle principal
-  if (role.includes("streamer")) {
-    if (CFG.roleStreamerId) want.add(CFG.roleStreamerId);
-  } else {
-    if (CFG.roleViewerId) want.add(CFG.roleViewerId);
-  }
+  // viewer/streamer
+  if (role.includes("streamer")) want.add(ROLE_STREAMER_ID);
+  else want.add(ROLE_VIEWER_ID);
 
-  if (role.includes("mod") && CFG.roleModId) want.add(CFG.roleModId);
-  if (role.includes("partner") && CFG.rolePartnerId) want.add(CFG.rolePartnerId);
+  // mod/partner (si applicable)
+  if (role.includes("mod")) want.add(ROLE_MOD_LUNALIVE_ID);
+  if (role.includes("partner")) want.add(ROLE_PARTNER_ID);
 
-  // Restricted si ton backend le signale via role strict "restricted"
-  const isRestricted = role === "restricted";
-  if (isRestricted && CFG.roleRestrictedId) want.add(CFG.roleRestrictedId);
+  // Restricted
+  if (role === "restricted") want.add(ROLE_RESTRICTED_ID);
 
-  // add/remove proprement (sans toucher aux autres rôles)
+  // add roles (don’t remove externals)
   try {
-    const current = new Set(member.roles.cache.map((r: any) => r.id));
-    const toAdd = [...want].filter((id) => !current.has(id));
-    const toRemove = [...managed].filter((id) => current.has(id) && !want.has(id));
-
-    if (toAdd.length) await member.roles.add(toAdd).catch(() => {});
-    if (toRemove.length) await member.roles.remove(toRemove).catch(() => {});
+    const current = new Set(member.roles.cache.map((r) => r.id));
+    const toAdd = [...want].filter((id) => id && !current.has(id));
+    if (toAdd.length) await member.roles.add(toAdd);
   } catch (e: any) {
-    ctx.log(`[discord] roles sync failed guild=${guild.id} user=${member.id}: ${e?.message || e}`);
+    ctx.log(`[discord] roles add failed guild=${guild.id} user=${member.id}: ${e?.message || e}`);
   }
 
-  // Nick strict
+  // nickname
   const targetBase = String(userRow?.username || "").trim();
   if (!targetBase) return;
 
@@ -226,10 +184,8 @@ async function applyRolesAndNick(guild: Guild, member: GuildMember, userRow: any
     }
   };
 
-  // 1) essayer strict
   if (await trySet(targetBase)) return;
 
-  // 2) collision/refus → suffix stable
   const suffix = crypto.createHash("sha1").update(String(member.id)).digest("hex").slice(0, 4).toUpperCase();
   const fallback = `${targetBase} · ${suffix}`.slice(0, 32);
   const ok = await trySet(fallback);
@@ -249,10 +205,6 @@ async function applyRolesAndNick(guild: Guild, member: GuildMember, userRow: any
   }
 }
 
-/**
- * Sync pseudo+rôles sur tous les serveurs où le bot est présent.
- * Source de vérité: DB LunaLive.
- */
 async function syncUserEverywhere(discordUserId: string, ctx: BotCtx) {
   if (!discordClient) return;
 
@@ -270,7 +222,6 @@ async function syncUserEverywhere(discordUserId: string, ctx: BotCtx) {
   const row = link.rows?.[0];
   if (!row) return;
 
-  // Ban site (source de vérité LunaLive)
   const ban = await getActiveSiteUserBan(Number(row.user_id));
   const isBanned = !!ban?.banned;
 
@@ -345,66 +296,228 @@ async function getLinkedUser(discordUserId: string) {
 
 /**
  * ─────────────────────────────────────────────
- * Streamer requests DB logic (copie de ton internal router)
+ * Streamer apply (Discord button + modal)
  * ─────────────────────────────────────────────
+ *
+ * IMPORTANT :
+ * Discord "Modal" ne supporte PAS du texte statique / checkbox.
+ * Donc on fait une section "Règlement" via un champ obligatoire
+ * où l'utilisateur doit taper exactement : J'ACCEPTE
+ * (et on met les règles en placeholder / label).
  */
-async function upsertStreamerRequestPending(userId: number, discordUserId: string, dliveUrl: string | null, notes: any) {
-  // On tente le schéma "complet", sinon fallback minimal
+
+const CID_APPLY_OPEN = "apply:open";
+const CID_APPLY_MODAL = "apply:modal";
+const CID_APPLY_DECIDE_PREFIX = "apply:decide:"; // apply:decide:approve:<requestId> | reject
+
+function rulesShortText() {
+  return [
+    "📜 RÈGLEMENT (résumé) :",
+    "• Communauté casino FR respectueuse et croissante.",
+    "• Interdit : triche, détournement d’affiliation, pub non autorisée, botting/stats boosting.",
+    "• Interdit : dépôts offerts qui poussent multi-comptes / toxicité.",
+    "  ✅ Toléré : 1er dépôt remboursé jusqu’à 50% (max 50€).",
+    "• Places limitées : être actif, ne pas gaspiller sa place.",
+    "• Non-respect => révocation possible à tout moment.",
+  ].join("\n");
+}
+
+function buildApplyModal() {
+  const modal = new ModalBuilder().setCustomId(CID_APPLY_MODAL).setTitle("Demande Streamer LunaLive");
+
+  const discordInput = new TextInputBuilder()
+    .setCustomId("f_discord")
+    .setLabel("Ton contact (Discord/Telegram) — OBLIGATOIRE")
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder("Ex: LeCasiNoze / LeCasiNoze#1234 / @telegram")
+    .setRequired(true)
+    .setMaxLength(120);
+
+  const dliveInput = new TextInputBuilder()
+    .setCustomId("f_dlive")
+    .setLabel("Lien DLive (si tu en as déjà un)")
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder("https://dlive.tv/LeCasinoze (ou vide si pas encore)")
+    .setRequired(false)
+    .setMaxLength(300);
+
+  const linksInput = new TextInputBuilder()
+    .setCustomId("f_links")
+    .setLabel("Autres liens utiles (optionnel)")
+    .setStyle(TextInputStyle.Paragraph)
+    .setPlaceholder("Twitch / YouTube / X / Insta / Kick / autres… (optionnel)")
+    .setRequired(false)
+    .setMaxLength(1200);
+
+  const expInput = new TextInputBuilder()
+    .setCustomId("f_exp")
+    .setLabel("Ton expérience + ce que tu veux faire (optionnel)")
+    .setStyle(TextInputStyle.Paragraph)
+    .setPlaceholder("Décris ton contenu, fréquence, type de slots/casinos, objectifs…")
+    .setRequired(false)
+    .setMaxLength(1200);
+
+  const rulesInput = new TextInputBuilder()
+    .setCustomId("f_rules")
+    .setLabel('Règlement — tape exactement : J\'ACCEPTE (obligatoire)')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder(rulesShortText() + "\n\n=> Tape: J'ACCEPTE")
+    .setRequired(true)
+    .setMaxLength(20);
+
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(discordInput),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(dliveInput),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(linksInput),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(expInput),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(rulesInput)
+  );
+
+  return modal;
+}
+
+function normalizeAccept(v: string) {
+  return String(v || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
+function ticketName(username: string, discordId: string) {
+  const base = slugify(username || "user").slice(0, 16) || "user";
+  const suf = discordId.slice(-4);
+  return `ticket-streamer-${base}-${suf}`.slice(0, 95);
+}
+
+async function ensureApplyMessage(guild: Guild, ctx: BotCtx) {
   try {
-    const up = await pool.query(
-      `
-      INSERT INTO streamer_requests (user_id, status, discord, channel_url, rules_accepted, updated_at)
-      VALUES ($1, 'pending', $2, $3, TRUE, NOW())
-      ON CONFLICT (user_id)
-      DO UPDATE SET status='pending', discord=EXCLUDED.discord, channel_url=EXCLUDED.channel_url, updated_at=NOW()
-      RETURNING id, user_id, status, created_at AS "createdAt", updated_at AS "updatedAt"
-      `,
-      [userId, `discord:${discordUserId}`, dliveUrl]
-    );
-
-    // notes (optionnel)
-    if (notes) {
-      try {
-        await pool.query(`UPDATE streamer_requests SET notes = $2 WHERE user_id = $1`, [userId, JSON.stringify(notes)]);
-      } catch {
-        // ignore si colonne inexistante
-      }
+    const ch = await guild.channels.fetch(APPLY_CHANNEL_ID).catch(() => null);
+    if (!ch || ch.type !== ChannelType.GuildText) {
+      ctx.log(`[discord] apply channel not found / not text: ${APPLY_CHANNEL_ID}`);
+      return;
     }
+    const channel = ch as TextChannel;
 
-    return up.rows?.[0] || null;
-  } catch {
-    // fallback ultra-minimal
-    const up = await pool.query(
-      `
-      INSERT INTO streamer_requests (user_id, status)
-      VALUES ($1, 'pending')
-      ON CONFLICT (user_id)
-      DO UPDATE SET status='pending', updated_at=NOW()
-      RETURNING id, user_id, status, created_at AS "createdAt"
-      `,
-      [userId]
+    const embed = new EmbedBuilder()
+      .setTitle("🎥 Faire une demande Streamer")
+      .setDescription(
+        [
+          "Clique sur le bouton ci-dessous pour ouvrir le formulaire.",
+          "",
+          "⚠️ Conditions :",
+          "• Être **vérifié** (faire `/link` d’abord).",
+          "• Accepter le **règlement** (obligatoire).",
+        ].join("\n")
+      )
+      .setFooter({ text: "LunaLive — demandes streamers" });
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(CID_APPLY_OPEN).setLabel("Faire une demande streamer").setStyle(ButtonStyle.Primary)
     );
-    return up.rows?.[0] || null;
+
+    // Try to find and edit existing bot message (last 30)
+    const msgs = await channel.messages.fetch({ limit: 30 }).catch(() => null);
+    const existing = msgs?.find((m) => m.author?.id === guild.client.user?.id && m.components?.length);
+
+    if (existing) {
+      await existing.edit({ embeds: [embed], components: [row] }).catch(() => null);
+      ctx.log("[discord] apply message updated");
+    } else {
+      await channel.send({ embeds: [embed], components: [row] });
+      ctx.log("[discord] apply message sent");
+    }
+  } catch (e: any) {
+    ctx.log(`[discord] ensureApplyMessage failed: ${e?.message || e}`);
   }
 }
 
-async function approveRequestDb(requestId: number) {
+async function createTicketChannel(guild: Guild, member: GuildMember, ctx: BotCtx) {
+  const name = ticketName(member.user.username, member.id);
+
+  // perms : only user + staff roles + bot
+  const overwrites: any[] = [
+    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+    { id: guild.client.user!.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
+  ];
+
+  for (const rid of STAFF_ROLE_IDS) {
+    overwrites.push({
+      id: rid,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.ManageMessages,
+      ],
+    });
+  }
+
+  const ch = await guild.channels.create({
+    name,
+    type: ChannelType.GuildText,
+    parent: STAFF_TICKETS_CATEGORY_ID,
+    topic: `Streamer apply ticket | user=${member.user.tag} (${member.id})`,
+    permissionOverwrites: overwrites,
+    reason: "Streamer apply ticket",
+  });
+
+  ctx.log(`[discord] ticket created ${ch.id} for user=${member.id}`);
+  return ch;
+}
+
+async function dbUpsertStreamerRequest(discordUserId: string, payload: any) {
+  // user id must exist via discord_links
+  const link = await pool.query(`SELECT user_id FROM discord_links WHERE discord_user_id=$1 LIMIT 1`, [discordUserId]);
+  const userId = link.rows?.[0]?.user_id ? Number(link.rows[0].user_id) : null;
+  if (!userId) return { ok: false as const, error: "not_linked" as const };
+
+  // We use streamer_requests table (mig040 compatible)
+  const discord = String(payload.discord || "").slice(0, 200);
+  const channelUrl = String(payload.dliveUrl || "").slice(0, 300);
+
+  const up = await pool.query(
+    `
+    INSERT INTO streamer_requests (user_id, status, discord, channel_url, rules_accepted, payload, updated_at)
+    VALUES ($1, 'pending', $2, $3, TRUE, $4::jsonb, NOW())
+    ON CONFLICT (user_id)
+    DO UPDATE SET status='pending', discord=EXCLUDED.discord, channel_url=EXCLUDED.channel_url, rules_accepted=TRUE, payload=EXCLUDED.payload, updated_at=NOW()
+    RETURNING id, user_id, status, created_at, updated_at
+    `,
+    [userId, discord, channelUrl, JSON.stringify(payload)]
+  );
+
+  return { ok: true as const, request: up.rows[0], userId };
+}
+
+async function sendDecisionLog(guild: Guild, content: string, ctx: BotCtx) {
+  try {
+    const ch = await guild.channels.fetch(STAFF_DECISIONS_CHANNEL_ID).catch(() => null);
+    if (!ch || ch.type !== ChannelType.GuildText) {
+      ctx.log(`[discord] decisions channel not found / not text: ${STAFF_DECISIONS_CHANNEL_ID}`);
+      return;
+    }
+    await (ch as TextChannel).send({
+      content: `<@&${STAFF_DECISIONS_PING_ROLE_ID}> ${content}`,
+      allowedMentions: { roles: [STAFF_DECISIONS_PING_ROLE_ID] },
+    });
+  } catch (e: any) {
+    ctx.log(`[discord] sendDecisionLog failed: ${e?.message || e}`);
+  }
+}
+
+async function approveRequest(requestId: number) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
     const upd = await client.query(
-      `
-      UPDATE streamer_requests
-      SET status='approved', updated_at=NOW()
-      WHERE id=$1
-      RETURNING user_id
-      `,
+      `UPDATE streamer_requests SET status='approved', updated_at=NOW() WHERE id=$1 RETURNING user_id`,
       [requestId]
     );
     if (!upd.rows[0]) {
       await client.query("ROLLBACK");
-      return { ok: false as const, error: "not_found" };
+      return { ok: false as const, error: "not_found" as const };
     }
 
     const userId = Number(upd.rows[0].user_id);
@@ -433,17 +546,17 @@ async function approveRequestDb(requestId: number) {
     const streamerId = Number(s.rows[0]?.id || 0);
     if (!streamerId) {
       await client.query("ROLLBACK");
-      return { ok: false as const, error: "streamer_missing" };
+      return { ok: false as const, error: "streamer_missing" as const };
     }
 
     const conn = await ensureAssignedDliveAccount(client, streamerId);
     if (!conn) {
       await client.query("ROLLBACK");
-      return { ok: false as const, error: "no_free_provider_account" };
+      return { ok: false as const, error: "no_free_provider_account" as const };
     }
 
     await client.query("COMMIT");
-    return { ok: true as const, userId, username, streamerId, streamerSlug: String(s.rows[0]?.slug || slug) };
+    return { ok: true as const, userId, username, streamer: { id: streamerId, slug: String(s.rows[0]?.slug || slug) } };
   } catch (e) {
     try {
       await client.query("ROLLBACK");
@@ -454,23 +567,18 @@ async function approveRequestDb(requestId: number) {
   }
 }
 
-async function rejectRequestDb(requestId: number) {
+async function rejectRequest(requestId: number) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
     const upd = await client.query(
-      `
-      UPDATE streamer_requests
-      SET status='rejected', updated_at=NOW()
-      WHERE id=$1
-      RETURNING user_id
-      `,
+      `UPDATE streamer_requests SET status='rejected', updated_at=NOW() WHERE id=$1 RETURNING user_id`,
       [requestId]
     );
     if (!upd.rows[0]) {
       await client.query("ROLLBACK");
-      return { ok: false as const, error: "not_found" };
+      return { ok: false as const, error: "not_found" as const };
     }
 
     const userId = Number(upd.rows[0].user_id);
@@ -479,7 +587,6 @@ async function rejectRequestDb(requestId: number) {
 
     const s = await client.query(`SELECT id FROM streamers WHERE user_id=$1 LIMIT 1`, [userId]);
     const streamerId = s.rows[0]?.id ? Number(s.rows[0].id) : null;
-
     if (streamerId) {
       await releaseAccountForStreamerId(client, streamerId);
       await client.query(
@@ -502,60 +609,12 @@ async function rejectRequestDb(requestId: number) {
 
 /**
  * ─────────────────────────────────────────────
- * Apply message (bouton) dans APPLY_CHANNEL_ID
- * ─────────────────────────────────────────────
- */
-async function ensureApplyMessage(ctx: BotCtx, client: Client) {
-  const g = await client.guilds.fetch(CFG.guildId).catch(() => null);
-  if (!g) return;
-
-  const ch = await g.channels.fetch(CFG.applyChannelId).catch(() => null);
-  if (!ch || ch.type !== ChannelType.GuildText) {
-    ctx.log(`[discord] APPLY_CHANNEL_ID invalid: ${CFG.applyChannelId}`);
-    return;
-  }
-
-  // éviter doublons: on check les derniers msgs du bot
-    const msgs = await ch.messages.fetch({ limit: 15 }).catch(() => null);
-    if (msgs) {
-    const already = msgs.find((m: any) => {
-        if (m?.author?.id !== client.user?.id) return false;
-
-        // Typings discord.js parfois pénibles: on cast en any
-        const rows = (m as any).components ?? [];
-        return rows.some((row: any) => (row?.components ?? []).some((c: any) => c?.customId === APPLY_BUTTON_ID));
-    });
-
-    if (already) return;
-    }
-
-  const embed = new EmbedBuilder()
-    .setTitle("Demande Streamer")
-    .setDescription(
-      [
-        "Tu veux streamer sur **LunaLive** ?",
-        "",
-        "✅ Avant tout : fais **/link** pour lier ton compte LunaLive à Discord.",
-        "Ensuite clique sur le bouton ci-dessous.",
-      ].join("\n")
-    );
-
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(APPLY_BUTTON_ID).setLabel("Faire une demande").setStyle(ButtonStyle.Primary)
-  );
-
-  await ch.send({ embeds: [embed], components: [row] });
-  ctx.log(`[discord] apply message posted in #${(ch as any).name}`);
-}
-
-/**
- * ─────────────────────────────────────────────
- * Main start
+ * Start bot
  * ─────────────────────────────────────────────
  */
 export async function startDiscordBot(ctx: BotCtx) {
   const token = process.env.DISCORD_BOT_TOKEN;
-  const guildId = process.env.DISCORD_GUILD_ID || CFG.guildId;
+  const guildId = process.env.DISCORD_GUILD_ID || GUILD_ID;
 
   if (!token) throw new Error("Missing env DISCORD_BOT_TOKEN");
   if (!guildId) throw new Error("Missing env DISCORD_GUILD_ID");
@@ -567,7 +626,7 @@ export async function startDiscordBot(ctx: BotCtx) {
 
   discordClient = client;
 
-  client.once("ready", async () => {
+  client.once("clientReady", async () => {
     ctx.log(`[discord] logged in as ${client.user?.tag ?? "unknown"}`);
     const g = await client.guilds.fetch(guildId).catch(() => null);
     ctx.log(`[discord] guild=${g?.name ?? "unknown"} (${guildId})`);
@@ -585,23 +644,21 @@ export async function startDiscordBot(ctx: BotCtx) {
     await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: commands });
     ctx.log(`[discord] slash commands registered (${commands.length})`);
 
-    // ✅ message bouton apply (guild officiel)
-    await ensureApplyMessage(ctx, client);
+    // Apply panel message in APPLY_CHANNEL_ID
+    if (g) await ensureApplyMessage(g, ctx);
 
-    // sync sécurité toutes les 6h (liens existants)
+    // periodic sync safety net
     setInterval(() => {
       pool
         .query(`SELECT discord_user_id FROM discord_links ORDER BY updated_at DESC LIMIT 5000`)
         .then(async (r) => {
-          for (const it of r.rows) {
-            await syncUserEverywhere(String(it.discord_user_id), ctx);
-          }
+          for (const it of r.rows) await syncUserEverywhere(String(it.discord_user_id), ctx);
         })
         .catch((e) => ctx.log(`[discord] periodic sync failed: ${e?.message || e}`));
     }, 6 * 3600_000);
   });
 
-  // Sync immédiat quand un membre rejoint (si déjà lié)
+  // Sync immediate when member joins
   client.on("guildMemberAdd", async (member) => {
     try {
       const linked = await pool.query(`SELECT 1 FROM discord_links WHERE discord_user_id = $1 LIMIT 1`, [
@@ -620,12 +677,9 @@ export async function startDiscordBot(ctx: BotCtx) {
     }
   });
 
-  // Interactions: slash + boutons + modals
   client.on("interactionCreate", async (interaction: Interaction) => {
     try {
-      // ─────────────────────────
-      // Slash commands
-      // ─────────────────────────
+      // ─────────────── Slash commands ───────────────
       if (interaction.isChatInputCommand()) {
         if (interaction.commandName === "help") {
           await interaction.reply({
@@ -702,240 +756,272 @@ export async function startDiscordBot(ctx: BotCtx) {
           );
           return;
         }
+      }
 
+      // ─────────────── Button: open apply modal ───────────────
+      if (interaction.isButton() && interaction.customId === CID_APPLY_OPEN) {
+        const guild = interaction.guild;
+        const member = interaction.member as GuildMember | null;
+
+        if (!guild || !member) {
+          await interaction.reply({ ephemeral: true, content: "Erreur: guild/member manquant." });
+          return;
+        }
+
+        if (isRestricted(member)) {
+          await interaction.reply({ ephemeral: true, content: "⛔ Vous ne pouvez pas faire de demande (Restricted)." });
+          return;
+        }
+
+        // Condition demandée : si pas vérifié -> message “fais /link”
+        if (!isVerified(member)) {
+          await interaction.reply({
+            ephemeral: true,
+            content:
+              "❌ Tu ne peux pas faire de demande streamer tant que tu n'es pas **vérifié**.\n\n➡️ Fais d'abord **/link** (liaison LunaLive) puis réessaye.",
+          });
+          return;
+        }
+
+        await interaction.showModal(buildApplyModal());
         return;
       }
 
-      // ─────────────────────────
-      // Bouton "Faire une demande"
-      // ─────────────────────────
-      if (interaction.isButton() && interaction.customId === APPLY_BUTTON_ID) {
-        if (!interaction.inGuild()) return;
+      // ─────────────── Modal submit ───────────────
+      if (interaction.isModalSubmit() && interaction.customId === CID_APPLY_MODAL) {
+        const guild = interaction.guild;
+        const member = interaction.member as GuildMember | null;
 
-        // règle: doit être Verified
-        if (!memberHasRole(interaction.member, CFG.roleVerifiedId)) {
+        if (!guild || !member) {
+          await interaction.reply({ ephemeral: true, content: "Erreur: guild/member manquant." });
+          return;
+        }
+
+        if (!isVerified(member)) {
           await interaction.reply({
             ephemeral: true,
-            content: "❌ Tu ne peux pas faire de demande streamer tant que tu n’as pas fait **/link**.",
+            content: "❌ Tu dois être **vérifié** (commande **/link**) avant de faire une demande streamer.",
           });
           return;
         }
 
-        const modal = new ModalBuilder().setCustomId(APPLY_MODAL_ID).setTitle("Demande Streamer (rapide)");
+        if (isRestricted(member)) {
+          await interaction.reply({ ephemeral: true, content: "⛔ Vous ne pouvez pas faire de demande (Restricted)." });
+          return;
+        }
 
-        const dlive = new TextInputBuilder()
-          .setCustomId("dlive")
-          .setLabel("DLive (URL ou username) — requis")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true)
-          .setMaxLength(200)
-          .setPlaceholder("ex: https://dlive.tv/MonChannel  ou  MonChannel");
+        const discord = interaction.fields.getTextInputValue("f_discord") || "";
+        const dliveUrl = interaction.fields.getTextInputValue("f_dlive") || "";
+        const otherLinks = interaction.fields.getTextInputValue("f_links") || "";
+        const experience = interaction.fields.getTextInputValue("f_exp") || "";
+        const rules = interaction.fields.getTextInputValue("f_rules") || "";
 
-        const other = new TextInputBuilder()
-          .setCustomId("other")
-          .setLabel("Autres plateformes (optionnel)")
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(false)
-          .setMaxLength(800)
-          .setPlaceholder("Kick: ...\nYouTube: ...\nTwitch: ...");
+        // Validation règlement
+        const okRules = normalizeAccept(rules) === normalizeAccept("J'ACCEPTE");
+        if (!okRules) {
+          await interaction.reply({
+            ephemeral: true,
+            content:
+              "❌ Règlement non accepté.\n\nDans le champ règlement, tu dois taper exactement : **J'ACCEPTE**",
+          });
+          return;
+        }
 
-        const exp = new TextInputBuilder()
-          .setCustomId("exp")
-          .setLabel("Infos utiles (rapide)")
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(false)
-          .setMaxLength(800)
-          .setPlaceholder("Déjà des lives ? moyenne viewers ? fréquence ?");
+        // Crée request en DB (doit être lié)
+        const payload = {
+          discord: discord.trim(),
+          dliveUrl: dliveUrl.trim(),
+          otherLinks: otherLinks.trim(),
+          experience: experience.trim(),
+          rulesAccepted: true,
+          discordUserId: String(member.id),
+          discordGuildId: String(guild.id),
+          submittedAt: new Date().toISOString(),
+        };
 
-        modal.addComponents(
-          new ActionRowBuilder<TextInputBuilder>().addComponents(dlive),
-          new ActionRowBuilder<TextInputBuilder>().addComponents(other),
-          new ActionRowBuilder<TextInputBuilder>().addComponents(exp)
+        const up = await dbUpsertStreamerRequest(String(member.id), payload);
+        if (!up.ok) {
+          await interaction.reply({
+            ephemeral: true,
+            content:
+              "❌ Ton compte Discord n'est pas lié à un compte LunaLive.\n\n➡️ Fais **/link** puis réessaye.",
+          });
+          return;
+        }
+
+        const requestId = Number(up.request.id);
+
+        // Crée le ticket (conversation)
+        const ticket = await createTicketChannel(guild, member, ctx);
+
+        const recap = new EmbedBuilder()
+          .setTitle("📩 Demande Streamer — Récap")
+          .setDescription("Discussion ici avec le staff. Merci de rester disponible.")
+          .addFields(
+            { name: "Utilisateur", value: `<@${member.id}> (${member.user.tag})`, inline: false },
+            { name: "Contact (Discord/Telegram)", value: discord.trim() ? discord.trim() : "—", inline: false },
+            { name: "DLive", value: dliveUrl.trim() ? dliveUrl.trim() : "—", inline: false },
+            { name: "Autres liens", value: otherLinks.trim() ? otherLinks.trim().slice(0, 1000) : "—", inline: false },
+            { name: "Expérience / Projet", value: experience.trim() ? experience.trim().slice(0, 1000) : "—", inline: false },
+            { name: "Règlement", value: "✅ Accepté", inline: true },
+            { name: "Request ID", value: String(requestId), inline: true }
+          )
+          .setFooter({ text: "LunaLive — streamer requests" });
+
+        await (ticket as TextChannel).send({ content: `<@${member.id}>`, embeds: [recap] });
+
+        // Message d’actions staff (dans le ticket)
+        const actionsRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${CID_APPLY_DECIDE_PREFIX}approve:${requestId}`)
+            .setLabel("✅ Approuver")
+            .setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId(`${CID_APPLY_DECIDE_PREFIX}reject:${requestId}`)
+            .setLabel("❌ Refuser")
+            .setStyle(ButtonStyle.Danger)
         );
 
-        await interaction.showModal(modal);
-        return;
-      }
-
-      // ─────────────────────────
-      // Modal submit: create request + ticket
-      // ─────────────────────────
-      if (interaction.isModalSubmit() && interaction.customId === APPLY_MODAL_ID) {
-        if (!interaction.inGuild()) return;
-
-        // re-check Verified
-        if (!memberHasRole(interaction.member, CFG.roleVerifiedId)) {
-          await interaction.reply({
-            ephemeral: true,
-            content: "❌ Tu ne peux pas faire de demande streamer tant que tu n’as pas fait **/link**.",
-          });
-          return;
-        }
-
-        const discordUserId = String(interaction.user.id);
-
-        // doit être lié côté DB
-        const linked = await getLinkedUser(discordUserId);
-        if (!linked?.id) {
-          await interaction.reply({
-            ephemeral: true,
-            content: "❌ Je ne trouve pas ton compte LunaLive lié. Fais **/link** puis réessaie.",
-          });
-          return;
-        }
-
-        const dliveRaw = String(interaction.fields.getTextInputValue("dlive") || "").trim();
-        const otherLinks = String(interaction.fields.getTextInputValue("other") || "").trim();
-        const experience = String(interaction.fields.getTextInputValue("exp") || "").trim();
-
-        const dliveUrl = dliveRaw ? dliveRaw.slice(0, 200) : null;
-
-        const reqRow = await upsertStreamerRequestPending(
-          Number(linked.id),
-          discordUserId,
-          dliveUrl,
-          { otherLinks: otherLinks || null, experience: experience || null }
-        );
-
-        const requestId = Number(reqRow?.id || 0);
-        if (!requestId) {
-          await interaction.reply({ ephemeral: true, content: "⚠️ Erreur: impossible de créer la demande." });
-          return;
-        }
-
-        // Ticket channel
-        const guild = interaction.guild!;
-        const parent = await guild.channels.fetch(CFG.staffTicketsCategoryId).catch(() => null);
-        if (!parent || parent.type !== ChannelType.GuildCategory) {
-          await interaction.reply({ ephemeral: true, content: "⚠️ Config invalide: STAFF_TICKETS_CATEGORY_ID." });
-          return;
-        }
-
-        const safeName =
-          `ticket-streamer-${interaction.user.username}`.toLowerCase().replace(/[^a-z0-9-_]/g, "-").slice(0, 85) ||
-          `ticket-streamer-${discordUserId}`;
-
-        const overwrites: any[] = [
-          { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-          {
-            id: discordUserId,
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
-          },
-        ];
-
-        for (const rid of CFG.staffRoleIds) {
-          overwrites.push({
-            id: rid,
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
-          });
-        }
-
-        const ticket = await guild.channels.create({
-          name: safeName,
-          type: ChannelType.GuildText,
-          parent: parent.id,
-          permissionOverwrites: overwrites,
+        await (ticket as TextChannel).send({
+          content: `Staff: utilisez les boutons ci-dessous.`,
+          components: [actionsRow],
         });
 
-        const embed = new EmbedBuilder()
-          .setTitle("📩 Demande Streamer")
-          .addFields(
-            { name: "Discord", value: `<@${discordUserId}> (${discordUserId})`, inline: false },
-            { name: "LunaLive", value: `${linked.username} (id ${linked.id})`, inline: false },
-            { name: "DLive", value: dliveUrl || "—", inline: false },
-            { name: "Autres", value: otherLinks ? otherLinks.slice(0, 900) : "—", inline: false },
-            { name: "Infos", value: experience ? experience.slice(0, 900) : "—", inline: false },
-            { name: "Request ID", value: String(requestId), inline: true }
-          );
-
-        const approveId = `${STAFF_BTN_PREFIX}:approve:${requestId}:${discordUserId}`;
-        const rejectId = `${STAFF_BTN_PREFIX}:reject:${requestId}:${discordUserId}`;
-
-        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(approveId).setLabel("✅ Approve").setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(rejectId).setLabel("⛔ Reject").setStyle(ButtonStyle.Danger)
-        );
-
-        await ticket.send({ embeds: [embed], components: [row] });
-
+        // Réponse à l'utilisateur (ephemeral)
         await interaction.reply({
           ephemeral: true,
-          content: `✅ Demande envoyée au staff. Ticket créé : <#${ticket.id}>`,
+          content: `✅ Demande envoyée ! Un ticket a été créé : <#${ticket.id}>`,
         });
 
         return;
       }
 
-      // ─────────────────────────
-      // Staff buttons approve/reject
-      // ─────────────────────────
-      if (interaction.isButton() && interaction.customId.startsWith(`${STAFF_BTN_PREFIX}:`)) {
-        if (!interaction.inGuild()) return;
-
-        if (!isStaff(interaction.member)) {
-          await interaction.reply({ ephemeral: true, content: "❌ Staff uniquement." });
+      // ─────────────── Staff approve/reject buttons ───────────────
+      if (interaction.isButton() && interaction.customId.startsWith(CID_APPLY_DECIDE_PREFIX)) {
+        const guild = interaction.guild;
+        const member = interaction.member as GuildMember | null;
+        if (!guild || !member) {
+          await interaction.reply({ ephemeral: true, content: "Erreur: guild/member manquant." });
           return;
         }
 
-        const parts = interaction.customId.split(":");
-        const action = parts[1]; // approve/reject
-        const requestId = Number(parts[2] || 0);
-        const targetDiscordUserId = String(parts[3] || "");
-
-        if (!requestId || !targetDiscordUserId) {
-          await interaction.reply({ ephemeral: true, content: "⚠️ Bouton invalide." });
+        if (!hasAnyRole(member, STAFF_ROLE_IDS)) {
+          await interaction.reply({ ephemeral: true, content: "❌ Tu n'as pas la permission (staff requis)." });
           return;
         }
 
+        const rest = interaction.customId.slice(CID_APPLY_DECIDE_PREFIX.length); // approve:<id> or reject:<id>
+        const [action, idStr] = rest.split(":");
+        const requestId = Number(idStr || 0);
+        if (!requestId || (action !== "approve" && action !== "reject")) {
+          await interaction.reply({ ephemeral: true, content: "Erreur: action/id invalide." });
+          return;
+        }
+
+        // Avoid double-click issues
         await interaction.deferReply({ ephemeral: true });
 
+        // Who is the applicant? Try from DB payload (best effort)
+        const r = await pool.query(
+          `SELECT user_id, discord, channel_url, payload FROM streamer_requests WHERE id=$1 LIMIT 1`,
+          [requestId]
+        );
+        if (!r.rows[0]) {
+          await interaction.editReply("❌ Request introuvable en DB.");
+          return;
+        }
+
+        const payload = r.rows[0]?.payload || {};
+        const applicantDiscordUserId = String(payload?.discordUserId || "").trim();
+
         if (action === "approve") {
-          const r = await approveRequestDb(requestId);
-          if (!r.ok) return interaction.editReply({ content: `⚠️ Approve impossible: ${r.error}` });
+          const res = await approveRequest(requestId);
+          if (!res.ok) {
+            await interaction.editReply(`❌ Approve impossible: ${res.error}`);
+            return;
+          }
 
-          // sync rôles/nick partout (dont serveur officiel)
-          await syncUserEverywhere(targetDiscordUserId, ctx).catch(() => {});
+          // ✅ DECISION MESSAGE => STAFF_DECISIONS_CHANNEL_ID (ping role)
+          await sendDecisionLog(
+            guild,
+            `✅ **APPROUVÉ** — request #${requestId} — par <@${member.id}>` +
+              (applicantDiscordUserId ? ` — user <@${applicantDiscordUserId}>` : ""),
+            ctx
+          );
 
-          // disable buttons message
-          await interaction.message.edit({ components: [] }).catch(() => {});
-          await interaction.editReply({ content: `✅ Approved. LunaLive=${r.username} | streamer=${r.streamerSlug}` });
+          // Dans le ticket: on n'envoie PAS le message de décision, on désactive juste
+          const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId("noop1").setLabel("✅ Approuvé").setStyle(ButtonStyle.Success).setDisabled(true),
+            new ButtonBuilder().setCustomId("noop2").setLabel("❌ Refuser").setStyle(ButtonStyle.Danger).setDisabled(true)
+          );
 
-          await (interaction.channel as any)
-            ?.send?.(`✅ Demande approuvée. <@${targetDiscordUserId}> est maintenant **Streamer**.`)
-            .catch(() => {});
+          await interaction.message.edit({
+            content: `✅ Décision traitée. (Log envoyé dans <#${STAFF_DECISIONS_CHANNEL_ID}>)`,
+            components: [disabledRow],
+          });
+
+          if (applicantDiscordUserId) {
+            await safeDm(
+              applicantDiscordUserId,
+              `✅ Ta demande Streamer LunaLive a été **approuvée**.\nTu peux suivre le ticket si besoin : <#${interaction.channelId}>`,
+              ctx
+            );
+            // sync roles now (streamer)
+            await syncUserEverywhere(applicantDiscordUserId, ctx);
+          }
+
+          await interaction.editReply("✅ Approuvé. Message envoyé dans le salon de décisions.");
           return;
         }
 
         if (action === "reject") {
-          const r = await rejectRequestDb(requestId);
-          if (!r.ok) return interaction.editReply({ content: `⚠️ Reject impossible: ${r.error}` });
+          const res = await rejectRequest(requestId);
+          if (!res.ok) {
+            await interaction.editReply(`❌ Reject impossible: ${res.error}`);
+            return;
+          }
 
-          await syncUserEverywhere(targetDiscordUserId, ctx).catch(() => {});
+          // ✅ DECISION MESSAGE => STAFF_DECISIONS_CHANNEL_ID (ping role)
+          await sendDecisionLog(
+            guild,
+            `❌ **REFUSÉ** — request #${requestId} — par <@${member.id}>` +
+              (applicantDiscordUserId ? ` — user <@${applicantDiscordUserId}>` : ""),
+            ctx
+          );
 
-          await interaction.message.edit({ components: [] }).catch(() => {});
-          await interaction.editReply({ content: `⛔ Rejected.` });
+          const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId("noop1").setLabel("✅ Approuver").setStyle(ButtonStyle.Success).setDisabled(true),
+            new ButtonBuilder().setCustomId("noop2").setLabel("❌ Refusé").setStyle(ButtonStyle.Danger).setDisabled(true)
+          );
 
-          await (interaction.channel as any)
-            ?.send?.(`⛔ Demande refusée. <@${targetDiscordUserId}> reste **Viewer**.`)
-            .catch(() => {});
+          await interaction.message.edit({
+            content: `✅ Décision traitée. (Log envoyé dans <#${STAFF_DECISIONS_CHANNEL_ID}>)`,
+            components: [disabledRow],
+          });
+
+          if (applicantDiscordUserId) {
+            await safeDm(
+              applicantDiscordUserId,
+              `❌ Ta demande Streamer LunaLive a été **refusée**.\nTu peux répondre dans le ticket si tu veux des précisions : <#${interaction.channelId}>`,
+              ctx
+            );
+            // sync roles now (back to viewer)
+            await syncUserEverywhere(applicantDiscordUserId, ctx);
+          }
+
+          await interaction.editReply("✅ Refusé. Message envoyé dans le salon de décisions.");
           return;
         }
-
-        return interaction.editReply({ content: "⚠️ Action inconnue." });
       }
     } catch (e: any) {
       ctx.log(`[discord] interaction error: ${e?.message || e}`);
-
-      if ((interaction as any).isRepliable?.()) {
-        try {
+      try {
+        if ((interaction as any)?.isRepliable?.()) {
           const payload = { ephemeral: true as const, content: "Erreur interne. Réessayez plus tard." };
-          if ((interaction as any).deferred || (interaction as any).replied) {
-            await (interaction as any).followUp(payload);
-          } else {
-            await (interaction as any).reply(payload);
-          }
-        } catch {}
-      }
+          if ((interaction as any).deferred || (interaction as any).replied) await (interaction as any).followUp(payload);
+          else await (interaction as any).reply(payload);
+        }
+      } catch {}
     }
   });
 
