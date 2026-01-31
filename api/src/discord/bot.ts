@@ -516,15 +516,18 @@ async function ensureApplyMessage(ctx: BotCtx, client: Client) {
   }
 
   // éviter doublons: on check les derniers msgs du bot
-  const msgs = await ch.messages.fetch({ limit: 15 }).catch(() => null);
-  if (msgs) {
-    const already = msgs.find((m) => {
-      if (m.author.id !== client.user?.id) return false;
-      const hasButton = m.components?.some((row) => row.components?.some((c: any) => c?.customId === APPLY_BUTTON_ID));
-      return !!hasButton;
+    const msgs = await ch.messages.fetch({ limit: 15 }).catch(() => null);
+    if (msgs) {
+    const already = msgs.find((m: any) => {
+        if (m?.author?.id !== client.user?.id) return false;
+
+        // Typings discord.js parfois pénibles: on cast en any
+        const rows = (m as any).components ?? [];
+        return rows.some((row: any) => (row?.components ?? []).some((c: any) => c?.customId === APPLY_BUTTON_ID));
     });
+
     if (already) return;
-  }
+    }
 
   const embed = new EmbedBuilder()
     .setTitle("Demande Streamer")
