@@ -18,6 +18,7 @@ import { runSlotsUpdate } from "./calls/updater.js";
 
 import { startClipsMp4Renderer, startClipsMp4Cleanup } from "./clips/clip_mp4_worker.js";
 import { startAgendaNotifPoller } from "./agenda_notif_poller.js";
+import { startDiscordBot } from "./discord/bot";
 
 const port = Number(process.env.PORT || 3001);
 
@@ -89,6 +90,14 @@ function startSlotsCatalogUpdater(everyHours: number) {
       methods: ["GET", "POST"],
     },
   });
+
+  if (process.env.RUN_DISCORD_BOT === "1") {
+    startDiscordBot({
+      log: (msg) => console.log(msg),
+    }).catch((e) => {
+      console.error("[discord] failed to start", e);
+    });
+  }
 
   app.locals.io = io;
   app.set("io", io);
