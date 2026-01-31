@@ -86,6 +86,7 @@ import { adminSubscriptionsRouter } from "./routes/admin_subscriptions.js";
 import { adminContentRouter } from "./routes/admin_content.js";
 import { publicContentRouter } from "./routes/public_content.js";
 import { meDiscordLinkRouter } from "./routes/me_discord_link.js";
+import { internalBotStreamerRequestsRouter } from "./routes/internal_bot_streamer_requests.js";
 
 export function createApp() {
   const app = express();
@@ -191,6 +192,8 @@ export function createApp() {
   app.use(casinosPublicRouter);
   app.use("/me/casinos", requireAuth, casinosMeRouter);
   app.use(internalBotRouter);
+  app.use(internalBotStreamerRequestsRouter);
+
   // ─────────────────────────────────────────────
   // ✅ Other public routers
   // ─────────────────────────────────────────────

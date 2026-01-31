@@ -1,19 +1,79 @@
+// api/src/discord/bot.ts
 import crypto from "crypto";
 import { pool } from "../db.js";
 import { getActiveSiteUserBan } from "../auth.js";
+import { ensureAssignedDliveAccount, releaseAccountForStreamerId } from "../provider_accounts.js";
+import { slugify } from "../slug.js";
 
 import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelType,
   Client,
+  EmbedBuilder,
   GatewayIntentBits,
+  ModalBuilder,
   Partials,
+  PermissionFlagsBits,
   REST,
   Routes,
+  TextInputBuilder,
+  TextInputStyle,
+  type Guild,
+  type GuildMember,
+  type Interaction,
 } from "discord.js";
 
 type BotCtx = { log: (msg: string) => void };
 
 let discordClient: Client | null = null;
 
+/**
+ * ─────────────────────────────────────────────
+ * CONFIG (IDs)
+ * ─────────────────────────────────────────────
+ */
+const CFG = {
+  // Guild officiel
+  guildId: String(process.env.DISCORD_GUILD_ID || "1467139956249067717"),
+
+  // Où poster le bouton + message
+  applyChannelId: String(process.env.APPLY_CHANNEL_ID || "1467142148431413370"),
+
+  // Catégorie où créer les tickets
+  staffTicketsCategoryId: String(process.env.STAFF_TICKETS_CATEGORY_ID || "1467141806922666034"),
+
+  // Roles (IDs)
+  roleVerifiedId: String(process.env.ROLE_VERIFIED_ID || "1467140844233556231"),
+  roleViewerId: String(process.env.ROLE_VIEWER_ID || "1467140868288024742"),
+  roleStreamerId: String(process.env.ROLE_STREAMER_ID || "1467140886793027656"),
+  rolePartnerId: String(process.env.ROLE_PARTNER_ID || "1467140935954726984"),
+  roleModId: String(process.env.ROLE_MOD_LUNALIVE_ID || "1467140910771994801"),
+  roleRestrictedId: String(process.env.ROLE_RESTRICTED_ID || "1467140964773794005"),
+
+  // Qui peut approve/reject
+  staffRoleIds: String(process.env.STAFF_ROLE_IDS || "1467140769436405981,1467140795105546441")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+} as const;
+
+/**
+ * ─────────────────────────────────────────────
+ * IDs Custom components
+ * ─────────────────────────────────────────────
+ */
+const APPLY_BUTTON_ID = "streamer_apply:open";
+const APPLY_MODAL_ID = "streamer_apply:modal";
+// format: streamer_req:approve:<requestId>:<discordUserId>
+const STAFF_BTN_PREFIX = "streamer_req";
+
+/**
+ * ─────────────────────────────────────────────
+ * Helpers (mask / secrets / codes)
+ * ─────────────────────────────────────────────
+ */
 function maskSecret(v: any) {
   const s = String(v ?? "").trim();
   if (!s) return "(missing)";
@@ -26,7 +86,6 @@ function getLinkCodeSecret(ctx?: BotCtx) {
   const s = String(raw ?? "").trim();
 
   if (!s) {
-    // log utile sans leak
     ctx?.log?.(
       `[discord] DISCORD_LINK_CODE_SECRET=${maskSecret(raw)} | DISCORD_* keys=` +
         Object.keys(process.env)
@@ -36,10 +95,6 @@ function getLinkCodeSecret(ctx?: BotCtx) {
     );
     throw new Error("DISCORD_LINK_CODE_SECRET missing");
   }
-
-  // log 1 fois si tu veux (optionnel)
-  // ctx?.log?.(`[discord] DISCORD_LINK_CODE_SECRET=${maskSecret(s)}`);
-
   return s;
 }
 
@@ -49,7 +104,6 @@ function hashCode(code: string, ctx?: BotCtx) {
 }
 
 function codeAlphabet() {
-  // sans O/0, I/1 pour éviter confusion
   return "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 }
 
@@ -86,41 +140,77 @@ async function safeDm(userId: string, content: string, ctx: BotCtx) {
   }
 }
 
-async function findRoleByName(guild: any, roleName: string) {
-  const roles = await guild.roles.fetch();
-  return roles.find((r: any) => r?.name === roleName) || null;
+/**
+ * ─────────────────────────────────────────────
+ * Discord role helpers (IDs)
+ * ─────────────────────────────────────────────
+ */
+function memberHasRole(member: any, roleId: string) {
+  try {
+    return !!roleId && member?.roles?.cache?.has?.(roleId);
+  } catch {
+    return false;
+  }
 }
 
-async function applyRolesAndNick(guild: any, member: any, userRow: any, ctx: BotCtx) {
-  // rôles par NOMS (simple et portable)
-  const roleVerified = await findRoleByName(guild, "✅ Verified");
-  const roleViewer = await findRoleByName(guild, "👤 Viewer");
-  const roleStreamer = await findRoleByName(guild, "🎥 Streamer");
-  const roleMod = await findRoleByName(guild, "🛡️ Mod LunaLive");
-  const rolePartner = await findRoleByName(guild, "🤝 Partenaire");
-  const roleRestricted = await findRoleByName(guild, "⛔ Restricted");
+function isStaff(member: any) {
+  try {
+    const cache = member?.roles?.cache;
+    if (!cache) return false;
+    return CFG.staffRoleIds.some((rid) => cache.has(rid));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Applique UNIQUEMENT les rôles "gérés par le bot" :
+ * Verified / Viewer / Streamer / Partner / Mod / Restricted
+ * => on ajoute ET on retire pour que ça colle au rôle LunaLive
+ */
+async function applyRolesAndNick(guild: Guild, member: GuildMember, userRow: any, ctx: BotCtx) {
+  const managed = new Set<string>(
+    [
+      CFG.roleVerifiedId,
+      CFG.roleViewerId,
+      CFG.roleStreamerId,
+      CFG.rolePartnerId,
+      CFG.roleModId,
+      CFG.roleRestrictedId,
+    ].filter(Boolean)
+  );
 
   const want = new Set<string>();
-  if (roleVerified) want.add(roleVerified.id);
+
+  // Verified toujours si le compte est lié (on est en syncUserEverywhere)
+  if (CFG.roleVerifiedId) want.add(CFG.roleVerifiedId);
 
   const role = String(userRow?.role || "viewer");
-  if (role.includes("streamer") && roleStreamer) want.add(roleStreamer.id);
-  else if (roleViewer) want.add(roleViewer.id);
 
-  if (role.includes("mod") && roleMod) want.add(roleMod.id);
-  if (role.includes("partner") && rolePartner) want.add(rolePartner.id);
+  // rôle principal
+  if (role.includes("streamer")) {
+    if (CFG.roleStreamerId) want.add(CFG.roleStreamerId);
+  } else {
+    if (CFG.roleViewerId) want.add(CFG.roleViewerId);
+  }
 
-  // Restricted (si ton backend le signale via role)
+  if (role.includes("mod") && CFG.roleModId) want.add(CFG.roleModId);
+  if (role.includes("partner") && CFG.rolePartnerId) want.add(CFG.rolePartnerId);
+
+  // Restricted si ton backend le signale via role strict "restricted"
   const isRestricted = role === "restricted";
-  if (isRestricted && roleRestricted) want.add(roleRestricted.id);
+  if (isRestricted && CFG.roleRestrictedId) want.add(CFG.roleRestrictedId);
 
-  // Ajoute les rôles manquants (sans retirer des rôles “externes” au bot)
+  // add/remove proprement (sans toucher aux autres rôles)
   try {
     const current = new Set(member.roles.cache.map((r: any) => r.id));
     const toAdd = [...want].filter((id) => !current.has(id));
-    if (toAdd.length) await member.roles.add(toAdd);
+    const toRemove = [...managed].filter((id) => current.has(id) && !want.has(id));
+
+    if (toAdd.length) await member.roles.add(toAdd).catch(() => {});
+    if (toRemove.length) await member.roles.remove(toRemove).catch(() => {});
   } catch (e: any) {
-    ctx.log(`[discord] roles add failed guild=${guild.id} user=${member.id}: ${e?.message || e}`);
+    ctx.log(`[discord] roles sync failed guild=${guild.id} user=${member.id}: ${e?.message || e}`);
   }
 
   // Nick strict
@@ -139,7 +229,7 @@ async function applyRolesAndNick(guild: any, member: any, userRow: any, ctx: Bot
   // 1) essayer strict
   if (await trySet(targetBase)) return;
 
-  // 2) collision / refus → suffix court stable
+  // 2) collision/refus → suffix stable
   const suffix = crypto.createHash("sha1").update(String(member.id)).digest("hex").slice(0, 4).toUpperCase();
   const fallback = `${targetBase} · ${suffix}`.slice(0, 32);
   const ok = await trySet(fallback);
@@ -159,10 +249,13 @@ async function applyRolesAndNick(guild: any, member: any, userRow: any, ctx: Bot
   }
 }
 
+/**
+ * Sync pseudo+rôles sur tous les serveurs où le bot est présent.
+ * Source de vérité: DB LunaLive.
+ */
 async function syncUserEverywhere(discordUserId: string, ctx: BotCtx) {
   if (!discordClient) return;
 
-  // Cherche le lien + user
   const link = await pool.query(
     `
     SELECT dl.user_id, u.username, u.role
@@ -177,7 +270,7 @@ async function syncUserEverywhere(discordUserId: string, ctx: BotCtx) {
   const row = link.rows?.[0];
   if (!row) return;
 
-  // Ban site ? (source de vérité LunaLive)
+  // Ban site (source de vérité LunaLive)
   const ban = await getActiveSiteUserBan(Number(row.user_id));
   const isBanned = !!ban?.banned;
 
@@ -188,7 +281,6 @@ async function syncUserEverywhere(discordUserId: string, ctx: BotCtx) {
       if (!member) continue;
 
       if (isBanned) {
-        // ban global (si le bot a la perm)
         await g.members.ban(discordUserId, { reason: "LunaLive ban" }).catch(() => null);
         continue;
       }
@@ -199,10 +291,11 @@ async function syncUserEverywhere(discordUserId: string, ctx: BotCtx) {
     }
   }
 
-  await pool.query(
-    `UPDATE discord_links SET last_sync_at = NOW(), updated_at = NOW() WHERE discord_user_id = $1`,
-    [discordUserId]
-  ).catch(() => {});
+  await pool
+    .query(`UPDATE discord_links SET last_sync_at = NOW(), updated_at = NOW() WHERE discord_user_id = $1`, [
+      discordUserId,
+    ])
+    .catch(() => {});
 }
 
 async function createLinkCode(discordUserId: string, ctx: BotCtx) {
@@ -223,7 +316,6 @@ async function createLinkCode(discordUserId: string, ctx: BotCtx) {
 }
 
 async function getLinkedUser(discordUserId: string) {
-  // email peut exister ou non selon ton schéma : on tente, sinon null
   try {
     const r = await pool.query(
       `
@@ -251,9 +343,216 @@ async function getLinkedUser(discordUserId: string) {
   }
 }
 
+/**
+ * ─────────────────────────────────────────────
+ * Streamer requests DB logic (copie de ton internal router)
+ * ─────────────────────────────────────────────
+ */
+async function upsertStreamerRequestPending(userId: number, discordUserId: string, dliveUrl: string | null, notes: any) {
+  // On tente le schéma "complet", sinon fallback minimal
+  try {
+    const up = await pool.query(
+      `
+      INSERT INTO streamer_requests (user_id, status, discord, channel_url, rules_accepted, updated_at)
+      VALUES ($1, 'pending', $2, $3, TRUE, NOW())
+      ON CONFLICT (user_id)
+      DO UPDATE SET status='pending', discord=EXCLUDED.discord, channel_url=EXCLUDED.channel_url, updated_at=NOW()
+      RETURNING id, user_id, status, created_at AS "createdAt", updated_at AS "updatedAt"
+      `,
+      [userId, `discord:${discordUserId}`, dliveUrl]
+    );
+
+    // notes (optionnel)
+    if (notes) {
+      try {
+        await pool.query(`UPDATE streamer_requests SET notes = $2 WHERE user_id = $1`, [userId, JSON.stringify(notes)]);
+      } catch {
+        // ignore si colonne inexistante
+      }
+    }
+
+    return up.rows?.[0] || null;
+  } catch {
+    // fallback ultra-minimal
+    const up = await pool.query(
+      `
+      INSERT INTO streamer_requests (user_id, status)
+      VALUES ($1, 'pending')
+      ON CONFLICT (user_id)
+      DO UPDATE SET status='pending', updated_at=NOW()
+      RETURNING id, user_id, status, created_at AS "createdAt"
+      `,
+      [userId]
+    );
+    return up.rows?.[0] || null;
+  }
+}
+
+async function approveRequestDb(requestId: number) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const upd = await client.query(
+      `
+      UPDATE streamer_requests
+      SET status='approved', updated_at=NOW()
+      WHERE id=$1
+      RETURNING user_id
+      `,
+      [requestId]
+    );
+    if (!upd.rows[0]) {
+      await client.query("ROLLBACK");
+      return { ok: false as const, error: "not_found" };
+    }
+
+    const userId = Number(upd.rows[0].user_id);
+
+    await client.query(`UPDATE users SET role='streamer' WHERE id=$1`, [userId]);
+
+    const u = await client.query(`SELECT username FROM users WHERE id=$1 LIMIT 1`, [userId]);
+    const username = String(u.rows[0]?.username || `user-${userId}`);
+    let slug = slugify(username);
+
+    const exists = await client.query(`SELECT 1 FROM streamers WHERE slug=$1`, [slug]);
+    if (exists.rows[0]) slug = `${slug}-${userId}`;
+
+    await client.query(
+      `
+      INSERT INTO streamers (slug, display_name, user_id, title, viewers, is_live)
+      VALUES ($1,$2,$3,'',0,false)
+      ON CONFLICT (user_id) DO NOTHING
+      `,
+      [slug, username, userId]
+    );
+
+    await client.query(`UPDATE streamers SET suspended_until=NULL, updated_at=NOW() WHERE user_id=$1`, [userId]);
+
+    const s = await client.query(`SELECT id, slug FROM streamers WHERE user_id=$1 LIMIT 1`, [userId]);
+    const streamerId = Number(s.rows[0]?.id || 0);
+    if (!streamerId) {
+      await client.query("ROLLBACK");
+      return { ok: false as const, error: "streamer_missing" };
+    }
+
+    const conn = await ensureAssignedDliveAccount(client, streamerId);
+    if (!conn) {
+      await client.query("ROLLBACK");
+      return { ok: false as const, error: "no_free_provider_account" };
+    }
+
+    await client.query("COMMIT");
+    return { ok: true as const, userId, username, streamerId, streamerSlug: String(s.rows[0]?.slug || slug) };
+  } catch (e) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function rejectRequestDb(requestId: number) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const upd = await client.query(
+      `
+      UPDATE streamer_requests
+      SET status='rejected', updated_at=NOW()
+      WHERE id=$1
+      RETURNING user_id
+      `,
+      [requestId]
+    );
+    if (!upd.rows[0]) {
+      await client.query("ROLLBACK");
+      return { ok: false as const, error: "not_found" };
+    }
+
+    const userId = Number(upd.rows[0].user_id);
+
+    await client.query(`UPDATE users SET role='viewer' WHERE id=$1`, [userId]);
+
+    const s = await client.query(`SELECT id FROM streamers WHERE user_id=$1 LIMIT 1`, [userId]);
+    const streamerId = s.rows[0]?.id ? Number(s.rows[0].id) : null;
+
+    if (streamerId) {
+      await releaseAccountForStreamerId(client, streamerId);
+      await client.query(
+        `UPDATE streamers SET suspended_until='infinity'::timestamptz, featured=false, updated_at=NOW() WHERE id=$1`,
+        [streamerId]
+      );
+    }
+
+    await client.query("COMMIT");
+    return { ok: true as const, userId };
+  } catch (e) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * ─────────────────────────────────────────────
+ * Apply message (bouton) dans APPLY_CHANNEL_ID
+ * ─────────────────────────────────────────────
+ */
+async function ensureApplyMessage(ctx: BotCtx, client: Client) {
+  const g = await client.guilds.fetch(CFG.guildId).catch(() => null);
+  if (!g) return;
+
+  const ch = await g.channels.fetch(CFG.applyChannelId).catch(() => null);
+  if (!ch || ch.type !== ChannelType.GuildText) {
+    ctx.log(`[discord] APPLY_CHANNEL_ID invalid: ${CFG.applyChannelId}`);
+    return;
+  }
+
+  // éviter doublons: on check les derniers msgs du bot
+  const msgs = await ch.messages.fetch({ limit: 15 }).catch(() => null);
+  if (msgs) {
+    const already = msgs.find((m) => {
+      if (m.author.id !== client.user?.id) return false;
+      const hasButton = m.components?.some((row) => row.components?.some((c: any) => c?.customId === APPLY_BUTTON_ID));
+      return !!hasButton;
+    });
+    if (already) return;
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle("Demande Streamer")
+    .setDescription(
+      [
+        "Tu veux streamer sur **LunaLive** ?",
+        "",
+        "✅ Avant tout : fais **/link** pour lier ton compte LunaLive à Discord.",
+        "Ensuite clique sur le bouton ci-dessous.",
+      ].join("\n")
+    );
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(APPLY_BUTTON_ID).setLabel("Faire une demande").setStyle(ButtonStyle.Primary)
+  );
+
+  await ch.send({ embeds: [embed], components: [row] });
+  ctx.log(`[discord] apply message posted in #${(ch as any).name}`);
+}
+
+/**
+ * ─────────────────────────────────────────────
+ * Main start
+ * ─────────────────────────────────────────────
+ */
 export async function startDiscordBot(ctx: BotCtx) {
   const token = process.env.DISCORD_BOT_TOKEN;
-  const guildId = process.env.DISCORD_GUILD_ID;
+  const guildId = process.env.DISCORD_GUILD_ID || CFG.guildId;
 
   if (!token) throw new Error("Missing env DISCORD_BOT_TOKEN");
   if (!guildId) throw new Error("Missing env DISCORD_GUILD_ID");
@@ -265,7 +564,7 @@ export async function startDiscordBot(ctx: BotCtx) {
 
   discordClient = client;
 
-  client.once("clientReady", async () => {
+  client.once("ready", async () => {
     ctx.log(`[discord] logged in as ${client.user?.tag ?? "unknown"}`);
     const g = await client.guilds.fetch(guildId).catch(() => null);
     ctx.log(`[discord] guild=${g?.name ?? "unknown"} (${guildId})`);
@@ -283,9 +582,11 @@ export async function startDiscordBot(ctx: BotCtx) {
     await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: commands });
     ctx.log(`[discord] slash commands registered (${commands.length})`);
 
-    // petit job de sync toutes les 6h (filet de sécurité)
+    // ✅ message bouton apply (guild officiel)
+    await ensureApplyMessage(ctx, client);
+
+    // sync sécurité toutes les 6h (liens existants)
     setInterval(() => {
-      // on sync seulement les liens existants
       pool
         .query(`SELECT discord_user_id FROM discord_links ORDER BY updated_at DESC LIMIT 5000`)
         .then(async (r) => {
@@ -300,10 +601,9 @@ export async function startDiscordBot(ctx: BotCtx) {
   // Sync immédiat quand un membre rejoint (si déjà lié)
   client.on("guildMemberAdd", async (member) => {
     try {
-      const linked = await pool.query(
-        `SELECT 1 FROM discord_links WHERE discord_user_id = $1 LIMIT 1`,
-        [String(member.id)]
-      );
+      const linked = await pool.query(`SELECT 1 FROM discord_links WHERE discord_user_id = $1 LIMIT 1`, [
+        String(member.id),
+      ]);
       if (linked.rowCount) {
         await syncUserEverywhere(String(member.id), ctx);
         await safeDm(
@@ -317,106 +617,324 @@ export async function startDiscordBot(ctx: BotCtx) {
     }
   });
 
-  // Slash interactions
-  client.on("interactionCreate", async (interaction) => {
+  // Interactions: slash + boutons + modals
+  client.on("interactionCreate", async (interaction: Interaction) => {
     try {
-      if (!interaction.isChatInputCommand()) return;
-
-      if (interaction.commandName === "help") {
-        await interaction.reply({
-          ephemeral: true,
-          content:
-            "LunaBot — commandes :\n• /link : lier votre compte LunaLive\n• /whoami : afficher votre statut\n",
-        });
-        return;
-      }
-
-      if (interaction.commandName === "whoami") {
-        const linked = await getLinkedUser(String(interaction.user.id));
-        if (!linked) {
-          await interaction.reply({ ephemeral: true, content: "Statut : non lié." });
-          return;
-        }
-        const mail = maskEmail((linked as any).email ?? null);
-        await interaction.reply({
-          ephemeral: true,
-          content:
-            `Statut : lié ✅\n` +
-            `Pseudo LunaLive : **${linked.username}**\n` +
-            (mail ? `Email : **${mail}**\n` : "") +
-            `Rôle LunaLive : **${linked.role}**`,
-        });
-        return;
-      }
-
-      if (interaction.commandName === "link") {
-        // déjà lié ?
-        const already = await getLinkedUser(String(interaction.user.id));
-        if (already) {
-          const mail = maskEmail((already as any).email ?? null);
+      // ─────────────────────────
+      // Slash commands
+      // ─────────────────────────
+      if (interaction.isChatInputCommand()) {
+        if (interaction.commandName === "help") {
           await interaction.reply({
             ephemeral: true,
-            content:
-              `Votre compte est déjà lié ✅\n` +
-              `Pseudo LunaLive : **${already.username}**\n` +
-              (mail ? `Email : **${mail}**\n` : "") +
-              `Rôle LunaLive : **${already.role}**`,
+            content: "LunaBot — commandes :\n• /link : lier votre compte LunaLive\n• /whoami : afficher votre statut\n",
           });
           return;
         }
 
-        const secretPresent = String(process.env.DISCORD_LINK_CODE_SECRET ?? "").trim();
-            if (!secretPresent) {
+        if (interaction.commandName === "whoami") {
+          const linked = await getLinkedUser(String(interaction.user.id));
+          if (!linked) {
+            await interaction.reply({ ephemeral: true, content: "Statut : non lié." });
+            return;
+          }
+          const mail = maskEmail((linked as any).email ?? null);
+          await interaction.reply({
+            ephemeral: true,
+            content:
+              `Statut : lié ✅\n` +
+              `Pseudo LunaLive : **${linked.username}**\n` +
+              (mail ? `Email : **${mail}**\n` : "") +
+              `Rôle LunaLive : **${linked.role}**`,
+          });
+          return;
+        }
+
+        if (interaction.commandName === "link") {
+          const already = await getLinkedUser(String(interaction.user.id));
+          if (already) {
+            const mail = maskEmail((already as any).email ?? null);
             await interaction.reply({
-                ephemeral: true,
-                content: "Configuration manquante côté serveur (DISCORD_LINK_CODE_SECRET). Contactez un administrateur.",
+              ephemeral: true,
+              content:
+                `Votre compte est déjà lié ✅\n` +
+                `Pseudo LunaLive : **${already.username}**\n` +
+                (mail ? `Email : **${mail}**\n` : "") +
+                `Rôle LunaLive : **${already.role}**`,
+            });
+            return;
+          }
+
+          const secretPresent = String(process.env.DISCORD_LINK_CODE_SECRET ?? "").trim();
+          if (!secretPresent) {
+            await interaction.reply({
+              ephemeral: true,
+              content: "Configuration manquante côté serveur (DISCORD_LINK_CODE_SECRET). Contactez un administrateur.",
             });
             await safeDm(
-                String(interaction.user.id),
-                "Impossible de générer un code pour le moment : DISCORD_LINK_CODE_SECRET n'est pas chargé sur le serveur.",
-                ctx
+              String(interaction.user.id),
+              "Impossible de générer un code pour le moment : DISCORD_LINK_CODE_SECRET n'est pas chargé sur le serveur.",
+              ctx
             );
             return;
-            }
+          }
 
-        const { code, expiresAt } = await createLinkCode(String(interaction.user.id), ctx);
+          const { code, expiresAt } = await createLinkCode(String(interaction.user.id), ctx);
+
+          await interaction.reply({
+            ephemeral: true,
+            content:
+              `Code de liaison généré ✅\n` +
+              `➡️ **${code}**\n\n` +
+              `Rendez-vous sur LunaLive → Profil → Lier Discord, puis collez ce code.\n` +
+              `Expiration : ${expiresAt.toLocaleString("fr-FR")}`,
+          });
+
+          await safeDm(
+            String(interaction.user.id),
+            `🔗 Liaison LunaLive — Code\n\nVotre code : **${code}**\nExpiration : ${expiresAt.toLocaleString(
+              "fr-FR"
+            )}\n\nÀ faire : allez sur LunaLive → Profil → Lier Discord et collez ce code.\n\nAprès validation, votre pseudo et vos rôles seront synchronisés automatiquement.`,
+            ctx
+          );
+          return;
+        }
+
+        return;
+      }
+
+      // ─────────────────────────
+      // Bouton "Faire une demande"
+      // ─────────────────────────
+      if (interaction.isButton() && interaction.customId === APPLY_BUTTON_ID) {
+        if (!interaction.inGuild()) return;
+
+        // règle: doit être Verified
+        if (!memberHasRole(interaction.member, CFG.roleVerifiedId)) {
+          await interaction.reply({
+            ephemeral: true,
+            content: "❌ Tu ne peux pas faire de demande streamer tant que tu n’as pas fait **/link**.",
+          });
+          return;
+        }
+
+        const modal = new ModalBuilder().setCustomId(APPLY_MODAL_ID).setTitle("Demande Streamer (rapide)");
+
+        const dlive = new TextInputBuilder()
+          .setCustomId("dlive")
+          .setLabel("DLive (URL ou username) — requis")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(200)
+          .setPlaceholder("ex: https://dlive.tv/MonChannel  ou  MonChannel");
+
+        const other = new TextInputBuilder()
+          .setCustomId("other")
+          .setLabel("Autres plateformes (optionnel)")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(false)
+          .setMaxLength(800)
+          .setPlaceholder("Kick: ...\nYouTube: ...\nTwitch: ...");
+
+        const exp = new TextInputBuilder()
+          .setCustomId("exp")
+          .setLabel("Infos utiles (rapide)")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(false)
+          .setMaxLength(800)
+          .setPlaceholder("Déjà des lives ? moyenne viewers ? fréquence ?");
+
+        modal.addComponents(
+          new ActionRowBuilder<TextInputBuilder>().addComponents(dlive),
+          new ActionRowBuilder<TextInputBuilder>().addComponents(other),
+          new ActionRowBuilder<TextInputBuilder>().addComponents(exp)
+        );
+
+        await interaction.showModal(modal);
+        return;
+      }
+
+      // ─────────────────────────
+      // Modal submit: create request + ticket
+      // ─────────────────────────
+      if (interaction.isModalSubmit() && interaction.customId === APPLY_MODAL_ID) {
+        if (!interaction.inGuild()) return;
+
+        // re-check Verified
+        if (!memberHasRole(interaction.member, CFG.roleVerifiedId)) {
+          await interaction.reply({
+            ephemeral: true,
+            content: "❌ Tu ne peux pas faire de demande streamer tant que tu n’as pas fait **/link**.",
+          });
+          return;
+        }
+
+        const discordUserId = String(interaction.user.id);
+
+        // doit être lié côté DB
+        const linked = await getLinkedUser(discordUserId);
+        if (!linked?.id) {
+          await interaction.reply({
+            ephemeral: true,
+            content: "❌ Je ne trouve pas ton compte LunaLive lié. Fais **/link** puis réessaie.",
+          });
+          return;
+        }
+
+        const dliveRaw = String(interaction.fields.getTextInputValue("dlive") || "").trim();
+        const otherLinks = String(interaction.fields.getTextInputValue("other") || "").trim();
+        const experience = String(interaction.fields.getTextInputValue("exp") || "").trim();
+
+        const dliveUrl = dliveRaw ? dliveRaw.slice(0, 200) : null;
+
+        const reqRow = await upsertStreamerRequestPending(
+          Number(linked.id),
+          discordUserId,
+          dliveUrl,
+          { otherLinks: otherLinks || null, experience: experience || null }
+        );
+
+        const requestId = Number(reqRow?.id || 0);
+        if (!requestId) {
+          await interaction.reply({ ephemeral: true, content: "⚠️ Erreur: impossible de créer la demande." });
+          return;
+        }
+
+        // Ticket channel
+        const guild = interaction.guild!;
+        const parent = await guild.channels.fetch(CFG.staffTicketsCategoryId).catch(() => null);
+        if (!parent || parent.type !== ChannelType.GuildCategory) {
+          await interaction.reply({ ephemeral: true, content: "⚠️ Config invalide: STAFF_TICKETS_CATEGORY_ID." });
+          return;
+        }
+
+        const safeName =
+          `ticket-streamer-${interaction.user.username}`.toLowerCase().replace(/[^a-z0-9-_]/g, "-").slice(0, 85) ||
+          `ticket-streamer-${discordUserId}`;
+
+        const overwrites: any[] = [
+          { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+          {
+            id: discordUserId,
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+          },
+        ];
+
+        for (const rid of CFG.staffRoleIds) {
+          overwrites.push({
+            id: rid,
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+          });
+        }
+
+        const ticket = await guild.channels.create({
+          name: safeName,
+          type: ChannelType.GuildText,
+          parent: parent.id,
+          permissionOverwrites: overwrites,
+        });
+
+        const embed = new EmbedBuilder()
+          .setTitle("📩 Demande Streamer")
+          .addFields(
+            { name: "Discord", value: `<@${discordUserId}> (${discordUserId})`, inline: false },
+            { name: "LunaLive", value: `${linked.username} (id ${linked.id})`, inline: false },
+            { name: "DLive", value: dliveUrl || "—", inline: false },
+            { name: "Autres", value: otherLinks ? otherLinks.slice(0, 900) : "—", inline: false },
+            { name: "Infos", value: experience ? experience.slice(0, 900) : "—", inline: false },
+            { name: "Request ID", value: String(requestId), inline: true }
+          );
+
+        const approveId = `${STAFF_BTN_PREFIX}:approve:${requestId}:${discordUserId}`;
+        const rejectId = `${STAFF_BTN_PREFIX}:reject:${requestId}:${discordUserId}`;
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(approveId).setLabel("✅ Approve").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(rejectId).setLabel("⛔ Reject").setStyle(ButtonStyle.Danger)
+        );
+
+        await ticket.send({ embeds: [embed], components: [row] });
 
         await interaction.reply({
           ephemeral: true,
-          content:
-            `Code de liaison généré ✅\n` +
-            `➡️ **${code}**\n\n` +
-            `Rendez-vous sur LunaLive → Profil → Lier Discord, puis collez ce code.\n` +
-            `Expiration : ${expiresAt.toLocaleString("fr-FR")}`,
+          content: `✅ Demande envoyée au staff. Ticket créé : <#${ticket.id}>`,
         });
 
-        await safeDm(
-          String(interaction.user.id),
-          `🔗 Liaison LunaLive — Code\n\nVotre code : **${code}**\nExpiration : ${expiresAt.toLocaleString("fr-FR")}\n\nÀ faire : allez sur LunaLive → Profil → Lier Discord et collez ce code.\n\nAprès validation, votre pseudo et vos rôles seront synchronisés automatiquement.`,
-          ctx
-        );
         return;
       }
-    } catch (e: any) {
-    ctx.log(`[discord] interaction error: ${e?.message || e}`);
 
-    if (interaction.isRepliable()) {
-        try {
-        const payload = { ephemeral: true as const, content: "Erreur interne. Réessayez plus tard." };
+      // ─────────────────────────
+      // Staff buttons approve/reject
+      // ─────────────────────────
+      if (interaction.isButton() && interaction.customId.startsWith(`${STAFF_BTN_PREFIX}:`)) {
+        if (!interaction.inGuild()) return;
 
-        // ✅ si déjà ack, on followUp au lieu de reply
-        if ((interaction as any).deferred || (interaction as any).replied) {
-            await interaction.followUp(payload);
-        } else {
-            await interaction.reply(payload);
+        if (!isStaff(interaction.member)) {
+          await interaction.reply({ ephemeral: true, content: "❌ Staff uniquement." });
+          return;
         }
+
+        const parts = interaction.customId.split(":");
+        const action = parts[1]; // approve/reject
+        const requestId = Number(parts[2] || 0);
+        const targetDiscordUserId = String(parts[3] || "");
+
+        if (!requestId || !targetDiscordUserId) {
+          await interaction.reply({ ephemeral: true, content: "⚠️ Bouton invalide." });
+          return;
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+
+        if (action === "approve") {
+          const r = await approveRequestDb(requestId);
+          if (!r.ok) return interaction.editReply({ content: `⚠️ Approve impossible: ${r.error}` });
+
+          // sync rôles/nick partout (dont serveur officiel)
+          await syncUserEverywhere(targetDiscordUserId, ctx).catch(() => {});
+
+          // disable buttons message
+          await interaction.message.edit({ components: [] }).catch(() => {});
+          await interaction.editReply({ content: `✅ Approved. LunaLive=${r.username} | streamer=${r.streamerSlug}` });
+
+          await (interaction.channel as any)
+            ?.send?.(`✅ Demande approuvée. <@${targetDiscordUserId}> est maintenant **Streamer**.`)
+            .catch(() => {});
+          return;
+        }
+
+        if (action === "reject") {
+          const r = await rejectRequestDb(requestId);
+          if (!r.ok) return interaction.editReply({ content: `⚠️ Reject impossible: ${r.error}` });
+
+          await syncUserEverywhere(targetDiscordUserId, ctx).catch(() => {});
+
+          await interaction.message.edit({ components: [] }).catch(() => {});
+          await interaction.editReply({ content: `⛔ Rejected.` });
+
+          await (interaction.channel as any)
+            ?.send?.(`⛔ Demande refusée. <@${targetDiscordUserId}> reste **Viewer**.`)
+            .catch(() => {});
+          return;
+        }
+
+        return interaction.editReply({ content: "⚠️ Action inconnue." });
+      }
+    } catch (e: any) {
+      ctx.log(`[discord] interaction error: ${e?.message || e}`);
+
+      if ((interaction as any).isRepliable?.()) {
+        try {
+          const payload = { ephemeral: true as const, content: "Erreur interne. Réessayez plus tard." };
+          if ((interaction as any).deferred || (interaction as any).replied) {
+            await (interaction as any).followUp(payload);
+          } else {
+            await (interaction as any).reply(payload);
+          }
         } catch {}
-    }
+      }
     }
   });
-
-  // Quand un code est consommé, l’API ne “pousse” pas d’event ici (simple V1).
-  // On appliquera la sync en appelant syncUserEverywhere depuis la route consume (voir étape 4).
 
   client.on("error", (e) => ctx.log(`[discord] error: ${String(e)}`));
   client.on("warn", (m) => ctx.log(`[discord] warn: ${m}`));

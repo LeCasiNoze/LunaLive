@@ -59,11 +59,15 @@ export type ApiStreamerRequest = {
 
 export type ApplyStreamerPayload = {
   discord?: string | null;
-  channelUrl?: string | null;
+  channelUrl?: string | null;         // tu peux le garder pour DLive primary
   hasChannel?: boolean;
   hasDlive?: boolean;
   dliveDisplayname?: string | null;
   rulesAccepted?: boolean;
+
+  // ✅ NEW (simple)
+  linksText?: string | null;          // multi-lignes: "Kick: url\nYouTube: url"
+  notes?: string | null;              // avg viewers, horaires, etc.
 };
 
 export async function applyStreamer(token: string, payload?: ApplyStreamerPayload) {

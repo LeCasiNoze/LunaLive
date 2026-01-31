@@ -11,7 +11,9 @@ export async function mig040_streamer_requests_fields(pool: Pool) {
       ADD COLUMN IF NOT EXISTS dlive_displayname TEXT,
       ADD COLUMN IF NOT EXISTS rules_accepted BOOLEAN NOT NULL DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::jsonb;
-
+      ADD COLUMN IF NOT EXISTS links_text TEXT NULL,
+      ADD COLUMN IF NOT EXISTS notes TEXT NULL;
+      
     CREATE INDEX IF NOT EXISTS idx_streamer_requests_status
       ON streamer_requests(status);
 
