@@ -18,7 +18,8 @@ import { runSlotsUpdate } from "./calls/updater.js";
 
 import { startClipsMp4Renderer, startClipsMp4Cleanup } from "./clips/clip_mp4_worker.js";
 import { startAgendaNotifPoller } from "./agenda_notif_poller.js";
-import { startDiscordBot } from "./discord/bot";
+import { startDiscordBot } from "./discord/bot.js";
+
 
 const port = Number(process.env.PORT || 3001);
 
