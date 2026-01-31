@@ -14,14 +14,37 @@ type BotCtx = { log: (msg: string) => void };
 
 let discordClient: Client | null = null;
 
-function getLinkCodeSecret() {
-  const s = String(process.env.DISCORD_LINK_CODE_SECRET || "").trim();
-  if (!s) throw new Error("DISCORD_LINK_CODE_SECRET missing");
+function maskSecret(v: any) {
+  const s = String(v ?? "").trim();
+  if (!s) return "(missing)";
+  if (s.length <= 6) return `*** (len=${s.length})`;
+  return `${s.slice(0, 2)}***${s.slice(-2)} (len=${s.length})`;
+}
+
+function getLinkCodeSecret(ctx?: BotCtx) {
+  const raw = process.env.DISCORD_LINK_CODE_SECRET;
+  const s = String(raw ?? "").trim();
+
+  if (!s) {
+    // log utile sans leak
+    ctx?.log?.(
+      `[discord] DISCORD_LINK_CODE_SECRET=${maskSecret(raw)} | DISCORD_* keys=` +
+        Object.keys(process.env)
+          .filter((k) => k.startsWith("DISCORD_"))
+          .sort()
+          .join(",")
+    );
+    throw new Error("DISCORD_LINK_CODE_SECRET missing");
+  }
+
+  // log 1 fois si tu veux (optionnel)
+  // ctx?.log?.(`[discord] DISCORD_LINK_CODE_SECRET=${maskSecret(s)}`);
+
   return s;
 }
 
-function hashCode(code: string) {
-  const secret = getLinkCodeSecret();
+function hashCode(code: string, ctx?: BotCtx) {
+  const secret = getLinkCodeSecret(ctx);
   return crypto.createHash("sha256").update(`${code}::${secret}`).digest("hex");
 }
 
@@ -182,9 +205,9 @@ async function syncUserEverywhere(discordUserId: string, ctx: BotCtx) {
   ).catch(() => {});
 }
 
-async function createLinkCode(discordUserId: string) {
+async function createLinkCode(discordUserId: string, ctx: BotCtx) {
   const code = genCode(6);
-  const codeHash = hashCode(code);
+  const codeHash = hashCode(code, ctx);
   const ttl = getTtlMin();
   const expiresAt = new Date(Date.now() + ttl * 60_000);
 
@@ -246,6 +269,7 @@ export async function startDiscordBot(ctx: BotCtx) {
     ctx.log(`[discord] logged in as ${client.user?.tag ?? "unknown"}`);
     const g = await client.guilds.fetch(guildId).catch(() => null);
     ctx.log(`[discord] guild=${g?.name ?? "unknown"} (${guildId})`);
+    ctx.log(`[discord] env DISCORD_LINK_CODE_SECRET=${maskSecret(process.env.DISCORD_LINK_CODE_SECRET)}`);
 
     // Slash commands (guild scoped)
     const rest = new REST({ version: "10" }).setToken(token);
@@ -341,7 +365,21 @@ export async function startDiscordBot(ctx: BotCtx) {
           return;
         }
 
-        const { code, expiresAt } = await createLinkCode(String(interaction.user.id));
+        const secretPresent = String(process.env.DISCORD_LINK_CODE_SECRET ?? "").trim();
+            if (!secretPresent) {
+            await interaction.reply({
+                ephemeral: true,
+                content: "Configuration manquante côté serveur (DISCORD_LINK_CODE_SECRET). Contactez un administrateur.",
+            });
+            await safeDm(
+                String(interaction.user.id),
+                "Impossible de générer un code pour le moment : DISCORD_LINK_CODE_SECRET n'est pas chargé sur le serveur.",
+                ctx
+            );
+            return;
+            }
+
+        const { code, expiresAt } = await createLinkCode(String(interaction.user.id), ctx);
 
         await interaction.reply({
           ephemeral: true,
@@ -360,12 +398,20 @@ export async function startDiscordBot(ctx: BotCtx) {
         return;
       }
     } catch (e: any) {
-      ctx.log(`[discord] interaction error: ${e?.message || e}`);
-      if (interaction.isRepliable()) {
+    ctx.log(`[discord] interaction error: ${e?.message || e}`);
+
+    if (interaction.isRepliable()) {
         try {
-          await interaction.reply({ ephemeral: true, content: "Erreur interne. Réessayez plus tard." });
+        const payload = { ephemeral: true as const, content: "Erreur interne. Réessayez plus tard." };
+
+        // ✅ si déjà ack, on followUp au lieu de reply
+        if ((interaction as any).deferred || (interaction as any).replied) {
+            await interaction.followUp(payload);
+        } else {
+            await interaction.reply(payload);
+        }
         } catch {}
-      }
+    }
     }
   });
 
