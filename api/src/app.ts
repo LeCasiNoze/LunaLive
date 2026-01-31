@@ -85,6 +85,7 @@ import { adminReportsRouter } from "./routes/admin_reports.js";
 import { adminSubscriptionsRouter } from "./routes/admin_subscriptions.js";
 import { adminContentRouter } from "./routes/admin_content.js";
 import { publicContentRouter } from "./routes/public_content.js";
+import { meDiscordLinkRouter } from "./routes/me_discord_link.js";
 
 export function createApp() {
   const app = express();
@@ -205,7 +206,7 @@ export function createApp() {
   app.use("/public", publicRouter);
   app.use(authRouter);
   app.use(accountActionsRouter);
-
+  app.use(meDiscordLinkRouter);
   // ─────────────────────────────────────────────
   // ✅ Main routers
   // ─────────────────────────────────────────────

@@ -351,7 +351,7 @@ function AccountSettingsModal({
   token: string;
   onAfterChange: () => Promise<void> | void;
 }) {
-  const [tab, setTab] = React.useState<"rename" | "password">("rename");
+  const [tab, setTab] = React.useState<"rename" | "password" | "discord">("rename");
 
   // rename
   const [newUsername, setNewUsername] = React.useState("");
@@ -371,6 +371,14 @@ function AccountSettingsModal({
   const [passHint, setPassHint] = React.useState<string | null>(null);
   const [passBusy, setPassBusy] = React.useState(false);
 
+  // discord link
+  const [dLoading, setDLoading] = React.useState(false);
+  const [dLinked, setDLinked] = React.useState(false);
+  const [dInfo, setDInfo] = React.useState<any>(null);
+  const [dCode, setDCode] = React.useState("");
+  const [dBusy, setDBusy] = React.useState(false);
+  const [dHint, setDHint] = React.useState<string | null>(null);
+
   React.useEffect(() => {
     if (!open) return;
     setTab("rename");
@@ -386,6 +394,14 @@ function AccountSettingsModal({
     setP2("");
     setShowP1(false);
     setShowP2(false);
+    setDCode("");
+    setDHint(null);
+    setDLinked(false);
+    setDInfo(null);
+
+    // charge statut discord
+    loadDiscordStatus();
+
   }, [open]);
 
   if (!open) return null;
@@ -401,6 +417,83 @@ function AccountSettingsModal({
     });
     const data = await r.json().catch(() => ({}));
     return { r, data };
+  }
+
+  async function get(path: string) {
+    const r = await fetch(`${BASE}${path}`, {
+      method: "GET",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const data = await r.json().catch(() => ({}));
+    return { r, data };
+  }
+
+  async function loadDiscordStatus() {
+    setDLoading(true);
+    setDHint(null);
+    try {
+      const { r, data } = await get("/me/discord-link");
+      if (!r.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${r.status}`);
+      setDLinked(!!data.linked);
+      setDInfo(data.link || null);
+    } catch (e: any) {
+      setDHint(String(e?.message || "Erreur chargement statut Discord"));
+      setDLinked(false);
+      setDInfo(null);
+    } finally {
+      setDLoading(false);
+    }
+  }
+
+  async function consumeDiscordCode() {
+    setDBusy(true);
+    setDHint(null);
+    try {
+      const code = String(dCode || "").trim();
+      const { r, data } = await post("/me/discord-link/consume", { code });
+      if (!r.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${r.status}`);
+      setDHint("Compte Discord lié ✅ Synchronisation en cours…");
+      setDCode("");
+      await loadDiscordStatus();
+      await Promise.resolve(onAfterChange());
+    } catch (e: any) {
+      const msg = String(e?.message || "Erreur liaison Discord");
+      if (msg === "code_not_found_or_expired") setDHint("Code invalide ou expiré.");
+      else if (msg === "bad_code_format") setDHint("Format invalide. Exemple: LL-ABC123");
+      else setDHint(msg);
+    } finally {
+      setDBusy(false);
+    }
+  }
+
+  async function syncDiscordNow() {
+    setDBusy(true);
+    setDHint(null);
+    try {
+      const { r, data } = await post("/me/discord-link/sync", {});
+      if (!r.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${r.status}`);
+      setDHint("Synchronisation lancée ✅");
+      await loadDiscordStatus();
+    } catch (e: any) {
+      setDHint(String(e?.message || "Erreur sync"));
+    } finally {
+      setDBusy(false);
+    }
+  }
+
+  async function unlinkDiscord() {
+    setDBusy(true);
+    setDHint(null);
+    try {
+      const { r, data } = await post("/me/discord-link/unlink", {});
+      if (!r.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${r.status}`);
+      setDHint("Compte Discord délié ✅");
+      await loadDiscordStatus();
+    } catch (e: any) {
+      setDHint(String(e?.message || "Erreur unlink"));
+    } finally {
+      setDBusy(false);
+    }
   }
 
   async function sendRenameCode() {
@@ -533,6 +626,9 @@ function AccountSettingsModal({
           </button>
           <button className={tab === "password" ? "btnPrimary" : "btnGhost"} onClick={() => setTab("password")}>
             🔒 Mot de passe
+          </button>
+          <button className={tab === "discord" ? "btnPrimary" : "btnGhost"} onClick={() => setTab("discord")}>
+            🔗 Discord
           </button>
         </div>
 
@@ -688,6 +784,76 @@ function AccountSettingsModal({
                 {passHint}
               </div>
             ) : null}
+          </div>
+        ) : null}
+        {tab === "discord" ? (
+          <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+            <div className="muted">
+              1) Sur Discord, fais <b>/link</b> pour recevoir un code par MP.<br />
+              2) Colle le code ici pour lier ton compte.
+            </div>
+
+            <div
+              style={{
+                borderRadius: 16,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(255,255,255,0.04)",
+                padding: 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              {dLoading ? (
+                <div className="muted">Chargement statut…</div>
+              ) : dLinked ? (
+                <>
+                  <div style={{ fontWeight: 1000 }}>Statut : lié ✅</div>
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    Discord user id : <b>{dInfo?.discordUserId}</b>
+                    {dInfo?.lastSyncAt ? <> • Dernier sync : <b>{new Date(dInfo.lastSyncAt).toLocaleString("fr-FR")}</b></> : null}
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button className="btnGhost" onClick={syncDiscordNow} disabled={dBusy}>
+                      🔄 Synchroniser maintenant
+                    </button>
+                    <button className="btnGhost" onClick={unlinkDiscord} disabled={dBusy}>
+                      ❌ Délier
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 1000 }}>Statut : non lié</div>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                      value={dCode}
+                      onChange={(e) => setDCode(e.target.value)}
+                      placeholder="Ex: LL-ABC123"
+                      style={{
+                        flex: "1 1 240px",
+                        minWidth: 220,
+                        padding: "10px 12px",
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: "rgba(255,255,255,0.05)",
+                        color: "inherit",
+                        outline: "none",
+                        fontWeight: 950,
+                        letterSpacing: 0.6,
+                        textTransform: "uppercase",
+                      }}
+                    />
+                    <button className="btnPrimary" onClick={consumeDiscordCode} disabled={dBusy || !dCode.trim()}>
+                      ✅ Lier
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {dHint ? <div className="muted" style={{ opacity: 0.95 }}>{dHint}</div> : null}
+            </div>
           </div>
         ) : null}
       </div>
