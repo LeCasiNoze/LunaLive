@@ -47,6 +47,7 @@ import { mig040_streamer_requests_fields } from "./mig040_streamer_requests_fiel
 import { mig041_site_bans } from "./mig041_site_bans.js";
 import { mig042_default_user_avatar_path } from "./mig042_default_user_avatar_path.js";
 import { mig043_discord_linking } from "./mig043_discord_linking.js";
+import { mig043_discord_guild_claim } from "./mig043_discord_guild_claim.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -110,5 +111,6 @@ export async function migrateAll(pool: Pool) {
   await mig041_site_bans(pool);
   await mig042_default_user_avatar_path(pool);
   await mig043_discord_linking(pool);
+  await mig043_discord_guild_claim(pool);
 
 }

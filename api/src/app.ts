@@ -57,6 +57,7 @@ import { meProfileRouter } from "./routes/me_profile.js";
 import { meOverlayRouter } from "./routes/me_overlay.js";
 import { overlayApiRouter } from "./routes/overlay_api.js";
 import { internalBotRouter } from "./routes/internal_bot.js";
+import { internalBotStreamerRequestsRouter } from "./routes/internal_bot_streamer_requests.js";
 
 // Bot module (clean)
 import meBotRouter from "./modules/bot/router.js";
@@ -72,7 +73,7 @@ import { callsPcallRouter } from "./routes/calls_pcall.js";
 import { callsHuntRouter } from "./routes/calls_hunt.js";
 import { hunt2Router } from "./routes/hunt2.js";
 
-// Billing
+// Billing / uploads / emotes / reports / admin content
 import { billingRouter } from "./routes/billing.js";
 import { uploadsRouter } from "./routes/uploads.js";
 import { emotesRouter } from "./emotes/emotes.router.js";
@@ -85,8 +86,11 @@ import { adminReportsRouter } from "./routes/admin_reports.js";
 import { adminSubscriptionsRouter } from "./routes/admin_subscriptions.js";
 import { adminContentRouter } from "./routes/admin_content.js";
 import { publicContentRouter } from "./routes/public_content.js";
-import { meDiscordLinkRouter } from "./routes/me_discord_link.js";
-import { internalBotStreamerRequestsRouter } from "./routes/internal_bot_streamer_requests.js";
+
+// ✅ Discord routes déplacées dans /routes/bot
+import { meDiscordLinkRouter } from "./routes/bot/me_discord_link.js";
+import { discordLinkConsumeRouter } from "./routes/bot/discord_link_consume.js";
+import { botDiscordGuildRouter } from "./routes/bot/bot_discord_guild.js";
 
 export function createApp() {
   const app = express();
@@ -136,22 +140,31 @@ export function createApp() {
   // ─────────────────────────────────────────────
   // ✅ Admin routes "spécifiques" AVANT adminRouter (évite collisions / 401)
   // ─────────────────────────────────────────────
-
-  // ✅ Admin comments (déjà monté comme ça chez toi)
   app.use("/admin/casinos/comments", requireAdminKey, adminCasinoCommentsRouter);
   app.use("/admin/reports", requireAdminKey, adminReportsRouter);
   app.use("/admin", requireAdminKey, adminContentRouter);
+
   // ✅ Casinos ADMIN (ordre CRITIQUE)
-  // NOTE: on les protège aussi ici par requireAdminKey pour être sûr
   app.use("/admin/casinos/listings", requireAdminKey, adminCasinosRouter);
   app.use("/admin/casinos", requireAdminKey, adminCasinosRouter);
 
-  // setup admin casinos (si ce router est admin-only)
   app.use("/admin/casinos/setup", requireAdminKey, adminCasinosSetupRouter);
   app.use("/admin/subscriptions", adminSubscriptionsRouter);
-  // ✅ Admin emotes (protégé, mais UNIQUEMENT sur /admin/emotes/*)
+
   app.use("/admin/emotes", requireAdminKey, adminEmotesRouter);
+
+  // reports public
   app.use("/reports", reportsRouter);
+
+  // ─────────────────────────────────────────────
+  // ✅ Discord bot dashboard / api routes (auth inside routers)
+  // ─────────────────────────────────────────────
+  // /api/bot/discord/guild + /api/bot/discord/unclaim
+  app.use("/api", botDiscordGuildRouter);
+
+  // /api/discord/link/consume
+  app.use("/api", discordLinkConsumeRouter);
+
   // ─────────────────────────────────────────────
   // ✅ Public VODs (doit matcher AVANT streamerRouter)
   // ─────────────────────────────────────────────
@@ -167,13 +180,9 @@ export function createApp() {
   // ✅ Uploads routers + DB images BEFORE static
   // ─────────────────────────────────────────────
   app.use("/uploads", uploadsRouter);
-
-  // images commentaires casinos depuis DB (fallback disk si pas trouvé)
   app.use("/uploads", casinoCommentImagesRouter);
 
-  // ─────────────────────────────────────────────
-  // ✅ Static uploads
-  // ─────────────────────────────────────────────
+  // Static uploads
   app.use(
     "/uploads",
     (_req, res, next) => {
@@ -191,6 +200,8 @@ export function createApp() {
   // ─────────────────────────────────────────────
   app.use(casinosPublicRouter);
   app.use("/me/casinos", requireAuth, casinosMeRouter);
+
+  // internal bot
   app.use(internalBotRouter);
   app.use(internalBotStreamerRequestsRouter);
 
@@ -201,6 +212,7 @@ export function createApp() {
   app.use(thumbsRouter);
   app.use(moderationRouter);
   app.use(clipsPublicRouter);
+
   // ─────────────────────────────────────────────
   // ✅ Public + Auth
   // ─────────────────────────────────────────────
@@ -209,13 +221,16 @@ export function createApp() {
   app.use("/public", publicRouter);
   app.use(authRouter);
   app.use(accountActionsRouter);
+
+  // ✅ Me Discord Link (GET status / consume / unlink / sync)
   app.use(meDiscordLinkRouter);
+
   // ─────────────────────────────────────────────
   // ✅ Main routers
   // ─────────────────────────────────────────────
   app.use(streamerRouter);
 
-  // ⚠️ adminRouter APRÈS les mounts admin spécifiques
+  // adminRouter APRÈS mounts admin spécifiques
   app.use(adminRouter);
   app.use(adminImpersonateRouter);
 
@@ -276,7 +291,6 @@ export function createApp() {
   app.use("/streamer/me/dlive-link", streamerDliveLinkRouter);
   app.use(meProfileRouter);
   app.use("/overlay/api", overlayApiRouter);
-  
 
   // ─────────────────────────────────────────────
   // ✅ Slots / Calls / Hunt
