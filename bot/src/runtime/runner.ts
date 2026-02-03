@@ -123,23 +123,36 @@ export class StreamerRunner {
 
       const base = String(this.env.BOT_API_BASE || "").replace(/\/$/, "");
       const key = String(this.env.BOT_INTERNAL_KEY || "");
-      if (!base || !key) return;
+      if (!base || !key) {
+        console.log("[bot] dlive repost skipped: BOT_API_BASE or BOT_INTERNAL_KEY missing");
+        return;
+      }
 
       // ✅ endpoint interne (x-bot-key)
-      const url = `${base}/internal/bot/dlive/repost`;
+      const url = `${base}/api/dlive/repost`;
 
-      await fetch(url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-bot-key": key,
-        },
-        body: JSON.stringify({
-          streamerId: this.streamer.id,
-          message: text,
-          trigger: trigger ?? null,
-        }),
-      }).catch(() => {});
+      try {
+        const r = await fetch(url, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-bot-key": key,
+          },
+          body: JSON.stringify({
+            streamerId: this.streamer.id,
+            slug: this.streamer.slug,
+            message: text,
+            trigger: trigger ?? null,
+          }),
+        });
+
+        if (!r.ok) {
+          const t = await r.text().catch(() => "");
+          console.log("[bot] dlive repost failed", r.status, t.slice(0, 300));
+        }
+      } catch (e: any) {
+        console.log("[bot] dlive repost exception", e?.message || e);
+      }
     };
 
     // load initial config + refresh périodique

@@ -96,23 +96,22 @@ export async function dispatch(opts: DispatchOpts) {
   // garde retours à la ligne
   const out = String(rendered ?? "").replace(/\r\n/g, "\n");
 
-if (out.trim()) {
-  const finalOut = out.trimEnd();
+  if (out.trim()) {
+    const finalOut = out.trimEnd();
 
-  // ❌ NE PAS renvoyer sur LunaLive (sinon doublon)
-  await ctx.send(finalOut);
+    // 1) LunaLive (1 seule fois)
+    await ctx.send(finalOut);
 
-  // ✅ Repost vers DLive
-  if (ctx.sendDlive) {
-    const lines = finalOut
-      .split("\n")
-      .map((s) => s.trimEnd())
-      .filter((s) => s.trim().length > 0);
+    // 2) DLive (si branché)
+    if (ctx.sendDlive) {
+      const lines = finalOut
+        .split("\n")
+        .map((s) => s.trimEnd())
+        .filter((s) => s.trim().length > 0);
 
-    for (const line of lines) {
-      await ctx.sendDlive(line, { trigger });
+      for (const line of lines) {
+        await ctx.sendDlive(line, { trigger });
+      }
     }
   }
-}
-
 }

@@ -1,4 +1,3 @@
-// bot/src/env.ts
 import { z } from "zod";
 
 function parseBoolean(v: unknown, fallback?: boolean): boolean {
@@ -14,15 +13,14 @@ function parseBoolean(v: unknown, fallback?: boolean): boolean {
   if (["true", "1", "yes", "y", "on"].includes(s)) return true;
   if (["false", "0", "no", "n", "off"].includes(s)) return false;
 
-  // valeur inconnue → fallback si fourni, sinon false
   return typeof fallback === "boolean" ? fallback : false;
 }
 
 const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
 
-  // ✅ NEW: pour appeler l'API (broadcast socket)
-  BOT_API_BASE: z.string().min(1), // ex: https://lunalive-api.onrender.com
+  // ✅ pour appeler l'API (internal routes)
+  BOT_API_BASE: z.string().min(1),     // ex: https://lunalive-api.onrender.com
   BOT_INTERNAL_KEY: z.string().min(1), // même clé que côté API
 
   // bot identity (messages)
@@ -37,22 +35,21 @@ const EnvSchema = z.object({
   BOT_CHAT_BATCH: z.coerce.number().int().min(10).max(500).default(200),
 
   // ⚠️ Render: "false" ne doit PAS devenir true → custom parse
-  BOT_CHAT_START_FROM_NOW: z.preprocess(
-    (v) => parseBoolean(v, true),
-    z.boolean()
-  ),
+  BOT_CHAT_START_FROM_NOW: z.preprocess((v) => parseBoolean(v, true), z.boolean()),
 
   // comportement
   BOT_DEFAULT_PREFIX: z.string().min(1).default("!"),
 
   // ⚠️ Render: "false" ne doit PAS devenir true → custom parse
-  BOT_LIVE_ONLY_DEFAULT: z.preprocess(
-    (v) => parseBoolean(v, true),
-    z.boolean()
-  ),
+  BOT_LIVE_ONLY_DEFAULT: z.preprocess((v) => parseBoolean(v, true), z.boolean()),
 
   // optionnel (ton mode forcé)
   BOT_FORCE_STREAMER_SLUG: z.string().min(1).optional(),
+
+  // ✅ DLive (pour l'API / dlive_send si le bot en a besoin un jour, et surtout pour cohérence env)
+  // (Dans ton architecture actuelle, c'est surtout l'API qui en a besoin, mais on le met là aussi si tu veux mutualiser.)
+  DLIVE_BOT_AUTH: z.string().min(1).optional(), // token JWT brut (sans "Bearer ")
+  DLIVE_GRAPHQL_ENDPOINT: z.string().min(1).optional(), // default côté code api = https://graphigo.prd.dlive.tv/
 
   // health server (optionnel Render)
   PORT: z.coerce.number().int().min(1).max(65535).optional(),
