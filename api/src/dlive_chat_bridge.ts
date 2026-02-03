@@ -212,6 +212,15 @@ export function ensureDliveBridge(opts: {
     const senderUsername = norm(m.sender?.username);
     const senderDisplay = norm(m.sender?.displayname) || senderUsername || "DLive";
 
+        const BOT_DLIVE_USERNAME = String(process.env.DLIVE_BOT_USERNAME || "").trim().toLowerCase();
+    const BOT_DLIVE_DISPLAY = String(process.env.DLIVE_BOT_DISPLAYNAME || "BOT_LunaLive").trim().toLowerCase();
+
+    const isBot =
+      (BOT_DLIVE_USERNAME && senderUsername.toLowerCase() === BOT_DLIVE_USERNAME) ||
+      (BOT_DLIVE_DISPLAY && senderDisplay.toLowerCase() === BOT_DLIVE_DISPLAY);
+
+    if (isBot) return; // ✅ ignore messages du bot pour éviter doublons
+
     // ✅ normalize RestreamBot messages
     const normed = normalizeRestream(senderDisplay, senderUsername, content);
     if (!normed.body) return;

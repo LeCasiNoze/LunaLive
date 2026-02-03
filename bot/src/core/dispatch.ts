@@ -97,7 +97,31 @@ export async function dispatch(opts: DispatchOpts) {
   const out = String(rendered ?? "").replace(/\r\n/g, "\n");
 
   if (out.trim()) {
-    // trimEnd: garde la forme interne (newlines), retire juste les espaces finaux
-    await ctx.send(out.trimEnd());
+    const finalOut = out.trimEnd();
+
+    // ✅ 1) Toujours envoyer sur LunaLive
+    await ctx.send(finalOut);
+
+    // ✅ 2) Repost sur DLive UNIQUEMENT si:
+    // - ctx.sendDlive existe
+    // - l'auteur n'est PAS streamer/mod/admin
+    const privileged =
+      !!msg.isOwner ||
+      !!msg.isModLike ||
+      ["admin", "streamer", "mod", "moderator", "streamer_mod", "streamer_moderator"].includes(
+        String(msg.role || "").toLowerCase()
+      );
+
+    if (!privileged && ctx.sendDlive) {
+      // DLive aime mieux des messages “ligne par ligne”
+      const lines = finalOut
+        .split("\n")
+        .map((s) => s.trimEnd())
+        .filter((s) => s.trim().length > 0);
+
+      for (const line of lines) {
+        await ctx.sendDlive(line, { trigger });
+      }
+    }
   }
 }

@@ -117,6 +117,31 @@ export class StreamerRunner {
       } catch {}
     };
 
+    const sendDliveText = async (message: string, trigger?: string) => {
+      const text = String(message || "").trim();
+      if (!text) return;
+
+      const base = String(this.env.BOT_API_BASE || "").replace(/\/$/, "");
+      const key = String(this.env.BOT_INTERNAL_KEY || "");
+      if (!base || !key) return;
+
+      // ✅ endpoint interne (x-bot-key)
+      const url = `${base}/internal/bot/dlive/repost`;
+
+      await fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-bot-key": key,
+        },
+        body: JSON.stringify({
+          streamerId: this.streamer.id,
+          message: text,
+          trigger: trigger ?? null,
+        }),
+      }).catch(() => {});
+    };
+
     // load initial config + refresh périodique
     const reload = async () => {
       try {
@@ -191,8 +216,14 @@ export class StreamerRunner {
         ctx: {
           streamer: this.streamer,
           prefix,
+
           send: async (t: string) => {
             await sendBotText(t, "send");
+          },
+
+          // ✅ NEW: repost vers DLive (dispatch décidera quand l’utiliser)
+          sendDlive: async (t: string, meta?: { trigger?: string }) => {
+            await sendDliveText(t, meta?.trigger);
           },
         },
         msg,

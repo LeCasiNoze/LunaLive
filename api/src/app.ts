@@ -91,6 +91,7 @@ import { publicContentRouter } from "./routes/public_content.js";
 import { meDiscordLinkRouter } from "./routes/bot/me_discord_link.js";
 import { discordLinkConsumeRouter } from "./routes/bot/discord_link_consume.js";
 import { botDiscordGuildRouter } from "./routes/bot/bot_discord_guild.js";
+import { dliveRepostRouter } from "./routes/dlive_repost.js";
 
 export function createApp() {
   const app = express();
@@ -164,6 +165,7 @@ export function createApp() {
 
   // /api/discord/link/consume
   app.use("/api", discordLinkConsumeRouter);
+  app.use("/api", dliveRepostRouter);
 
   // ─────────────────────────────────────────────
   // ✅ Public VODs (doit matcher AVANT streamerRouter)

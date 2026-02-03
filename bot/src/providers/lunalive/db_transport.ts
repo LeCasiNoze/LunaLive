@@ -23,24 +23,73 @@ export class LunaLiveDbTransport {
     const poll = async () => {
       try {
         const r = await this.pool.query(
-          `SELECT id, streamer_id, user_id, username, body, created_at
-           FROM chat_messages
-           WHERE streamer_id=$1 AND id > $2 AND deleted_at IS NULL
-           ORDER BY id ASC
-           LIMIT $3`,
+          `
+          SELECT
+            cm.id,
+            cm.streamer_id,
+            cm.user_id,
+            cm.username,
+            cm.body,
+            cm.created_at,
+            u.role AS user_role
+          FROM chat_messages cm
+          LEFT JOIN users u
+            ON u.id = cm.user_id
+          WHERE cm.streamer_id=$1
+            AND cm.id > $2
+            AND cm.deleted_at IS NULL
+          ORDER BY cm.id ASC
+          LIMIT $3
+          `,
           [this.streamer.id, this.lastId, this.env.BOT_CHAT_BATCH]
         );
 
         for (const row of r.rows) {
+          const userId = Number(row.user_id);
+          const username = String(row.username);
+          const body = String(row.body);
+
+          // ✅ ignore system (souvent userId=0)
+          if (userId <= 0) {
+            this.lastId = Math.max(this.lastId, Number(row.id));
+            continue;
+          }
+
+          // ✅ ignore messages du bot (anti-boucle)
+          // Ajoute ces env côté bot si tu veux: BOT_LUNALIVE_USERNAME / BOT_LUNALIVE_USER_ID
+          const botUid = Number((this.env as any).BOT_LUNALIVE_USER_ID || 0);
+          const botName = String((this.env as any).BOT_LUNALIVE_USERNAME || "").trim().toLowerCase();
+          if ((botUid > 0 && userId === botUid) || (botName && username.toLowerCase() === botName)) {
+            this.lastId = Math.max(this.lastId, Number(row.id));
+            continue;
+          }
+
+          const role = String(row.user_role || "viewer");
+
+          const isModLike = ["mod", "moderator", "streamer_mod", "streamer_moderator"].includes(role.toLowerCase());
+
+          // owner: on essaie plusieurs noms possibles selon ton type StreamerRow
+          const ownerId =
+            Number((this.streamer as any).ownerUserId ?? (this.streamer as any).userId ?? (this.streamer as any).owner_user_id ?? 0);
+
+          const isOwner = ownerId > 0 && userId === ownerId;
+
+          const id = Number(row.id);
+
           const msg: ChatMsg = {
-            id: Number(row.id),
+            id,
             streamerId: Number(row.streamer_id),
-            userId: Number(row.user_id),
-            username: String(row.username),
-            body: String(row.body),
+            userId,
+            username,
+            body,
             createdAt: new Date(row.created_at).toISOString(),
+            role,
+            isModLike,
+            isOwner,
           };
-          this.lastId = Math.max(this.lastId, msg.id);
+
+          // ✅ msg.id peut être optionnel dans le type global, mais ici on a "id"
+          this.lastId = Math.max(this.lastId, id);
           await onMessage(msg);
         }
       } catch (e: any) {
@@ -117,6 +166,43 @@ export class LunaLiveDbTransport {
       }
     } catch (e: any) {
       console.log("[bot] send exception", e?.message || e);
+    }
+  }
+    async sendDlive(message: string, extra?: { trigger?: string | null }) {
+    const text = String(message || "").trim();
+    if (!text) return;
+
+    const base = String(this.env.BOT_API_BASE || "").replace(/\/$/, "");
+    const key = String(this.env.BOT_INTERNAL_KEY || "");
+    if (!base || !key) {
+      console.log("[bot] sendDlive skipped: BOT_API_BASE or BOT_INTERNAL_KEY missing");
+      return;
+    }
+
+    // ✅ je te conseille un endpoint interne (même protection x-bot-key)
+    const url = `${base}/internal/bot/dlive/repost`;
+
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-bot-key": key,
+        },
+        body: JSON.stringify({
+          streamerId: this.streamer.id,
+          slug: this.streamer.slug,
+          message: text.slice(0, 180),
+          trigger: extra?.trigger ?? null,
+        }),
+      });
+
+      if (!r.ok) {
+        const t = await r.text().catch(() => "");
+        console.log("[bot] sendDlive failed", r.status, t.slice(0, 300));
+      }
+    } catch (e: any) {
+      console.log("[bot] sendDlive exception", e?.message || e);
     }
   }
 }

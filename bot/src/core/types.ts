@@ -12,13 +12,22 @@ export type BotStreamerSettings = {
 };
 
 export type ChatMsg = {
-  id: number;
-  streamerId: number;
+  // ✅ DB / transport
+  id?: number;            // important: optionnel => pas de casse ailleurs
+  streamerId?: number;    // optionnel aussi si certains providers ne le set pas
+
+  // ✅ cœur
   userId: number;
   username: string;
   body: string;
   createdAt: string;
+
+  // ✅ flags (pour la feature repost + règles mod/owner)
+  role?: string;
+  isModLike?: boolean;
+  isOwner?: boolean;
 };
+
 
 export type BotCommand = {
   trigger: string;          // "!ping"
@@ -43,6 +52,9 @@ export type CommandContext = {
 
   send: (msg: string) => Promise<void>;
 
+  // ✅ NEW: repost vers DLive (optionnel)
+  sendDlive?: (text: string, meta?: { trigger?: string }) => Promise<void>;
+  
   // ✅ À AJOUTER
   predictions?: {
     bet: (params: {

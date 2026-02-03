@@ -11,6 +11,7 @@ import normalizeAppearance from "../appearance.js";
 import { emitChatAll, emitChatAndStream } from "../socket_emit.js";
 
 export const publicRouter = Router();
+const HEARTBEAT_TTL_SECONDS = 45;
 
 function tryGetAuthUser(req: Request): AuthUser | null {
   const h = String(req.headers.authorization || "");
@@ -57,18 +58,48 @@ publicRouter.get(
   "/lives",
   a(async (req, res) => {
     const { rows } = await pool.query(
-      `SELECT
-        s.id::text AS id,
-        s.slug,
-        s.display_name AS "displayName",
-        s.title,
-        s.viewers,
-        s.thumb_url AS "thumbUrlDb",
-        s.live_started_at AS "liveStartedAt"
-      FROM streamers s
-      WHERE s.is_live = TRUE
-        AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
-      ORDER BY s.viewers DESC`
+      `
+WITH live_streamers AS (
+  SELECT
+    s.id,
+    s.slug,
+    s.display_name AS "displayName",
+    s.title,
+    s.thumb_url AS "thumbUrlDb",
+    s.live_started_at AS "liveStartedAt"
+  FROM streamers s
+  WHERE s.is_live = TRUE
+    AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
+),
+open_ls AS (
+  SELECT streamer_id, id AS live_session_id
+  FROM live_sessions
+  WHERE ended_at IS NULL
+),
+live_viewers AS (
+  SELECT
+    vs.streamer_id,
+    COUNT(DISTINCT vs.viewer_key)::int AS viewers
+  FROM viewer_sessions vs
+  JOIN open_ls ls
+    ON ls.live_session_id = vs.live_session_id
+  WHERE vs.ended_at IS NULL
+    AND vs.last_heartbeat_at >= (NOW() - ($1::int * INTERVAL '1 second'))
+  GROUP BY vs.streamer_id
+)
+SELECT
+  ls.id::text AS id,
+  ls.slug,
+  ls."displayName",
+  ls.title,
+  COALESCE(v.viewers, 0)::int AS viewers,
+  ls."thumbUrlDb",
+  ls."liveStartedAt"
+FROM live_streamers ls
+LEFT JOIN live_viewers v ON v.streamer_id = ls.id
+ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
+      `,
+      [HEARTBEAT_TTL_SECONDS]
     );
 
     res.json(
@@ -81,7 +112,7 @@ publicRouter.get(
           slug,
           displayName: String(r.displayName || ""),
           title: String(r.title || ""),
-          viewers: Number(r.viewers || 0),
+          viewers: Number(r.viewers || 0), // ✅ viewers LunaLive
           liveStartedAt: r.liveStartedAt ? String(r.liveStartedAt) : null,
           thumbUrl: r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb,
         };
@@ -90,37 +121,67 @@ publicRouter.get(
   })
 );
 
+
 publicRouter.get(
   "/streamers",
   a(async (_req, res) => {
     const { rows } = await pool.query(
-      `SELECT
-         s.id::text AS id,
-         s.slug,
-         s.display_name AS "displayName",
-         s.title,
-         s.viewers,
-         s.is_live AS "isLive",
-         s.featured,
-         s.user_id AS "ownerUserId",
-
-         -- optionnel mais pratique: URL directe si avatar existe
-         CASE
-           WHEN ua.user_id IS NOT NULL THEN ('/avatars/u/' || s.user_id::text)
-           ELSE NULL
-         END AS "avatarUrl"
-
-       FROM streamers s
-       LEFT JOIN user_avatars ua
-         ON ua.user_id = s.user_id
-
-       WHERE (s.suspended_until IS NULL OR s.suspended_until < NOW())
-       ORDER BY LOWER(s.display_name) ASC`
+      `
+WITH base AS (
+  SELECT
+    s.id,
+    s.slug,
+    s.display_name AS "displayName",
+    s.title,
+    s.is_live AS "isLive",
+    s.featured,
+    s.user_id AS "ownerUserId",
+    CASE
+      WHEN ua.user_id IS NOT NULL THEN ('/avatars/u/' || s.user_id::text)
+      ELSE NULL
+    END AS "avatarUrl"
+  FROM streamers s
+  LEFT JOIN user_avatars ua
+    ON ua.user_id = s.user_id
+  WHERE (s.suspended_until IS NULL OR s.suspended_until < NOW())
+),
+open_ls AS (
+  SELECT streamer_id, id AS live_session_id
+  FROM live_sessions
+  WHERE ended_at IS NULL
+),
+live_viewers AS (
+  SELECT
+    vs.streamer_id,
+    COUNT(DISTINCT vs.viewer_key)::int AS viewers
+  FROM viewer_sessions vs
+  JOIN open_ls ls
+    ON ls.live_session_id = vs.live_session_id
+  WHERE vs.ended_at IS NULL
+    AND vs.last_heartbeat_at >= (NOW() - ($1::int * INTERVAL '1 second'))
+  GROUP BY vs.streamer_id
+)
+SELECT
+  b.id::text AS id,
+  b.slug,
+  b."displayName",
+  b.title,
+  COALESCE(v.viewers, 0)::int AS viewers,     -- ✅ LunaLive viewers
+  b."isLive",
+  b.featured,
+  b."ownerUserId",
+  b."avatarUrl"
+FROM base b
+LEFT JOIN live_viewers v ON v.streamer_id = b.id
+ORDER BY LOWER(b."displayName") ASC
+      `,
+      [HEARTBEAT_TTL_SECONDS]
     );
 
     res.json(rows);
   })
 );
+
 
 // ✅ LIST public content tabs (for DailyBonus modal)
 publicRouter.get(
@@ -224,6 +285,28 @@ publicRouter.get(
 
     const row = rows[0];
     row.appearance = normalizeAppearance(row.appearance || {});
+
+    // ✅ viewers LunaLive (remplace s.viewers côté UI)
+    let viewersNow = 0;
+    if (row.isLive) {
+      const v = await pool.query(
+        `
+    SELECT COUNT(DISTINCT vs.viewer_key)::int AS n
+    FROM live_sessions ls
+    JOIN viewer_sessions vs
+      ON vs.live_session_id = ls.id
+    WHERE ls.streamer_id = $1
+      AND ls.ended_at IS NULL
+      AND vs.ended_at IS NULL
+      AND vs.last_heartbeat_at >= (NOW() - ($2::int * INTERVAL '1 second'))
+        `,
+        [Number(row.id), HEARTBEAT_TTL_SECONDS]
+      );
+      viewersNow = Number(v.rows?.[0]?.n ?? 0);
+    }
+
+    // overwrites the field the front already expects
+    row.viewers = viewersNow;
 
     // ✅ choisir la chaîne DLive effective
     const useLinked = !!row.dliveUseLinked;
