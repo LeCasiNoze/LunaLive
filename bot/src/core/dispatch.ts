@@ -112,15 +112,22 @@ export async function dispatch(opts: DispatchOpts) {
         String(msg.role || "").toLowerCase()
       );
 
-    if (!privileged && ctx.sendDlive) {
-      // DLive aime mieux des messages “ligne par ligne”
-      const lines = finalOut
-        .split("\n")
-        .map((s) => s.trimEnd())
-        .filter((s) => s.trim().length > 0);
+    if (out.trim()) {
+      const finalOut = out.trimEnd();
 
-      for (const line of lines) {
-        await ctx.sendDlive(line, { trigger });
+      // ✅ 1) Toujours envoyer sur LunaLive
+      await ctx.send(finalOut);
+
+      // ✅ 2) Repost sur DLive si dispo (peu importe qui a trigger)
+      if (ctx.sendDlive) {
+        const lines = finalOut
+          .split("\n")
+          .map((s) => s.trimEnd())
+          .filter((s) => s.trim().length > 0);
+
+        for (const line of lines) {
+          await ctx.sendDlive(line, { trigger });
+        }
       }
     }
   }
