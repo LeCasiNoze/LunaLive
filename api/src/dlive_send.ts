@@ -5,10 +5,11 @@ function norm(s: any) {
 }
 
 function getAuthHeader(): string {
-  const raw = norm(process.env.DLIVE_BOT_AUTH);
+  const raw = String(process.env.DLIVE_BOT_AUTH || "").trim();
   if (!raw) throw new Error("DLIVE_BOT_AUTH missing");
-  // accepte token déjà "Bearer ..." ou brut
-  return raw.toLowerCase().startsWith("bearer ") ? raw : `Bearer ${raw}`;
+
+  // Graphigo veut le JWT brut. Si quelqu’un a mis "Bearer xxx", on strip.
+  return raw.replace(/^bearer\s+/i, "").trim();
 }
 
 export async function sendDliveChatMessage(opts: {
