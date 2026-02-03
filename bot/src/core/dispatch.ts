@@ -99,35 +99,18 @@ export async function dispatch(opts: DispatchOpts) {
   if (out.trim()) {
     const finalOut = out.trimEnd();
 
-    // ✅ 1) Toujours envoyer sur LunaLive
-    await ctx.send(finalOut);
+    // ❌ NE PAS renvoyer sur LunaLive (sinon doublon)
+    // await ctx.send(finalOut);
 
-    // ✅ 2) Repost sur DLive UNIQUEMENT si:
-    // - ctx.sendDlive existe
-    // - l'auteur n'est PAS streamer/mod/admin
-    const privileged =
-      !!msg.isOwner ||
-      !!msg.isModLike ||
-      ["admin", "streamer", "mod", "moderator", "streamer_mod", "streamer_moderator"].includes(
-        String(msg.role || "").toLowerCase()
-      );
+    // ✅ Repost vers DLive
+    if (ctx.sendDlive) {
+      const lines = finalOut
+        .split("\n")
+        .map((s) => s.trimEnd())
+        .filter((s) => s.trim().length > 0);
 
-    if (out.trim()) {
-      const finalOut = out.trimEnd();
-
-      // ✅ 1) Toujours envoyer sur LunaLive
-      await ctx.send(finalOut);
-
-      // ✅ 2) Repost sur DLive si dispo (peu importe qui a trigger)
-      if (ctx.sendDlive) {
-        const lines = finalOut
-          .split("\n")
-          .map((s) => s.trimEnd())
-          .filter((s) => s.trim().length > 0);
-
-        for (const line of lines) {
-          await ctx.sendDlive(line, { trigger });
-        }
+      for (const line of lines) {
+        await ctx.sendDlive(line, { trigger });
       }
     }
   }
