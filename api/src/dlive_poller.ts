@@ -34,6 +34,17 @@ async function getStreamerIdBySlug(slug: string): Promise<number | null> {
   return id != null ? Number(id) : null;
 }
 
+async function setLuna24DisplayName(sourceDisplayname: string | null) {
+  const dn = sourceDisplayname ? `LunaLive • ${sourceDisplayname}` : "LunaLive";
+  await pool.query(
+    `UPDATE streamers
+     SET display_name = $2,
+         updated_at = NOW()
+     WHERE lower(slug)=lower($1)`,
+    [LUNA24_TARGET_SLUG, dn]
+  );
+}
+
 async function setLuna24LinkedTarget(displayname: string | null, username: string | null) {
   // on force lunalive à "linked dlive"
   await pool.query(
@@ -349,13 +360,13 @@ export function startDlivePoller(io?: IOServer) {
         if (lunaId) {
           const pick = await pickLuna24TargetKeepingCurrent();
 
-          // met à jour le "linked" sur le streamer LunaLive
-          // - si live: on pointe vers le displayname choisi (+ username résolu)
-          // - sinon: on peut clear pour être propre
           await setLuna24LinkedTarget(pick.displayname, pick.username);
 
-          // applique état live/offline sur LunaLive (comme un streamer normal)
+          // ✅ rename displayName selon la source
+          await setLuna24DisplayName(pick.displayname);
+
           await applyLiveState(lunaId, LUNA24_TARGET_SLUG, pick.isLive, pick.viewers, io);
+
         } else {
           // pas encore créé
           console.warn(`[dlive] LunaLive streamer '${LUNA24_TARGET_SLUG}' introuvable (crée le compte)`);
