@@ -127,10 +127,11 @@ function EmoteImg({
   }
 
   const isGif = kind === "gif";
-  const size = isGif ? 96 : 128;
+  const size = isGif ? 96 : 150;
 
   return (
     <img
+      className={`ll-emote ll-emote--${kind}`}
       src={src}
       alt={alt}
       title={title || alt}
@@ -144,10 +145,16 @@ function EmoteImg({
         height: size,
         verticalAlign: "middle",
         margin: isGif ? "0 3px" : "0 2px",
-        borderRadius: isGif ? 10 : 6,
-        border: isGif ? "1px solid rgba(255,255,255,0.10)" : "none",
-        background: isGif ? "rgba(255,255,255,0.04)" : "transparent",
-        boxShadow: isGif ? "0 8px 18px rgba(0,0,0,0.22)" : "none",
+        borderRadius: 10,
+
+        // ✅ IMPORTANT: aucun fond, aucun contour, aucun effet
+        background: "transparent",
+        border: "none",
+        boxShadow: "none",
+        filter: "none",
+
+        // ✅ évite des rendus moches/halo
+        outline: "none",
       }}
       onError={() => setErr(true)}
     />

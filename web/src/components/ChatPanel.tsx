@@ -125,6 +125,13 @@ function fmtRemaining(untilIso?: string | null) {
   const d = Math.ceil(h / 24);
   return `${d}j`;
 }
+function absolutizeUrl(u: string | null) {
+  if (!u) return null;
+  const s = String(u);
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  if (s.startsWith("/")) return `${apiBase().replace(/\/$/, "")}${s}`;
+  return s;
+}
 
 function errMessage(e: unknown) {
   if (e instanceof Error) return e.message;
@@ -1735,9 +1742,10 @@ export function ChatPanel({
     ];
 
     for (const e of all) {
-      if (e.url) {
+      const u = absolutizeUrl(e.url ?? null);
+      if (u) {
         const key = `${e.kind}:${safeTokenName(e.name)}`;
-        map.set(key, { url: e.url, title: e.label || e.name });
+        map.set(key, { url: u, title: e.label || e.name });
       }
     }
 
@@ -2299,6 +2307,15 @@ function openChatPopup() {
       </style>
       <style>
         {`
+        .ll-emote{
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+          filter: none !important;
+          outline: none !important;
+          text-shadow: none !important;
+        }
+
         .chat-enter {
           will-change: transform, opacity;
           backface-visibility: hidden;

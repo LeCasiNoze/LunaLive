@@ -305,6 +305,58 @@ async function fetchStreamersIndex(): Promise<{
     return { featuredLiveSlugs: new Set(), metaBySlug: new Map() };
   }
 }
+async function fetchViewersBatchPublic(slugs: string[]): Promise<Map<string, number> | null> {
+  // Endpoint recommandé (à faire côté API) :
+  // GET /api/viewers?slugs=a,b,c  => { ok:true, viewers: { a:12, b:3, c:0 } }
+  if (!slugs.length) return new Map();
+
+  try {
+    const url = `${API_BASE}/api/viewers?slugs=${encodeURIComponent(slugs.join(","))}&_=${Date.now()}`;
+    const r = await fetch(url, { cache: "no-store" });
+    const j = await r.json().catch(() => null);
+
+    if (!r.ok || !j || j.ok === false) return null;
+
+    const raw = j.viewers ?? j.counts ?? j.data ?? null;
+    if (!raw || typeof raw !== "object") return null;
+
+    const m = new Map<string, number>();
+    for (const [k, v] of Object.entries(raw)) {
+      const n = Number(v);
+      m.set(String(k).toLowerCase(), Number.isFinite(n) ? n : 0);
+    }
+    return m;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchViewersPerSlugOverlay(slugs: string[], token: string | null): Promise<Map<string, number>> {
+  // Fallback: utilise ton endpoint overlay/api/viewers (token requis)
+  const out = new Map<string, number>();
+  if (!slugs.length || !token) return out;
+
+  const jobs = slugs.map(async (slug) => {
+    const s = String(slug || "").trim().toLowerCase();
+    if (!s) return;
+
+    try {
+      const url = `${API_BASE}/overlay/api/viewers?slug=${encodeURIComponent(s)}&_=${Date.now()}`;
+      const r = await fetch(url, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const j = await r.json().catch(() => null);
+      const v = Number(j?.viewers ?? j?.count);
+      out.set(s, Number.isFinite(v) ? v : 0);
+    } catch {
+      out.set(s, 0);
+    }
+  });
+
+  await Promise.allSettled(jobs);
+  return out;
+}
 
 async function fetchTopClipsMonth(token?: string | null): Promise<{ total: number; clips: ClipVM[] }> {
   try {
@@ -1019,14 +1071,42 @@ export default function LivesPage() {
             // meta avatar + followers (si dispo)
             avatarUrl: (x as any).avatarUrl ?? (x as any).avatar_url ?? meta?.avatarUrl ?? null,
             followersCount:
-              Number((x as any).followersCount ?? (x as any).followers_count ?? (x as any).followers ?? meta?.followersCount ?? 0) ||
-              0,
+              Number(
+                (x as any).followersCount ??
+                  (x as any).followers_count ??
+                  (x as any).followers ??
+                  meta?.followersCount ??
+                  0
+              ) || 0,
           } as any;
         });
 
-        setLives((prev) => mergeThumbFinal(prev, vmWithFeatured));
+        // ─────────────────────────────────────────────
+        // ✅ Viewers real-time (room count) override
+        // ─────────────────────────────────────────────
+        const slugs = vmWithFeatured
+          .map((x) => String((x as any).slug || "").trim().toLowerCase())
+          .filter(Boolean);
 
-        const preloadJobs = vmWithFeatured.map(async (live) => {
+        let viewersMap = await fetchViewersBatchPublic(slugs);
+
+        if (!viewersMap) {
+          viewersMap = await fetchViewersPerSlugOverlay(slugs, token);
+        }
+
+        const vmWithViewers = vmWithFeatured.map((x) => {
+          const slug = String((x as any).slug || "").trim().toLowerCase();
+          const ov = viewersMap?.get(slug);
+          const base = Number((x as any).viewers ?? 0) || 0;
+          const viewers = ov != null ? ov : base;
+          return { ...(x as any), viewers } as any;
+        });
+
+        // ✅ un seul setLives, avec les viewers corrigés
+        setLives((prev) => mergeThumbFinal(prev, vmWithViewers));
+
+        // ✅ preload sur la même liste (celle affichée)
+        const preloadJobs = vmWithViewers.map(async (live) => {
           const nowThumb = absolutize((live as any).thumbUrl || (live as any).thumb_url || null);
           const url = nowThumb ? with5MinBust(String(nowThumb), nowMs) : null;
           if (!url) return;
@@ -1037,11 +1117,16 @@ export default function LivesPage() {
           if (!ok) return;
 
           setLives((prev) =>
-            prev.map((p) => (String(p.slug || p.id) === String(live.slug || live.id) ? { ...p, thumbFinal: url } : p))
+            prev.map((p) =>
+              String(p.slug || p.id) === String((live as any).slug || (live as any).id)
+                ? { ...p, thumbFinal: url }
+                : p
+            )
           );
         });
 
         await Promise.allSettled(preloadJobs);
+
       } catch (e: any) {
         setErr(e?.message || String(e));
       } finally {
