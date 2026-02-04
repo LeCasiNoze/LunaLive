@@ -321,9 +321,8 @@ publicRouter.get(
     row.channelUsername = (useLinked ? linkedUsername : providerUsername) || null;
 
     // ✅ SPECIAL CASE: LunaLive 24/24 (ne touche aucun autre streamer)
-    const isLuna24 =
-      String(row.slug || "").toLowerCase() === "LunaLive" || // <- adapte si ton slug réel est différent
-      String(row.slug || "").toLowerCase() === "lunalive-2424";
+    const slugLc = String(row.slug || "").toLowerCase();
+    const isLuna24 = slugLc === "lunalive" || slugLc === "lunalive-2424";
 
     if (isLuna24) {
       // Si useLinked est activé mais que linkedUsername est vide,
