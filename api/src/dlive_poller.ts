@@ -8,7 +8,7 @@ const CONCURRENCY = Math.max(1, Number(process.env.DLIVE_POLL_CONCURRENCY || 5))
 
 // ✅ AJOUTE ÇA en haut du fichier (après les const INTERVAL_MS / CONCURRENCY)
 
-const LUNA24_TARGET_SLUG = "LunaLive"; // le streamer virtuel que tu vas créer
+const LUNA24_TARGET_SLUG = "lunalive"; // le streamer virtuel que tu vas créer
 const LUNA24_SOURCES_DISPLAYNAMES = [
   "CA-ME-A-SI-NO",
   "VitaPvPey",
