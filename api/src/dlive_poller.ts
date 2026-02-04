@@ -6,6 +6,95 @@ import { notifyFollowersGoLive } from "./notify_go_live.js";
 const INTERVAL_MS = Number(process.env.DLIVE_POLL_INTERVAL_MS || 30_000);
 const CONCURRENCY = Math.max(1, Number(process.env.DLIVE_POLL_CONCURRENCY || 5));
 
+// ✅ AJOUTE ÇA en haut du fichier (après les const INTERVAL_MS / CONCURRENCY)
+
+const LUNA24_TARGET_SLUG = "lunalive"; // le streamer virtuel que tu vas créer
+const LUNA24_SOURCES_DISPLAYNAMES = [
+  "CA-ME-A-SI-NO",
+  "VitaPvPey",
+  "Willwin",
+  "iBenoo",
+  "ekanos",
+  "Kawa",
+  "Kriminel",
+  "Bichou",
+  "MagouilleTv",
+];
+
+// état mémoire: on garde le current tant qu'il est live
+let luna24Current: { displayname: string; username: string | null } | null = null;
+
+async function getStreamerIdBySlug(slug: string): Promise<number | null> {
+  const r = await pool.query(
+    `SELECT id FROM streamers WHERE lower(slug)=lower($1) LIMIT 1`,
+    [slug]
+  );
+  const id = r.rows?.[0]?.id;
+  return id != null ? Number(id) : null;
+}
+
+async function setLuna24LinkedTarget(displayname: string | null, username: string | null) {
+  // on force lunalive à "linked dlive"
+  await pool.query(
+    `UPDATE streamers
+     SET dlive_use_linked = TRUE,
+         dlive_link_displayname = $2,
+         dlive_link_username = $3,
+         updated_at = NOW()
+     WHERE lower(slug)=lower($1)`,
+    [LUNA24_TARGET_SLUG, displayname, username]
+  );
+}
+
+async function pickLuna24TargetKeepingCurrent(): Promise<{
+  displayname: string | null;
+  username: string | null;
+  isLive: boolean;
+  viewers: number;
+}> {
+  // 1) si on a un current → check s'il est encore live
+  if (luna24Current?.displayname) {
+    try {
+      const info = await fetchDliveLiveInfo(luna24Current.displayname);
+      const isLive = !!info.isLive;
+      if (isLive) {
+        const viewers = Number(info.watchingCount ?? 0) || 0;
+        const username = info.username ? String(info.username) : luna24Current.username;
+        luna24Current = { displayname: luna24Current.displayname, username };
+        return {
+          displayname: luna24Current.displayname,
+          username,
+          isLive: true,
+          viewers,
+        };
+      }
+    } catch {
+      // si ça fail, on tombera sur fallback ci-dessous
+    }
+  }
+
+  // 2) sinon: premier live dans la liste (ordre strict)
+  for (const dn of LUNA24_SOURCES_DISPLAYNAMES) {
+    try {
+      const info = await fetchDliveLiveInfo(dn);
+      const isLive = !!info.isLive;
+      if (!isLive) continue;
+
+      const viewers = Number(info.watchingCount ?? 0) || 0;
+      const username = info.username ? String(info.username) : null;
+
+      luna24Current = { displayname: dn, username };
+      return { displayname: dn, username, isLive: true, viewers };
+    } catch {
+      // ignore et continue
+    }
+  }
+
+  // 3) personne live
+  luna24Current = null;
+  return { displayname: null, username: null, isLive: false, viewers: 0 };
+}
+
 async function runWithConcurrency<T>(
   items: T[],
   worker: (item: T) => Promise<void>,
@@ -253,9 +342,31 @@ export function startDlivePoller(io?: IOServer) {
     } finally {
       running = false;
     }
+      // ✅ LUNA24 / LunaLive streamer virtuel (V1)
+      try {
+        const lunaId = await getStreamerIdBySlug(LUNA24_TARGET_SLUG);
+        if (lunaId) {
+          const pick = await pickLuna24TargetKeepingCurrent();
+
+          // met à jour le "linked" sur le streamer LunaLive
+          // - si live: on pointe vers le displayname choisi (+ username résolu)
+          // - sinon: on peut clear pour être propre
+          await setLuna24LinkedTarget(pick.displayname, pick.username);
+
+          // applique état live/offline sur LunaLive (comme un streamer normal)
+          await applyLiveState(lunaId, LUNA24_TARGET_SLUG, pick.isLive, pick.viewers, io);
+        } else {
+          // pas encore créé
+          console.warn(`[dlive] LunaLive streamer '${LUNA24_TARGET_SLUG}' introuvable (crée le compte)`);
+        }
+      } catch (e) {
+        console.warn("[dlive] luna24 tick failed", e);
+      }
+
   };
 
   tick().catch((e) => console.warn("[dlive] first tick failed", e));
+
   const id = setInterval(() => tick().catch((e) => console.warn("[dlive] tick failed", e)), INTERVAL_MS);
   (id as any).unref?.();
 }
