@@ -19,6 +19,7 @@ const LUNA24_SOURCES_DISPLAYNAMES = [
   "Kriminel",
   "Bichou",
   "MagouilleTv",
+  "Put4click_live",
 ];
 
 // état mémoire: on garde le current tant qu'il est live
