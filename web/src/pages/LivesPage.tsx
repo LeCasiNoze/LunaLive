@@ -223,10 +223,13 @@ function LiveBackdrop({ url }: { url: string }) {
           backgroundImage: `url(${url})`,
           backgroundRepeat: "no-repeat",
           backgroundPosition: "center",
-          backgroundSize: "cover",
+          backgroundSize: "contain",   // ✅ montre l’image entière
+          backgroundColor: "rgba(0,0,0,0.35)", // optionnel: jolies bandes si ratio différent
+
           opacity: 0.92,
           filter: "contrast(1.06) saturate(1.18) brightness(1.02)",
-          transform: "scale(1.03)",
+          transform: "none",
+
           pointerEvents: "none",
         }}
       />
@@ -1263,26 +1266,21 @@ export default function LivesPage() {
           font-weight: 900;
         }
 
-        .livesGrid{
-          display: grid;
-          gap: 12px;
-          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-          align-items: start;
-        }
+.livesGrid{
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 320px));
+  justify-content: start; /* empêche le stretch */
+  align-items: start;
+}
+
         .liveLink{
           text-decoration: none;
           color: inherit;
           display: block;
         }
 
-        .liveThumb{
-          position: relative;
-          overflow: hidden;
-          border-radius: 18px;
-          min-height: 168px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(0,0,0,0.18);
-        }
+.liveThumb{
         .liveTopRow{
           position: absolute;
           top: 10px;
