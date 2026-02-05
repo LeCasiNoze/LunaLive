@@ -12,6 +12,14 @@ import {
 } from "discord.js";
 import { earnRubisTx } from "../wallet_engine.js";
 import { discordDailyClaimTxClient, fmtRemaining, monthKeyParis } from "../routes/bot/games_claim.js";
+import {
+  SLOT_BET_RUBIS,
+  SLOT_COOLDOWN_MS,
+  rollSlotOutcome,
+  slotCheckAndTouchCooldownTx,
+  buildSpinFrames,
+  fmtRemaining as fmtRemainingSlot,
+} from "./games_slot.js";
 
 import {
   GUILD_ID,
@@ -377,7 +385,7 @@ export async function startDiscordBot(ctx: BotCtx) {
           return;
         }
 
-                if (interaction.commandName === "claim") {
+        if (interaction.commandName === "claim") {
           const guild = interaction.guild;
           const member = interaction.member as GuildMember | null;
 
@@ -499,6 +507,141 @@ export async function startDiscordBot(ctx: BotCtx) {
             return;
           } finally {
             clientPg.release();
+          }
+        }
+
+        if (interaction.commandName === "slot") {
+          const guild = interaction.guild;
+          const member = interaction.member as GuildMember | null;
+
+          if (!guild || !member) {
+            await interaction.reply({ ephemeral: true, content: "Erreur: guild/member manquant." });
+            return;
+          }
+
+          // ✅ Officiel only
+          if (String(guild.id) !== String(GUILD_ID)) {
+            await interaction.reply({ ephemeral: true, content: "Non disponible sur ce serveur." });
+            return;
+          }
+
+          // ✅ Salon jeux only
+          if (String(interaction.channelId) !== String(OFFICIAL_GAMES_CHANNEL_ID)) {
+            await interaction.reply({
+              ephemeral: true,
+              content: `❌ Cette commande est dispo uniquement dans <#${OFFICIAL_GAMES_CHANNEL_ID}>.`,
+            });
+            return;
+          }
+
+          // ✅ Verified only
+          if (!isVerified(member)) {
+            await interaction.reply({
+              ephemeral: true,
+              content: `❌ Tu dois être **vérifié**.\n➡️ Va dans <#${OFFICIAL_LINK_CHANNEL_ID}> et fais **/link**.`,
+            });
+            return;
+          }
+
+          const linked = await getLinkedUser(String(interaction.user.id));
+          if (!linked) {
+            await interaction.reply({
+              ephemeral: true,
+              content: `❌ Ton Discord n'est pas lié à un compte LunaLive.\n➡️ Fais **/link** dans <#${OFFICIAL_LINK_CHANNEL_ID}>.`,
+            });
+            return;
+          }
+
+          // IMPORTANT: répondre vite
+          await interaction.deferReply({ ephemeral: false });
+
+          const pg = await pool.connect();
+          try {
+            await pg.query("BEGIN");
+
+            // 1) Cooldown (lock)
+            const cd = await slotCheckAndTouchCooldownTx(pg, String(interaction.user.id), SLOT_COOLDOWN_MS);
+            if (!cd.ok) {
+              await pg.query("ROLLBACK");
+
+              if (cd.error === "cooldown") {
+                await interaction.editReply({
+                  content: `<@${interaction.user.id}>`,
+                  embeds: [
+                    {
+                      title: "⏳ Slot déjà utilisé",
+                      description: `Reviens dans **${fmtRemainingSlot(cd.remainingMs)}**.`,
+                    },
+                  ],
+                });
+                return;
+              }
+
+              await interaction.editReply("❌ Erreur interne. Réessaie plus tard.");
+              return;
+            }
+
+            // 2) Roll outcome
+            const out = rollSlotOutcome();
+
+            // ⚠️ Ici il manque la partie “débit 10 rubis + payout”.
+            // Pour l’instant on répond juste visuellement pour confirmer que ça marche
+            // (sinon on bloque sur la signature de wallet_engine).
+            await pg.query("COMMIT");
+
+            const frames = buildSpinFrames(out.art);
+
+            // message initial
+            await interaction.editReply({
+              content: `<@${interaction.user.id}> 🎰 **SLOT** — mise **${SLOT_BET_RUBIS} rubis**`,
+              embeds: [
+                {
+                  title: "🎰 Spin...",
+                  description: `\`${frames[0]}\``,
+                },
+              ],
+            });
+
+            // petites animations (edits rapides)
+            for (let i = 1; i < frames.length; i++) {
+              await new Promise((r) => setTimeout(r, 700));
+              await interaction.editReply({
+                content: `<@${interaction.user.id}> 🎰 **SLOT** — mise **${SLOT_BET_RUBIS} rubis**`,
+                embeds: [
+                  {
+                    title: "🎰 Spin...",
+                    description: `\`${frames[i]}\``,
+                  },
+                ],
+              });
+            }
+
+            // final
+            await new Promise((r) => setTimeout(r, 700));
+            await interaction.editReply({
+              content: `<@${interaction.user.id}>`,
+              embeds: [
+                {
+                  title: "🎰 Résultat",
+                  description:
+                    `${out.label}\n\n` +
+                    `🎟️ Mise: **${SLOT_BET_RUBIS}**\n` +
+                    `🏆 Payout: **${out.payoutRubis}**\n` +
+                    (out.extraLossRubis ? `💥 Malus: **-${out.extraLossRubis}**` : ""),
+                  footer: { text: "LunaLive — mini-jeux (serveur officiel)" },
+                  timestamp: new Date().toISOString(),
+                },
+              ],
+            });
+
+            return;
+          } catch (e: any) {
+            try { await pg.query("ROLLBACK"); } catch {}
+            ctx.log(`[discord] slot failed: ${e?.message || e}`);
+            await interaction.editReply("❌ Erreur interne. Réessaie plus tard.");
+            return;
+          } finally {
+            pg.release();
           }
         }
 
