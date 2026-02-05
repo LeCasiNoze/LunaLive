@@ -22,6 +22,17 @@ export const OFFICIAL_GOODBYE_CHANNEL_ID = "1468975937189052567";
 // Channel où on dit aux gens de /link
 export const OFFICIAL_LINK_CHANNEL_ID = "1467142026004009167";
 
+// Reaction roles (serveur officiel)
+export const OFFICIAL_REACTION_ROLES_CHANNEL_ID = "1467142050121252914";
+
+export const ROLE_RESEAUX_GLOBAL_ID = "1468982992910155908";
+export const ROLE_YOUTUBE_ID = "1468983076141928479";
+export const ROLE_INSTA_ID = "1468983120664723507";
+export const ROLE_TIKTOK_ID = "1468983145230766163";
+
+// Custom IDs buttons
+export const CID_RR_PREFIX = "rr:"; // rr:youtube | rr:insta | rr:tiktok | rr:reseaux
+
 // Roles
 export const ROLE_VERIFIED_ID = "1467140844233556231";
 export const ROLE_VIEWER_ID = "1467140868288024742";

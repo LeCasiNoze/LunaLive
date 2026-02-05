@@ -17,9 +17,17 @@ import {
   CID_APPLY_DECIDE_PREFIX,
   CID_APPLY_MODAL,
   CID_APPLY_OPEN,
+
   OFFICIAL_WELCOME_CHANNEL_ID,
   OFFICIAL_GOODBYE_CHANNEL_ID,
   OFFICIAL_LINK_CHANNEL_ID,
+
+  OFFICIAL_REACTION_ROLES_CHANNEL_ID,
+  ROLE_RESEAUX_GLOBAL_ID,
+  ROLE_YOUTUBE_ID,
+  ROLE_INSTA_ID,
+  ROLE_TIKTOK_ID,
+  CID_RR_PREFIX,
 } from "./constants.js";
 
 import { maskEmail, maskSecret, safeDm, type BotCtx } from "./utils.js";
@@ -130,6 +138,96 @@ async function sendWelcomeLike(opts: {
   }
 }
 
+function rrRoleIdFromKey(key: string): string | null {
+  if (key === "reseaux") return ROLE_RESEAUX_GLOBAL_ID;
+  if (key === "youtube") return ROLE_YOUTUBE_ID;
+  if (key === "insta") return ROLE_INSTA_ID;
+  if (key === "tiktok") return ROLE_TIKTOK_ID;
+  return null;
+}
+
+function buildReactionRolesComponents() {
+  // payload brut (discord.js ok)
+  return [
+    {
+      type: 1, // ACTION_ROW
+      components: [
+        { type: 2, style: 1, custom_id: `${CID_RR_PREFIX}youtube`, label: "YouTube" },
+        { type: 2, style: 1, custom_id: `${CID_RR_PREFIX}insta`, label: "Insta" },
+        { type: 2, style: 1, custom_id: `${CID_RR_PREFIX}tiktok`, label: "TikTok" },
+      ],
+    },
+    {
+      type: 1,
+      components: [{ type: 2, style: 2, custom_id: `${CID_RR_PREFIX}reseaux`, label: "Réseaux (global)" }],
+    },
+  ];
+}
+
+async function ensureReactionRolesMessage(guild: any, ctx: BotCtx, client: Client) {
+  // uniquement serveur officiel
+  if (String(guild.id) !== String(GUILD_ID)) return;
+
+  const ch = await client.channels.fetch(OFFICIAL_REACTION_ROLES_CHANNEL_ID).catch(() => null);
+  if (!ch || !ch.isTextBased()) {
+    ctx.log(`[discord] reaction roles channel not found or not text-based (${OFFICIAL_REACTION_ROLES_CHANNEL_ID})`);
+    return;
+  }
+
+  // si message déjà posté par le bot -> on ne reposte pas
+  const msgs = await (ch as any).messages.fetch({ limit: 50 }).catch(() => null);
+  const found = msgs?.find((m: any) => {
+    const isBot = String(m.author?.id || "") === String(client.user?.id || "");
+    const title = String(m.embeds?.[0]?.title || "");
+    return isBot && title === "🎯 Rôles Réseaux";
+  });
+  if (found) return;
+
+  const payload: any = {
+    embeds: [
+      {
+        title: "🎯 Rôles Réseaux",
+        description:
+          "Clique sur les boutons pour **activer / désactiver** tes rôles.\n\n" +
+          "• **YouTube / Insta / TikTok** : accès aux salons associés.\n" +
+          "• **Réseaux (global)** : conseillé, ajouté automatiquement si tu prends au moins 1 rôle réseau.",
+      },
+    ],
+    components: buildReactionRolesComponents(),
+  };
+
+  await (ch as any).send(payload).catch((e: any) => {
+    ctx.log(`[discord] ensureReactionRolesMessage send failed: ${e?.message || e}`);
+  });
+}
+
+async function toggleRole(member: GuildMember, roleId: string): Promise<{ added: boolean }> {
+  const has = member.roles.cache.has(roleId);
+  if (has) {
+    await member.roles.remove(roleId).catch(() => {});
+    return { added: false };
+  } else {
+    await member.roles.add(roleId).catch(() => {});
+    return { added: true };
+  }
+}
+
+async function syncReseauxGlobal(member: GuildMember) {
+  const hasAnyNetwork =
+    member.roles.cache.has(ROLE_YOUTUBE_ID) ||
+    member.roles.cache.has(ROLE_INSTA_ID) ||
+    member.roles.cache.has(ROLE_TIKTOK_ID);
+
+  const hasGlobal = member.roles.cache.has(ROLE_RESEAUX_GLOBAL_ID);
+
+  if (hasAnyNetwork && !hasGlobal) {
+    await member.roles.add(ROLE_RESEAUX_GLOBAL_ID).catch(() => {});
+  }
+  if (!hasAnyNetwork && hasGlobal) {
+    await member.roles.remove(ROLE_RESEAUX_GLOBAL_ID).catch(() => {});
+  }
+}
+
 export async function startDiscordBot(ctx: BotCtx) {
   const token = process.env.DISCORD_BOT_TOKEN;
   const guildId = process.env.DISCORD_GUILD_ID || GUILD_ID;
@@ -155,7 +253,7 @@ export async function startDiscordBot(ctx: BotCtx) {
     await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: [...SLASH_COMMANDS] });
     ctx.log(`[discord] slash commands registered (${SLASH_COMMANDS.length})`);
 
-    if (g) await ensureApplyMessage(g, ctx);
+    if (g) await ensureReactionRolesMessage(g, ctx, client);
 
     setInterval(() => {
       pool
@@ -253,6 +351,39 @@ export async function startDiscordBot(ctx: BotCtx) {
 
   client.on("interactionCreate", async (interaction: Interaction) => {
     try {
+      // ───────── Reaction roles buttons (serveur officiel)
+      if (interaction.isButton() && interaction.customId.startsWith(CID_RR_PREFIX)) {
+        const guild = interaction.guild;
+        const member = interaction.member as GuildMember | null;
+        if (!guild || !member) {
+          await interaction.reply({ ephemeral: true, content: "Erreur: guild/member manquant." });
+          return;
+        }
+
+        // sécurité: seulement serveur officiel
+        if (String(guild.id) !== String(GUILD_ID)) {
+          await interaction.reply({ ephemeral: true, content: "Non disponible sur ce serveur." });
+          return;
+        }
+
+        const key = interaction.customId.slice(CID_RR_PREFIX.length); // youtube/insta/tiktok/reseaux
+        const roleId = rrRoleIdFromKey(key);
+        if (!roleId) {
+          await interaction.reply({ ephemeral: true, content: "Rôle inconnu." });
+          return;
+        }
+
+        const { added } = await toggleRole(member, roleId);
+
+        // auto-sync global si on touche YT/IG/TT
+        if (key === "youtube" || key === "insta" || key === "tiktok") {
+          await syncReseauxGlobal(member);
+        }
+
+        await interaction.reply({ ephemeral: true, content: added ? "✅ Rôle ajouté." : "✅ Rôle retiré." });
+        return;
+      }
+
       // ───────── Slash commands
       if (interaction.isChatInputCommand()) {
         if (interaction.commandName === "help") {
