@@ -32,6 +32,8 @@ export const ROLE_TIKTOK_ID = "1468983145230766163";
 
 // Custom IDs buttons
 export const CID_RR_PREFIX = "rr:"; // rr:youtube | rr:insta | rr:tiktok | rr:reseaux
+// Salon mini-jeux (serveur officiel uniquement)
+export const OFFICIAL_GAMES_CHANNEL_ID = "1468997817627447400";
 
 // Roles
 export const ROLE_VERIFIED_ID = "1467140844233556231";
@@ -58,4 +60,8 @@ export const SLASH_COMMANDS = [
   { name: "help", description: "Aide LunaLive" },
   { name: "whoami", description: "Afficher votre statut de liaison LunaLive" },
   { name: "link", description: "Lier votre Discord à votre compte LunaLive" },
+
+  // ✅ Mini-jeux (serveur officiel / salon jeux uniquement)
+  { name: "claim", description: "Récupérer des rubis gratuits (1x / 24h)" },
 ] as const;
+

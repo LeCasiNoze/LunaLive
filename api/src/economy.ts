@@ -10,7 +10,8 @@ export type RubisOrigin =
   | "chest_auto"
   | "chest_streamer"
   | "event_platform"
-  | "legacy";
+  | "legacy"
+  | "discord_claim"; // ✅ NEW
 
 export const ORIGIN_W_BP: Record<RubisOrigin, number> = {
   paid_topup: 10000,
@@ -21,6 +22,8 @@ export const ORIGIN_W_BP: Record<RubisOrigin, number> = {
   chest_streamer: 2000,
   event_platform: 1000,
   legacy: 2000, // backfill conservateur
+
+  discord_claim: 2000, // ✅ 0.20
 };
 
 export function weightBp(origin: string): number {
@@ -38,5 +41,6 @@ export function sqlWeightBpExpr(alias = "wl") {
     WHEN 'chest_streamer' THEN 2000
     WHEN 'event_platform' THEN 1000
     WHEN 'legacy' THEN 2000
+    WHEN 'discord_claim' THEN 2000
     ELSE 1000 END`;
 }

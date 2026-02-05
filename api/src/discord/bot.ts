@@ -10,6 +10,8 @@ import {
   type Interaction,
   type GuildMember,
 } from "discord.js";
+import { earnRubisTx } from "../wallet_engine.js";
+import { discordDailyClaimTxClient, fmtRemaining, monthKeyParis } from "../routes/bot/games_claim.js";
 
 import {
   GUILD_ID,
@@ -21,7 +23,7 @@ import {
   OFFICIAL_WELCOME_CHANNEL_ID,
   OFFICIAL_GOODBYE_CHANNEL_ID,
   OFFICIAL_LINK_CHANNEL_ID,
-
+  OFFICIAL_GAMES_CHANNEL_ID,
   OFFICIAL_REACTION_ROLES_CHANNEL_ID,
   ROLE_RESEAUX_GLOBAL_ID,
   ROLE_YOUTUBE_ID,
@@ -371,6 +373,130 @@ export async function startDiscordBot(ctx: BotCtx) {
             content: "LunaBot — commandes :\n• /link : lier votre compte LunaLive\n• /whoami : afficher votre statut\n",
           });
           return;
+        }
+
+                if (interaction.commandName === "claim") {
+          const guild = interaction.guild;
+          const member = interaction.member as GuildMember | null;
+
+          if (!guild || !member) {
+            await interaction.reply({ ephemeral: true, content: "Erreur: guild/member manquant." });
+            return;
+          }
+
+          // ✅ Officiel only
+          if (String(guild.id) !== String(GUILD_ID)) {
+            await interaction.reply({ ephemeral: true, content: "Non disponible sur ce serveur." });
+            return;
+          }
+
+          // ✅ Salon jeux only
+          if (String(interaction.channelId) !== String(OFFICIAL_GAMES_CHANNEL_ID)) {
+            await interaction.reply({
+              ephemeral: true,
+              content: `❌ Cette commande est dispo uniquement dans <#${OFFICIAL_GAMES_CHANNEL_ID}>.`,
+            });
+            return;
+          }
+
+          // ✅ Verified only
+          if (!isVerified(member)) {
+            await interaction.reply({
+              ephemeral: true,
+              content: `❌ Tu dois être **vérifié**.\n➡️ Va dans <#${OFFICIAL_LINK_CHANNEL_ID}> et fais **/link**.`,
+            });
+            return;
+          }
+
+          // ✅ être lié à un user LunaLive (pour créditer les rubis)
+          const linked = await getLinkedUser(String(interaction.user.id));
+          if (!linked) {
+            await interaction.reply({
+              ephemeral: true,
+              content: `❌ Ton Discord n'est pas lié à un compte LunaLive.\n➡️ Fais **/link** dans <#${OFFICIAL_LINK_CHANNEL_ID}>.`,
+            });
+            return;
+          }
+
+          await interaction.deferReply({ ephemeral: false });
+
+          const clientPg = await pool.connect();
+          try {
+            await clientPg.query("BEGIN");
+
+            // 1) cooldown + compteur mois (lock row)
+            const cr = await discordDailyClaimTxClient(clientPg, String(interaction.user.id));
+
+            if (!cr.ok) {
+              await clientPg.query("ROLLBACK");
+
+              if (cr.error === "cooldown") {
+                await interaction.editReply({
+                  embeds: [
+                    {
+                      title: "⏳ Claim déjà utilisé",
+                      description:
+                        `Tu as déjà claim il y a moins de 24h.\n\n` +
+                        `Reviens dans **${fmtRemaining((cr as any).remainingMs)}**.`,
+                    },
+                  ],
+                });
+                return;
+              }
+
+              await interaction.editReply("❌ Erreur interne. Réessaie plus tard.");
+              return;
+            }
+
+            const userId = Number((linked as any).id);
+            const amount = Number(cr.amount);
+            const countThisMonth = Number(cr.countThisMonth);
+            const bonus = Number(cr.bonus);
+
+            // 2) crédit rubis avec poids 0.2 => origin "discord_claim"
+            await earnRubisTx(clientPg, userId, "discord_claim", amount, {
+              source: "discord",
+              kind: "claim",
+              monthKey: (cr as any).monthKey ?? monthKeyParis(new Date()),
+              countThisMonth,
+              bonus,
+              discordUserId: String(interaction.user.id),
+              discordGuildId: String(guild.id),
+            });
+
+            await clientPg.query("COMMIT");
+
+            const isMilestone = bonus > 0;
+            const title =
+              countThisMonth === 30 ? "🏆 30e CLAIM DU MOIS !"
+              : countThisMonth === 20 ? "🔥 20e CLAIM DU MOIS !"
+              : countThisMonth === 10 ? "✨ 10e CLAIM DU MOIS !"
+              : "✅ Claim validé";
+
+            const desc =
+              `**+${amount} rubis** (${isMilestone ? `5 + ${bonus} bonus` : "5"})\n\n` +
+              `📅 Claim du mois : **${countThisMonth}**`;
+
+            await interaction.editReply({
+              embeds: [
+                {
+                  title,
+                  description: desc,
+                  footer: { text: "LunaLive — mini-jeux (serveur officiel)" },
+                  timestamp: new Date().toISOString(),
+                },
+              ],
+            });
+
+            return;
+          } catch (e: any) {
+            try { await clientPg.query("ROLLBACK"); } catch {}
+            ctx.log(`[discord] claim failed: ${e?.message || e}`);
+            await interaction.editReply("❌ Erreur interne. Réessaie plus tard.");
+            return;
+          } finally {
+            clientPg.release();
+          }
         }
 
         if (interaction.commandName === "whoami") {
