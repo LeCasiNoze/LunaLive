@@ -190,7 +190,7 @@ async function ensureReactionRolesMessage(guild: any, ctx: BotCtx, client: Clien
         description:
           "Clique sur les boutons pour **activer / désactiver** tes rôles.\n\n" +
           "• **YouTube / Insta / TikTok** : accès aux salons associés.\n" +
-          "• **Réseaux (global)** : conseillé, ajouté automatiquement si tu prends au moins 1 rôle réseau.",
+          "• **Réseaux (global)** : opt-in global (notifications générales). Indépendant des rôles ci-dessus.",
       },
     ],
     components: buildReactionRolesComponents(),
@@ -209,22 +209,6 @@ async function toggleRole(member: GuildMember, roleId: string): Promise<{ added:
   } else {
     await member.roles.add(roleId).catch(() => {});
     return { added: true };
-  }
-}
-
-async function syncReseauxGlobal(member: GuildMember) {
-  const hasAnyNetwork =
-    member.roles.cache.has(ROLE_YOUTUBE_ID) ||
-    member.roles.cache.has(ROLE_INSTA_ID) ||
-    member.roles.cache.has(ROLE_TIKTOK_ID);
-
-  const hasGlobal = member.roles.cache.has(ROLE_RESEAUX_GLOBAL_ID);
-
-  if (hasAnyNetwork && !hasGlobal) {
-    await member.roles.add(ROLE_RESEAUX_GLOBAL_ID).catch(() => {});
-  }
-  if (!hasAnyNetwork && hasGlobal) {
-    await member.roles.remove(ROLE_RESEAUX_GLOBAL_ID).catch(() => {});
   }
 }
 
@@ -374,11 +358,6 @@ export async function startDiscordBot(ctx: BotCtx) {
         }
 
         const { added } = await toggleRole(member, roleId);
-
-        // auto-sync global si on touche YT/IG/TT
-        if (key === "youtube" || key === "insta" || key === "tiktok") {
-          await syncReseauxGlobal(member);
-        }
 
         await interaction.reply({ ephemeral: true, content: added ? "✅ Rôle ajouté." : "✅ Rôle retiré." });
         return;
