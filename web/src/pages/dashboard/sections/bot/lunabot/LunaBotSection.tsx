@@ -24,6 +24,7 @@ import { CallsModule } from "./modules/CallsHuntModule";
 import { BotWheelModule } from "./modules/BotWheelModule";
 import { BotRainModule } from "./modules/BotRainModule";
 import { PredictionsModule } from "./modules/PredictionsModule";
+import { DiscordWelcomeModule } from "./modules/DiscordWelcomeModule";
 
 // ──────────────────────────────────────────
 // Types
@@ -52,6 +53,7 @@ type ActiveModule =
   | "bot-wheel"
   | "bot-rain"
   | "predictions"
+  | "discord-welcome"
   | null;
 
 const CATEGORY_LABEL: Record<ModuleCategory, string> = {
@@ -428,6 +430,16 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
     { id: "chest", category: "rubis", status: "soon", title: "Coffre streamer", desc: "Ouvertures + rewards.", icon: "📦" },
 
     { id: "discord-setup", category: "discord", status: "soon", title: "Setup Discord", desc: "Lier / rôles.", icon: "🔗" },
+    {
+      id: "discord-welcome",
+      category: "discord",
+      status: "ready",
+      title: "Welcome / Goodbye",
+      desc: "Messages d’arrivée et de départ (2 salons).",
+      icon: "👋",
+      onOpen: () => setActiveModule("discord-welcome"),
+    },
+
     { id: "discord-notif", category: "discord", status: "soon", title: "Notif Go Live", desc: "Ping / embed.", icon: "🔔" },
 
     { id: "moderation", category: "moderation", status: "soon", title: "Modération bot", desc: "Auto-mod / outils.", icon: "🛡️" },
@@ -895,6 +907,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
           <BotRainModule token={token} streamerSlug={streamer.slug} />
         ) : activeModule === "predictions" ? (
           <PredictionsModule token={token} streamerId={Number(streamer.id)} streamerSlug={streamer.slug} />
+        ) : activeModule === "discord-welcome" ? (
+          <DiscordWelcomeModule token={token} onReload={reloadAll} />
         ) : null}
       </Modal>
     </div>

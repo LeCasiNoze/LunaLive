@@ -27,6 +27,8 @@ export {
   unallowCallsProviders,
   allowOnlyCallsProvider,
   searchSlots,
+  getMyBotDiscordWelcome,
+  setMyBotDiscordWelcome,
 
 } from "../../../../../lib/api";
 
@@ -42,5 +44,6 @@ export type {
   ApiCallBanRow,
   ApiProviderPolicy,
   ApiSlotSuggestion,
+  ApiBotDiscordWelcome,
 
 } from "../../../../../lib/api";

@@ -245,10 +245,45 @@ export class StreamerRunner {
       });
     });
 
+    // Détermine si le streamer est live (pour liveOnly)
+    const isLiveNow = async (): Promise<boolean> => {
+      try {
+        const r = await this.pool.query(
+          `SELECT is_live
+          FROM streamers
+          WHERE id=$1
+          LIMIT 1`,
+          [this.streamer.id]
+        );
+
+        if (!r.rowCount) return false;
+        return Boolean(r.rows[0]?.is_live);
+      } catch (e: any) {
+        // fail-safe: si on n'arrive pas à déterminer => offline
+        try {
+          await logEvent(this.pool, this.streamer.id, "warn", "isLiveNow failed", {
+            err: e?.message || String(e),
+          });
+        } catch {}
+        return false;
+      }
+    };
+
+
     // autoposts minimal (round-robin)
     const autopostTick = async () => {
       if (!this.alive) return;
       if (!this.autoposts.length) return;
+
+      // ✅ liveOnly guard: ne rien envoyer si offline
+      if (this.settings.liveOnly) {
+        const live = await isLiveNow();
+        if (!live) {
+          // on recheck un peu plus tard sans spammer
+          this.autopostTimer = setTimeout(autopostTick, 30_000);
+          return;
+        }
+      }
 
       const it = this.autoposts.shift()!;
       this.autoposts.push(it);

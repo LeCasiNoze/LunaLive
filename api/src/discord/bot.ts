@@ -11,13 +11,124 @@ import {
   type GuildMember,
 } from "discord.js";
 
-import { GUILD_ID, SLASH_COMMANDS, CID_APPLY_DECIDE_PREFIX, CID_APPLY_MODAL, CID_APPLY_OPEN } from "./constants.js";
+import {
+  GUILD_ID,
+  SLASH_COMMANDS,
+  CID_APPLY_DECIDE_PREFIX,
+  CID_APPLY_MODAL,
+  CID_APPLY_OPEN,
+  OFFICIAL_WELCOME_CHANNEL_ID,
+  OFFICIAL_GOODBYE_CHANNEL_ID,
+  OFFICIAL_LINK_CHANNEL_ID,
+} from "./constants.js";
+
 import { maskEmail, maskSecret, safeDm, type BotCtx } from "./utils.js";
 import { createLinkCode, getLinkedUser } from "./link.js";
 import { ensureApplyMessage, buildApplyModal, dbUpsertStreamerRequest, createTicketChannel, buildStaffActionsRow, validateRulesInput, staffCanDecide, handleStaffDecisionButton } from "./apply.js";
 import { isRestricted, isVerified, syncUserEverywhere } from "./sync.js";
 
 let discordClient: Client | null = null;
+
+const DEFAULT_WELCOME =
+  `Bienvenue à {user} sur le serveur officiel de LunaLive\n` +
+  `N'oublie pas de te linker juste ici <#${OFFICIAL_LINK_CHANNEL_ID}>`;
+
+const DEFAULT_GOODBYE = "{username} a quitté **{server}**.";
+
+type DiscordWelcomeCfg = {
+  welcomeEnabled: boolean;
+  welcomeChannelId: string | null;
+  welcomeMessage: string | null;
+  goodbyeEnabled: boolean;
+  goodbyeChannelId: string | null;
+  goodbyeMessage: string | null;
+};
+
+function normText(v: any) {
+  const s = String(v ?? "").trim();
+  return s.length ? s : null;
+}
+
+function normBool(v: any, def: boolean) {
+  if (typeof v === "boolean") return v;
+  if (v === "true") return true;
+  if (v === "false") return false;
+  return def;
+}
+
+async function loadWelcomeCfg(guildId: string): Promise<DiscordWelcomeCfg | null> {
+  // ✅ Serveur officiel : hardcode (pas besoin de claim DB)
+  if (String(guildId) === String(GUILD_ID)) {
+    return {
+      welcomeEnabled: true,
+      welcomeChannelId: OFFICIAL_WELCOME_CHANNEL_ID,
+      welcomeMessage: DEFAULT_WELCOME,
+      goodbyeEnabled: true,
+      goodbyeChannelId: OFFICIAL_GOODBYE_CHANNEL_ID,
+      goodbyeMessage: DEFAULT_GOODBYE,
+    };
+  }
+
+  // ✅ Autres serveurs : config DB (quand on fera claim + invitations)
+  const r = await pool.query(`SELECT config FROM bot_discord_guilds WHERE guild_id=$1 LIMIT 1`, [guildId]);
+  const config = r.rows?.[0]?.config ?? null;
+  if (!config) return null;
+
+  const dw = (config.discordWelcome ?? {}) as any;
+
+  return {
+    welcomeEnabled: normBool(dw.welcomeEnabled, true),
+    welcomeChannelId: normText(dw.welcomeChannelId),
+    welcomeMessage: normText(dw.welcomeMessage),
+    goodbyeEnabled: normBool(dw.goodbyeEnabled, false),
+    goodbyeChannelId: normText(dw.goodbyeChannelId),
+    goodbyeMessage: normText(dw.goodbyeMessage),
+  };
+}
+
+function renderTpl(tpl: string, p: { userId: string; username: string; server: string; memberCount?: number }) {
+  return tpl
+    .replaceAll("{user}", `<@${p.userId}>`)
+    .replaceAll("{username}", p.username)
+    .replaceAll("{server}", p.server)
+    .replaceAll("{memberCount}", String(p.memberCount ?? ""));
+}
+
+async function sendWelcomeLike(opts: {
+  client: Client;
+  channelId: string;
+  kind: "welcome" | "goodbye";
+  username: string;
+  userTag?: string | null;
+  avatarUrl?: string | null;
+  serverName: string;
+  text: string;
+  ctx: BotCtx;
+}) {
+  const ch = await opts.client.channels.fetch(opts.channelId).catch(() => null);
+  if (!ch || !ch.isTextBased()) return;
+
+  const title = opts.kind === "welcome" ? "👋 Bienvenue !" : "👋 Au revoir !";
+
+  const embed: any = {
+    title,
+    description: opts.text.slice(0, 4000),
+    timestamp: new Date().toISOString(),
+    footer: { text: `Serveur: ${opts.serverName}` },
+    author: {
+      name: opts.userTag ? `${opts.username} (${opts.userTag})` : opts.username,
+      icon_url: opts.avatarUrl ?? undefined,
+    },
+  };
+
+  if (opts.avatarUrl) embed.thumbnail = { url: opts.avatarUrl };
+
+  try {
+    await (ch as any).send({ embeds: [embed] });
+  } catch (e: any) {
+    opts.ctx.log(`[discord] send ${opts.kind} failed: ${e?.message || e}`);
+  }
+}
 
 export async function startDiscordBot(ctx: BotCtx) {
   const token = process.env.DISCORD_BOT_TOKEN;
@@ -58,7 +169,36 @@ export async function startDiscordBot(ctx: BotCtx) {
 
   client.on("guildMemberAdd", async (member) => {
     try {
-      const linked = await pool.query(`SELECT 1 FROM discord_links WHERE discord_user_id = $1 LIMIT 1`, [String(member.id)]);
+      // 1) Welcome (si guild claim + config active + channel défini)
+      const cfg = await loadWelcomeCfg(String(member.guild.id));
+      if (cfg?.welcomeEnabled && cfg.welcomeChannelId) {
+        const tpl = (cfg.welcomeMessage ?? DEFAULT_WELCOME).trim() || DEFAULT_WELCOME;
+        const text = renderTpl(tpl, {
+          userId: String(member.id),
+          username: member.user.username,
+          server: member.guild.name,
+          memberCount: member.guild.memberCount,
+        });
+
+        await sendWelcomeLike({
+          client,
+          channelId: cfg.welcomeChannelId,
+          kind: "welcome",
+          username: member.user.username,
+          userTag: member.user.tag ?? null,
+          avatarUrl: member.user.displayAvatarURL({ size: 256 }),
+          serverName: member.guild.name,
+          text,
+          ctx,
+        });
+      }
+
+      // 2) Ton comportement existant: si déjà lié => sync + DM
+      const linked = await pool.query(
+        `SELECT 1 FROM discord_links WHERE discord_user_id = $1 LIMIT 1`,
+        [String(member.id)]
+      );
+
       if (linked.rowCount) {
         await syncUserEverywhere(discordClient, String(member.id), ctx);
         await safeDm(
@@ -70,6 +210,44 @@ export async function startDiscordBot(ctx: BotCtx) {
       }
     } catch (e: any) {
       ctx.log(`[discord] guildMemberAdd failed: ${e?.message || e}`);
+    }
+  });
+
+  client.on("guildMemberRemove", async (member) => {
+    try {
+      const cfg = await loadWelcomeCfg(String(member.guild.id));
+      if (!cfg?.goodbyeEnabled || !cfg.goodbyeChannelId) return;
+
+      const username =
+        (member as any)?.user?.username ??
+        (member as any)?.displayName ??
+        "Un membre";
+
+      const tpl = (cfg.goodbyeMessage ?? DEFAULT_GOODBYE).trim() || DEFAULT_GOODBYE;
+
+      const text = renderTpl(tpl, {
+        userId: String(member.id),
+        username,
+        server: member.guild.name,
+        memberCount: member.guild.memberCount,
+      });
+
+      const avatarUrl =
+        (member as any)?.user?.displayAvatarURL?.({ size: 256 }) ?? null;
+
+      await sendWelcomeLike({
+        client,
+        channelId: cfg.goodbyeChannelId,
+        kind: "goodbye",
+        username,
+        userTag: (member as any)?.user?.tag ?? null,
+        avatarUrl,
+        serverName: member.guild.name,
+        text,
+        ctx,
+      });
+    } catch (e: any) {
+      ctx.log(`[discord] guildMemberRemove failed: ${e?.message || e}`);
     }
   });
 

@@ -286,12 +286,14 @@ async function fetchStreamersIndex(): Promise<{
 
       const followersCount =
         Number(
+          s.followsCount ??           // ✅ comme StreamerPage (useStreamerData)
+          s.follows_count ??
           s.followersCount ??
-            s.followers_count ??
-            s.followers ??
-            s.followersTotal ??
-            s.followers_total ??
-            0
+          s.followers_count ??
+          s.followers ??
+          s.followersTotal ??
+          s.followers_total ??
+          0
         ) || 0;
 
       metaBySlug.set(slug, {
@@ -305,6 +307,59 @@ async function fetchStreamersIndex(): Promise<{
     return { featuredLiveSlugs: new Set(), metaBySlug: new Map() };
   }
 }
+
+// cache followsCount par slug (évite de spammer l'API)
+const followsCache = new Map<string, { n: number; ts: number }>();
+
+async function fetchFollowsCountBySlug(slug: string, token: string | null): Promise<number | null> {
+  const s = String(slug || "").trim().toLowerCase();
+  if (!s) return null;
+
+  // cache 2 minutes
+  const cached = followsCache.get(s);
+  const now = Date.now();
+  if (cached && now - cached.ts < 120_000) return cached.n;
+
+  try {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const r = await fetch(`${API_BASE}/streamers/${encodeURIComponent(s)}`, { headers });
+    const j = await r.json().catch(() => null);
+
+    // ton hook lit r.followsCount au top-level
+    const n = Number(j?.followsCount);
+    const out = Number.isFinite(n) ? n : 0;
+
+    followsCache.set(s, { n: out, ts: now });
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchFollowsCountsForLives(slugs: string[], token: string | null): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const uniq = Array.from(new Set(slugs.map((x) => String(x || "").trim().toLowerCase()).filter(Boolean)));
+  if (!uniq.length) return out;
+
+  // limite concurrence
+  const CONC = 4;
+  let i = 0;
+
+  const worker = async () => {
+    while (i < uniq.length) {
+      const idx = i++;
+      const slug = uniq[idx]!;
+      const n = await fetchFollowsCountBySlug(slug, token);
+      if (typeof n === "number") out.set(slug, n);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(CONC, uniq.length) }, worker));
+  return out;
+}
+
 async function fetchViewersBatchPublic(slugs: string[]): Promise<Map<string, number> | null> {
   // Endpoint recommandé (à faire côté API) :
   // GET /api/viewers?slugs=a,b,c  => { ok:true, viewers: { a:12, b:3, c:0 } }
@@ -1072,11 +1127,13 @@ export default function LivesPage() {
             avatarUrl: (x as any).avatarUrl ?? (x as any).avatar_url ?? meta?.avatarUrl ?? null,
             followersCount:
               Number(
+                (x as any).followsCount ??       // ✅
+                (x as any).follows_count ??
                 (x as any).followersCount ??
-                  (x as any).followers_count ??
-                  (x as any).followers ??
-                  meta?.followersCount ??
-                  0
+                (x as any).followers_count ??
+                (x as any).followers ??
+                meta?.followersCount ??
+                0
               ) || 0,
           } as any;
         });
@@ -1102,11 +1159,24 @@ export default function LivesPage() {
           return { ...(x as any), viewers } as any;
         });
 
-        // ✅ un seul setLives, avec les viewers corrigés
-        setLives((prev) => mergeThumbFinal(prev, vmWithViewers));
+        // ✅ followsCount batch (car /streamers ne le renvoie pas)
+        const slugsLower = vmWithViewers
+          .map((x) => String((x as any).slug || "").trim().toLowerCase())
+          .filter(Boolean);
+
+        const followsMap = await fetchFollowsCountsForLives(slugsLower, token);
+
+        const vmFinal = vmWithViewers.map((x) => {
+          const slug = String((x as any).slug || "").trim().toLowerCase();
+          const n = followsMap.get(slug);
+          if (typeof n !== "number") return x as any;
+          return { ...(x as any), followersCount: n } as any; // on garde le nom followersCount utilisé dans UI
+        });
+
+        setLives((prev) => mergeThumbFinal(prev, vmFinal));
 
         // ✅ preload sur la même liste (celle affichée)
-        const preloadJobs = vmWithViewers.map(async (live) => {
+        const preloadJobs = vmFinal.map(async (live) => {
           const nowThumb = absolutize((live as any).thumbUrl || (live as any).thumb_url || null);
           const url = nowThumb ? with5MinBust(String(nowThumb), nowMs) : null;
           if (!url) return;
@@ -1351,13 +1421,13 @@ export default function LivesPage() {
           font-weight: 900;
         }
 
-.livesGrid{
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 320px));
-  justify-content: start; /* empêche le stretch */
-  align-items: start;
-}
+        .livesGrid{
+          display: grid;
+          gap: 12px;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 320px));
+          justify-content: start; /* empêche le stretch */
+          align-items: start;
+        }
 
         .liveLink{
           text-decoration: none;
@@ -1365,7 +1435,15 @@ export default function LivesPage() {
           display: block;
         }
 
-.liveThumb{
+        .liveThumb{
+          position: relative;
+          height: 180px;              /* ajuste si tu veux */
+          border-radius: 18px;
+          overflow: hidden;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(0,0,0,0.30);
+        }
+
         .liveTopRow{
           position: absolute;
           top: 10px;
@@ -1377,6 +1455,7 @@ export default function LivesPage() {
           align-items: center;
           pointer-events: none;
         }
+
         .liveBottomRow{
           position: absolute;
           left: 10px;

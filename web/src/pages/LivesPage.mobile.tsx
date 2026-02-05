@@ -37,6 +37,61 @@ function timeAgo(ms: number) {
   return `${days} j`;
 }
 
+/**
+ * ✅ Avatar EXACTEMENT comme desktop LivesPage.tsx :
+ * - prend live.avatarUrl ou live.avatar_url
+ * - absolutize(apiBase, ...)
+ * - fallback svgThumb(displayName)
+ * - onError => svgThumb(displayName)
+ */
+function AvatarChip({
+  apiBase,
+  live,
+  size = 22,
+}: {
+  apiBase: string;
+  live: any;
+  size?: number;
+}) {
+  const name = String(live?.displayName ?? live?.slug ?? "Streamer");
+
+  const raw =
+    (live as any).avatarUrl != null
+      ? String((live as any).avatarUrl)
+      : (live as any).avatar_url != null
+      ? String((live as any).avatar_url)
+      : null;
+
+  const abs = raw ? absolutize(apiBase, raw) || raw : null;
+  const fallback = svgThumb(name);
+
+  return (
+    <span
+      style={{
+        width: size,
+        height: size,
+        borderRadius: Math.floor(size / 2),
+        border: "1px solid rgba(255,255,255,0.14)",
+        background: "rgba(0,0,0,0.28)",
+        overflow: "hidden",
+        display: "inline-grid",
+        placeItems: "center",
+        flex: "0 0 auto",
+      }}
+      title={name}
+    >
+      <img
+        src={abs || fallback}
+        alt=""
+        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).src = fallback;
+        }}
+      />
+    </span>
+  );
+}
+
 function Pill({
   tone,
   children,
@@ -553,7 +608,7 @@ export default function LivesPageMobile(props: {
         }
         .mSheetTop{
           display:flex;
-          justify-content: space-between;
+          justify-content: space-betweenedesktop LivesPage.tsx
           align-items: center;
           padding: 12px 14px;
           border-bottom: 1px solid rgba(255,255,255,0.08);
@@ -841,14 +896,14 @@ export default function LivesPageMobile(props: {
                     }}
                   >
                     <div className="mThumb" style={{ borderColor: "rgba(255,210,120,0.18)" }}>
-                      <LiveBackdrop url={live.thumbFinal} />
+                      <LiveBackdrop url={(live as any).thumbFinal} />
                       <div className="mTopRow">
                         <Pill tone="gold" title="Featured">
                           ✨
                         </Pill>
-                        {live.durationLabel ? (
+                        {(live as any).durationLabel ? (
                           <Pill tone="neutral" title="Durée">
-                            ⏱ {live.durationLabel}
+                            ⏱ {(live as any).durationLabel}
                           </Pill>
                         ) : (
                           <span />
@@ -858,15 +913,19 @@ export default function LivesPageMobile(props: {
 
                     <div className="mMeta">
                       <div className="mMetaTop">
-                        <div className="mName" title={live.displayName}>
-                          {live.displayName}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                          <AvatarChip apiBase={apiBase} live={live} size={22} />
+                          <div className="mName" title={(live as any).displayName} style={{ minWidth: 0 }}>
+                            {(live as any).displayName}
+                          </div>
                         </div>
+
                         <div className="mViewers" title="Viewers">
-                          👁 {formatViewers(live.viewers)}
+                          👁 {formatViewers(Number((live as any).viewers || 0))}
                         </div>
                       </div>
-                      <div className="mTitle" title={live.title || ""}>
-                        {live.title || "—"}
+                      <div className="mTitle" title={(live as any).title || ""}>
+                        {(live as any).title || "—"}
                       </div>
                     </div>
                   </GlassCard>
@@ -898,14 +957,14 @@ export default function LivesPageMobile(props: {
                   }}
                 >
                   <div className="mThumb">
-                    <LiveBackdrop url={live.thumbFinal} />
+                    <LiveBackdrop url={(live as any).thumbFinal} />
                     <div className="mTopRow">
                       <Pill tone="live" title="En direct">
                         🔴 LIVE
                       </Pill>
-                      {live.durationLabel ? (
+                      {(live as any).durationLabel ? (
                         <Pill tone="neutral" title="Durée">
-                          ⏱ {live.durationLabel}
+                          ⏱ {(live as any).durationLabel}
                         </Pill>
                       ) : (
                         <span />
@@ -915,15 +974,19 @@ export default function LivesPageMobile(props: {
 
                   <div className="mMeta">
                     <div className="mMetaTop">
-                      <div className="mName" title={live.displayName}>
-                        {live.displayName}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                        <AvatarChip apiBase={apiBase} live={live} size={22} />
+                        <div className="mName" title={(live as any).displayName} style={{ minWidth: 0 }}>
+                          {(live as any).displayName}
+                        </div>
                       </div>
+
                       <div className="mViewers" title="Viewers">
-                        👁 {formatViewers(live.viewers)}
+                        👁 {formatViewers(Number((live as any).viewers || 0))}
                       </div>
                     </div>
-                    <div className="mTitle" title={live.title || ""}>
-                      {live.title || "—"}
+                    <div className="mTitle" title={(live as any).title || ""}>
+                      {(live as any).title || "—"}
                     </div>
                   </div>
                 </GlassCard>

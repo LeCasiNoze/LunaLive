@@ -1250,6 +1250,49 @@ export async function botTestSend(token: string, body?: string) {
 }
 
 // ──────────────────────────────────────────
+// 👋 Discord Welcome / Goodbye (dashboard)
+// ──────────────────────────────────────────
+
+export type ApiBotDiscordWelcome = {
+  ok: true;
+  guildId: string | null;
+  config: null | {
+    welcomeEnabled: boolean;
+    welcomeChannelId: string | null;
+    welcomeMessage: string;
+
+    goodbyeEnabled: boolean;
+    goodbyeChannelId: string | null;
+    goodbyeMessage: string;
+  };
+};
+
+export async function getMyBotDiscordWelcome(token: string) {
+  return j<ApiBotDiscordWelcome>("/api/bot/discord/welcome", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function setMyBotDiscordWelcome(
+  token: string,
+  payload: {
+    welcomeEnabled: boolean;
+    welcomeChannelId: string | null;
+    welcomeMessage: string | null;
+
+    goodbyeEnabled: boolean;
+    goodbyeChannelId: string | null;
+    goodbyeMessage: string | null;
+  }
+) {
+  return j<ApiBotDiscordWelcome>("/api/bot/discord/welcome", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+// ──────────────────────────────────────────
 // 🎰 Admin — Slots updater manual
 // ──────────────────────────────────────────
 export type AdminSlotsUpdateResp = {
@@ -1834,3 +1877,4 @@ export type ApiPublicContentTab = {
 export async function publicListContentTabs() {
   return j("/public/content-list"); // ✅ route publique
 }
+
