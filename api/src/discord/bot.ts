@@ -240,6 +240,8 @@ export async function startDiscordBot(ctx: BotCtx) {
     ctx.log(`[discord] slash commands registered (${SLASH_COMMANDS.length})`);
 
     if (g) await ensureReactionRolesMessage(g, ctx, client);
+    if (g) await ensureApplyMessage(g, ctx);
+
 
     setInterval(() => {
       pool
@@ -477,16 +479,17 @@ export async function startDiscordBot(ctx: BotCtx) {
               `**+${amount} rubis** (${isMilestone ? `5 + ${bonus} bonus` : "5"})\n\n` +
               `📅 Claim du mois : **${countThisMonth}**`;
 
-            await interaction.editReply({
-              embeds: [
-                {
-                  title,
-                  description: desc,
-                  footer: { text: "LunaLive — mini-jeux (serveur officiel)" },
-                  timestamp: new Date().toISOString(),
-                },
-              ],
-            });
+          await interaction.editReply({
+            content: `<@${interaction.user.id}>`,
+            embeds: [
+              {
+                title,
+                description: desc,
+                footer: { text: "LunaLive — mini-jeux (serveur officiel)" },
+                timestamp: new Date().toISOString(),
+              },
+            ],
+          });
 
             return;
           } catch (e: any) {
