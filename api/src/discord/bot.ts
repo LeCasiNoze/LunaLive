@@ -780,6 +780,11 @@ export async function startDiscordBot(ctx: BotCtx) {
         }
       }
 
+      if (interaction.isButton() && interaction.customId.startsWith("bj:")) {
+        await handleBlackjackButton(pool, interaction);
+        return;
+      }
+
       // ───────── Button open modal
       if (interaction.isButton() && interaction.customId === CID_APPLY_OPEN) {
         const guild = interaction.guild;
@@ -872,8 +877,6 @@ export async function startDiscordBot(ctx: BotCtx) {
                 { name: "Expérience / Projet", value: experience.trim() ? experience.trim().slice(0, 1000) : "—", inline: false },
                 { name: "Règlement", value: "✅ Accepté", inline: true },
                 { name: "Request ID", value: String(requestId), inline: true },
-                { name: "blackjack", description: "Blackjack (mise 20 rubis)" },
-                { name: "blackjack_plus", description: "Blackjack+ (mise 25 = 20 + side bets)" },
               ],
               footer: { text: "LunaLive — streamer requests" },
             },

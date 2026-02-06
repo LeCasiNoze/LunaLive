@@ -330,7 +330,9 @@ export async function handleBlackjackCommand(pool: Pool, it: ChatInputCommandInt
       const msg = cd.error === "cooldown"
         ? `⏳ Cooldown. Reviens dans **${fmtRemaining(cd.remainingMs)}**.`
         : `❌ Erreur DB.`;
-      await it.reply({ content: msg, ephemeral: true });
+      await it.followUp({ content: msg, ephemeral: true });
+      await it.editReply({ content: "❌ Action impossible." });
+
       return;
     }
 
@@ -342,7 +344,7 @@ export async function handleBlackjackCommand(pool: Pool, it: ChatInputCommandInt
     await client.query("ROLLBACK");
     // eslint-disable-next-line no-console
     console.error("[blackjack] start tx error:", e);
-    await it.reply({ content: "❌ Impossible de démarrer la partie (TX).", ephemeral: true });
+    await it.editReply({ content: "❌ Impossible de démarrer la partie (TX)." });
     return;
   } finally {
     client.release();
@@ -384,7 +386,7 @@ export async function handleBlackjackCommand(pool: Pool, it: ChatInputCommandInt
   }, VIEW_TIMEOUT_MS);
 
   // initial reply
-  await it.reply({
+  await it.editReply({
     embeds: [embedFor(state)],
     components: components(state),
   });
@@ -396,7 +398,10 @@ export async function handleBlackjackCommand(pool: Pool, it: ChatInputCommandInt
 }
 
 export async function handleBlackjackButton(pool: Pool, it: ButtonInteraction) {
-  const [key, action] = it.customId.split(":");
+  const parts = it.customId.split(":");
+  const action = parts.pop() as string;          // dernier token
+  const key = parts.join(":");                  // tout le reste = game key
+
   const state = games.get(key);
   if (!state) {
     await it.reply({ content: "❌ Partie introuvable (expirée).", ephemeral: true });
