@@ -385,7 +385,14 @@ export async function startDiscordBot(ctx: BotCtx) {
         if (interaction.commandName === "help") {
           await interaction.reply({
             ephemeral: true,
-            content: "LunaBot — commandes :\n• /link : lier votre compte LunaLive\n• /whoami : afficher votre statut\n",
+            content:
+              "LunaBot — commandes :\n" +
+              "• /link : lier votre compte LunaLive\n" +
+              "• /whoami : afficher votre statut\n" +
+              "• /claim : rubis gratuits (24h)\n" +
+              "• /slot : machine à sous (6h)\n" +
+              "• /blackjack : blackjack (12h)\n" +
+              "• /blackjack_plus : blackjack + side bets (12h)\n",
           });
           return;
         }

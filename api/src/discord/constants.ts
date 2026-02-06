@@ -63,5 +63,9 @@ export const SLASH_COMMANDS = [
 
   // ✅ Mini-jeux (serveur officiel / salon jeux uniquement)
   { name: "claim", description: "Récupérer des rubis gratuits (1x / 24h)" },
-  { name: "slot", description: "Machine à sous (10 rubis, 1x / 6h)" }, // ✅ NEW
+  { name: "slot", description: "Machine à sous (10 rubis, 1x / 6h)" },
+
+  // ✅ Blackjack
+  { name: "blackjack", description: "Jouer au blackjack (20 rubis, 1x / 12h)" },
+  { name: "blackjack_plus", description: "Blackjack+ (side bets) (25 rubis, 1x / 12h)" },
 ] as const;
