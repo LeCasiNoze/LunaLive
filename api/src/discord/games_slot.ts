@@ -66,10 +66,10 @@ export function rollSlotOutcome(rnd = Math.random()): SlotOutcome {
   if (pick(0, 500)) {
     return {
       code: "fucked",
-      label: "[FUCKED] -X10",
+      label: "[FUCKED] -X3",
       art: "F U C K E D",
       payoutRubis: 0,
-      extraLossRubis: 100, // -10x la mise (mise=10)
+      extraLossRubis: 20, // -10x la mise (mise=10)
     };
   }
 

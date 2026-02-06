@@ -27,4 +27,16 @@ export async function mig044_discord_daily_claims(pool: Pool) {
     CREATE INDEX IF NOT EXISTS discord_slot_cooldowns_last_play_idx
       ON discord_slot_cooldowns(last_play_at DESC);
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS discord_bj_cooldowns (
+      discord_user_id TEXT PRIMARY KEY,
+      last_play_at TIMESTAMPTZ NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS discord_bj_cooldowns_last_play_idx
+      ON discord_bj_cooldowns(last_play_at DESC);
+  `);
+
 }

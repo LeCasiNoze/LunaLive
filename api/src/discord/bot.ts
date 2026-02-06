@@ -2,6 +2,11 @@
 import { pool } from "../db.js";
 
 import {
+  handleBlackjackCommand,
+  handleBlackjackButton,
+} from "./blackjack.js";
+
+import {
   Client,
   GatewayIntentBits,
   Partials,
@@ -510,6 +515,65 @@ export async function startDiscordBot(ctx: BotCtx) {
           }
         }
 
+        if (interaction.commandName === "blackjack" || interaction.commandName === "blackjack_plus") {
+          const guild = interaction.guild;
+          const member = interaction.member as GuildMember | null;
+
+          if (!guild || !member) {
+            await interaction.reply({ ephemeral: true, content: "Erreur: guild/member manquant." });
+            return;
+          }
+
+          // ✅ Officiel only
+          if (String(guild.id) !== String(GUILD_ID)) {
+            await interaction.reply({ ephemeral: true, content: "Non disponible sur ce serveur." });
+            return;
+          }
+
+          // ✅ Salon jeux only
+          if (String(interaction.channelId) !== String(OFFICIAL_GAMES_CHANNEL_ID)) {
+            await interaction.reply({
+              ephemeral: true,
+              content: `❌ Cette commande est dispo uniquement dans <#${OFFICIAL_GAMES_CHANNEL_ID}>.`,
+            });
+            return;
+          }
+
+          // ✅ Verified only
+          if (!isVerified(member)) {
+            await interaction.reply({
+              ephemeral: true,
+              content: `❌ Tu dois être **vérifié**.\n➡️ Va dans <#${OFFICIAL_LINK_CHANNEL_ID}> et fais **/link**.`,
+            });
+            return;
+          }
+
+          // ✅ Linked LunaLive user
+          const linked = await getLinkedUser(String(interaction.user.id));
+          if (!linked) {
+            await interaction.reply({
+              ephemeral: true,
+              content: `❌ Ton Discord n'est pas lié à un compte LunaLive.\n➡️ Fais **/link** dans <#${OFFICIAL_LINK_CHANNEL_ID}>.`,
+            });
+            return;
+          }
+
+          // IMPORTANT: répondre vite
+          await interaction.deferReply({ ephemeral: false });
+
+          const plusMode = interaction.commandName === "blackjack_plus";
+
+          // Tu passes au handler (il fait: cooldown 12h + debit + jeu + UI boutons)
+          const lunaUser = {
+            userId: Number((linked as any).id),
+            username: String((linked as any).username),
+          };
+
+          await handleBlackjackCommand(pool, interaction, plusMode, lunaUser);
+
+          return;
+        }
+
         if (interaction.commandName === "slot") {
           const guild = interaction.guild;
           const member = interaction.member as GuildMember | null;
@@ -808,6 +872,8 @@ export async function startDiscordBot(ctx: BotCtx) {
                 { name: "Expérience / Projet", value: experience.trim() ? experience.trim().slice(0, 1000) : "—", inline: false },
                 { name: "Règlement", value: "✅ Accepté", inline: true },
                 { name: "Request ID", value: String(requestId), inline: true },
+                { name: "blackjack", description: "Blackjack (mise 20 rubis)" },
+                { name: "blackjack_plus", description: "Blackjack+ (mise 25 = 20 + side bets)" },
               ],
               footer: { text: "LunaLive — streamer requests" },
             },
