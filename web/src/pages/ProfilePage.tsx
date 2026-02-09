@@ -1,7 +1,7 @@
 // web/src/pages/ProfilePage.tsx
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { applyStreamer, myStreamerRequest } from "../lib/api";
+import { myStreamerRequest } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
 import { AchievementsModal } from "../components/AchievementsModal";
 import { PersonalisationSection } from "../components/profile/PersonalisationSection";
@@ -13,9 +13,12 @@ import {
 } from "../lib/api_profile";
 import { useIsMobile } from "../hooks/useIsMobile";
 import ProfilePageMobile from "./ProfilePage.mobile";
-import { StreamerApplyModal, type StreamerApplyPayload } from "../components/profile/StreamerApplyModal";
 
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+
+// ✅ Discord links
+const DISCORD_INVITE_URL = "https://discord.gg/93BFrsBWWB";
+const DISCORD_STREAMER_REQUEST_URL = "https://discord.com/channels/1467139956249067717/1467142148431413370";
 
 type Tab = "overview" | "personalisation" | "social" | "stats";
 
@@ -336,9 +339,6 @@ function MiniBarList({
 /* =========================
    ⚙️ Account Settings Modal
 ========================= */
-/* =========================
-   🎥 Streamer Apply Modal
-========================= */
 
 function AccountSettingsModal({
   open,
@@ -401,7 +401,7 @@ function AccountSettingsModal({
 
     // charge statut discord
     loadDiscordStatus();
-
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   if (!open) return null;
@@ -786,10 +786,12 @@ function AccountSettingsModal({
             ) : null}
           </div>
         ) : null}
+
         {tab === "discord" ? (
           <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
             <div className="muted">
-              1) Sur Discord, fais <b>/link</b> pour recevoir un code par MP.<br />
+              1) Sur Discord, fais <b>/link</b> pour recevoir un code par MP.
+              <br />
               2) Colle le code ici pour lier ton compte.
             </div>
 
@@ -810,7 +812,12 @@ function AccountSettingsModal({
                   <div style={{ fontWeight: 1000 }}>Statut : lié ✅</div>
                   <div className="muted" style={{ fontSize: 13 }}>
                     Discord user id : <b>{dInfo?.discordUserId}</b>
-                    {dInfo?.lastSyncAt ? <> • Dernier sync : <b>{new Date(dInfo.lastSyncAt).toLocaleString("fr-FR")}</b></> : null}
+                    {dInfo?.lastSyncAt ? (
+                      <>
+                        {" "}
+                        • Dernier sync : <b>{new Date(dInfo.lastSyncAt).toLocaleString("fr-FR")}</b>
+                      </>
+                    ) : null}
                   </div>
 
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -852,7 +859,21 @@ function AccountSettingsModal({
                 </>
               )}
 
-              {dHint ? <div className="muted" style={{ opacity: 0.95 }}>{dHint}</div> : null}
+              {dHint ? (
+                <div className="muted" style={{ opacity: 0.95 }}>
+                  {dHint}
+                </div>
+              ) : null}
+
+              {/* ✅ Quick links */}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+                <a className="btnGhost" href={DISCORD_INVITE_URL} target="_blank" rel="noreferrer">
+                  🔗 Rejoindre le Discord
+                </a>
+                <a className="btnGhost" href={DISCORD_STREAMER_REQUEST_URL} target="_blank" rel="noreferrer">
+                  🎥 Demande streamer
+                </a>
+              </div>
             </div>
           </div>
         ) : null}
@@ -867,12 +888,11 @@ function ProfilePageDesktop() {
   const [tab, setTab] = React.useState<Tab>("overview");
   const [achOpen, setAchOpen] = React.useState(false);
 
-  // ✅ NEW: account settings modal
+  // ✅ account settings modal
   const [settingsOpen, setSettingsOpen] = React.useState(false);
 
-  // streamer request status
+  // streamer request status (on garde l’info backend si existante)
   const [reqStatus, setReqStatus] = React.useState<string | null>(null);
-  const [busyApply, setBusyApply] = React.useState(false);
 
   // social/following
   const [q, setQ] = React.useState("");
@@ -885,7 +905,6 @@ function ProfilePageDesktop() {
   const [stats, setStats] = React.useState<ApiProfileStats | null>(null);
   const [statsLoading, setStatsLoading] = React.useState(false);
   const [statsErr, setStatsErr] = React.useState<string | null>(null);
-  const [applyOpen, setApplyOpen] = React.useState(false); // ✅ ici
 
   // avatar fallback handling
   const avatarUrl = user ? getAvatarUrl(user) : null;
@@ -899,65 +918,6 @@ function ProfilePageDesktop() {
       setReqStatus(r.request?.status ?? null);
     })();
   }, [token]);
-
-async function onApplyWithContact(payload: StreamerApplyPayload) {
-  if (!token) return;
-  setBusyApply(true);
-
-  try {
-    const discord = (payload.discord || "").trim();
-    const url = (payload.channelUrl || "").trim();
-
-    // ✅ pour garder l’info même si le backend ne stocke qu’un champ "contact" pour l’instant
-    const contactForBackend = url ? `Discord: ${discord} | Chaîne: ${url}` : `Discord: ${discord}`;
-
-    let r: any = null;
-
-    // 1) tentative avec payload enrichi (si backend accepte des champs en plus)
-    try {
-      const resp = await fetch(`${BASE}/me/streamer-request`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          contact: contactForBackend,
-          discord,
-          channelUrl: url || null,
-          hasChannel: !!payload.hasChannel,
-        }),
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok || (data && data.ok === false)) throw new Error(data?.error || `HTTP ${resp.status}`);
-      r = data;
-    } catch {
-      // 2) retry minimal (au cas où le backend refuse les champs extra)
-      try {
-        const resp = await fetch(`${BASE}/me/streamer-request`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ contact: contactForBackend }),
-        });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok || (data && data.ok === false)) throw new Error(data?.error || `HTTP ${resp.status}`);
-        r = data;
-      } catch {
-        // 3) fallback legacy
-        r = await applyStreamer(token);
-      }
-    }
-
-    setReqStatus(r?.request?.status ?? "pending");
-    await refreshMe();
-  } finally {
-    setBusyApply(false);
-  }
-}
-
 
   // Load following when Social tab opens or query changes
   React.useEffect(() => {
@@ -1190,7 +1150,6 @@ async function onApplyWithContact(payload: StreamerApplyPayload) {
                       🏆 Succès
                     </button>
 
-                    {/* ✅ NEW */}
                     {token ? (
                       <button className="btnGhost" onClick={() => setSettingsOpen(true)}>
                         ⚙️ Paramètres
@@ -1202,26 +1161,15 @@ async function onApplyWithContact(payload: StreamerApplyPayload) {
                         🚀 Dashboard streamer
                       </Link>
                     ) : (
-                    <button
-                      className="btnPrimary"
-                      onClick={() => setApplyOpen(true)}
-                      disabled={busyApply || reqStatus === "pending" || reqStatus === "approved"}
-                      title={
-                        reqStatus === "pending"
-                          ? "Demande en attente"
-                          : reqStatus === "approved"
-                          ? "Déjà streamer"
-                          : ""
-                      }
-                    >
-                      {busyApply
-                        ? "…"
-                        : reqStatus === "pending"
-                        ? "⏳ Demande en attente"
-                        : reqStatus === "approved"
-                        ? "✅ Déjà streamer"
-                        : "🎥 Devenir streamer"}
-                    </button>
+                      <a
+                        className="btnPrimary"
+                        href={DISCORD_STREAMER_REQUEST_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="La demande se fait sur Discord (pense à /link)"
+                      >
+                        🎥 Devenir streamer
+                      </a>
                     )}
                   </div>
                 </div>
@@ -1327,25 +1275,27 @@ async function onApplyWithContact(payload: StreamerApplyPayload) {
                         {reqStatus === "pending" && "Ta demande a été envoyée : on valide ça très vite."}
                         {reqStatus === "approved" && "Bienvenue dans l’espace streamer 👑"}
                         {reqStatus === "rejected" && "Demande refusée (tu peux réessayer plus tard)."}
-                        {!reqStatus && "Envoie une demande et débloque ton dashboard streamer."}
+                        {!reqStatus &&
+                          "Les demandes streamer se font sur Discord. Rejoins le serveur et poste ta demande dans le salon prévu."}
                       </div>
 
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-                        <button
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12, alignItems: "center" }}>
+                        <a
                           className="btnPrimary"
-                          onClick={() => setApplyOpen(true)}
-                          disabled={busyApply || reqStatus === "pending" || reqStatus === "approved"}
+                          href={DISCORD_STREAMER_REQUEST_URL}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Ouvre le salon Discord des demandes streamer"
                         >
-                          {busyApply
-                            ? "…"
-                            : reqStatus === "pending"
-                            ? "⏳ En attente"
-                            : reqStatus === "approved"
-                            ? "✅ Déjà streamer"
-                            : "🚀 Faire une demande"}
-                        </button>
+                          🚀 Faire une demande sur Discord
+                        </a>
+
+                        <a className="btnGhost" href={DISCORD_INVITE_URL} target="_blank" rel="noreferrer">
+                          🔗 Rejoindre le Discord
+                        </a>
+
                         <span className="muted" style={{ alignSelf: "center" }}>
-                          🌙 Tip: mets ton profil propre avant
+                          Pense à faire <b>/link</b> ✅
                         </span>
                       </div>
                     </div>
@@ -1365,7 +1315,9 @@ async function onApplyWithContact(payload: StreamerApplyPayload) {
                         <div style={{ fontWeight: 1100, letterSpacing: -0.2 }}>🟢 Espace streamer</div>
                         <div className="muted">Tout est prêt</div>
                       </div>
-                      <div className="muted" style={{ marginTop: 10 }}>Gère ton live, ton bot, tes features et tes outils.</div>
+                      <div className="muted" style={{ marginTop: 10 }}>
+                        Gère ton live, ton bot, tes features et tes outils.
+                      </div>
                       <div style={{ marginTop: 12 }}>
                         <Link to="/dashboard" className="btnPrimary">
                           🚀 Ouvrir le Dashboard
@@ -1387,7 +1339,14 @@ async function onApplyWithContact(payload: StreamerApplyPayload) {
                       backdropFilter: "blur(10px)",
                     }}
                   >
-                    <div style={{ fontWeight: 1100, letterSpacing: -0.2, display: "flex", justifyContent: "space-between" }}>
+                    <div
+                      style={{
+                        fontWeight: 1100,
+                        letterSpacing: -0.2,
+                        display: "flex",
+                        justifyContent: "space-between",
+                      }}
+                    >
                       <span>🧭 Suggestions</span>
                       <span className="muted">petites idées</span>
                     </div>
@@ -1463,6 +1422,12 @@ async function onApplyWithContact(payload: StreamerApplyPayload) {
                       <li>🏆 Les succès donnent du rythme à ton profil</li>
                       <li>💎 Tes rubis servent pour shop + support</li>
                       <li>🌙 On ajoutera une vraie “activity timeline” ensuite</li>
+                      <li>
+                        🔗 Pour devenir streamer : passe par Discord{" "}
+                        <a href={DISCORD_INVITE_URL} target="_blank" rel="noreferrer">
+                          (lien)
+                        </a>
+                      </li>
                     </ul>
                   </div>
                 </div>
@@ -1634,8 +1599,7 @@ async function onApplyWithContact(payload: StreamerApplyPayload) {
                                       textOverflow: "ellipsis",
                                     }}
                                   >
-                                    {f.displayName ?? f.slug}{" "}
-                                    {live === true ? <span style={{ marginLeft: 6 }}>🔴</span> : null}
+                                    {f.displayName ?? f.slug} {live === true ? <span style={{ marginLeft: 6 }}>🔴</span> : null}
                                   </div>
                                   <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
                                     @{f.slug}
@@ -1784,7 +1748,8 @@ async function onApplyWithContact(payload: StreamerApplyPayload) {
                         sub={
                           typeof s.dailyWheelRubisTotal === "number" || typeof s.chestRubisWonTotal === "number" ? (
                             <>
-                              Wheel: <b>{fmtRubis(s.dailyWheelRubisTotal)}</b> • Coffres: <b>{fmtRubis(s.chestRubisWonTotal)}</b>
+                              Wheel: <b>{fmtRubis(s.dailyWheelRubisTotal)}</b> • Coffres:{" "}
+                              <b>{fmtRubis(s.chestRubisWonTotal)}</b>
                             </>
                           ) : undefined
                         }
@@ -1801,12 +1766,23 @@ async function onApplyWithContact(payload: StreamerApplyPayload) {
                           ) : undefined
                         }
                       />
-                      <StatTile emoji="🧮" label="Net rubis" value={netRubis == null ? "—" : fmt(netRubis)} sub="Fun stat (pas un solde)." />
+                      <StatTile
+                        emoji="🧮"
+                        label="Net rubis"
+                        value={netRubis == null ? "—" : fmt(netRubis)}
+                        sub="Fun stat (pas un solde)."
+                      />
                       <StatTile
                         emoji="🎡"
                         label="Daily Wheel"
                         value={typeof s.dailyWheelSpinsTotal === "number" ? `${fmt(s.dailyWheelSpinsTotal)} spins` : "—"}
-                        sub={typeof s.dailyWheelRubisTotal === "number" ? <>Total gagné: <b>{fmt(s.dailyWheelRubisTotal)}</b> rubis</> : undefined}
+                        sub={
+                          typeof s.dailyWheelRubisTotal === "number" ? (
+                            <>
+                              Total gagné: <b>{fmt(s.dailyWheelRubisTotal)}</b> rubis
+                            </>
+                          ) : undefined
+                        }
                       />
                       <StatTile
                         emoji="🗓️"
@@ -1818,7 +1794,13 @@ async function onApplyWithContact(payload: StreamerApplyPayload) {
                         emoji="🎁"
                         label="Collectibles"
                         value={typeof s.entitlementsTotal === "number" ? `${fmt(s.entitlementsTotal)} objets` : "—"}
-                        sub={typeof s.achievementsUnlockedTotal === "number" ? <>Succès débloqués: <b>{fmt(s.achievementsUnlockedTotal)}</b></> : undefined}
+                        sub={
+                          typeof s.achievementsUnlockedTotal === "number" ? (
+                            <>
+                              Succès débloqués: <b>{fmt(s.achievementsUnlockedTotal)}</b>
+                            </>
+                          ) : undefined
+                        }
                       />
                       <StatTile
                         emoji="🎁"
@@ -1871,22 +1853,12 @@ async function onApplyWithContact(payload: StreamerApplyPayload) {
 
       <AchievementsModal open={achOpen} onClose={() => setAchOpen(false)} />
 
-      {/* ✅ NEW */}
       {token ? (
         <AccountSettingsModal
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           token={token}
           onAfterChange={refreshMe}
-        />
-      ) : null}
-      {token ? (
-        <StreamerApplyModal
-          open={applyOpen}
-          onClose={() => setApplyOpen(false)}
-          token={token}
-          disabled={busyApply || reqStatus === "pending" || reqStatus === "approved"}
-          onSubmit={onApplyWithContact}
         />
       ) : null}
     </main>

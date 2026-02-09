@@ -421,6 +421,41 @@ export function attachChat(io: Server) {
     });
 
     socket.on(
+      "stream:join",
+      async (
+        { slug, token }: { slug: string; token?: string; uid?: string | number },
+        cb?: (ack: any) => void
+      ) => {
+        try {
+          const s = String(slug || "").trim();
+          if (!s) return cb?.({ ok: false, error: "bad_slug" });
+
+          // ✅ si token fourni, on l’injecte puis on re-tryAuth (utile pour overlay OBS)
+          if (token) {
+            (socket.handshake.auth as any) = { ...(socket.handshake.auth as any), token: String(token) };
+            tryAuth(socket);
+          }
+
+          const meta = await getStreamerMetaBySlug(s);
+          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+
+          // ✅ sécurité : seul owner (ou admin) peut rejoindre les alerts OBS
+          const u = (socket.data as SocketData).user;
+          const isAdmin = u?.role === "admin";
+          const isOwner = !!u && meta.ownerUserId != null && Number(meta.ownerUserId) === Number(u.id);
+          if (!isAdmin && !isOwner) return cb?.({ ok: false, error: "forbidden" });
+
+          // ✅ room attendue par me_overlay.ts
+          socket.join(`stream:${String(meta.slug).toLowerCase()}`);
+
+          cb?.({ ok: true, slug: meta.slug });
+        } catch (e: any) {
+          cb?.({ ok: false, error: String(e?.message || "join_failed") });
+        }
+      }
+    );
+
+    socket.on(
       "chat:join",
       async (
         { slug, mode }: { slug: string; mode?: ChatMode },

@@ -327,7 +327,9 @@ export function ObsWidgetModule({
   const alertsObsUrl =
     `${base}/overlay/obs/alerts.html?uid=${encodeURIComponent(uid)}&slug=${encodeURIComponent(streamerSlug)}&token=${encodeURIComponent(token)}` +
     `&api=${encodeURIComponent(API_BASE)}` +
-    `&name=${encodeURIComponent(streamerName)}&event=${alertsKind}&poll=8000`;
+    `&name=${encodeURIComponent(streamerName)}` +
+    `&listen=${encodeURIComponent(alertsKind)}` +
+    `&poll=8000`;
 
   function copy(text: string) {
     navigator.clipboard?.writeText(text).then(

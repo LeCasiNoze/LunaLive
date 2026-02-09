@@ -1,0 +1,459 @@
+/* web/src/pages/LivesPage.css
+   LunaLive — Lives page visual system (Ghost Purple + Blue Moon)
+   Safe: CSS-only changes, no logic impact.
+*/
+
+.livesPage.ll-lives{
+  position: relative;
+  padding: 18px 0 28px;
+  z-index: 0;
+}
+
+/* Background: premium dark gradient + subtle neon */
+.livesPage.ll-lives::before{
+  content:"";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 420px at 16% -10%, rgba(169, 92, 255, 0.22), rgba(0,0,0,0) 62%),
+    radial-gradient(1000px 520px at 82% 0%, rgba(84, 170, 255, 0.18), rgba(0,0,0,0) 62%),
+    radial-gradient(1200px 700px at 50% 110%, rgba(255, 92, 180, 0.12), rgba(0,0,0,0) 60%),
+    linear-gradient(180deg, rgba(8,10,18,1), rgba(5,6,12,1));
+  filter: saturate(1.02);
+  transform: translateZ(0);
+}
+
+/* ---- Tokens (scoped) ---- */
+.livesPage.ll-lives{
+  --bg-0: rgba(255,255,255,0.03);
+  --bg-1: rgba(255,255,255,0.05);
+  --bg-2: rgba(255,255,255,0.07);
+
+  --bd-0: rgba(255,255,255,0.08);
+  --bd-1: rgba(255,255,255,0.12);
+  --bd-2: rgba(255,255,255,0.18);
+
+  --shadow-1: 0 14px 50px rgba(0,0,0,0.35);
+  --shadow-2: 0 18px 70px rgba(0,0,0,0.42);
+
+  --r-lg: 20px;
+  --r-md: 14px;
+  --r-sm: 12px;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  --text: rgba(255,255,255,0.92);
+  --muted: rgba(255,255,255,0.68);
+  --muted2: rgba(255,255,255,0.56);
+
+  --brand: #a75cff;      /* ghost purple */
+  --moon: #54aaff;       /* blue moon */
+  --hot: #ff5cb4;        /* controlled neon pink */
+  --good: #35d48a;
+  --warn: #ffbf4a;
+  --bad:  #ff5b5b;
+}
+
+/* Basic typography polish */
+.livesPage.ll-lives h1,
+.livesPage.ll-lives h2,
+.livesPage.ll-lives h3{
+  color: var(--text);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.muted{ color: var(--muted); }
+.mutedSmall{
+  color: var(--muted2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sectionTitle{
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+
+.sectionHint{
+  font-size: 12px;
+  color: var(--muted2);
+}
+
+/* ---- Cards / Pills ---- */
+.ll-card{
+  border-radius: var(--r-lg);
+  border: 1px solid var(--bd-0);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.065), rgba(0,0,0,0.10));
+  box-shadow: var(--shadow-1);
+  backdrop-filter: blur(10px);
+}
+
+.ll-pill{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--bd-1);
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ll-pill b{ font-weight: 900; }
+
+.ll-pill--brand{
+  background: rgba(167,92,255,0.14);
+  border-color: rgba(167,92,255,0.26);
+}
+.ll-pill--live{
+  background: rgba(255,92,180,0.14);
+  border-color: rgba(255,92,180,0.26);
+}
+.ll-pill--gold{
+  background: rgba(255,191,74,0.14);
+  border-color: rgba(255,191,74,0.26);
+}
+.ll-pill--neutral{
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.12);
+}
+
+/* ---- Layout ---- */
+.ll-lives__wrap{
+  position: relative;
+}
+
+.ll-lives__header{
+  display: flex;
+  gap: var(--sp-4);
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 6px 2px 2px;
+}
+
+.livesH1{
+  font-size: 28px;
+  font-weight: 1000;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.livesLayout{
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: var(--sp-5);
+  align-items: start;
+  margin-top: var(--sp-4);
+}
+
+.livesMain{
+  min-width: 0;
+}
+
+.livesSidebar{
+  display: grid;
+  gap: var(--sp-4);
+  position: sticky;
+  top: 86px;
+}
+
+.sidebarDivider{
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.0), rgba(255,255,255,0.16), rgba(255,255,255,0.0));
+  opacity: 0.9;
+}
+
+/* Responsive */
+@media (max-width: 980px){
+  .livesLayout{
+    grid-template-columns: 1fr;
+  }
+  .livesSidebar{
+    position: relative;
+    top: auto;
+    order: 2;
+  }
+}
+
+/* ---- Alerts / Buttons ---- */
+.alert{
+  border-radius: var(--r-md);
+  border: 1px solid rgba(255,91,91,0.30);
+  background: rgba(255,91,91,0.10);
+  padding: 10px 12px;
+  color: rgba(255,255,255,0.92);
+}
+
+.iconBtn{
+  width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--bd-0);
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.iconBtn:hover{
+  border-color: var(--bd-2);
+  background: rgba(255,255,255,0.07);
+}
+
+.btnGhostSmall{
+  appearance: none;
+  border: 1px solid var(--bd-0);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font-weight: 800;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.btnGhostSmall:hover{
+  border-color: var(--bd-2);
+  background: rgba(255,255,255,0.06);
+}
+
+.btnGhostSmall:active{
+  transform: translateY(1px);
+}
+
+/* Focus states (a11y) */
+.livesPage.ll-lives :is(a,button,[role="button"],input,select,textarea):focus-visible{
+  outline: 2px solid rgba(84,170,255,0.55);
+  outline-offset: 2px;
+}
+
+/* ---- Lives grid / cards ---- */
+.livesGrid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-4);
+}
+
+@media (max-width: 1200px){
+  .livesGrid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px){
+  .livesGrid{ grid-template-columns: 1fr; }
+}
+
+.panel{
+  border-radius: var(--r-lg);
+  border: 1px solid var(--bd-0);
+  background: rgba(0,0,0,0.10);
+  overflow: hidden;
+  box-shadow: var(--shadow-1);
+}
+
+.hoverGlow{
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+.hoverGlow:hover{
+  transform: translateY(-2px);
+  border-color: rgba(167,92,255,0.30);
+  box-shadow: var(--shadow-2);
+  filter: saturate(1.05);
+}
+
+.liveLink{
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.liveThumb{
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  background: rgba(255,255,255,0.04);
+  overflow: hidden;
+}
+
+.liveThumb img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scale(1.01);
+}
+
+.liveTopRow{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 12px 12px 0;
+}
+
+.liveBottomRow{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 10px 12px 12px;
+}
+
+.liveTitle{
+  font-weight: 900;
+  font-size: 14px;
+  line-height: 1.25;
+  margin: 0;
+  color: var(--text);
+}
+
+.livePing{
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  display: inline-block;
+  background: rgba(255,92,180,0.95);
+  box-shadow: 0 0 0 6px rgba(255,92,180,0.12);
+  animation: llPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes llPulse{
+  0%, 100%{ box-shadow: 0 0 0 6px rgba(255,92,180,0.12); }
+  50%{ box-shadow: 0 0 0 10px rgba(255,92,180,0.05); }
+}
+
+/* ---- Clips (sidebar) ---- */
+.clipsCard{
+  padding: 14px;
+}
+
+.clipsGrid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.clipTile{
+  position: relative;
+  border-radius: 14px;
+  border: 1px solid var(--bd-0);
+  background: rgba(255,255,255,0.04);
+  overflow: hidden;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.clipThumb{
+  aspect-ratio: 16/9;
+  width: 100%;
+  background: rgba(0,0,0,0.25);
+}
+
+.clipThumb img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.clipsMoreOverlay{
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0,0,0,0.55);
+  color: rgba(255,255,255,0.95);
+  font-weight: 950;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.clipsCross{
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(45deg, rgba(255,255,255,0.10) 0 1px, rgba(0,0,0,0) 1px 100%),
+    linear-gradient(-45deg, rgba(255,255,255,0.10) 0 1px, rgba(0,0,0,0) 1px 100%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.clipPlay{
+  position: absolute;
+  inset: auto 10px 10px auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.40);
+  display: grid;
+  place-items: center;
+}
+
+/* ---- Modal / Sheet ---- */
+.chatSheetBackdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.72);
+  z-index: 80;
+}
+
+.chatSheet{
+  position: fixed;
+  inset: 4vh 0 auto 0;
+  margin: 0 auto;
+  width: min(980px, calc(100vw - 24px));
+  border-radius: 22px;
+  border: 1px solid var(--bd-0);
+  background: rgba(10,12,22,0.86);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-2);
+  z-index: 81;
+  overflow: hidden;
+}
+
+.chatSheetTop{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.chatSheetBody{
+  padding: 14px;
+}
+
+.bubble{
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.05);
+  padding: 10px 12px;
+}
+
+/* Tiny avatar used in clip modal */
+.clipMidAvatar{
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  overflow: hidden;
+  background: rgba(255,255,255,0.04);
+}
+.clipMidAvatar img{ width: 100%; height: 100%; object-fit: cover; display:block; }

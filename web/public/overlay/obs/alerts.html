@@ -40,7 +40,6 @@
       transform: translateY(0) scale(1);
     }
 
-    /* GROS média au dessus */
     .media{
       width:min(560px, 92vw);
       max-height: 420px;
@@ -50,7 +49,6 @@
       border-radius: 22px;
       overflow:hidden;
 
-      /* look luna */
       background: rgba(0,0,0,0.18);
       border: 1px solid rgba(255,255,255,0.10);
       box-shadow: 0 18px 70px rgba(0,0,0,0.55);
@@ -64,7 +62,6 @@
       display:block;
     }
 
-    /* Texte en dessous, pas “petite case” */
     .textBox{
       width:100%;
       border-radius: 18px;
@@ -89,7 +86,6 @@
       opacity: 0.55;
     }
 
-    /* Petit shimmer discret */
     @keyframes shimmer {
       0% { filter: brightness(1); }
       50% { filter: brightness(1.08); }
@@ -108,15 +104,27 @@
 
       <div class="textBox">
         <div class="txt" id="t">Alerte…</div>
-        <div class="sub" id="s">En attente d’événements</div>
+        <div class="sub" id="s">Initialisation…</div>
       </div>
     </div>
   </div>
 
   <script>
     const qs = new URLSearchParams(location.search);
+
+    // API base (le serveur socket.io est sur l'API)
     const API_BASE = (qs.get("api") || location.origin).replace(/\/+$/, "");
+
+    // Params
     const slug = (qs.get("slug") || "").trim();
+    const token = (qs.get("token") || "").trim(); // ✅ IMPORTANT: utilisé pour auth/join côté socket
+    const uid = (qs.get("uid") || "").trim();
+
+    // Filtre "écoute"
+    // ✅ listen=follow|donation|all (remplace l'ancien event=... qui servait à preview)
+    const listen = (qs.get("listen") || "all").trim().toLowerCase();
+    const listenAll = (listen === "all" || listen === "*" || !listen);
+
     const poll = Math.max(1000, parseInt(qs.get("poll") || "8000", 10));
 
     const wrap = document.getElementById("wrap");
@@ -125,17 +133,14 @@
     const t = document.getElementById("t");
     const s = document.getElementById("s");
 
-    // Queue pour éviter que 2 alertes se chevauchent
+    // Queue anti-chevauchement
     const queue = [];
     let playing = false;
     let hideTimer = null;
 
-    function show() {
-      wrap.classList.add("on");
-    }
+    function show() { wrap.classList.add("on"); }
     function hide() {
       wrap.classList.remove("on");
-      // on nettoie après transition
       window.setTimeout(() => {
         t.textContent = "";
         s.textContent = "En attente d’événements";
@@ -147,13 +152,9 @@
     function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
     async function getAudioDurationMs(soundUrl) {
-      // Si pas de son => 7000ms direct
       if (!soundUrl) return 7000;
-
-      // Essaie de lire la vraie durée (metadata)
       return await new Promise((resolve) => {
         let done = false;
-
         const a = new Audio();
         a.preload = "metadata";
         a.src = soundUrl;
@@ -172,8 +173,6 @@
         });
 
         a.addEventListener("error", () => finish(7000));
-
-        // OBS/Browser parfois capricieux => timeout metadata
         setTimeout(() => finish(7000), 1500);
       });
     }
@@ -183,12 +182,15 @@
       const a = new Audio(soundUrl);
       a.volume = Math.max(0, Math.min(1, Number(volume ?? 1)));
       a.preload = "auto";
-      try {
-        await a.play();
-      } catch {
-        // autoplay peut échouer en navigateur normal (OBS ok en général)
-      }
+      try { await a.play(); } catch {}
       return a;
+    }
+
+    function shouldAccept(payload) {
+      const ev = String(payload?.event || "").toLowerCase();
+      if (!ev) return true;
+      if (listenAll) return true;
+      return ev === listen; // follow ou donation
     }
 
     async function playOne(payload) {
@@ -203,7 +205,6 @@
       t.textContent = text;
       s.textContent = payload?.event ? `Événement: ${payload.event}` : "";
 
-      // Média au dessus
       if (imageUrl) {
         media.style.display = "flex";
         img.src = imageUrl;
@@ -212,13 +213,20 @@
         img.removeAttribute("src");
       }
 
-      // Durée = durée réelle du son si présent, sinon 7s
-      const durationMs = await getAudioDurationMs(soundUrl);
+      // ✅ durée: si backend fournit durationMs on la respecte,
+      // sinon on calcule via metadata, sinon fallback 7s
+      let durationMs = Number(payload?.durationMs ?? payload?.duration_ms ?? 0) || 0;
+      if (durationMs < 200) {
+        durationMs = await getAudioDurationMs(soundUrl);
+      } else {
+        // si un son plus long est détecté, on peut prendre le max (optionnel)
+        const metaMs = await getAudioDurationMs(soundUrl);
+        durationMs = Math.max(durationMs, metaMs);
+      }
+      durationMs = Math.max(1200, Math.min(20_000, durationMs)); // clamp
 
-      // lance le son (en parallèle)
       playSound(soundUrl, volume);
 
-      // garde à l'écran jusqu'à fin son (ou 7s)
       hideTimer = setTimeout(() => hide(), durationMs);
       await sleep(durationMs + 220);
     }
@@ -229,6 +237,7 @@
       try {
         while (queue.length) {
           const p = queue.shift();
+          if (!shouldAccept(p)) continue;
           await playOne(p);
         }
       } finally {
@@ -236,41 +245,62 @@
       }
     }
 
-    // --- MODE SOCKET (prod) ---
-    // Le serveur émet `obs:alert` dans la room `stream:{slug}`
-    // On se connecte au socket.io du même host que l'API (API_BASE)
+    // ---- SOCKET MODE (prod) ----
+    // backend doit gérer `stream:join` et join room `stream:${slugLower}`
     let socket = null;
+
     function connectSocket() {
-      // charge socket.io client depuis l'API (si ton app le sert)
+      s.textContent = "Connexion…";
+
       const script = document.createElement("script");
       script.src = `${API_BASE}/socket.io/socket.io.js`;
       script.async = true;
+
       script.onload = () => {
-        socket = window.io(API_BASE, { transports: ["websocket", "polling"] });
+        // ✅ auth token transmis (compatible avec tryAuth() côté serveur)
+        socket = window.io(API_BASE, {
+          transports: ["websocket", "polling"],
+          auth: token ? { token } : undefined,
+        });
 
         socket.on("connect", () => {
-          s.textContent = "Connecté ✓";
-          if (slug) {
-            socket.emit("stream:join", { slug }, (ack) => {
-              if (!ack?.ok) s.textContent = "Join stream: échec";
-            });
-          } else {
+          s.textContent = "Socket connecté ✓";
+
+          if (!slug) {
             s.textContent = "slug manquant (URL)";
+            return;
           }
+
+          // ✅ join + ack (slug + token + uid)
+          socket.emit("stream:join", { slug, token, uid }, (ack) => {
+            if (!ack?.ok) {
+              s.textContent = `Join stream: échec (${ack?.error || "unknown"})`;
+            } else {
+              s.textContent = "En attente d’événements";
+            }
+          });
         });
 
         socket.on("disconnect", () => {
           s.textContent = "Déconnecté…";
         });
 
+        socket.on("connect_error", (err) => {
+          s.textContent = `Erreur socket: ${String(err?.message || "connect_error")}`;
+        });
+
         socket.on("obs:alert", (payload) => {
           queue.push(payload);
           pump();
         });
+
+        // sécurité: si un jour tu changes le nom côté serveur, on écoute aussi ça
+        socket.on("obs_alert", (payload) => { queue.push(payload); pump(); });
+        socket.on("alert", (payload) => { queue.push(payload); pump(); });
       };
 
       script.onerror = () => {
-        s.textContent = "Socket client introuvable";
+        s.textContent = "Socket client introuvable (API?)";
       };
 
       document.head.appendChild(script);
@@ -278,19 +308,24 @@
 
     connectSocket();
 
-    // --- MODE “preview” fallback ---
-    // Si tu ouvres l'URL en navigateur sans socket, tu peux simuler via query:
-    // ?event=follow&name=Viewer
-    const previewEvent = (qs.get("event") || "").trim();
-    if (previewEvent) {
-      const name = qs.get("name") || (previewEvent === "donation" ? "TestDonor" : "TestFollower");
-      const text = previewEvent === "donation"
+    // ---- PREVIEW (dev uniquement) ----
+    // ✅ Preview manuelle : ?preview=follow&name=Viewer
+    const preview = (qs.get("preview") || "").trim().toLowerCase();
+    if (preview) {
+      const name = qs.get("name") || (preview === "donation" ? "TestDonor" : "TestFollower");
+      const text = preview === "donation"
         ? `Merci ${name} pour la donation 🫶`
         : `Merci @${name} pour le follow 💜`;
 
-      // petit auto preview après 400ms (si jamais socket pas prêt)
       setTimeout(() => {
-        queue.push({ event: previewEvent, text, imageUrl: null, soundUrl: null, volume: 1 });
+        queue.push({
+          event: preview,
+          text,
+          imageUrl: null,
+          soundUrl: null,
+          volume: 1,
+          durationMs: 2500,
+        });
         pump();
       }, 400);
     }
