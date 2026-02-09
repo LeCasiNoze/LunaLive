@@ -190,6 +190,12 @@
     .badge--gold{ border-color: rgba(255,210,120,0.40); }
     .badge--master{ border-color: rgba(190,240,255,0.45); box-shadow: 0 0 0 1px rgba(190,240,255,0.10); }
 
+    .msg-emote--ll{
+      width: 1.45em;
+      height: 1.45em;
+      vertical-align: -0.25em;
+    }
+
     .chatUsername{
       font-weight: 950;
       font-size: 14px; /* overridden in OBS section */
@@ -760,15 +766,19 @@
       padding: 2px 8px;
     }
 
-    /* emotes */
+    /* emotes (DLive + LunaLive) */
     .msg-emote{
       display:inline-block;
       width: 1.35em;
       height: 1.35em;
-      vertical-align: -0.2em;
-      margin: 0 0.05em;
+      vertical-align: -0.22em;
+      margin: 0 0.06em;
+      object-fit: contain;
+      border-radius: 0;
+      background: transparent;
       filter: drop-shadow(0 0 4px rgba(0,0,0,0.7));
     }
+
   </style>
 </head>
 
@@ -838,6 +848,60 @@
     // cosmetics cache
     const COSMETICS = {}; // usernameLower -> cosmetics
 
+    // emotes cache: "e:nov_ptn" / "g:party"
+    const EMOTES_MAP = new Map(); // key -> url
+    const EMOTES_LOADED_AT = { t: 0 };
+
+    function emoteKey(kind, name){
+      return `${String(kind||"e").toLowerCase()}:${String(name||"").toLowerCase()}`;
+    }
+
+    function safeTokenName(s){
+      return String(s||"")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_]+/g, "_")
+        .slice(0, 32);
+    }
+
+    async function loadEmotesCatalog(){
+      if(!SLUG) return;
+
+      // refresh at most every 30s (overlay can poll chat a lot)
+      const now = Date.now();
+      if (EMOTES_LOADED_AT.t && now - EMOTES_LOADED_AT.t < 30_000) return;
+      EMOTES_LOADED_AT.t = now;
+
+      try{
+        const res = await fetch(`${API_BASE}/emotes/chat/${encodeURIComponent(SLUG)}/emotes`, {
+          headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {},
+        });
+        const j = await res.json().catch(()=>null);
+        if(!res.ok || !j?.ok) return;
+
+        // reset (keeps it exact)
+        EMOTES_MAP.clear();
+
+        const add = (arr, kindFallback) => {
+          if(!Array.isArray(arr)) return;
+          for(const it of arr){
+            const name = safeTokenName(it?.name);
+            const kind = String(it?.kind || kindFallback || "emoji").toLowerCase(); // emoji|gif
+            const url  = String(it?.url || "").trim();
+            if(!name || !url) continue;
+            const k = emoteKey(kind === "gif" ? "g" : "e", name);
+            EMOTES_MAP.set(k, url);
+          }
+        };
+
+        add(j.native, "emoji");
+        add(j.global, "emoji");
+        add(j.channel, "emoji");
+        // favorites pas nécessaire pour overlay, mais ok si tu veux :
+        // add(j.favorites, "emoji");
+      } catch {}
+    }
+
     // title labels (compat)
     const TITLE_LABELS = {
       title_ratus: "Ratus",
@@ -861,20 +925,53 @@
 
     // DLive emotes token -> <img>
     const EMOTE_BASE = "https://images.prd.dlivecdn.com/emote/";
+    const LL_EMOTE_BASE = (qs.get("emotes") || "").trim(); 
+
+    // DLive emotes token -> <img>
+    const DLIVE_EMOTE_BASE = "https://images.prd.dlivecdn.com/emote/";
+
+    function llEmoteUrl(kind, name) {
+      // ⚠️ À ADAPTER à ton vrai chemin de fichiers côté API/CDN
+      // Idée simple: /static/emotes/e/<name>.png et /static/emotes/g/<name>.gif
+      const base = LL_EMOTE_BASE || (API_BASE + "/static/emotes");
+      const safeName = String(name || "").toLowerCase().replace(/[^a-z0-9_]+/g, "_").slice(0, 32);
+
+      if (kind === "g") return `${base}/g/${safeName}.gif`;
+      return `${base}/e/${safeName}.png`;
+    }
+
     function renderEmotesSafe(text){
       if (!text) return "";
+
+      // decode encoded colon (some payloads)
       let norm = String(text);
       norm = norm.replace(/&#58;|&#x3a;|&colon;/gi, ":");
-      const safe = escapeHtml(norm);
-      if (safe.indexOf(":emote/") === -1) return safe;
 
-      return safe.replace(/:emote\/([^:<>\s]+):/g, (full, path) => {
-        const parts = (String(path).split("/") || []);
-        const last = parts.length ? parts[parts.length - 1] : "";
-        if (!last) return full;
-        const url = EMOTE_BASE + last;
-        return '<img class="msg-emote" src="'+url+'" alt="" loading="lazy" referrerpolicy="no-referrer">';
+      // escape first (so we only inject safe <img> we create)
+      let safe = escapeHtml(norm);
+
+      // --- DLive tokens :emote/path:
+      if (safe.indexOf(":emote/") !== -1) {
+        safe = safe.replace(/:emote\/([^:<>\s]+):/g, (full, path) => {
+          const parts = (String(path).split("/") || []);
+          const last = parts.length ? parts[parts.length - 1] : "";
+          if (!last) return full;
+          const url = EMOTE_BASE + last;
+          return '<img class="msg-emote" src="'+url+'" alt="" loading="lazy" referrerpolicy="no-referrer">';
+        });
+      }
+
+      // --- LunaLive tokens :e:name: / :g:name:
+      // NOTE: requires loadEmotesCatalog() to have populated EMOTES_MAP
+      safe = safe.replace(/:(e|g):([a-z0-9_]{1,32}):/gi, (full, kind, nameRaw) => {
+        const name = safeTokenName(nameRaw);
+        const k = emoteKey(kind, name);
+        const url = EMOTES_MAP.get(k);
+        if (!url) return full; // fallback: keep token visible
+        return '<img class="msg-emote" src="'+escapeHtml(url)+'" alt="'+full+'" title="'+full+'" loading="lazy" referrerpolicy="no-referrer">';
       });
+
+      return safe;
     }
 
     function getInitials(username){
@@ -1316,6 +1413,7 @@
       };
 
       sock.on("connect", () => {
+        loadEmotesCatalog().catch(()=>{});
         try { sock.emit("stream:join", { slug: SLUG }, () => {}); } catch {}
         try { sock.emit("chat:join", { slug: SLUG }, () => {}); } catch {}
         try { sock.emit("chat:join", { streamerSlug: SLUG }, () => {}); } catch {}
@@ -1335,6 +1433,8 @@
 
     // init
     loadStreamerAppearance();
+    loadEmotesCatalog();              // ✅ initial
+    setInterval(loadEmotesCatalog, 60_000); // ✅ refresh
     connectSocket();
 
     if (LIFE > 0) {
