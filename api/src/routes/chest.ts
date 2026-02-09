@@ -467,10 +467,25 @@ chestRouter.post("/streamers/:slug/chest/open", requireAuth, async (req: any, re
       const closesAt = new Date(Date.now() + durationSec * 1000);
 
       const ins = await client.query(
-        `INSERT INTO streamer_chest_openings(streamer_id, status, opens_at, closes_at, min_watch_minutes, meta)
-         VALUES ($1,'open',$2,$3,$4,$5::jsonb)
-         RETURNING id`,
-        [Number(streamer.id), opensAt, closesAt, minWatchMinutes, JSON.stringify({ openedBy: userId })]
+        `INSERT INTO streamer_chest_openings(
+          streamer_id,
+          created_by_user_id,
+          status,
+          opens_at,
+          closes_at,
+          min_watch_minutes,
+          meta
+        )
+        VALUES ($1,$2,'open',$3,$4,$5,$6::jsonb)
+        RETURNING id`,
+        [
+          Number(streamer.id),
+          userId,
+          opensAt,
+          closesAt,
+          minWatchMinutes,
+          JSON.stringify({ openedBy: userId }),
+        ]
       );
 
       await client.query("COMMIT");
@@ -539,10 +554,10 @@ chestRouter.post("/streamers/:slug/chest/join", requireAuth, async (req: any, re
       }
 
       await client.query(
-        `INSERT INTO streamer_chest_participants(opening_id, user_id, joined_at, meta)
-         VALUES ($1,$2,NOW(),$3::jsonb)
-         ON CONFLICT (opening_id, user_id) DO NOTHING`,
-        [Number(opening.id), userId, JSON.stringify({})]
+        `INSERT INTO streamer_chest_participants(opening_id, user_id, joined_at)
+        VALUES ($1,$2,NOW())
+        ON CONFLICT (opening_id, user_id) DO NOTHING`,
+        [Number(opening.id), userId]
       );
 
       return res.json({ ok: true, openingId: String(opening.id) });
