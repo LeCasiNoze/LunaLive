@@ -272,7 +272,9 @@ export function createApp() {
   app.use("/shop/talents", shopTalentsRouter);
   app.use(cosmeticsCatalogRoutes);
 
-  app.use(emotesRouter);
+  app.use(emotesRouter);          // legacy: /chat/:slug/emotes
+  app.use("/emotes", emotesRouter); // new:     /emotes/chat/:slug/emotes
+
   app.use(streamerEmotesRouter);
 
   // ─────────────────────────────────────────────
