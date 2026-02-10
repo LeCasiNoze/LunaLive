@@ -6,6 +6,8 @@ import {
   claimDailyBonusMilestone,
   publicGetContent,
   publicListContentTabs,
+  getWelcomeState,
+  claimWelcome,
   type ApiPublicContentTab,
 } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
@@ -180,7 +182,7 @@ export function DailyBonusAgendaModal({
   return <DailyBonusAgendaModalDesktop state={state} onClose={onClose} onState={onState} />;
 }
 
-type TabKey = "agenda" | "content" | "event";
+type TabKey = "agenda" | "content" | "event" | "welcome";
 type ContentKey = string;
 
 function DailyBonusAgendaModalDesktop({
@@ -200,6 +202,7 @@ function DailyBonusAgendaModalDesktop({
   const tokensAny = (state as any)?.tokens ?? {};
   const wheelTickets = Number(tokensAny?.wheel_ticket ?? 0);
   const prestigeTokens = Number(tokensAny?.prestige_token ?? 0);
+
   const [contentVersions, setContentVersions] = React.useState<Record<string, string>>({});
   const [contentUnread, setContentUnread] = React.useState<Record<string, boolean>>({});
 
@@ -259,6 +262,61 @@ function DailyBonusAgendaModalDesktop({
   const [contentHtml, setContentHtml] = React.useState<string | null>(null);
   const [contentLoading, setContentLoading] = React.useState(false);
   const [contentTitles, setContentTitles] = React.useState<Record<string, string>>({});
+
+  // ✅ Welcome (quêtes)
+  const [welcome, setWelcome] = React.useState<any | null>(null);
+  const [welcomeLoading, setWelcomeLoading] = React.useState(false);
+
+  // ✅ Meta pour cacher l'onglet "Bienvenue" même si pas encore chargé
+  const [welcomeMeta, setWelcomeMeta] = React.useState<{ rewarded: boolean } | null>(null);
+
+  // ✅ préfetch (pour cacher l'onglet si déjà claim)
+  React.useEffect(() => {
+    let dead = false;
+    (async () => {
+      if (!token) return;
+      try {
+        const r: any = await getWelcomeState(token);
+        if (!dead && r?.ok) {
+          setWelcomeMeta({ rewarded: Boolean(r.rewarded) });
+          // optionnel mais utile: préremplir l'onglet si l'user clique
+          setWelcome(r);
+        }
+      } catch {
+        if (!dead) setWelcomeMeta(null);
+      }
+    })();
+    return () => {
+      dead = true;
+    };
+  }, [token]);
+
+  // ✅ charge/refresh welcome quand onglet ouvert (si pas préchargé ou si besoin)
+  React.useEffect(() => {
+    let dead = false;
+
+    (async () => {
+      if (tab !== "welcome") return;
+      if (!token) return;
+
+      setWelcomeLoading(true);
+      try {
+        const r: any = await getWelcomeState(token);
+        if (!dead) {
+          setWelcome(r);
+          setWelcomeMeta({ rewarded: Boolean(r?.rewarded) });
+        }
+      } catch {
+        if (!dead) setWelcome(null);
+      } finally {
+        if (!dead) setWelcomeLoading(false);
+      }
+    })();
+
+    return () => {
+      dead = true;
+    };
+  }, [tab, token]);
 
   // ✅ garde-fou: si tu switches role / la liste change, on garde un onglet safe
   React.useEffect(() => {
@@ -412,6 +470,8 @@ function DailyBonusAgendaModalDesktop({
     const fallback = found?.fallbackLabel || humanizeKey(activeContentKey);
     return contentTitles[activeContentKey] || fallback;
   }, [activeContentKey, contentTabs, contentTitles]);
+
+  const showWelcomeTab = !welcomeMeta?.rewarded;
 
   return createPortal(
     <div
@@ -873,6 +933,16 @@ function DailyBonusAgendaModalDesktop({
               Bonus quotidien
             </button>
 
+            {showWelcomeTab ? (
+              <button
+                type="button"
+                className={`llBonusTab ${tab === "welcome" ? "isActive" : ""}`}
+                onClick={() => setTab("welcome")}
+              >
+                Bienvenue
+              </button>
+            ) : null}
+
             {/* ✅ Onglets HTML (dynamiques depuis l'admin, filtrés par rôle) */}
             {contentTabs.map((t) => {
               const label = contentTitles[t.key] || t.fallbackLabel;
@@ -994,10 +1064,17 @@ function DailyBonusAgendaModalDesktop({
                 <div className="llBonusMilestonesRow">
                   {milestones.map((m: any) => {
                     const isClaimable = m.status === "claimable" && !busy;
-                    const cls = m.status === "locked" ? "isLocked" : m.status === "claimed" ? "isClaimed" : "isClaimable";
+                    const cls =
+                      m.status === "locked" ? "isLocked" : m.status === "claimed" ? "isClaimed" : "isClaimable";
 
                     const right =
-                      m.status === "claimed" ? "✓" : m.status === "claimable" ? (busy === `m${m.milestone}` ? "…" : "★") : "🔒";
+                      m.status === "claimed"
+                        ? "✓"
+                        : m.status === "claimable"
+                          ? busy === `m${m.milestone}`
+                            ? "…"
+                            : "★"
+                          : "🔒";
 
                     return (
                       <div
@@ -1052,7 +1129,11 @@ function DailyBonusAgendaModalDesktop({
                     Chargement…
                   </div>
                 ) : contentHtml ? (
-                  <div className="llBonusSub" style={{ opacity: 0.92, lineHeight: 1.65 }} dangerouslySetInnerHTML={{ __html: contentHtml }} />
+                  <div
+                    className="llBonusSub"
+                    style={{ opacity: 0.92, lineHeight: 1.65 }}
+                    dangerouslySetInnerHTML={{ __html: contentHtml }}
+                  />
                 ) : (
                   <div className="llBonusSub" style={{ opacity: 0.92, lineHeight: 1.65 }}>
                     Contenu indisponible.
@@ -1072,6 +1153,101 @@ function DailyBonusAgendaModalDesktop({
                 <div className="llBonusSub" style={{ opacity: 0.92 }}>
                   Onglet réservé pour plus tard (events, annonces, promos, etc.).
                 </div>
+              </div>
+            </>
+          ) : null}
+
+          {tab === "welcome" ? (
+            <>
+              <div className="llBonusHeadRow">
+                <div className="llBonusH1">Quêtes de bienvenue</div>
+                <div className="llBonusSub">Complète tout pour débloquer tes récompenses.</div>
+              </div>
+
+              <div className="llBonusPanel" style={{ marginTop: 12 }}>
+                {welcomeLoading ? (
+                  <div className="llBonusSub" style={{ opacity: 0.85 }}>
+                    Chargement…
+                  </div>
+                ) : !welcome?.ok ? (
+                  <div className="llBonusSub" style={{ opacity: 0.92 }}>
+                    Indisponible.
+                  </div>
+                ) : (
+                  <>
+                    {(() => {
+                      const g = welcome.goals || {};
+                      const items = [
+                        { key: "follow", label: "Suivre 1 streamer", have: g.follow?.have ?? 0, need: g.follow?.need ?? 1 },
+                        { key: "daily3", label: "Récupérer 3 bonus quotidiens", have: g.daily3?.have ?? 0, need: g.daily3?.need ?? 3 },
+                        { key: "calls2", label: "Faire 2 calls", have: g.calls2?.have ?? 0, need: g.calls2?.need ?? 2 },
+                        { key: "wheel1", label: "Tourner la roue 1 fois", have: g.wheel1?.have ?? 0, need: g.wheel1?.need ?? 1 },
+                        { key: "watch60", label: "Regarder 60 minutes", have: g.watch60?.have ?? 0, need: g.watch60?.need ?? 60 },
+                      ];
+
+                      return (
+                        <div style={{ display: "grid", gap: 10 }}>
+                          {items.map((it) => {
+                            const ok = Number(it.have) >= Number(it.need);
+                            return (
+                              <div
+                                key={it.key}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: 10,
+                                  padding: "10px 12px",
+                                  borderRadius: 14,
+                                  border: "1px solid rgba(255,255,255,0.08)",
+                                  background: "rgba(0,0,0,0.16)",
+                                }}
+                              >
+                                <div style={{ fontWeight: 950 }}>{it.label}</div>
+                                <div style={{ fontWeight: 950, opacity: ok ? 0.95 : 0.75 }}>
+                                  {ok ? "✓" : `${it.have}/${it.need}`}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+                      <button
+                        className="btnPrimarySmall"
+                        disabled={!welcome?.completed || !!busy}
+                        onClick={async () => {
+                          if (!token) return;
+                          setBusy("welcome_claim");
+                          try {
+                            await claimWelcome(token);
+                            showToast("Récompenses de bienvenue récupérées ✅");
+                            await refreshMe();
+
+                            // refresh state et cacher l'onglet ensuite
+                            const s: any = await getWelcomeState(token);
+                            setWelcome(s);
+                            setWelcomeMeta({ rewarded: Boolean(s?.rewarded) });
+                            if (s?.rewarded) setTab("agenda");
+                          } catch (e: any) {
+                            showToast(String(e?.message || "Erreur"));
+                          } finally {
+                            setBusy(null);
+                          }
+                        }}
+                        title={!welcome?.completed ? "Complète toutes les quêtes" : "Récupérer"}
+                      >
+                        {busy === "welcome_claim" ? "Récupération…" : "Récupérer"}
+                      </button>
+                    </div>
+
+                    <div className="llBonusSub" style={{ marginTop: 10, opacity: 0.85, lineHeight: 1.55 }}>
+                      Récompenses: <b>+50 rubis</b> et <b>7 jours Viewer</b>.
+                    </div>
+                  </>
+                )}
               </div>
             </>
           ) : null}

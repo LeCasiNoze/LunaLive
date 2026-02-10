@@ -1878,3 +1878,38 @@ export async function publicListContentTabs() {
   return j("/public/content-list"); // ✅ route publique
 }
 
+// ──────────────────────────────────────────
+// 👋 Welcome quests
+// ──────────────────────────────────────────
+
+export type ApiWelcomeState = {
+  ok: true;
+  rewarded: boolean;
+  completed: boolean;
+  goals: {
+    follow: { need: number; have: number };
+    daily3: { need: number; have: number };
+    calls2: { need: number; have: number };
+    wheel1: { need: number; have: number };
+    watch60: { need: number; have: number };
+  };
+  referral: null | { streamerId: number; streamerSlug: string };
+};
+
+export async function getWelcomeState(token: string) {
+  return j<ApiWelcomeState>("/me/welcome/state", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function claimWelcome(token: string) {
+  return j<{
+    ok: true;
+    already?: boolean;
+    viewer?: { rubis: number; promoDays: number };
+    streamer?: { paid: boolean; rubis: number; txId: number | null };
+  }>("/me/welcome/claim", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

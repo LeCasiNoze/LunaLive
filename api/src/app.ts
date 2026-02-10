@@ -92,6 +92,9 @@ import { meDiscordLinkRouter } from "./routes/bot/me_discord_link.js";
 import { discordLinkConsumeRouter } from "./routes/bot/discord_link_consume.js";
 import { botDiscordGuildRouter } from "./routes/bot/bot_discord_guild.js";
 import { dliveRepostRouter } from "./routes/dlive_repost.js";
+import { referralRedirectRouter } from "./routes/referral_redirect.js";
+import { referralRouter } from "./routes/referral.js";
+import { welcomeRouter } from "./routes/welcome.js";
 
 export function createApp() {
   const app = express();
@@ -156,7 +159,9 @@ export function createApp() {
 
   // reports public
   app.use("/reports", reportsRouter);
-
+  app.use(referralRedirectRouter);
+  app.use(referralRouter);
+  app.use(welcomeRouter);
   // ─────────────────────────────────────────────
   // ✅ Discord bot dashboard / api routes (auth inside routers)
   // ─────────────────────────────────────────────

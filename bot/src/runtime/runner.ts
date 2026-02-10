@@ -9,6 +9,7 @@ import { LunaLiveDbTransport } from "../providers/lunalive/db_transport.js";
 import { logEvent } from "../log.js";
 import { tryHandleClipCommand } from "../modules/clips/clip.js";
 import { tryHandleWheelCommand } from "../modules/wheel/wheel.js";
+import { tryHandleLunaCommand } from "../modules/referral/luna.js";
 
 const BOT_TEXT_MAX = 500;
 
@@ -224,6 +225,24 @@ export class StreamerRunner {
           });
         } catch {}
       }
+      
+      // ✅ BUILTIN: !luna (ref link)
+      try {
+        const handledLuna = await tryHandleLunaCommand({
+          pool: this.pool,
+          streamer: this.streamer,
+          prefix,
+          msg,
+          send: async (t: string) => {
+            await sendBotText(t, "send");
+          },
+          sendDlive: async (t: string, meta?: { trigger?: string }) => {
+            await sendDliveText(t, meta?.trigger);
+          },
+          publicBase: (this.env as any).LUNALIVE_PUBLIC_BASE, // optionnel
+        });
+        if (handledLuna) return;
+      } catch {}
 
       await dispatch({
         ctx: {

@@ -113,12 +113,13 @@ authRouter.post(
     const code = genCode6();
     const codeHash = await hashPassword(code);
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    const refSlug = String(req.body.ref || "").trim() || null;
 
     try {
       await pool.query(
-        `INSERT INTO pending_registrations (username, email, password_hash, code_hash, expires_at, created_ip)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [username, email, passwordHash, codeHash, expiresAt, req.ip]
+        `INSERT INTO pending_registrations (username, email, password_hash, code_hash, expires_at, created_ip, ref_slug)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [username, email, passwordHash, codeHash, expiresAt, req.ip, refSlug]
       );
     } catch {
       return res.status(400).json({ ok: false, error: "already_pending" });
@@ -157,7 +158,7 @@ authRouter.post(
     if (code.length < 4) return res.status(400).json({ ok: false, error: "code_required" });
 
     const { rows } = await pool.query(
-      `SELECT id, username, email, password_hash, code_hash, expires_at
+      `SELECT id, username, email, password_hash, code_hash, expires_at, ref_slug
        FROM pending_registrations
        WHERE lower(username)=lower($1)
        LIMIT 1`,
@@ -191,6 +192,29 @@ authRouter.post(
     await pool.query(`DELETE FROM pending_registrations WHERE id=$1`, [p.id]);
 
     const userId = Number(created.rows[0].id);
+    // ✅ auto-lock referral si ref présent (signup -> streamer slug)
+    try {
+      const refSlug = String(p.ref_slug || "").trim();
+      if (refSlug) {
+        const st = await pool.query(
+          `SELECT id FROM streamers WHERE lower(slug)=lower($1) LIMIT 1`,
+          [refSlug]
+        );
+        const streamerId = st.rows?.[0]?.id ? Number(st.rows[0].id) : 0;
+
+        if (streamerId > 0) {
+          await pool.query(
+            `INSERT INTO user_referrals(user_id, streamer_id, source)
+            VALUES ($1,$2,'signup')
+            ON CONFLICT (user_id) DO NOTHING`,
+            [userId, streamerId]
+          );
+        }
+      }
+    } catch (e) {
+      console.log("[auth/register/verify] referral lock failed", (e as any)?.message || e);
+    }
+
     await pool.query(
       `UPDATE users SET avatar_path = COALESCE(avatar_path, $2) WHERE id=$1`,
       [userId, defaultAvatarPath(userId)]
