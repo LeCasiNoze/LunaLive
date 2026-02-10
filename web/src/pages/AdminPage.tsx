@@ -27,6 +27,7 @@ import {
   adminUpsertContent,
   adminDeleteContent,
 } from "../lib/api";
+import { adminDeletePendingRegistration } from "../lib/api";
 
 import { UsersAdminSection } from "../components/admin/UsersAdminSection";
 import { ProviderAccountsAdminSection } from "../components/admin/ProviderAccountsAdminSection";
@@ -1302,6 +1303,27 @@ export default function AdminPage() {
                       >
                         📋 Copier email
                       </button>
+                      <button
+                        className="btnGhostSmall"
+                        type="button"
+                        onClick={async () => {
+                          setErr(null);
+                          try {
+                            await adminDeletePendingRegistration(key, u.id);
+                            await refreshPendingRegs();
+                          } catch (e: any) {
+                            setErr(String(e?.message || e));
+                          }
+                        }}
+                        style={{
+                          borderRadius: 12,
+                          border: "1px solid rgba(239,68,68,0.30)",
+                          background: "rgba(239,68,68,0.10)",
+                        }}
+                      >
+                        🗑️ Supprimer
+                      </button>
+
                     </div>
                   </div>
                 ))}

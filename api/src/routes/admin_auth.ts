@@ -1,4 +1,3 @@
-// api/src/routes/admin_auth.ts
 import { Router } from "express";
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
@@ -7,48 +6,40 @@ export const adminAuthRouter = Router();
 
 /**
  * GET /admin/auth/pending-registrations?limit=200
- * -> liste des inscriptions en attente de vérification email (table pending_registrations)
- *
- * Note:
- * - attempts n'existe pas dans ton schéma actuel => renvoyé à null
- * - codeCreatedAt = createdAt (tu peux changer si tu ajoutes une colonne dédiée un jour)
+ * -> liste des inscriptions en attente (pending_registrations)
  */
 adminAuthRouter.get(
   "/pending-registrations",
   a(async (req, res) => {
     const limit = Math.max(1, Math.min(500, Number((req.query as any)?.limit ?? 200) || 200));
 
-    // Optionnel : cleanup comme dans /auth/register
-    // (pratique pour ne pas afficher des lignes mortes)
+    // cleanup des expirées (évite d'afficher des lignes mortes)
     try {
       await pool.query(`DELETE FROM pending_registrations WHERE expires_at < NOW()`);
     } catch {}
 
-    // pending_registrations (schéma vu dans auth.ts)
-    // colonnes: id, username, email, password_hash, code_hash, expires_at, created_ip, ref_slug
-    // + très probablement created_at (selon tes migrations), sinon on fallback sur NOW()
     const q = await pool.query(
       `
       SELECT
         pr.id,
         pr.username,
         pr.email,
-        COALESCE(pr.created_at, NOW()) AS "createdAt",
+        pr.created_at AS "createdAt",
         pr.expires_at AS "expiresAt",
         pr.created_ip AS "createdIp",
         pr.ref_slug AS "refSlug"
       FROM pending_registrations pr
-      WHERE pr.expires_at > NOW()
-      ORDER BY COALESCE(pr.created_at, pr.expires_at) DESC
+      ORDER BY pr.created_at DESC
       LIMIT $1
       `,
       [limit]
     );
 
+    const now = Date.now();
+
     const items = (q.rows || []).map((r: any) => {
-      const expiresAt = r.expiresAt ? new Date(r.expiresAt).getTime() : 0;
-      const now = Date.now();
-      const remainingMs = expiresAt > 0 ? Math.max(0, expiresAt - now) : 0;
+      const expiresAtMs = r.expiresAt ? new Date(r.expiresAt).getTime() : 0;
+      const remainingMs = expiresAtMs ? Math.max(0, expiresAtMs - now) : 0;
 
       return {
         id: Number(r.id),
@@ -56,18 +47,55 @@ adminAuthRouter.get(
         email: String(r.email || ""),
         createdAt: r.createdAt ?? null,
 
-        // compat front
+        // compat UI existante
         codeCreatedAt: r.createdAt ?? null,
         attempts: null,
 
-        // bonus utile côté UI (si tu veux l'afficher)
+        // bonus
         expiresAt: r.expiresAt ?? null,
-        remainingSec: remainingMs ? Math.floor(remainingMs / 1000) : 0,
+        remainingSec: Math.floor(remainingMs / 1000),
         createdIp: r.createdIp ?? null,
         refSlug: r.refSlug ?? null,
       };
     });
 
     res.json({ ok: true, items });
+  })
+);
+
+/**
+ * DELETE /admin/auth/pending-registrations/:id
+ * -> supprime une inscription pending (débloque already_pending)
+ */
+adminAuthRouter.delete(
+  "/pending-registrations/:id",
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, error: "bad_id" });
+    }
+
+    const r = await pool.query(`DELETE FROM pending_registrations WHERE id=$1`, [id]);
+    if (!r.rowCount) return res.status(404).json({ ok: false, error: "not_found" });
+
+    res.json({ ok: true });
+  })
+);
+
+/**
+ * (Optionnel) DELETE /admin/auth/pending-registrations
+ * -> purge toutes les expirées + (optionnel) toutes les pendings
+ * ⚠️ utile si tu veux un bouton "Purger expirées"
+ */
+adminAuthRouter.delete(
+  "/pending-registrations",
+  a(async (req, res) => {
+    const mode = String((req.query as any)?.mode || "expired"); // expired | all
+    if (mode === "all") {
+      const r = await pool.query(`DELETE FROM pending_registrations`);
+      return res.json({ ok: true, deleted: r.rowCount || 0 });
+    }
+    const r = await pool.query(`DELETE FROM pending_registrations WHERE expires_at < NOW()`);
+    res.json({ ok: true, deleted: r.rowCount || 0 });
   })
 );

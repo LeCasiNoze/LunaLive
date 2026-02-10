@@ -1994,3 +1994,17 @@ export async function claimWelcome(token: string) {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
+
+export async function adminDeletePendingRegistration(adminKey: string, id: number) {
+  const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+  const r = await fetch(`${BASE}/admin/auth/pending-registrations/${id}`, {
+    method: "DELETE",
+    headers: {
+      "x-admin-key": adminKey,
+    },
+  });
+
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data?.ok) throw new Error(data?.error || "delete_failed");
+  return data as { ok: true };
+}
