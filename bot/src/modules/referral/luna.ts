@@ -19,11 +19,9 @@ export async function tryHandleLunaCommand(opts: {
   const cmd = raw.split(/\s+/g)[0]?.toLowerCase();
   if (cmd !== "luna") return false;
 
-  // lien court recommandé (redir côté web)
-  // ex: https://lunalive.fr/r/<slug>
-  const base = String(opts.publicBase || process.env.LUNALIVE_PUBLIC_BASE || "").replace(/\/$/, "");
-  const safeBase = base || "https://lunalive.fr"; // fallback
-  const url = `${safeBase}/r/${encodeURIComponent(String(streamer.slug))}`;
+    const base = String(opts.publicBase || process.env.PUBLIC_WEB_BASE || "").replace(/\/$/, "");
+    const safeBase = base || "https://lunalive.onrender.com"; // ✅ fallback réel
+    const url = `${safeBase}/r/${encodeURIComponent(String(streamer.slug))}`;
 
   const text = `🌙 Rejoins LunaLive via mon lien pour gagner 50 rubis et 7J abonnement payant au site ! : ${url}`;
 

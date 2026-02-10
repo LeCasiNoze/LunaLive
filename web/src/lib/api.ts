@@ -379,12 +379,36 @@ export async function setFollowNotify(slug: string, notifyEnabled: boolean, toke
 }
 
 /* Auth */
-export async function register(username: string, email: string, password: string) {
+export async function register(
+  username: string,
+  email: string,
+  password: string,
+  ref?: string | null
+) {
   return j<{ ok: true; needsVerify: true }>("/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, email, password }),
+    body: JSON.stringify({
+      username,
+      email,
+      password,
+      ref: ref ? String(ref).trim() : null,
+    }),
   });
+}
+export function getRefFromUrlOrSession(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const ref = String(params.get("ref") || "").trim();
+    if (ref) {
+      sessionStorage.setItem("ref_slug", ref);
+      return ref;
+    }
+    const saved = String(sessionStorage.getItem("ref_slug") || "").trim();
+    return saved || null;
+  } catch {
+    return null;
+  }
 }
 
 export async function registerVerify(username: string, code: string) {

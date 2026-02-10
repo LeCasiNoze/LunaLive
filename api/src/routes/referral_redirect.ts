@@ -17,11 +17,11 @@ referralRedirectRouter.get(
       [slug]
     );
     if (!r.rows?.[0]) {
-      const fb = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr");
+      const fb = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com");
       return res.redirect(302, fb);
     }
 
-    const web = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
+    const web = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
     const url = `${web}/signup?ref=${encodeURIComponent(slug)}`;
     return res.redirect(302, url);
   })

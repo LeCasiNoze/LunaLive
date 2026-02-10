@@ -28,6 +28,38 @@ type RegisterResp = {
   user?: any;
 };
 
+const REF_KEY = "ref_slug";
+
+/** Read ?ref=... and persist in sessionStorage */
+function readRefFromUrlAndPersist(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const ref = String(params.get("ref") || "").trim();
+    if (ref) {
+      sessionStorage.setItem(REF_KEY, ref);
+      return ref;
+    }
+  } catch {}
+  return null;
+}
+
+/** Get ref from sessionStorage */
+function getPersistedRef(): string | null {
+  try {
+    const ref = String(sessionStorage.getItem(REF_KEY) || "").trim();
+    return ref || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Clear ref */
+function clearPersistedRef() {
+  try {
+    sessionStorage.removeItem(REF_KEY);
+  } catch {}
+}
+
 export function LoginModal({
   open,
   onClose,
@@ -57,6 +89,9 @@ export function LoginModal({
   const [err, setErr] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
+  // ✅ referral ref slug (persisted)
+  const [refSlug, setRefSlug] = React.useState<string | null>(null);
+
   React.useEffect(() => {
     if (open) {
       setErr(null);
@@ -70,8 +105,23 @@ export function LoginModal({
       setShowNew1(false);
       setShowNew2(false);
       setStep("login");
+
+      // ✅ capture ref from URL (and persist), fallback to persisted
+      const fromUrl = readRefFromUrlAndPersist();
+      const persisted = getPersistedRef();
+      setRefSlug(fromUrl || persisted);
     }
   }, [open]);
+
+  // ✅ also refresh ref when step changes to register_form (if user opens modal then navigates)
+  React.useEffect(() => {
+    if (!open) return;
+    if (step === "register_form") {
+      const fromUrl = readRefFromUrlAndPersist();
+      const persisted = getPersistedRef();
+      setRefSlug(fromUrl || persisted);
+    }
+  }, [step, open]);
 
   if (!open) return null;
 
@@ -89,6 +139,11 @@ export function LoginModal({
 
       const r = await login(u, password);
       setAuth(r.token, r.user);
+
+      // ✅ si l'user se connecte, on peut clean un éventuel ref
+      clearPersistedRef();
+      setRefSlug(null);
+
       onClose();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -109,8 +164,11 @@ export function LoginModal({
       if (!isValidEmail(em)) throw new Error("Email invalide");
       if (password.length < 6) throw new Error("Mot de passe min 6 caractères");
 
+      // ✅ ref: URL -> session -> state
+      const ref = readRefFromUrlAndPersist() || refSlug || getPersistedRef();
+
       // 👇 cast côté front pour accepter devCode/needsVerify
-      const r = (await register(u, em, password)) as unknown as RegisterResp;
+      const r = (await register(u, em, password, ref)) as unknown as RegisterResp;
 
       if (r?.needsVerify) {
         setStep("register_code");
@@ -157,6 +215,11 @@ export function LoginModal({
 
       const r = await registerVerify(u, c);
       setAuth(r.token, r.user);
+
+      // ✅ une fois le compte créé, on clean le ref (le lock est en DB côté API)
+      clearPersistedRef();
+      setRefSlug(null);
+
       onClose();
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
@@ -323,6 +386,12 @@ export function LoginModal({
 
           {step === "register_form" && (
             <>
+              {refSlug && (
+                <div className="hint" style={{ opacity: 0.9, marginBottom: 10 }}>
+                  🎁 Parrainage détecté : <b>{refSlug}</b>
+                </div>
+              )}
+
               <div className="field">
                 <label>Pseudo</label>
                 <input
@@ -387,6 +456,12 @@ export function LoginModal({
               <div className="hint" style={{ opacity: 0.9, marginBottom: 10 }}>
                 On t’a envoyé un code par email. Saisis-le pour finaliser la création du compte.
               </div>
+
+              {refSlug && (
+                <div className="hint" style={{ opacity: 0.9, marginBottom: 10 }}>
+                  🎁 Parrainage : <b>{refSlug}</b>
+                </div>
+              )}
 
               <div className="field">
                 <label>Pseudo</label>
