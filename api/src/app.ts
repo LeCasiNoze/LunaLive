@@ -95,6 +95,8 @@ import { dliveRepostRouter } from "./routes/dlive_repost.js";
 import { referralRedirectRouter } from "./routes/referral_redirect.js";
 import { referralRouter } from "./routes/referral.js";
 import { welcomeRouter } from "./routes/welcome.js";
+import { adminAuthRouter } from "./routes/admin_auth.js";
+import { adminReferralsRouter } from "./routes/admin_referrals.js";
 
 export function createApp() {
   const app = express();
@@ -146,6 +148,11 @@ export function createApp() {
   // ─────────────────────────────────────────────
   app.use("/admin/casinos/comments", requireAdminKey, adminCasinoCommentsRouter);
   app.use("/admin/reports", requireAdminKey, adminReportsRouter);
+
+  // ✅ NEW (avant /admin content pour éviter collisions)
+  app.use("/admin/auth", requireAdminKey, adminAuthRouter);
+  app.use("/admin/referrals", requireAdminKey, adminReferralsRouter);
+
   app.use("/admin", requireAdminKey, adminContentRouter);
 
   // ✅ Casinos ADMIN (ordre CRITIQUE)

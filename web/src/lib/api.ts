@@ -396,6 +396,63 @@ export async function register(
     }),
   });
 }
+
+// ──────────────────────────────────────────
+// ✅ Admin — Pending registrations (email not verified)
+// ──────────────────────────────────────────
+export type AdminPendingRegistrationRow = {
+  id: number;
+  username: string;
+  email: string;
+  createdAt: string;
+  codeCreatedAt: string | null;
+  attempts: number | null;
+};
+
+export async function adminListPendingRegistrations(adminKey: string, limit = 200) {
+  return j<{ ok: true; items: AdminPendingRegistrationRow[] }>(
+    `/admin/auth/pending-registrations?limit=${encodeURIComponent(String(limit))}`,
+    { headers: { "x-admin-key": adminKey } }
+  );
+}
+
+// ──────────────────────────────────────────
+// ✅ Admin — Referrals
+// ──────────────────────────────────────────
+export type AdminReferralSummary = {
+  ok: true;
+  totals: { total: number; uniqueUsers: number };
+  byStreamer: Array<{
+    streamerSlug: string;
+    streamerName: string | null;
+    count: number;
+    uniqueUsers: number;
+  }>;
+};
+
+export async function adminReferralsSummary(adminKey: string) {
+  return j<AdminReferralSummary>(`/admin/referrals/summary`, {
+    headers: { "x-admin-key": adminKey },
+  });
+}
+
+export type AdminReferralRow = {
+  userId: number;
+  username: string;
+  streamerSlug: string;
+  streamerName: string | null;
+  createdAt: string;
+};
+
+export async function adminListReferrals(adminKey: string, opts?: { limit?: number; offset?: number }) {
+  const limit = opts?.limit ?? 200;
+  const offset = opts?.offset ?? 0;
+  return j<{ ok: true; items: AdminReferralRow[]; total?: number }>(
+    `/admin/referrals?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`,
+    { headers: { "x-admin-key": adminKey } }
+  );
+}
+
 export function getRefFromUrlOrSession(): string | null {
   try {
     const params = new URLSearchParams(window.location.search);

@@ -15,7 +15,12 @@ import {
   adminApproveCasinoComment,
   adminRejectCasinoComment,
   type AdminCasinoCommentRow,
-
+  adminListPendingRegistrations,
+  adminReferralsSummary,
+  adminListReferrals,
+  type AdminPendingRegistrationRow,
+  type AdminReferralRow,
+  type AdminReferralSummary,
   // ✅ content (HTML)
   adminListContent,
   adminGetContent,
@@ -264,6 +269,16 @@ export default function AdminPage() {
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [detailsReq, setDetailsReq] = React.useState<any | null>(null);
 
+  // ✅ Pending registrations (email not verified)
+  const [pendingRegsLoading, setPendingRegsLoading] = React.useState(false);
+  const [pendingRegs, setPendingRegs] = React.useState<AdminPendingRegistrationRow[]>([]);
+
+  // ✅ Referrals
+  const [refLoading, setRefLoading] = React.useState(false);
+  const [refSummary, setRefSummary] = React.useState<AdminReferralSummary | null>(null);
+  const [refRows, setRefRows] = React.useState<AdminReferralRow[]>([]);
+  const [refOffset, setRefOffset] = React.useState(0);
+
   function goto(next: string) {
     setTab(next);
     saveTab(next);
@@ -290,6 +305,45 @@ export default function AdminPage() {
       setCcLoading(false);
     }
   }
+
+  async function refreshPendingRegs() {
+    if (!key) return;
+    setPendingRegsLoading(true);
+    setErr(null);
+    try {
+      const r = await adminListPendingRegistrations(key, 200);
+      setPendingRegs(r.items || []);
+    } catch (e: any) {
+      setErr(String(e?.message || e));
+    } finally {
+      setPendingRegsLoading(false);
+    }
+  }
+
+  async function refreshReferrals(offset = 0) {
+    if (!key) return;
+    setRefLoading(true);
+    setErr(null);
+    try {
+      const s = await adminReferralsSummary(key);
+      setRefSummary(s);
+
+      const r = await adminListReferrals(key, { limit: 200, offset });
+      setRefRows(r.items || []);
+      setRefOffset(offset);
+    } catch (e: any) {
+      setErr(String(e?.message || e));
+    } finally {
+      setRefLoading(false);
+    }
+  }
+
+  React.useEffect(() => {
+    if (!key) return;
+    if (tab === "pending_registrations") refreshPendingRegs();
+    if (tab === "referrals") refreshReferrals(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, tab]);
 
   React.useEffect(() => {
     if (!key) return;
@@ -597,6 +651,22 @@ export default function AdminPage() {
                 label="Utilisateurs"
                 hint="Users + rubis + détails"
                 onClick={() => goto("users")}
+              />
+
+              <NavButton
+                active={tab === "pending_registrations"}
+                icon="⏳"
+                label="Inscriptions en attente"
+                hint="Comptes créés mais email non vérifié"
+                onClick={() => goto("pending_registrations")}
+              />
+
+              <NavButton
+                active={tab === "referrals"}
+                icon="🎁"
+                label="Parrainages"
+                hint="Stats par streamer + liste user → streamer"
+                onClick={() => goto("referrals")}
               />
 
               <NavButton
@@ -1154,6 +1224,218 @@ export default function AdminPage() {
               right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
             >
               <UsersAdminSection adminKey={key} />
+            </Card>
+            
+          ) : null}
+          {tab === "pending_registrations" ? (
+            <Card
+              title={
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>⏳</span>
+                  Inscriptions en attente
+                </span>
+              }
+              subtitle="Comptes créés mais email non vérifié. Utile pour diagnostiquer les spams / bugs d’inscription."
+              right={
+                <>
+                  <Pill tone={pendingRegs.length ? "warn" : "good"}>
+                    pending: <b>{pendingRegs.length}</b>
+                  </Pill>
+                  <button className="btnPrimary" type="button" onClick={refreshPendingRegs} disabled={pendingRegsLoading}>
+                    {pendingRegsLoading ? "…" : "Rafraîchir"}
+                  </button>
+                  <button className="btnSecondary" type="button" onClick={() => goto("overview")}>
+                    ← Retour
+                  </button>
+                </>
+              }
+            >
+              {pendingRegs.length === 0 && !pendingRegsLoading ? (
+                <div className="mutedSmall">Aucun compte en attente.</div>
+              ) : null}
+
+              <div style={{ display: "grid", gap: 10 }}>
+                {pendingRegs.map((u) => (
+                  <div
+                    key={u.id}
+                    style={{
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(255,255,255,0.03)",
+                      padding: 12,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <b>{u.username}</b>
+                        <span className="mutedSmall" style={{ opacity: 0.85 }}>
+                          #{u.id}
+                        </span>
+                        <Pill tone="warn">email non vérifié</Pill>
+                      </div>
+
+                      <div className="mutedSmall" style={{ opacity: 0.9, marginTop: 6 }}>
+                        📧 <b>{u.email}</b>
+                      </div>
+
+                      <div className="mutedSmall" style={{ opacity: 0.85, marginTop: 6 }}>
+                        Créé: <b>{fmtFrDate(u.createdAt)}</b> • Code:{" "}
+                        <b>{u.codeCreatedAt ? fmtFrDate(u.codeCreatedAt) : "—"}</b>
+                        {u.attempts != null ? (
+                          <>
+                            {" "}
+                            • Tentatives: <b>{u.attempts}</b>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <button
+                        className="btnGhostSmall"
+                        type="button"
+                        onClick={() => navigator.clipboard?.writeText(u.email)}
+                      >
+                        📋 Copier email
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ) : null}
+          {tab === "referrals" ? (
+            <Card
+              title={
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>🎁</span>
+                  Parrainages
+                </span>
+              }
+              subtitle="Résumé par streamer + liste des parrainages (user → streamer)."
+              right={
+                <>
+                  <button className="btnPrimary" type="button" onClick={() => refreshReferrals(refOffset)} disabled={refLoading}>
+                    {refLoading ? "…" : "Rafraîchir"}
+                  </button>
+                  <button className="btnSecondary" type="button" onClick={() => goto("overview")}>
+                    ← Retour
+                  </button>
+                </>
+              }
+            >
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                <Pill tone="info">
+                  total: <b>{refSummary?.totals.total ?? 0}</b>
+                </Pill>
+                <Pill tone="info">
+                  users uniques: <b>{refSummary?.totals.uniqueUsers ?? 0}</b>
+                </Pill>
+              </div>
+
+              <div
+                style={{
+                  borderRadius: 16,
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.03)",
+                  overflow: "hidden",
+                }}
+              >
+                <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.08)", fontWeight: 950 }}>
+                  📊 Parrainages par streamer
+                </div>
+                <div style={{ padding: 12, display: "grid", gap: 8 }}>
+                  {(refSummary?.byStreamer ?? []).length === 0 ? (
+                    <div className="mutedSmall">Aucun parrainage.</div>
+                  ) : (
+                    (refSummary!.byStreamer).map((s) => (
+                      <div
+                        key={s.streamerSlug}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 10,
+                          flexWrap: "wrap",
+                          padding: "10px 10px",
+                          borderRadius: 12,
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          background: "rgba(0,0,0,0.10)",
+                        }}
+                      >
+                        <div>
+                          <b>{s.streamerName || s.streamerSlug}</b>{" "}
+                          <span className="mutedSmall" style={{ opacity: 0.8 }}>
+                            ({s.streamerSlug})
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <Pill tone="brand">
+                            total: <b>{s.count}</b>
+                          </Pill>
+                          <Pill tone="info">
+                            uniques: <b>{s.uniqueUsers}</b>
+                          </Pill>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <Pill tone="neutral">
+                  offset: <b>{refOffset}</b>
+                </Pill>
+                <button
+                  className="btnSecondary"
+                  type="button"
+                  disabled={refLoading || refOffset === 0}
+                  onClick={() => refreshReferrals(Math.max(0, refOffset - 200))}
+                >
+                  ← Précédent
+                </button>
+                <button className="btnSecondary" type="button" disabled={refLoading} onClick={() => refreshReferrals(refOffset + 200)}>
+                  Suivant →
+                </button>
+              </div>
+
+              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                {refRows.length === 0 && !refLoading ? <div className="mutedSmall">Aucun item.</div> : null}
+
+                {refRows.map((r, i) => (
+                  <div
+                    key={`${r.userId}-${r.streamerSlug}-${i}`}
+                    style={{
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(255,255,255,0.03)",
+                      padding: 12,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div>
+                      <b>{r.username}</b>{" "}
+                      <span className="mutedSmall" style={{ opacity: 0.8 }}>
+                        #{r.userId}
+                      </span>
+                      <div className="mutedSmall" style={{ opacity: 0.9, marginTop: 6 }}>
+                        → <b>{r.streamerName || r.streamerSlug}</b>{" "}
+                        <span style={{ opacity: 0.8 }}>({r.streamerSlug})</span>
+                      </div>
+                    </div>
+                    <div className="mutedSmall" style={{ opacity: 0.85 }}>
+                      {fmtFrDate(r.createdAt)}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Card>
           ) : null}
 
