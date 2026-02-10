@@ -30,6 +30,7 @@ import { AchievementsToast } from "./components/AchievementsToast";
 import { CallsToast } from "./components/CallsToast";
 import { AchievementsModal } from "./components/AchievementsModal";
 import ChatPopupPage from "./pages/ChatPopupPage";
+import ReferralLandingPage from "./pages/ReferralLandingPage";
 
 function AppInner() {
   const location = useLocation();
@@ -43,6 +44,15 @@ function AppInner() {
     setLoginOpen(false);
     setAchievementsOpen(false);
   }, [location.pathname]);
+
+  React.useEffect(() => {
+  const force = sessionStorage.getItem("force_register");
+  if (force === "1") {
+    sessionStorage.removeItem("force_register");
+    setLoginOpen(true);
+    window.dispatchEvent(new CustomEvent("ui:open_register"));
+  }
+}, [location.pathname, location.search]);
 
   // ✅ listeners globaux (si tu les utilises avec CallsToast actions)
   React.useEffect(() => {
@@ -79,6 +89,7 @@ function AppInner() {
         <Route path="/admin/casinos/comments" element={<AdminCasinoCommentsPage />} />
 
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/r/:slug" element={<ReferralLandingPage />} />
       </Routes>
 
       {isMobile && <BottomTabs />}

@@ -113,6 +113,12 @@ export function LoginModal({
     }
   }, [open]);
 
+  React.useEffect(() => {
+    const fn = () => setStep("register_form");
+    window.addEventListener("ui:open_register", fn as any);
+    return () => window.removeEventListener("ui:open_register", fn as any);
+  }, []);
+
   // ✅ also refresh ref when step changes to register_form (if user opens modal then navigates)
   React.useEffect(() => {
     if (!open) return;
