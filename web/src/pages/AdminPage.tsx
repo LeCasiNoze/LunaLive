@@ -279,6 +279,7 @@ export default function AdminPage() {
   const [refSummary, setRefSummary] = React.useState<AdminReferralSummary | null>(null);
   const [refRows, setRefRows] = React.useState<AdminReferralRow[]>([]);
   const [refOffset, setRefOffset] = React.useState(0);
+  const [refView, setRefView] = React.useState<"all" | "pending" | "validated">("all");
 
   function goto(next: string) {
     setTab(next);
@@ -321,7 +322,7 @@ export default function AdminPage() {
     }
   }
 
-  async function refreshReferrals(offset = 0) {
+  async function refreshReferrals(offset = 0, view = refView) {
     if (!key) return;
     setRefLoading(true);
     setErr(null);
@@ -329,7 +330,7 @@ export default function AdminPage() {
       const s = await adminReferralsSummary(key);
       setRefSummary(s);
 
-      const r = await adminListReferrals(key, { limit: 200, offset });
+      const r = await adminListReferrals(key, { limit: 200, offset, status: view });
       setRefRows(r.items || []);
       setRefOffset(offset);
     } catch (e: any) {
@@ -342,7 +343,10 @@ export default function AdminPage() {
   React.useEffect(() => {
     if (!key) return;
     if (tab === "pending_registrations") refreshPendingRegs();
-    if (tab === "referrals") refreshReferrals(0);
+    if (tab === "referrals") {
+      setRefView("all");
+      refreshReferrals(0, "all");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, tab]);
 
@@ -1340,6 +1344,7 @@ export default function AdminPage() {
               }
               subtitle="Résumé par streamer + liste des parrainages (user → streamer)."
               right={
+                
                 <>
                   <button className="btnPrimary" type="button" onClick={() => refreshReferrals(refOffset)} disabled={refLoading}>
                     {refLoading ? "…" : "Rafraîchir"}
@@ -1350,14 +1355,62 @@ export default function AdminPage() {
                 </>
               }
             >
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-                <Pill tone="info">
-                  total: <b>{refSummary?.totals.total ?? 0}</b>
-                </Pill>
-                <Pill tone="info">
-                  users uniques: <b>{refSummary?.totals.uniqueUsers ?? 0}</b>
-                </Pill>
-              </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
+              <Pill tone="info">
+                total: <b>{refSummary?.totals.total ?? 0}</b>
+              </Pill>
+
+              <Pill tone={(refSummary?.totals.pending ?? 0) > 0 ? "warn" : "neutral"}>
+                pending: <b>{refSummary?.totals.pending ?? 0}</b>
+              </Pill>
+
+              <Pill tone="good">
+                validés: <b>{refSummary?.totals.validated ?? 0}</b>
+              </Pill>
+
+              <Pill tone="info">
+                uniques: <b>{refSummary?.totals.uniqueUsers ?? 0}</b>
+              </Pill>
+
+              <div style={{ flex: 1 }} />
+
+              <button
+                className={refView === "all" ? "btnPrimary" : "btnSecondary"}
+                type="button"
+                onClick={() => {
+                  setRefView("all");
+                  refreshReferrals(0, "all");
+                }}
+                disabled={refLoading}
+              >
+                Tout
+              </button>
+
+              <button
+                className={refView === "pending" ? "btnPrimary" : "btnSecondary"}
+                type="button"
+                onClick={() => {
+                  setRefView("pending");
+                  refreshReferrals(0, "pending");
+                }}
+                disabled={refLoading}
+              >
+                Pending
+              </button>
+
+              <button
+                className={refView === "validated" ? "btnPrimary" : "btnSecondary"}
+                type="button"
+                onClick={() => {
+                  setRefView("validated");
+                  refreshReferrals(0, "validated");
+                }}
+                disabled={refLoading}
+              >
+                Validés
+              </button>
+            </div>
+
 
               <div
                 style={{
@@ -1394,14 +1447,23 @@ export default function AdminPage() {
                             ({s.streamerSlug})
                           </span>
                         </div>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                          <Pill tone="brand">
-                            total: <b>{s.count}</b>
-                          </Pill>
-                          <Pill tone="info">
-                            uniques: <b>{s.uniqueUsers}</b>
-                          </Pill>
-                        </div>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <Pill tone="brand">
+                              total: <b>{s.count}</b>
+                            </Pill>
+
+                            <Pill tone={(s.pending ?? 0) > 0 ? "warn" : "neutral"}>
+                              pending: <b>{s.pending ?? 0}</b>
+                            </Pill>
+
+                            <Pill tone="good">
+                              validés: <b>{s.validated ?? 0}</b>
+                            </Pill>
+
+                            <Pill tone="info">
+                              uniques: <b>{s.uniqueUsers}</b>
+                            </Pill>
+                          </div>
                       </div>
                     ))
                   )}
@@ -1452,9 +1514,21 @@ export default function AdminPage() {
                         <span style={{ opacity: 0.8 }}>({r.streamerSlug})</span>
                       </div>
                     </div>
-                    <div className="mutedSmall" style={{ opacity: 0.85 }}>
-                      {fmtFrDate(r.createdAt)}
-                    </div>
+                      <div style={{ display: "grid", justifyItems: "end", gap: 6 }}>
+                        <Pill tone={(r as any).status === "pending" ? "warn" : "good"}>
+                          {(r as any).status === "pending" ? "pending" : "validé"}
+                        </Pill>
+
+                        <div className="mutedSmall" style={{ opacity: 0.85 }}>
+                          créé: <b>{fmtFrDate(r.createdAt)}</b>
+                        </div>
+
+                        {(r as any).validatedAt ? (
+                          <div className="mutedSmall" style={{ opacity: 0.75 }}>
+                            validé: <b>{fmtFrDate((r as any).validatedAt)}</b>
+                          </div>
+                        ) : null}
+                      </div>
                   </div>
                 ))}
               </div>

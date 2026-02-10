@@ -421,20 +421,30 @@ export async function adminListPendingRegistrations(adminKey: string, limit = 20
 // ──────────────────────────────────────────
 export type AdminReferralSummary = {
   ok: true;
-  totals: { total: number; uniqueUsers: number };
+  totals: {
+    total: number;
+    uniqueUsers: number;
+
+    pending: number;
+    pendingUniqueUsers: number;
+
+    validated: number;
+    validatedUniqueUsers: number;
+  };
   byStreamer: Array<{
     streamerSlug: string;
     streamerName: string | null;
+
     count: number;
     uniqueUsers: number;
+
+    pending: number;
+    pendingUniqueUsers: number;
+
+    validated: number;
+    validatedUniqueUsers: number;
   }>;
 };
-
-export async function adminReferralsSummary(adminKey: string) {
-  return j<AdminReferralSummary>(`/admin/referrals/summary`, {
-    headers: { "x-admin-key": adminKey },
-  });
-}
 
 export type AdminReferralRow = {
   userId: number;
@@ -442,13 +452,27 @@ export type AdminReferralRow = {
   streamerSlug: string;
   streamerName: string | null;
   createdAt: string;
+
+  status: "pending" | "validated";
+  validatedAt: string | null;
 };
 
-export async function adminListReferrals(adminKey: string, opts?: { limit?: number; offset?: number }) {
+
+export async function adminReferralsSummary(adminKey: string) {
+  return j<AdminReferralSummary>(`/admin/referrals/summary`, {
+    headers: { "x-admin-key": adminKey },
+  });
+}
+export async function adminListReferrals(
+  adminKey: string,
+  opts?: { limit?: number; offset?: number; status?: "all" | "pending" | "validated" }
+) {
   const limit = opts?.limit ?? 200;
   const offset = opts?.offset ?? 0;
+  const status = opts?.status ?? "all";
+
   return j<{ ok: true; items: AdminReferralRow[]; total?: number }>(
-    `/admin/referrals?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`,
+    `/admin/referrals?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}&status=${encodeURIComponent(status)}`,
     { headers: { "x-admin-key": adminKey } }
   );
 }
