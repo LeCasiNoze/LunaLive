@@ -50,6 +50,7 @@ import { mig043_discord_linking } from "./mig043_discord_linking.js";
 import { mig043_discord_guild_claim } from "./mig043_discord_guild_claim.js";
 import { mig044_discord_daily_claims } from "./mig044_discord_daily_claims.js";
 import { mig045_referrals_welcome } from "./mig045_referrals_welcome.js";
+import { mig046_events_engine } from "./mig046_events_engine.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -116,5 +117,6 @@ export async function migrateAll(pool: Pool) {
   await mig043_discord_guild_claim(pool);
   await mig044_discord_daily_claims(pool);
   await mig045_referrals_welcome(pool);
+  await mig046_events_engine(pool);
 
 }
