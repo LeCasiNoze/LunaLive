@@ -1,3 +1,6 @@
+// api/src/events/engine.ts
+import { recomputeViewerWeek } from "./viewer_week.js";
+
 import { pool } from "../db.js";
 
 type EventRow = {
@@ -24,69 +27,81 @@ const CYCLE: string[] = [
   "duo_week",
 ];
 
-/** ---- TZ helpers (sans lib) ---- */
-function getTzParts(timeZone: string, date: Date) {
-  const dtf = new Intl.DateTimeFormat("en-US", {
-    timeZone,
+/** ---- TZ helpers (Intl, Paris-safe) ---- */
+function tzParts(d = new Date()) {
+  const parts = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: TZ,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-  });
+  }).formatToParts(d);
 
-  const parts = dtf.formatToParts(date);
-  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value || 0);
+  const get = (t: string, def = "0") => parts.find((p) => p.type === t)?.value ?? def;
 
   return {
-    y: get("year"),
-    m: get("month"),
-    d: get("day"),
-    hh: get("hour"),
-    mm: get("minute"),
-    ss: get("second"),
+    year: Number(get("year", "1970")),
+    month: Number(get("month", "1")),
+    day: Number(get("day", "1")),
+    hour: Number(get("hour", "0")),
+    minute: Number(get("minute", "0")),
+    second: Number(get("second", "0")),
+    weekday: get("weekday", "lun."),
   };
 }
 
-function tzOffsetMs(timeZone: string, date: Date) {
-  // offset = (wallTime interpreted as UTC) - (actual UTC)
-  const p = getTzParts(timeZone, date);
-  const asUTC = Date.UTC(p.y, p.m - 1, p.d, p.hh, p.mm, p.ss);
+function weekdayIndexFr(w: string) {
+  const s = String(w || "").toLowerCase();
+  if (s.startsWith("lun")) return 1;
+  if (s.startsWith("mar")) return 2;
+  if (s.startsWith("mer")) return 3;
+  if (s.startsWith("jeu")) return 4;
+  if (s.startsWith("ven")) return 5;
+  if (s.startsWith("sam")) return 6;
+  return 7; // dim
+}
+
+// offset = (wallTime interpreted as UTC) - (actual UTC)
+function tzOffsetMsAt(date: Date) {
+  const p = tzParts(date);
+  const asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
   return asUTC - date.getTime();
 }
 
-function parisLocalToUtcMs(y: number, m: number, d: number, hh = 0, mm = 0, ss = 0) {
-  // Convert Paris local time to UTC ms (2-pass for DST)
-  const guess = Date.UTC(y, m - 1, d, hh, mm, ss);
-  let utc = guess - tzOffsetMs(TZ, new Date(guess));
-  utc = guess - tzOffsetMs(TZ, new Date(utc));
+// Paris local "YYYY-MM-DD 00:00" -> UTC ms (DST safe, 2-pass)
+function parisMidnightUtcMs(y: number, m: number, d: number) {
+  const guess = Date.UTC(y, m - 1, d, 0, 0, 0);
+  let utc = guess - tzOffsetMsAt(new Date(guess));
+  utc = guess - tzOffsetMsAt(new Date(utc));
   return utc;
 }
 
 function weekStartUtcMsParis(now = new Date()) {
-  const p = getTzParts(TZ, now); // Paris wall date
-  // weekday of that Paris date (Mon=1..Sun=7)
-  const weekdayUtc = new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay(); // 0..6 (Sun=0)
-  const weekday = weekdayUtc === 0 ? 7 : weekdayUtc;
-  const deltaToMon = weekday - 1;
+  const p = tzParts(now);
+  const wd = weekdayIndexFr(p.weekday); // 1..7
+  const deltaToMon = wd - 1;
 
-  // Monday 00:00 Paris of current week
-  const monUtc = parisLocalToUtcMs(p.y, p.m, p.d - deltaToMon, 0, 0, 0);
-  return monUtc;
+  // Use "safe midday" to do day arithmetic without DST edges
+  const safeNoonUtc = Date.UTC(p.year, p.month - 1, p.day, 12, 0, 0);
+  const mondayNoonUtc = safeNoonUtc - deltaToMon * 24 * 3600_000;
+  const pm = tzParts(new Date(mondayNoonUtc)); // Monday (Paris date)
+
+  // Monday 00:00 Paris -> UTC ms
+  return parisMidnightUtcMs(pm.year, pm.month, pm.day);
 }
 
 function cycleIndexForWeek(weekStartUtcMs: number) {
-  // Stable index based on weekStart bucket
   const weeksSinceEpoch = Math.floor(weekStartUtcMs / WEEK_MS);
-  const idx = ((weeksSinceEpoch % 6) + 6) % 6;
-  return idx;
+  return ((weeksSinceEpoch % 6) + 6) % 6;
 }
 
 /** ---- Core engine ---- */
 
-async function getCurrentEvent(now = new Date()): Promise<EventRow | null> {
+async function getCurrentEvent(): Promise<EventRow | null> {
   const r = await pool.query(
     `
     SELECT *
@@ -106,7 +121,6 @@ async function ensureWeekEvent(weekStartUtcMs: number) {
   const cycle_index = cycleIndexForWeek(weekStartUtcMs);
   const type = CYCLE[cycle_index] || "viewer_week";
 
-  // default config per type (optional: fetch from event_type_configs)
   const cfgRes = await pool.query(`SELECT config FROM event_type_configs WHERE type=$1`, [type]);
   const config = cfgRes.rows?.[0]?.config ?? {};
 
@@ -120,7 +134,7 @@ async function ensureWeekEvent(weekStartUtcMs: number) {
   );
 }
 
-async function openIfNeeded(now = new Date()) {
+async function openIfNeeded() {
   await pool.query(
     `
     UPDATE events
@@ -132,9 +146,12 @@ async function openIfNeeded(now = new Date()) {
   );
 }
 
-async function closeIfNeeded(now = new Date()) {
-  // Close all events that ended and were live/scheduled (idempotent)
-  // Snapshot placeholder: result stays {} for now
+const cur = await getCurrentEvent();
+if (cur && cur.type === "viewer_week" && cur.state === "live") {
+  await recomputeViewerWeek(cur.id);
+}
+
+async function closeIfNeeded() {
   await pool.query(
     `
     UPDATE events
@@ -149,12 +166,16 @@ export function startEventsEnginePoller(everyMs = 60_000) {
   const tick = async () => {
     try {
       const ws = weekStartUtcMsParis(new Date());
+
       await ensureWeekEvent(ws);
       await closeIfNeeded();
       await openIfNeeded();
 
-      // Also pre-create next week (handy for UI/admin)
+      // pre-create next week
       await ensureWeekEvent(ws + WEEK_MS);
+
+      // (optional debug) touch current event once (kept for future)
+      void (await getCurrentEvent());
     } catch (e: any) {
       console.warn("[events-engine] tick failed", e?.message || e);
     }

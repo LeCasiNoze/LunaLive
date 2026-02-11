@@ -98,6 +98,7 @@ import { welcomeRouter } from "./routes/welcome.js";
 import { adminAuthRouter } from "./routes/admin_auth.js";
 import { adminReferralsRouter } from "./routes/admin_referrals.js";
 import { eventsRouter } from "./routes/events.js";
+import { eventsViewerWeekRouter } from "./routes/events_viewer_week.js";
 
 export function createApp() {
   const app = express();
@@ -180,6 +181,7 @@ export function createApp() {
   app.use("/api", discordLinkConsumeRouter);
   app.use("/api", dliveRepostRouter);
   app.use("/api", eventsRouter);
+  app.use("/api", eventsViewerWeekRouter);
 
   // ─────────────────────────────────────────────
   // ✅ Public VODs (doit matcher AVANT streamerRouter)
