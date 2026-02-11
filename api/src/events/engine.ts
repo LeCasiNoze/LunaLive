@@ -1,7 +1,6 @@
 // api/src/events/engine.ts
-import { recomputeViewerWeek } from "./viewer_week.js";
-
 import { pool } from "../db.js";
+import { recomputeViewerWeek } from "./viewer_week.js";
 
 type EventRow = {
   id: number;
@@ -17,7 +16,6 @@ type EventRow = {
 const TZ = "Europe/Paris";
 const WEEK_MS = 7 * 24 * 3600_000;
 
-// Rotation 6 semaines
 const CYCLE: string[] = [
   "clip_race",
   "viewer_week",
@@ -62,17 +60,15 @@ function weekdayIndexFr(w: string) {
   if (s.startsWith("jeu")) return 4;
   if (s.startsWith("ven")) return 5;
   if (s.startsWith("sam")) return 6;
-  return 7; // dim
+  return 7;
 }
 
-// offset = (wallTime interpreted as UTC) - (actual UTC)
 function tzOffsetMsAt(date: Date) {
   const p = tzParts(date);
   const asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
   return asUTC - date.getTime();
 }
 
-// Paris local "YYYY-MM-DD 00:00" -> UTC ms (DST safe, 2-pass)
 function parisMidnightUtcMs(y: number, m: number, d: number) {
   const guess = Date.UTC(y, m - 1, d, 0, 0, 0);
   let utc = guess - tzOffsetMsAt(new Date(guess));
@@ -82,15 +78,13 @@ function parisMidnightUtcMs(y: number, m: number, d: number) {
 
 function weekStartUtcMsParis(now = new Date()) {
   const p = tzParts(now);
-  const wd = weekdayIndexFr(p.weekday); // 1..7
+  const wd = weekdayIndexFr(p.weekday);
   const deltaToMon = wd - 1;
 
-  // Use "safe midday" to do day arithmetic without DST edges
   const safeNoonUtc = Date.UTC(p.year, p.month - 1, p.day, 12, 0, 0);
   const mondayNoonUtc = safeNoonUtc - deltaToMon * 24 * 3600_000;
-  const pm = tzParts(new Date(mondayNoonUtc)); // Monday (Paris date)
+  const pm = tzParts(new Date(mondayNoonUtc));
 
-  // Monday 00:00 Paris -> UTC ms
   return parisMidnightUtcMs(pm.year, pm.month, pm.day);
 }
 
@@ -146,11 +140,6 @@ async function openIfNeeded() {
   );
 }
 
-const cur = await getCurrentEvent();
-if (cur && cur.type === "viewer_week" && cur.state === "live") {
-  await recomputeViewerWeek(cur.id);
-}
-
 async function closeIfNeeded() {
   await pool.query(
     `
@@ -170,12 +159,13 @@ export function startEventsEnginePoller(everyMs = 60_000) {
       await ensureWeekEvent(ws);
       await closeIfNeeded();
       await openIfNeeded();
-
-      // pre-create next week
       await ensureWeekEvent(ws + WEEK_MS);
 
-      // (optional debug) touch current event once (kept for future)
-      void (await getCurrentEvent());
+      // ✅ recompute dans le tick (donc toutes les minutes)
+      const cur = await getCurrentEvent();
+      if (cur && cur.type === "viewer_week" && cur.state === "live") {
+        await recomputeViewerWeek(cur.id);
+      }
     } catch (e: any) {
       console.warn("[events-engine] tick failed", e?.message || e);
     }
