@@ -97,6 +97,7 @@ import { referralRouter } from "./routes/referral.js";
 import { welcomeRouter } from "./routes/welcome.js";
 import { adminAuthRouter } from "./routes/admin_auth.js";
 import { adminReferralsRouter } from "./routes/admin_referrals.js";
+import { eventsRouter } from "./routes/events.js";
 
 export function createApp() {
   const app = express();
@@ -178,6 +179,7 @@ export function createApp() {
   // /api/discord/link/consume
   app.use("/api", discordLinkConsumeRouter);
   app.use("/api", dliveRepostRouter);
+  app.use("/api", eventsRouter);
 
   // ─────────────────────────────────────────────
   // ✅ Public VODs (doit matcher AVANT streamerRouter)

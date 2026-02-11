@@ -19,6 +19,7 @@ import { runSlotsUpdate } from "./calls/updater.js";
 import { startClipsMp4Renderer, startClipsMp4Cleanup } from "./clips/clip_mp4_worker.js";
 import { startAgendaNotifPoller } from "./agenda_notif_poller.js";
 import { startDiscordBot } from "./discord/bot.js";
+import { startEventsEnginePoller } from "./events/engine.js";
 
 
 const port = Number(process.env.PORT || 3001);
@@ -105,6 +106,7 @@ function startSlotsCatalogUpdater(everyHours: number) {
 
   attachChat(io);
   startStatsCleanup();
+  startEventsEnginePoller(60_000);
   startDlivePoller(io);
   startChestJobs(io);
   startAgendaNotifPoller(30_000);
