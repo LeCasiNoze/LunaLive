@@ -21,7 +21,6 @@ import { startAgendaNotifPoller } from "./agenda_notif_poller.js";
 import { startDiscordBot } from "./discord/bot.js";
 import { startEventsEnginePoller } from "./events/engine.js";
 
-
 const port = Number(process.env.PORT || 3001);
 
 function startStatsCleanup() {
@@ -68,19 +67,57 @@ function startSlotsCatalogUpdater(everyHours: number) {
   setInterval(() => tick().catch(() => {}), ms);
 }
 
+async function bootstrapBackground() {
+  // ⚠️ Ne doit PAS bloquer le listen()
+  try {
+    console.log("[boot] migrate...");
+    await migrate();
+    console.log("[boot] migrate ok");
+
+    console.log("[boot] ensureBotClips...");
+    await ensureBotClips();
+    console.log("[boot] ensureBotClips ok");
+
+    console.log("[boot] ensureCallsSchema...");
+    await ensureCallsSchema(pool);
+    console.log("[boot] ensureCallsSchema ok");
+
+    // Si tu veux que le updater slots ne démarre qu'après DB ready :
+    startSlotsCatalogUpdater(12);
+
+    console.log("[boot] background bootstrap done");
+  } catch (e: any) {
+    console.error("[boot] background bootstrap failed", e?.message || e);
+    // On NE crash pas le service : il est déjà up.
+    // Si tu préfères forcer un crash en cas de DB down, dis-moi.
+  }
+}
+
+function setupGracefulShutdown(server: http.Server) {
+  const shutdown = (signal: string) => {
+    console.log(`[shutdown] ${signal} received, closing...`);
+    server.close(() => {
+      console.log("[shutdown] http server closed");
+      pool.end().catch(() => {});
+      process.exit(0);
+    });
+
+    // sécurité : si ça bloque, on force au bout de 8s
+    setTimeout(() => {
+      console.warn("[shutdown] force exit");
+      process.exit(1);
+    }, 8000).unref();
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+}
+
 (async () => {
-  await migrate();
-
-  // ✅ ensure clips table (runtime idempotent)
-  await ensureBotClips();
-
-  // ✅ calls + slots schema
-  await ensureCallsSchema(pool);
-
-  startSlotsCatalogUpdater(12);
-
+  // ✅ Crée l'app vite
   const app = createApp();
 
+  // (tu as déjà du static uploads dans app.ts, mais tu l'avais aussi ici)
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
   const server = http.createServer(app);
@@ -93,6 +130,24 @@ function startSlotsCatalogUpdater(everyHours: number) {
     },
   });
 
+  app.locals.io = io;
+  app.set("io", io);
+
+  attachChat(io);
+
+  // ✅ Démarre le serveur TOUT DE SUITE (Render sera content)
+  server.listen(port, () => console.log(`[api] listening on :${port}`));
+
+  // ✅ Démarre les pollers (ils utilisent la DB, donc si DB down ça loguera, mais ne bloque pas le deploy)
+  startStatsCleanup();
+  startEventsEnginePoller(60_000);
+  startDlivePoller(io);
+  startChestJobs(io);
+  startAgendaNotifPoller(30_000);
+  startClipsVodLinker();
+  startClipsMp4Renderer();
+  startClipsMp4Cleanup();
+
   if (process.env.RUN_DISCORD_BOT === "1") {
     startDiscordBot({
       log: (msg) => console.log(msg),
@@ -101,21 +156,9 @@ function startSlotsCatalogUpdater(everyHours: number) {
     });
   }
 
-  app.locals.io = io;
-  app.set("io", io);
+  // ✅ Bootstrap DB en arrière-plan
+  bootstrapBackground().catch(() => {});
 
-  attachChat(io);
-  startStatsCleanup();
-  startEventsEnginePoller(60_000);
-  startDlivePoller(io);
-  startChestJobs(io);
-  startAgendaNotifPoller(30_000);
-  // ✅ worker: link VOD url to pending clips
-  startClipsVodLinker();
-
-  // ✅ NEW: worker render mp4 clips to R2 + cleanup
-  startClipsMp4Renderer();
-  startClipsMp4Cleanup();
-
-  server.listen(port, () => console.log(`[api] listening on :${port}`));
+  // ✅ Pour que Render puisse arrêter proprement (évite deploys qui traînent)
+  setupGracefulShutdown(server);
 })();

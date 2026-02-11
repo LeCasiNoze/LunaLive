@@ -110,6 +110,10 @@ export function createApp() {
   app.set("trust proxy", 1);
 
   app.use(cors());
+
+  // ✅ Healthcheck (Render)
+  app.get("/healthz", (_req, res) => res.status(200).send("ok"));
+
   app.use(express.json({ limit: "3mb" }));
 
   // Billing (souvent webhook / needs early mount)
