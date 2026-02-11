@@ -5,14 +5,6 @@ import { listCasinos, type CasinoListItem, type CasinoListResp } from "../lib/ap
 import { PartnerPlansModal } from "../components/PartnerPlansModal";
 import { setSeo } from "../lib/seo";
 
-React.useEffect(() => {
-  setSeo({
-    title: "Casinos — LunaLive",
-    description:
-      "Découvre les casinos présents sur LunaLive : infos, liens, avis et notes de la communauté (bientôt).",
-    path: "/casinos",
-  });
-}, []);
 
 /* ─────────────────────────────────────────────
    Utils + UI atoms (inline)
@@ -511,6 +503,15 @@ export default function CasinosPage() {
       setLoading(false);
     }
   }
+
+  React.useEffect(() => {
+  setSeo({
+    title: "Casinos — LunaLive",
+    description:
+      "Découvre les casinos présents sur LunaLive : infos, liens, avis et notes de la communauté (bientôt).",
+    path: "/casinos",
+  });
+}, []);
 
   React.useEffect(() => {
     load();

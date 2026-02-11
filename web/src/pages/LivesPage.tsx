@@ -15,15 +15,6 @@ import { useAuth } from "../auth/AuthProvider";
 import { useIsMobile } from "../hooks/useIsMobile";
 import LivesPageMobile from "./LivesPage.mobile";
 
-React.useEffect(() => {
-  setSeo({
-    title: "Lives — LunaLive",
-    description:
-      "Retrouve les streamers casino en direct sur LunaLive : lives, viewers, clips du mois et mises en avant.",
-    path: "/",
-  });
-}, []);
-
 export type LiveCardVM = LiveCard & {
   thumbFallback: string;
   thumbFinal: string;
@@ -1081,6 +1072,15 @@ export default function LivesPage() {
 
   const location = useLocation();
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+  setSeo({
+    title: "Lives — LunaLive",
+    description:
+      "Retrouve les streamers casino en direct sur LunaLive : lives, viewers, clips du mois et mises en avant.",
+    path: "/",
+  });
+}, []);
 
   React.useEffect(() => {
     const open = new URLSearchParams(location.search).get("open");
