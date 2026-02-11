@@ -7,12 +7,22 @@ import { formatViewers } from "../lib/format";
 import { getLives } from "../lib/api";
 import { svgThumb } from "../lib/thumb";
 import type { LiveCard } from "../lib/types";
+import { setSeo } from "../lib/seo";
 
 import { DailyWheelCard } from "../components/DailyWheelCard";
 import { DailyBonusAccessCard } from "../components/DailyBonusAccessCard";
 import { useAuth } from "../auth/AuthProvider";
 import { useIsMobile } from "../hooks/useIsMobile";
 import LivesPageMobile from "./LivesPage.mobile";
+
+React.useEffect(() => {
+  setSeo({
+    title: "Lives — LunaLive",
+    description:
+      "Retrouve les streamers casino en direct sur LunaLive : lives, viewers, clips du mois et mises en avant.",
+    path: "/",
+  });
+}, []);
 
 export type LiveCardVM = LiveCard & {
   thumbFallback: string;

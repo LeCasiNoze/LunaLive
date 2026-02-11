@@ -8,6 +8,7 @@ import { ChatPanel } from "../../components/ChatPanel";
 import { LoginModal } from "../../components/LoginModal";
 import { SubModal } from "../../components/SubModal";
 import { useAuth } from "../../auth/AuthProvider";
+import { setSeo } from "../../lib/seo";
 
 import { EyeIcon, ChatIcon, BellIcon } from "./components/icons";
 import { LiveDurationText, getAnonId } from "./utils";
@@ -128,9 +129,22 @@ function iconBtn(): React.CSSProperties {
  * React ne casse pas l’ordre des hooks (unmount/remount au lieu de switcher branch).
  */
 export default function StreamerPage() {
+  const { slug } = useParams();
   const { isMobile } = useResponsive();
+
+  React.useEffect(() => {
+    const s = String(slug || "").trim();
+    if (!s) return;
+    setSeo({
+      title: `${s} — LunaLive`,
+      description: `Regarde ${s} sur LunaLive : live, viewers, clips et infos du streamer.`,
+      path: `/s/${encodeURIComponent(s)}`,
+    });
+  }, [slug]);
+
   return isMobile ? <StreamerPageMobile /> : <StreamerPageDesktop />;
 }
+
 
 /* =======================================================================================
    Desktop impl

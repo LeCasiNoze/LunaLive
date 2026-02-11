@@ -18,7 +18,7 @@ async function main() {
   const urls = new Set();
 
   // pages statiques
-  ["/", "/casinos", "/lives", "/streamers"].forEach((p) => urls.add(new URL(p, SITE).toString()));
+  ["/", "/casinos", "/browse"].forEach((p) => urls.add(new URL(p, SITE).toString()));
 
   // casinos (adapte l'endpoint si besoin)
   try {
@@ -31,12 +31,13 @@ async function main() {
     console.warn("[sitemap] casinos fetch failed:", e.message);
   }
 
-  // streamers (adapte si tu as un endpoint)
+  // streamers: route réelle = /s/:slug
   try {
-    const data = await safeJson(`${API}/streamers/list`);
-    const streamers = data?.streamers || data?.items || [];
-    for (const s of streamers) {
-      if (s?.slug) urls.add(new URL(`/streamers/${encodeURIComponent(s.slug)}`, SITE).toString());
+    const data = await safeJson(`${API}/streamers`); // ✅ chez toi tu as déjà /streamers (utilisé dans LivesPage)
+    const arr = Array.isArray(data) ? data : (data?.streamers || data?.items || []);
+    for (const s of arr) {
+      const slug = s?.slug ? String(s.slug).trim() : "";
+      if (slug) urls.add(new URL(`/s/${encodeURIComponent(slug)}`, SITE).toString());
     }
   } catch (e) {
     console.warn("[sitemap] streamers fetch failed:", e.message);

@@ -3,6 +3,16 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { listCasinos, type CasinoListItem, type CasinoListResp } from "../lib/api_casinos";
 import { PartnerPlansModal } from "../components/PartnerPlansModal";
+import { setSeo } from "../lib/seo";
+
+React.useEffect(() => {
+  setSeo({
+    title: "Casinos — LunaLive",
+    description:
+      "Découvre les casinos présents sur LunaLive : infos, liens, avis et notes de la communauté (bientôt).",
+    path: "/casinos",
+  });
+}, []);
 
 /* ─────────────────────────────────────────────
    Utils + UI atoms (inline)
