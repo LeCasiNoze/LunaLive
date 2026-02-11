@@ -256,9 +256,9 @@ welcomeRouter.post(
         if (streamerUserId > 0) {
           // week_start Paris (lundi)
           const wk = await client.query(
-            `SELECT (date_trunc('week', (NOW() AT TIME ZONE '${TZ}'))::date) AS week_start`
+            `SELECT to_char(date_trunc('week', (NOW() AT TIME ZONE '${TZ}'))::date, 'YYYY-MM-DD') AS week_start`
           );
-          const weekStart = String(wk.rows?.[0]?.week_start).slice(0, 10);
+          const weekStart = String(wk.rows?.[0]?.week_start || "");
 
           // cap: count payouts this week
           const cap = await client.query(
