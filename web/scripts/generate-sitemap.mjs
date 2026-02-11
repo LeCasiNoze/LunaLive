@@ -18,7 +18,7 @@ async function main() {
   const urls = new Set();
 
   // pages statiques
-  ["/", "/casinos", "/browse"].forEach((p) => urls.add(new URL(p, SITE).toString()));
+  ["/", "/browse", "/shop", "/casinos", "/hunt"].forEach((p) => urls.add(new URL(p, SITE).toString()));
 
   // casinos (adapte l'endpoint si besoin)
   try {
@@ -33,7 +33,7 @@ async function main() {
 
   // streamers: route réelle = /s/:slug
   try {
-    const data = await safeJson(`${API}/streamers`); // ✅ chez toi tu as déjà /streamers (utilisé dans LivesPage)
+    const data = await safeJson(`${API}/streamers`);
     const arr = Array.isArray(data) ? data : (data?.streamers || data?.items || []);
     for (const s of arr) {
       const slug = s?.slug ? String(s.slug).trim() : "";
