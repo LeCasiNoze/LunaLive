@@ -72,7 +72,7 @@ welcomeRouter.get(
 
     const goals = {
       follow: { need: 1, have: followCount },
-      daily3: { need: 3, have: dailyDays },
+      daily2: { need: 2, have: dailyDays },
       calls2: { need: 2, have: callsCount },
       wheel1: { need: 1, have: wheelCount },
       watch60: { need: 60, have: watchMin },
@@ -80,7 +80,7 @@ welcomeRouter.get(
 
     const completed =
       goals.follow.have >= goals.follow.need &&
-      goals.daily3.have >= goals.daily3.need &&
+      goals.daily2.have >= goals.daily2.need &&
       goals.calls2.have >= goals.calls2.need &&
       goals.wheel1.have >= goals.wheel1.need &&
       goals.watch60.have >= goals.watch60.need;
@@ -152,7 +152,7 @@ welcomeRouter.post(
     const followCount = Number(fo.rows?.[0]?.n || 0);
 
     const completed =
-      followCount >= 1 && dailyDays >= 3 && callsCount >= 2 && wheelCount >= 1 && watchMin >= 60;
+      followCount >= 1 && dailyDays >= 2 && callsCount >= 2 && wheelCount >= 1 && watchMin >= 60;
 
     if (!completed) return res.status(400).json({ ok: false, error: "not_completed" });
 
