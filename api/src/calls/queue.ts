@@ -30,6 +30,8 @@ export type CallsSettings = {
   syncHunt: boolean;
 };
 
+const TZ = "Europe/Paris";
+
 // règle “0 infini / >10 infini”
 export function effectiveLimit(n: number): number {
   const x = Number(n);
@@ -40,7 +42,7 @@ export function effectiveLimit(n: number): number {
 }
 
 async function ensureCallsSchema(pool: Pool) {
-  // calls_settings.sync_hunt
+  // ✅ calls_settings.sync_hunt
   await pool.query(`
     DO $$
     BEGIN
@@ -56,12 +58,12 @@ async function ensureCallsSchema(pool: Pool) {
     END $$;
   `);
 
-  // calls_queue bet/pay/bounty
+  // ✅ calls_queue bet/pay/bounty/is_bonus
   await pool.query(`
     DO $$
     BEGIN
       IF to_regclass('public.calls_queue') IS NOT NULL THEN
-        
+
         IF NOT EXISTS (
           SELECT 1 FROM information_schema.columns
           WHERE table_schema='public' AND table_name='calls_queue' AND column_name='is_bonus'
@@ -91,6 +93,21 @@ async function ensureCallsSchema(pool: Pool) {
         END IF;
       END IF;
     END $$;
+  `);
+
+  // ✅ NEW: calls_actions pour quêtes welcome (idempotent)
+  // - on garde ce schéma très simple et compatible
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS calls_actions (
+      id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      streamer_id BIGINT NULL,
+      action TEXT NOT NULL DEFAULT 'call_add',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS calls_actions_user_id_idx ON calls_actions(user_id);
+    CREATE INDEX IF NOT EXISTS calls_actions_streamer_id_idx ON calls_actions(streamer_id);
+    CREATE INDEX IF NOT EXISTS calls_actions_created_at_idx ON calls_actions(created_at);
   `);
 }
 
@@ -277,7 +294,11 @@ export async function addCall(
   // provider -> provider_norm (stocké en lower)
   const providerRaw = provider ? normText(provider) : null;
   const providerNorm = providerRaw ? normalizeProvider(providerRaw) : null;
-  const providerLower = providerNorm ? String(providerNorm).trim().toLowerCase() : providerRaw ? providerRaw.toLowerCase() : null;
+  const providerLower = providerNorm
+    ? String(providerNorm).trim().toLowerCase()
+    : providerRaw
+      ? providerRaw.toLowerCase()
+      : null;
 
   const settings = await getCallsSettings(pool, streamerId);
   if (!settings.enabled) return { ok: false, error: "calls_disabled" };
@@ -304,55 +325,62 @@ export async function addCall(
     // lock par streamer pour pos + dédup
     await client.query(`SELECT pg_advisory_xact_lock($1)`, [Number(streamerId)]);
 
-  // position par défaut = append
-  let nextPos = 0;
+    // position par défaut = append
+    let nextPos = 0;
 
-  const maxPosRes = await client.query(
-    `SELECT COALESCE(MAX(pos),0)::bigint AS m FROM calls_queue WHERE streamer_id=$1`,
-    [streamerId]
-  );
-  const maxPos = Number(maxPosRes.rows?.[0]?.m ?? 0);
-
-  if (opts?.insertAfterCurrent) {
-    // ✅ pcall = toujours après le 1er item affiché (ORDER BY pos ASC)
-    const firstRes = await client.query(
-      `SELECT pos::bigint AS p
-       FROM calls_queue
-       WHERE streamer_id=$1
-       ORDER BY pos ASC
-       LIMIT 1`,
+    const maxPosRes = await client.query(
+      `SELECT COALESCE(MAX(pos),0)::bigint AS m FROM calls_queue WHERE streamer_id=$1`,
       [streamerId]
     );
+    const maxPos = Number(maxPosRes.rows?.[0]?.m ?? 0);
 
-    if (!firstRes.rows?.length) {
-      // queue vide => on met en 1
-      nextPos = 1;
-    } else {
-      const firstPos = Number(firstRes.rows[0].p || 1);
-
-      // ✅ insert juste après le premier
-      nextPos = firstPos + 1;
-
-      // décale tous les éléments à partir de nextPos
-      await client.query(
-        `UPDATE calls_queue
-         SET pos = pos + 1
-         WHERE streamer_id=$1 AND pos >= $2`,
-        [streamerId, nextPos]
+    if (opts?.insertAfterCurrent) {
+      // ✅ pcall = toujours après le 1er item affiché (ORDER BY pos ASC)
+      const firstRes = await client.query(
+        `SELECT pos::bigint AS p
+         FROM calls_queue
+         WHERE streamer_id=$1
+         ORDER BY pos ASC
+         LIMIT 1`,
+        [streamerId]
       );
-    }
-  } else {
-    nextPos = maxPos + 1;
-  }
 
-  const ins = await client.query(
-    `
-    INSERT INTO calls_queue (streamer_id, slot_name, slot_key, provider, user_id, username, pos, bet, pay, bounty, is_bonus)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NULL,FALSE)
-    RETURNING id, created_at AS "createdAt"
-    `,
-    [streamerId, slotName, slotKey, providerLower, userId, username, nextPos]
-  );
+      if (!firstRes.rows?.length) {
+        // queue vide => on met en 1
+        nextPos = 1;
+      } else {
+        const firstPos = Number(firstRes.rows[0].p || 1);
+
+        // ✅ insert juste après le premier
+        nextPos = firstPos + 1;
+
+        // décale tous les éléments à partir de nextPos
+        await client.query(
+          `UPDATE calls_queue
+           SET pos = pos + 1
+           WHERE streamer_id=$1 AND pos >= $2`,
+          [streamerId, nextPos]
+        );
+      }
+    } else {
+      nextPos = maxPos + 1;
+    }
+
+    const ins = await client.query(
+      `
+      INSERT INTO calls_queue (streamer_id, slot_name, slot_key, provider, user_id, username, pos, bet, pay, bounty, is_bonus)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NULL,FALSE)
+      RETURNING id, created_at AS "createdAt"
+      `,
+      [streamerId, slotName, slotKey, providerLower, userId, username, nextPos]
+    );
+
+    // ✅ NEW: log pour les quêtes welcome (compte un call ajouté, peu importe la source)
+    await client.query(
+      `INSERT INTO calls_actions(user_id, streamer_id, action)
+       VALUES ($1,$2,'call_add')`,
+      [userId, streamerId]
+    );
 
     await client.query("COMMIT");
 
