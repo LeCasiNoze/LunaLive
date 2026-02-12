@@ -38,7 +38,7 @@ function readInt(v: any): number | null {
 function normalizeSlug(input: string) {
   const s = String(input || "").trim();
   if (!s) return "";
-  // on accepte déjà un slug propre, sinon slugify
+  // accepte déjà un slug propre, sinon slugify
   const cleaned = s.toLowerCase();
   if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(cleaned)) return cleaned;
   return slugify(s);
@@ -185,11 +185,7 @@ adminRouter.post(
 
     await pool.query(`UPDATE users SET role='viewer' WHERE id=$1`, [userId]);
 
-    // NOTE: on ne delete plus forcément le streamer ici (au choix)
-    // On garde le streamer + suspended_until (ça permet re-approve proprement).
-    // Si tu veux l'ancien comportement (delete), dé-commente :
-    // await pool.query(`DELETE FROM streamers WHERE user_id=$1`, [userId]);
-
+    // NOTE: on ne delete plus forcément le streamer ici.
     res.json({ ok: true });
   })
 );
@@ -228,12 +224,6 @@ adminRouter.post(
  * => "Supprimer" côté admin = BAN (rejected)
  * - permanent: suspended_until = 'infinity'
  * - temporaire: ?durationSec=3600  (1h)
- *
- * Effets:
- * - streamer_requests => rejected
- * - users.role => viewer (si lié à user)
- * - release provider account
- * - streamers.featured=false, is_live=false, viewers=0
  */
 adminRouter.delete(
   "/admin/streamers/:slug",
@@ -242,10 +232,7 @@ adminRouter.delete(
     const slug = String(req.params.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
 
-    const durationSec =
-      readInt((req.query as any)?.durationSec) ??
-      readInt((req.body as any)?.durationSec) ??
-      null;
+    const durationSec = readInt((req.query as any)?.durationSec) ?? readInt((req.body as any)?.durationSec) ?? null;
 
     const client = await pool.connect();
     try {
@@ -552,7 +539,9 @@ adminRouter.patch(
             await client.query("BEGIN");
             await releaseAccountForStreamerId(client, streamerId);
             await client.query(
-              `UPDATE streamers SET suspended_until='infinity'::timestamptz, featured=false, updated_at=NOW() WHERE id=$1`,
+              `UPDATE streamers
+               SET suspended_until='infinity'::timestamptz, featured=false, updated_at=NOW()
+               WHERE id=$1`,
               [streamerId]
             );
             await client.query("COMMIT");
@@ -744,7 +733,7 @@ adminRouter.post(
     }
 
     for (const k of Object.keys(byProvider)) {
-      byProvider[k].sort((a, b) => a.name.localeCompare(b.name));
+      byProvider[k].sort((aa, bb) => aa.name.localeCompare(bb.name));
     }
 
     res.json({
@@ -759,7 +748,6 @@ adminRouter.post(
 // ─────────────────────────────────────────────
 // Site bans (USER) — v1: ban compte uniquement
 // ─────────────────────────────────────────────
-
 adminRouter.get(
   "/admin/site-bans/users",
   requireAdminKey,

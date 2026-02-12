@@ -2,171 +2,145 @@
 import type { Pool } from "pg";
 import { upsertSlots, type SlotRow, type InsertedSlotRow } from "./catalog.js";
 import { normText, keyText } from "./normalize.js";
-import { loadShuffleImagesIndex, getShuffleImageUrlFromIndex, type ShuffleImagesIndex } from "./shuffle_images.js";
 
 /**
- * Source: Shuffle GraphQL (pour noms/slugs/providers)
- * Images: JSON public (n9assets) -> imgix (shuffle-com.imgix.net)
+ * Source: Gamba
+ * - Liste providers: page HTML https://gamba.com/casino/providers (regex)
+ * - Games: persisted query gameSearch
  *
- * Exclusions:
- * - original (Shuffle originals)
- * - evolution
- * - pragmaticplaylive
+ * On garde SlotRow {name, provider, imageUrl} et upsertSlots() inchangés.
  */
 
-const SHUFFLE_GQL = String(process.env.SHUFFLE_GQL_URL || "https://shuffle.com/main-api/graphql/api/graphql").trim();
-const EXCLUDED_PROVIDER_IDS = new Set<string>(["original", "evolution", "pragmaticplaylive"]);
+const GAMBA_BASE = "https://gamba.com";
+const GAMBA_API = "https://gamba.com/_api/@";
 
-const Q_PROVIDERS = `query GetGameCountByProvider {
-  getGameCountByProvider { provider { id name slug } gamesCount }
-}`;
+const GAMBA_GAMESEARCH_SHA = String(
+  process.env.GAMBA_GAMESEARCH_SHA || "b717ba5742eb2ab2e75bc1f5ffdd9617d61a8c3ef7612cc6d0bf5c6c2ab26046"
+).trim();
 
-const Q_CACHED_GAMES = `query CachedGames($providerSlug:String!, $first:Int!, $skip:Int!) {
-  cachedGames(providerSlug:$providerSlug, first:$first, skip:$skip) {
-    totalCount
-    nodes { name slug }
-  }
-}`;
+const GAMBA_FIRST = Math.max(1, Math.min(60, Number(process.env.GAMBA_FIRST || 39)));
+const INTER_PROVIDER_MS = Math.max(0, Number(process.env.GAMBA_INTER_PROVIDER_MS || 120));
+const LOG_NEW_MAX = Math.max(0, Number(process.env.SLOTS_LOG_NEW_MAX || 25));
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function shouldRetryTooMany(msg: string) {
-  return msg.includes("TOO_MANY_REQUEST") || msg.includes("Too Many") || msg.includes("TooMany");
+function buildGambaUrl(producerSlug: string, first: number, page: number, sha: string) {
+  const vars = {
+    producerSlug,
+    first,
+    page,
+    orderBy: [{ column: "ORDER_PRODUCER", order: "ASC" }],
+  };
+  const ext = { persistedQuery: { version: 1, sha256Hash: sha } };
+
+  const varsEnc = encodeURIComponent(JSON.stringify(vars));
+  const extEnc = encodeURIComponent(JSON.stringify(ext));
+
+  return `${GAMBA_API}?operationName=gameSearch&variables=${varsEnc}&extensions=${extEnc}`;
 }
 
-async function sleepBackoff(attempt: number) {
-  // 1200ms, 2400ms, 4800ms ... (+ jitter)
-  const base = 1200 * Math.pow(2, attempt);
-  const jitter = base * (0.8 + Math.random() * 0.4);
-  await sleep(Math.floor(jitter));
-}
-
-async function shufflePost(payload: any, referer: string) {
-  const r = await fetch(SHUFFLE_GQL, {
-    method: "POST",
+async function fetchText(url: string, referer?: string) {
+  const r = await fetch(url, {
     headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      Origin: "https://shuffle.com",
-      Referer: referer,
       "User-Agent": "Mozilla/5.0 (LunaLive slots-updater)",
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      ...(referer ? { Referer: referer } : {}),
     },
-    body: JSON.stringify(payload),
   });
+  if (!r.ok) throw new Error(`gamba_http_${r.status}`);
+  return await r.text();
+}
 
+async function fetchJson(url: string, referer?: string) {
+  const r = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (LunaLive slots-updater)",
+      Accept: "application/json",
+      ...(referer ? { Referer: referer } : {}),
+    },
+  });
   const txt = await r.text().catch(() => "");
-  let data: any = null;
+  let j: any = null;
   try {
-    data = txt ? JSON.parse(txt) : null;
+    j = txt ? JSON.parse(txt) : null;
   } catch {
-    data = null;
+    j = null;
   }
-
-  if (!r.ok) {
-    throw new Error(`shuffle_http_${r.status}:${(txt || "").slice(0, 200)}`);
-  }
-  if (data?.errors?.length) {
-    const msg = String(data.errors?.[0]?.message || "shuffle_graphql_error");
-    const code = String(data.errors?.[0]?.extensions?.code || "");
-    throw new Error(`shuffle_gql:${code}:${msg}`);
-  }
-  return data;
+  if (!r.ok) throw new Error(`gamba_http_${r.status}:${(txt || "").slice(0, 120)}`);
+  return j;
 }
 
-async function shufflePostWithRetry(payload: any, referer: string) {
-  const maxRetries = Math.max(0, Number(process.env.SHUFFLE_MAX_RETRIES || 3));
+/** Liste les provider slugs depuis /casino/providers */
+async function fetchProviderSlugs(): Promise<string[]> {
+  const url = `${GAMBA_BASE}/casino/providers`;
+  const html = await fetchText(url, url);
 
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await shufflePost(payload, referer);
-    } catch (e: any) {
-      const msg = String(e?.message || e);
+  // 1) provider-logos/<slug>.svg
+  const rxLogo = /provider-logos\/([a-z0-9-]+)\.(?:svg|png|webp|jpg|jpeg)/g;
+  // 2) /casino/provider/<slug>
+  const rxLink = /\/casino\/provider\/([a-z0-9-]+)/g;
 
-      // retry only on rate limit
-      if (attempt < maxRetries && shouldRetryTooMany(msg)) {
-        console.warn(`[slots-updater] rate-limit → retry ${attempt + 1}/${maxRetries}`);
-        await sleepBackoff(attempt);
-        continue;
-      }
+  const out = new Set<string>();
 
-      throw e;
-    }
-  }
+  let m: RegExpExecArray | null;
+  while ((m = rxLogo.exec(html))) out.add(m[1]);
+  while ((m = rxLink.exec(html))) out.add(m[1]);
+
+  return Array.from(out).sort((a, b) => a.localeCompare(b));
 }
 
-type ProviderRow = { id: string; name: string; slug: string; gamesCount: number };
+type GameSearchResp = {
+  data?: {
+    gameSearch?: {
+      data?: any[];
+      paginatorInfo?: {
+        total?: number;
+        hasMorePages?: boolean;
+        currentPage?: number;
+      };
+    };
+  };
+};
 
-async function fetchProviders(): Promise<ProviderRow[]> {
-  const referer = "https://shuffle.com/fr/casino/providers/nolimit-city";
-  const data = await shufflePostWithRetry(
-    { query: Q_PROVIDERS, variables: {}, operationName: "GetGameCountByProvider" },
-    referer
-  );
-
-  const arr = data?.data?.getGameCountByProvider;
-  if (!Array.isArray(arr)) return [];
-
-  return arr
-    .map((x: any) => ({
-      id: String(x?.provider?.id || "").trim(),
-      name: String(x?.provider?.name || "").trim(),
-      slug: String(x?.provider?.slug || "").trim(),
-      gamesCount: Number(x?.gamesCount || 0),
-    }))
-    .filter((x) => x.id && x.name && x.slug && Number.isFinite(x.gamesCount));
-}
-
-async function fetchProviderGames(
-  providerId: string,
-  providerSlug: string,
-  providerName: string,
-  imagesIdx: ShuffleImagesIndex
-): Promise<SlotRow[]> {
-  const referer = `https://shuffle.com/fr/casino/providers/${providerSlug}`;
-  const first = Math.max(1, Math.min(40, Number(process.env.SHUFFLE_BATCH || 40))); // ✅ safe
-  let skip = 0;
-
+async function fetchProviderGames(producerSlug: string): Promise<SlotRow[]> {
+  const referer = `${GAMBA_BASE}/casino/provider/${producerSlug}`;
   const out: SlotRow[] = [];
 
-  // safety anti-boucle infinie
-  let guardPages = 0;
+  let page = 1;
+  let guard = 0;
 
   while (true) {
-    guardPages++;
-    if (guardPages > 400) break;
+    guard++;
+    if (guard > 500) break;
 
-    const data = await shufflePostWithRetry(
-      {
-        query: Q_CACHED_GAMES,
-        variables: { providerSlug, first, skip },
-        operationName: "CachedGames",
-      },
-      referer
-    );
+    const url = buildGambaUrl(producerSlug, GAMBA_FIRST, page, GAMBA_GAMESEARCH_SHA);
+    const j = (await fetchJson(url, referer)) as GameSearchResp;
 
-    const cg = data?.data?.cachedGames;
-    const total = Number(cg?.totalCount || 0);
-    const nodes = Array.isArray(cg?.nodes) ? cg.nodes : [];
+    const gs = j?.data?.gameSearch;
+    const items = Array.isArray(gs?.data) ? gs!.data! : [];
+    const pi = gs?.paginatorInfo;
 
-    for (const n of nodes) {
-      const name = String(n?.name || "").trim();
+    for (const it of items) {
+      if (!it) continue;
+
+      const name = String(it.title || it.name || "").trim();
       if (!name) continue;
 
-      const slug = String(n?.slug || "").trim() || null;
+      // image: on tente plusieurs clés
+      let img: string | null = null;
+      if (typeof it.thumbnailUrl === "string" && it.thumbnailUrl.trim()) img = it.thumbnailUrl.trim();
+      else if (typeof it.coverUrl === "string" && it.coverUrl.trim()) img = it.coverUrl.trim();
+      else if (typeof it.imageUrl === "string" && it.imageUrl.trim()) img = it.imageUrl.trim();
 
-      // ✅ images via n9assets -> imgix
-      const imageUrl = getShuffleImageUrlFromIndex(imagesIdx, { slug, providerId, name });
-
-      out.push({ name, provider: providerName, imageUrl: imageUrl || null });
+      // ✅ provider = slug brut (normalisé ensuite dans upsertSlots via provider_aliases)
+      out.push({ name, provider: producerSlug, imageUrl: img });
     }
 
-    skip += first;
-    if (!total || skip >= total) break;
-
-    // petit throttle intra-provider (anti burst)
-    await sleep(160);
+    if (!pi?.hasMorePages) break;
+    page++;
+    await sleep(120);
   }
 
   return out;
@@ -187,31 +161,22 @@ export async function runSlotsUpdate(
   pool: Pool
 ): Promise<{ ok: true; fetched: number; inserted: InsertedSlotRow[] } | { ok: false; error: string }> {
   try {
-    // ✅ charge l’index images 1 fois (cache TTL dans shuffle_images.ts)
-    const imagesIdx = await loadShuffleImagesIndex();
+    const providers = await fetchProviderSlugs();
 
-    const providers = await fetchProviders();
-
-    const targets = providers.filter((p) => p.gamesCount > 0).filter((p) => !EXCLUDED_PROVIDER_IDS.has(p.id));
-
-    const interProviderMs = Number(process.env.SHUFFLE_INTER_PROVIDER_MS || 650);
-    const logNamesMax = Math.max(0, Number(process.env.SLOTS_LOG_NEW_MAX || 25));
+    console.log(`[slots-updater] gamba providers=${providers.length} first=${GAMBA_FIRST}`);
 
     let totalFetchedRaw = 0;
     const allInserted: InsertedSlotRow[] = [];
 
-    console.log(`[slots-updater] providers=${targets.length} excluded=${EXCLUDED_PROVIDER_IDS.size}`);
-    console.log(`[slots-updater] shuffleImages slugs=${imagesIdx.bySlug.size} externalIds=${imagesIdx.byExternalId.size}`);
-
-    for (const p of targets) {
-      console.log(`[slots-updater] ▶ provider start id=${p.id} slug=${p.slug} name="${p.name}" gamesCount=${p.gamesCount}`);
+    for (const producerSlug of providers) {
+      console.log(`[slots-updater] ▶ provider ${producerSlug}`);
 
       let rows: SlotRow[] = [];
       try {
-        rows = await fetchProviderGames(p.id, p.slug, p.name, imagesIdx);
+        rows = await fetchProviderGames(producerSlug);
       } catch (e: any) {
-        console.warn(`[slots-updater] skip providerId=${p.id} slug=${p.slug} err=${String(e?.message || e)}`);
-        if (interProviderMs > 0) await sleep(interProviderMs);
+        console.warn(`[slots-updater] skip provider=${producerSlug} err=${String(e?.message || e)}`);
+        if (INTER_PROVIDER_MS) await sleep(INTER_PROVIDER_MS);
         continue;
       }
 
@@ -229,7 +194,6 @@ export async function runSlotsUpdate(
         if (!prev) {
           uniq.set(k, { name: nm, provider: r.provider, imageUrl: r.imageUrl ?? null });
         } else {
-          // merge: si on a une image sur le nouveau et pas l'ancien, on la garde
           const nextImg = r.imageUrl ? String(r.imageUrl) : null;
           const prevImg = prev.imageUrl ? String(prev.imageUrl) : null;
           uniq.set(k, { name: nm, provider: r.provider, imageUrl: prevImg || nextImg || null });
@@ -240,15 +204,16 @@ export async function runSlotsUpdate(
       const keys = Array.from(uniq.keys());
       const alreadyInDb = await countExistingKeys(pool, keys);
 
-      console.log(`[slots-updater]   fetched=${rows.length} unique=${uniq.size} dupInBatch=${dupInBatch} alreadyInDb=${alreadyInDb}`);
+      console.log(
+        `[slots-updater]   fetched=${rows.length} unique=${uniq.size} dupInBatch=${dupInBatch} alreadyInDb=${alreadyInDb}`
+      );
 
-      // ✅ upsert mettra à jour image_url même si la row existait déjà (si imageUrl non-null)
       const inserted = await upsertSlots(pool, Array.from(uniq.values()));
       allInserted.push(...inserted);
 
       if (inserted.length) {
         const names = inserted.map((x) => x.name).sort((a, b) => a.localeCompare(b));
-        const show = sample(names, logNamesMax);
+        const show = sample(names, LOG_NEW_MAX);
         console.log(
           `[slots-updater]   ✅ inserted=${inserted.length} new=[${show.join(" • ")}${names.length > show.length ? " …" : ""}]`
         );
@@ -256,13 +221,12 @@ export async function runSlotsUpdate(
         console.log(`[slots-updater]   ✅ inserted=0`);
       }
 
-      console.log(`[slots-updater] ◀ provider done id=${p.id} slug=${p.slug}`);
+      console.log(`[slots-updater] ◀ provider done ${producerSlug}`);
 
-      if (interProviderMs > 0) await sleep(interProviderMs);
+      if (INTER_PROVIDER_MS) await sleep(INTER_PROVIDER_MS);
     }
 
     console.log(`[slots-updater] DONE fetchedRaw=${totalFetchedRaw} inserted=${allInserted.length}`);
-
     return { ok: true, fetched: totalFetchedRaw, inserted: allInserted };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || "update_failed") };

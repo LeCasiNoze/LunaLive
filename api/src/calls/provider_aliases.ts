@@ -2,6 +2,20 @@
 // Alias → nom canonique (inspiré NozeBot)
 
 const ALIASES: Record<string, string> = {
+  // ✅ slugs gamba
+  "hacksaw-gaming": "Hacksaw Gaming",
+  "pragmatic-play": "Pragmatic Play",
+  "no-limit-city": "Nolimit City",
+  "relax-gaming": "Relax Gaming",
+  "playn-go": "Play'n GO",
+  "red-tiger": "Red Tiger",
+  "netent": "NetEnt",
+  "btg": "Big Time Gaming",
+  "oryx-gaming": "Oryx Gaming",
+  "smartsoft-gaming": "SmartSoft Gaming",
+  "peter-and-sons": "Peter & Sons",
+  "print-studios": "Print Studios",
+
   // Nolimit
   "nolimit": "Nolimit City",
   "nolimit city": "Nolimit City",
