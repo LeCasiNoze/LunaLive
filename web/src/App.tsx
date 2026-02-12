@@ -31,6 +31,7 @@ import { CallsToast } from "./components/CallsToast";
 import { AchievementsModal } from "./components/AchievementsModal";
 import ChatPopupPage from "./pages/ChatPopupPage";
 import ReferralLandingPage from "./pages/ReferralLandingPage";
+import EventPage from "./pages/EventPage";
 
 function AppInner() {
   const location = useLocation();
@@ -90,6 +91,7 @@ function AppInner() {
 
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/r/:slug" element={<ReferralLandingPage />} />
+        <Route path="/event" element={<EventPage />} />
       </Routes>
 
       {isMobile && <BottomTabs />}
