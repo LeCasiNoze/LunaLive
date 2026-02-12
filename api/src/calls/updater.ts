@@ -121,6 +121,11 @@ async function fetchProviderGames(producerSlug: string): Promise<SlotRow[]> {
     const gs = j?.data?.gameSearch;
     const items = Array.isArray(gs?.data) ? gs!.data! : [];
     const pi = gs?.paginatorInfo;
+    if (items[0]) {
+      console.log("[gamba] sample keys=", Object.keys(items[0]));
+      console.log("[gamba] sample item=", JSON.stringify(items[0], null, 2).slice(0, 4000));
+      break; // stop après 1 page pour debug
+    }
 
     for (const it of items) {
       if (!it) continue;
