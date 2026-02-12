@@ -121,11 +121,7 @@ async function fetchProviderGames(producerSlug: string): Promise<SlotRow[]> {
     const gs = j?.data?.gameSearch;
     const items = Array.isArray(gs?.data) ? gs!.data! : [];
     const pi = gs?.paginatorInfo;
-    if (items[0]) {
-      console.log("[gamba] sample keys=", Object.keys(items[0]));
-      console.log("[gamba] sample item=", JSON.stringify(items[0], null, 2).slice(0, 4000));
-      break; // stop après 1 page pour debug
-    }
+
 
     for (const it of items) {
       if (!it) continue;
@@ -133,9 +129,14 @@ async function fetchProviderGames(producerSlug: string): Promise<SlotRow[]> {
       const name = String(it.title || it.name || "").trim();
       if (!name) continue;
 
-      // image: on tente plusieurs clés
+      // ✅ Gamba: image / cover sont des strings directes
       let img: string | null = null;
-      if (typeof it.thumbnailUrl === "string" && it.thumbnailUrl.trim()) img = it.thumbnailUrl.trim();
+      if (typeof it.image === "string" && it.image.trim()) img = it.image.trim();
+      else if (typeof it.cover === "string" && it.cover.trim()) img = it.cover.trim();
+      else if (typeof it.thumbnail === "string" && it.thumbnail.trim()) img = it.thumbnail.trim();
+
+      // fallback (au cas où)
+      else if (typeof it.thumbnailUrl === "string" && it.thumbnailUrl.trim()) img = it.thumbnailUrl.trim();
       else if (typeof it.coverUrl === "string" && it.coverUrl.trim()) img = it.coverUrl.trim();
       else if (typeof it.imageUrl === "string" && it.imageUrl.trim()) img = it.imageUrl.trim();
 
