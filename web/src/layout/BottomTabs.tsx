@@ -1,20 +1,21 @@
 // web/src/layout/BottomTabs.tsx
+// ─────────────────────────────────────────────────────────────────────────────
+//  LunaLive — BottomTabs mobile  |  Design : Purple Velvet × Blue Night
+//  Aligné sur le même token system que Topbar, LivesPage.mobile, etc.
+// ─────────────────────────────────────────────────────────────────────────────
 import * as React from "react";
 import { NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { UnreadBadge } from "../components/UnreadBadge";
 import { publicGetContent } from "../lib/api";
 import { contentVersionFromItem, isUnread } from "../lib/unread_seen";
-
 import { DailyWheelCard } from "../components/DailyWheelCard";
 import { DailyBonusAccessCard } from "../components/DailyBonusAccessCard";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
-/* ──────────────────────────────────────────
-   Avatar helpers (alignés sur ProfilePage.mobile)
-────────────────────────────────────────── */
-function absolutize(url: string | null) {
+/* ─── helpers ────────────────────────────────────────────────────────── */
+function absolutize(url: string | null): string | null {
   if (!url) return null;
   const u = String(url);
   if (u.startsWith("http://") || u.startsWith("https://")) return u;
@@ -24,7 +25,6 @@ function absolutize(url: string | null) {
 
 function initials(name: string) {
   const s = (name || "?").trim();
-  if (!s) return "?";
   const parts = s.split(/[\s._-]+/g).filter(Boolean);
   const a = parts[0]?.[0] ?? s[0];
   const b = parts.length > 1 ? parts[parts.length - 1]?.[0] : s[1];
@@ -32,472 +32,544 @@ function initials(name: string) {
 }
 
 function getAvatarUrl(u: any): string | null {
-  // ✅ On essaye plusieurs champs possibles (selon backend/DB), sans rien casser.
-  const candidates = [
-    u?.avatarUrl,
-    u?.avatar_url,
-    u?.avatar,
-    u?.photoUrl,
-    u?.photo_url,
-    u?.picture,
-    u?.imageUrl,
-    u?.image_url,
-  ].filter(Boolean);
-
-  const v = candidates[0];
+  const v = [u?.avatarUrl, u?.avatar_url, u?.avatar, u?.photoUrl, u?.photo_url, u?.picture, u?.imageUrl, u?.image_url].filter(Boolean)[0];
   if (!v) return null;
-  const s = String(v);
-  if (!s) return null;
-  return absolutize(s) ?? s;
+  return absolutize(String(v)) ?? String(v);
 }
 
-/**
- * Avatar resolver user:
- * - priorité à user.avatarUrl/etc.
- * - sinon fallback sur /avatars/u/:id (cache-bust soft 1/min)
- */
 function pickUserAvatarUrl(user: any) {
-  const uid = user?.id != null ? Number(user.id) : null;
+  const uid    = user?.id != null ? Number(user.id) : null;
   const direct = getAvatarUrl(user);
-  const byUid = uid ? absolutize(`/avatars/u/${uid}?v=${Math.floor(Date.now() / 60000)}`) : null;
+  const byUid  = uid ? absolutize(`/avatars/u/${uid}?v=${Math.floor(Date.now() / 60000)}`) : null;
   return direct || byUid;
 }
 
-type MenuLink = { kind: "link"; to: string; label: string; icon?: React.ReactNode };
-type MenuAction = { kind: "action"; label: string; icon?: React.ReactNode; onClick: () => void };
-type MenuItem = MenuLink | MenuAction;
+/* ─── CSS ────────────────────────────────────────────────────────────── */
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&display=swap');
 
+/* ══ Tokens ══════════════════════════════════════════════════════════════ */
+.bt-root {
+  --bt-purple:      #7c5cfc;
+  --bt-purple-2:    #a78bfa;
+  --bt-purple-pale: #c4b5fd;
+  --bt-blue:        #5b8ef8;
+  --bt-text-1:      rgba(235,232,255,.96);
+  --bt-text-2:      rgba(180,185,230,.70);
+  --bt-text-3:      rgba(140,145,195,.48);
+  --bt-border:      rgba(124,92,252,.18);
+  --bt-safe:        env(safe-area-inset-bottom, 0px);
+  --bt-ease:        cubic-bezier(.22,1,.36,1);
+  --bt-grad: linear-gradient(105deg,#c4b5fd 0%,#7c5cfc 35%,#5b8ef8 70%,#93c5fd 100%);
+}
+
+/* ══ Barre de navigation fixe ═══════════════════════════════════════════ */
+.bt-bar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 80;
+  padding: 8px 10px calc(8px + var(--bt-safe));
+  background: rgba(8,7,18,.88);
+  border-top: 1px solid rgba(124,92,252,.16);
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  align-items: center;
+}
+/* Reflet haut */
+.bt-bar::before {
+  content:""; position:absolute; top:0; left:5%; right:5%; height:1px;
+  background: linear-gradient(90deg,transparent,rgba(167,139,250,.35) 38%,rgba(91,142,248,.26) 64%,transparent);
+  pointer-events:none;
+}
+
+/* ══ Spacer ══════════════════════════════════════════════════════════════ */
+.bt-spacer {
+  height: calc(72px + var(--bt-safe));
+}
+
+/* ══ Tab (Lives / Browse) ════════════════════════════════════════════════ */
+.bt-tab {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 10px 12px; border-radius: 15px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04);
+  color: var(--bt-text-2);
+  text-decoration: none; min-height: 46px;
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 12px; font-weight: 700; letter-spacing: -.1px;
+  transition: color 150ms ease, background 150ms ease, border-color 150ms ease, transform 120ms var(--bt-ease);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none; position: relative;
+}
+.bt-tab:active { transform: scale(.97); }
+.bt-tab.active {
+  color: rgba(196,181,253,.95);
+  border-color: rgba(124,92,252,.32);
+  background: rgba(124,92,252,.10);
+}
+/* Dot indicateur sous les tabs */
+.bt-tab-dot {
+  position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+  width: 3px; height: 3px; border-radius: 999px;
+  background: rgba(167,139,250,0);
+  transition: background 160ms ease, width 200ms var(--bt-ease);
+}
+.bt-tab.active .bt-tab-dot {
+  background: rgba(167,139,250,.72); width: 14px;
+}
+/* Glow icône active */
+.bt-tab.active .bt-tab-icon {
+  filter: drop-shadow(0 0 6px rgba(167,139,250,.55));
+}
+
+.bt-tab-icon  { font-size: 17px; line-height: 1; }
+.bt-tab-label { font-size: 11px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
+
+/* ══ Bouton central ⋯ ═══════════════════════════════════════════════════ */
+.bt-fab {
+  position: relative;
+  width: 54px; height: 48px;
+  border-radius: 17px;
+  border: 1px solid rgba(124,92,252,.30);
+  background: linear-gradient(135deg, rgba(124,92,252,.22), rgba(59,77,200,.18), rgba(91,142,248,.14));
+  color: rgba(220,210,255,.95);
+  cursor: pointer;
+  font-size: 22px; font-weight: 700; line-height: 1;
+  display: grid; place-items: center;
+  box-shadow: 0 0 0 1px rgba(167,139,250,.08) inset, 0 8px 28px rgba(0,0,0,.40);
+  transition: transform 120ms var(--bt-ease), filter 150ms ease, box-shadow 150ms ease;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.bt-fab:hover { filter: brightness(1.12); }
+.bt-fab:active { transform: scale(.94); box-shadow: 0 0 0 1px rgba(167,139,250,.12) inset, 0 4px 14px rgba(0,0,0,.38); }
+
+/* Reflet haut du FAB */
+.bt-fab::before {
+  content:""; position:absolute; top:0; left:12%; right:12%; height:1px;
+  background: linear-gradient(90deg, transparent, rgba(167,139,250,.50) 45%, transparent);
+  border-radius:999px; pointer-events:none;
+}
+
+/* ══ Backdrop sheet ══════════════════════════════════════════════════════ */
+.bt-backdrop {
+  position: fixed; inset: 0; z-index: 120;
+  background: rgba(4,3,10,.78);
+  display: grid; align-items: end;
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  animation: bt-fade-in 180ms ease;
+}
+@keyframes bt-fade-in { from{opacity:0} to{opacity:1} }
+
+/* ══ Sheet ═══════════════════════════════════════════════════════════════ */
+.bt-sheet {
+  position: relative;
+  width: min(720px, 100%); margin: 0 auto;
+  border-radius: 22px 22px 0 0;
+  border: 1px solid rgba(124,92,252,.22);
+  border-bottom: 0;
+  background: rgba(11,9,22,.96);
+  box-shadow: 0 -30px 80px rgba(0,0,0,.60), 0 0 0 1px rgba(167,139,250,.06) inset;
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  overflow: hidden;
+  animation: bt-slide-up 260ms cubic-bezier(.22,1,.36,1);
+}
+@keyframes bt-slide-up {
+  from { opacity:0; transform:translateY(24px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+/* Reflet haut du sheet */
+.bt-sheet::before {
+  content:""; position:absolute; top:0; left:6%; right:6%; height:1px;
+  background: linear-gradient(90deg,transparent,rgba(167,139,250,.48) 35%,rgba(91,142,248,.34) 65%,transparent);
+  pointer-events:none; z-index:2;
+}
+/* Lueur ambiante */
+.bt-sheet::after {
+  content:""; position:absolute; top:-60px; left:-60px;
+  width:280px; height:170px; border-radius:50%;
+  background: radial-gradient(ellipse,rgba(124,92,252,.12),transparent 70%);
+  pointer-events:none;
+}
+
+/* ── Sheet header ── */
+.bt-sheet-top {
+  position: relative; z-index:1;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid rgba(124,92,252,.10);
+}
+.bt-sheet-title {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-weight: 800; font-size: 15px; letter-spacing: -.3px;
+  color: rgba(235,232,255,.92);
+}
+
+/* ── Sheet body ── */
+.bt-sheet-body {
+  position: relative; z-index:1;
+  padding: 12px 14px;
+  padding-bottom: calc(16px + var(--bt-safe));
+  max-height: min(80vh, 760px);
+  overflow-y: auto;
+  display: grid; gap: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(124,92,252,.22) transparent;
+}
+.bt-sheet-body::-webkit-scrollbar { width:4px; }
+.bt-sheet-body::-webkit-scrollbar-track { background:transparent; }
+.bt-sheet-body::-webkit-scrollbar-thumb { background:rgba(124,92,252,.22); border-radius:4px; }
+
+/* Bouton fermer */
+.bt-close {
+  width:36px; height:36px; border-radius:11px;
+  border: 1px solid rgba(124,92,252,.18); background: rgba(255,255,255,.04);
+  color: rgba(235,232,255,.65); cursor:pointer; display:grid; place-items:center; font-size:14px;
+  transition: background 150ms ease, border-color 150ms ease, transform 130ms var(--bt-ease);
+  -webkit-tap-highlight-color:transparent;
+}
+.bt-close:hover { background:rgba(124,92,252,.12); border-color:rgba(124,92,252,.36); transform:scale(1.06); }
+
+/* ── Profil me ── */
+.bt-me {
+  display:flex; align-items:center; gap:12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(124,92,252,.18);
+  background: rgba(124,92,252,.06);
+  text-decoration:none; color:inherit;
+  transition: background 140ms ease, border-color 140ms ease, transform 120ms var(--bt-ease);
+  -webkit-tap-highlight-color:transparent;
+}
+.bt-me:active { transform:scale(.98); }
+.bt-me:hover  { background:rgba(124,92,252,.10); border-color:rgba(124,92,252,.28); }
+
+.bt-me-ava {
+  width:46px; height:46px; border-radius:15px; flex-shrink:0; overflow:hidden;
+  border: 1px solid rgba(124,92,252,.22); background: rgba(0,0,0,.35);
+  display:grid; place-items:center;
+  font-family:'Syne',system-ui,sans-serif; font-size:14px; font-weight:800;
+  color:rgba(196,181,253,.80);
+}
+.bt-me-ava img { width:100%; height:100%; object-fit:cover; display:block; }
+
+.bt-me-name {
+  font-family:'Syne',system-ui,sans-serif; font-weight:700; font-size:13px; letter-spacing:-.2px;
+  color:rgba(235,232,255,.94); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.bt-me-sub {
+  font-family:'Syne',system-ui,sans-serif; font-size:11px; font-weight:500;
+  color:rgba(167,155,220,.48); margin-top:3px;
+}
+.bt-me-arrow {
+  margin-left:auto; flex-shrink:0;
+  font-size:12px; color:rgba(124,92,252,.55);
+}
+
+/* ── Divider section ── */
+.bt-divider {
+  height:1px; border-radius:999px; margin:2px 0;
+  background: linear-gradient(90deg,rgba(124,92,252,0),rgba(124,92,252,.18),rgba(91,142,248,.12),rgba(91,142,248,0));
+}
+
+/* ── Section label ── */
+.bt-section-label {
+  font-family:'Syne',system-ui,sans-serif;
+  font-size:10px; font-weight:700; letter-spacing:.18em; text-transform:uppercase;
+  color:rgba(140,145,195,.48); padding: 2px 2px 4px;
+  display:flex; align-items:center; gap:8px;
+}
+/* barre couleur gauche */
+.bt-section-label::before {
+  content:""; width:3px; height:10px; border-radius:2px; flex-shrink:0;
+  background: linear-gradient(180deg,#a78bfa,#5b8ef8);
+}
+
+/* ── Menu items ── */
+.bt-menu-list { display:grid; gap:8px; }
+
+.bt-menu-item {
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding: 11px 13px; border-radius:14px;
+  border: 1px solid rgba(124,92,252,.12); background: rgba(124,92,252,.04);
+  color:rgba(235,232,255,.88); text-decoration:none; cursor:pointer;
+  font-family:'Syne',system-ui,sans-serif; font-size:13px; font-weight:700; letter-spacing:-.15px;
+  text-align:left; width:100%;
+  transition: background 140ms ease, border-color 140ms ease, transform 120ms var(--bt-ease);
+  -webkit-tap-highlight-color:transparent;
+}
+.bt-menu-item:hover  { background:rgba(124,92,252,.10); border-color:rgba(124,92,252,.24); }
+.bt-menu-item:active { transform:translateX(2px); }
+
+.bt-menu-item-left { display:inline-flex; align-items:center; gap:10px; min-width:0; }
+.bt-menu-item-icon { font-size:16px; flex-shrink:0; }
+.bt-menu-item-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bt-menu-item-arrow { font-size:11px; color:rgba(124,92,252,.50); flex-shrink:0; }
+
+/* Item danger (signaler) */
+.bt-menu-item-danger {
+  border-color:rgba(239,68,68,.14); background:rgba(239,68,68,.04); color:rgba(252,165,165,.75);
+}
+.bt-menu-item-danger:hover { background:rgba(239,68,68,.10); border-color:rgba(239,68,68,.28); }
+.bt-menu-item-danger .bt-menu-item-arrow { color:rgba(239,68,68,.40); }
+
+/* ── Rewards embed ── */
+.bt-rewards-wrap {
+  display:grid; gap:8px;
+  padding: 12px; border-radius:16px;
+  border: 1px solid rgba(124,92,252,.14); background: rgba(124,92,252,.04);
+}
+.bt-rewards-label {
+  display:flex; align-items:center; gap:9px;
+  font-family:'Syne',system-ui,sans-serif; font-size:11px; font-weight:700;
+  color:rgba(167,139,250,.70);
+}
+`;
+
+let _btCssInjected = false;
+function useBottomTabsStyles() {
+  React.useEffect(() => {
+    if (_btCssInjected) return;
+    const el = document.createElement("style");
+    el.id = "bt-css"; el.textContent = CSS;
+    document.head.appendChild(el);
+    _btCssInjected = true;
+  }, []);
+}
+
+/* ─── Types ─────────────────────────────────────────────────────────── */
+type MenuLink   = { kind: "link";   to: string; label: string; icon?: string; danger?: boolean };
+type MenuAction = { kind: "action"; label: string; icon?: string; danger?: boolean; onClick: () => void };
+type MenuItem   = MenuLink | MenuAction;
+
+/* ─── Composant ──────────────────────────────────────────────────────── */
 export function BottomTabs() {
-  const location = useLocation();
-  const authAny = useAuth() as any;
-  const userAny = authAny?.user ?? null;
-  const token = authAny?.token ?? null;
-  const navigate = useNavigate();
+  useBottomTabsStyles();
 
+  const location = useLocation();
+  const navigate  = useNavigate();
+  const authAny   = useAuth() as any;
+  const userAny   = authAny?.user ?? null;
+  const token     = authAny?.token ?? null;
+
+  /* ── Unread bonus ── */
   const CONTENT_KEYS = ["daily_bonus_infos", "guide_viewer", "guide_streamer"] as const;
   const [unreadBonus, setUnreadBonus] = React.useState(false);
 
   const reloadUnreadBonus = React.useCallback(async () => {
-    if (!token) {
-      setUnreadBonus(false);
-      return;
-    }
+    if (!token) { setUnreadBonus(false); return; }
     try {
       const results = await Promise.all(
         CONTENT_KEYS.map(async (k) => {
           const r: any = await publicGetContent(k);
           const item = r?.item ?? null;
           if (!item) return false;
-          const v = contentVersionFromItem(item);
-          return isUnread(`content:${k}`, v);
+          return isUnread(`content:${k}`, contentVersionFromItem(item));
         })
       );
       setUnreadBonus(results.some(Boolean));
-    } catch {
-      setUnreadBonus(false);
-    }
+    } catch { setUnreadBonus(false); }
   }, [token]);
 
-  React.useEffect(() => {
-    reloadUnreadBonus();
-  }, [reloadUnreadBonus]);
+  React.useEffect(() => { reloadUnreadBonus(); }, [reloadUnreadBonus]);
 
   React.useEffect(() => {
-    const onSeen = () => reloadUnreadBonus();
-    window.addEventListener("ll:content-seen", onSeen as any);
-
+    const onSeen    = () => reloadUnreadBonus();
     const onStorage = () => reloadUnreadBonus();
+    window.addEventListener("ll:content-seen", onSeen as any);
     window.addEventListener("storage", onStorage);
-
     return () => {
       window.removeEventListener("ll:content-seen", onSeen as any);
       window.removeEventListener("storage", onStorage);
     };
   }, [reloadUnreadBonus]);
 
-  const username = String(userAny?.username || "");
+  /* ── Avatar ── */
+  const username  = String(userAny?.username || "");
   const avatarSrc = pickUserAvatarUrl(userAny);
-
   const [avatarOk, setAvatarOk] = React.useState(true);
   React.useEffect(() => setAvatarOk(true), [avatarSrc]);
 
+  /* ── Sheet ── */
   const [open, setOpen] = React.useState(false);
 
-  // refs pour scroll vers les cards (bonus / roue)
-  const bonusRef = React.useRef<HTMLDivElement | null>(null);
-  const wheelRef = React.useRef<HTMLDivElement | null>(null);
-
-  // ferme le menu si navigation (y compris query ?open=clips)
-  React.useEffect(() => {
-    setOpen(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, location.search]);
+  // Ferme au changement de route
+  React.useEffect(() => { setOpen(false); }, [location.pathname, location.search]);
 
   // ESC + lock scroll
   React.useEffect(() => {
     if (!open) return;
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-
-    const prevOverflow = document.documentElement.style.overflow;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const prev  = document.documentElement.style.overflow;
     document.documentElement.style.overflow = "hidden";
-
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
-      document.documentElement.style.overflow = prevOverflow;
+      document.documentElement.style.overflow = prev;
     };
   }, [open]);
 
-  const tabClass = ({ isActive }: { isActive: boolean }) => `tab ${isActive ? "active" : ""}`;
+  /* ── Tab active class ── */
+  const tabCls = ({ isActive }: { isActive: boolean }) => `bt-tab${isActive ? " active" : ""}`;
 
+  /* ── Ouvre le report modal ── */
   function openReport() {
-    // déclenche l'ouverture de ReportModal dans Topbar
     window.dispatchEvent(new Event("ui:report_open"));
     setOpen(false);
   }
 
+  /* ── Items du menu ── */
   const menuItems: MenuItem[] = [
     {
-      kind: "action",
-      label: "Clips",
-      icon: "🎬",
-      onClick: () => {
-        navigate("/?open=clips");
-        setOpen(false);
-      },
+      kind: "action", label: "Clips du mois", icon: "🎬",
+      onClick: () => { navigate("/?open=clips"); setOpen(false); },
     },
-
     { kind: "link", to: "/casinos", label: "CheckTaSlot", icon: "🎰" },
-    { kind: "link", to: "/hunt", label: "Hunt", icon: "🧿" },
-    { kind: "link", to: "/shop", label: "Shop", icon: "🛍️" },
+    { kind: "link", to: "/hunt",    label: "Hunt",        icon: "🧿" },
+    { kind: "link", to: "/shop",    label: "Shop",        icon: "🛍️" },
   ];
 
   return (
-    <>
-      <style>{`
-        .bottomTabs{
-          position: fixed;
-          left: 0; right: 0;
-          bottom: 0;
-          z-index: 80;
-          display: grid;
-          grid-template-columns: 1fr auto 1fr;
-          gap: 10px;
-          padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-          background: rgba(12,12,16,0.72);
-          border-top: 1px solid rgba(255,255,255,0.10);
-          backdrop-filter: blur(14px);
-          -webkit-backdrop-filter: blur(14px);
-        }
-
-        .tab{
-          display:flex;
-          align-items:center;
-          justify-content:center;
-          gap: 10px;
-          padding: 10px 12px;
-          border-radius: 16px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(255,255,255,0.04);
-          color: rgba(255,255,255,0.90);
-          text-decoration:none;
-          min-height: 46px;
-          user-select:none;
-        }
-        .tab:active{ transform: translateY(1px); }
-        .tab.active{
-          border-color: rgba(140,90,255,0.35);
-          background: rgba(140,90,255,0.12);
-        }
-
-        .tabIcon{
-          width: 22px; height: 22px;
-          display:grid; place-items:center;
-          font-weight: 1200;
-          opacity: 0.95;
-        }
-        .tabLabel{
-          font-weight: 1150;
-          letter-spacing: -0.2px;
-          font-size: 13px;
-        }
-
-        .menuBtn{
-          width: 56px;
-          height: 46px;
-          border-radius: 16px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(255,255,255,0.05);
-          color: rgba(255,255,255,0.92);
-          cursor: pointer;
-          font-weight: 1300;
-          font-size: 20px;
-        }
-        .menuBtn:active{ transform: translateY(1px); }
-
-        /* Sheet */
-        .sheetBackdrop{
-          position: fixed;
-          inset: 0;
-          z-index: 120;
-          background: rgba(0,0,0,0.55);
-          display: grid;
-          align-items: end;
-          padding: 12px;
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
-        }
-        .sheet{
-          width: min(720px, 100%);
-          margin: 0 auto;
-          border-radius: 18px 18px 0 0;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: linear-gradient(180deg, rgba(30,30,40,0.92), rgba(10,10,14,0.94));
-          box-shadow: 0 30px 90px rgba(0,0,0,0.55);
-          overflow: hidden;
-        }
-        .sheetTop{
-          display:flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 12px 14px;
-          border-bottom: 1px solid rgba(255,255,255,0.08);
-        }
-        .sheetBody{
-          padding: 12px;
-          max-height: min(78vh, 720px);
-          overflow: auto;
-          padding-bottom: calc(18px + env(safe-area-inset-bottom));
-          display: grid;
-          gap: 12px;
-        }
-
-        .iconBtn{
-          width: 34px;
-          height: 34px;
-          border-radius: 12px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(255,255,255,0.05);
-          color: rgba(255,255,255,0.92);
-          cursor: pointer;
-          font-weight: 1100;
-        }
-
-        .meBtn{
-          display:flex;
-          align-items:center;
-          gap: 10px;
-          padding: 12px;
-          border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(255,255,255,0.04);
-          text-decoration: none;
-          color: rgba(255,255,255,0.92);
-        }
-        .meBtn:active{ transform: translateY(1px); }
-        .meAva{
-          width: 44px; height: 44px;
-          border-radius: 16px;
-          overflow: hidden;
-          border: 1px solid rgba(255,255,255,0.14);
-          background: rgba(0,0,0,0.35);
-          flex: 0 0 auto;
-          display: grid;
-          place-items: center;
-        }
-        .meAva img{ width:100%; height:100%; object-fit: cover; display:block; }
-        .meName{
-          font-weight: 1300;
-          letter-spacing: -0.2px;
-          overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-        }
-        .meSub{
-          font-size: 12px;
-          opacity: 0.78;
-          font-weight: 950;
-          margin-top: 2px;
-        }
-
-        .menuList{ display:grid; gap: 10px; }
-        .menuItem{
-          display:flex;
-          align-items:center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 12px 12px;
-          border-radius: 16px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(255,255,255,0.05);
-          color: rgba(255,255,255,0.92);
-          text-decoration: none;
-          cursor:pointer;
-          font-weight: 1150;
-        }
-        .menuItem:active{ transform: translateY(1px); }
-        .menuLeft{
-          display:inline-flex;
-          align-items:center;
-          gap: 10px;
-          min-width: 0;
-        }
-        .menuLabel{
-          overflow:hidden;
-          text-overflow:ellipsis;
-          white-space:nowrap;
-          letter-spacing: -0.2px;
-        }
-        .menuHint{
-          font-size: 12px;
-          font-weight: 1000;
-          opacity: 0.82;
-          white-space: nowrap;
-        }
-
-        .reportBtn{
-          width: 100%;
-          display:flex;
-          align-items:center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 12px 12px;
-          border-radius: 16px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(255,255,255,0.05);
-          color: rgba(255,255,255,0.92);
-          cursor:pointer;
-          font-weight: 1150;
-        }
-        .reportBtn:active{ transform: translateY(1px); }
-        /* ✅ réserve de l’espace pour éviter que la barre fixe cache le bas des pages */
-        .bottomTabsSpacer{
-          height: calc(72px + env(safe-area-inset-bottom));
-        }
-      `}</style>
-
-      <nav className="bottomTabs" aria-label="Navigation">
-        <NavLink to="/" end className={tabClass}>
-          <div className="tabIcon">●</div>
-          <div className="tabLabel">Lives</div>
+    <div className="bt-root">
+      {/* ── Barre fixe ── */}
+      <nav className="bt-bar" aria-label="Navigation principale">
+        <NavLink to="/" end className={tabCls} aria-label="Lives">
+          <span className="bt-tab-icon">📡</span>
+          <span className="bt-tab-label">Lives</span>
+          <span className="bt-tab-dot" aria-hidden />
         </NavLink>
 
+        {/* FAB central */}
         <button
           type="button"
-          className="menuBtn"
+          className="bt-fab"
           onClick={() => setOpen(true)}
           aria-label="Ouvrir le menu"
-          style={{ position: "relative" }}
+          aria-haspopup="dialog"
+          aria-expanded={open}
         >
-          ⋯
-          <span style={{ position: "absolute", top: 6, right: 6 }}>
+          {/* Indicateur unread */}
+          <span style={{ position:"absolute", top:6, right:7 }}>
             <UnreadBadge show={unreadBonus} title="Nouveautés • Bonus quotidien" />
           </span>
+          ⋯
         </button>
 
-        <NavLink to="/browse" className={tabClass}>
-          <div className="tabIcon">◔</div>
-          <div className="tabLabel">Browse</div>
+        <NavLink to="/browse" className={tabCls} aria-label="Browse">
+          <span className="bt-tab-icon">◈</span>
+          <span className="bt-tab-label">Browse</span>
+          <span className="bt-tab-dot" aria-hidden />
         </NavLink>
       </nav>
-      <div className="bottomTabsSpacer" aria-hidden="true" />
 
-      {open ? (
-        <div className="sheetBackdrop" role="presentation" onClick={() => setOpen(false)}>
-          <div className="sheet" role="dialog" aria-modal="true" aria-label="Menu" onClick={(e) => e.stopPropagation()}>
-            <div className="sheetTop">
-              <div style={{ fontWeight: 1250, letterSpacing: -0.2 }}>Menu</div>
-              <button className="iconBtn" type="button" onClick={() => setOpen(false)} aria-label="Fermer">
-                ✕
-              </button>
+      {/* ── Spacer ── */}
+      <div className="bt-spacer" aria-hidden />
+
+      {/* ── Sheet (menu) ── */}
+      {open && (
+        <div className="bt-backdrop" role="presentation" onClick={() => setOpen(false)}>
+          <div
+            className="bt-sheet"
+            role="dialog" aria-modal="true" aria-label="Menu"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bt-sheet-top">
+              <span className="bt-sheet-title">Menu</span>
+              <button className="bt-close" type="button" aria-label="Fermer" onClick={() => setOpen(false)}>✕</button>
             </div>
 
-            <div className="sheetBody">
-              {/* Mon compte (unique, en haut) */}
-              <Link to="/profile" className="meBtn" onClick={() => setOpen(false)} aria-label="Mon compte">
-                <div className="meAva" aria-hidden>
+            {/* Body */}
+            <div className="bt-sheet-body">
+
+              {/* Profil */}
+              <Link to="/profile" className="bt-me" onClick={() => setOpen(false)} aria-label="Mon compte">
+                <div className="bt-me-ava" aria-hidden>
                   {avatarSrc && avatarOk ? (
                     <img src={String(avatarSrc)} alt="" onError={() => setAvatarOk(false)} />
                   ) : (
-                    <div style={{ fontWeight: 1100, opacity: 0.92 }}>{initials(username)}</div>
+                    <span>{initials(username)}</span>
                   )}
                 </div>
-
-                <div style={{ minWidth: 0 }}>
-                  <div className="meName">{username || "Mon compte"}</div>
-                  <div className="meSub">Profil • options</div>
+                <div style={{ minWidth:0 }}>
+                  <div className="bt-me-name">{username || "Mon compte"}</div>
+                  <div className="bt-me-sub">Profil · Options</div>
                 </div>
-
-                <div className="menuHint">▶</div>
+                <span className="bt-me-arrow" aria-hidden>›</span>
               </Link>
 
-              {/* Liens / actions */}
-              <div className="menuList">
-                {menuItems.map((it) => {
-                  if (it.kind === "link") {
-                    return (
-                      <Link
-                        key={`${it.to}-${it.label}`}
-                        to={it.to}
-                        className="menuItem"
-                        onClick={() => setOpen(false)}
-                        aria-label={it.label}
-                      >
-                        <span className="menuLeft">
-                          <span aria-hidden>{it.icon ?? "•"}</span>
-                          <span className="menuLabel">{it.label}</span>
-                        </span>
-                        <span className="menuHint">▶</span>
-                      </Link>
-                    );
-                  }
+              <div className="bt-divider" aria-hidden />
 
-                  return (
+              {/* Navigation */}
+              <div className="bt-section-label">Navigation</div>
+              <div className="bt-menu-list">
+                {menuItems.map((it) =>
+                  it.kind === "link" ? (
+                    <Link
+                      key={it.to}
+                      to={it.to}
+                      className={`bt-menu-item${it.danger ? " bt-menu-item-danger" : ""}`}
+                      onClick={() => setOpen(false)}
+                      aria-label={it.label}
+                    >
+                      <span className="bt-menu-item-left">
+                        <span className="bt-menu-item-icon" aria-hidden>{it.icon ?? "•"}</span>
+                        <span className="bt-menu-item-label">{it.label}</span>
+                      </span>
+                      <span className="bt-menu-item-arrow" aria-hidden>›</span>
+                    </Link>
+                  ) : (
                     <button
-                      key={`action-${it.label}`}
+                      key={it.label}
                       type="button"
-                      className="menuItem"
+                      className={`bt-menu-item${it.danger ? " bt-menu-item-danger" : ""}`}
                       onClick={it.onClick}
                       aria-label={it.label}
-                      style={{ textAlign: "left" }}
                     >
-                      <span className="menuLeft">
-                        <span aria-hidden>{it.icon ?? "•"}</span>
-                        <span className="menuLabel">{it.label}</span>
+                      <span className="bt-menu-item-left">
+                        <span className="bt-menu-item-icon" aria-hidden>{it.icon ?? "•"}</span>
+                        <span className="bt-menu-item-label">{it.label}</span>
                       </span>
-                      <span className="menuHint">▶</span>
+                      <span className="bt-menu-item-arrow" aria-hidden>›</span>
                     </button>
-                  );
-                })}
-
-                {/* Sections intégrées (cards) : bonus + roue */}
-                <div ref={bonusRef} style={{ display: "grid", gap: 10, marginTop: 2 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div style={{ fontWeight: 1150, letterSpacing: -0.2 }}>
-                      Bonus quotidien <UnreadBadge show={unreadBonus} title="Nouveautés à lire" />
-                    </div>
-                  </div>
-                  <DailyBonusAccessCard />
-                </div>
-
-                <div ref={wheelRef} style={{ display: "grid", gap: 10 }}>
-                  <DailyWheelCard />
-                </div>
-
-                {/* Signaler un problème => ouvre la modale */}
-                <button type="button" className="reportBtn" onClick={openReport} aria-label="Signaler un problème">
-                  <span className="menuLeft">
-                    <span aria-hidden>🚩</span>
-                    <span className="menuLabel">Signaler un problème</span>
-                  </span>
-                  <span className="menuHint">▶</span>
-                </button>
+                  )
+                )}
               </div>
+
+              <div className="bt-divider" aria-hidden />
+
+              {/* Récompenses */}
+              <div className="bt-section-label">
+                Récompenses
+                <UnreadBadge show={unreadBonus} title="Nouveautés à lire" />
+              </div>
+              <div className="bt-rewards-wrap">
+                <div className="bt-rewards-label">
+                  <span aria-hidden>🎁</span> Bonus quotidien
+                </div>
+                <DailyBonusAccessCard />
+              </div>
+              <div className="bt-rewards-wrap">
+                <DailyWheelCard />
+              </div>
+
+              <div className="bt-divider" aria-hidden />
+
+              {/* Signaler */}
+              <button type="button" className="bt-menu-item bt-menu-item-danger" onClick={openReport} aria-label="Signaler un problème">
+                <span className="bt-menu-item-left">
+                  <span className="bt-menu-item-icon" aria-hidden>🚩</span>
+                  <span className="bt-menu-item-label">Signaler un problème</span>
+                </span>
+                <span className="bt-menu-item-arrow" aria-hidden>›</span>
+              </button>
+
             </div>
           </div>
         </div>
-      ) : null}
-    </>
+      )}
+    </div>
   );
 }

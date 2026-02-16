@@ -5,54 +5,224 @@ import type { User } from "../lib/types";
 import { initialOf } from "../lib/format";
 import { useOnClickOutside, asHTMLElementRef } from "../hooks/useOnClickOutside";
 
-const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(
-  /\/$/,
-  ""
-);
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
 function getAvatarUrlFromUser(u: any): string | null {
-  const candidates = [
-    u?.avatarUrl,
-    u?.avatar_url,
-    u?.avatar,
-    u?.photoUrl,
-    u?.photo_url,
-    u?.picture,
-    u?.imageUrl,
-    u?.image_url,
-  ].filter(Boolean);
-
-  const v = candidates[0];
+  const v = [u?.avatarUrl, u?.avatar_url, u?.avatar, u?.photoUrl, u?.photo_url, u?.picture, u?.imageUrl, u?.image_url]
+    .filter(Boolean)[0];
   if (!v) return null;
-
   const s = String(v).trim();
   if (!s) return null;
-
-  // ✅ si c’est un asset du FRONT (web/public), on le laisse tel quel
-  // (servi par le site web, pas par l'API)
   if (s.startsWith("/Avatar/")) return s;
-
-  // ✅ sinon, routes API (avatars/u, uploads, etc.)
   if (s.startsWith("/")) return `${API_BASE}${s}`;
   return s;
 }
 
 function buildApiAvatarUrl(userId: number, cacheKey?: string | number | null) {
-  const v = cacheKey == null ? "0" : String(cacheKey);
-  return `${API_BASE}/avatars/u/${userId}?v=${encodeURIComponent(v)}`;
+  return `${API_BASE}/avatars/u/${userId}?v=${encodeURIComponent(cacheKey == null ? "0" : String(cacheKey))}`;
 }
 
-/** petit helper: transforme username -> slug safe pour /s/... */
 function slugifyUsername(v: any): string {
-  const s = String(v ?? "").trim();
-  if (!s) return "";
-  return s
+  return String(v ?? "").trim()
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
+
+function useInjectStyles(id: string, styles: string) {
+  React.useEffect(() => {
+    if (document.getElementById(id)) return;
+    const el = document.createElement("style");
+    el.id = id; el.textContent = styles;
+    document.head.appendChild(el);
+  }, [id, styles]);
+}
+
+const CSS = `
+@keyframes av-menu-pop {
+  from { opacity: 0; transform: scale(0.94) translateY(-6px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+/* ── Wrap ── */
+.av-wrap {
+  position: relative;
+}
+
+/* ── Bouton avatar ── */
+.av-btn {
+  width: 38px; height: 38px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(124,92,252,0.22);
+  background: rgba(13,11,24,0.70);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.32);
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  transition:
+    border-color 160ms ease,
+    box-shadow   160ms ease,
+    transform    130ms cubic-bezier(.22,1,.36,1);
+}
+.av-btn:hover {
+  border-color: rgba(124,92,252,0.40);
+  box-shadow: 0 8px 26px rgba(0,0,0,0.40), 0 0 12px rgba(124,92,252,0.16);
+  transform: translateY(-1px);
+}
+.av-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(124,92,252,0.30);
+}
+
+/* Avatar image */
+.av-img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 999px;
+  -webkit-user-drag: none;
+}
+
+/* Fallback initiale */
+.av-fallback {
+  width: 100%; height: 100%;
+  display: grid;
+  place-items: center;
+  font-family: 'Syne', system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  color: rgba(200,195,240,0.90);
+  background: linear-gradient(135deg, rgba(124,92,252,0.30), rgba(59,77,200,0.22), rgba(91,142,248,0.18));
+  border-radius: 999px;
+}
+
+/* ── Dropdown ── */
+.av-dropdown {
+  /* ✅ z-index très haut pour passer au-dessus de tout */
+  position: fixed;
+  z-index: 99999;
+  min-width: 200px;
+  max-width: min(240px, calc(100vw - 16px));
+
+  border-radius: 18px;
+  border: 1px solid rgba(124,92,252,0.20);
+  background: rgba(11,9,22,0.96);
+  box-shadow:
+    0 28px 70px rgba(0,0,0,0.65),
+    0 0 0 1px rgba(167,139,250,0.07) inset,
+    0 0 40px rgba(124,92,252,0.08);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  overflow: hidden;
+  animation: av-menu-pop 180ms cubic-bezier(0.22,1,0.36,1);
+  transform-origin: top right;
+}
+
+/* Reflet haut */
+.av-dropdown::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 8%; right: 8%;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(167,139,250,0.38) 35%,
+    rgba(91,142,248,0.26)  65%,
+    transparent
+  );
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Header user */
+.av-dd-head {
+  padding: 13px 14px 11px;
+  border-bottom: 1px solid rgba(124,92,252,0.10);
+  background: rgba(124,92,252,0.05);
+}
+.av-dd-name {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: -0.2px;
+  color: rgba(235,232,255,0.94);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.av-dd-sub {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(167,155,220,0.50);
+  margin-top: 2px;
+}
+
+/* Items */
+.av-dd-body { padding: 6px; display: grid; gap: 3px; }
+
+.av-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(200,195,240,0.78);
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.1px;
+  text-decoration: none;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  transition:
+    background   140ms ease,
+    border-color 140ms ease,
+    color        140ms ease,
+    transform    120ms cubic-bezier(.22,1,.36,1);
+}
+.av-dd-item:hover {
+  background: rgba(124,92,252,0.10);
+  border-color: rgba(124,92,252,0.18);
+  color: rgba(235,232,255,0.96);
+  transform: translateX(2px);
+}
+.av-dd-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(124,92,252,0.30);
+}
+
+/* Séparateur */
+.av-dd-sep {
+  height: 1px;
+  margin: 4px 10px;
+  background: rgba(124,92,252,0.10);
+}
+
+/* Item danger */
+.av-dd-item.is-danger {
+  color: rgba(252,165,165,0.72);
+}
+.av-dd-item.is-danger:hover {
+  background: rgba(239,68,68,0.10);
+  border-color: rgba(239,68,68,0.22);
+  color: rgba(252,165,165,0.95);
+}
+`;
 
 export function AvatarMenu({
   user,
@@ -61,11 +231,16 @@ export function AvatarMenu({
 }: {
   user: User;
   onLogout: () => void;
-  onOpenReport?: () => void; // ✅ NEW
+  onOpenReport?: () => void;
 }) {
+  useInjectStyles("av-styles", CSS);
+
   const [open, setOpen] = React.useState(false);
-  const btnRef = React.useRef<HTMLButtonElement>(null);
+  const btnRef  = React.useRef<HTMLButtonElement>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
+
+  /* ✅ position du dropdown calculée en fixed depuis le bouton */
+  const [pos, setPos] = React.useState<{ top: number; right: number } | null>(null);
 
   useOnClickOutside(
     [asHTMLElementRef(btnRef), asHTMLElementRef(menuRef)],
@@ -73,198 +248,130 @@ export function AvatarMenu({
     open
   );
 
+  /* Calcule la position au clic */
+  function handleOpen() {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setPos({
+        top:   rect.bottom + 6,
+        right: window.innerWidth - rect.right,
+      });
+    }
+    setOpen(v => !v);
+  }
+
+  /* Recalcule si le viewport bouge */
+  React.useEffect(() => {
+    if (!open) return;
+    const fn = () => {
+      if (btnRef.current) {
+        const rect = btnRef.current.getBoundingClientRect();
+        setPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+      }
+    };
+    window.addEventListener("scroll", fn, true);
+    window.addEventListener("resize", fn);
+    return () => {
+      window.removeEventListener("scroll", fn, true);
+      window.removeEventListener("resize", fn);
+    };
+  }, [open]);
+
   const canSeeDashboard = user.role === "streamer" || user.role === "admin";
-
-  const uid = Number((user as any)?.id || 0) || 0;
-  const direct = getAvatarUrlFromUser(user as any);
-
-  const cacheKey =
-    (user as any)?.avatarVersion ??
-    (user as any)?.avatar_updated_at ??
-    (user as any)?.avatarUpdatedAt ??
-    (user as any)?.updatedAt ??
-    (user as any)?.updated_at ??
-    uid;
-
+  const uid      = Number((user as any)?.id || 0);
+  const direct   = getAvatarUrlFromUser(user as any);
+  const cacheKey = (user as any)?.avatarVersion ?? (user as any)?.avatar_updated_at ?? (user as any)?.updatedAt ?? uid;
   const endpoint = uid ? buildApiAvatarUrl(uid, cacheKey) : null;
   const [imgOk, setImgOk] = React.useState(true);
-
   React.useEffect(() => setImgOk(true), [direct, endpoint]);
-
   const src = direct ?? endpoint;
 
-  // ✅ route "Ma chaîne"
   const myChannelSlug = slugifyUsername((user as any)?.streamerSlug ?? user.username);
   const myChannelHref = myChannelSlug ? `/s/${myChannelSlug}` : "/";
 
+  const close = () => setOpen(false);
+
   return (
-    <div className="avatarWrap llAvatarWrap">
-      <style>{`
-        /* ✅ important: ancre le dropdown ici */
-        .llAvatarWrap{ position: relative; }
-
-        .llAvatarWrap .avatarBtn{
-          width: 40px;
-          height: 40px;
-          border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(255,255,255,0.05);
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
-          overflow: hidden;
-          padding: 0;
-          display: grid;
-          place-items: center;
-        }
-        .llAvatarWrap .avatarBtn:hover{
-          border-color: rgba(255,255,255,0.18);
-          background: rgba(255,255,255,0.07);
-        }
-        .llAvatarImg{
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: block;
-          border-radius: 999px;
-        }
-        .llAvatarFallback{
-          width: 100%;
-          height: 100%;
-          display: grid;
-          place-items: center;
-          font-weight: 1100;
-          letter-spacing: 0.6px;
-          background:
-            radial-gradient(circle at 30% 30%, rgba(255,255,255,0.10), rgba(0,0,0,0.22) 70%),
-            linear-gradient(135deg, rgba(140,90,255,0.18), rgba(80,160,255,0.10), rgba(255,90,180,0.08));
-        }
-
-        /* Dropdown rework */
-        .llAvatarWrap .dropdown{
-          /* ✅ évite l'effet "coupé à droite" */
-          right: 0;
-          left: auto;
-          transform: translateX(-8px);     /* ouvre un peu vers l'intérieur */
-          transform-origin: top right;
-          max-width: calc(100vw - 12px);   /* anti overflow viewport */
-
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(10,12,18,0.78);
-          backdrop-filter: blur(14px);
-          -webkit-backdrop-filter: blur(14px);
-          box-shadow: 0 24px 70px rgba(0,0,0,0.45);
-          border-radius: 16px;
-          overflow: hidden;
-        }
-
-        .llAvatarWrap .dropdownTop{
-          padding: 12px 12px 10px;
-          background: rgba(255,255,255,0.04);
-          border-bottom: 1px solid rgba(255,255,255,0.08);
-        }
-        .llAvatarWrap .dropdownName{
-          font-weight: 1100;
-          letter-spacing: -0.2px;
-        }
-        .llAvatarWrap .dropdownSub{
-          opacity: 0.7;
-          font-size: 12px;
-          margin-top: 2px;
-        }
-
-        .llAvatarWrap .dropdownItem{
-          border-radius: 12px;
-          margin: 6px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(255,255,255,0.03);
-          cursor: pointer;
-          padding: 10px 12px;
-          color: inherit;
-          text-decoration: none;
-          display: block;
-          font-weight: 900;
-          width: calc(100% - 12px);
-          text-align: left;
-        }
-        .llAvatarWrap .dropdownItem:hover{
-          border-color: rgba(255,255,255,0.16);
-          background: rgba(255,255,255,0.06);
-        }
-        .llAvatarWrap .dropdownItem.danger{
-          border-color: rgba(255,90,180,0.22);
-          background: rgba(255,90,180,0.08);
-        }
-      `}</style>
-
+    <div className="av-wrap">
       <button
         ref={btnRef}
-        className="avatarBtn"
-        onClick={() => setOpen((v) => !v)}
+        className="av-btn"
+        onClick={handleOpen}
         aria-label="Ouvrir le menu profil"
+        aria-expanded={open}
+        aria-haspopup="menu"
         title={user.username}
       >
         {src && imgOk ? (
-          <img
-            className="llAvatarImg"
-            src={src}
-            alt={user.username}
-            onError={() => setImgOk(false)}
-          />
+          <img className="av-img" src={src} alt={user.username} onError={() => setImgOk(false)} />
         ) : (
-          <span className="llAvatarFallback">{initialOf(user.username)}</span>
+          <span className="av-fallback">{initialOf(user.username)}</span>
         )}
       </button>
 
-      {open && (
-        <div ref={menuRef} className="dropdown">
-          <div className="dropdownTop">
-            <div className="dropdownName">{user.username}</div>
-            <div className="dropdownSub">Compte</div>
+      {/* ✅ Portal — position fixed calculée, z-index 99999, passe au-dessus de tout */}
+      {open && pos && createPortalDropdown(
+        <div
+          ref={menuRef}
+          className="av-dropdown"
+          role="menu"
+          style={{ top: pos.top, right: pos.right }}
+        >
+          {/* Header */}
+          <div className="av-dd-head">
+            <div className="av-dd-name">{user.username}</div>
+            <div className="av-dd-sub">Mon compte</div>
           </div>
 
-          <div className="dropdownSep" />
+          {/* Items */}
+          <div className="av-dd-body">
+            {canSeeDashboard && (
+              <>
+                <Link to="/dashboard" className="av-dd-item" role="menuitem" onClick={close}>
+                  📊 Dashboard
+                </Link>
+                <Link to={myChannelHref} className="av-dd-item" role="menuitem" onClick={close}>
+                  📺 Ma chaîne
+                </Link>
+              </>
+            )}
 
-          {canSeeDashboard && (
-            <>
-              <Link to="/dashboard" className="dropdownItem" onClick={() => setOpen(false)}>
-                Dashboard
-              </Link>
+            <Link to="/profile" className="av-dd-item" role="menuitem" onClick={close}>
+              👤 Profil
+            </Link>
 
-              {/* ✅ NEW: Ma chaîne */}
-              <Link to={myChannelHref} className="dropdownItem" onClick={() => setOpen(false)}>
-                Ma chaîne
-              </Link>
-            </>
-          )}
+            {onOpenReport && (
+              <>
+                <div className="av-dd-sep" />
+                <button
+                  className="av-dd-item"
+                  role="menuitem"
+                  onClick={() => { close(); onOpenReport(); }}
+                >
+                  ⚑ Un problème ?
+                </button>
+              </>
+            )}
 
-          <Link to="/profile" className="dropdownItem" onClick={() => setOpen(false)}>
-            Profil
-          </Link>
-
-          {/* ✅ NEW: signalement / retour */}
-          {onOpenReport && (
+            <div className="av-dd-sep" />
             <button
-              className="dropdownItem"
-              onClick={() => {
-                setOpen(false);
-                onOpenReport();
-              }}
+              className="av-dd-item is-danger"
+              role="menuitem"
+              onClick={() => { close(); onLogout(); }}
             >
-              Un problème ?
+              Déconnexion
             </button>
-          )}
-
-          <button
-            className="dropdownItem danger"
-            onClick={() => {
-              setOpen(false);
-              onLogout();
-            }}
-          >
-            Déconnexion
-          </button>
+          </div>
         </div>
       )}
     </div>
   );
+}
+
+/* ── Helper portal ─────────────────────────────────────────────────
+   On importe createPortal de react-dom pour rendre le dropdown
+   directement dans document.body (au-dessus de tout) */
+import { createPortal } from "react-dom";
+function createPortalDropdown(node: React.ReactNode) {
+  return createPortal(node, document.body);
 }

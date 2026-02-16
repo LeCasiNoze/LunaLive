@@ -1,5 +1,6 @@
 // web/src/pages/LivesPage.tsx
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import Hls from "hls.js";
 
@@ -14,6 +15,7 @@ import { DailyBonusAccessCard } from "../components/DailyBonusAccessCard";
 import { useAuth } from "../auth/AuthProvider";
 import { useIsMobile } from "../hooks/useIsMobile";
 import LivesPageMobile from "./LivesPage.mobile";
+import "./LivesPage.css";
 
 export type LiveCardVM = LiveCard & {
   thumbFallback: string;
@@ -24,28 +26,23 @@ export type LiveCardVM = LiveCard & {
 
 export type ClipVM = {
   id: number;
-
   streamerSlug: string;
   streamerName: string | null;
   avatarUrl: string | null;
-
   title: string | null;
   createdAtMs: number;
-
   vodUrl: string | null;
   startSec: number;
   durationSec: number;
-
   clipUrl?: string | null;
-
   thumbUrl: string | null;
   likesCount: number;
-
   myLiked?: boolean;
 };
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
+/* ─── utils ─────────────────────────────────────────────────────────── */
 function formatDurationDot(startIso: string, nowMs: number) {
   const start = Date.parse(startIso);
   if (!Number.isFinite(start)) return null;
@@ -56,7 +53,7 @@ function formatDurationDot(startIso: string, nowMs: number) {
 }
 
 function with5MinBust(url: string, nowMs: number) {
-  const t = Math.floor(nowMs / 300000); // 5 minutes
+  const t = Math.floor(nowMs / 300000);
   return url.includes("?") ? `${url}&t=${t}` : `${url}?t=${t}`;
 }
 
@@ -71,9 +68,8 @@ function absolutize(url: string | null) {
 function preloadImage(url: string): Promise<boolean> {
   return new Promise((resolve) => {
     const img = new Image();
-    const done = (ok: boolean) => resolve(ok);
-    img.onload = () => done(true);
-    img.onerror = () => done(false);
+    img.onload  = () => resolve(true);
+    img.onerror = () => resolve(false);
     img.src = url;
   });
 }
@@ -84,8 +80,7 @@ function timeAgo(ms: number) {
   if (mins < 60) return `${mins} min`;
   const h = Math.floor(mins / 60);
   if (h < 24) return `${h} h`;
-  const days = Math.floor(h / 24);
-  return `${days} j`;
+  return `${Math.floor(h / 24)} j`;
 }
 
 function fmtDuration(sec: number) {
@@ -98,22 +93,14 @@ function fmtDuration(sec: number) {
 }
 
 function safeTitle(v: any) {
-  return (
-    String(v || "clip")
-      .trim()
-      .replace(/[^a-z0-9-_]+/gi, "_")
-      .slice(0, 80) || "clip"
-  );
+  return String(v || "clip").trim().replace(/[^a-z0-9-_]+/gi, "_").slice(0, 80) || "clip";
 }
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
@@ -123,91 +110,77 @@ async function fetchMp4BlobWithProgress(
 ) {
   const url = `${API_BASE}/clips/${clipId}/mp4`;
   const r = await fetch(url, { method: "GET" });
-
   if (!r.ok || !r.body) {
     const txt = await r.text().catch(() => "");
     throw new Error(`download_${r.status}${txt ? `:${txt.slice(0, 120)}` : ""}`);
   }
-
   const total = Number(r.headers.get("content-length") || 0) || null;
   const reader = r.body.getReader();
-
   let loaded = 0;
   const parts: BlobPart[] = [];
-
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
     if (!value) continue;
-
     parts.push(new Uint8Array(value));
     loaded += value.byteLength;
     onProgress(loaded, total);
   }
-
-  const type = r.headers.get("content-type") || "video/mp4";
-  return new Blob(parts, { type });
+  return new Blob(parts, { type: r.headers.get("content-type") || "video/mp4" });
 }
 
+/* ─── UI primitives ─────────────────────────────────────────────────── */
+
 function Pill({
-  tone,
-  children,
-  title,
+  tone, children, title,
 }: {
   tone: "neutral" | "live" | "brand" | "gold";
   children: React.ReactNode;
   title?: string;
 }) {
-  const map: Record<string, { bg: string; bd: string }> = {
-    brand: { bg: "rgba(140,90,255,0.14)", bd: "rgba(140,90,255,0.28)" },
-    live: { bg: "rgba(255,90,180,0.14)", bd: "rgba(255,90,180,0.26)" },
-    gold: { bg: "rgba(255,210,120,0.14)", bd: "rgba(255,210,120,0.28)" },
-    neutral: { bg: "rgba(255,255,255,0.06)", bd: "rgba(255,255,255,0.12)" },
+  const map: Record<string, { bg: string; bd: string; color?: string }> = {
+    brand:   { bg: "rgba(124,92,252,0.16)",  bd: "rgba(124,92,252,0.30)" },
+    live:    { bg: "rgba(239,68,68,0.14)",   bd: "rgba(239,68,68,0.28)",  color: "#fca5a5" },
+    gold:    { bg: "rgba(251,191,36,0.14)",  bd: "rgba(251,191,36,0.28)", color: "#fde68a" },
+    neutral: { bg: "rgba(0,0,0,0.48)",       bd: "rgba(255,255,255,0.10)" },
   };
   const t = map[tone] ?? map.neutral;
   return (
-    <span
-      title={title}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "7px 11px",
-        borderRadius: 999,
-        border: `1px solid ${t.bd}`,
-        background: t.bg,
-        fontSize: 12,
-        fontWeight: 1100,
-        whiteSpace: "nowrap",
-        backdropFilter: "blur(10px)",
-      }}
-    >
+    <span title={title} style={{
+      display: "inline-flex", alignItems: "center", gap: 6,
+      padding: "5px 10px", borderRadius: 999,
+      border: `1px solid ${t.bd}`, background: t.bg,
+      fontSize: 11, fontFamily: "var(--ll-font-display)",
+      fontWeight: 700, letterSpacing: "-0.05px",
+      color: t.color ?? "rgba(235,232,255,0.92)",
+      whiteSpace: "nowrap",
+      backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+    }}>
       {children}
     </span>
   );
 }
 
-function GlassCard({
-  children,
-  style,
-  className,
-}: {
+function GlassCard({ children, style, className }: {
   children: React.ReactNode;
   style?: React.CSSProperties;
   className?: string;
 }) {
   return (
-    <div
-      className={className}
-      style={{
-        borderRadius: 22,
-        border: "1px solid rgba(255,255,255,0.10)",
-        background: "linear-gradient(180deg, rgba(255,255,255,0.07), rgba(0,0,0,0.10))",
-        boxShadow: "0 18px 55px rgba(0,0,0,0.28)",
-        backdropFilter: "blur(10px)",
-        ...style,
-      }}
-    >
+    <div className={className} style={{
+      position: "relative", borderRadius: 20,
+      border: "1px solid rgba(124,92,252,0.14)",
+      background: "rgba(13,11,24,0.82)",
+      boxShadow: "0 18px 55px rgba(0,0,0,0.38)",
+      backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
+      overflow: "hidden", ...style,
+    }}>
+      {/* Reflet haut signature */}
+      <div aria-hidden style={{
+        position: "absolute", top: 0, left: "8%", right: "8%", height: 1,
+        background: "linear-gradient(90deg, transparent, rgba(167,139,250,0.35) 40%, rgba(91,142,248,0.25) 60%, transparent)",
+        pointerEvents: "none", zIndex: 2,
+      }} />
       {children}
     </div>
   );
@@ -216,201 +189,184 @@ function GlassCard({
 function LiveBackdrop({ url }: { url: string }) {
   return (
     <>
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          backgroundImage: `url(${url})`,
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "center",
-          backgroundSize: "contain",   // ✅ montre l’image entière
-          backgroundColor: "rgba(0,0,0,0.35)", // optionnel: jolies bandes si ratio différent
-
-          opacity: 0.92,
-          filter: "contrast(1.06) saturate(1.18) brightness(1.02)",
-          transform: "none",
-
-          pointerEvents: "none",
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.22) 55%, rgba(0,0,0,0.70)), radial-gradient(900px 420px at 50% 0%, rgba(255,255,255,0.06), rgba(0,0,0,0) 60%)",
-          pointerEvents: "none",
-        }}
-      />
+      <div aria-hidden style={{
+        position: "absolute", inset: 0,
+        backgroundImage: `url(${url})`,
+        backgroundRepeat: "no-repeat", backgroundPosition: "center",
+        backgroundSize: "contain", backgroundColor: "rgba(0,0,0,0.35)",
+        opacity: 0.92, filter: "contrast(1.06) saturate(1.18) brightness(1.02)",
+        pointerEvents: "none",
+      }} />
+      <div aria-hidden style={{
+        position: "absolute", inset: 0,
+        background: "linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.22) 55%, rgba(0,0,0,0.70)), radial-gradient(900px 420px at 50% 0%, rgba(255,255,255,0.06), rgba(0,0,0,0) 60%)",
+        pointerEvents: "none",
+      }} />
     </>
   );
 }
 
+/* ─── LiveCard shared inner layout ─────────────────────────────────── */
+function LiveCardBody({ live, accentColor }: {
+  live: LiveCardVM & { followersCount?: number; avatarUrl?: string | null };
+  accentColor: string;
+}) {
+  return (
+    <div style={{ padding: "12px 14px 14px" }}>
+      <div className="liveTitle" title={live.title || ""} style={{
+        fontFamily: "var(--ll-font-display)", fontWeight: 700, fontSize: 13,
+        letterSpacing: "-0.2px", color: "rgba(200,195,240,0.88)",
+      }}>
+        {live.title || "—"}
+      </div>
+
+      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        <div style={{
+          width: 32, height: 32, borderRadius: 12, overflow: "hidden",
+          border: `1px solid ${accentColor}`, background: "rgba(0,0,0,0.35)",
+          flexShrink: 0,
+        }} aria-hidden>
+          <img
+            src={absolutize((live as any).avatarUrl || (live as any).avatar_url || null) || svgThumb(live.displayName || "Streamer")}
+            alt=""
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).src = svgThumb(live.displayName || "Streamer"); }}
+          />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{
+            fontFamily: "var(--ll-font-display)", fontWeight: 700, fontSize: 13,
+            letterSpacing: "-0.3px", whiteSpace: "nowrap", overflow: "hidden",
+            textOverflow: "ellipsis", color: "rgba(235,232,255,0.94)",
+          }} title={live.displayName}>
+            {live.displayName}
+          </div>
+          <div style={{
+            fontSize: 11, fontFamily: "var(--ll-font-display)", fontWeight: 500,
+            color: "rgba(167,155,220,0.52)", marginTop: 1,
+          }}>
+            {formatViewers(Number((live as any).followersCount || 0))} follow
+          </div>
+        </div>
+      </div>
+
+      {/* Trait bas signature */}
+      <div aria-hidden style={{
+        marginTop: 12, height: 1, borderRadius: 999,
+        background: accentColor.includes("251,191") // gold
+          ? "linear-gradient(90deg, rgba(251,191,36,0.0), rgba(251,191,36,0.40), rgba(251,191,36,0.0))"
+          : "linear-gradient(90deg, rgba(124,92,252,0.0), rgba(124,92,252,0.35), rgba(91,142,248,0.25), rgba(91,142,248,0.0))",
+      }} />
+    </div>
+  );
+}
+
+/* ─── Fetch helpers ─────────────────────────────────────────────────── */
 async function fetchStreamersIndex(): Promise<{
   featuredLiveSlugs: Set<string>;
   metaBySlug: Map<string, { avatarUrl: string | null; followersCount: number }>;
 }> {
   try {
-    const res = await fetch(`${API_BASE}/streamers`, {
-      headers: { "content-type": "application/json" },
-    });
+    const res = await fetch(`${API_BASE}/streamers`, { headers: { "content-type": "application/json" } });
     const data = await res.json().catch(() => null);
-    if (!res.ok || !Array.isArray(data)) {
-      return { featuredLiveSlugs: new Set(), metaBySlug: new Map() };
-    }
+    if (!res.ok || !Array.isArray(data)) return { featuredLiveSlugs: new Set(), metaBySlug: new Map() };
 
     const featuredLiveSlugs = new Set<string>();
     const metaBySlug = new Map<string, { avatarUrl: string | null; followersCount: number }>();
 
     for (const s of data) {
       if (!s) continue;
-
       const slug = String(s.slug || "").trim();
       if (!slug) continue;
+      if (!!s.isLive && !!s.featured) featuredLiveSlugs.add(slug);
 
-      const isLive = !!s.isLive;
-      const featured = !!s.featured;
-      if (isLive && featured) featuredLiveSlugs.add(slug);
+      const avatarUrlRaw = s.avatarUrl != null ? String(s.avatarUrl)
+        : s.avatar_url != null ? String(s.avatar_url)
+        : s.profilePictureUrl != null ? String(s.profilePictureUrl)
+        : s.profile_picture_url != null ? String(s.profile_picture_url)
+        : null;
 
-      const avatarUrlRaw =
-        s.avatarUrl != null
-          ? String(s.avatarUrl)
-          : s.avatar_url != null
-          ? String(s.avatar_url)
-          : s.profilePictureUrl != null
-          ? String(s.profilePictureUrl)
-          : s.profile_picture_url != null
-          ? String(s.profile_picture_url)
-          : null;
+      const followersCount = Number(
+        s.followsCount ?? s.follows_count ?? s.followersCount ??
+        s.followers_count ?? s.followers ?? s.followersTotal ?? s.followers_total ?? 0
+      ) || 0;
 
-      const followersCount =
-        Number(
-          s.followsCount ??           // ✅ comme StreamerPage (useStreamerData)
-          s.follows_count ??
-          s.followersCount ??
-          s.followers_count ??
-          s.followers ??
-          s.followersTotal ??
-          s.followers_total ??
-          0
-        ) || 0;
-
-      metaBySlug.set(slug, {
-        avatarUrl: avatarUrlRaw ? absolutize(avatarUrlRaw) : null,
-        followersCount,
-      });
+      metaBySlug.set(slug, { avatarUrl: avatarUrlRaw ? absolutize(avatarUrlRaw) : null, followersCount });
     }
-
     return { featuredLiveSlugs, metaBySlug };
   } catch {
     return { featuredLiveSlugs: new Set(), metaBySlug: new Map() };
   }
 }
 
-// cache followsCount par slug (évite de spammer l'API)
 const followsCache = new Map<string, { n: number; ts: number }>();
 
 async function fetchFollowsCountBySlug(slug: string, token: string | null): Promise<number | null> {
   const s = String(slug || "").trim().toLowerCase();
   if (!s) return null;
-
-  // cache 2 minutes
   const cached = followsCache.get(s);
   const now = Date.now();
   if (cached && now - cached.ts < 120_000) return cached.n;
-
   try {
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
-
     const r = await fetch(`${API_BASE}/streamers/${encodeURIComponent(s)}`, { headers });
     const j = await r.json().catch(() => null);
-
-    // ton hook lit r.followsCount au top-level
-    const n = Number(j?.followsCount);
-    const out = Number.isFinite(n) ? n : 0;
-
+    const out = Number.isFinite(Number(j?.followsCount)) ? Number(j.followsCount) : 0;
     followsCache.set(s, { n: out, ts: now });
     return out;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 async function fetchFollowsCountsForLives(slugs: string[], token: string | null): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   const uniq = Array.from(new Set(slugs.map((x) => String(x || "").trim().toLowerCase()).filter(Boolean)));
   if (!uniq.length) return out;
-
-  // limite concurrence
-  const CONC = 4;
   let i = 0;
-
   const worker = async () => {
     while (i < uniq.length) {
-      const idx = i++;
-      const slug = uniq[idx]!;
+      const slug = uniq[i++]!;
       const n = await fetchFollowsCountBySlug(slug, token);
       if (typeof n === "number") out.set(slug, n);
     }
   };
-
-  await Promise.all(Array.from({ length: Math.min(CONC, uniq.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(4, uniq.length) }, worker));
   return out;
 }
 
 async function fetchViewersBatchPublic(slugs: string[]): Promise<Map<string, number> | null> {
-  // Endpoint recommandé (à faire côté API) :
-  // GET /api/viewers?slugs=a,b,c  => { ok:true, viewers: { a:12, b:3, c:0 } }
   if (!slugs.length) return new Map();
-
   try {
     const url = `${API_BASE}/api/viewers?slugs=${encodeURIComponent(slugs.join(","))}&_=${Date.now()}`;
     const r = await fetch(url, { cache: "no-store" });
     const j = await r.json().catch(() => null);
-
     if (!r.ok || !j || j.ok === false) return null;
-
     const raw = j.viewers ?? j.counts ?? j.data ?? null;
     if (!raw || typeof raw !== "object") return null;
-
     const m = new Map<string, number>();
     for (const [k, v] of Object.entries(raw)) {
       const n = Number(v);
       m.set(String(k).toLowerCase(), Number.isFinite(n) ? n : 0);
     }
     return m;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 async function fetchViewersPerSlugOverlay(slugs: string[], token: string | null): Promise<Map<string, number>> {
-  // Fallback: utilise ton endpoint overlay/api/viewers (token requis)
   const out = new Map<string, number>();
   if (!slugs.length || !token) return out;
-
-  const jobs = slugs.map(async (slug) => {
+  await Promise.allSettled(slugs.map(async (slug) => {
     const s = String(slug || "").trim().toLowerCase();
     if (!s) return;
-
     try {
-      const url = `${API_BASE}/overlay/api/viewers?slug=${encodeURIComponent(s)}&_=${Date.now()}`;
-      const r = await fetch(url, {
-        cache: "no-store",
-        headers: { Authorization: `Bearer ${token}` },
+      const r = await fetch(`${API_BASE}/overlay/api/viewers?slug=${encodeURIComponent(s)}&_=${Date.now()}`, {
+        cache: "no-store", headers: { Authorization: `Bearer ${token}` },
       });
       const j = await r.json().catch(() => null);
       const v = Number(j?.viewers ?? j?.count);
       out.set(s, Number.isFinite(v) ? v : 0);
-    } catch {
-      out.set(s, 0);
-    }
-  });
-
-  await Promise.allSettled(jobs);
+    } catch { out.set(s, 0); }
+  }));
   return out;
 }
 
@@ -418,621 +374,546 @@ async function fetchTopClipsMonth(token?: string | null): Promise<{ total: numbe
   try {
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
-
     const res = await fetch(`${API_BASE}/clips/top?range=month&limit=24`, { headers });
     const j = await res.json().catch(() => null);
     if (!res.ok || !j || j.ok === false) return { total: 0, clips: [] };
-
     const arr = Array.isArray(j.clips) ? j.clips : Array.isArray(j) ? j : [];
     const total = Number(j.total ?? arr.length ?? 0) || 0;
-
-    const clips = arr
-      .map((x: any) => {
-        const id = Number(x?.id);
-        if (!Number.isFinite(id) || id <= 0) return null;
-
-        const streamerSlug =
-          x?.streamerSlug != null ? String(x.streamerSlug) : x?.streamer_slug != null ? String(x.streamer_slug) : "";
-
-        const streamerName =
-          x?.streamerDisplayName != null
-            ? String(x.streamerDisplayName)
-            : x?.streamer_display_name != null
-            ? String(x.streamer_display_name)
-            : x?.streamerName != null
-            ? String(x.streamerName)
-            : x?.streamer_name != null
-            ? String(x.streamer_name)
-            : null;
-
-        const likesCount = Number(x?.likesCount ?? x?.likes_count ?? x?.likes ?? 0) || 0;
-
-        const myLiked = x?.myLiked != null ? !!x.myLiked : x?.my_liked != null ? !!x.my_liked : undefined;
-
-        const thumbUrl = x?.thumbUrl ? String(x.thumbUrl) : x?.thumb_url ? String(x.thumb_url) : null;
-
-        const vodUrl = x?.vodUrl != null ? String(x.vodUrl) : x?.vod_url != null ? String(x.vod_url) : null;
-        const startSec = Number(x?.startSec ?? x?.start_sec ?? 0) || 0;
-        const durationSec = Number(x?.durationSec ?? x?.duration_sec ?? 0) || 0;
-
-        const clipUrlRaw =
-          x?.clipUrl != null
-            ? String(x.clipUrl)
-            : x?.clip_url != null
-            ? String(x.clip_url)
-            : x?.mp4_url != null
-            ? String(x.mp4_url)
-            : x?.mp4Url != null
-            ? String(x.mp4Url)
-            : null;
-
-        const createdAtMs = Number(x?.createdAtMs ?? x?.created_at_ms ?? x?.created_ts ?? 0) || 0;
-
-        const avatarUrl =
-          x?.avatarUrl != null
-            ? String(x.avatarUrl)
-            : x?.streamerAvatarUrl != null
-            ? String(x.streamerAvatarUrl)
-            : x?.streamer_avatar_url != null
-            ? String(x.streamer_avatar_url)
-            : null;
-
-        const title = x?.title != null ? String(x.title) : null;
-
-        return {
-          id,
-          streamerSlug: String(streamerSlug || ""),
-          streamerName,
-          avatarUrl,
-          title,
-          createdAtMs,
-          vodUrl,
-          startSec,
-          durationSec,
-          clipUrl: clipUrlRaw ? absolutize(clipUrlRaw) : null,
-          thumbUrl,
-          likesCount,
-          myLiked,
-        } satisfies ClipVM;
-      })
-      .filter(Boolean) as ClipVM[];
-
+    const clips = arr.map((x: any) => {
+      const id = Number(x?.id);
+      if (!Number.isFinite(id) || id <= 0) return null;
+      return {
+        id,
+        streamerSlug: String(x?.streamerSlug ?? x?.streamer_slug ?? ""),
+        streamerName: x?.streamerDisplayName != null ? String(x.streamerDisplayName)
+          : x?.streamer_display_name != null ? String(x.streamer_display_name)
+          : x?.streamerName != null ? String(x.streamerName)
+          : x?.streamer_name != null ? String(x.streamer_name) : null,
+        likesCount: Number(x?.likesCount ?? x?.likes_count ?? x?.likes ?? 0) || 0,
+        myLiked: x?.myLiked != null ? !!x.myLiked : x?.my_liked != null ? !!x.my_liked : undefined,
+        thumbUrl: x?.thumbUrl ? String(x.thumbUrl) : x?.thumb_url ? String(x.thumb_url) : null,
+        vodUrl: x?.vodUrl != null ? String(x.vodUrl) : x?.vod_url != null ? String(x.vod_url) : null,
+        startSec: Number(x?.startSec ?? x?.start_sec ?? 0) || 0,
+        durationSec: Number(x?.durationSec ?? x?.duration_sec ?? 0) || 0,
+        clipUrl: (x?.clipUrl ?? x?.clip_url ?? x?.mp4_url ?? x?.mp4Url) != null
+          ? absolutize(String(x?.clipUrl ?? x?.clip_url ?? x?.mp4_url ?? x?.mp4Url))
+          : null,
+        createdAtMs: Number(x?.createdAtMs ?? x?.created_at_ms ?? x?.created_ts ?? 0) || 0,
+        avatarUrl: x?.avatarUrl != null ? String(x.avatarUrl)
+          : x?.streamerAvatarUrl != null ? String(x.streamerAvatarUrl)
+          : x?.streamer_avatar_url != null ? String(x.streamer_avatar_url) : null,
+        title: x?.title != null ? String(x.title) : null,
+      } satisfies ClipVM;
+    }).filter(Boolean) as ClipVM[];
     return { total, clips };
-  } catch {
-    return { total: 0, clips: [] };
-  }
+  } catch { return { total: 0, clips: [] }; }
 }
 
+/* ─── ClipLikesBadge ─────────────────────────────────────────────────── */
 function ClipLikesBadge({ likes, corner }: { likes: number; corner: "tl" | "tr" | "br" | "bl" }) {
   const pos: Record<string, React.CSSProperties> = {
-    tl: { top: 8, left: 8 },
-    tr: { top: 8, right: 8 },
-    br: { bottom: 8, right: 8 },
-    bl: { bottom: 8, left: 8 },
+    tl: { top: 8, left: 8 }, tr: { top: 8, right: 8 },
+    br: { bottom: 8, right: 8 }, bl: { bottom: 8, left: 8 },
   };
   return (
-    <span
-      style={{
-        position: "absolute",
-        ...pos[corner],
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "6px 10px",
-        borderRadius: 999,
-        fontSize: 12,
-        fontWeight: 1100,
-        letterSpacing: 0.2,
-        background: "rgba(0,0,0,0.52)",
-        border: "1px solid rgba(255,255,255,0.12)",
-        backdropFilter: "blur(10px)",
-        pointerEvents: "none",
-      }}
-      title={`${likes} likes`}
-    >
+    <span style={{
+      position: "absolute", ...pos[corner],
+      display: "inline-flex", alignItems: "center", gap: 6,
+      padding: "5px 9px", borderRadius: 999,
+      fontSize: 11, fontFamily: "var(--ll-font-display)", fontWeight: 700,
+      background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.10)",
+      backdropFilter: "blur(10px)", pointerEvents: "none",
+    }} title={`${likes} likes`}>
       ❤️ {likes}
     </span>
   );
 }
 
-function ClipPlayerModal({
-  clip,
-  token,
-  canModerate,
-  onPatchClip,
-  onRemoveClip,
-  onClose,
-  zIndex,
-}: {
-  clip: ClipVM;
-  token: string | null;
-  canModerate: boolean; // admin / LeCasiNoze
+/* ─── CSS modals clips ───────────────────────────────────────────────── */
+const CLIP_MODAL_CSS = `
+@keyframes cpm-fade-in  { from{opacity:0} to{opacity:1} }
+@keyframes cpm-slide-up { from{opacity:0;transform:translateY(18px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+@keyframes cpm-shimmer  { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+
+/* ── Backdrop ── */
+.cpm-backdrop {
+  position:fixed;inset:0;
+  display:grid;place-items:center;padding:16px;
+  background:rgba(4,3,10,.80);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  animation:cpm-fade-in 180ms ease;
+}
+
+/* ── Dialog générique ── */
+.cpm-dialog {
+  position:relative;width:100%;
+  border-radius:22px;
+  border:1px solid rgba(124,92,252,.22);
+  background:rgba(11,9,22,.96);
+  box-shadow:0 40px 100px rgba(0,0,0,.72),0 0 0 1px rgba(167,139,250,.07) inset,0 0 60px rgba(124,92,252,.09);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  overflow:hidden;
+  animation:cpm-slide-up 260ms cubic-bezier(.22,1,.36,1);
+  display:flex;flex-direction:column;
+  max-height:calc(100vh - 32px);
+}
+/* Reflet haut */
+.cpm-dialog::before {
+  content:"";position:absolute;top:0;left:6%;right:6%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(167,139,250,.48) 35%,rgba(91,142,248,.34) 65%,transparent);
+  pointer-events:none;z-index:2;
+}
+/* Lueur ambiante */
+.cpm-dialog::after {
+  content:"";position:absolute;top:-60px;left:-60px;
+  width:300px;height:190px;border-radius:50%;
+  background:radial-gradient(ellipse,rgba(124,92,252,.12),transparent 70%);
+  pointer-events:none;z-index:0;
+}
+
+/* ── Header ── */
+.cpm-header {
+  position:relative;z-index:1;
+  display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  padding:15px 18px 13px;
+  border-bottom:1px solid rgba(124,92,252,.10);
+  flex-shrink:0;
+}
+.cpm-header-left { display:flex;flex-direction:column;gap:4px;min-width:0;flex:1; }
+
+.cpm-clip-title {
+  font-family:'Syne',system-ui,sans-serif;
+  font-weight:800;font-size:15px;letter-spacing:-.3px;line-height:1.2;
+  color:rgba(235,232,255,.94);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.cpm-clip-meta {
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-family:'Syne',system-ui,sans-serif;font-size:11px;font-weight:500;
+  color:rgba(167,155,220,.55);
+}
+.cpm-clip-meta a {
+  color:rgba(196,181,253,.80);font-weight:700;text-decoration:none;
+  transition:color 150ms ease;
+}
+.cpm-clip-meta a:hover { color:rgba(224,210,255,.96); }
+.cpm-meta-dot { opacity:.45; }
+
+.cpm-header-actions {
+  display:inline-flex;gap:7px;align-items:center;flex-shrink:0;flex-wrap:wrap;
+}
+
+/* Bouton like */
+.cpm-btn-like {
+  display:inline-flex;align-items:center;gap:7px;
+  height:36px;padding:0 13px;border-radius:11px;
+  border:1px solid rgba(239,68,68,.22);background:rgba(239,68,68,.08);
+  color:rgba(252,165,165,.85);cursor:pointer;
+  font-family:'Syne',system-ui,sans-serif;font-size:12px;font-weight:700;
+  outline:none;-webkit-tap-highlight-color:transparent;
+  transition:background 150ms ease,border-color 150ms ease,transform 120ms cubic-bezier(.22,1,.36,1);
+}
+.cpm-btn-like:hover:not(:disabled) { background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.36);transform:translateY(-1px); }
+.cpm-btn-like:disabled { opacity:.40;cursor:not-allowed; }
+.cpm-btn-like.is-liked { border-color:rgba(239,68,68,.40);background:rgba(239,68,68,.16);color:rgba(252,165,165,.95); }
+
+/* Bouton action (download, supprimer) */
+.cpm-btn-action {
+  height:36px;padding:0 13px;border-radius:11px;
+  border:1px solid rgba(124,92,252,.22);background:rgba(124,92,252,.07);
+  color:rgba(200,195,240,.75);cursor:pointer;
+  font-family:'Syne',system-ui,sans-serif;font-size:12px;font-weight:700;
+  outline:none;-webkit-tap-highlight-color:transparent;
+  transition:background 150ms ease,border-color 150ms ease,transform 120ms cubic-bezier(.22,1,.36,1);
+}
+.cpm-btn-action:hover:not(:disabled) { background:rgba(124,92,252,.13);border-color:rgba(124,92,252,.35);transform:translateY(-1px); }
+.cpm-btn-action:disabled { opacity:.35;cursor:not-allowed; }
+.cpm-btn-action.is-danger {
+  border-color:rgba(239,68,68,.24);background:rgba(239,68,68,.08);color:rgba(252,165,165,.75);
+}
+.cpm-btn-action.is-danger:hover:not(:disabled) { background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.40);transform:translateY(-1px); }
+
+/* Bouton fermer */
+.cpm-btn-close {
+  width:36px;height:36px;border-radius:11px;flex-shrink:0;
+  border:1px solid rgba(124,92,252,.18);background:rgba(255,255,255,.04);
+  color:rgba(235,232,255,.65);cursor:pointer;display:grid;place-items:center;font-size:14px;
+  outline:none;-webkit-tap-highlight-color:transparent;
+  transition:background 150ms ease,border-color 150ms ease,transform 130ms cubic-bezier(.22,1,.36,1);
+}
+.cpm-btn-close:hover { background:rgba(124,92,252,.12);border-color:rgba(124,92,252,.36);transform:scale(1.06); }
+.cpm-btn-close:disabled { opacity:.40;cursor:not-allowed; }
+
+/* ── Body ── */
+.cpm-body {
+  position:relative;z-index:1;
+  padding:14px 16px 16px;
+  display:flex;flex-direction:column;gap:12px;
+  overflow-y:auto;flex:1;
+}
+
+/* Vidéo */
+.cpm-video {
+  width:100%;border-radius:14px;
+  background:#000;
+  border:1px solid rgba(124,92,252,.16);
+  display:block;
+}
+
+/* Footer info */
+.cpm-footer-info {
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  font-family:'Syne',system-ui,sans-serif;font-size:11px;font-weight:500;
+  color:rgba(167,155,220,.55);
+}
+.cpm-footer-info strong { color:rgba(200,195,240,.85);font-weight:700; }
+
+/* Status toast */
+.cpm-status {
+  padding:8px 12px;border-radius:10px;
+  border:1px solid rgba(124,92,252,.16);background:rgba(124,92,252,.08);
+  font-family:'Syne',system-ui,sans-serif;font-size:11px;font-weight:500;
+  color:rgba(200,195,240,.80);
+}
+
+/* Progress bar download */
+.cpm-progress-wrap {
+  height:3px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;
+}
+.cpm-progress-bar {
+  height:100%;border-radius:999px;
+  background:linear-gradient(90deg,rgba(124,92,252,.70),rgba(91,142,248,.70));
+  transition:width 200ms ease;
+}
+
+/* ── Liste clips (MonthClipsListModal) ── */
+.cpm-list { display:flex;flex-direction:column;gap:7px; }
+
+.cpm-list-item {
+  display:grid;grid-template-columns:46px 1fr auto;gap:12px;align-items:center;
+  width:100%;text-align:left;cursor:pointer;
+  padding:11px 13px;border-radius:14px;
+  border:1px solid rgba(124,92,252,.12);background:rgba(124,92,252,.04);
+  color:inherit;
+  outline:none;-webkit-tap-highlight-color:transparent;
+  transition:background 140ms ease,border-color 140ms ease,transform 120ms cubic-bezier(.22,1,.36,1);
+}
+.cpm-list-item:hover { background:rgba(124,92,252,.10);border-color:rgba(124,92,252,.24);transform:translateX(2px); }
+
+.cpm-list-avatar {
+  width:46px;height:46px;border-radius:13px;overflow:hidden;
+  border:1px solid rgba(124,92,252,.18);background:rgba(0,0,0,.35);flex-shrink:0;
+}
+.cpm-list-avatar img { width:100%;height:100%;object-fit:cover;display:block; }
+
+.cpm-list-info { display:flex;flex-direction:column;gap:4px;min-width:0; }
+.cpm-list-title {
+  font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:12px;letter-spacing:-.15px;
+  color:rgba(235,232,255,.90);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.cpm-list-sub {
+  font-family:'Syne',system-ui,sans-serif;font-size:10px;font-weight:500;
+  color:rgba(167,155,220,.50);
+}
+
+.cpm-list-right { display:flex;flex-direction:column;align-items:flex-end;gap:5px; }
+.cpm-list-likes {
+  display:inline-flex;gap:5px;align-items:center;
+  padding:4px 9px;border-radius:999px;
+  background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.10);
+  font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:11px;
+  color:rgba(235,232,255,.85);white-space:nowrap;
+}
+.cpm-list-open {
+  font-family:'Syne',system-ui,sans-serif;font-size:10px;font-weight:600;
+  color:rgba(124,92,252,.60);
+}
+
+/* Vide */
+.cpm-empty {
+  font-family:'Syne',system-ui,sans-serif;font-size:12px;font-weight:500;
+  color:rgba(167,155,220,.45);padding:8px 0;
+}
+`;
+
+let _clipCssInjected = false;
+function useClipModalStyles() {
+  React.useEffect(() => {
+    if (_clipCssInjected) return;
+    const el = document.createElement("style");
+    el.id = "cpm-styles"; el.textContent = CLIP_MODAL_CSS;
+    document.head.appendChild(el); _clipCssInjected = true;
+  }, []);
+}
+
+/* ─── ClipPlayerModal ────────────────────────────────────────────────── */
+function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, onClose, zIndex }: {
+  clip: ClipVM; token: string | null; canModerate: boolean;
   onPatchClip: (id: number, patch: Partial<ClipVM>) => void;
   onRemoveClip: (id: number) => void;
-  onClose: () => void;
-  zIndex: number;
+  onClose: () => void; zIndex: number;
 }) {
+  useClipModalStyles();
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
-
   const [busy, setBusy] = React.useState<null | "liking" | "downloading" | "deleting">(null);
   const [status, setStatus] = React.useState<string | null>(null);
   const [pct, setPct] = React.useState<number>(0);
 
   const mp4 = String((clip as any).clipUrl || "").trim() || null;
-
-  // ✅ Like: tout user connecté, seulement si pas déjà liké
-  const canLike = !!token && !clip.myLiked;
-
-  // ✅ Download/Delete: seulement admin/LeCasiNoze (+ connecté pour delete)
+  const canLike     = !!token && !clip.myLiked;
   const canDownload = canModerate && !!mp4;
-  const canDelete = canModerate && !!token;
+  const canDelete   = canModerate && !!token;
 
+  /* ── Lecture vidéo ── */
   React.useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
+    const video = videoRef.current; if (!video) return;
     const mp4Url = String((clip as any).clipUrl || "").trim() || null;
     const hlsUrl = clip.vodUrl;
-
     let hls: Hls | null = null;
     video.preload = "metadata";
 
     if (mp4Url) {
-      const onMp4Meta = () => {
-        video.play().catch(() => {});
-      };
-
       video.src = mp4Url;
-      video.addEventListener("loadedmetadata", onMp4Meta);
-
+      const onMeta = () => video.play().catch(() => {});
+      video.addEventListener("loadedmetadata", onMeta);
       return () => {
-        try {
-          video.removeEventListener("loadedmetadata", onMp4Meta);
-        } catch {}
-        try {
-          video.pause();
-        } catch {}
-        try {
-          video.removeAttribute("src");
-          video.load();
-        } catch {}
+        try { video.removeEventListener("loadedmetadata", onMeta); } catch {}
+        try { video.pause(); } catch {}
+        try { video.removeAttribute("src"); video.load(); } catch {}
       };
     }
 
-    const url = hlsUrl;
-    if (!url) return;
-
+    if (!hlsUrl) return;
     const start = Math.max(0, Number(clip.startSec || 0));
-    const end = Math.max(start + 1, start + Math.max(1, Number(clip.durationSec || 0)));
-    const EPS = 0.25;
+    const end   = Math.max(start + 1, start + Math.max(1, Number(clip.durationSec || 0)));
+    const EPS   = 0.25;
 
-    const cleanupVideo = () => {
-      try {
-        video.pause();
-      } catch {}
-      try {
-        video.removeEventListener("timeupdate", onTimeUpdate);
-        video.removeEventListener("seeking", onSeeking);
-        video.removeEventListener("loadedmetadata", onLoadedMeta);
-      } catch {}
-      try {
-        video.removeAttribute("src");
-        video.load();
-      } catch {}
+    const cleanup = () => {
+      try { video.pause(); } catch {}
+      try { video.removeEventListener("timeupdate", onTimeUpdate); video.removeEventListener("seeking", onSeeking); video.removeEventListener("loadedmetadata", onLoadedMeta); } catch {}
+      try { video.removeAttribute("src"); video.load(); } catch {}
     };
 
-    const onTimeUpdate = () => {
-      try {
-        if (video.currentTime >= end - EPS) {
-          video.pause();
-          video.currentTime = end - EPS;
-        }
-      } catch {}
-    };
-
-    const onSeeking = () => {
-      try {
-        if (video.currentTime < start - EPS) video.currentTime = start;
-        if (video.currentTime > end - EPS) video.currentTime = end - EPS;
-      } catch {}
-    };
-
-    const onLoadedMeta = () => {
-      try {
-        video.currentTime = start;
-      } catch {}
-      video.play().catch(() => {});
-    };
+    const onTimeUpdate = () => { try { if (video.currentTime >= end - EPS) { video.pause(); video.currentTime = end - EPS; } } catch {} };
+    const onSeeking    = () => { try { if (video.currentTime < start - EPS) video.currentTime = start; if (video.currentTime > end - EPS) video.currentTime = end - EPS; } catch {} };
+    const onLoadedMeta = () => { try { video.currentTime = start; } catch {} video.play().catch(() => {}); };
 
     video.addEventListener("timeupdate", onTimeUpdate);
     video.addEventListener("seeking", onSeeking);
 
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = url;
+      video.src = hlsUrl;
       video.addEventListener("loadedmetadata", onLoadedMeta);
-      return () => cleanupVideo();
+      return cleanup;
     }
 
     if (Hls.isSupported()) {
-      hls = new Hls({
-        autoStartLoad: false,
-        startPosition: start,
-        maxBufferLength: 30,
-        backBufferLength: 0,
-      });
-
-      hls.loadSource(url);
+      hls = new Hls({ autoStartLoad: false, startPosition: start, maxBufferLength: 30, backBufferLength: 0 });
+      hls.loadSource(hlsUrl);
       hls.attachMedia(video);
-
-      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-        try {
-          hls?.startLoad(start);
-        } catch {}
-      });
-
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        try {
-          video.currentTime = start;
-        } catch {}
-        video.play().catch(() => {});
-      });
-
-      return () => {
-        try {
-          hls?.destroy();
-        } catch {}
-        cleanupVideo();
-      };
+      hls.on(Hls.Events.MEDIA_ATTACHED, () => { try { hls?.startLoad(start); } catch {} });
+      hls.on(Hls.Events.MANIFEST_PARSED, () => { try { video.currentTime = start; } catch {} video.play().catch(() => {}); });
+      return () => { try { hls?.destroy(); } catch {} cleanup(); };
     }
 
-    video.src = url;
+    video.src = hlsUrl;
     video.addEventListener("loadedmetadata", onLoadedMeta);
-    return () => cleanupVideo();
+    return cleanup;
   }, [clip]);
 
+  /* ── Actions ── */
   async function doLike() {
-    if (!token) {
-      setStatus("Connecte-toi pour liker.");
-      return;
-    }
+    if (!token) { setStatus("Connecte-toi pour liker."); return; }
     if (!canLike || busy) return;
-
-    setBusy("liking");
-    setStatus(null);
-
-    // optimistic
-    onPatchClip(clip.id, {
-      myLiked: true,
-      likesCount: Math.max(0, Number(clip.likesCount || 0) + 1),
-    });
-
+    setBusy("liking"); setStatus(null);
+    onPatchClip(clip.id, { myLiked: true, likesCount: Math.max(0, Number(clip.likesCount || 0) + 1) });
     try {
       const res = await fetch(`${API_BASE}/clips/${clip.id}/like`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-        },
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify({ like: true }),
       });
-
       const j = await res.json().catch(() => null);
       if (!res.ok || !j || j.ok === false) throw new Error(String(j?.error || `http_${res.status}`));
-
-      onPatchClip(clip.id, {
-        myLiked: !!j.myLiked,
-        likesCount: Number(j.likesCount || 0) || 0,
-      });
-
+      onPatchClip(clip.id, { myLiked: !!j.myLiked, likesCount: Number(j.likesCount || 0) || 0 });
       setStatus("Liké ✅");
     } catch (e: any) {
-      // rollback
-      onPatchClip(clip.id, {
-        myLiked: clip.myLiked,
-        likesCount: clip.likesCount,
-      });
-      setStatus(`Erreur like: ${String(e?.message || "failed")}`);
-    } finally {
-      setBusy(null);
-    }
+      onPatchClip(clip.id, { myLiked: clip.myLiked, likesCount: clip.likesCount });
+      setStatus(`Erreur like : ${String(e?.message || "failed")}`);
+    } finally { setBusy(null); }
   }
 
   async function doDownload() {
     if (!canDownload || busy) return;
-
-    setBusy("downloading");
-    setStatus("Téléchargement…");
-    setPct(0);
-
+    setBusy("downloading"); setStatus("Téléchargement…"); setPct(0);
     try {
       const blob = await fetchMp4BlobWithProgress(clip.id, (loaded, total) => {
-        const p = total
-          ? Math.max(1, Math.min(99, Math.round((loaded / total) * 100)))
-          : Math.max(1, Math.min(99, Math.round((loaded / (1024 * 1024)) * 6)));
-        setPct(p);
+        setPct(total ? Math.max(1, Math.min(99, Math.round((loaded / total) * 100))) : Math.max(1, Math.min(99, Math.round((loaded / (1024 * 1024)) * 6))));
       });
-
-      const filename = `top-clip-${clip.id}-${safeTitle(clip.title)}.mp4`;
-      downloadBlob(blob, filename);
-
-      setPct(100);
-      setStatus("Téléchargé ✓");
-    } catch (e: any) {
-      setStatus(`Erreur download: ${String(e?.message || "failed")}`);
-    } finally {
-      setBusy(null);
-    }
+      downloadBlob(blob, `top-clip-${clip.id}-${safeTitle(clip.title)}.mp4`);
+      setPct(100); setStatus("Téléchargé ✓");
+    } catch (e: any) { setStatus(`Erreur download : ${String(e?.message || "failed")}`); }
+    finally { setBusy(null); }
   }
 
   async function doDelete() {
     if (!canDelete || !token || busy) return;
-
-    const ok = window.confirm("Supprimer ce clip ? (soft-delete, puis cleanup TTL)");
-    if (!ok) return;
-
-    setBusy("deleting");
-    setStatus(null);
-
+    if (!window.confirm("Supprimer ce clip ?")) return;
+    setBusy("deleting"); setStatus(null);
     try {
       const res = await fetch(`${API_BASE}/clips/${clip.id}/delete`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-        },
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
       });
-
       const j = await res.json().catch(() => null);
       if (!res.ok || !j || j.ok === false) throw new Error(String(j?.error || `http_${res.status}`));
-
-      onRemoveClip(clip.id);
-      onClose();
-    } catch (e: any) {
-      setStatus(`Erreur delete: ${String(e?.message || "failed")}`);
-    } finally {
-      setBusy(null);
-    }
+      onRemoveClip(clip.id); onClose();
+    } catch (e: any) { setStatus(`Erreur suppression : ${String(e?.message || "failed")}`); }
+    finally { setBusy(null); }
   }
 
-  return (
-    <div className="chatSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
-      <div
-        className="chatSheet"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        style={{ maxWidth: 980 }}
-      >
-        <div className="chatSheetTop" style={{ gap: 10 }}>
-          <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
-            <div style={{ fontWeight: 1050, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {clip.title || "Clip"}
-            </div>
-            <div className="mutedSmall" style={{ opacity: 0.8, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <span>
-                Par{" "}
-                <Link
-                  to={clip.streamerSlug ? `/s/${encodeURIComponent(clip.streamerSlug)}` : "#"}
-                  style={{ color: "rgba(255,255,255,0.92)", fontWeight: 950, textDecoration: "none" }}
-                  onClick={() => onClose()}
-                >
+  return createPortal(
+    <div className="cpm-backdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
+      <div className="cpm-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 960 }}>
+
+        {/* Header */}
+        <div className="cpm-header">
+          <div className="cpm-header-left">
+            <div className="cpm-clip-title">{clip.title || "Clip"}</div>
+            <div className="cpm-clip-meta">
+              <span>Par{" "}
+                <Link to={clip.streamerSlug ? `/s/${encodeURIComponent(clip.streamerSlug)}` : "#"} onClick={onClose}>
                   {clip.streamerName || clip.streamerSlug || "Streamer"}
                 </Link>
               </span>
-              <span style={{ opacity: 0.9 }}>•</span>
+              <span className="cpm-meta-dot">•</span>
               <span>❤️ {Number(clip.likesCount || 0)}</span>
-              <span style={{ opacity: 0.9 }}>•</span>
-              <span>{mp4 ? "MP4" : "HLS"}</span>
+              <span className="cpm-meta-dot">•</span>
+              <span>{fmtDuration(clip.durationSec)}</span>
+              <span className="cpm-meta-dot">•</span>
+              <span>{timeAgo(clip.createdAtMs)}</span>
             </div>
           </div>
 
-          <div style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            {/* ✅ Like: tout user connecté, seulement si pas déjà liké */}
+          <div className="cpm-header-actions">
+            {/* Like */}
             <button
+              className={`cpm-btn-like${clip.myLiked ? " is-liked" : ""}`}
               type="button"
-              className="btnGhostSmall"
               onClick={() => void doLike()}
               disabled={!!busy || !canLike}
-              title={!token ? "Connecte-toi pour liker" : clip.myLiked ? "Déjà liké" : "Liker"}
-              style={{ display: "inline-flex", alignItems: "center", gap: 8, opacity: canLike ? 1 : 0.6 }}
+              title={!token ? "Connecte-toi pour liker" : clip.myLiked ? "Déjà liké" : "Liker ce clip"}
             >
               <span>{clip.myLiked ? "❤️" : "🤍"}</span>
               <span>{Number(clip.likesCount || 0)}</span>
             </button>
 
-            {/* ✅ Download/Delete: admin/LeCasiNoze uniquement */}
-            {canModerate ? (
+            {/* Actions modération */}
+            {canModerate && (
               <>
                 <button
+                  className="cpm-btn-action"
                   type="button"
-                  className="btnGhostSmall"
                   onClick={() => void doDownload()}
                   disabled={!canDownload || !!busy}
-                  title={!mp4 ? "MP4 pas dispo" : "Télécharger le MP4"}
+                  title={!mp4 ? "Vidéo pas encore disponible" : "Télécharger le clip"}
                 >
-                  {busy === "downloading" ? `Download… ${pct ? `${pct}%` : ""}` : "Download"}
+                  {busy === "downloading" ? `${pct ? `${pct}%` : "…"}` : "Download"}
                 </button>
-
                 <button
+                  className="cpm-btn-action is-danger"
                   type="button"
-                  className="btnGhostSmall"
                   onClick={() => void doDelete()}
                   disabled={!canDelete || !!busy}
-                  style={{
-                    background: "rgba(255, 70, 70, 0.14)",
-                    border: "1px solid rgba(255, 70, 70, 0.28)",
-                    opacity: canDelete ? 1 : 0.6,
-                  }}
-                  title={!token ? "Connecte-toi" : "Supprimer le clip"}
+                  title="Supprimer le clip"
                 >
-                  {busy === "deleting" ? "Suppression…" : "Supprimer"}
+                  {busy === "deleting" ? "…" : "Supprimer"}
                 </button>
               </>
-            ) : null}
+            )}
 
-            <button className="iconBtn" onClick={onClose} type="button" aria-label="Fermer" disabled={!!busy}>
-              ✕
-            </button>
+            <button className="cpm-btn-close" type="button" aria-label="Fermer" onClick={onClose} disabled={!!busy}>✕</button>
           </div>
         </div>
 
-        <div className="chatSheetBody" style={{ padding: 14 }}>
+        {/* Body */}
+        <div className="cpm-body">
           {!mp4 && !clip.vodUrl ? (
-            <div className="mutedSmall" style={{ opacity: 0.85 }}>
-              Vidéo indisponible (MP4/VOD pas prête).
-            </div>
+            <div className="cpm-empty">Vidéo indisponible pour le moment.</div>
           ) : (
-            <video
-              ref={videoRef}
-              controls
-              playsInline
-              style={{
-                width: "100%",
-                borderRadius: 16,
-                background: "black",
-                border: "1px solid rgba(255,255,255,0.10)",
-              }}
-            />
+            <video ref={videoRef} className="cpm-video" controls playsInline />
           )}
 
-          <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.85, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <span>
-              Durée: <strong style={{ color: "rgba(255,255,255,0.9)" }}>{fmtDuration(clip.durationSec)}</strong>
-            </span>
-            <span style={{ opacity: 0.9 }}>•</span>
-            <span>
-              Publié: <strong style={{ color: "rgba(255,255,255,0.9)" }}>{timeAgo(clip.createdAtMs)}</strong>
-            </span>
-          </div>
-
-          {status ? (
-            <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.9 }}>
-              {status}
+          {/* Barre de progression download */}
+          {busy === "downloading" && pct > 0 && pct < 100 && (
+            <div className="cpm-progress-wrap">
+              <div className="cpm-progress-bar" style={{ width: `${pct}%` }} />
             </div>
-          ) : null}
+          )}
+
+          {/* Status */}
+          {status && <div className="cpm-status">{status}</div>}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
-function MonthClipsListModal({
-  title,
-  clips,
-  total,
-  onClose,
-  onPickClip,
-  zIndex,
-}: {
-  title: string;
-  clips: ClipVM[];
-  total: number;
-  onClose: () => void;
-  onPickClip: (c: ClipVM) => void;
-  zIndex: number;
+/* ─── MonthClipsListModal ────────────────────────────────────────────── */
+function MonthClipsListModal({ title, clips, total, onClose, onPickClip, zIndex }: {
+  title: string; clips: ClipVM[]; total: number;
+  onClose: () => void; onPickClip: (c: ClipVM) => void; zIndex: number;
 }) {
-  return (
-    <div className="chatSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
-      <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 860 }}>
-        <div className="chatSheetTop" style={{ gap: 10 }}>
-          <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
-            <div style={{ fontWeight: 1100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-            <div className="mutedSmall" style={{ opacity: 0.8 }}>
-              Liste des clips du mois • tri par ❤️ (top) • {total || clips.length} clip(s)
+  useClipModalStyles();
+  return createPortal(
+    <div className="cpm-backdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
+      <div className="cpm-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 760 }}>
+
+        {/* Header */}
+        <div className="cpm-header">
+          <div className="cpm-header-left">
+            <div className="cpm-clip-title">{title}</div>
+            <div className="cpm-clip-meta">
+              <span>Tri par ❤️ les plus likés</span>
+              <span className="cpm-meta-dot">•</span>
+              <span>{total || clips.length} clip{(total || clips.length) > 1 ? "s" : ""}</span>
             </div>
           </div>
-
-          <div style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-            <button className="iconBtn" onClick={onClose} type="button" aria-label="Fermer">
-              ✕
-            </button>
+          <div className="cpm-header-actions">
+            <button className="cpm-btn-close" type="button" aria-label="Fermer" onClick={onClose}>✕</button>
           </div>
         </div>
 
-        <div className="chatSheetBody" style={{ padding: 14 }}>
+        {/* Body — liste */}
+        <div className="cpm-body">
           {clips.length === 0 ? (
-            <div className="mutedSmall" style={{ opacity: 0.85 }}>
-              Aucun clip pour le moment.
-            </div>
+            <div className="cpm-empty">Aucun clip pour le moment.</div>
           ) : (
-            <div style={{ display: "grid", gap: 10 }}>
+            <div className="cpm-list">
               {clips.map((c) => {
                 const name = c.streamerName || c.streamerSlug || "Streamer";
                 return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="panel"
-                    onClick={() => onPickClip(c)}
-                    style={{
-                      textAlign: "left",
-                      cursor: "pointer",
-                      padding: 12,
-                      borderRadius: 16,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(255,255,255,0.03)",
-                      display: "grid",
-                      gridTemplateColumns: "44px 1fr auto",
-                      gap: 12,
-                      alignItems: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 16,
-                        overflow: "hidden",
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        background: "rgba(0,0,0,0.35)",
-                      }}
-                      aria-hidden
-                    >
-                      {c.avatarUrl ? (
+                  <button key={c.id} type="button" className="cpm-list-item" onClick={() => onPickClip(c)}>
+                    {/* Avatar */}
+                    <div className="cpm-list-avatar" aria-hidden>
+                      {c.avatarUrl && (
                         <img
-                          src={absolutize(c.avatarUrl) || c.avatarUrl}
-                          alt=""
-                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                          onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).style.display = "none";
-                          }}
+                          src={absolutize(c.avatarUrl) || c.avatarUrl} alt=""
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                         />
-                      ) : null}
+                      )}
                     </div>
-
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                        <div style={{ fontWeight: 1100, letterSpacing: -0.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {c.title || "(sans titre)"}
-                        </div>
-                        <span className="mutedSmall" style={{ opacity: 0.8 }}>
-                          — {name}
-                        </span>
-                      </div>
-                      <div className="mutedSmall" style={{ opacity: 0.8, marginTop: 4 }}>
-                        {timeAgo(c.createdAtMs)} • {fmtDuration(c.durationSec)}
+                    {/* Info */}
+                    <div className="cpm-list-info">
+                      <div className="cpm-list-title">{c.title || "(sans titre)"}</div>
+                      <div className="cpm-list-sub">
+                        {name} · {timeAgo(c.createdAtMs)} · {fmtDuration(c.durationSec)}
                       </div>
                     </div>
-
-                    <div style={{ display: "grid", justifyItems: "end", gap: 6 }}>
-                      <div
-                        style={{
-                          display: "inline-flex",
-                          gap: 6,
-                          alignItems: "center",
-                          padding: "6px 10px",
-                          borderRadius: 999,
-                          background: "rgba(0,0,0,0.45)",
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          fontWeight: 1100,
-                        }}
-                        title="Likes"
-                      >
-                        ❤️ {Number(c.likesCount || 0)}
-                      </div>
-                      <div className="mutedSmall" style={{ opacity: 0.75 }}>
-                        ▶ Ouvrir
-                      </div>
+                    {/* Right */}
+                    <div className="cpm-list-right">
+                      <div className="cpm-list-likes" title="Likes">❤️ {Number(c.likesCount || 0)}</div>
+                      <div className="cpm-list-open">▶ Ouvrir</div>
                     </div>
                   </button>
                 );
@@ -1041,10 +922,12 @@ function MonthClipsListModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
+/* ─── LivesPage ──────────────────────────────────────────────────────── */
 export default function LivesPage() {
   const [lives, setLives] = React.useState<LiveCardVM[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -1059,28 +942,27 @@ export default function LivesPage() {
   const [openClip, setOpenClip] = React.useState<ClipVM | null>(null);
 
   const refreshLockRef = React.useRef(false);
-  const preloadedRef = React.useRef<Set<string>>(new Set());
+  const preloadedRef   = React.useRef<Set<string>>(new Set());
 
   const authAny = useAuth() as any;
   const token: string | null = authAny?.token || null;
-  const user = authAny?.user as any | null;
+  const user   = authAny?.user as any | null;
   const username = String(user?.username || "");
-  const role = String(user?.role || "");
-  const isAdmin = role === "admin";
+  const role     = String(user?.role || "");
+  const isAdmin  = role === "admin";
   const canModerateClips = isAdmin || username.toLowerCase() === "lecasinoze";
   const isMobile = useIsMobile();
 
   const location = useLocation();
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
 
   React.useEffect(() => {
-  setSeo({
-    title: "Lives — LunaLive",
-    description:
-      "Retrouve les streamers casino en direct sur LunaLive : lives, viewers, clips du mois et mises en avant.",
-    path: "/",
-  });
-}, []);
+    setSeo({
+      title: "Lives — LunaLive",
+      description: "Retrouve les streamers casino en direct sur LunaLive : lives, viewers, clips du mois et mises en avant.",
+      path: "/",
+    });
+  }, []);
 
   React.useEffect(() => {
     const open = new URLSearchParams(location.search).get("open");
@@ -1090,133 +972,85 @@ export default function LivesPage() {
   const mergeThumbFinal = React.useCallback((prev: LiveCardVM[], nextBase: LiveCardVM[]) => {
     const prevMap = new Map(prev.map((x) => [String(x.slug || x.id), x] as const));
     return nextBase.map((x) => {
-      const k = String(x.slug || x.id);
-      const old = prevMap.get(k);
+      const old = prevMap.get(String(x.slug || x.id));
       return { ...x, thumbFinal: old?.thumbFinal || x.thumbFinal };
     });
   }, []);
 
-  const load = React.useCallback(
-    async (opts?: { silent?: boolean }) => {
-      const silent = !!opts?.silent;
-      if (refreshLockRef.current) return;
-      refreshLockRef.current = true;
+  const load = React.useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
+    if (refreshLockRef.current) return;
+    refreshLockRef.current = true;
+    if (silent) setRefreshing(true); else setLoading(true);
+    setErr(null);
 
-      if (silent) setRefreshing(true);
-      else setLoading(true);
+    try {
+      const nowMs = Date.now();
+      const data  = await getLives();
 
-      setErr(null);
+      const vmBase: LiveCardVM[] = (data as any[]).map((x: any) => {
+        const fallback     = svgThumb(x.displayName);
+        const rawThumbUrl  = absolutize(x.thumbUrl || x.thumb_url || null);
+        const thumbUrl     = rawThumbUrl ? with5MinBust(String(rawThumbUrl), nowMs) : null;
+        const started      = x.liveStartedAt || x.live_started_at || null;
+        return { ...x, thumbFallback: fallback, thumbFinal: thumbUrl || fallback, durationLabel: started ? formatDurationDot(String(started), nowMs) : null };
+      });
 
-      try {
-        const nowMs = Date.now();
-        const data = await getLives();
+      const { featuredLiveSlugs, metaBySlug } = await fetchStreamersIndex();
 
-        const vmBase: LiveCardVM[] = (data as any[]).map((x: any) => {
-          const fallback = svgThumb(x.displayName);
-          const rawThumbUrl = absolutize(x.thumbUrl || x.thumb_url || null);
-          const thumbUrl = rawThumbUrl ? with5MinBust(String(rawThumbUrl), nowMs) : null;
-          const thumbFinal = thumbUrl || fallback;
+      const vmWithFeatured = vmBase.map((x) => {
+        const slug = String(x.slug || "").trim();
+        const meta = slug ? metaBySlug.get(slug) : undefined;
+        return {
+          ...x,
+          featured: x?.featured != null ? !!(x as any).featured : featuredLiveSlugs.has(slug),
+          avatarUrl: (x as any).avatarUrl ?? (x as any).avatar_url ?? meta?.avatarUrl ?? null,
+          followersCount: Number((x as any).followsCount ?? (x as any).follows_count ?? (x as any).followersCount ?? (x as any).followers_count ?? (x as any).followers ?? meta?.followersCount ?? 0) || 0,
+        } as any;
+      });
 
-          const started = x.liveStartedAt || x.live_started_at || null;
-          const durationLabel = started ? formatDurationDot(String(started), nowMs) : null;
+      const slugs = vmWithFeatured.map((x) => String((x as any).slug || "").trim().toLowerCase()).filter(Boolean);
+      let viewersMap = await fetchViewersBatchPublic(slugs);
+      if (!viewersMap) viewersMap = await fetchViewersPerSlugOverlay(slugs, token);
 
-          return { ...x, thumbFallback: fallback, thumbFinal, durationLabel };
-        });
+      const vmWithViewers = vmWithFeatured.map((x) => {
+        const slug = String((x as any).slug || "").trim().toLowerCase();
+        const ov   = viewersMap?.get(slug);
+        return { ...(x as any), viewers: ov != null ? ov : (Number((x as any).viewers ?? 0) || 0) } as any;
+      });
 
-        const { featuredLiveSlugs, metaBySlug } = await fetchStreamersIndex();
+      const followsMap = await fetchFollowsCountsForLives(
+        vmWithViewers.map((x) => String((x as any).slug || "").trim().toLowerCase()).filter(Boolean),
+        token
+      );
 
-        const vmWithFeatured = vmBase.map((x) => {
-          const slug = String(x.slug || "").trim();
-          const meta = slug ? metaBySlug.get(slug) : undefined;
+      const vmFinal = vmWithViewers.map((x) => {
+        const slug = String((x as any).slug || "").trim().toLowerCase();
+        const n    = followsMap.get(slug);
+        return typeof n === "number" ? { ...(x as any), followersCount: n } as any : x as any;
+      });
 
-          return {
-            ...x,
-            // featured
-            featured: x?.featured != null ? !!(x as any).featured : featuredLiveSlugs.has(slug),
-            // meta avatar + followers (si dispo)
-            avatarUrl: (x as any).avatarUrl ?? (x as any).avatar_url ?? meta?.avatarUrl ?? null,
-            followersCount:
-              Number(
-                (x as any).followsCount ??       // ✅
-                (x as any).follows_count ??
-                (x as any).followersCount ??
-                (x as any).followers_count ??
-                (x as any).followers ??
-                meta?.followersCount ??
-                0
-              ) || 0,
-          } as any;
-        });
+      setLives((prev) => mergeThumbFinal(prev, vmFinal));
 
-        // ─────────────────────────────────────────────
-        // ✅ Viewers real-time (room count) override
-        // ─────────────────────────────────────────────
-        const slugs = vmWithFeatured
-          .map((x) => String((x as any).slug || "").trim().toLowerCase())
-          .filter(Boolean);
+      await Promise.allSettled(vmFinal.map(async (live) => {
+        const nowThumb = absolutize((live as any).thumbUrl || (live as any).thumb_url || null);
+        const url = nowThumb ? with5MinBust(String(nowThumb), nowMs) : null;
+        if (!url || preloadedRef.current.has(url)) return;
+        preloadedRef.current.add(url);
+        const ok = await preloadImage(url);
+        if (!ok) return;
+        setLives((prev) => prev.map((p) =>
+          String(p.slug || p.id) === String((live as any).slug || (live as any).id) ? { ...p, thumbFinal: url } : p
+        ));
+      }));
 
-        let viewersMap = await fetchViewersBatchPublic(slugs);
-
-        if (!viewersMap) {
-          viewersMap = await fetchViewersPerSlugOverlay(slugs, token);
-        }
-
-        const vmWithViewers = vmWithFeatured.map((x) => {
-          const slug = String((x as any).slug || "").trim().toLowerCase();
-          const ov = viewersMap?.get(slug);
-          const base = Number((x as any).viewers ?? 0) || 0;
-          const viewers = ov != null ? ov : base;
-          return { ...(x as any), viewers } as any;
-        });
-
-        // ✅ followsCount batch (car /streamers ne le renvoie pas)
-        const slugsLower = vmWithViewers
-          .map((x) => String((x as any).slug || "").trim().toLowerCase())
-          .filter(Boolean);
-
-        const followsMap = await fetchFollowsCountsForLives(slugsLower, token);
-
-        const vmFinal = vmWithViewers.map((x) => {
-          const slug = String((x as any).slug || "").trim().toLowerCase();
-          const n = followsMap.get(slug);
-          if (typeof n !== "number") return x as any;
-          return { ...(x as any), followersCount: n } as any; // on garde le nom followersCount utilisé dans UI
-        });
-
-        setLives((prev) => mergeThumbFinal(prev, vmFinal));
-
-        // ✅ preload sur la même liste (celle affichée)
-        const preloadJobs = vmFinal.map(async (live) => {
-          const nowThumb = absolutize((live as any).thumbUrl || (live as any).thumb_url || null);
-          const url = nowThumb ? with5MinBust(String(nowThumb), nowMs) : null;
-          if (!url) return;
-          if (preloadedRef.current.has(url)) return;
-          preloadedRef.current.add(url);
-
-          const ok = await preloadImage(url);
-          if (!ok) return;
-
-          setLives((prev) =>
-            prev.map((p) =>
-              String(p.slug || p.id) === String((live as any).slug || (live as any).id)
-                ? { ...p, thumbFinal: url }
-                : p
-            )
-          );
-        });
-
-        await Promise.allSettled(preloadJobs);
-
-      } catch (e: any) {
-        setErr(e?.message || String(e));
-      } finally {
-        refreshLockRef.current = false;
-        if (silent) setRefreshing(false);
-        else setLoading(false);
-      }
-    },
-    [mergeThumbFinal]
-  );
+    } catch (e: any) {
+      setErr(e?.message || String(e));
+    } finally {
+      refreshLockRef.current = false;
+      if (silent) setRefreshing(false); else setLoading(false);
+    }
+  }, [mergeThumbFinal, token]);
 
   const loadClips = React.useCallback(async () => {
     setClipsLoading(true);
@@ -1224,54 +1058,33 @@ export default function LivesPage() {
       const r = await fetchTopClipsMonth(token);
       setClips(r.clips);
       setClipsTotal(r.total || r.clips.length);
-    } finally {
-      setClipsLoading(false);
-    }
+    } finally { setClipsLoading(false); }
   }, [token]);
 
-  React.useEffect(() => {
-    load();
-    loadClips();
-  }, [load, loadClips]);
+  React.useEffect(() => { load(); loadClips(); }, [load, loadClips]);
 
   React.useEffect(() => {
-    const EVERY_MS = 20_000;
-
-    const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") load({ silent: true });
-    }, EVERY_MS);
-
-    const onVis = () => {
-      if (document.visibilityState === "visible") load({ silent: true });
-    };
+    const id = window.setInterval(() => { if (document.visibilityState === "visible") load({ silent: true }); }, 20_000);
+    const onVis = () => { if (document.visibilityState === "visible") load({ silent: true }); };
     document.addEventListener("visibilitychange", onVis);
-
-    return () => {
-      window.clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-    };
+    return () => { window.clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
   }, [load]);
 
-  const totals = React.useMemo(() => {
-    const liveCount = lives.length;
-    const viewersTotal = lives.reduce((acc, x) => acc + (Number(x.viewers) || 0), 0);
-    return { liveCount, viewersTotal };
-  }, [lives]);
+  const totals = React.useMemo(() => ({
+    liveCount:    lives.length,
+    viewersTotal: lives.reduce((acc, x) => acc + (Number(x.viewers) || 0), 0),
+  }), [lives]);
 
-  const sorted = React.useMemo(() => [...lives].sort((a, b) => Number(b.viewers) - Number(a.viewers)), [lives]);
-
+  const sorted       = React.useMemo(() => [...lives].sort((a, b) => Number(b.viewers) - Number(a.viewers)), [lives]);
   const featuredLives = React.useMemo(() => sorted.filter((x) => !!x.featured), [sorted]);
-  const normalLives = React.useMemo(() => sorted.filter((x) => !x.featured), [sorted]);
+  const normalLives   = React.useMemo(() => sorted.filter((x) => !x.featured),  [sorted]);
 
-  const clipsTop4 = React.useMemo(() => clips.slice(0, 4), [clips]);
+  const clipsTop4       = React.useMemo(() => clips.slice(0, 4), [clips]);
   const extraClipsCount = Math.max(0, clipsTotal - clipsTop4.length);
-  const hasMoreThan4 = clipsTotal > 4;
+  const hasMoreThan4    = clipsTotal > 4;
 
   function onClickMonthClip(c: ClipVM) {
-    if (hasMoreThan4) {
-      setOpenMonthList(true);
-      return;
-    }
+    if (hasMoreThan4) { setOpenMonthList(true); return; }
     setOpenClip(c);
   }
 
@@ -1285,761 +1098,199 @@ export default function LivesPage() {
     setClipsTotal((n) => Math.max(0, (Number(n) || 0) - 1));
   }, []);
 
-    if (isMobile) {
+  /* ── Mobile branch ── */
+  if (isMobile) {
     return (
       <>
         <LivesPageMobile
-          apiBase={API_BASE}
-          lives={lives}
-          loading={loading}
-          refreshing={refreshing}
-          err={err}
-          totals={totals}
-          featuredLives={featuredLives as any}
-          normalLives={normalLives as any}
-          clipsTop4={clipsTop4 as any}
-          clipsTotal={clipsTotal}
-          clipsLoading={clipsLoading}
-          extraClipsCount={extraClipsCount}
-          hasMoreThan4={hasMoreThan4}
-          onOpenMonthList={() => setOpenMonthList(true)}
-          onOpenClip={(c) => setOpenClip(c)}
+          apiBase={API_BASE} lives={lives} loading={loading} refreshing={refreshing}
+          err={err} totals={totals} featuredLives={featuredLives as any} normalLives={normalLives as any}
+          clipsTop4={clipsTop4 as any} clipsTotal={clipsTotal} clipsLoading={clipsLoading}
+          extraClipsCount={extraClipsCount} hasMoreThan4={hasMoreThan4}
+          onOpenMonthList={() => setOpenMonthList(true)} onOpenClip={(c) => setOpenClip(c)}
         />
-
-        {/* ✅ on garde tes modales existantes (inchangées) */}
         {openMonthList ? (
-          <MonthClipsListModal
-            title="🎬 Clips du mois"
-            clips={clips}
-            total={clipsTotal || clips.length}
-            onClose={() => {
-              setOpenMonthList(false);
-              // nettoie ?open=clips
-              if (location.search) navigate(location.pathname, { replace: true });
-            }}
-            onPickClip={(c) => setOpenClip(c)}
-            zIndex={79}
-          />
+          <MonthClipsListModal title="🎬 Clips du mois" clips={clips} total={clipsTotal || clips.length}
+            onClose={() => { setOpenMonthList(false); if (location.search) navigate(location.pathname, { replace: true }); }}
+            onPickClip={(c) => setOpenClip(c)} zIndex={79} />
         ) : null}
-
         {openClip ? (
-          <ClipPlayerModal
-            clip={openClip}
-            token={token}
-            canModerate={canModerateClips}
-            onPatchClip={patchClip}
-            onRemoveClip={removeClip}
-            onClose={() => setOpenClip(null)}
-            zIndex={80}
-          />
+          <ClipPlayerModal clip={openClip} token={token} canModerate={canModerateClips}
+            onPatchClip={patchClip} onRemoveClip={removeClip} onClose={() => setOpenClip(null)} zIndex={80} />
         ) : null}
       </>
     );
   }
 
+  /* ── Desktop ── */
   return (
     <main className="container livesPage">
-      <style>{`
-        .livesPage{
-          position: relative;
-          padding-bottom: 26px;
-        }
-        .livesPage::before{
-          content:"";
-          position: fixed;
-          inset: 0;
-          z-index: 0;
-          pointer-events: none;
-          background:
-            radial-gradient(1100px 420px at 18% 0%, rgba(255,90,180,0.22), rgba(0,0,0,0) 62%),
-            radial-gradient(1200px 500px at 80% 10%, rgba(80,160,255,0.22), rgba(0,0,0,0) 62%),
-            radial-gradient(1200px 600px at 50% 95%, rgba(140,90,255,0.22), rgba(0,0,0,0) 64%),
-            linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.10));
-          transform: translateZ(0);
-        }
-
-        .livesWrap{
-          position: relative;
-          z-index: 1;
-          border-radius: 26px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0.10));
-          box-shadow: 0 20px 70px rgba(0,0,0,0.32);
-          backdrop-filter: blur(10px);
-          padding: 14px;
-          overflow: hidden;
-        }
-
-        .livesHeader{
-          display:flex;
-          justify-content: space-between;
-          gap: 14px;
-          flex-wrap: wrap;
-          align-items: baseline;
-        }
-        .livesH1{
-          margin: 0;
-          font-weight: 1500;
-          letter-spacing: -0.9px;
-          font-size: 34px;
-          line-height: 1.05;
-          background: linear-gradient(90deg, rgba(255,90,180,1), rgba(180,140,255,1), rgba(80,160,255,1));
-          -webkit-background-clip:text;
-          background-clip:text;
-          color: transparent;
-          filter: drop-shadow(0 10px 24px rgba(0,0,0,0.35));
-        }
-
-        .livesLayout{
-          margin-top: 12px;
-          display: grid;
-          grid-template-columns: 320px 1fr;
-          gap: 12px;
-          align-items: start;
-        }
-        .livesSidebar{
-          position: sticky;
-          top: 14px;
-          display: grid;
-          gap: 12px;
-        }
-        .livesMain{ min-width: 0; }
-
-        @media (max-width: 980px) {
-          .livesLayout { grid-template-columns: 1fr; }
-          .livesSidebar { position: static; }
-        }
-
-        .sectionTitle{
-          display:flex;
-          align-items: baseline;
-          justify-content: space-between;
-          gap: 10px;
-          margin: 6px 2px 10px;
-        }
-        .sectionTitle h2{
-          margin:0;
-          font-size: 14px;
-          font-weight: 1300;
-          letter-spacing: -0.2px;
-          text-transform: uppercase;
-          opacity: 0.92;
-        }
-        .sectionHint{
-          font-size: 12px;
-          opacity: 0.72;
-          font-weight: 900;
-        }
-
-        .livesGrid{
-          display: grid;
-          gap: 12px;
-          grid-template-columns: repeat(auto-fill, minmax(280px, 320px));
-          justify-content: start; /* empêche le stretch */
-          align-items: start;
-        }
-
-        .liveLink{
-          text-decoration: none;
-          color: inherit;
-          display: block;
-        }
-
-        .liveThumb{
-          position: relative;
-          height: 180px;              /* ajuste si tu veux */
-          border-radius: 18px;
-          overflow: hidden;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(0,0,0,0.30);
-        }
-
-        .liveTopRow{
-          position: absolute;
-          top: 10px;
-          left: 10px;
-          right: 10px;
-          display: flex;
-          justify-content: space-between;
-          gap: 10px;
-          align-items: center;
-          pointer-events: none;
-        }
-
-        .liveBottomRow{
-          position: absolute;
-          left: 10px;
-          right: 10px;
-          bottom: 10px;
-          display: flex;
-          justify-content: space-between;
-          gap: 10px;
-          align-items: flex-end;
-          pointer-events: none;
-        }
-        .liveName{
-          font-weight: 1300;
-          letter-spacing: -0.25px;
-          font-size: 16px;
-          text-shadow: 0 12px 26px rgba(0,0,0,0.55);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 70%;
-        }
-        .liveTitle{
-          font-weight: 900;
-          font-size: 13px;
-          line-height: 1.25;
-          opacity: 0.94;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-          min-height: 34px;
-        }
-
-        .hoverGlow{
-          transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
-        }
-        .hoverGlow:hover{
-          transform: translateY(-2px);
-          box-shadow: 0 26px 70px rgba(0,0,0,0.38);
-          border-color: rgba(255,90,180,0.25);
-        }
-
-        .livePing{
-          width: 8px;
-          height: 8px;
-          border-radius: 999px;
-          background: rgba(255,90,180,0.95);
-          box-shadow: 0 0 0 6px rgba(255,90,180,0.14);
-          display:inline-block;
-          vertical-align: middle;
-          margin-right: 6px;
-        }
-
-        .sidebarDivider{
-          height: 1px;
-          margin: 10px 2px 2px;
-          background: linear-gradient(90deg, rgba(255,255,255,0.0), rgba(255,255,255,0.16), rgba(255,255,255,0.0));
-          opacity: 0.9;
-        }
-
-        .clipsCard{ padding: 14px; }
-        .clipsGrid{
-          margin-top: 12px;
-          position: relative;
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 10px;
-        }
-        .clipTile{
-          position: relative;
-          border-radius: 18px;
-          overflow: hidden;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(255,255,255,0.06);
-          min-height: 92px;
-        }
-        .clipThumb{
-          position:absolute;
-          inset:0;
-          background-position:center;
-          background-size:cover;
-          background-repeat:no-repeat;
-          opacity: 0.92;
-          filter: contrast(1.03) saturate(1.12);
-          transform: scale(1.03);
-        }
-        .clipTile::before{
-          content:"";
-          position:absolute;
-          inset:0;
-          background: radial-gradient(420px 160px at 30% 0%, rgba(255,90,180,0.16), rgba(0,0,0,0) 60%),
-                      radial-gradient(420px 160px at 90% 20%, rgba(80,160,255,0.14), rgba(0,0,0,0) 60%),
-                      linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.22));
-          pointer-events:none;
-        }
-        .clipPlay{
-          position:absolute;
-          inset:0;
-          display:grid;
-          place-items:center;
-          pointer-events:none;
-        }
-        .clipPlay span{
-          width: 42px;
-          height: 42px;
-          border-radius: 999px;
-          display:grid;
-          place-items:center;
-          background: rgba(0,0,0,0.55);
-          border: 1px solid rgba(255,255,255,0.12);
-          backdrop-filter: blur(10px);
-          box-shadow: 0 16px 40px rgba(0,0,0,0.35);
-          font-size: 16px;
-        }
-
-        .clipMidAvatar{
-          position:absolute;
-          left: 50%;
-          top: 50%;
-          transform: translate(-50%,-50%);
-          width: 40px;
-          height: 40px;
-          border-radius: 16px;
-          overflow:hidden;
-          border: 1px solid rgba(255,255,255,0.18);
-          background: rgba(0,0,0,0.40);
-          backdrop-filter: blur(10px);
-          box-shadow: 0 18px 50px rgba(0,0,0,0.35);
-          pointer-events:none;
-        }
-        .clipMidAvatar img{ width:100%; height:100%; object-fit: cover; display:block; }
-
-        .clipsMoreOverlay{
-          position:absolute;
-          inset: 0;
-          display:grid;
-          place-items:center;
-          pointer-events:none;
-        }
-        .clipsMoreOverlay .bubble{
-          padding: 10px 12px;
-          border-radius: 18px;
-          background: rgba(0,0,0,0.55);
-          border: 1px solid rgba(255,255,255,0.14);
-          backdrop-filter: blur(12px);
-          box-shadow: 0 20px 55px rgba(0,0,0,0.38);
-          font-weight: 1300;
-          letter-spacing: -0.3px;
-        }
-        .clipsMoreOverlay .bubble strong{
-          background: linear-gradient(90deg, rgba(255,90,180,1), rgba(180,140,255,1), rgba(80,160,255,1));
-          -webkit-background-clip:text;
-          background-clip:text;
-          color: transparent;
-        }
-        .clipsCross{
-          position:absolute;
-          left: 50%;
-          top: 50%;
-          width: 42px;
-          height: 42px;
-          transform: translate(-50%,-50%);
-          border-radius: 14px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(255,255,255,0.04);
-          box-shadow: 0 16px 45px rgba(0,0,0,0.25);
-          backdrop-filter: blur(10px);
-          pointer-events:none;
-          opacity: 0.9;
-        }
-
-        .chatSheetBackdrop{
-          position: fixed;
-          inset: 0;
-          background: rgba(0,0,0,0.62);
-          display: grid;
-          place-items: center;
-          padding: 18px;
-          backdrop-filter: blur(10px);
-        }
-        .chatSheet{
-          width: min(980px, 100%);
-          max-height: min(92vh, 860px);
-          overflow: hidden;
-          border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: linear-gradient(180deg, rgba(30,30,40,0.85), rgba(10,10,14,0.92));
-          box-shadow: 0 30px 90px rgba(0,0,0,0.55);
-        }
-        .chatSheetTop{
-          display:flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 12px 14px;
-          border-bottom: 1px solid rgba(255,255,255,0.08);
-        }
-        .chatSheetBody{
-          overflow: auto;
-          max-height: calc(92vh - 60px);
-        }
-        .iconBtn{
-          width: 34px;
-          height: 34px;
-          border-radius: 12px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(255,255,255,0.05);
-          color: rgba(255,255,255,0.92);
-          cursor: pointer;
-          font-weight: 1100;
-        }
-      `}</style>
-
       <div className="livesWrap">
+
+        {/* ── Page header ── */}
         <div className="livesHeader">
           <div style={{ display: "grid", gap: 6, minWidth: 280 }}>
-            <h1 className="livesH1">Lives</h1>
+            <h1 className="livesH1">LunaLive</h1>
             <div className="mutedSmall" style={{ maxWidth: 760 }}>
-              Bienvenue sur votre plateforme dédiée à la commu casino Fr.
-              {refreshing ? (
-                <span style={{ marginLeft: 10, opacity: 0.8, fontWeight: 900 }}>
-                  <span className="livePing" aria-hidden />
-                </span>
-              ) : null}
+              Bienvenue sur votre plateforme dédiée à la commu casino.
+              {refreshing ? <span style={{ marginLeft: 10, opacity: 0.8 }}><span className="livePing" aria-hidden /></span> : null}
             </div>
           </div>
-
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
-            <Pill tone="live" title="Nombre de lives en direct">
-              🔴 Live <b>{totals.liveCount}</b>
-            </Pill>
-            <Pill tone="neutral" title="Viewers total sur la plateforme">
-              👁 Viewers <b>{formatViewers(totals.viewersTotal)}</b>
-            </Pill>
+            <Pill tone="live" title="Nombre de lives en direct">🔴 Live <b>{totals.liveCount}</b></Pill>
+            <Pill tone="neutral" title="Viewers total sur la plateforme">👁 Viewers <b>{formatViewers(totals.viewersTotal)}</b></Pill>
           </div>
         </div>
 
-        {err ? (
-          <div className="alert" style={{ marginTop: 12 }}>
-            {err}
-          </div>
-        ) : null}
+        {err ? <div className="alert" style={{ marginTop: 12 }}>{err}</div> : null}
 
         <div className="livesLayout">
+
+          {/* ── Sidebar ── */}
           <aside className="livesSidebar">
             <DailyWheelCard />
             <DailyBonusAccessCard />
 
             <div className="sidebarDivider" />
 
-            <GlassCard className="clipsCard">
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-                <div style={{ display: "grid", gap: 4 }}>
-                  <div style={{ fontWeight: 1400, letterSpacing: -0.25, fontSize: 14 }}>
-                    <span style={{ opacity: 0.85 }}>🎬</span> Clips du mois
-                  </div>
-                  <div className="mutedSmall" style={{ opacity: 0.8 }}>
-                  </div>
-                </div>
-
-                <div style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+            {/* Clips du mois */}
+            <div className="clipsCard sidebarCard">
+              <div style={{ padding: "14px 16px 0" }}>
+                <div className="sectionTitle" style={{ margin: "0 0 10px" }}>
+                  <h2 style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <span style={{
+                      width: 20, height: 20, borderRadius: 7,
+                      background: "linear-gradient(135deg, rgba(124,92,252,0.50), rgba(59,77,200,0.40))",
+                      border: "1px solid rgba(124,92,252,0.25)",
+                      display: "grid", placeItems: "center", fontSize: 11, flexShrink: 0,
+                      boxShadow: "0 0 10px rgba(124,92,252,0.22)",
+                    }} aria-hidden>🎬</span>
+                    Clips du mois
+                  </h2>
                   {clipsLoading ? (
-                    <span className="mutedSmall" style={{ opacity: 0.8 }}>
-                      …
-                    </span>
+                    <span className="sectionHint" style={{ opacity: 0.5 }}>…</span>
+                  ) : clipsTotal > 0 ? (
+                    <span className="sectionHint">{clipsTotal} clip{clipsTotal > 1 ? "s" : ""}</span>
                   ) : null}
                 </div>
               </div>
 
               {clipsTop4.length === 0 ? (
-                <div className="mutedSmall" style={{ marginTop: 12 }}>
+                <div className="mutedSmall" style={{ padding: "0 16px 14px", opacity: 0.6 }}>
                   {clipsLoading ? "Chargement…" : "Aucun clip pour le moment."}
                 </div>
               ) : (
-                <div className="clipsGrid">
-                  {clipsTop4.map((c, idx) => {
-                    const raw = c.thumbUrl ? absolutize(c.thumbUrl) || c.thumbUrl : null;
-                    const thumb = raw || svgThumb(c.streamerName || c.streamerSlug || "Clip");
-                    const corner: "tl" | "tr" | "bl" | "br" = (["tl", "tr", "bl", "br"] as const)[idx] ?? "tl";
-
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className="clipTile hoverGlow"
-                        onClick={() => onClickMonthClip(c)}
-                        style={{
-                          textDecoration: "none",
-                          color: "inherit",
-                          display: "block",
-                          padding: 0,
-                          cursor: "pointer",
-                        }}
-                        title={
-                          hasMoreThan4
-                            ? "Ouvrir la liste des clips du mois"
-                            : c.title
-                            ? `${c.title} — ${c.likesCount} likes`
-                            : `${c.likesCount} likes`
-                        }
-                      >
-                        <div className="clipThumb" style={{ backgroundImage: `url(${thumb})` }} />
-                        <div className="clipPlay">
-                          <span>▶</span>
-                        </div>
-
-                        <ClipLikesBadge likes={c.likesCount} corner={corner} />
-
-                        {c.avatarUrl ? (
-                          <div className="clipMidAvatar" aria-hidden>
-                            <img
-                              src={absolutize(c.avatarUrl) || c.avatarUrl}
-                              alt=""
-                              onError={(e) => {
-                                (e.currentTarget as HTMLImageElement).style.display = "none";
-                              }}
-                            />
-                          </div>
-                        ) : null}
+                <div style={{ padding: "0 14px 14px" }}>
+                  <div className="clipsGrid">
+                    {clipsTop4.map((c, idx) => {
+                      const raw    = c.thumbUrl ? absolutize(c.thumbUrl) || c.thumbUrl : null;
+                      const thumb  = raw || svgThumb(c.streamerName || c.streamerSlug || "Clip");
+                      const corner = (["tl", "tr", "bl", "br"] as const)[idx] ?? "tl";
+                      return (
+                        <button key={c.id} type="button" className="clipTile hoverGlow" onClick={() => onClickMonthClip(c)}
+                          style={{ textDecoration: "none", color: "inherit", display: "block", padding: 0, cursor: "pointer" }}
+                          title={hasMoreThan4 ? "Ouvrir la liste des clips du mois" : c.title ? `${c.title} — ${c.likesCount} likes` : `${c.likesCount} likes`}
+                        >
+                          <div className="clipThumb" style={{ backgroundImage: `url(${thumb})` }} />
+                          <div className="clipPlay"><span>▶</span></div>
+                          <ClipLikesBadge likes={c.likesCount} corner={corner} />
+                          {c.avatarUrl ? (
+                            <div className="clipMidAvatar" aria-hidden>
+                              <img src={absolutize(c.avatarUrl) || c.avatarUrl} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                            </div>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                    {extraClipsCount > 0 ? <div className="clipsCross" aria-hidden /> : null}
+                    {extraClipsCount > 0 ? (
+                      <button type="button" className="clipsMoreOverlay" onClick={() => setOpenMonthList(true)}
+                        style={{ background: "transparent", border: 0, cursor: "pointer" }} title="Voir tous les clips du mois">
+                        <div className="bubble"><strong>+{extraClipsCount}</strong> clips</div>
                       </button>
-                    );
-                  })}
+                    ) : null}
+                  </div>
 
-                  {extraClipsCount > 0 ? <div className="clipsCross" aria-hidden /> : null}
-
-                  {extraClipsCount > 0 ? (
-                    <button
-                      type="button"
-                      className="clipsMoreOverlay"
-                      onClick={() => setOpenMonthList(true)}
-                      style={{ background: "transparent", border: 0, cursor: "pointer" }}
-                      title="Voir tous les clips du mois"
+                  {hasMoreThan4 && (
+                    <button type="button" onClick={() => setOpenMonthList(true)} style={{
+                      marginTop: 10, width: "100%", padding: "7px 12px", borderRadius: 11,
+                      border: "1px solid rgba(124,92,252,0.18)", background: "rgba(124,92,252,0.06)",
+                      color: "rgba(167,139,250,0.80)", fontFamily: "var(--ll-font-display)",
+                      fontSize: 11, fontWeight: 700, letterSpacing: "-0.1px", cursor: "pointer",
+                      transition: "background 150ms ease, border-color 150ms ease",
+                    }}
+                    onMouseEnter={(e) => { const b = e.currentTarget as HTMLButtonElement; b.style.background = "rgba(124,92,252,0.12)"; b.style.borderColor = "rgba(124,92,252,0.32)"; }}
+                    onMouseLeave={(e) => { const b = e.currentTarget as HTMLButtonElement; b.style.background = "rgba(124,92,252,0.06)"; b.style.borderColor = "rgba(124,92,252,0.18)"; }}
                     >
-                      <div className="bubble">
-                        <strong>+{extraClipsCount}</strong> clips
-                      </div>
+                      Voir tous les clips →
                     </button>
-                  ) : null}
+                  )}
                 </div>
               )}
-            </GlassCard>
+            </div>
           </aside>
 
+          {/* ── Main lives ── */}
           <section className="livesMain">
-            {loading && lives.length === 0 ? (
-              <div className="muted" style={{ marginTop: 12 }}>
-
-              </div>
-            ) : (
+            {loading && lives.length === 0 ? null : (
               <>
-                {featuredLives.length > 0 ? (
-                  <div style={{ marginTop: 8 }}>
+                {/* Featured */}
+                {featuredLives.length > 0 && (
+                  <div style={{ marginTop: 0 }}>
                     <div className="sectionTitle">
                       <h2>✨ Mise en avant</h2>
                       <div className="sectionHint">Abonnés / premium</div>
                     </div>
-
                     <section className="livesGrid">
                       {featuredLives.map((live) => (
                         <Link key={live.id} to={`/s/${live.slug}`} className="liveLink">
-                          <GlassCard
-                            className="hoverGlow"
-                            style={{
-                              padding: 12,
-                              border: "1px solid rgba(255,210,120,0.28)",
-                              background:
-                                "radial-gradient(900px 260px at 20% 0%, rgba(255,210,120,0.14), rgba(0,0,0,0) 60%), radial-gradient(900px 260px at 90% 10%, rgba(255,90,180,0.12), rgba(0,0,0,0) 62%), linear-gradient(180deg, rgba(255,255,255,0.07), rgba(0,0,0,0.10))",
-                            }}
-                          >
-                            <div className="liveThumb" style={{ borderColor: "rgba(255,210,120,0.18)" }}>
+                          <GlassCard className="hoverGlow" style={{
+                            border: "1px solid rgba(251,191,36,0.22)",
+                            background: "radial-gradient(700px 220px at 20% 0%, rgba(251,191,36,0.10), transparent 60%), radial-gradient(600px 200px at 90% 10%, rgba(124,92,252,0.08), transparent 55%), rgba(13,11,24,0.82)",
+                          }}>
+                            <div className="liveThumb" style={{ borderRadius: "18px 18px 0 0", border: "none" }}>
                               <LiveBackdrop url={live.thumbFinal} />
-
                               <div className="liveTopRow">
-                                <Pill tone="gold" title="Mise en avant">
-                                  ✨ FEATURED
-                                </Pill>
-                                {live.durationLabel ? (
-                                  <Pill tone="neutral" title="Durée du live">
-                                    ⏱ {live.durationLabel}
-                                  </Pill>
-                                ) : (
-                                  <span />
-                                )}
+                                <Pill tone="gold" title="Mise en avant">✨ FEATURED</Pill>
+                                {live.durationLabel ? <Pill tone="neutral" title="Durée du live">⏱ {live.durationLabel}</Pill> : <span />}
                               </div>
-
                               <div className="liveBottomRow">
                                 <span />
-                                <Pill tone="neutral" title="Viewers">
-                                  👁 {formatViewers(live.viewers)}
-                                </Pill>
+                                <Pill tone="neutral" title="Viewers">👁 {formatViewers(live.viewers)}</Pill>
                               </div>
                             </div>
-
-                            <div style={{ padding: "10px 8px 6px" }}>
-                              <div className="liveTitle" title={live.title || ""}>
-                                {live.title || "—"}
-                              </div>
-                              <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                                <div
-                                  style={{
-                                    width: 34,
-                                    height: 34,
-                                    borderRadius: 14,
-                                    overflow: "hidden",
-                                    border: "1px solid rgba(255,255,255,0.16)",
-                                    background: "rgba(0,0,0,0.35)",
-                                    flex: "0 0 auto",
-                                  }}
-                                  aria-hidden
-                                >
-                                  <img
-                                    src={
-                                      absolutize((live as any).avatarUrl || (live as any).avatar_url || null) ||
-                                      svgThumb(live.displayName || "Streamer")
-                                    }
-                                    alt=""
-                                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                                    onError={(e) => {
-                                      (e.currentTarget as HTMLImageElement).src = svgThumb(live.displayName || "Streamer");
-                                    }}
-                                  />
-                                </div>
-
-                                <div style={{ minWidth: 0, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                                  <div
-                                    style={{
-                                      fontWeight: 1150,
-                                      letterSpacing: -0.2,
-                                      whiteSpace: "nowrap",
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      maxWidth: 220,
-                                    }}
-                                    title={live.displayName}
-                                  >
-                                    {live.displayName}
-                                  </div>
-
-                                  <div className="mutedSmall" style={{ opacity: 0.8, fontWeight: 950 }}>
-                                    ({formatViewers(Number((live as any).followersCount || 0))} follow)
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div
-                                aria-hidden
-                                style={{
-                                  marginTop: 10,
-                                  height: 2,
-                                  borderRadius: 999,
-                                  background:
-                                    "linear-gradient(90deg, rgba(255,210,120,0.0), rgba(255,210,120,0.45), rgba(255,210,120,0.0))",
-                                  opacity: 0.95,
-                                }}
-                              />
-                            </div>
+                            <LiveCardBody live={live as any} accentColor="rgba(251,191,36,0.24)" />
                           </GlassCard>
                         </Link>
                       ))}
                     </section>
                   </div>
-                ) : null}
+                )}
 
-                <div style={{ marginTop: featuredLives.length > 0 ? 16 : 8 }}>
-                  <div className="sectionTitle">
-            
-                    <div className="sectionHint">{normalLives.length} en direct</div>
-                  </div>
-
+                {/* Normal */}
+                <div style={{ marginTop: 0 }}>
                   <section className="livesGrid">
                     {normalLives.map((live) => (
                       <Link key={live.id} to={`/s/${live.slug}`} className="liveLink">
-                        <GlassCard
-                          className="hoverGlow"
-                          style={{
-                            padding: 12,
-                            border: "1px solid rgba(255,90,180,0.18)",
-                            background:
-                              "radial-gradient(700px 220px at 20% 0%, rgba(255,90,180,0.14), rgba(0,0,0,0) 60%), linear-gradient(180deg, rgba(255,255,255,0.07), rgba(0,0,0,0.10))",
-                          }}
-                        >
-                          <div className="liveThumb">
+                        <GlassCard className="hoverGlow" style={{
+                          border: "1px solid rgba(124,92,252,0.16)",
+                          background: "radial-gradient(600px 200px at 15% 0%, rgba(124,92,252,0.10), transparent 60%), rgba(13,11,24,0.82)",
+                        }}>
+                          <div className="liveThumb" style={{ borderRadius: "18px 18px 0 0", border: "none" }}>
                             <LiveBackdrop url={live.thumbFinal} />
-
                             <div className="liveTopRow">
-                              <Pill tone="live" title="En direct">
-                                <span className="livePing" aria-hidden />
-                                LIVE
-                              </Pill>
-
-                              {live.durationLabel ? (
-                                <Pill tone="neutral" title="Durée du live">
-                                  ⏱ {live.durationLabel}
-                                </Pill>
-                              ) : (
-                                <span />
-                              )}
+                              <Pill tone="live" title="En direct"><span className="livePing" aria-hidden />LIVE</Pill>
+                              {live.durationLabel ? <Pill tone="neutral" title="Durée du live">⏱ {live.durationLabel}</Pill> : <span />}
                             </div>
-
                             <div className="liveBottomRow">
                               <span />
-                              <Pill tone="neutral" title="Viewers">
-                                👁 {formatViewers(live.viewers)}
-                              </Pill>
+                              <Pill tone="neutral" title="Viewers">👁 {formatViewers(live.viewers)}</Pill>
                             </div>
                           </div>
-
-                          <div style={{ padding: "10px 8px 6px" }}>
-                            <div className="liveTitle" title={live.title || ""}>
-                              {live.title || "—"}
-                            </div>
-                            <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                              <div
-                                style={{
-                                  width: 34,
-                                  height: 34,
-                                  borderRadius: 14,
-                                  overflow: "hidden",
-                                  border: "1px solid rgba(255,255,255,0.16)",
-                                  background: "rgba(0,0,0,0.35)",
-                                  flex: "0 0 auto",
-                                }}
-                                aria-hidden
-                              >
-                                <img
-                                  src={
-                                    absolutize((live as any).avatarUrl || (live as any).avatar_url || null) ||
-                                    svgThumb(live.displayName || "Streamer")
-                                  }
-                                  alt=""
-                                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                                  onError={(e) => {
-                                    (e.currentTarget as HTMLImageElement).src = svgThumb(live.displayName || "Streamer");
-                                  }}
-                                />
-                              </div>
-
-                              <div style={{ minWidth: 0, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                                <div
-                                  style={{
-                                    fontWeight: 1150,
-                                    letterSpacing: -0.2,
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    maxWidth: 220,
-                                  }}
-                                  title={live.displayName}
-                                >
-                                  {live.displayName}
-                                </div>
-
-                                <div className="mutedSmall" style={{ opacity: 0.8, fontWeight: 950 }}>
-                                  ({formatViewers(Number((live as any).followersCount || 0))} follow)
-                                </div>
-                              </div>
-                            </div>
-
-                            <div
-                              aria-hidden
-                              style={{
-                                marginTop: 10,
-                                height: 2,
-                                borderRadius: 999,
-                                background:
-                                  "linear-gradient(90deg, rgba(255,90,180,0.0), rgba(255,90,180,0.40), rgba(255,90,180,0.0))",
-                                opacity: 0.9,
-                              }}
-                            />
-                          </div>
+                          <LiveCardBody live={live as any} accentColor="rgba(124,92,252,0.20)" />
                         </GlassCard>
                       </Link>
                     ))}
-
-
                   </section>
                 </div>
               </>
@@ -2049,28 +1300,14 @@ export default function LivesPage() {
       </div>
 
       {openMonthList ? (
-        <MonthClipsListModal
-          title="🎬 Clips du mois"
-          clips={clips}
-          total={clipsTotal || clips.length}
-          onClose={() => setOpenMonthList(false)}
-          onPickClip={(c) => setOpenClip(c)}
-          zIndex={79}
-        />
+        <MonthClipsListModal title="🎬 Clips du mois" clips={clips} total={clipsTotal || clips.length}
+          onClose={() => setOpenMonthList(false)} onPickClip={(c) => setOpenClip(c)} zIndex={79} />
       ) : null}
 
       {openClip ? (
-        <ClipPlayerModal
-          clip={openClip}
-          token={token}
-          canModerate={canModerateClips}
-          onPatchClip={patchClip}
-          onRemoveClip={removeClip}
-          onClose={() => setOpenClip(null)}
-          zIndex={80}
-        />
+        <ClipPlayerModal clip={openClip} token={token} canModerate={canModerateClips}
+          onPatchClip={patchClip} onRemoveClip={removeClip} onClose={() => setOpenClip(null)} zIndex={80} />
       ) : null}
     </main>
   );
-  
 }

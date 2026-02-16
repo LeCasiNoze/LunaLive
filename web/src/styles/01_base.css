@@ -1,205 +1,75 @@
-/* web/src/index.css
-   ✅ Background animated styles (VISIBLE + stable)
-   Switch style by changing ONE thing:
-   <html data-ll-bg="lava">  or "aurora" | "blob" | "bubbles"
-
-   Why this way?
-   - CSS cannot reliably "if var == ..." without hacks that break easily.
-   - A data attribute is bulletproof and still a 1-word change.
-*/
-
-*{ box-sizing: border-box; }
+/* 01_base.css */
+*, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; }
 
-/* ─────────────────────────────────────────────
-   0) GLOBAL THEME BASE
-   ───────────────────────────────────────────── */
-html{
-  background: var(--bg);
-}
+html { background: var(--bg); }
 
-body{
+body {
   margin: 0;
-  background: transparent; /* important: we render bg on ::before */
+  background: transparent;
   color: var(--text);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-family: var(--ll-font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* layout base */
-.app{ min-height: 100vh; }
-.container{
-  padding: 18px;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding-bottom: 18px;
+button, .navItem, .pill,
+.btnPrimary, .btnGhost, .btnGhostInline,
+.btnGhostSmall, .btnPrimarySmall,
+.panelTitle, .modalTitle, .dropdownName,
+.brandName, .tabLabel {
+  font-family: var(--ll-font-display);
 }
 
-.pageTitle h1{ margin: 10px 0 4px; font-size: 28px; }
-.muted{ margin: 0; color: var(--muted); font-size: 14px; }
-.mutedSmall{ color: var(--muted); font-size: 12px; }
+::selection {
+  background: rgba(124, 92, 252, 0.24);
+  color: rgba(235, 232, 255, 0.98);
+}
 
-/* ensure UI stays above animated bg */
-#root, .app{
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(124, 92, 252, 0.22) transparent;
+}
+*::-webkit-scrollbar       { width: 4px; height: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgba(124, 92, 252, 0.22); border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(124, 92, 252, 0.42); }
+
+.app       { min-height: 100vh; }
+.container { padding: 18px; max-width: 1200px; margin: 0 auto; padding-bottom: 18px; }
+.pageTitle h1 { margin: 10px 0 4px; font-size: 28px; }
+.muted      { margin: 0; color: var(--muted); font-size: 14px; }
+.mutedSmall { color: var(--muted); font-size: 12px; }
+
+/* LavaLamp (position:fixed z-index:0) est en dessous, contenu au-dessus */
+#root, .app {
   position: relative;
   z-index: 1;
+  background: transparent;
 }
 
-/* ─────────────────────────────────────────────
-   1) BACKGROUND LAYER (single, stable)
-   - fixed => no repeating seam on scroll
-   - huge inset => no visible edges while moving
-   - NO mix-blend-mode screen by default (too chaotic)
-   ───────────────────────────────────────────── */
-:root{
-  /* intensity knobs */
-  --ll-bg-opacity: 0.70;     /* 0.55 → 0.85 */
-  --ll-bg-blur: 26px;        /* 18px → 36px */
-  --ll-bg-sat: 1.35;         /* 1.1 → 1.7 */
-  --ll-bg-contrast: 1.00;    /* 0.9 → 1.1 */
-
-  /* motion knobs */
-  --ll-bg-speed: 12s;        /* 8s → 18s */
-
-  /* optional: try "soft-light" if you want more punch without rainbow chaos */
-  --ll-bg-blend: normal;     /* normal | soft-light | screen (screen = strong but can look crazy) */
+/* ── Grain premium — jamais animé ── */
+body::after {
+  content: "";
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  opacity: 0.018;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
 }
 
-body::before{
-  content:"";
-  position: fixed;
-  inset: -25vh -25vw;        /* ✅ no edges even with big movement */
-  pointer-events: none;
-  z-index: 0;
-
-  opacity: var(--ll-bg-opacity);
-  mix-blend-mode: var(--ll-bg-blend);
-  filter: blur(var(--ll-bg-blur)) saturate(var(--ll-bg-sat)) contrast(var(--ll-bg-contrast));
-
-  will-change: transform, filter, opacity;
-  transform: translate3d(0,0,0);
-}
-
-/* reduced motion */
-@media (prefers-reduced-motion: reduce){
-  body::before{ animation: none !important; }
-}
-
-/* ─────────────────────────────────────────────
-   2) STYLE: LAVA (lampe à lave qui remonte, visible)
-   ───────────────────────────────────────────── */
-html[data-ll-bg="lava"] body::before{
+/* body::before — ambient glow statique très discret en fond de scène */
+body::before {
+  content: "";
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
-    radial-gradient(900px 900px at 18% 120%, rgba(255, 80, 200, 0.40), transparent 62%),
-    radial-gradient(980px 980px at 52% 130%, rgba(160, 120, 255, 0.36), transparent 64%),
-    radial-gradient(920px 920px at 88% 118%, rgba(60, 180, 255, 0.32), transparent 63%),
-    radial-gradient(1400px 700px at 50% -10%, rgba(255,255,255,0.08), transparent 60%);
-  animation: ll_bg_lava_up var(--ll-bg-speed) ease-in-out infinite;
+    radial-gradient(ellipse 70vw 50vh at 20% 100%, rgba(124,92,252,0.12), transparent 65%),
+    radial-gradient(ellipse 60vw 45vh at 80% 100%, rgba(91,142,248,0.10), transparent 62%);
+  /* Statique — les vraies bulles sont dans LavaLamp.tsx */
 }
 
-@keyframes ll_bg_lava_up{
-  0%{
-    transform: translate3d(-80px, 220px, 0) rotate(-2deg) scale(1.02);
-    opacity: calc(var(--ll-bg-opacity) - 0.08);
-  }
-  45%{
-    transform: translate3d(90px, 40px, 0) rotate(3deg) scale(1.10);
-    filter: blur(calc(var(--ll-bg-blur) + 8px)) saturate(calc(var(--ll-bg-sat) + 0.25)) contrast(var(--ll-bg-contrast));
-    opacity: calc(var(--ll-bg-opacity) + 0.10);
-  }
-  100%{
-    transform: translate3d(-50px, -320px, 0) rotate(2deg) scale(1.05);
-    opacity: var(--ll-bg-opacity);
-  }
-}
-
-/* ─────────────────────────────────────────────
-   3) STYLE: AURORA (voiles qui glissent, punchy mais propre)
-   ───────────────────────────────────────────── */
-html[data-ll-bg="aurora"] body::before{
-  background:
-    radial-gradient(1200px 700px at 12% 10%, rgba(255, 80, 200, 0.24), transparent 62%),
-    radial-gradient(1200px 700px at 92% 18%, rgba(60, 180, 255, 0.22), transparent 62%),
-    radial-gradient(1500px 900px at 50% 95%, rgba(160, 120, 255, 0.22), transparent 66%),
-    linear-gradient(90deg, rgba(255,255,255,0.06), rgba(0,0,0,0));
-  animation: ll_bg_aurora var(--ll-bg-speed) ease-in-out infinite alternate;
-}
-
-@keyframes ll_bg_aurora{
-  0%{
-    transform: translate3d(-220px, 30px, 0) rotate(-3deg) scale(1.04);
-    filter: blur(calc(var(--ll-bg-blur) + 4px)) saturate(calc(var(--ll-bg-sat) + 0.15)) contrast(var(--ll-bg-contrast));
-  }
-  100%{
-    transform: translate3d(240px, -60px, 0) rotate(4deg) scale(1.12);
-    filter: blur(calc(var(--ll-bg-blur) + 10px)) saturate(calc(var(--ll-bg-sat) + 0.30)) contrast(var(--ll-bg-contrast));
-  }
-}
-
-/* ─────────────────────────────────────────────
-   4) STYLE: BLOB (respire + hue rotate, très visible)
-   ───────────────────────────────────────────── */
-html[data-ll-bg="blob"] body::before{
-  /* pour ce style, screen peut être cool MAIS contrôlé */
-  /* tu peux tester: --ll-bg-blend: soft-light; dans :root */
-  background:
-    radial-gradient(1000px 760px at 22% 30%, rgba(255, 80, 200, 0.24), transparent 64%),
-    radial-gradient(980px 740px at 78% 35%, rgba(60, 180, 255, 0.22), transparent 64%),
-    radial-gradient(1150px 860px at 52% 88%, rgba(160, 120, 255, 0.22), transparent 66%);
-  animation: ll_bg_blob 10s linear infinite;
-}
-
-@keyframes ll_bg_blob{
-  0%{
-    transform: translate3d(-200px, 140px, 0) rotate(0deg) scale(1.03);
-    filter: blur(calc(var(--ll-bg-blur) + 6px)) saturate(calc(var(--ll-bg-sat) + 0.30)) contrast(var(--ll-bg-contrast)) hue-rotate(0deg);
-  }
-  50%{
-    transform: translate3d(220px, -40px, 0) rotate(10deg) scale(1.16);
-    filter: blur(calc(var(--ll-bg-blur) + 12px)) saturate(calc(var(--ll-bg-sat) + 0.45)) contrast(var(--ll-bg-contrast)) hue-rotate(160deg);
-    opacity: calc(var(--ll-bg-opacity) + 0.10);
-  }
-  100%{
-    transform: translate3d(-120px, -260px, 0) rotate(20deg) scale(1.08);
-    filter: blur(calc(var(--ll-bg-blur) + 8px)) saturate(calc(var(--ll-bg-sat) + 0.30)) contrast(var(--ll-bg-contrast)) hue-rotate(320deg);
-  }
-}
-
-/* ─────────────────────────────────────────────
-   5) STYLE: BUBBLES (lampe à lave “bulles” + montée)
-   ───────────────────────────────────────────── */
-html[data-ll-bg="bubbles"] body::before{
-  background:
-    radial-gradient(700px 700px at 18% 120%, rgba(255, 80, 200, 0.30), transparent 66%),
-    radial-gradient(820px 820px at 40% 135%, rgba(160, 120, 255, 0.28), transparent 66%),
-    radial-gradient(760px 760px at 65% 125%, rgba(60, 180, 255, 0.24), transparent 66%),
-    radial-gradient(900px 900px at 88% 140%, rgba(255, 80, 200, 0.18), transparent 68%);
-  animation: ll_bg_bubbles 9.5s ease-in-out infinite;
-}
-
-@keyframes ll_bg_bubbles{
-  0%{
-    transform: translate3d(-60px, 260px, 0) scale(1.02);
-    opacity: calc(var(--ll-bg-opacity) - 0.06);
-  }
-  55%{
-    transform: translate3d(90px, 40px, 0) scale(1.14);
-    filter: blur(calc(var(--ll-bg-blur) + 14px)) saturate(calc(var(--ll-bg-sat) + 0.35)) contrast(var(--ll-bg-contrast));
-    opacity: calc(var(--ll-bg-opacity) + 0.12);
-  }
-  100%{
-    transform: translate3d(-40px, -360px, 0) scale(1.06);
-    opacity: var(--ll-bg-opacity);
-  }
-}
-
-/* ─────────────────────────────────────────────
-   6) DEFAULT if no attribute set
-   ───────────────────────────────────────────── */
-html:not([data-ll-bg]) body::before{
-  /* default = lava (safe) */
-  background:
-    radial-gradient(900px 900px at 18% 120%, rgba(255, 80, 200, 0.36), transparent 62%),
-    radial-gradient(980px 980px at 52% 130%, rgba(160, 120, 255, 0.32), transparent 64%),
-    radial-gradient(920px 920px at 88% 118%, rgba(60, 180, 255, 0.28), transparent 63%);
-  animation: ll_bg_lava_up var(--ll-bg-speed) ease-in-out infinite;
+.srOnly {
+  position: absolute !important;
+  width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0);
+  white-space: nowrap; border: 0;
 }

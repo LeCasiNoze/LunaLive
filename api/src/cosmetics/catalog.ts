@@ -17,6 +17,7 @@ export type CosmeticItem = {
 export const COSMETICS_CATALOG: CosmeticItem[] = [
   // ─────────────────────────────────────────────
   // BADGES — SHOP
+  // Prix: 250 rubis (LUNA + 777)
   // ─────────────────────────────────────────────
   {
     kind: "badge",
@@ -24,7 +25,7 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
     name: "Badge LUNA",
     rarity: "uncommon",
     unlock: "shop",
-    priceRubis: 12000,
+    priceRubis: 250,
     active: true,
     meta: { shape: "rect", text: "LUNA" },
   },
@@ -34,32 +35,29 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
     name: "Badge 777",
     rarity: "legendary",
     unlock: "shop",
-    priceRubis: 90000,
+    priceRubis: 250,
     active: true,
     meta: { shape: "rect", text: "777" },
   },
 
   // ─────────────────────────────────────────────
   // HATS
-  // - Luna cap => SHOP (50 rubis)
-  // - Demon / Couronne / Halo => ACHIEVEMENTS
-  // - Le reste => SHOP
+  // Prix shop: 500 rubis
+  // Achievement: pas achetable (priceRubis: null)
   // ─────────────────────────────────────────────
-  { kind: "hat", code: "hat_luna_cap", name: "Luna Cap", rarity: "rare", unlock: "shop", priceRubis: 50, active: true },
+  { kind: "hat", code: "hat_luna_cap", name: "Luna Cap", rarity: "rare", unlock: "shop", priceRubis: 500, active: true },
 
   { kind: "hat", code: "hat_carton_crown", name: "Carton Crown", rarity: "epic", unlock: "achievement", priceRubis: null, active: true },
   { kind: "hat", code: "hat_demon_horn", name: "Demon Horn", rarity: "epic", unlock: "achievement", priceRubis: null, active: true },
   { kind: "hat", code: "hat_eclipse_halo", name: "Eclipse Halo", rarity: "legendary", unlock: "achievement", priceRubis: null, active: true },
 
-  { kind: "hat", code: "hat_astral_helmet", name: "Astral Helmet", rarity: "legendary", unlock: "shop", priceRubis: 90000, active: true },
-  { kind: "hat", code: "hat_lotus_aureole", name: "Lotus Aureole", rarity: "mythic", unlock: "shop", priceRubis: 120000, active: true },
+  { kind: "hat", code: "hat_astral_helmet", name: "Astral Helmet", rarity: "legendary", unlock: "shop", priceRubis: 500, active: true },
+  { kind: "hat", code: "hat_lotus_aureole", name: "Lotus Aureole", rarity: "mythic", unlock: "shop", priceRubis: 500, active: true },
 
   // ─────────────────────────────────────────────
   // USERNAME
-  // - Arc-en-ciel => ACHIEVEMENTS
-  // - Chroma toggle => ACHIEVEMENTS
-  // - Gold toggle => SHOP
-  // - Néon => agenda 30 jours => SYSTEM (non-shop)
+  // Prix shop: 2000 rubis
+  // Achievement/system: pas achetable rubis (null)
   // ─────────────────────────────────────────────
   { kind: "username", code: "uanim_rainbow_scroll", name: "Arc-en-ciel défilant", rarity: "rare", unlock: "achievement", priceRubis: null, active: true },
 
@@ -80,27 +78,68 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
     name: "Gold (toggle)",
     rarity: "epic",
     unlock: "shop",
-    priceRubis: 100000,
+    priceRubis: 2000,
     active: true,
     meta: { toggle: true, style: "gold" },
   },
 
   { kind: "username", code: "uanim_neon_underline", name: "Néon + soulignage", rarity: "rare", unlock: "system", priceRubis: null, active: true },
+  // ─── USERNAME — FROST ───────────────────────────────────────────────────────
+  {
+    kind: "username",
+    code: "uanim_frost",
+    name: "Frost (glacé)",
+    rarity: "rare",
+    unlock: "shop",
+    priceRubis: 2000,
+    active: true,
+    meta: { style: "frost" },
+  },
+
+  // ─── USERNAME — EMBER ───────────────────────────────────────────────────────
+  {
+    kind: "username",
+    code: "uanim_ember",
+    name: "Ember (braise)",
+    rarity: "epic",
+    unlock: "shop",
+    priceRubis: 2000,
+    active: true,
+    meta: { style: "ember" },
+  },
 
   // ─────────────────────────────────────────────
   // MESSAGE FRAMES
-  // - Gold => SHOP
-  // - Lotus Crown + Eclipse => ACHIEVEMENTS
+  // Gold (shop): 3000 rubis
+  // Achievements: pas achetable (null)
   // ─────────────────────────────────────────────
-  { kind: "frame", code: "mframe_gold", name: "Cadran Gold", rarity: "mythic", unlock: "shop", priceRubis: 180000, active: true },
+  { kind: "frame", code: "mframe_gold", name: "Cadran Gold", rarity: "mythic", unlock: "shop", priceRubis: 3000, active: true },
   { kind: "frame", code: "mframe_lotus_crown", name: "Cadran Lotus Crown", rarity: "mythic", unlock: "achievement", priceRubis: null, active: true },
   { kind: "frame", code: "mframe_eclipse", name: "Cadran Eclipse", rarity: "mythic", unlock: "achievement", priceRubis: null, active: true },
+  {
+    kind: "frame",
+    code: "mframe_void",
+    name: "Cadran Void",
+    rarity: "legendary",
+    unlock: "shop",
+    priceRubis: 3000,
+    active: true,
+  },
 
+  // ─── FRAME — AURORA ─────────────────────────────────────────────────────────
+  {
+    kind: "frame",
+    code: "mframe_aurora",
+    name: "Cadran Aurora",
+    rarity: "epic",
+    unlock: "shop",
+    priceRubis: 3000,
+    active: true,
+  },
   // ─────────────────────────────────────────────
   // TITLES
-  // - Ratus / Ça tourne / Vrai Viewer / No Life / Batman => ACHIEVEMENTS
-  // - BigMoula => SHOP (rubis)
-  // - LunaKing / All-in Man => SHOP (prestige)
+  // Prix shop (rubis): 1000 rubis
+  // Exception: LunaKing => prestige (1)
   // ─────────────────────────────────────────────
   { kind: "title", code: "title_ratus", name: "Ratus", rarity: "uncommon", unlock: "achievement", priceRubis: null, active: true },
   { kind: "title", code: "title_ca_tourne", name: "Ça tourne !", rarity: "rare", unlock: "achievement", priceRubis: null, active: true },
@@ -109,10 +148,11 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
   { kind: "title", code: "title_batman", name: "Batman", rarity: "epic", unlock: "achievement", priceRubis: null, active: true },
 
   // Shop rubis
-  { kind: "title", code: "title_bigmoula", name: "BigMoula", rarity: "legendary", unlock: "shop", priceRubis: 60000, active: true },
+  { kind: "title", code: "title_bigmoula", name: "BigMoula", rarity: "legendary", unlock: "shop", priceRubis: 1000, active: true },
 
-  // Shop prestige
-  { kind: "title", code: "title_lunaking", name: "LunaKing", rarity: "mythic", unlock: "shop", priceRubis: null, pricePrestige: 25, active: true, meta: { currency: "prestige" } },
-  { kind: "title", code: "title_allin_man", name: "All-in Man", rarity: "mythic", unlock: "shop", priceRubis: null, pricePrestige: 40, active: true, meta: { currency: "prestige" } },
+  // Shop prestige (exception)
+  { kind: "title", code: "title_lunaking", name: "LunaKing", rarity: "mythic", unlock: "shop", priceRubis: null, pricePrestige: 1, active: true, meta: { currency: "prestige" } },
 
+  // Shop rubis (reste des titres)
+  { kind: "title", code: "title_allin_man", name: "All-in Man", rarity: "mythic", unlock: "shop", priceRubis: 1000, active: true },
 ];

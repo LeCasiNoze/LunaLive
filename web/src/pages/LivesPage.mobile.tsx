@@ -1,15 +1,570 @@
 // web/src/pages/LivesPage.mobile.tsx
+// ─────────────────────────────────────────────────────────────────────────────
+//  LunaLive — Mobile  |  Design System : Purple Velvet × Blue Night
+//  Police : Syne 800 (titres) + système natif (corps)
+//  Palette : #7c5cfc / #a78bfa / #5b8ef8 / #c4b5fd  (alignée sur LivesPage.css)
+// ─────────────────────────────────────────────────────────────────────────────
 import * as React from "react";
 import { Link } from "react-router-dom";
 
 import { formatViewers } from "../lib/format";
-import { svgThumb } from "../lib/thumb";
-
-import { DailyWheelCard } from "../components/DailyWheelCard";
+import { svgThumb }       from "../lib/thumb";
+import { DailyWheelCard }      from "../components/DailyWheelCard";
 import { DailyBonusAccessCard } from "../components/DailyBonusAccessCard";
 import type { LiveCardVM, ClipVM } from "./LivesPage";
 
-function absolutize(apiBase: string, url: string | null) {
+/* ─── CSS injecté une seule fois ─────────────────────────────────────── */
+const MOBILE_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&display=swap');
+
+/* ══ Tokens ══════════════════════════════════════════════════════════════ */
+.lm-page {
+  --lm-purple:       #7c5cfc;
+  --lm-purple-2:     #a78bfa;
+  --lm-purple-pale:  #c4b5fd;
+  --lm-blue:         #5b8ef8;
+  --lm-blue-2:       #3b4dc8;
+  --lm-blue-pale:    #93c5fd;
+  --lm-red:          #ef4444;
+  --lm-gold:         #fbbf24;
+  --lm-gold-pale:    #fde68a;
+  --lm-text-1:       rgba(235,232,255,.96);
+  --lm-text-2:       rgba(180,185,230,.70);
+  --lm-text-3:       rgba(140,145,195,.50);
+  --lm-border:       rgba(124,92,252,.16);
+  --lm-border-soft:  rgba(124,92,252,.28);
+  --lm-surface:      rgba(11,9,22,.92);
+  --lm-surface-2:    rgba(18,16,34,.90);
+  --lm-ease:         cubic-bezier(.22,1,.36,1);
+  --lm-grad: linear-gradient(105deg,#c4b5fd 0%,#7c5cfc 35%,#5b8ef8 70%,#93c5fd 100%);
+  --lm-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ══ Page shell ══════════════════════════════════════════════════════════ */
+.lm-page {
+  min-height: 100vh;
+  padding: 0 0 calc(80px + var(--lm-safe-bottom));
+  color: var(--lm-text-1);
+  font-family: 'Syne', system-ui, sans-serif;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Aurora fixe */
+.lm-page::before {
+  content: "";
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 110vw 55vh at 15% -5%,  rgba(124,92,252,.13),  transparent 58%),
+    radial-gradient(ellipse  80vw 45vh at 88%  40%,  rgba(59,77,200,.10),   transparent 58%),
+    radial-gradient(ellipse  70vw 50vh at 45% 105%,  rgba(91,142,248,.08),  transparent 55%);
+  transform: translateZ(0);
+}
+
+/* Grain subtil */
+.lm-page::after {
+  content: "";
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  opacity: .022;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+/* ══ Scroll content ══════════════════════════════════════════════════════ */
+.lm-scroll {
+  position: relative; z-index: 1;
+  padding: 12px 12px 0;
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+/* ══ Header hero ════════════════════════════════════════════════════════ */
+.lm-hero {
+  position: relative; overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(124,92,252,.20);
+  background: rgba(11,9,22,.88);
+  box-shadow: 0 24px 70px rgba(0,0,0,.50), 0 0 0 1px rgba(167,139,250,.06) inset;
+  backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
+  padding: 16px 16px 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+/* Reflet haut */
+.lm-hero::before {
+  content:""; position:absolute; top:0; left:8%; right:8%; height:1px;
+  background: linear-gradient(90deg, transparent, rgba(167,139,250,.45) 40%, rgba(91,142,248,.35) 60%, transparent);
+  pointer-events: none;
+}
+/* Lueur ambiante */
+.lm-hero::after {
+  content:""; position:absolute; top:-50px; left:-50px;
+  width:260px; height:160px; border-radius:50%;
+  background: radial-gradient(ellipse, rgba(124,92,252,.14), transparent 70%);
+  pointer-events: none;
+}
+.lm-hero-left { position:relative; z-index:1; }
+
+.lm-logo {
+  margin: 0;
+  font-family: 'Syne', sans-serif;
+  font-weight: 800; font-size: 28px; letter-spacing: -1.2px; line-height: 1;
+  display: inline-block;
+  background: var(--lm-grad);
+  background-size: 220% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 14px rgba(124,92,252,.55)) drop-shadow(0 0 36px rgba(91,142,248,.22));
+  animation: lm-shimmer 5s ease-in-out infinite;
+}
+@keyframes lm-shimmer {
+  0%  { background-position: 0%   50%; }
+  50% { background-position: 100% 50%; }
+  100%{ background-position: 0%   50%; }
+}
+
+.lm-sub {
+  margin-top: 5px;
+  font-size: 11px; font-weight: 500; color: var(--lm-text-3);
+  display: flex; align-items: center; gap: 8px;
+}
+
+.lm-hero-pills {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 7px;
+}
+
+/* Ping live */
+.lm-ping {
+  width: 7px; height: 7px; border-radius: 999px;
+  background: var(--lm-red);
+  box-shadow: 0 0 0 5px rgba(239,68,68,.18);
+  display: inline-block; vertical-align: middle; margin-right: 4px;
+  animation: lm-ping 1.6s ease-in-out infinite;
+}
+@keyframes lm-ping {
+  0%,100% { box-shadow: 0 0 0 5px rgba(239,68,68,.18); }
+  50%      { box-shadow: 0 0 0 8px rgba(239,68,68,.05); }
+}
+
+/* Refreshing pulse */
+.lm-refreshing {
+  width: 6px; height: 6px; border-radius: 999px;
+  background: rgba(167,139,250,.80);
+  animation: lm-blink 1s ease-in-out infinite;
+}
+@keyframes lm-blink { 0%,100%{opacity:1} 50%{opacity:.28} }
+
+/* ══ Pills ══════════════════════════════════════════════════════════════ */
+.lm-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 11px; border-radius: 999px;
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 11px; font-weight: 700; letter-spacing: -.05px;
+  white-space: nowrap;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  -webkit-tap-highlight-color: transparent;
+}
+.lm-pill-live  { background:rgba(239,68,68,.14); border:1px solid rgba(239,68,68,.28); color:#fca5a5; }
+.lm-pill-neutral{ background:rgba(0,0,0,.50);   border:1px solid rgba(255,255,255,.10); color:rgba(235,232,255,.92); }
+.lm-pill-gold  { background:rgba(251,191,36,.14); border:1px solid rgba(251,191,36,.28); color:#fde68a; }
+.lm-pill-brand { background:rgba(124,92,252,.16); border:1px solid rgba(124,92,252,.30); color:rgba(196,181,253,.90); }
+
+/* ══ Section header ═════════════════════════════════════════════════════ */
+.lm-section-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 4px 2px 8px;
+}
+.lm-section-title {
+  margin: 0;
+  font-family: 'Syne', sans-serif;
+  font-size: 10.5px; font-weight: 700;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--lm-text-2);
+  position: relative; padding-left: 12px;
+}
+/* barre colorée gauche */
+.lm-section-title::before {
+  content: "";
+  position: absolute; left:0; top:50%; transform: translateY(-50%);
+  width: 3px; height: 10px; border-radius: 2px;
+  background: linear-gradient(180deg, var(--lm-purple-2), var(--lm-blue));
+}
+.lm-section-hint {
+  font-size: 11px; font-weight: 600; color: var(--lm-text-3);
+}
+
+/* ══ Error ══════════════════════════════════════════════════════════════ */
+.lm-err {
+  padding: 10px 14px; border-radius: 14px;
+  border: 1px solid rgba(239,68,68,.28); background: rgba(239,68,68,.08);
+  font-size: 12px; font-weight: 500; color: rgba(252,165,165,.85);
+}
+
+/* ══ Lives grid ═════════════════════════════════════════════════════════ */
+.lm-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 10px;
+}
+@media (max-width: 360px) { .lm-grid { grid-template-columns: 1fr; } }
+@media (min-width: 560px) { .lm-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+
+.lm-card-link { text-decoration: none; color: inherit; display: block; }
+
+/* Card glass */
+.lm-card {
+  position: relative; overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(124,92,252,.16);
+  background: rgba(13,11,24,.85);
+  box-shadow: 0 14px 40px rgba(0,0,0,.38);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  transition: transform 180ms var(--lm-ease), box-shadow 180ms var(--lm-ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.lm-card:active { transform: scale(.98); }
+/* Reflet haut carte */
+.lm-card::before {
+  content:""; position:absolute; top:0; left:8%; right:8%; height:1px;
+  background: linear-gradient(90deg, transparent, rgba(167,139,250,.28) 45%, rgba(91,142,248,.20) 65%, transparent);
+  pointer-events:none; z-index:2;
+}
+
+.lm-card-featured {
+  border-color: rgba(251,191,36,.24);
+  background: radial-gradient(600px 180px at 20% 0%, rgba(251,191,36,.10), transparent 60%), rgba(13,11,24,.86);
+}
+
+/* Thumb */
+.lm-thumb {
+  position: relative;
+  height: 108px;
+  overflow: hidden;
+  border-radius: 16px 16px 0 0;
+  background: rgba(0,0,0,.35);
+}
+.lm-thumb::after {
+  content:""; position:absolute; inset:0;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,0) 38%, rgba(0,0,0,.62) 100%),
+    linear-gradient(135deg, rgba(124,92,252,.06), rgba(59,77,200,.06));
+  pointer-events:none;
+}
+
+.lm-thumb-bg {
+  position:absolute; inset:0;
+  background-size:cover; background-position:center; background-repeat:no-repeat;
+  opacity:.92; filter: contrast(1.06) saturate(1.18) brightness(1.02);
+  transform: scale(1.04);
+}
+
+/* Badge row dans le thumb */
+.lm-thumb-top {
+  position:absolute; top:8px; left:8px; right:8px;
+  display:flex; justify-content:space-between; align-items:center; gap:6px;
+  pointer-events:none; z-index:3;
+}
+.lm-thumb-bottom {
+  position:absolute; bottom:8px; left:8px; right:8px;
+  display:flex; justify-content:flex-end; align-items:center; gap:6px;
+  pointer-events:none; z-index:3;
+}
+
+/* Card body */
+.lm-card-body {
+  padding: 9px 10px 11px;
+  display: flex; flex-direction:column; gap: 7px;
+}
+.lm-card-row {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+}
+.lm-card-name {
+  font-family:'Syne', sans-serif; font-weight:700; font-size:12px; letter-spacing:-.2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  color: rgba(235,232,255,.94); flex:1; min-width:0;
+}
+.lm-card-viewers {
+  font-family:'Syne', sans-serif; font-size:11px; font-weight:700;
+  color: var(--lm-text-2); white-space:nowrap; flex-shrink:0;
+}
+.lm-card-title {
+  font-size:11px; font-weight:500; line-height:1.3;
+  color: var(--lm-text-2);
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  min-height: 28px;
+}
+.lm-card-follow {
+  font-size:10px; font-weight:500; color: var(--lm-text-3);
+}
+
+/* Divider signature */
+.lm-card-divider {
+  height:1px; border-radius:999px;
+  background: linear-gradient(90deg, rgba(124,92,252,0), rgba(124,92,252,.30), rgba(91,142,248,.22), rgba(91,142,248,0));
+}
+.lm-card-featured .lm-card-divider {
+  background: linear-gradient(90deg, rgba(251,191,36,0), rgba(251,191,36,.38), rgba(251,191,36,0));
+}
+
+/* Avatar inline */
+.lm-ava {
+  width: 22px; height: 22px; border-radius: 8px; overflow:hidden;
+  border: 1px solid rgba(255,255,255,.14); background: rgba(0,0,0,.35); flex-shrink:0;
+}
+.lm-ava img { width:100%; height:100%; object-fit:cover; display:block; }
+
+/* ══ Clips section ══════════════════════════════════════════════════════ */
+.lm-clips-card {
+  position: relative; overflow:hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(124,92,252,.20);
+  background: rgba(11,9,22,.88);
+  box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+}
+.lm-clips-card::before {
+  content:""; position:absolute; top:0; left:8%; right:8%; height:1px;
+  background: linear-gradient(90deg, transparent, rgba(167,139,250,.40) 40%, rgba(91,142,248,.30) 65%, transparent);
+  pointer-events:none;
+}
+
+.lm-clips-header {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding: 13px 14px 10px;
+}
+.lm-clips-title {
+  margin:0;
+  font-family:'Syne', sans-serif; font-weight:800; font-size:15px; letter-spacing:-.4px;
+  background: var(--lm-grad);
+  background-size: 220% 100%;
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter: drop-shadow(0 0 8px rgba(124,92,252,.42)) drop-shadow(0 0 20px rgba(91,142,248,.16));
+  display:flex; align-items:center; gap:8px;
+}
+.lm-clips-count {
+  font-size:11px; font-weight:600;
+  color: var(--lm-text-3);
+  padding: 4px 9px; border-radius:999px;
+  border: 1px solid rgba(124,92,252,.14); background: rgba(124,92,252,.06);
+}
+
+/* Clip tiles grid 2×2 */
+.lm-clips-grid {
+  padding: 0 12px 12px;
+  display:grid; grid-template-columns:1fr 1fr; gap:8px;
+  position:relative;
+}
+
+.lm-clip-tile {
+  position:relative; overflow:hidden;
+  border-radius: 14px; min-height:96px;
+  border: 1px solid rgba(124,92,252,.14);
+  background: rgba(255,255,255,.04);
+  cursor:pointer; padding:0;
+  -webkit-tap-highlight-color:transparent;
+  transition: border-color 160ms ease, transform 160ms var(--lm-ease);
+}
+.lm-clip-tile:active { transform: scale(.96); }
+
+.lm-clip-bg {
+  position:absolute; inset:0;
+  background-size:cover; background-position:center; background-repeat:no-repeat;
+  opacity:.88; filter: contrast(1.04) saturate(1.10);
+  transform: scale(1.04); transition: opacity 200ms ease, transform 200ms var(--lm-ease);
+}
+.lm-clip-tile:active .lm-clip-bg { opacity:1; transform:scale(1); }
+
+/* Overlay violet */
+.lm-clip-tile::before {
+  content:""; position:absolute; inset:0; z-index:1;
+  background:
+    radial-gradient(200px 80px at 30% 0%, rgba(124,92,252,.16), transparent 60%),
+    linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.32));
+  pointer-events:none;
+}
+
+/* Bouton play centré */
+.lm-clip-play {
+  position:absolute; inset:0; z-index:2;
+  display:grid; place-items:center; pointer-events:none;
+}
+.lm-clip-play-btn {
+  width:38px; height:38px; border-radius:999px;
+  display:grid; place-items:center;
+  background: rgba(0,0,0,.55);
+  border: 1px solid rgba(255,255,255,.16);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 24px rgba(0,0,0,.42);
+  font-size:13px;
+}
+
+/* Badge likes (coin) */
+.lm-clip-badge {
+  position:absolute; z-index:3;
+  display:inline-flex; align-items:center; gap:5px;
+  padding: 4px 8px; border-radius:999px;
+  font-family:'Syne',system-ui,sans-serif; font-size:10px; font-weight:700;
+  background: rgba(0,0,0,.58); border: 1px solid rgba(255,255,255,.10);
+  backdrop-filter: blur(8px); pointer-events:none;
+}
+.lm-clip-badge-tl { top:7px; left:7px; }
+.lm-clip-badge-tr { top:7px; right:7px; }
+.lm-clip-badge-bl { bottom:7px; left:7px; }
+.lm-clip-badge-br { bottom:7px; right:7px; }
+
+/* Avatar centré sur clip */
+.lm-clip-ava {
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:2;
+  width:36px; height:36px; border-radius:12px; overflow:hidden;
+  border: 1px solid rgba(255,255,255,.18); background: rgba(0,0,0,.42);
+  backdrop-filter: blur(8px); box-shadow: 0 6px 24px rgba(0,0,0,.40);
+  pointer-events:none;
+}
+.lm-clip-ava img { width:100%; height:100%; object-fit:cover; display:block; }
+
+/* Croix centrale (quand il y a un overlay "+X clips") */
+.lm-clips-cross {
+  position:absolute; left:50%; top:50%;
+  width:36px; height:36px; transform:translate(-50%,-50%);
+  border-radius:11px; z-index:2;
+  border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03);
+  backdrop-filter: blur(10px); pointer-events:none; opacity:.80;
+}
+.lm-clips-more-overlay {
+  position:absolute; inset:0; z-index:3;
+  display:grid; place-items:center;
+  background:transparent; border:0; cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.lm-clips-more-bubble {
+  padding: 8px 13px; border-radius:13px;
+  background: rgba(0,0,0,.62); border: 1px solid rgba(124,92,252,.22);
+  backdrop-filter: blur(14px);
+  font-family:'Syne',system-ui,sans-serif; font-size:13px; font-weight:700; letter-spacing:-.2px;
+}
+.lm-clips-more-bubble strong {
+  background: var(--lm-grad); background-size:200% 100%;
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+
+/* Voir tous les clips */
+.lm-clips-see-all {
+  margin: 0 12px 13px;
+  width: calc(100% - 24px);
+  padding: 12px 14px; border-radius:14px;
+  border: 1px solid rgba(124,92,252,.28);
+  background: linear-gradient(135deg, rgba(124,92,252,.18), rgba(59,77,200,.14), rgba(91,142,248,.10));
+  color: rgba(235,232,255,.92);
+  font-family:'Syne',system-ui,sans-serif; font-size:13px; font-weight:700; letter-spacing:-.15px;
+  cursor:pointer;
+  box-shadow: 0 6px 20px rgba(0,0,0,.28), 0 0 0 1px rgba(124,92,252,.07) inset;
+  -webkit-tap-highlight-color:transparent;
+  transition: filter 150ms ease;
+}
+.lm-clips-see-all:active { filter: brightness(1.12); }
+
+/* ══ Rewards (wheel + bonus) ════════════════════════════════════════════ */
+.lm-rewards-section {
+  position: relative; overflow:hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(124,92,252,.18);
+  background: rgba(11,9,22,.86);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 16px 50px rgba(0,0,0,.42);
+}
+.lm-rewards-section::before {
+  content:""; position:absolute; top:0; left:8%; right:8%; height:1px;
+  background: linear-gradient(90deg, transparent, rgba(167,139,250,.38) 40%, rgba(91,142,248,.28) 65%, transparent);
+  pointer-events:none;
+}
+.lm-rewards-header {
+  display:flex; align-items:center; gap:9px;
+  padding: 12px 14px 11px;
+  border-bottom: 1px solid rgba(124,92,252,.08);
+}
+.lm-rewards-icon {
+  width:26px; height:26px; border-radius:9px; flex-shrink:0;
+  background: linear-gradient(135deg, rgba(124,92,252,.50), rgba(59,77,200,.40));
+  border: 1px solid rgba(124,92,252,.28);
+  display:grid; place-items:center; font-size:13px;
+  box-shadow: 0 0 12px rgba(124,92,252,.22);
+}
+.lm-rewards-label {
+  font-family:'Syne',sans-serif; font-weight:700; font-size:13px; letter-spacing:-.2px;
+  color: rgba(235,232,255,.88);
+}
+.lm-rewards-body {
+  padding: 12px;
+  display:grid; gap:10px;
+}
+
+/* ══ Bottom navigation ══════════════════════════════════════════════════ */
+.lm-nav {
+  position: fixed; bottom:0; left:0; right:0; z-index:70;
+  padding-bottom: var(--lm-safe-bottom);
+  background: rgba(8,7,18,.90);
+  border-top: 1px solid rgba(124,92,252,.16);
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  display: flex;
+}
+.lm-nav::before {
+  content:""; position:absolute; top:0; left:5%; right:5%; height:1px;
+  background: linear-gradient(90deg, transparent, rgba(167,139,250,.32) 40%, rgba(91,142,248,.24) 65%, transparent);
+  pointer-events:none;
+}
+.lm-nav-btn {
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:4px; padding: 10px 4px;
+  background:transparent; border:0; color:var(--lm-text-3); cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  transition: color 160ms ease;
+  min-height:56px;
+}
+.lm-nav-btn.is-active { color: rgba(196,181,253,.95); }
+.lm-nav-icon { font-size:18px; line-height:1; }
+.lm-nav-label {
+  font-family:'Syne',system-ui,sans-serif; font-size:10px; font-weight:700;
+  letter-spacing:.02em; text-transform:uppercase;
+}
+/* Indicateur actif */
+.lm-nav-btn.is-active .lm-nav-icon {
+  filter: drop-shadow(0 0 6px rgba(167,139,250,.55));
+}
+/* Dot actif sous l'icône */
+.lm-nav-dot {
+  width:3px; height:3px; border-radius:999px;
+  background: rgba(167,139,250,.0);
+  transition: background 160ms ease, width 160ms ease;
+}
+.lm-nav-btn.is-active .lm-nav-dot { background: rgba(167,139,250,.72); width:16px; }
+
+/* ══ Loader / empty ═════════════════════════════════════════════════════ */
+.lm-loading {
+  display:flex; flex-direction:column; gap:8px;
+}
+.lm-skel {
+  border-radius:18px; overflow:hidden;
+  background: linear-gradient(90deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.09) 50%, rgba(255,255,255,.05) 100%);
+  background-size: 200% 100%;
+  animation: lm-skel 1.6s ease-in-out infinite;
+}
+@keyframes lm-skel {
+  0%  { background-position:  100% 50%; }
+  100%{ background-position: -100% 50%; }
+}
+`;
+
+let _mobileCssInjected = false;
+function useMobileStyles() {
+  React.useEffect(() => {
+    if (_mobileCssInjected) return;
+    const el = document.createElement("style");
+    el.id = "ll-mobile-css"; el.textContent = MOBILE_CSS;
+    document.head.appendChild(el);
+    _mobileCssInjected = true;
+  }, []);
+}
+
+/* ─── utils ─────────────────────────────────────────────────────────── */
+function abs(apiBase: string, url: string | null): string | null {
   if (!url) return null;
   const u = String(url);
   if (u.startsWith("http://") || u.startsWith("https://")) return u;
@@ -17,1089 +572,358 @@ function absolutize(apiBase: string, url: string | null) {
   return u;
 }
 
-function fmtDuration(sec: number) {
-  sec = Math.max(0, Math.floor(Number(sec || 0)));
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  if (h) return `${h}:${String(mm).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return `${mm}:${String(s).padStart(2, "0")}`;
-}
+function fmtViewers(n: number) { return formatViewers(n); }
 
-function timeAgo(ms: number) {
-  const d = Date.now() - (Number(ms || 0) || 0);
-  const mins = Math.floor(d / 60000);
-  if (mins < 60) return `${mins} min`;
-  const h = Math.floor(mins / 60);
-  if (h < 24) return `${h} h`;
-  const days = Math.floor(h / 24);
-  return `${days} j`;
-}
+/* ─── Sous-composants ────────────────────────────────────────────────── */
 
-/**
- * ✅ Avatar EXACTEMENT comme desktop LivesPage.tsx :
- * - prend live.avatarUrl ou live.avatar_url
- * - absolutize(apiBase, ...)
- * - fallback svgThumb(displayName)
- * - onError => svgThumb(displayName)
- */
-function AvatarChip({
-  apiBase,
-  live,
-  size = 22,
-}: {
-  apiBase: string;
-  live: any;
-  size?: number;
-}) {
-  const name = String(live?.displayName ?? live?.slug ?? "Streamer");
-
-  const raw =
-    (live as any).avatarUrl != null
-      ? String((live as any).avatarUrl)
-      : (live as any).avatar_url != null
-      ? String((live as any).avatar_url)
-      : null;
-
-  const abs = raw ? absolutize(apiBase, raw) || raw : null;
-  const fallback = svgThumb(name);
-
-  return (
-    <span
-      style={{
-        width: size,
-        height: size,
-        borderRadius: Math.floor(size / 2),
-        border: "1px solid rgba(255,255,255,0.14)",
-        background: "rgba(0,0,0,0.28)",
-        overflow: "hidden",
-        display: "inline-grid",
-        placeItems: "center",
-        flex: "0 0 auto",
-      }}
-      title={name}
-    >
-      <img
-        src={abs || fallback}
-        alt=""
-        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-        onError={(e) => {
-          (e.currentTarget as HTMLImageElement).src = fallback;
-        }}
-      />
-    </span>
-  );
-}
-
-function Pill({
-  tone,
-  children,
-  title,
-}: {
-  tone: "neutral" | "live" | "brand" | "gold";
+/** Pill générique */
+function Pill({ tone, children, title }: {
+  tone: "live" | "neutral" | "gold" | "brand";
   children: React.ReactNode;
   title?: string;
 }) {
-  const map: Record<string, { bg: string; bd: string }> = {
-    brand: { bg: "rgba(140,90,255,0.14)", bd: "rgba(140,90,255,0.28)" },
-    live: { bg: "rgba(255,90,180,0.14)", bd: "rgba(255,90,180,0.26)" },
-    gold: { bg: "rgba(255,210,120,0.14)", bd: "rgba(255,210,120,0.28)" },
-    neutral: { bg: "rgba(255,255,255,0.06)", bd: "rgba(255,255,255,0.12)" },
-  };
-  const t = map[tone] ?? map.neutral;
-  return (
-    <span
-      title={title}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "7px 11px",
-        borderRadius: 999,
-        border: `1px solid ${t.bd}`,
-        background: t.bg,
-        fontSize: 12,
-        fontWeight: 1100,
-        whiteSpace: "nowrap",
-        backdropFilter: "blur(10px)",
-      }}
-    >
-      {children}
-    </span>
-  );
+  return <span className={`lm-pill lm-pill-${tone}`} title={title}>{children}</span>;
 }
 
-function GlassCard({
-  children,
-  style,
-  className,
-}: {
-  children: React.ReactNode;
-  style?: React.CSSProperties;
-  className?: string;
-}) {
+/** Avatar inline dans les cartes */
+function Ava({ apiBase, live }: { apiBase: string; live: any }) {
+  const name = String(live?.displayName ?? live?.slug ?? "S");
+  const raw  = live?.avatarUrl != null ? String(live.avatarUrl)
+             : live?.avatar_url != null ? String(live.avatar_url) : null;
+  const src  = abs(apiBase, raw) || svgThumb(name);
   return (
-    <div
-      className={className}
-      style={{
-        borderRadius: 20,
-        border: "1px solid rgba(255,255,255,0.10)",
-        background: "linear-gradient(180deg, rgba(255,255,255,0.07), rgba(0,0,0,0.10))",
-        boxShadow: "0 18px 55px rgba(0,0,0,0.28)",
-        backdropFilter: "blur(10px)",
-        ...style,
-      }}
-    >
-      {children}
+    <div className="lm-ava" aria-hidden>
+      <img src={src} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).src = svgThumb(name); }} />
     </div>
   );
 }
 
-function LiveBackdrop({ url }: { url: string }) {
+/** Fond de thumbnail (image + overlay) */
+function ThumbBg({ url }: { url: string }) {
   return (
     <>
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          backgroundImage: `url(${url})`,
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "center",
-          backgroundSize: "cover",
-          opacity: 0.92,
-          filter: "contrast(1.06) saturate(1.18) brightness(1.02)",
-          transform: "scale(1.03)",
-          pointerEvents: "none",
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "linear-gradient(90deg, rgba(0,0,0,0.55), rgba(0,0,0,0.14) 55%, rgba(0,0,0,0.62)), radial-gradient(700px 320px at 50% 0%, rgba(255,255,255,0.06), rgba(0,0,0,0) 60%)",
-          pointerEvents: "none",
-        }}
-      />
+      <div className="lm-thumb-bg" style={{ backgroundImage: `url(${url})` }} aria-hidden />
+      <div aria-hidden style={{
+        position:"absolute", inset:0,
+        background: "linear-gradient(90deg, rgba(0,0,0,.55), rgba(0,0,0,.14) 55%, rgba(0,0,0,.60)), radial-gradient(600px 280px at 50% 0%, rgba(255,255,255,.06), rgba(0,0,0,0) 60%)",
+        pointerEvents:"none",
+      }} />
     </>
   );
 }
 
-function Sheet({
-  title,
-  onClose,
-  children,
-  zIndex,
-}: {
-  title?: string;
-  onClose: () => void;
-  children: React.ReactNode;
-  zIndex: number;
-}) {
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div className="mSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex, alignItems: "end" }}>
-      <div
-        className="mSheet"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title || "Menu"}
-      >
-        <div className="mSheetTop">
-          <div style={{ fontWeight: 1250, letterSpacing: -0.2 }}>{title || "Menu"}</div>
-          <button className="mIconBtn" onClick={onClose} type="button" aria-label="Fermer">
-            ✕
-          </button>
-        </div>
-        <div className="mSheetBody">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function Section({
-  title,
-  right,
-  defaultOpen,
-  children,
-}: {
-  title: string;
-  right?: React.ReactNode;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = React.useState(!!defaultOpen);
-  return (
-    <div className="mAcc">
-      <button type="button" className="mAccBtn" onClick={() => setOpen((v) => !v)}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-          <span className="mChevron" aria-hidden style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)" }}>
-            ▸
-          </span>
-          <span style={{ fontWeight: 1200, letterSpacing: -0.2 }}>{title}</span>
-        </span>
-        <span style={{ opacity: 0.85 }}>{right}</span>
-      </button>
-      {open ? <div className="mAccBody">{children}</div> : null}
-    </div>
-  );
-}
-
-type Routes = {
-  lives?: string;
-  browse?: string;
-  dashboard?: string;
-  profile?: string;
-  report?: string;
-  connections?: string;
-};
-
-export default function LivesPageMobile(props: {
+/* ─── LiveCard ─────────────────────────────────────────────────────── */
+function LiveCard({ live, apiBase, featured }: {
+  live: LiveCardVM & { followersCount?: number; avatarUrl?: string | null };
   apiBase: string;
+  featured?: boolean;
+}) {
+  const name      = String(live.displayName || live.slug || "Streamer");
+  const viewers   = Number((live as any).viewers || 0);
+  const followers = Number((live as any).followersCount || 0);
 
+  return (
+    <Link to={`/s/${live.slug}`} className="lm-card-link" aria-label={`Voir le live de ${name}`}>
+      <div className={`lm-card${featured ? " lm-card-featured" : ""}`}>
+        {/* Thumbnail */}
+        <div className="lm-thumb">
+          <ThumbBg url={live.thumbFinal} />
+          <div className="lm-thumb-top">
+            {featured
+              ? <Pill tone="gold" title="Mise en avant">✨ FEAT.</Pill>
+              : <Pill tone="live" title="En direct"><span className="lm-ping" aria-hidden />LIVE</Pill>
+            }
+            {live.durationLabel ? <Pill tone="neutral">⏱ {live.durationLabel}</Pill> : <span />}
+          </div>
+          <div className="lm-thumb-bottom">
+            <Pill tone="neutral" title="Viewers">👁 {fmtViewers(viewers)}</Pill>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="lm-card-body">
+          <div className="lm-card-row">
+            <Ava apiBase={apiBase} live={live} />
+            <div className="lm-card-name" title={name}>{name}</div>
+            <div className="lm-card-viewers">👁 {fmtViewers(viewers)}</div>
+          </div>
+          {live.title ? (
+            <div className="lm-card-title" title={live.title}>{live.title}</div>
+          ) : null}
+          {followers > 0 ? (
+            <div className="lm-card-follow">{fmtViewers(followers)} followers</div>
+          ) : null}
+          <div className="lm-card-divider" aria-hidden />
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+/* ─── Skeleton (loading) ────────────────────────────────────────────── */
+function SkeletonGrid() {
+  return (
+    <div className="lm-grid">
+      {[0,1,2,3].map((i) => (
+        <div key={i} className="lm-skel" style={{ height: 190, animationDelay: `${i * 120}ms` }} />
+      ))}
+    </div>
+  );
+}
+
+/* ─── ClipTile ──────────────────────────────────────────────────────── */
+const CORNERS = ["tl","tr","bl","br"] as const;
+
+function ClipTile({ clip, apiBase, idx, onClick }: {
+  clip: ClipVM;
+  apiBase: string;
+  idx: number;
+  onClick: () => void;
+}) {
+  const raw   = clip.thumbUrl ? abs(apiBase, clip.thumbUrl) || clip.thumbUrl : null;
+  const thumb = raw || svgThumb(clip.streamerName || clip.streamerSlug || "Clip");
+  const corner = CORNERS[idx % 4] ?? "tl";
+
+  return (
+    <button type="button" className="lm-clip-tile" onClick={onClick}
+      title={clip.title ? `${clip.title} — ❤️ ${clip.likesCount}` : `❤️ ${clip.likesCount}`}>
+      <div className="lm-clip-bg" style={{ backgroundImage: `url(${thumb})` }} aria-hidden />
+      {/* Bouton play */}
+      <div className="lm-clip-play" aria-hidden>
+        <div className="lm-clip-play-btn">▶</div>
+      </div>
+      {/* Badge likes */}
+      <span className={`lm-clip-badge lm-clip-badge-${corner}`}>❤️ {clip.likesCount}</span>
+      {/* Avatar streamer centré */}
+      {clip.avatarUrl ? (
+        <div className="lm-clip-ava" aria-hidden>
+          <img src={abs(apiBase, clip.avatarUrl) || clip.avatarUrl} alt=""
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+        </div>
+      ) : null}
+    </button>
+  );
+}
+
+/* ─── Types ─────────────────────────────────────────────────────────── */
+type NavTab = "lives" | "clips" | "rewards";
+
+type Props = {
+  apiBase: string;
   lives: LiveCardVM[];
   loading: boolean;
   refreshing: boolean;
   err: string | null;
-
   totals: { liveCount: number; viewersTotal: number };
   featuredLives: LiveCardVM[];
-  normalLives: LiveCardVM[];
-
-  clipsTop4: ClipVM[];
-  clipsTotal: number;
-  clipsLoading: boolean;
+  normalLives:   LiveCardVM[];
+  clipsTop4:     ClipVM[];
+  clipsTotal:    number;
+  clipsLoading:  boolean;
   extraClipsCount: number;
-  hasMoreThan4: boolean;
-
+  hasMoreThan4:  boolean;
   onOpenMonthList: () => void;
   onOpenClip: (c: ClipVM) => void;
-
-  routes?: Routes;
+  routes?: { lives?: string; browse?: string; dashboard?: string; profile?: string };
   me?: { username?: string | null; avatarUrl?: string | null } | null;
-}) {
+};
+
+/* ─── Composant principal ───────────────────────────────────────────── */
+export default function LivesPageMobile(props: Props) {
+  useMobileStyles();
+
   const {
-    apiBase,
-    lives,
-    loading,
-    refreshing,
-    err,
-    totals,
-    featuredLives,
-    normalLives,
-    clipsTop4,
-    clipsTotal,
-    clipsLoading,
-    extraClipsCount,
-    hasMoreThan4,
-    onOpenMonthList,
-    onOpenClip,
-    routes,
-    me,
+    apiBase, lives, loading, refreshing, err,
+    totals, featuredLives, normalLives,
+    clipsTop4, clipsTotal, clipsLoading, extraClipsCount, hasMoreThan4,
+    onOpenMonthList, onOpenClip,
   } = props;
 
-  const r: Required<Routes> = {
-    lives: routes?.lives ?? "/",
-    browse: routes?.browse ?? "/browse",
-    dashboard: routes?.dashboard ?? "/dashboard",
-    profile: routes?.profile ?? "/me",
-    report: routes?.report ?? "/report",
-    connections: routes?.connections ?? "/connections",
-  };
+  const [tab, setTab] = React.useState<NavTab>("lives");
 
-  const [openMenu, setOpenMenu] = React.useState(false);
+  // Scroll to top quand on change d'onglet
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [tab]);
 
   const canShowGrid = !(loading && lives.length === 0);
 
-  // --- Clips UI helpers
-  const clipsTop3 = React.useMemo(() => clipsTop4.slice(0, 3), [clipsTop4]);
-  const clipBig = clipsTop3[0] ?? null;
-  const clipSm1 = clipsTop3[1] ?? null;
-  const clipSm2 = clipsTop3[2] ?? null;
-
-  function onPickClipFromGrid(c: ClipVM | null) {
-    if (!c) return;
-    if (hasMoreThan4) onOpenMonthList();
-    else onOpenClip(c);
+  /* ─ clip click ─ */
+  function handleClipClick(c: ClipVM) {
+    if (hasMoreThan4) { onOpenMonthList(); return; }
+    onOpenClip(c);
   }
 
-  function clipThumb(c: ClipVM) {
-    const raw = c.thumbUrl ? absolutize(apiBase, c.thumbUrl) || c.thumbUrl : null;
-    return raw || svgThumb(c.streamerName || c.streamerSlug || "Clip");
-  }
-
-  function clipWho(c: ClipVM) {
-    return c.streamerName || c.streamerSlug || "Streamer";
-  }
-
-  function clipLikes(c: ClipVM) {
-    return Number((c as any).likesCount ?? 0) || 0;
-  }
-
-  return (
-    <main className="container livesMobile">
-      <style>{`
-        .livesMobile{ position:relative; padding-bottom: calc(26px + env(safe-area-inset-bottom)); }
-        .livesMobile::before{
-          content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
-          background:
-            radial-gradient(900px 360px at 18% 0%, rgba(255,90,180,0.22), rgba(0,0,0,0) 62%),
-            radial-gradient(900px 420px at 80% 10%, rgba(80,160,255,0.22), rgba(0,0,0,0) 62%),
-            radial-gradient(900px 520px at 50% 95%, rgba(140,90,255,0.22), rgba(0,0,0,0) 64%),
-            linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.10));
-        }
-
-        .mWrap{
-          position:relative; z-index:1;
-          border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0.10));
-          box-shadow: 0 20px 70px rgba(0,0,0,0.32);
-          backdrop-filter: blur(10px);
-          padding: 12px;
-          overflow:hidden;
-        }
-
-        /* --- Clips hero (au-dessus de Lives) --- */
-        .mClipsCard{
-          border-radius: 22px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background:
-            radial-gradient(700px 240px at 20% 0%, rgba(255,90,180,0.16), rgba(0,0,0,0) 60%),
-            radial-gradient(700px 240px at 90% 20%, rgba(80,160,255,0.14), rgba(0,0,0,0) 62%),
-            linear-gradient(180deg, rgba(255,255,255,0.07), rgba(0,0,0,0.14));
-          box-shadow: 0 20px 65px rgba(0,0,0,0.35);
-          overflow:hidden;
-        }
-        .mClipsTop{
-          display:flex; align-items:center; justify-content:space-between; gap:10px;
-          padding: 12px 12px 10px;
-        }
-        .mClipsTitle{
-          display:flex; align-items:baseline; gap:10px; min-width:0;
-          font-weight: 1300; letter-spacing:-0.2px;
-        }
-        .mClipsTitle span{ white-space:nowrap; }
-        .mClipsCount{
-          font-size: 12px; opacity: 0.8; font-weight: 1000; white-space: nowrap;
-          padding: 6px 10px; border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(0,0,0,0.25);
-          backdrop-filter: blur(10px);
-        }
-        .mClipsBtn{
-          display:inline-flex; align-items:center; justify-content:center;
-          padding: 10px 12px;
-          border-radius: 16px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(255,255,255,0.06);
-          color: rgba(255,255,255,0.92);
-          font-weight: 1150;
-          cursor:pointer;
-          text-decoration:none;
-          min-height: 40px;
-          white-space: nowrap;
-        }
-        .mClipsBtn:active{ transform: translateY(1px); }
-
-        .mClipsLayout{
-          padding: 0 12px 12px;
-          display:grid;
-          grid-template-columns: 1.35fr 1fr;
-          gap: 10px;
-        }
-        @media (max-width: 380px){
-          .mClipsLayout{ grid-template-columns: 1fr; }
-        }
-
-        .mClipBig, .mClipSm{
-          position: relative;
-          overflow: hidden;
-          border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(0,0,0,0.18);
-          cursor: pointer;
-          padding: 0;
-        }
-        .mClipBig{ min-height: 180px; }
-        .mClipSm{ min-height: 86px; border-radius: 16px; }
-
-        .mClipBg{
-          position:absolute; inset:0;
-          background-position:center; background-size:cover; background-repeat:no-repeat;
-          opacity: 0.92;
-          transform: scale(1.03);
-          filter: contrast(1.05) saturate(1.15);
-        }
-        .mClipOverlay{
-          position:absolute; inset:0;
-          background:
-            radial-gradient(520px 200px at 30% 0%, rgba(255,90,180,0.18), rgba(0,0,0,0) 62%),
-            radial-gradient(520px 200px at 95% 20%, rgba(80,160,255,0.14), rgba(0,0,0,0) 60%),
-            linear-gradient(180deg, rgba(0,0,0,0.08), rgba(0,0,0,0.55));
-          pointer-events:none;
-        }
-        .mClipTopBadges{
-          position:absolute; top:10px; left:10px; right:10px;
-          display:flex; justify-content:space-between; align-items:center; gap:10px;
-          pointer-events:none;
-        }
-        .mClipBadge{
-          display:inline-flex; align-items:center; gap:6px;
-          padding: 6px 10px;
-          border-radius: 999px;
-          background: rgba(0,0,0,0.52);
-          border: 1px solid rgba(255,255,255,0.12);
-          backdrop-filter: blur(10px);
-          font-weight: 1100;
-          font-size: 12px;
-          white-space: nowrap;
-        }
-        .mClipPlay{
-          width: 44px; height: 44px;
-          border-radius: 16px;
-          display:grid; place-items:center;
-          background: rgba(0,0,0,0.55);
-          border: 1px solid rgba(255,255,255,0.12);
-          backdrop-filter: blur(10px);
-          box-shadow: 0 16px 45px rgba(0,0,0,0.35);
-          pointer-events:none;
-        }
-        .mClipBottom{
-          position:absolute; left:12px; right:12px; bottom:12px;
-          display:grid; gap:4px;
-          pointer-events:none;
-        }
-        .mClipName{
-          font-weight: 1250;
-          letter-spacing: -0.2px;
-          font-size: 12px;
-          opacity: 0.95;
-          display:-webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-          overflow:hidden;
-        }
-        .mClipMeta{
-          font-size: 12px;
-          opacity: 0.78;
-          font-weight: 950;
-          overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-          display:flex; gap:8px; align-items:center; flex-wrap:wrap;
-        }
-
-        .mClipsRightCol{ display:grid; gap:10px; }
-        .mClipsFooter{
-          padding: 0 12px 12px;
-          display:flex; align-items:center; justify-content:space-between; gap:10px;
-        }
-        .mClipsFooterNote{
-          font-size: 12px;
-          opacity: 0.80;
-          font-weight: 950;
-          display:flex; align-items:center; gap:8px;
-        }
-
-        /* --- Banner Lives (sous les clips) --- */
-        .mBanner{
-          margin-top: 12px;
-          padding: 12px 12px;
-          border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background:
-            radial-gradient(900px 320px at 20% 0%, rgba(140,90,255,0.18), rgba(0,0,0,0) 60%),
-            linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.12));
-          box-shadow: 0 18px 55px rgba(0,0,0,0.25);
-          backdrop-filter: blur(10px);
-          display:flex; justify-content:space-between; align-items:center; gap:12px;
-        }
-        .mBannerLeft{ min-width:0; }
-        .mH1{
-          margin:0; font-weight:1500; letter-spacing:-0.6px; font-size: 26px; line-height:1.05;
-          background: linear-gradient(90deg, rgba(255,90,180,1), rgba(180,140,255,1), rgba(80,160,255,1));
-          -webkit-background-clip:text; background-clip:text; color:transparent;
-          filter: drop-shadow(0 10px 24px rgba(0,0,0,0.35));
-        }
-        .mSub{
-          margin-top:6px; font-size:12px; opacity:0.82; font-weight:900; display:flex; gap:10px; flex-wrap:wrap;
-        }
-        .mStats{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
-        .mPing{
-          width:8px; height:8px; border-radius:999px;
-          background: rgba(255,90,180,0.95);
-          box-shadow: 0 0 0 6px rgba(255,90,180,0.14);
-          display:inline-block;
-        }
-
-        .mSectionTop{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin: 14px 2px 10px; }
-        .mSectionTop h2{ margin:0; font-size: 12px; font-weight: 1300; text-transform: uppercase; opacity:0.92; letter-spacing:-0.2px; }
-        .mHint{ font-size:12px; opacity:0.72; font-weight:900; }
-
-        .mGrid{ display:grid; gap:10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        @media (max-width: 380px){ .mGrid{ grid-template-columns: 1fr; } }
-
-        .mCardLink{ text-decoration:none; color:inherit; display:block; }
-        .mThumb{
-          position:relative; overflow:hidden;
-          border-radius: 16px;
-          min-height: 116px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(0,0,0,0.18);
-        }
-        .mTopRow{
-          position:absolute; top:10px; left:10px; right:10px;
-          display:flex; justify-content:space-between; align-items:center; gap:10px;
-          pointer-events:none;
-        }
-        .mMeta{ padding: 10px 8px 8px; display:grid; gap:6px; }
-        .mMetaTop{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; min-width:0; }
-        .mName{
-          font-weight: 1200; letter-spacing:-0.2px; font-size: 13px;
-          overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;
-        }
-        .mViewers{ font-size:12px; font-weight:1100; opacity:0.92; white-space:nowrap; }
-        .mTitle{
-          font-weight: 900; font-size: 12px; line-height:1.25; opacity:0.92;
-          display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
-          min-height: 30px;
-        }
-
-        /* ✅ FAB: plus "3 points" + plus bas pour être atteignable */
-        .mFab{
-          position:fixed; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
-          z-index: 60;
-          width: 56px; height: 56px; border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(20,20,26,0.72);
-          color: rgba(255,255,255,0.95);
-          backdrop-filter: blur(12px);
-          box-shadow: 0 18px 55px rgba(0,0,0,0.45);
-          cursor:pointer;
-          font-size: 20px; font-weight: 1200;
-        }
-        .mFab:active{ transform: translateY(1px); }
-
-        /* Sheet */
-        .mSheetBackdrop{
-          position: fixed; inset: 0;
-          background: rgba(0,0,0,0.62);
-          display: grid;
-          padding: 14px;
-          backdrop-filter: blur(10px);
-        }
-        .mSheet{
-          width: min(720px, 100%);
-          max-height: min(92vh, 860px);
-          overflow: hidden;
-          border-top-left-radius: 18px;
-          border-top-right-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: linear-gradient(180deg, rgba(30,30,40,0.90), rgba(10,10,14,0.94));
-          box-shadow: 0 30px 90px rgba(0,0,0,0.55);
-        }
-        .mSheetTop{
-          display:flex;
-          justify-content: space-betweenedesktop LivesPage.tsx
-          align-items: center;
-          padding: 12px 14px;
-          border-bottom: 1px solid rgba(255,255,255,0.08);
-        }
-        .mSheetBody{
-          overflow: auto;
-          max-height: calc(92vh - 60px);
-          padding: 12px;
-          padding-bottom: calc(18px + env(safe-area-inset-bottom));
-        }
-        .mIconBtn{
-          width: 34px;
-          height: 34px;
-          border-radius: 12px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(255,255,255,0.05);
-          color: rgba(255,255,255,0.92);
-          cursor: pointer;
-          font-weight: 1100;
-        }
-
-        /* Menu items */
-        .mMenuGrid{ display:grid; gap:10px; }
-        .mMenuRow{ display:flex; gap:10px; }
-        .mMenuBtn{
-          flex:1;
-          display:flex; align-items:center; justify-content:space-between; gap:10px;
-          padding: 12px 12px;
-          border-radius: 16px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(255,255,255,0.05);
-          color: rgba(255,255,255,0.92);
-          text-decoration: none;
-          font-weight: 1150;
-          cursor:pointer;
-        }
-        .mMenuBtn:active{ transform: translateY(1px); }
-        .mMenuLeft{ display:inline-flex; align-items:center; gap:10px; min-width:0; }
-        .mMenuLabel{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .mMenuMeta{ font-size: 12px; opacity: 0.82; font-weight: 1000; white-space:nowrap; }
-
-        /* Accordion */
-        .mAcc{
-          border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(255,255,255,0.04);
-          overflow: hidden;
-        }
-        .mAccBtn{
-          width:100%;
-          display:flex; align-items:center; justify-content:space-between; gap:12px;
-          padding: 12px 12px;
-          background: transparent;
-          border: 0;
-          color: rgba(255,255,255,0.92);
-          cursor:pointer;
-        }
-        .mChevron{
-          width: 18px; height: 18px;
-          display:inline-grid; place-items:center;
-          opacity: 0.9;
-          transition: transform 140ms ease;
-        }
-        .mAccBody{
-          padding: 12px;
-          border-top: 1px solid rgba(255,255,255,0.08);
-        }
-
-        /* Profile mini */
-        .mMeRow{
-          display:flex; align-items:center; gap:10px;
-          padding: 12px;
-          border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(255,255,255,0.04);
-        }
-        .mMeAva{
-          width: 44px; height: 44px; border-radius: 16px; overflow:hidden;
-          border: 1px solid rgba(255,255,255,0.14);
-          background: rgba(0,0,0,0.35);
-          flex: 0 0 auto;
-        }
-        .mMeAva img{ width:100%; height:100%; object-fit:cover; display:block; }
-        .mMeName{
-          font-weight: 1250;
-          letter-spacing: -0.2px;
-          overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-        }
-        .mMeActions{ display:flex; gap:10px; margin-top:10px; }
-      `}</style>
-
-      <div className="mWrap">
-        {/* ✅ CLIPS (AU-DESSUS DE TOUT) */}
-        <div className="mClipsCard">
-          <div className="mClipsTop">
-            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              <div className="mClipsTitle" style={{ minWidth: 0 }}>
-                <span style={{ opacity: 0.9 }}>🎬</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>Clips du mois</span>
-              </div>
-              <div className="mClipsCount" title="Nombre de clips du mois">
-                {clipsLoading ? "…" : `${clipsTotal || 0} clip(s)`}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className="mClipsBtn"
-              onClick={() => onOpenMonthList()}
-              aria-label="Voir tous les clips du mois"
-              title="Voir tous les clips du mois"
-            >
-              Voir tout
-            </button>
+  /* ═══════════════════════════════════════
+     TABS CONTENT
+  ═══════════════════════════════════════ */
+  const TabLives = (
+    <>
+      {/* Featured */}
+      {featuredLives.length > 0 && (
+        <div>
+          <div className="lm-section-head">
+            <h2 className="lm-section-title">✨ Mise en avant</h2>
+            <span className="lm-section-hint">{featuredLives.length}</span>
           </div>
+          <div className="lm-grid">
+            {featuredLives.map((live) => (
+              <LiveCard key={live.id} live={live as any} apiBase={apiBase} featured />
+            ))}
+          </div>
+        </div>
+      )}
 
-          {clipsTop4.length === 0 ? (
-            <div style={{ padding: "0 12px 12px" }}>
-              <div className="mutedSmall" style={{ opacity: 0.85 }}>
-                {clipsLoading ? "Chargement…" : "Aucun clip pour le moment."}
-              </div>
+      {/* Normal lives */}
+      <div>
+        <div className="lm-section-head">
+          <h2 className="lm-section-title">🔴 En direct</h2>
+          <span className="lm-section-hint">{normalLives.length}</span>
+        </div>
+        {!canShowGrid
+          ? <SkeletonGrid />
+          : normalLives.length === 0 && !loading ? (
+            <div style={{ padding:"20px 4px", fontSize:12, color:"rgba(167,155,220,.45)", fontFamily:"'Syne',system-ui,sans-serif", fontWeight:500 }}>
+              Aucun live en ce moment.
             </div>
           ) : (
-            <>
-              <div className="mClipsLayout">
-                {/* Big left */}
-                {clipBig ? (
-                  <button
-                    type="button"
-                    className="mClipBig"
-                    onClick={() => onPickClipFromGrid(clipBig)}
-                    style={{ border: 0, background: "transparent", textAlign: "left" }}
-                    title={clipBig.title || "Clip"}
-                  >
-                    <div className="mClipBg" style={{ backgroundImage: `url(${clipThumb(clipBig)})` }} />
-                    <div className="mClipOverlay" aria-hidden />
-                    <div className="mClipTopBadges">
-                      <span className="mClipBadge" title="Likes">
-                        ❤️ {clipLikes(clipBig)}
-                      </span>
-                      <span className="mClipPlay" aria-hidden>
-                        ▶
-                      </span>
-                    </div>
-                    <div className="mClipBottom">
-                      <div className="mClipName">{clipBig.title || "(sans titre)"}</div>
-                      <div className="mClipMeta">
-                        <span style={{ opacity: 0.92 }}>{clipWho(clipBig)}</span>
-                        <span style={{ opacity: 0.8 }}>•</span>
-                        <span>{fmtDuration(clipBig.durationSec)}</span>
-                        <span style={{ opacity: 0.8 }}>•</span>
-                        <span>{timeAgo(clipBig.createdAtMs)}</span>
-                      </div>
-                    </div>
-                  </button>
-                ) : (
-                  <div />
-                )}
-
-                {/* Right column (2 small) */}
-                <div className="mClipsRightCol">
-                  {[clipSm1, clipSm2].map((c, idx) => {
-                    if (!c) {
-                      return (
-                        <div
-                          key={`empty-${idx}`}
-                          className="mClipSm"
-                          style={{
-                            opacity: 0.25,
-                            display: "grid",
-                            placeItems: "center",
-                            pointerEvents: "none",
-                          }}
-                        >
-                          <span className="mutedSmall">—</span>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className="mClipSm"
-                        onClick={() => onPickClipFromGrid(c)}
-                        style={{ border: 0, background: "transparent", textAlign: "left" }}
-                        title={c.title || "Clip"}
-                      >
-                        <div className="mClipBg" style={{ backgroundImage: `url(${clipThumb(c)})` }} />
-                        <div className="mClipOverlay" aria-hidden style={{ opacity: 0.9 }} />
-                        <div className="mClipTopBadges">
-                          <span className="mClipBadge" title="Likes">
-                            ❤️ {clipLikes(c)}
-                          </span>
-                          <span className="mClipBadge" title="Durée">
-                            ⏱ {fmtDuration(c.durationSec)}
-                          </span>
-                        </div>
-                        <div className="mClipBottom" style={{ bottom: 10, left: 10, right: 10 }}>
-                          <div className="mClipName" style={{ fontSize: 12, WebkitLineClamp: 1 as any }}>
-                            {c.title || "(sans titre)"}
-                          </div>
-                          <div className="mClipMeta" style={{ gap: 6 }}>
-                            <span style={{ opacity: 0.92 }}>{clipWho(c)}</span>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="mClipsFooter">
-                <div className="mClipsFooterNote">
-                  {extraClipsCount > 0 ? (
-                    <>
-                      <span style={{ opacity: 0.9 }}>＋{extraClipsCount}</span>
-                      <span style={{ opacity: 0.8 }}>autre(s) clip(s)</span>
-                    </>
-                  ) : (
-                    <span style={{ opacity: 0.8 }}>Top du mois • tri par ❤️</span>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  className="mClipsBtn"
-                  onClick={() => onOpenMonthList()}
-                  style={{ padding: "10px 12px" }}
-                  title="Ouvrir la liste des clips du mois"
-                >
-                  Ouvrir ▶
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* ✅ BANNIÈRE LIVES (SOUS LES CLIPS) */}
-        <div className="mBanner">
-          <div className="mBannerLeft">
-            <h1 className="mH1">Lives</h1>
-            <div className="mSub">
-              <span>Plateforme casino FR</span>
-              {refreshing ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                  <span className="mPing" aria-hidden /> refresh
-                </span>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="mStats">
-            <Pill tone="live" title="Lives en direct">
-              🔴 <b>{totals.liveCount}</b>
-            </Pill>
-            <Pill tone="neutral" title="Viewers total">
-              👁 <b>{formatViewers(totals.viewersTotal)}</b>
-            </Pill>
-          </div>
-        </div>
-
-        {err ? (
-          <div className="alert" style={{ marginTop: 12 }}>
-            {err}
-          </div>
-        ) : null}
-
-        {featuredLives.length > 0 ? (
-          <>
-            <div className="mSectionTop">
-              <h2>✨ Mise en avant</h2>
-              <div className="mHint">{featuredLives.length}</div>
-            </div>
-
-            <section className="mGrid">
-              {featuredLives.map((live) => (
-                <Link key={live.id} to={`/s/${live.slug}`} className="mCardLink">
-                  <GlassCard
-                    style={{
-                      padding: 10,
-                      border: "1px solid rgba(255,210,120,0.28)",
-                      background:
-                        "radial-gradient(700px 220px at 20% 0%, rgba(255,210,120,0.14), rgba(0,0,0,0) 60%), linear-gradient(180deg, rgba(255,255,255,0.07), rgba(0,0,0,0.10))",
-                    }}
-                  >
-                    <div className="mThumb" style={{ borderColor: "rgba(255,210,120,0.18)" }}>
-                      <LiveBackdrop url={(live as any).thumbFinal} />
-                      <div className="mTopRow">
-                        <Pill tone="gold" title="Featured">
-                          ✨
-                        </Pill>
-                        {(live as any).durationLabel ? (
-                          <Pill tone="neutral" title="Durée">
-                            ⏱ {(live as any).durationLabel}
-                          </Pill>
-                        ) : (
-                          <span />
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mMeta">
-                      <div className="mMetaTop">
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                          <AvatarChip apiBase={apiBase} live={live} size={22} />
-                          <div className="mName" title={(live as any).displayName} style={{ minWidth: 0 }}>
-                            {(live as any).displayName}
-                          </div>
-                        </div>
-
-                        <div className="mViewers" title="Viewers">
-                          👁 {formatViewers(Number((live as any).viewers || 0))}
-                        </div>
-                      </div>
-                      <div className="mTitle" title={(live as any).title || ""}>
-                        {(live as any).title || "—"}
-                      </div>
-                    </div>
-                  </GlassCard>
-                </Link>
+            <div className="lm-grid">
+              {normalLives.map((live) => (
+                <LiveCard key={live.id} live={live as any} apiBase={apiBase} />
               ))}
-            </section>
-          </>
-        ) : null}
+            </div>
+          )
+        }
+      </div>
+    </>
+  );
 
-        <div className="mSectionTop">
-          <h2>🔴 En direct</h2>
-          <div className="mHint">{normalLives.length}</div>
+  const TabClips = (
+    <div className="lm-clips-card">
+      {/* Header */}
+      <div className="lm-clips-header">
+        <div>
+          <h2 className="lm-clips-title">
+            <span style={{ fontSize:15 }}>🎬</span>
+            Clips du mois
+          </h2>
         </div>
-
-        {!canShowGrid ? (
-          <div className="mutedSmall" style={{ opacity: 0.85 }}>
-            Chargement…
-          </div>
-        ) : (
-          <section className="mGrid">
-            {normalLives.map((live) => (
-              <Link key={live.id} to={`/s/${live.slug}`} className="mCardLink">
-                <GlassCard
-                  style={{
-                    padding: 10,
-                    border: "1px solid rgba(255,90,180,0.18)",
-                    background:
-                      "radial-gradient(700px 220px at 20% 0%, rgba(255,90,180,0.14), rgba(0,0,0,0) 60%), linear-gradient(180deg, rgba(255,255,255,0.07), rgba(0,0,0,0.10))",
-                  }}
-                >
-                  <div className="mThumb">
-                    <LiveBackdrop url={(live as any).thumbFinal} />
-                    <div className="mTopRow">
-                      <Pill tone="live" title="En direct">
-                        🔴 LIVE
-                      </Pill>
-                      {(live as any).durationLabel ? (
-                        <Pill tone="neutral" title="Durée">
-                          ⏱ {(live as any).durationLabel}
-                        </Pill>
-                      ) : (
-                        <span />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mMeta">
-                    <div className="mMetaTop">
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                        <AvatarChip apiBase={apiBase} live={live} size={22} />
-                        <div className="mName" title={(live as any).displayName} style={{ minWidth: 0 }}>
-                          {(live as any).displayName}
-                        </div>
-                      </div>
-
-                      <div className="mViewers" title="Viewers">
-                        👁 {formatViewers(Number((live as any).viewers || 0))}
-                      </div>
-                    </div>
-                    <div className="mTitle" title={(live as any).title || ""}>
-                      {(live as any).title || "—"}
-                    </div>
-                  </div>
-                </GlassCard>
-              </Link>
-            ))}
-          </section>
+        {!clipsLoading && clipsTotal > 0 && (
+          <span className="lm-clips-count">{clipsTotal} clips</span>
         )}
       </div>
 
-      {/* ✅ Floating "3 dots" menu */}
-      <button className="mFab" type="button" onClick={() => setOpenMenu(true)} aria-label="Ouvrir le menu">
-        ⋯
-      </button>
-
-      {openMenu ? (
-        <Sheet title="Menu" onClose={() => setOpenMenu(false)} zIndex={78}>
-          <div className="mMenuGrid">
-            {/* ✅ Quick nav */}
-            <div className="mMenuRow">
-              <Link to={r.lives} className="mMenuBtn" onClick={() => setOpenMenu(false)} aria-label="Aller à Lives">
-                <span className="mMenuLeft">
-                  <span aria-hidden>🔴</span>
-                  <span className="mMenuLabel">Lives</span>
-                </span>
-                <span className="mMenuMeta">{totals.liveCount}</span>
-              </Link>
-
-              <Link to={r.browse} className="mMenuBtn" onClick={() => setOpenMenu(false)} aria-label="Aller à Browse">
-                <span className="mMenuLeft">
-                  <span aria-hidden>🧭</span>
-                  <span className="mMenuLabel">Browse</span>
-                </span>
-                <span className="mMenuMeta">▶</span>
-              </Link>
-            </div>
-
-            {/* ✅ Economy inside accordion */}
-            <Section title="Récompenses" right={<span style={{ opacity: 0.8 }}>Wheel • Bonus</span>} defaultOpen>
-              <div style={{ display: "grid", gap: 12 }}>
-                <DailyWheelCard />
-                <DailyBonusAccessCard />
-              </div>
-            </Section>
-
-            {/* ✅ Profil accessible */}
-            <Section title="Mon compte" right={<span style={{ opacity: 0.8 }}>Profil • Dashboard</span>} defaultOpen>
-              <div className="mMeRow">
-                <div className="mMeAva" aria-hidden>
-                  {me?.avatarUrl ? (
-                    <img
-                      src={absolutize(apiBase, me.avatarUrl) || me.avatarUrl || ""}
-                      alt=""
-                      onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
-                    />
-                  ) : null}
+      {/* Grille 2×2 */}
+      {clipsTop4.length === 0 ? (
+        <div style={{ padding:"8px 14px 14px", fontSize:12, color:"rgba(167,155,220,.45)", fontFamily:"'Syne',system-ui,sans-serif", fontWeight:500 }}>
+          {clipsLoading ? "Chargement…" : "Aucun clip pour le moment."}
+        </div>
+      ) : (
+        <>
+          <div className="lm-clips-grid">
+            {clipsTop4.map((c, idx) => (
+              <ClipTile key={c.id} clip={c} apiBase={apiBase} idx={idx} onClick={() => handleClipClick(c)} />
+            ))}
+            {extraClipsCount > 0 && <div className="lm-clips-cross" aria-hidden />}
+            {extraClipsCount > 0 && (
+              <button type="button" className="lm-clips-more-overlay" onClick={onOpenMonthList} title="Voir tous les clips">
+                <div className="lm-clips-more-bubble">
+                  <strong>+{extraClipsCount}</strong> clips
                 </div>
-                <div style={{ minWidth: 0 }}>
-                  <div className="mMeName">{me?.username || "Profil"}</div>
-                  <div className="mutedSmall" style={{ opacity: 0.78, marginTop: 2 }}>
-                    Options • connexions • support
-                  </div>
-
-                  <div className="mMeActions">
-                    <Link
-                      to={r.profile}
-                      className="mMenuBtn"
-                      style={{ padding: "10px 12px", borderRadius: 16 }}
-                      onClick={() => setOpenMenu(false)}
-                    >
-                      <span className="mMenuLeft">
-                        <span aria-hidden>👤</span>
-                        <span className="mMenuLabel">Profil</span>
-                      </span>
-                      <span className="mMenuMeta">▶</span>
-                    </Link>
-
-                    <Link
-                      to={r.dashboard}
-                      className="mMenuBtn"
-                      style={{ padding: "10px 12px", borderRadius: 16 }}
-                      onClick={() => setOpenMenu(false)}
-                    >
-                      <span className="mMenuLeft">
-                        <span aria-hidden>🧩</span>
-                        <span className="mMenuLabel">Dashboard</span>
-                      </span>
-                      <span className="mMenuMeta">▶</span>
-                    </Link>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                <Link to={r.connections} className="mMenuBtn" onClick={() => setOpenMenu(false)}>
-                  <span className="mMenuLeft">
-                    <span aria-hidden>🔗</span>
-                    <span className="mMenuLabel">Connexions</span>
-                  </span>
-                  <span className="mMenuMeta">▶</span>
-                </Link>
-
-                <Link to={r.report} className="mMenuBtn" onClick={() => setOpenMenu(false)}>
-                  <span className="mMenuLeft">
-                    <span aria-hidden>🚩</span>
-                    <span className="mMenuLabel">Signaler un problème</span>
-                  </span>
-                  <span className="mMenuMeta">▶</span>
-                </Link>
-              </div>
-            </Section>
+              </button>
+            )}
           </div>
-        </Sheet>
-      ) : null}
+
+          {hasMoreThan4 && (
+            <button type="button" className="lm-clips-see-all" onClick={onOpenMonthList}>
+              Voir tous les clips →
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  const TabRewards = (
+    <div className="lm-rewards-section">
+      <div className="lm-rewards-header">
+        <div className="lm-rewards-icon" aria-hidden>🎁</div>
+        <span className="lm-rewards-label">Récompenses quotidiennes</span>
+      </div>
+      <div className="lm-rewards-body">
+        <DailyWheelCard />
+        <DailyBonusAccessCard />
+      </div>
+    </div>
+  );
+
+  /* ═══════════════════════════════════════
+     RENDER
+  ═══════════════════════════════════════ */
+  return (
+    <main className="lm-page">
+      {/* Contenu scrollable */}
+      <div ref={scrollRef} className="lm-scroll">
+
+        {/* ── Hero header (toujours visible) ── */}
+        <div className="lm-hero">
+          <div className="lm-hero-left">
+            <h1 className="lm-logo">LunaLive</h1>
+            <div className="lm-sub">
+              <span>Plateforme casino FR</span>
+              {refreshing ? <span className="lm-refreshing" aria-hidden /> : null}
+            </div>
+          </div>
+          <div className="lm-hero-pills">
+            <Pill tone="live" title="Lives en direct">
+              <span className="lm-ping" aria-hidden />
+              <b>{totals.liveCount}</b> live{totals.liveCount > 1 ? "s" : ""}
+            </Pill>
+            <Pill tone="neutral" title="Viewers total">
+              👁 <b>{fmtViewers(totals.viewersTotal)}</b>
+            </Pill>
+          </div>
+        </div>
+
+        {/* ── Erreur ── */}
+        {err && <div className="lm-err">⚠️ {err}</div>}
+
+        {/* ── Contenu selon onglet ── */}
+        {tab === "lives"   && TabLives}
+        {tab === "clips"   && TabClips}
+        {tab === "rewards" && TabRewards}
+
+      </div>
+
+      {/* ── Bottom navigation fixe ── */}
+      <nav className="lm-nav" aria-label="Navigation principale">
+
+        {/* Lives */}
+        <button type="button" className={`lm-nav-btn${tab === "lives" ? " is-active" : ""}`}
+          onClick={() => setTab("lives")} aria-label="Lives" aria-current={tab === "lives" ? "page" : undefined}>
+          <span className="lm-nav-icon">📡</span>
+          <span className="lm-nav-label">Lives</span>
+          <span className="lm-nav-dot" aria-hidden />
+        </button>
+
+        {/* Clips */}
+        <button type="button" className={`lm-nav-btn${tab === "clips" ? " is-active" : ""}`}
+          onClick={() => setTab("clips")} aria-label="Clips du mois" aria-current={tab === "clips" ? "page" : undefined}>
+          <span className="lm-nav-icon">🎬</span>
+          <span className="lm-nav-label">Clips</span>
+          <span className="lm-nav-dot" aria-hidden />
+        </button>
+
+        {/* Récompenses */}
+        <button type="button" className={`lm-nav-btn${tab === "rewards" ? " is-active" : ""}`}
+          onClick={() => setTab("rewards")} aria-label="Récompenses" aria-current={tab === "rewards" ? "page" : undefined}>
+          <span className="lm-nav-icon">🎁</span>
+          <span className="lm-nav-label">Bonus</span>
+          <span className="lm-nav-dot" aria-hidden />
+        </button>
+
+      </nav>
     </main>
   );
 }

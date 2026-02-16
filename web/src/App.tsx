@@ -32,6 +32,7 @@ import { AchievementsModal } from "./components/AchievementsModal";
 import ChatPopupPage from "./pages/ChatPopupPage";
 import ReferralLandingPage from "./pages/ReferralLandingPage";
 import EventPage from "./pages/EventPage";
+import { BgEffect } from "./components/Bgeffects";
 
 function AppInner() {
   const location = useLocation();
@@ -64,6 +65,7 @@ function AppInner() {
 
   return (
     <div className="app">
+      <BgEffect type="cards" />
       <Topbar onOpenLogin={() => setLoginOpen(true)} onLogout={logout} />
 
       <GoLiveNotifier />

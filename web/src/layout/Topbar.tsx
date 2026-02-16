@@ -39,13 +39,11 @@ function getActivePlansFrom(x: any): ActivePlans {
   const out: ActivePlans = { viewer: false, streamer: false };
   if (!x) return out;
 
-  // array: [{plan_code,status,...}, ...]
   if (Array.isArray(x)) {
     for (const s of x) addPlan(out, s?.plan_code ?? s?.planCode, isActiveSubEntry(s));
     return out;
   }
 
-  // object map: { viewer: {...}, streamer: {...} }
   if (typeof x === "object") {
     if (x.viewer || x.streamer) {
       addPlan(out, "viewer", isActiveSubEntry(x.viewer));
@@ -53,11 +51,9 @@ function getActivePlansFrom(x: any): ActivePlans {
       return out;
     }
 
-    // shape: { plans: {...} } ou { subscriptions: {...} }
     if (x.plans) return getActivePlansFrom(x.plans);
     if (x.subscriptions) return getActivePlansFrom(x.subscriptions);
 
-    // single entry: { plan_code:'viewer', status:'active', ... }
     if (x.plan_code || x.planCode) {
       addPlan(out, x.plan_code ?? x.planCode, isActiveSubEntry(x));
       return out;
@@ -126,7 +122,6 @@ export function Topbar({
   const userAny = authAny?.user ?? null;
   const user = userAny as { rubis: number; username?: string } | null;
 
-  // ✅ plans actifs (viewer/streamer) depuis plusieurs shapes possibles
   const plans = React.useMemo(() => {
     let p: ActivePlans = { viewer: false, streamer: false };
     p = mergePlans(p, getActivePlansFrom(userAny?.subscriptions));
@@ -136,7 +131,6 @@ export function Topbar({
     return p;
   }, [userAny]);
 
-  // ✅ fallback legacy (si ton backend envoie encore des flags)
   const legacyPremium = Boolean(
     userAny?.premiumActive ??
       userAny?.isPremium ??
@@ -169,132 +163,160 @@ export function Topbar({
 
   const linkClass = ({ isActive }: { isActive: boolean }) => `llNavBtn ${isActive ? "active" : ""}`;
 
-  React.useEffect(() => {
-    console.log("[Topbar:user]", authAny?.user);
-  }, [authAny?.user]);
-
   return (
     <header className="topbar llTopbar">
       <style>{`
+        /* ─────────────────────────────────────────
+           Topbar shell (glass + highlight line)
+        ───────────────────────────────────────── */
         .llTopbar{
           position: sticky;
           top: 0;
           z-index: 50;
           width: 100%;
-          border-bottom: 1px solid rgba(255,255,255,0.08);
-          background:
-            radial-gradient(1000px 240px at 12% 0%, rgba(140,90,255,0.22), rgba(0,0,0,0) 60%),
-            radial-gradient(800px 240px at 88% 0%, rgba(255,90,180,0.14), rgba(0,0,0,0) 55%),
-            rgba(8,10,16,0.58);
-          backdrop-filter: blur(14px);
-          -webkit-backdrop-filter: blur(14px);
+          border-bottom: 1px solid rgba(124,92,252,0.14);
+          background: rgba(13, 11, 24, 0.78);
+          box-shadow: 0 18px 55px rgba(0,0,0,0.38);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          overflow: hidden;
+        }
+        .llTopbar::before{
+          content:"";
+          position:absolute;
+          top:0; left:8%; right:8%;
+          height:1px;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(167,139,250,0.40) 35%,
+            rgba(91,142,248,0.28) 65%,
+            transparent
+          );
+          pointer-events:none;
+        }
+        .llTopbar::after{
+          content:"";
+          position:absolute;
+          top:-38px; left:-38px;
+          width:220px; height:140px;
+          border-radius:50%;
+          background: radial-gradient(ellipse, rgba(124,92,252,0.10), transparent 70%);
+          pointer-events:none;
         }
 
-        /* Full width layout: brand left / nav center / user right */
         .llTopbarInner{
+          position: relative;
           width: 100%;
           padding: 10px 16px;
           display: grid;
           grid-template-columns: auto 1fr auto;
           align-items: center;
           gap: 14px;
+          z-index: 1;
         }
 
-        /* Brand far left */
+        /* ─────────────────────────────────────────
+           Brand (match LivesPage/DailyWheel)
+        ───────────────────────────────────────── */
         .llBrandLink{
           display: inline-flex;
           align-items: center;
-          gap: 5px;
+          gap: 10px;
           text-decoration: none;
           color: inherit;
           user-select: none;
-          padding: 10px 8px;
+
+          padding: 8px 10px;
           border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(255,255,255,0.04);
-          box-shadow: 0 18px 50px rgba(0,0,0,0.22);
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid rgba(124,92,252,0.14);
+          background: rgba(13, 11, 24, 0.62);
+          box-shadow: 0 14px 38px rgba(0,0,0,0.35);
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
+          transition: transform 140ms cubic-bezier(.22,1,.36,1), border-color 180ms ease, filter 180ms ease;
         }
         .llBrandLink:hover{
-          background: rgba(255,255,255,0.06);
-          border-color: rgba(255,255,255,0.14);
           transform: translateY(-1px);
+          border-color: rgba(124,92,252,0.28);
+          filter: brightness(1.06);
         }
-        .llBrandLink:active{ transform: translateY(0px); }
+        .llBrandLink:active{ transform: translateY(0px); filter: brightness(0.98); }
 
         .llBrandMark{
-          width: 44px;
-          height: 44px;
-          border-radius: 999px;         /* ✅ cercle parfait */
-          overflow: hidden;             /* ✅ crop */
-          border: 1px solid rgba(255,255,255,0.14);
-          background: rgba(255,255,255,0.04);
-          box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+          width: 40px;
+          height: 40px;
+          border-radius: 999px;
+          overflow: hidden;
+          border: 1px solid rgba(124,92,252,0.22);
+          background: rgba(0,0,0,0.32);
+          box-shadow: 0 18px 50px rgba(0,0,0,0.45);
           display: grid;
           place-items: center;
+          flex-shrink: 0;
         }
 
-
-.llBrandLogo{
-  width: 100%;
-  height: 100%;
-  object-fit: cover;            /* ✅ remplit le cercle */
-  object-position: center;
-  border-radius: 999px;         /* ✅ au cas où */
-  display: block;
-  user-select: none;
-  -webkit-user-drag: none;
-}
-
+        .llBrandLogo{
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          object-position: center;
+          border-radius: 999px;
+          display: block;
+          user-select: none;
+          -webkit-user-drag: none;
+        }
 
         .llBrandText{
           display:flex;
           flex-direction: column;
-          line-height: 1.05;
+          line-height: 1.02;
+          min-width: 0;
         }
 
-.llBrandText b{
-  font-size: 19px;
-  letter-spacing: -0.4px;
-  font-weight: 1200;
-
-  background: linear-gradient(
-    90deg,
-    rgba(170,110,255,1) 0%,
-    rgba(110,200,255,1) 25%,
-    rgba(255,120,200,1) 50%,
-    rgba(110,200,255,1) 75%,
-    rgba(170,110,255,1) 100%
-  );
-  background-size: 300% 100%;
-  background-position: 0% 50%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-
-  animation: llBrandGradient 6s linear infinite;
-  filter: drop-shadow(0 10px 20px rgba(0,0,0,0.45));
-}
-
-@keyframes llBrandGradient{
-  0%   { background-position: 0% 50%; }
-  50% { background-position: 50% 50%; }
-}
-@media (prefers-reduced-motion: reduce){
-  .llBrandText b{ animation: none; }
-}
-
-
-        .llBrandText span{
-          font-size: 12px;
-          opacity: .75;
-          margin-top: 3px;
+        /* ✅ “LunaLive” EXACTEMENT comme DailyWheel title (Syne + gradient) */
+        .llBrandText b{
+          font-family: 'Syne', system-ui, sans-serif;
+          font-weight: 800;
+          font-size: 16px;
+          letter-spacing: -0.4px;
+          line-height: 1;
+          background: linear-gradient(105deg, #c4b5fd 0%, #7c5cfc 35%, #5b8ef8 70%, #93c5fd 100%);
+          background-size: 220% 100%;
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+          filter:
+            drop-shadow(0 0 8px rgba(124,92,252,0.40))
+            drop-shadow(0 0 20px rgba(91,142,248,0.15));
+          animation: ll-topbar-shimmer 5s ease-in-out infinite;
           white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 160px;
         }
 
+        .llBrandText small{
+          font-family: 'Syne', system-ui, sans-serif;
+          font-size: 11px;
+          font-weight: 500;
+          color: rgba(167,155,220,0.52);
+          margin-top: 2px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 180px;
+        }
 
-        /* Center nav with big clickable buttons */
+        @keyframes ll-topbar-shimmer{
+          0%{ background-position: 0% 50%; }
+          50%{ background-position: 100% 50%; }
+          100%{ background-position: 0% 50%; }
+        }
+
+        /* ─────────────────────────────────────────
+           Nav (unchanged logic, tuned to match glass)
+        ───────────────────────────────────────── */
         .llNav{
           justify-self: center;
           display: inline-flex;
@@ -302,11 +324,11 @@ export function Topbar({
           gap: 10px;
           padding: 8px;
           border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(255,255,255,0.04);
-          box-shadow: 0 18px 50px rgba(0,0,0,0.22);
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
+          border: 1px solid rgba(124,92,252,0.14);
+          background: rgba(13, 11, 24, 0.58);
+          box-shadow: 0 14px 38px rgba(0,0,0,0.35);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
         }
 
         .llNavBtn{
@@ -314,38 +336,59 @@ export function Topbar({
           display:inline-flex;
           align-items:center;
           justify-content:center;
+
           height: 42px;
           padding: 0 16px;
+          min-width: 104px;
+
           border-radius: 999px;
           text-decoration: none;
-          color: inherit;
-          font-weight: 1100;
-          font-size: 14px;
-          letter-spacing: -0.1px;
-          opacity: .86;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(255,255,255,0.03);
-          transition: transform .15s ease, opacity .15s ease, background .15s ease, border-color .15s ease;
+          color: rgba(235,232,255,0.92);
+
+          font-family: 'Syne', system-ui, sans-serif;
+          font-weight: 700;
+          font-size: 13px;
+          letter-spacing: -0.15px;
+
+          opacity: .92;
+          border: 1px solid rgba(124,92,252,0.14);
+          background: rgba(124,92,252,0.06);
+
+          transition:
+            transform 180ms cubic-bezier(.22,1,.36,1),
+            background 180ms ease,
+            border-color 180ms ease,
+            box-shadow 180ms ease,
+            opacity 180ms ease,
+            filter 180ms ease;
+
+          will-change: transform, box-shadow;
           cursor: pointer;
           user-select: none;
-          min-width: 104px;
+          -webkit-tap-highlight-color: transparent;
         }
+
         .llNavBtn:hover{
           opacity: 1;
           transform: translateY(-1px);
-          background: rgba(255,255,255,0.06);
-          border-color: rgba(255,255,255,0.14);
+          border-color: rgba(124,92,252,0.32);
+          background: rgba(124,92,252,0.12);
+          box-shadow: 0 12px 32px rgba(0,0,0,0.38), 0 0 0 1px rgba(124,92,252,0.10) inset;
+          filter: brightness(1.05);
         }
+
         .llNavBtn:active{
-          transform: translateY(0px);
+          transform: translateY(0px) scale(0.985);
+          filter: brightness(0.98);
         }
+
         .llNavBtn.active{
           opacity: 1;
-          border-color: rgba(255,255,255,0.16);
-          background:
-            linear-gradient(90deg, rgba(140,90,255,0.22), rgba(80,160,255,0.16), rgba(255,90,180,0.12));
-          box-shadow: 0 16px 40px rgba(0,0,0,0.18);
+          border-color: rgba(124,92,252,0.36);
+          background: rgba(124,92,252,0.16);
+          box-shadow: 0 14px 38px rgba(0,0,0,0.42), 0 0 0 1px rgba(124,92,252,0.12) inset;
         }
+
         .llNavBtn.active:after{
           content:"";
           position:absolute;
@@ -354,12 +397,21 @@ export function Topbar({
           bottom: 6px;
           height: 2px;
           border-radius: 999px;
-          background: linear-gradient(90deg, rgba(140,90,255,0.95), rgba(80,160,255,0.92), rgba(255,90,180,0.92));
+          background: linear-gradient(105deg, #c4b5fd 0%, #7c5cfc 35%, #5b8ef8 70%, #93c5fd 100%);
           opacity: .95;
           filter: drop-shadow(0 10px 18px rgba(140,90,255,0.22));
         }
 
-        /* Right side pinned */
+        .llNavBtn:focus-visible{
+          outline: none;
+          box-shadow:
+            0 14px 38px rgba(0,0,0,0.42),
+            0 0 0 3px rgba(124,92,252,0.22);
+        }
+
+        /* ─────────────────────────────────────────
+           Right side
+        ───────────────────────────────────────── */
         .llRight{
           justify-self: end;
           display:flex;
@@ -374,17 +426,24 @@ export function Topbar({
           height: 40px;
           padding: 0 12px;
           border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(255,255,255,0.05);
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
-          font-size: 13px;
-          font-weight: 1100;
+          border: 1px solid rgba(124,92,252,0.14);
+          background: rgba(13, 11, 24, 0.58);
+          color: rgba(235,232,255,0.92);
+          box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          font-family: 'Syne', system-ui, sans-serif;
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: -0.1px;
           white-space: nowrap;
         }
+
         .llPillRuby{
-          border-color: rgba(255,210,110,0.22);
-          background: linear-gradient(180deg, rgba(255,210,110,0.12), rgba(255,255,255,0.04));
+          border-color: rgba(124,92,252,0.22);
+          background:
+            linear-gradient(135deg, rgba(124,92,252,0.18), rgba(59,77,200,0.12), rgba(91,142,248,0.08)),
+            rgba(13, 11, 24, 0.58);
         }
 
         .llLoginBtn{
@@ -394,18 +453,19 @@ export function Topbar({
           height: 40px;
           padding: 0 14px;
           border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background:
-            linear-gradient(90deg, rgba(140,90,255,0.30), rgba(80,160,255,0.22), rgba(255,90,180,0.16));
-          box-shadow: 0 18px 50px rgba(0,0,0,0.25);
-          color: inherit;
+          border: 1px solid rgba(124,92,252,0.32);
+          background: linear-gradient(135deg, rgba(124,92,252,0.24), rgba(59,77,200,0.18), rgba(91,142,248,0.10));
+          box-shadow: 0 14px 38px rgba(0,0,0,0.45), 0 0 0 1px rgba(124,92,252,0.10) inset;
+          color: rgba(235,232,255,0.96);
           cursor:pointer;
-          font-weight: 1100;
+          font-family: 'Syne', system-ui, sans-serif;
+          font-weight: 800;
+          letter-spacing: -0.15px;
+          transition: transform 140ms cubic-bezier(.22,1,.36,1), filter 160ms ease, border-color 160ms ease;
         }
-        .llLoginBtn:hover{ filter: brightness(1.05); transform: translateY(-1px); }
-        .llLoginBtn:active{ transform: translateY(0px); }
+        .llLoginBtn:hover{ filter: brightness(1.10); transform: translateY(-1px); border-color: rgba(124,92,252,0.55); }
+        .llLoginBtn:active{ transform: translateY(0px); filter: brightness(0.98); }
 
-        /* ✅ NEW: bouton signalement */
         .llReportBtn{
           display:inline-flex;
           align-items:center;
@@ -414,29 +474,31 @@ export function Topbar({
           width: 40px;
           padding: 0;
           border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(255,255,255,0.05);
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
+          border: 1px solid rgba(124,92,252,0.14);
+          background: rgba(13, 11, 24, 0.58);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
           cursor:pointer;
           font-weight: 1100;
+          transition: transform 140ms cubic-bezier(.22,1,.36,1), background 160ms ease, border-color 160ms ease, filter 160ms ease;
+          box-shadow: 0 12px 32px rgba(0,0,0,0.35);
         }
         .llReportBtn:hover{
-          border-color: rgba(255,255,255,0.18);
-          background: rgba(255,255,255,0.07);
+          border-color: rgba(124,92,252,0.32);
+          background: rgba(124,92,252,0.10);
           transform: translateY(-1px);
+          filter: brightness(1.06);
         }
-        .llReportBtn:active{ transform: translateY(0px); }
+        .llReportBtn:active{ transform: translateY(0px); filter: brightness(0.98); }
 
         .llReportFlag{
           font-size: 16px;
           line-height: 1;
           opacity: .95;
-          filter: drop-shadow(0 6px 14px rgba(0,0,0,0.55));
+          filter: drop-shadow(0 6px 14px rgba(0,0,0,0.65));
           text-shadow: 0 0 14px rgba(255,255,255,0.10);
         }
 
-        /* ✅ NEW: wrapper avatar + marqueur */
         .llAvatarWrap{ position: relative; }
 
         .llPremiumStar{
@@ -449,91 +511,78 @@ export function Topbar({
           display: grid;
           place-items: center;
           z-index: 5;
-          box-shadow: 0 14px 36px rgba(0,0,0,0.40);
+          box-shadow: 0 14px 36px rgba(0,0,0,0.55);
           backdrop-filter: blur(10px);
           -webkit-backdrop-filter: blur(10px);
           pointer-events: none;
           border: 1px solid rgba(255,255,255,0.22);
-          background: rgba(0,0,0,0.20);
+          background: rgba(0,0,0,0.24);
         }
 
         .llPremiumStar span{
           font-size: 12px;
           line-height: 1;
-          text-shadow:
-            0 0 10px rgba(255,255,255,0.20),
-            0 10px 18px rgba(0,0,0,0.55);
+          text-shadow: 0 0 10px rgba(255,255,255,0.20), 0 10px 18px rgba(0,0,0,0.65);
         }
 
-        /* Viewer = jaune */
         .llPremiumStar.star--viewer{
           border-color: rgba(255, 210, 110, 0.75);
           background:
             radial-gradient(circle at 30% 30%, rgba(255,255,255,0.28), rgba(0,0,0,0) 60%),
             linear-gradient(135deg, rgba(255, 220, 120, 0.55), rgba(255, 190, 60, 0.35)),
-            rgba(0,0,0,0.20);
+            rgba(0,0,0,0.24);
         }
         .llPremiumStar.star--viewer span{ color: #ffd66a; }
 
-        /* Streamer = bleu */
         .llPremiumStar.star--streamer{
           border-color: rgba(110, 185, 255, 0.70);
           background:
             radial-gradient(circle at 30% 30%, rgba(255,255,255,0.24), rgba(0,0,0,0) 60%),
             linear-gradient(135deg, rgba(90, 170, 255, 0.52), rgba(60, 120, 255, 0.30)),
-            rgba(0,0,0,0.20);
+            rgba(0,0,0,0.24);
         }
         .llPremiumStar.star--streamer span{ color: #8fd0ff; }
 
-        /* Both = violet */
         .llPremiumStar.star--both{
           border-color: rgba(180, 120, 255, 0.75);
           background:
             radial-gradient(circle at 30% 30%, rgba(255,255,255,0.24), rgba(0,0,0,0) 60%),
             linear-gradient(135deg, rgba(170, 110, 255, 0.55), rgba(255, 90, 180, 0.22)),
-            rgba(0,0,0,0.20);
+            rgba(0,0,0,0.24);
         }
         .llPremiumStar.star--both span{ color: #d7a6ff; }
 
-        /* Legacy = rouge */
         .llPremiumStar.star--legacy{
           border-color: rgba(255, 110, 110, 0.75);
           background:
             radial-gradient(circle at 30% 30%, rgba(255,255,255,0.24), rgba(0,0,0,0) 60%),
             linear-gradient(135deg, rgba(255, 120, 120, 0.50), rgba(255, 60, 60, 0.28)),
-            rgba(0,0,0,0.20);
+            rgba(0,0,0,0.24);
         }
         .llPremiumStar.star--legacy span{ color: #ffb2b2; }
 
-        /* Responsive: hide center nav on mobile (your existing behavior) */
         @media (max-width: 820px){
           .llTopbarInner{ padding: 10px 12px; }
           .llNav{ display: none; }
-        }
-
-        @media (prefers-reduced-motion: no-preference){
-          .llBrandMark{ animation: llGlow 6.5s ease-in-out infinite; }
-          @keyframes llGlow{
-            0%,100%{ filter: drop-shadow(0 0 0 rgba(140,90,255,0)); }
-            50%{ filter: drop-shadow(0 18px 35px rgba(140,90,255,0.22)); }
-          }
+          .llBrandText b{ max-width: 130px; }
+          .llBrandText small{ display:none; }
         }
       `}</style>
 
       <div className="topbarInner llTopbarInner">
-        {/* Brand = cliquable => / */}
         <div className="leftSlot">
           <Link to="/" className="llBrandLink" aria-label="Aller à la page Lives">
             <div className="llBrandMark" aria-hidden>
               <img className="llBrandLogo" src="/logo_onglet.png" alt="" aria-hidden />
             </div>
+
+            {/* ✅ Nouveau bloc brand: même “DNA” que LivesPage */}
             <div className="llBrandText">
               <b>LunaLive</b>
             </div>
           </Link>
         </div>
 
-        {/* Center nav big buttons */}
         {!isMobile && (
           <nav className="navCentered llNav" aria-label="Navigation">
             <NavLink to="/" end className={linkClass}>
@@ -557,9 +606,7 @@ export function Topbar({
           </nav>
         )}
 
-        {/* Right side */}
         <div className="rightSlot llRight">
-          {/* ✅ NEW: bouton toujours visible */}
           <button
             className="llReportBtn"
             onClick={() => setReportOpen(true)}
@@ -623,7 +670,6 @@ export function Topbar({
         </div>
       </div>
 
-      {/* ✅ NEW: modale */}
       <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} preset={null} />
     </header>
   );

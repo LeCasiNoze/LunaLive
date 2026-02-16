@@ -1,19 +1,132 @@
-:root{
-  --bg: #1D1125;
-  --text: rgba(255,255,255,0.92);
-  --muted: rgba(255,255,255,0.62);
+/* 00_tokens.css — PURPLE VELVET (brand violet assumée) */
+:root {
+  /* =========================================================
+     THEME: PURPLE VELVET (source of truth)
+     ========================================================= */
 
-  --purple: #7E4CB3;
-  --blue: #3F56CB;
+  /* base */
+  --bg:   #090610;
+  --text: rgba(235, 232, 255, 0.94);
+  --muted: rgba(200, 195, 240, 0.58);
 
-  --line: rgba(255,255,255,0.10);
-  --panel: rgba(255,255,255,0.05);
-  --panel2: rgba(255,255,255,0.08);
+  /* brand */
+  --purple:   #7c5cfc;   /* ghost purple */
+  --purple-2: #a78bfa;
+  --blue:     #3b4dc8;   /* blue night */
+  --blue-2:   #5b8ef8;
 
-  --radius: 18px;
-  --sideW: 260px;
+  /* surfaces */
+  --line:   rgba(255, 255, 255, 0.08);
+  --panel:  rgba(14, 11, 26, 0.72);
+  --panel2: rgba(20, 14, 38, 0.80);
 
-  /* Chat theme */
-  --chat-name-color: #ffd54a;
-  --chat-msg-color: #ffffff;
+  --radius:  18px;
+  --sideW:   260px;
+
+  /* elevation */
+  --shadow1: 0 28px 90px rgba(0, 0, 0, 0.62);
+  --shadow2: 0 14px 50px rgba(0, 0, 0, 0.44);
+
+  /* accents */
+  --accent:  rgba(124, 92, 252, 0.32);
+  --accent2: rgba(91, 142, 248, 0.18);
+
+  /* chat */
+  --chat-name-color: rgba(167, 139, 250, 0.95);
+  --chat-msg-color:  rgba(235, 232, 255, 0.92);
+
+  /* =========================================================
+     LL helpers (aliases)
+     ========================================================= */
+  --ll-ink:   var(--text);
+  --ll-ink-2: rgba(200, 195, 240, 0.72);
+  --ll-ink-3: rgba(160, 155, 210, 0.50);
+
+  --ll-glass:   var(--panel);
+  --ll-glass-2: var(--panel2);
+  --ll-glass-3: rgba(14, 11, 26, 0.48);
+
+  --ll-border:   var(--line);
+  --ll-border-2: rgba(124, 92, 252, 0.18);
+  --ll-border-3: rgba(124, 92, 252, 0.40);
+
+  --ll-accent:   rgba(124, 92, 252, 0.36);
+  --ll-accent-2: rgba(91, 142, 248, 0.20);
+
+  --ll-shadow-1: var(--shadow2);
+  --ll-shadow-2: var(--shadow1);
+
+  /* =========================================================
+     DA tokens globalisés
+     ========================================================= */
+
+  /* Title gradient signature */
+  --ll-title-grad: linear-gradient(
+    105deg,
+    #c4b5fd  0%,
+    #7c5cfc  32%,
+    #5b8ef8  66%,
+    #93c5fd  100%
+  );
+
+  /* Page overlay aurora */
+  --ll-page-aurora:
+    radial-gradient(ellipse 90vw 55vh  at 18%  -5%, rgba(124,92,252,0.12), transparent 62%),
+    radial-gradient(ellipse 70vw 50vh  at 88%  12%, rgba(59,77,200,0.10),  transparent 60%),
+    radial-gradient(ellipse 60vw 45vh  at 45% 105%, rgba(91,142,248,0.09), transparent 58%);
+
+  /* Wrap glass */
+  --ll-wrap-border: rgba(124, 92, 252, 0.12);
+  --ll-wrap-bg:     rgba(11, 10, 22, 0.88);
+  --ll-wrap-shadow: 0 28px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(124,92,252,0.05);
+
+  /* Topbar */
+  --ll-topbar-bg:
+    radial-gradient(1200px 260px at 12% 0%, rgba(124,92,252,0.14), transparent 60%),
+    radial-gradient(1000px 260px at 88% 0%, rgba(59,77,200,0.10),  transparent 55%),
+    var(--ll-glass);
+  --ll-topbar-shadow: 0 12px 44px rgba(0,0,0,0.32);
+
+  /* Nav buttons */
+  --ll-navbtn-bg:        rgba(255, 255, 255, 0.05);
+  --ll-navbtn-bg-hover:  rgba(255, 255, 255, 0.09);
+  --ll-navbtn-bg-active:
+    linear-gradient(90deg,
+      rgba(124,92,252,0.22),
+      rgba(59,77,200,0.16),
+      rgba(91,142,248,0.10)
+    ),
+    rgba(255,255,255,0.08);
+
+  /* Cards */
+  --ll-card-bg:       var(--ll-glass);
+  --ll-card-bg-hover: color-mix(in srgb, var(--ll-glass) 80%, rgba(255,255,255,0.06));
+  --ll-card-border:   var(--ll-border);
+
+  /* Buttons */
+  --ll-btn-primary-bg:
+    linear-gradient(135deg,
+      rgba(124,92,252,0.34),
+      rgba(59,77,200,0.24),
+      rgba(91,142,248,0.14)
+    );
+  --ll-btn-ghost-bg:       rgba(255, 255, 255, 0.05);
+  --ll-btn-ghost-bg-hover: rgba(255, 255, 255, 0.09);
+
+  /* =========================================================
+     BG LAYER settings
+     ========================================================= */
+  --ll-bg-opacity:  0.52;
+  --ll-bg-blur:     36px;
+  --ll-bg-sat:      1.22;
+  --ll-bg-contrast: 1.02;
+  --ll-bg-speed:    14s;
+  --ll-bg-blend:    normal;
+
+  /* ease */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Typographie display (Syne) */
+--ll-font-display: 'Syne', system-ui, sans-serif;
+--ll-font-body:    system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
