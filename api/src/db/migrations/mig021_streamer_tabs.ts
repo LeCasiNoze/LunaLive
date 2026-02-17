@@ -21,7 +21,7 @@ export async function mig021_streamer_tabs(pool: Pool) {
       kind TEXT NOT NULL CHECK (kind IN ('regular','event')),
       title TEXT NOT NULL,
       color TEXT NOT NULL,
-      day_of_week INT NULL CHECK (day_of_week IS NULL OR (day_of_week >= 0 AND day_of_week <= 6)),
+      day_of_week INT NULL CHECK (day_of_week IS NULL OR day_of_week = -1 OR (day_of_week >= 0 AND day_of_week <= 6)),
       date_ymd TEXT NULL, -- YYYY-MM-DD
       start_time TEXT NOT NULL, -- HH:MM
       end_time TEXT NOT NULL,   -- HH:MM

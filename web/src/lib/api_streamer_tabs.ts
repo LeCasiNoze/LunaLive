@@ -13,7 +13,7 @@ export type AgendaRule = {
   kind: AgendaRuleKind;
   title: string;
   color: string;
-  dayOfWeek?: number | null;
+  dayOfWeek?: number | null; // 0..6 ou -1 = tous les jours
   date?: string | null; // YYYY-MM-DD
   startTime: string; // HH:MM
   endTime: string; // HH:MM

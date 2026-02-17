@@ -1,4 +1,8 @@
 // web/src/components/DailyBonusAgendaModal.tsx
+// ══════════════════════════════════════════════════════════════
+//  PURPLE VELVET — DailyBonusAgendaModal
+//  Refonte UX : hiérarchie claire, sections séparées, états visuels
+// ══════════════════════════════════════════════════════════════
 import * as React from "react";
 import { createPortal } from "react-dom";
 import {
@@ -26,12 +30,10 @@ type WeekDay = {
     | { type: "token"; token: "wheel_ticket"; amount: number };
   status: "future" | "missed" | "claimed" | "today_claimable" | "today_claimed";
 };
-
 type Milestone = {
   milestone: 5 | 10 | 20 | 30;
   status: "locked" | "claimable" | "claimed";
 };
-
 export type DailyBonusState = {
   ok: true;
   day: string;
@@ -45,7 +47,6 @@ export type DailyBonusState = {
   premiumActive?: boolean;
   premium?: { active?: boolean; multiplier?: number; label?: string; plan?: string };
 };
-
 type Role = "viewer" | "moderator" | "streamer" | "admin";
 type TabKey = "agenda" | "content" | "welcome";
 type ContentKey = string;
@@ -53,8 +54,8 @@ type ContentKey = string;
 /* ─── Helpers ────────────────────────────────────────────────────── */
 function roleRank(r: any): number {
   const v = String(r || "viewer").toLowerCase();
-  if (v === "admin")                    return 3;
-  if (v === "streamer")                 return 2;
+  if (v === "admin") return 3;
+  if (v === "streamer") return 2;
   if (v === "moderator" || v === "mod") return 1;
   return 0;
 }
@@ -71,9 +72,9 @@ function toastTextFromGranted(granted: any[] | null | undefined) {
   let rubis = 0, wheel = 0, prestige = 0;
   for (const g of arr) {
     if (!g) continue;
-    if (g.type === "rubis")  { rubis    += Number(g.amount); continue; }
-    if (g.type === "token")  {
-      if (g.token === "wheel_ticket")   wheel    += Number(g.amount);
+    if (g.type === "rubis") { rubis += Number(g.amount); continue; }
+    if (g.type === "token") {
+      if (g.token === "wheel_ticket") wheel += Number(g.amount);
       else if (g.token === "prestige_token") prestige += Number(g.amount);
       continue;
     }
@@ -116,7 +117,6 @@ function versionFromAnyItem(item: any) {
     updatedAt: (item as any)?.updatedAt ?? (item as any)?.updated_at,
   } as any);
 }
-
 function useInjectStyles(id: string, styles: string) {
   React.useEffect(() => {
     if (document.getElementById(id)) return;
@@ -127,617 +127,462 @@ function useInjectStyles(id: string, styles: string) {
   }, [id, styles]);
 }
 
-/* ─── CSS ────────────────────────────────────────────────────────── */
+/* ─── CSS Purple Velvet ──────────────────────────────────────────── */
 const CSS = `
-@keyframes dba-modal-fade {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-@keyframes dba-modal-up {
-  from { opacity: 0; transform: translateY(18px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0)    scale(1);    }
-}
-@keyframes dba-shimmer {
-  0%   { background-position:   0% 50%; }
-  50%  { background-position: 100% 50%; }
-  100% { background-position:   0% 50%; }
-}
-@keyframes dba-toast-in {
-  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-@keyframes dba-claim-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(124,92,252,0); }
-  50%       { box-shadow: 0 0 0 6px rgba(124,92,252,0.18); }
-}
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&display=swap');
+
+@keyframes dba-fade-in   { from { opacity:0; } to { opacity:1; } }
+@keyframes dba-slide-up  { from { opacity:0; transform:translateY(20px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+@keyframes dba-shimmer   { 0%,100% { background-position:0% 50%; } 50% { background-position:100% 50%; } }
+@keyframes dba-toast-in  { from { opacity:0; transform:translateX(-50%) translateY(-10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+@keyframes dba-pulse-cta { 0%,100% { box-shadow:0 0 0 0 rgba(124,92,252,0); } 50% { box-shadow:0 0 0 8px rgba(124,92,252,.16); } }
 
 /* ── Backdrop ── */
-.dba-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 2147483647;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  background: rgba(4,3,10,0.82);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  animation: dba-modal-fade 200ms ease;
+.dba-backdrop {
+  position:fixed; inset:0; z-index:2147483647;
+  display:grid; place-items:center; padding:20px;
+  background:rgba(4,3,10,.84);
+  backdrop-filter:blur(22px);
+  animation:dba-fade-in 200ms ease;
 }
 
 /* ── Toast ── */
 .dba-toast {
-  position: fixed;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2147483647;
-  padding: 10px 18px;
-  border-radius: 999px;
-  background: rgba(11,9,22,0.96);
-  border: 1px solid rgba(124,92,252,0.30);
-  box-shadow: 0 18px 60px rgba(0,0,0,0.55), 0 0 20px rgba(124,92,252,0.14);
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  color: rgba(235,232,255,0.94);
-  white-space: nowrap;
-  animation: dba-toast-in 220ms cubic-bezier(0.22,1,0.36,1);
+  position:fixed; top:20px; left:50%;
+  transform:translateX(-50%);
+  z-index:2147483647;
+  padding:11px 20px; border-radius:999px;
+  background:rgba(11,9,22,.97);
+  border:1px solid rgba(124,92,252,.32);
+  box-shadow:0 20px 60px rgba(0,0,0,.60), 0 0 22px rgba(124,92,252,.16);
+  font-family:'Syne',system-ui,sans-serif; font-weight:700; font-size:13px;
+  color:rgba(235,232,255,.94);
+  white-space:nowrap;
+  animation:dba-toast-in 230ms cubic-bezier(.22,1,.36,1);
 }
 
-/* ── Dialog ── */
-.dba-modal {
-  position: relative;
-  width: min(980px, 96vw);
-  height: min(780px, 90vh);
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  border-radius: 22px;
-  border: 1px solid rgba(124,92,252,0.20);
-  background: rgba(9,7,20,0.96);
-  box-shadow:
-    0 40px 100px rgba(0,0,0,0.70),
-    0 0 0 1px rgba(167,139,250,0.06) inset,
-    0 0 80px rgba(124,92,252,0.10);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  overflow: hidden;
-  animation: dba-modal-up 260ms cubic-bezier(0.22,1,0.36,1);
+/* ── Dialog principal ── */
+.dba-dialog {
+  position:relative;
+  width:min(1000px,96vw); height:min(800px,90vh);
+  display:grid; grid-template-columns:260px 1fr;
+  border-radius:22px;
+  border:1px solid rgba(124,92,252,.22);
+  background:rgba(9,7,20,.97);
+  box-shadow:0 40px 100px rgba(0,0,0,.75), 0 0 80px rgba(124,92,252,.10);
+  backdrop-filter:blur(24px);
+  overflow:hidden;
+  animation:dba-slide-up 260ms cubic-bezier(.22,1,.36,1);
 }
-/* Reflet haut */
-.dba-modal::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 6%; right: 6%;
-  height: 1px;
-  background: linear-gradient(90deg,
-    transparent,
-    rgba(167,139,250,0.45) 35%,
-    rgba(91,142,248,0.32) 65%,
-    transparent
-  );
-  pointer-events: none;
-  z-index: 2;
+
+/* Reflet haut signature */
+.dba-dialog::before {
+  content:"";
+  position:absolute; top:0; left:6%; right:6%; height:1px;
+  pointer-events:none; z-index:3;
+  background:linear-gradient(90deg,transparent,rgba(167,139,250,.45) 35%,rgba(91,142,248,.32) 65%,transparent);
 }
-/* Lueur ambiante */
-.dba-modal::after {
-  content: "";
-  position: absolute;
-  top: -60px; left: -60px;
-  width: 340px; height: 220px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(124,92,252,0.12), transparent 70%);
-  pointer-events: none;
+
+/* Lueur ambiante coin */
+.dba-dialog::after {
+  content:"";
+  position:absolute; top:-60px; left:-60px;
+  width:340px; height:220px; border-radius:50%;
+  background:radial-gradient(ellipse,rgba(124,92,252,.12),transparent 70%);
+  pointer-events:none;
 }
-@media (max-width: 780px) {
-  .dba-modal { grid-template-columns: 1fr; height: 92vh; }
+
+@media (max-width:800px) {
+  .dba-dialog { grid-template-columns:1fr; height:92vh; }
 }
 
 /* ── Sidebar ── */
 .dba-sidebar {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 16px 14px;
-  border-right: 1px solid rgba(124,92,252,0.12);
-  background: rgba(255,255,255,0.014);
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  min-height: 0;
-}
-@media (max-width: 780px) {
-  .dba-sidebar { border-right: none; border-bottom: 1px solid rgba(124,92,252,0.12); }
+  position:relative; z-index:1;
+  display:flex; flex-direction:column; gap:0;
+  border-right:1px solid rgba(124,92,252,.12);
+  background:rgba(255,255,255,.012);
+  overflow:hidden;
 }
 
-.dba-sidebar-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 2px;
+.dba-sidebar-head {
+  padding:18px 16px 14px;
+  border-bottom:1px solid rgba(124,92,252,.10);
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  flex-shrink:0;
 }
 
-/* Titre sidebar — Syne shimmer */
 .dba-sidebar-title {
-  font-family: 'Syne', system-ui, sans-serif;
-  font-weight: 800;
-  font-size: 15px;
-  letter-spacing: -0.4px;
-  line-height: 1;
-  background: linear-gradient(105deg, #c4b5fd 0%, #7c5cfc 35%, #5b8ef8 70%, #93c5fd 100%);
-  background-size: 220% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 0 8px rgba(124,92,252,0.38));
-  animation: dba-shimmer 5s ease-in-out infinite;
+  font-family:'Syne',system-ui,sans-serif;
+  font-weight:800; font-size:16px; letter-spacing:-.3px;
+  background:linear-gradient(105deg,#c4b5fd 0%,#7c5cfc 40%,#5b8ef8 70%,#93c5fd 100%);
+  background-size:220% 100%;
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter:drop-shadow(0 0 8px rgba(124,92,252,.35));
+  animation:dba-shimmer 5s ease-in-out infinite;
 }
 
-/* Bouton fermer */
-.dba-close {
-  width: 30px; height: 30px;
-  border-radius: 9px;
-  border: 1px solid rgba(124,92,252,0.18);
-  background: rgba(255,255,255,0.04);
-  color: rgba(200,195,240,0.65);
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  font-size: 13px;
-  outline: none;
-  -webkit-tap-highlight-color: transparent;
-  transition: background 150ms ease, border-color 150ms ease, transform 130ms cubic-bezier(.22,1,.36,1);
-}
-.dba-close:hover {
-  background: rgba(124,92,252,0.12);
-  border-color: rgba(124,92,252,0.35);
-  transform: scale(1.06);
+.dba-close-btn {
+  width:32px; height:32px; border-radius:10px;
+  border:1px solid rgba(124,92,252,.18);
+  background:rgba(255,255,255,.04);
+  color:rgba(200,195,240,.65);
+  cursor:pointer; display:grid; place-items:center;
+  font-size:14px; outline:none;
+  -webkit-tap-highlight-color:transparent;
+  transition:all 150ms ease;
 }
 
-/* Nav tabs sidebar */
-.dba-nav { display: grid; gap: 6px; }
-
-.dba-nav-btn {
-  width: 100%;
-  text-align: left;
-  padding: 9px 12px;
-  border-radius: 13px;
-  border: 1px solid rgba(124,92,252,0.10);
-  background: rgba(124,92,252,0.05);
-  color: rgba(200,195,240,0.75);
-  cursor: pointer;
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: -0.1px;
-  outline: none;
-  -webkit-tap-highlight-color: transparent;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 130ms cubic-bezier(.22,1,.36,1);
-}
-.dba-nav-btn:hover {
-  background: rgba(124,92,252,0.10);
-  border-color: rgba(124,92,252,0.22);
-  color: rgba(235,232,255,0.90);
-  transform: translateX(2px);
-}
-.dba-nav-btn.is-active {
-  border-color: rgba(124,92,252,0.38);
-  background: rgba(124,92,252,0.16);
-  color: rgba(235,232,255,0.96);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.24), 0 0 0 1px rgba(124,92,252,0.10) inset;
-}
-.dba-nav-btn.is-soon {
-  opacity: 0.45;
-  cursor: not-allowed;
+.dba-close-btn:hover {
+  background:rgba(124,92,252,.14);
+  border-color:rgba(124,92,252,.36);
+  color:rgba(235,232,255,.90);
+  transform:scale(1.06);
 }
 
-/* Meta info */
-.dba-meta {
-  margin-top: auto;
-  padding: 11px 12px;
-  border-radius: 13px;
-  border: 1px solid rgba(124,92,252,0.10);
-  background: rgba(0,0,0,0.22);
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 11px;
-  font-weight: 500;
-  color: rgba(167,155,220,0.52);
-  line-height: 1.65;
+.dba-sidebar-nav {
+  flex:1; overflow-y:auto; padding:12px;
+  display:flex; flex-direction:column; gap:6px;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
 }
-.dba-meta strong { color: rgba(200,195,240,0.80); font-weight: 700; }
+.dba-sidebar-nav::-webkit-scrollbar { display:none; }
 
-/* ── Main body ── */
+.dba-nav-item {
+  width:100%; text-align:left;
+  padding:10px 12px; border-radius:14px;
+  border:1px solid rgba(124,92,252,.10);
+  background:rgba(124,92,252,.05);
+  color:rgba(200,195,240,.72);
+  cursor:pointer;
+  font-family:'Syne',system-ui,sans-serif;
+  font-size:13px; font-weight:700;
+  outline:none; -webkit-tap-highlight-color:transparent;
+  display:inline-flex; align-items:center; gap:8px;
+  transition:all 150ms ease;
+}
+
+.dba-nav-item:hover {
+  background:rgba(124,92,252,.12);
+  border-color:rgba(124,92,252,.24);
+  color:rgba(235,232,255,.90);
+  transform:translateX(2px);
+}
+
+.dba-nav-item.active {
+  border-color:rgba(124,92,252,.40);
+  background:linear-gradient(90deg,rgba(124,92,252,.22),rgba(59,77,200,.16),rgba(91,142,248,.14));
+  color:rgba(235,232,255,.96);
+  box-shadow:0 4px 16px rgba(0,0,0,.24), 0 0 0 1px rgba(124,92,252,.10) inset;
+}
+
+.dba-nav-item.disabled {
+  opacity:.40; cursor:not-allowed;
+}
+
+.dba-sidebar-meta {
+  padding:14px 14px 16px;
+  border-top:1px solid rgba(124,92,252,.08);
+  flex-shrink:0;
+}
+
+.dba-meta-card {
+  padding:12px; border-radius:14px;
+  border:1px solid rgba(124,92,252,.10);
+  background:rgba(0,0,0,.22);
+}
+
+.dba-meta-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:4px 0;
+  font-family:'Syne',system-ui,sans-serif;
+  font-size:11px;
+}
+
+.dba-meta-label { color:rgba(167,155,220,.52); font-weight:600; }
+.dba-meta-value { color:rgba(200,195,240,.80); font-weight:800; }
+
+/* ── Body principal ── */
 .dba-body {
-  position: relative;
-  z-index: 1;
-  padding: 18px 18px 22px;
-  overflow-y: auto;
-  min-height: 0;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(124,92,252,0.20) transparent;
+  position:relative; z-index:1;
+  padding:20px 22px 24px;
+  overflow-y:auto; min-height:0;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(124,92,252,.20) transparent;
 }
-.dba-body::-webkit-scrollbar { width: 4px; }
-.dba-body::-webkit-scrollbar-track { background: transparent; }
-.dba-body::-webkit-scrollbar-thumb { background: rgba(124,92,252,0.20); border-radius: 4px; }
+.dba-body::-webkit-scrollbar { width:4px; }
+.dba-body::-webkit-scrollbar-track { background:transparent; }
+.dba-body::-webkit-scrollbar-thumb { background:rgba(124,92,252,.20); border-radius:4px; }
 
 /* Section header */
 .dba-section-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
+  display:flex; align-items:center; justify-content:space-between;
+  gap:12px; flex-wrap:wrap; margin-bottom:18px;
 }
+
 .dba-section-title {
-  font-family: 'Syne', system-ui, sans-serif;
-  font-weight: 800;
-  font-size: 16px;
-  letter-spacing: -0.5px;
-  background: linear-gradient(105deg, #c4b5fd 0%, #7c5cfc 35%, #5b8ef8 70%, #93c5fd 100%);
-  background-size: 220% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 0 8px rgba(124,92,252,0.30));
-  animation: dba-shimmer 5s ease-in-out infinite;
+  font-family:'Syne',system-ui,sans-serif;
+  font-weight:800; font-size:18px; letter-spacing:-.4px;
+  background:linear-gradient(105deg,#c4b5fd 0%,#7c5cfc 40%,#5b8ef8 70%,#93c5fd 100%);
+  background-size:220% 100%;
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter:drop-shadow(0 0 8px rgba(124,92,252,.28));
+  animation:dba-shimmer 5s ease-in-out infinite;
 }
+
 .dba-section-sub {
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 11px;
-  font-weight: 500;
-  color: rgba(167,155,220,0.50);
+  font-family:'Syne',system-ui,sans-serif;
+  font-size:11px; font-weight:600;
+  color:rgba(167,155,220,.50);
 }
 
 /* Premium pill */
-.dba-premium-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(251,191,36,0.30);
-  background: rgba(251,191,36,0.10);
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fde68a;
-  box-shadow: 0 0 16px rgba(251,191,36,0.10);
+.dba-prem-pill {
+  display:inline-flex; align-items:center; gap:8px;
+  padding:7px 14px; border-radius:999px;
+  border:1px solid rgba(251,191,36,.32);
+  background:rgba(251,191,36,.10);
+  font-family:'Syne',system-ui,sans-serif;
+  font-size:12px; font-weight:800;
+  color:#fde68a;
+  box-shadow:0 0 18px rgba(251,191,36,.12);
 }
-.dba-premium-pill .x2-badge {
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1px solid rgba(251,191,36,0.25);
-  background: rgba(0,0,0,0.22);
-  font-size: 11px;
+.dba-prem-pill .x2 {
+  padding:2px 8px; border-radius:999px;
+  border:1px solid rgba(251,191,36,.28);
+  background:rgba(0,0,0,.22); font-size:11px;
 }
 
 /* ── Grille semaine ── */
 .dba-week-grid {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(4, 1fr);
+  display:grid; gap:10px;
+  grid-template-columns:repeat(4,1fr);
 }
-@media (max-width: 900px)  { .dba-week-grid { grid-template-columns: repeat(3,1fr); } }
-@media (max-width: 640px)  { .dba-week-grid { grid-template-columns: repeat(2,1fr); } }
+@media (max-width:900px) { .dba-week-grid { grid-template-columns:repeat(3,1fr); } }
+@media (max-width:640px) { .dba-week-grid { grid-template-columns:repeat(2,1fr); } }
 
-/* Card jour */
-.dba-day {
-  position: relative;
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid rgba(124,92,252,0.12);
-  background: rgba(255,255,255,0.025);
-  color: rgba(235,232,255,0.88);
-  text-align: left;
-  cursor: default;
-  user-select: none;
-  transition:
-    transform    130ms cubic-bezier(.22,1,.36,1),
-    border-color 160ms ease,
-    background   160ms ease,
-    box-shadow   160ms ease;
+/* ── Carte jour ── */
+.dba-day-card {
+  position:relative;
+  padding:14px; border-radius:16px;
+  border:1px solid rgba(124,92,252,.12);
+  background:rgba(255,255,255,.025);
+  cursor:default; user-select:none;
+  transition:all 160ms ease;
 }
-.dba-day.is-claimable {
-  cursor: pointer;
-  border-color: rgba(124,92,252,0.28);
-  background: rgba(124,92,252,0.08);
-  animation: dba-claim-pulse 2s ease-in-out infinite;
+.dba-day-card.claimable {
+  cursor:pointer;
+  border-color:rgba(124,92,252,.30);
+  background:rgba(124,92,252,.08);
+  animation:dba-pulse-cta 2.4s ease-in-out infinite;
 }
-.dba-day.is-claimable:hover {
-  transform: translateY(-2px);
-  border-color: rgba(167,139,250,0.55);
-  background: rgba(124,92,252,0.14);
-  box-shadow: 0 14px 40px rgba(0,0,0,0.38), 0 0 20px rgba(124,92,252,0.18);
-  animation: none;
+.dba-day-card.claimable:hover {
+  transform:translateY(-3px);
+  border-color:rgba(167,139,250,.55);
+  background:rgba(124,92,252,.16);
+  box-shadow:0 16px 44px rgba(0,0,0,.42), 0 0 24px rgba(124,92,252,.20);
+  animation:none;
 }
-.dba-day.is-dim    { opacity: 0.60; }
-.dba-day.is-missed { opacity: 0.40; filter: grayscale(0.8); }
+.dba-day-card.dimmed  { opacity:.60; }
+.dba-day-card.missed  { opacity:.38; filter:grayscale(.85); }
 
-.dba-day-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
+.dba-day-header {
+  display:flex; justify-content:space-between; align-items:center; gap:8px;
 }
 .dba-day-label {
-  font-family: 'Syne', system-ui, sans-serif;
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: -0.1px;
-  color: rgba(200,195,240,0.85);
+  font-family:'Syne',system-ui,sans-serif; font-weight:700; font-size:12px;
+  color:rgba(200,195,240,.85);
 }
 .dba-day-mark {
-  font-family: 'Syne', system-ui, sans-serif;
-  font-weight: 700;
-  font-size: 13px;
-  opacity: 0.70;
+  font-family:'Syne',system-ui,sans-serif; font-weight:700; font-size:13px;
+  opacity:.72;
 }
 .dba-day-reward {
-  margin-top: 9px;
-  font-family: 'Syne', system-ui, sans-serif;
-  font-weight: 800;
-  font-size: 17px;
-  letter-spacing: -0.3px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  margin-top:10px;
+  font-family:'Syne',system-ui,sans-serif; font-weight:800; font-size:18px;
+  letter-spacing:-.3px;
+  display:flex; align-items:center; gap:8px;
 }
 .dba-x2-chip {
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(124,92,252,0.28);
-  background: rgba(124,92,252,0.12);
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  color: #c4b5fd;
+  padding:2px 8px; border-radius:999px;
+  border:1px solid rgba(124,92,252,.30);
+  background:rgba(124,92,252,.14);
+  font-family:'Syne',system-ui,sans-serif;
+  font-size:11px; font-weight:700; color:#c4b5fd;
 }
 .dba-day-date {
-  margin-top: 6px;
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 11px;
-  color: rgba(167,155,220,0.45);
+  margin-top:6px;
+  font-family:'Syne',system-ui,sans-serif; font-size:11px;
+  color:rgba(167,155,220,.45);
+}
+.dba-day-prem-star {
+  position:absolute; top:10px; right:10px;
+  width:22px; height:22px; border-radius:50%;
+  border:1px solid rgba(251,191,36,.38);
+  background:rgba(251,191,36,.14);
+  display:grid; place-items:center;
+  font-size:11px; pointer-events:none;
 }
 
 /* Status pill */
-.dba-status {
-  margin-top: 9px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  border: 1px solid rgba(255,255,255,0.09);
-  background: rgba(0,0,0,0.18);
-  color: rgba(167,155,220,0.60);
+.dba-status-pill {
+  margin-top:10px;
+  display:inline-flex; align-items:center; gap:6px;
+  padding:5px 10px; border-radius:999px;
+  font-family:'Syne',system-ui,sans-serif;
+  font-size:11px; font-weight:700;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(0,0,0,.18);
+  color:rgba(167,155,220,.60);
 }
-.dba-status.is-ok  { border-color: rgba(52,211,153,0.30); background: rgba(52,211,153,0.10); color: rgba(167,243,208,0.90); }
-.dba-status.is-bad { border-color: rgba(239,68,68,0.28); background: rgba(239,68,68,0.10); color: rgba(252,165,165,0.90); }
-.dba-status.is-cta {
-  border-color: rgba(124,92,252,0.45);
-  background: rgba(124,92,252,0.16);
-  color: rgba(235,232,255,0.96);
-  box-shadow: 0 0 10px rgba(124,92,252,0.14);
+.dba-status-pill.ok   { border-color:rgba(52,211,153,.30); background:rgba(52,211,153,.10); color:rgba(167,243,208,.90); }
+.dba-status-pill.bad  { border-color:rgba(239,68,68,.28); background:rgba(239,68,68,.10); color:rgba(252,165,165,.90); }
+.dba-status-pill.cta  { border-color:rgba(124,92,252,.45); background:rgba(124,92,252,.18); color:rgba(235,232,255,.96); box-shadow:0 0 12px rgba(124,92,252,.16); }
+
+/* ── Section card ── */
+.dba-section-card {
+  margin-top:16px; padding:16px; border-radius:16px;
+  border:1px solid rgba(124,92,252,.10);
+  background:rgba(0,0,0,.18);
 }
 
-/* Premium star coin */
-.dba-prem-star {
-  position: absolute;
-  top: 9px; right: 9px;
-  width: 22px; height: 22px;
-  border-radius: 50%;
-  border: 1px solid rgba(251,191,36,0.35);
-  background: rgba(251,191,36,0.12);
-  display: grid;
-  place-items: center;
-  font-size: 11px;
-  pointer-events: none;
+.dba-card-label {
+  font-family:'Syne',system-ui,sans-serif;
+  font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:rgba(167,155,220,.45); margin-bottom:12px;
 }
 
-/* ── Panel (milestones / content) ── */
-.dba-panel {
-  margin-top: 14px;
-  padding: 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(124,92,252,0.10);
-  background: rgba(0,0,0,0.18);
-}
-.dba-panel-title {
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  color: rgba(167,155,220,0.45);
-  margin-bottom: 10px;
-}
+/* ── Milestones ── */
+.dba-milestones { display:flex; flex-wrap:wrap; gap:8px; }
 
-/* Milestones */
-.dba-milestones { display: flex; flex-wrap: wrap; gap: 8px; }
 .dba-milestone {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(124,92,252,0.12);
-  background: rgba(0,0,0,0.18);
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(200,195,240,0.75);
-  cursor: default;
-  user-select: none;
-  transition:
-    border-color 150ms ease,
-    background   150ms ease,
-    transform    130ms cubic-bezier(.22,1,.36,1),
-    box-shadow   150ms ease;
+  display:inline-flex; align-items:center; gap:8px;
+  padding:10px 16px; border-radius:999px;
+  border:1px solid rgba(124,92,252,.12);
+  background:rgba(0,0,0,.20);
+  font-family:'Syne',system-ui,sans-serif; font-size:13px; font-weight:700;
+  color:rgba(200,195,240,.75);
+  cursor:default; user-select:none;
+  transition:all 150ms ease;
 }
-.dba-milestone.is-locked  { opacity: 0.42; filter: grayscale(0.7); }
-.dba-milestone.is-claimed { opacity: 0.65; }
-.dba-milestone.is-claimable {
-  cursor: pointer;
-  border-color: rgba(124,92,252,0.32);
-  background: rgba(124,92,252,0.10);
-  color: rgba(235,232,255,0.92);
+.dba-milestone.locked  { opacity:.40; filter:grayscale(.70); }
+.dba-milestone.claimed { opacity:.62; }
+.dba-milestone.claimable {
+  cursor:pointer;
+  border-color:rgba(124,92,252,.34);
+  background:rgba(124,92,252,.12);
+  color:rgba(235,232,255,.94);
 }
-.dba-milestone.is-claimable:hover {
-  border-color: rgba(167,139,250,0.55);
-  background: rgba(124,92,252,0.18);
-  transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.32), 0 0 14px rgba(124,92,252,0.18);
+.dba-milestone.claimable:hover {
+  border-color:rgba(167,139,250,.58);
+  background:rgba(124,92,252,.20);
+  transform:translateY(-2px);
+  box-shadow:0 10px 28px rgba(0,0,0,.36), 0 0 16px rgba(124,92,252,.20);
 }
+
 .dba-milestone-hint {
-  margin-top: 10px;
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 11px;
-  font-weight: 500;
-  color: rgba(167,155,220,0.45);
-  line-height: 1.65;
+  margin-top:12px;
+  font-family:'Syne',system-ui,sans-serif; font-size:11px; font-weight:600;
+  color:rgba(167,155,220,.45); line-height:1.7;
 }
 
 /* ── Content HTML ── */
-.dba-content-html {
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 13px;
-  font-weight: 500;
-  color: rgba(200,195,240,0.82);
-  line-height: 1.7;
+.dba-html {
+  font-family:'Syne',system-ui,sans-serif; font-size:13px; font-weight:500;
+  color:rgba(200,195,240,.82); line-height:1.75;
 }
-.dba-content-html h1,.dba-content-html h2,.dba-content-html h3 {
-  font-weight: 800;
-  color: rgba(235,232,255,0.94);
-  margin: 12px 0 6px;
-}
-.dba-content-html a { color: #a78bfa; text-decoration: underline; }
-.dba-content-html strong { color: rgba(235,232,255,0.90); font-weight: 700; }
+.dba-html h1,.dba-html h2,.dba-html h3 { font-weight:800; color:rgba(235,232,255,.94); margin:14px 0 6px; }
+.dba-html a { color:#a78bfa; text-decoration:underline; }
+.dba-html strong { color:rgba(235,232,255,.90); font-weight:700; }
+.dba-html code { background:rgba(124,92,252,.12); border-radius:6px; padding:1px 6px; font-size:12px; }
 
-/* ── Welcome quêtes ── */
-.dba-quest-list { display: grid; gap: 8px; }
+/* ── Quest list ── */
+.dba-quest-list { display:grid; gap:8px; }
+
 .dba-quest {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 11px 14px;
-  border-radius: 13px;
-  border: 1px solid rgba(124,92,252,0.10);
-  background: rgba(0,0,0,0.16);
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(200,195,240,0.82);
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:12px 14px; border-radius:14px;
+  border:1px solid rgba(124,92,252,.12);
+  background:rgba(0,0,0,.16);
+  font-family:'Syne',system-ui,sans-serif; font-size:13px; font-weight:700;
+  color:rgba(200,195,240,.82);
+  transition:border-color 140ms;
 }
-.dba-quest.is-done {
-  border-color: rgba(52,211,153,0.22);
-  background: rgba(52,211,153,0.07);
-  color: rgba(167,243,208,0.85);
+.dba-quest.done {
+  border-color:rgba(52,211,153,.24);
+  background:rgba(52,211,153,.08);
+  color:rgba(167,243,208,.88);
 }
-.dba-quest-check { font-size: 14px; flex-shrink: 0; }
 .dba-quest-progress {
-  font-size: 11px;
-  color: rgba(167,155,220,0.55);
-  flex-shrink: 0;
+  font-size:11px; color:rgba(167,155,220,.55); flex-shrink:0;
 }
+.dba-quest-check { font-size:16px; flex-shrink:0; }
 
-/* ── Btn claim ── */
+/* ── Claim button ── */
 .dba-claim-btn {
-  position: relative;
-  padding: 10px 20px;
-  border-radius: 13px;
-  border: 1px solid rgba(124,92,252,0.38);
-  background: linear-gradient(135deg, rgba(124,92,252,0.38), rgba(59,77,200,0.26), rgba(91,142,248,0.18));
-  color: rgba(235,232,255,0.96);
-  cursor: pointer;
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: -0.15px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.30), 0 0 0 1px rgba(124,92,252,0.10) inset;
-  outline: none;
-  -webkit-tap-highlight-color: transparent;
-  transition:
-    transform    120ms cubic-bezier(.22,1,.36,1),
-    filter       150ms ease,
-    border-color 150ms ease,
-    box-shadow   150ms ease;
+  position:relative;
+  padding:12px 24px; border-radius:14px;
+  border:1px solid rgba(124,92,252,.40);
+  background:linear-gradient(135deg,rgba(124,92,252,.38),rgba(59,77,200,.26),rgba(91,142,248,.18));
+  color:rgba(235,232,255,.96);
+  cursor:pointer;
+  font-family:'Syne',system-ui,sans-serif; font-size:14px; font-weight:800;
+  letter-spacing:-.15px;
+  box-shadow:0 8px 28px rgba(0,0,0,.32), 0 0 0 1px rgba(124,92,252,.12) inset;
+  outline:none; -webkit-tap-highlight-color:transparent;
+  transition:all 150ms ease;
 }
 .dba-claim-btn::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 12%; right: 12%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(200,180,255,0.40), transparent);
-  pointer-events: none;
+  content:"";
+  position:absolute; top:0; left:14%; right:14%; height:1px;
+  background:linear-gradient(90deg,transparent,rgba(200,180,255,.42),transparent);
+  pointer-events:none;
 }
 .dba-claim-btn:hover:not(:disabled) {
-  filter: brightness(1.12);
-  border-color: rgba(167,139,250,0.60);
-  box-shadow: 0 14px 38px rgba(0,0,0,0.40), 0 0 24px rgba(124,92,252,0.24), 0 0 0 1px rgba(124,92,252,0.16) inset;
-  transform: translateY(-1px);
+  filter:brightness(1.14);
+  border-color:rgba(167,139,250,.62);
+  box-shadow:0 16px 42px rgba(0,0,0,.44), 0 0 28px rgba(124,92,252,.26);
+  transform:translateY(-2px);
 }
-.dba-claim-btn:active:not(:disabled) { transform: translateY(0); filter: brightness(0.95); }
-.dba-claim-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.dba-claim-btn:active:not(:disabled) { transform:translateY(0); filter:brightness(.96); }
+.dba-claim-btn:disabled { opacity:.34; cursor:not-allowed; }
 
-@media (prefers-reduced-motion: reduce) {
-  .dba-day, .dba-milestone, .dba-nav-btn, .dba-close { transition: border-color .15s ease, background .15s ease; }
-  .dba-day:hover, .dba-milestone:hover, .dba-nav-btn:hover, .dba-close:hover { transform: none !important; }
-  .dba-day.is-claimable { animation: none; }
+@media (prefers-reduced-motion:reduce) {
+  .dba-day-card.claimable { animation:none; }
+  .dba-day-card:hover,.dba-milestone:hover { transform:none !important; }
 }
 `;
 
 /* ─── Composant wrapper mobile/desktop ───────────────────────────── */
 export function DailyBonusAgendaModal({
-  state,
-  onClose,
-  onState,
+  state, onClose, onState,
 }: {
-  state: DailyBonusState;
-  onClose: () => void;
-  onState: (s: DailyBonusState) => void;
+  state: DailyBonusState; onClose: () => void; onState: (s: DailyBonusState) => void;
 }) {
   const isMobile = useIsMobile();
-  if (isMobile) {
-    return <DailyBonusAgendaModalMobile state={state} onClose={onClose} onState={onState} />;
-  }
+  if (isMobile) return <DailyBonusAgendaModalMobile state={state} onClose={onClose} onState={onState} />;
   return <DailyBonusAgendaModalDesktop state={state} onClose={onClose} onState={onState} />;
 }
 
 /* ─── Desktop modal ──────────────────────────────────────────────── */
 function DailyBonusAgendaModalDesktop({
-  state,
-  onClose,
-  onState,
+  state, onClose, onState,
 }: {
-  state: DailyBonusState;
-  onClose: () => void;
-  onState: (s: DailyBonusState) => void;
+  state: DailyBonusState; onClose: () => void; onState: (s: DailyBonusState) => void;
 }) {
-  useInjectStyles("dba-modal-styles", CSS);
-
-  const auth      = useAuth() as any;
-  const token     = auth?.token ?? null;
-  const refreshMe = auth?.refreshMe ?? (async () => {});
+  useInjectStyles("dba-styles-v2", CSS);
+  const auth         = useAuth() as any;
+  const token        = auth?.token ?? null;
+  const refreshMe    = auth?.refreshMe ?? (async () => {});
   const userRole: Role = String(auth?.user?.role || "viewer").toLowerCase() as any;
-
-  const tokensAny      = (state as any)?.tokens ?? {};
-  const wheelTickets   = Number(tokensAny?.wheel_ticket ?? 0);
-  const prestigeTokens = Number(tokensAny?.prestige_token ?? 0);
-  const week           = Array.isArray((state as any)?.week)       ? (state as any).week       : [];
-  const milestones     = Array.isArray((state as any)?.milestones) ? (state as any).milestones : [];
-  const premiumActive  = Boolean((state as any)?.premiumActive ?? (state as any)?.premium?.active ?? false);
-  const premiumLabel   = String((state as any)?.premium?.label ?? "").trim() || "Abonnement actif";
+  const tokensAny    = (state as any)?.tokens ?? {};
+  const wheelTickets = Number(tokensAny?.wheel_ticket ?? 0);
+  const prestigeTok  = Number(tokensAny?.prestige_token ?? 0);
+  const week         = Array.isArray(state?.week)       ? state.week       : [];
+  const milestones   = Array.isArray(state?.milestones) ? state.milestones : [];
+  const premiumActive = Boolean(state?.premiumActive ?? state?.premium?.active ?? false);
+  const premiumLabel  = String(state?.premium?.label ?? "").trim() || "Abonnement actif";
 
   /* ── Content tabs ── */
   const [contentList, setContentList] = React.useState<ApiPublicContentTab[]>([]);
@@ -746,8 +591,7 @@ function DailyBonusAgendaModalDesktop({
     (async () => {
       try {
         const r: any = await publicListContentTabs();
-        const items = Array.isArray(r?.items) ? (r.items as ApiPublicContentTab[]) : [];
-        if (!dead) setContentList(items);
+        if (!dead) setContentList(Array.isArray(r?.items) ? r.items as ApiPublicContentTab[] : []);
       } catch { if (!dead) setContentList([]); }
     })();
     return () => { dead = true; };
@@ -756,19 +600,19 @@ function DailyBonusAgendaModalDesktop({
   const contentTabs = React.useMemo(() => {
     return (contentList || [])
       .map((it: any) => ({
-        key: String(it?.key || "").trim(),
-        minRole: String(it?.min_role || "viewer").toLowerCase() as Role,
-        title: String(it?.title || "").trim(),
-        updated_at: it?.updated_at ?? null,
+        key:           String(it?.key || "").trim(),
+        minRole:       String(it?.min_role || "viewer").toLowerCase() as Role,
+        title:         String(it?.title || "").trim(),
+        updated_at:    it?.updated_at ?? null,
         fallbackLabel: String(it?.title || "").trim() || humanizeKey(String(it?.key || "")),
       }))
       .filter(t => t.key && canSee(t.minRole, userRole));
   }, [contentList, userRole]);
 
   /* ── Tab state ── */
-  const [tab,             setTab]             = React.useState<TabKey>("agenda");
+  const [tab,              setTab]             = React.useState<TabKey>("agenda");
   const [activeContentKey, setActiveContentKey] = React.useState<ContentKey>("daily_bonus_infos");
-  const [busy,            setBusy]            = React.useState<string | null>(null);
+  const [busy,             setBusy]            = React.useState<string | null>(null);
 
   /* ── Content HTML + versions ── */
   const [contentHtml,     setContentHtml]     = React.useState<string | null>(null);
@@ -778,9 +622,9 @@ function DailyBonusAgendaModalDesktop({
   const [contentUnread,   setContentUnread]   = React.useState<Record<string, boolean>>({});
 
   /* ── Welcome ── */
-  const [welcome,      setWelcome]      = React.useState<any | null>(null);
-  const [welcomeLoad,  setWelcomeLoad]  = React.useState(false);
-  const [welcomeMeta,  setWelcomeMeta]  = React.useState<{ rewarded: boolean } | null>(null);
+  const [welcome,     setWelcome]     = React.useState<any | null>(null);
+  const [welcomeLoad, setWelcomeLoad] = React.useState(false);
+  const [welcomeMeta, setWelcomeMeta] = React.useState<{ rewarded: boolean } | null>(null);
 
   React.useEffect(() => {
     let dead = false;
@@ -808,7 +652,6 @@ function DailyBonusAgendaModalDesktop({
     return () => { dead = true; };
   }, [tab, token]);
 
-  /* sync activeContentKey si tabs change */
   React.useEffect(() => {
     if (tab !== "content") return;
     if (contentTabs.some(t => t.key === activeContentKey)) return;
@@ -816,7 +659,6 @@ function DailyBonusAgendaModalDesktop({
     if (first) setActiveContentKey(first);
   }, [tab, contentTabs, activeContentKey]);
 
-  /* preload versions depuis listing */
   React.useEffect(() => {
     for (const t of contentTabs) {
       const v = versionFromAnyItem(t);
@@ -829,17 +671,16 @@ function DailyBonusAgendaModalDesktop({
     }
   }, [contentTabs]);
 
-  /* charge HTML quand onglet content */
   React.useEffect(() => {
     let dead = false;
     (async () => {
       if (tab !== "content") return;
       setContentLoading(true);
       try {
-        const r: any = await publicGetContent(activeContentKey);
-        const html   = r?.item?.html ? sanitizeHtmlLite(String(r.item.html)) : null;
-        const item   = r?.item ?? null;
-        const v      = item ? contentVersionFromItem(item) : "";
+        const r: any   = await publicGetContent(activeContentKey);
+        const html      = r?.item?.html ? sanitizeHtmlLite(String(r.item.html)) : null;
+        const item      = r?.item ?? null;
+        const v         = item ? contentVersionFromItem(item) : "";
         if (v && !dead) {
           setContentVersions(m => ({ ...m, [activeContentKey]: v }));
           setContentUnread(m => ({ ...m, [activeContentKey]: isUnread(`content:${activeContentKey}`, v) }));
@@ -853,7 +694,6 @@ function DailyBonusAgendaModalDesktop({
     return () => { dead = true; };
   }, [tab, activeContentKey]);
 
-  /* mark as seen */
   React.useEffect(() => {
     if (tab !== "content") return;
     const v = contentVersions[activeContentKey];
@@ -912,76 +752,87 @@ function DailyBonusAgendaModalDesktop({
 
   const showWelcomeTab = !welcomeMeta?.rewarded;
 
+  /* Helpers status */
+  function statusClass(status: WeekDay["status"]) {
+    if (status === "claimed" || status === "today_claimed") return "ok";
+    if (status === "missed") return "bad";
+    if (status === "today_claimable") return "cta";
+    return "";
+  }
+  function statusText(status: WeekDay["status"]) {
+    const map: Record<string, string> = {
+      today_claimable: busy === "today" ? "Récupération…" : "À récupérer",
+      today_claimed: "Déjà récupéré",
+      claimed: "Récupéré",
+      missed: "Manqué",
+      future: "À venir",
+    };
+    return map[status] ?? "À venir";
+  }
+  function dayCardClass(d: WeekDay) {
+    const base = "dba-day-card";
+    if (d.status === "today_claimable" && !busy) return `${base} claimable`;
+    if (d.status === "missed") return `${base} missed`;
+    if (d.status === "future" || d.status === "claimed" || d.status === "today_claimed") return `${base} dimmed`;
+    return base;
+  }
+
   /* ── Render ── */
   return createPortal(
-    <div
-      className="dba-modal-backdrop"
-      role="presentation"
-      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      {toast && <div className="dba-toast">{toast}</div>}
+    <div className="dba-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      {toast ? <div className="dba-toast">{toast}</div> : null}
 
-      <div className="dba-modal" role="dialog" aria-modal="true" aria-label="Bonus quotidien">
+      <div className="dba-dialog" role="dialog" aria-modal="true" aria-label="Bonus quotidien">
 
         {/* ── Sidebar ── */}
         <aside className="dba-sidebar">
-          <div className="dba-sidebar-top">
+          <div className="dba-sidebar-head">
             <span className="dba-sidebar-title">Daily Bonus</span>
-            <button
-              className="dba-close"
-              type="button"
-              aria-label="Fermer"
-              onClick={onClose}
-            >✕</button>
+            <button className="dba-close-btn" type="button" aria-label="Fermer" onClick={onClose}>✕</button>
           </div>
 
-          <nav className="dba-nav">
-            <button
-              type="button"
-              className={`dba-nav-btn${tab === "agenda" ? " is-active" : ""}`}
-              onClick={() => setTab("agenda")}
-            >
+          <nav className="dba-sidebar-nav">
+            <button type="button" className={`dba-nav-item${tab === "agenda" ? " active" : ""}`} onClick={() => setTab("agenda")}>
               📅 Bonus quotidien
             </button>
-
-            {showWelcomeTab && (
-              <button
-                type="button"
-                className={`dba-nav-btn${tab === "welcome" ? " is-active" : ""}`}
-                onClick={() => setTab("welcome")}
-              >
+            {showWelcomeTab ? (
+              <button type="button" className={`dba-nav-item${tab === "welcome" ? " active" : ""}`} onClick={() => setTab("welcome")}>
                 🎯 Bienvenue
               </button>
-            )}
-
+            ) : null}
             {contentTabs.map(t => {
-              const label   = contentTitles[t.key] || t.fallbackLabel;
-              const active  = tab === "content" && activeContentKey === t.key;
-              const unread  = Boolean(contentUnread[t.key]);
+              const label  = contentTitles[t.key] || t.fallbackLabel;
+              const active = tab === "content" && activeContentKey === t.key;
+              const unread = Boolean(contentUnread[t.key]);
               return (
-                <button
-                  key={t.key}
-                  type="button"
-                  className={`dba-nav-btn${active ? " is-active" : ""}`}
-                  onClick={() => { setActiveContentKey(t.key); setTab("content"); }}
-                >
+                <button key={t.key} type="button"
+                  className={`dba-nav-item${active ? " active" : ""}`}
+                  onClick={() => { setActiveContentKey(t.key); setTab("content"); }}>
                   <span>{label}</span>
                   <UnreadBadge show={unread} title="Nouveautés" />
                 </button>
               );
             })}
-
-            <button type="button" className="dba-nav-btn is-soon" disabled>
+            <button type="button" className="dba-nav-item disabled" disabled>
               🎉 Événements
             </button>
           </nav>
 
-          <div className="dba-meta">
-            Aujourd'hui&nbsp;: <strong>{state.day}</strong><br />
-            Jours ce mois&nbsp;: <strong>{state.monthClaimedDays}</strong><br />
-            Tickets roue&nbsp;: <strong>{wheelTickets}</strong><br />
-            Prestige&nbsp;: <strong>{prestigeTokens}</strong><br />
-            Premium&nbsp;: <strong>{premiumActive ? "actif" : "—"}</strong>
+          <div className="dba-sidebar-meta">
+            <div className="dba-meta-card">
+              {[
+                ["📅 Aujourd'hui", state.day],
+                ["📆 Jours ce mois", String(state.monthClaimedDays)],
+                ["🎡 Tickets roue", String(wheelTickets)],
+                ["✨ Prestige", String(prestigeTok)],
+                ["⭐ Premium", premiumActive ? premiumLabel : "—"],
+              ].map(([label, value]) => (
+                <div key={label} className="dba-meta-row">
+                  <span className="dba-meta-label">{label}</span>
+                  <span className="dba-meta-value">{value}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </aside>
 
@@ -994,59 +845,40 @@ function DailyBonusAgendaModalDesktop({
               <div className="dba-section-head">
                 <span className="dba-section-title">Agenda hebdo</span>
                 {premiumActive ? (
-                  <div className="dba-premium-pill" title="Récompenses doublées">
-                    ★ {premiumLabel}
-                    <span className="x2-badge">×2</span>
+                  <div className="dba-prem-pill" title="Récompenses doublées">
+                    ★ {premiumLabel} <span className="x2">×2</span>
                   </div>
                 ) : null}
               </div>
 
               <div className="dba-week-grid">
-                {week.map((d: any) => {
+                {week.map((d) => {
                   const claimable = d.status === "today_claimable" && !busy;
-                  const statusMap: Record<string, string> = {
-                    claimed: "is-ok", today_claimed: "is-ok",
-                    missed: "is-bad",
-                    today_claimable: "is-cta",
-                  };
-                  const statusKind = statusMap[d.status] ?? "";
-                  const statusText: Record<string, string> = {
-                    today_claimable: busy === "today" ? "Récupération…" : "À récupérer",
-                    today_claimed: "Déjà récupéré", claimed: "Récupéré",
-                    missed: "Manqué", future: "À venir",
-                  };
-
+                  const sc = statusClass(d.status);
                   return (
-                    <div
-                      key={d.date}
+                    <div key={d.date}
                       role={claimable ? "button" : undefined}
                       tabIndex={claimable ? 0 : -1}
-                      className={[
-                        "dba-day",
-                        claimable ? "is-claimable" : "",
-                        d.status === "missed" ? "is-missed" :
-                          (d.status === "future" || d.status === "claimed" || d.status === "today_claimed") ? "is-dim" : "",
-                      ].filter(Boolean).join(" ")}
+                      className={dayCardClass(d)}
                       onClick={() => { if (claimable) claimToday(); }}
-                      onKeyDown={e => {
-                        if (!claimable) return;
-                        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); claimToday(); }
-                      }}
-                    >
-                      {premiumActive && (
-                        <div className="dba-prem-star" aria-hidden>★</div>
-                      )}
-                      <div className="dba-day-top">
+                      onKeyDown={e => { if (!claimable) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); claimToday(); } }}>
+
+                      {premiumActive ? <div className="dba-day-prem-star" aria-hidden>★</div> : null}
+
+                      <div className="dba-day-header">
                         <span className="dba-day-label">{d.label}</span>
                         <span className="dba-day-mark">{dayBadge(d.status)}</span>
                       </div>
+
                       <div className="dba-day-reward">
                         {rewardLabel(d.reward)}
-                        {premiumActive && <span className="dba-x2-chip">×2</span>}
+                        {premiumActive ? <span className="dba-x2-chip">×2</span> : null}
                       </div>
+
                       <div className="dba-day-date">{d.date}</div>
-                      <div className={`dba-status ${statusKind}`}>
-                        {statusText[d.status] ?? "À venir"}
+
+                      <div className={`dba-status-pill${sc ? " " + sc : ""}`}>
+                        {statusText(d.status)}
                       </div>
                     </div>
                   );
@@ -1054,29 +886,21 @@ function DailyBonusAgendaModalDesktop({
               </div>
 
               {/* Milestones */}
-              <div className="dba-panel">
-                <div className="dba-panel-title">Paliers du mois</div>
+              <div className="dba-section-card">
+                <div className="dba-card-label">Paliers du mois</div>
                 <div className="dba-milestones">
-                  {milestones.map((m: any) => {
+                  {milestones.map((m) => {
                     const isClaimable = m.status === "claimable" && !busy;
-                    const cls =
-                      m.status === "locked" ? "is-locked"
-                      : m.status === "claimed" ? "is-claimed"
-                      : "is-claimable";
-                    const icon = m.status === "claimed" ? "✓" : m.status === "claimable" ? (busy === `m${m.milestone}` ? "…" : "★") : "🔒";
+                    const cls = m.status === "locked" ? "locked" : m.status === "claimed" ? "claimed" : "claimable";
+                    const icon = m.status === "claimed" ? "✓" : m.status === "claimable" ? (busy === `m${m.milestone}` ? "⏳" : "★") : "🔒";
                     return (
-                      <div
-                        key={m.milestone}
+                      <div key={m.milestone}
                         role={isClaimable ? "button" : undefined}
                         tabIndex={isClaimable ? 0 : -1}
                         className={`dba-milestone ${cls}`}
                         onClick={() => { if (isClaimable) claimMilestone(m.milestone); }}
-                        onKeyDown={e => {
-                          if (!isClaimable) return;
-                          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); claimMilestone(m.milestone); }
-                        }}
-                      >
-                        {m.milestone} jours <span style={{ opacity: 0.80 }}>{icon}</span>
+                        onKeyDown={e => { if (!isClaimable) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); claimMilestone(m.milestone); } }}>
+                        {m.milestone} jours <span style={{ opacity:.80 }}>{icon}</span>
                       </div>
                     );
                   })}
@@ -1094,22 +918,17 @@ function DailyBonusAgendaModalDesktop({
             <>
               <div className="dba-section-head">
                 <span className="dba-section-title">{activeContentLabel}</span>
-                {premiumActive && (
-                  <div className="dba-premium-pill">
-                    ★ {premiumLabel} <span className="x2-badge">×2</span>
-                  </div>
-                )}
+                {premiumActive ? (
+                  <div className="dba-prem-pill">★ {premiumLabel} <span className="x2">×2</span></div>
+                ) : null}
               </div>
-              <div className="dba-panel">
+              <div className="dba-section-card">
                 {contentLoading ? (
-                  <div className="dba-section-sub" style={{ opacity: 0.70 }}>Chargement…</div>
+                  <div className="dba-section-sub" style={{ opacity:.70 }}>⏳ Chargement…</div>
                 ) : contentHtml ? (
-                  <div
-                    className="dba-content-html"
-                    dangerouslySetInnerHTML={{ __html: contentHtml }}
-                  />
+                  <div className="dba-html" dangerouslySetInnerHTML={{ __html: contentHtml }} />
                 ) : (
-                  <div className="dba-section-sub" style={{ opacity: 0.70 }}>Contenu indisponible.</div>
+                  <div className="dba-section-sub" style={{ opacity:.70 }}>Contenu indisponible.</div>
                 )}
               </div>
             </>
@@ -1122,11 +941,11 @@ function DailyBonusAgendaModalDesktop({
                 <span className="dba-section-title">Quêtes de bienvenue</span>
                 <span className="dba-section-sub">Complète tout pour débloquer tes récompenses</span>
               </div>
-              <div className="dba-panel">
+              <div className="dba-section-card">
                 {welcomeLoad ? (
-                  <div className="dba-section-sub" style={{ opacity: 0.70 }}>Chargement…</div>
+                  <div className="dba-section-sub" style={{ opacity:.70 }}>⏳ Chargement…</div>
                 ) : !welcome?.ok ? (
-                  <div className="dba-section-sub" style={{ opacity: 0.70 }}>Indisponible.</div>
+                  <div className="dba-section-sub" style={{ opacity:.70 }}>Indisponible.</div>
                 ) : (() => {
                   const g = welcome.goals || {};
                   const items = [
@@ -1142,20 +961,23 @@ function DailyBonusAgendaModalDesktop({
                         {items.map(it => {
                           const done = Number(it.have) >= Number(it.need);
                           return (
-                            <div key={it.key} className={`dba-quest${done ? " is-done" : ""}`}>
+                            <div key={it.key} className={`dba-quest${done ? " done" : ""}`}>
                               <span>{it.label}</span>
                               {done
-                                ? <span className="dba-quest-check">✓</span>
+                                ? <span className="dba-quest-check">✅</span>
                                 : <span className="dba-quest-progress">{it.have}/{it.need}</span>
                               }
                             </div>
                           );
                         })}
                       </div>
-                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, gap: 8 }}>
-                        <button
-                          className="dba-claim-btn"
-                          disabled={!welcome?.completed || !!busy}
+
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:16, gap:12 }}>
+                        <div className="dba-milestone-hint" style={{ marginTop:0 }}>
+                          Récompenses : <strong style={{ color:"rgba(200,195,240,.85)" }}>+50 rubis</strong> + <strong style={{ color:"rgba(200,195,240,.85)" }}>7 jours Viewer</strong>
+                        </div>
+                        <button className="dba-claim-btn" disabled={!welcome?.completed || !!busy}
+                          title={!welcome?.completed ? "Complète toutes les quêtes" : "Récupérer"}
                           onClick={async () => {
                             if (!token) return;
                             setBusy("welcome_claim");
@@ -1169,14 +991,9 @@ function DailyBonusAgendaModalDesktop({
                               if (s?.rewarded) setTab("agenda");
                             } catch (e: any) { showToast(String(e?.message || "Erreur")); }
                             finally { setBusy(null); }
-                          }}
-                          title={!welcome?.completed ? "Complète toutes les quêtes" : "Récupérer"}
-                        >
-                          {busy === "welcome_claim" ? "Récupération…" : "Récupérer"}
+                          }}>
+                          {busy === "welcome_claim" ? "⏳ Récupération…" : "Récupérer"}
                         </button>
-                      </div>
-                      <div className="dba-milestone-hint" style={{ marginTop: 10 }}>
-                        Récompenses : <strong style={{ color: "rgba(200,195,240,0.85)" }}>+50 rubis</strong> et <strong style={{ color: "rgba(200,195,240,0.85)" }}>7 jours Viewer</strong>.
                       </div>
                     </>
                   );

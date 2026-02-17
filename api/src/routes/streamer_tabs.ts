@@ -406,7 +406,17 @@ streamerTabsRouter.put(
         const startTime = String(r.startTime || "00:00").trim();
         const endTime = String(r.endTime || "00:00").trim();
 
-        const dayOfWeek = kind === "regular" ? Number(r.dayOfWeek ?? 0) : null;
+        let dayOfWeek: number | null = null;
+
+        if (kind === "regular") {
+          const v = Number(r.dayOfWeek);
+          // -1 = tous les jours ; sinon 0..6
+          if (Number.isFinite(v) && (v === -1 || (v >= 0 && v <= 6))) {
+            dayOfWeek = v;
+          } else {
+            dayOfWeek = 0; // fallback safe
+          }
+        }
 
         let dateYmd: string | null = null;
         if (kind === "event") {
