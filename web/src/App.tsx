@@ -66,7 +66,7 @@ function AppInner() {
   return (
     <div className="app">
       <BgEffect type="cards" />
-      <Topbar onOpenLogin={() => setLoginOpen(true)} onLogout={logout} />
+      {!isMobile && <Topbar onOpenLogin={() => setLoginOpen(true)} onLogout={logout} />}
 
       <GoLiveNotifier />
       <DailyBonusToast />
