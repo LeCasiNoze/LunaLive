@@ -482,14 +482,13 @@ const CLIP_MODAL_CSS = `
 .cpm-header-left { display:flex;flex-direction:column;gap:4px;min-width:0;flex:1; }
 
 .cpm-clip-title {
-  font-family:'Syne',system-ui,sans-serif;
-  font-weight:800;font-size:15px;letter-spacing:-.3px;line-height:1.2;
+    font-weight:800;font-size:15px;letter-spacing:-.3px;line-height:1.2;
   color:rgba(235,232,255,.94);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .cpm-clip-meta {
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-  font-family:'Syne',system-ui,sans-serif;font-size:11px;font-weight:500;
+  font-size:11px;font-weight:500;
   color:rgba(167,155,220,.55);
 }
 .cpm-clip-meta a {
@@ -509,7 +508,7 @@ const CLIP_MODAL_CSS = `
   height:36px;padding:0 13px;border-radius:11px;
   border:1px solid rgba(239,68,68,.22);background:rgba(239,68,68,.08);
   color:rgba(252,165,165,.85);cursor:pointer;
-  font-family:'Syne',system-ui,sans-serif;font-size:12px;font-weight:700;
+  font-size:12px;font-weight:700;
   outline:none;-webkit-tap-highlight-color:transparent;
   transition:background 150ms ease,border-color 150ms ease,transform 120ms cubic-bezier(.22,1,.36,1);
 }
@@ -522,7 +521,7 @@ const CLIP_MODAL_CSS = `
   height:36px;padding:0 13px;border-radius:11px;
   border:1px solid rgba(124,92,252,.22);background:rgba(124,92,252,.07);
   color:rgba(200,195,240,.75);cursor:pointer;
-  font-family:'Syne',system-ui,sans-serif;font-size:12px;font-weight:700;
+  font-size:12px;font-weight:700;
   outline:none;-webkit-tap-highlight-color:transparent;
   transition:background 150ms ease,border-color 150ms ease,transform 120ms cubic-bezier(.22,1,.36,1);
 }
@@ -563,7 +562,7 @@ const CLIP_MODAL_CSS = `
 /* Footer info */
 .cpm-footer-info {
   display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-  font-family:'Syne',system-ui,sans-serif;font-size:11px;font-weight:500;
+  font-size:11px;font-weight:500;
   color:rgba(167,155,220,.55);
 }
 .cpm-footer-info strong { color:rgba(200,195,240,.85);font-weight:700; }
@@ -572,7 +571,7 @@ const CLIP_MODAL_CSS = `
 .cpm-status {
   padding:8px 12px;border-radius:10px;
   border:1px solid rgba(124,92,252,.16);background:rgba(124,92,252,.08);
-  font-family:'Syne',system-ui,sans-serif;font-size:11px;font-weight:500;
+  font-size:11px;font-weight:500;
   color:rgba(200,195,240,.80);
 }
 
@@ -608,12 +607,12 @@ const CLIP_MODAL_CSS = `
 
 .cpm-list-info { display:flex;flex-direction:column;gap:4px;min-width:0; }
 .cpm-list-title {
-  font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:12px;letter-spacing:-.15px;
+  font-weight:700;font-size:12px;letter-spacing:-.15px;
   color:rgba(235,232,255,.90);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .cpm-list-sub {
-  font-family:'Syne',system-ui,sans-serif;font-size:10px;font-weight:500;
+  font-size:10px;font-weight:500;
   color:rgba(167,155,220,.50);
 }
 
@@ -622,30 +621,21 @@ const CLIP_MODAL_CSS = `
   display:inline-flex;gap:5px;align-items:center;
   padding:4px 9px;border-radius:999px;
   background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.10);
-  font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:11px;
+  font-weight:700;font-size:11px;
   color:rgba(235,232,255,.85);white-space:nowrap;
 }
 .cpm-list-open {
-  font-family:'Syne',system-ui,sans-serif;font-size:10px;font-weight:600;
+  font-size:10px;font-weight:600;
   color:rgba(124,92,252,.60);
 }
 
 /* Vide */
 .cpm-empty {
-  font-family:'Syne',system-ui,sans-serif;font-size:12px;font-weight:500;
+  font-size:12px;font-weight:500;
   color:rgba(167,155,220,.45);padding:8px 0;
 }
 `;
 
-let _clipCssInjected = false;
-function useClipModalStyles() {
-  React.useEffect(() => {
-    if (_clipCssInjected) return;
-    const el = document.createElement("style");
-    el.id = "cpm-styles"; el.textContent = CLIP_MODAL_CSS;
-    document.head.appendChild(el); _clipCssInjected = true;
-  }, []);
-}
 
 /* ─── ClipPlayerModal ────────────────────────────────────────────────── */
 function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, onClose, zIndex }: {
@@ -654,7 +644,6 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
   onRemoveClip: (id: number) => void;
   onClose: () => void; zIndex: number;
 }) {
-  useClipModalStyles();
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const [busy, setBusy] = React.useState<null | "liking" | "downloading" | "deleting">(null);
   const [status, setStatus] = React.useState<string | null>(null);
@@ -773,6 +762,7 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
 
   return createPortal(
     <div className="cpm-backdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
+      <style dangerouslySetInnerHTML={{__html: CLIP_MODAL_CSS}} />
       <div className="cpm-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 960 }}>
 
         {/* Header */}
@@ -864,7 +854,6 @@ function MonthClipsListModal({ title, clips, total, onClose, onPickClip, zIndex 
   title: string; clips: ClipVM[]; total: number;
   onClose: () => void; onPickClip: (c: ClipVM) => void; zIndex: number;
 }) {
-  useClipModalStyles();
   return createPortal(
     <div className="cpm-backdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
       <div className="cpm-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 760 }}>

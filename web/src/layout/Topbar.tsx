@@ -432,7 +432,8 @@ export function Topbar({
           box-shadow: 0 12px 32px rgba(0,0,0,0.35);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
-          font-family: 'Syne', system-ui, sans-serif;
+          font-family: var(--ll-font-display);
+
           font-size: 12px;
           font-weight: 700;
           letter-spacing: -0.1px;

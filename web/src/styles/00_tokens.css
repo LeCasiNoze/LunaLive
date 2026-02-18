@@ -127,6 +127,7 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
   /* Typographie display (Syne) */
---ll-font-display: 'Syne', system-ui, sans-serif;
+--ll-font-display: 'Space Grotesk', 'Syne', system-ui, sans-serif;
+
 --ll-font-body:    system-ui, -apple-system, 'Segoe UI', sans-serif;
 }

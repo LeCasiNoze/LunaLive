@@ -153,22 +153,6 @@
   -webkit-backdrop-filter: blur(12px);
   box-shadow: 0 8px 28px rgba(0,0,0,0.28);
 }
-/* ─── PILL ───────────────────────────────── */
-.pill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
-  border-radius: 999px;
-  background: var(--ll-glass);
-  border: 1px solid var(--ll-border);
-  color: var(--ll-ink-2);
-  font-size: 12px;
-  font-weight: 600;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 8px 28px rgba(0,0,0,0.28);
-}
 
 /* ─── BOTTOM TABS (mobile) ───────────────── */
 .bottomTabs {

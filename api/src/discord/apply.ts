@@ -36,9 +36,8 @@ import { hasAnyRole } from "./sync.js";
 function rulesShortText() {
   return [
     "📜 RÈGLEMENT (résumé) :",
-    "• Communauté casino FR respectueuse et croissante.",
-    "• Interdit : triche, détournement d’affiliation, pub non autorisée, botting/stats boosting.",
-    "• Interdit : dépôts offerts qui poussent multi-comptes / toxicité.",
+    "• Interdit : triche, détournement d’affiliation, botting/stats boosting.",
+    "• Interdit : dépôts offerts -> pousse aux multi-comptes / toxicité.",
     "  ✅ Toléré : 1er dépôt remboursé jusqu’à 50% (max 50€).",
     "• Places limitées : être actif, ne pas gaspiller sa place.",
     "• Non-respect => révocation possible à tout moment.",
@@ -74,15 +73,15 @@ export function buildApplyModal() {
 
   const expInput = new TextInputBuilder()
     .setCustomId("f_exp")
-    .setLabel("Ton expérience + ce que tu veux faire (optionnel)")
+    .setLabel("Ton expérience + ce que tu veux faire :")
     .setStyle(TextInputStyle.Paragraph)
-    .setPlaceholder("Décris ton contenu, fréquence, type de slots/casinos, objectifs…")
+    .setPlaceholder("Décris ton contenu, fréquence, objectifs…")
     .setRequired(false)
     .setMaxLength(1200);
 
   const rulesInput = new TextInputBuilder()
     .setCustomId("f_rules")
-    .setLabel("Règlement — tape exactement : J'ACCEPTE (obligatoire)")
+    .setLabel("Règlement — tape exactement : J'ACCEPTE")
     .setStyle(TextInputStyle.Short)
     .setPlaceholder(rulesShortText() + "\n\n=> Tape: J'ACCEPTE")
     .setRequired(true)

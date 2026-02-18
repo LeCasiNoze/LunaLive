@@ -5,6 +5,8 @@ html, body { height: 100%; }
 html { background: var(--bg); }
 
 body {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
   margin: 0;
   background: transparent;
   color: var(--text);
@@ -19,6 +21,11 @@ button, .navItem, .pill,
 .panelTitle, .modalTitle, .dropdownName,
 .brandName, .tabLabel {
   font-family: var(--ll-font-display);
+}
+/* chiffres plus beaux partout */
+:root{
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 ::selection {
