@@ -10,12 +10,15 @@ export default defineConfig({
       srcDir: "src",
       filename: "sw.js",
 
+      // ✅ FIX: autoriser le precache > 2MiB (ton bundle fait ~2.37MB)
+      injectManifest: {
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MiB
+      },
+
       // tu registers à la main -> pas d'auto inject
       injectRegister: null,
       registerType: "autoUpdate",
 
-      // Assets copiés tels quels dans le build (doivent exister dans /public)
-      // ⚠️ Mets bien ces fichiers dans web/public/pwa/
       includeAssets: [
         "favicon.png",
         "logo.png",
