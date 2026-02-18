@@ -33,7 +33,36 @@ import {
 import { normalizeAccept, safeDm, type BotCtx } from "./utils.js";
 import { hasAnyRole } from "./sync.js";
 
+/**
+ * Discord API limits (practical safe caps)
+ * - Modal title: 45
+ * - TextInput label: 45
+ * - TextInput placeholder: 100
+ * - CustomId: 100
+ * - Channel name: 100 (Discord limit is higher, but keep safe)
+ * - Channel topic: 1024
+ * - Embed title: 256
+ * - Embed description: 4096
+ */
+const LIMITS = {
+  modalTitle: 45,
+  inputLabel: 45,
+  inputPlaceholder: 100,
+  customId: 100,
+  buttonLabel: 80,
+  channelName: 95, // you already used 95
+  channelTopic: 1024,
+  embedTitle: 256,
+  embedDesc: 4096,
+};
+
+function clamp(v: any, max: number) {
+  const s = String(v ?? "");
+  return s.length > max ? s.slice(0, max) : s;
+}
+
 function rulesShortText() {
+  // ⚠️ Ne JAMAIS mettre ça en placeholder de TextInput (limite ~100)
   return [
     "📜 RÈGLEMENT (résumé) :",
     "• Interdit : triche, détournement d’affiliation, botting/stats boosting.",
@@ -45,45 +74,48 @@ function rulesShortText() {
 }
 
 export function buildApplyModal() {
-  const modal = new ModalBuilder().setCustomId(CID_APPLY_MODAL).setTitle("Demande Streamer LunaLive");
+  const modal = new ModalBuilder()
+    .setCustomId(clamp(CID_APPLY_MODAL, LIMITS.customId))
+    .setTitle(clamp("Demande Streamer LunaLive", LIMITS.modalTitle));
 
   const discordInput = new TextInputBuilder()
     .setCustomId("f_discord")
-    .setLabel("Ton contact (Discord/Telegram) — OBLIGATOIRE")
+    .setLabel(clamp("Contact (Discord/Telegram) *", LIMITS.inputLabel))
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Ex: LeCasiNoze / LeCasiNoze#1234 / @telegram")
+    .setPlaceholder(clamp("Ex: LeCasiNoze / @telegram", LIMITS.inputPlaceholder))
     .setRequired(true)
     .setMaxLength(120);
 
   const dliveInput = new TextInputBuilder()
     .setCustomId("f_dlive")
-    .setLabel("Lien DLive (si tu en as déjà un)")
+    .setLabel(clamp("Lien DLive (optionnel)", LIMITS.inputLabel))
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("https://dlive.tv/LeCasinoze (ou vide si pas encore)")
+    .setPlaceholder(clamp("https://dlive.tv/LeCasinoze", LIMITS.inputPlaceholder))
     .setRequired(false)
     .setMaxLength(300);
 
   const linksInput = new TextInputBuilder()
     .setCustomId("f_links")
-    .setLabel("Autres liens utiles (optionnel)")
+    .setLabel(clamp("Autres liens (optionnel)", LIMITS.inputLabel))
     .setStyle(TextInputStyle.Paragraph)
-    .setPlaceholder("Twitch / YouTube / X / Insta / Kick / autres… (optionnel)")
+    .setPlaceholder(clamp("Twitch / YouTube / X / Insta / Kick…", LIMITS.inputPlaceholder))
     .setRequired(false)
     .setMaxLength(1200);
 
   const expInput = new TextInputBuilder()
     .setCustomId("f_exp")
-    .setLabel("Ton expérience + ce que tu veux faire :")
+    .setLabel(clamp("Projet / expérience (optionnel)", LIMITS.inputLabel))
     .setStyle(TextInputStyle.Paragraph)
-    .setPlaceholder("Décris ton contenu, fréquence, objectifs…")
+    .setPlaceholder(clamp("Contenu, fréquence, objectifs…", LIMITS.inputPlaceholder))
     .setRequired(false)
     .setMaxLength(1200);
 
   const rulesInput = new TextInputBuilder()
     .setCustomId("f_rules")
-    .setLabel("Règlement — tape exactement : J'ACCEPTE")
+    .setLabel(clamp("Règlement: tape J'ACCEPTE *", LIMITS.inputLabel))
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder(rulesShortText() + "\n\n=> Tape: J'ACCEPTE")
+    // placeholder MUST be short
+    .setPlaceholder(clamp("Tape exactement : J'ACCEPTE", LIMITS.inputPlaceholder))
     .setRequired(true)
     .setMaxLength(20);
 
@@ -100,8 +132,8 @@ export function buildApplyModal() {
 
 function ticketName(username: string, discordId: string) {
   const base = slugify(username || "user").slice(0, 16) || "user";
-  const suf = discordId.slice(-4);
-  return `ticket-streamer-${base}-${suf}`.slice(0, 95);
+  const suf = String(discordId || "").slice(-4);
+  return clamp(`ticket-streamer-${base}-${suf}`, LIMITS.channelName);
 }
 
 export async function ensureApplyMessage(guild: Guild, ctx: BotCtx) {
@@ -114,25 +146,35 @@ export async function ensureApplyMessage(guild: Guild, ctx: BotCtx) {
     const channel = ch as TextChannel;
 
     const embed = new EmbedBuilder()
-      .setTitle("🎥 Faire une demande Streamer")
+      .setTitle(clamp("🎥 Faire une demande Streamer", LIMITS.embedTitle))
       .setDescription(
-        [
-          "Clique sur le bouton ci-dessous pour ouvrir le formulaire.",
-          "",
-          "⚠️ Conditions :",
-          "• Être **vérifié** (faire `/link` d’abord).",
-          "• Accepter le **règlement** (obligatoire).",
-        ].join("\n")
+        clamp(
+          [
+            "Clique sur le bouton ci-dessous pour ouvrir le formulaire.",
+            "",
+            "⚠️ Conditions :",
+            "• Être **vérifié** (faire `/link` d’abord).",
+            "• Accepter le **règlement** (obligatoire).",
+            "",
+            // ✅ Mets le résumé ici (embed), pas dans un placeholder
+            rulesShortText(),
+          ].join("\n"),
+          LIMITS.embedDesc
+        )
       )
       .setFooter({ text: "LunaLive — demandes streamers" });
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(CID_APPLY_OPEN).setLabel("Faire une demande streamer").setStyle(ButtonStyle.Primary)
+      new ButtonBuilder()
+        .setCustomId(clamp(CID_APPLY_OPEN, LIMITS.customId))
+        .setLabel(clamp("Faire une demande streamer", LIMITS.buttonLabel))
+        .setStyle(ButtonStyle.Primary)
     );
 
-    // edit existing bot message if possible (last 30)
     const msgs = await channel.messages.fetch({ limit: 30 }).catch(() => null);
-    const existing = msgs?.find((m) => m.author?.id === guild.client.user?.id && (m.components?.length ?? 0) > 0);
+    const existing = msgs?.find(
+      (m) => m.author?.id === guild.client.user?.id && (m.components?.length ?? 0) > 0
+    );
 
     if (existing) {
       await existing.edit({ embeds: [embed], components: [row] }).catch(() => null);
@@ -178,11 +220,16 @@ export async function createTicketChannel(guild: Guild, member: GuildMember, ctx
     });
   }
 
+  const topic = clamp(
+    `Streamer apply ticket | user=${member.user.tag} (${member.id})`,
+    LIMITS.channelTopic
+  );
+
   const ch = await guild.channels.create({
     name,
     type: ChannelType.GuildText,
     parent: STAFF_TICKETS_CATEGORY_ID,
-    topic: `Streamer apply ticket | user=${member.user.tag} (${member.id})`,
+    topic,
     permissionOverwrites: overwrites,
     reason: "Streamer apply ticket",
   });
@@ -335,12 +382,12 @@ export function validateRulesInput(rulesField: string) {
 export function buildStaffActionsRow(requestId: number) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(`${CID_APPLY_DECIDE_PREFIX}approve:${requestId}`)
-      .setLabel("✅ Approuver")
+      .setCustomId(clamp(`${CID_APPLY_DECIDE_PREFIX}approve:${requestId}`, LIMITS.customId))
+      .setLabel(clamp("✅ Approuver", LIMITS.buttonLabel))
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
-      .setCustomId(`${CID_APPLY_DECIDE_PREFIX}reject:${requestId}`)
-      .setLabel("❌ Refuser")
+      .setCustomId(clamp(`${CID_APPLY_DECIDE_PREFIX}reject:${requestId}`, LIMITS.customId))
+      .setLabel(clamp("❌ Refuser", LIMITS.buttonLabel))
       .setStyle(ButtonStyle.Danger)
   );
 }
