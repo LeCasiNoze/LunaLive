@@ -41,6 +41,7 @@ import { mig036_reports_status_deleted } from "./mig036_reports_status_deleted.j
 import { mig037_chat_settings_dlive } from "./mig037_chat_settings_dlive.js";
 import { mig038_site_content } from "./mig038_site_content.js";
 import { mig039_dlive_pre_streamer } from "./mig039_dlive_pre_streamer.js";
+import { mig_lunaclip } from "./mig_lunaclip.js";
 
 // ✅ NEW
 import { mig040_streamer_requests_fields } from "./mig040_streamer_requests_fields.js";
@@ -120,5 +121,5 @@ export async function migrateAll(pool: Pool) {
   await mig045_referrals_welcome(pool);
   await mig046_events_engine(pool);
   await mig047_event_viewer_week(pool);
-
+  await mig_lunaclip(pool);
 }

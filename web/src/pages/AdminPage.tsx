@@ -36,7 +36,7 @@ import { Link } from "react-router-dom";
 import { EmotesAdminSection } from "../components/admin/EmotesAdminSection";
 import { ReportsAdminSection } from "../components/admin/ReportsAdminSection";
 import { SubscriptionsAdminSection } from "../components/admin/SubscriptionsAdminSection";
-
+import { LunaClipAdminSection } from "../components/admin/Lunaclipadminsection";
 
 const SS_KEY = "lunalive_admin_key_v1";
 const SS_TAB = "lunalive_admin_tab_v1";
@@ -637,6 +637,14 @@ export default function AdminPage() {
                 label="MàJ Slots (Shuffle)"
                 hint="Sync DB providers"
                 onClick={() => goto("slots")}
+              />
+
+              <NavButton
+                active={tab === "lunaclip"}
+                icon="🎰"
+                label="LunaClip"
+                hint="Analyse OCR streams + clips auto"
+                onClick={() => goto("lunaclip")}
               />
 
               <NavButton
@@ -1579,6 +1587,21 @@ export default function AdminPage() {
               <ProviderAccountsAdminSection adminKey={key} />
             </Card>
           ) : null}
+
+          {tab === "lunaclip" ? (
+  <Card
+    title={
+      <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 18 }}>🎰</span>
+        LunaClip — Analyse OCR
+      </span>
+    }
+    subtitle="Détection automatique provider/multiplicateur + clips sur EVENT."
+    right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
+  >
+    <LunaClipAdminSection adminKey={key} />
+  </Card>
+) : null}
         </div>
       </div>
       <RequestDetailsModal

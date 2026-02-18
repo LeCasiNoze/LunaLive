@@ -1,0 +1,5 @@
+# lunaclip-worker/requirements.txt
+opencv-python-headless==4.9.0.80
+Pillow==10.3.0
+pytesseract==0.3.10
+numpy==1.26.4
