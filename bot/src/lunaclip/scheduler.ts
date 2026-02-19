@@ -89,7 +89,7 @@ async function getDliveHlsUrl(dliveDisplayname: string): Promise<string | null> 
     const username = ls.username as string;
     if (!username) return null;
     const rawHls = `https://live.prd.dlive.tv/hls/live/${username}.m3u8`;
-    return `https://live.prd.dlive.tv/hls/live/${username}.m3u8`;
+    return rawHls;
   } catch {
     return null;
   }
