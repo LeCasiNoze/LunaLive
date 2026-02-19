@@ -5,7 +5,8 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json && cp -r src/lunaclip-worker dist/lunaclip-worker"
+    "build": "tsc -p tsconfig.json && cp -r src/lunaclip-worker dist/lunaclip-worker",
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.971.0",
