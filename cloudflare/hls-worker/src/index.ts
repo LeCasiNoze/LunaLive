@@ -6,16 +6,27 @@ const CORS_HEADERS: Record<string, string> = {
     "content-type,content-length,accept-ranges,content-range,cache-control"
 };
 
-function isAllowedHost(host: string) {
+function hostMatches(host: string, pattern: string) {
   const h = host.toLowerCase();
-  return h === "live.prd.dlive.tv" || h.endsWith("dlivecdn.com");
+  const p = pattern.toLowerCase().trim();
+  if (!p) return false;
+  if (p.startsWith("*.")) return h === p.slice(2) || h.endsWith(p.slice(1));
+  return h === p;
 }
 
-function proxyUrl(abs: string) {
-  return `/hls?u=${encodeURIComponent(abs)}`;
+const DEFAULT_ALLOWED = ["live.prd.dlive.tv", "*.dlive.tv", "*.dlivecdn.com", "dlivecdn.com"];
+
+function isAllowedHost(host: string) {
+  return DEFAULT_ALLOWED.some((p) => hostMatches(host, p));
 }
 
-function rewriteM3u8(text: string, base: URL) {
+
+function proxyUrl(origin: string, abs: string) {
+  return `${origin}/hls?u=${encodeURIComponent(abs)}`;
+}
+
+function rewriteM3u8(text: string, base: URL, origin: string) {
+
   const lines = text.split("\n");
 
   return lines
@@ -29,7 +40,7 @@ function rewriteM3u8(text: string, base: URL) {
           const u = new URL(uri, base);
           const swapped = trySwapLivestreamHost(u);
           const abs = (swapped ?? u).toString();
-          return `URI="${proxyUrl(abs)}"`;
+          return `URI="${proxyUrl(origin, abs)}"`;
         });
       }
 
@@ -37,7 +48,7 @@ function rewriteM3u8(text: string, base: URL) {
       const u = new URL(s, base);
       const swapped = trySwapLivestreamHost(u);
       const abs = (swapped ?? u).toString();
-      return proxyUrl(abs);
+      return proxyUrl(origin, abs);
 
     })
     .join("\n");
@@ -189,8 +200,10 @@ export default {
           headers: withCors(outHeaders)
         });
       }
+      const origin = new URL(request.url).origin;
+      const rewritten = rewriteM3u8(text, target, origin);
 
-      const rewritten = rewriteM3u8(text, target);
+
       const outHeaders = new Headers();
       outHeaders.set("content-type", ct || "application/vnd.apple.mpegurl");
       outHeaders.set("cache-control", "public, max-age=1, s-maxage=2, must-revalidate");
@@ -212,7 +225,8 @@ export default {
           headers: withCors(outHeaders)
         });
       }
-      const rewritten = rewriteM3u8(text, target);
+      const rewritten = rewriteM3u8(text, target, origin);
+
       const outHeaders = new Headers();
       outHeaders.set("content-type", ct || "application/vnd.apple.mpegurl");
       outHeaders.set("cache-control", "public, max-age=1, s-maxage=2, must-revalidate");
