@@ -23,8 +23,13 @@ RUN apk add --no-cache \
     tesseract-ocr \
     tesseract-ocr-data-fra \
     tesseract-ocr-data-eng \
-    ffmpeg
-
+    ffmpeg \
+    gstreamer \
+    gst-plugins-base \
+    gst-plugins-good \
+    gst-plugins-bad \
+    gst-plugins-ugly \
+    gst-libav
 # pytesseract via pip (AVANT py3-opencv)
 RUN pip install --break-system-packages --no-cache-dir pytesseract==0.3.10
 

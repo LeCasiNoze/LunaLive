@@ -195,18 +195,6 @@ export function requireAdminKey(req: Request, res: Response, next: NextFunction)
   if (debug) {
     res.setHeader("x-admin-key-present", provided ? "1" : "0");
     res.setHeader("x-admin-key-check", match ? "ok" : "fail");
-
-    // logs (sans leak du secret)
-    console.log("[ADMIN_DEBUG] ---- requireAdminKey ----");
-    console.log("[ADMIN_DEBUG] method:", req.method);
-    console.log("[ADMIN_DEBUG] url:", req.originalUrl || req.url);
-    console.log("[ADMIN_DEBUG] headers.authorization:", String(req.headers.authorization || ""));
-    console.log("[ADMIN_DEBUG] headers.x-admin-key:", String((req.headers as any)["x-admin-key"] || ""));
-    console.log("[ADMIN_DEBUG] headers.x-access-token:", String((req.headers as any)["x-access-token"] || ""));
-    console.log("[ADMIN_DEBUG] provided(masked):", maskSecret(provided));
-    console.log("[ADMIN_DEBUG] expected(masked):", maskSecret(expected));
-    console.log("[ADMIN_DEBUG] match:", match);
-    console.log("[ADMIN_DEBUG] ----------------------------");
   }
 
   if (!match) {

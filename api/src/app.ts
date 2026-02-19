@@ -122,12 +122,6 @@ export function createApp() {
       const auth    = String(req.headers.authorization || "");
       const xAdmin  = String((req.headers as any)["x-admin-key"] || "");
       const xAccess = String((req.headers as any)["x-access-token"] || "");
-      console.error("[ADMIN_DEBUG][REQ]", req.method, req.originalUrl);
-      console.error("[ADMIN_DEBUG][HDR] authorization:", JSON.stringify(auth));
-      console.error("[ADMIN_DEBUG][HDR] x-admin-key:", JSON.stringify(xAdmin));
-      console.error("[ADMIN_DEBUG][HDR] x-access-token:", JSON.stringify(xAccess));
-      console.error("[ADMIN_DEBUG][HDR] origin:", JSON.stringify(String(req.headers.origin || "")));
-      console.error("[ADMIN_DEBUG][HDR] host:", JSON.stringify(String(req.headers.host || "")));
       res.setHeader("x-admin-debug-seen", "1");
     }
     next();
