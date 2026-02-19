@@ -179,8 +179,6 @@ function WorkerCard({ w, adminKey, alertMulti }: {
                 <YAxis stroke="#6B7280" tick={{fontSize:10}}/>
                 <Tooltip
                   contentStyle={{background:"#111827",border:"none",borderRadius:8,fontSize:11}}
-                  formatter={(v:number) => [`x${v}`,"Multi"]}
-                  labelFormatter={(ts:number) => hhmmss(ts)}
                 />
                 <ReferenceLine y={alertMulti} stroke="#EF4444" strokeDasharray="4 4"
                   label={{value:`x${alertMulti}`,fill:"#EF4444",fontSize:10}}/>
