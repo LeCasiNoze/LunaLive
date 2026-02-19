@@ -100,6 +100,8 @@ import { adminReferralsRouter } from "./routes/admin_referrals.js";
 import { eventsRouter } from "./routes/events.js";
 import { eventsViewerWeekRouter } from "./routes/events_viewer_week.js";
 import { adminEventsRouter } from "./routes/admin_events.js";
+import { startLunaClipScheduler } from "./lunaclip/scheduler.js";
+import { lunaclipRouter } from "./lunaclip/routes.js";
 
 export function createApp() {
   const app = express();
@@ -156,6 +158,7 @@ export function createApp() {
   app.use("/admin/casinos/comments", requireAdminKey, adminCasinoCommentsRouter);
   app.use("/admin/reports", requireAdminKey, adminReportsRouter);
   app.use("/admin/events", requireAdminKey, adminEventsRouter);
+  app.use("/admin/lunaclip", requireAdminKey, lunaclipRouter);
 
   // ✅ NEW (avant /admin content pour éviter collisions)
   app.use("/admin/auth", requireAdminKey, adminAuthRouter);
@@ -340,6 +343,8 @@ export function createApp() {
     console.error(err);
     res.status(500).json({ ok: false, error: "server_error" });
   });
+
+  startLunaClipScheduler();
 
   return app;
 }
