@@ -15,6 +15,7 @@ import pytesseract
 from PIL import Image
 import re, json, os, sys, argparse, time, signal
 from datetime import datetime
+import subprocess
 
 # ═══════════════════════════════════════════════
 #  CONFIG
@@ -40,6 +41,34 @@ EVENT_RESET_THRESHOLD = 50.0
 # Reconnexion HLS si le flux coupe
 MAX_RECONNECT_ATTEMPTS = 10
 RECONNECT_DELAY_SEC    = 5
+
+def open_ffmpeg_pipe(hls_url: str, w: int = 1280, h: int = 720):
+    """
+    Lance ffmpeg et renvoie un process qui sort des frames RGB bruts sur stdout.
+    On force des headers "browser-like" côté ffmpeg.
+    """
+    headers = (
+        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36\r\n"
+        "Referer: https://dlive.tv/\r\n"
+        "Origin: https://dlive.tv\r\n"
+        "Accept: */*\r\n"
+        "Accept-Language: en-US,en;q=0.9\r\n"
+    )
+
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-headers", headers,
+        "-i", hls_url,
+        "-vf", f"scale={w}:{h}",
+        "-an",
+        "-pix_fmt", "bgr24",
+        "-f", "rawvideo",
+        "pipe:1",
+    ]
+    return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 # ═══════════════════════════════════════════════
@@ -300,39 +329,38 @@ class EventTracker:
 # ═══════════════════════════════════════════════
 
 def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
-    emit_log(f"Starting stream analysis: {hls_url}")
+    emit_log(f"Starting stream analysis (ffmpeg): {hls_url}")
 
     tracker   = EventTracker(alert_multi=alert_multi)
     state     = {}
     last_emit = 0.0
-    reconnect = 0
 
-    # Arrêt propre sur SIGTERM (depuis Node parent)
     running = [True]
     def on_sigterm(*_):
         running[0] = False
     signal.signal(signal.SIGTERM, on_sigterm)
 
-    while running[0]:
-        emit_log(f"Connecting to HLS (attempt {reconnect + 1})")
-        cap = cv2.VideoCapture(hls_url)
+    # NOTE: ici on fixe une résolution de travail stable (à ajuster)
+    W, H = 1280, 720
+    frame_size = W * H * 3
 
-        if not cap.isOpened():
-            reconnect += 1
-            if reconnect > MAX_RECONNECT_ATTEMPTS:
-                emit_log("Max reconnection attempts reached, stopping.")
-                break
-            emit_log(f"Failed to open stream, retrying in {RECONNECT_DELAY_SEC}s...")
+    reconnect = 0
+    while running[0]:
+        reconnect += 1
+        emit_log(f"FFmpeg connect attempt {reconnect}")
+
+        proc = open_ffmpeg_pipe(hls_url, W, H)
+        if not proc.stdout:
+            emit_log("FFmpeg failed to start (no stdout)")
             time.sleep(RECONNECT_DELAY_SEC)
             continue
 
-        reconnect = 0
-        emit_log("Stream connected.")
+        emit_log("FFmpeg started.")
 
         while running[0]:
-            ret, frame = cap.read()
-            if not ret:
-                emit_log("Frame read failed, reconnecting...")
+            raw = proc.stdout.read(frame_size)
+            if not raw or len(raw) < frame_size:
+                emit_log("FFmpeg stream ended / short read, reconnecting...")
                 break
 
             now = time.time()
@@ -340,27 +368,28 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
                 continue
             last_emit = now
 
+            frame = np.frombuffer(raw, np.uint8).reshape((H, W, 3))
+
             try:
                 frame_data = analyze_frame(frame, state)
             except Exception as e:
                 emit_log(f"OCR error: {e}")
                 continue
 
-            # Émettre uniquement si au moins une valeur détectée
             if frame_data["bet_numeric"] or frame_data["win_numeric"] or frame_data["win_total_numeric"]:
                 emit_frame(frame_data)
 
-            # Check EVENT
             tracker.update(frame, frame_data)
 
-        cap.release()
+        try:
+            proc.kill()
+        except:
+            pass
 
         if running[0]:
-            emit_log(f"Stream lost, reconnecting in {RECONNECT_DELAY_SEC}s...")
             time.sleep(RECONNECT_DELAY_SEC)
 
     emit_log("Worker stopped.")
-
 
 # ═══════════════════════════════════════════════
 #  BOUCLE PRINCIPALE — MODE VIDEO FICHIER (local)

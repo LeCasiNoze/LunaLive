@@ -3,6 +3,7 @@ import { spawn, ChildProcess } from "child_process";
 import path from "path";
 import type { Pool } from "pg";
 import { addLunaClip } from "./clips.js";
+import fs from "node:fs";
 
 const DLIVE_GQL   = process.env.DLIVE_GRAPHQL_ENDPOINT ?? "https://graphigo.prd.dlive.tv/";
 // Proxy HLS PUBLIC (Cloudflare Worker) — même que le site
@@ -186,47 +187,87 @@ async function saveEvent(sessionId: bigint, f: FrameData, screenshot: string | n
 // Worker Python
 // ─────────────────────────────────────────────
 function spawnWorker(w: ActiveWorker) {
-  const proc = spawn("python3", [
+  const PYTHON_BIN = process.env.LUNACLIP_PYTHON ?? "python3";
+
+  if (!fs.existsSync(WORKER_PATH)) {
+    console.error(`[lunaclip][${w.streamerSlug}] WORKER_PATH not found: ${WORKER_PATH}`);
+    w.status = "error";
+    stopSession(w.sessionId, "error").catch(console.error);
+    return;
+  }
+
+  console.log(`[lunaclip][${w.streamerSlug}] spawn ${PYTHON_BIN} ${WORKER_PATH}`);
+  console.log(`[lunaclip][${w.streamerSlug}] hls=${w.hlsUrl}`);
+
+  const proc = spawn(PYTHON_BIN, [
     WORKER_PATH,
     "--hls-url",     w.hlsUrl,
     "--alert-multi", String(ALERT_MULTI),
     "--interval",    String(INTERVAL_S),
     "--mode",        "stream",
-  ], { stdio: ["ignore", "pipe", "pipe"] });
+  ], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, PYTHONUNBUFFERED: "1" }, // flush logs
+  });
+
+  proc.on("error", (err) => {
+    console.error(`[lunaclip][${w.streamerSlug}] spawn error:`, err);
+    w.status = "error";
+    stopSession(w.sessionId, "error").catch(console.error);
+  });
 
   let buf = "";
   proc.stdout?.on("data", (chunk: Buffer) => {
     buf += chunk.toString();
     const lines = buf.split("\n");
     buf = lines.pop() ?? "";
+
     for (const line of lines) {
       const t = line.trim();
       if (!t) continue;
-      try { handleMessage(w, JSON.parse(t)); }
-      catch { /* logs Python non-JSON */ }
+
+      // JSON line ?
+      if (t.startsWith("{") && t.endsWith("}")) {
+        try {
+          const msg = JSON.parse(t);
+          void handleMessage(w, msg);
+          continue;
+        } catch {
+          // fallthrough
+        }
+      }
+
+      // non-json stdout
+      console.log(`[lunaclip][${w.streamerSlug}][py] ${t}`);
     }
   });
 
-  proc.stderr?.on("data", (c: Buffer) =>
-    console.error(`[lunaclip][${w.streamerSlug}]`, c.toString().trim())
-  );
+  proc.stderr?.on("data", (c: Buffer) => {
+    const s = c.toString().trim();
+    if (s) console.error(`[lunaclip][${w.streamerSlug}][pyerr] ${s}`);
+  });
 
-  proc.on("exit", (code) => {
-    console.log(`[lunaclip][${w.streamerSlug}] worker exit code=${code}`);
-    w.status  = code === 0 ? "stopped" : "error";
-    w.process = proc;
+  proc.on("exit", (code, signal) => {
+    console.log(`[lunaclip][${w.streamerSlug}] worker exit code=${code} signal=${signal}`);
+    w.status = code === 0 ? "stopped" : "error";
     stopSession(w.sessionId, w.status as "stopped" | "error").catch(console.error);
   });
 
   w.process = proc;
-  w.status  = "running";
+  w.status = "running";
 }
 
 async function handleMessage(w: ActiveWorker, msg: { type: string; data: any }) {
+  if (msg.type === "log") {
+    console.log(`[lunaclip][${w.streamerSlug}][log] ${String(msg.data)}`);
+    return;
+  }
+
   if (msg.type === "frame") {
     const f = msg.data as FrameData;
     w.lastFrame = f;
     if (f.provider && f.provider !== "unknown") w.provider = f.provider;
+
     if (f.bet_numeric || f.win_numeric || f.win_total_numeric) {
       saveFrame(w.sessionId, f).catch(console.error);
     }
@@ -236,12 +277,17 @@ async function handleMessage(w: ActiveWorker, msg: { type: string; data: any }) 
   if (msg.type === "event") {
     const { frame: f, screenshot_path } = msg.data as { frame: FrameData; screenshot_path: string | null };
     w.lastFrame = f;
+
     await saveEvent(w.sessionId, f, screenshot_path ?? null).catch(console.error);
     const winLabel = f.win_total_value ?? f.win_value ?? "?";
     const title    = `🎰 x${f.multiplier} — ${(f.provider ?? "").toUpperCase()} — WIN ${winLabel}`;
     addLunaClip(_pool, w.streamerId, title, f.ts_sec).catch(console.error);
     console.log(`[lunaclip][${w.streamerSlug}] EVENT x${f.multiplier} provider=${f.provider}`);
+    return;
   }
+
+  // Unknown type
+  console.log(`[lunaclip][${w.streamerSlug}] unknown msg:`, msg);
 }
 
 function killWorker(w: ActiveWorker, reason: string) {
