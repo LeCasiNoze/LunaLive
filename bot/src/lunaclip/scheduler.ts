@@ -1,16 +1,7 @@
-// api/src/lunaclip/scheduler.ts
-//
-// Tourne en arrière-plan dans Node.
-// Toutes les 60s :
-//   1. Interroge DLive GraphQL pour chaque streamer LunaLive
-//   2. Démarre un worker Python pour chaque stream en live sans worker actif
-//   3. Arrête les workers dont le stream s'est terminé
-//
-// Démarre via startLunaClipScheduler() appelé dans server.ts / app startup.
-
+// bot/lunaclip/scheduler.ts
 import { spawn, ChildProcess } from "child_process";
 import path from "path";
-import { pool } from "../db.js";
+import type { Pool } from "pg";
 import { addLunaClip } from "./clips.js";
 
 const DLIVE_GQL   = process.env.DLIVE_GRAPHQL_ENDPOINT ?? "https://graphigo.prd.dlive.tv/";
@@ -23,16 +14,14 @@ const POLL_SEC    = 60;
 const ALERT_MULTI = parseFloat(process.env.LUNACLIP_ALERT_MULTI ?? "300");
 const INTERVAL_S  = parseFloat(process.env.LUNACLIP_INTERVAL ?? "1.0");
 const WORKER_PATH = path.resolve(process.cwd(), "dist/lunaclip-worker/worker.py");
-// ─────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────
+
 interface StreamerRow {
-  id:                    number;
-  slug:                  string;
-  display_name:          string;
-  dlive_use_linked:      boolean;
+  id:                     number;
+  slug:                   string;
+  display_name:           string;
+  dlive_use_linked:       boolean;
   dlive_link_displayname: string | null;
-  provider_channel_slug: string | null;
+  provider_channel_slug:  string | null;
 }
 
 interface FrameData {
@@ -50,30 +39,30 @@ interface FrameData {
   ts_sec:            number;
 }
 
-// Un worker actif par streamerId
 interface ActiveWorker {
-  streamerId:  number;
+  streamerId:   number;
   streamerSlug: string;
-  dliveSlug:   string;
-  sessionId:   bigint;
-  process:     ChildProcess;
-  status:      "running" | "stopped" | "error";
-  startedAt:   Date;
-  lastFrame:   FrameData | null;
-  provider:    string | null;
-  hlsUrl:      string;
+  dliveSlug:    string;
+  sessionId:    bigint;
+  process:      ChildProcess;
+  status:       "running" | "stopped" | "error";
+  startedAt:    Date;
+  lastFrame:    FrameData | null;
+  provider:     string | null;
+  hlsUrl:       string;
 }
 
-// Map streamerId -> worker
 export const activeWorkers = new Map<number, ActiveWorker>();
 
+// Pool injecté au démarrage
+let _pool: Pool;
 
 // ─────────────────────────────────────────────
 // DLive GraphQL
 // ─────────────────────────────────────────────
 async function dliveGql(query: string, variables: any) {
   const r = await fetch(DLIVE_GQL, {
-    method:  "POST",
+    method: "POST",
     headers: {
       "content-type": "application/json",
       accept:         "application/json",
@@ -86,23 +75,6 @@ async function dliveGql(query: string, variables: any) {
   return r.json() as Promise<any>;
 }
 
-async function isStreamerLive(dliveDisplayname: string): Promise<boolean> {
-  try {
-    const q = `query IsLive($name:String!){
-      userByDisplayName(displayname:$name){
-        livestream { createdAt }
-      }
-    }`;
-    const j = await dliveGql(q, { name: dliveDisplayname });
-    return !!j?.data?.userByDisplayName?.livestream?.createdAt;
-  } catch {
-    return false;
-  }
-}
-
-// Construit l'URL HLS directe DLive pour un displayname
-// Pattern validé : https://live.prd.dlive.tv/hls/live/<username>.m3u8
-// On utilise le username (pas le displayname) — récupéré via GraphQL
 async function getDliveHlsUrl(dliveDisplayname: string): Promise<string | null> {
   try {
     const q = `query GetHls($name:String!){
@@ -111,35 +83,26 @@ async function getDliveHlsUrl(dliveDisplayname: string): Promise<string | null> 
         livestream { createdAt }
       }
     }`;
-    const j = await dliveGql(q, { name: dliveDisplayname });
+    const j  = await dliveGql(q, { name: dliveDisplayname });
     const ls = j?.data?.userByDisplayName;
-    if (!ls?.livestream?.createdAt) return null; // pas en live
-
+    if (!ls?.livestream?.createdAt) return null;
     const username = ls.username as string;
     if (!username) return null;
-
     const rawHls = `https://live.prd.dlive.tv/hls/live/${username}.m3u8`;
-
-    // Passer par le proxy interne /hls (accepte *.dlive.tv)
-    const proxied = `${API_BASE}/hls?u=${encodeURIComponent(rawHls)}`;
-    return proxied;
+    return `${API_BASE}/hls?u=${encodeURIComponent(rawHls)}`;
   } catch {
     return null;
   }
 }
 
-
 // ─────────────────────────────────────────────
 // DB helpers
 // ─────────────────────────────────────────────
 async function getLunaLiveStreamers(): Promise<StreamerRow[]> {
-  const r = await pool.query(`
+  const r = await _pool.query(`
     SELECT
-      s.id,
-      s.slug,
-      s.display_name,
-      s.dlive_use_linked,
-      s.dlive_link_displayname,
+      s.id, s.slug, s.display_name,
+      s.dlive_use_linked, s.dlive_link_displayname,
       pa.channel_slug AS provider_channel_slug
     FROM streamers s
     LEFT JOIN provider_accounts pa
@@ -157,37 +120,29 @@ function getDisplayName(s: StreamerRow): string | null {
   return null;
 }
 
-async function createSession(
-  streamerId: number,
-  hlsUrl: string,
-  alertMulti: number,
-  intervalSec: number
-): Promise<bigint> {
-  const r = await pool.query(
-    `INSERT INTO lunaclip_sessions
-       (hls_url, status, alert_multi, interval_sec, started_at)
-     VALUES ($1, 'running', $2, $3, NOW())
-     RETURNING id`,
+async function createSession(streamerId: number, hlsUrl: string, alertMulti: number, intervalSec: number): Promise<bigint> {
+  const r = await _pool.query(
+    `INSERT INTO lunaclip_sessions (hls_url, status, alert_multi, interval_sec, started_at)
+     VALUES ($1, 'running', $2, $3, NOW()) RETURNING id`,
     [hlsUrl, alertMulti, intervalSec]
   );
-  // Stocker le lien session <-> streamer
   const sessionId = r.rows[0].id as bigint;
-  await pool.query(
-    `UPDATE lunaclip_sessions SET streamer_id = $1 WHERE id = $2`,
+  await _pool.query(
+    `UPDATE lunaclip_sessions SET streamer_id=$1 WHERE id=$2`,
     [streamerId, sessionId]
-  ).catch(() => {/* colonne pas encore dispo — migration à faire */});
+  ).catch(() => {});
   return sessionId;
 }
 
 async function stopSession(sessionId: bigint, status: "stopped" | "error") {
-  await pool.query(
+  await _pool.query(
     `UPDATE lunaclip_sessions SET status=$1, stopped_at=NOW() WHERE id=$2`,
     [status, sessionId]
   );
 }
 
 async function saveFrame(sessionId: bigint, f: FrameData) {
-  await pool.query(
+  await _pool.query(
     `INSERT INTO lunaclip_frames
        (session_id, ts_sec, provider, in_bonus,
         bet_value, bet_numeric, win_value, win_numeric,
@@ -204,7 +159,7 @@ async function saveFrame(sessionId: bigint, f: FrameData) {
 }
 
 async function saveEvent(sessionId: bigint, f: FrameData, screenshot: string | null) {
-  await pool.query(
+  await _pool.query(
     `INSERT INTO lunaclip_events
        (session_id, ts_sec, provider, in_bonus,
         multiplier, multiplier_source,
@@ -217,16 +172,12 @@ async function saveEvent(sessionId: bigint, f: FrameData, screenshot: string | n
     ]
   );
   if (f.provider && f.provider !== "unknown") {
-    await pool.query(
-      `UPDATE lunaclip_sessions SET provider=$1 WHERE id=$2`,
-      [f.provider, sessionId]
-    );
+    await _pool.query(`UPDATE lunaclip_sessions SET provider=$1 WHERE id=$2`, [f.provider, sessionId]);
   }
 }
 
-
 // ─────────────────────────────────────────────
-// Worker Python — spawn / stop
+// Worker Python
 // ─────────────────────────────────────────────
 function spawnWorker(w: ActiveWorker) {
   const proc = spawn("python3", [
@@ -256,11 +207,9 @@ function spawnWorker(w: ActiveWorker) {
 
   proc.on("exit", (code) => {
     console.log(`[lunaclip][${w.streamerSlug}] worker exit code=${code}`);
-    w.status = code === 0 ? "stopped" : "error";
+    w.status  = code === 0 ? "stopped" : "error";
     w.process = proc;
     stopSession(w.sessionId, w.status as "stopped" | "error").catch(console.error);
-    // Ne pas supprimer de activeWorkers ici — le scheduler le fera au prochain tick
-    // si le stream n'est plus en live
   });
 
   w.process = proc;
@@ -279,18 +228,12 @@ async function handleMessage(w: ActiveWorker, msg: { type: string; data: any }) 
   }
 
   if (msg.type === "event") {
-    const { frame: f, screenshot_path } = msg.data as {
-      frame: FrameData;
-      screenshot_path: string | null;
-    };
+    const { frame: f, screenshot_path } = msg.data as { frame: FrameData; screenshot_path: string | null };
     w.lastFrame = f;
     await saveEvent(w.sessionId, f, screenshot_path ?? null).catch(console.error);
-
-    // Clip auto rattaché au BON streamer (option A)
     const winLabel = f.win_total_value ?? f.win_value ?? "?";
     const title    = `🎰 x${f.multiplier} — ${(f.provider ?? "").toUpperCase()} — WIN ${winLabel}`;
-    addLunaClip(pool, w.streamerId, title, f.ts_sec).catch(console.error);
-
+    addLunaClip(_pool, w.streamerId, title, f.ts_sec).catch(console.error);
     console.log(`[lunaclip][${w.streamerSlug}] EVENT x${f.multiplier} provider=${f.provider}`);
   }
 }
@@ -302,9 +245,8 @@ function killWorker(w: ActiveWorker, reason: string) {
   stopSession(w.sessionId, "stopped").catch(console.error);
 }
 
-
 // ─────────────────────────────────────────────
-// Tick principal du scheduler
+// Tick
 // ─────────────────────────────────────────────
 async function tick() {
   let streamers: StreamerRow[];
@@ -315,31 +257,20 @@ async function tick() {
     return;
   }
 
-  // Pour chaque streamer : vérifier si en live
   for (const s of streamers) {
     const dliveSlug = getDisplayName(s);
-    if (!dliveSlug) continue; // pas de compte DLive configuré
+    if (!dliveSlug) continue;
 
     const existing = activeWorkers.get(s.id);
-
-    // Worker actif mais process mort → nettoyer
-    if (existing && existing.status !== "running") {
-      activeWorkers.delete(s.id);
-    }
+    if (existing && existing.status !== "running") activeWorkers.delete(s.id);
 
     const alreadyRunning = activeWorkers.has(s.id);
-
     let hlsUrl: string | null = null;
-    try {
-      hlsUrl = await getDliveHlsUrl(dliveSlug);
-    } catch {
-      hlsUrl = null;
-    }
+    try { hlsUrl = await getDliveHlsUrl(dliveSlug); } catch { hlsUrl = null; }
 
     const isLive = hlsUrl !== null;
 
     if (isLive && !alreadyRunning) {
-      // → Démarrer un nouveau worker
       console.log(`[lunaclip-scheduler] START worker for ${s.slug} (${dliveSlug})`);
       try {
         const sessionId = await createSession(s.id, hlsUrl!, ALERT_MULTI, INTERVAL_S);
@@ -348,7 +279,7 @@ async function tick() {
           streamerSlug: s.slug,
           dliveSlug,
           sessionId,
-          process:      null as any, // rempli par spawnWorker
+          process:      null as any,
           status:       "running",
           startedAt:    new Date(),
           lastFrame:    null,
@@ -363,14 +294,12 @@ async function tick() {
     }
 
     if (!isLive && alreadyRunning) {
-      // → Stream terminé, arrêter le worker
       const w = activeWorkers.get(s.id)!;
       killWorker(w, "stream ended");
       activeWorkers.delete(s.id);
     }
   }
 
-  // Arrêter les workers dont le streamerId n'est plus dans la liste
   for (const [sid, w] of activeWorkers) {
     const stillExists = streamers.some(s => s.id === sid);
     if (!stillExists) {
@@ -380,29 +309,21 @@ async function tick() {
   }
 }
 
-
 // ─────────────────────────────────────────────
 // Export public
 // ─────────────────────────────────────────────
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 
-export function startLunaClipScheduler() {
-  if (schedulerInterval) return; // déjà démarré
+export function startLunaClipScheduler(pool: Pool) {
+  if (schedulerInterval) return;
+  _pool = pool;
   console.log(`[lunaclip-scheduler] started (poll every ${POLL_SEC}s, alert x${ALERT_MULTI})`);
-
-  // Premier tick immédiat
   tick().catch(console.error);
-
-  schedulerInterval = setInterval(() => {
-    tick().catch(console.error);
-  }, POLL_SEC * 1000);
+  schedulerInterval = setInterval(() => tick().catch(console.error), POLL_SEC * 1000);
 }
 
 export function stopLunaClipScheduler() {
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
+  if (schedulerInterval) { clearInterval(schedulerInterval); schedulerInterval = null; }
   for (const [sid, w] of activeWorkers) {
     killWorker(w, "scheduler stopped");
     activeWorkers.delete(sid);

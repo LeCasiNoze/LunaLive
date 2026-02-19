@@ -87,7 +87,7 @@ import { adminSubscriptionsRouter } from "./routes/admin_subscriptions.js";
 import { adminContentRouter } from "./routes/admin_content.js";
 import { publicContentRouter } from "./routes/public_content.js";
 
-// ✅ Discord routes déplacées dans /routes/bot
+// Discord routes
 import { meDiscordLinkRouter } from "./routes/bot/me_discord_link.js";
 import { discordLinkConsumeRouter } from "./routes/bot/discord_link_consume.js";
 import { botDiscordGuildRouter } from "./routes/bot/bot_discord_guild.js";
@@ -100,251 +100,150 @@ import { adminReferralsRouter } from "./routes/admin_referrals.js";
 import { eventsRouter } from "./routes/events.js";
 import { eventsViewerWeekRouter } from "./routes/events_viewer_week.js";
 import { adminEventsRouter } from "./routes/admin_events.js";
-import { startLunaClipScheduler } from "./lunaclip/scheduler.js";
+
+// ✅ LunaClip — routes dans l'api, scheduler dans le bot
 import { lunaclipRouter } from "./lunaclip/routes.js";
 
 export function createApp() {
   const app = express();
 
-  // ─────────────────────────────────────────────
-  // ✅ Base config
-  // ─────────────────────────────────────────────
   app.set("trust proxy", 1);
-
   app.use(cors());
 
-  // ✅ Healthcheck (Render)
   app.get("/healthz", (_req, res) => res.status(200).send("ok"));
-
   app.use(express.json({ limit: "3mb" }));
 
-  // Billing (souvent webhook / needs early mount)
   app.use("/billing", billingRouter);
-
-  // uploads/avatars (middlewares globaux existants)
   app.use(streamerUploadsRouter);
   app.use(avatarRouter);
 
-  // ─────────────────────────────────────────────
-  // ✅ TEMP: Admin debug (logs only for /admin*)
-  // ─────────────────────────────────────────────
   app.use((req, res, next) => {
     if (process.env.ADMIN_DEBUG === "1" && String(req.path || "").startsWith("/admin")) {
-      const auth = String(req.headers.authorization || "");
-      const xAdmin = String((req.headers as any)["x-admin-key"] || "");
+      const auth    = String(req.headers.authorization || "");
+      const xAdmin  = String((req.headers as any)["x-admin-key"] || "");
       const xAccess = String((req.headers as any)["x-access-token"] || "");
-
       console.error("[ADMIN_DEBUG][REQ]", req.method, req.originalUrl);
       console.error("[ADMIN_DEBUG][HDR] authorization:", JSON.stringify(auth));
       console.error("[ADMIN_DEBUG][HDR] x-admin-key:", JSON.stringify(xAdmin));
       console.error("[ADMIN_DEBUG][HDR] x-access-token:", JSON.stringify(xAccess));
       console.error("[ADMIN_DEBUG][HDR] origin:", JSON.stringify(String(req.headers.origin || "")));
       console.error("[ADMIN_DEBUG][HDR] host:", JSON.stringify(String(req.headers.host || "")));
-
       res.setHeader("x-admin-debug-seen", "1");
     }
     next();
   });
 
-  // build marker
   app.use((_req, res, next) => {
     res.setHeader("x-build", "comments-fix-2026-01-14-1505");
     next();
   });
 
-  // ─────────────────────────────────────────────
-  // ✅ Admin routes "spécifiques" AVANT adminRouter (évite collisions / 401)
-  // ─────────────────────────────────────────────
   app.use("/admin/casinos/comments", requireAdminKey, adminCasinoCommentsRouter);
-  app.use("/admin/reports", requireAdminKey, adminReportsRouter);
-  app.use("/admin/events", requireAdminKey, adminEventsRouter);
-  app.use("/admin/lunaclip", requireAdminKey, lunaclipRouter);
+  app.use("/admin/reports",          requireAdminKey, adminReportsRouter);
+  app.use("/admin/events",           requireAdminKey, adminEventsRouter);
+  app.use("/admin/lunaclip",         requireAdminKey, lunaclipRouter);
+  app.use("/admin/auth",             requireAdminKey, adminAuthRouter);
+  app.use("/admin/referrals",        requireAdminKey, adminReferralsRouter);
+  app.use("/admin",                  requireAdminKey, adminContentRouter);
 
-  // ✅ NEW (avant /admin content pour éviter collisions)
-  app.use("/admin/auth", requireAdminKey, adminAuthRouter);
-  app.use("/admin/referrals", requireAdminKey, adminReferralsRouter);
-
-  app.use("/admin", requireAdminKey, adminContentRouter);
-
-  // ✅ Casinos ADMIN (ordre CRITIQUE)
   app.use("/admin/casinos/listings", requireAdminKey, adminCasinosRouter);
-  app.use("/admin/casinos", requireAdminKey, adminCasinosRouter);
+  app.use("/admin/casinos",          requireAdminKey, adminCasinosRouter);
+  app.use("/admin/casinos/setup",    requireAdminKey, adminCasinosSetupRouter);
+  app.use("/admin/subscriptions",    adminSubscriptionsRouter);
+  app.use("/admin/emotes",           requireAdminKey, adminEmotesRouter);
 
-  app.use("/admin/casinos/setup", requireAdminKey, adminCasinosSetupRouter);
-  app.use("/admin/subscriptions", adminSubscriptionsRouter);
-
-  app.use("/admin/emotes", requireAdminKey, adminEmotesRouter);
-
-  // reports public
   app.use("/reports", reportsRouter);
   app.use(referralRedirectRouter);
   app.use(referralRouter);
   app.use(welcomeRouter);
-  // ─────────────────────────────────────────────
-  // ✅ Discord bot dashboard / api routes (auth inside routers)
-  // ─────────────────────────────────────────────
-  // /api/bot/discord/guild + /api/bot/discord/unclaim
-  app.use("/api", botDiscordGuildRouter);
 
-  // /api/discord/link/consume
+  app.use("/api", botDiscordGuildRouter);
   app.use("/api", discordLinkConsumeRouter);
   app.use("/api", dliveRepostRouter);
   app.use("/api", eventsRouter);
   app.use("/api", eventsViewerWeekRouter);
 
-  // ─────────────────────────────────────────────
-  // ✅ Public VODs (doit matcher AVANT streamerRouter)
-  // ─────────────────────────────────────────────
   app.use(streamerVodsRouter);
 
-  // ─────────────────────────────────────────────
-  // ✅ Legacy modules
-  // ─────────────────────────────────────────────
   registerChatRoutes(app);
   registerStatsRoutes(app);
 
-  // ─────────────────────────────────────────────
-  // ✅ Uploads routers + DB images BEFORE static
-  // ─────────────────────────────────────────────
   app.use("/uploads", uploadsRouter);
   app.use("/uploads", casinoCommentImagesRouter);
-
-  // Static uploads
   app.use(
     "/uploads",
-    (_req, res, next) => {
-      res.setHeader("x-router-hit", "static_uploads");
-      next();
-    },
-    express.static(path.resolve(process.cwd(), "uploads"), {
-      maxAge: "7d",
-      fallthrough: false,
-    })
+    (_req, res, next) => { res.setHeader("x-router-hit", "static_uploads"); next(); },
+    express.static(path.resolve(process.cwd(), "uploads"), { maxAge: "7d", fallthrough: false })
   );
 
-  // ─────────────────────────────────────────────
-  // ✅ Casinos PUBLIC + /me/casinos (auth)
-  // ─────────────────────────────────────────────
   app.use(casinosPublicRouter);
   app.use("/me/casinos", requireAuth, casinosMeRouter);
 
-  // internal bot
   app.use(internalBotRouter);
   app.use(internalBotStreamerRequestsRouter);
 
-  // ─────────────────────────────────────────────
-  // ✅ Other public routers
-  // ─────────────────────────────────────────────
   app.use(pushRouter);
   app.use(thumbsRouter);
   app.use(moderationRouter);
   app.use(clipsPublicRouter);
 
-  // ─────────────────────────────────────────────
-  // ✅ Public + Auth
-  // ─────────────────────────────────────────────
   app.use(publicContentRouter);
   app.use(publicRouter);
   app.use("/public", publicRouter);
   app.use(authRouter);
   app.use(accountActionsRouter);
-
-  // ✅ Me Discord Link (GET status / consume / unlink / sync)
   app.use(meDiscordLinkRouter);
 
-  // ─────────────────────────────────────────────
-  // ✅ Main routers
-  // ─────────────────────────────────────────────
   app.use(streamerRouter);
-
-  // adminRouter APRÈS mounts admin spécifiques
   app.use(adminRouter);
   app.use(adminImpersonateRouter);
-
-  // Streamer tabs (/streamers/:slug/about, /agenda, etc.)
   app.use("/streamers", streamerTabsRouter);
 
-  // ─────────────────────────────────────────────
-  // ✅ Admin economy tools
-  // ─────────────────────────────────────────────
   app.use(adminRubisRouter);
-
-  // ─────────────────────────────────────────────
-  // ✅ Economy routers
-  // ─────────────────────────────────────────────
   app.use(walletRouter);
   app.use(supportRouter);
   app.use(earningsRouter);
   app.use(cashoutRouter);
   app.use(subscriptionsRouter);
 
-  // ─────────────────────────────────────────────
-  // ✅ Wheel / Chest / Predictions
-  // ─────────────────────────────────────────────
   app.use(wheelRouter);
   app.use(chestRouter);
   app.use(predictionsRouter);
 
-  // Daily bonus + achievements (auth)
-  app.use("/me/daily-bonus", requireAuth, dailyBonusRoutes);
-  app.use("/me/achievements", requireAuth, achievementsRouter);
+  app.use("/me/daily-bonus",    requireAuth, dailyBonusRoutes);
+  app.use("/me/achievements",   requireAuth, achievementsRouter);
 
-  // ─────────────────────────────────────────────
-  // ✅ Cosmetics / Shop
-  // ─────────────────────────────────────────────
   app.use(cosmeticsRouter);
   app.use(shopRouter);
   app.use("/shop/talents", shopTalentsRouter);
   app.use(cosmeticsCatalogRoutes);
-
-  app.use(emotesRouter);          // legacy: /chat/:slug/emotes
-  app.use("/emotes", emotesRouter); // new:     /emotes/chat/:slug/emotes
-
+  app.use(emotesRouter);
+  app.use("/emotes", emotesRouter);
   app.use(streamerEmotesRouter);
 
-  // ─────────────────────────────────────────────
-  // ✅ Overlay + Bot dashboard (auth)
-  // ─────────────────────────────────────────────
-  app.use("/me/overlay", requireAuth, meOverlayRouter);
+  app.use("/me/overlay",        requireAuth, meOverlayRouter);
+  app.use("/me/bot",            requireAuth, meBotRouter);
+  app.use("/me/bot/bot_wheel",  requireAuth, botWheelRouter);
+  app.use("/me/bot/bot_rain",   requireAuth, botRainRouter);
+  app.use("/me/bot/clips",      botClipsRouter);
 
-  app.use("/me/bot", requireAuth, meBotRouter);
-  app.use("/me/bot/bot_wheel", requireAuth, botWheelRouter);
-  app.use("/me/bot/bot_rain", requireAuth, botRainRouter);
-
-  // Clips dashboard
-  app.use("/me/bot/clips", botClipsRouter);
-
-  // ─────────────────────────────────────────────
-  // ✅ Misc routers
-  // ─────────────────────────────────────────────
   app.use("/streamer/me/dlive-link", streamerDliveLinkRouter);
   app.use(meProfileRouter);
   app.use("/overlay/api", overlayApiRouter);
 
-  // ─────────────────────────────────────────────
-  // ✅ Slots / Calls / Hunt
-  // ─────────────────────────────────────────────
   app.use("/slots", slotsRouter);
   app.use("/calls", callsHuntRouter);
   app.use("/calls", callsRouter);
   app.use("/calls", callsPcallRouter);
   app.use(hunt2Router);
 
-  // ─────────────────────────────────────────────
-  // ✅ HLS proxy
-  // ─────────────────────────────────────────────
   registerHlsProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
 
-  // ─────────────────────────────────────────────
-  // ✅ Error handler
-  // ─────────────────────────────────────────────
   app.use((err: any, _req: any, res: any, _next: any) => {
     console.error(err);
     res.status(500).json({ ok: false, error: "server_error" });
   });
-
-  startLunaClipScheduler();
 
   return app;
 }
