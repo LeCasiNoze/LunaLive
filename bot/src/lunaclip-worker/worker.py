@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 """
-LunaClip Worker v1.4 — Mode stream HLS temps réel
-==================================================
-Lit un flux HLS, analyse frame par frame avec Tesseract OCR,
-émet du JSON ligne par ligne sur stdout pour le process Node parent.
-
-Usage:
-    python3 worker.py --hls-url <url> --alert-multi 300 --interval 1.0 --mode stream
+LunaClip Worker v1.5 — Mode stream HLS temps réel (optimisé RAM)
 """
 
 import cv2
@@ -21,15 +15,11 @@ import subprocess
 #  CONFIG
 # ═══════════════════════════════════════════════
 
-# Tesseract : sur Linux (Render) il est dans le PATH directement
-# Sur Windows local : décommentez la ligne ci-dessous
-# pytesseract.pytesseract.tesseract_cmd = r"C:\PROGRA~1\Tesseract-OCR\tesseract.exe"
-
-SCAN_TOP    = 0.70
+SCAN_TOP    = 0.50  # 50% du bas (au lieu de 70%)
 SCAN_BOTTOM = 0.98
 SCAN_LEFT   = 0.05
 SCAN_RIGHT  = 0.95
-SCALE       = 5
+SCALE       = 3     # upscale OCR (au lieu de 5) — économise ~20MB/worker
 PSM_MODE    = 3
 
 MAX_WIN_DROP_RATIO    = 0.50
@@ -38,14 +28,13 @@ BET_MIN               = 0.01
 BET_MAX               = 10000.0
 EVENT_RESET_THRESHOLD = 50.0
 
-# Reconnexion HLS si le flux coupe
 MAX_RECONNECT_ATTEMPTS = 10
 RECONNECT_DELAY_SEC    = 5
 
-def open_ffmpeg_pipe(hls_url: str, w: int = 1280, h: int = 720):
+
+def open_ffmpeg_pipe(hls_url: str, w: int = 640, h: int = 360):
     """
-    Lance ffmpeg et renvoie un process qui sort des frames RGB bruts sur stdout.
-    On force des headers "browser-like" côté ffmpeg.
+    Lance ffmpeg en 640×360 (au lieu de 1280×720) — économise ~50MB/worker.
     """
     headers = (
         "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -55,7 +44,6 @@ def open_ffmpeg_pipe(hls_url: str, w: int = 1280, h: int = 720):
         "Accept: */*\r\n"
         "Accept-Language: en-US,en;q=0.9\r\n"
     )
-
     cmd = [
         "ffmpeg",
         "-hide_banner",
@@ -76,7 +64,6 @@ def open_ffmpeg_pipe(hls_url: str, w: int = 1280, h: int = 720):
 # ═══════════════════════════════════════════════
 
 def emit(type_: str, data: dict):
-    """Émet un message JSON sur stdout pour le process Node parent."""
     print(json.dumps({"type": type_, "data": data}), flush=True)
 
 def emit_frame(frame_data: dict):
@@ -243,7 +230,6 @@ def analyze_frame(frame_bgr, state: dict) -> dict:
     elif state.get("provider"):
         parsed["provider"] = state["provider"]
 
-    # Validation BET
     bet_ok = validate_bet(parsed["bet"], state.get("prev_bet_num"))
     bet    = parsed["bet"] if bet_ok else None
     if bet:
@@ -251,20 +237,17 @@ def analyze_frame(frame_bgr, state: dict) -> dict:
         state["prev_bet_num"] = bet["numeric"]
     effective_bet = bet or state.get("current_bet")
 
-    # Validation WIN
     win_ok = validate_win(parsed["win"], state.get("prev_win_num"))
     win    = parsed["win"] if win_ok else None
     if win: state["prev_win_num"] = win["numeric"]
 
-    # Validation WIN_TOTAL
     wt_ok     = validate_win(parsed["win_total"], state.get("prev_win_total_num"))
     win_total = parsed["win_total"] if wt_ok else None
     if win_total: state["prev_win_total_num"] = win_total["numeric"]
 
-    # Multiplicateur
-    bet_num   = effective_bet["numeric"] if effective_bet else None
-    src       = parsed["multiplier_source"]
-    multi_val = win_total if src == "win_total" else win
+    bet_num    = effective_bet["numeric"] if effective_bet else None
+    src        = parsed["multiplier_source"]
+    multi_val  = win_total if src == "win_total" else win
     multiplier = None
     if bet_num and bet_num > 0 and multi_val and multi_val["numeric"] is not None:
         multiplier = round(multi_val["numeric"] / bet_num, 2)
@@ -312,7 +295,6 @@ class EventTracker:
             self.armed = False
             self.count += 1
 
-            # Screenshot
             ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
             fname  = f"event_{self.count:03d}_{ts_str}.jpg"
             spath  = os.path.join(self.screenshots_dir, fname)
@@ -340,8 +322,7 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
         running[0] = False
     signal.signal(signal.SIGTERM, on_sigterm)
 
-    # NOTE: ici on fixe une résolution de travail stable (à ajuster)
-    W, H = 1280, 720
+    W, H       = 640, 360  # résolution réduite — économise ~50MB/worker
     frame_size = W * H * 3
 
     reconnect = 0
@@ -391,12 +372,12 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
 
     emit_log("Worker stopped.")
 
+
 # ═══════════════════════════════════════════════
 #  BOUCLE PRINCIPALE — MODE VIDEO FICHIER (local)
 # ═══════════════════════════════════════════════
 
 def run_video(video_path: str, alert_multi: float, interval_sec: float):
-    """Mode fichier conservé pour les tests locaux."""
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         emit_log(f"Cannot open: {video_path}")
@@ -439,7 +420,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--hls-url",     required=True)
     parser.add_argument("--alert-multi", type=float, default=300.0)
-    parser.add_argument("--interval",    type=float, default=1.0)
+    parser.add_argument("--interval",    type=float, default=2.0)  # 2s par défaut
     parser.add_argument("--mode",        choices=["stream", "video"], default="stream")
     args = parser.parse_args()
 
