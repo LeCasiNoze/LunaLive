@@ -42,6 +42,43 @@ function isPlaylist(url: URL) {
   return url.pathname.endsWith(".m3u8");
 }
 
+function isLikelyM3u8(ct: string, text?: string) {
+  const c = (ct || "").toLowerCase();
+  if (c.includes("application/vnd.apple.mpegurl")) return true;
+  if (c.includes("application/x-mpegurl")) return true;
+  if (typeof text === "string" && text.trimStart().startsWith("#EXTM3U")) return true;
+  return false;
+}
+
+function isSignedMissingKey(status: number, ct: string, bodyText: string) {
+  if (status !== 403) return false;
+  const c = (ct || "").toLowerCase();
+  if (!c.includes("xml") && !c.includes("text")) return false;
+  const t = bodyText || "";
+  return (
+    t.includes("MissingKey") ||
+    t.includes("Missing Key-Pair-Id") ||
+    t.includes("Key-Pair-Id")
+  );
+}
+
+function trySwapLivestreamHost(u: URL): URL | null {
+  const h = u.hostname;
+  // cas typique: livestreams.prdv3.dlivecdn.com -> livestreamt.prdv3.dlivecdn.com
+  if (h.startsWith("livestreams.")) {
+    const v = new URL(u.toString());
+    v.hostname = h.replace(/^livestreams\./, "livestreamt.");
+    return v;
+  }
+  // si jamais tu veux aussi couvrir l'inverse (au cas où)
+  if (h.startsWith("livestreamt.")) {
+    const v = new URL(u.toString());
+    v.hostname = h.replace(/^livestreamt\./, "livestreams.");
+    return v;
+  }
+  return null;
+}
+
 function withCors(h: Headers) {
   const out = new Headers(h);
   for (const [k, v] of Object.entries(CORS_HEADERS)) out.set(k, v);
@@ -123,7 +160,7 @@ export default {
     const playlist = isPlaylist(target);
 
     // ✅ Cloudflare edge cache via fetch options
-    const upstream = await fetch(target.toString(), {
+    let upstream = await fetch(target.toString(), {
       headers,
       redirect: "follow",
       cf: {
@@ -132,13 +169,47 @@ export default {
       } as any
     });
 
-    const ct = upstream.headers.get("content-type") || "";
+    let ct = upstream.headers.get("content-type") || "";
 
-    // If playlist (m3u8), rewrite URLs to point back to this worker
-    if (playlist || ct.includes("application/vnd.apple.mpegurl")) {
+    // ✅ Fallback si CloudFront signed (MissingKey) sur livestreams.*
+    // On ne le fait que pour les playlists, car c’est là que tu tombes sur le 403 MissingKey.
+    if (playlist && upstream.status === 403) {
+      const txt = await upstream.clone().text();
+
+      if (isSignedMissingKey(upstream.status, ct, txt)) {
+        const alt = trySwapLivestreamHost(target);
+        if (alt) {
+          // retente sur livestreamt...
+          upstream = await fetch(alt.toString(), {
+            headers,
+            redirect: "follow",
+            cf: {
+              cacheEverything: true,
+              cacheTtl: 1
+            } as any
+          });
+          target = alt;
+          ct = upstream.headers.get("content-type") || "";
+        }
+      }
+    }
+
+    // Playlist ?
+    if (playlist) {
       const text = await upstream.text();
-      const rewritten = rewriteM3u8(text, target);
 
+      // ✅ Si ce n'est pas une VRAIE m3u8 (ex: XML erreur), on renvoie tel quel (plus de rewrite débile)
+      if (!upstream.ok || !isLikelyM3u8(ct, text)) {
+        const outHeaders = new Headers();
+        outHeaders.set("content-type", ct || "text/plain; charset=utf-8");
+        outHeaders.set("cache-control", "no-store");
+        return new Response(text, {
+          status: upstream.status,
+          headers: withCors(outHeaders)
+        });
+      }
+
+      const rewritten = rewriteM3u8(text, target);
       const outHeaders = new Headers();
       outHeaders.set("content-type", ct || "application/vnd.apple.mpegurl");
       outHeaders.set("cache-control", "public, max-age=1, s-maxage=2, must-revalidate");
@@ -147,6 +218,29 @@ export default {
         headers: withCors(outHeaders)
       });
     }
+
+    // Content-type playlist même si URL ne finit pas par .m3u8 (rare mais safe)
+    if (isLikelyM3u8(ct)) {
+      const text = await upstream.text();
+      if (!upstream.ok) {
+        const outHeaders = new Headers();
+        outHeaders.set("content-type", ct || "text/plain; charset=utf-8");
+        outHeaders.set("cache-control", "no-store");
+        return new Response(text, {
+          status: upstream.status,
+          headers: withCors(outHeaders)
+        });
+      }
+      const rewritten = rewriteM3u8(text, target);
+      const outHeaders = new Headers();
+      outHeaders.set("content-type", ct || "application/vnd.apple.mpegurl");
+      outHeaders.set("cache-control", "public, max-age=1, s-maxage=2, must-revalidate");
+      return new Response(rewritten, {
+        status: upstream.status,
+        headers: withCors(outHeaders)
+      });
+    }
+
 
     // Binary segments
     const outHeaders = new Headers();
