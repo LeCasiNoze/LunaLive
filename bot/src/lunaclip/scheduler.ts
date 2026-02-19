@@ -21,6 +21,18 @@ const WORKER_PATH = path.resolve(process.cwd(), "dist/lunaclip-worker/worker.py"
 
 // ── Sécurité RAM ──────────────────────────────
 const RAM_LIMIT_MB = parseFloat(process.env.LUNACLIP_RAM_LIMIT_MB ?? "420");
+// ── Filtrage streamers (debug / sécurité) ──────────────────────────────
+// Ex: LUNACLIP_ONLY_SLUGS="fabiozsis,ssztv"
+const ONLY_SLUGS = String(process.env.LUNACLIP_ONLY_SLUGS ?? "")
+  .split(",")
+  .map(s => s.trim().toLowerCase())
+  .filter(Boolean);
+
+// Si défini, n’analyse QUE ceux-là.
+function isAllowedStreamerSlug(slug: string) {
+  if (ONLY_SLUGS.length === 0) return true;
+  return ONLY_SLUGS.includes(String(slug).toLowerCase());
+}
 
 function getRssMb(): number {
   return process.memoryUsage().rss / 1024 / 1024;
@@ -342,6 +354,9 @@ async function tick() {
   skippedRam.clear();
 
   for (const s of streamers) {
+    // ✅ TEMP (ce soir) : n’analyse QUE fabiozsis
+    if (s.slug !== "fabiozsis") continue;
+
     const dliveSlug = getDisplayName(s);
     if (!dliveSlug) continue;
 
