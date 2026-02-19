@@ -1,26 +1,34 @@
-// bot/lunaclip/scheduler.ts
+// bot/src/lunaclip/scheduler.ts
 import { spawn, ChildProcess } from "child_process";
 import path from "path";
 import type { Pool } from "pg";
 import { addLunaClip } from "./clips.js";
 import fs from "node:fs";
 
-const DLIVE_GQL   = process.env.DLIVE_GRAPHQL_ENDPOINT ?? "https://graphigo.prd.dlive.tv/";
-// Proxy HLS PUBLIC (Cloudflare Worker) — même que le site
+const DLIVE_GQL      = process.env.DLIVE_GRAPHQL_ENDPOINT ?? "https://graphigo.prd.dlive.tv/";
 const HLS_PROXY_BASE = String(
-  process.env.HLS_PROXY_BASE ||
-  "https://lunalive-hls.lunalive.workers.dev"
+  process.env.HLS_PROXY_BASE || "https://lunalive-hls.lunalive.workers.dev"
 ).replace(/\/$/, "");
 
 function proxifyHls(rawM3u8: string) {
   return `${HLS_PROXY_BASE}/hls?u=${encodeURIComponent(rawM3u8)}`;
 }
 
-
 const POLL_SEC    = 60;
 const ALERT_MULTI = parseFloat(process.env.LUNACLIP_ALERT_MULTI ?? "300");
-const INTERVAL_S  = parseFloat(process.env.LUNACLIP_INTERVAL ?? "1.0");
+const INTERVAL_S  = parseFloat(process.env.LUNACLIP_INTERVAL ?? "2.0");
 const WORKER_PATH = path.resolve(process.cwd(), "dist/lunaclip-worker/worker.py");
+
+// ── Sécurité RAM ──────────────────────────────
+const RAM_LIMIT_MB = parseFloat(process.env.LUNACLIP_RAM_LIMIT_MB ?? "420");
+
+function getRssMb(): number {
+  return process.memoryUsage().rss / 1024 / 1024;
+}
+
+// ─────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────
 
 interface StreamerRow {
   id:                     number;
@@ -46,6 +54,14 @@ interface FrameData {
   ts_sec:            number;
 }
 
+interface WorkerStats {
+  mode:                string; // ACTIVE | WATCHING | IDLE
+  consecutive_unknown: number;
+  frames_total:        number;
+  frames_with_value:   number;
+  last_value_secs_ago: number;
+}
+
 interface ActiveWorker {
   streamerId:   number;
   streamerSlug: string;
@@ -57,16 +73,20 @@ interface ActiveWorker {
   lastFrame:    FrameData | null;
   provider:     string | null;
   hlsUrl:       string;
+  workerStats:  WorkerStats;
 }
 
 export const activeWorkers = new Map<number, ActiveWorker>();
 
-// Pool injecté au démarrage
+// Streamers skippés à cause de la RAM (pour le dashboard)
+export const skippedRam = new Set<string>();
+
 let _pool: Pool;
 
 // ─────────────────────────────────────────────
 // DLive GraphQL
 // ─────────────────────────────────────────────
+
 async function dliveGql(query: string, variables: any) {
   const r = await fetch(DLIVE_GQL, {
     method: "POST",
@@ -95,8 +115,7 @@ async function getDliveHlsUrl(dliveDisplayname: string): Promise<string | null> 
     if (!ls?.livestream?.createdAt) return null;
     const username = ls.username as string;
     if (!username) return null;
-    const rawHls = `https://live.prd.dlive.tv/hls/live/${username}.m3u8`;
-    return rawHls;
+    return `https://live.prd.dlive.tv/hls/live/${username}.m3u8`;
   } catch {
     return null;
   }
@@ -105,6 +124,7 @@ async function getDliveHlsUrl(dliveDisplayname: string): Promise<string | null> 
 // ─────────────────────────────────────────────
 // DB helpers
 // ─────────────────────────────────────────────
+
 async function getLunaLiveStreamers(): Promise<StreamerRow[]> {
   const r = await _pool.query(`
     SELECT
@@ -179,13 +199,21 @@ async function saveEvent(sessionId: bigint, f: FrameData, screenshot: string | n
     ]
   );
   if (f.provider && f.provider !== "unknown") {
-    await _pool.query(`UPDATE lunaclip_sessions SET provider=$1 WHERE id=$2`, [f.provider, sessionId]);
+    await _pool.query(
+      `UPDATE lunaclip_sessions SET provider=$1 WHERE id=$2`,
+      [f.provider, sessionId]
+    );
   }
 }
 
 // ─────────────────────────────────────────────
 // Worker Python
 // ─────────────────────────────────────────────
+
+function defaultWorkerStats(): WorkerStats {
+  return { mode: "ACTIVE", consecutive_unknown: 0, frames_total: 0, frames_with_value: 0, last_value_secs_ago: 0 };
+}
+
 function spawnWorker(w: ActiveWorker) {
   const PYTHON_BIN = process.env.LUNACLIP_PYTHON ?? "python3";
 
@@ -207,7 +235,7 @@ function spawnWorker(w: ActiveWorker) {
     "--mode",        "stream",
   ], {
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, PYTHONUNBUFFERED: "1" }, // flush logs
+    env: { ...process.env, PYTHONUNBUFFERED: "1" },
   });
 
   proc.on("error", (err) => {
@@ -221,23 +249,13 @@ function spawnWorker(w: ActiveWorker) {
     buf += chunk.toString();
     const lines = buf.split("\n");
     buf = lines.pop() ?? "";
-
     for (const line of lines) {
       const t = line.trim();
       if (!t) continue;
-
-      // JSON line ?
       if (t.startsWith("{") && t.endsWith("}")) {
-        try {
-          const msg = JSON.parse(t);
-          void handleMessage(w, msg);
-          continue;
-        } catch {
-          // fallthrough
-        }
+        try { void handleMessage(w, JSON.parse(t)); continue; }
+        catch { /* fallthrough */ }
       }
-
-      // non-json stdout
       console.log(`[lunaclip][${w.streamerSlug}][py] ${t}`);
     }
   });
@@ -254,40 +272,51 @@ function spawnWorker(w: ActiveWorker) {
   });
 
   w.process = proc;
-  w.status = "running";
+  w.status  = "running";
 }
 
 async function handleMessage(w: ActiveWorker, msg: { type: string; data: any }) {
-  if (msg.type === "log") {
-    console.log(`[lunaclip][${w.streamerSlug}][log] ${String(msg.data)}`);
-    return;
-  }
+  switch (msg.type) {
 
-  if (msg.type === "frame") {
-    const f = msg.data as FrameData;
-    w.lastFrame = f;
-    if (f.provider && f.provider !== "unknown") w.provider = f.provider;
+    case "log":
+      console.log(`[lunaclip][${w.streamerSlug}][log] ${String(msg.data)}`);
+      return;
 
-    if (f.bet_numeric || f.win_numeric || f.win_total_numeric) {
-      saveFrame(w.sessionId, f).catch(console.error);
+    case "frame": {
+      const f = msg.data as FrameData;
+      w.lastFrame = f;
+      if (f.provider && f.provider !== "unknown") w.provider = f.provider;
+      if (f.bet_numeric || f.win_numeric || f.win_total_numeric) {
+        saveFrame(w.sessionId, f).catch(console.error);
+      }
+      return;
     }
-    return;
+
+    case "event": {
+      const { frame: f, screenshot_path } = msg.data as { frame: FrameData; screenshot_path: string | null };
+      w.lastFrame = f;
+      await saveEvent(w.sessionId, f, screenshot_path ?? null).catch(console.error);
+      const winLabel = f.win_total_value ?? f.win_value ?? "?";
+      const title    = `🎰 x${f.multiplier} — ${(f.provider ?? "").toUpperCase()} — WIN ${winLabel}`;
+      addLunaClip(_pool, w.streamerId, title, f.ts_sec).catch(console.error);
+      console.log(`[lunaclip][${w.streamerSlug}] EVENT x${f.multiplier} provider=${f.provider}`);
+      return;
+    }
+
+    case "stats":
+      w.workerStats = msg.data as WorkerStats;
+      return;
+
+    case "mode": {
+      const { mode, reason } = msg.data as { mode: string; reason: string };
+      console.log(`[lunaclip][${w.streamerSlug}] mode → ${mode} (${reason})`);
+      w.workerStats = { ...w.workerStats, mode };
+      return;
+    }
+
+    default:
+      console.log(`[lunaclip][${w.streamerSlug}] unknown msg type: ${msg.type}`);
   }
-
-  if (msg.type === "event") {
-    const { frame: f, screenshot_path } = msg.data as { frame: FrameData; screenshot_path: string | null };
-    w.lastFrame = f;
-
-    await saveEvent(w.sessionId, f, screenshot_path ?? null).catch(console.error);
-    const winLabel = f.win_total_value ?? f.win_value ?? "?";
-    const title    = `🎰 x${f.multiplier} — ${(f.provider ?? "").toUpperCase()} — WIN ${winLabel}`;
-    addLunaClip(_pool, w.streamerId, title, f.ts_sec).catch(console.error);
-    console.log(`[lunaclip][${w.streamerSlug}] EVENT x${f.multiplier} provider=${f.provider}`);
-    return;
-  }
-
-  // Unknown type
-  console.log(`[lunaclip][${w.streamerSlug}] unknown msg:`, msg);
 }
 
 function killWorker(w: ActiveWorker, reason: string) {
@@ -300,6 +329,7 @@ function killWorker(w: ActiveWorker, reason: string) {
 // ─────────────────────────────────────────────
 // Tick
 // ─────────────────────────────────────────────
+
 async function tick() {
   let streamers: StreamerRow[];
   try {
@@ -309,6 +339,8 @@ async function tick() {
     return;
   }
 
+  skippedRam.clear();
+
   for (const s of streamers) {
     const dliveSlug = getDisplayName(s);
     if (!dliveSlug) continue;
@@ -317,18 +349,24 @@ async function tick() {
     if (existing && existing.status !== "running") activeWorkers.delete(s.id);
 
     const alreadyRunning = activeWorkers.has(s.id);
+
     let rawHls: string | null = null;
     try { rawHls = await getDliveHlsUrl(dliveSlug); } catch { rawHls = null; }
 
     const isLive = rawHls !== null;
 
     if (isLive && !alreadyRunning) {
-      console.log(`[lunaclip-scheduler] START worker for ${s.slug} (${dliveSlug})`);
-      try {
-        // ✅ DB: on garde l'URL DLive brute (utile debug)
-        const sessionId = await createSession(s.id, rawHls!, ALERT_MULTI, INTERVAL_S);
+      // ── Sécurité RAM ───────────────────────
+      const ramMb = getRssMb();
+      if (ramMb > RAM_LIMIT_MB) {
+        console.warn(`[lunaclip-scheduler] RAM ${ramMb.toFixed(0)}MB > ${RAM_LIMIT_MB}MB — skip ${s.slug}`);
+        skippedRam.add(s.slug);
+        continue;
+      }
 
-        // ✅ Worker: on donne l'URL proxifiée (headers + rewrite m3u8)
+      console.log(`[lunaclip-scheduler] START worker for ${s.slug} (${dliveSlug}) RAM=${ramMb.toFixed(0)}MB`);
+      try {
+        const sessionId  = await createSession(s.id, rawHls!, ALERT_MULTI, INTERVAL_S);
         const proxiedHls = proxifyHls(rawHls!);
 
         const w: ActiveWorker = {
@@ -342,6 +380,7 @@ async function tick() {
           lastFrame:    null,
           provider:     null,
           hlsUrl:       proxiedHls,
+          workerStats:  defaultWorkerStats(),
         };
         spawnWorker(w);
         activeWorkers.set(s.id, w);
@@ -357,9 +396,9 @@ async function tick() {
     }
   }
 
+  // Cleanup workers orphelins
   for (const [sid, w] of activeWorkers) {
-    const stillExists = streamers.some(s => s.id === sid);
-    if (!stillExists) {
+    if (!streamers.some(s => s.id === sid)) {
       killWorker(w, "streamer removed");
       activeWorkers.delete(sid);
     }
@@ -369,11 +408,13 @@ async function tick() {
 // ─────────────────────────────────────────────
 // Export public
 // ─────────────────────────────────────────────
+
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startLunaClipScheduler(pool: Pool) {
   if (schedulerInterval) return;
   _pool = pool;
+  console.log(`[lunaclip-scheduler] started (poll=${POLL_SEC}s alert=x${ALERT_MULTI} ram_limit=${RAM_LIMIT_MB}MB)`);
   tick().catch(console.error);
   schedulerInterval = setInterval(() => tick().catch(console.error), POLL_SEC * 1000);
 }
