@@ -26,14 +26,19 @@ function rewriteM3u8(text: string, base: URL) {
       // Rewrite URI="..." in tags (keys/maps)
       if (s.startsWith("#")) {
         return line.replace(/URI="([^"]+)"/g, (_m, uri) => {
-          const abs = new URL(uri, base).toString();
+          const u = new URL(uri, base);
+          const swapped = trySwapLivestreamHost(u);
+          const abs = (swapped ?? u).toString();
           return `URI="${proxyUrl(abs)}"`;
         });
       }
 
       // Segment / playlist URL line
-      const abs = new URL(s, base).toString();
+      const u = new URL(s, base);
+      const swapped = trySwapLivestreamHost(u);
+      const abs = (swapped ?? u).toString();
       return proxyUrl(abs);
+
     })
     .join("\n");
 }
@@ -64,20 +69,15 @@ function isSignedMissingKey(status: number, ct: string, bodyText: string) {
 
 function trySwapLivestreamHost(u: URL): URL | null {
   const h = u.hostname;
-  // cas typique: livestreams.prdv3.dlivecdn.com -> livestreamt.prdv3.dlivecdn.com
+  // ✅ ONLY: livestreams.* -> livestreamt.*
   if (h.startsWith("livestreams.")) {
     const v = new URL(u.toString());
     v.hostname = h.replace(/^livestreams\./, "livestreamt.");
     return v;
   }
-  // si jamais tu veux aussi couvrir l'inverse (au cas où)
-  if (h.startsWith("livestreamt.")) {
-    const v = new URL(u.toString());
-    v.hostname = h.replace(/^livestreamt\./, "livestreams.");
-    return v;
-  }
   return null;
 }
+
 
 function withCors(h: Headers) {
   const out = new Headers(h);
@@ -140,6 +140,10 @@ export default {
         headers: withCors(new Headers({ "content-type": "text/plain" }))
       });
     }
+    // ✅ DLive: livestreams.* est parfois signé (403 MissingKey). On force livestreamt.*
+    const swapped = trySwapLivestreamHost(target);
+    if (swapped) target = swapped;
+
 
     const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
@@ -170,29 +174,6 @@ export default {
     });
 
     let ct = upstream.headers.get("content-type") || "";
-
-    // ✅ Fallback si CloudFront signed (MissingKey) sur livestreams.*
-    // On ne le fait que pour les playlists, car c’est là que tu tombes sur le 403 MissingKey.
-    if (playlist && upstream.status === 403) {
-      const txt = await upstream.clone().text();
-
-      if (isSignedMissingKey(upstream.status, ct, txt)) {
-        const alt = trySwapLivestreamHost(target);
-        if (alt) {
-          // retente sur livestreamt...
-          upstream = await fetch(alt.toString(), {
-            headers,
-            redirect: "follow",
-            cf: {
-              cacheEverything: true,
-              cacheTtl: 1
-            } as any
-          });
-          target = alt;
-          ct = upstream.headers.get("content-type") || "";
-        }
-      }
-    }
 
     // Playlist ?
     if (playlist) {
