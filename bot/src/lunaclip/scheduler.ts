@@ -5,16 +5,16 @@ import type { Pool } from "pg";
 import { addLunaClip } from "./clips.js";
 
 const DLIVE_GQL   = process.env.DLIVE_GRAPHQL_ENDPOINT ?? "https://graphigo.prd.dlive.tv/";
-const API_BASE = String(
-  process.env.BOT_API_BASE ||           // ✅ ton env réel
-  process.env.API_BASE_URL ||           // (compat)
-  process.env.RENDER_EXTERNAL_URL ||    // (compat)
-  ""
+// Proxy HLS PUBLIC (Cloudflare Worker) — même que le site
+const HLS_PROXY_BASE = String(
+  process.env.HLS_PROXY_BASE ||
+  "https://lunalive-hls.lunalive.workers.dev"
 ).replace(/\/$/, "");
-function mustApiBase(): string {
-  if (!API_BASE) throw new Error("BOT_API_BASE missing (needed for HLS proxy)");
-  return API_BASE;
+
+function proxifyHls(rawM3u8: string) {
+  return `${HLS_PROXY_BASE}/hls?u=${encodeURIComponent(rawM3u8)}`;
 }
+
 
 const POLL_SEC    = 60;
 const ALERT_MULTI = parseFloat(process.env.LUNACLIP_ALERT_MULTI ?? "300");
@@ -62,11 +62,6 @@ export const activeWorkers = new Map<number, ActiveWorker>();
 
 // Pool injecté au démarrage
 let _pool: Pool;
-
-function proxifyHls(rawHls: string) {
-  const base = mustApiBase(); // ex: https://lunalive-api.onrender.com
-  return `${base}/hls?u=${encodeURIComponent(rawHls)}`;
-}
 
 // ─────────────────────────────────────────────
 // DLive GraphQL
@@ -333,8 +328,6 @@ let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 export function startLunaClipScheduler(pool: Pool) {
   if (schedulerInterval) return;
   _pool = pool;
-  console.log(`[lunaclip-scheduler] started (poll every ${POLL_SEC}s, alert x${ALERT_MULTI})`);
-  console.log(`[lunaclip-scheduler] BOT_API_BASE=${API_BASE || "(missing)"}`);
   tick().catch(console.error);
   schedulerInterval = setInterval(() => tick().catch(console.error), POLL_SEC * 1000);
 }
