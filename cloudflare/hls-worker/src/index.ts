@@ -93,8 +93,10 @@ function trySwapLivestreamHost(u: URL): URL | null {
 function withCors(h: Headers) {
   const out = new Headers(h);
   for (const [k, v] of Object.entries(CORS_HEADERS)) out.set(k, v);
+  out.set("x-hls-worker-ver", "2026-02-19-a"); // change à chaque deploy
   return out;
 }
+
 
 export default {
   async fetch(request: Request): Promise<Response> {
