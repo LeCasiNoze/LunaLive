@@ -1,4 +1,6 @@
 // bot/src/lunaclip/scheduler.ts
+// Stratégie : 1 seul worker actif à la fois (round-robin par ancienneté).
+// À chaque tick, on choisit le streamer en live qu'on a regardé le moins récemment.
 import { spawn, ChildProcess } from "child_process";
 import path from "path";
 import type { Pool } from "pg";
@@ -21,18 +23,11 @@ const WORKER_PATH = path.resolve(process.cwd(), "dist/lunaclip-worker/worker.py"
 
 // ── Sécurité RAM ──────────────────────────────
 const RAM_LIMIT_MB = parseFloat(process.env.LUNACLIP_RAM_LIMIT_MB ?? "420");
-// ── Filtrage streamers (debug / sécurité) ──────────────────────────────
-// Ex: LUNACLIP_ONLY_SLUGS="fabiozsis,ssztv"
-const ONLY_SLUGS = String(process.env.LUNACLIP_ONLY_SLUGS ?? "")
-  .split(",")
-  .map(s => s.trim().toLowerCase())
-  .filter(Boolean);
 
-// Si défini, n’analyse QUE ceux-là.
-function isAllowedStreamerSlug(slug: string) {
-  if (ONLY_SLUGS.length === 0) return true;
-  return ONLY_SLUGS.includes(String(slug).toLowerCase());
-}
+// ── Rotation ──────────────────────────────────
+// Durée minimale sur un streamer avant de considérer la rotation (en secondes).
+// Évite de basculer trop vite si plusieurs streamers sont en live.
+const MIN_WATCH_SEC = parseFloat(process.env.LUNACLIP_MIN_WATCH_SEC ?? "300"); // 5min par défaut
 
 function getRssMb(): number {
   return process.memoryUsage().rss / 1024 / 1024;
@@ -67,7 +62,7 @@ interface FrameData {
 }
 
 interface WorkerStats {
-  mode:                string; // ACTIVE | WATCHING | IDLE
+  mode:                string;
   consecutive_unknown: number;
   frames_total:        number;
   frames_with_value:   number;
@@ -88,10 +83,15 @@ interface ActiveWorker {
   workerStats:  WorkerStats;
 }
 
+// Un seul worker actif à la fois
 export const activeWorkers = new Map<number, ActiveWorker>();
 
-// Streamers skippés à cause de la RAM (pour le dashboard)
-export const skippedRam = new Set<string>();
+// Streamers en live mais non surveillés (pour le dashboard)
+export const skippedRam     = new Set<string>();
+export const waitingWorkers = new Set<string>(); // en live mais en attente de rotation
+
+// Historique de rotation : streamerId → timestamp de fin de la dernière session
+const lastWatchedAt = new Map<number, number>();
 
 let _pool: Pool;
 
@@ -219,6 +219,45 @@ async function saveEvent(sessionId: bigint, f: FrameData, screenshot: string | n
 }
 
 // ─────────────────────────────────────────────
+// Round-robin : choisir le prochain streamer
+// ─────────────────────────────────────────────
+
+interface Candidate {
+  streamer:    StreamerRow;
+  dliveSlug:   string;
+  rawHls:      string;
+  lastWatched: number; // timestamp, 0 = jamais
+}
+
+function pickNext(candidates: Candidate[], currentId: number | null): Candidate {
+  // Trier par lastWatched ASC → celui qu'on a le moins récemment regardé passe en premier.
+  // Si currentId est actif depuis moins de MIN_WATCH_SEC, on le garde sauf si quelqu'un
+  // n'a JAMAIS été regardé (lastWatched === 0).
+  const sorted = [...candidates].sort((a, b) => a.lastWatched - b.lastWatched);
+
+  // S'il y a un candidat jamais regardé, on le prend immédiatement
+  const neverWatched = sorted.find(c => c.lastWatched === 0);
+  if (neverWatched) return neverWatched;
+
+  // Si le worker actuel existe encore dans les candidats et n'a pas dépassé MIN_WATCH_SEC → on le garde
+  if (currentId !== null) {
+    const current = candidates.find(c => c.streamer.id === currentId);
+    if (current) {
+      const w = activeWorkers.get(currentId);
+      if (w) {
+        const elapsedSec = (Date.now() - w.startedAt.getTime()) / 1000;
+        if (elapsedSec < MIN_WATCH_SEC) {
+          return current;
+        }
+      }
+    }
+  }
+
+  // Sinon : le moins récemment regardé
+  return sorted[0];
+}
+
+// ─────────────────────────────────────────────
 // Worker Python
 // ─────────────────────────────────────────────
 
@@ -236,8 +275,7 @@ function spawnWorker(w: ActiveWorker) {
     return;
   }
 
-  console.log(`[lunaclip][${w.streamerSlug}] spawn ${PYTHON_BIN} ${WORKER_PATH}`);
-  console.log(`[lunaclip][${w.streamerSlug}] hls=${w.hlsUrl}`);
+  console.log(`[lunaclip][${w.streamerSlug}] spawn worker hls=${w.hlsUrl}`);
 
   const proc = spawn(PYTHON_BIN, [
     WORKER_PATH,
@@ -279,6 +317,7 @@ function spawnWorker(w: ActiveWorker) {
 
   proc.on("exit", (code, signal) => {
     console.log(`[lunaclip][${w.streamerSlug}] worker exit code=${code} signal=${signal}`);
+    lastWatchedAt.set(w.streamerId, Date.now()); // on enregistre quand on a arrêté
     w.status = code === 0 ? "stopped" : "error";
     stopSession(w.sessionId, w.status as "stopped" | "error").catch(console.error);
   });
@@ -289,7 +328,6 @@ function spawnWorker(w: ActiveWorker) {
 
 async function handleMessage(w: ActiveWorker, msg: { type: string; data: any }) {
   switch (msg.type) {
-
     case "log":
       console.log(`[lunaclip][${w.streamerSlug}][log] ${String(msg.data)}`);
       return;
@@ -333,6 +371,7 @@ async function handleMessage(w: ActiveWorker, msg: { type: string; data: any }) 
 
 function killWorker(w: ActiveWorker, reason: string) {
   console.log(`[lunaclip][${w.streamerSlug}] stopping worker (${reason})`);
+  lastWatchedAt.set(w.streamerId, Date.now());
   try { w.process.kill("SIGTERM"); } catch { /* déjà mort */ }
   w.status = "stopped";
   stopSession(w.sessionId, "stopped").catch(console.error);
@@ -352,71 +391,128 @@ async function tick() {
   }
 
   skippedRam.clear();
+  waitingWorkers.clear();
 
-  for (const s of streamers) {
-    // ✅ TEMP (ce soir) : n’analyse QUE fabiozsis
-    if (s.slug !== "fabiozsis") continue;
-
-    const dliveSlug = getDisplayName(s);
-    if (!dliveSlug) continue;
-
-    const existing = activeWorkers.get(s.id);
-    if (existing && existing.status !== "running") activeWorkers.delete(s.id);
-
-    const alreadyRunning = activeWorkers.has(s.id);
-
-    let rawHls: string | null = null;
-    try { rawHls = await getDliveHlsUrl(dliveSlug); } catch { rawHls = null; }
-
-    const isLive = rawHls !== null;
-
-    if (isLive && !alreadyRunning) {
-      // ── Sécurité RAM ───────────────────────
-      const ramMb = getRssMb();
-      if (ramMb > RAM_LIMIT_MB) {
-        console.warn(`[lunaclip-scheduler] RAM ${ramMb.toFixed(0)}MB > ${RAM_LIMIT_MB}MB — skip ${s.slug}`);
-        skippedRam.add(s.slug);
-        continue;
-      }
-
-      console.log(`[lunaclip-scheduler] START worker for ${s.slug} (${dliveSlug}) RAM=${ramMb.toFixed(0)}MB`);
-      try {
-        const sessionId  = await createSession(s.id, rawHls!, ALERT_MULTI, INTERVAL_S);
-        const proxiedHls = proxifyHls(rawHls!);
-
-        const w: ActiveWorker = {
-          streamerId:   s.id,
-          streamerSlug: s.slug,
-          dliveSlug,
-          sessionId,
-          process:      null as any,
-          status:       "running",
-          startedAt:    new Date(),
-          lastFrame:    null,
-          provider:     null,
-          hlsUrl:       proxiedHls,
-          workerStats:  defaultWorkerStats(),
-        };
-        spawnWorker(w);
-        activeWorkers.set(s.id, w);
-      } catch (e) {
-        console.error(`[lunaclip-scheduler] Failed to start for ${s.slug}:`, e);
-      }
-    }
-
-    if (!isLive && alreadyRunning) {
-      const w = activeWorkers.get(s.id)!;
-      killWorker(w, "stream ended");
-      activeWorkers.delete(s.id);
-    }
-  }
-
-  // Cleanup workers orphelins
+  // ── 1. Cleanup workers morts ───────────────
   for (const [sid, w] of activeWorkers) {
+    if (w.status !== "running") {
+      activeWorkers.delete(sid);
+    }
+    // Streamer plus en DB → tuer
     if (!streamers.some(s => s.id === sid)) {
       killWorker(w, "streamer removed");
       activeWorkers.delete(sid);
     }
+  }
+
+  // ── 2. Vérifier qui est en live ────────────
+  const candidates: Candidate[] = [];
+
+  for (const s of streamers) {
+    const dliveSlug = getDisplayName(s);
+    if (!dliveSlug) continue;
+
+    let rawHls: string | null = null;
+    try { rawHls = await getDliveHlsUrl(dliveSlug); } catch { /* offline */ }
+
+    if (!rawHls) {
+      // Stream terminé → tuer le worker si actif
+      const w = activeWorkers.get(s.id);
+      if (w) {
+        killWorker(w, "stream ended");
+        activeWorkers.delete(s.id);
+      }
+      continue;
+    }
+
+    candidates.push({
+      streamer:    s,
+      dliveSlug,
+      rawHls,
+      lastWatched: lastWatchedAt.get(s.id) ?? 0,
+    });
+  }
+
+  // ── 3. Vérification RAM ────────────────────
+  const ramMb = getRssMb();
+  if (ramMb > RAM_LIMIT_MB) {
+    console.warn(`[lunaclip-scheduler] RAM ${ramMb.toFixed(0)}MB > ${RAM_LIMIT_MB}MB — aucun nouveau worker`);
+    candidates.forEach(c => skippedRam.add(c.streamer.slug));
+    return;
+  }
+
+  // ── 4. Cas : aucun streamer en live ────────
+  if (candidates.length === 0) {
+    console.log("[lunaclip-scheduler] aucun streamer en live");
+    return;
+  }
+
+  // ── 5. Trouver le worker actuel (s'il existe) ──
+  const currentEntry = [...activeWorkers.entries()].find(([, w]) => w.status === "running");
+  const currentId    = currentEntry ? currentEntry[0] : null;
+
+  // Si le worker actuel tourne sur un streamer qui n'est plus en live → déjà nettoyé en step 2.
+  // Si le worker actuel est toujours valide, vérifier si on doit switcher.
+
+  const chosen = pickNext(candidates, currentId);
+
+  // ── 6. Pas besoin de changer ───────────────
+  if (currentId === chosen.streamer.id) {
+    // On reste sur le même streamer — loguer les autres en attente
+    candidates
+      .filter(c => c.streamer.id !== currentId)
+      .forEach(c => waitingWorkers.add(c.streamer.slug));
+    console.log(
+      `[lunaclip-scheduler] garde ${chosen.streamer.slug} ` +
+      `(${Math.floor(((activeWorkers.get(currentId)?.startedAt.getTime() ?? 0) - Date.now()) / -1000)}s) ` +
+      `| en attente: ${[...waitingWorkers].join(", ") || "—"}`
+    );
+    return;
+  }
+
+  // ── 7. Switcher vers le nouveau candidat ──
+  // Tuer l'ancien si actif
+  if (currentId !== null) {
+    const oldWorker = activeWorkers.get(currentId);
+    if (oldWorker) {
+      killWorker(oldWorker, `rotation → ${chosen.streamer.slug}`);
+      activeWorkers.delete(currentId);
+      // Laisser le temps à ffmpeg de mourir proprement avant de spawner le suivant
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+
+  // Marquer les autres comme en attente
+  candidates
+    .filter(c => c.streamer.id !== chosen.streamer.id)
+    .forEach(c => waitingWorkers.add(c.streamer.slug));
+
+  console.log(
+    `[lunaclip-scheduler] START ${chosen.streamer.slug} (${chosen.dliveSlug}) ` +
+    `RAM=${ramMb.toFixed(0)}MB | en attente: ${[...waitingWorkers].join(", ") || "—"}`
+  );
+
+  try {
+    const sessionId  = await createSession(chosen.streamer.id, chosen.rawHls, ALERT_MULTI, INTERVAL_S);
+    const proxiedHls = proxifyHls(chosen.rawHls);
+
+    const w: ActiveWorker = {
+      streamerId:   chosen.streamer.id,
+      streamerSlug: chosen.streamer.slug,
+      dliveSlug:    chosen.dliveSlug,
+      sessionId,
+      process:      null as any,
+      status:       "running",
+      startedAt:    new Date(),
+      lastFrame:    null,
+      provider:     null,
+      hlsUrl:       proxiedHls,
+      workerStats:  defaultWorkerStats(),
+    };
+    spawnWorker(w);
+    activeWorkers.set(chosen.streamer.id, w);
+  } catch (e) {
+    console.error(`[lunaclip-scheduler] Failed to start for ${chosen.streamer.slug}:`, e);
   }
 }
 
@@ -429,7 +525,10 @@ let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 export function startLunaClipScheduler(pool: Pool) {
   if (schedulerInterval) return;
   _pool = pool;
-  console.log(`[lunaclip-scheduler] started (poll=${POLL_SEC}s alert=x${ALERT_MULTI} ram_limit=${RAM_LIMIT_MB}MB)`);
+  console.log(
+    `[lunaclip-scheduler] started — round-robin 1 worker ` +
+    `(poll=${POLL_SEC}s min_watch=${MIN_WATCH_SEC}s alert=x${ALERT_MULTI} ram_limit=${RAM_LIMIT_MB}MB)`
+  );
   tick().catch(console.error);
   schedulerInterval = setInterval(() => tick().catch(console.error), POLL_SEC * 1000);
 }
