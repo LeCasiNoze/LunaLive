@@ -22,7 +22,7 @@ const API_BASE    = String(
 const POLL_SEC    = 60;
 const ALERT_MULTI = parseFloat(process.env.LUNACLIP_ALERT_MULTI ?? "300");
 const INTERVAL_S  = parseFloat(process.env.LUNACLIP_INTERVAL ?? "1.0");
-const WORKER_PATH = path.resolve(process.cwd(), "../lunaclip-worker/worker.py");
+const WORKER_PATH = path.resolve(process.cwd(), "./lunaclip-worker/worker.py");
 
 // ─────────────────────────────────────────────
 // Types
