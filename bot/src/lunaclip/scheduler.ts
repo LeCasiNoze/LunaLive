@@ -5,11 +5,17 @@ import type { Pool } from "pg";
 import { addLunaClip } from "./clips.js";
 
 const DLIVE_GQL   = process.env.DLIVE_GRAPHQL_ENDPOINT ?? "https://graphigo.prd.dlive.tv/";
-const API_BASE    = String(
-  process.env.API_BASE_URL ||
-  process.env.RENDER_EXTERNAL_URL ||
-  "http://localhost:3000"
+const API_BASE = String(
+  process.env.BOT_API_BASE ||           // ✅ ton env réel
+  process.env.API_BASE_URL ||           // (compat)
+  process.env.RENDER_EXTERNAL_URL ||    // (compat)
+  ""
 ).replace(/\/$/, "");
+function mustApiBase(): string {
+  if (!API_BASE) throw new Error("BOT_API_BASE missing (needed for HLS proxy)");
+  return API_BASE;
+}
+
 const POLL_SEC    = 60;
 const ALERT_MULTI = parseFloat(process.env.LUNACLIP_ALERT_MULTI ?? "300");
 const INTERVAL_S  = parseFloat(process.env.LUNACLIP_INTERVAL ?? "1.0");
@@ -56,6 +62,11 @@ export const activeWorkers = new Map<number, ActiveWorker>();
 
 // Pool injecté au démarrage
 let _pool: Pool;
+
+function proxifyHls(rawHls: string) {
+  const base = mustApiBase(); // ex: https://lunalive-api.onrender.com
+  return `${base}/hls?u=${encodeURIComponent(rawHls)}`;
+}
 
 // ─────────────────────────────────────────────
 // DLive GraphQL
@@ -265,15 +276,20 @@ async function tick() {
     if (existing && existing.status !== "running") activeWorkers.delete(s.id);
 
     const alreadyRunning = activeWorkers.has(s.id);
-    let hlsUrl: string | null = null;
-    try { hlsUrl = await getDliveHlsUrl(dliveSlug); } catch { hlsUrl = null; }
+    let rawHls: string | null = null;
+    try { rawHls = await getDliveHlsUrl(dliveSlug); } catch { rawHls = null; }
 
-    const isLive = hlsUrl !== null;
+    const isLive = rawHls !== null;
 
     if (isLive && !alreadyRunning) {
       console.log(`[lunaclip-scheduler] START worker for ${s.slug} (${dliveSlug})`);
       try {
-        const sessionId = await createSession(s.id, hlsUrl!, ALERT_MULTI, INTERVAL_S);
+        // ✅ DB: on garde l'URL DLive brute (utile debug)
+        const sessionId = await createSession(s.id, rawHls!, ALERT_MULTI, INTERVAL_S);
+
+        // ✅ Worker: on donne l'URL proxifiée (headers + rewrite m3u8)
+        const proxiedHls = proxifyHls(rawHls!);
+
         const w: ActiveWorker = {
           streamerId:   s.id,
           streamerSlug: s.slug,
@@ -284,7 +300,7 @@ async function tick() {
           startedAt:    new Date(),
           lastFrame:    null,
           provider:     null,
-          hlsUrl:       hlsUrl!,
+          hlsUrl:       proxiedHls,
         };
         spawnWorker(w);
         activeWorkers.set(s.id, w);
@@ -318,6 +334,7 @@ export function startLunaClipScheduler(pool: Pool) {
   if (schedulerInterval) return;
   _pool = pool;
   console.log(`[lunaclip-scheduler] started (poll every ${POLL_SEC}s, alert x${ALERT_MULTI})`);
+  console.log(`[lunaclip-scheduler] BOT_API_BASE=${API_BASE || "(missing)"}`);
   tick().catch(console.error);
   schedulerInterval = setInterval(() => tick().catch(console.error), POLL_SEC * 1000);
 }

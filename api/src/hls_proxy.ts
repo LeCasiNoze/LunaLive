@@ -173,6 +173,7 @@ export function registerHlsProxy(app: Express) {
     }
 
     res.status(upstream.status);
+    res.setHeader("x-hls-proxy-upstream", target.hostname);
 
     const ct = upstream.headers.get("content-type") || "";
     if (ct) res.setHeader("content-type", ct);
