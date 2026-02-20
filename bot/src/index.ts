@@ -1,5 +1,6 @@
 // bot/src/index.ts
 import http from "node:http";
+import fs from "node:fs";
 import { loadEnv } from "./env.js";
 import { createPool } from "./db.js";
 import { Registry } from "./runtime/registry.js";
@@ -10,40 +11,113 @@ import {
   activeWorkers,
   skippedRam,
   waitingWorkers,
-  ignoredStreamers,
   forceSwitch,
+  skipStreamer,          // ✅ NEW
   setMaxWorkers,
   setMinWatchSec,
-  setIgnored,
   getSchedulerState,
   getLogs,
+  setAlertMulti,
+  setLock,
 } from "./lunaclip/scheduler.js";
 
-const RAM_LIMIT_MB = parseFloat(process.env.LUNACLIP_RAM_LIMIT_MB ?? "420");
-const ALERT_MULTI  = parseFloat(process.env.LUNACLIP_ALERT_MULTI ?? "300");
+/** cgroup v2 helpers (RAM/CPU conteneur) */
+function readText(p: string): string | null {
+  try { return fs.readFileSync(p, "utf8"); } catch { return null; }
+}
+function readNum(p: string): number | null {
+  const t = readText(p);
+  if (!t) return null;
+  const s = t.trim();
+  if (!s) return null;
+  if (s === "max") return Infinity;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
 
-function readBody(req: http.IncomingMessage): Promise<any> {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", c => { data += c; });
-    req.on("end", () => {
-      try { resolve(data ? JSON.parse(data) : {}); }
-      catch { reject(new Error("invalid_json")); }
-    });
-    req.on("error", reject);
-  });
+function getCgroupMemoryMb(): { usedMb: number | null; limitMb: number | null } {
+  const cur = readNum("/sys/fs/cgroup/memory.current");
+  const max = readNum("/sys/fs/cgroup/memory.max");
+  if (cur == null || max == null) return { usedMb: null, limitMb: null };
+  const usedMb = cur === Infinity ? null : cur / 1024 / 1024;
+  const limitMb = max === Infinity ? null : max / 1024 / 1024;
+  return { usedMb, limitMb };
+}
+
+function getCgroupCpuLimitCores(): number | null {
+  const t = readText("/sys/fs/cgroup/cpu.max");
+  if (!t) return null;
+  const [quotaStr, periodStr] = t.trim().split(/\s+/);
+  const period = Number(periodStr);
+  if (!Number.isFinite(period) || period <= 0) return null;
+  if (quotaStr === "max") return null;
+  const quota = Number(quotaStr);
+  if (!Number.isFinite(quota) || quota <= 0) return null;
+  return quota / period;
+}
+
+function getCgroupCpuUsageUsec(): number | null {
+  const t = readText("/sys/fs/cgroup/cpu.stat");
+  if (!t) return null;
+  const m = t.match(/usage_usec\s+(\d+)/);
+  if (!m) return null;
+  return Number(m[1]);
+}
+
+type Metrics = {
+  memory_mb: number;
+  ram_limit_mb: number;
+  cpu_pct: number;
+  cpu_limit_cores: number | null;
+};
+
+function makeMetricsSampler() {
+  let lastUsec: number | null = null;
+  let lastTs: number | null = null;
+
+  return (): Metrics => {
+    const mem = getCgroupMemoryMb();
+    const usedMb = mem.usedMb ?? (process.memoryUsage().rss / 1024 / 1024);
+    const limitMb = mem.limitMb ?? 420;
+
+    const cpuLimit = getCgroupCpuLimitCores();
+    const usec = getCgroupCpuUsageUsec();
+    const now = Date.now();
+
+    let cpuPct = 0;
+    if (usec != null && lastUsec != null && lastTs != null) {
+      const du = usec - lastUsec;
+      const dtMs = now - lastTs;
+      if (du >= 0 && dtMs > 0) {
+        const usedSec = du / 1_000_000;
+        const wallSec = dtMs / 1000;
+        const coresUsed = usedSec / wallSec;
+        const denom = (cpuLimit && cpuLimit > 0) ? cpuLimit : 1;
+        cpuPct = Math.max(0, Math.min(100, (coresUsed / denom) * 100));
+      }
+    }
+    lastUsec = usec ?? lastUsec;
+    lastTs = now;
+
+    return {
+      memory_mb: Math.round(usedMb),
+      ram_limit_mb: Math.round(limitMb),
+      cpu_pct: Math.round(cpuPct),
+      cpu_limit_cores: cpuLimit,
+    };
+  };
 }
 
 /**
  * IPC DB: bot -> DB (status + logs) AND DB -> bot (commands)
- * Le dashboard lit la DB via l'API, donc plus besoin d'URL bot.
  */
 function startLunaClipDbIpc(pool: ReturnType<typeof createPool>) {
+  const sampleMetrics = makeMetricsSampler();
   let lastFlushedTs = 0;
 
   const flush = async () => {
-    // 1) Snapshot status
-    const memMb = process.memoryUsage().rss / 1024 / 1024;
+    const m = sampleMetrics();
+    const state = getSchedulerState();
 
     const workers = [...activeWorkers.values()].map(w => ({
       streamer_id:   w.streamerId,
@@ -61,15 +135,20 @@ function startLunaClipDbIpc(pool: ReturnType<typeof createPool>) {
 
     const payload = {
       ok: true,
-      active_count:  workers.length,
-      alert_multi:   ALERT_MULTI,
-      memory_mb:     Math.round(memMb),
-      ram_limit_mb:  RAM_LIMIT_MB,
+      active_count: workers.length,
+
+      // ✅ métriques fidèles conteneur
+      memory_mb: m.memory_mb,
+      ram_limit_mb: m.ram_limit_mb,
+      cpu_pct: m.cpu_pct,
+      cpu_limit_cores: m.cpu_limit_cores,
+
       skipped_ram:   [...skippedRam],
       waiting_slugs: [...waitingWorkers],
-      ignored_ids:   [...ignoredStreamers],
-      scheduler:     getSchedulerState(),
+
+      scheduler: state,
       workers,
+      alert_multi: state.alert_multi ?? null,
     };
 
     await pool.query(
@@ -83,7 +162,7 @@ function startLunaClipDbIpc(pool: ReturnType<typeof createPool>) {
       [JSON.stringify(payload)]
     );
 
-    // 2) Flush logs (on pousse uniquement les "nouveaux" selon ts)
+    // logs incremental
     const logs = getLogs(200).filter(l => l.ts > lastFlushedTs);
     if (logs.length) {
       lastFlushedTs = logs[logs.length - 1].ts;
@@ -96,23 +175,19 @@ function startLunaClipDbIpc(pool: ReturnType<typeof createPool>) {
         chunks.push(`($${base + 1}::text, $${base + 2}::text, $${base + 3}::text)`);
         values.push(l.slug, l.source, l.msg);
       }
-
-      // ts = NOW() côté DB, on a déjà l.ts si tu veux, mais pas nécessaire
       await pool.query(
         `INSERT INTO lunaclip_admin_logs (slug, source, msg) VALUES ${chunks.join(",")}`,
         values
       );
 
-      // Optionnel: nettoyage pour éviter croissance infinie
+      // ring DB
       await pool.query(`
         DELETE FROM lunaclip_admin_logs
-        WHERE id < (
-          SELECT COALESCE(MAX(id),0) - 5000 FROM lunaclip_admin_logs
-        )
+        WHERE id < (SELECT COALESCE(MAX(id),0) - 5000 FROM lunaclip_admin_logs)
       `).catch(() => {});
     }
 
-    // 3) Drain commands pending
+    // drain commands
     const cr = await pool.query(
       `
       SELECT id, action, payload
@@ -132,15 +207,33 @@ function startLunaClipDbIpc(pool: ReturnType<typeof createPool>) {
         if (action === "force_switch") {
           if (!payload.streamer_id) throw new Error("missing streamer_id");
           forceSwitch(Number(payload.streamer_id));
+
+        } else if (action === "skip_streamer") {
+          if (!payload.streamer_id) throw new Error("missing streamer_id");
+          skipStreamer(Number(payload.streamer_id));
+
         } else if (action === "set_max_workers") {
           if (typeof payload.value !== "number") throw new Error("missing value");
           setMaxWorkers(Number(payload.value));
+
         } else if (action === "set_min_watch_sec") {
           if (typeof payload.value !== "number") throw new Error("missing value");
           setMinWatchSec(Number(payload.value));
-        } else if (action === "set_ignored") {
-          if (!payload.streamer_id || typeof payload.value !== "boolean") throw new Error("missing params");
-          setIgnored(Number(payload.streamer_id), Boolean(payload.value));
+
+        } else if (action === "set_alert_multi") {
+          if (typeof payload.value !== "number") throw new Error("missing value");
+          setAlertMulti(Number(payload.value));
+
+        } else if (action === "set_lock") {
+          if (typeof payload.value !== "boolean") throw new Error("missing value");
+          if (payload.value === false) {
+            setLock(null);
+          } else {
+            if (!payload.streamer_id) throw new Error("missing streamer_id");
+            const dur = (payload.duration_sec == null) ? null : Number(payload.duration_sec);
+            setLock(Number(payload.streamer_id), dur);
+          }
+
         } else {
           throw new Error(`unknown action: ${action}`);
         }
@@ -162,14 +255,8 @@ function startLunaClipDbIpc(pool: ReturnType<typeof createPool>) {
     }
   };
 
-  // 2s comme ton dashboard (POLL_MS=2000)
-  const iv = setInterval(() => {
-    flush().catch(() => {});
-  }, 2000);
-
-  // premier run immédiat
+  const iv = setInterval(() => { flush().catch(() => {}); }, 2000);
   flush().catch(() => {});
-
   return () => clearInterval(iv);
 }
 
@@ -187,43 +274,17 @@ async function main() {
 
   startLunaClipScheduler(pool);
 
-  // ✅ IPC DB pour dashboard LunaClip
   const stopIpc = startLunaClipDbIpc(pool);
 
-  // (Optionnel) health server si tu veux encore
+  // (Optionnel) health server
   let server: http.Server | null = null;
   if (env.PORT) {
-    server = http.createServer(async (req, res) => {
-      const url    = req.url ?? "/";
-      const method = req.method ?? "GET";
+    server = http.createServer(async (_req, res) => {
       res.setHeader("content-type", "application/json");
-
-      if (url === "/health" && method === "GET") {
-        res.writeHead(200);
-        res.end(JSON.stringify({ ok: true }));
-        return;
-      }
-
-      if (url === "/lunaclip/control" && method === "POST") {
-        let body: any;
-        try { body = await readBody(req); }
-        catch {
-          res.writeHead(400);
-          res.end(JSON.stringify({ ok: false, error: "invalid_json" }));
-          return;
-        }
-        res.writeHead(200);
-        res.end(JSON.stringify({ ok: true, note: "Dashboard uses DB IPC now", body }));
-        return;
-      }
-
       res.writeHead(200);
       res.end(JSON.stringify({ ok: true }));
     });
-
-    server.listen(env.PORT, () => {
-      console.log(`[bot] health listening on :${env.PORT}`);
-    });
+    server.listen(env.PORT, () => console.log(`[bot] health listening on :${env.PORT}`));
   }
 
   const shutdown = async (sig: string) => {

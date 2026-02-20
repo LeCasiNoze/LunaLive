@@ -7,13 +7,9 @@ export const lunaclipRouter = Router();
 
 const ALERT_MULTI = parseFloat(process.env.LUNACLIP_ALERT_MULTI ?? "300");
 
-// ─────────────────────────────────────────────
-// GET /admin/lunaclip/status (depuis DB snapshot)
-// ─────────────────────────────────────────────
+// GET /admin/lunaclip/status
 lunaclipRouter.get("/status", async (_req, res) => {
-  const r = await pool.query(
-    `SELECT payload, updated_at FROM lunaclip_admin_state WHERE id=1`
-  );
+  const r = await pool.query(`SELECT payload, updated_at FROM lunaclip_admin_state WHERE id=1`);
 
   if (r.rowCount === 0) {
     return res.json({
@@ -25,12 +21,16 @@ lunaclipRouter.get("/status", async (_req, res) => {
       bot_error: "no_snapshot_yet",
       memory_mb: 0,
       ram_limit_mb: 420,
+      cpu_pct: 0,
+      cpu_limit_cores: null,
       skipped_ram: [],
       waiting_slugs: [],
       ignored_ids: [],
       scheduler: {
-        max_workers: 1, min_watch_sec: 300, ram_mb: 0, ram_limit_mb: 420,
+        max_workers: 1, min_watch_sec: 1200, ram_limit_mb: 420,
         ignored: [], priority_queue: [], waiting: [], skipped_ram: [],
+        alert_multi: ALERT_MULTI,
+        locked: false, locked_streamer_id: null, locked_until_ms: null,
       },
     });
   }
@@ -38,8 +38,6 @@ lunaclipRouter.get("/status", async (_req, res) => {
   const row = r.rows[0];
   const payload = row.payload ?? {};
   const ageSec = Math.floor((Date.now() - new Date(row.updated_at).getTime()) / 1000);
-
-  // Si le snapshot est trop vieux, on marque injoignable
   const stale = ageSec > 10;
 
   res.json({
@@ -51,9 +49,7 @@ lunaclipRouter.get("/status", async (_req, res) => {
   });
 });
 
-// ─────────────────────────────────────────────
-// GET /admin/lunaclip/logs (depuis DB)
-// ─────────────────────────────────────────────
+// GET /admin/lunaclip/logs
 lunaclipRouter.get("/logs", async (req, res) => {
   const limit = Math.min(Number(req.query.limit ?? 100), 200);
   const slug  = (req.query.slug as string | undefined) ?? null;
@@ -74,30 +70,24 @@ lunaclipRouter.get("/logs", async (req, res) => {
     args
   );
 
-  // Front attend ts en number (ms) ? Dans ton UI, tu fais new Date(ts)
-  // Là on renvoie ms pour être safe.
-  const logs = r.rows
-    .reverse()
-    .map((x: any) => ({
-      ts: new Date(x.ts).getTime(),
-      slug: x.slug,
-      source: x.source,
-      msg: x.msg,
-    }));
+  const logs = r.rows.reverse().map((x: any) => ({
+    ts: new Date(x.ts).getTime(),
+    slug: x.slug,
+    source: x.source,
+    msg: x.msg,
+  }));
 
   res.json({ ok: true, logs });
 });
 
-// ─────────────────────────────────────────────
-// POST /admin/lunaclip/control (écrit commande DB)
-// ─────────────────────────────────────────────
+// POST /admin/lunaclip/control
 lunaclipRouter.post("/control", async (req, res) => {
-  const { action, streamer_id, value } = req.body ?? {};
+  const { action, streamer_id, value, duration_sec } = req.body ?? {};
 
-  // on stocke payload tel quel
   const payload: any = {};
   if (streamer_id != null) payload.streamer_id = streamer_id;
   if (value != null) payload.value = value;
+  if (duration_sec != null) payload.duration_sec = duration_sec;
 
   await pool.query(
     `INSERT INTO lunaclip_admin_commands (action, payload)
@@ -108,9 +98,7 @@ lunaclipRouter.post("/control", async (req, res) => {
   res.json({ ok: true });
 });
 
-// ─────────────────────────────────────────────
-// Le reste (DB LunaClip historique)
-// ─────────────────────────────────────────────
+// Historique DB (inchangé)
 lunaclipRouter.get("/sessions", async (_req, res) => {
   const r = await pool.query(
     `SELECT ls.id, ls.hls_url, ls.provider, ls.status,
@@ -164,7 +152,6 @@ lunaclipRouter.post("/clips/manual", async (req, res) => {
   const { streamer_id } = req.body as { streamer_id?: number };
   if (!streamer_id) return res.status(400).json({ ok: false, error: "missing_streamer_id" });
 
-  // On récupère le dernier snapshot pour retrouver last_frame
   const sr = await pool.query(`SELECT payload FROM lunaclip_admin_state WHERE id=1`);
   const payload = sr.rows[0]?.payload ?? {};
   const worker = (payload.workers ?? []).find((w: any) => w.streamer_id === streamer_id);

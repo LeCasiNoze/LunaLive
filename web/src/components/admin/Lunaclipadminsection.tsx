@@ -65,16 +65,31 @@ interface WorkerInfo {
 }
 interface SchedulerState {
   max_workers: number; min_watch_sec: number;
-  ram_mb: number; ram_limit_mb: number;
-  ignored: number[]; priority_queue: number[];
+  ram_limit_mb: number;
   waiting: string[]; skipped_ram: string[];
+  alert_multi?: number;
+  locked?: boolean;
+  locked_streamer_id?: number|null;
+  locked_until_ms?: number|null;
 }
 interface GlobalStatus {
-  ok: boolean; active_count: number; alert_multi: number;
-  workers: WorkerInfo[]; memory_mb: number; ram_limit_mb: number;
-  skipped_ram: string[]; waiting_slugs: string[];
-  ignored_ids: number[]; scheduler: SchedulerState;
+  ok: boolean;
+  active_count: number;
+  alert_multi: number;
+  workers: WorkerInfo[];
+
+  // ✅ conteneur (fidèle)
+  memory_mb: number;
+  ram_limit_mb: number;
+  cpu_pct?: number;
+  cpu_limit_cores?: number|null;
+
+  skipped_ram: string[];
+  waiting_slugs: string[];
+  scheduler: SchedulerState;
+
   bot_unreachable?: boolean;
+  bot_error?: string|null;
 }
 interface LunaEvent {
   id: number; ts_sec: number; provider: string; in_bonus: boolean;
@@ -174,18 +189,37 @@ function CardHeader({ children }: { children: React.ReactNode }) {
 }
 
 function RamBar({ used, limit }: { used: number; limit: number }) {
-  const pct = Math.min(100, (used/limit)*100);
+  const pct = limit > 0 ? Math.min(100, (used/limit)*100) : 0;
   const col = pct > 90 ? T.red : pct > 70 ? T.yellow : T.green;
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:3, minWidth:160 }}>
       <div style={{ display:"flex", justifyContent:"space-between", fontSize:10 }}>
         <span style={{ color:T.muted, fontWeight:700, letterSpacing:"0.08em" }}>RAM</span>
         <span style={{ color:col, fontFamily:T.mono, fontWeight:700, fontSize:11 }}>
-          {used.toFixed(0)}/{limit}MB
+          {used.toFixed(0)}/{limit.toFixed(0)}MB
         </span>
       </div>
       <div style={{ height:3, background:T.bg4, borderRadius:99, overflow:"hidden" }}>
         <div style={{ width:`${pct}%`, height:"100%", background:col, borderRadius:99,
+          boxShadow:`0 0 6px ${col}88`, transition:"width 0.5s ease" }}/>
+      </div>
+    </div>
+  );
+}
+
+function CpuBar({ pct, cores }: { pct: number; cores?: number|null }) {
+  const p = Math.max(0, Math.min(100, pct ?? 0));
+  const col = p > 90 ? T.red : p > 70 ? T.yellow : T.green;
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:3, minWidth:160 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", fontSize:10 }}>
+        <span style={{ color:T.muted, fontWeight:700, letterSpacing:"0.08em" }}>CPU</span>
+        <span style={{ color:col, fontFamily:T.mono, fontWeight:700, fontSize:11 }}>
+          {p.toFixed(0)}%{cores ? ` · ${cores.toFixed(2)}c` : ""}
+        </span>
+      </div>
+      <div style={{ height:3, background:T.bg4, borderRadius:99, overflow:"hidden" }}>
+        <div style={{ width:`${p}%`, height:"100%", background:col, borderRadius:99,
           boxShadow:`0 0 6px ${col}88`, transition:"width 0.5s ease" }}/>
       </div>
     </div>
@@ -204,8 +238,8 @@ function Dot({ color, pulse }: { color: string; pulse?: boolean }) {
 }
 
 // ─────────────────────────────────────────────
-// Focus Overlay
-// ─────────────────────────────────────────────
+// Focus Overlay (inchangé sauf titre)
+/// ─────────────────────────────────────────────
 function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
   w: WorkerInfo; adminKey: string; alertMulti: number; onClose: () => void;
 }) {
@@ -256,7 +290,6 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
         borderRadius:14, boxShadow:"0 40px 100px rgba(0,0,0,0.8)",
       }} onClick={e=>e.stopPropagation()}>
 
-        {/* Header */}
         <div style={{
           padding:"14px 20px", borderBottom:`1px solid ${T.border}`,
           display:"flex", gap:10, alignItems:"center", flexWrap:"wrap",
@@ -275,8 +308,6 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
         </div>
 
         <div style={{ padding:16, display:"grid", gap:14 }}>
-
-          {/* Stats grid */}
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))", gap:8 }}>
             {[
               { l:"Mode",       v:<Badge color={modeCol}>{stats.mode}</Badge> },
@@ -293,7 +324,6 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
             ))}
           </div>
 
-          {/* Graphe */}
           {chart.length > 1 && (
             <Card>
               <CardHeader>📈 Multiplicateur — session</CardHeader>
@@ -320,7 +350,6 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
             </Card>
           )}
 
-          {/* OCR Debug */}
           {f?.raw_ocr != null && (
             <Card>
               <CardHeader>🔬 OCR Debug — dernière frame</CardHeader>
@@ -354,7 +383,6 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
             </Card>
           )}
 
-          {/* Events */}
           {events.length > 0 && (
             <Card>
               <CardHeader>🚨 Events session ({events.length})</CardHeader>
@@ -377,7 +405,6 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
             </Card>
           )}
 
-          {/* Actions */}
           <div style={{ display:"flex", gap:10, alignItems:"center" }}>
             <Btn onClick={handleClip} disabled={!f}>🎬 Clip maintenant</Btn>
             {clipMsg && <span style={{ color:T.green, fontSize:12 }}>{clipMsg}</span>}
@@ -389,12 +416,14 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
 }
 
 // ─────────────────────────────────────────────
-// WorkerRow
+// WorkerRow (ajout lock/unlock)
 // ─────────────────────────────────────────────
-function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onIgnore, isWaiting, isIgnored }: {
+function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onSkip, onLockToggle, isWaiting, isLocked }: {
   w: WorkerInfo; alertMulti: number;
-  onFocus: () => void; onForceSwitch?: () => void; onIgnore: () => void;
-  isWaiting: boolean; isIgnored: boolean;
+  onFocus: () => void; onForceSwitch?: () => void;
+  onSkip: () => void;
+  onLockToggle: () => void;
+  isWaiting: boolean; isLocked: boolean;
 }) {
   const [sparkline, setSparkline] = React.useState<{ts:number;multi:number}[]>([]);
 
@@ -408,8 +437,8 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onIgnore, isWaiting,
     });
   }, [w.last_frame]);
 
-  const f      = w.last_frame;
-  const stats  = w.worker_stats ?? { mode:"ACTIVE", consecutive_unknown:0, frames_total:0, frames_with_value:0, last_value_secs_ago:0 };
+  const f       = w.last_frame;
+  const stats   = w.worker_stats ?? { mode:"ACTIVE", consecutive_unknown:0, frames_total:0, frames_with_value:0, last_value_secs_ago:0 };
   const modeCol = stats.mode==="ACTIVE" ? T.green : stats.mode==="WATCHING" ? T.yellow : T.muted;
   const multi   = f?.multiplier;
   const isBig   = multi != null && multi >= alertMulti;
@@ -418,29 +447,26 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onIgnore, isWaiting,
   return (
     <div style={{
       background: T.bg2,
-      border:`1px solid ${isBig ? T.red+"55" : isWaiting ? T.yellow+"33" : T.border}`,
+      border:`1px solid ${isLocked ? T.blue+"77" : isBig ? T.red+"55" : isWaiting ? T.yellow+"33" : T.border}`,
       borderRadius:9, overflow:"hidden",
-      boxShadow: isBig ? `0 0 20px ${T.red}22` : "none",
-      opacity: isIgnored ? 0.35 : 1,
+      boxShadow: isLocked ? `0 0 20px ${T.blue}22` : isBig ? `0 0 20px ${T.red}22` : "none",
       transition:"all 0.2s",
     }}>
       <div style={{
         padding:"10px 14px",
         display:"grid",
-        gridTemplateColumns:"8px auto 1fr 80px 110px 100px auto",
+        gridTemplateColumns:"8px auto 1fr 80px 110px 140px auto",
         gap:12, alignItems:"center",
       }}>
-        {/* Status dot */}
         <Dot color={isActive ? T.green : isWaiting ? T.yellow : T.muted} pulse={isActive}/>
 
-        {/* Identity */}
         <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
-          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+          <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
             <span style={{ fontWeight:900, fontSize:13 }}>{w.streamer_slug}</span>
             {w.provider && <Badge color={T.purple}>{w.provider.toUpperCase()}</Badge>}
             {f?.in_bonus && <Badge color={T.blue}>BONUS</Badge>}
+            {isLocked && <Badge color={T.blue}>🔒 LOCK</Badge>}
             {isWaiting && !isActive && <Badge color={T.yellow}>EN ATTENTE</Badge>}
-            {isIgnored && <Badge color={T.red}>IGNORÉ</Badge>}
           </div>
           <div style={{ display:"flex", gap:6, alignItems:"center" }}>
             <Badge color={modeCol}>{stats.mode}</Badge>
@@ -450,7 +476,6 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onIgnore, isWaiting,
           </div>
         </div>
 
-        {/* Sparkline */}
         {sparkline.length > 2 ? (
           <div style={{ height:32 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -463,7 +488,6 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onIgnore, isWaiting,
           </div>
         ) : <div/>}
 
-        {/* Multiplier */}
         <div style={{ textAlign:"right" }}>
           {multi != null ? (
             <span style={{
@@ -474,7 +498,6 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onIgnore, isWaiting,
           ) : <span style={{ color:T.dim, fontFamily:T.mono }}>—</span>}
         </div>
 
-        {/* BET / WIN */}
         <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
           <span style={{ color:T.dim, fontSize:10 }}>
             BET <span style={{ color:T.text, fontFamily:T.mono }}>{f?.bet_value??"—"}</span>
@@ -486,14 +509,16 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onIgnore, isWaiting,
           </span>
         </div>
 
-        {/* Actions */}
         <div style={{ display:"flex", gap:5, justifyContent:"flex-end", flexWrap:"wrap" }}>
           <Btn onClick={onFocus} small>🔍 Focus</Btn>
           {!isActive && onForceSwitch && (
             <Btn onClick={onForceSwitch} small color={T.blue}>⚡ Regarder</Btn>
           )}
-          <Btn onClick={onIgnore} small danger={!isIgnored}>
-            {isIgnored ? "✓ Réactiver" : "✕ Ignorer"}
+          <Btn onClick={onLockToggle} small color={T.blue}>
+            {isLocked ? "🔓 Unlock" : "🔒 Lock"}
+          </Btn>
+          <Btn onClick={onSkip} small danger>
+            ⏭ Passer
           </Btn>
         </div>
       </div>
@@ -502,22 +527,26 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onIgnore, isWaiting,
 }
 
 // ─────────────────────────────────────────────
-// Tab : Live
+// Tab : Live (ajout seuil + CPU + min watch 20/30/60 + lock state)
 // ─────────────────────────────────────────────
 function TabLive({ status, adminKey, onControl }: {
   status: GlobalStatus; adminKey: string;
   onControl: (action: string, params?: any) => Promise<void>;
 }) {
   const [focusedId, setFocusedId] = React.useState<number|null>(null);
+  const [alertInput, setAlertInput] = React.useState<number>(status.alert_multi ?? 300);
 
-  const allWorkers  = status.workers ?? [];
+  React.useEffect(() => {
+    setAlertInput(status.alert_multi ?? 300);
+  }, [status.alert_multi]);
+
+  const allWorkers   = status.workers ?? [];
   const waitingSlugs = new Set(status.waiting_slugs ?? []);
-  const ignoredIds   = new Set(status.ignored_ids ?? []);
   const sched        = status.scheduler;
 
-  // Construire la liste complète (actifs + en attente)
-
   const focusedWorker = allWorkers.find(w => w.streamer_id === focusedId);
+
+  const lockedId = sched?.locked_streamer_id ?? null;
 
   return (
     <>
@@ -528,12 +557,10 @@ function TabLive({ status, adminKey, onControl }: {
 
       <div style={{ display:"grid", gap:10 }}>
 
-        {/* Contrôles scheduler */}
         <Card>
           <CardHeader>⚙️ Contrôles scheduler</CardHeader>
           <div style={{ padding:"12px 14px", display:"flex", gap:20, flexWrap:"wrap", alignItems:"center" }}>
 
-            {/* Max workers */}
             <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
               <span style={{ fontSize:10, color:T.muted, fontWeight:700, letterSpacing:"0.08em" }}>
                 WORKERS SIMULTANÉS
@@ -553,31 +580,67 @@ function TabLive({ status, adminKey, onControl }: {
 
             <div style={{ width:1, height:32, background:T.border }}/>
 
-            {/* Min watch */}
             <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
               <span style={{ fontSize:10, color:T.muted, fontWeight:700, letterSpacing:"0.08em" }}>
                 DURÉE MIN PAR STREAMER
               </span>
               <div style={{ display:"flex", gap:4 }}>
-                {[60, 120, 300, 600].map(s => (
+                {[1200, 1800, 3600].map(s => (
                   <button key={s} onClick={() => onControl("set_min_watch_sec", { value:s })} style={{
                     background: sched?.min_watch_sec === s ? `${T.blue}22` : T.bg3,
                     border:`1px solid ${sched?.min_watch_sec === s ? T.blue : T.border}`,
                     color: sched?.min_watch_sec === s ? T.blue : T.muted,
                     borderRadius:6, padding:"4px 10px", cursor:"pointer",
                     fontSize:11, fontWeight:700, transition:"all 0.15s",
-                  }}>{s>=60 ? `${s/60}min` : `${s}s`}</button>
+                  }}>{`${Math.round(s/60)}min`}</button>
                 ))}
               </div>
             </div>
 
             <div style={{ width:1, height:32, background:T.border }}/>
 
-            {/* RAM */}
-            <RamBar used={status.memory_mb ?? 0} limit={status.ram_limit_mb ?? 420}/>
+            {/* ✅ Seuil */}
+            <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+              <span style={{ fontSize:10, color:T.muted, fontWeight:700, letterSpacing:"0.08em" }}>
+                SEUIL EVENT (×)
+              </span>
+              <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
+                {[100,200,300,500,1000].map(x => (
+                  <button key={x} onClick={() => onControl("set_alert_multi", { value:x })} style={{
+                    background: (status.alert_multi===x) ? `${T.red}22` : T.bg3,
+                    border:`1px solid ${(status.alert_multi===x) ? T.red : T.border}`,
+                    color: (status.alert_multi===x) ? T.red : T.muted,
+                    borderRadius:6, padding:"4px 10px", cursor:"pointer",
+                    fontSize:11, fontWeight:800, transition:"all 0.15s",
+                    fontFamily:T.mono,
+                  }}>×{x}</button>
+                ))}
+                <input
+                  value={alertInput}
+                  onChange={e=>setAlertInput(Number(e.target.value))}
+                  type="number"
+                  style={{
+                    width:90, background:T.bg4, border:`1px solid ${T.border}`,
+                    color:T.text, borderRadius:6, padding:"4px 8px",
+                    fontSize:11, fontFamily:T.mono,
+                  }}
+                />
+                <Btn small onClick={() => onControl("set_alert_multi", { value: alertInput })} color={T.red}>
+                  Appliquer
+                </Btn>
+              </div>
+            </div>
 
-            {/* Résumé */}
+            <div style={{ width:1, height:32, background:T.border }}/>
+
+            {/* ✅ RAM + CPU */}
+            <RamBar used={status.memory_mb ?? 0} limit={status.ram_limit_mb ?? 420}/>
+            <CpuBar pct={status.cpu_pct ?? 0} cores={status.cpu_limit_cores ?? null} />
+
             <div style={{ marginLeft:"auto", display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+              {sched?.locked && lockedId && (
+                <Badge color={T.blue}>🔒 LOCK: #{lockedId}</Badge>
+              )}
               {(status.waiting_slugs??[]).length > 0 && (
                 <div style={{ display:"flex", gap:4, alignItems:"center" }}>
                   <span style={{ color:T.muted, fontSize:10 }}>EN ATTENTE :</span>
@@ -594,7 +657,6 @@ function TabLive({ status, adminKey, onControl }: {
           </div>
         </Card>
 
-        {/* Liste workers */}
         {allWorkers.length === 0 ? (
           <div style={{
             padding:40, textAlign:"center", color:T.muted, fontSize:13,
@@ -610,12 +672,13 @@ function TabLive({ status, adminKey, onControl }: {
               alertMulti={status.alert_multi}
               onFocus={() => setFocusedId(w.streamer_id)}
               onForceSwitch={() => onControl("force_switch", { streamer_id: w.streamer_id })}
-              onIgnore={() => onControl("set_ignored", {
+              onLockToggle={() => onControl("set_lock", {
                 streamer_id: w.streamer_id,
-                value: !ignoredIds.has(w.streamer_id),
+                value: !(sched?.locked_streamer_id === w.streamer_id),
               })}
+              onSkip={() => onControl("skip_streamer", { streamer_id: w.streamer_id })}
               isWaiting={waitingSlugs.has(w.streamer_slug)}
-              isIgnored={ignoredIds.has(w.streamer_id)}
+              isLocked={(sched?.locked_streamer_id ?? null) === w.streamer_id}
             />
           ))
         )}
@@ -625,7 +688,7 @@ function TabLive({ status, adminKey, onControl }: {
 }
 
 // ─────────────────────────────────────────────
-// Tab : Logs
+// Tab : Logs (inchangé)
 // ─────────────────────────────────────────────
 function TabLogs({ adminKey, workers }: { adminKey: string; workers: WorkerInfo[] }) {
   const [logs,     setLogs]     = React.useState<LogEntry[]>([]);
@@ -643,7 +706,7 @@ function TabLogs({ adminKey, workers }: { adminKey: string; workers: WorkerInfo[
       const r = await fetch(`${API}/logs?limit=150${slug}`, { headers:authH });
       const d = await r.json();
       if (d.ok) setLogs(d.logs ?? []);
-    } catch { /* silencieux */ }
+    } catch {}
   }, [adminKey, filter, paused]);
 
   React.useEffect(() => {
@@ -652,7 +715,6 @@ function TabLogs({ adminKey, workers }: { adminKey: string; workers: WorkerInfo[
     return () => clearInterval(iv);
   }, [fetchLogs]);
 
-  // Auto-scroll to bottom
   React.useEffect(() => {
     if (!paused) bottomRef.current?.scrollIntoView({ behavior:"smooth" });
   }, [logs, paused]);
@@ -676,14 +738,12 @@ function TabLogs({ adminKey, workers }: { adminKey: string; workers: WorkerInfo[
       <CardHeader>
         📋 Logs en direct
         <span style={{ marginLeft:"auto", display:"flex", gap:8, alignItems:"center" }}>
-          {/* Search */}
           <input value={search} onChange={e=>setSearch(e.target.value)}
             placeholder="Rechercher…" style={{
               background:T.bg4, border:`1px solid ${T.border}`,
               color:T.text, borderRadius:5, padding:"2px 8px",
               fontSize:11, fontFamily:T.mono, width:140,
             }}/>
-          {/* Source filter */}
           {sources.map(s => (
             <button key={s} onClick={()=>setSource(s)} style={{
               background: source===s ? `${sourceColor[s]??T.muted}22` : "none",
@@ -692,7 +752,6 @@ function TabLogs({ adminKey, workers }: { adminKey: string; workers: WorkerInfo[
               borderRadius:4, padding:"2px 8px", cursor:"pointer", fontSize:10, fontWeight:700,
             }}>{s}</button>
           ))}
-          {/* Streamer filter */}
           <select value={filter} onChange={e=>setFilter(e.target.value)} style={{
             background:T.bg4, border:`1px solid ${T.border}`,
             color:T.text, borderRadius:5, padding:"2px 6px", fontSize:11,
@@ -747,7 +806,7 @@ function TabLogs({ adminKey, workers }: { adminKey: string; workers: WorkerInfo[
 }
 
 // ─────────────────────────────────────────────
-// Tab : Events
+// Tab : Events / Clips (inchangé)
 // ─────────────────────────────────────────────
 function TabEvents({ adminKey }: { adminKey: string }) {
   const [events, setEvents] = React.useState<LunaEvent[]>([]);
@@ -758,7 +817,7 @@ function TabEvents({ adminKey }: { adminKey: string }) {
       const r = await fetch(`${API}/events/recent?limit=50`, { headers:authH });
       const d = await r.json();
       if (d.ok) setEvents(d.events ?? []);
-    } catch { /* silencieux */ }
+    } catch {}
   };
 
   React.useEffect(() => { fetch_(); }, []);
@@ -795,9 +854,6 @@ function TabEvents({ adminKey }: { adminKey: string }) {
   );
 }
 
-// ─────────────────────────────────────────────
-// Tab : Clips
-// ─────────────────────────────────────────────
 function TabClips({ adminKey }: { adminKey: string }) {
   const [clips, setClips] = React.useState<LunaClip[]>([]);
   const authH = { "x-admin-key": adminKey };
@@ -807,7 +863,7 @@ function TabClips({ adminKey }: { adminKey: string }) {
       const r = await fetch(`${API}/clips?limit=50`, { headers:authH });
       const d = await r.json();
       if (d.ok) setClips(d.clips ?? []);
-    } catch { /* silencieux */ }
+    } catch {}
   };
 
   React.useEffect(() => { fetch_(); }, []);
@@ -867,7 +923,7 @@ export function LunaClipAdminSection({ adminKey }: { adminKey: string }) {
       const r = await fetch(`${API}/status`, { headers:authH });
       const d = await r.json() as GlobalStatus;
       if (d.ok) setStatus(d);
-    } catch { /* silencieux */ }
+    } catch {}
   }, [adminKey]);
 
   React.useEffect(() => {
@@ -899,6 +955,8 @@ export function LunaClipAdminSection({ adminKey }: { adminKey: string }) {
   const activeCount = status?.active_count ?? 0;
   const memMb       = status?.memory_mb ?? 0;
   const ramLimit    = status?.ram_limit_mb ?? 420;
+  const cpuPct      = status?.cpu_pct ?? 0;
+  const cpuCores    = status?.cpu_limit_cores ?? null;
   const workers     = status?.workers ?? [];
 
   const tabs = [
@@ -914,8 +972,6 @@ export function LunaClipAdminSection({ adminKey }: { adminKey: string }) {
       fontFamily:"system-ui,-apple-system,sans-serif",
       color:T.text,
     }}>
-
-      {/* ── Barre de statut ── */}
       <div style={{
         display:"flex", gap:10, flexWrap:"wrap", alignItems:"center",
         padding:"10px 14px", borderRadius:9,
@@ -930,6 +986,7 @@ export function LunaClipAdminSection({ adminKey }: { adminKey: string }) {
         <div style={{ width:1, height:16, background:T.border }}/>
         <Badge color={T.purple}>Seuil ×{status?.alert_multi ?? 300}</Badge>
         {memMb > 0 && <RamBar used={memMb} limit={ramLimit}/>}
+        <CpuBar pct={cpuPct} cores={cpuCores}/>
         {status?.bot_unreachable && <Badge color={T.red}>⚠ BOT INJOIGNABLE</Badge>}
         {ctrlMsg && (
           <span style={{ fontSize:12, color:ctrlMsg.startsWith("✅") ? T.green : T.yellow }}>
@@ -941,7 +998,6 @@ export function LunaClipAdminSection({ adminKey }: { adminKey: string }) {
         </span>
       </div>
 
-      {/* ── Onglets ── */}
       <div style={{ display:"flex", gap:5 }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
@@ -954,7 +1010,6 @@ export function LunaClipAdminSection({ adminKey }: { adminKey: string }) {
         ))}
       </div>
 
-      {/* ── Contenu ── */}
       {activeTab === "live" && status && (
         <TabLive status={status} adminKey={adminKey} onControl={handleControl}/>
       )}
