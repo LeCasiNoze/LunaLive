@@ -6,28 +6,41 @@ import { addLunaClip } from "./clips.js";
 export const lunaclipRouter = Router();
 
 const ALERT_MULTI = parseFloat(process.env.LUNACLIP_ALERT_MULTI ?? "300");
+
+// ✅ API -> Bot (obligatoire en prod)
 const BOT_INTERNAL_URL = String(
   process.env.BOT_INTERNAL_URL || "http://localhost:4000"
 ).replace(/\/$/, "");
 
-async function getBotStatus() {
-  try {
-    const r = await fetch(`${BOT_INTERNAL_URL}/lunaclip/status`);
-    if (!r.ok) return null;
-    return r.json() as Promise<any>;
-  } catch { return null; }
+// ✅ clé partagée (recommandé)
+const BOT_INTERNAL_KEY = String(process.env.BOT_INTERNAL_KEY || "").trim();
+
+function botHeaders(): Record<string, string> {
+  const h: Record<string, string> = { "content-type": "application/json" };
+  if (BOT_INTERNAL_KEY) h["x-bot-internal-key"] = BOT_INTERNAL_KEY;
+  return h;
 }
 
 async function proxyBot(path: string, method = "GET", body?: any) {
   try {
-    const opts: RequestInit = {
-      method,
-      headers: { "content-type": "application/json" },
-    };
-    if (body) opts.body = JSON.stringify(body);
+    const opts: RequestInit = { method, headers: botHeaders() };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+
     const r = await fetch(`${BOT_INTERNAL_URL}${path}`, opts);
-    return r.json() as Promise<any>;
-  } catch { return null; }
+    const text = await r.text();
+
+    let json: any = null;
+    try { json = text ? JSON.parse(text) : {}; }
+    catch { json = { ok: false, error: "bot_invalid_json", raw: text }; }
+
+    return { __http_ok: r.ok, __http_status: r.status, ...json };
+  } catch {
+    return null;
+  }
+}
+
+async function getBotStatus() {
+  return proxyBot("/lunaclip/status");
 }
 
 // ─────────────────────────────────────────────
@@ -35,15 +48,33 @@ async function proxyBot(path: string, method = "GET", body?: any) {
 // ─────────────────────────────────────────────
 lunaclipRouter.get("/status", async (_req, res) => {
   const botStatus = await getBotStatus();
-  if (!botStatus) {
+
+  if (!botStatus || botStatus.__http_ok === false) {
     return res.json({
-      ok: true, active_count: 0, alert_multi: ALERT_MULTI,
-      workers: [], bot_unreachable: true,
-      memory_mb: 0, ram_limit_mb: 420,
-      skipped_ram: [], waiting_slugs: [], ignored_ids: [],
-      scheduler: { max_workers: 1, min_watch_sec: 300, ram_mb: 0, ram_limit_mb: 420, ignored: [], priority_queue: [], waiting: [], skipped_ram: [] },
+      ok: true,
+      active_count: 0,
+      alert_multi: ALERT_MULTI,
+      workers: [],
+      bot_unreachable: true,
+      bot_error: botStatus?.error ?? (botStatus ? `http_${botStatus.__http_status}` : "network_error"),
+      memory_mb: 0,
+      ram_limit_mb: 420,
+      skipped_ram: [],
+      waiting_slugs: [],
+      ignored_ids: [],
+      scheduler: {
+        max_workers: 1,
+        min_watch_sec: 300,
+        ram_mb: 0,
+        ram_limit_mb: 420,
+        ignored: [],
+        priority_queue: [],
+        waiting: [],
+        skipped_ram: [],
+      },
     });
   }
+
   res.json({ ok: true, alert_multi: ALERT_MULTI, ...botStatus });
 });
 
@@ -52,9 +83,12 @@ lunaclipRouter.get("/status", async (_req, res) => {
 // ─────────────────────────────────────────────
 lunaclipRouter.get("/logs", async (req, res) => {
   const limit = req.query.limit ?? "100";
-  const slug  = req.query.slug  ? `&slug=${req.query.slug}` : "";
+  const slug  = req.query.slug ? `&slug=${req.query.slug}` : "";
   const data  = await proxyBot(`/lunaclip/logs?limit=${limit}${slug}`);
+
   if (!data) return res.json({ ok: false, error: "bot_unreachable", logs: [] });
+  if (data.__http_ok === false) return res.json({ ok: false, error: data.error ?? "bot_error", logs: [] });
+
   res.json(data);
 });
 
@@ -64,6 +98,7 @@ lunaclipRouter.get("/logs", async (req, res) => {
 lunaclipRouter.post("/control", async (req, res) => {
   const data = await proxyBot("/lunaclip/control", "POST", req.body);
   if (!data) return res.json({ ok: false, error: "bot_unreachable" });
+  if (data.__http_ok === false) return res.json({ ok: false, error: data.error ?? "bot_error" });
   res.json(data);
 });
 
@@ -134,13 +169,20 @@ lunaclipRouter.get("/clips", async (req, res) => {
 lunaclipRouter.post("/clips/manual", async (req, res) => {
   const { streamer_id } = req.body as { streamer_id?: number };
   if (!streamer_id) return res.status(400).json({ ok: false, error: "missing_streamer_id" });
+
   const botStatus = await getBotStatus();
-  const worker    = botStatus?.workers?.find((w: any) => w.streamer_id === streamer_id);
+  if (!botStatus || botStatus.__http_ok === false) {
+    return res.status(503).json({ ok: false, error: "bot_unreachable" });
+  }
+
+  const worker = botStatus?.workers?.find((w: any) => w.streamer_id === streamer_id);
   if (!worker?.last_frame) return res.status(409).json({ ok: false, error: "no_frame_available" });
-  const f        = worker.last_frame;
+
+  const f = worker.last_frame;
   const winLabel = f.win_total_value ?? f.win_value ?? "?";
-  const title    = `🎰 [MANUEL] x${f.multiplier} — ${(f.provider ?? "").toUpperCase()} — WIN ${winLabel}`;
-  const result   = await addLunaClip(pool, streamer_id, title, f.ts_sec);
+  const title = `🎰 [MANUEL] x${f.multiplier} — ${(f.provider ?? "").toUpperCase()} — WIN ${winLabel}`;
+  const result = await addLunaClip(pool, streamer_id, title, f.ts_sec);
+
   res.json({ ok: result.ok, reason: (result as any).reason ?? null });
 });
 
