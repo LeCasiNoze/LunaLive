@@ -509,7 +509,6 @@ function TabLive({ status, adminKey, onControl }: {
   onControl: (action: string, params?: any) => Promise<void>;
 }) {
   const [focusedId, setFocusedId] = React.useState<number|null>(null);
-  const authH = { "x-admin-key": adminKey };
 
   const allWorkers  = status.workers ?? [];
   const waitingSlugs = new Set(status.waiting_slugs ?? []);
@@ -517,7 +516,6 @@ function TabLive({ status, adminKey, onControl }: {
   const sched        = status.scheduler;
 
   // Construire la liste complète (actifs + en attente)
-  const allKnown = [...allWorkers];
 
   const focusedWorker = allWorkers.find(w => w.streamer_id === focusedId);
 
