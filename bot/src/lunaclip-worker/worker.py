@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LunaClip Worker v1.6 — Optimisé RAM + modes ACTIVE/WATCHING/IDLE
+LunaClip Worker v1.7 — RAM optimisé + ACTIVE/WATCHING/IDLE + OCR debug
 """
 
 import cv2
@@ -27,19 +27,16 @@ MIN_DECIMAL_THRESHOLD = 10.0
 BET_MIN               = 0.01
 BET_MAX               = 10000.0
 EVENT_RESET_THRESHOLD = 50.0
-
 RECONNECT_DELAY_SEC   = 5
 
-# Intervalles par mode
-INTERVAL_ACTIVE   = 2.0    # provider connu → toutes les 2s
-INTERVAL_WATCHING = 30.0   # provider inconnu depuis trop longtemps → toutes les 30s
-INTERVAL_IDLE     = 120.0  # aucune valeur depuis 5min → toutes les 2min
-COOLDOWN_INTERVAL = 0.5    # post-EVENT pendant 30s → toutes les 0.5s
-COOLDOWN_DURATION = 30.0   # durée du cooldown post-EVENT
+INTERVAL_ACTIVE   = 2.0
+INTERVAL_WATCHING = 30.0
+INTERVAL_IDLE     = 120.0
+COOLDOWN_INTERVAL = 0.5
+COOLDOWN_DURATION = 30.0
 
-# Seuils de transition
-UNKNOWN_FRAMES_TO_WATCH = 10   # 10 frames sans valeur ET sans provider → WATCHING
-NO_VALUE_SECS_TO_IDLE   = 300  # 5min sans aucune valeur → IDLE
+UNKNOWN_FRAMES_TO_WATCH = 10
+NO_VALUE_SECS_TO_IDLE   = 300
 
 
 def open_ffmpeg_pipe(hls_url: str, w: int = 640, h: int = 360):
@@ -195,26 +192,26 @@ def parse_frame_text(raw_ocr):
 # ═══════════════════════════════════════════════
 
 def validate_bet(bet, prev_num):
-    if not bet:                    return False
+    if not bet:                    return False, "no_bet"
     n = bet["numeric"]
-    if n is None:                  return False
-    if n < BET_MIN or n > BET_MAX: return False
+    if n is None:                  return False, "not_numeric"
+    if n < BET_MIN or n > BET_MAX: return False, f"out_of_range({n})"
     if prev_num and prev_num > 0 and abs(n - prev_num) / prev_num > 0.5:
-        return False
-    return True
+        return False, f"spike_vs_prev({prev_num})"
+    return True, "ok"
 
 def validate_win(win, prev_num):
-    if not win:   return False
+    if not win:   return False, "no_win"
     n   = win["numeric"]
     raw = win["value"]
-    if n is None: return False
+    if n is None: return False, "not_numeric"
     if n > MIN_DECIMAL_THRESHOLD and not has_decimal_in_raw(raw):
-        return False
+        return False, f"missing_decimal({raw})"
     if prev_num is not None and prev_num > 0 and n > 0:
         drop = (prev_num - n) / prev_num
         if drop > MAX_WIN_DROP_RATIO:
-            return False
-    return True
+            return False, f"drop_too_large({drop:.2f})"
+    return True, "ok"
 
 
 # ═══════════════════════════════════════════════
@@ -230,23 +227,29 @@ def analyze_frame(frame_bgr, state: dict) -> dict:
     raw_text = ocr_text(preprocess(crop))
     parsed   = parse_frame_text(raw_text)
 
+    # Accumulate parse debug info
+    debug_reasons = {}
+
     if parsed["provider"] != 'unknown':
         state["provider"] = parsed["provider"]
     elif state.get("provider"):
         parsed["provider"] = state["provider"]
 
-    bet_ok = validate_bet(parsed["bet"], state.get("prev_bet_num"))
-    bet    = parsed["bet"] if bet_ok else None
+    bet_ok, bet_reason = validate_bet(parsed["bet"], state.get("prev_bet_num"))
+    debug_reasons["bet"] = bet_reason
+    bet = parsed["bet"] if bet_ok else None
     if bet:
         state["current_bet"]  = bet
         state["prev_bet_num"] = bet["numeric"]
     effective_bet = bet or state.get("current_bet")
 
-    win_ok = validate_win(parsed["win"], state.get("prev_win_num"))
-    win    = parsed["win"] if win_ok else None
+    win_ok, win_reason = validate_win(parsed["win"], state.get("prev_win_num"))
+    debug_reasons["win"] = win_reason
+    win = parsed["win"] if win_ok else None
     if win: state["prev_win_num"] = win["numeric"]
 
-    wt_ok     = validate_win(parsed["win_total"], state.get("prev_win_total_num"))
+    wt_ok, wt_reason = validate_win(parsed["win_total"], state.get("prev_win_total_num"))
+    debug_reasons["win_total"] = wt_reason
     win_total = parsed["win_total"] if wt_ok else None
     if win_total: state["prev_win_total_num"] = win_total["numeric"]
 
@@ -259,6 +262,9 @@ def analyze_frame(frame_bgr, state: dict) -> dict:
 
     def v(d): return d["value"]   if d else None
     def n(d): return d["numeric"] if d else None
+
+    # raw_ocr : texte brut nettoyé (max 500 chars pour ne pas surcharger)
+    raw_clean = re.sub(r'\s+', ' ', raw_text).strip()[:500]
 
     return {
         "provider":          parsed["provider"],
@@ -273,6 +279,18 @@ def analyze_frame(frame_bgr, state: dict) -> dict:
         "multiplier":        multiplier,
         "multiplier_source": src,
         "ts_sec":            time.time(),
+        # ── OCR Debug ──────────────────────────
+        "raw_ocr":           raw_clean,
+        "parse_debug": {
+            "provider_detected": parsed["provider"],
+            "in_bonus":          parsed["in_bonus"],
+            "bet_raw":           parsed["bet"]["value"] if parsed["bet"] else None,
+            "win_raw":           parsed["win"]["value"] if parsed["win"] else None,
+            "win_total_raw":     parsed["win_total"]["value"] if parsed["win_total"] else None,
+            "bet_reason":        debug_reasons.get("bet", "—"),
+            "win_reason":        debug_reasons.get("win", "—"),
+            "win_total_reason":  debug_reasons.get("win_total", "—"),
+        },
     }
 
 
@@ -290,8 +308,7 @@ class EventTracker:
 
     def update(self, frame_bgr, frame_data: dict) -> bool:
         multi = frame_data.get("multiplier")
-        if multi is None:
-            return False
+        if multi is None: return False
         if multi < EVENT_RESET_THRESHOLD and not self.armed:
             self.armed = True
         if self.armed and multi >= self.alert_multi:
@@ -311,13 +328,6 @@ class EventTracker:
 # ═══════════════════════════════════════════════
 
 class ModeManager:
-    """
-    ACTIVE   : provider connu / valeurs détectées  → 2s
-    WATCHING : provider inconnu depuis N frames     → 30s
-    IDLE     : aucune valeur depuis 5min            → 120s
-    COOLDOWN : juste après un EVENT                 → 0.5s pendant 30s
-    """
-
     def __init__(self):
         self.mode                = "ACTIVE"
         self.consecutive_unknown = 0
@@ -328,12 +338,9 @@ class ModeManager:
 
     def current_interval(self) -> float:
         now = time.time()
-        if now < self.cooldown_until:
-            return COOLDOWN_INTERVAL
-        if self.mode == "WATCHING":
-            return INTERVAL_WATCHING
-        if self.mode == "IDLE":
-            return INTERVAL_IDLE
+        if now < self.cooldown_until:  return COOLDOWN_INTERVAL
+        if self.mode == "WATCHING":    return INTERVAL_WATCHING
+        if self.mode == "IDLE":        return INTERVAL_IDLE
         return INTERVAL_ACTIVE
 
     def update(self, frame_data: dict, event_triggered: bool):
@@ -345,49 +352,35 @@ class ModeManager:
             frame_data.get("win_numeric") or
             frame_data.get("win_total_numeric")
         )
-
-        # Cooldown post-EVENT → repasser ACTIVE immédiatement
         if event_triggered:
             self.cooldown_until      = now + COOLDOWN_DURATION
             self.consecutive_unknown = 0
             if self.mode != "ACTIVE":
                 self.mode = "ACTIVE"
                 emit_mode("ACTIVE", "event_triggered")
-
         if has_val:
             self.frames_with_value += 1
             self.last_value_ts      = now
-
-        # Provider reconnu → reset unknown counter
         if provider != "unknown":
             if self.consecutive_unknown > 0 or self.mode in ("WATCHING", "IDLE"):
                 prev = self.mode
-                self.mode                = "ACTIVE"
+                self.mode = "ACTIVE"
                 self.consecutive_unknown = 0
                 if prev != "ACTIVE":
                     emit_mode("ACTIVE", f"provider_detected={provider}")
             else:
                 self.consecutive_unknown = 0
         else:
-            # Frame avec provider inconnu :
-            # - Si valeur quand même → frame partielle, on ne dégrade pas le mode
-            # - Si pas de valeur → on incrémente
             if not has_val:
                 self.consecutive_unknown += 1
-
-        # ACTIVE → WATCHING
         if self.mode == "ACTIVE" and self.consecutive_unknown >= UNKNOWN_FRAMES_TO_WATCH:
             self.mode = "WATCHING"
             emit_mode("WATCHING", f"consecutive_unknown={self.consecutive_unknown}")
-
-        # WATCHING → IDLE
         if self.mode == "WATCHING" and (now - self.last_value_ts) > NO_VALUE_SECS_TO_IDLE:
             self.mode = "IDLE"
             emit_mode("IDLE", f"no_value_since={int(now - self.last_value_ts)}s")
-
-        # IDLE → ACTIVE (valeur détectée)
         if self.mode == "IDLE" and has_val:
-            self.mode                = "ACTIVE"
+            self.mode = "ACTIVE"
             self.consecutive_unknown = 0
             emit_mode("ACTIVE", "value_detected_from_idle")
 
@@ -402,12 +395,11 @@ class ModeManager:
 
 
 # ═══════════════════════════════════════════════
-#  BOUCLE PRINCIPALE — MODE STREAM HLS
+#  BOUCLE PRINCIPALE — STREAM HLS
 # ═══════════════════════════════════════════════
 
 def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
-    emit_log(f"Starting stream analysis v1.6: {hls_url}")
-
+    emit_log(f"Starting stream analysis v1.7: {hls_url}")
     tracker    = EventTracker(alert_multi=alert_multi)
     mode_mgr   = ModeManager()
     state      = {}
@@ -415,32 +407,24 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
     last_stats = 0.0
 
     running = [True]
-    def on_sigterm(*_):
-        running[0] = False
+    def on_sigterm(*_): running[0] = False
     signal.signal(signal.SIGTERM, on_sigterm)
 
     W, H       = 640, 360
     frame_size = W * H * 3
+    reconnect  = 0
 
-    reconnect = 0
     while running[0]:
         reconnect += 1
         emit_log(f"FFmpeg connect attempt {reconnect} (mode={mode_mgr.mode})")
-
         proc = open_ffmpeg_pipe(hls_url, W, H)
         if not proc.stdout:
             emit_log("FFmpeg failed to start (no stdout)")
             time.sleep(RECONNECT_DELAY_SEC)
             continue
-
         emit_log("FFmpeg started.")
 
         while running[0]:
-            # ─────────────────────────────────────────────────────────
-            # LECTURE CONTINUE — vide le pipe ffmpeg en permanence.
-            # Sans ça, ffmpeg bloque et le buffer RAM explose.
-            # On lit TOUJOURS, on n'analyse que si l'intervalle est passé.
-            # ─────────────────────────────────────────────────────────
             raw = proc.stdout.read(frame_size)
             if not raw or len(raw) < frame_size:
                 emit_log("FFmpeg stream ended / short read, reconnecting...")
@@ -449,15 +433,12 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
             now              = time.time()
             current_interval = mode_mgr.current_interval()
 
-            # Stats toutes les 30s pour le dashboard Node
             if now - last_stats >= 30.0:
                 last_stats = now
                 emit("stats", mode_mgr.stats())
 
-            # Pas encore le moment d'analyser → on a déjà lu et vidé le pipe
             if now - last_emit < current_interval:
                 continue
-
             last_emit = now
 
             frame = np.frombuffer(raw, np.uint8).reshape((H, W, 3))
@@ -474,16 +455,15 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
                 frame_data["win_total_numeric"]
             )
 
-            if has_val:
-                emit_frame(frame_data)
+            # Émettre frame toujours (pour OCR debug) mais flag si valeur
+            frame_data["has_value"] = has_val
+            emit_frame(frame_data)
 
             event_triggered = tracker.update(frame, frame_data)
             mode_mgr.update(frame_data, event_triggered)
 
-        try:
-            proc.kill()
-        except:
-            pass
+        try: proc.kill()
+        except: pass
 
         if running[0]:
             emit_log(f"Reconnecting in {RECONNECT_DELAY_SEC}s (mode={mode_mgr.mode})")
@@ -493,7 +473,7 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
 
 
 # ═══════════════════════════════════════════════
-#  MODE VIDEO FICHIER (local)
+#  MODE VIDEO FICHIER
 # ═══════════════════════════════════════════════
 
 def run_video(video_path: str, alert_multi: float, interval_sec: float):
@@ -501,19 +481,15 @@ def run_video(video_path: str, alert_multi: float, interval_sec: float):
     if not cap.isOpened():
         emit_log(f"Cannot open: {video_path}")
         sys.exit(1)
-
     fps   = cap.get(cv2.CAP_PROP_FPS) or 25
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     step  = max(1, int(fps * interval_sec))
-
     tracker = EventTracker(alert_multi=alert_multi)
     state   = {}
-
     for fidx in range(0, total, step):
         cap.set(cv2.CAP_PROP_POS_FRAMES, fidx)
         ret, frame = cap.read()
         if not ret: continue
-
         ts = fidx / fps
         try:
             frame_data = analyze_frame(frame, state)
@@ -521,19 +497,12 @@ def run_video(video_path: str, alert_multi: float, interval_sec: float):
         except Exception as e:
             emit_log(f"OCR error at {ts:.1f}s: {e}")
             continue
-
         if frame_data["bet_numeric"] or frame_data["win_numeric"] or frame_data["win_total_numeric"]:
             emit_frame(frame_data)
-
         tracker.update(frame, frame_data)
-
     cap.release()
     emit_log("Video analysis complete.")
 
-
-# ═══════════════════════════════════════════════
-#  ENTRYPOINT
-# ═══════════════════════════════════════════════
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -542,7 +511,6 @@ if __name__ == "__main__":
     parser.add_argument("--interval",    type=float, default=2.0)
     parser.add_argument("--mode",        choices=["stream", "video"], default="stream")
     args = parser.parse_args()
-
     if args.mode == "stream":
         run_stream(args.hls_url, args.alert_multi, args.interval)
     else:
