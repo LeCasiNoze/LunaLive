@@ -7,103 +7,109 @@ export const lunaclipRouter = Router();
 
 const ALERT_MULTI = parseFloat(process.env.LUNACLIP_ALERT_MULTI ?? "300");
 
-// ✅ API -> Bot (obligatoire en prod)
-const BOT_INTERNAL_URL = String(
-  process.env.BOT_INTERNAL_URL || "http://localhost:4000"
-).replace(/\/$/, "");
-
-// ✅ clé partagée (recommandé)
-const BOT_INTERNAL_KEY = String(process.env.BOT_INTERNAL_KEY || "").trim();
-
-function botHeaders(): Record<string, string> {
-  const h: Record<string, string> = { "content-type": "application/json" };
-  if (BOT_INTERNAL_KEY) h["x-bot-internal-key"] = BOT_INTERNAL_KEY;
-  return h;
-}
-
-async function proxyBot(path: string, method = "GET", body?: any) {
-  try {
-    const opts: RequestInit = { method, headers: botHeaders() };
-    if (body !== undefined) opts.body = JSON.stringify(body);
-
-    const r = await fetch(`${BOT_INTERNAL_URL}${path}`, opts);
-    const text = await r.text();
-
-    let json: any = null;
-    try { json = text ? JSON.parse(text) : {}; }
-    catch { json = { ok: false, error: "bot_invalid_json", raw: text }; }
-
-    return { __http_ok: r.ok, __http_status: r.status, ...json };
-  } catch {
-    return null;
-  }
-}
-
-async function getBotStatus() {
-  return proxyBot("/lunaclip/status");
-}
-
 // ─────────────────────────────────────────────
-// GET /admin/lunaclip/status
+// GET /admin/lunaclip/status (depuis DB snapshot)
 // ─────────────────────────────────────────────
 lunaclipRouter.get("/status", async (_req, res) => {
-  const botStatus = await getBotStatus();
+  const r = await pool.query(
+    `SELECT payload, updated_at FROM lunaclip_admin_state WHERE id=1`
+  );
 
-  if (!botStatus || botStatus.__http_ok === false) {
+  if (r.rowCount === 0) {
     return res.json({
       ok: true,
       active_count: 0,
       alert_multi: ALERT_MULTI,
       workers: [],
       bot_unreachable: true,
-      bot_error: botStatus?.error ?? (botStatus ? `http_${botStatus.__http_status}` : "network_error"),
+      bot_error: "no_snapshot_yet",
       memory_mb: 0,
       ram_limit_mb: 420,
       skipped_ram: [],
       waiting_slugs: [],
       ignored_ids: [],
       scheduler: {
-        max_workers: 1,
-        min_watch_sec: 300,
-        ram_mb: 0,
-        ram_limit_mb: 420,
-        ignored: [],
-        priority_queue: [],
-        waiting: [],
-        skipped_ram: [],
+        max_workers: 1, min_watch_sec: 300, ram_mb: 0, ram_limit_mb: 420,
+        ignored: [], priority_queue: [], waiting: [], skipped_ram: [],
       },
     });
   }
 
-  res.json({ ok: true, alert_multi: ALERT_MULTI, ...botStatus });
+  const row = r.rows[0];
+  const payload = row.payload ?? {};
+  const ageSec = Math.floor((Date.now() - new Date(row.updated_at).getTime()) / 1000);
+
+  // Si le snapshot est trop vieux, on marque injoignable
+  const stale = ageSec > 10;
+
+  res.json({
+    ok: true,
+    alert_multi: ALERT_MULTI,
+    ...payload,
+    bot_unreachable: stale,
+    bot_error: stale ? `stale_${ageSec}s` : null,
+  });
 });
 
 // ─────────────────────────────────────────────
-// GET /admin/lunaclip/logs
+// GET /admin/lunaclip/logs (depuis DB)
 // ─────────────────────────────────────────────
 lunaclipRouter.get("/logs", async (req, res) => {
-  const limit = req.query.limit ?? "100";
-  const slug  = req.query.slug ? `&slug=${req.query.slug}` : "";
-  const data  = await proxyBot(`/lunaclip/logs?limit=${limit}${slug}`);
+  const limit = Math.min(Number(req.query.limit ?? 100), 200);
+  const slug  = (req.query.slug as string | undefined) ?? null;
 
-  if (!data) return res.json({ ok: false, error: "bot_unreachable", logs: [] });
-  if (data.__http_ok === false) return res.json({ ok: false, error: data.error ?? "bot_error", logs: [] });
+  const args: any[] = [];
+  let where = "1=1";
+  if (slug) {
+    args.push(slug);
+    where = `(slug = $1 OR slug='scheduler')`;
+  }
 
-  res.json(data);
+  const r = await pool.query(
+    `SELECT ts, slug, source, msg
+     FROM lunaclip_admin_logs
+     WHERE ${where}
+     ORDER BY id DESC
+     LIMIT ${limit}`,
+    args
+  );
+
+  // Front attend ts en number (ms) ? Dans ton UI, tu fais new Date(ts)
+  // Là on renvoie ms pour être safe.
+  const logs = r.rows
+    .reverse()
+    .map((x: any) => ({
+      ts: new Date(x.ts).getTime(),
+      slug: x.slug,
+      source: x.source,
+      msg: x.msg,
+    }));
+
+  res.json({ ok: true, logs });
 });
 
 // ─────────────────────────────────────────────
-// POST /admin/lunaclip/control
+// POST /admin/lunaclip/control (écrit commande DB)
 // ─────────────────────────────────────────────
 lunaclipRouter.post("/control", async (req, res) => {
-  const data = await proxyBot("/lunaclip/control", "POST", req.body);
-  if (!data) return res.json({ ok: false, error: "bot_unreachable" });
-  if (data.__http_ok === false) return res.json({ ok: false, error: data.error ?? "bot_error" });
-  res.json(data);
+  const { action, streamer_id, value } = req.body ?? {};
+
+  // on stocke payload tel quel
+  const payload: any = {};
+  if (streamer_id != null) payload.streamer_id = streamer_id;
+  if (value != null) payload.value = value;
+
+  await pool.query(
+    `INSERT INTO lunaclip_admin_commands (action, payload)
+     VALUES ($1, $2::jsonb)`,
+    [String(action), JSON.stringify(payload)]
+  );
+
+  res.json({ ok: true });
 });
 
 // ─────────────────────────────────────────────
-// GET /admin/lunaclip/sessions
+// Le reste (DB LunaClip historique)
 // ─────────────────────────────────────────────
 lunaclipRouter.get("/sessions", async (_req, res) => {
   const r = await pool.query(
@@ -118,9 +124,6 @@ lunaclipRouter.get("/sessions", async (_req, res) => {
   res.json({ ok: true, sessions: r.rows });
 });
 
-// ─────────────────────────────────────────────
-// GET /admin/lunaclip/sessions/:id/events
-// ─────────────────────────────────────────────
 lunaclipRouter.get("/sessions/:id/events", async (req, res) => {
   const r = await pool.query(
     `SELECT * FROM lunaclip_events WHERE session_id=$1 ORDER BY triggered_at ASC`,
@@ -129,9 +132,6 @@ lunaclipRouter.get("/sessions/:id/events", async (req, res) => {
   res.json({ ok: true, events: r.rows });
 });
 
-// ─────────────────────────────────────────────
-// GET /admin/lunaclip/sessions/:id/frames
-// ─────────────────────────────────────────────
 lunaclipRouter.get("/sessions/:id/frames", async (req, res) => {
   const limit = Math.min(Number(req.query.limit ?? 500), 2000);
   const r = await pool.query(
@@ -145,9 +145,6 @@ lunaclipRouter.get("/sessions/:id/frames", async (req, res) => {
   res.json({ ok: true, frames: r.rows });
 });
 
-// ─────────────────────────────────────────────
-// GET /admin/lunaclip/clips
-// ─────────────────────────────────────────────
 lunaclipRouter.get("/clips", async (req, res) => {
   const limit = Math.min(Number(req.query.limit ?? 100), 500);
   const r = await pool.query(
@@ -163,19 +160,15 @@ lunaclipRouter.get("/clips", async (req, res) => {
   res.json({ ok: true, clips: r.rows });
 });
 
-// ─────────────────────────────────────────────
-// POST /admin/lunaclip/clips/manual
-// ─────────────────────────────────────────────
 lunaclipRouter.post("/clips/manual", async (req, res) => {
   const { streamer_id } = req.body as { streamer_id?: number };
   if (!streamer_id) return res.status(400).json({ ok: false, error: "missing_streamer_id" });
 
-  const botStatus = await getBotStatus();
-  if (!botStatus || botStatus.__http_ok === false) {
-    return res.status(503).json({ ok: false, error: "bot_unreachable" });
-  }
+  // On récupère le dernier snapshot pour retrouver last_frame
+  const sr = await pool.query(`SELECT payload FROM lunaclip_admin_state WHERE id=1`);
+  const payload = sr.rows[0]?.payload ?? {};
+  const worker = (payload.workers ?? []).find((w: any) => w.streamer_id === streamer_id);
 
-  const worker = botStatus?.workers?.find((w: any) => w.streamer_id === streamer_id);
   if (!worker?.last_frame) return res.status(409).json({ ok: false, error: "no_frame_available" });
 
   const f = worker.last_frame;
@@ -186,9 +179,6 @@ lunaclipRouter.post("/clips/manual", async (req, res) => {
   res.json({ ok: result.ok, reason: (result as any).reason ?? null });
 });
 
-// ─────────────────────────────────────────────
-// GET /admin/lunaclip/events/recent
-// ─────────────────────────────────────────────
 lunaclipRouter.get("/events/recent", async (req, res) => {
   const limit = Math.min(Number(req.query.limit ?? 20), 100);
   const r = await pool.query(
