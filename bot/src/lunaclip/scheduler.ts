@@ -1,5 +1,4 @@
 // bot/src/lunaclip/scheduler.ts
-// Stratégie : round-robin, N workers max configurables dynamiquement.
 import { spawn, ChildProcess } from "child_process";
 import path from "path";
 import type { Pool } from "pg";
@@ -16,38 +15,32 @@ function proxifyHls(rawM3u8: string) {
 }
 
 const POLL_SEC    = 60;
-const ALERT_MULTI = parseFloat(process.env.LUNACLIP_ALERT_MULTI ?? "300");
+let   ALERT_MULTI = parseFloat(process.env.LUNACLIP_ALERT_MULTI ?? "300");
 const INTERVAL_S  = parseFloat(process.env.LUNACLIP_INTERVAL ?? "2.0");
 const WORKER_PATH = path.resolve(process.cwd(), "dist/lunaclip-worker/worker.py");
 const RAM_LIMIT_MB = parseFloat(process.env.LUNACLIP_RAM_LIMIT_MB ?? "420");
 
-// ── Rotation ──────────────────────────────────
-let MIN_WATCH_SEC  = parseFloat(process.env.LUNACLIP_MIN_WATCH_SEC ?? "300");
+// ✅ min 20min, max 1h
+let MIN_WATCH_SEC  = parseFloat(process.env.LUNACLIP_MIN_WATCH_SEC ?? "1200");
 let MAX_WORKERS    = parseInt(process.env.LUNACLIP_MAX_WORKERS ?? "1", 10);
 
-function getRssMb(): number {
-  return process.memoryUsage().rss / 1024 / 1024;
-}
-
 // ─────────────────────────────────────────────
-// Log ring buffer (200 entrées)
+// Log ring buffer
 // ─────────────────────────────────────────────
 const LOG_BUFFER_SIZE = 200;
 
 interface LogEntry {
-  ts:      number;   // Date.now()
-  slug:    string;   // streamer slug ou "scheduler"
-  source:  string;   // "node" | "py" | "pyerr"
-  msg:     string;
+  ts: number;
+  slug: string;
+  source: string; // "node" | "py" | "pyerr"
+  msg: string;
 }
-
 const logBuffer: LogEntry[] = [];
 
 function pushLog(slug: string, source: string, msg: string) {
   logBuffer.push({ ts: Date.now(), slug, source, msg });
   if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
 }
-
 export function getLogs(limit = 100): LogEntry[] {
   return logBuffer.slice(-limit);
 }
@@ -55,7 +48,6 @@ export function getLogs(limit = 100): LogEntry[] {
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
-
 interface StreamerRow {
   id:                     number;
   slug:                   string;
@@ -92,28 +84,25 @@ interface WorkerStats {
 }
 
 interface ActiveWorker {
-  streamerId:      number;
-  streamerSlug:    string;
-  dliveSlug:       string;
-  sessionId:       bigint;
-  process:         ChildProcess;
-  status:          "running" | "stopped" | "error";
-  startedAt:       Date;
-  liveCreatedAtMs: number;   // ✅ createdAt DLive du live courant — ancre VOD
-  lastFrame:       FrameData | null;
-  provider:        string | null;
-  hlsUrl:          string;
-  workerStats:     WorkerStats;
+  streamerId:   number;
+  streamerSlug: string;
+  dliveSlug:    string;
+  sessionId:    bigint;
+  liveCreatedAtMs: number; // ✅ createdAt DLive du live courant — ancre VOD
+  process:      ChildProcess;
+  status:       "running" | "stopped" | "error";
+  startedAt:    Date;
+  lastFrame:    FrameData | null;
+  provider:     string | null;
+  hlsUrl:       string;
+  workerStats:  WorkerStats;
 }
 
 export const activeWorkers  = new Map<number, ActiveWorker>();
 export const skippedRam     = new Set<string>();
 export const waitingWorkers = new Set<string>();
 
-// Streamers ignorés manuellement (ne seront jamais analysés)
-export const ignoredStreamers = new Set<number>();
-
-// Force-priority : ces streamers passent devant tout le monde au prochain tick
+// Force-priority
 const priorityQueue = new Set<number>();
 
 // Historique rotation
@@ -122,65 +111,118 @@ const lastWatchedAt = new Map<number, number>();
 let _pool: Pool;
 
 // ─────────────────────────────────────────────
-// Contrôles publics (appelés depuis index.ts)
+// LOCK cible
 // ─────────────────────────────────────────────
+let LOCKED_STREAMER_ID: number | null = null;
+let LOCKED_UNTIL_MS: number | null = null;
 
-/** Forcer le switch vers un streamer immédiatement */
-export function forceSwitch(streamerId: number) {
+export function getLockState() {
+  return {
+    locked_streamer_id: LOCKED_STREAMER_ID,
+    locked_until_ms: LOCKED_UNTIL_MS,
+    locked: LOCKED_STREAMER_ID != null,
+  };
+}
+
+export function setLock(streamerId: number | null, durationSec?: number | null) {
+  if (!streamerId) {
+    LOCKED_STREAMER_ID = null;
+    LOCKED_UNTIL_MS = null;
+    pushLog("scheduler", "node", "lock cleared");
+    tick().catch(console.error);
+    return;
+  }
+  LOCKED_STREAMER_ID = streamerId;
+  if (durationSec == null) {
+    LOCKED_UNTIL_MS = null;
+    pushLog("scheduler", "node", `lock set to #${streamerId} (unlimited)`);
+  } else {
+    const ms = Math.max(60, Number(durationSec) || 60) * 1000;
+    LOCKED_UNTIL_MS = Date.now() + ms;
+    pushLog("scheduler", "node", `lock set to #${streamerId} (${durationSec}s)`);
+  }
   priorityQueue.add(streamerId);
-  pushLog("scheduler", "node", `forceSwitch requested for streamer #${streamerId}`);
-  // Déclencher un tick immédiat
   tick().catch(console.error);
 }
 
-/** Changer le nombre max de workers simultanés */
+function isLockActiveNow(): boolean {
+  if (LOCKED_STREAMER_ID == null) return false;
+  if (LOCKED_UNTIL_MS == null) return true;
+  if (Date.now() <= LOCKED_UNTIL_MS) return true;
+  pushLog("scheduler", "node", "lock expired, clearing");
+  LOCKED_STREAMER_ID = null;
+  LOCKED_UNTIL_MS = null;
+  return false;
+}
+
+// ─────────────────────────────────────────────
+// Contrôles publics
+// ─────────────────────────────────────────────
+export function forceSwitch(streamerId: number) {
+  priorityQueue.add(streamerId);
+  pushLog("scheduler", "node", `forceSwitch requested for streamer #${streamerId}`);
+  tick().catch(console.error);
+}
+
 export function setMaxWorkers(n: number) {
   MAX_WORKERS = Math.max(1, Math.min(4, n));
   pushLog("scheduler", "node", `maxWorkers set to ${MAX_WORKERS}`);
   tick().catch(console.error);
 }
 
-/** Changer la durée min d'observation avant rotation */
 export function setMinWatchSec(sec: number) {
-  MIN_WATCH_SEC = Math.max(30, sec);
+  const v = Math.max(1200, Math.min(3600, Number(sec) || 1200));
+  MIN_WATCH_SEC = v;
   pushLog("scheduler", "node", `minWatchSec set to ${MIN_WATCH_SEC}s`);
 }
 
-/** Ignorer / désignorer un streamer */
-export function setIgnored(streamerId: number, ignored: boolean) {
-  if (ignored) {
-    ignoredStreamers.add(streamerId);
-    // Tuer le worker si actif
-    const w = activeWorkers.get(streamerId);
-    if (w) {
-      killWorker(w, "manually ignored");
-      activeWorkers.delete(streamerId);
-    }
-    pushLog("scheduler", "node", `streamer #${streamerId} ignored`);
-  } else {
-    ignoredStreamers.delete(streamerId);
-    pushLog("scheduler", "node", `streamer #${streamerId} unignored`);
-  }
+export function getAlertMulti() {
+  return ALERT_MULTI;
 }
 
-/** Snapshot de l'état pour le dashboard */
+export function setAlertMulti(n: number) {
+  const v = Math.max(10, Math.min(100000, Number(n) || 300));
+  ALERT_MULTI = v;
+  pushLog("scheduler", "node", `alert_multi set to x${ALERT_MULTI} (restart workers)`);
+
+  // restart workers pour appliquer au python
+  for (const [sid, w] of activeWorkers) {
+    if (w.status === "running") killWorker(w, "alert_multi changed");
+    activeWorkers.delete(sid);
+  }
+  tick().catch(console.error);
+}
+
+/** ✅ "Passer" : stop le worker courant et relance tick -> rotation immédiate */
+export function skipStreamer(streamerId: number) {
+  const w = activeWorkers.get(streamerId);
+  if (w && w.status === "running") {
+    killWorker(w, "skip requested");
+    activeWorkers.delete(streamerId);
+  }
+  // Marquer comme “vient d’être vu” pour qu’il passe derrière
+  lastWatchedAt.set(streamerId, Date.now());
+  pushLog("scheduler", "node", `skip requested for streamer #${streamerId}`);
+  tick().catch(console.error);
+}
+
 export function getSchedulerState() {
+  const lock = getLockState();
   return {
-    max_workers:   MAX_WORKERS,
-    min_watch_sec: MIN_WATCH_SEC,
-    ram_mb:        Math.round(getRssMb()),
-    ram_limit_mb:  RAM_LIMIT_MB,
-    ignored:       [...ignoredStreamers],
+    max_workers:    MAX_WORKERS,
+    min_watch_sec:  MIN_WATCH_SEC,
+    ram_limit_mb:   RAM_LIMIT_MB,
     priority_queue: [...priorityQueue],
-    waiting:       [...waitingWorkers],
-    skipped_ram:   [...skippedRam],
+    waiting:        [...waitingWorkers],
+    skipped_ram:    [...skippedRam],
+    alert_multi:    ALERT_MULTI,
+    ...lock,
   };
 }
 
 // ─────────────────────────────────────────────
 // DLive GraphQL
 // ─────────────────────────────────────────────
-
 async function dliveGql(query: string, variables: any) {
   const r = await fetch(DLIVE_GQL, {
     method: "POST",
@@ -196,8 +238,10 @@ async function dliveGql(query: string, variables: any) {
   return r.json() as Promise<any>;
 }
 
-// ✅ Retourne aussi liveCreatedAtMs pour ancrer le clip sur la bonne VOD
-async function getDliveHlsUrl(dliveDisplayname: string): Promise<{ hls: string; liveCreatedAtMs: number } | null> {
+// ✅ getDliveHlsUrl retourne maintenant { hls, liveCreatedAtMs }
+async function getDliveHlsUrl(
+  dliveDisplayname: string
+): Promise<{ hls: string; liveCreatedAtMs: number } | null> {
   try {
     const q = `query GetHls($name:String!){
       userByDisplayName(displayname:$name){
@@ -210,7 +254,7 @@ async function getDliveHlsUrl(dliveDisplayname: string): Promise<{ hls: string; 
     const username = ls.username as string;
     if (!username) return null;
     return {
-      hls:             `https://live.prd.dlive.tv/hls/live/${username}.m3u8`,
+      hls: `https://live.prd.dlive.tv/hls/live/${username}.m3u8`,
       liveCreatedAtMs: Number(ls.livestream.createdAt),
     };
   } catch { return null; }
@@ -219,7 +263,6 @@ async function getDliveHlsUrl(dliveDisplayname: string): Promise<{ hls: string; 
 // ─────────────────────────────────────────────
 // DB helpers
 // ─────────────────────────────────────────────
-
 async function getLunaLiveStreamers(): Promise<StreamerRow[]> {
   const r = await _pool.query(`
     SELECT s.id, s.slug, s.display_name,
@@ -286,35 +329,42 @@ async function saveEvent(sessionId: bigint, f: FrameData, screenshot: string | n
 }
 
 // ─────────────────────────────────────────────
-// Round-robin : choisir les prochains streamers
+// Round-robin pick
 // ─────────────────────────────────────────────
-
 interface Candidate {
-  streamer:        StreamerRow;
-  dliveSlug:       string;
-  rawHls:          string;
-  lastWatched:     number;
+  streamer:    StreamerRow;
+  dliveSlug:   string;
+  rawHls:      string;
   liveCreatedAtMs: number;
+  lastWatched: number;
 }
 
 function pickNextBatch(candidates: Candidate[]): Candidate[] {
-  const currentIds = new Set([...activeWorkers.keys()]);
   const result: Candidate[] = [];
 
-  // 1. Garder les workers actuellement actifs qui sont toujours candidats
-  //    et n'ont pas dépassé MIN_WATCH_SEC
+  // 0) lock
+  if (isLockActiveNow() && LOCKED_STREAMER_ID != null) {
+    const locked = candidates.find(c => c.streamer.id === LOCKED_STREAMER_ID);
+    if (locked) result.push(locked);
+  }
+
+  // 1) keep active if not exceeded MIN_WATCH_SEC
   for (const [id, w] of activeWorkers) {
+    if (result.length >= MAX_WORKERS) break;
     if (w.status !== "running") continue;
     const still = candidates.find(c => c.streamer.id === id);
     if (!still) continue;
+
+    if (isLockActiveNow() && LOCKED_STREAMER_ID != null && id !== LOCKED_STREAMER_ID) continue;
+
     const elapsed = (Date.now() - w.startedAt.getTime()) / 1000;
     if (elapsed < MIN_WATCH_SEC && !priorityQueue.has(id)) {
-      result.push(still);
+      if (!result.find(r => r.streamer.id === id)) result.push(still);
     }
   }
 
-  // 2. Compléter avec les candidats en priorité (forceSwitch)
-  for (const pid of priorityQueue) {
+  // 2) priority queue
+  for (const pid of [...priorityQueue]) {
     if (result.length >= MAX_WORKERS) break;
     const c = candidates.find(c => c.streamer.id === pid);
     if (c && !result.find(r => r.streamer.id === pid)) {
@@ -323,18 +373,22 @@ function pickNextBatch(candidates: Candidate[]): Candidate[] {
     }
   }
 
-  // 3. Compléter avec ceux jamais regardés
-  const neverWatched = candidates
-    .filter(c => c.lastWatched === 0 && !result.find(r => r.streamer.id === c.streamer.id));
+  if (isLockActiveNow() && LOCKED_STREAMER_ID != null) {
+    return result.slice(0, 1);
+  }
+
+  // 3) never watched
+  const neverWatched = candidates.filter(c => c.lastWatched === 0 && !result.find(r => r.streamer.id === c.streamer.id));
   for (const c of neverWatched) {
     if (result.length >= MAX_WORKERS) break;
     result.push(c);
   }
 
-  // 4. Compléter par ancienneté (le moins récent en premier)
+  // 4) oldest first
   const remaining = candidates
     .filter(c => !result.find(r => r.streamer.id === c.streamer.id))
     .sort((a, b) => a.lastWatched - b.lastWatched);
+
   for (const c of remaining) {
     if (result.length >= MAX_WORKERS) break;
     result.push(c);
@@ -346,7 +400,6 @@ function pickNextBatch(candidates: Candidate[]): Candidate[] {
 // ─────────────────────────────────────────────
 // Worker Python
 // ─────────────────────────────────────────────
-
 function defaultWorkerStats(): WorkerStats {
   return { mode: "ACTIVE", consecutive_unknown: 0, frames_total: 0, frames_with_value: 0, last_value_secs_ago: 0 };
 }
@@ -387,8 +440,7 @@ function spawnWorker(w: ActiveWorker) {
       const t = line.trim();
       if (!t) continue;
       if (t.startsWith("{") && t.endsWith("}")) {
-        try { void handleMessage(w, JSON.parse(t)); continue; }
-        catch { /* fallthrough */ }
+        try { void handleMessage(w, JSON.parse(t)); continue; } catch {}
       }
       pushLog(w.streamerSlug, "py", t);
     }
@@ -400,8 +452,7 @@ function spawnWorker(w: ActiveWorker) {
   });
 
   proc.on("exit", (code, signal) => {
-    const msg = `worker exit code=${code} signal=${signal}`;
-    pushLog(w.streamerSlug, "node", msg);
+    pushLog(w.streamerSlug, "node", `worker exit code=${code} signal=${signal}`);
     lastWatchedAt.set(w.streamerId, Date.now());
     w.status = code === 0 ? "stopped" : "error";
     stopSession(w.sessionId, w.status as "stopped" | "error").catch(console.error);
@@ -421,20 +472,24 @@ async function handleMessage(w: ActiveWorker, msg: { type: string; data: any }) 
       const f = msg.data as FrameData;
       w.lastFrame = f;
       if (f.provider && f.provider !== "unknown") w.provider = f.provider;
-      if (f.has_value) {
-        saveFrame(w.sessionId, f).catch(console.error);
-      }
+      if (f.has_value) saveFrame(w.sessionId, f).catch(console.error);
       return;
     }
 
     case "event": {
-      const { frame: f, screenshot_path } = msg.data as { frame: FrameData; screenshot_path: string | null };
+      const { frame: f, screenshot_path } = msg.data;
       w.lastFrame = f;
       await saveEvent(w.sessionId, f, screenshot_path ?? null).catch(console.error);
+
+      // ✅ Calcul de l'offset depuis le début de la session (comme le bot natif)
+      const LATENCY_PAD_SEC = 15;
+      const sessionStartSec = w.startedAt.getTime() / 1000;
+      const atSec = Math.max(0, f.ts_sec - sessionStartSec + LATENCY_PAD_SEC);
+
       const winLabel = f.win_total_value ?? f.win_value ?? "?";
-      const title    = `🎰 x${f.multiplier} — ${(f.provider ?? "").toUpperCase()} — WIN ${winLabel}`;
-      addLunaClip(_pool, w.streamerId, title, f.ts_sec, w.liveCreatedAtMs).catch(console.error);
-      pushLog(w.streamerSlug, "node", `EVENT x${f.multiplier} provider=${f.provider}`);
+      const title = `🎰 x${f.multiplier} — ${(f.provider ?? "").toUpperCase()} — WIN ${winLabel}`;
+      addLunaClip(_pool, w.streamerId, title, atSec, w.liveCreatedAtMs).catch(console.error);
+      pushLog(w.streamerSlug, "node", `EVENT x${f.multiplier} provider=${f.provider} atSec=${Math.floor(atSec)}`);
       return;
     }
 
@@ -457,7 +512,7 @@ async function handleMessage(w: ActiveWorker, msg: { type: string; data: any }) 
 function killWorker(w: ActiveWorker, reason: string) {
   pushLog(w.streamerSlug, "node", `stopping worker (${reason})`);
   lastWatchedAt.set(w.streamerId, Date.now());
-  try { w.process.kill("SIGTERM"); } catch { /* déjà mort */ }
+  try { w.process.kill("SIGTERM"); } catch {}
   w.status = "stopped";
   stopSession(w.sessionId, "stopped").catch(console.error);
 }
@@ -465,7 +520,6 @@ function killWorker(w: ActiveWorker, reason: string) {
 // ─────────────────────────────────────────────
 // Tick
 // ─────────────────────────────────────────────
-
 async function tick() {
   let streamers: StreamerRow[];
   try {
@@ -478,7 +532,7 @@ async function tick() {
   skippedRam.clear();
   waitingWorkers.clear();
 
-  // 1. Cleanup workers morts / streamers supprimés
+  // cleanup
   for (const [sid, w] of activeWorkers) {
     if (w.status !== "running" || !streamers.some(s => s.id === sid)) {
       if (w.status === "running") killWorker(w, "streamer removed");
@@ -486,38 +540,29 @@ async function tick() {
     }
   }
 
-  // 2. Vérifier qui est en live (exclure ignorés)
+  // candidates live
   const candidates: Candidate[] = [];
 
   for (const s of streamers) {
-    if (ignoredStreamers.has(s.id)) continue;
     const dliveSlug = getDisplayName(s);
     if (!dliveSlug) continue;
 
-    let dliveInfo: { hls: string; liveCreatedAtMs: number } | null = null;
-    try { dliveInfo = await getDliveHlsUrl(dliveSlug); } catch { /* offline */ }
+    let info: { hls: string; liveCreatedAtMs: number } | null = null;
+    try { info = await getDliveHlsUrl(dliveSlug); } catch {}
 
-    if (!dliveInfo) {
+    if (!info) {
       const w = activeWorkers.get(s.id);
       if (w) { killWorker(w, "stream ended"); activeWorkers.delete(s.id); }
       continue;
     }
 
     candidates.push({
-      streamer:        s,
+      streamer:    s,
       dliveSlug,
-      rawHls:          dliveInfo.hls,
-      liveCreatedAtMs: dliveInfo.liveCreatedAtMs,
-      lastWatched:     lastWatchedAt.get(s.id) ?? 0,
+      rawHls:      info.hls,
+      liveCreatedAtMs: info.liveCreatedAtMs,
+      lastWatched: lastWatchedAt.get(s.id) ?? 0,
     });
-  }
-
-  // 3. Vérification RAM
-  const ramMb = getRssMb();
-  if (ramMb > RAM_LIMIT_MB) {
-    pushLog("scheduler", "node", `RAM ${ramMb.toFixed(0)}MB > ${RAM_LIMIT_MB}MB — no new workers`);
-    candidates.forEach(c => skippedRam.add(c.streamer.slug));
-    return;
   }
 
   if (candidates.length === 0) {
@@ -525,31 +570,29 @@ async function tick() {
     return;
   }
 
-  // 4. Choisir le batch optimal
   const chosen    = pickNextBatch(candidates);
   const chosenIds = new Set(chosen.map(c => c.streamer.id));
 
-  // 5. Tuer les workers qui ne sont plus dans le batch choisi
+  // kill out-of-batch
   for (const [sid, w] of activeWorkers) {
     if (!chosenIds.has(sid) && w.status === "running") {
       killWorker(w, `rotation out — batch changed`);
       activeWorkers.delete(sid);
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 1500));
     }
   }
 
-  // 6. Marquer les candidats non choisis comme en attente
+  // waiting
   candidates
     .filter(c => !chosenIds.has(c.streamer.id))
     .forEach(c => waitingWorkers.add(c.streamer.slug));
 
-  // 7. Démarrer les workers manquants dans le batch
+  // start missing
   for (const c of chosen) {
-    if (activeWorkers.has(c.streamer.id)) continue; // déjà actif
+    if (activeWorkers.has(c.streamer.id)) continue;
 
     pushLog("scheduler", "node",
-      `START ${c.streamer.slug} (${c.dliveSlug}) RAM=${ramMb.toFixed(0)}MB ` +
-      `| max=${MAX_WORKERS} | waiting: ${[...waitingWorkers].join(", ") || "—"}`
+      `START ${c.streamer.slug} (${c.dliveSlug}) | max=${MAX_WORKERS} | waiting: ${[...waitingWorkers].join(", ") || "—"}`
     );
 
     try {
@@ -557,18 +600,18 @@ async function tick() {
       const proxiedHls = proxifyHls(c.rawHls);
 
       const w: ActiveWorker = {
-        streamerId:      c.streamer.id,
-        streamerSlug:    c.streamer.slug,
-        dliveSlug:       c.dliveSlug,
+        streamerId:   c.streamer.id,
+        streamerSlug: c.streamer.slug,
+        dliveSlug:    c.dliveSlug,
         sessionId,
-        process:         null as any,
-        status:          "running",
-        startedAt:       new Date(),
-        liveCreatedAtMs: c.liveCreatedAtMs, // ✅ ancre VOD
-        lastFrame:       null,
-        provider:        null,
-        hlsUrl:          proxiedHls,
-        workerStats:     defaultWorkerStats(),
+        process:      null as any,
+        status:       "running",
+        startedAt:    new Date(),
+        liveCreatedAtMs: c.liveCreatedAtMs,
+        lastFrame:    null,
+        provider:     null,
+        hlsUrl:       proxiedHls,
+        workerStats:  defaultWorkerStats(),
       };
       spawnWorker(w);
       activeWorkers.set(c.streamer.id, w);
@@ -581,16 +624,16 @@ async function tick() {
 // ─────────────────────────────────────────────
 // Export public
 // ─────────────────────────────────────────────
-
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startLunaClipScheduler(pool: Pool) {
   if (schedulerInterval) return;
   _pool = pool;
+
   pushLog("scheduler", "node",
-    `started — round-robin max=${MAX_WORKERS} workers ` +
-    `poll=${POLL_SEC}s min_watch=${MIN_WATCH_SEC}s alert=x${ALERT_MULTI} ram_limit=${RAM_LIMIT_MB}MB`
+    `started — round-robin max=${MAX_WORKERS} poll=${POLL_SEC}s min_watch=${MIN_WATCH_SEC}s alert=x${ALERT_MULTI} ram_limit=${RAM_LIMIT_MB}MB`
   );
+
   tick().catch(console.error);
   schedulerInterval = setInterval(() => tick().catch(console.error), POLL_SEC * 1000);
 }
