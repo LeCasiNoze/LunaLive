@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LunaClip Worker v2.1
+LunaClip Worker v2.2
 - Qualité OCR maximale : 960x540, scale=4, psm=6
 - Préprocessing avancé : netteté (unsharp mask) + threshold adaptatif
 - Détection MISE contextuelle (ancre sur CREDIT, ligne pragmatic)
@@ -28,7 +28,7 @@ SCAN_RIGHT  = 0.95
 
 # ✅ v1.9 : qualité maximale — réduire si CPU trop chargé
 SCALE    = 4
-PSM_MODE = 6      # bloc de texte uniforme, meilleur pour overlays
+PSM_MODE = 11     # sparse text — trouve texte éparpillé dans l'image, parfait pour overlays jeu
 
 # ✅ v1.9 : résolution source haute
 FRAME_W = 960
@@ -119,30 +119,42 @@ def emit_mode(mode: str, reason: str):
 # ═══════════════════════════════════════════════
 
 def preprocess(crop_bgr):
-    # 1. Upscale avec LANCZOS4 — meilleure qualité que INTER_CUBIC
+    # 1. Upscale LANCZOS4
     big = cv2.resize(crop_bgr, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_LANCZOS4)
 
     # 2. Niveaux de gris
     gray = cv2.cvtColor(big, cv2.COLOR_BGR2GRAY)
 
-    # 3. ✅ Unsharp mask — accentue les contours des caractères
-    kernel = np.array([
+    # 3. ✅ CLAHE : égalisation locale du contraste
+    #    Améliore la lisibilité sur fonds dégradés (Gates of Olympus rouge/or,
+    #    Cosmic Cash bleu/violet) sans surexposer les zones déjà claires
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    equalized = clahe.apply(gray)
+
+    # 4. Unsharp mask — accentue les contours des caractères
+    kernel_sharp = np.array([
         [ 0, -1,  0],
         [-1,  5, -1],
         [ 0, -1,  0],
     ], dtype=np.float32)
-    sharpened = cv2.filter2D(gray, -1, kernel)
+    sharpened = cv2.filter2D(equalized, -1, kernel_sharp)
 
-    # 4. ✅ Threshold adaptatif — s'adapte aux variations de luminosité de l'overlay
-    thresh = cv2.adaptiveThreshold(
+    # 5. ✅ Double threshold : adaptatif + fixe, on prend le meilleur des deux
+    #    Adaptatif : gère les fonds variables
+    #    Fixe Otsu : optimal quand le fond est relativement uniforme
+    thresh_adapt = cv2.adaptiveThreshold(
         sharpened, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY,
         blockSize=31,
         C=10,
     )
+    _, thresh_otsu = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # 5. Nettoyage morphologique léger (supprime pixels isolés)
+    # Combinaison : on garde un pixel blanc si au moins UN des deux thresholds le détecte
+    thresh = cv2.bitwise_or(thresh_adapt, thresh_otsu)
+
+    # 6. Nettoyage morphologique (supprime pixels isolés < 2x2)
     kernel_clean = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
     thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_clean)
 
@@ -193,20 +205,43 @@ def filter_ocr_lines(raw: str):
 # ═══════════════════════════════════════════════
 
 def fuzzy_fix(text):
-    text = re.sub(r'GAIN\s+TOTAL',  'GAIN_TOTAL', text, flags=re.IGNORECASE)
-    text = re.sub(r'WIN\s+TOTAL',   'WIN_TOTAL',  text, flags=re.IGNORECASE)
+    # ── Normalisation préalable des artefacts OCR ──────────────────────────
+    # Séparateurs décimaux déformés : 1°80 / 1'80 / 1`80 → 1.80
+    text = re.sub(r'(\d)[°\'`](\d)', r'\1.\2', text)
+    # Symbole dollar/euro collé : $1°80 → $1.80 (déjà géré ci-dessus)
+    # Espaces parasites dans les montants : 1 . 80 → 1.80
+    text = re.sub(r'(\d)\s*\.\s*(\d{2})\b', r'\1.\2', text)
+
+    # ── Labels clés ───────────────────────────────────────────────────────
+    text = re.sub(r'\bGAIN\s+TOTAL',  'GAIN_TOTAL', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bWIN\s+TOTAL',   'WIN_TOTAL',  text, flags=re.IGNORECASE)
     text = re.sub(r'TOURS?\s+GRATUITE?S?(\s+RESTANTES?)?', 'FREE_SPINS', text, flags=re.IGNORECASE)
     text = re.sub(r'PARTIES?\s+GRATUITE?S?(\s+RESTANTES?)?', 'FREE_SPINS', text, flags=re.IGNORECASE)
     text = re.sub(r'FREE\s+SPINS?', 'FREE_SPINS', text, flags=re.IGNORECASE)
     text = re.sub(r'\bSOLDE\b',   'SOLDE_CREDIT', text, flags=re.IGNORECASE)
     text = re.sub(r'\bBALANCE\b', 'SOLDE_CREDIT', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bBE[L1Il|]\b',      'BET',  text, flags=re.IGNORECASE)
-    text = re.sub(r'\bB[E3][T7]\b',      'BET',  text, flags=re.IGNORECASE)
+
+    # ── Corrections BET ───────────────────────────────────────────────────
+    text = re.sub(r'\bBE[L1Il|]\b',   'BET', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bB[E3][T7]\b',   'BET', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bBETN?\b',       'BET', text, flags=re.IGNORECASE)  # BETN → BET
+    text = re.sub(r'\bB3T\b',         'BET', text, flags=re.IGNORECASE)
+
+    # ── Corrections MISE ──────────────────────────────────────────────────
     text = re.sub(r'\bMl[S5]E\b',        'MISE', text, flags=re.IGNORECASE)
     text = re.sub(r'\bMIS[E3]\b',        'MISE', text, flags=re.IGNORECASE)
     text = re.sub(r'\bM[lI1][S5][E3]\b', 'MISE', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bGA[Il1]NS\b',  'GAINS', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bW[Il1][Nn]\b', 'WIN',   text, flags=re.IGNORECASE)
+    text = re.sub(r'\bMlSE\b',           'MISE', text, flags=re.IGNORECASE)
+
+    # ── Corrections WIN / GAINS ───────────────────────────────────────────
+    text = re.sub(r'\bW[Il1][Nn]\b',  'WIN',   text, flags=re.IGNORECASE)
+    text = re.sub(r'\bGA[Il1]NS?\b',  'GAINS', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bGA[Il1]N\b',    'GAIN',  text, flags=re.IGNORECASE)
+
+    # ── Corrections CREDIT ────────────────────────────────────────────────
+    text = re.sub(r'\bCRED[Il1]T\b',  'CREDIT', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bCREDl[T7]\b',   'CREDIT', text, flags=re.IGNORECASE)
+
     return text
 
 
@@ -556,7 +591,7 @@ class ModeManager:
 # ═══════════════════════════════════════════════
 
 def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
-    emit_log(f"Starting stream analysis v2.1: {hls_url}")
+    emit_log(f"Starting stream analysis v2.2: {hls_url}")
     emit_log(f"Config: {FRAME_W}x{FRAME_H} scale={SCALE} psm={PSM_MODE} adaptive_thresh")
 
     tracker   = EventTracker(alert_multi=alert_multi)
