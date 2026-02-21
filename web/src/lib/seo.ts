@@ -1,4 +1,4 @@
-const ORIGIN = "https://lunalive.onrender.com";
+const ORIGIN = typeof window !== "undefined" ? window.location.origin : "https://lunalive.onrender.com";
 
 function upsertMeta(name: string, content: string) {
   if (!content) return;
@@ -22,38 +22,26 @@ function upsertLink(rel: string, href: string) {
   el.setAttribute("href", href);
 }
 
-export function setSeo(opts: {
-  title: string;
-  description: string;
-  path?: string; // "/casinos"
-}) {
-  const url = ORIGIN + (opts.path ?? "/");
+export function setSeo(opts: { title: string; description: string; path?: string }) {
+  const url = new URL(opts.path ?? "/", ORIGIN).toString();
+
   document.title = opts.title;
   upsertMeta("description", opts.description);
   upsertLink("canonical", url);
 
-  // (optionnel) OpenGraph minimal (pas obligatoire pour indexation)
-  let ogTitle = document.querySelector(`meta[property="og:title"]`) as HTMLMetaElement | null;
-  if (!ogTitle) {
-    ogTitle = document.createElement("meta");
-    ogTitle.setAttribute("property", "og:title");
-    document.head.appendChild(ogTitle);
-  }
-  ogTitle.setAttribute("content", opts.title);
+  // OG
+  const upsertOg = (prop: string, content: string) => {
+    if (!content) return;
+    let el = document.querySelector(`meta[property="${prop}"]`) as HTMLMetaElement | null;
+    if (!el) {
+      el = document.createElement("meta");
+      el.setAttribute("property", prop);
+      document.head.appendChild(el);
+    }
+    el.setAttribute("content", content);
+  };
 
-  let ogDesc = document.querySelector(`meta[property="og:description"]`) as HTMLMetaElement | null;
-  if (!ogDesc) {
-    ogDesc = document.createElement("meta");
-    ogDesc.setAttribute("property", "og:description");
-    document.head.appendChild(ogDesc);
-  }
-  ogDesc.setAttribute("content", opts.description);
-
-  let ogUrl = document.querySelector(`meta[property="og:url"]`) as HTMLMetaElement | null;
-  if (!ogUrl) {
-    ogUrl = document.createElement("meta");
-    ogUrl.setAttribute("property", "og:url");
-    document.head.appendChild(ogUrl);
-  }
-  ogUrl.setAttribute("content", url);
+  upsertOg("og:title", opts.title);
+  upsertOg("og:description", opts.description);
+  upsertOg("og:url", url);
 }

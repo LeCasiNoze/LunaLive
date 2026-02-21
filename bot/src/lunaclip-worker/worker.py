@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-LunaClip Worker v1.8
-- RAM optimisé
+LunaClip Worker v2.0
+- Qualité OCR maximale : 960x540, scale=4, psm=6
+- Préprocessing avancé : netteté (unsharp mask) + threshold adaptatif
+- Détection MISE contextuelle (ancre sur CREDIT, ligne pragmatic)
+- Blacklist promo étendue : PACK, BIENVENU, BEAST, WINBEAST, etc.
 - ACTIVE / WATCHING / IDLE modes
-- OCR debug (raw_ocr + parse_debug)
-- CPU optimisé : scale 2, résolution 480x270, nice, sleep post-OCR
-- Filtrage OCR : whitelist lignes utiles + blacklist patterns promo
+- OCR debug complet (raw_ocr, filtered_ocr, parse_debug, removed_lines)
 """
 
 import cv2
@@ -25,13 +26,13 @@ SCAN_BOTTOM = 0.98
 SCAN_LEFT   = 0.05
 SCAN_RIGHT  = 0.95
 
-# ✅ v1.8 : scale 2 au lieu de 3 → -30% CPU OCR, qualité suffisante
-SCALE    = 2
-PSM_MODE = 3
+# ✅ v1.9 : qualité maximale — réduire si CPU trop chargé
+SCALE    = 4
+PSM_MODE = 6      # bloc de texte uniforme, meilleur pour overlays
 
-# ✅ v1.8 : résolution ffmpeg réduite → moins de pixels à traiter
-FRAME_W = 480
-FRAME_H = 270
+# ✅ v1.9 : résolution source haute
+FRAME_W = 960
+FRAME_H = 540
 
 MAX_WIN_DROP_RATIO    = 0.50
 MIN_DECIMAL_THRESHOLD = 10.0
@@ -49,35 +50,27 @@ COOLDOWN_DURATION = 30.0
 UNKNOWN_FRAMES_TO_WATCH = 10
 NO_VALUE_SECS_TO_IDLE   = 300
 
-# ✅ v1.8 : pause minimale après chaque OCR pour céder le CPU
-POST_OCR_SLEEP = 0.05
+# Pause post-OCR : légèrement plus long car frames plus lourdes à traiter
+POST_OCR_SLEEP = 0.15
 
 # ─────────────────────────────────────────────
-# Mots qui indiquent qu'une ligne est utile
-# Si une ligne ne contient AUCUN de ces mots → ignorée
+# Mots clés jeu — seul filtre : si une ligne ne
+# contient aucun de ces mots → [HORS_CONTEXTE]
+# Pas de blacklist : tout ce qui n'est pas jeu
+# est ignoré automatiquement.
 # ─────────────────────────────────────────────
-USEFUL_WORDS = [
-    "BET", "MISE", "WIN", "GAIN", "CREDIT", "SOLDE", "BALANCE",
-    "FREE_SPINS", "FREE SPINS", "TOURS", "PARTIES",
-    "MULTIPLIER", "MULT", "TOTAL",
+# Mots qui définissent le contexte jeu
+GAME_WORDS = [
+    "BET", "MISE",
+    "WIN", "WINS",
+    "GAIN", "GAINS", "GAIN_TOTAL", "WIN_TOTAL",
+    "CREDIT",
+    "FREE_SPINS", "FREE SPINS",
+    "MULTIPLIER", "MULT",
+    "SOLDE_CREDIT", "BALANCE",
 ]
-
-# ─────────────────────────────────────────────
-# Patterns promotionnels à bannir ligne par ligne
-# Si une ligne contient l'un de ces patterns → supprimée
-# ─────────────────────────────────────────────
-PROMO_PATTERNS = [
-    r'\bWAGER\b', r'\bRACE\b', r'\bDISCORD\b', r'\bEXCLUSIF\b',
-    r'\bOFFERT\b', r'\bGIVEAWAY\b', r'\bFREESPINS\b', r'!\w+',
-    r'\bCODE\b', r'\bBONUS\b(?!\s+(?:ROUND|GAME|SPINS|WIN))',
-    r'\bPROMO\b', r'\bDÈS\b', r'\bMISÉ\b', r'\bTWITCH\b',
-    r'\bYOUTUBE\b', r'\bINSTAGRAM\b', r'\bTIKTOK\b',
-    r'\d+\s*[kK]\s*\$',   # "7.000$", "7k$" dans contexte promo
-    r'\bSUBSCRIBE\b', r'\bABONNEZ\b', r'\bFOLLOW\b',
-]
-_PROMO_RE = re.compile('|'.join(PROMO_PATTERNS), re.IGNORECASE)
-_USEFUL_RE = re.compile(
-    '|'.join(re.escape(w) for w in USEFUL_WORDS),
+_GAME_RE = re.compile(
+    r'\b(' + '|'.join(re.escape(w) for w in GAME_WORDS) + r')\b',
     re.IGNORECASE
 )
 
@@ -122,14 +115,39 @@ def emit_mode(mode: str, reason: str):
 
 
 # ═══════════════════════════════════════════════
-#  OCR
+#  PRÉPROCESSING IMAGE — v1.9
 # ═══════════════════════════════════════════════
 
 def preprocess(crop_bgr):
-    big  = cv2.resize(crop_bgr, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_CUBIC)
+    # 1. Upscale avec LANCZOS4 — meilleure qualité que INTER_CUBIC
+    big = cv2.resize(crop_bgr, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_LANCZOS4)
+
+    # 2. Niveaux de gris
     gray = cv2.cvtColor(big, cv2.COLOR_BGR2GRAY)
-    _, t = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
-    return t
+
+    # 3. ✅ Unsharp mask — accentue les contours des caractères
+    kernel = np.array([
+        [ 0, -1,  0],
+        [-1,  5, -1],
+        [ 0, -1,  0],
+    ], dtype=np.float32)
+    sharpened = cv2.filter2D(gray, -1, kernel)
+
+    # 4. ✅ Threshold adaptatif — s'adapte aux variations de luminosité de l'overlay
+    thresh = cv2.adaptiveThreshold(
+        sharpened, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        blockSize=31,
+        C=10,
+    )
+
+    # 5. Nettoyage morphologique léger (supprime pixels isolés)
+    kernel_clean = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_clean)
+
+    return thresh
+
 
 def ocr_text(thresh):
     return pytesseract.image_to_string(
@@ -137,43 +155,42 @@ def ocr_text(thresh):
         config=f"--psm {PSM_MODE} --oem 1"
     )
 
-def filter_ocr_lines(raw: str) -> str:
-    """
-    Filtre ligne par ligne le texte OCR brut :
-    1. Supprime les lignes vides / trop courtes
-    2. Supprime les lignes qui contiennent des patterns promo
-    3. Ne garde que les lignes qui contiennent au moins un mot utile
-       (BET, MISE, WIN, CREDIT, GAIN, etc.)
 
-    Retourne le texte filtré reconstruit.
-    Les lignes supprimées sont remplacées par des commentaires
-    dans raw_ocr_filtered pour le debug.
+# ═══════════════════════════════════════════════
+#  FILTRAGE LIGNES OCR
+# ═══════════════════════════════════════════════
+
+def filter_ocr_lines(raw: str):
     """
-    lines = raw.split('\n')
-    kept = []
+    ✅ v2.0 : filtrage par whitelist pure — aucune blacklist.
+    Une ligne est gardée si et seulement si elle contient
+    au moins un mot du contexte jeu : BET, MISE, WIN, GAIN,
+    GAIN_TOTAL, WIN_TOTAL, CREDIT, FREE_SPINS, MULTIPLIER…
+    Tout le reste (promos, chat, overlay stream) est ignoré
+    automatiquement sans avoir besoin de le nommer.
+    """
+    lines   = raw.split('\n')
+    kept    = []
     removed = []
 
     for line in lines:
         stripped = line.strip()
 
-        # Ignorer lignes vides / trop courtes (bruit OCR)
         if len(stripped) < 3:
             continue
 
-        # Bannir si pattern promo détecté
-        if _PROMO_RE.search(stripped):
-            removed.append(f"[PROMO] {stripped}")
-            continue
-
-        # Ne garder que si au moins un mot utile
-        if not _USEFUL_RE.search(stripped):
-            removed.append(f"[NOISE] {stripped}")
-            continue
-
-        kept.append(stripped)
+        if _GAME_RE.search(stripped):
+            kept.append(stripped)
+        else:
+            removed.append(f"[HORS_CONTEXTE] {stripped}")
 
     return '\n'.join(kept), removed
 
+
+
+# ═══════════════════════════════════════════════
+#  PARSING
+# ═══════════════════════════════════════════════
 
 def fuzzy_fix(text):
     text = re.sub(r'GAIN\s+TOTAL',  'GAIN_TOTAL', text, flags=re.IGNORECASE)
@@ -183,21 +200,25 @@ def fuzzy_fix(text):
     text = re.sub(r'FREE\s+SPINS?', 'FREE_SPINS', text, flags=re.IGNORECASE)
     text = re.sub(r'\bSOLDE\b',   'SOLDE_CREDIT', text, flags=re.IGNORECASE)
     text = re.sub(r'\bBALANCE\b', 'SOLDE_CREDIT', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bBE[L1Il|]\b',  'BET',   text, flags=re.IGNORECASE)
-    text = re.sub(r'\bB[E3][T7]\b',  'BET',   text, flags=re.IGNORECASE)
-    text = re.sub(r'\bMl[S5]E\b',    'MISE',  text, flags=re.IGNORECASE)
-    text = re.sub(r'\bMIS[E3]\b',    'MISE',  text, flags=re.IGNORECASE)
+    text = re.sub(r'\bBE[L1Il|]\b',      'BET',  text, flags=re.IGNORECASE)
+    text = re.sub(r'\bB[E3][T7]\b',      'BET',  text, flags=re.IGNORECASE)
+    text = re.sub(r'\bMl[S5]E\b',        'MISE', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bMIS[E3]\b',        'MISE', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bM[lI1][S5][E3]\b', 'MISE', text, flags=re.IGNORECASE)
     text = re.sub(r'\bGA[Il1]NS\b',  'GAINS', text, flags=re.IGNORECASE)
     text = re.sub(r'\bW[Il1][Nn]\b', 'WIN',   text, flags=re.IGNORECASE)
     return text
+
 
 def clean_raw_value(raw):
     v = re.sub(r'\s*\n\s*', '', raw)
     v = re.sub(r'\s{2,}', ' ', v)
     return v.strip()
 
+
 def has_decimal_in_raw(raw):
     return bool(re.search(r'\d\s*[,.]\s*\d', raw))
+
 
 def extract_numeric(raw):
     s = re.sub(r'[€$£]', '', raw)
@@ -210,6 +231,7 @@ def extract_numeric(raw):
         except: pass
     try:    return float(re.sub(r'\s', '', s).replace(',', '.'))
     except: return None
+
 
 def find_label(text, keywords):
     kw = '|'.join(re.escape(k) for k in keywords)
@@ -226,6 +248,40 @@ def find_label(text, keywords):
                 return {"label": m.group(1).upper(), "value": clean_raw_value(raw), "numeric": num}
     return None
 
+
+def find_mise_contextuel(text):
+    """
+    ✅ v1.9 : Recherche MISE contextuelle pour Pragmatic.
+    CREDIT et MISE sont souvent sur la même ligne : "CREDIT 1 392,84 € MISE 1,60 €"
+    On utilise CREDIT comme ancre pour localiser MISE à proximité.
+    On ne retourne jamais CREDIT comme valeur de BET.
+    """
+    # Pattern : "CREDIT [montant] MISE [montant]" sur la même ligne
+    pat = r'(?i)CREDIT\s+[\d\s,\.€$£]+\s+MISE\s+([€$£]?\s*[\d\s]+[,\.]\d{1,3}\s*[€$£]?)'
+    m = re.search(pat, text)
+    if m:
+        raw = m.group(1).strip()
+        num = extract_numeric(raw)
+        if num is not None and BET_MIN <= num <= BET_MAX:
+            return {"label": "MISE", "value": clean_raw_value(raw), "numeric": num}
+
+    # Fallback : MISE dans les 120 chars suivant CREDIT
+    idx = text.upper().find("CREDIT")
+    if idx >= 0:
+        window = text[idx:idx + 120]
+        m2 = re.search(
+            r'(?i)\bMISE\b\s*([€$£]?\s*[\d\s]+[,\.]\d{1,3}\s*[€$£]?)',
+            window
+        )
+        if m2:
+            raw = m2.group(1).strip()
+            num = extract_numeric(raw)
+            if num is not None and BET_MIN <= num <= BET_MAX:
+                return {"label": "MISE", "value": clean_raw_value(raw), "numeric": num}
+
+    return None
+
+
 def detect_provider(text):
     t = text.upper()
     if any(k in t for k in ['GAIN_TOTAL', 'WIN_TOTAL', 'SOLDE_CREDIT']):
@@ -234,25 +290,35 @@ def detect_provider(text):
         return 'pragmatic'
     return 'unknown'
 
+
 def detect_bonus(text):
     return 'FREE_SPINS' in text.upper()
 
+
 def parse_frame_text(raw_ocr):
-    # ✅ v1.8 : filtrer avant tout le reste
     filtered_text, removed_lines = filter_ocr_lines(raw_ocr)
     text     = fuzzy_fix(filtered_text)
     provider = detect_provider(text)
     in_bonus = detect_bonus(text)
 
+    # Recherche BET/MISE standard
+    bet_found = find_label(text, ["BET", "MISE"])
+
+    # ✅ v1.9 : si pas trouvé + provider pragmatic → recherche contextuelle
+    # On cherche aussi dans le texte brut car CREDIT peut avoir été filtré
+    if not bet_found and provider == 'pragmatic':
+        raw_fixed = fuzzy_fix(raw_ocr)
+        bet_found = find_mise_contextuel(raw_fixed) or find_mise_contextuel(text)
+
     result = {
         "provider":          provider,
         "in_bonus":          in_bonus,
-        "bet":               find_label(text, ["BET", "MISE"]),
+        "bet":               bet_found,
         "win":               None,
         "win_total":         None,
         "free_spins":        None,
         "multiplier_source": None,
-        "_removed_lines":    removed_lines,  # pour debug
+        "_removed_lines":    removed_lines,
     }
 
     if provider == 'hacksaw':
@@ -284,6 +350,7 @@ def validate_bet(bet, prev_num):
         return False, f"spike_vs_prev({prev_num})"
     return True, "ok"
 
+
 def validate_win(win, prev_num):
     if not win:   return False, "no_win"
     n   = win["numeric"]
@@ -309,8 +376,6 @@ def analyze_frame(frame_bgr, state: dict) -> dict:
         int(w * SCAN_LEFT):int(w * SCAN_RIGHT),
     ]
     raw_text = ocr_text(preprocess(crop))
-
-    # ✅ v1.8 : parse_frame_text retourne aussi le texte filtré
     parsed, filtered_text = parse_frame_text(raw_text)
 
     debug_reasons = {}
@@ -338,9 +403,9 @@ def analyze_frame(frame_bgr, state: dict) -> dict:
     win_total = parsed["win_total"] if wt_ok else None
     if win_total: state["prev_win_total_num"] = win_total["numeric"]
 
-    bet_num    = effective_bet["numeric"] if effective_bet else None
-    src        = parsed["multiplier_source"]
-    multi_val  = win_total if src == "win_total" else win
+    bet_num   = effective_bet["numeric"] if effective_bet else None
+    src       = parsed["multiplier_source"]
+    multi_val = win_total if src == "win_total" else win
     multiplier = None
     if bet_num and bet_num > 0 and multi_val and multi_val["numeric"] is not None:
         multiplier = round(multi_val["numeric"] / bet_num, 2)
@@ -348,9 +413,7 @@ def analyze_frame(frame_bgr, state: dict) -> dict:
     def v(d): return d["value"]   if d else None
     def n(d): return d["numeric"] if d else None
 
-    # ✅ raw_ocr : texte brut nettoyé (max 500 chars)
-    raw_clean = re.sub(r'\s+', ' ', raw_text).strip()[:500]
-    # ✅ filtered_ocr : texte après filtrage (ce que le parser a réellement vu)
+    raw_clean      = re.sub(r'\s+', ' ', raw_text).strip()[:500]
     filtered_clean = re.sub(r'\s+', ' ', filtered_text).strip()[:500]
 
     return {
@@ -366,19 +429,18 @@ def analyze_frame(frame_bgr, state: dict) -> dict:
         "multiplier":        multiplier,
         "multiplier_source": src,
         "ts_sec":            time.time(),
-        # ── OCR Debug ──────────────────────────
         "raw_ocr":           raw_clean,
-        "filtered_ocr":      filtered_clean,   # ✅ nouveau : ce que le parser voit
+        "filtered_ocr":      filtered_clean,
         "parse_debug": {
-            "provider_detected":  parsed["provider"],
-            "in_bonus":           parsed["in_bonus"],
-            "bet_raw":            parsed["bet"]["value"] if parsed["bet"] else None,
-            "win_raw":            parsed["win"]["value"] if parsed["win"] else None,
-            "win_total_raw":      parsed["win_total"]["value"] if parsed["win_total"] else None,
-            "bet_reason":         debug_reasons.get("bet", "—"),
-            "win_reason":         debug_reasons.get("win", "—"),
-            "win_total_reason":   debug_reasons.get("win_total", "—"),
-            "removed_lines":      parsed.get("_removed_lines", [])[:10],  # max 10 pour debug
+            "provider_detected": parsed["provider"],
+            "in_bonus":          parsed["in_bonus"],
+            "bet_raw":           parsed["bet"]["value"] if parsed["bet"] else None,
+            "win_raw":           parsed["win"]["value"] if parsed["win"] else None,
+            "win_total_raw":     parsed["win_total"]["value"] if parsed["win_total"] else None,
+            "bet_reason":        debug_reasons.get("bet", "—"),
+            "win_reason":        debug_reasons.get("win", "—"),
+            "win_total_reason":  debug_reasons.get("win_total", "—"),
+            "removed_lines":     parsed.get("_removed_lines", [])[:10],
         },
     }
 
@@ -427,9 +489,9 @@ class ModeManager:
 
     def current_interval(self) -> float:
         now = time.time()
-        if now < self.cooldown_until:  return COOLDOWN_INTERVAL
-        if self.mode == "WATCHING":    return INTERVAL_WATCHING
-        if self.mode == "IDLE":        return INTERVAL_IDLE
+        if now < self.cooldown_until: return COOLDOWN_INTERVAL
+        if self.mode == "WATCHING":   return INTERVAL_WATCHING
+        if self.mode == "IDLE":       return INTERVAL_IDLE
         return INTERVAL_ACTIVE
 
     def update(self, frame_data: dict, event_triggered: bool):
@@ -488,12 +550,12 @@ class ModeManager:
 # ═══════════════════════════════════════════════
 
 def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
-    emit_log(f"Starting stream analysis v1.8: {hls_url}")
-    emit_log(f"Config: {FRAME_W}x{FRAME_H} scale={SCALE} psm={PSM_MODE}")
+    emit_log(f"Starting stream analysis v2.0: {hls_url}")
+    emit_log(f"Config: {FRAME_W}x{FRAME_H} scale={SCALE} psm={PSM_MODE} adaptive_thresh")
 
-    tracker    = EventTracker(alert_multi=alert_multi)
-    mode_mgr   = ModeManager()
-    state      = {}
+    tracker   = EventTracker(alert_multi=alert_multi)
+    mode_mgr  = ModeManager()
+    state     = {}
     last_emit  = 0.0
     last_stats = 0.0
 
@@ -504,7 +566,6 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
     frame_size = FRAME_W * FRAME_H * 3
     reconnect  = 0
 
-    # ✅ v1.8 : nice pour céder le CPU aux autres processus
     try:
         os.nice(5)
         emit_log("nice(5) applied")
@@ -522,7 +583,6 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
         emit_log("FFmpeg started.")
 
         while running[0]:
-            # Lire en continu pour vider le pipe ffmpeg
             raw = proc.stdout.read(frame_size)
             if not raw or len(raw) < frame_size:
                 emit_log("FFmpeg stream ended / short read, reconnecting...")
@@ -545,7 +605,6 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
                 frame_data = analyze_frame(frame, state)
             except Exception as e:
                 emit_log(f"OCR error: {e}")
-                # ✅ v1.8 : sleep même en cas d'erreur pour ne pas boucler à fond
                 time.sleep(POST_OCR_SLEEP)
                 continue
 
@@ -554,14 +613,12 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
                 frame_data["win_numeric"] or
                 frame_data["win_total_numeric"]
             )
-
             frame_data["has_value"] = has_val
             emit_frame(frame_data)
 
             event_triggered = tracker.update(frame, frame_data)
             mode_mgr.update(frame_data, event_triggered)
 
-            # ✅ v1.8 : céder le CPU après chaque analyse
             time.sleep(POST_OCR_SLEEP)
 
         try: proc.kill()
