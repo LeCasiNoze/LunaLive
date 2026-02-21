@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LunaClip Worker v2.0
+LunaClip Worker v2.1
 - Qualité OCR maximale : 960x540, scale=4, psm=6
 - Préprocessing avancé : netteté (unsharp mask) + threshold adaptatif
 - Détection MISE contextuelle (ancre sur CREDIT, ligne pragmatic)
@@ -296,19 +296,20 @@ def detect_bonus(text):
 
 
 def parse_frame_text(raw_ocr):
-    filtered_text, removed_lines = filter_ocr_lines(raw_ocr)
-    text     = fuzzy_fix(filtered_text)
+    # ✅ v2.1 : fuzzy_fix EN PREMIER — corrige B3T→BET, M|SE→MISE, W1N→WIN
+    # avant que le filtre cherche les mots clés → les déformations OCR sont reconnues
+    prefixed   = fuzzy_fix(raw_ocr)
+    filtered_text, removed_lines = filter_ocr_lines(prefixed)
+    text     = fuzzy_fix(filtered_text)   # 2ème passe sur le texte filtré (sécurité)
     provider = detect_provider(text)
     in_bonus = detect_bonus(text)
 
     # Recherche BET/MISE standard
     bet_found = find_label(text, ["BET", "MISE"])
 
-    # ✅ v1.9 : si pas trouvé + provider pragmatic → recherche contextuelle
-    # On cherche aussi dans le texte brut car CREDIT peut avoir été filtré
+    # Si pas trouvé + provider pragmatic → recherche contextuelle sur texte pré-fixé
     if not bet_found and provider == 'pragmatic':
-        raw_fixed = fuzzy_fix(raw_ocr)
-        bet_found = find_mise_contextuel(raw_fixed) or find_mise_contextuel(text)
+        bet_found = find_mise_contextuel(prefixed) or find_mise_contextuel(text)
 
     result = {
         "provider":          provider,
@@ -380,10 +381,15 @@ def analyze_frame(frame_bgr, state: dict) -> dict:
 
     debug_reasons = {}
 
+    # ✅ v2.1 : mémoriser le provider détecté pour l'affichage
+    # MAIS ne pas écraser parsed["provider"] — ModeManager doit voir
+    # le vrai provider de CE frame (unknown si rien détecté)
+    # pour que consecutive_unknown monte correctement
     if parsed["provider"] != 'unknown':
         state["provider"] = parsed["provider"]
-    elif state.get("provider"):
-        parsed["provider"] = state["provider"]
+    # Note : on NE remplace plus parsed["provider"] par state["provider"]
+    # Le provider affiché = parsed["provider"] (peut être "unknown")
+    # Le provider mémorisé = state["provider"] (dernier connu)
 
     bet_ok, bet_reason = validate_bet(parsed["bet"], state.get("prev_bet_num"))
     debug_reasons["bet"] = bet_reason
@@ -550,7 +556,7 @@ class ModeManager:
 # ═══════════════════════════════════════════════
 
 def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
-    emit_log(f"Starting stream analysis v2.0: {hls_url}")
+    emit_log(f"Starting stream analysis v2.1: {hls_url}")
     emit_log(f"Config: {FRAME_W}x{FRAME_H} scale={SCALE} psm={PSM_MODE} adaptive_thresh")
 
     tracker   = EventTracker(alert_multi=alert_multi)
