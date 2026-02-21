@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-LunaClip Worker v1.7 — RAM optimisé + ACTIVE/WATCHING/IDLE + OCR debug
+LunaClip Worker v1.8
+- RAM optimisé
+- ACTIVE / WATCHING / IDLE modes
+- OCR debug (raw_ocr + parse_debug)
+- CPU optimisé : scale 2, résolution 480x270, nice, sleep post-OCR
+- Filtrage OCR : whitelist lignes utiles + blacklist patterns promo
 """
 
 import cv2
@@ -19,8 +24,14 @@ SCAN_TOP    = 0.50
 SCAN_BOTTOM = 0.98
 SCAN_LEFT   = 0.05
 SCAN_RIGHT  = 0.95
-SCALE       = 3
-PSM_MODE    = 3
+
+# ✅ v1.8 : scale 2 au lieu de 3 → -30% CPU OCR, qualité suffisante
+SCALE    = 2
+PSM_MODE = 3
+
+# ✅ v1.8 : résolution ffmpeg réduite → moins de pixels à traiter
+FRAME_W = 480
+FRAME_H = 270
 
 MAX_WIN_DROP_RATIO    = 0.50
 MIN_DECIMAL_THRESHOLD = 10.0
@@ -38,8 +49,40 @@ COOLDOWN_DURATION = 30.0
 UNKNOWN_FRAMES_TO_WATCH = 10
 NO_VALUE_SECS_TO_IDLE   = 300
 
+# ✅ v1.8 : pause minimale après chaque OCR pour céder le CPU
+POST_OCR_SLEEP = 0.05
 
-def open_ffmpeg_pipe(hls_url: str, w: int = 640, h: int = 360):
+# ─────────────────────────────────────────────
+# Mots qui indiquent qu'une ligne est utile
+# Si une ligne ne contient AUCUN de ces mots → ignorée
+# ─────────────────────────────────────────────
+USEFUL_WORDS = [
+    "BET", "MISE", "WIN", "GAIN", "CREDIT", "SOLDE", "BALANCE",
+    "FREE_SPINS", "FREE SPINS", "TOURS", "PARTIES",
+    "MULTIPLIER", "MULT", "TOTAL",
+]
+
+# ─────────────────────────────────────────────
+# Patterns promotionnels à bannir ligne par ligne
+# Si une ligne contient l'un de ces patterns → supprimée
+# ─────────────────────────────────────────────
+PROMO_PATTERNS = [
+    r'\bWAGER\b', r'\bRACE\b', r'\bDISCORD\b', r'\bEXCLUSIF\b',
+    r'\bOFFERT\b', r'\bGIVEAWAY\b', r'\bFREESPINS\b', r'!\w+',
+    r'\bCODE\b', r'\bBONUS\b(?!\s+(?:ROUND|GAME|SPINS|WIN))',
+    r'\bPROMO\b', r'\bDÈS\b', r'\bMISÉ\b', r'\bTWITCH\b',
+    r'\bYOUTUBE\b', r'\bINSTAGRAM\b', r'\bTIKTOK\b',
+    r'\d+\s*[kK]\s*\$',   # "7.000$", "7k$" dans contexte promo
+    r'\bSUBSCRIBE\b', r'\bABONNEZ\b', r'\bFOLLOW\b',
+]
+_PROMO_RE = re.compile('|'.join(PROMO_PATTERNS), re.IGNORECASE)
+_USEFUL_RE = re.compile(
+    '|'.join(re.escape(w) for w in USEFUL_WORDS),
+    re.IGNORECASE
+)
+
+
+def open_ffmpeg_pipe(hls_url: str, w: int = FRAME_W, h: int = FRAME_H):
     headers = (
         "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36\r\n"
@@ -93,6 +136,44 @@ def ocr_text(thresh):
         Image.fromarray(thresh),
         config=f"--psm {PSM_MODE} --oem 1"
     )
+
+def filter_ocr_lines(raw: str) -> str:
+    """
+    Filtre ligne par ligne le texte OCR brut :
+    1. Supprime les lignes vides / trop courtes
+    2. Supprime les lignes qui contiennent des patterns promo
+    3. Ne garde que les lignes qui contiennent au moins un mot utile
+       (BET, MISE, WIN, CREDIT, GAIN, etc.)
+
+    Retourne le texte filtré reconstruit.
+    Les lignes supprimées sont remplacées par des commentaires
+    dans raw_ocr_filtered pour le debug.
+    """
+    lines = raw.split('\n')
+    kept = []
+    removed = []
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Ignorer lignes vides / trop courtes (bruit OCR)
+        if len(stripped) < 3:
+            continue
+
+        # Bannir si pattern promo détecté
+        if _PROMO_RE.search(stripped):
+            removed.append(f"[PROMO] {stripped}")
+            continue
+
+        # Ne garder que si au moins un mot utile
+        if not _USEFUL_RE.search(stripped):
+            removed.append(f"[NOISE] {stripped}")
+            continue
+
+        kept.append(stripped)
+
+    return '\n'.join(kept), removed
+
 
 def fuzzy_fix(text):
     text = re.sub(r'GAIN\s+TOTAL',  'GAIN_TOTAL', text, flags=re.IGNORECASE)
@@ -157,7 +238,9 @@ def detect_bonus(text):
     return 'FREE_SPINS' in text.upper()
 
 def parse_frame_text(raw_ocr):
-    text     = fuzzy_fix(raw_ocr)
+    # ✅ v1.8 : filtrer avant tout le reste
+    filtered_text, removed_lines = filter_ocr_lines(raw_ocr)
+    text     = fuzzy_fix(filtered_text)
     provider = detect_provider(text)
     in_bonus = detect_bonus(text)
 
@@ -169,6 +252,7 @@ def parse_frame_text(raw_ocr):
         "win_total":         None,
         "free_spins":        None,
         "multiplier_source": None,
+        "_removed_lines":    removed_lines,  # pour debug
     }
 
     if provider == 'hacksaw':
@@ -184,7 +268,7 @@ def parse_frame_text(raw_ocr):
         result["win"]               = find_label(text, ["WIN", "GAINS", "GAIN"])
         result["multiplier_source"] = "win"
 
-    return result
+    return result, filtered_text
 
 
 # ═══════════════════════════════════════════════
@@ -225,9 +309,10 @@ def analyze_frame(frame_bgr, state: dict) -> dict:
         int(w * SCAN_LEFT):int(w * SCAN_RIGHT),
     ]
     raw_text = ocr_text(preprocess(crop))
-    parsed   = parse_frame_text(raw_text)
 
-    # Accumulate parse debug info
+    # ✅ v1.8 : parse_frame_text retourne aussi le texte filtré
+    parsed, filtered_text = parse_frame_text(raw_text)
+
     debug_reasons = {}
 
     if parsed["provider"] != 'unknown':
@@ -263,8 +348,10 @@ def analyze_frame(frame_bgr, state: dict) -> dict:
     def v(d): return d["value"]   if d else None
     def n(d): return d["numeric"] if d else None
 
-    # raw_ocr : texte brut nettoyé (max 500 chars pour ne pas surcharger)
+    # ✅ raw_ocr : texte brut nettoyé (max 500 chars)
     raw_clean = re.sub(r'\s+', ' ', raw_text).strip()[:500]
+    # ✅ filtered_ocr : texte après filtrage (ce que le parser a réellement vu)
+    filtered_clean = re.sub(r'\s+', ' ', filtered_text).strip()[:500]
 
     return {
         "provider":          parsed["provider"],
@@ -281,15 +368,17 @@ def analyze_frame(frame_bgr, state: dict) -> dict:
         "ts_sec":            time.time(),
         # ── OCR Debug ──────────────────────────
         "raw_ocr":           raw_clean,
+        "filtered_ocr":      filtered_clean,   # ✅ nouveau : ce que le parser voit
         "parse_debug": {
-            "provider_detected": parsed["provider"],
-            "in_bonus":          parsed["in_bonus"],
-            "bet_raw":           parsed["bet"]["value"] if parsed["bet"] else None,
-            "win_raw":           parsed["win"]["value"] if parsed["win"] else None,
-            "win_total_raw":     parsed["win_total"]["value"] if parsed["win_total"] else None,
-            "bet_reason":        debug_reasons.get("bet", "—"),
-            "win_reason":        debug_reasons.get("win", "—"),
-            "win_total_reason":  debug_reasons.get("win_total", "—"),
+            "provider_detected":  parsed["provider"],
+            "in_bonus":           parsed["in_bonus"],
+            "bet_raw":            parsed["bet"]["value"] if parsed["bet"] else None,
+            "win_raw":            parsed["win"]["value"] if parsed["win"] else None,
+            "win_total_raw":      parsed["win_total"]["value"] if parsed["win_total"] else None,
+            "bet_reason":         debug_reasons.get("bet", "—"),
+            "win_reason":         debug_reasons.get("win", "—"),
+            "win_total_reason":   debug_reasons.get("win_total", "—"),
+            "removed_lines":      parsed.get("_removed_lines", [])[:10],  # max 10 pour debug
         },
     }
 
@@ -399,7 +488,9 @@ class ModeManager:
 # ═══════════════════════════════════════════════
 
 def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
-    emit_log(f"Starting stream analysis v1.7: {hls_url}")
+    emit_log(f"Starting stream analysis v1.8: {hls_url}")
+    emit_log(f"Config: {FRAME_W}x{FRAME_H} scale={SCALE} psm={PSM_MODE}")
+
     tracker    = EventTracker(alert_multi=alert_multi)
     mode_mgr   = ModeManager()
     state      = {}
@@ -410,14 +501,20 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
     def on_sigterm(*_): running[0] = False
     signal.signal(signal.SIGTERM, on_sigterm)
 
-    W, H       = 640, 360
-    frame_size = W * H * 3
+    frame_size = FRAME_W * FRAME_H * 3
     reconnect  = 0
+
+    # ✅ v1.8 : nice pour céder le CPU aux autres processus
+    try:
+        os.nice(5)
+        emit_log("nice(5) applied")
+    except Exception:
+        pass
 
     while running[0]:
         reconnect += 1
         emit_log(f"FFmpeg connect attempt {reconnect} (mode={mode_mgr.mode})")
-        proc = open_ffmpeg_pipe(hls_url, W, H)
+        proc = open_ffmpeg_pipe(hls_url, FRAME_W, FRAME_H)
         if not proc.stdout:
             emit_log("FFmpeg failed to start (no stdout)")
             time.sleep(RECONNECT_DELAY_SEC)
@@ -425,6 +522,7 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
         emit_log("FFmpeg started.")
 
         while running[0]:
+            # Lire en continu pour vider le pipe ffmpeg
             raw = proc.stdout.read(frame_size)
             if not raw or len(raw) < frame_size:
                 emit_log("FFmpeg stream ended / short read, reconnecting...")
@@ -441,12 +539,14 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
                 continue
             last_emit = now
 
-            frame = np.frombuffer(raw, np.uint8).reshape((H, W, 3))
+            frame = np.frombuffer(raw, np.uint8).reshape((FRAME_H, FRAME_W, 3))
 
             try:
                 frame_data = analyze_frame(frame, state)
             except Exception as e:
                 emit_log(f"OCR error: {e}")
+                # ✅ v1.8 : sleep même en cas d'erreur pour ne pas boucler à fond
+                time.sleep(POST_OCR_SLEEP)
                 continue
 
             has_val = bool(
@@ -455,12 +555,14 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
                 frame_data["win_total_numeric"]
             )
 
-            # Émettre frame toujours (pour OCR debug) mais flag si valeur
             frame_data["has_value"] = has_val
             emit_frame(frame_data)
 
             event_triggered = tracker.update(frame, frame_data)
             mode_mgr.update(frame_data, event_triggered)
+
+            # ✅ v1.8 : céder le CPU après chaque analyse
+            time.sleep(POST_OCR_SLEEP)
 
         try: proc.kill()
         except: pass
@@ -503,6 +605,10 @@ def run_video(video_path: str, alert_multi: float, interval_sec: float):
     cap.release()
     emit_log("Video analysis complete.")
 
+
+# ═══════════════════════════════════════════════
+#  ENTRYPOINT
+# ═══════════════════════════════════════════════
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

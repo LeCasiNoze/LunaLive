@@ -1,5 +1,5 @@
 // web/src/components/admin/LunaClipAdminSection.tsx
-// ═══ LunaClip Control Center ═══
+// ═══ LunaClip Control Center v1.8 ═══
 import * as React from "react";
 import {
   AreaChart, Area, LineChart, Line,
@@ -30,6 +30,7 @@ const T = {
   red:    "#ef4444",
   blue:   "#38bdf8",
   purple: "#a78bfa",
+  orange: "#fb923c",
   accent: "#00ff88",
   mono:   "'JetBrains Mono','Fira Code',monospace",
 };
@@ -38,9 +39,15 @@ const T = {
 // Types
 // ─────────────────────────────────────────────
 interface ParseDebug {
-  provider_detected: string; in_bonus: boolean;
-  bet_raw: string|null; win_raw: string|null; win_total_raw: string|null;
-  bet_reason: string; win_reason: string; win_total_reason: string;
+  provider_detected: string;
+  in_bonus: boolean;
+  bet_raw: string|null;
+  win_raw: string|null;
+  win_total_raw: string|null;
+  bet_reason: string;
+  win_reason: string;
+  win_total_reason: string;
+  removed_lines?: string[];   // ✅ v1.8
 }
 interface FrameData {
   provider: string; in_bonus: boolean;
@@ -51,6 +58,7 @@ interface FrameData {
   multiplier_source: string|null; ts_sec: number;
   has_value: boolean;
   raw_ocr: string|null;
+  filtered_ocr: string|null;   // ✅ v1.8 : texte après filtrage
   parse_debug: ParseDebug|null;
 }
 interface WorkerStats {
@@ -77,17 +85,13 @@ interface GlobalStatus {
   active_count: number;
   alert_multi: number;
   workers: WorkerInfo[];
-
-  // ✅ conteneur (fidèle)
   memory_mb: number;
   ram_limit_mb: number;
   cpu_pct?: number;
   cpu_limit_cores?: number|null;
-
   skipped_ram: string[];
   waiting_slugs: string[];
   scheduler: SchedulerState;
-
   bot_unreachable?: boolean;
   bot_error?: string|null;
 }
@@ -238,14 +242,125 @@ function Dot({ color, pulse }: { color: string; pulse?: boolean }) {
 }
 
 // ─────────────────────────────────────────────
-// Focus Overlay (inchangé sauf titre)
-/// ─────────────────────────────────────────────
+// OCR Debug Block — ✅ v1.8 : raw + filtered + removed_lines
+// ─────────────────────────────────────────────
+function OcrDebugBlock({ f }: { f: FrameData }) {
+  const [showRemoved, setShowRemoved] = React.useState(false);
+  const pd = f.parse_debug;
+  const removedLines = pd?.removed_lines ?? [];
+  const hasFiltered = f.filtered_ocr != null && f.filtered_ocr !== f.raw_ocr;
+
+  return (
+    <Card>
+      <CardHeader>
+        🔬 OCR Debug — dernière frame
+        {removedLines.length > 0 && (
+          <Badge color={T.orange} bg={`${T.orange}15`}>
+            {removedLines.length} ligne{removedLines.length > 1 ? "s" : ""} filtrée{removedLines.length > 1 ? "s" : ""}
+          </Badge>
+        )}
+      </CardHeader>
+      <div style={{ padding:12, display:"grid", gap:10 }}>
+
+        {/* Texte brut */}
+        <div>
+          <div style={{ fontSize:10, color:T.muted, fontWeight:700, letterSpacing:"0.08em", marginBottom:4 }}>
+            TEXTE BRUT OCR
+          </div>
+          <pre style={{
+            fontFamily:T.mono, fontSize:10, color:T.text, lineHeight:1.6,
+            background:T.bg3, border:`1px solid ${T.border}`,
+            borderRadius:6, padding:"8px 10px", margin:0,
+            whiteSpace:"pre-wrap", wordBreak:"break-all", maxHeight:100, overflowY:"auto",
+          }}>{f.raw_ocr || "(vide)"}</pre>
+        </div>
+
+        {/* Texte filtré — affiché seulement si différent du brut */}
+        {hasFiltered && (
+          <div>
+            <div style={{ fontSize:10, color:T.green, fontWeight:700, letterSpacing:"0.08em", marginBottom:4 }}>
+              TEXTE APRÈS FILTRAGE (ce que le parser voit)
+            </div>
+            <pre style={{
+              fontFamily:T.mono, fontSize:10, color:T.green, lineHeight:1.6,
+              background:`${T.green}08`, border:`1px solid ${T.green}33`,
+              borderRadius:6, padding:"8px 10px", margin:0,
+              whiteSpace:"pre-wrap", wordBreak:"break-all", maxHeight:100, overflowY:"auto",
+            }}>{f.filtered_ocr || "(vide après filtrage)"}</pre>
+          </div>
+        )}
+
+        {/* Lignes supprimées */}
+        {removedLines.length > 0 && (
+          <div>
+            <button onClick={() => setShowRemoved(v => !v)} style={{
+              background:"none", border:"none", cursor:"pointer",
+              color:T.orange, fontSize:10, fontWeight:700,
+              fontFamily:T.mono, padding:0, marginBottom:4,
+              display:"flex", alignItems:"center", gap:5,
+            }}>
+              {showRemoved ? "▼" : "▶"} LIGNES SUPPRIMÉES PAR LE FILTRE ({removedLines.length})
+            </button>
+            {showRemoved && (
+              <div style={{
+                background:T.bg3, border:`1px solid ${T.orange}33`,
+                borderRadius:6, overflow:"hidden",
+              }}>
+                {removedLines.map((line, i) => {
+                  const isPromo = line.startsWith("[PROMO]");
+                  const isNoise = line.startsWith("[NOISE]");
+                  const tag  = isPromo ? "[PROMO]" : isNoise ? "[NOISE]" : "[?]";
+                  const text = line.replace(/^\[(PROMO|NOISE|\?)\]\s*/, "");
+                  const col  = isPromo ? T.red : T.dim;
+                  return (
+                    <div key={i} style={{
+                      padding:"3px 10px",
+                      borderBottom: i < removedLines.length-1 ? `1px solid ${T.border}` : "none",
+                      display:"grid", gridTemplateColumns:"55px 1fr", gap:8, alignItems:"center",
+                    }}>
+                      <span style={{ fontFamily:T.mono, fontSize:9, fontWeight:700, color:col }}>{tag}</span>
+                      <span style={{ fontFamily:T.mono, fontSize:10, color:T.muted, wordBreak:"break-all" }}>{text}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Valeurs parsées */}
+        {pd && (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+            {[
+              { l:"BET brut",       v: pd.bet_raw ?? "—",       r: pd.bet_reason },
+              { l:"WIN brut",       v: pd.win_raw ?? "—",       r: pd.win_reason },
+              { l:"WIN TOTAL brut", v: pd.win_total_raw ?? "—", r: pd.win_total_reason },
+            ].map(x => (
+              <div key={x.l} style={{
+                background:T.bg3, borderRadius:6, padding:"8px 10px",
+                border:`1px solid ${x.r==="ok" ? T.green+"33" : T.border}`,
+              }}>
+                <div style={{ fontSize:9, color:T.muted, fontWeight:700, letterSpacing:"0.08em" }}>{x.l}</div>
+                <div style={{ fontFamily:T.mono, fontSize:12, marginTop:2 }}>{x.v}</div>
+                <div style={{ fontSize:9, color: x.r==="ok" ? T.green : T.yellow, marginTop:3 }}>{x.r}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Focus Overlay
+// ─────────────────────────────────────────────
 function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
   w: WorkerInfo; adminKey: string; alertMulti: number; onClose: () => void;
 }) {
-  const [chart,  setChart]  = React.useState<{ts:number;multi:number}[]>([]);
-  const [events, setEvents] = React.useState<LunaEvent[]>([]);
-  const [clipMsg,setClipMsg]= React.useState<string|null>(null);
+  const [chart,   setChart]   = React.useState<{ts:number;multi:number}[]>([]);
+  const [events,  setEvents]  = React.useState<LunaEvent[]>([]);
+  const [clipMsg, setClipMsg] = React.useState<string|null>(null);
   const authH = { "x-admin-key": adminKey };
 
   React.useEffect(() => {
@@ -265,7 +380,7 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
 
   const f     = w.last_frame;
   const stats = w.worker_stats ?? { mode:"ACTIVE", consecutive_unknown:0, frames_total:0, frames_with_value:0, last_value_secs_ago:0 };
-  const modeCol = stats.mode==="ACTIVE" ? T.green : stats.mode==="WATCHING" ? T.yellow : T.muted;
+  const modeCol  = stats.mode==="ACTIVE" ? T.green : stats.mode==="WATCHING" ? T.yellow : T.muted;
   const valuePct = stats.frames_total>0 ? Math.round((stats.frames_with_value/stats.frames_total)*100) : 0;
 
   const handleClip = async () => {
@@ -285,11 +400,12 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
       display:"flex", alignItems:"center", justifyContent:"center", padding:20,
     }} onClick={onClose}>
       <div style={{
-        width:"100%", maxWidth:920, maxHeight:"92vh", overflowY:"auto",
+        width:"100%", maxWidth:960, maxHeight:"92vh", overflowY:"auto",
         background:T.bg1, border:`1px solid ${T.bord2}`,
         borderRadius:14, boxShadow:"0 40px 100px rgba(0,0,0,0.8)",
       }} onClick={e=>e.stopPropagation()}>
 
+        {/* Header */}
         <div style={{
           padding:"14px 20px", borderBottom:`1px solid ${T.border}`,
           display:"flex", gap:10, alignItems:"center", flexWrap:"wrap",
@@ -308,14 +424,16 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
         </div>
 
         <div style={{ padding:16, display:"grid", gap:14 }}>
+
+          {/* Stats grid */}
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))", gap:8 }}>
             {[
-              { l:"Mode",       v:<Badge color={modeCol}>{stats.mode}</Badge> },
-              { l:"Frames",     v:<span style={{ fontFamily:T.mono }}>{stats.frames_total}</span> },
-              { l:"Détection",  v:<span style={{ fontFamily:T.mono, color:valuePct>30?T.green:T.yellow }}>{valuePct}%</span> },
+              { l:"Mode",         v:<Badge color={modeCol}>{stats.mode}</Badge> },
+              { l:"Frames",       v:<span style={{ fontFamily:T.mono }}>{stats.frames_total}</span> },
+              { l:"Détection",    v:<span style={{ fontFamily:T.mono, color:valuePct>30?T.green:T.yellow }}>{valuePct}%</span> },
               { l:"Dernière val", v:<span style={{ fontFamily:T.mono }}>{stats.last_value_secs_ago}s</span> },
-              { l:"BET",        v:<span style={{ fontFamily:T.mono }}>{f?.bet_value ?? "—"}</span> },
-              { l:"WIN",        v:<span style={{ fontFamily:T.mono }}>{f?.win_total_value ?? f?.win_value ?? "—"}</span> },
+              { l:"BET",          v:<span style={{ fontFamily:T.mono }}>{f?.bet_value ?? "—"}</span> },
+              { l:"WIN",          v:<span style={{ fontFamily:T.mono }}>{f?.win_total_value ?? f?.win_value ?? "—"}</span> },
             ].map(s => (
               <Card key={s.l} style={{ padding:"8px 12px" }}>
                 <div style={{ fontSize:10, color:T.muted, fontWeight:700, letterSpacing:"0.08em", marginBottom:4 }}>{s.l}</div>
@@ -324,6 +442,7 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
             ))}
           </div>
 
+          {/* Graphe */}
           {chart.length > 1 && (
             <Card>
               <CardHeader>📈 Multiplicateur — session</CardHeader>
@@ -339,8 +458,10 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
                     <XAxis dataKey="ts" tickFormatter={hhmmss} stroke={T.dim} tick={{fontSize:9,fill:T.dim}}/>
                     <YAxis stroke={T.dim} tick={{fontSize:9,fill:T.dim}}/>
-                    <Tooltip contentStyle={{background:T.bg3,border:`1px solid ${T.bord2}`,borderRadius:7,fontSize:11}}
-                      labelFormatter={v=>`@${hhmmss(Number(v))}`}/>
+                    <Tooltip
+                      contentStyle={{background:T.bg3,border:`1px solid ${T.bord2}`,borderRadius:7,fontSize:11}}
+                      labelFormatter={v=>`@${hhmmss(Number(v))}`}
+                    />
                     <ReferenceLine y={alertMulti} stroke={T.red} strokeDasharray="4 4"
                       label={{value:`×${alertMulti}`,fill:T.red,fontSize:9}}/>
                     <Area type="monotone" dataKey="multi" stroke={T.green} strokeWidth={2} fill="url(#fg)" dot={false}/>
@@ -350,39 +471,10 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
             </Card>
           )}
 
-          {f?.raw_ocr != null && (
-            <Card>
-              <CardHeader>🔬 OCR Debug — dernière frame</CardHeader>
-              <div style={{ padding:12, display:"grid", gap:10 }}>
-                <div>
-                  <div style={{ fontSize:10, color:T.muted, fontWeight:700, letterSpacing:"0.08em", marginBottom:4 }}>TEXTE BRUT OCR</div>
-                  <pre style={{
-                    fontFamily:T.mono, fontSize:10, color:T.text, lineHeight:1.6,
-                    background:T.bg3, border:`1px solid ${T.border}`,
-                    borderRadius:6, padding:"8px 10px", margin:0,
-                    whiteSpace:"pre-wrap", wordBreak:"break-all", maxHeight:120, overflowY:"auto",
-                  }}>{f.raw_ocr || "(vide)"}</pre>
-                </div>
-                {f.parse_debug && (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
-                    {[
-                      { l:"BET brut",       v:f.parse_debug.bet_raw ?? "—",       r:f.parse_debug.bet_reason },
-                      { l:"WIN brut",       v:f.parse_debug.win_raw ?? "—",       r:f.parse_debug.win_reason },
-                      { l:"WIN TOTAL brut", v:f.parse_debug.win_total_raw ?? "—", r:f.parse_debug.win_total_reason },
-                    ].map(x => (
-                      <div key={x.l} style={{ background:T.bg3, borderRadius:6, padding:"8px 10px",
-                        border:`1px solid ${x.r==="ok" ? T.green+"33" : T.border}` }}>
-                        <div style={{ fontSize:9, color:T.muted, fontWeight:700, letterSpacing:"0.08em" }}>{x.l}</div>
-                        <div style={{ fontFamily:T.mono, fontSize:12, marginTop:2 }}>{x.v}</div>
-                        <div style={{ fontSize:9, color: x.r==="ok" ? T.green : T.yellow, marginTop:3 }}>{x.r}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </Card>
-          )}
+          {/* ✅ OCR Debug block v1.8 */}
+          {f && <OcrDebugBlock f={f}/>}
 
+          {/* Events */}
           {events.length > 0 && (
             <Card>
               <CardHeader>🚨 Events session ({events.length})</CardHeader>
@@ -405,6 +497,7 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
             </Card>
           )}
 
+          {/* Clip manuel */}
           <div style={{ display:"flex", gap:10, alignItems:"center" }}>
             <Btn onClick={handleClip} disabled={!f}>🎬 Clip maintenant</Btn>
             {clipMsg && <span style={{ color:T.green, fontSize:12 }}>{clipMsg}</span>}
@@ -416,14 +509,16 @@ function FocusOverlay({ w, adminKey, alertMulti, onClose }: {
 }
 
 // ─────────────────────────────────────────────
-// WorkerRow (ajout lock/unlock)
+// WorkerRow
 // ─────────────────────────────────────────────
 function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onSkip, onLockToggle, isWaiting, isLocked }: {
   w: WorkerInfo; alertMulti: number;
-  onFocus: () => void; onForceSwitch?: () => void;
+  onFocus: () => void;
+  onForceSwitch?: () => void;
   onSkip: () => void;
   onLockToggle: () => void;
-  isWaiting: boolean; isLocked: boolean;
+  isWaiting: boolean;
+  isLocked: boolean;
 }) {
   const [sparkline, setSparkline] = React.useState<{ts:number;multi:number}[]>([]);
 
@@ -444,6 +539,9 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onSkip, onLockToggle
   const isBig   = multi != null && multi >= alertMulti;
   const isActive = w.status === "running";
 
+  // ✅ Indicateur filtre OCR : si removed_lines > 0 dans la dernière frame
+  const filteredCount = f?.parse_debug?.removed_lines?.length ?? 0;
+
   return (
     <div style={{
       background: T.bg2,
@@ -455,11 +553,13 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onSkip, onLockToggle
       <div style={{
         padding:"10px 14px",
         display:"grid",
-        gridTemplateColumns:"8px auto 1fr 80px 110px 140px auto",
+        gridTemplateColumns:"8px auto 1fr 80px 110px 150px auto",
         gap:12, alignItems:"center",
       }}>
+        {/* Dot statut */}
         <Dot color={isActive ? T.green : isWaiting ? T.yellow : T.muted} pulse={isActive}/>
 
+        {/* Identity + badges */}
         <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
           <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
             <span style={{ fontWeight:900, fontSize:13 }}>{w.streamer_slug}</span>
@@ -467,6 +567,10 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onSkip, onLockToggle
             {f?.in_bonus && <Badge color={T.blue}>BONUS</Badge>}
             {isLocked && <Badge color={T.blue}>🔒 LOCK</Badge>}
             {isWaiting && !isActive && <Badge color={T.yellow}>EN ATTENTE</Badge>}
+            {/* ✅ v1.8 : badge filtre si des lignes ont été supprimées */}
+            {filteredCount > 0 && (
+              <Badge color={T.orange}>🔍 {filteredCount} filtrée{filteredCount>1?"s":""}</Badge>
+            )}
           </div>
           <div style={{ display:"flex", gap:6, alignItems:"center" }}>
             <Badge color={modeCol}>{stats.mode}</Badge>
@@ -476,6 +580,7 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onSkip, onLockToggle
           </div>
         </div>
 
+        {/* Sparkline */}
         {sparkline.length > 2 ? (
           <div style={{ height:32 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -488,6 +593,7 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onSkip, onLockToggle
           </div>
         ) : <div/>}
 
+        {/* Multiplicateur */}
         <div style={{ textAlign:"right" }}>
           {multi != null ? (
             <span style={{
@@ -498,6 +604,7 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onSkip, onLockToggle
           ) : <span style={{ color:T.dim, fontFamily:T.mono }}>—</span>}
         </div>
 
+        {/* BET / WIN */}
         <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
           <span style={{ color:T.dim, fontSize:10 }}>
             BET <span style={{ color:T.text, fontFamily:T.mono }}>{f?.bet_value??"—"}</span>
@@ -509,6 +616,7 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onSkip, onLockToggle
           </span>
         </div>
 
+        {/* Actions */}
         <div style={{ display:"flex", gap:5, justifyContent:"flex-end", flexWrap:"wrap" }}>
           <Btn onClick={onFocus} small>🔍 Focus</Btn>
           {!isActive && onForceSwitch && (
@@ -517,9 +625,7 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onSkip, onLockToggle
           <Btn onClick={onLockToggle} small color={T.blue}>
             {isLocked ? "🔓 Unlock" : "🔒 Lock"}
           </Btn>
-          <Btn onClick={onSkip} small danger>
-            ⏭ Passer
-          </Btn>
+          <Btn onClick={onSkip} small danger>⏭ Passer</Btn>
         </div>
       </div>
     </div>
@@ -527,14 +633,14 @@ function WorkerRow({ w, alertMulti, onFocus, onForceSwitch, onSkip, onLockToggle
 }
 
 // ─────────────────────────────────────────────
-// Tab : Live (ajout seuil + CPU + min watch 20/30/60 + lock state)
+// Tab : Live
 // ─────────────────────────────────────────────
 function TabLive({ status, adminKey, onControl }: {
   status: GlobalStatus; adminKey: string;
   onControl: (action: string, params?: any) => Promise<void>;
 }) {
-  const [focusedId, setFocusedId] = React.useState<number|null>(null);
-  const [alertInput, setAlertInput] = React.useState<number>(status.alert_multi ?? 300);
+  const [focusedId,   setFocusedId]   = React.useState<number|null>(null);
+  const [alertInput,  setAlertInput]  = React.useState<number>(status.alert_multi ?? 300);
 
   React.useEffect(() => {
     setAlertInput(status.alert_multi ?? 300);
@@ -543,10 +649,9 @@ function TabLive({ status, adminKey, onControl }: {
   const allWorkers   = status.workers ?? [];
   const waitingSlugs = new Set(status.waiting_slugs ?? []);
   const sched        = status.scheduler;
+  const lockedId     = sched?.locked_streamer_id ?? null;
 
   const focusedWorker = allWorkers.find(w => w.streamer_id === focusedId);
-
-  const lockedId = sched?.locked_streamer_id ?? null;
 
   return (
     <>
@@ -556,11 +661,11 @@ function TabLive({ status, adminKey, onControl }: {
       )}
 
       <div style={{ display:"grid", gap:10 }}>
-
         <Card>
           <CardHeader>⚙️ Contrôles scheduler</CardHeader>
           <div style={{ padding:"12px 14px", display:"flex", gap:20, flexWrap:"wrap", alignItems:"center" }}>
 
+            {/* Workers simultanés */}
             <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
               <span style={{ fontSize:10, color:T.muted, fontWeight:700, letterSpacing:"0.08em" }}>
                 WORKERS SIMULTANÉS
@@ -580,6 +685,7 @@ function TabLive({ status, adminKey, onControl }: {
 
             <div style={{ width:1, height:32, background:T.border }}/>
 
+            {/* Durée min */}
             <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
               <span style={{ fontSize:10, color:T.muted, fontWeight:700, letterSpacing:"0.08em" }}>
                 DURÉE MIN PAR STREAMER
@@ -599,7 +705,7 @@ function TabLive({ status, adminKey, onControl }: {
 
             <div style={{ width:1, height:32, background:T.border }}/>
 
-            {/* ✅ Seuil */}
+            {/* Seuil event */}
             <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
               <span style={{ fontSize:10, color:T.muted, fontWeight:700, letterSpacing:"0.08em" }}>
                 SEUIL EVENT (×)
@@ -607,9 +713,9 @@ function TabLive({ status, adminKey, onControl }: {
               <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
                 {[100,200,300,500,1000].map(x => (
                   <button key={x} onClick={() => onControl("set_alert_multi", { value:x })} style={{
-                    background: (status.alert_multi===x) ? `${T.red}22` : T.bg3,
-                    border:`1px solid ${(status.alert_multi===x) ? T.red : T.border}`,
-                    color: (status.alert_multi===x) ? T.red : T.muted,
+                    background: status.alert_multi===x ? `${T.red}22` : T.bg3,
+                    border:`1px solid ${status.alert_multi===x ? T.red : T.border}`,
+                    color: status.alert_multi===x ? T.red : T.muted,
                     borderRadius:6, padding:"4px 10px", cursor:"pointer",
                     fontSize:11, fontWeight:800, transition:"all 0.15s",
                     fontFamily:T.mono,
@@ -617,8 +723,8 @@ function TabLive({ status, adminKey, onControl }: {
                 ))}
                 <input
                   value={alertInput}
-                  onChange={e=>setAlertInput(Number(e.target.value))}
-                  type="number"
+                  onChange={e => setAlertInput(Number(e.target.value))}
+                  type="number" min={10} max={100000}
                   style={{
                     width:90, background:T.bg4, border:`1px solid ${T.border}`,
                     color:T.text, borderRadius:6, padding:"4px 8px",
@@ -633,10 +739,11 @@ function TabLive({ status, adminKey, onControl }: {
 
             <div style={{ width:1, height:32, background:T.border }}/>
 
-            {/* ✅ RAM + CPU */}
+            {/* RAM + CPU */}
             <RamBar used={status.memory_mb ?? 0} limit={status.ram_limit_mb ?? 420}/>
-            <CpuBar pct={status.cpu_pct ?? 0} cores={status.cpu_limit_cores ?? null} />
+            <CpuBar pct={status.cpu_pct ?? 0} cores={status.cpu_limit_cores ?? null}/>
 
+            {/* Résumé droite */}
             <div style={{ marginLeft:"auto", display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
               {sched?.locked && lockedId && (
                 <Badge color={T.blue}>🔒 LOCK: #{lockedId}</Badge>
@@ -657,6 +764,7 @@ function TabLive({ status, adminKey, onControl }: {
           </div>
         </Card>
 
+        {/* Liste workers */}
         {allWorkers.length === 0 ? (
           <div style={{
             padding:40, textAlign:"center", color:T.muted, fontSize:13,
@@ -688,14 +796,14 @@ function TabLive({ status, adminKey, onControl }: {
 }
 
 // ─────────────────────────────────────────────
-// Tab : Logs (inchangé)
+// Tab : Logs
 // ─────────────────────────────────────────────
 function TabLogs({ adminKey, workers }: { adminKey: string; workers: WorkerInfo[] }) {
-  const [logs,     setLogs]     = React.useState<LogEntry[]>([]);
-  const [filter,   setFilter]   = React.useState<string>("all");
-  const [source,   setSource]   = React.useState<string>("all");
-  const [paused,   setPaused]   = React.useState(false);
-  const [search,   setSearch]   = React.useState("");
+  const [logs,   setLogs]   = React.useState<LogEntry[]>([]);
+  const [filter, setFilter] = React.useState<string>("all");
+  const [source, setSource] = React.useState<string>("all");
+  const [paused, setPaused] = React.useState(false);
+  const [search, setSearch] = React.useState("");
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const authH = { "x-admin-key": adminKey };
 
@@ -722,8 +830,7 @@ function TabLogs({ adminKey, workers }: { adminKey: string; workers: WorkerInfo[
   const sourceColor: Record<string, string> = {
     node: T.blue, py: T.green, pyerr: T.red,
   };
-
-  const slugs = ["all", "scheduler", ...workers.map(w => w.streamer_slug)];
+  const slugs   = ["all", "scheduler", ...workers.map(w => w.streamer_slug)];
   const sources = ["all", "node", "py", "pyerr"];
 
   const filtered = logs.filter(l => {
@@ -778,16 +885,16 @@ function TabLogs({ adminKey, workers }: { adminKey: string; workers: WorkerInfo[
             <span style={{ fontFamily:T.mono, fontSize:9, color:T.dim, paddingTop:1 }}>
               {fmtTs(l.ts)}
             </span>
+            <span style={{ fontFamily:T.mono, fontSize:9, fontWeight:700, color: sourceColor[l.source] ?? T.muted }}>
+              [{l.source}]
+            </span>
+            <span style={{ fontFamily:T.mono, fontSize:9, color:T.purple,
+              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+              {l.slug}
+            </span>
             <span style={{
-              fontFamily:T.mono, fontSize:9, fontWeight:700,
-              color: sourceColor[l.source] ?? T.muted,
-            }}>[{l.source}]</span>
-            <span style={{
-              fontFamily:T.mono, fontSize:9, color:T.purple,
-              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-            }}>{l.slug}</span>
-            <span style={{
-              fontFamily:T.mono, fontSize:10, color: l.source==="pyerr" ? T.red : T.text,
+              fontFamily:T.mono, fontSize:10,
+              color: l.source==="pyerr" ? T.red : T.text,
               lineHeight:1.5, wordBreak:"break-all",
             }}>{l.msg}</span>
           </div>
@@ -806,7 +913,7 @@ function TabLogs({ adminKey, workers }: { adminKey: string; workers: WorkerInfo[
 }
 
 // ─────────────────────────────────────────────
-// Tab : Events / Clips (inchangé)
+// Tab : Events
 // ─────────────────────────────────────────────
 function TabEvents({ adminKey }: { adminKey: string }) {
   const [events, setEvents] = React.useState<LunaEvent[]>([]);
@@ -854,6 +961,9 @@ function TabEvents({ adminKey }: { adminKey: string }) {
   );
 }
 
+// ─────────────────────────────────────────────
+// Tab : Clips
+// ─────────────────────────────────────────────
 function TabClips({ adminKey }: { adminKey: string }) {
   const [clips, setClips] = React.useState<LunaClip[]>([]);
   const authH = { "x-admin-key": adminKey };
@@ -972,6 +1082,8 @@ export function LunaClipAdminSection({ adminKey }: { adminKey: string }) {
       fontFamily:"system-ui,-apple-system,sans-serif",
       color:T.text,
     }}>
+
+      {/* Barre de statut */}
       <div style={{
         display:"flex", gap:10, flexWrap:"wrap", alignItems:"center",
         padding:"10px 14px", borderRadius:9,
@@ -987,7 +1099,9 @@ export function LunaClipAdminSection({ adminKey }: { adminKey: string }) {
         <Badge color={T.purple}>Seuil ×{status?.alert_multi ?? 300}</Badge>
         {memMb > 0 && <RamBar used={memMb} limit={ramLimit}/>}
         <CpuBar pct={cpuPct} cores={cpuCores}/>
-        {status?.bot_unreachable && <Badge color={T.red}>⚠ BOT INJOIGNABLE</Badge>}
+        {status?.bot_unreachable && (
+          <Badge color={T.red}>⚠ BOT INJOIGNABLE{status.bot_error ? ` · ${status.bot_error}` : ""}</Badge>
+        )}
         {ctrlMsg && (
           <span style={{ fontSize:12, color:ctrlMsg.startsWith("✅") ? T.green : T.yellow }}>
             {ctrlMsg}
@@ -998,6 +1112,7 @@ export function LunaClipAdminSection({ adminKey }: { adminKey: string }) {
         </span>
       </div>
 
+      {/* Onglets */}
       <div style={{ display:"flex", gap:5 }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
