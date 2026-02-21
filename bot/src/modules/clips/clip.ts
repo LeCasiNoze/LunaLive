@@ -4,10 +4,9 @@ import type { ChatMsg, StreamerRow } from "../../core/types.js";
 
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
 
-// Produit (validé)
-const LATENCY_PAD_SEC = 15;
-const DEFAULT_PRE_SEC = 105; // 1m45
-const DEFAULT_POST_SEC = 15; // 15s
+const LATENCY_PAD_SEC  = 15;
+const DEFAULT_PRE_SEC  = 105; // 1m45 (inchangé pour !clip manuel)
+const DEFAULT_POST_SEC = 15;  // 15s
 
 function normTitle(s: string): string {
   return String(s || "").trim().slice(0, 140);
@@ -32,9 +31,9 @@ async function dliveGql(query: string, variables?: any) {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      accept: "application/json",
-      origin: "https://dlive.tv",
-      referer: "https://dlive.tv/",
+      accept:         "application/json",
+      origin:         "https://dlive.tv",
+      referer:        "https://dlive.tv/",
     },
     body: JSON.stringify(variables ? { query, variables } : { query }),
   });
@@ -74,10 +73,9 @@ async function getDliveChannelSlugForStreamer(pool: Pool, streamerId: number): P
   const row = r.rows?.[0] || null;
   if (!row) return null;
 
-  const useLinked = !!row.useLinked;
-  const linked = row.linkedDisplayname ? String(row.linkedDisplayname) : "";
-  const provider = row.providerChannelSlug ? String(row.providerChannelSlug) : "";
-
+  const useLinked   = !!row.useLinked;
+  const linked      = row.linkedDisplayname ? String(row.linkedDisplayname) : "";
+  const provider    = row.providerChannelSlug ? String(row.providerChannelSlug) : "";
   const channelSlug = useLinked && linked ? linked : provider;
   return channelSlug.trim() ? channelSlug.trim() : null;
 }
@@ -86,13 +84,11 @@ async function getDliveChannelSlugForStreamer(pool: Pool, streamerId: number): P
 
 let ensured = false;
 
-// threshold to detect "seconds" timestamps (10 digits) vs ms (13 digits)
 const TS_MS_THRESHOLD = 100000000000; // 1e11
 
 async function ensureBotClipsTable(pool: Pool) {
   if (ensured) return;
 
-  // best effort (idempotent)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS bot_clips (
       id BIGSERIAL PRIMARY KEY,
@@ -102,58 +98,33 @@ async function ensureBotClipsTable(pool: Pool) {
       at_sec INTEGER NOT NULL,
       pre_sec INTEGER NOT NULL DEFAULT 105,
       post_sec INTEGER NOT NULL DEFAULT 15,
-      created_ts BIGINT NOT NULL,     -- ✅ ms
+      created_ts BIGINT NOT NULL,
       vod_url TEXT,
       vod_permlink TEXT,
-      vod_created_ts BIGINT           -- ✅ ms
+      vod_created_ts BIGINT
     );
   `);
 
-  // upgrade if old schema used INTEGER
-  await pool
-    .query(`
-      ALTER TABLE bot_clips
-      ALTER COLUMN created_ts TYPE BIGINT
-      USING created_ts::bigint;
-    `)
-    .catch(() => {});
-  await pool
-    .query(`
-      ALTER TABLE bot_clips
-      ALTER COLUMN vod_created_ts TYPE BIGINT
-      USING vod_created_ts::bigint;
-    `)
-    .catch(() => {});
+  await pool.query(`ALTER TABLE bot_clips ALTER COLUMN created_ts TYPE BIGINT USING created_ts::bigint;`).catch(() => {});
+  await pool.query(`ALTER TABLE bot_clips ALTER COLUMN vod_created_ts TYPE BIGINT USING vod_created_ts::bigint;`).catch(() => {});
 
-  // migrate seconds -> ms (best effort, only if it looks like seconds)
-  await pool
-    .query(
-      `
-      UPDATE bot_clips
-      SET created_ts = created_ts * 1000
-      WHERE created_ts < $1
-      `,
-      [TS_MS_THRESHOLD]
-    )
-    .catch(() => {});
-  await pool
-    .query(
-      `
-      UPDATE bot_clips
-      SET vod_created_ts = vod_created_ts * 1000
-      WHERE vod_created_ts IS NOT NULL
-        AND vod_created_ts < $1
-      `,
-      [TS_MS_THRESHOLD]
-    )
-    .catch(() => {});
+  // ✅ Nouvelle colonne : timestamp exact du début du live courant au moment du clip
+  // Permet au vod_linker de trouver la VOD exacte sans estimation approximative
+  await pool.query(`ALTER TABLE bot_clips ADD COLUMN IF NOT EXISTS live_start_ts BIGINT;`);
+
+  await pool.query(
+    `UPDATE bot_clips SET created_ts = created_ts * 1000 WHERE created_ts < $1`,
+    [TS_MS_THRESHOLD]
+  ).catch(() => {});
+  await pool.query(
+    `UPDATE bot_clips SET vod_created_ts = vod_created_ts * 1000 WHERE vod_created_ts IS NOT NULL AND vod_created_ts < $1`,
+    [TS_MS_THRESHOLD]
+  ).catch(() => {});
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_bot_clips_streamer_created
       ON bot_clips(streamer_id, created_ts DESC);
   `);
-
-  // utile pour le worker
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_bot_clips_streamer_vod_pending
       ON bot_clips(streamer_id)
@@ -174,18 +145,13 @@ async function getStreamerOwnerUserId(pool: Pool, streamerId: number): Promise<n
 async function hasActiveStreamerSub(pool: Pool, userId: number): Promise<boolean> {
   const uid = Number(userId || 0);
   if (!uid) return false;
-
   try {
     const r = await pool.query(
-      `
-      SELECT 1
-      FROM user_subscriptions us
-      WHERE us.user_id=$1
-        AND us.plan_code='streamer'
-        AND us.status IN ('active','trialing')
-        AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
-      LIMIT 1
-      `,
+      `SELECT 1 FROM user_subscriptions us
+       WHERE us.user_id=$1 AND us.plan_code='streamer'
+         AND us.status IN ('active','trialing')
+         AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
+       LIMIT 1`,
       [uid]
     );
     return !!r.rows?.[0];
@@ -208,30 +174,27 @@ async function addClipPg(p: {
   atSec: number;
   preSec: number;
   postSec: number;
+  // ✅ timestamp exact du début du live courant (ms) — ancre pour le vod_linker
+  liveStartTs: number;
 }): Promise<{ ok: true; id: number } | { ok: false; reason: "duplicate" }> {
   const { pool, streamerId } = p;
 
   await ensureBotClipsTable(pool);
 
-  const nowMs = Date.now(); // ✅ ms
-  const at = Math.max(0, Math.floor(p.atSec));
-  const pre = Math.max(0, Math.floor(p.preSec));
-  const post = Math.max(0, Math.floor(p.postSec));
+  const nowMs   = Date.now();
+  const at      = Math.max(0, Math.floor(p.atSec));
+  const pre     = Math.max(0, Math.floor(p.preSec));
+  const post    = Math.max(0, Math.floor(p.postSec));
 
-  // 🔥 on décide si on applique une limite (owner streamer sub => illimité)
   const unlimited = await streamerHasUnlimitedClips(pool, streamerId);
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // dédoublonnage ±20s dans les 6 dernières heures (par streamer)
     const dup = await client.query(
-      `SELECT id
-       FROM bot_clips
-       WHERE streamer_id=$1
-         AND ABS(at_sec - $2) <= 20
-         AND created_ts >= $3
+      `SELECT id FROM bot_clips
+       WHERE streamer_id=$1 AND ABS(at_sec - $2) <= 20 AND created_ts >= $3
        LIMIT 1`,
       [streamerId, at, nowMs - 6 * 3600 * 1000]
     );
@@ -240,29 +203,23 @@ async function addClipPg(p: {
       return { ok: false as const, reason: "duplicate" };
     }
 
+    // ✅ on stocke live_start_ts pour que le vod_linker trouve la bonne VOD
     const ins = await client.query(
-      `INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts)
-       VALUES($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts, live_start_ts)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING id`,
-      [streamerId, p.title, p.author, at, pre, post, nowMs]
+      [streamerId, p.title, p.author, at, pre, post, nowMs, p.liveStartTs]
     );
 
     const newId = Number(ins.rows?.[0]?.id || 0);
 
-    // ✅ limite 10 clips si pas d’abonnement streamer: on garde les + récents
     if (!unlimited) {
       await client.query(
-        `
-        WITH to_del AS (
-          SELECT id
-          FROM bot_clips
-          WHERE streamer_id = $1
-          ORDER BY created_ts DESC
-          OFFSET $2
-        )
-        DELETE FROM bot_clips
-        WHERE id IN (SELECT id FROM to_del)
-        `,
+        `WITH to_del AS (
+           SELECT id FROM bot_clips WHERE streamer_id=$1
+           ORDER BY created_ts DESC OFFSET $2
+         )
+         DELETE FROM bot_clips WHERE id IN (SELECT id FROM to_del)`,
         [streamerId, CLIPS_LIMIT_NO_SUB]
       );
     }
@@ -270,9 +227,7 @@ async function addClipPg(p: {
     await client.query("COMMIT");
     return { ok: true, id: newId };
   } catch (e) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
+    try { await client.query("ROLLBACK"); } catch {}
     throw e;
   } finally {
     client.release();
@@ -287,7 +242,6 @@ export async function tryHandleClipCommand(p: {
   prefix: string;
   msg: ChatMsg;
   send: (text: string) => Promise<void>;
-  // futur: settings "mods only"
   allowEveryone?: boolean;
 }): Promise<boolean> {
   const { msg, prefix } = p;
@@ -298,8 +252,6 @@ export async function tryHandleClipCommand(p: {
   const raw = body.slice(prefix.length).trimStart();
   if (!/^clip(\s|$)/i.test(raw)) return false;
 
-  // ✅ default: tout le monde
-  // TODO: quand tu ajoutes l’option "mods only", check role/perms ici.
   const allowEveryone = p.allowEveryone ?? true;
   if (!allowEveryone) return false;
 
@@ -307,10 +259,7 @@ export async function tryHandleClipCommand(p: {
 
   try {
     const channelSlug = await getDliveChannelSlugForStreamer(p.pool, p.streamer.id);
-    if (!channelSlug) {
-      // pas de mapping DLive => on ne répond pas en chat
-      return true;
-    }
+    if (!channelSlug) return true;
 
     const live = await fetchLiveStart(channelSlug).catch(() => null);
     if (!live) {
@@ -318,18 +267,19 @@ export async function tryHandleClipCommand(p: {
       return true;
     }
 
-    const nowSec = Math.floor(Date.now() / 1000);
+    const nowSec   = Math.floor(Date.now() / 1000);
     const startSec = Math.floor(live.createdAtMs / 1000);
-    const offset = Math.max(0, nowSec - startSec + LATENCY_PAD_SEC);
+    const offset   = Math.max(0, nowSec - startSec + LATENCY_PAD_SEC);
 
     const res = await addClipPg({
-      pool: p.pool,
-      streamerId: p.streamer.id,
-      title: title || null,
-      author: msg.username || null,
-      atSec: offset,
-      preSec: DEFAULT_PRE_SEC,
-      postSec: DEFAULT_POST_SEC,
+      pool:        p.pool,
+      streamerId:  p.streamer.id,
+      title:       title || null,
+      author:      msg.username || null,
+      atSec:       offset,
+      preSec:      DEFAULT_PRE_SEC,
+      postSec:     DEFAULT_POST_SEC,
+      liveStartTs: live.createdAtMs, // ✅ ancre exacte pour le linker
     });
 
     if (!res.ok && res.reason === "duplicate") {
@@ -337,10 +287,9 @@ export async function tryHandleClipCommand(p: {
       return true;
     }
 
-    await p.send(`— 🎬 Clip enregistré${title ? ` : “${title}”` : ""} • ${hhmmss(offset)}`);
+    await p.send(`— 🎬 Clip enregistré${title ? ` : "${title}"` : ""} • ${hhmmss(offset)}`);
     return true;
   } catch {
-    // erreur interne = silence (comme NozeBot)
     return true;
   }
 }

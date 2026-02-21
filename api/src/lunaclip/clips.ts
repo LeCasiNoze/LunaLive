@@ -1,34 +1,40 @@
 // api/src/lunaclip/clips.ts
-// Wrapper autour de la logique clips du bot pour LunaClip.
-// Réutilise la table bot_clips existante avec author='lunaclip'.
+// Wrapper clips pour LunaClip — author='lunaclip', pre=75s, post=15s.
+// Stocke live_start_ts pour un matching VOD précis même après coupure de stream.
 
 import type { Pool } from "pg";
 
-const LUNACLIP_AUTHOR = "lunaclip";
+const LUNACLIP_AUTHOR   = "lunaclip";
+const LUNACLIP_PRE_SEC  = 75;   // ✅ 1m15 avant
+const LUNACLIP_POST_SEC = 15;   // ✅ 15s après
 
-// Même logique de déduplication que le bot (±20s, 6h)
 const DEDUP_WINDOW_SEC  = 20;
 const DEDUP_HORIZON_MS  = 6 * 3600 * 1000;
-
-// Limite de clips par streamer si pas d'abo (réutilise la même que le bot)
-// LunaClip bypass la limite car c'est un outil interne admin
-const LUNACLIP_UNLIMITED = true;
 
 export async function addLunaClip(
   pool: Pool,
   streamerId: number,
   title: string,
   atSec: number,
+  // ✅ timestamp exact du début du live courant (ms) — fourni par le scheduler
+  // Si absent, fallback : on déduit depuis created_ts - atSec (moins précis)
+  liveStartTs?: number | null,
 ): Promise<{ ok: true; id: number } | { ok: false; reason: string }> {
 
-  const nowMs = Date.now();
-  const at    = Math.max(0, Math.floor(atSec));
+  const nowMs        = Date.now();
+  const at           = Math.max(0, Math.floor(atSec));
+  // ✅ Si liveStartTs non fourni : estimation (comme avant, moins fiable)
+  const liveStart    = (liveStartTs && liveStartTs > 0)
+    ? liveStartTs
+    : nowMs - at * 1000;
+
+  // ✅ Ajouter la colonne si elle n'existe pas encore (idempotent)
+  await pool.query(`ALTER TABLE bot_clips ADD COLUMN IF NOT EXISTS live_start_ts BIGINT`).catch(() => {});
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // Déduplication ±20s dans les 6 dernières heures pour lunaclip
     const dup = await client.query(
       `SELECT id FROM bot_clips
        WHERE streamer_id=$1
@@ -45,16 +51,17 @@ export async function addLunaClip(
     }
 
     const ins = await client.query(
-      `INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts)
-       VALUES ($1, $2, $3, $4, 105, 15, $5)
+      `INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts, live_start_ts)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
-      [streamerId, title.slice(0, 140), LUNACLIP_AUTHOR, at, nowMs]
+      [streamerId, title.slice(0, 140), LUNACLIP_AUTHOR, at,
+       LUNACLIP_PRE_SEC, LUNACLIP_POST_SEC, nowMs, liveStart]
     );
 
     await client.query("COMMIT");
 
     const id = Number(ins.rows?.[0]?.id ?? 0);
-    console.log(`[lunaclip] clip créé id=${id} streamer=${streamerId} at=${at}s — ${title}`);
+    console.log(`[lunaclip] clip id=${id} streamer=${streamerId} at=${at}s live_start=${liveStart} — ${title}`);
     return { ok: true, id };
 
   } catch (e) {

@@ -1,4 +1,8 @@
 // api/src/bot_clips/vod_linker.ts
+// ✅ v2 : utilise live_start_ts stocké au moment du clip pour un matching VOD fiable.
+// Fix bug : après coupure de stream DLive (2 VODs), la bonne VOD est sélectionnée
+// en cherchant celle dont le createdAt est le plus proche du live_start_ts du clip.
+
 import {
   ensureBotClips,
   getDliveChannelSlugForStreamer,
@@ -11,10 +15,10 @@ import {
 const ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
 
 type VodLite = {
-  permlink: string;
-  title: string;
-  createdAtMs: number; // epoch ms
-  lengthSec: number;
+  permlink:    string;
+  title:       string;
+  createdAtMs: number;
+  lengthSec:   number;
   playbackUrl: string | null;
   resolution?: Array<{ resolution: string; url: string }>;
 };
@@ -24,9 +28,9 @@ async function gql(query: string, variables?: any) {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      accept: "application/json",
-      origin: "https://dlive.tv",
-      referer: "https://dlive.tv/",
+      accept:         "application/json",
+      origin:         "https://dlive.tv",
+      referer:        "https://dlive.tv/",
     },
     body: JSON.stringify(variables ? { query, variables } : { query }),
   });
@@ -34,7 +38,9 @@ async function gql(query: string, variables?: any) {
   return (await r.json()) as any;
 }
 
-async function fetchRecentVods(displayName: string, first = 12): Promise<VodLite[]> {
+// On récupère plus de VODs (20 au lieu de 12) pour avoir plus de chances de trouver
+// la bonne même si le streamer fait plusieurs sessions dans la journée
+async function fetchRecentVods(displayName: string, first = 20): Promise<VodLite[]> {
   const query =
     'query PastBroadcastsLite($name:String!, $first:Int!){ userByDisplayName(displayname:$name){ username pastBroadcastsV2(first:$first){ list { permlink title createdAt length playbackUrl resolution { resolution url } } } } }';
 
@@ -42,15 +48,15 @@ async function fetchRecentVods(displayName: string, first = 12): Promise<VodLite
   const list = j?.data?.userByDisplayName?.pastBroadcastsV2?.list || [];
 
   return (list || []).map((x: any) => ({
-    permlink: String(x?.permlink || ""),
-    title: String(x?.title || ""),
+    permlink:    String(x?.permlink || ""),
+    title:       String(x?.title || ""),
     createdAtMs: Number(x?.createdAt || 0),
-    lengthSec: Number(x?.length || 0),
+    lengthSec:   Number(x?.length || 0),
     playbackUrl: String(x?.playbackUrl || "").trim() || null,
-    resolution: Array.isArray(x?.resolution)
+    resolution:  Array.isArray(x?.resolution)
       ? x.resolution.map((r: any) => ({
           resolution: String(r?.resolution || ""),
-          url: String(r?.url || ""),
+          url:        String(r?.url || ""),
         }))
       : undefined,
   })) as VodLite[];
@@ -58,60 +64,116 @@ async function fetchRecentVods(displayName: string, first = 12): Promise<VodLite
 
 function pickVodUrl(v: VodLite): string | null {
   const res = Array.isArray(v.resolution) ? v.resolution : [];
-  const src = res.find((r) => String(r?.resolution || "").toLowerCase() === "src")?.url?.trim();
+  const src  = res.find(r => String(r?.resolution || "").toLowerCase() === "src")?.url?.trim();
   if (src) return src;
-
-  const p720 = res.find((r) => String(r?.resolution || "").toLowerCase() === "720p")?.url?.trim();
+  const p720 = res.find(r => String(r?.resolution || "").toLowerCase() === "720p")?.url?.trim();
   if (p720) return p720;
-
   return (v.playbackUrl || "").trim() || null;
 }
 
 /**
- * Matching robuste:
- * - created_ts = ms ; at_sec = sec
- * - liveStartEstSec = clipCreatedSec - at_sec
- * - on privilégie les VOD qui contiennent le moment du clip (inRange)
- * - sinon fallback par distance au start estimé
+ * ✅ matchVod v2 — algorithme de matching en 3 passes :
+ *
+ * Passe 1 — live_start_ts disponible (nouveau champ) :
+ *   Cherche la VOD dont le createdAt est le plus proche de live_start_ts.
+ *   C'est l'ancre exacte : on sait quel live était en cours quand le clip a été déclenché.
+ *   Tolérance : ±10 min (DLive publie parfois la VOD avec un léger décalage).
+ *
+ * Passe 2 — fallback created_ts :
+ *   Cherche la VOD dont la plage [createdAt, createdAt+length] contient created_ts du clip.
+ *   Si plusieurs VODs contiennent le moment, prend la plus récente (coupure → 2ème session).
+ *
+ * Passe 3 — fallback distance :
+ *   Estime liveStartEstSec = clipCreatedSec - atSec.
+ *   Tolère jusqu'à 2h (au lieu de 30 min) pour les sessions longues.
+ *   Utilisé uniquement si les passes 1 et 2 échouent.
  */
 function matchVod(
-  clip: Pick<BotClipRow, "created_ts" | "at_sec">,
+  clip: Pick<BotClipRow, "created_ts" | "at_sec"> & { live_start_ts?: number | null },
   vods: VodLite[],
-  toleranceSec = 30 * 60
 ): VodLite | null {
   if (!vods.length) return null;
 
-  const clipCreatedSec = Math.floor(Number(clip.created_ts || 0) / 1000);
-  const atSec = Math.max(0, Number(clip.at_sec || 0));
+  const clipCreatedMs  = Number(clip.created_ts || 0);
+  const clipCreatedSec = Math.floor(clipCreatedMs / 1000);
+  const atSec          = Math.max(0, Number(clip.at_sec || 0));
+  const liveStartTs    = clip.live_start_ts ? Number(clip.live_start_ts) : null;
+
+  // ── Passe 1 : live_start_ts direct ──────────────────────────────────────
+  if (liveStartTs && liveStartTs > 0) {
+    const liveStartSec  = Math.floor(liveStartTs / 1000);
+    // Tolérance ±10 min : DLive peut légèrement décaler le createdAt de la VOD
+    const TOLERANCE_SEC = 10 * 60;
+
+    let best: VodLite | null = null;
+    let bestDelta = Number.POSITIVE_INFINITY;
+
+    for (const v of vods) {
+      const vStartSec = Math.floor(v.createdAtMs / 1000);
+      const delta     = Math.abs(vStartSec - liveStartSec);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        best = v;
+      }
+    }
+
+    if (best && bestDelta <= TOLERANCE_SEC) {
+      return best;
+    }
+
+    // Si on dépasse la tolérance stricte, on essaie quand même de trouver une VOD
+    // dont la plage contient le moment du clip (passe 1b)
+    if (best) {
+      const vStartSec = Math.floor(best.createdAtMs / 1000);
+      const vEndSec   = vStartSec + Math.max(0, best.lengthSec);
+      if (clipCreatedSec >= vStartSec - 60 && clipCreatedSec <= vEndSec + 600) {
+        return best;
+      }
+    }
+    // live_start_ts présent mais aucune VOD ne match → on continue avec les passes 2/3
+    // (peut arriver si la VOD n'est pas encore publiée)
+  }
+
+  // ── Passe 2 : created_ts contenu dans la plage de la VOD ────────────────
+  // Si plusieurs VODs contiennent le moment (ex: coupure + reprise), on prend
+  // la VOD qui démarre le PLUS TARD (= la 2ème session, la plus récente)
+  const containingVods = vods.filter(v => {
+    const vStartSec = Math.floor(v.createdAtMs / 1000);
+    const vEndSec   = vStartSec + Math.max(0, v.lengthSec);
+    // +600s de marge de fin : la VOD peut continuer d'être encodée après le stream
+    return clipCreatedSec >= vStartSec - 60 && clipCreatedSec <= vEndSec + 600;
+  });
+
+  if (containingVods.length > 0) {
+    // Trier par createdAtMs DESC → prend la VOD la plus récente qui contient le moment
+    // Fix bug coupure : si le clip est fait après reprise du stream, on prend la 2ème VOD
+    containingVods.sort((a, b) => b.createdAtMs - a.createdAtMs);
+    return containingVods[0]!;
+  }
+
+  // ── Passe 3 : estimation par distance (fallback large) ──────────────────
+  // Tolérance étendue à 2h pour les streams longs et les clips tardifs
+  const FALLBACK_TOLERANCE_SEC = 2 * 3600;
   const liveStartEstSec = clipCreatedSec - atSec;
 
-  let best: VodLite | null = null;
-  let bestScore = Number.POSITIVE_INFINITY;
+  let best3: VodLite | null = null;
+  let bestScore3 = Number.POSITIVE_INFINITY;
 
   for (const v of vods) {
-    const startSec = Math.floor(Number(v.createdAtMs || 0) / 1000);
-    const endSec = startSec + Math.max(0, Number(v.lengthSec || 0));
-
-    const inRange = clipCreatedSec >= startSec - 60 && clipCreatedSec <= endSec + 600;
-    const delta = Math.abs(startSec - liveStartEstSec);
-
-    // ✅ score: inRange d'abord (0), sinon gros malus
-    const score = (inRange ? 0 : 1_000_000) + delta;
-
-    if (score < bestScore) {
-      bestScore = score;
-      best = v;
+    const vStartSec = Math.floor(v.createdAtMs / 1000);
+    const delta     = Math.abs(vStartSec - liveStartEstSec);
+    if (delta < bestScore3) {
+      bestScore3 = delta;
+      best3 = v;
     }
   }
 
-  if (!best) return null;
+  if (best3 && bestScore3 <= FALLBACK_TOLERANCE_SEC) {
+    return best3;
+  }
 
-  // refuse si trop éloigné (cas vods pas à jour)
-  const bestStartSec = Math.floor(Number(best.createdAtMs || 0) / 1000);
-  const bestDelta = Math.abs(bestStartSec - liveStartEstSec);
-  if (bestDelta > toleranceSec) return null;
-
-  return best;
+  // Vraiment aucune VOD trouvable — on réessaiera au prochain tick
+  return null;
 }
 
 let running = false;
@@ -134,19 +196,19 @@ export function startClipsVodLinker() {
           const display = await getDliveChannelSlugForStreamer(streamerId);
           if (!display) continue;
 
-          const vods = (await fetchRecentVods(display, 12).catch(() => [])) as VodLite[];
+          const vods  = await fetchRecentVods(display, 20).catch(() => []) as VodLite[];
           if (!vods.length) continue;
 
           const clips = await listPendingClipsForStreamer(streamerId, 500);
           for (const c of clips) {
             try {
-              const v = matchVod(c, vods);
+              const v   = matchVod(c, vods);
               const url = v ? pickVodUrl(v) : null;
               if (!v || !url) continue;
 
               await setClipVodInfo(streamerId, c.id, {
-                vod_url: url,
-                vod_permlink: v.permlink,
+                vod_url:        url,
+                vod_permlink:   v.permlink,
                 vod_created_ts: Number(v.createdAtMs || 0),
               });
             } catch {}

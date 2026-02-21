@@ -159,10 +159,13 @@ lunaclipRouter.post("/clips/manual", async (req, res) => {
   if (!worker?.last_frame) return res.status(409).json({ ok: false, error: "no_frame_available" });
 
   const f = worker.last_frame;
+  const sessionStartedAt = new Date(worker.started_at).getTime() / 1000;
+  const LATENCY_PAD_SEC = 15;
+  const atSec = Math.max(0, f.ts_sec - sessionStartedAt + LATENCY_PAD_SEC);
+
   const winLabel = f.win_total_value ?? f.win_value ?? "?";
   const title = `🎰 [MANUEL] x${f.multiplier} — ${(f.provider ?? "").toUpperCase()} — WIN ${winLabel}`;
-  const result = await addLunaClip(pool, streamer_id, title, f.ts_sec);
-
+  const result = await addLunaClip(pool, streamer_id, title, atSec);
   res.json({ ok: result.ok, reason: (result as any).reason ?? null });
 });
 
