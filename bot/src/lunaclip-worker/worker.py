@@ -24,28 +24,36 @@ Dépendances :
   pip install ultralytics opencv-python pytesseract pillow
 """
 
-import cv2
-import numpy as np
-import pytesseract
-from PIL import Image
-from ultralytics import YOLO
-import re, json, os, sys, argparse, time, signal
-from datetime import datetime
-import subprocess
+#!/usr/bin/env python3
 import os
+# limiter threads AVANT imports lourds
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ["ORT_NUM_THREADS"] = "1"   # onnxruntime (pas toujours lu mais ok)
+os.environ["ORT_NUM_THREADS"] = "1"
+os.environ["YOLO_CONFIG_DIR"] = "/tmp/Ultralytics"
 
+import cv2
+cv2.setNumThreads(0)
+
+import numpy as np
+import pytesseract
+from PIL import Image
+from ultralytics import YOLO
+import re, json, sys, argparse, time, signal, subprocess
+from datetime import datetime
+import resource
+
+def mem_mb():
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
 # ═══════════════════════════════════════════════════════════════
 #  CONFIG
 # ═══════════════════════════════════════════════════════════════
 
 # Résolution source (inchangée v2.2)
-FRAME_W = 960
-FRAME_H = 540
+FRAME_W = 640
+FRAME_H = 360
 
 # ── YOLO ────────────────────────────────────────────────────────
 YOLO_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "best.onnx")
@@ -77,7 +85,6 @@ UNKNOWN_FRAMES_TO_WATCH = 10
 NO_VALUE_SECS_TO_IDLE   = 300
 POST_OCR_SLEEP          = 0.15   # identique v2.2
 
-
 # ═══════════════════════════════════════════════════════════════
 #  CHARGEMENT YOLO (singleton — chargé une seule fois au démarrage)
 # ═══════════════════════════════════════════════════════════════
@@ -97,6 +104,7 @@ def get_yolo_model() -> YOLO:
         _yolo_model.overrides['device']  = 'cpu'
         _yolo_model.overrides['verbose'] = False
         emit_log("[YOLO] Modèle chargé (CPU)")
+        
     return _yolo_model
 
 
@@ -155,6 +163,7 @@ def yolo_detect(frame_bgr: np.ndarray) -> dict:
     box = { x1, y1, x2, y2, conf, cls_name }  coords pixels dans frame original
     """
     model   = get_yolo_model()
+    emit_log(f"[MEM] start {mem_mb():.1f}MB")
     results = model.predict(
         source  = frame_bgr,
         imgsz   = YOLO_IMGSZ,
@@ -462,6 +471,7 @@ def analyze_frame(frame_bgr: np.ndarray, state: dict) -> dict:
 
     # ── 1. YOLO ─────────────────────────────────────────────────
     detections  = yolo_detect(frame_bgr)
+    emit_log(f"[MEM] after ffmpeg {mem_mb():.1f}MB")
     bet_boxes   = detections['BET']
     win_boxes   = detections['WIN']
     found_bet   = len(bet_boxes) > 0
@@ -745,6 +755,7 @@ def run_stream(hls_url: str, alert_multi: float, interval_sec: float):
             time.sleep(RECONNECT_DELAY_SEC)
             continue
         emit_log("FFmpeg started.")
+        emit_log(f"[MEM] after model {mem_mb():.1f}MB")
 
         while running[0]:
             raw = proc.stdout.read(frame_size)
