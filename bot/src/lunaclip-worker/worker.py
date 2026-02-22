@@ -35,8 +35,9 @@ import subprocess
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["ORT_NUM_THREADS"] = "1"   # onnxruntime (pas toujours lu mais ok)
 
 # ═══════════════════════════════════════════════════════════════
 #  CONFIG
@@ -49,7 +50,7 @@ FRAME_H = 540
 # ── YOLO ────────────────────────────────────────────────────────
 YOLO_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "best.onnx")
 YOLO_CONF       = 0.25    # seuil minimum — on accepte les détections peu sûres, la validation filtre ensuite
-YOLO_IMGSZ      = 416     # résolution maximale = précision maximale (CPU ~100-150ms, OK à 2s d'intervalle)
+YOLO_IMGSZ      = 320     # résolution maximale = précision maximale (CPU ~100-150ms, OK à 2s d'intervalle)
 YOLO_CLASS_BET  = 0       # classe 0 = BET  (data.yaml)
 YOLO_CLASS_WIN  = 1       # classe 1 = WIN  (data.yaml)
 
@@ -92,7 +93,7 @@ def get_yolo_model() -> YOLO:
                 f"→ Copier best.pt dans : bot/src/lunaclip/models/best.pt"
             )
         emit_log(f"[YOLO] Chargement modèle : {YOLO_MODEL_PATH}")
-        _yolo_model = YOLO(YOLO_MODEL_PATH)
+        _yolo_model = YOLO(YOLO_MODEL_PATH, task="detect")
         _yolo_model.overrides['device']  = 'cpu'
         _yolo_model.overrides['verbose'] = False
         emit_log("[YOLO] Modèle chargé (CPU)")
