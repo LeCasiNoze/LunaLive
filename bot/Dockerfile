@@ -30,7 +30,7 @@ RUN python3 -m pip install --break-system-packages --no-cache-dir --upgrade pip 
     pytesseract==0.3.10 \
     opencv-python-headless==4.10.0.84 \
     ultralytics==8.4.14 \
-    torch==2.5.1
+    onnxruntime==1.18.1
 
 # Node deps prod
 COPY package.json package-lock.json ./
@@ -41,6 +41,6 @@ COPY --from=build /app/dist ./dist
 COPY src/lunaclip-worker ./dist/lunaclip-worker
 
 # Sanity check (build-time)
-RUN python3 -c "import ultralytics, torch; print('OK', ultralytics.__version__, torch.__version__)"
+RUN python3 -c "import ultralytics, onnxruntime; print('OK', ultralytics.__version__, onnxruntime.__version__)"
 
 CMD ["node", "dist/index.js"]

@@ -32,7 +32,11 @@ from ultralytics import YOLO
 import re, json, os, sys, argparse, time, signal
 from datetime import datetime
 import subprocess
-
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 # ═══════════════════════════════════════════════════════════════
 #  CONFIG
@@ -43,9 +47,9 @@ FRAME_W = 960
 FRAME_H = 540
 
 # ── YOLO ────────────────────────────────────────────────────────
-YOLO_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "best.pt")
+YOLO_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "best.onnx")
 YOLO_CONF       = 0.25    # seuil minimum — on accepte les détections peu sûres, la validation filtre ensuite
-YOLO_IMGSZ      = 640     # résolution maximale = précision maximale (CPU ~100-150ms, OK à 2s d'intervalle)
+YOLO_IMGSZ      = 416     # résolution maximale = précision maximale (CPU ~100-150ms, OK à 2s d'intervalle)
 YOLO_CLASS_BET  = 0       # classe 0 = BET  (data.yaml)
 YOLO_CLASS_WIN  = 1       # classe 1 = WIN  (data.yaml)
 
