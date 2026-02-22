@@ -22,10 +22,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 
-# Python deps (ultralytics + torch + ocr deps)
-# (tu peux aussi mettre un requirements.txt, mais là je fais direct pour aller vite)
-RUN python3 -m pip install --no-cache-dir --upgrade pip \
- && python3 -m pip install --no-cache-dir \
+# Python deps (YOLO + OCR)
+RUN python3 -m pip install --break-system-packages --no-cache-dir --upgrade pip \
+ && python3 -m pip install --break-system-packages --no-cache-dir \
     numpy==1.26.4 \
     Pillow==10.3.0 \
     pytesseract==0.3.10 \
@@ -41,7 +40,7 @@ RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 COPY src/lunaclip-worker ./dist/lunaclip-worker
 
-# (optionnel mais utile) check au build
+# Sanity check (build-time)
 RUN python3 -c "import ultralytics, torch; print('OK', ultralytics.__version__, torch.__version__)"
 
 CMD ["node", "dist/index.js"]
