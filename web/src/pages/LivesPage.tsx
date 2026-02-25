@@ -433,7 +433,6 @@ function ClipLikesBadge({ likes, corner }: { likes: number; corner: "tl" | "tr" 
 const CLIP_MODAL_CSS = `
 @keyframes cpm-fade-in  { from{opacity:0} to{opacity:1} }
 @keyframes cpm-slide-up { from{opacity:0;transform:translateY(18px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
-@keyframes cpm-shimmer  { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
 
 /* ── Backdrop ── */
 .cpm-backdrop {
@@ -457,13 +456,11 @@ const CLIP_MODAL_CSS = `
   display:flex;flex-direction:column;
   max-height:calc(100vh - 32px);
 }
-/* Reflet haut */
 .cpm-dialog::before {
   content:"";position:absolute;top:0;left:6%;right:6%;height:1px;
   background:linear-gradient(90deg,transparent,rgba(167,139,250,.48) 35%,rgba(91,142,248,.34) 65%,transparent);
   pointer-events:none;z-index:2;
 }
-/* Lueur ambiante */
 .cpm-dialog::after {
   content:"";position:absolute;top:-60px;left:-60px;
   width:300px;height:190px;border-radius:50%;
@@ -482,7 +479,7 @@ const CLIP_MODAL_CSS = `
 .cpm-header-left { display:flex;flex-direction:column;gap:4px;min-width:0;flex:1; }
 
 .cpm-clip-title {
-    font-weight:800;font-size:15px;letter-spacing:-.3px;line-height:1.2;
+  font-weight:800;font-size:15px;letter-spacing:-.3px;line-height:1.2;
   color:rgba(235,232,255,.94);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
@@ -502,7 +499,6 @@ const CLIP_MODAL_CSS = `
   display:inline-flex;gap:7px;align-items:center;flex-shrink:0;flex-wrap:wrap;
 }
 
-/* Bouton like */
 .cpm-btn-like {
   display:inline-flex;align-items:center;gap:7px;
   height:36px;padding:0 13px;border-radius:11px;
@@ -516,7 +512,6 @@ const CLIP_MODAL_CSS = `
 .cpm-btn-like:disabled { opacity:.40;cursor:not-allowed; }
 .cpm-btn-like.is-liked { border-color:rgba(239,68,68,.40);background:rgba(239,68,68,.16);color:rgba(252,165,165,.95); }
 
-/* Bouton action (download, supprimer) */
 .cpm-btn-action {
   height:36px;padding:0 13px;border-radius:11px;
   border:1px solid rgba(124,92,252,.22);background:rgba(124,92,252,.07);
@@ -532,7 +527,6 @@ const CLIP_MODAL_CSS = `
 }
 .cpm-btn-action.is-danger:hover:not(:disabled) { background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.40);transform:translateY(-1px); }
 
-/* Bouton fermer */
 .cpm-btn-close {
   width:36px;height:36px;border-radius:11px;flex-shrink:0;
   border:1px solid rgba(124,92,252,.18);background:rgba(255,255,255,.04);
@@ -543,15 +537,17 @@ const CLIP_MODAL_CSS = `
 .cpm-btn-close:hover { background:rgba(124,92,252,.12);border-color:rgba(124,92,252,.36);transform:scale(1.06); }
 .cpm-btn-close:disabled { opacity:.40;cursor:not-allowed; }
 
-/* ── Body ── */
 .cpm-body {
   position:relative;z-index:1;
   padding:14px 16px 16px;
   display:flex;flex-direction:column;gap:12px;
   overflow-y:auto;flex:1;
+  scrollbar-width:thin;scrollbar-color:rgba(124,92,252,.22) transparent;
 }
+.cpm-body::-webkit-scrollbar{width:4px}
+.cpm-body::-webkit-scrollbar-track{background:transparent}
+.cpm-body::-webkit-scrollbar-thumb{background:rgba(124,92,252,.22);border-radius:4px}
 
-/* Vidéo */
 .cpm-video {
   width:100%;border-radius:14px;
   background:#000;
@@ -559,15 +555,6 @@ const CLIP_MODAL_CSS = `
   display:block;
 }
 
-/* Footer info */
-.cpm-footer-info {
-  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-  font-size:11px;font-weight:500;
-  color:rgba(167,155,220,.55);
-}
-.cpm-footer-info strong { color:rgba(200,195,240,.85);font-weight:700; }
-
-/* Status toast */
 .cpm-status {
   padding:8px 12px;border-radius:10px;
   border:1px solid rgba(124,92,252,.16);background:rgba(124,92,252,.08);
@@ -575,7 +562,6 @@ const CLIP_MODAL_CSS = `
   color:rgba(200,195,240,.80);
 }
 
-/* Progress bar download */
 .cpm-progress-wrap {
   height:3px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;
 }
@@ -585,7 +571,6 @@ const CLIP_MODAL_CSS = `
   transition:width 200ms ease;
 }
 
-/* ── Liste clips (MonthClipsListModal) ── */
 .cpm-list { display:flex;flex-direction:column;gap:7px; }
 
 .cpm-list-item {
@@ -629,10 +614,9 @@ const CLIP_MODAL_CSS = `
   color:rgba(124,92,252,.60);
 }
 
-/* Vide */
 .cpm-empty {
   font-size:12px;font-weight:500;
-  color:rgba(167,155,220,.45);padding:8px 0;
+  color:rgba(167,155,220,.45);padding:8px 0;text-align:center;
 }
 `;
 
@@ -654,7 +638,6 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
   const canDownload = canModerate && !!mp4;
   const canDelete   = canModerate && !!token;
 
-  /* ── Lecture vidéo ── */
   React.useEffect(() => {
     const video = videoRef.current; if (!video) return;
     const mp4Url = String((clip as any).clipUrl || "").trim() || null;
@@ -711,7 +694,6 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
     return cleanup;
   }, [clip]);
 
-  /* ── Actions ── */
   async function doLike() {
     if (!token) { setStatus("Connecte-toi pour liker."); return; }
     if (!canLike || busy) return;
@@ -761,90 +743,86 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
   }
 
   return createPortal(
-    <div className="cpm-backdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
+    <>
       <style dangerouslySetInnerHTML={{__html: CLIP_MODAL_CSS}} />
-      <div className="cpm-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 960 }}>
+      <div className="cpm-backdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
+        <div className="cpm-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 960 }}>
 
-        {/* Header */}
-        <div className="cpm-header">
-          <div className="cpm-header-left">
-            <div className="cpm-clip-title">{clip.title || "Clip"}</div>
-            <div className="cpm-clip-meta">
-              <span>Par{" "}
-                <Link to={clip.streamerSlug ? `/s/${encodeURIComponent(clip.streamerSlug)}` : "#"} onClick={onClose}>
-                  {clip.streamerName || clip.streamerSlug || "Streamer"}
-                </Link>
-              </span>
-              <span className="cpm-meta-dot">•</span>
-              <span>❤️ {Number(clip.likesCount || 0)}</span>
-              <span className="cpm-meta-dot">•</span>
-              <span>{fmtDuration(clip.durationSec)}</span>
-              <span className="cpm-meta-dot">•</span>
-              <span>{timeAgo(clip.createdAtMs)}</span>
+          <div className="cpm-header">
+            <div className="cpm-header-left">
+              <div className="cpm-clip-title">{clip.title || "Clip"}</div>
+              <div className="cpm-clip-meta">
+                <span>Par{" "}
+                  <Link to={clip.streamerSlug ? `/s/${encodeURIComponent(clip.streamerSlug)}` : "#"} onClick={onClose}>
+                    {clip.streamerName || clip.streamerSlug || "Streamer"}
+                  </Link>
+                </span>
+                <span className="cpm-meta-dot">•</span>
+                <span>❤️ {Number(clip.likesCount || 0)}</span>
+                <span className="cpm-meta-dot">•</span>
+                <span>{fmtDuration(clip.durationSec)}</span>
+                <span className="cpm-meta-dot">•</span>
+                <span>{timeAgo(clip.createdAtMs)}</span>
+              </div>
+            </div>
+
+            <div className="cpm-header-actions">
+              <button
+                className={`cpm-btn-like${clip.myLiked ? " is-liked" : ""}`}
+                type="button"
+                onClick={() => void doLike()}
+                disabled={!!busy || !canLike}
+                title={!token ? "Connecte-toi pour liker" : clip.myLiked ? "Déjà liké" : "Liker ce clip"}
+              >
+                <span>{clip.myLiked ? "❤️" : "🤍"}</span>
+                <span>{Number(clip.likesCount || 0)}</span>
+              </button>
+
+              {canModerate && (
+                <>
+                  <button
+                    className="cpm-btn-action"
+                    type="button"
+                    onClick={() => void doDownload()}
+                    disabled={!canDownload || !!busy}
+                    title={!mp4 ? "Vidéo pas encore disponible" : "Télécharger le clip"}
+                  >
+                    {busy === "downloading" ? `${pct ? `${pct}%` : "…"}` : "Download"}
+                  </button>
+                  <button
+                    className="cpm-btn-action is-danger"
+                    type="button"
+                    onClick={() => void doDelete()}
+                    disabled={!canDelete || !!busy}
+                    title="Supprimer le clip"
+                  >
+                    {busy === "deleting" ? "…" : "Supprimer"}
+                  </button>
+                </>
+              )}
+
+              <button className="cpm-btn-close" type="button" aria-label="Fermer" onClick={onClose} disabled={!!busy}>✕</button>
             </div>
           </div>
 
-          <div className="cpm-header-actions">
-            {/* Like */}
-            <button
-              className={`cpm-btn-like${clip.myLiked ? " is-liked" : ""}`}
-              type="button"
-              onClick={() => void doLike()}
-              disabled={!!busy || !canLike}
-              title={!token ? "Connecte-toi pour liker" : clip.myLiked ? "Déjà liké" : "Liker ce clip"}
-            >
-              <span>{clip.myLiked ? "❤️" : "🤍"}</span>
-              <span>{Number(clip.likesCount || 0)}</span>
-            </button>
-
-            {/* Actions modération */}
-            {canModerate && (
-              <>
-                <button
-                  className="cpm-btn-action"
-                  type="button"
-                  onClick={() => void doDownload()}
-                  disabled={!canDownload || !!busy}
-                  title={!mp4 ? "Vidéo pas encore disponible" : "Télécharger le clip"}
-                >
-                  {busy === "downloading" ? `${pct ? `${pct}%` : "…"}` : "Download"}
-                </button>
-                <button
-                  className="cpm-btn-action is-danger"
-                  type="button"
-                  onClick={() => void doDelete()}
-                  disabled={!canDelete || !!busy}
-                  title="Supprimer le clip"
-                >
-                  {busy === "deleting" ? "…" : "Supprimer"}
-                </button>
-              </>
+          <div className="cpm-body">
+            {!mp4 && !clip.vodUrl ? (
+              <div className="cpm-empty">Vidéo indisponible pour le moment.</div>
+            ) : (
+              <video ref={videoRef} className="cpm-video" controls playsInline />
             )}
 
-            <button className="cpm-btn-close" type="button" aria-label="Fermer" onClick={onClose} disabled={!!busy}>✕</button>
+            {busy === "downloading" && pct > 0 && pct < 100 && (
+              <div className="cpm-progress-wrap">
+                <div className="cpm-progress-bar" style={{ width: `${pct}%` }} />
+              </div>
+            )}
+
+            {status && <div className="cpm-status">{status}</div>}
           </div>
         </div>
-
-        {/* Body */}
-        <div className="cpm-body">
-          {!mp4 && !clip.vodUrl ? (
-            <div className="cpm-empty">Vidéo indisponible pour le moment.</div>
-          ) : (
-            <video ref={videoRef} className="cpm-video" controls playsInline />
-          )}
-
-          {/* Barre de progression download */}
-          {busy === "downloading" && pct > 0 && pct < 100 && (
-            <div className="cpm-progress-wrap">
-              <div className="cpm-progress-bar" style={{ width: `${pct}%` }} />
-            </div>
-          )}
-
-          {/* Status */}
-          {status && <div className="cpm-status">{status}</div>}
-        </div>
       </div>
-    </div>,
+    </>,
     document.body
   );
 }
@@ -855,63 +833,61 @@ function MonthClipsListModal({ title, clips, total, onClose, onPickClip, zIndex 
   onClose: () => void; onPickClip: (c: ClipVM) => void; zIndex: number;
 }) {
   return createPortal(
-    <div className="cpm-backdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
-      <div className="cpm-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 760 }}>
+    <>
+      <style dangerouslySetInnerHTML={{__html: CLIP_MODAL_CSS}} />
+      <div className="cpm-backdrop" onClick={onClose} role="presentation" style={{ zIndex }}>
+        <div className="cpm-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth: 760 }}>
 
-        {/* Header */}
-        <div className="cpm-header">
-          <div className="cpm-header-left">
-            <div className="cpm-clip-title">{title}</div>
-            <div className="cpm-clip-meta">
-              <span>Tri par ❤️ les plus likés</span>
-              <span className="cpm-meta-dot">•</span>
-              <span>{total || clips.length} clip{(total || clips.length) > 1 ? "s" : ""}</span>
+          <div className="cpm-header">
+            <div className="cpm-header-left">
+              <div className="cpm-clip-title">{title}</div>
+              <div className="cpm-clip-meta">
+                <span>Tri par ❤️ les plus likés</span>
+                <span className="cpm-meta-dot">•</span>
+                <span>{total || clips.length} clip{(total || clips.length) > 1 ? "s" : ""}</span>
+              </div>
+            </div>
+            <div className="cpm-header-actions">
+              <button className="cpm-btn-close" type="button" aria-label="Fermer" onClick={onClose}>✕</button>
             </div>
           </div>
-          <div className="cpm-header-actions">
-            <button className="cpm-btn-close" type="button" aria-label="Fermer" onClick={onClose}>✕</button>
-          </div>
-        </div>
 
-        {/* Body — liste */}
-        <div className="cpm-body">
-          {clips.length === 0 ? (
-            <div className="cpm-empty">Aucun clip pour le moment.</div>
-          ) : (
-            <div className="cpm-list">
-              {clips.map((c) => {
-                const name = c.streamerName || c.streamerSlug || "Streamer";
-                return (
-                  <button key={c.id} type="button" className="cpm-list-item" onClick={() => onPickClip(c)}>
-                    {/* Avatar */}
-                    <div className="cpm-list-avatar" aria-hidden>
-                      {c.avatarUrl && (
-                        <img
-                          src={absolutize(c.avatarUrl) || c.avatarUrl} alt=""
-                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                        />
-                      )}
-                    </div>
-                    {/* Info */}
-                    <div className="cpm-list-info">
-                      <div className="cpm-list-title">{c.title || "(sans titre)"}</div>
-                      <div className="cpm-list-sub">
-                        {name} · {timeAgo(c.createdAtMs)} · {fmtDuration(c.durationSec)}
+          <div className="cpm-body">
+            {clips.length === 0 ? (
+              <div className="cpm-empty">Aucun clip pour le moment.</div>
+            ) : (
+              <div className="cpm-list">
+                {clips.map((c) => {
+                  const name = c.streamerName || c.streamerSlug || "Streamer";
+                  return (
+                    <button key={c.id} type="button" className="cpm-list-item" onClick={() => onPickClip(c)}>
+                      <div className="cpm-list-avatar" aria-hidden>
+                        {c.avatarUrl && (
+                          <img
+                            src={absolutize(c.avatarUrl) || c.avatarUrl} alt=""
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                          />
+                        )}
                       </div>
-                    </div>
-                    {/* Right */}
-                    <div className="cpm-list-right">
-                      <div className="cpm-list-likes" title="Likes">❤️ {Number(c.likesCount || 0)}</div>
-                      <div className="cpm-list-open">▶ Ouvrir</div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                      <div className="cpm-list-info">
+                        <div className="cpm-list-title">{c.title || "(sans titre)"}</div>
+                        <div className="cpm-list-sub">
+                          {name} · {timeAgo(c.createdAtMs)} · {fmtDuration(c.durationSec)}
+                        </div>
+                      </div>
+                      <div className="cpm-list-right">
+                        <div className="cpm-list-likes" title="Likes">❤️ {Number(c.likesCount || 0)}</div>
+                        <div className="cpm-list-open">▶ Ouvrir</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>,
+    </>,
     document.body
   );
 }

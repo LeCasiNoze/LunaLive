@@ -1,7 +1,7 @@
 // web/src/layout/BottomTabs.tsx
 // ─────────────────────────────────────────────────────────────────────────────
 //  LunaLive — BottomTabs mobile  |  Design : Purple Velvet × Blue Night
-//  + système clips modales (liste → player) aligné desktop
+//  + modal clips CENTRÉE (pas de sheet dégueulasse)
 // ─────────────────────────────────────────────────────────────────────────────
 import * as React from "react";
 import { NavLink, Link, useLocation } from "react-router-dom";
@@ -193,6 +193,9 @@ const CSS = `
   border-radius:999px; pointer-events:none;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   BACKDROP + SHEET (menu bottom tabs)
+═══════════════════════════════════════════════════════════════════════ */
 .bt-backdrop {
   position: fixed; inset: 0; z-index: 120;
   background: rgba(4,3,10,.78); display: grid; align-items: end;
@@ -330,8 +333,76 @@ const CSS = `
   color:rgba(167,139,250,.70);
 }
 
-/* Clips List */
-.bt-clips-list { display:flex; flex-direction:column; gap:7px; }
+/* ═══════════════════════════════════════════════════════════════════════
+   MODAL CLIPS CENTRÉE (pas de sheet)
+═══════════════════════════════════════════════════════════════════════ */
+.bt-modal-backdrop {
+  position:fixed; inset:0; z-index:125;
+  background:rgba(4,3,10,.82);
+  backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+  display:grid; place-items:center; padding:16px;
+  animation:bt-fade-in 180ms ease;
+}
+
+.bt-modal-dialog {
+  position:relative; width:100%; max-width:680px;
+  border-radius:22px;
+  border:1px solid rgba(124,92,252,.22);
+  background:rgba(11,9,22,.98);
+  box-shadow:0 40px 100px rgba(0,0,0,.72), 0 0 0 1px rgba(167,139,250,.07) inset, 0 0 60px rgba(124,92,252,.09);
+  backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
+  overflow:hidden;
+  animation:bt-modal-in 260ms cubic-bezier(.22,1,.36,1);
+  display:flex; flex-direction:column;
+  max-height:calc(100vh - 32px);
+}
+@keyframes bt-modal-in { from { opacity:0; transform:translateY(18px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+
+.bt-modal-dialog::before {
+  content:""; position:absolute; top:0; left:6%; right:6%; height:1px;
+  background:linear-gradient(90deg,transparent,rgba(167,139,250,.48) 35%,rgba(91,142,248,.34) 65%,transparent);
+  pointer-events:none; z-index:2;
+}
+.bt-modal-dialog::after {
+  content:""; position:absolute; top:-60px; left:-60px;
+  width:300px; height:190px; border-radius:50%;
+  background:radial-gradient(ellipse,rgba(124,92,252,.12),transparent 70%);
+  pointer-events:none; z-index:0;
+}
+
+.bt-modal-header {
+  position:relative; z-index:1;
+  display:flex; justify-content:space-between; align-items:center;
+  padding:15px 18px 13px;
+  border-bottom:1px solid rgba(124,92,252,.10);
+  flex-shrink:0;
+}
+.bt-modal-header-left { display:flex; flex-direction:column; gap:4px; min-width:0; flex:1; }
+
+.bt-modal-title {
+  font-family:'Syne',system-ui,sans-serif;
+  font-weight:800; font-size:15px; letter-spacing:-.3px;
+  color:rgba(235,232,255,.94);
+}
+.bt-modal-meta {
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  font-size:11px; font-weight:500;
+  color:rgba(167,155,220,.55);
+}
+.bt-modal-meta-dot { opacity:.45; }
+
+.bt-modal-body {
+  position:relative; z-index:1;
+  padding:14px 16px 16px;
+  overflow-y:auto; flex:1;
+  scrollbar-width:thin; scrollbar-color:rgba(124,92,252,.22) transparent;
+}
+.bt-modal-body::-webkit-scrollbar { width:4px; }
+.bt-modal-body::-webkit-scrollbar-track { background:transparent; }
+.bt-modal-body::-webkit-scrollbar-thumb { background:rgba(124,92,252,.22); border-radius:4px; }
+
+/* Liste clips dans modal */
+.bt-clips-list { display:flex; flex-direction:column; gap:8px; }
 
 .bt-clip-item {
   display:grid; grid-template-columns:80px 1fr; gap:12px; align-items:center;
@@ -372,7 +443,6 @@ const CSS = `
   color:rgba(167,155,220,.50);
   display:flex; align-items:center; gap:6px; flex-wrap:wrap;
 }
-.bt-clip-meta-dot { opacity:.45; }
 
 .bt-clip-likes {
   display:inline-flex; gap:5px; align-items:center;
@@ -387,7 +457,9 @@ const CSS = `
   color:rgba(167,155,220,.45); padding:8px 0; text-align:center;
 }
 
-/* Clip Player */
+/* ═══════════════════════════════════════════════════════════════════════
+   CLIP PLAYER
+═══════════════════════════════════════════════════════════════════════ */
 .bt-player-backdrop {
   position:fixed; inset:0; z-index:130;
   background:rgba(4,3,10,.82);
@@ -404,7 +476,7 @@ const CSS = `
   box-shadow:0 40px 100px rgba(0,0,0,.72), 0 0 0 1px rgba(167,139,250,.07) inset;
   backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
   overflow:hidden;
-  animation:bt-slide-up 260ms cubic-bezier(.22,1,.36,1);
+  animation:bt-modal-in 260ms cubic-bezier(.22,1,.36,1);
   display:flex; flex-direction:column;
   max-height:calc(100vh - 32px);
 }
@@ -494,27 +566,29 @@ type MenuLink   = { kind: "link";   to: string; label: string; icon?: string; da
 type MenuAction = { kind: "action"; label: string; icon?: string; danger?: boolean; onClick: () => void };
 type MenuItem   = MenuLink | MenuAction;
 
-/* ─── ClipsListModal ─────────────────────────────────────────────────── */
+/* ─── ClipsListModal (MODAL CENTRÉE) ─────────────────────────────────── */
 function ClipsListModal({ clips, total, onClose, onPickClip }: {
   clips: ClipVM[]; total: number;
   onClose: () => void; onPickClip: (c: ClipVM) => void;
 }) {
   return (
-    <div className="bt-backdrop" onClick={onClose} role="presentation">
-      <div className="bt-sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="bt-sheet-top">
-          <div>
-            <div className="bt-sheet-title">🎬 Clips du mois</div>
-            <div className="bt-player-meta" style={{ marginTop: 4 }}>
+    <div className="bt-modal-backdrop" onClick={onClose} role="presentation">
+      <div className="bt-modal-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        {/* Header */}
+        <div className="bt-modal-header">
+          <div className="bt-modal-header-left">
+            <div className="bt-modal-title">🎬 Clips du mois</div>
+            <div className="bt-modal-meta">
               <span>Tri par ❤️ les plus likés</span>
-              <span className="bt-clip-meta-dot">•</span>
+              <span className="bt-modal-meta-dot">•</span>
               <span>{total || clips.length} clip{(total || clips.length) > 1 ? "s" : ""}</span>
             </div>
           </div>
           <button className="bt-close" type="button" aria-label="Fermer" onClick={onClose}>✕</button>
         </div>
 
-        <div className="bt-sheet-body">
+        {/* Body */}
+        <div className="bt-modal-body">
           {clips.length === 0 ? (
             <div className="bt-empty">Aucun clip pour le moment.</div>
           ) : (
@@ -524,6 +598,7 @@ function ClipsListModal({ clips, total, onClose, onPickClip }: {
                 const thumbUrl = absolutize(c.thumbUrl) || c.thumbUrl;
                 return (
                   <button key={c.id} type="button" className="bt-clip-item" onClick={() => onPickClip(c)}>
+                    {/* Thumb */}
                     <div className="bt-clip-thumb">
                       {thumbUrl && (
                         <div className="bt-clip-thumb-bg" style={{ backgroundImage: `url(${thumbUrl})` }} />
@@ -531,14 +606,15 @@ function ClipsListModal({ clips, total, onClose, onPickClip }: {
                       <div className="bt-clip-thumb-play">▶</div>
                     </div>
 
+                    {/* Info */}
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
                       <div className="bt-clip-info">
                         <div className="bt-clip-title">{c.title || "(sans titre)"}</div>
                         <div className="bt-clip-meta">
                           <span>{name}</span>
-                          <span className="bt-clip-meta-dot">•</span>
+                          <span className="bt-modal-meta-dot">•</span>
                           <span>{timeAgo(c.createdAtMs)}</span>
-                          <span className="bt-clip-meta-dot">•</span>
+                          <span className="bt-modal-meta-dot">•</span>
                           <span>{fmtDuration(c.durationSec)}</span>
                         </div>
                       </div>
@@ -613,11 +689,11 @@ function ClipPlayerModal({ clip, token, onPatchClip, onClose }: {
                   {clip.streamerName || clip.streamerSlug || "Streamer"}
                 </Link>
               </span>
-              <span className="bt-clip-meta-dot">•</span>
+              <span className="bt-modal-meta-dot">•</span>
               <span>❤️ {Number(clip.likesCount || 0)}</span>
-              <span className="bt-clip-meta-dot">•</span>
+              <span className="bt-modal-meta-dot">•</span>
               <span>{fmtDuration(clip.durationSec)}</span>
-              <span className="bt-clip-meta-dot">•</span>
+              <span className="bt-modal-meta-dot">•</span>
               <span>{timeAgo(clip.createdAtMs)}</span>
             </div>
           </div>
@@ -733,12 +809,10 @@ export function BottomTabs() {
     if (!open && !showClipsList && !showClipPlayer) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        // Si player ouvert, on revient à la liste (sans la fermer)
         if (showClipPlayer) {
           setShowClipPlayer(null);
           return;
         }
-        // Sinon ferme la liste ou le menu
         if (showClipsList) setShowClipsList(false);
         else setOpen(false);
       }
@@ -791,6 +865,7 @@ export function BottomTabs() {
 
       <div className="bt-spacer" aria-hidden />
 
+      {/* MENU (sheet du bas) */}
       {open && (
         <div className="bt-backdrop" role="presentation" onClick={() => setOpen(false)}>
           <div className="bt-sheet" role="dialog" aria-modal="true" aria-label="Menu" onClick={(e) => e.stopPropagation()}>
@@ -870,27 +945,23 @@ export function BottomTabs() {
         </div>
       )}
 
+      {/* MODAL CLIPS (centrée) */}
       {showClipsList && (
         <ClipsListModal
           clips={clips}
           total={clipsTotal || clips.length}
           onClose={() => setShowClipsList(false)}
-          onPickClip={(c) => {
-            // On garde la liste ouverte, on empile juste le player par-dessus
-            setShowClipPlayer(c);
-          }}
+          onPickClip={(c) => setShowClipPlayer(c)}
         />
       )}
 
+      {/* MODAL PLAYER (centrée) */}
       {showClipPlayer && (
         <ClipPlayerModal
           clip={showClipPlayer}
           token={token}
           onPatchClip={patchClip}
-          onClose={() => {
-            // Ferme juste le player, la liste reste visible dessous
-            setShowClipPlayer(null);
-          }}
+          onClose={() => setShowClipPlayer(null)}
         />
       )}
     </div>
