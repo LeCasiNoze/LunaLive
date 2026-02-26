@@ -405,7 +405,7 @@ const CSS = `
 .bt-clips-list { display:flex; flex-direction:column; gap:8px; }
 
 .bt-clip-item {
-  display:grid; grid-template-columns:80px 1fr; gap:12px; align-items:center;
+  display:grid; grid-template-columns:46px 1fr;
   width:100%; text-align:left; cursor:pointer;
   padding:11px 13px; border-radius:14px;
   border:1px solid rgba(124,92,252,.12); background:rgba(124,92,252,.04);
@@ -417,7 +417,7 @@ const CSS = `
 .bt-clip-item:active { transform:translateX(2px); }
 
 .bt-clip-thumb {
-  width:80px; height:45px; border-radius:11px; overflow:hidden;
+  width:46px; height:46px; border-radius:13px; overflow:hidden;
   border:1px solid rgba(124,92,252,.14); background:rgba(0,0,0,.35);
   position:relative; flex-shrink:0;
 }
@@ -595,13 +595,21 @@ function ClipsListModal({ clips, total, onClose, onPickClip }: {
             <div className="bt-clips-list">
               {clips.map((c) => {
                 const name = c.streamerName || c.streamerSlug || "Streamer";
-                const thumbUrl = absolutize(c.thumbUrl) || c.thumbUrl;
+                const avatarUrl = absolutize(c.avatarUrl) || null;
                 return (
                   <button key={c.id} type="button" className="bt-clip-item" onClick={() => onPickClip(c)}>
-                    {/* Thumb */}
+                    {/* Avatar streamer — on évite les thumbUrl vidéo qui surchargent l'API */}
                     <div className="bt-clip-thumb">
-                      {thumbUrl && (
-                        <div className="bt-clip-thumb-bg" style={{ backgroundImage: `url(${thumbUrl})` }} />
+                      {avatarUrl ? (
+                        <div className="bt-clip-thumb-bg" style={{ backgroundImage: `url(${avatarUrl})` }} />
+                      ) : (
+                        <div style={{
+                          position: "absolute", inset: 0, display: "grid", placeItems: "center",
+                          fontFamily: "'Syne', system-ui, sans-serif", fontSize: 16, fontWeight: 800,
+                          color: "rgba(196,181,253,.80)",
+                        }}>
+                          {initials(name)}
+                        </div>
                       )}
                       <div className="bt-clip-thumb-play">▶</div>
                     </div>
