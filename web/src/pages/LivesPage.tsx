@@ -923,8 +923,9 @@ export default function LivesPage() {
 
   React.useEffect(() => {
     setSeo({
-      title: "Lives — LunaLive",
-      description: "Retrouve les streamers casino en direct sur LunaLive : lives, viewers, clips du mois et mises en avant.",
+      title: "LunaLive — Lives casino FR, streamers en direct et clips",
+      description:
+        "Regarde des lives casino en français sur LunaLive : streamers en direct, clips, pages casinos, hunts et événements de la communauté.",
       path: "/",
     });
   }, []);

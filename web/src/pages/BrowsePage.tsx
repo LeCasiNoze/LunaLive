@@ -7,7 +7,7 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { getStreamers } from "../lib/api";
 import { svgThumb } from "../lib/thumb";
-
+import { setSeo } from "../lib/seo";
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
 /* ─── utils ─────────────────────────────────────────────────────────── */
@@ -373,7 +373,13 @@ type UiStreamer = {
 /* ─── Composant ─────────────────────────────────────────────────────── */
 export default function BrowsePage() {
   useBrowseStyles();
-
+  React.useEffect(() => {
+    setSeo({
+      title: "Browse — Tous les streamers | LunaLive",
+      description: "Parcours tous les streamers LunaLive : lives en cours, profils offline et recherche de streamers casino.",
+      path: "/browse",
+    });
+  }, []);
   const [items, setItems]         = React.useState<UiStreamer[]>([]);
   const [loading, setLoading]     = React.useState(true);
   const [err, setErr]             = React.useState<string | null>(null);

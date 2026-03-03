@@ -8,7 +8,7 @@ import {
   type CasinoComment, type CasinoLink, type CasinoDetailResp,
 } from "../lib/api_casinos";
 import { useAuth } from "../auth/AuthProvider";
-
+import { setSeo } from "../lib/seo";
 const DEV = Boolean(import.meta.env.DEV);
 
 /* ─────────────────────────────────────────────
@@ -356,6 +356,7 @@ export default function CasinoPage() {
   function revokePicked(list: PickedImg[]) { for (const it of list) { try { URL.revokeObjectURL(it.url); } catch {} } }
   function clearPicked() { setFiles([]); setPickedImgs(prev => { revokePicked(prev); return []; }); }
 
+
   async function loadCasino() {
     if (!slug) return; setLoading(true); setError(null);
     try {
@@ -444,8 +445,30 @@ export default function CasinoPage() {
     catch (e: any) { alert(e?.message || "Erreur réaction"); setComments([]); setNextCursor(null); await loadComments({ reset: true }); }
   }
 
+  React.useEffect(() => {
+    const currentCasino = data?.casino;
+    if (!currentCasino?.name || !currentCasino?.slug) return;
+
+    setSeo({
+      title: `${currentCasino.name} — Avis et note casino | LunaLive`,
+      description: `Découvre ${currentCasino.name} sur LunaLive : note LunaLive, avis de la communauté, bonus et informations détaillées.`,
+      path: `/casinos/${encodeURIComponent(currentCasino.slug)}`,
+    });
+  }, [data?.casino?.slug, data?.casino?.name]);
+    
   if (loading) return <div className="container"><div className="muted">Chargement…</div></div>;
   if (error || !data) return <div className="container"><div className="alert">{error || "Introuvable"}</div></div>;
+
+  React.useEffect(() => {
+  if (!slug) return;
+
+  setSeo({
+    title: "Casino — LunaLive",
+    description:
+      "Découvre les avis, notes, bonus et informations détaillées sur ce casino sur LunaLive.",
+    path: `/casinos/${encodeURIComponent(slug)}`,
+  });
+}, [slug]);
 
   const casino = data.casino; const stats = data.stats;
   const pros = splitList((casino as any).pros); const cons = splitList((casino as any).cons);

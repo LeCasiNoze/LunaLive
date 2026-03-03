@@ -1,7 +1,7 @@
 // web/src/pages/HuntPage.tsx
 import * as React from "react";
-
 import { useAuth } from "../auth/AuthProvider";
+import { setSeo } from "../lib/seo";
 import {
   huntAdd,
   huntClose,
@@ -240,6 +240,15 @@ function SlotThumb({ url, size = 42 }: { url?: string | null; size?: number }) {
 export default function HuntPage() {
   const { user, token } = useAuth() as any;
 
+    React.useEffect(() => {
+    setSeo({
+      title: "Hunt — LunaLive",
+      description:
+        "Gère ton hunt sur LunaLive : préparation, ouverture, suivi des résultats et progression du hunt.",
+      path: "/hunt",
+    });
+  }, []);
+  
   const streamerSlug = React.useMemo(() => pickStreamerSlugFromUser(user), [user]);
   const [huntSyncEnabled, setHuntSyncEnabled] = React.useState(false);
 

@@ -536,8 +536,9 @@ export default function CasinosPage() {
 
   React.useEffect(() => {
     setSeo({
-      title: "Casinos — LunaLive",
-      description: "Découvre les casinos présents sur LunaLive : infos, liens, avis et notes de la communauté (bientôt).",
+      title: "Casinos — Avis, notes et partenaires | LunaLive",
+      description:
+        "Découvre les casinos présents sur LunaLive : notes LunaLive, avis de la communauté, bonus, partenaires et pages détaillées.",
       path: "/casinos",
     });
   }, []);

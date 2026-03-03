@@ -13,7 +13,8 @@ import { shopTalents, buyTalent, type ApiTalentItem } from "../lib/api";
 import { billingCheckout, billingPortal } from "../lib/api_billing";
 import { useIsMobile } from "../hooks/useIsMobile";
 import ShopPageMobile from "./ShopPage.mobile";
-
+import { useLocation } from "react-router-dom";
+import { setSeo } from "../lib/seo";
 type Kind = "username" | "badge" | "title" | "frame" | "hat";
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
@@ -219,6 +220,7 @@ export function ShopPage({ streamerAppearance = DEFAULT_STREAMER_APPEARANCE }: {
   const token: string|null = authAny.token??null;
   const user = authAny.user as {id:number;username:string;rubis:number;role?:string}|null;
   const isMobile = useIsMobile();
+  const location = useLocation();
   if (isMobile) return <ShopPageMobile streamerAppearance={streamerAppearance} />;
 
   const [topTab, setTopTab] = React.useState<(typeof TOP_TABS)[number]["id"]>("skins");
@@ -236,6 +238,13 @@ export function ShopPage({ streamerAppearance = DEFAULT_STREAMER_APPEARANCE }: {
   const [equipped, setEquipped] = React.useState<{username:string|null;badge:string|null;title:string|null;frame:string|null;hat:string|null}>({username:null,badge:null,title:null,frame:null,hat:null});
   const [selected, setSelected] = React.useState<{kind:Kind;code:string}|null>(null);
   const patchUser = authAny.patchUser as ((p:any)=>void)|undefined;
+  React.useEffect(() => {
+    setSeo({
+      title: "Shop — Skins, abonnements et rubis | LunaLive",
+      description: "Accède au shop LunaLive : skins de chat, abonnements viewer/streamer et bientôt achat de rubis.",
+      path: "/shop",
+    });
+  }, []);
 
   function syncRubis(v: number, source: string) {
     const n=Number(v); if (!Number.isFinite(n)) return;
@@ -248,9 +257,24 @@ export function ShopPage({ streamerAppearance = DEFAULT_STREAMER_APPEARANCE }: {
     finally { setLoadingTalents(false); }
   }
   React.useEffect(() => {
-    try { const want=String(localStorage.getItem("shop:openTab")||""); if(want&&["skins","upgrades","subs","rubis"].includes(want))setTopTab(want as any); localStorage.removeItem("shop:openTab"); } catch {}
+    try {
+      const params = new URLSearchParams(location.search);
+      const fromUrl = String(params.get("tab") || "").trim();
+
+      if (fromUrl && ["skins", "upgrades", "subs", "rubis"].includes(fromUrl)) {
+        setTopTab(fromUrl as any);
+        return;
+      }
+
+      const want = String(localStorage.getItem("shop:openTab") || "").trim();
+      if (want && ["skins", "upgrades", "subs", "rubis"].includes(want)) {
+        setTopTab(want as any);
+        localStorage.removeItem("shop:openTab");
+      }
+    } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [location.search]);
+  
   React.useEffect(() => { if (topTab==="upgrades") loadTalents(); /* eslint-disable-next-line */ }, [topTab]);
   async function load() {
     if (!token) return; setLoading(true); setErr(null);

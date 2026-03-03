@@ -445,6 +445,20 @@ function StreamerPageDesktop() {
 
   React.useEffect(() => { if (!streamer?.isLive) setLiveViewersNow(null); }, [streamer?.isLive]);
 
+  React.useEffect(() => {
+    const s = String(slug || "").trim();
+    if (!s || !streamer) return;
+
+    const name = String(streamer.displayName || s).trim();
+    const livePart = streamer.isLive ? "en live" : "hors ligne";
+
+    setSeo({
+      title: `${name} — Live, clips et infos | LunaLive`,
+      description: `Regarde ${name} sur LunaLive : streamer casino ${livePart}, clips, VOD et informations du profil.`,
+      path: `/s/${encodeURIComponent(s)}`,
+    });
+  }, [slug, streamer]);
+
   /* ── player + banner height sync (identique) ────────────────── */
   const playerWrapRef = React.useRef<HTMLDivElement | null>(null);
   const metaWrapRef   = React.useRef<HTMLDivElement | null>(null);
