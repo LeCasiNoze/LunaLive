@@ -46,7 +46,7 @@ async function main() {
   const urls = new Set();
 
   // pages publiques SEO utiles
-  ["/", "/browse", "/casinos"].forEach((p) => {
+  ["/", "/browse", "/casinos", "/shop", "/hunt"].forEach((p) => {
     urls.add(new URL(p, SITE).toString());
   });
 

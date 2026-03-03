@@ -1,7 +1,10 @@
 // web/src/pages/HuntPage.tsx
+// ══════════════════════════════════════════════════════════════
+//  PURPLE VELVET DESKTOP — HuntPage
+//  Design : Glass morphism, gradient accents, smooth animations
+// ══════════════════════════════════════════════════════════════
 import * as React from "react";
 import { useAuth } from "../auth/AuthProvider";
-import { setSeo } from "../lib/seo";
 import {
   huntAdd,
   huntClose,
@@ -22,9 +25,10 @@ import {
 } from "../lib/hunt_api";
 import type { HuntState, SuggestItem, SavedHunt } from "../lib/hunt_types";
 
-/* ===================== Helpers ===================== */
+/* ─── Helpers ────────────────────────────────────────────────────────── */
 const fmtEur = (n: number) => `${(Number(n) || 0).toFixed(2)}€`;
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
 function canUseCallsHunt(token: any, streamerSlug: any) {
   return !!token && !!streamerSlug;
 }
@@ -51,7 +55,6 @@ async function callsHuntSetBet(slug: string, token: string, id: string, betEur: 
 }
 
 async function callsHuntSetPay(slug: string, token: string, _id: string, payEur: number) {
-  // ✅ backend pay = "premier bonus unpaid"
   return callsHuntJson(slug, token, "pay", { payEur, pay: payEur });
 }
 
@@ -68,12 +71,10 @@ async function callsHuntRevert(slug: string, token: string) {
 }
 
 async function callsHuntNew(slug: string, token: string) {
-  // ✅ route existante
   return callsHuntJson(slug, token, "reset", {});
 }
 
 async function callsHuntLoad(slug: string, token: string, _huntId: number) {
-  // Pas de "load" côté calls_hunt pour l’instant => on reset
   return callsHuntJson(slug, token, "reset", {});
 }
 
@@ -92,12 +93,9 @@ async function callsHuntJson(slug: string, token: string, path: string, body?: a
 }
 
 function mapCallsHuntToHuntState(payload: any): HuntState {
-  // ✅ On force un phase compatible UI
   const phase = (payload?.opening || payload?.mode === "open") ? "open" : "edit";
-
   const start = payload?.startEur ?? payload?.hunt?.start ?? null;
 
-  // ✅ On affiche UNIQUEMENT les bonus (bonusDrops), sinon fallback filter betEur>0
   const rawBonus =
     (Array.isArray(payload?.bonusDrops) && payload.bonusDrops) ||
     (Array.isArray(payload?.queue) ? payload.queue.filter((x: any) => (Number(x?.betEur) || 0) > 0) : []) ||
@@ -202,8 +200,8 @@ function SlotThumb({ url, size = 42 }: { url?: string | null; size?: number }) {
     height: size,
     borderRadius: 12,
     flex: "0 0 auto",
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(124,92,252,0.18)",
+    background: "rgba(124,92,252,0.06)",
     overflow: "hidden",
     display: "grid",
     placeItems: "center",
@@ -236,26 +234,40 @@ function SlotThumb({ url, size = 42 }: { url?: string | null; size?: number }) {
   );
 }
 
-/* ===================== Component ===================== */
+function GlassCard({ children, style, className }: {
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+  className?: string;
+}) {
+  return (
+    <div className={className} style={{
+      position: "relative", borderRadius: 20,
+      border: "1px solid rgba(124,92,252,0.14)",
+      background: "rgba(13,11,24,0.82)",
+      boxShadow: "0 18px 55px rgba(0,0,0,0.38)",
+      backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
+      overflow: "hidden", ...style,
+    }}>
+      <div aria-hidden style={{
+        position: "absolute", top: 0, left: "8%", right: "8%", height: 1,
+        background: "linear-gradient(90deg, transparent, rgba(167,139,250,0.35) 40%, rgba(91,142,248,0.25) 60%, transparent)",
+        pointerEvents: "none", zIndex: 2,
+      }} />
+      {children}
+    </div>
+  );
+}
+
+/* ─── Component ──────────────────────────────────────────────────────── */
 export default function HuntPage() {
   const { user, token } = useAuth() as any;
 
-    React.useEffect(() => {
-    setSeo({
-      title: "Hunt — LunaLive",
-      description:
-        "Gère ton hunt sur LunaLive : préparation, ouverture, suivi des résultats et progression du hunt.",
-      path: "/hunt",
-    });
-  }, []);
-  
   const streamerSlug = React.useMemo(() => pickStreamerSlugFromUser(user), [user]);
   const [huntSyncEnabled, setHuntSyncEnabled] = React.useState(false);
 
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
 
-  // 🐛 Debug visuel
   const [debugOn, setDebugOn] = React.useState(false);
   const [debugStateRaw, setDebugStateRaw] = React.useState<any>(null);
   const [debugLastPay, setDebugLastPay] = React.useState<any>(null);
@@ -273,7 +285,6 @@ export default function HuntPage() {
   const phase = (state?.phase || ((state as any)?.opened ? "open" : "edit")) as HuntState["phase"];
   const items = (state?.items || []) as any[];
 
-  // refs utiles pour sync (évite dépendances qui re-créent l’interval)
   const itemsRef = React.useRef<any[]>([]);
   React.useEffect(() => {
     itemsRef.current = items;
@@ -286,11 +297,8 @@ export default function HuntPage() {
 
   const syncInFlightRef = React.useRef(false);
   const processedCallIdRef = React.useRef<Record<string, true>>({});
-
-  // ✅ évite que le polling écrase le start pendant qu’on tape
   const editingStartRef = React.useRef(false);
 
-  // ✅ affichage edit : nouveaux en haut
   const itemsEdit = React.useMemo(() => {
     const arr = Array.isArray(items) ? [...items] : [];
     return arr.reverse();
@@ -299,7 +307,6 @@ export default function HuntPage() {
   const [myHunts, setMyHunts] = React.useState<SavedHunt[]>([]);
   const [startInput, setStartInput] = React.useState<string>("");
 
-  // Suggest
   const [q, setQ] = React.useState("");
   const [suggestions, setSuggestions] = React.useState<SuggestItem[]>([]);
   const [suggLoading, setSuggLoading] = React.useState(false);
@@ -307,7 +314,6 @@ export default function HuntPage() {
   const [showSugg, setShowSugg] = React.useState(false);
   const [sel, setSel] = React.useState(0);
 
-  // Cache local (name -> image/provider) pour afficher les thumbs dans la liste
   const [slotMetaByName, setSlotMetaByName] = React.useState<
     Record<string, { imageUrl: string | null; provider: string | null }>
   >({});
@@ -324,21 +330,16 @@ export default function HuntPage() {
     return pickProvider(x) ?? slotMetaByName[keyName(x?.name)]?.provider ?? null;
   }
 
-  // anti-race : ignore les réponses en retard
   const suggReqRef = React.useRef(0);
-
-  // Bet focus after add
   const betRefs = React.useRef<Record<string, HTMLInputElement | null>>({});
   const [pendingFocusId, setPendingFocusId] = React.useState<string | null>(null);
 
-  // OPEN: deck
   const [deckIndex, setDeckIndex] = React.useState(0);
   const [draftPay, setDraftPay] = React.useState<Record<string, string>>({});
   const [confirmed, setConfirmed] = React.useState<Record<string, boolean>>({});
 
   const startValue = Number((state as any)?.start) || 0;
 
-  // totals
   const totalBetAll = React.useMemo(() => items.reduce((s: number, it: any) => s + (Number(it.bet) || 0), 0), [items]);
   const totalPayAll = React.useMemo(() => items.reduce((s: number, it: any) => s + (Number(it.pay) || 0), 0), [items]);
   const profit = React.useMemo(() => totalPayAll - startValue, [totalPayAll, startValue]);
@@ -368,31 +369,26 @@ export default function HuntPage() {
     return remainingToRecoup / remainingBet;
   }, [remainingToRecoup, remainingBet]);
 
-const canOpen = React.useMemo(() => {
-  const useCalls = canUseCallsHunt(token, streamerSlug);
-  if (useCalls) return startValue > 0 && items.length > 0; // bets déjà gérés par calls_queue
-  return phase === "edit" && startValue > 0 && items.length > 0 && items.every((it: any) => Number(it.bet) > 0);
-}, [phase, startValue, items, token, streamerSlug]);
+  const canOpen = React.useMemo(() => {
+    const useCalls = canUseCallsHunt(token, streamerSlug);
+    if (useCalls) return startValue > 0 && items.length > 0;
+    return phase === "edit" && startValue > 0 && items.length > 0 && items.every((it: any) => Number(it.bet) > 0);
+  }, [phase, startValue, items, token, streamerSlug]);
 
-  // keep deckIndex valid
   React.useEffect(() => {
     if (items?.length) setDeckIndex((i) => Math.max(0, Math.min(i, items.length - 1)));
     else setDeckIndex(0);
   }, [items.length]);
 
-  // ✅ Auto-hydrate meta (images/providers) depuis /slots/search
-  // => après refresh, les images reviennent sans devoir remove/add
   const metaInFlight = React.useRef<Record<string, boolean>>({});
 
   async function ensureMetaForName(name: string) {
     const k = keyName(name);
     if (!k) return;
 
-    // déjà connu
     const already = slotMetaByName[k];
     if (already?.imageUrl || already?.provider) return;
 
-    // déjà en cours
     if (metaInFlight.current[k]) return;
     metaInFlight.current[k] = true;
 
@@ -401,7 +397,6 @@ const canOpen = React.useMemo(() => {
       const j = await r.json().catch(() => null);
       if (!j?.ok || !Array.isArray(j.items) || !j.items.length) return;
 
-      // on essaye match exact, sinon 1er résultat
       const want = k;
       const best = j.items.find((x: any) => keyName(x?.name) === want) ?? j.items[0];
 
@@ -411,7 +406,6 @@ const canOpen = React.useMemo(() => {
       if (img || prov) {
         setSlotMetaByName((prev) => {
           const cur = prev[k];
-          // ne pas écraser si déjà rempli entre temps
           const next = {
             imageUrl: cur?.imageUrl ?? (img || null),
             provider: cur?.provider ?? (prov || null),
@@ -420,14 +414,12 @@ const canOpen = React.useMemo(() => {
         });
       }
     } catch {
-      // ignore
     } finally {
       metaInFlight.current[k] = false;
     }
   }
 
   function hydrateMetaForItems(list: any[]) {
-    // 1) si l’item a déjà image/provider, on le met direct en cache
     setSlotMetaByName((prev) => {
       let changed = false;
       const next = { ...prev };
@@ -458,7 +450,6 @@ const canOpen = React.useMemo(() => {
       return changed ? next : prev;
     });
 
-    // 2) pour ceux sans meta, fetch /slots/search
     for (const it of list || []) {
       const name = String(it?.name || "").trim();
       if (!name) continue;
@@ -474,39 +465,37 @@ const canOpen = React.useMemo(() => {
     }
   }
 
-  // hydrate quand items changent (inclut refresh / load)
   React.useEffect(() => {
     if (!items?.length) return;
     hydrateMetaForItems(items);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
-async function refreshState(opts?: { preserveStartInput?: boolean }) {
-  // ✅ si possible, on lit l’état depuis /calls/:slug/hunt/state (même monde que BotMenu)
-  const useCalls = canUseCallsHunt(token, streamerSlug);
+  async function refreshState(opts?: { preserveStartInput?: boolean }) {
+    const useCalls = canUseCallsHunt(token, streamerSlug);
 
-  const s = useCalls
-    ? await callsHuntGetState(String(streamerSlug), String(token))
-    : await huntGetState();
+    const s = useCalls
+      ? await callsHuntGetState(String(streamerSlug), String(token))
+      : await huntGetState();
 
-  if (useCalls) {
-    setDebugStateRaw((s as any)?.raw ?? null);
-  }
-
-  if (s?.ok && (s as any).state) {
-    const nextState = (s as any).state as any;
-    setState(nextState);
-
-    if (!opts?.preserveStartInput && !editingStartRef.current) {
-      setStartInput(nextState?.start != null ? String(nextState.start) : "");
+    if (useCalls) {
+      setDebugStateRaw((s as any)?.raw ?? null);
     }
 
-    try {
-      const list = Array.isArray(nextState?.items) ? nextState.items : [];
-      if (list.length) hydrateMetaForItems(list);
-    } catch {}
+    if (s?.ok && (s as any).state) {
+      const nextState = (s as any).state as any;
+      setState(nextState);
+
+      if (!opts?.preserveStartInput && !editingStartRef.current) {
+        setStartInput(nextState?.start != null ? String(nextState.start) : "");
+      }
+
+      try {
+        const list = Array.isArray(nextState?.items) ? nextState.items : [];
+        if (list.length) hydrateMetaForItems(list);
+      } catch {}
+    }
   }
-}
 
   async function refreshAll() {
     await refreshState();
@@ -526,9 +515,6 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ===================== Hunt sync (calls -> hunt items) ===================== */
-
-  // 1) Charger la config calls (huntSync) périodiquement
   React.useEffect(() => {
     if (!token || !streamerSlug) return;
 
@@ -546,7 +532,6 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
         const cfg = j?.config ?? j;
         setHuntSyncEnabled(pickHuntSyncEnabled(cfg));
       } catch {
-        // ignore
       }
     }
 
@@ -558,7 +543,6 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
     };
   }, [token, streamerSlug]);
 
-  // 2) Poll queue et auto-add dans hunt si syncActive
   const syncActive = huntSyncEnabled && startValue > 0 && (phase === "edit" || phase === "open");
 
   React.useEffect(() => {
@@ -590,20 +574,18 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
           const callId = String(c?.id || "").trim();
           if (!callId) continue;
 
-          // ✅ déjà traité (évite re-add à chaque refresh)
           if (processedCallIdRef.current[callId]) continue;
 
           const nm = String(c?.slotName || "").trim();
           const k = nm.toLowerCase();
 
-          // ✅ pas de doublon dans le hunt
           if (!k || existingNames.has(k)) {
-            processedCallIdRef.current[callId] = true; // considéré "vu" (sinon loop infinie)
+            processedCallIdRef.current[callId] = true;
             continue;
           }
 
           toAdd.push(c);
-          if (toAdd.length >= 5) break; // anti-spam
+          if (toAdd.length >= 5) break;
         }
 
         if (!toAdd.length) return;
@@ -613,7 +595,6 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
           const nm = String(c.slotName || "").trim();
           const k = nm.toLowerCase();
 
-          // hydrate meta pour thumbs
           setSlotMetaByName((prev) => ({
             ...prev,
             [k]: {
@@ -628,10 +609,8 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
           else await huntAdd(nm);
         }
 
-        // refresh 1 fois après le batch
         await refreshState();
       } catch {
-        // ignore
       } finally {
         syncInFlightRef.current = false;
       }
@@ -645,11 +624,9 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
     };
   }, [token, streamerSlug, syncActive]);
 
-  /* ===================== ✅ LIVE REFRESH (BotMenu -> HuntPage) ===================== */
   React.useEffect(() => {
     if (!token) return;
 
-    // on poll en priorité quand on est en OPEN (deck), sinon seulement si syncActive
     const shouldPoll = phase === "open" || syncActive;
     if (!shouldPoll) return;
 
@@ -658,7 +635,7 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
     async function tick() {
       if (stop) return;
       if (busyRef.current) return;
-      if (syncInFlightRef.current) return; // évite de se marcher dessus avec le sync calls->hunt
+      if (syncInFlightRef.current) return;
       await refreshState({ preserveStartInput: true }).catch(() => {});
     }
 
@@ -672,8 +649,6 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
       window.clearInterval(t);
     };
   }, [token, phase, syncActive]);
-
-  /* ===================== Suggestions ===================== */
 
   async function fetchSuggestions(text: string) {
     const s = String(text || "").trim();
@@ -690,7 +665,6 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
     setSuggError(null);
 
     try {
-      // 1) on tente /api/hunt2/suggest (si backend ok)
       let raw: any[] = [];
       try {
         const r = await huntSuggest(s, 12);
@@ -700,7 +674,6 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
         setSuggError(String(e?.message || "hunt_suggest_failed"));
       }
 
-      // 2) fallback EXACT BotMenu: /slots/search
       if (!raw.length) {
         try {
           const r2 = await fetch(`${apiBase()}/slots/search?q=${encodeURIComponent(s)}&limit=12`);
@@ -754,7 +727,6 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
     }
   }
 
-  // debounce
   React.useEffect(() => {
     const t = window.setTimeout(() => {
       fetchSuggestions(q).catch(() => {});
@@ -762,7 +734,6 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
     return () => window.clearTimeout(t);
   }, [q, items]);
 
-  // focus bet after add
   React.useEffect(() => {
     if (!pendingFocusId) return;
     const el = betRefs.current[pendingFocusId];
@@ -775,7 +746,6 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
     }
   }, [pendingFocusId, itemsEdit]);
 
-  // keyboard shortcuts in open
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (phase !== "open") return;
@@ -791,7 +761,6 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [phase, items]);
 
-  // ✅ si le pay est mis ailleurs (BotMenu), on “recalle” le deck sur le 1er unpaid
   React.useEffect(() => {
     if (phase !== "open") return;
     if (!items?.length) return;
@@ -821,33 +790,31 @@ async function refreshState(opts?: { preserveStartInput?: boolean }) {
     );
   }
 
-async function saveStart() {
-  const v = Number(startInput);
-  if (!(v > 0)) return;
+  async function saveStart() {
+    const v = Number(startInput);
+    if (!(v > 0)) return;
 
-  const useCalls = canUseCallsHunt(token, streamerSlug);
+    const useCalls = canUseCallsHunt(token, streamerSlug);
 
-  setBusy(true);
-  try {
-    if (useCalls) await callsHuntSetStart(String(streamerSlug), String(token), Number(v.toFixed(2)));
-    else await huntSetStart(v);
+    setBusy(true);
+    try {
+      if (useCalls) await callsHuntSetStart(String(streamerSlug), String(token), Number(v.toFixed(2)));
+      else await huntSetStart(v);
 
-    await refreshState();
-  } finally {
-    setBusy(false);
+      await refreshState();
+    } finally {
+      setBusy(false);
+    }
   }
-}
-
 
   async function addItemFromSelection(item: SuggestItem | null) {
     if (!(startValue > 0)) {
-      alert("Définis d’abord le Start du hunt.");
+      alert("Définis d'abord le Start du hunt.");
       return;
     }
     const nm = (item?.name || q || "").trim();
     if (!nm) return;
 
-    // ✅ si on vient d'une suggestion, on garde image/provider en cache pour la liste du bas
     if (item?.name) {
       const k = keyName(item.name);
       const img = pickImageUrl(item);
@@ -863,23 +830,22 @@ async function saveStart() {
 
     setBusy(true);
     try {
-const useCalls = canUseCallsHunt(token, streamerSlug);
+      const useCalls = canUseCallsHunt(token, streamerSlug);
 
-const j = useCalls
-  ? await callsHuntAddItem(String(streamerSlug), String(token), nm)
-  : await huntAdd(nm);
+      const j = useCalls
+        ? await callsHuntAddItem(String(streamerSlug), String(token), nm)
+        : await huntAdd(nm);
 
-setQ("");
-setSuggestions([]);
-setSuggError(null);
-setSuggLoading(false);
-setShowSugg(false);
-setSel(0);
+      setQ("");
+      setSuggestions([]);
+      setSuggError(null);
+      setSuggLoading(false);
+      setShowSugg(false);
+      setSel(0);
 
-// si backend renvoie un id d’item, on focus
-if (j?.ok && (j as any).id) setPendingFocusId(String((j as any).id));
+      if (j?.ok && (j as any).id) setPendingFocusId(String((j as any).id));
 
-await refreshState();
+      await refreshState();
 
     } finally {
       setBusy(false);
@@ -889,11 +855,11 @@ await refreshState();
   async function removeItem(id: string) {
     setBusy(true);
     try {
-const useCalls = canUseCallsHunt(token, streamerSlug);
-if (useCalls) await callsHuntRemoveItem(String(streamerSlug), String(token), String(id));
-else await huntRemove(id);
+      const useCalls = canUseCallsHunt(token, streamerSlug);
+      if (useCalls) await callsHuntRemoveItem(String(streamerSlug), String(token), String(id));
+      else await huntRemove(id);
 
-await refreshState();
+      await refreshState();
 
     } finally {
       setBusy(false);
@@ -903,52 +869,51 @@ await refreshState();
   async function setBet(id: string, bet: number) {
     setBusy(true);
     try {
-const useCalls = canUseCallsHunt(token, streamerSlug);
-const b = Math.max(0, Number((Number(bet) || 0).toFixed(2)));
+      const useCalls = canUseCallsHunt(token, streamerSlug);
+      const b = Math.max(0, Number((Number(bet) || 0).toFixed(2)));
 
-if (useCalls) await callsHuntSetBet(String(streamerSlug), String(token), String(id), b);
-else await huntSetBet(id, b);
+      if (useCalls) await callsHuntSetBet(String(streamerSlug), String(token), String(id), b);
+      else await huntSetBet(id, b);
 
-await refreshState();
+      await refreshState();
 
     } finally {
       setBusy(false);
     }
   }
 
-async function setPay(id: string, pay: number) {
-  setBusy(true);
-  try {
-    const useCalls = canUseCallsHunt(token, streamerSlug);
-    const p = Math.max(0, Number((Number(pay) || 0).toFixed(2)));
+  async function setPay(id: string, pay: number) {
+    setBusy(true);
+    try {
+      const useCalls = canUseCallsHunt(token, streamerSlug);
+      const p = Math.max(0, Number((Number(pay) || 0).toFixed(2)));
 
-    setDebugLastAction(`pay(${p})`);
+      setDebugLastAction(`pay(${p})`);
 
-    if (useCalls) {
-      const resp = await callsHuntSetPay(String(streamerSlug), String(token), String(id), p);
-      setDebugLastPay(resp);
-    } else {
-      const resp = await huntSetPay(id, p);
-      setDebugLastPay(resp);
+      if (useCalls) {
+        const resp = await callsHuntSetPay(String(streamerSlug), String(token), String(id), p);
+        setDebugLastPay(resp);
+      } else {
+        const resp = await huntSetPay(id, p);
+        setDebugLastPay(resp);
+      }
+
+      await refreshState();
+    } finally {
+      setBusy(false);
     }
-
-    await refreshState();
-  } finally {
-    setBusy(false);
   }
-}
-
 
   async function doOpen() {
     if (!canOpen) return;
     setBusy(true);
     try {
-const useCalls = canUseCallsHunt(token, streamerSlug);
+      const useCalls = canUseCallsHunt(token, streamerSlug);
 
-if (useCalls) await callsHuntOpen(String(streamerSlug), String(token));
-else await huntOpen();
+      if (useCalls) await callsHuntOpen(String(streamerSlug), String(token));
+      else await huntOpen();
 
-await refreshState();
+      await refreshState();
 
     } finally {
       setBusy(false);
@@ -958,46 +923,46 @@ await refreshState();
   async function doClose() {
     setBusy(true);
     try {
-const useCalls = canUseCallsHunt(token, streamerSlug);
+      const useCalls = canUseCallsHunt(token, streamerSlug);
 
-if (useCalls) await callsHuntClose(String(streamerSlug), String(token));
-else await huntClose();
+      if (useCalls) await callsHuntClose(String(streamerSlug), String(token));
+      else await huntClose();
 
-await refreshAll();
+      await refreshAll();
 
     } finally {
       setBusy(false);
     }
   }
 
-async function doRevert() {
-  setBusy(true);
-  try {
-    const useCalls = canUseCallsHunt(token, streamerSlug);
+  async function doRevert() {
+    setBusy(true);
+    try {
+      const useCalls = canUseCallsHunt(token, streamerSlug);
 
-    if (useCalls) await callsHuntRevert(String(streamerSlug), String(token));
-    else await huntRevert();
+      if (useCalls) await callsHuntRevert(String(streamerSlug), String(token));
+      else await huntRevert();
 
-    await refreshState();
-  } finally {
-    setBusy(false);
+      await refreshState();
+    } finally {
+      setBusy(false);
+    }
   }
-}
 
   async function doNew() {
     setBusy(true);
     try {
-      
-const useCalls = canUseCallsHunt(token, streamerSlug);
 
-if (useCalls) await callsHuntNew(String(streamerSlug), String(token));
-else await huntNew();
+      const useCalls = canUseCallsHunt(token, streamerSlug);
 
-setDraftPay({});
-setConfirmed({});
-processedCallIdRef.current = {};
+      if (useCalls) await callsHuntNew(String(streamerSlug), String(token));
+      else await huntNew();
 
-await refreshAll();
+      setDraftPay({});
+      setConfirmed({});
+      processedCallIdRef.current = {};
+
+      await refreshAll();
     } finally {
       setBusy(false);
     }
@@ -1006,16 +971,16 @@ await refreshAll();
   async function doLoad(id: number) {
     setBusy(true);
     try {
-const useCalls = canUseCallsHunt(token, streamerSlug);
+      const useCalls = canUseCallsHunt(token, streamerSlug);
 
-if (useCalls) await callsHuntLoad(String(streamerSlug), String(token), id);
-else await huntLoad(id);
+      if (useCalls) await callsHuntLoad(String(streamerSlug), String(token), id);
+      else await huntLoad(id);
 
-setDraftPay({});
-setConfirmed({});
-processedCallIdRef.current = {};
+      setDraftPay({});
+      setConfirmed({});
+      processedCallIdRef.current = {};
 
-await refreshState();
+      await refreshState();
 
     } finally {
       setBusy(false);
@@ -1062,7 +1027,6 @@ await refreshState();
   const currentKey = currentId || "";
   const isConfirmed = currentId ? !!confirmed[currentKey] : false;
 
-  // ✅ utiliser la même source que liste/suggestions (inclut meta hydratée)
   const currentImg = current ? pickItemImage(current) : null;
   const currentProv = current ? pickItemProvider(current) : null;
 
@@ -1075,13 +1039,12 @@ await refreshState();
     await setPay(currentId, v);
     setConfirmed((p) => ({ ...p, [currentKey]: true }));
 
-    // ✅ auto-next (workflow “bot menu”)
-const nextUnpaid = items.findIndex((it: any, idx: number) => {
-  if (idx <= deckIndex) return false;
-  return it && (it.pay === null || typeof it.pay === "undefined");
-});
-if (nextUnpaid >= 0) setDeckIndex(nextUnpaid);
-else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length - 1, x + 1));
+    const nextUnpaid = items.findIndex((it: any, idx: number) => {
+      if (idx <= deckIndex) return false;
+      return it && (it.pay === null || typeof it.pay === "undefined");
+    });
+    if (nextUnpaid >= 0) setDeckIndex(nextUnpaid);
+    else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length - 1, x + 1));
 
   }
 
@@ -1101,7 +1064,6 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
   return (
     <main className="page huntPage">
       <div className="huntLayout">
-        {/* ===== SIDEBAR ===== */}
         <aside className="huntPanel">
           <div className="huntPanelInner">
             <div className="huntSidebarHeader">
@@ -1118,7 +1080,7 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
 
             {!myHunts.length ? (
               <div className="huntSmallMuted" style={{ marginTop: 10 }}>
-                Aucun hunt sauvegardé pour l’instant.
+                Aucun hunt sauvegardé pour l'instant.
               </div>
             ) : (
               <div className="huntList">
@@ -1167,13 +1129,17 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
           </div>
         </aside>
 
-        {/* ===== MAIN ===== */}
         <section style={{ display: "grid", gap: 14 }}>
-          {/* Header / Start / Actions */}
-          <div className="huntPanel">
+          <GlassCard>
             <div className="huntPanelInner">
-              <h1 className="huntTitle">Hunt</h1>
-              <div className="huntSubtitle">Sidebar + stats + ajout + tableau + deck (sans libs).</div>
+              <h1 className="huntTitle" style={{
+                background: "linear-gradient(105deg, #c4b5fd 0%, #7c5cfc 35%, #5b8ef8 70%, #93c5fd 100%)",
+                WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent",
+                filter: "drop-shadow(0 0 14px rgba(124,92,252,0.55))",
+              }}>
+                Hunt
+              </h1>
+              <div className="huntSubtitle">Gère ton hunt avec sync automatique et statistiques en temps réel.</div>
 
               <div className="huntRow" style={{ marginTop: 12 }}>
                 <div className="huntRow" style={{ gap: 8 }}>
@@ -1251,8 +1217,8 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
                     marginTop: 6,
                     height: 10,
                     borderRadius: 999,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(124,92,252,0.16)",
+                    background: "rgba(0,0,0,0.25)",
                     overflow: "hidden",
                   }}
                 >
@@ -1260,20 +1226,20 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
                     style={{
                       height: "100%",
                       width: `${progressPct}%`,
-                      background: progressPct >= 100 ? "rgba(16,185,129,0.70)" : "rgba(34,211,238,0.70)",
+                      background: progressPct >= 100
+                        ? "linear-gradient(90deg, rgba(16,185,129,0.70), rgba(52,211,153,0.70))"
+                        : "linear-gradient(90deg, rgba(124,92,252,0.70), rgba(91,142,248,0.70))",
                       transition: "width 200ms ease",
                     }}
                   />
                 </div>
               </div>
             </div>
-          </div>
+          </GlassCard>
 
-          {/* ===== EDIT ===== */}
           {phase === "edit" && (
             <>
-              {/* Ajout machine + suggestions */}
-              <div className="huntPanel">
+              <GlassCard>
                 <div className="huntPanelInner">
                   <div style={{ fontWeight: 900, marginBottom: 8 }}>Ajouter une machine</div>
 
@@ -1317,7 +1283,6 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
                     </button>
                   </div>
 
-                  {/* ✅ Suggestions : BotMenu-like */}
                   {showSugg && q.trim().length >= 2 ? (
                     <div style={{ marginTop: 10 }}>
                       {suggLoading ? <div className="huntSmallMuted">Suggestions…</div> : null}
@@ -1359,10 +1324,9 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
                     </div>
                   ) : null}
                 </div>
-              </div>
+              </GlassCard>
 
-              {/* Liste items */}
-              <div className="huntPanel">
+              <GlassCard>
                 <div className="huntPanelInner">
                   <div className="huntRow" style={{ justifyContent: "space-between" }}>
                     <div className="huntSmallMuted">
@@ -1375,7 +1339,7 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
 
                   {!items.length ? (
                     <div className="huntSmallMuted" style={{ marginTop: 10 }}>
-                      Aucune machine pour l’instant.
+                      Aucune machine pour l'instant.
                     </div>
                   ) : (
                     <div className="itemsGrid" style={{ marginTop: 10 }}>
@@ -1429,13 +1393,12 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
                     </div>
                   )}
                 </div>
-              </div>
+              </GlassCard>
             </>
           )}
 
-          {/* ===== OPEN (deck simple) ===== */}
           {phase === "open" && (
-            <div className="huntPanel">
+            <GlassCard>
               <div className="huntPanelInner">
                 <div className="huntRow" style={{ justifyContent: "space-between" }}>
                   <div>
@@ -1458,7 +1421,6 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
                   </div>
                 ) : (
                   <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-                    {/* Nav */}
                     <div className="huntRow" style={{ justifyContent: "space-between" }}>
                       <button className="btn" onClick={() => setDeckIndex((i) => Math.max(0, i - 1))} disabled={busy || deckIndex === 0}>
                         ◀ Précédent
@@ -1472,18 +1434,16 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
                       </button>
                     </div>
 
-                    {/* Card */}
                     <div
                       className="huntPanel"
                       style={{
                         borderRadius: 18,
                         overflow: "hidden",
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(124,92,252,0.16)",
+                        background: "rgba(124,92,252,0.06)",
                       }}
                     >
                       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 0 }}>
-                        {/* ✅ hauteur FIXE => l’image ne déforme plus le layout */}
                         <div
                           style={{
                             height: 260,
@@ -1576,12 +1536,11 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
                   </div>
                 )}
               </div>
-            </div>
+            </GlassCard>
           )}
 
-          {/* ===== CLOSED ===== */}
           {phase === "closed" && (
-            <div className="huntPanel">
+            <GlassCard>
               <div className="huntPanelInner">
                 <div className="huntRow" style={{ justifyContent: "space-between" }}>
                   <div style={{ fontWeight: 900 }}>Hunt terminé</div>
@@ -1617,8 +1576,8 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
                       marginTop: 6,
                       height: 10,
                       borderRadius: 999,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(124,92,252,0.16)",
+                      background: "rgba(0,0,0,0.25)",
                       overflow: "hidden",
                     }}
                   >
@@ -1626,118 +1585,121 @@ else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length
                       style={{
                         height: "100%",
                         width: `${progressPct}%`,
-                        background: progressPct >= 100 ? "rgba(16,185,129,0.70)" : "rgba(34,211,238,0.70)",
+                        background: progressPct >= 100
+                          ? "linear-gradient(90deg, rgba(16,185,129,0.70), rgba(52,211,153,0.70))"
+                          : "linear-gradient(90deg, rgba(124,92,252,0.70), rgba(91,142,248,0.70))",
                         transition: "width 200ms ease",
                       }}
                     />
                   </div>
                 </div>
               </div>
-            </div>
+            </GlassCard>
           )}
 
           {loading ? <div className="huntSmallMuted">Chargement…</div> : null}
         </section>
       </div>
-      {/* 🐛 Debug overlay */}
-<div
-  style={{
-    position: "fixed",
-    right: 14,
-    bottom: 14,
-    zIndex: 9999,
-    display: "grid",
-    gap: 8,
-    pointerEvents: "auto",
-  }}
->
-  <button
-    className="btn"
-    onClick={() => setDebugOn((v) => !v)}
-    title="Debug"
-    style={{ width: 46, justifyContent: "center" }}
-  >
-    🐛
-  </button>
 
-  {debugOn ? (
-    <div
-      style={{
-        width: 420,
-        maxWidth: "92vw",
-        maxHeight: "70vh",
-        overflow: "auto",
-        borderRadius: 14,
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(0,0,0,0.72)",
-        padding: 12,
-      }}
-    >
-      <div style={{ fontWeight: 900, marginBottom: 8 }}>Debug Hunt</div>
-
-      <div className="huntSmallMuted" style={{ marginBottom: 10 }}>
-        action: <b>{debugLastAction || "—"}</b>
-      </div>
-
-      <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
-        <div className="huntSmallMuted">
-          phase: <b>{String(phase)}</b> • opening(raw):{" "}
-          <b>{String(debugStateRaw?.opening ?? debugStateRaw?.mode ?? "—")}</b>
-        </div>
-        <div className="huntSmallMuted">
-          start: <b>{String(debugStateRaw?.startEur ?? state?.start ?? "—")}</b> • items: <b>{items.length}</b>
-        </div>
-        <div className="huntSmallMuted">
-          deckIndex: <b>{deckIndex}</b> • currentId: <b>{currentId ?? "—"}</b>
-        </div>
-
-        <div className="huntSmallMuted">
-          unpaidIds:{" "}
-          <b>
-            {items
-              .filter((it: any) => it && (it.pay === null || typeof it.pay === "undefined"))
-              .map((it: any) => String(it.id))
-              .join(", ") || "—"}
-          </b>
-        </div>
-      </div>
-
-      <div style={{ fontWeight: 800, marginBottom: 6 }}>Last PAY response</div>
-      <pre
+      <div
         style={{
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          fontSize: 12,
-          lineHeight: 1.25,
-          margin: 0,
-          padding: 10,
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.10)",
-          background: "rgba(255,255,255,0.06)",
+          position: "fixed",
+          right: 14,
+          bottom: 14,
+          zIndex: 9999,
+          display: "grid",
+          gap: 8,
+          pointerEvents: "auto",
         }}
       >
-        {JSON.stringify(debugLastPay, null, 2)}
-      </pre>
+        <button
+          className="btn"
+          onClick={() => setDebugOn((v) => !v)}
+          title="Debug"
+          style={{ width: 46, justifyContent: "center" }}
+        >
+          🐛
+        </button>
 
-      <div style={{ fontWeight: 800, marginTop: 10, marginBottom: 6 }}>Raw state (/calls/.../hunt/state)</div>
-      <pre
-        style={{
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          fontSize: 12,
-          lineHeight: 1.25,
-          margin: 0,
-          padding: 10,
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.10)",
-          background: "rgba(255,255,255,0.06)",
-        }}
-      >
-        {JSON.stringify(debugStateRaw, null, 2)}
-      </pre>
-    </div>
-  ) : null}
-</div>
+        {debugOn ? (
+          <div
+            style={{
+              width: 420,
+              maxWidth: "92vw",
+              maxHeight: "70vh",
+              overflow: "auto",
+              borderRadius: 14,
+              border: "1px solid rgba(124,92,252,0.18)",
+              background: "rgba(0,0,0,0.72)",
+              padding: 12,
+              backdropFilter: "blur(16px)",
+            }}
+          >
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>Debug Hunt</div>
+
+            <div className="huntSmallMuted" style={{ marginBottom: 10 }}>
+              action: <b>{debugLastAction || "—"}</b>
+            </div>
+
+            <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
+              <div className="huntSmallMuted">
+                phase: <b>{String(phase)}</b> • opening(raw):{" "}
+                <b>{String(debugStateRaw?.opening ?? debugStateRaw?.mode ?? "—")}</b>
+              </div>
+              <div className="huntSmallMuted">
+                start: <b>{String(debugStateRaw?.startEur ?? state?.start ?? "—")}</b> • items: <b>{items.length}</b>
+              </div>
+              <div className="huntSmallMuted">
+                deckIndex: <b>{deckIndex}</b> • currentId: <b>{currentId ?? "—"}</b>
+              </div>
+
+              <div className="huntSmallMuted">
+                unpaidIds:{" "}
+                <b>
+                  {items
+                    .filter((it: any) => it && (it.pay === null || typeof it.pay === "undefined"))
+                    .map((it: any) => String(it.id))
+                    .join(", ") || "—"}
+                </b>
+              </div>
+            </div>
+
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>Last PAY response</div>
+            <pre
+              style={{
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                fontSize: 12,
+                lineHeight: 1.25,
+                margin: 0,
+                padding: 10,
+                borderRadius: 12,
+                border: "1px solid rgba(124,92,252,0.14)",
+                background: "rgba(124,92,252,0.06)",
+              }}
+            >
+              {JSON.stringify(debugLastPay, null, 2)}
+            </pre>
+
+            <div style={{ fontWeight: 800, marginTop: 10, marginBottom: 6 }}>Raw state (/calls/.../hunt/state)</div>
+            <pre
+              style={{
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                fontSize: 12,
+                lineHeight: 1.25,
+                margin: 0,
+                padding: 10,
+                borderRadius: 12,
+                border: "1px solid rgba(124,92,252,0.14)",
+                background: "rgba(124,92,252,0.06)",
+              }}
+            >
+              {JSON.stringify(debugStateRaw, null, 2)}
+            </pre>
+          </div>
+        ) : null}
+      </div>
     </main>
   );
 }
