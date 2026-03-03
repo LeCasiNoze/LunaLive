@@ -6,10 +6,7 @@ import { createPool } from "./db.js";
 import { Registry } from "./runtime/registry.js";
 import { logEvent } from "./log.js";
 import {
-  startLunaClipScheduler,
-  stopLunaClipScheduler,
   activeWorkers,
-  skippedRam,
   waitingWorkers,
   forceSwitch,
   skipStreamer,          // ✅ NEW
@@ -143,12 +140,10 @@ function startLunaClipDbIpc(pool: ReturnType<typeof createPool>) {
       cpu_pct: m.cpu_pct,
       cpu_limit_cores: m.cpu_limit_cores,
 
-      skipped_ram:   [...skippedRam],
       waiting_slugs: [...waitingWorkers],
 
       scheduler: state,
       workers,
-      alert_multi: state.alert_multi ?? null,
     };
 
     await pool.query(
@@ -272,7 +267,6 @@ async function main() {
   const registry = new Registry(pool, env);
   registry.start();
 
-  startLunaClipScheduler(pool);
 
   const stopIpc = startLunaClipDbIpc(pool);
 
@@ -290,7 +284,6 @@ async function main() {
   const shutdown = async (sig: string) => {
     console.log(`[bot] shutdown ${sig}`);
     try { stopIpc(); }               catch {}
-    try { stopLunaClipScheduler(); } catch {}
     try { registry.stop(); }         catch {}
     try { await pool.end(); }        catch {}
     try { server?.close(); }         catch {}

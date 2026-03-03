@@ -1,19 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const SITE =
-  (process.env.SITE_URL || "https://lunalive.onrender.com").replace(/\/+$/, "");
-
-const API =
-  (
-    process.env.SITEMAP_API_BASE ||
-    process.env.VITE_API_BASE ||
-    "https://lunalive-api.onrender.com"
-  ).replace(/\/+$/, "");
+const SITE = (process.env.SITE_URL || "https://lunalive.onrender.com").replace(/\/+$/, "");
+const API = (
+  process.env.SITEMAP_API_BASE ||
+  process.env.VITE_API_BASE ||
+  "https://lunalive-api.onrender.com"
+).replace(/\/+$/, "");
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
-async function safeJson(url: string) {
+async function safeJson(url) {
   const r = await fetch(url, {
     headers: { "user-agent": "lunalive-sitemap/1.0" },
   });
@@ -21,25 +18,22 @@ async function safeJson(url: string) {
   return await r.json();
 }
 
-function esc(s: string) {
+function esc(s) {
   return String(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
 
-function isGoodSlug(v: unknown) {
+function isGoodSlug(v) {
   const slug = String(v || "").trim().toLowerCase();
   if (!slug) return false;
-
-  // slugs trop faibles / techniques / test
   if (slug === "test" || /^test\d*$/.test(slug)) return false;
   if (slug.length < 3) return false;
-
   return true;
 }
 
-function urlNode(loc: string, lastmod = TODAY) {
+function urlNode(loc, lastmod = TODAY) {
   return [
     "  <url>",
     `    <loc>${esc(loc)}</loc>`,
@@ -49,14 +43,14 @@ function urlNode(loc: string, lastmod = TODAY) {
 }
 
 async function main() {
-  const urls = new Set<string>();
+  const urls = new Set();
 
-  // pages statiques SEO utiles
+  // pages publiques SEO utiles
   ["/", "/browse", "/casinos"].forEach((p) => {
     urls.add(new URL(p, SITE).toString());
   });
 
-  // pages casinos détail
+  // pages casinos
   try {
     const data = await safeJson(`${API}/casinos/list?q=&sort=top`);
     const casinos = Array.isArray(data?.casinos)
@@ -70,11 +64,11 @@ async function main() {
       if (!slug) continue;
       urls.add(new URL(`/casinos/${encodeURIComponent(slug)}`, SITE).toString());
     }
-  } catch (e: any) {
+  } catch (e) {
     console.warn("[sitemap] casinos fetch failed:", e?.message || e);
   }
 
-  // pages streamer publiques
+  // pages streamer
   try {
     const data = await safeJson(`${API}/streamers`);
     const arr = Array.isArray(data)
@@ -88,13 +82,9 @@ async function main() {
     for (const s of arr) {
       const slug = String(s?.slug || "").trim();
       if (!isGoodSlug(slug)) continue;
-
-      // optionnel : ignorer profils non publics si ton API les expose
-      // if (s?.isPublic === false) continue;
-
       urls.add(new URL(`/s/${encodeURIComponent(slug)}`, SITE).toString());
     }
-  } catch (e: any) {
+  } catch (e) {
     console.warn("[sitemap] streamers fetch failed:", e?.message || e);
   }
 
