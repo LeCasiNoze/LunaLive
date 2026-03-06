@@ -1,0 +1,36 @@
+# Enable URL rewriting
+RewriteEngine On
+
+# Static routes with specific HTML files
+RewriteRule ^casinos\.html$ /casinos.html [L]
+RewriteRule ^browse\.html$ /browse.html [L]
+RewriteRule ^hunt\.html$ /hunt.html [L]
+RewriteRule ^shop\.html$ /shop.html [L]
+RewriteRule ^event\.html$ /event.html [L]
+
+# Dynamic casino routes
+RewriteRule ^casinos/brutalcasino$ /casinos-brutalcasino.html [L]
+RewriteRule ^casinos/hypebet$ /casinos-hypebet.html [L]
+RewriteRule ^casinos/razed$ /casinos-razed.html [L]
+RewriteRule ^casinos/trickz$ /casinos-trickz.html [L]
+
+# Dynamic streamer routes
+RewriteRule ^s/bigbagutee$ /s-bigbagutee.html [L]
+RewriteRule ^s/casinoboubou-outlook-com$ /s-casinoboubou-outlook-com.html [L]
+RewriteRule ^s/fabiozsis$ /s-fabiozsis.html [L]
+RewriteRule ^s/familybearstv$ /s-familybearstv.html [L]
+RewriteRule ^s/gorilazer$ /s-gorilazer.html [L]
+RewriteRule ^s/jojocasino$ /s-jojocasino.html [L]
+RewriteRule ^s/lbkrisou$ /s-lbkrisou.html [L]
+RewriteRule ^s/le-joker$ /s-le-joker.html [L]
+RewriteRule ^s/lecasinoze$ /s-lecasinoze.html [L]
+RewriteRule ^s/lunalive$ /s-lunalive.html [L]
+RewriteRule ^s/quente-quente$ /s-quente-quente.html [L]
+RewriteRule ^s/redakb$ /s-redakb.html [L]
+RewriteRule ^s/spykatra$ /s-spykatra.html [L]
+RewriteRule ^s/ssztv$ /s-ssztv.html [L]
+
+# Fallback for all other routes to SPA
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.html [L]

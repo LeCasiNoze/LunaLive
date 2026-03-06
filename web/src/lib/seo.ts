@@ -74,3 +74,51 @@ export function setSeo(opts: {
   upsertOg("og:url", url);
   upsertOg("og:image", image);
 }
+
+// New function for dynamic route fallback SEO
+export function setDynamicRouteSeo(route: string, data?: any) {
+  // Dynamic casino pages
+  if (route.startsWith('/casinos/') && route.length > 9) {
+    const slug = route.replace('/casinos/', '');
+    if (data?.casino?.name) {
+      setSeo({
+        title: `${data.casino.name} — Avis et note casino | LunaLive`,
+        description: `Découvre ${data.casino.name} sur LunaLive : note LunaLive, avis de la communauté, bonus et informations détaillées.`,
+        path: `/casinos/${slug}`,
+      });
+    } else {
+      setSeo({
+        title: `${slug.charAt(0).toUpperCase() + slug.slice(1)} — Casino | LunaLive`,
+        description: `Découvre ${slug} sur LunaLive : avis, notes, bonus et informations détaillées sur ce casino en ligne.`,
+        path: `/casinos/${slug}`,
+      });
+    }
+    return;
+  }
+
+  // Dynamic streamer pages
+  if (route.startsWith('/s/') && route.length > 3) {
+    const slug = route.replace('/s/', '');
+    if (data?.displayName) {
+      setSeo({
+        title: `${data.displayName} — Streamer Casino | LunaLive`,
+        description: `Regarde ${data.displayName} en direct sur LunaLive : lives casino, clips VOD, et profils détaillés.`,
+        path: `/s/${slug}`,
+      });
+    } else {
+      setSeo({
+        title: `${slug.charAt(0).toUpperCase() + slug.slice(1)} — Streamer | LunaLive`,
+        description: `Regarde ${slug} en direct sur LunaLive : streams casino, lives et clips de la communauté.`,
+        path: `/s/${slug}`,
+      });
+    }
+    return;
+  }
+
+  // Fallback for other dynamic routes
+  setSeo({
+    title: "LunaLive — Plateforme de streaming casino",
+    description: "LunaLive est une plateforme française de streaming casino avec lives en direct, streamers, pages casinos et événements.",
+    path: route,
+  });
+}

@@ -46,17 +46,15 @@ async function main() {
   const urls = new Set();
 
   // pages publiques SEO utiles
-  ["/", "/browse", "/casinos", "/shop", "/hunt"].forEach((p) => {
+  ["/", "/browse", "/casinos", "/shop", "/hunt", "/event"].forEach((p) => {
     urls.add(new URL(p, SITE).toString());
   });
 
   // pages casinos
   try {
-    const data = await safeJson(`${API}/casinos/list?q=&sort=top`);
+    const data = await safeJson(`${API}/casinos?sort=top`);
     const casinos = Array.isArray(data?.casinos)
       ? data.casinos
-      : Array.isArray(data?.items)
-      ? data.items
       : [];
 
     for (const c of casinos) {

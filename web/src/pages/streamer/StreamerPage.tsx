@@ -12,7 +12,7 @@ import { ChatPanel }     from "../../components/ChatPanel";
 import { LoginModal }    from "../../components/LoginModal";
 import { SubModal }      from "../../components/SubModal";
 import { useAuth }       from "../../auth/AuthProvider";
-import { setSeo }        from "../../lib/seo";
+import { setSeo, setDynamicRouteSeo }        from "../../lib/seo";
 
 import { EyeIcon, ChatIcon, BellIcon } from "./components/icons";
 import { LiveDurationText, getAnonId } from "./utils";
@@ -289,11 +289,8 @@ export default function StreamerPage() {
   React.useEffect(() => {
     const s = String(slug || "").trim();
     if (!s) return;
-    setSeo({
-      title: `${s} — LunaLive`,
-      description: `Regarde ${s} sur LunaLive : live, viewers, clips et infos du streamer.`,
-      path: `/s/${encodeURIComponent(s)}`,
-    });
+    // Use dynamic SEO for fallback when data is not loaded yet
+    setDynamicRouteSeo(`/s/${s}`);
   }, [slug]);
 
   return isMobile ? <StreamerPageMobile /> : <StreamerPageDesktop />;

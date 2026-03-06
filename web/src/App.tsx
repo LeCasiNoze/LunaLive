@@ -11,16 +11,14 @@ import LivesPage from "./pages/LivesPage";
 import BrowsePage from "./pages/BrowsePage";
 import StreamerPage from "./pages/StreamerPage";
 import ProfilePage from "./pages/ProfilePage";
-import AdminPage from "./pages/AdminPage";
-import DashboardPage from "./pages/DashboardPage";
 import { ShopPage } from "./pages/ShopPage";
 import HuntPage from "./pages/HuntPage";
 
-// ✅ NEW
-import AdminCasinoCommentsPage from "./pages/admin/AdminCasinoCommentsPage";
-
-// ✅ NEW (impersonate)
-import ImpersonatePage from "./pages/ImpersonatePage";
+// Lazy load heavy admin pages for performance
+const AdminPage = React.lazy(() => import("./pages/AdminPage"));
+const DashboardPage = React.lazy(() => import("./pages/DashboardPage"));
+const AdminCasinoCommentsPage = React.lazy(() => import("./pages/admin/AdminCasinoCommentsPage"));
+const ImpersonatePage = React.lazy(() => import("./pages/ImpersonatePage"));
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
@@ -31,6 +29,13 @@ import { CallsToast } from "./components/CallsToast";
 import { AchievementsModal } from "./components/AchievementsModal";
 import ChatPopupPage from "./pages/ChatPopupPage";
 import ReferralLandingPage from "./pages/ReferralLandingPage";
+
+// Suspense fallback component
+const LoadingFallback = () => (
+  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "200px" }}>
+    <div style={{ fontFamily: "system-ui", color: "#7c4dff" }}>Chargement...</div>
+  </div>
+);
 import EventPage from "./pages/EventPage";
 import { BgEffect } from "./components/Bgeffects";
 
@@ -74,7 +79,11 @@ function AppInner() {
       <CallsToast />
 
       <Routes>
-        <Route path="/impersonate" element={<ImpersonatePage />} />
+        <Route path="/impersonate" element={
+          <React.Suspense fallback={<LoadingFallback />}>
+            <ImpersonatePage />
+          </React.Suspense>
+        } />
         <Route path="/popout/chat/:slug" element={<ChatPopupPage />} />
 
         <Route path="/" element={<LivesPage />} />
@@ -88,10 +97,22 @@ function AppInner() {
         <Route path="/s/:slug" element={<StreamerPage />} />
         <Route path="/profile" element={<ProfilePage />} />
 
-        <Route path="/admin" element={<AdminPage />} />
-        <Route path="/admin/casinos/comments" element={<AdminCasinoCommentsPage />} />
+        <Route path="/admin" element={
+          <React.Suspense fallback={<LoadingFallback />}>
+            <AdminPage />
+          </React.Suspense>
+        } />
+        <Route path="/admin/casinos/comments" element={
+          <React.Suspense fallback={<LoadingFallback />}>
+            <AdminCasinoCommentsPage />
+          </React.Suspense>
+        } />
 
-        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/dashboard" element={
+          <React.Suspense fallback={<LoadingFallback />}>
+            <DashboardPage />
+          </React.Suspense>
+        } />
         <Route path="/r/:slug" element={<ReferralLandingPage />} />
         <Route path="/event" element={<EventPage />} />
       </Routes>

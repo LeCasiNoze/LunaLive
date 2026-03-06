@@ -8,7 +8,7 @@ import {
   type CasinoComment, type CasinoLink, type CasinoDetailResp,
 } from "../lib/api_casinos";
 import { useAuth } from "../auth/AuthProvider";
-import { setSeo } from "../lib/seo";
+import { setSeo, setDynamicRouteSeo } from "../lib/seo";
 const DEV = Boolean(import.meta.env.DEV);
 
 /* ─────────────────────────────────────────────
@@ -446,6 +446,13 @@ export default function CasinoPage() {
   }
 
   React.useEffect(() => {
+    if (!slug) return;
+    
+    // Use dynamic SEO for fallback when data is not loaded yet
+    setDynamicRouteSeo(`/casinos/${slug}`);
+  }, [slug]);
+
+  React.useEffect(() => {
     const currentCasino = data?.casino;
     if (!currentCasino?.name || !currentCasino?.slug) return;
 
@@ -458,17 +465,6 @@ export default function CasinoPage() {
     
   if (loading) return <div className="container"><div className="muted">Chargement…</div></div>;
   if (error || !data) return <div className="container"><div className="alert">{error || "Introuvable"}</div></div>;
-
-  React.useEffect(() => {
-  if (!slug) return;
-
-  setSeo({
-    title: "Casino — LunaLive",
-    description:
-      "Découvre les avis, notes, bonus et informations détaillées sur ce casino sur LunaLive.",
-    path: `/casinos/${encodeURIComponent(slug)}`,
-  });
-}, [slug]);
 
   const casino = data.casino; const stats = data.stats;
   const pros = splitList((casino as any).pros); const cons = splitList((casino as any).cons);

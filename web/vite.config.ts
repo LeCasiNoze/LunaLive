@@ -52,6 +52,19 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Ensure proper encoding in HTML files
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name === 'index.html') {
+            return 'index.html';
+          }
+          return assetInfo.name || 'asset/[name].[ext]';
+        }
+      }
+    }
+  },
   server: {
     port: 5175,
     strictPort: true,

@@ -1,0 +1,31 @@
+# Static routes with specific HTML files
+/casinos.html /casinos.html 200
+/browse.html /browse.html 200
+/hunt.html /hunt.html 200
+/shop.html /shop.html 200
+/event.html /event.html 200
+
+# Dynamic casino routes
+/casinos/brutalcasino /casinos-brutalcasino.html 200
+/casinos/hypebet /casinos-hypebet.html 200
+/casinos/razed /casinos-razed.html 200
+/casinos/trickz /casinos-trickz.html 200
+
+# Dynamic streamer routes
+/s/bigbagutee /s-bigbagutee.html 200
+/s/casinoboubou-outlook-com /s-casinoboubou-outlook-com.html 200
+/s/fabiozsis /s-fabiozsis.html 200
+/s/familybearstv /s-familybearstv.html 200
+/s/gorilazer /s-gorilazer.html 200
+/s/jojocasino /s-jojocasino.html 200
+/s/lbkrisou /s-lbkrisou.html 200
+/s/le-joker /s-le-joker.html 200
+/s/lecasinoze /s-lecasinoze.html 200
+/s/lunalive /s-lunalive.html 200
+/s/quente-quente /s-quente-quente.html 200
+/s/redakb /s-redakb.html 200
+/s/spykatra /s-spykatra.html 200
+/s/ssztv /s-ssztv.html 200
+
+# Fallback for all other routes to SPA
+/* /index.html 200
