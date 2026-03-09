@@ -1,0 +1,139 @@
+// api/src/events/engine.ts
+import { pool } from "../db.js";
+import { recomputeViewerWeek } from "./viewer_week.js";
+const TZ = "Europe/Paris";
+const WEEK_MS = 7 * 24 * 3600_000;
+const CYCLE = [
+    "clip_race",
+    "viewer_week",
+    "wheel_week",
+    "global_chest",
+    "burn_boss",
+    "duo_week",
+];
+/** ---- TZ helpers (Intl, Paris-safe) ---- */
+function tzParts(d = new Date()) {
+    const parts = new Intl.DateTimeFormat("fr-FR", {
+        timeZone: TZ,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        weekday: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+    }).formatToParts(d);
+    const get = (t, def = "0") => parts.find((p) => p.type === t)?.value ?? def;
+    return {
+        year: Number(get("year", "1970")),
+        month: Number(get("month", "1")),
+        day: Number(get("day", "1")),
+        hour: Number(get("hour", "0")),
+        minute: Number(get("minute", "0")),
+        second: Number(get("second", "0")),
+        weekday: get("weekday", "lun."),
+    };
+}
+function weekdayIndexFr(w) {
+    const s = String(w || "").toLowerCase();
+    if (s.startsWith("lun"))
+        return 1;
+    if (s.startsWith("mar"))
+        return 2;
+    if (s.startsWith("mer"))
+        return 3;
+    if (s.startsWith("jeu"))
+        return 4;
+    if (s.startsWith("ven"))
+        return 5;
+    if (s.startsWith("sam"))
+        return 6;
+    return 7;
+}
+function tzOffsetMsAt(date) {
+    const p = tzParts(date);
+    const asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+    return asUTC - date.getTime();
+}
+function parisMidnightUtcMs(y, m, d) {
+    const guess = Date.UTC(y, m - 1, d, 0, 0, 0);
+    let utc = guess - tzOffsetMsAt(new Date(guess));
+    utc = guess - tzOffsetMsAt(new Date(utc));
+    return utc;
+}
+function weekStartUtcMsParis(now = new Date()) {
+    const p = tzParts(now);
+    const wd = weekdayIndexFr(p.weekday);
+    const deltaToMon = wd - 1;
+    const safeNoonUtc = Date.UTC(p.year, p.month - 1, p.day, 12, 0, 0);
+    const mondayNoonUtc = safeNoonUtc - deltaToMon * 24 * 3600_000;
+    const pm = tzParts(new Date(mondayNoonUtc));
+    return parisMidnightUtcMs(pm.year, pm.month, pm.day);
+}
+function cycleIndexForWeek(weekStartUtcMs) {
+    const weeksSinceEpoch = Math.floor(weekStartUtcMs / WEEK_MS);
+    return ((weeksSinceEpoch % 6) + 6) % 6;
+}
+/** ---- Core engine ---- */
+async function getCurrentEvent() {
+    const r = await pool.query(`
+    SELECT *
+    FROM events
+    WHERE start_at <= NOW() AND NOW() < end_at
+    ORDER BY start_at DESC
+    LIMIT 1
+    `);
+    return r.rows?.[0] ?? null;
+}
+async function ensureWeekEvent(weekStartUtcMs) {
+    const startAt = new Date(weekStartUtcMs).toISOString();
+    const endAt = new Date(weekStartUtcMs + WEEK_MS).toISOString();
+    const cycle_index = cycleIndexForWeek(weekStartUtcMs);
+    const type = CYCLE[cycle_index] || "viewer_week";
+    const cfgRes = await pool.query(`SELECT config FROM event_type_configs WHERE type=$1`, [type]);
+    const config = cfgRes.rows?.[0]?.config ?? {};
+    await pool.query(`
+    INSERT INTO events(type, cycle_index, start_at, end_at, state, config)
+    VALUES ($1,$2,$3::timestamptz,$4::timestamptz,'scheduled',$5::jsonb)
+    ON CONFLICT (start_at, end_at) DO NOTHING
+    `, [type, cycle_index, startAt, endAt, JSON.stringify(config)]);
+}
+async function openIfNeeded() {
+    await pool.query(`
+    UPDATE events
+    SET state='live', updated_at=NOW()
+    WHERE state='scheduled'
+      AND start_at <= NOW()
+      AND NOW() < end_at
+    `);
+}
+async function closeIfNeeded() {
+    await pool.query(`
+    UPDATE events
+    SET state='closed', updated_at=NOW()
+    WHERE state IN ('scheduled','live')
+      AND end_at <= NOW()
+    `);
+}
+export function startEventsEnginePoller(everyMs = 60_000) {
+    const tick = async () => {
+        try {
+            const ws = weekStartUtcMsParis(new Date());
+            await ensureWeekEvent(ws);
+            await closeIfNeeded();
+            await openIfNeeded();
+            await ensureWeekEvent(ws + WEEK_MS);
+            // ✅ recompute dans le tick (donc toutes les minutes)
+            const cur = await getCurrentEvent();
+            if (cur && cur.type === "viewer_week" && cur.state === "live") {
+                await recomputeViewerWeek(cur.id);
+            }
+        }
+        catch (e) {
+            console.warn("[events-engine] tick failed", e?.message || e);
+        }
+    };
+    tick().catch(() => { });
+    setInterval(() => tick().catch(() => { }), Math.max(5_000, Number(everyMs || 60_000)));
+}
