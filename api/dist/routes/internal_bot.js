@@ -309,17 +309,33 @@ internalBotRouter.post("/internal/clips/auto", express.json(), async (req, res) 
     if (!requireBotKey(req, res))
         return;
     const streamerId = Number(req.body?.streamerId || 0);
+    const streamerSlug = req.body?.streamerSlug ?? null;
     const title = req.body?.title ?? null;
     const author = req.body?.author ?? null;
     const preSec = req.body?.preSec ?? undefined;
     const postSec = req.body?.postSec ?? undefined;
-    if (!Number.isFinite(streamerId) || streamerId <= 0) {
-        return res.status(400).json({ ok: false, reason: "invalid_streamer_id" });
+    let resolvedStreamerId = streamerId;
+    // Si streamerId n'est pas valide, essayer avec streamerSlug
+    if (!Number.isFinite(resolvedStreamerId) || resolvedStreamerId <= 0) {
+        if (!streamerSlug || typeof streamerSlug !== "string" || !streamerSlug.trim()) {
+            return res.status(400).json({ ok: false, reason: "invalid_streamer_identifier" });
+        }
+        try {
+            const slugResult = await pool.query(`SELECT id FROM streamers WHERE slug=$1 LIMIT 1`, [streamerSlug.trim()]);
+            if (!slugResult.rows?.[0]?.id) {
+                return res.status(404).json({ ok: false, reason: "streamer_not_found" });
+            }
+            resolvedStreamerId = Number(slugResult.rows[0].id);
+        }
+        catch (e) {
+            console.error("[internal/clips/auto] slug resolution error:", e);
+            return res.status(500).json({ ok: false, reason: "db_error" });
+        }
     }
     try {
         const result = await createAutoClipForStreamer({
             pool,
-            streamerId,
+            streamerId: resolvedStreamerId,
             title: typeof title === "string" ? title.trim() || null : null,
             author: typeof author === "string" ? author.trim() || null : null,
             preSec,
