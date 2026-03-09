@@ -434,7 +434,9 @@ function pickNextBatch(candidates: Candidate[]): Candidate[] {
   return result.slice(0, cfg.maxWorkers);
 }
 
-// ─── Worker Python ───────────────────────────────────────────────
+// ─── Worker Python (DÉSACTIVÉ pour Render) ───────────────────────────
+// NOTE: Le worker IA (YOLO + OCR) tourne désormais dans un service séparé
+// Ce bot Render ne doit plus lancer de worker Python local
 const WORKER_PATH = process.env.WORKER_PATH
   ?? path.resolve(process.cwd(), "worker", "worker.py");
 const PYTHON_BIN  = process.env.PYTHON_BIN ?? "python";
@@ -444,144 +446,25 @@ function defaultWorkerStats(): WorkerStats {
 }
 
 function spawnWorker(pool: Pool, w: ActiveWorker) {
-  if (!fs.existsSync(WORKER_PATH)) {
-    pushLog(w.streamerSlug, "node", `FATAL: WORKER_PATH not found: ${WORKER_PATH}`);
-    w.status = "error";
-    stopSession(pool, w.sessionId, "error").catch(() => {});
-    broadcastState();
-    return;
-  }
-  pushLog(w.streamerSlug, "node", `spawn worker → ${w.hlsUrl}`);
-
-  const proc = spawn(PYTHON_BIN, [
-    WORKER_PATH,
-    "--hls-url",     w.hlsUrl,
-    "--alert-multi", String(cfg.alertMulti),
-    "--interval",    String(cfg.intervalS),
-    "--frame-w",     String(cfg.frameW),
-    "--frame-h",     String(cfg.frameH),
-    "--imgsz",       String(cfg.imgsz),
-    "--crop-scale",  String(cfg.cropScale),
-    "--post-sleep",  String(cfg.postSleep),
-  ], {
-    stdio: ["ignore", "pipe", "pipe"],
-    env:   { ...process.env, PYTHONUNBUFFERED: "1" },
-  });
-
-  w.pid = proc.pid ?? null;
-  w.process = proc;
-  w.status  = "running";
+  // DÉSACTIVÉ: Le worker IA ne tourne plus dans ce service Render
+  pushLog(w.streamerSlug, "node", `Worker IA désactivé - tourne dans un service séparé`);
+  w.status = "stopped"; // Garder un status valide pour le type
+  stopSession(pool, w.sessionId, "stopped").catch(() => {});
   broadcastState();
-
-  proc.on("error", err => {
-    pushLog(w.streamerSlug, "node", `spawn error: ${err.message}`);
-    w.status = "error";
-    stopSession(pool, w.sessionId, "error").catch(() => {});
-    broadcastState();
-  });
-
-  let buf = "";
-  proc.stdout?.on("data", (chunk: Buffer) => {
-    buf += chunk.toString();
-    // Découper par newlines — chaque message JSON est sur une seule ligne
-    let nl: number;
-    while ((nl = buf.indexOf("\n")) !== -1) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (!line) continue;
-      if (line.startsWith("{")) {
-        try {
-          const msg = JSON.parse(line) as { type: string; data: unknown };
-          handleMessage(pool, w, msg);
-          continue;
-        } catch {
-          // JSON invalide — log pour debug
-          pushLog(w.streamerSlug, "pyerr", `JSON parse error: ${line.slice(0, 80)}`);
-          continue;
-        }
-      }
-      pushLog(w.streamerSlug, "py", line);
-    }
-  });
-
-  proc.stderr?.on("data", (c: Buffer) => {
-    const s = c.toString().trim();
-    if (s) pushLog(w.streamerSlug, "pyerr", s);
-  });
-
-  proc.on("exit", (code, signal) => {
-    pushLog(w.streamerSlug, "node", `worker exit code=${code} signal=${signal}`);
-    lastWatchedAt.set(w.streamerId, Date.now());
-    w.status = code === 0 ? "stopped" : "error";
-    w.pid    = null;
-    stopSession(pool, w.sessionId, w.status as "stopped" | "error").catch(() => {});
-    broadcastState();
-  });
+  return;
 }
 
+// Fonctions worker conservées pour compatibilité mais non utilisées
 function handleMessage(pool: Pool, w: ActiveWorker, msg: { type: string; data: unknown }) {
-  switch (msg.type) {
-    case "log":
-      pushLog(w.streamerSlug, "py", String(msg.data));
-      return;
-
-    case "frame": {
-      const f = msg.data as FrameData;
-      w.lastFrame = f;
-      if (f.provider && f.provider !== "unknown") w.provider = f.provider;
-      if (f.has_value) saveFrame(pool, w.sessionId, f).catch(() => {});
-      broadcastState();
-      return;
-    }
-
-    case "event": {
-      const { frame: f, screenshot_path } = msg.data as { frame: FrameData; screenshot_path: string | null };
-      w.lastFrame = f;
-      saveEvent(pool, w.sessionId, f, screenshot_path ?? null).catch(() => {});
-      const LATENCY_PAD_SEC = 15;
-      const atSec = Math.max(0, f.ts_sec - w.startedAt.getTime() / 1000 + LATENCY_PAD_SEC);
-      const winLabel = f.win_total_value ?? f.win_value ?? "?";
-      const title = `🎰 x${f.multiplier} — ${(f.provider ?? "").toUpperCase()} — WIN ${winLabel}`;
-      addLunaClip(pool, w.streamerId, title, atSec, w.liveCreatedAtMs).catch(() => {});
-      pushLog(w.streamerSlug, "node", `EVENT x${f.multiplier} provider=${f.provider} atSec=${Math.floor(atSec)}`);
-      broadcastState();
-      return;
-    }
-
-    case "stats":
-      w.workerStats = msg.data as WorkerStats;
-      broadcastState();
-      return;
-
-    case "mode": {
-      const { mode, reason } = msg.data as { mode: string; reason: string };
-      pushLog(w.streamerSlug, "node", `mode → ${mode} (${reason})`);
-      w.workerStats = { ...w.workerStats, mode };
-      broadcastState();
-      return;
-    }
-
-    case "preview": {
-      const p = msg.data as { jpeg_b64: string };
-      w.lastPreview = p.jpeg_b64;
-      previewListeners.forEach(fn => fn(w.streamerId, p.jpeg_b64));
-      return;
-    }
-
-    default:
-      pushLog(w.streamerSlug, "node", `unknown msg: ${msg.type}`);
-  }
+  // DÉSACTIVÉ: Plus de messages Python à traiter
+  pushLog(w.streamerSlug, "node", `Worker IA désactivé - message ignoré: ${msg.type}`);
 }
 
 function killWorker(w: ActiveWorker, reason: string) {
-  pushLog(w.streamerSlug, "node", `kill worker (${reason})`);
-  lastWatchedAt.set(w.streamerId, Date.now());
-  try { w.process.kill("SIGTERM"); } catch {}
-  setTimeout(() => {
-    try { w.process.kill("SIGKILL"); } catch {}
-  }, 3000);
-  w.status = "stopped";
-  w.pid    = null;
+  // DÉSACTIVÉ: Plus de process Python à tuer
+  pushLog(w.streamerSlug, "node", `Worker IA déjà désactivé (${reason})`);
+  w.status = "stopped"; // Garder un status valide pour le type
+  w.pid = null;
 }
 
 // ─── Tick ────────────────────────────────────────────────────────
