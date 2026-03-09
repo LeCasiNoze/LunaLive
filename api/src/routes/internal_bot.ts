@@ -6,6 +6,172 @@ import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
 
 export const internalBotRouter = express.Router();
 
+// --------------------
+// Auto clip creation logic (reproduced from bot)
+// --------------------
+const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
+const LATENCY_PAD_SEC = 15;
+const DEFAULT_PRE_SEC = 105;
+const DEFAULT_POST_SEC = 15;
+
+async function dliveGql(query: string, variables?: any) {
+  const r = await fetch(DLIVE_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+      origin: "https://dlive.tv",
+      referer: "https://dlive.tv/",
+    },
+    body: JSON.stringify(variables ? { query, variables } : { query }),
+  });
+  if (!r.ok) throw new Error(`dlive_gql_http_${r.status}`);
+  return (await r.json()) as any;
+}
+
+async function fetchLiveStart(displayName: string): Promise<{ createdAtMs: number; permlink: string } | null> {
+  const query =
+    "query UserLiveStart($name:String!){ userByDisplayName(displayname:$name){ username livestream{ createdAt permlink watchingCount } } }";
+
+  const j: any = await dliveGql(query, { name: displayName });
+  const ls = j?.data?.userByDisplayName?.livestream;
+  if (!ls?.createdAt) return null;
+
+  const createdAtMs = Number(ls.createdAt);
+  if (!Number.isFinite(createdAtMs)) return null;
+
+  return { createdAtMs, permlink: String(ls.permlink || "") };
+}
+
+async function getDliveChannelSlugForStreamer(pool: any, streamerId: number): Promise<string | null> {
+  const r = await pool.query(
+    `SELECT
+       s.dlive_use_linked AS "useLinked",
+       s.dlive_link_displayname AS "linkedDisplayname",
+       pa.channel_slug AS "providerChannelSlug"
+     FROM streamers s
+     LEFT JOIN provider_accounts pa
+       ON pa.provider='dlive'
+      AND pa.assigned_to_streamer_id = s.id
+     WHERE s.id=$1
+     LIMIT 1`,
+    [streamerId]
+  );
+
+  const row = r.rows?.[0] || null;
+  if (!row) return null;
+
+  const useLinked = !!row.useLinked;
+  const linked = row.linkedDisplayname ? String(row.linkedDisplayname) : "";
+  const provider = row.providerChannelSlug ? String(row.providerChannelSlug) : "";
+
+  const channelSlug = useLinked && linked ? linked : provider;
+  return channelSlug.trim() ? channelSlug.trim() : null;
+}
+
+async function addClipPg(p: {
+  pool: any;
+  streamerId: number;
+  title: string | null;
+  author: string | null;
+  atSec: number;
+  preSec: number;
+  postSec: number;
+  liveStartTs: number;
+}): Promise<{ ok: true; id: number } | { ok: false; reason: "duplicate" }> {
+  const { pool, streamerId } = p;
+
+  const nowMs = Date.now();
+  const at = Math.max(0, Math.floor(p.atSec));
+  const pre = Math.max(0, Math.floor(p.preSec));
+  const post = Math.max(0, Math.floor(p.postSec));
+
+  // Check unlimited clips (simplified)
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Deduplication check
+    const dup = await client.query(
+      `SELECT id FROM bot_clips
+       WHERE streamer_id=$1 AND ABS(at_sec - $2) <= 20 AND created_ts >= $3
+       LIMIT 1`,
+      [streamerId, at, nowMs - 6 * 3600 * 1000]
+    );
+    if (dup.rows?.[0]?.id) {
+      await client.query("ROLLBACK");
+      return { ok: false as const, reason: "duplicate" };
+    }
+
+    // Insert clip
+    const ins = await client.query(
+      `INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts, live_start_ts)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+       RETURNING id`,
+      [streamerId, p.title, p.author, at, pre, post, nowMs, p.liveStartTs]
+    );
+
+    const newId = Number(ins.rows?.[0]?.id || 0);
+
+    await client.query("COMMIT");
+    return { ok: true, id: newId };
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function createAutoClipForStreamer(p: {
+  pool: any;
+  streamerId: number;
+  title?: string | null;
+  author?: string | null;
+  preSec?: number;
+  postSec?: number;
+}): Promise<{ ok: true; id: number } | { ok: false; reason: string }> {
+  const { pool, streamerId, title, author, preSec, postSec } = p;
+
+  try {
+    const channelSlug = await getDliveChannelSlugForStreamer(pool, streamerId);
+    if (!channelSlug) {
+      return { ok: false, reason: "streamer_dlive_not_found" };
+    }
+
+    const live = await fetchLiveStart(channelSlug).catch(() => null);
+    if (!live) {
+      return { ok: false, reason: "live_not_active" };
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const startSec = Math.floor(live.createdAtMs / 1000);
+    const offset = Math.max(0, nowSec - startSec + LATENCY_PAD_SEC);
+
+    const finalPreSec = preSec != null ? Math.max(0, Math.floor(preSec)) : DEFAULT_PRE_SEC;
+    const finalPostSec = postSec != null ? Math.max(0, Math.floor(postSec)) : DEFAULT_POST_SEC;
+
+    const res = await addClipPg({
+      pool,
+      streamerId,
+      title: title || null,
+      author: author || null,
+      atSec: offset,
+      preSec: finalPreSec,
+      postSec: finalPostSec,
+      liveStartTs: live.createdAtMs,
+    });
+
+    if (!res.ok && res.reason === "duplicate") {
+      return { ok: false, reason: "duplicate" };
+    }
+
+    return res;
+  } catch (e: any) {
+    return { ok: false, reason: e?.message || "unknown_error" };
+  }
+}
+
 function requireBotKey(req: express.Request, res: express.Response): boolean {
   const expected = String(process.env.BOT_INTERNAL_KEY || "");
   const got = String(req.header("x-bot-key") || "");
@@ -219,5 +385,46 @@ internalBotRouter.post(
         liveOnly: nextLiveOnly,
       },
     });
+  }
+);
+
+// --------------------
+// Auto clip creation for external detector
+// --------------------
+internalBotRouter.post(
+  "/internal/clips/auto",
+  express.json(),
+  async (req, res) => {
+    if (!requireBotKey(req, res)) return;
+
+    const streamerId = Number((req.body as any)?.streamerId || 0);
+    const title = (req.body as any)?.title ?? null;
+    const author = (req.body as any)?.author ?? null;
+    const preSec = (req.body as any)?.preSec ?? undefined;
+    const postSec = (req.body as any)?.postSec ?? undefined;
+
+    if (!Number.isFinite(streamerId) || streamerId <= 0) {
+      return res.status(400).json({ ok: false, reason: "invalid_streamer_id" });
+    }
+
+    try {
+      const result = await createAutoClipForStreamer({
+        pool,
+        streamerId,
+        title: typeof title === "string" ? title.trim() || null : null,
+        author: typeof author === "string" ? author.trim() || null : null,
+        preSec,
+        postSec,
+      });
+
+      if (result.ok) {
+        return res.json({ ok: true, id: result.id });
+      } else {
+        return res.json({ ok: false, reason: result.reason });
+      }
+    } catch (e: any) {
+      console.error("[internal/clips/auto] error:", e);
+      return res.status(500).json({ ok: false, reason: "server_error" });
+    }
   }
 );
