@@ -234,6 +234,59 @@ async function addClipPg(p: {
   }
 }
 
+/* ------------------ public auto-clip API ------------------ */
+
+export async function createAutoClipForStreamer(p: {
+  pool: Pool;
+  streamerId: number;
+  title?: string | null;
+  author?: string | null;
+  preSec?: number;
+  postSec?: number;
+}): Promise<{ ok: true; id: number } | { ok: false; reason: string }> {
+  const { pool, streamerId, title, author, preSec, postSec } = p;
+
+  try {
+    // Réutiliser la logique exacte de !clip
+    const channelSlug = await getDliveChannelSlugForStreamer(pool, streamerId);
+    if (!channelSlug) {
+      return { ok: false, reason: "streamer_dlive_not_found" };
+    }
+
+    const live = await fetchLiveStart(channelSlug).catch(() => null);
+    if (!live) {
+      return { ok: false, reason: "live_not_active" };
+    }
+
+    const nowSec   = Math.floor(Date.now() / 1000);
+    const startSec = Math.floor(live.createdAtMs / 1000);
+    const offset   = Math.max(0, nowSec - startSec + LATENCY_PAD_SEC);
+
+    // Utiliser les valeurs par défaut si non fournies
+    const finalPreSec  = preSec != null ? Math.max(0, Math.floor(preSec)) : DEFAULT_PRE_SEC;
+    const finalPostSec = postSec != null ? Math.max(0, Math.floor(postSec)) : DEFAULT_POST_SEC;
+
+    const res = await addClipPg({
+      pool,
+      streamerId,
+      title: title || null,
+      author: author || null,
+      atSec: offset,
+      preSec: finalPreSec,
+      postSec: finalPostSec,
+      liveStartTs: live.createdAtMs,
+    });
+
+    if (!res.ok && res.reason === "duplicate") {
+      return { ok: false, reason: "duplicate" };
+    }
+
+    return res;
+  } catch (e: any) {
+    return { ok: false, reason: e?.message || "unknown_error" };
+  }
+}
+
 /* ------------------ public handler ------------------ */
 
 export async function tryHandleClipCommand(p: {
