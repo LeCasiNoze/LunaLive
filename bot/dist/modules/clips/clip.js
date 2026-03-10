@@ -1,6 +1,6 @@
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
-const LATENCY_PAD_SEC = 15;
-const DEFAULT_PRE_SEC = 105; // 1m45 (inchangé pour !clip manuel)
+const LATENCY_PAD_SEC = 30; // Compensation latence augmentée
+const DEFAULT_PRE_SEC = 75; // 1m15 (nouvelle cible)
 const DEFAULT_POST_SEC = 15; // 15s
 function normTitle(s) {
     return String(s || "").trim().slice(0, 140);
@@ -87,6 +87,10 @@ async function ensureBotClipsTable(pool) {
     // ✅ Nouvelle colonne : timestamp exact du début du live courant au moment du clip
     // Permet au vod_linker de trouver la VOD exacte sans estimation approximative
     await pool.query(`ALTER TABLE bot_clips ADD COLUMN IF NOT EXISTS live_start_ts BIGINT;`);
+    // ✅ Nouvelle colonne : permlink du live pour matching exact VOD
+    await pool.query(`ALTER TABLE bot_clips ADD COLUMN IF NOT EXISTS live_permlink TEXT;`);
+    // Index pour recherche rapide par permlink
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_bot_clips_live_permlink ON bot_clips(live_permlink) WHERE live_permlink IS NOT NULL;`);
     await pool.query(`UPDATE bot_clips SET created_ts = created_ts * 1000 WHERE created_ts < $1`, [TS_MS_THRESHOLD]).catch(() => { });
     await pool.query(`UPDATE bot_clips SET vod_created_ts = vod_created_ts * 1000 WHERE vod_created_ts IS NOT NULL AND vod_created_ts < $1`, [TS_MS_THRESHOLD]).catch(() => { });
     await pool.query(`
@@ -146,10 +150,10 @@ async function addClipPg(p) {
             await client.query("ROLLBACK");
             return { ok: false, reason: "duplicate" };
         }
-        // ✅ on stocke live_start_ts pour que le vod_linker trouve la bonne VOD
-        const ins = await client.query(`INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts, live_start_ts)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
-       RETURNING id`, [streamerId, p.title, p.author, at, pre, post, nowMs, p.liveStartTs]);
+        // ✅ on stocke live_start_ts et live_permlink pour que le vod_linker trouve la bonne VOD
+        const ins = await client.query(`INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts, live_start_ts, live_permlink)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       RETURNING id`, [streamerId, p.title, p.author, at, pre, post, nowMs, p.liveStartTs, p.livePermlink]);
         const newId = Number(ins.rows?.[0]?.id || 0);
         if (!unlimited) {
             await client.query(`WITH to_del AS (
@@ -200,6 +204,7 @@ export async function createAutoClipForStreamer(p) {
             preSec: finalPreSec,
             postSec: finalPostSec,
             liveStartTs: live.createdAtMs,
+            livePermlink: live.permlink, // ✅ ajouté
         });
         if (!res.ok && res.reason === "duplicate") {
             return { ok: false, reason: "duplicate" };
@@ -244,6 +249,7 @@ export async function tryHandleClipCommand(p) {
             preSec: DEFAULT_PRE_SEC,
             postSec: DEFAULT_POST_SEC,
             liveStartTs: live.createdAtMs, // ✅ ancre exacte pour le linker
+            livePermlink: live.permlink, // ✅ ajouté
         });
         if (!res.ok && res.reason === "duplicate") {
             await p.send("— 🎬 Clip déjà noté (fenêtre proche).");

@@ -9,16 +9,20 @@ export type BotClipRow = {
   at_sec: number;
   pre_sec: number;
   post_sec: number;
-  created_ts: number; // ms
-
+  created_ts: number;
   vod_url: string | null;
   vod_permlink: string | null;
-  vod_created_ts: number | null; // ms
+  vod_created_ts: number | null;
+  // ✅ timestamp exact du début du live courant au moment du clip
+  live_start_ts: number | null;
+  // ✅ permlink du live pour matching exact VOD
+  live_permlink: string | null;
+  // ✅ source LunaLive radio (snapshot)
+  source_displayname: string | null;
 
   hidden_by_streamer?: boolean;
   deleted_ts?: number | null; // ms
 
-  // ✅ rendered mp4 in R2/S3
   mp4_key?: string | null; // e.g. "clips/1234.mp4"
   mp4_ready_ts?: number | null; // ms
   mp4_size?: number | null; // bytes
@@ -47,7 +51,6 @@ export async function ensureBotClips() {
     );
   `);
 
-  // ✅ dashboard / suppression
   await pool.query(`
     ALTER TABLE bot_clips
       ADD COLUMN IF NOT EXISTS hidden_by_streamer BOOLEAN NOT NULL DEFAULT false;
@@ -58,7 +61,6 @@ export async function ensureBotClips() {
       ADD COLUMN IF NOT EXISTS deleted_ts BIGINT;
   `);
 
-  // ✅ mp4 render fields (R2/S3)
   await pool.query(`
     ALTER TABLE bot_clips
       ADD COLUMN IF NOT EXISTS mp4_key TEXT;
@@ -80,7 +82,15 @@ export async function ensureBotClips() {
       ADD COLUMN IF NOT EXISTS mp4_rendering BOOLEAN NOT NULL DEFAULT false;
   `);
 
-  // indices existants
+  await pool.query(`ALTER TABLE bot_clips ADD COLUMN IF NOT EXISTS live_start_ts BIGINT;`);
+  await pool.query(`ALTER TABLE bot_clips ADD COLUMN IF NOT EXISTS live_permlink TEXT;`);
+  
+  await pool.query(`ALTER TABLE bot_clips ADD COLUMN IF NOT EXISTS source_displayname TEXT;`);
+  
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_bot_clips_live_permlink ON bot_clips(live_permlink) WHERE live_permlink IS NOT NULL;`);
+  
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_bot_clips_source_displayname ON bot_clips(source_displayname) WHERE source_displayname IS NOT NULL;`);
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_bot_clips_streamer_created
       ON bot_clips(streamer_id, created_ts DESC, id DESC);
@@ -97,7 +107,6 @@ export async function ensureBotClips() {
       ON bot_clips(streamer_id, deleted_ts);
   `);
 
-  // ✅ speed up renderer selection
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_bot_clips_mp4_pending
       ON bot_clips(created_ts DESC, id DESC)
@@ -112,7 +121,7 @@ export async function ensureBotClips() {
 }
 
 /**
- * ✅ LIST dashboard (module bot):
+ * LIST dashboard (module bot):
  * - visible uniquement si pas hidden_by_streamer
  * - et pas deleted_ts
  */
@@ -150,7 +159,7 @@ export async function getClipForStreamer(streamerId: number, clipId: number) {
 }
 
 /**
- * ✅ IMPORTANT: "Supprimer" depuis le module bot = juste HIDE (pas delete DB)
+ * IMPORTANT: "Supprimer" depuis le module bot = juste HIDE (pas delete DB)
  */
 export async function removeClipForStreamer(streamerId: number, clipId: number) {
   const r = await pool.query(
@@ -164,7 +173,7 @@ export async function removeClipForStreamer(streamerId: number, clipId: number) 
 }
 
 /**
- * ✅ Delete "public" (page streamer) = deleted_ts + hide
+ * Delete "public" (page streamer) = deleted_ts + hide
  */
 export async function markClipDeletedById(clipId: number, nowTs: number) {
   const r = await pool.query(
@@ -193,7 +202,9 @@ export async function listPendingClipsForStreamer(streamerId: number, limit = 50
   const lim = Math.min(1000, Math.max(1, Math.floor(Number(limit) || 500)));
   const r = await pool.query(
     `SELECT id, streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts,
-            vod_url, vod_permlink, vod_created_ts
+            vod_url, vod_permlink, vod_created_ts,
+            live_start_ts, live_permlink,
+            source_displayname
      FROM bot_clips
      WHERE streamer_id=$1
        AND vod_url IS NULL

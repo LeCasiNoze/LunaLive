@@ -10,9 +10,9 @@ export const internalBotRouter = express.Router();
 // Auto clip creation logic (reproduced from bot)
 // --------------------
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
-const LATENCY_PAD_SEC = 15;
-const DEFAULT_PRE_SEC = 105;
-const DEFAULT_POST_SEC = 15;
+const LATENCY_PAD_SEC  = 30;    // Compensation latence augmentée
+const DEFAULT_PRE_SEC  = 75;   // 1m15 (nouvelle cible)
+const DEFAULT_POST_SEC = 15;   // 15s
 
 async function dliveGql(query: string, variables?: any) {
   const r = await fetch(DLIVE_ENDPOINT, {
@@ -43,7 +43,10 @@ async function fetchLiveStart(displayName: string): Promise<{ createdAtMs: numbe
   return { createdAtMs, permlink: String(ls.permlink || "") };
 }
 
-async function getDliveChannelSlugForStreamer(pool: any, streamerId: number): Promise<string | null> {
+async function getDliveChannelSlugForStreamer(pool: any, streamerId: number): Promise<{
+  channelSlug: string | null;
+  sourceDisplayname: string | null;
+}> {
   const r = await pool.query(
     `SELECT
        s.dlive_use_linked AS "useLinked",
@@ -59,14 +62,20 @@ async function getDliveChannelSlugForStreamer(pool: any, streamerId: number): Pr
   );
 
   const row = r.rows?.[0] || null;
-  if (!row) return null;
+  if (!row) return { channelSlug: null, sourceDisplayname: null };
 
   const useLinked = !!row.useLinked;
   const linked = row.linkedDisplayname ? String(row.linkedDisplayname) : "";
   const provider = row.providerChannelSlug ? String(row.providerChannelSlug) : "";
-
   const channelSlug = useLinked && linked ? linked : provider;
-  return channelSlug.trim() ? channelSlug.trim() : null;
+  
+  // ✅ Pour LunaLive radio, on snapshotte la source réelle (displayname uniquement)
+  const sourceDisplayname = useLinked && linked ? linked : null;
+
+  return { 
+    channelSlug: channelSlug.trim() ? channelSlug.trim() : null,
+    sourceDisplayname
+  };
 }
 
 async function addClipPg(p: {
@@ -78,6 +87,9 @@ async function addClipPg(p: {
   preSec: number;
   postSec: number;
   liveStartTs: number;
+  livePermlink: string; // ✅ ajouté
+  sourceDisplayname?: string | null; // ✅ ajouté
+  sourceUsername?: string | null; // ✅ ajouté
 }): Promise<{ ok: true; id: number } | { ok: false; reason: "duplicate" }> {
   const { pool, streamerId } = p;
 
@@ -105,10 +117,10 @@ async function addClipPg(p: {
 
     // Insert clip
     const ins = await client.query(
-      `INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts, live_start_ts)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts, live_start_ts, live_permlink, source_displayname, source_username)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING id`,
-      [streamerId, p.title, p.author, at, pre, post, nowMs, p.liveStartTs]
+      [streamerId, p.title, p.author, at, pre, post, nowMs, p.liveStartTs, p.livePermlink, p.sourceDisplayname, p.sourceUsername]
     );
 
     const newId = Number(ins.rows?.[0]?.id || 0);
@@ -134,7 +146,7 @@ async function createAutoClipForStreamer(p: {
   const { pool, streamerId, title, author, preSec, postSec } = p;
 
   try {
-    const channelSlug = await getDliveChannelSlugForStreamer(pool, streamerId);
+    const { channelSlug, sourceDisplayname } = await getDliveChannelSlugForStreamer(pool, streamerId);
     if (!channelSlug) {
       return { ok: false, reason: "streamer_dlive_not_found" };
     }
@@ -160,6 +172,9 @@ async function createAutoClipForStreamer(p: {
       preSec: finalPreSec,
       postSec: finalPostSec,
       liveStartTs: live.createdAtMs,
+      livePermlink: live.permlink, // ✅ ajouté
+      sourceDisplayname, // ✅ ajouté
+      sourceUsername: null, // ✅ plus de username dérivé
     });
 
     if (!res.ok && res.reason === "duplicate") {
@@ -395,6 +410,9 @@ internalBotRouter.post(
   "/internal/clips/auto",
   express.json(),
   async (req, res) => {
+    console.log("[DEBUG] /internal/clips/auto TOUCHÉ - body:", req.body);
+    console.log("[DEBUG] headers:", req.headers);
+    
     if (!requireBotKey(req, res)) return;
 
     const streamerId = Number((req.body as any)?.streamerId || 0);

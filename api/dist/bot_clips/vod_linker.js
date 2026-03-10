@@ -73,8 +73,21 @@ function matchVod(clip, vods) {
     const clipCreatedSec = Math.floor(clipCreatedMs / 1000);
     const atSec = Math.max(0, Number(clip.at_sec || 0));
     const liveStartTs = clip.live_start_ts ? Number(clip.live_start_ts) : null;
-    // ── Passe 1 : live_start_ts direct ──────────────────────────────────────
+    const livePermlink = clip.live_permlink ? String(clip.live_permlink).trim() : null;
+    console.log(`[VOD_LINKER] Processing clip with live_permlink: ${livePermlink || 'NULL'}`);
+    // ── Passe 0 : matching exact permlink (NOUVEAU) ────────────────────────
+    if (livePermlink) {
+        console.log(`[VOD_LINKER] Trying permlink match: ${livePermlink}`);
+        const exactMatch = vods.find(v => v.permlink === livePermlink);
+        if (exactMatch) {
+            console.log(`[VOD_LINKER] EXACT permlink match found: ${exactMatch.permlink}`);
+            return exactMatch;
+        }
+        console.log(`[VOD_LINKER] permlink not found, fallback to temporal`);
+    }
+    // ── Passe 1 : live_start_ts direct (EXISTANT) ───────────────────────────
     if (liveStartTs && liveStartTs > 0) {
+        console.log(`[VOD_LINKER] Trying live_start_ts match: ${liveStartTs}`);
         const liveStartSec = Math.floor(liveStartTs / 1000);
         // Tolérance ±10 min : DLive peut légèrement décaler le createdAt de la VOD
         const TOLERANCE_SEC = 10 * 60;
@@ -89,6 +102,7 @@ function matchVod(clip, vods) {
             }
         }
         if (best && bestDelta <= TOLERANCE_SEC) {
+            console.log(`[VOD_LINKER] live_start_ts match: delta=${bestDelta}s`);
             return best;
         }
         // Si on dépasse la tolérance stricte, on essaie quand même de trouver une VOD
@@ -97,9 +111,11 @@ function matchVod(clip, vods) {
             const vStartSec = Math.floor(best.createdAtMs / 1000);
             const vEndSec = vStartSec + Math.max(0, best.lengthSec);
             if (clipCreatedSec >= vStartSec - 60 && clipCreatedSec <= vEndSec + 600) {
+                console.log(`[VOD_LINKER] live_start_ts fallback match (range)`);
                 return best;
             }
         }
+        console.log(`[VOD_LINKER] live_start_ts match failed, continuing fallbacks`);
         // live_start_ts présent mais aucune VOD ne match → on continue avec les passes 2/3
         // (peut arriver si la VOD n'est pas encore publiée)
     }

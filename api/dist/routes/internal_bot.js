@@ -8,9 +8,9 @@ export const internalBotRouter = express.Router();
 // Auto clip creation logic (reproduced from bot)
 // --------------------
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
-const LATENCY_PAD_SEC = 15;
-const DEFAULT_PRE_SEC = 105;
-const DEFAULT_POST_SEC = 15;
+const LATENCY_PAD_SEC = 30; // Compensation latence augmentée
+const DEFAULT_PRE_SEC = 75; // 1m15 (nouvelle cible)
+const DEFAULT_POST_SEC = 15; // 15s
 async function dliveGql(query, variables) {
     const r = await fetch(DLIVE_ENDPOINT, {
         method: "POST",
@@ -76,9 +76,9 @@ async function addClipPg(p) {
             return { ok: false, reason: "duplicate" };
         }
         // Insert clip
-        const ins = await client.query(`INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts, live_start_ts)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
-       RETURNING id`, [streamerId, p.title, p.author, at, pre, post, nowMs, p.liveStartTs]);
+        const ins = await client.query(`INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts, live_start_ts, live_permlink)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       RETURNING id`, [streamerId, p.title, p.author, at, pre, post, nowMs, p.liveStartTs, p.livePermlink]);
         const newId = Number(ins.rows?.[0]?.id || 0);
         await client.query("COMMIT");
         return { ok: true, id: newId };
@@ -119,6 +119,7 @@ async function createAutoClipForStreamer(p) {
             preSec: finalPreSec,
             postSec: finalPostSec,
             liveStartTs: live.createdAtMs,
+            livePermlink: live.permlink, // ✅ ajouté
         });
         if (!res.ok && res.reason === "duplicate") {
             return { ok: false, reason: "duplicate" };
@@ -306,6 +307,8 @@ internalBotRouter.post("/internal/bot/streamer/settings", express.json(), async 
 // Auto clip creation for external detector
 // --------------------
 internalBotRouter.post("/internal/clips/auto", express.json(), async (req, res) => {
+    console.log("[DEBUG] /internal/clips/auto TOUCHÉ - body:", req.body);
+    console.log("[DEBUG] headers:", req.headers);
     if (!requireBotKey(req, res))
         return;
     const streamerId = Number(req.body?.streamerId || 0);

@@ -49,6 +49,11 @@ export async function ensureBotClips() {
     ALTER TABLE bot_clips
       ADD COLUMN IF NOT EXISTS mp4_rendering BOOLEAN NOT NULL DEFAULT false;
   `);
+    // ✅ live_start_ts et live_permlink pour matching VOD exact
+    await pool.query(`ALTER TABLE bot_clips ADD COLUMN IF NOT EXISTS live_start_ts BIGINT;`);
+    await pool.query(`ALTER TABLE bot_clips ADD COLUMN IF NOT EXISTS live_permlink TEXT;`);
+    // Index pour recherche rapide par permlink
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_bot_clips_live_permlink ON bot_clips(live_permlink) WHERE live_permlink IS NOT NULL;`);
     // indices existants
     await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_bot_clips_streamer_created
@@ -137,7 +142,8 @@ export async function listStreamersWithPendingVodClips() {
 export async function listPendingClipsForStreamer(streamerId, limit = 500) {
     const lim = Math.min(1000, Math.max(1, Math.floor(Number(limit) || 500)));
     const r = await pool.query(`SELECT id, streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts,
-            vod_url, vod_permlink, vod_created_ts
+            vod_url, vod_permlink, vod_created_ts,
+            live_start_ts, live_permlink
      FROM bot_clips
      WHERE streamer_id=$1
        AND vod_url IS NULL

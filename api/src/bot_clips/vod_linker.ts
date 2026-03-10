@@ -89,7 +89,7 @@ function pickVodUrl(v: VodLite): string | null {
  *   Utilisé uniquement si les passes 1 et 2 échouent.
  */
 function matchVod(
-  clip: Pick<BotClipRow, "created_ts" | "at_sec"> & { live_start_ts?: number | null },
+  clip: BotClipRow,
   vods: VodLite[],
 ): VodLite | null {
   if (!vods.length) return null;
@@ -98,9 +98,31 @@ function matchVod(
   const clipCreatedSec = Math.floor(clipCreatedMs / 1000);
   const atSec          = Math.max(0, Number(clip.at_sec || 0));
   const liveStartTs    = clip.live_start_ts ? Number(clip.live_start_ts) : null;
+  const livePermlink   = clip.live_permlink ? String(clip.live_permlink).trim() : null;
+  const sourceDisplayname = clip.source_displayname ? String(clip.source_displayname).trim() : null;
 
-  // ── Passe 1 : live_start_ts direct ──────────────────────────────────────
+  console.log(`[VOD_LINKER] Processing clip ${clip.id || 'unknown'} with live_permlink: ${livePermlink || 'NULL'}, source_displayname: ${sourceDisplayname || 'NULL'}`);
+
+  // ── Passe 0 : matching exact permlink (NOUVEAU) ────────────────────────
+  if (livePermlink) {
+    console.log(`[VOD_LINKER] Trying permlink match: ${livePermlink}`);
+    const exactMatch = vods.find(v => v.permlink === livePermlink);
+    if (exactMatch) {
+      console.log(`[VOD_LINKER] EXACT permlink match found: ${exactMatch.permlink}`);
+      return exactMatch;
+    }
+    console.log(`[VOD_LINKER] permlink not found, clip will remain pending`);
+    // Pour LunaLive: si pas de VOD avec ce permlink, on laisse pending (pas de fallback)
+    if (sourceDisplayname) {
+      console.log(`[VOD_LINKER] LunaLive clip with snapshot - leaving pending (no fallback)`);
+      return null;
+    }
+    console.log(`[VOD_LINKER] Normal clip - continuing with temporal fallbacks`);
+  }
+
+  // ── Passe 1 : live_start_ts direct (EXISTANT) ───────────────────────────
   if (liveStartTs && liveStartTs > 0) {
+    console.log(`[VOD_LINKER] Trying live_start_ts match: ${liveStartTs}`);
     const liveStartSec  = Math.floor(liveStartTs / 1000);
     // Tolérance ±10 min : DLive peut légèrement décaler le createdAt de la VOD
     const TOLERANCE_SEC = 10 * 60;
@@ -118,6 +140,7 @@ function matchVod(
     }
 
     if (best && bestDelta <= TOLERANCE_SEC) {
+      console.log(`[VOD_LINKER] live_start_ts match: delta=${bestDelta}s`);
       return best;
     }
 
@@ -127,9 +150,11 @@ function matchVod(
       const vStartSec = Math.floor(best.createdAtMs / 1000);
       const vEndSec   = vStartSec + Math.max(0, best.lengthSec);
       if (clipCreatedSec >= vStartSec - 60 && clipCreatedSec <= vEndSec + 600) {
+        console.log(`[VOD_LINKER] live_start_ts fallback match (range)`);
         return best;
       }
     }
+    console.log(`[VOD_LINKER] live_start_ts match failed, continuing fallbacks`);
     // live_start_ts présent mais aucune VOD ne match → on continue avec les passes 2/3
     // (peut arriver si la VOD n'est pas encore publiée)
   }
@@ -193,27 +218,59 @@ export function startClipsVodLinker() {
 
       for (const streamerId of streamers) {
         try {
-          const display = await getDliveChannelSlugForStreamer(streamerId);
-          if (!display) continue;
-
-          const vods  = await fetchRecentVods(display, 20).catch(() => []) as VodLite[];
-          if (!vods.length) continue;
-
           const clips = await listPendingClipsForStreamer(streamerId, 500);
-          for (const c of clips) {
-            try {
-              const v   = matchVod(c, vods);
-              const url = v ? pickVodUrl(v) : null;
-              if (!v || !url) continue;
+          if (!clips.length) continue;
 
-              await setClipVodInfo(streamerId, c.id, {
-                vod_url:        url,
-                vod_permlink:   v.permlink,
-                vod_created_ts: Number(v.createdAtMs || 0),
-              });
-            } catch {}
+          // ✅ Pour LunaLive radio, on utilise les snapshots individuels par clip
+          // On groupe les clips par source_displayname pour optimiser les requêtes VOD
+          const clipsBySource = new Map<string | null, typeof clips>();
+          
+          for (const clip of clips) {
+            const source = clip.source_displayname || null;
+            if (!clipsBySource.has(source)) {
+              clipsBySource.set(source, []);
+            }
+            clipsBySource.get(source)!.push(clip);
           }
-        } catch {}
+
+          // Pour chaque source, on fetch les VODs et on traite les clips
+          for (const [sourceDisplayname, sourceClips] of clipsBySource) {
+            let vods: VodLite[] = [];
+            
+            if (sourceDisplayname) {
+              // ✅ NOUVEAU: clips LunaLive avec snapshot - on utilise la source snapshotée
+              console.log(`[VOD_LINKER] Processing ${sourceClips.length} LunaLive clips for source: ${sourceDisplayname}`);
+              vods = await fetchRecentVods(sourceDisplayname, 20).catch(() => []) as VodLite[];
+            } else {
+              // ✅ ANCIEN: clips normaux - fallback comportement existant
+              console.log(`[VOD_LINKER] Processing ${sourceClips.length} normal clips (fallback)`);
+              const display = await getDliveChannelSlugForStreamer(streamerId);
+              if (!display) continue;
+              vods = await fetchRecentVods(display, 20).catch(() => []) as VodLite[];
+            }
+
+            if (!vods.length) continue;
+
+            for (const c of sourceClips) {
+              try {
+                const v   = matchVod(c, vods);
+                const url = v ? pickVodUrl(v) : null;
+                if (!v || !url) continue;
+
+                console.log(`[VOD_LINKER] ✅ Clip ${c.id} matched to VOD: ${v.permlink} (source: ${sourceDisplayname || 'dynamic'})`);
+                await setClipVodInfo(streamerId, c.id, {
+                  vod_url:        url,
+                  vod_permlink:   v.permlink,
+                  vod_created_ts: Number(v.createdAtMs || 0),
+                });
+              } catch (e) {
+                console.log(`[VOD_LINKER] ❌ Error processing clip ${c.id}:`, e);
+              }
+            }
+          }
+        } catch (e) {
+          console.log(`[VOD_LINKER] ❌ Error processing streamer ${streamerId}:`, e);
+        }
       }
     } finally {
       running = false;
