@@ -1,0 +1,32 @@
+export async function mig015_cosmetics_equipped(pool) {
+    await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_equipped_cosmetics (
+      user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+
+      username_code TEXT NULL, -- skin pseudo (ex: ghost_purple, rainbow_scroll, etc.)
+      badge_code    TEXT NULL, -- 1 seul badge
+      title_code    TEXT NULL, -- 1 seul titre
+      frame_code    TEXT NULL,
+      hat_code      TEXT NULL,
+
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+    // Avatars (stockés en DB, 1 par user)
+    await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_avatars (
+        user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        mime TEXT NOT NULL,
+        bytes BYTEA NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    `);
+    await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_achievements (
+        user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        achievement_id TEXT NOT NULL,
+        unlocked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, achievement_id)
+    );
+    `);
+}

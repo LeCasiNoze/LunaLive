@@ -1,264 +1,94 @@
 // api/src/routes/internal_bot.ts
 import express from "express";
 import { pool } from "../db.js";
+import { createAutoClipForStreamer } from "../../../shared/src/clip_service.js";
 import normalizeAppearance from "../appearance.js";
 import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
 
 export const internalBotRouter = express.Router();
 
-// --------------------
-// Auto clip creation logic (reproduced from bot)
-// --------------------
-const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
-const LATENCY_PAD_SEC  = 30;    // Compensation latence augmentée
-const DEFAULT_PRE_SEC  = 75;   // 1m15 (nouvelle cible)
-const DEFAULT_POST_SEC = 15;   // 15s
-
-async function dliveGql(query: string, variables?: any) {
-  const r = await fetch(DLIVE_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json",
-      origin: "https://dlive.tv",
-      referer: "https://dlive.tv/",
-    },
-    body: JSON.stringify(variables ? { query, variables } : { query }),
-  });
-  if (!r.ok) throw new Error(`dlive_gql_http_${r.status}`);
-  return (await r.json()) as any;
-}
-
-async function fetchLiveStart(displayName: string): Promise<{ createdAtMs: number; permlink: string } | null> {
-  const query =
-    "query UserLiveStart($name:String!){ userByDisplayName(displayname:$name){ username livestream{ createdAt permlink watchingCount } } }";
-
-  const j: any = await dliveGql(query, { name: displayName });
-  const ls = j?.data?.userByDisplayName?.livestream;
-  if (!ls?.createdAt) return null;
-
-  const createdAtMs = Number(ls.createdAt);
-  if (!Number.isFinite(createdAtMs)) return null;
-
-  return { createdAtMs, permlink: String(ls.permlink || "") };
-}
-
-async function getDliveChannelSlugForStreamer(pool: any, streamerId: number): Promise<{
-  channelSlug: string | null;
-  sourceDisplayname: string | null;
-}> {
-  const r = await pool.query(
-    `SELECT
-       s.dlive_use_linked AS "useLinked",
-       s.dlive_link_displayname AS "linkedDisplayname",
-       pa.channel_slug AS "providerChannelSlug"
-     FROM streamers s
-     LEFT JOIN provider_accounts pa
-       ON pa.provider='dlive'
-      AND pa.assigned_to_streamer_id = s.id
-     WHERE s.id=$1
-     LIMIT 1`,
-    [streamerId]
-  );
-
-  const row = r.rows?.[0] || null;
-  if (!row) return { channelSlug: null, sourceDisplayname: null };
-
-  const useLinked = !!row.useLinked;
-  const linked = row.linkedDisplayname ? String(row.linkedDisplayname) : "";
-  const provider = row.providerChannelSlug ? String(row.providerChannelSlug) : "";
-  const channelSlug = useLinked && linked ? linked : provider;
-  
-  // ✅ Pour LunaLive radio, on snapshotte la source réelle (displayname uniquement)
-  const sourceDisplayname = useLinked && linked ? linked : null;
-
-  return { 
-    channelSlug: channelSlug.trim() ? channelSlug.trim() : null,
-    sourceDisplayname
-  };
-}
-
-async function addClipPg(p: {
-  pool: any;
-  streamerId: number;
-  title: string | null;
-  author: string | null;
-  atSec: number;
-  preSec: number;
-  postSec: number;
-  liveStartTs: number;
-  livePermlink: string; // ✅ ajouté
-  sourceDisplayname?: string | null; // ✅ ajouté
-  sourceUsername?: string | null; // ✅ ajouté
-}): Promise<{ ok: true; id: number } | { ok: false; reason: "duplicate" }> {
-  const { pool, streamerId } = p;
-
-  const nowMs = Date.now();
-  const at = Math.max(0, Math.floor(p.atSec));
-  const pre = Math.max(0, Math.floor(p.preSec));
-  const post = Math.max(0, Math.floor(p.postSec));
-
-  // Check unlimited clips (simplified)
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    // Deduplication check
-    const dup = await client.query(
-      `SELECT id FROM bot_clips
-       WHERE streamer_id=$1 AND ABS(at_sec - $2) <= 20 AND created_ts >= $3
-       LIMIT 1`,
-      [streamerId, at, nowMs - 6 * 3600 * 1000]
-    );
-    if (dup.rows?.[0]?.id) {
-      await client.query("ROLLBACK");
-      return { ok: false as const, reason: "duplicate" };
-    }
-
-    // Insert clip
-    const ins = await client.query(
-      `INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts, live_start_ts, live_permlink, source_displayname, source_username)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-       RETURNING id`,
-      [streamerId, p.title, p.author, at, pre, post, nowMs, p.liveStartTs, p.livePermlink, p.sourceDisplayname, p.sourceUsername]
-    );
-
-    const newId = Number(ins.rows?.[0]?.id || 0);
-
-    await client.query("COMMIT");
-    return { ok: true, id: newId };
-  } catch (e) {
-    try { await client.query("ROLLBACK"); } catch {}
-    throw e;
-  } finally {
-    client.release();
-  }
-}
-
-async function createAutoClipForStreamer(p: {
-  pool: any;
-  streamerId: number;
-  title?: string | null;
-  author?: string | null;
-  preSec?: number;
-  postSec?: number;
-}): Promise<{ ok: true; id: number } | { ok: false; reason: string }> {
-  const { pool, streamerId, title, author, preSec, postSec } = p;
-
-  try {
-    const { channelSlug, sourceDisplayname } = await getDliveChannelSlugForStreamer(pool, streamerId);
-    if (!channelSlug) {
-      return { ok: false, reason: "streamer_dlive_not_found" };
-    }
-
-    const live = await fetchLiveStart(channelSlug).catch(() => null);
-    if (!live) {
-      return { ok: false, reason: "live_not_active" };
-    }
-
-    const nowSec = Math.floor(Date.now() / 1000);
-    const startSec = Math.floor(live.createdAtMs / 1000);
-    const offset = Math.max(0, nowSec - startSec + LATENCY_PAD_SEC);
-
-    const finalPreSec = preSec != null ? Math.max(0, Math.floor(preSec)) : DEFAULT_PRE_SEC;
-    const finalPostSec = postSec != null ? Math.max(0, Math.floor(postSec)) : DEFAULT_POST_SEC;
-
-    const res = await addClipPg({
-      pool,
-      streamerId,
-      title: title || null,
-      author: author || null,
-      atSec: offset,
-      preSec: finalPreSec,
-      postSec: finalPostSec,
-      liveStartTs: live.createdAtMs,
-      livePermlink: live.permlink, // ✅ ajouté
-      sourceDisplayname, // ✅ ajouté
-      sourceUsername: null, // ✅ plus de username dérivé
-    });
-
-    if (!res.ok && res.reason === "duplicate") {
-      return { ok: false, reason: "duplicate" };
-    }
-
-    return res;
-  } catch (e: any) {
-    return { ok: false, reason: e?.message || "unknown_error" };
-  }
-}
-
-function requireBotKey(req: express.Request, res: express.Response): boolean {
-  const expected = String(process.env.BOT_INTERNAL_KEY || "");
-  const got = String(req.header("x-bot-key") || "");
-  if (!expected || got !== expected) {
-    res.status(401).json({ ok: false, error: "unauthorized" });
-    return false;
-  }
-  return true;
-}
-
-function emitChatAll(io: any, slug: string, event: string, payload?: any) {
-  const s = String(slug).trim();
-  if (!s) return;
-  io.to(`chat:${s}:public`).emit(event, payload);
-  io.to(`chat:${s}:popup`).emit(event, payload);
-}
-
-function parseBoolish(v: any): boolean | null {
-  if (v === undefined || v === null) return null;
-  if (typeof v === "boolean") return v;
-  if (typeof v === "number") return v !== 0;
-  const s = String(v).trim().toLowerCase();
-  if (["true", "1", "yes", "y", "on"].includes(s)) return true;
-  if (["false", "0", "no", "n", "off"].includes(s)) return false;
-  return null;
-}
-
-// --------------------
-// 1) Envoi chat bot -> persist + broadcast
-// --------------------
+// --------------------  
+// 1) ✅ Auto clip creation (force 75/15, ignore external durations)
+// --------------------  
 internalBotRouter.post(
-  "/internal/bot/chat/send",
+  "/internal/bot/clip/create",
+  express.json(),
+  async (req, res) => {
+    const body: any = req.body || {};
+    const streamerId = Number(body.streamerId || 0);
+    const title = String(body.title || "").trim() || null;
+    const author = String(body.author || "").trim() || null;
+
+    // ❌ IGNORER complètement les durées externes pour les auto-clips
+    // Le detector ne contrôle PAS la durée finale
+    // const preSec = body.preSec != null ? Number(body.preSec) : undefined;
+    // const postSec = body.postSec != null ? Number(body.postSec) : undefined;
+
+    if (!streamerId) {
+      return res.status(400).json({ ok: false, error: "streamerId required" });
+    }
+
+    try {
+      // 🎯 Utiliser la fonction auto-clip dédiée qui force 75/15
+      const result = await createAutoClipForStreamer({
+        pool,
+        streamerId,
+        title,
+        author,
+      });
+
+      if (!result.ok) {
+        return res.status(400).json({ ok: false, error: result.reason });
+      }
+
+      return res.json({ ok: true, id: result.id });
+    } catch (e: any) {
+      console.error("Auto clip creation error:", e);
+      return res.status(500).json({ ok: false, error: e?.message || "internal_error" });
+    }
+  }
+);
+
+// --------------------  
+// 2) ✅ Bot chat message injection
+// --------------------  
+internalBotRouter.post(
+  "/internal/bot/chat/inject",
   express.json(),
   async (req, res) => {
     if (!requireBotKey(req, res)) return;
 
-    const streamerId = Number((req.body as any)?.streamerId || 0);
-    const bodyRaw = String((req.body as any)?.body || "").replace(/\r/g, "").trim();
-    const body = bodyRaw.length > 200 ? bodyRaw.slice(0, 200) : bodyRaw;
+    const body: any = req.body || {};
+    const slug = String(body.slug || "").trim();
+    const botUsername = String(body.botUsername || "").trim();
+    const botMessage = String(body.message || "").trim();
 
-    if (!streamerId || !body) {
-      return res.status(400).json({ ok: false, error: "bad_request" });
+    if (!slug || !botUsername || !botMessage) {
+      return res.status(400).json({ ok: false, error: "slug, botUsername, and message required" });
     }
 
-    // streamer meta (slug + appearance)
-    const s = await pool.query(
-      `SELECT slug, appearance
-       FROM streamers
-       WHERE id=$1
-       LIMIT 1`,
-      [streamerId]
+    // Récupérer l'apparence du streamer pour les couleurs
+    const appearance = await normalizeAppearance(slug);
+    if (!appearance) {
+      return res.status(404).json({ ok: false, error: "streamer not found" });
+    }
+
+    // Récupérer l'ID utilisateur du bot
+    const botUserRes = await pool.query(
+      `SELECT id FROM users WHERE lower(username) = lower($1) LIMIT 1`,
+      [botUsername]
     );
-    const meta = s.rows?.[0];
-    if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
-
-    const slug = String(meta.slug);
-    const appearance = normalizeAppearance(meta.appearance || {});
-
-    // bot identity
-    const botUserId = Number(process.env.BOT_USER_ID || 0);
-    const botUsername = String(process.env.BOT_USERNAME || "LunaBot");
-
-    if (!botUserId) {
-      return res.status(500).json({ ok: false, error: "BOT_USER_ID_missing" });
+    if (!botUserRes.rows?.[0]?.id) {
+      return res.status(404).json({ ok: false, error: "bot user not found" });
     }
+    const botUserId = Number(botUserRes.rows[0].id);
 
-    // INSERT message (DB)
+    // Insérer le message dans la table chat_messages
     const ins = await pool.query(
-      `INSERT INTO chat_messages (streamer_id, user_id, username, body)
-       VALUES ($1,$2,$3,$4)
+      `INSERT INTO chat_messages(streamer_slug, user_id, username, body, created_at)
+       VALUES($1, $2, $3, $4, NOW())
        RETURNING id, created_at AS "createdAt"`,
-      [streamerId, botUserId, botUsername, body]
+      [slug, botUserId, botUsername, botMessage]
     );
 
     const row = ins.rows?.[0];
@@ -271,7 +101,7 @@ internalBotRouter.post(
       id: Number(row.id),
       userId: botUserId,
       username: botUsername,
-      body,
+      body: botMessage,
       createdAt: new Date(row.createdAt).toISOString(),
       cosmetics,
       style: {
@@ -283,14 +113,13 @@ internalBotRouter.post(
     const io = req.app.locals.io;
     if (io) emitChatAll(io, slug, "chat:message", msg);
 
-
     return res.json({ ok: true, id: msg.id });
   }
 );
 
-// --------------------
-// 2) ✅ MVP: Upsert settings bot par streamer (enabled/prefix/liveOnly)
-// --------------------
+// --------------------  
+// 3) ✅ Bot settings management
+// --------------------  
 internalBotRouter.post(
   "/internal/bot/streamer/settings",
   express.json(),
@@ -312,159 +141,97 @@ internalBotRouter.post(
     }
 
     if (!streamerId) {
-      return res.status(400).json({ ok: false, error: "streamer_required" });
+      return res.status(400).json({ ok: false, error: "streamerId or slug required" });
     }
 
-    const enabledMaybe = parseBoolish(body.enabled);
-    const liveOnlyMaybe = parseBoolish(body.liveOnly);
+    const enabled = !!body.enabled;
+    const prefix = String(body.prefix || "!").trim();
+    const liveOnly = !!body.liveOnly;
 
-    const prefixRawProvided = Object.prototype.hasOwnProperty.call(body, "prefix");
-    const prefixRaw = prefixRawProvided ? String(body.prefix || "").trim() : null;
-
-    // au moins 1 champ
-    if (enabledMaybe === null && liveOnlyMaybe === null && !prefixRawProvided) {
-      return res.status(400).json({ ok: false, error: "no_fields" });
-    }
-
-    // streamer exists ?
-    const s = await pool.query(
-      `SELECT id, slug FROM streamers WHERE id=$1 LIMIT 1`,
-      [streamerId]
-    );
-    const streamer = s.rows?.[0];
-    if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
-
-    // fetch current (si existe)
-    let cur: { enabled: boolean; prefix: string; live_only: boolean } | null = null;
-    try {
-      const r = await pool.query(
-        `SELECT enabled, prefix, live_only
-         FROM bot_streamer_settings
-         WHERE streamer_id=$1
-         LIMIT 1`,
-        [streamerId]
-      );
-      if (r.rows?.[0]) {
-        cur = {
-          enabled: Boolean(r.rows[0].enabled),
-          prefix: String(r.rows[0].prefix || "!"),
-          live_only: Boolean(r.rows[0].live_only),
-        };
-      }
-    } catch (e: any) {
-      const code = String(e?.code || "");
-      if (code === "42P01") {
-        return res.status(500).json({ ok: false, error: "bot_streamer_settings_missing" });
-      }
-      return res.status(500).json({ ok: false, error: "db_error", detail: e?.message || String(e) });
-    }
-
-    const nextEnabled = enabledMaybe === null ? (cur?.enabled ?? false) : enabledMaybe;
-    const nextLiveOnly = liveOnlyMaybe === null ? (cur?.live_only ?? true) : liveOnlyMaybe;
-
-    let nextPrefix = cur?.prefix ?? "!";
-    if (prefixRawProvided) {
-      // si fourni mais vide => "!"
-      const p = String(prefixRaw || "!").trim();
-      nextPrefix = p.length ? p : "!";
-      // garde ça simple: on limite à 5 chars pour éviter n'importe quoi
-      if (nextPrefix.length > 5) nextPrefix = nextPrefix.slice(0, 5);
-    }
-
-    // upsert
     try {
       await pool.query(
-        `
-        INSERT INTO bot_streamer_settings (streamer_id, enabled, prefix, live_only)
-        VALUES ($1,$2,$3,$4)
-        ON CONFLICT (streamer_id)
-        DO UPDATE SET
-          enabled=EXCLUDED.enabled,
-          prefix=EXCLUDED.prefix,
-          live_only=EXCLUDED.live_only,
-          updated_at=now()
-      `,
-        [streamerId, nextEnabled, nextPrefix, nextLiveOnly]
+        `INSERT INTO bot_settings(streamer_id, enabled, prefix, live_only)
+         VALUES($1, $2, $3, $4)
+         ON CONFLICT(streamer_id) DO UPDATE SET
+           enabled = EXCLUDED.enabled,
+           prefix = EXCLUDED.prefix,
+           live_only = EXCLUDED.live_only`,
+        [streamerId, enabled, prefix, liveOnly]
       );
-    } catch (e: any) {
-      return res.status(500).json({ ok: false, error: "db_error", detail: e?.message || String(e) });
-    }
 
-    return res.json({
-      ok: true,
-      streamerId,
-      slug: String(streamer.slug),
-      settings: {
-        enabled: nextEnabled,
-        prefix: nextPrefix,
-        liveOnly: nextLiveOnly,
-      },
-    });
+      return res.json({ ok: true });
+    } catch (e: any) {
+      console.error("Bot settings error:", e);
+      return res.status(500).json({ ok: false, error: e?.message || "internal_error" });
+    }
   }
 );
 
-// --------------------
-// Auto clip creation for external detector
-// --------------------
-internalBotRouter.post(
-  "/internal/clips/auto",
-  express.json(),
+// --------------------  
+// 4) ✅ Bot settings retrieval
+// --------------------  
+internalBotRouter.get(
+  "/internal/bot/streamer/:streamerIdOrSlug/settings",
   async (req, res) => {
-    console.log("[DEBUG] /internal/clips/auto TOUCHÉ - body:", req.body);
-    console.log("[DEBUG] headers:", req.headers);
-    
     if (!requireBotKey(req, res)) return;
 
-    const streamerId = Number((req.body as any)?.streamerId || 0);
-    const streamerSlug = (req.body as any)?.streamerSlug ?? null;
-    const title = (req.body as any)?.title ?? null;
-    const author = (req.body as any)?.author ?? null;
-    const preSec = (req.body as any)?.preSec ?? undefined;
-    const postSec = (req.body as any)?.postSec ?? undefined;
+    const streamerIdOrSlug = String(req.params.streamerIdOrSlug || "").trim();
+    if (!streamerIdOrSlug) {
+      return res.status(400).json({ ok: false, error: "streamerId or slug required" });
+    }
 
-    let resolvedStreamerId = streamerId;
+    let streamerId: number;
+    if (/^\d+$/.test(streamerIdOrSlug)) {
+      streamerId = Number(streamerIdOrSlug);
+    } else {
+      const r = await pool.query(
+        `SELECT id FROM streamers WHERE lower(slug)=lower($1) LIMIT 1`,
+        [streamerIdOrSlug]
+      );
+      streamerId = Number(r.rows?.[0]?.id || 0);
+    }
 
-    // Si streamerId n'est pas valide, essayer avec streamerSlug
-    if (!Number.isFinite(resolvedStreamerId) || resolvedStreamerId <= 0) {
-      if (!streamerSlug || typeof streamerSlug !== "string" || !streamerSlug.trim()) {
-        return res.status(400).json({ ok: false, reason: "invalid_streamer_identifier" });
-      }
-
-      try {
-        const slugResult = await pool.query(
-          `SELECT id FROM streamers WHERE slug=$1 LIMIT 1`,
-          [streamerSlug.trim()]
-        );
-        
-        if (!slugResult.rows?.[0]?.id) {
-          return res.status(404).json({ ok: false, reason: "streamer_not_found" });
-        }
-        
-        resolvedStreamerId = Number(slugResult.rows[0].id);
-      } catch (e: any) {
-        console.error("[internal/clips/auto] slug resolution error:", e);
-        return res.status(500).json({ ok: false, reason: "db_error" });
-      }
+    if (!streamerId) {
+      return res.status(404).json({ ok: false, error: "streamer not found" });
     }
 
     try {
-      const result = await createAutoClipForStreamer({
-        pool,
-        streamerId: resolvedStreamerId,
-        title: typeof title === "string" ? title.trim() || null : null,
-        author: typeof author === "string" ? author.trim() || null : null,
-        preSec,
-        postSec,
-      });
+      const r = await pool.query(
+        `SELECT enabled, prefix, live_only FROM bot_settings WHERE streamer_id=$1`,
+        [streamerId]
+      );
 
-      if (result.ok) {
-        return res.json({ ok: true, id: result.id });
-      } else {
-        return res.json({ ok: false, reason: result.reason });
-      }
+      const settings = r.rows?.[0] || {
+        enabled: false,
+        prefix: "!",
+        live_only: false,
+      };
+
+      return res.json({ ok: true, settings });
     } catch (e: any) {
-      console.error("[internal/clips/auto] error:", e);
-      return res.status(500).json({ ok: false, reason: "server_error" });
+      console.error("Bot settings retrieval error:", e);
+      return res.status(500).json({ ok: false, error: e?.message || "internal_error" });
     }
   }
 );
+
+// --------------------  
+// 5) ✅ Utility functions
+// --------------------  
+function requireBotKey(req: express.Request, res: express.Response): boolean {
+  const key = String(req.headers["x-bot-key"] || "").trim();
+  const expected = process.env.INTERNAL_BOT_KEY;
+  if (!expected || key !== expected) {
+    res.status(401).json({ ok: false, error: "invalid_bot_key" });
+    return false;
+  }
+  return true;
+}
+
+function emitChatAll(io: any, slug: string, event: string, data: any) {
+  try {
+    io.to(`streamer:${slug}`).emit(event, data);
+  } catch (e) {
+    console.error("emitChatAll error:", e);
+  }
+}

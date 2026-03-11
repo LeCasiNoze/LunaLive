@@ -1,0 +1,488 @@
+// api/src/routes/calls.ts
+import express from "express";
+import { pool } from "../db.js";
+import { requireAuth } from "../auth.js";
+import { getCallsSettings, resetCalls, deleteCallById, effectiveLimit } from "../calls/queue.js";
+import { normText, keyText } from "../calls/normalize.js";
+import { normalizeProvider } from "../calls/provider_aliases.js";
+export const callsRouter = express.Router();
+/**
+ * ✅ Soft auth:
+ * - si Authorization Bearer est présent => on tente requireAuth
+ * - sinon => on laisse passer (req.user restera undefined)
+ */
+function softAuth(req, res, next) {
+    const h = String(req.headers?.authorization || "");
+    if (/^Bearer\s+.+/i.test(h))
+        return requireAuth(req, res, next);
+    return next();
+}
+// helper: slug -> streamer meta
+async function getStreamerBySlug(slug) {
+    const s = String(slug || "").trim();
+    if (!s)
+        return null;
+    const r = await pool.query(`SELECT id, slug, user_id AS "ownerUserId"
+     FROM streamers
+     WHERE lower(slug)=lower($1)
+     LIMIT 1`, [s]);
+    const row = r.rows?.[0];
+    if (!row)
+        return null;
+    return {
+        id: Number(row.id),
+        slug: String(row.slug),
+        ownerUserId: row.ownerUserId != null ? Number(row.ownerUserId) : null,
+    };
+}
+// ✅ owner / admin / mod (si table existe)
+async function canModOnStreamer(user, meta) {
+    if (!user)
+        return false;
+    const uid = Number(user.id || 0);
+    if (!uid)
+        return false;
+    if (user.role === "admin")
+        return true;
+    if (meta.ownerUserId != null && Number(meta.ownerUserId) === uid)
+        return true;
+    // modérateur de la chaîne (si table existe)
+    try {
+        const r = await pool.query(`SELECT 1 FROM streamer_moderators WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`, [meta.id, uid]);
+        if ((r.rowCount ?? 0) > 0)
+            return true;
+    }
+    catch {
+        // table absente => pas de crash
+    }
+    return false;
+}
+async function ensureCallsBansCols() {
+    // ✅ compat prod: certaines DB n'ont pas encore ces colonnes
+    await pool.query(`ALTER TABLE calls_bans ADD COLUMN IF NOT EXISTS note TEXT;`);
+    await pool.query(`ALTER TABLE calls_bans ADD COLUMN IF NOT EXISTS created_by_user_id BIGINT;`);
+}
+async function ensureProviderPolicyRow(streamerId) {
+    await pool.query(`
+    INSERT INTO calls_provider_policy (streamer_id, mode)
+    VALUES ($1, 'allow_all')
+    ON CONFLICT (streamer_id) DO NOTHING
+    `, [streamerId]);
+}
+// ──────────────────────────────────────────
+// Settings (public-ish read) + admin patch
+// ──────────────────────────────────────────
+callsRouter.get("/:slug/config", async (req, res) => {
+    try {
+        const meta = await getStreamerBySlug(String(req.params.slug));
+        if (!meta)
+            return res.status(404).json({ ok: false, error: "streamer_not_found" });
+        const s = await getCallsSettings(pool, meta.id);
+        res.json({
+            ok: true,
+            config: {
+                enabled: s.enabled,
+                allowListec: s.allowListec,
+                listecMax: s.listecMax,
+                perUserLimit: s.perUserLimit,
+                showCmdInChat: s.showCmdInChat,
+                showAcceptPublic: s.showAcceptPublic,
+                syncHunt: s.syncHunt, // ✅ NEW
+            },
+        });
+    }
+    catch (e) {
+        res.status(500).json({ ok: false, error: String(e?.message || "config_failed") });
+    }
+});
+callsRouter.patch("/:slug/config", requireAuth, async (req, res) => {
+    try {
+        const u = req.user;
+        if (!u)
+            return res.status(401).json({ ok: false, error: "unauthorized" });
+        const meta = await getStreamerBySlug(String(req.params.slug));
+        if (!meta)
+            return res.status(404).json({ ok: false, error: "streamer_not_found" });
+        if (!(await canModOnStreamer(u, meta)))
+            return res.status(403).json({ ok: false, error: "forbidden" });
+        const p = req.body || {};
+        const enabled = p.enabled != null ? !!p.enabled : null;
+        const allowListec = p.allowListec != null ? !!p.allowListec : null;
+        const showCmdInChat = p.showCmdInChat != null ? !!p.showCmdInChat : null;
+        const showAcceptPublic = p.showAcceptPublic != null ? !!p.showAcceptPublic : null;
+        const syncHunt = p.syncHunt != null ? !!p.syncHunt : null; // ✅ NEW
+        const listecMax = p.listecMax != null ? Math.max(1, Math.min(50, Number(p.listecMax))) : null;
+        const perUserLimitRaw = p.perUserLimit != null ? Number(p.perUserLimit) : null;
+        const perUserLimit = perUserLimitRaw == null ? null : effectiveLimit(perUserLimitRaw);
+        await pool.query(`
+      INSERT INTO calls_settings (streamer_id)
+      VALUES ($1)
+      ON CONFLICT (streamer_id) DO NOTHING
+      `, [meta.id]);
+        await pool.query(`
+      UPDATE calls_settings
+      SET
+        enabled = COALESCE($2, enabled),
+        allow_listec = COALESCE($3, allow_listec),
+        show_cmd_in_chat = COALESCE($4, show_cmd_in_chat),
+        show_accept_public = COALESCE($5, show_accept_public),
+        listec_max = COALESCE($6, listec_max),
+        per_user_limit = COALESCE($7, per_user_limit),
+        sync_hunt = COALESCE($8, sync_hunt),
+        updated_at = NOW()
+      WHERE streamer_id=$1
+      `, [meta.id, enabled, allowListec, showCmdInChat, showAcceptPublic, listecMax, perUserLimit, syncHunt]);
+        // miroir optionnel dans chat_settings (si ta table existe)
+        if (showCmdInChat != null) {
+            await pool.query(`
+        DO $$
+        BEGIN
+          IF to_regclass('public.chat_settings') IS NOT NULL THEN
+            INSERT INTO chat_settings (streamer_id, show_call_commands)
+            VALUES (${meta.id}, ${showCmdInChat ? "TRUE" : "FALSE"})
+            ON CONFLICT (streamer_id) DO UPDATE
+              SET show_call_commands = EXCLUDED.show_call_commands;
+          END IF;
+        END $$;
+      `);
+        }
+        const cfg = await getCallsSettings(pool, meta.id);
+        res.json({ ok: true, config: cfg });
+    }
+    catch (e) {
+        res.status(500).json({ ok: false, error: String(e?.message || "patch_failed") });
+    }
+});
+// ──────────────────────────────────────────
+// Queue (list / reset / delete)
+// ──────────────────────────────────────────
+/**
+ * ✅ PUBLIC LIST
+ * GET /calls/:slug/list
+ * - accessible sans login
+ * - si token présent => softAuth => renvoie canModerate
+ */
+callsRouter.get("/:slug/list", softAuth, async (req, res) => {
+    try {
+        const meta = await getStreamerBySlug(String(req.params.slug));
+        if (!meta)
+            return res.status(404).json({ ok: false, error: "streamer_not_found" });
+        const canModerate = await canModOnStreamer(req.user, meta);
+        const limitRaw = Number(req.query.limit || 50);
+        const offsetRaw = Number(req.query.offset || 0);
+        const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? limitRaw : 50));
+        const offset = Math.max(0, Number.isFinite(offsetRaw) ? offsetRaw : 0);
+        // ✅ assure la colonne (robuste en prod)
+        await pool.query(`
+      ALTER TABLE calls_queue
+      ADD COLUMN IF NOT EXISTS is_bonus BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+        const { rows } = await pool.query(`
+      SELECT
+        q.id::text AS id,
+        q.slot_name AS "slotName",
+        q.provider AS provider,
+        q.username AS username,
+        q.pos AS pos,
+        sc.image_url AS "imageUrl",
+
+        q.bet AS "bet",
+        q.pay AS "pay",
+        q.bounty AS "bounty",
+        q.is_bonus AS "isBonus"
+      FROM calls_queue q
+      LEFT JOIN slots_catalog sc
+        ON sc.name_key = q.slot_key
+      WHERE q.streamer_id=$1
+        AND COALESCE(q.is_bonus, FALSE) = FALSE   -- ✅ ne retourne que les calls
+        AND (q.bet IS NULL OR q.bet <= 0)         -- ✅ compat (au cas où)
+      ORDER BY q.pos ASC
+      LIMIT $2 OFFSET $3
+      `, [meta.id, limit, offset]);
+        const items = (rows || []).map((r) => ({
+            id: String(r.id),
+            slotName: String(r.slotName),
+            provider: r.provider ? String(r.provider) : null,
+            username: r.username != null ? String(r.username) : "",
+            pos: Number(r.pos) || 0,
+            imageUrl: r.imageUrl ? String(r.imageUrl) : null,
+            bet: r.bet == null ? null : Number(r.bet),
+            pay: r.pay == null ? null : Number(r.pay),
+            bounty: typeof r.bounty === "boolean" ? r.bounty : (r.bounty ?? null),
+            isBonus: !!r.isBonus, // ✅ debug/robuste
+        }));
+        // ✅ on garde compat: { ok:true, items } ; + champ bonus non cassant
+        res.json({ ok: true, items, canModerate });
+    }
+    catch (e) {
+        res.status(500).json({ ok: false, error: String(e?.message || "list_failed") });
+    }
+});
+callsRouter.post("/:slug/reset", requireAuth, async (req, res) => {
+    try {
+        const u = req.user;
+        if (!u)
+            return res.status(401).json({ ok: false, error: "unauthorized" });
+        const meta = await getStreamerBySlug(String(req.params.slug));
+        if (!meta)
+            return res.status(404).json({ ok: false, error: "streamer_not_found" });
+        if (!(await canModOnStreamer(u, meta)))
+            return res.status(403).json({ ok: false, error: "forbidden" });
+        await resetCalls(pool, meta.id);
+        res.json({ ok: true });
+    }
+    catch (e) {
+        res.status(500).json({ ok: false, error: String(e?.message || "reset_failed") });
+    }
+});
+callsRouter.delete("/:slug/item/:id", requireAuth, async (req, res) => {
+    try {
+        const u = req.user;
+        if (!u)
+            return res.status(401).json({ ok: false, error: "unauthorized" });
+        const meta = await getStreamerBySlug(String(req.params.slug));
+        if (!meta)
+            return res.status(404).json({ ok: false, error: "streamer_not_found" });
+        if (!(await canModOnStreamer(u, meta)))
+            return res.status(403).json({ ok: false, error: "forbidden" });
+        const ok = await deleteCallById(pool, meta.id, String(req.params.id));
+        res.json({ ok: true, deleted: ok });
+    }
+    catch (e) {
+        res.status(500).json({ ok: false, error: String(e?.message || "delete_failed") });
+    }
+});
+/* ──────────────────────────────────────────────────────────
+   BANS (Call & Hunt)
+   ────────────────────────────────────────────────────────── */
+callsRouter.get("/:slug/bans", requireAuth, async (req, res) => {
+    try {
+        const u = req.user;
+        if (!u)
+            return res.status(401).json({ ok: false, error: "unauthorized" });
+        const meta = await getStreamerBySlug(String(req.params.slug));
+        if (!meta)
+            return res.status(404).json({ ok: false, error: "streamer_not_found" });
+        if (!(await canModOnStreamer(u, meta)))
+            return res.status(403).json({ ok: false, error: "forbidden" });
+        await ensureCallsBansCols(); // ✅ AJOUTE ÇA
+        const { rows } = await pool.query(`
+      SELECT kind, ban_key AS "banKey", note, created_at AS "createdAt"
+      FROM calls_bans
+      WHERE streamer_id=$1
+      ORDER BY created_at DESC
+      `, [meta.id]);
+        // Map slotKey -> name for label
+        const slotKeys = (rows || [])
+            .filter((r) => String(r.kind) === "slot")
+            .map((r) => String(r.banKey))
+            .filter(Boolean);
+        const slotNameByKey = new Map();
+        if (slotKeys.length) {
+            const { rows: srows } = await pool.query(`
+        SELECT name_key AS "slotKey", name
+        FROM slots_catalog
+        WHERE name_key = ANY($1::text[])
+        `, [slotKeys]);
+            for (const r of srows || [])
+                slotNameByKey.set(String(r.slotKey), String(r.name));
+        }
+        // ✅ Front (dashboard) format: { ok:true, items: ApiCallBanRow[] }
+        const items = (rows || []).map((r) => {
+            const kind = String(r.kind);
+            const banKey = String(r.banKey);
+            const label = kind === "slot" ? slotNameByKey.get(banKey) ?? banKey : banKey;
+            return {
+                id: `${kind}:${banKey}`,
+                kind,
+                banKey,
+                label,
+                createdAt: r.createdAt,
+            };
+        });
+        // ✅ Compat old UI: on continue à exposer bans:{users/providers/slots}
+        const out = { users: [], providers: [], slots: [] };
+        for (const r of rows || []) {
+            const kind = String(r.kind);
+            const banKey = String(r.banKey);
+            const note = r.note != null ? String(r.note) : null;
+            if (kind === "user")
+                out.users.push({ username: banKey, note });
+            else if (kind === "provider")
+                out.providers.push({ provider: banKey, note });
+            else if (kind === "slot")
+                out.slots.push({ slotKey: banKey, name: slotNameByKey.get(banKey) ?? banKey, note });
+        }
+        res.json({ ok: true, items, bans: out });
+    }
+    catch (e) {
+        res.status(500).json({ ok: false, error: String(e?.message || "bans_failed") });
+    }
+});
+callsRouter.post("/:slug/ban", requireAuth, express.json(), async (req, res) => {
+    try {
+        const u = req.user;
+        if (!u)
+            return res.status(401).json({ ok: false, error: "unauthorized" });
+        const meta = await getStreamerBySlug(String(req.params.slug));
+        if (!meta)
+            return res.status(404).json({ ok: false, error: "streamer_not_found" });
+        if (!(await canModOnStreamer(u, meta)))
+            return res.status(403).json({ ok: false, error: "forbidden" });
+        await ensureCallsBansCols();
+        const p = req.body || {};
+        const kind = String(p.kind || "").trim();
+        const note = p.note != null ? String(p.note).trim() : null;
+        if (!["user", "slot", "provider"].includes(kind)) {
+            return res.json({ ok: false, error: "bad_kind" });
+        }
+        const value = String(p.value ??
+            (kind === "slot"
+                ? (p.slotName ?? p.slot)
+                : kind === "provider"
+                    ? (p.provider ?? p.providerKey)
+                    : p.username) ??
+            "").trim();
+        const slotKeyOverride = String(p.slotKey ?? p.slot_key ?? "").trim();
+        let banKey = "";
+        if (kind === "user") {
+            banKey = value.toLowerCase();
+            if (!banKey)
+                return res.json({ ok: false, error: "missing_user" });
+        }
+        else if (kind === "provider") {
+            const prov = normalizeProvider(value);
+            banKey = String(prov || "").trim().toLowerCase();
+            if (!banKey)
+                return res.json({ ok: false, error: "missing_provider" });
+        }
+        else if (kind === "slot") {
+            if (slotKeyOverride) {
+                banKey = slotKeyOverride;
+            }
+            else {
+                const nm = normText(value);
+                const k = keyText(nm);
+                banKey = k;
+            }
+            if (!banKey)
+                return res.json({ ok: false, error: "missing_slot" });
+        }
+        await pool.query(`
+      INSERT INTO calls_bans (streamer_id, kind, ban_key, note, created_by_user_id)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (streamer_id, kind, ban_key) DO UPDATE
+        SET note = COALESCE(EXCLUDED.note, calls_bans.note)
+      `, [meta.id, kind, banKey, note, u?.id != null ? Number(u.id) : null]);
+        res.json({ ok: true });
+    }
+    catch (e) {
+        res.json({ ok: false, error: String(e?.message || "ban_failed") });
+    }
+});
+callsRouter.post("/:slug/unban", requireAuth, express.json(), async (req, res) => {
+    try {
+        const u = req.user;
+        if (!u)
+            return res.status(401).json({ ok: false, error: "unauthorized" });
+        const meta = await getStreamerBySlug(String(req.params.slug));
+        if (!meta)
+            return res.status(404).json({ ok: false, error: "streamer_not_found" });
+        if (!(await canModOnStreamer(u, meta)))
+            return res.status(403).json({ ok: false, error: "forbidden" });
+        const p = req.body || {};
+        const kind = String(p.kind || "").trim();
+        const valuesRaw = Array.isArray(p.values) ? p.values : Array.isArray(p.keys) ? p.keys : [];
+        const values = valuesRaw.map((x) => String(x || "").trim()).filter(Boolean);
+        if (!["user", "slot", "provider"].includes(kind)) {
+            return res.json({ ok: false, error: "bad_kind" });
+        }
+        if (!values.length)
+            return res.json({ ok: false, error: "empty_values" });
+        await pool.query(`
+      DELETE FROM calls_bans
+      WHERE streamer_id=$1 AND kind=$2 AND ban_key = ANY($3::text[])
+      `, [meta.id, kind, values]);
+        res.json({ ok: true });
+    }
+    catch (e) {
+        res.json({ ok: false, error: String(e?.message || "unban_failed") });
+    }
+});
+/* ──────────────────────────────────────────────────────────
+   PROVIDER POLICY (allow_all / allow_only)
+   ────────────────────────────────────────────────────────── */
+callsRouter.get("/:slug/provider-policy", requireAuth, async (req, res) => {
+    try {
+        const u = req.user;
+        if (!u)
+            return res.status(401).json({ ok: false, error: "unauthorized" });
+        const meta = await getStreamerBySlug(String(req.params.slug));
+        if (!meta)
+            return res.status(404).json({ ok: false, error: "streamer_not_found" });
+        if (!(await canModOnStreamer(u, meta)))
+            return res.status(403).json({ ok: false, error: "forbidden" });
+        await ensureProviderPolicyRow(meta.id);
+        const pr = await pool.query(`SELECT mode FROM calls_provider_policy WHERE streamer_id=$1 LIMIT 1`, [meta.id]);
+        const mode = String(pr.rows?.[0]?.mode || "allow_all");
+        const ar = await pool.query(`SELECT provider_norm FROM calls_allowed_providers WHERE streamer_id=$1 ORDER BY provider_norm ASC`, [meta.id]);
+        const allowedProviders = (ar.rows || []).map((x) => String(x.provider_norm));
+        res.json({ ok: true, mode, allowedProviders });
+    }
+    catch (e) {
+        res.json({ ok: false, error: String(e?.message || "policy_failed") });
+    }
+});
+callsRouter.patch("/:slug/provider-policy", requireAuth, express.json(), async (req, res) => {
+    try {
+        const u = req.user;
+        if (!u)
+            return res.status(401).json({ ok: false, error: "unauthorized" });
+        const meta = await getStreamerBySlug(String(req.params.slug));
+        if (!meta)
+            return res.status(404).json({ ok: false, error: "streamer_not_found" });
+        if (!(await canModOnStreamer(u, meta)))
+            return res.status(403).json({ ok: false, error: "forbidden" });
+        await ensureProviderPolicyRow(meta.id);
+        const p = req.body || {};
+        const mode = String(p.mode || "").trim();
+        if (!["allow_all", "allow_only"].includes(mode)) {
+            return res.json({ ok: false, error: "bad_mode" });
+        }
+        await pool.query(`
+      UPDATE calls_provider_policy
+      SET mode=$2, updated_at=NOW()
+      WHERE streamer_id=$1
+      `, [meta.id, mode]);
+        if (Array.isArray(p.allowedProviders)) {
+            const cleaned = p.allowedProviders
+                .map((x) => normalizeProvider(String(x || "")))
+                .map((x) => String(x || "").trim())
+                .filter(Boolean);
+            const uniq = Array.from(new Set(cleaned));
+            await pool.query(`DELETE FROM calls_allowed_providers WHERE streamer_id=$1`, [meta.id]);
+            if (uniq.length) {
+                const values = [];
+                const chunks = [];
+                let i = 1;
+                for (const prov of uniq) {
+                    values.push(meta.id, prov);
+                    chunks.push(`($${i++}, $${i++})`);
+                }
+                await pool.query(`
+          INSERT INTO calls_allowed_providers (streamer_id, provider_norm)
+          VALUES ${chunks.join(",")}
+          ON CONFLICT (streamer_id, provider_norm) DO NOTHING
+          `, values);
+            }
+        }
+        const pr = await pool.query(`SELECT mode FROM calls_provider_policy WHERE streamer_id=$1 LIMIT 1`, [meta.id]);
+        const outMode = String(pr.rows?.[0]?.mode || "allow_all");
+        const ar = await pool.query(`SELECT provider_norm FROM calls_allowed_providers WHERE streamer_id=$1 ORDER BY provider_norm ASC`, [meta.id]);
+        const allowedProviders = (ar.rows || []).map((x) => String(x.provider_norm));
+        res.json({ ok: true, mode: outMode, allowedProviders });
+    }
+    catch (e) {
+        res.json({ ok: false, error: String(e?.message || "policy_patch_failed") });
+    }
+});
