@@ -28,9 +28,23 @@ slotsRouter.post("/update", requireAuth, async (req: any, res) => {
     if (!u) return res.status(401).json({ ok: false, error: "unauthorized" });
     if (u.role !== "admin") return res.status(403).json({ ok: false, error: "forbidden" });
 
+    console.log("[slots-updater] 🔄 Manual update triggered by admin:", u.username || u.id);
     const r = await runSlotsUpdate(pool);
+    
+    // Log résultat pour monitoring
+    if (r.ok) {
+      console.log(`[slots-updater] 📊 Manual update result: ${r.successProviders}/${r.totalProviders} providers successful, ${r.totalFetched} games fetched, ${r.totalInserted} new games inserted`);
+      if (r.failedProviders > 0) {
+        console.warn(`[slots-updater] ⚠️  Failed providers in manual update: ${r.providers.filter(p => !p.success).map(p => p.provider).join(', ')}`);
+      }
+    } else {
+      console.error(`[slots-updater] ❌ Manual update failed: ${r.error}`);
+    }
+    
     res.json(r);
   } catch (e: any) {
+    console.error("[slots-updater] 💥 Manual update crashed:", e?.message || e);
+    console.error("[slots-updater] 💥 Stack:", e?.stack || 'no stack');
     res.json({ ok: false, error: String(e?.message || "update_failed") });
   }
 });

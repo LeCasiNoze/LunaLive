@@ -26,6 +26,33 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000,
+  maxDelay: number = 10000
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const attempt = async (retryCount: number) => {
+      try {
+        const result = await fn();
+        resolve(result);
+      } catch (error: any) {
+        if (retryCount >= maxRetries) {
+          reject(error);
+          return;
+        }
+        
+        const delay = Math.min(baseDelay * Math.pow(2, retryCount), maxDelay);
+        console.warn(`[slots-updater] Retry ${retryCount + 1}/${maxRetries} after ${delay}ms: ${error?.message || error}`);
+        await sleep(delay);
+        attempt(retryCount + 1);
+      }
+    };
+    attempt(0);
+  });
+}
+
 function buildGambaUrl(producerSlug: string, first: number, page: number, sha: string) {
   const vars = {
     producerSlug,
@@ -41,35 +68,84 @@ function buildGambaUrl(producerSlug: string, first: number, page: number, sha: s
   return `${GAMBA_API}?operationName=gameSearch&variables=${varsEnc}&extensions=${extEnc}`;
 }
 
-async function fetchText(url: string, referer?: string) {
-  const r = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (LunaLive slots-updater)",
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      ...(referer ? { Referer: referer } : {}),
-    },
-  });
-  if (!r.ok) throw new Error(`gamba_http_${r.status}`);
-  return await r.text();
+async function fetchText(url: string, referer?: string, timeout: number = 10000): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const r = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (LunaLive slots-updater)",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        ...(referer ? { Referer: referer } : {}),
+      },
+    });
+    clearTimeout(timeoutId);
+    
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status} ${r.statusText} for ${url}`);
+    }
+    
+    return await r.text();
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error(`Timeout after ${timeout}ms for ${url}`);
+    }
+    throw error;
+  }
 }
 
-async function fetchJson(url: string, referer?: string) {
-  const r = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (LunaLive slots-updater)",
-      Accept: "application/json",
-      ...(referer ? { Referer: referer } : {}),
-    },
-  });
-  const txt = await r.text().catch(() => "");
-  let j: any = null;
+async function fetchJson(url: string, referer?: string, timeout: number = 15000): Promise<any> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
   try {
-    j = txt ? JSON.parse(txt) : null;
-  } catch {
-    j = null;
+    const r = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (LunaLive slots-updater)",
+        Accept: "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Content-Type": "application/json",
+        ...(referer ? { Referer: referer } : {}),
+      },
+    });
+    clearTimeout(timeoutId);
+    
+    if (!r.ok) {
+      const errorText = await r.text().catch(() => '');
+      throw new Error(`HTTP ${r.status} ${r.statusText} for ${url}: ${errorText.substring(0, 200)}`);
+    }
+    
+    const txt = await r.text().catch(() => '');
+    if (!txt) {
+      throw new Error(`Empty response from ${url}`);
+    }
+    
+    let j: any = null;
+    try {
+      j = JSON.parse(txt);
+    } catch (parseError) {
+      throw new Error(`Invalid JSON from ${url}: ${txt.substring(0, 200)}`);
+    }
+    
+    return j;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error(`Timeout after ${timeout}ms for ${url}`);
+    }
+    throw error;
   }
-  if (!r.ok) throw new Error(`gamba_http_${r.status}:${(txt || "").slice(0, 120)}`);
-  return j;
 }
 
 /** Liste les provider slugs depuis /casino/providers */
@@ -110,45 +186,88 @@ async function fetchProviderGames(producerSlug: string): Promise<SlotRow[]> {
 
   let page = 1;
   let guard = 0;
+  let consecutiveErrors = 0;
+  const maxConsecutiveErrors = 3;
 
   while (true) {
     guard++;
-    if (guard > 500) break;
-
-    const url = buildGambaUrl(producerSlug, GAMBA_FIRST, page, GAMBA_GAMESEARCH_SHA);
-    const j = (await fetchJson(url, referer)) as GameSearchResp;
-
-    const gs = j?.data?.gameSearch;
-    const items = Array.isArray(gs?.data) ? gs!.data! : [];
-    const pi = gs?.paginatorInfo;
-
-
-    for (const it of items) {
-      if (!it) continue;
-
-      const name = String(it.title || it.name || "").trim();
-      if (!name) continue;
-
-      // ✅ Gamba: image / cover sont des strings directes
-      let img: string | null = null;
-      if (typeof it.image === "string" && it.image.trim()) img = it.image.trim();
-      else if (typeof it.cover === "string" && it.cover.trim()) img = it.cover.trim();
-      else if (typeof it.thumbnail === "string" && it.thumbnail.trim()) img = it.thumbnail.trim();
-
-      // fallback (au cas où)
-      else if (typeof it.thumbnailUrl === "string" && it.thumbnailUrl.trim()) img = it.thumbnailUrl.trim();
-      else if (typeof it.coverUrl === "string" && it.coverUrl.trim()) img = it.coverUrl.trim();
-      else if (typeof it.imageUrl === "string" && it.imageUrl.trim()) img = it.imageUrl.trim();
-
-      // ✅ provider = slug brut (normalisé ensuite dans upsertSlots via provider_aliases)
-      out.push({ name, provider: producerSlug, imageUrl: img });
+    if (guard > 500) {
+      console.warn(`[slots-updater] ${producerSlug}: Safety guard reached (500 pages), stopping pagination`);
+      break;
     }
 
-    if (!pi?.hasMorePages) break;
-    page++;
-    await sleep(120);
+    try {
+      const url = buildGambaUrl(producerSlug, GAMBA_FIRST, page, GAMBA_GAMESEARCH_SHA);
+      console.log(`[slots-updater] ${producerSlug}: Fetching page ${page}...`);
+      
+      const j = (await fetchJson(url, referer, 15000)) as GameSearchResp;
+
+      // Reset error counter on success
+      consecutiveErrors = 0;
+
+      const gs = j?.data?.gameSearch;
+      const items = Array.isArray(gs?.data) ? gs!.data! : [];
+      const pi = gs?.paginatorInfo;
+
+      if (items.length === 0) {
+        console.log(`[slots-updater] ${producerSlug}: No items on page ${page}, stopping pagination`);
+        break;
+      }
+
+      console.log(`[slots-updater] ${producerSlug}: Page ${page} fetched ${items.length} items`);
+
+      for (const it of items) {
+        if (!it) continue;
+
+        const name = String(it.title || it.name || "").trim();
+        if (!name) {
+          console.warn(`[slots-updater] ${producerSlug}: Skipping item with no name on page ${page}`);
+          continue;
+        }
+
+        // ✅ Gamba: image / cover sont des strings directes
+        let img: string | null = null;
+        if (typeof it.image === "string" && it.image.trim()) img = it.image.trim();
+        else if (typeof it.cover === "string" && it.cover.trim()) img = it.cover.trim();
+        else if (typeof it.thumbnail === "string" && it.thumbnail.trim()) img = it.thumbnail.trim();
+
+        // fallback (au cas où)
+        else if (typeof it.thumbnailUrl === "string" && it.thumbnailUrl.trim()) img = it.thumbnailUrl.trim();
+        else if (typeof it.coverUrl === "string" && it.coverUrl.trim()) img = it.coverUrl.trim();
+        else if (typeof it.imageUrl === "string" && it.imageUrl.trim()) img = it.imageUrl.trim();
+
+        // ✅ provider = slug brut (normalisé ensuite dans upsertSlots via provider_aliases)
+        out.push({ name, provider: producerSlug, imageUrl: img });
+      }
+
+      if (!pi?.hasMorePages) {
+        console.log(`[slots-updater] ${producerSlug}: No more pages after page ${page}`);
+        break;
+      }
+
+      page++;
+      
+      // Small delay between pages to be gentle
+      await sleep(200);
+      
+    } catch (e: any) {
+      consecutiveErrors++;
+      const errorMessage = String(e?.message || e);
+      
+      console.error(`[slots-updater] ${producerSlug}: Error on page ${page} (${consecutiveErrors}/${maxConsecutiveErrors}): ${errorMessage}`);
+      
+      if (consecutiveErrors >= maxConsecutiveErrors) {
+        console.error(`[slots-updater] ${producerSlug}: Too many consecutive errors (${consecutiveErrors}), stopping pagination`);
+        break;
+      }
+      
+      // Wait longer before retrying
+      await sleep(1000 * consecutiveErrors);
+      continue;
+    }
   }
 
+  console.log(`[slots-updater] ${producerSlug}: Completed pagination with ${out.length} total games`);
   return out;
 }
 
@@ -163,79 +282,174 @@ function sample<T>(arr: T[], max: number) {
   return arr.slice(0, max);
 }
 
+type ProviderResult = {
+  provider: string;
+  success: boolean;
+  fetched: number;
+  inserted: number;
+  error?: string;
+  details?: string;
+};
+
 export async function runSlotsUpdate(
   pool: Pool
-): Promise<{ ok: true; fetched: number; inserted: InsertedSlotRow[] } | { ok: false; error: string }> {
+): Promise<{
+  ok: true;
+  totalProviders: number;
+  successProviders: number;
+  failedProviders: number;
+  totalFetched: number;
+  totalInserted: number;
+  providers: ProviderResult[];
+} | {
+  ok: false;
+  error: string;
+  providers: ProviderResult[];
+}> {
+  console.log(`[slots-updater] 🚀 Starting slots update`);
+  
+  const startTime = Date.now();
+  const providers: ProviderResult[] = [];
+  
   try {
-    const providers = await fetchProviderSlugs();
-
-    console.log(`[slots-updater] gamba providers=${providers.length} first=${GAMBA_FIRST}`);
+    const providerSlugs = await fetchProviderSlugs();
+    console.log(`[slots-updater] 📋 Found ${providerSlugs.length} providers`);
 
     let totalFetchedRaw = 0;
-    const allInserted: InsertedSlotRow[] = [];
+    let totalInserted = 0;
+    let successCount = 0;
+    let failedCount = 0;
 
-    for (const producerSlug of providers) {
-      console.log(`[slots-updater] ▶ provider ${producerSlug}`);
+    for (let i = 0; i < providerSlugs.length; i++) {
+      const producerSlug = providerSlugs[i];
+      console.log(`[slots-updater] ▶️ [${i + 1}/${providerSlugs.length}] Processing provider: ${producerSlug}`);
 
-      let rows: SlotRow[] = [];
+      const providerResult: ProviderResult = {
+        provider: producerSlug,
+        success: false,
+        fetched: 0,
+        inserted: 0,
+      };
+
       try {
-        rows = await fetchProviderGames(producerSlug);
-      } catch (e: any) {
-        console.warn(`[slots-updater] skip provider=${producerSlug} err=${String(e?.message || e)}`);
-        if (INTER_PROVIDER_MS) await sleep(INTER_PROVIDER_MS);
-        continue;
-      }
-
-      totalFetchedRaw += rows.length;
-
-      // ✅ dedupe côté updater aussi
-      const uniq = new Map<string, SlotRow>();
-      for (const r of rows) {
-        const nm = normText(r.name);
-        if (!nm) continue;
-        const k = keyText(nm);
-        if (!k) continue;
-
-        const prev = uniq.get(k);
-        if (!prev) {
-          uniq.set(k, { name: nm, provider: r.provider, imageUrl: r.imageUrl ?? null });
-        } else {
-          const nextImg = r.imageUrl ? String(r.imageUrl) : null;
-          const prevImg = prev.imageUrl ? String(prev.imageUrl) : null;
-          uniq.set(k, { name: nm, provider: r.provider, imageUrl: prevImg || nextImg || null });
-        }
-      }
-
-      const dupInBatch = Math.max(0, rows.length - uniq.size);
-      const keys = Array.from(uniq.keys());
-      const alreadyInDb = await countExistingKeys(pool, keys);
-
-      console.log(
-        `[slots-updater]   fetched=${rows.length} unique=${uniq.size} dupInBatch=${dupInBatch} alreadyInDb=${alreadyInDb}`
-      );
-
-      const inserted = await upsertSlots(pool, Array.from(uniq.values()));
-      allInserted.push(...inserted);
-
-      if (inserted.length) {
-        const names = inserted.map((x) => x.name).sort((a, b) => a.localeCompare(b));
-        const show = sample(names, LOG_NEW_MAX);
-        console.log(
-          `[slots-updater]   ✅ inserted=${inserted.length} new=[${show.join(" • ")}${names.length > show.length ? " …" : ""}]`
+        // Retry avec backoff pour la récupération des jeux
+        const rows = await retryWithBackoff(
+          () => fetchProviderGames(producerSlug),
+          3, // max 3 retries
+          1000, // 1s base delay
+          8000 // 8s max delay
         );
-      } else {
-        console.log(`[slots-updater]   ✅ inserted=0`);
+
+        providerResult.fetched = rows.length;
+        totalFetchedRaw += rows.length;
+
+        if (rows.length === 0) {
+          console.log(`[slots-updater] ℹ️  ${producerSlug}: No games fetched`);
+          providerResult.success = true;
+          providerResult.details = "No games available";
+        } else {
+          // ✅ dedupe côté updater aussi
+          const uniq = new Map<string, SlotRow>();
+          for (const r of rows) {
+            const nm = normText(r.name);
+            if (!nm) continue;
+            const k = keyText(nm);
+            if (!k) continue;
+
+            const prev = uniq.get(k);
+            if (!prev) {
+              uniq.set(k, { name: nm, provider: r.provider, imageUrl: r.imageUrl ?? null });
+            } else {
+              const nextImg = r.imageUrl ? String(r.imageUrl) : null;
+              const prevImg = prev.imageUrl ? String(prev.imageUrl) : null;
+              uniq.set(k, { name: nm, provider: r.provider, imageUrl: prevImg || nextImg || null });
+            }
+          }
+
+          const dupInBatch = Math.max(0, rows.length - uniq.size);
+          const keys = Array.from(uniq.keys());
+          const alreadyInDb = await countExistingKeys(pool, keys);
+
+          console.log(
+            `[slots-updater] 📊 ${producerSlug}: fetched=${rows.length} unique=${uniq.size} dupInBatch=${dupInBatch} alreadyInDb=${alreadyInDb}`
+          );
+
+          const inserted = await upsertSlots(pool, Array.from(uniq.values()));
+          providerResult.inserted = inserted.length;
+          totalInserted += inserted.length;
+
+          if (inserted.length) {
+            const names = inserted.map((x) => x.name).sort((a, b) => a.localeCompare(b));
+            const show = sample(names, LOG_NEW_MAX);
+            console.log(
+              `[slots-updater] ✅ ${producerSlug}: inserted=${inserted.length} new=[${show.join(" • ")}${names.length > show.length ? " …" : ""}]`
+            );
+          } else {
+            console.log(`[slots-updater] ✅ ${producerSlug}: inserted=0`);
+          }
+
+          providerResult.success = true;
+          providerResult.details = `fetched=${rows.length}, inserted=${inserted.length}`;
+        }
+
+        successCount++;
+      } catch (e: any) {
+        const errorMessage = String(e?.message || e);
+        const stack = e?.stack || 'no stack';
+        
+        console.error(`[slots-updater] ❌ ${producerSlug}: FAILED`);
+        console.error(`[slots-updater] ❌ ${producerSlug}: Error: ${errorMessage}`);
+        console.error(`[slots-updater] ❌ ${producerSlug}: Stack: ${stack}`);
+        
+        providerResult.success = false;
+        providerResult.error = errorMessage;
+        providerResult.details = stack.length > 500 ? stack.substring(0, 500) + '...' : stack;
+        
+        failedCount++;
       }
 
-      console.log(`[slots-updater] ◀ provider done ${producerSlug}`);
+      providers.push(providerResult);
 
-      if (INTER_PROVIDER_MS) await sleep(INTER_PROVIDER_MS);
+      // Pause entre providers pour éviter le rate limiting
+      if (INTER_PROVIDER_MS) {
+        console.log(`[slots-updater] ⏳ Waiting ${INTER_PROVIDER_MS}ms before next provider...`);
+        await sleep(INTER_PROVIDER_MS);
+      }
     }
 
-    console.log(`[slots-updater] DONE fetchedRaw=${totalFetchedRaw} inserted=${allInserted.length}`);
-    return { ok: true, fetched: totalFetchedRaw, inserted: allInserted };
+    const duration = Date.now() - startTime;
+    const failedProvidersList = providers.filter(p => !p.success).map(p => p.provider);
+    
+    console.log(`[slots-updater] 🏁 DONE in ${(duration / 1000).toFixed(1)}s`);
+    console.log(`[slots-updater] 📈 SUMMARY:`);
+    console.log(`[slots-updater]   • Total providers: ${providerSlugs.length}`);
+    console.log(`[slots-updater]   • Success: ${successCount}`);
+    console.log(`[slots-updater]   • Failed: ${failedCount}`);
+    console.log(`[slots-updater]   • Total games fetched: ${totalFetchedRaw}`);
+    console.log(`[slots-updater]   • Total games inserted: ${totalInserted}`);
+    
+    if (failedProvidersList.length > 0) {
+      console.log(`[slots-updater] ⚠️  Failed providers: [${failedProvidersList.join(', ')}]`);
+    }
+
+    return {
+      ok: true,
+      totalProviders: providerSlugs.length,
+      successProviders: successCount,
+      failedProviders: failedCount,
+      totalFetched: totalFetchedRaw,
+      totalInserted,
+      providers,
+    };
   } catch (e: any) {
-    return { ok: false, error: String(e?.message || "update_failed") };
+    console.error(`[slots-updater] 💥 CRITICAL ERROR: ${String(e?.message || e)}`);
+    console.error(`[slots-updater] 💥 Stack: ${e?.stack || 'no stack'}`);
+    
+    return {
+      ok: false,
+      error: String(e?.message || "critical_update_failed"),
+      providers,
+    };
   }
 }
 
@@ -249,7 +463,7 @@ export function startSlotsUpdater(pool: Pool, everyHours: number) {
         console.warn(`[slots-updater] failed`, r.error);
         return;
       }
-      console.log(`[slots-updater] tick ok fetched=${r.fetched} inserted=${r.inserted.length}`);
+      console.log(`[slots-updater] tick ok fetched=${r.totalFetched} inserted=${r.totalInserted}`);
     } catch (e: any) {
       console.warn("[slots-updater] tick failed", e?.message || e);
     }

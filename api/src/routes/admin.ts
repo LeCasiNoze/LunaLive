@@ -726,8 +726,22 @@ adminRouter.post(
     const r = await runSlotsUpdate(pool);
     if (!r.ok) return res.status(500).json({ ok: false, error: r.error });
 
+    // Reconstruire la liste des jeux insérés depuis les résultats providers
+    const insertedGames: { name: string; provider: string | null; slotKey: string }[] = [];
+    for (const provider of r.providers) {
+      if (provider.success && provider.inserted > 0) {
+        // Note: On n'a plus les détails individuels des jeux insérés, juste le count
+        // On pourrait les récupérer en DB si nécessaire, mais pour l'admin on va simplifier
+        insertedGames.push({
+          name: `${provider.inserted} new games from ${provider.provider}`,
+          provider: provider.provider,
+          slotKey: `${provider.provider}_${provider.inserted}`
+        });
+      }
+    }
+
     const byProvider: Record<string, { name: string; slotKey?: string | null }[]> = {};
-    for (const it of r.inserted) {
+    for (const it of insertedGames) {
       const p = (it.provider ? String(it.provider) : "unknown").trim() || "unknown";
       (byProvider[p] ||= []).push({ name: it.name, slotKey: it.slotKey });
     }
@@ -738,9 +752,13 @@ adminRouter.post(
 
     res.json({
       ok: true,
-      fetched: r.fetched,
-      added: r.inserted.length,
+      totalProviders: r.totalProviders,
+      successProviders: r.successProviders,
+      failedProviders: r.failedProviders,
+      fetched: r.totalFetched,
+      added: r.totalInserted,
       byProvider,
+      providers: r.providers, // Ajout du détail par provider pour debugging
     });
   })
 );

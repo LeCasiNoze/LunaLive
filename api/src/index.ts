@@ -49,21 +49,43 @@ function startStatsCleanup() {
 // ✅ scheduler slots (run au boot + toutes les X heures)
 function startSlotsCatalogUpdater(everyHours: number) {
   const ms = Math.max(1, Number(everyHours || 12)) * 3600_000;
+  let isRunning = false;
 
   const tick = async () => {
+    if (isRunning) {
+      console.log("[slots-updater] ⏳ Update already in progress, skipping this run");
+      return;
+    }
+
+    isRunning = true;
+    const startTime = Date.now();
+    
     try {
+      console.log("[slots-updater] 🚀 Starting scheduled update...");
       const r = await runSlotsUpdate(pool);
+      
       if (r.ok) {
-        console.log(`[slots-updater] ok fetched=${r.fetched} inserted=${r.inserted.length}`);
+        console.log(`[slots-updater] ✅ Scheduled update completed: success=${r.successProviders}/${r.totalProviders}, fetched=${r.totalFetched}, inserted=${r.totalInserted} in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+        if (r.failedProviders > 0) {
+          console.warn(`[slots-updater] ⚠️  ${r.failedProviders} providers failed: ${r.providers.filter(p => !p.success).map(p => p.provider).join(', ')}`);
+        }
       } else {
-        console.warn(`[slots-updater] failed ${r.error}`);
+        console.warn(`[slots-updater] ❌ Scheduled update failed: ${r.error}`);
       }
     } catch (e: any) {
-      console.warn("[slots-updater] crashed", e?.message || e);
+      console.error("[slots-updater] 💥 Scheduled update crashed:", e?.message || e);
+      console.error("[slots-updater] 💥 Stack:", e?.stack || 'no stack');
+    } finally {
+      isRunning = false;
+      const duration = Date.now() - startTime;
+      console.log(`[slots-updater] 🏁 Scheduled update finished in ${(duration / 1000).toFixed(1)}s`);
     }
   };
 
+  // Démarrer immédiatement au boot
   tick().catch(() => {});
+  
+  // Puis toutes les X heures
   setInterval(() => tick().catch(() => {}), ms);
 }
 
