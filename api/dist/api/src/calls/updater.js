@@ -358,7 +358,7 @@ export function startSlotsUpdater(pool, everyHours) {
                 console.warn(`[slots-updater] failed`, r.error);
                 return;
             }
-            console.log(`[slots-updater] tick ok fetched=${r.fetched} inserted=${r.inserted.length}`);
+            console.log(`[slots-updater] tick ok fetched=${r.totalFetched} inserted=${r.totalInserted}`);
         }
         catch (e) {
             console.warn("[slots-updater] tick failed", e?.message || e);
