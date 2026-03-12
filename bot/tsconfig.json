@@ -4,6 +4,7 @@
     "lib": ["ES2022"],
     "module": "ES2022",
     "moduleResolution": "Bundler",
+    "rootDir": "src",
     "outDir": "dist",
     "strict": true,
     "skipLibCheck": true,
@@ -12,5 +13,5 @@
     "types": ["node"],
     "baseUrl": "."
   },
-  "include": ["src", "../shared/src"]
+  "include": ["src"]
 }

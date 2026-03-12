@@ -1,5 +1,5 @@
-// shared/src/clip_service.ts
-// Service centralisé pour la création de clips (bot et API)
+// bot/src/shared/clip_service.ts
+// Implémentation locale pour le bot LunaLive
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
 const LATENCY_PAD_SEC = 30; // Compensation latence augmentée
 const DEFAULT_PRE_SEC = 75; // 1m15 (nouvelle cible)
@@ -30,7 +30,7 @@ async function fetchLiveStart(displayName) {
         return null;
     return { createdAtMs, permlink: String(ls.permlink || "") };
 }
-export async function getDliveChannelSlugForStreamer(pool, streamerId) {
+async function getDliveChannelSlugForStreamer(pool, streamerId) {
     const r = await pool.query(`SELECT
        s.dlive_use_linked AS "useLinked",
        s.dlive_link_displayname AS "linkedDisplayname",
@@ -129,7 +129,7 @@ async function streamerHasUnlimitedClips(pool, streamerId) {
         return false;
     return hasActiveStreamerSub(pool, ownerId);
 }
-export async function addClipPg(p) {
+async function addClipPg(p) {
     const { pool, streamerId } = p;
     await ensureBotClipsTable(pool);
     const nowMs = Date.now();
@@ -172,22 +172,6 @@ export async function addClipPg(p) {
     finally {
         client.release();
     }
-}
-/**
- * Crée un clip auto pour un streamer (trigger detector)
- * Force toujours 75s avant / 15s après, ignore les paramètres externes
- */
-export async function createAutoClipForStreamer(p) {
-    // 🎯 Force toujours 75/15 pour les auto-clips, peu importe le payload
-    return createClipForStreamer({
-        pool: p.pool,
-        streamerId: p.streamerId,
-        title: p.title,
-        author: p.author,
-        preSec: DEFAULT_PRE_SEC, // 75s fixe
-        postSec: DEFAULT_POST_SEC, // 15s fixe
-        forcedOffsetSec: p.forcedOffsetSec,
-    });
 }
 /**
  * Crée un clip pour un streamer (commande !clip ou création automatique)
