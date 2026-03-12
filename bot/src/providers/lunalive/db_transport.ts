@@ -147,6 +147,18 @@ export class LunaLiveDbTransport {
 
     const url = `${base}/internal/bot/chat/send`;
 
+    // DEBUG: diagnostic 401
+    console.log("[bot] send debug", {
+      cwd: process.cwd(),
+      hasApiBase: !!this.env.BOT_API_BASE,
+      hasInternalKey: !!this.env.BOT_INTERNAL_KEY,
+      keyLength: key.length,
+      keyPrefix: key.length > 8 ? `${key.slice(0, 3)}***${key.slice(-3)}` : '***',
+      url,
+      streamerId: this.streamer.id,
+      headers: ["content-type: application/json", "x-bot-key: ***"]
+    });
+
     try {
       const r = await fetch(url, {
         method: "POST",
@@ -163,6 +175,8 @@ export class LunaLiveDbTransport {
       if (!r.ok) {
         const t = await r.text().catch(() => "");
         console.log("[bot] send failed", r.status, t.slice(0, 300));
+      } else {
+        console.log("[bot] send success", r.status);
       }
     } catch (e: any) {
       console.log("[bot] send exception", e?.message || e);

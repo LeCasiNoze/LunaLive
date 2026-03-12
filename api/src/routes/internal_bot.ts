@@ -118,6 +118,84 @@ internalBotRouter.post(
 );
 
 // --------------------  
+// 2b) ✅ Bot chat message send (format original du bot)
+// --------------------  
+internalBotRouter.post(
+  "/internal/bot/chat/send",
+  express.json(),
+  async (req, res) => {
+    if (!requireBotKey(req, res)) return;
+
+    const body: any = req.body || {};
+    const streamerId = Number(body.streamerId || 0);
+    const messageText = String(body.body || "").trim();
+
+    if (!streamerId || !messageText) {
+      return res.status(400).json({ ok: false, error: "streamerId and body required" });
+    }
+
+    // Récupérer le streamer
+    const streamerRes = await pool.query(
+      `SELECT slug, username FROM streamers WHERE id=$1 LIMIT 1`,
+      [streamerId]
+    );
+    if (!streamerRes.rows?.[0]?.slug) {
+      return res.status(404).json({ ok: false, error: "streamer not found" });
+    }
+    const slug = String(streamerRes.rows[0].slug);
+
+    // Récupérer l'apparence du streamer pour les couleurs
+    const appearance = await normalizeAppearance(slug);
+    if (!appearance) {
+      return res.status(404).json({ ok: false, error: "streamer appearance not found" });
+    }
+
+    // Bot user info depuis env ou fallback
+    const botUsername = String(process.env.BOT_USERNAME || "LunaBot").trim();
+    const botUserRes = await pool.query(
+      `SELECT id FROM users WHERE lower(username) = lower($1) LIMIT 1`,
+      [botUsername]
+    );
+    if (!botUserRes.rows?.[0]?.id) {
+      return res.status(404).json({ ok: false, error: "bot user not found" });
+    }
+    const botUserId = Number(botUserRes.rows[0].id);
+
+    // Insérer le message dans la table chat_messages
+    const ins = await pool.query(
+      `INSERT INTO chat_messages(streamer_slug, user_id, username, body, created_at)
+       VALUES($1, $2, $3, $4, NOW())
+       RETURNING id, created_at AS "createdAt"`,
+      [slug, botUserId, botUsername, messageText]
+    );
+
+    const row = ins.rows?.[0];
+
+    // cosmetics (optionnel, mais utile)
+    const cosmeticsByUser = await getChatCosmeticsForUsers([botUserId]);
+    const cosmetics = cosmeticsByUser.get(botUserId) ?? null;
+
+    const msg = {
+      id: Number(row.id),
+      userId: botUserId,
+      username: botUsername,
+      body: messageText,
+      createdAt: new Date(row.createdAt).toISOString(),
+      cosmetics,
+      style: {
+        nameColor: appearance.chat.usernameColor,
+        msgColor: appearance.chat.messageColor,
+      },
+    };
+
+    const io = req.app.locals.io;
+    if (io) emitChatAll(io, slug, "chat:message", msg);
+
+    return res.json({ ok: true, id: msg.id });
+  }
+);
+
+// --------------------  
 // 3) ✅ Bot settings management
 // --------------------  
 internalBotRouter.post(
@@ -220,7 +298,10 @@ internalBotRouter.get(
 // --------------------  
 function requireBotKey(req: express.Request, res: express.Response): boolean {
   const key = String(req.headers["x-bot-key"] || "").trim();
-  const expected = process.env.INTERNAL_BOT_KEY;
+  const expected =
+    process.env.INTERNAL_BOT_KEY ||
+    process.env.BOT_INTERNAL_KEY ||
+    "";
   if (!expected || key !== expected) {
     res.status(401).json({ ok: false, error: "invalid_bot_key" });
     return false;

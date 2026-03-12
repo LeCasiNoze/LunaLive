@@ -63,5 +63,20 @@ export function loadEnv(): BotEnv {
     console.error(parsed.error.flatten().fieldErrors);
     throw new Error("Invalid env for lunalive-bot");
   }
+  
+  // DEBUG: diagnostic env loading
+  console.log("[bot] env debug", {
+    cwd: process.cwd(),
+    hasApiBase: !!parsed.data.BOT_API_BASE,
+    hasInternalKey: !!parsed.data.BOT_INTERNAL_KEY,
+    apiBaseLength: parsed.data.BOT_API_BASE.length,
+    keyLength: parsed.data.BOT_INTERNAL_KEY.length,
+    keyPrefix: parsed.data.BOT_INTERNAL_KEY.length > 8 ? 
+      `${parsed.data.BOT_INTERNAL_KEY.slice(0, 3)}***${parsed.data.BOT_INTERNAL_KEY.slice(-3)}` : 
+      '***',
+    botUserId: parsed.data.BOT_USER_ID,
+    botUsername: parsed.data.BOT_USERNAME
+  });
+  
   return parsed.data;
 }
