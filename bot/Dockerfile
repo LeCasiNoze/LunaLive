@@ -23,4 +23,4 @@ RUN npm ci --omit=dev
 # App
 COPY --from=build /app/dist ./dist
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/bot/src/index.js"]
