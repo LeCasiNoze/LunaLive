@@ -1,4 +1,4 @@
-import { createClipForStreamer, formatClipTime, normalizeClipTitle } from "../../../shared/src/clip_service.js";
+import { createClipForStreamer, formatClipTime, normalizeClipTitle } from "@shared/clip_service.js";
 export async function tryHandleClipCommand(p) {
     const { msg, prefix } = p;
     const body = String(msg.body || "").trim();
