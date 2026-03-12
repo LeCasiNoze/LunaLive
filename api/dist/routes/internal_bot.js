@@ -100,7 +100,7 @@ internalBotRouter.post("/internal/bot/chat/send", express.json(), async (req, re
         return res.status(400).json({ ok: false, error: "streamerId and body required" });
     }
     // Récupérer le streamer
-    const streamerRes = await pool.query(`SELECT slug, username FROM streamers WHERE id=$1 LIMIT 1`, [streamerId]);
+    const streamerRes = await pool.query(`SELECT slug, display_name FROM streamers WHERE id=$1 LIMIT 1`, [streamerId]);
     if (!streamerRes.rows?.[0]?.slug) {
         return res.status(404).json({ ok: false, error: "streamer not found" });
     }

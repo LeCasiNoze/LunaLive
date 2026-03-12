@@ -136,7 +136,7 @@ internalBotRouter.post(
 
     // Récupérer le streamer
     const streamerRes = await pool.query(
-      `SELECT slug, username FROM streamers WHERE id=$1 LIMIT 1`,
+      `SELECT slug, display_name FROM streamers WHERE id=$1 LIMIT 1`,
       [streamerId]
     );
     if (!streamerRes.rows?.[0]?.slug) {
