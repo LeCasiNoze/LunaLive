@@ -1,7 +1,7 @@
 // api/src/routes/internal_bot.ts
 import express from "express";
 import { pool } from "../db.js";
-import { createAutoClipForStreamer } from "../../../shared/src/clip_service.js";
+import { createAutoClipForStreamer } from "../shared/clip_service.js";
 import normalizeAppearance from "../appearance.js";
 import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
 
@@ -298,11 +298,25 @@ internalBotRouter.get(
 // --------------------  
 function requireBotKey(req: express.Request, res: express.Response): boolean {
   const key = String(req.headers["x-bot-key"] || "").trim();
-  const expected =
-    process.env.INTERNAL_BOT_KEY ||
-    process.env.BOT_INTERNAL_KEY ||
-    "";
-  if (!expected || key !== expected) {
+
+  const candidates = [
+    process.env.INTERNAL_BOT_KEY,
+    process.env.BOT_INTERNAL_KEY,
+  ]
+    .map(v => String(v || "").trim())
+    .filter(Boolean);
+
+  // DEBUG: diagnostic auth sécurisé
+  console.log("[api] requireBotKey debug", {
+    hasInternalBotKey: !!process.env.INTERNAL_BOT_KEY,
+    hasBotInternalKey: !!process.env.BOT_INTERNAL_KEY,
+    internalBotKeyLength: process.env.INTERNAL_BOT_KEY?.length || 0,
+    botInternalKeyLength: process.env.BOT_INTERNAL_KEY?.length || 0,
+    candidatesCount: candidates.length,
+    keyLength: key.length
+  });
+
+  if (!candidates.length || !candidates.includes(key)) {
     res.status(401).json({ ok: false, error: "invalid_bot_key" });
     return false;
   }

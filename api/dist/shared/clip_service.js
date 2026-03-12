@@ -1,5 +1,5 @@
-// shared/src/clip_service.ts
-// Service centralisé pour la création de clips (bot et API)
+// api/src/shared/clip_service.ts
+// Service local pour la création de clips (API uniquement)
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
 const LATENCY_PAD_SEC = 30; // Compensation latence augmentée
 const DEFAULT_PRE_SEC = 75; // 1m15 (nouvelle cible)
@@ -48,7 +48,7 @@ export async function getDliveChannelSlugForStreamer(pool, streamerId) {
     const linked = row.linkedDisplayname ? String(row.linkedDisplayname) : "";
     const provider = row.providerChannelSlug ? String(row.providerChannelSlug) : "";
     const channelSlug = useLinked && linked ? linked : provider;
-    // ✅ Pour LunaLive radio, on snapshotte la source réelle (displayname uniquement)
+    // ✅ Pour LunaLive radio, on snapshotne la source réelle (displayname uniquement)
     const sourceDisplayname = useLinked && linked ? linked : null;
     return {
         channelSlug: channelSlug.trim() ? channelSlug.trim() : null,
