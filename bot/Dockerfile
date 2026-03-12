@@ -12,17 +12,14 @@ RUN npm ci
 RUN npm run build
 
 
-# ---- runtime ----
 FROM node:22-bookworm-slim
-WORKDIR /app
+WORKDIR /srv/lunalive-bot
 ENV NODE_ENV=production
 
-# Node deps prod
 COPY --from=build /repo/bot/package.json ./
 COPY --from=build /repo/bot/package-lock.json ./
 RUN npm ci --omit=dev
 
-# App
 COPY --from=build /repo/bot/dist ./dist
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "/srv/lunalive-bot/dist/index.js"]
