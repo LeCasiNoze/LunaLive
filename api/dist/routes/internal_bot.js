@@ -118,9 +118,9 @@ internalBotRouter.post("/internal/bot/chat/send", express.json(), async (req, re
     }
     const botUserId = Number(botUserRes.rows[0].id);
     // Insérer le message dans la table chat_messages
-    const ins = await pool.query(`INSERT INTO chat_messages(streamer_slug, user_id, username, body, created_at)
+    const ins = await pool.query(`INSERT INTO chat_messages(streamer_id, user_id, username, body, created_at)
        VALUES($1, $2, $3, $4, NOW())
-       RETURNING id, created_at AS "createdAt"`, [slug, botUserId, botUsername, messageText]);
+       RETURNING id, created_at AS "createdAt"`, [streamerId, botUserId, botUsername, messageText]);
     const row = ins.rows?.[0];
     // cosmetics (optionnel, mais utile)
     const cosmeticsByUser = await getChatCosmeticsForUsers([botUserId]);
