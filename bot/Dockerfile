@@ -1,13 +1,14 @@
 # ---- build ----
 FROM node:22-alpine AS build
-WORKDIR /app
+WORKDIR /repo
 
-COPY bot/package.json bot/package-lock.json ./
-COPY bot/tsconfig.json ./
-COPY bot/src ./src
+COPY bot/package.json bot/package-lock.json ./bot/
+COPY bot/tsconfig.json ./bot/
+COPY bot/src ./bot/src
 COPY shared/src ./shared/src
-RUN npm ci
 
+WORKDIR /repo/bot
+RUN npm ci
 RUN npm run build
 
 
@@ -21,6 +22,6 @@ COPY bot/package.json bot/package-lock.json ./
 RUN npm ci --omit=dev
 
 # App
-COPY --from=build /app/dist ./dist
+COPY --from=build /repo/bot/dist ./dist
 
-CMD ["node", "dist/bot/src/index.js"]
+CMD ["node", "dist/index.js"]
