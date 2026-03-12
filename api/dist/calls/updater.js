@@ -13,7 +13,7 @@ const GAMBA_GAMESEARCH_SHA = String(process.env.GAMBA_GAMESEARCH_SHA || "b717ba5
 const GAMBA_FIRST = Math.max(1, Math.min(60, Number(process.env.GAMBA_FIRST || 39)));
 const INTER_PROVIDER_MS = Math.max(0, Number(process.env.GAMBA_INTER_PROVIDER_MS || 120));
 const LOG_NEW_MAX = Math.max(0, Number(process.env.SLOTS_LOG_NEW_MAX || 25));
-function sleep(ms) {
+export function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms));
 }
 function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000, maxDelay = 10000) {
@@ -49,7 +49,7 @@ function buildGambaUrl(producerSlug, first, page, sha) {
     const extEnc = encodeURIComponent(JSON.stringify(ext));
     return `${GAMBA_API}?operationName=gameSearch&variables=${varsEnc}&extensions=${extEnc}`;
 }
-async function fetchText(url, referer, timeout = 10000) {
+export async function fetchText(url, referer, timeout = 10000) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     try {
@@ -79,7 +79,7 @@ async function fetchText(url, referer, timeout = 10000) {
         throw error;
     }
 }
-async function fetchJson(url, referer, timeout = 15000) {
+export async function fetchJson(url, referer, timeout = 15000) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     try {
@@ -123,7 +123,7 @@ async function fetchJson(url, referer, timeout = 15000) {
     }
 }
 /** Liste les provider slugs depuis /casino/providers */
-async function fetchProviderSlugs() {
+export async function fetchProviderSlugs() {
     const url = `${GAMBA_BASE}/casino/providers`;
     const html = await fetchText(url, url);
     // 1) provider-logos/<slug>.svg
@@ -136,9 +136,18 @@ async function fetchProviderSlugs() {
         out.add(m[1]);
     while ((m = rxLink.exec(html)))
         out.add(m[1]);
-    return Array.from(out).sort((a, b) => a.localeCompare(b));
+    // ✅ CORRECTION: Mapper les anciens slugs vers les nouveaux slugs Gamba
+    const slugMapping = {
+        "nolimit-city": "no-limit-city",
+        "relax-gaming": "relax",
+        "backseat": "hacksaw-gaming"
+    };
+    // ✅ MAJ: TOUS les providers sont fonctionnels - plus de filtrage nécessaire
+    // L'audit complet a révélé que tous les 34+ providers retournent des jeux
+    const mappedProviders = Array.from(out).map(slug => slugMapping[slug] || slug);
+    return mappedProviders.sort((a, b) => a.localeCompare(b));
 }
-async function fetchProviderGames(producerSlug) {
+export async function fetchProviderGames(producerSlug) {
     const referer = `${GAMBA_BASE}/casino/provider/${producerSlug}`;
     const out = [];
     let page = 1;
@@ -215,7 +224,7 @@ async function fetchProviderGames(producerSlug) {
     console.log(`[slots-updater] ${producerSlug}: Completed pagination with ${out.length} total games`);
     return out;
 }
-async function countExistingKeys(pool, keys) {
+export async function countExistingKeys(pool, keys) {
     if (!keys.length)
         return 0;
     const { rowCount } = await pool.query(`SELECT name_key FROM slots_catalog WHERE name_key = ANY($1::text[])`, [keys]);

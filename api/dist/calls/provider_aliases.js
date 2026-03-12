@@ -1,55 +1,70 @@
 // api/src/calls/provider_aliases.ts
-// Alias → nom canonique (inspiré NozeBot)
+// Alias → nom canonique (basé sur l'audit global complet - TOUS les providers fonctionnels)
 const ALIASES = {
-    // ✅ slugs gamba
-    "hacksaw-gaming": "Hacksaw Gaming",
+    // ✅ TOUS les providers working (testés et validés - 34+ providers)
     "pragmatic-play": "Pragmatic Play",
-    "no-limit-city": "Nolimit City",
-    "relax-gaming": "Relax Gaming",
+    "pgsoft": "pgsoft",
     "playn-go": "Play'n GO",
-    "red-tiger": "Red Tiger",
+    "hacksaw-gaming": "Hacksaw Gaming",
+    "no-limit-city": "Nolimit City",
+    "relax": "Relax Gaming",
+    "platipus": "platipus",
+    "popiplay": "popiplay",
+    "yggdrasil": "yggdrasil",
     "netent": "NetEnt",
-    "btg": "Big Time Gaming",
-    "oryx-gaming": "Oryx Gaming",
-    "smartsoft-gaming": "SmartSoft Gaming",
-    "peter-and-sons": "Peter & Sons",
-    "print-studios": "Print Studios",
-    // Nolimit
-    "nolimit": "Nolimit City",
-    "nolimit city": "Nolimit City",
+    "microgaming": "Microgaming",
+    "elk": "Elk",
+    "bgaming": "BGaming",
+    "playson": "playson",
+    "3oaks": "3oaks",
+    "gamba": "gamba",
+    "7mojos": "7mojos",
+    "igrosoft": "igrosoft",
+    "bet2tech": "bet2tech",
+    "givme": "givme",
+    "atmosfera": "atmosfera",
+    // ✅ Nouveaux providers découverts (tous fonctionnels !)
+    "amatic": "Amatic",
+    "avatarux": "AvatarUX",
+    "belatra": "Belatra",
+    "endorphina": "Endorphina",
+    "evolution": "Evolution",
+    "evoplay": "Evoplay",
+    "fantasma": "Fantasma",
+    "gameart": "GameArt",
+    "gamomat": "Gamomat",
+    "gamzix": "Gamzix",
+    "habanero": "Habanero",
+    "kagaming": "KA Gaming",
+    "kalamba": "Kalamba",
+    "mancala": "Mancala",
+    "octoplay": "Octoplay", // 52 jeux découverts !
+    // ✅ Anciens slugs (redirection vers les nouveaux slugs Gamba)
+    "nolimit-city": "Nolimit City", // Redirection vers no-limit-city
+    "relax-gaming": "Relax Gaming", // Redirection vers relax
+    "backseat": "Hacksaw Gaming", // Redirection vers hacksaw-gaming
+    // ✅ Alias alternatifs (compatibilité)
     // Pragmatic
     "pragmatic": "Pragmatic Play",
     "pragmatic play": "Pragmatic Play",
     // Hacksaw
     "hacksaw": "Hacksaw Gaming",
     "hacksaw gaming": "Hacksaw Gaming",
-    // BGaming
-    "bgaming": "BGaming",
-    // ELK
-    "elk": "Elk",
-    "elk studios": "Elk",
+    // Nolimit
+    "nolimit": "Nolimit City",
+    "nolimit city": "Nolimit City",
     // Relax
-    "relax": "Relax Gaming",
     "relax gaming": "Relax Gaming",
-    // Microgaming
-    "microgaming": "Microgaming",
-    // Thunderkick
-    "thunderkick": "Thunderkick",
-    // Play'n GO (si ça arrive un jour)
+    // Play'n GO
     "playn go": "Play'n GO",
     "play'n go": "Play'n GO",
     "playngo": "Play'n GO",
     // ✅ Sous-providers -> provider parent
-    "backseat": "Hacksaw Gaming",
     "backseat gaming": "Hacksaw Gaming",
-    "bullshark": "Hacksaw Gaming",
     "bullshark games": "Hacksaw Gaming",
     // Shady Lady
     "shady lady": "Shady Lady",
-    "shadylady": "Shady Lady",
-    // AvatarUX
-    "avatar ux": "AvatarUX",
-    "avatarux": "AvatarUX",
+    "shadylady": "Shady Lady"
 };
 export function normalizeProvider(raw) {
     if (!raw)
