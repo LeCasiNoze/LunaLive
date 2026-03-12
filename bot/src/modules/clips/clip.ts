@@ -1,7 +1,7 @@
 // bot/src/modules/clips/clip.ts
 import type { Pool } from "pg";
 import type { ChatMsg, StreamerRow } from "../../core/types.js";
-import { createClipForStreamer, formatClipTime, normalizeClipTitle } from "../../../shared/src/clip_service.js";
+import { createClipForStreamer, formatClipTime, normalizeClipTitle } from "@shared/clip_service.js";
 
 export async function tryHandleClipCommand(p: {
   pool: Pool;
