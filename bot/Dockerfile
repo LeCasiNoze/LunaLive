@@ -18,7 +18,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Node deps prod
-COPY bot/package.json bot/package-lock.json ./
+COPY --from=build /repo/bot/package.json ./
+COPY --from=build /repo/bot/package-lock.json ./
 RUN npm ci --omit=dev
 
 # App

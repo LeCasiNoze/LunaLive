@@ -10,10 +10,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "types": ["node"],
-    "baseUrl": ".",
-    "paths": {
-      "@shared/*": ["../shared/src/*"]
-    }
+    "baseUrl": "."
   },
   "include": ["src", "../shared/src"]
 }
