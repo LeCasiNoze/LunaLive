@@ -390,6 +390,183 @@ export function DlivePlayer({
     let lastT = Number(video.currentTime || 0);
     let lastProgressAt = Date.now();
 
+    // ✅ DEBUG LOGGING
+    const dbgLog = (...args: any[]) => {
+      if (debugEnabled) console.log("[DlivePlayer Watchdogs]", ...args);
+    };
+
+    // ✅ CROSS-TAB COORDINATION
+    const streamKey = `ll-live-${channelUsername}`;
+    const myTabId = Math.random().toString(36).slice(2);
+    let isLeader = false;
+    let heartbeatInterval: number | null = null;
+    let coordinationChannel: BroadcastChannel | null = null;
+
+    // Helper: BroadcastChannel support
+    const supportsBroadcastChannel = typeof BroadcastChannel !== 'undefined';
+
+    // Helper: localStorage heartbeat
+    const setLeaderHeartbeat = () => {
+      try {
+        localStorage.setItem(`ll-leader-${streamKey}`, JSON.stringify({
+          tabId: myTabId,
+          heartbeat: Date.now(),
+          streamKey,
+          visible: !document.hidden
+        }));
+      } catch {}
+    };
+
+    // Helper: check if current leader is alive
+    const getCurrentLeader = () => {
+      try {
+        const data = localStorage.getItem(`ll-leader-${streamKey}`);
+        if (!data) return null;
+        const parsed = JSON.parse(data);
+        if (parsed.streamKey !== streamKey) return null;
+        const age = Date.now() - parsed.heartbeat;
+        return age < 5000 ? parsed : null; // 5s timeout
+      } catch {
+        return null;
+      }
+    };
+
+    // Helper: try to become leader
+    const tryBecomeLeader = () => {
+      const current = getCurrentLeader();
+      if (!current) {
+        setLeaderHeartbeat();
+        isLeader = true;
+        dbgLog("became leader", { streamKey, tabId: myTabId });
+        return true;
+      }
+      if (current.tabId === myTabId) {
+        isLeader = true;
+        setLeaderHeartbeat(); // refresh heartbeat
+        return true;
+      }
+      isLeader = false;
+      return false;
+    };
+
+    // Helper: step down as leader
+    const stepDownAsLeader = () => {
+      if (isLeader) {
+        try {
+          const current = localStorage.getItem(`ll-leader-${streamKey}`);
+          if (current) {
+            const parsed = JSON.parse(current);
+            if (parsed.tabId === myTabId) {
+              localStorage.removeItem(`ll-leader-${streamKey}`);
+            }
+          }
+        } catch {}
+        isLeader = false;
+        dbgLog("stepped down as leader", { streamKey, tabId: myTabId });
+      }
+    };
+
+    // Setup coordination
+    const setupCoordination = () => {
+      // Try to become leader initially
+      tryBecomeLeader();
+
+      // Setup heartbeat if leader
+      if (isLeader) {
+        heartbeatInterval = window.setInterval(() => {
+          if (isLeader) {
+            setLeaderHeartbeat();
+            // Broadcast heartbeat to other tabs
+            if (coordinationChannel) {
+              try {
+                coordinationChannel.postMessage({
+                  type: 'heartbeat',
+                  streamKey,
+                  tabId: myTabId,
+                  timestamp: Date.now()
+                });
+              } catch {}
+            }
+          }
+        }, 2000);
+      }
+
+      // Setup BroadcastChannel listener (if supported)
+      if (supportsBroadcastChannel) {
+        try {
+          coordinationChannel = new BroadcastChannel('ll-live-coordination');
+          coordinationChannel.onmessage = (event) => {
+            const data = event.data;
+            if (data.type === 'heartbeat' && data.streamKey === streamKey) {
+              if (data.tabId !== myTabId && isLeader) {
+                // Another tab claims leadership, check if we should step down
+                const current = getCurrentLeader();
+                if (!current || current.tabId !== myTabId) {
+                  isLeader = false;
+                  if (heartbeatInterval) {
+                    window.clearInterval(heartbeatInterval);
+                    heartbeatInterval = null;
+                  }
+                  dbgLog("detected other leader, stepping down", { 
+                    streamKey, 
+                    otherTabId: data.tabId,
+                    myTabId 
+                  });
+                }
+              }
+            }
+          };
+        } catch (e) {
+          // BroadcastChannel failed, fallback to localStorage only
+          coordinationChannel = null;
+        }
+      }
+
+      // Periodic leader check (fallback for tabs without BroadcastChannel)
+      const leaderCheckInterval = window.setInterval(() => {
+        if (!isLeader) {
+          tryBecomeLeader();
+        }
+      }, 3000);
+
+      return () => {
+        if (heartbeatInterval) {
+          window.clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
+        }
+        if (leaderCheckInterval) {
+          window.clearInterval(leaderCheckInterval);
+        }
+        if (coordinationChannel) {
+          try {
+            coordinationChannel.close();
+          } catch {}
+          coordinationChannel = null;
+        }
+        stepDownAsLeader();
+      };
+    };
+
+    // ✅ VISIBILITY HANDLER
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        dbgLog("tab hidden - pausing watchdogs", { isLeader });
+        // Update heartbeat to reflect visibility but stay leader
+        if (isLeader) {
+          setLeaderHeartbeat();
+        }
+        return;
+      }
+      dbgLog("tab visible - resuming watchdogs", { isLeader });
+      lastProgressAt = Date.now(); // reset grace period
+      // Update heartbeat to reflect visibility
+      if (isLeader) {
+        setLeaderHeartbeat();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     const markProgress = () => {
       const nowT = Number(video.currentTime || 0);
       if (Math.abs(nowT - lastT) > PROGRESS_EPS) {
@@ -413,10 +590,15 @@ export function DlivePlayer({
     video.addEventListener("stalled", onStalled);
     video.addEventListener("error", onError);
 
-    // 1) live-edge resync
+    // Setup cross-tab coordination
+    const cleanupCoordination = setupCoordination();
+
+    // 1) live-edge resync (leader only)
     tLiveEdge = window.setInterval(() => {
       if (!isLive) return;
       if (!video || video.paused) return;
+      if (document.hidden) return; // ✅ PAUSE EN ARRIÈRE-PLAN
+      if (!isLeader) return; // ✅ COORDINATION MULTI-ONGLETS
 
       const hls = hlsRef.current;
 
@@ -427,7 +609,7 @@ export function DlivePlayer({
         const behind = livePos - ct;
 
         if (Number.isFinite(behind) && behind > RESYNC_THRESHOLD_SEC) {
-          dbgWarn("resync (hlsjs)", { behind: behind.toFixed(2), ct: ct.toFixed(2), livePos: livePos.toFixed(2) });
+          dbgLog("resync (hlsjs)", { behind: behind.toFixed(2), ct: ct.toFixed(2), livePos: livePos.toFixed(2) });
           try {
             video.currentTime = livePos;
           } catch {}
@@ -445,18 +627,19 @@ export function DlivePlayer({
 
         if (Number.isFinite(behind) && behind > RESYNC_THRESHOLD_SEC) {
           const target = Math.max(0, end - IOS_LIVE_SAFETY_SEC);
-          dbgWarn("resync (native)", { behind: behind.toFixed(2), ct: ct.toFixed(2), end: end.toFixed(2) });
+          dbgLog("resync (native)", { behind: behind.toFixed(2), ct: ct.toFixed(2), end: end.toFixed(2) });
           video.currentTime = target;
         }
       } catch {}
     }, 7000);
 
-    // 2) stall watchdog
+    // 2) stall watchdog (leader only)
     tStall = window.setInterval(() => {
       if (!isLive) return;
       if (!video) return;
       if (video.paused) return;
-      if (typeof document !== "undefined" && (document as any).hidden) return;
+      if (document.hidden) return; // ✅ PAUSE EN ARRIÈRE-PLAN
+      if (!isLeader) return; // ✅ COORDINATION MULTI-ONGLETS
 
       const now = Date.now();
       const since = now - lastProgressAt;
@@ -466,7 +649,7 @@ export function DlivePlayer({
 
       const hls = hlsRef.current;
 
-      dbgWarn("stall detected", {
+      dbgLog("stall detected", {
         sinceMs: since,
         ct: Number(video.currentTime || 0).toFixed(2),
         rs: video.readyState,
@@ -508,6 +691,11 @@ export function DlivePlayer({
     }, 3000);
 
     return () => {
+      // ✅ CLEANUP COORDINATION
+      cleanupCoordination();
+
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+
       if (tLiveEdge) window.clearInterval(tLiveEdge);
       if (tStall) window.clearInterval(tStall);
 
@@ -644,7 +832,18 @@ export function DlivePlayer({
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       dbgLog("manifest parsed", { levels: (hls.levels || []).length });
 
-      const lvls = (hls.levels || []).map((lvl: any, i: number) => ({
+      // ✅ DEBUG LOGGING: Niveaux HLS détectés
+      const levels = hls.levels || [];
+      dbgLog("HLS LEVELS DETECTED", levels.map((lvl: any, i: number) => ({
+        index: i,
+        height: lvl?.height,
+        bitrate: lvl?.bitrate,
+        codecSet: lvl?.codecSet,
+        name: lvl?.name,
+        attrs: lvl?.attrs
+      })));
+
+      const lvls = levels.map((lvl: any, i: number) => ({
         key: String(i),
         label: lvl?.height ? `${lvl.height}p` : `Niveau ${i}`,
         levelIndex: i,
@@ -654,6 +853,14 @@ export function DlivePlayer({
 
       const unique = uniqBy(lvls, (x) => String(x.height || x.label));
       unique.sort((a, b) => (b.height || 0) - (a.height || 0));
+
+      // ✅ DEBUG LOGGING: Qualités disponibles après déduplication
+      dbgLog("QUALITIES AVAILABLE", unique.map(q => ({
+        key: q.key,
+        label: q.label,
+        height: q.height,
+        bitrate: q.bitrate
+      })));
 
       const capIdx720 = pickBestCapIndex(hls.levels || [], 720);
       const autoLabel = capIdx720 >= 0 ? "Auto (max 720p)" : "Auto (recommandé)";
@@ -668,6 +875,11 @@ export function DlivePlayer({
       try {
         hls.currentLevel = -1;
         hls.autoLevelCapping = capIdx720 >= 0 ? capIdx720 : -1;
+        dbgLog("ABR CONFIG", { 
+          currentLevel: hls.currentLevel, 
+          autoLevelCapping: hls.autoLevelCapping,
+          capIdx720
+        });
       } catch {}
 
       forceRate1(video);
@@ -689,20 +901,54 @@ export function DlivePlayer({
         try {
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
             // relance chargement segments
+            dbgLog("NETWORK ERROR - startLoad(-1)");
             hls.startLoad(-1);
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            dbgLog("MEDIA ERROR - recoverMediaError");
             hls.recoverMediaError();
           } else {
+            dbgLog("FATAL ERROR - destroy");
             hls.destroy();
           }
         } catch {}
       }
     });
 
-    hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => dbgLog("level switched", data));
-    hls.on(Hls.Events.FRAG_LOADED, (_e, data) =>
-      dbgLog("frag loaded", { sn: data?.frag?.sn, lvl: data?.frag?.level })
-    );
+    // ✅ DEBUG LOGGING: Changements de niveau ABR
+    hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => {
+      const currentLevel = hls.levels[data?.level];
+      dbgLog("LEVEL SWITCHED", {
+        level: data?.level,
+        height: currentLevel?.height,
+        bitrate: currentLevel?.bitrate,
+        auto: hls.autoLevelEnabled,
+        currentLevel: hls.currentLevel,
+        autoLevelCapping: hls.autoLevelCapping
+      });
+    });
+
+    // ✅ DEBUG LOGGING: Fragment loading
+    hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
+      const frag = data?.frag;
+      dbgLog("FRAG LOADED", {
+        level: frag?.level,
+        sn: frag?.sn,
+        url: frag?.url?.substring(0, 100) + "...",
+        duration: frag?.duration
+      });
+    });
+
+    // ✅ DEBUG LOGGING: Bandwidth estimation
+    hls.on(Hls.Events.BUFFER_APPENDED, () => {
+      if (hls.bandwidthEstimate) {
+        dbgLog("BANDWIDTH ESTIMATE", {
+          bandwidth: Math.round(hls.bandwidthEstimate),
+          bwEstimate: Math.round(hls.bandwidthEstimate / 1000000) + "Mbps",
+          autoLevelEnabled: hls.autoLevelEnabled,
+          currentLevel: hls.currentLevel
+        });
+      }
+    });
 
     return () => {
       try {

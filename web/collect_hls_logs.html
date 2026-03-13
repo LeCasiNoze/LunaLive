@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LunaLive - Collecte Logs HLS</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #7c3aed;
+            margin: 0;
+        }
+        .instructions {
+            background: #2d2d2d;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #7c3aed;
+        }
+        .instructions h2 {
+            color: #a78bfa;
+            margin-top: 0;
+        }
+        .instructions ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin: 8px 0;
+        }
+        .code {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #10b981;
+            margin: 10px 0;
+        }
+        .log-container {
+            background: #0f0f0f;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin: 5px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .log-levels {
+            color: #fbbf24;
+        }
+        .log-qualities {
+            color: #34d399;
+        }
+        .log-abr {
+            color: #60a5fa;
+        }
+        .log-switched {
+            color: #f87171;
+        }
+        .log-bandwidth {
+            color: #a78bfa;
+        }
+        .log-error {
+            color: #f87171;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .btn {
+            background: #7c3aed;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 0 10px;
+            font-size: 16px;
+        }
+        .btn:hover {
+            background: #6d28d9;
+        }
+        .btn:disabled {
+            background: #4b5563;
+            cursor: not-allowed;
+        }
+        .summary {
+            background: #2d2d2d;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            border-left: 4px solid #10b981;
+        }
+        .summary h3 {
+            color: #10b981;
+            margin-top: 0;
+        }
+        .summary-item {
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        .summary-label {
+            color: #9ca3af;
+        }
+        .summary-value {
+            color: #fff;
+            font-weight: bold;
+        }
+        .warning {
+            background: #451a03;
+            border: 1px solid #dc2626;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 10px 0;
+            color: #fca5a5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 LunaLive - Collecte Logs HLS</h1>
+            <p>Validation factuelle des niveaux et qualités disponibles</p>
+        </div>
+
+        <div class="instructions">
+            <h2>📋 Instructions de Collecte</h2>
+            <ol>
+                <li><strong>Activer le debug HLS :</strong></li>
+                <div class="code">localStorage.setItem("ll_player_debug", "1")</div>
+                
+                <li><strong>Ouvrir LunaLive avec un stream actif :</strong></li>
+                <div class="code">https://lunalive.app/stream/[username]</div>
+                
+                <li><strong>Observer les logs dans la console du navigateur</strong></li>
+                
+                <li><strong>Copier-coller les logs pertinents ci-dessous</strong></li>
+                
+                <li><strong>Attendre au moins 2-3 minutes pour capturer les changements de qualité</strong></li>
+            </ol>
+            
+            <div class="warning">
+                ⚠️ Important : Laissez le player tourner suffisamment longtemps pour observer les changements automatiques de qualité (LEVEL SWITCHED) et les estimations de bande passante (BANDWIDTH ESTIMATE).
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn" onclick="clearLogs()">🗑️ Vider Logs</button>
+            <button class="btn" onclick="exportLogs()">📥 Exporter Logs</button>
+            <button class="btn" onclick="analyzeLogs()">🔍 Analyser</button>
+        </div>
+
+        <div class="log-container" id="logContainer">
+            <div class="log-entry">📝 Collez les logs HLS ici...</div>
+        </div>
+
+        <div class="summary" id="summary" style="display: none;">
+            <h3>📊 Analyse des Logs HLS</h3>
+            <div id="summaryContent"></div>
+        </div>
+
+        <div class="instructions">
+            <h2>🎯 Logs Requis</h2>
+            <p>Recherchez spécifiquement ces logs dans la console :</p>
+            <ul>
+                <li><span class="log-levels">[DlivePlayer] HLS LEVELS DETECTED</span> - Tous les niveaux disponibles</li>
+                <li><span class="log-qualities">[DlivePlayer] QUALITIES AVAILABLE</span> - Qualités uniques après déduplication</li>
+                <li><span class="log-abr">[DlivePlayer] ABR CONFIG</span> - Configuration ABR actuelle</li>
+                <li><span class="log-switched">[DlivePlayer] LEVEL SWITCHED</span> - Changements de qualité</li>
+                <li><span class="log-bandwidth">[DlivePlayer] BANDWIDTH ESTIMATE</span> - Estimation bande passante</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        let logData = [];
+
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '<div class="log-entry">📝 Collez les logs HLS ici...</div>';
+            document.getElementById('summary').style.display = 'none';
+            logData = [];
+        }
+
+        function parseLogEntry(text) {
+            const entry = {
+                text: text,
+                timestamp: null,
+                type: null,
+                data: null
+            };
+
+            // Extraire timestamp
+            const timestampMatch = text.match(/\[(\d{2}:\d{2}:\d{2}\.\d{3})\]/);
+            if (timestampMatch) {
+                entry.timestamp = timestampMatch[1];
+            }
+
+            // Identifier le type de log
+            if (text.includes('HLS LEVELS DETECTED')) {
+                entry.type = 'levels';
+                entry.data = parseLevelsData(text);
+            } else if (text.includes('QUALITIES AVAILABLE')) {
+                entry.type = 'qualities';
+                entry.data = parseQualitiesData(text);
+            } else if (text.includes('ABR CONFIG')) {
+                entry.type = 'abr';
+                entry.data = parseAbrData(text);
+            } else if (text.includes('LEVEL SWITCHED')) {
+                entry.type = 'switched';
+                entry.data = parseSwitchedData(text);
+            } else if (text.includes('BANDWIDTH ESTIMATE')) {
+                entry.type = 'bandwidth';
+                entry.data = parseBandwidthData(text);
+            }
+
+            return entry;
+        }
+
+        function parseLevelsData(text) {
+            try {
+                const match = text.match(/HLS LEVELS DETECTED\s+(\[[\s\S]*?\])/);
+                if (match) {
+                    return JSON.parse(match[1]);
+                }
+            } catch (e) {
+                console.error('Erreur parsing levels:', e);
+            }
+            return null;
+        }
+
+        function parseQualitiesData(text) {
+            try {
+                const match = text.match(/QUALITIES AVAILABLE\s+(\[[\s\S]*?\])/);
+                if (match) {
+                    return JSON.parse(match[1]);
+                }
+            } catch (e) {
+                console.error('Erreur parsing qualities:', e);
+            }
+            return null;
+        }
+
+        function parseAbrData(text) {
+            try {
+                const match = text.match(/ABR CONFIG\s+(\{[\s\S]*?\})/);
+                if (match) {
+                    return JSON.parse(match[1]);
+                }
+            } catch (e) {
+                console.error('Erreur parsing ABR:', e);
+            }
+            return null;
+        }
+
+        function parseSwitchedData(text) {
+            try {
+                const match = text.match(/LEVEL SWITCHED\s+(\{[\s\S]*?\})/);
+                if (match) {
+                    return JSON.parse(match[1]);
+                }
+            } catch (e) {
+                console.error('Erreur parsing switched:', e);
+            }
+            return null;
+        }
+
+        function parseBandwidthData(text) {
+            try {
+                const match = text.match(/BANDWIDTH ESTIMATE\s+(\{[\s\S]*?\})/);
+                if (match) {
+                    return JSON.parse(match[1]);
+                }
+            } catch (e) {
+                console.error('Erreur parsing bandwidth:', e);
+            }
+            return null;
+        }
+
+        function analyzeLogs() {
+            const container = document.getElementById('logContainer');
+            const logText = container.textContent;
+            
+            if (!logText || logText.includes('Collez les logs HLS ici')) {
+                alert('Veuillez coller les logs HLS avant d\'analyser');
+                return;
+            }
+
+            const lines = logText.split('\n').filter(line => line.trim() && line.includes('[DlivePlayer]'));
+            logData = lines.map(line => parseLogEntry(line));
+
+            generateSummary();
+        }
+
+        function generateSummary() {
+            const summary = document.getElementById('summary');
+            const content = document.getElementById('summaryContent');
+            
+            const levels = logData.filter(entry => entry.type === 'levels').map(entry => entry.data).filter(Boolean);
+            const qualities = logData.filter(entry => entry.type === 'qualities').map(entry => entry.data).filter(Boolean);
+            const abr = logData.filter(entry => entry.type === 'abr').map(entry => entry.data).filter(Boolean);
+            const switched = logData.filter(entry => entry.type === 'switched').map(entry => entry.data).filter(Boolean);
+            const bandwidth = logData.filter(entry => entry.type === 'bandwidth').map(entry => entry.data).filter(Boolean);
+
+            let html = '';
+
+            // Niveaux détectés
+            if (levels.length > 0) {
+                const firstLevels = levels[0];
+                const maxHeight = Math.max(...firstLevels.map(l => l.height || 0));
+                const maxBitrate = Math.max(...firstLevels.map(l => l.bitrate || 0));
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">Niveaux détectés:</span>';
+                html += '<span class="summary-value">' + firstLevels.length + ' niveaux</span>';
+                html += '</div>';
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">Résolution max détectée:</span>';
+                html += '<span class="summary-value">' + maxHeight + 'p</span>';
+                html += '</div>';
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">Bitrate max détecté:</span>';
+                html += '<span class="summary-value">' + Math.round(maxBitrate / 1000) + ' Mbps</span>';
+                html += '</div>';
+            }
+
+            // Qualités disponibles
+            if (qualities.length > 0) {
+                const firstQualities = qualities[0];
+                const has1080p = firstQualities.some(q => q.height >= 1080);
+                const has720p = firstQualities.some(q => q.height >= 720);
+                const has480p = firstQualities.some(q => q.height >= 480);
+                const has360p = firstQualities.some(q => q.height >= 360);
+                const has240p = firstQualities.some(q => q.height >= 240);
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">1080p disponible:</span>';
+                html += '<span class="summary-value">' + (has1080p ? '✅ OUI' : '❌ NON') + '</span>';
+                html += '</div>';
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">720p disponible:</span>';
+                html += '<span class="summary-value">' + (has720p ? '✅ OUI' : '❌ NON') + '</span>';
+                html += '</div>';
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">480p disponible:</span>';
+                html += '<span class="summary-value">' + (has480p ? '✅ OUI' : '❌ NON') + '</span>';
+                html += '</div>';
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">360p disponible:</span>';
+                html += '<span class="summary-value">' + (has360p ? '✅ OUI' : '❌ NON') + '</span>';
+                html += '</div>';
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">240p disponible:</span>';
+                html += '<span class="summary-value">' + (has240p ? '✅ OUI' : '❌ NON') + '</span>';
+                html += '</div>';
+            }
+
+            // Configuration ABR
+            if (abr.length > 0) {
+                const firstAbr = abr[0];
+                const capIndex = firstAbr.capIdx720;
+                const isCapped = capIndex >= 0;
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">CAP 720p actif:</span>';
+                html += '<span class="summary-value">' + (isCapped ? '✅ OUI (index ' + capIndex + ')' : '❌ NON') + '</span>';
+                html += '</div>';
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">Niveau actuel:</span>';
+                html += '<span class="summary-value">' + (firstAbr.currentLevel === -1 ? 'Auto' : firstAbr.currentLevel) + '</span>';
+                html += '</div>';
+            }
+
+            // Changements de qualité
+            if (switched.length > 0) {
+                const maxLevelReached = Math.max(...switched.map(s => s.level || 0));
+                const minLevelReached = Math.min(...switched.map(s => s.level || 0));
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">Changements de qualité:</span>';
+                html += '<span class="summary-value">' + switched.length + ' changements</span>';
+                html += '</div>';
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">Niveau max atteint:</span>';
+                html += '<span class="summary-value">Niveau ' + maxLevelReached + '</span>';
+                html += '</div>';
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">Niveau min atteint:</span>';
+                html += '<span class="summary-value">Niveau ' + minLevelReached + '</span>';
+                html += '</div>';
+            }
+
+            // Bande passante
+            if (bandwidth.length > 0) {
+                const maxBandwidth = Math.max(...bandwidth.map(b => b.bandwidth || 0));
+                const avgBandwidth = bandwidth.reduce((sum, b) => sum + (b.bandwidth || 0), 0) / bandwidth.length;
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">Bande passante max:</span>';
+                html += '<span class="summary-value">' + Math.round(maxBandwidth / 1000000) + ' Mbps</span>';
+                html += '</div>';
+                
+                html += '<div class="summary-item">';
+                html += '<span class="summary-label">Bande passante moyenne:</span>';
+                html += '<span class="summary-value">' + Math.round(avgBandwidth / 1000000) + ' Mbps</span>';
+                html += '</div>';
+            }
+
+            content.innerHTML = html;
+            summary.style.display = 'block';
+        }
+
+        function exportLogs() {
+            const container = document.getElementById('logContainer');
+            const logText = container.textContent;
+            
+            if (!logText || logText.includes('Collez les logs HLS ici')) {
+                alert('Aucun log à exporter');
+                return;
+            }
+
+            const blob = new Blob([logText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'lunalive_hls_logs_' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Auto-paste from clipboard
+        document.addEventListener('paste', (e) => {
+            const container = document.getElementById('logContainer');
+            const pastedText = e.clipboardData.getData('text');
+            
+            if (pastedText.includes('[DlivePlayer]')) {
+                container.innerHTML = '<div class="log-entry">' + pastedText.split('\n').map(line => 
+                    line.includes('HLS LEVELS DETECTED') ? '<span class="log-levels">' + line + '</span>' :
+                    line.includes('QUALITIES AVAILABLE') ? '<span class="log-qualities">' + line + '</span>' :
+                    line.includes('ABR CONFIG') ? '<span class="log-abr">' + line + '</span>' :
+                    line.includes('LEVEL SWITCHED') ? '<span class="log-switched">' + line + '</span>' :
+                    line.includes('BANDWIDTH ESTIMATE') ? '<span class="log-bandwidth">' + line + '</span>' :
+                    line.includes('ERROR') || line.includes('error') ? '<span class="log-error">' + line + '</span>' :
+                    line
+                ).join('</div><div class="log-entry">') + '</div>';
+            }
+        });
+    </script>
+</body>
+</html>
