@@ -66,6 +66,20 @@ function extractMentions(body: string): string[] {
   return out;
 }
 
+function isEmotesOnly(body: string): boolean {
+  if (!body || !body.trim()) return false;
+  
+  // Enlever tous les tokens d'emotes, mentions et URLs
+  const cleaned = body
+    .replace(/:(e|g):[a-z0-9_]{1,32}:/gi, '') // emotes
+    .replace(/@[^\s@]{1,32}/g, '') // mentions
+    .replace(/https?:\/\/[^\s<]+|www\.[^\s<]+|[a-z0-9.-]+\.[a-z]{2,63}(\/[^\s<]*)?/gi, '') // URLs
+    .trim();
+  
+  // Si après nettoyage il ne reste que des espaces, c'est que c'est seulement des emotes/mentions/URLs
+  return cleaned.length === 0;
+}
+
 /* ─── Emotes ─────────────────────────────────────────────── */
 type EmoteKind = "emoji" | "gif";
 type ResolveEmote = (p: { kind: EmoteKind; name: string }) => { url: string; title?: string } | null;
@@ -79,21 +93,12 @@ const MAX_RICH_PARTS = 220;
 
 function EmoteImg({ src, title, alt, kind }: { src: string; title?: string; alt: string; kind: EmoteKind }) {
   const [err, setErr] = React.useState(false);
-  if (err) return <span style={{ opacity:.90, fontWeight:800 }} title={title || alt}>{alt}</span>;
-  const isGif = kind === "gif";
+  if (err) return <span className="emote-error" title={title || alt}>{alt}</span>;
   return (
     <img
       className={`ll-emote ll-emote--${kind}`}
       src={src} alt={alt} title={title || alt}
       loading="lazy" decoding="async" referrerPolicy="no-referrer" draggable={false}
-      style={{
-        display:"inline-block",
-        width: isGif ? 96 : 150, height: isGif ? 96 : 150,
-        verticalAlign:"middle",
-        margin: isGif ? "0 3px" : "0 2px",
-        borderRadius:10,
-        background:"transparent", border:"none", boxShadow:"none", filter:"none", outline:"none",
-      }}
       onError={() => setErr(true)}
     />
   );
@@ -324,12 +329,14 @@ export function ChatMessageBubble({
           ) : null}
 
           {/* Corps du message */}
-          <div className="chatBodyText" style={{
-            minWidth:0, whiteSpace:"pre-wrap", overflowWrap:"anywhere",
-            wordBreak:"break-word", lineHeight:1.3,
-            opacity: isDlive ? .92 : undefined,
-            color:"var(--chat-msg-color,rgba(235,232,255,.88))",
-          }}>
+          <div 
+            className={`chatBodyText ${isEmotesOnly(String(msg.body ?? "")) ? "emotes-only" : ""}`}
+            style={{
+              minWidth:0, whiteSpace:"pre-wrap", overflowWrap:"anywhere",
+              wordBreak:"break-word", lineHeight:1.3,
+              opacity: isDlive ? .92 : undefined,
+              color:"var(--chat-msg-color,rgba(235,232,255,.88))",
+            }}>
             {renderBodyRich(String(msg.body ?? ""), currentUsername, resolveEmote)}
           </div>
         </div>

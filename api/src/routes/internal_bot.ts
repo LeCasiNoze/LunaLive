@@ -325,7 +325,9 @@ function requireBotKey(req: express.Request, res: express.Response): boolean {
 
 function emitChatAll(io: any, slug: string, event: string, data: any) {
   try {
-    io.to(`streamer:${slug}`).emit(event, data);
+    const s = String(slug || "").trim().toLowerCase();
+    if (!s) return;
+    io.to(`chat:${s}:public`).to(`chat:${s}:popup`).emit(event, data);
   } catch (e) {
     console.error("emitChatAll error:", e);
   }

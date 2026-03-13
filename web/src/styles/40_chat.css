@@ -240,7 +240,7 @@
   color: var(--chat-msg-color, rgba(255,255,255,0.92));
   font-weight: 700;
   font-size: 13px;
-  line-height: 1.25;
+  line-height: 1.6;
   word-break: break-word;
   white-space: pre-wrap;
 }
@@ -338,4 +338,65 @@
 /* si jamais un parent met un style global sur <a> */
 .chatBodyText a{
   color: inherit;
+}
+
+/* ─────────────────────────────────────────────
+   EMOTES — sizing cohérent avec le texte
+   - Source de vérité pour tout le chat
+   - Alignement propre avec le texte (13px)
+   - Comportement cohérent entre emoji et gif
+───────────────────────────────────────────── */
+.ll-emote{
+  display: inline-block;
+  vertical-align: middle;
+  object-fit: contain;
+}
+
+/* Emotes dans un message avec du texte - 1.5x */
+.chatBodyText .ll-emote--emoji{
+  width: 3.6em;
+  height: 3.6em;
+  margin: 0 0.15em;
+}
+
+.chatBodyText .ll-emote--gif{
+  width: 3.3em;
+  height: 3.3em;
+  margin: 0 0.15em;
+  border-radius: 0.28em;
+}
+
+/* Emotes dans un message sans texte (juste emotes) - 2x */
+.chatBodyText:has(.ll-emote):not(:has-text) .ll-emote--emoji,
+.chatBodyText[data-emotes-only="true"] .ll-emote--emoji{
+  width: 4.8em;
+  height: 4.8em;
+  margin: 0 0.20em;
+}
+
+.chatBodyText:has(.ll-emote):not(:has-text) .ll-emote--gif,
+.chatBodyText[data-emotes-only="true"] .ll-emote--gif{
+  width: 4.4em;
+  height: 4.4em;
+  margin: 0 0.20em;
+  border-radius: 0.28em;
+}
+
+/* Fallback pour les navigateurs qui ne supportent pas :has() */
+.chatBodyText.emotes-only .ll-emote--emoji{
+  width: 4.8em;
+  height: 4.8em;
+  margin: 0 0.20em;
+}
+
+.chatBodyText.emotes-only .ll-emote--gif{
+  width: 4.4em;
+  height: 4.4em;
+  margin: 0 0.20em;
+  border-radius: 0.28em;
+}
+
+.emote-error{
+  opacity: 0.90;
+  font-weight: 800;
 }

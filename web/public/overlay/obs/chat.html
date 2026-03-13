@@ -379,21 +379,56 @@
       }
     }
     
-  /* ✅ LunaLive emotes */
-  .ll-emote{
-    width: 64px !important;
-    height: 64px !important;
-    object-fit: contain;
-    vertical-align: middle;
-    margin: 0 6px;
-    border-radius: 12px;
-  }
+  /* ✅ IMPORT: LunaLive emotes sizing from 40_chat.css */
+    .ll-emote{
+      display: inline-block;
+      vertical-align: middle;
+      object-fit: contain;
+    }
 
-  /* si tu as une classe différente pour les gifs */
-  .ll-emote--gif{
-    width: 84px !important;
-    height: 84px !important;
-  }
+    /* Emotes dans un message avec du texte - 1.5x */
+    .chatBodyText .ll-emote--emoji{
+      width: 3.6em;
+      height: 3.6em;
+      margin: 0 0.15em;
+    }
+
+    .chatBodyText .ll-emote--gif{
+      width: 3.3em;
+      height: 3.3em;
+      margin: 0 0.15em;
+      border-radius: 0.28em;
+    }
+
+    /* Emotes dans un message sans texte (juste emotes) - 2x */
+    .chatBodyText.emotes-only .ll-emote--emoji{
+      width: 4.8em;
+      height: 4.8em;
+      margin: 0 0.20em;
+    }
+
+    .chatBodyText.emotes-only .ll-emote--gif{
+      width: 4.4em;
+      height: 4.4em;
+      margin: 0 0.20em;
+      border-radius: 0.28em;
+    }
+
+    /* Fallback emotes class for OBS rendering */
+    .msg-emote.ll-emote--emoji{
+      width: 3.6em;
+      height: 3.6em;
+      margin: 0 0.15em;
+      vertical-align: middle;
+    }
+
+    .msg-emote.ll-emote--gif{
+      width: 3.3em;
+      height: 3.3em;
+      margin: 0 0.15em;
+      border-radius: 0.28em;
+      vertical-align: middle;
+    }
 
     /* RAINBOW */
     @keyframes unameRainbowMove {
@@ -956,6 +991,20 @@
       return `${base}/e/${safeName}.png`;
     }
 
+    function isEmotesOnly(text) {
+      if (!text || !text.trim()) return false;
+      
+      // Enlever tous les tokens d'emotes, mentions et URLs
+      const cleaned = text
+        .replace(/:(e|g):[a-z0-9_]{1,32}:/gi, '') // emotes
+        .replace(/@[^\s@]{1,32}/g, '') // mentions
+        .replace(/https?:\/\/[^\s<]+|www\.[^\s<]+|[a-z0-9.-]+\.[a-z]{2,63}(\/[^\s<]*)?/gi, '') // URLs
+        .trim();
+      
+      // Si après nettoyage il ne reste que des espaces, c'est que c'est seulement des emotes/mentions/URLs
+      return cleaned.length === 0;
+    }
+
     function renderEmotesSafe(text){
       if (!text) return "";
 
@@ -973,7 +1022,7 @@
           const last = parts.length ? parts[parts.length - 1] : "";
           if (!last) return full;
           const url = EMOTE_BASE + last;
-          return '<img class="msg-emote" src="'+url+'" alt="" loading="lazy" referrerpolicy="no-referrer">';
+          return '<img class="msg-emote ll-emote--emoji" src="'+url+'" alt="" loading="lazy" referrerpolicy="no-referrer">';
         });
       }
 
@@ -984,7 +1033,8 @@
         const k = emoteKey(kind, name);
         const url = EMOTES_MAP.get(k);
         if (!url) return full; // fallback: keep token visible
-        return '<img class="msg-emote" src="'+escapeHtml(url)+'" alt="'+full+'" title="'+full+'" loading="lazy" referrerpolicy="no-referrer">';
+        const kindClass = kind === "g" ? "ll-emote--gif" : "ll-emote--emoji";
+        return '<img class="msg-emote '+kindClass+'" src="'+escapeHtml(url)+'" alt="'+full+'" title="'+full+'" loading="lazy" referrerpolicy="no-referrer">';
       });
 
       return safe;
@@ -1302,7 +1352,8 @@
 
       // body
       const body = document.createElement("div");
-      body.className = "chatBodyText";
+      const emotesOnly = isEmotesOnly(m.body || "");
+      body.className = "chatBodyText" + (emotesOnly ? " emotes-only" : "");
       body.innerHTML = renderEmotesSafe(m.body || "");
       content.appendChild(body);
 

@@ -123,16 +123,34 @@ async function load(){
   }
 
   try{
-    const url =
-      `${API}/overlay/api/viewers?slug=${encodeURIComponent(SLUG)}` +
-      `&token=${encodeURIComponent(TOKEN)}` +
-      `&_=${Date.now()}`;
-
-    const r = await fetch(url, { cache: "no-store" });
-    const j = await r.json().catch(() => null);
-
-    const v = Number(j && (j.viewers != null ? j.viewers : j.count));
-    const val = Number.isFinite(v) ? v : 0;
+    // ✅ UTILISER LA MÊME LOGIQUE QUE LA PAGE LIVES
+    // 1. Essayer l'endpoint /lives qui retourne déjà les viewers LunaLive (comme Lives)
+    // Structure: [{ id, slug, displayName, title, viewers, liveStartedAt, thumbUrl }]
+    let url = `${API}/lives?_=${Date.now()}`;
+    let r = await fetch(url, { cache: "no-store" });
+    let j = await r.json().catch(() => null);
+    
+    let val = 0;
+    
+    if (r.ok && j && Array.isArray(j)) {
+      // Chercher ce streamer dans la liste des lives
+      const live = j.find(l => l.slug === SLUG);
+      if (live && typeof live.viewers === "number") {
+        val = live.viewers;
+      }
+    }
+    
+    // 2. Si pas trouvé dans /lives, utiliser l'endpoint overlay (fallback comme Lives)
+    if (val === 0) {
+      url = `${API}/overlay/api/viewers?slug=${encodeURIComponent(SLUG)}&token=${encodeURIComponent(TOKEN)}&_=${Date.now()}`;
+      r = await fetch(url, { cache: "no-store" });
+      j = await r.json().catch(() => null);
+      
+      if (r.ok && j) {
+        const v = j?.viewers != null ? j.viewers : j.count;
+        val = Number.isFinite(v) ? v : 0;
+      }
+    }
 
     const visible = !(HIDE0 && (!val || val <= 0));
     box.style.visibility = visible ? "visible" : "hidden";
