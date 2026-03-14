@@ -3,9 +3,9 @@
 
 import type { Request, Response as ExResponse } from "express";
 import { pool } from "../db";
-import { r2Enabled, buildPublicUrl, putR2Buffer } from "../r2";
+import { r2Enabled, buildPublicUrl, putR2Buffer } from "../clips/r2";
 import { spawn } from "child_process";
-import { FFMPEG_BIN, FFMPEG_OK } from "../ffmpeg";
+import { FFMPEG_BIN, FFMPEG_OK } from "./thumbs";
 
 const CACHE_MS = 3_600_000; // 1h
 
@@ -54,7 +54,7 @@ export async function generateAndStoreThumbnail(clipId: number, mp4Url: string):
         try {
           // 2) Stocker dans R2
           const r2Key = `clips/thumbnails/${clipId}.jpg`;
-          const uploadOk = await putR2Buffer(r2Key, buf, "image/jpeg");
+          const uploadOk = await putR2Buffer({ key: r2Key, buffer: buf, contentType: "image/jpeg" });
           
           if (!uploadOk) {
             console.warn(`[thumbs] generateThumbnail R2 upload failed clipId=${clipId}`);

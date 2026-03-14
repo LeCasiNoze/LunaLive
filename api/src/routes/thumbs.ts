@@ -38,8 +38,8 @@ const candidates = [
   ffmpegStatic,
 ].filter(Boolean) as string[];
 
-const FFMPEG_BIN = (candidates.find(canRun) || candidates[0] || "ffmpeg").trim();
-const FFMPEG_OK = canRun(FFMPEG_BIN);
+export const FFMPEG_BIN = (candidates.find(canRun) || candidates[0] || "ffmpeg").trim();
+export const FFMPEG_OK = canRun(FFMPEG_BIN);
 
 console.log(`[thumbs] ffmpeg selected bin=${FFMPEG_BIN} ok=${FFMPEG_OK}`);
 

@@ -292,9 +292,9 @@ export async function setClipMp4Success(clipId: number, info: { mp4_key: string;
   (async () => {
     try {
       // Import dynamique pour éviter dépendances circulaires
-      const { r2Enabled, buildPublicUrl, putR2Buffer } = await import("../r2.js");
+      const { r2Enabled, buildPublicUrl, putR2Buffer } = await import("../clips/r2.js");
       const { spawn } = await import("child_process");
-      const { FFMPEG_BIN, FFMPEG_OK } = await import("../ffmpeg.js");
+      const { FFMPEG_BIN, FFMPEG_OK } = await import("../routes/thumbs.js");
 
       if (!FFMPEG_OK || !r2Enabled()) return;
 
@@ -338,7 +338,7 @@ export async function setClipMp4Success(clipId: number, info: { mp4_key: string;
         try {
           // Stocker dans R2
           const r2Key = `clips/thumbnails/${clipId}.jpg`;
-          const uploadOk = await putR2Buffer(r2Key, buf, "image/jpeg");
+          const uploadOk = await putR2Buffer({ key: r2Key, buffer: buf, contentType: "image/jpeg" });
           
           if (!uploadOk) {
             console.warn(`[store] thumbnail R2 upload failed clipId=${clipId}`);

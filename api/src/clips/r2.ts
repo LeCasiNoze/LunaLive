@@ -85,6 +85,30 @@ export async function putFileToR2(params: { key: string; contentType: string; fi
   );
 }
 
+export async function putR2Buffer(params: { key: string; contentType: string; buffer: Buffer }): Promise<boolean> {
+  try {
+    const Bucket = mustEnv("R2_BUCKET");
+    const client = makeS3Client();
+
+    const k = String(params.key || "").replace(/^\/+/, "");
+    if (!k) throw new Error("r2_key_required");
+
+    await client.send(
+      new PutObjectCommand({
+        Bucket,
+        Key: k,
+        Body: params.buffer,
+        ContentType: String(params.contentType || "application/octet-stream"),
+        CacheControl: "public, max-age=31536000, immutable",
+      })
+    );
+    return true;
+  } catch (error) {
+    console.error('[r2] putR2Buffer failed:', error);
+    return false;
+  }
+}
+
 export async function deleteFromR2(key: string) {
   const Bucket = mustEnv("R2_BUCKET");
   const client = makeS3Client();
