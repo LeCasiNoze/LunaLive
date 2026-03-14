@@ -226,6 +226,7 @@ publicRouter.get(
         'id', u.id,
         'username', u.username,
         'role', u.role,
+        'avatarUrl', u.avatar_path,
         'user_subscriptions', COALESCE((
           SELECT jsonb_agg(
             jsonb_build_object(
