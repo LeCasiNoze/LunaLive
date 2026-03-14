@@ -330,6 +330,7 @@ clipsPublicRouter.get("/streamers/:slug/clips", async (req, res) => {
       bc.pre_sec,
       bc.post_sec,
       bc.mp4_key,
+      bc.thumbnail_url, -- ✅ AJOUT: colonne thumbnail_url
 
       COALESCE(cnt.cnt,0)::int AS likes_count,
       CASE WHEN ul.user_id IS NULL THEN false ELSE true END AS my_liked
@@ -600,6 +601,7 @@ clipsPublicRouter.get("/clips/top", async (req, res) => {
       bc.pre_sec,
       bc.post_sec,
       bc.mp4_key,
+      bc.thumbnail_url, -- ✅ AJOUT: colonne thumbnail_url
 
       s.slug AS streamer_slug,
       s.display_name AS streamer_display_name,
@@ -667,7 +669,7 @@ clipsPublicRouter.get("/clips/top", async (req, res) => {
       // ✅ vrai clip mp4 (2 min) si prêt
       clipUrl,
 
-      thumbUrl: `${base}/thumbs/clips/${Number(x.id)}.jpg`,
+      thumbUrl: x.thumbnail_url || `${base}/thumbs/clips/${Number(x.id)}.jpg`,
 
       likesCount: Number(x.likes_count || 0),
       myLiked: !!x.my_liked,

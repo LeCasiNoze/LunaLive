@@ -1157,7 +1157,30 @@ export default function LivesPage() {
                           style={{ textDecoration: "none", color: "inherit", display: "block", padding: 0, cursor: "pointer" }}
                           title={hasMoreThan4 ? "Ouvrir la liste des clips du mois" : c.title ? `${c.title} — ${c.likesCount} likes` : `${c.likesCount} likes`}
                         >
-                          <div className="clipThumb" style={{ backgroundImage: `url(${thumb})` }} />
+                          <img
+                            src={thumb}
+                            alt=""
+                            loading="lazy"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                              backgroundColor: "#1a1a1a",
+                            }}
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              target.style.display = "none";
+                              const parent = target.parentElement;
+                              if (parent) {
+                                parent.style.background = `linear-gradient(135deg, #7c3aed 0%, #4c1d95 100%)`;
+                                parent.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:white;font-size:24px;">🎬</div>';
+                              }
+                            }}
+                            onLoad={(e) => {
+                              const target = e.currentTarget;
+                              target.style.opacity = "1";
+                            }}
+                          />
                           <div className="clipPlay"><span>▶</span></div>
                           <ClipLikesBadge likes={c.likesCount} corner={corner} />
                           {c.avatarUrl ? (
@@ -1215,7 +1238,7 @@ export default function LivesPage() {
                             background: "radial-gradient(700px 220px at 20% 0%, rgba(251,191,36,0.10), transparent 60%), radial-gradient(600px 200px at 90% 10%, rgba(124,92,252,0.08), transparent 55%), rgba(13,11,24,0.82)",
                           }}>
                             <div className="liveThumb" style={{ borderRadius: "18px 18px 0 0", border: "none" }}>
-                              <LiveBackdrop url={live.thumbFinal} />
+                              <img src={live.thumbFinal} alt="" loading="lazy" />
                               <div className="liveTopRow">
                                 <Pill tone="gold" title="Mise en avant">✨ FEATURED</Pill>
                                 {live.durationLabel ? <Pill tone="neutral" title="Durée du live">⏱ {live.durationLabel}</Pill> : <span />}
@@ -1231,16 +1254,26 @@ export default function LivesPage() {
                       ))}
                     </section>
                   </div>
-                )}
 
-                {/* Normal */}
-                <div style={{ marginTop: 0 }}>
-                  <section className="livesGrid">
-                    {normalLives.map((live) => (
-                      <Link key={live.id} to={`/s/${live.slug}`} className="liveLink">
-                        <GlassCard className="hoverGlow" style={{
-                          border: "1px solid rgba(124,92,252,0.16)",
-                          background: "radial-gradient(600px 200px at 15% 0%, rgba(124,92,252,0.10), transparent 60%), rgba(13,11,24,0.82)",
+                  {/* Normal */}
+                  <div style={{ marginTop: 0 }}>
+                    <section className="livesGrid">
+                      {normalLives.map((live) => (
+                        <Link key={live.id} to={`/s/${live.slug}`} className="liveLink">
+                          <GlassCard className="hoverGlow" style={{
+                            border: "1px solid rgba(124,92,252,0.16)",
+                            background: "radial-gradient(600px 200px at 15% 0%, rgba(124,92,252,0.10), transparent 60%), rgba(13,11,24,0.82)",
+                          }}>
+                            <div className="liveThumb" style={{ borderRadius: "18px 18px 0 0", border: "none" }}>
+                              <img src={live.thumbFinal} alt="" loading="lazy" />
+                              <div className="liveTopRow">
+                                <Pill tone="live" title="En direct"><span className="livePing" aria-hidden />LIVE</Pill>
+                                {live.durationLabel ? <Pill tone="neutral" title="Durée du live">⏱ {live.durationLabel}</Pill> : <span />}
+                              </div>
+                              <div className="liveBottomRow">
+                                <span />
+                                <Pill tone="neutral" title="Viewers">👁 {formatViewers(live.viewers)}</Pill>
+                              </div>
                         }}>
                           <div className="liveThumb" style={{ borderRadius: "18px 18px 0 0", border: "none" }}>
                             <LiveBackdrop url={live.thumbFinal} />

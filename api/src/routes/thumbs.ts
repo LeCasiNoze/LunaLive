@@ -245,194 +245,26 @@ thumbsRouter.get("/thumbs/clips/:id.jpg", async (req: ExRequest, res: ExResponse
   const clipId = Number(req.params.id || 0);
   if (!Number.isFinite(clipId) || clipId <= 0) return res.status(400).end();
 
-  const key = `clip:${clipId}`;
-
-  const hit = cache.get(key);
-  if (hit && hit.exp > Date.now()) return sendCached(res, hit);
-
-  if (!FFMPEG_OK) return sendSvg(res, svgFallback(`clip ${clipId}`));
-
+  // ✅ GARDE-FOU TEMPORAIRE: vérifier thumbnail_url en BDD d'abord
   const { rows } = await pool.query(
-    `SELECT id, vod_url, at_sec, pre_sec, post_sec, title, mp4_key
-     FROM bot_clips
-     WHERE id=$1 AND deleted_ts IS NULL
-     LIMIT 1`,
+    `SELECT thumbnail_url FROM bot_clips WHERE id = $1 AND deleted_ts IS NULL LIMIT 1`,
     [clipId]
   );
 
-  const clip = rows?.[0] || null;
-  if (!clip) return sendSvg(res, svgFallback(`clip ${clipId}`));
+  const clip = rows?.[0];
+  if (!clip) return res.status(404).end();
 
-  const title = String(clip.title || `clip ${clipId}`);
-
-  const mp4Key = clip.mp4_key ? String(clip.mp4_key).trim() : "";
-  const mp4Url = mp4Key && r2Enabled() ? String(buildPublicUrl(mp4Key) || "").trim() : "";
-
-  if (mp4Url) {
-    const args = [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-y",
-      "-nostdin",
-      "-rw_timeout",
-      "15000000",
-      "-ss",
-      "1",
-      "-i",
-      mp4Url,
-      "-an",
-      "-frames:v",
-      "1",
-      "-vf",
-      "scale=640:-1",
-      "-q:v",
-      "5",
-      "-f",
-      "image2pipe",
-      "-vcodec",
-      "mjpeg",
-      "pipe:1",
-    ];
-
-    const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
-
-    const chunks: Buffer[] = [];
-    let stderr = "";
-
-    const killTimer = setTimeout(() => {
-      try {
-        p.kill("SIGKILL");
-      } catch {}
-    }, 15_000);
-
-    req.on("close", () => {
-      try {
-        p.kill("SIGKILL");
-      } catch {}
-    });
-
-    p.stdout.on("data", (d: Buffer) => chunks.push(Buffer.from(d)));
-    p.stderr.on("data", (d: Buffer) => (stderr += String(d)));
-
-    p.on("error", (e) => {
-      clearTimeout(killTimer);
-      console.warn(`[thumbs] clip(mp4) ffmpeg spawn error bin=${FFMPEG_BIN} clipId=${clipId}`, e);
-      return sendSvg(res, svgFallback(title));
-    });
-
-    p.on("close", (code, signal) => {
-      clearTimeout(killTimer);
-
-      const buf = Buffer.concat(chunks);
-      const ok = code === 0 && buf.length > 5_000;
-
-      if (ok) {
-        cache.set(key, { exp: Date.now() + CACHE_MS, buf, contentType: "image/jpeg" });
-        res.set("Content-Type", "image/jpeg");
-        res.set("Cache-Control", "public, max-age=300");
-        return res.end(buf);
-      }
-
-      console.warn(
-        `[thumbs] clip(mp4) ffmpeg failed bin=${FFMPEG_BIN} clipId=${clipId} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 900) || ""}`
-      );
-      return sendSvg(res, svgFallback(title));
-    });
-
-    return;
+  // ✅ Si thumbnail_url existe, rediriger vers l'URL stockée (pas de FFMPEG)
+  if (clip.thumbnail_url) {
+    try {
+      return res.redirect(302, clip.thumbnail_url);
+    } catch {
+      // Si redirection échoue, continuer vers fallback
+    }
   }
 
-  const vodUrl = clip.vod_url ? String(clip.vod_url) : "";
-  if (!vodUrl) return sendSvg(res, svgFallback(title));
-
-  const at = Math.max(0, Number(clip.at_sec || 0));
-  const pre = Math.max(0, Number(clip.pre_sec || 105));
-  const post = Math.max(0, Number(clip.post_sec || 15));
-
-  const startSec = Math.max(0, at - pre);
-  const durationSec = Math.max(1, pre + post);
-  const previewSec = Math.min(startSec + 60, startSec + durationSec - 1);
-
-  const HLS_HEADERS =
-    "Origin: https://dlive.tv\r\n" +
-    "Referer: https://dlive.tv/\r\n" +
-    "User-Agent: Mozilla/5.0\r\n";
-
-  const args = [
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-y",
-    "-nostdin",
-    "-protocol_whitelist",
-    "file,http,https,tcp,tls",
-    "-headers",
-    HLS_HEADERS,
-    "-user_agent",
-    "Mozilla/5.0",
-    "-rw_timeout",
-    "15000000",
-    "-ss",
-    String(previewSec),
-    "-i",
-    vodUrl,
-    "-an",
-    "-frames:v",
-    "1",
-    "-vf",
-    "scale=640:-1",
-    "-q:v",
-    "5",
-    "-f",
-    "image2pipe",
-    "-vcodec",
-    "mjpeg",
-    "pipe:1",
-  ];
-
-  const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
-
-  const chunks: Buffer[] = [];
-  let stderr = "";
-
-  const killTimer = setTimeout(() => {
-    try {
-      p.kill("SIGKILL");
-    } catch {}
-  }, 15_000);
-
-  req.on("close", () => {
-    try {
-      p.kill("SIGKILL");
-    } catch {}
-  });
-
-  p.stdout.on("data", (d: Buffer) => chunks.push(Buffer.from(d)));
-  p.stderr.on("data", (d: Buffer) => (stderr += String(d)));
-
-  p.on("error", (e) => {
-    clearTimeout(killTimer);
-    console.warn(`[thumbs] clip(vod) ffmpeg spawn error bin=${FFMPEG_BIN} clipId=${clipId}`, e);
-    return sendSvg(res, svgFallback(title));
-  });
-
-  p.on("close", (code, signal) => {
-    clearTimeout(killTimer);
-
-    const buf = Buffer.concat(chunks);
-    const ok = code === 0 && buf.length > 5_000;
-
-    if (ok) {
-      cache.set(key, { exp: Date.now() + CACHE_MS, buf, contentType: "image/jpeg" });
-      res.set("Content-Type", "image/jpeg");
-      res.set("Cache-Control", "public, max-age=300");
-      return res.end(buf);
-    }
-
-    console.warn(
-      `[thumbs] clip(vod) ffmpeg failed bin=${FFMPEG_BIN} clipId=${clipId} code=${code} signal=${signal} bytes=${buf.length} err=${stderr?.slice(0, 900) || ""}`
-    );
-    return sendSvg(res, svgFallback(title));
-  });
+  // ✅ GARDE-FOU TEMPORAIRE: désactiver fallback FFMPEG pour éviter les spawns massifs
+  // Retourner SVG placeholder au lieu de générer dynamiquement
+  console.warn(`[thumbs] Fallback désactivé pour clip ${clipId} - pas de thumbnail_url`);
+  return sendSvg(res, svgFallback(`clip ${clipId}`));
 });

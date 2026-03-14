@@ -287,6 +287,86 @@ export async function setClipMp4Success(clipId: number, info: { mp4_key: string;
     `,
     [clipId, String(info.mp4_key || "").slice(0, 500), Date.now(), Math.max(0, Number(info.mp4_size || 0))]
   );
+
+  // ✅ Générer thumbnail après MP4 prêt
+  (async () => {
+    try {
+      // Import dynamique pour éviter dépendances circulaires
+      const { r2Enabled, buildPublicUrl, putR2Buffer } = await import("../r2.js");
+      const { spawn } = await import("child_process");
+      const { FFMPEG_BIN, FFMPEG_OK } = await import("../ffmpeg.js");
+
+      if (!FFMPEG_OK || !r2Enabled()) return;
+
+      const mp4Url = buildPublicUrl(info.mp4_key);
+      if (!mp4Url) return;
+
+      // Extraire thumbnail avec FFMPEG
+      const args = [
+        "-hide_banner", "-loglevel", "error", "-y", "-nostdin", "-rw_timeout", "10000000",
+        "-ss", "1", "-i", mp4Url,
+        "-an", "-frames:v", "1", "-vf", "scale=640:-1", "-q:v", "5",
+        "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"
+      ];
+
+      const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
+      const chunks: Buffer[] = [];
+      let stderr = "";
+
+      const killTimer = setTimeout(() => {
+        try { p.kill("SIGKILL"); } catch {}
+      }, 10_000);
+
+      p.stdout.on("data", (d: Buffer) => chunks.push(Buffer.from(d)));
+      p.stderr.on("data", (d: Buffer) => (stderr += String(d)));
+
+      p.on("error", (e: any) => {
+        clearTimeout(killTimer);
+        console.warn(`[store] thumbnail ffmpeg spawn error clipId=${clipId}`, e);
+      });
+
+      p.on("close", async (code: any, signal: any) => {
+        clearTimeout(killTimer);
+        const buf = Buffer.concat(chunks);
+        const ok = code === 0 && buf.length > 5_000;
+
+        if (!ok) {
+          console.warn(`[store] thumbnail ffmpeg failed clipId=${clipId} code=${code} bytes=${buf.length}`);
+          return;
+        }
+
+        try {
+          // Stocker dans R2
+          const r2Key = `clips/thumbnails/${clipId}.jpg`;
+          const uploadOk = await putR2Buffer(r2Key, buf, "image/jpeg");
+          
+          if (!uploadOk) {
+            console.warn(`[store] thumbnail R2 upload failed clipId=${clipId}`);
+            return;
+          }
+
+          // Générer URL publique
+          const publicUrl = buildPublicUrl(r2Key);
+          if (!publicUrl) {
+            console.warn(`[store] thumbnail URL build failed clipId=${clipId}`);
+            return;
+          }
+
+          // Mettre à jour BDD
+          await pool.query(
+            `UPDATE bot_clips SET thumbnail_url = $1 WHERE id = $2`,
+            [publicUrl, clipId]
+          );
+
+          console.log(`[store] thumbnail generated clipId=${clipId} url=${publicUrl}`);
+        } catch (err: any) {
+          console.warn(`[store] thumbnail storage failed clipId=${clipId}`, err);
+        }
+      });
+    } catch (err: any) {
+      console.warn(`[store] thumbnail generation exception clipId=${clipId}`, err);
+    }
+  })();
 }
 
 export async function setClipMp4Error(clipId: number, error: string) {
@@ -313,7 +393,7 @@ export async function listMp4KeysToCleanup(cutoffMs: number, limit = 500) {
         deleted_ts IS NOT NULL
         OR created_ts < $1
       )
-    ORDER BY created_ts ASC
+    ORDER BY id DESC
     LIMIT $2
     `,
     [cutoffMs, lim]
