@@ -54,6 +54,7 @@ import { mig045_referrals_welcome } from "./mig045_referrals_welcome.js";
 import { mig046_events_engine } from "./mig046_events_engine.js";
 import { mig047_event_viewer_week } from "./mig047_event_viewer_week.js";
 import { mig048_lunaclip_admin_ipc } from "./mig048_lunaclip_admin_ipc.js";
+import { mig049_clips_thumbnail_url } from "./mig049_clips_thumbnail_url.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -124,4 +125,5 @@ export async function migrateAll(pool: Pool) {
   await mig047_event_viewer_week(pool);
   await mig_lunaclip(pool);
   await mig048_lunaclip_admin_ipc(pool);
+  await mig049_clips_thumbnail_url(pool);
 }

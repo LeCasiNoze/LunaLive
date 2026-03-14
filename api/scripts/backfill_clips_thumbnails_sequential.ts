@@ -14,9 +14,9 @@ interface ClipToProcess {
 async function generateThumbnailForClip(clipId: number, mp4Key: string): Promise<string | null> {
   try {
     // Import dynamique pour éviter dépendances circulaires
-    const { r2Enabled, buildPublicUrl, putR2Buffer } = await import("../src/r2.js");
+    const { r2Enabled, buildPublicUrl, putR2Buffer } = await import("../src/clips/r2.js");
     const { spawn } = await import("child_process");
-    const { FFMPEG_BIN, FFMPEG_OK } = await import("../src/ffmpeg.js");
+    const { FFMPEG_BIN, FFMPEG_OK } = await import("../src/routes/thumbs.js");
 
     if (!FFMPEG_OK || !r2Enabled()) {
       console.warn(`[backfill] FFMPEG ou R2 non disponible pour clip ${clipId}`);
@@ -73,7 +73,7 @@ async function generateThumbnailForClip(clipId: number, mp4Key: string): Promise
         try {
           // Stocker dans R2
           const r2Key = `clips/thumbnails/${clipId}.jpg`;
-          const uploadOk = await putR2Buffer(r2Key, buf, "image/jpeg");
+          const uploadOk = await putR2Buffer({ key: r2Key, buffer: buf, contentType: "image/jpeg" });
           
           if (!uploadOk) {
             console.warn(`[backfill] R2 upload failed clip ${clipId}`);
@@ -216,7 +216,7 @@ async function backfillThumbnailsSequential() {
 }
 
 // Lancer le backfill si script exécuté directement
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   backfillThumbnailsSequential();
 }
 
