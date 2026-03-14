@@ -37,14 +37,6 @@ function apiBase() {
 }
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
-function absolutize(url: string | null) {
-  if (!url) return null;
-  const u = String(url);
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  if (u.startsWith("/") && API_BASE) return `${API_BASE}${u}`;
-  return u;
-}
-
 function pickStreamerAvatarUrlFromStreamer(streamer: any) {
   // ✅ Utiliser user.avatarUrl du backend = /avatars/u/{id} (comme le header)
   const userAvatarUrl = streamer?.user?.avatarUrl ?? null;
