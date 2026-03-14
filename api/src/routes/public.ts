@@ -257,7 +257,7 @@ publicRouter.get(
         'username', u.username,
         'role', u.role,
         -- ✅ Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
-        ('/avatars/u/' || s.user_id::text) AS "avatarUrl",
+        'avatarUrl', ('/avatars/u/' || s.user_id::text),
         'user_subscriptions', COALESCE((
           SELECT jsonb_agg(
             jsonb_build_object(
