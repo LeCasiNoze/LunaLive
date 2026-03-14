@@ -69,7 +69,7 @@ export async function mig050_fix_missing_avatars(pool: Pool) {
     [DEFAULT_AVATARS.length]
   );
   
-  console.log(`🎯 ${updateResult.rowCount} avatars attribués`);
+  console.log(`🎯 ${(updateResult.rowCount ?? 0)} avatars attribués`);
   
   // 3. Afficher quelques exemples
   for (let i = 0; i < Math.min(5, updateResult.rows.length); i++) {
@@ -89,8 +89,8 @@ export async function mig050_fix_missing_avatars(pool: Pool) {
      WHERE u.avatar_path IS NULL OR u.avatar_path = ''`
   );
   
-  if (streamerResult.rowCount > 0) {
-    console.log(`\n🎬 ${streamerResult.rowCount} streamers sans avatar :`);
+  if ((streamerResult.rowCount ?? 0) > 0) {
+    console.log(`\n🎬 ${(streamerResult.rowCount ?? 0)} streamers sans avatar :`);
     
     for (const streamer of streamerResult.rows) {
       console.log(`  🎬 Streamer ${streamer.display_name || streamer.slug} → avatar manquant`);

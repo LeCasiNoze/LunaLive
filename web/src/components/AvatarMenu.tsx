@@ -3,6 +3,7 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import type { User } from "../lib/types";
 import { useOnClickOutside, asHTMLElementRef } from "../hooks/useOnClickOutside";
+import { initialOf } from "../lib/format";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
