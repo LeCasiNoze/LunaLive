@@ -18,7 +18,8 @@ function absolutize(url: string | null) {
   if (!url) return null;
   const u = String(url);
   if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  if (u.startsWith("/") && API_BASE) return `${API_BASE}${u}`;
+  // ✅ Uniquement /avatars/u/... va sur API_BASE (comme le header)
+  if (u.startsWith("/")) return `${API_BASE}${u}`;
   return u;
 }
 function withMinuteBust(url: string, nowMs: number) {
@@ -29,11 +30,14 @@ function initialsOf(name: string) {
   return String(name || "?").trim().slice(0, 1).toUpperCase() || "?";
 }
 function pickAvatarUrl(s: any) {
-  const uid = s?.ownerUserId ?? s?.owner_user_id ?? s?.userId ?? s?.user_id ?? null;
-  const raw  = s?.avatarUrl ?? s?.avatar_url ?? null;
-  const direct = raw ? absolutize(String(raw)) : null;
-  const byUid  = uid ? absolutize(`/avatars/u/${uid}?v=${Math.floor(Date.now() / 60000)}`) : null;
-  return direct || byUid;
+  // Priorité 1: Avatar perso uploadé (déjà dans avatarUrl)
+  // Priorité 2: Avatar par défaut (déjà dans avatarUrl depuis le backend)
+  // Priorité 3: Fallback svgThumb si vraiment rien
+  const avatarUrl = s?.avatarUrl ?? null;
+  if (avatarUrl) {
+    return absolutize(avatarUrl);
+  }
+  return svgThumb(s?.displayName || "Streamer");
 }
 
 /* ─── CSS ────────────────────────────────────────────────────────────── */
@@ -547,12 +551,21 @@ export default function BrowsePage() {
                     <div className="bp-card-row">
                       {/* Avatar */}
                       <div className="bp-ava" aria-hidden>
-                        {initial}
-                        {avatar && (
+                        {avatar ? (
                           <img
                             src={avatar} alt=""
-                            onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                            onLoad={() => console.log(`Browse - Avatar OK pour ${s.displayName}:`, avatar)}
+                            onError={e => { 
+                              console.log(`Browse - Avatar ERREUR pour ${s.displayName}:`, avatar);
+                              // Si l'avatar par défaut ne charge pas, utiliser svgThumb
+                              if (avatar.includes('/avatars/u/')) {
+                                const fallbackSvg = svgThumb(s.displayName);
+                                (e.currentTarget as HTMLImageElement).src = fallbackSvg;
+                              }
+                            }}
                           />
+                        ) : (
+                          <span>{initial}</span>
                         )}
                       </div>
 

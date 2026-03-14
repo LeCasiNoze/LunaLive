@@ -57,6 +57,18 @@ function with5MinBust(url: string, nowMs: number) {
   return url.includes("?") ? `${url}&t=${t}` : `${url}?t=${t}`;
 }
 
+function getStreamerAvatarUrl(live: any): string | null {
+  const avatarUrl = live?.avatarUrl ?? null;
+  if (avatarUrl) {
+    if (avatarUrl.startsWith("/")) {
+      return `${API_BASE}${avatarUrl}`;
+    }
+    return avatarUrl;
+  }
+  
+  return svgThumb(live?.displayName || "Streamer");
+}
+
 function absolutize(url: string | null) {
   if (!url) return null;
   const u = String(url);
@@ -227,7 +239,7 @@ function LiveCardBody({ live, accentColor }: {
           flexShrink: 0,
         }} aria-hidden>
           <img
-            src={absolutize((live as any).avatarUrl || (live as any).avatar_url || null) || svgThumb(live.displayName || "Streamer")}
+            src={getStreamerAvatarUrl(live) || svgThumb(live.displayName || "Streamer")}
             alt=""
             style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).src = svgThumb(live.displayName || "Streamer"); }}
@@ -284,6 +296,8 @@ async function fetchStreamersIndex(): Promise<{
         : s.avatar_url != null ? String(s.avatar_url)
         : s.profilePictureUrl != null ? String(s.profilePictureUrl)
         : s.profile_picture_url != null ? String(s.profile_picture_url)
+        : s.user?.avatarUrl != null ? String(s.user?.avatarUrl)
+        : s.user?.avatar_path != null ? String(s.user?.avatar_path)
         : null;
 
       const followersCount = Number(
@@ -1041,7 +1055,7 @@ export default function LivesPage() {
     viewersTotal: lives.reduce((acc, x) => acc + (Number(x.viewers) || 0), 0),
   }), [lives]);
 
-  const sorted       = React.useMemo(() => [...lives].sort((a, b) => Number(b.viewers) - Number(a.viewers)), [lives]);
+  const sorted        = React.useMemo(() => [...lives].sort((a, b) => Number(b.viewers) - Number(a.viewers)), [lives]);
   const featuredLives = React.useMemo(() => sorted.filter((x) => !!x.featured), [sorted]);
   const normalLives   = React.useMemo(() => sorted.filter((x) => !x.featured),  [sorted]);
 
@@ -1254,26 +1268,16 @@ export default function LivesPage() {
                       ))}
                     </section>
                   </div>
+                )}
 
-                  {/* Normal */}
-                  <div style={{ marginTop: 0 }}>
-                    <section className="livesGrid">
-                      {normalLives.map((live) => (
-                        <Link key={live.id} to={`/s/${live.slug}`} className="liveLink">
-                          <GlassCard className="hoverGlow" style={{
-                            border: "1px solid rgba(124,92,252,0.16)",
-                            background: "radial-gradient(600px 200px at 15% 0%, rgba(124,92,252,0.10), transparent 60%), rgba(13,11,24,0.82)",
-                          }}>
-                            <div className="liveThumb" style={{ borderRadius: "18px 18px 0 0", border: "none" }}>
-                              <img src={live.thumbFinal} alt="" loading="lazy" />
-                              <div className="liveTopRow">
-                                <Pill tone="live" title="En direct"><span className="livePing" aria-hidden />LIVE</Pill>
-                                {live.durationLabel ? <Pill tone="neutral" title="Durée du live">⏱ {live.durationLabel}</Pill> : <span />}
-                              </div>
-                              <div className="liveBottomRow">
-                                <span />
-                                <Pill tone="neutral" title="Viewers">👁 {formatViewers(live.viewers)}</Pill>
-                              </div>
+                {/* Normal */}
+                <div style={{ marginTop: 0 }}>
+                  <section className="livesGrid">
+                    {normalLives.map((live) => (
+                      <Link key={live.id} to={`/s/${live.slug}`} className="liveLink">
+                        <GlassCard className="hoverGlow" style={{
+                          border: "1px solid rgba(124,92,252,0.16)",
+                          background: "radial-gradient(600px 200px at 15% 0%, rgba(124,92,252,0.10), transparent 60%), rgba(13,11,24,0.82)",
                         }}>
                           <div className="liveThumb" style={{ borderRadius: "18px 18px 0 0", border: "none" }}>
                             <LiveBackdrop url={live.thumbFinal} />
@@ -1295,6 +1299,7 @@ export default function LivesPage() {
               </>
             )}
           </section>
+
         </div>
       </div>
 

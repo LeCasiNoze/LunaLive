@@ -12,6 +12,7 @@ import { ChatPanel }     from "../../components/ChatPanel";
 import { LoginModal }    from "../../components/LoginModal";
 import { SubModal }      from "../../components/SubModal";
 import { useAuth }       from "../../auth/AuthProvider";
+import { svgThumb } from "../../lib/thumb";
 import { setSeo, setDynamicRouteSeo }        from "../../lib/seo";
 
 import { EyeIcon, ChatIcon, BellIcon } from "./components/icons";
@@ -45,26 +46,18 @@ function absolutize(url: string | null) {
 }
 
 function pickStreamerAvatarUrlFromStreamer(streamer: any) {
-  const uid =
-    streamer?.ownerUserId ?? streamer?.owner_user_id ?? streamer?.userId ??
-    streamer?.user_id ?? streamer?.ownerId ?? streamer?.owner_id ??
-    streamer?.user?.id ?? streamer?.ownerUser?.id ?? null;
-  
-  // ✅ PRIORITÉ: avatar de l'objet user (nouveau champ ajouté)
-  const userAvatarRaw = streamer?.user?.avatarUrl ?? streamer?.user?.avatar_path ?? null;
-  const userAvatar = userAvatarRaw ? absolutize(String(userAvatarRaw)) || String(userAvatarRaw) : null;
-  
-  // ✅ FALLBACK: avatar direct du streamer (ancien système)
-  const directRaw =
-    streamer?.avatarUrl ?? streamer?.avatar_url ?? streamer?.avatar ??
-    streamer?.profilePicUrl ?? streamer?.profile_pic_url ??
-    streamer?.profile?.avatarUrl ?? null;
-  const direct = directRaw ? absolutize(String(directRaw)) || String(directRaw) : null;
-  
-  // ✅ FALLBACK: avatar par ID si aucun des deux
-  const byUid  = uid ? absolutize(`/avatars/u/${uid}?v=${Math.floor(Date.now() / 60000)}`) : null;
-  
-  return userAvatar || direct || byUid;
+  // ✅ Utiliser user.avatarUrl du backend = /avatars/u/{id} (comme le header)
+  const userAvatarUrl = streamer?.user?.avatarUrl ?? null;
+  if (userAvatarUrl) {
+    // ✅ Uniquement /avatars/u/... va sur API_BASE
+    if (userAvatarUrl.startsWith("/")) {
+      return `${API_BASE}${userAvatarUrl}`;
+    }
+    return userAvatarUrl;
+  }
+
+  // ✅ Fallback svgThumb si vraiment rien
+  return svgThumb(streamer?.displayName || "Streamer");
 }
 
 type TabKey    = "about" | "clips" | "vod" | "agenda";

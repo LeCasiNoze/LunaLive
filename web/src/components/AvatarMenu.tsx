@@ -2,20 +2,39 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import type { User } from "../lib/types";
-import { initialOf } from "../lib/format";
 import { useOnClickOutside, asHTMLElementRef } from "../hooks/useOnClickOutside";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
 function getAvatarUrlFromUser(u: any): string | null {
-  const v = [u?.avatarUrl, u?.avatar_url, u?.avatar, u?.photoUrl, u?.photo_url, u?.picture, u?.imageUrl, u?.image_url]
-    .filter(Boolean)[0];
-  if (!v) return null;
-  const s = String(v).trim();
-  if (!s) return null;
-  if (s.startsWith("/Avatar/")) return s;
-  if (s.startsWith("/")) return `${API_BASE}${s}`;
-  return s;
+  // Priorité 1: Avatar perso uploadé (champ avatarUrl)
+  const personalAvatar = u?.avatarUrl ?? u?.avatar_url ?? null;
+  if (personalAvatar) {
+    const s = String(personalAvatar).trim();
+    if (s) {
+      // Si c'est /Avatar/xxx, utiliser le endpoint /avatars/u/{id} qui contient l'upload
+      if (s.startsWith("/Avatar/")) {
+        const uid = Number(u?.id || 0);
+        if (uid) {
+          const cacheKey = u?.avatarVersion ?? u?.avatar_updated_at ?? u?.updatedAt ?? uid;
+          return buildApiAvatarUrl(uid, cacheKey);
+        }
+      }
+      // URLs complètes ou autres chemins
+      if (s.startsWith("http://") || s.startsWith("https://")) return s;
+      if (s.startsWith("/")) return `${API_BASE}${s}`;
+      return s;
+    }
+  }
+  
+  // Priorité 2: Avatar par défaut attribué (si pas d'avatar perso)
+  const uid = Number(u?.id || 0);
+  if (uid) {
+    const cacheKey = u?.avatarVersion ?? u?.avatar_updated_at ?? u?.updatedAt ?? uid;
+    return buildApiAvatarUrl(uid, cacheKey);
+  }
+  
+  return null;
 }
 
 function buildApiAvatarUrl(userId: number, cacheKey?: string | number | null) {
@@ -284,7 +303,10 @@ export function AvatarMenu({
   const endpoint = uid ? buildApiAvatarUrl(uid, cacheKey) : null;
   const [imgOk, setImgOk] = React.useState(true);
   React.useEffect(() => setImgOk(true), [direct, endpoint]);
-  const src = direct ?? endpoint;
+  const src = direct;
+
+  // Debug pour voir l'URL finale
+  console.log("AvatarMenu - URL finale:", src);
 
   const myChannelSlug = slugifyUsername((user as any)?.streamerSlug ?? user.username);
   const myChannelHref = myChannelSlug ? `/s/${myChannelSlug}` : "/";
@@ -303,7 +325,15 @@ export function AvatarMenu({
         title={user.username}
       >
         {src && imgOk ? (
-          <img className="av-img" src={src} alt={user.username} onError={() => setImgOk(false)} />
+          <img 
+            className="av-img" 
+            src={src} 
+            alt={user.username} 
+            onError={() => {
+              console.log("AvatarMenu - Erreur de chargement:", src);
+              setImgOk(false);
+            }} 
+          />
         ) : (
           <span className="av-fallback">{initialOf(user.username)}</span>
         )}

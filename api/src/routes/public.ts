@@ -66,8 +66,12 @@ WITH live_streamers AS (
     s.display_name AS "displayName",
     s.title,
     s.thumb_url AS "thumbUrlDb",
-    s.live_started_at AS "liveStartedAt"
+    s.live_started_at AS "liveStartedAt",
+    -- ✅ Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
+    ('/avatars/u/' || s.user_id::text) AS "avatarUrl"
   FROM streamers s
+  LEFT JOIN users u ON u.id = s.user_id
+  LEFT JOIN user_avatars ua ON ua.user_id = s.user_id
   WHERE s.is_live = TRUE
     AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
 ),
@@ -94,7 +98,8 @@ SELECT
   ls.title,
   COALESCE(v.viewers, 0)::int AS viewers,
   ls."thumbUrlDb",
-  ls."liveStartedAt"
+  ls."liveStartedAt",
+  ls."avatarUrl"
 FROM live_streamers ls
 LEFT JOIN live_viewers v ON v.streamer_id = ls.id
 ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
@@ -112,37 +117,62 @@ ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
           slug,
           displayName: String(r.displayName || ""),
           title: String(r.title || ""),
-          viewers: Number(r.viewers || 0), // ✅ viewers LunaLive
+          viewers: Number(r.viewers || 0),
           liveStartedAt: r.liveStartedAt ? String(r.liveStartedAt) : null,
           thumbUrl: r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb,
+          avatarUrl: r.avatarUrl ? String(r.avatarUrl) : null,
         };
       })
     );
   })
 );
 
+// ✅ LIST public content tabs (for DailyBonus modal)
+publicRouter.get(
+  "/content-list",
+  a(async (_req, res) => {
+    // ✅ Ajoute ajoute un préfixe stable pour tes futurs onglets
+    // Exemple conseillé: bonus_
+    const ALLOW_PREFIX = ["guide_", "daily_bonus_", "bonus_"];
+
+    const { rows } = await pool.query(
+      `SELECT key, title, COALESCE(min_role,'viewer') as min_role, updated_at
+       FROM site_content
+       WHERE (${ALLOW_PREFIX.map((_, i) => `key LIKE $${i + 1}`).join(" OR ")})
+       ORDER BY key ASC`,
+      ALLOW_PREFIX.map((p) => `${p}%`)
+    );
+
+    res.json({ ok: true, items: rows });
+  })
+);
 
 publicRouter.get(
   "/streamers",
   a(async (_req, res) => {
     const { rows } = await pool.query(
       `
-WITH base AS (
+WITH 
+  -- ✅ join user (compte streamer) pour avatar_path par défaut
+  LEFT JOIN users u
+    ON u.id = s.user_id
+),
+base AS (
   SELECT
     s.id,
     s.slug,
-    s.display_name AS "displayName",
+    COALESCE(s.display_name, s.slug) AS "displayName",
     s.title,
     s.is_live AS "isLive",
     s.featured,
     s.user_id AS "ownerUserId",
-    CASE
-      WHEN ua.user_id IS NOT NULL THEN ('/avatars/u/' || s.user_id::text)
-      ELSE NULL
-    END AS "avatarUrl"
+    -- ✅ Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
+    ('/avatars/u/' || s.user_id::text) AS "avatarUrl"
   FROM streamers s
   LEFT JOIN user_avatars ua
     ON ua.user_id = s.user_id
+  LEFT JOIN users u
+    ON u.id = s.user_id
   WHERE (s.suspended_until IS NULL OR s.suspended_until < NOW())
 ),
 open_ls AS (
@@ -226,7 +256,8 @@ publicRouter.get(
         'id', u.id,
         'username', u.username,
         'role', u.role,
-        'avatarUrl', u.avatar_path,
+        -- ✅ Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
+        ('/avatars/u/' || s.user_id::text) AS "avatarUrl",
         'user_subscriptions', COALESCE((
           SELECT jsonb_agg(
             jsonb_build_object(
@@ -261,9 +292,11 @@ publicRouter.get(
 
     FROM streamers s
 
-    -- ✅ join user (compte streamer)
+    -- ✅ join user (compte streamer) pour avatar_path par défaut
     LEFT JOIN users u
       ON u.id = s.user_id
+    LEFT JOIN user_avatars ua
+      ON ua.user_id = s.user_id
 
     LEFT JOIN provider_accounts pa
       ON pa.assigned_to_streamer_id = s.id
