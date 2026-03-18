@@ -91,23 +91,133 @@ const staticRouteMetadata = {
         { href: '/hunt', text: '🧿 Challenges Hunt' }
       ]
     }
+  },
+  '/a-propos': {
+    title: 'À propos de LunaLive — Plateforme streaming casino FR',
+    description: 'Découvrez LunaLive : plateforme française de streaming casino en direct, évaluations honnêtes de casinos, challenges Hunt et communauté de streamers.',
+    canonical: `${SITE_URL}/a-propos`,
+    content: {
+      h1: 'À propos de LunaLive',
+      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">LunaLive est une plateforme française de streaming casino en direct, créée par et pour la communauté. Notre mission : offrir un espace de confiance où les passionnés de casino peuvent regarder leurs streamers préférés jouer en live, découvrir des casinos vérifiés et participer à des événements exclusifs.</p>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Contrairement aux sites d'affiliation classiques, LunaLive publie des évaluations transparentes : chaque casino partenaire est évalué par notre équipe ET par la communauté. Les casinos qui ne respectent pas les joueurs sont signalés avec les raisons précises.</p>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">LunaLive propose : des lives casino en direct gratuits, CheckTaSlot pour analyser les sessions de jeu, des Challenges Hunt avec récompenses, une boutique officielle, des événements communautaires et des clips VOD des meilleures sessions.</p>
+      <p style="font-size:14px;line-height:1.6;margin-bottom:20px;color:#555;">Tous les contenus sont accessibles librement. Certaines fonctionnalités premium sont disponibles par abonnement. LunaLive est strictement réservé aux personnes majeures (18 ans et plus).</p>`,
+      links: [
+        { href: '/', text: 'Lives en direct' },
+        { href: '/casinos', text: 'Casinos évalués' },
+        { href: '/browse', text: 'Streamers casino' },
+        { href: '/mentions-legales', text: 'Mentions légales' },
+        { href: '/contact', text: 'Contact' }
+      ],
+      footer: '18+ — Jouez responsable. Joueurs Info Service : 09 74 75 13 13 (appel non surtaxé, 7j/7).'
+    }
+  },
+  '/mentions-legales': {
+    title: 'Mentions légales — LunaLive',
+    description: 'Mentions légales de LunaLive — plateforme française de streaming casino. Informations sur l\'éditeur, l\'hébergement et les conditions d\'utilisation.',
+    canonical: `${SITE_URL}/mentions-legales`,
+    content: {
+      h1: 'Mentions légales',
+      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Conformément aux dispositions de l'article 6 de la loi n°2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique (LCEN), le présent site est édité et exploité par LunaLive.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Hébergement</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Le site LunaLive (lunalive.onrender.com) est hébergé par Render Services, Inc. — 525 Brannan St, Suite 300, San Francisco, CA 94107, États-Unis. Site : render.com.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Propriété intellectuelle</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">L'ensemble des contenus publiés sur LunaLive (textes, images, données communautaires, logos) est protégé par le droit de la propriété intellectuelle. Toute reproduction, représentation ou diffusion sans autorisation expresse est interdite.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Données personnelles</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Le traitement des données personnelles est régi par notre Politique de confidentialité, conforme au RGPD (Règlement UE 2016/679) et à la loi française Informatique et Libertés.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Jeu responsable</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:8px;color:#444;">LunaLive est strictement réservé aux personnes majeures (18 ans et plus). Pour toute aide : Joueurs Info Service au 09 74 75 13 13.</p>`,
+      links: [
+        { href: '/politique-de-confidentialite', text: 'Politique de confidentialité' },
+        { href: '/cgu', text: 'CGU' },
+        { href: '/contact', text: 'Contact' },
+        { href: '/a-propos', text: 'À propos' }
+      ],
+      footer: '18+ — Jouez responsable. Joueurs Info Service : 09 74 75 13 13.'
+    }
+  },
+  '/politique-de-confidentialite': {
+    title: 'Politique de confidentialité — LunaLive',
+    description: 'Politique de confidentialité de LunaLive. Données collectées, droits RGPD, cookies et conservation des données personnelles.',
+    canonical: `${SITE_URL}/politique-de-confidentialite`,
+    content: {
+      h1: 'Politique de confidentialité',
+      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">LunaLive s'engage à protéger la vie privée de ses utilisateurs conformément au Règlement Général sur la Protection des Données (RGPD — Règlement UE 2016/679) et à la loi française Informatique et Libertés.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Données collectées</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">LunaLive collecte : adresse e-mail (lors de l'inscription), données de navigation (logs serveur), préférences de contenu. Aucun cookie publicitaire tiers n'est déposé sans consentement explicite.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Vos droits</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Conformément au RGPD, vous disposez d'un droit d'accès, de rectification, de suppression (droit à l'oubli), de portabilité et d'opposition concernant vos données personnelles. Pour exercer ces droits, utilisez la page Contact. Vous pouvez également introduire une réclamation auprès de la CNIL (cnil.fr).</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Conservation des données</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:8px;color:#444;">Données de compte : conservées jusqu'à suppression du compte. Logs serveur : 12 mois maximum. Après ce délai, les données sont supprimées ou anonymisées.</p>`,
+      links: [
+        { href: '/mentions-legales', text: 'Mentions légales' },
+        { href: '/cgu', text: 'CGU' },
+        { href: '/contact', text: 'Contact' }
+      ],
+      footer: '18+ — Jouez responsable. CNIL : cnil.fr'
+    }
+  },
+  '/cgu': {
+    title: 'Conditions Générales d\'Utilisation — LunaLive',
+    description: 'Conditions Générales d\'Utilisation de LunaLive. Accès, comportement utilisateurs, contenu streamers et règles de la plateforme.',
+    canonical: `${SITE_URL}/cgu`,
+    content: {
+      h1: 'Conditions Générales d\'Utilisation',
+      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Les présentes Conditions Générales d'Utilisation (CGU) régissent l'accès et l'utilisation de la plateforme LunaLive (lunalive.onrender.com). En accédant à LunaLive, vous acceptez sans réserve les présentes CGU.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Conditions d'accès</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">L'utilisation de LunaLive est strictement réservée aux personnes majeures (18 ans et plus). En vous inscrivant, vous certifiez avoir l'âge légal requis dans votre pays de résidence pour accéder à des contenus liés aux jeux de casino.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Comportement utilisateur</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Il est interdit de publier des contenus illicites, haineux, trompeurs ou portant atteinte aux droits de tiers. LunaLive se réserve le droit de suspendre ou supprimer tout compte ne respectant pas ces règles.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Fonctionnalités premium</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:8px;color:#444;">Certaines fonctionnalités nécessitent un abonnement payant. Conformément au droit de la consommation français, vous disposez d'un délai de rétractation de 14 jours à compter de la souscription.</p>`,
+      links: [
+        { href: '/mentions-legales', text: 'Mentions légales' },
+        { href: '/politique-de-confidentialite', text: 'Politique de confidentialité' },
+        { href: '/contact', text: 'Contact' }
+      ],
+      footer: '18+ — Jouez responsable. Joueurs Info Service : 09 74 75 13 13.'
+    }
+  },
+  '/contact': {
+    title: 'Contact — LunaLive',
+    description: 'Contactez LunaLive pour signaler un contenu, exercer vos droits RGPD ou obtenir de l\'aide. Aide au jeu responsable : 09 74 75 13 13.',
+    canonical: `${SITE_URL}/contact`,
+    content: {
+      h1: 'Contact — LunaLive',
+      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Pour nous contacter, signaler un contenu illicite ou inapproprié, ou exercer vos droits relatifs à vos données personnelles (accès, rectification, suppression), utilisez le formulaire de signalement disponible sur la plateforme LunaLive.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Données personnelles (RGPD)</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Pour exercer vos droits au titre du RGPD (accès, rectification, suppression, portabilité, opposition), contactez-nous via la plateforme. Vous pouvez également adresser une réclamation à la Commission Nationale de l'Informatique et des Libertés (CNIL) : cnil.fr.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Aide au jeu responsable</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:8px;color:#444;">Si vous ou un proche souffrez d'addiction au jeu, contactez le <strong>Joueurs Info Service au 09 74 75 13 13</strong> (numéro non surtaxé, disponible 7j/7) ou consultez addictaide.fr. L'accès à LunaLive est réservé aux personnes majeures (18 ans et plus).</p>`,
+      links: [
+        { href: '/mentions-legales', text: 'Mentions légales' },
+        { href: '/politique-de-confidentialite', text: 'Politique de confidentialité' },
+        { href: '/cgu', text: 'CGU' },
+        { href: '/a-propos', text: 'À propos' }
+      ],
+      footer: '18+ — Joueurs Info Service : 09 74 75 13 13 — addictaide.fr'
+    }
   }
 };
 
 function generateNoScriptContent(content) {
+  const body = content.richContent
+    ? content.richContent
+    : `<p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px; color: #333;">${content.paragraph}</p>`;
+  const footerLine = content.footer
+    ? `<p style="margin-top: 20px; font-size: 13px; color: #888;">${content.footer}</p>`
+    : `<p style="margin-top: 30px; font-size: 14px; color: #666;">Pour une expérience complète, veuillez activer JavaScript.</p>`;
   return `
     <noscript>
       <div style="font-family: system-ui, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto;">
         <h1 style="color: #7c4dff; margin-bottom: 16px;">${content.h1}</h1>
-        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px; color: #333;">${content.paragraph}</p>
+        ${body}
         <nav>
           <ul style="list-style: none; padding: 0;">
             ${content.links.map(link => `<li style="margin: 10px 0;"><a href="${link.href}" style="color: #7c4dff; text-decoration: none; font-weight: 500;">${link.text}</a></li>`).join('\n            ')}
           </ul>
         </nav>
-        <p style="margin-top: 30px; font-size: 14px; color: #666;">
-          Pour une expérience complète, veuillez activer JavaScript.
-        </p>
+        ${footerLine}
       </div>
     </noscript>`;
 }

@@ -50,6 +50,11 @@ async function main() {
     urls.add(new URL(p, SITE).toString());
   });
 
+  // pages trust / légales
+  ["/a-propos", "/mentions-legales", "/politique-de-confidentialite", "/cgu", "/contact"].forEach((p) => {
+    urls.add(new URL(p, SITE).toString());
+  });
+
   // pages casinos
   try {
     const data = await safeJson(`${API}/casinos?sort=top`);

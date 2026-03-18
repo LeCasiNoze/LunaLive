@@ -27,5 +27,12 @@
 /s/spykatra /s-spykatra.html 200
 /s/ssztv /s-ssztv.html 200
 
+# Legal / trust pages
+/a-propos /a-propos.html 200
+/mentions-legales /mentions-legales.html 200
+/politique-de-confidentialite /politique-de-confidentialite.html 200
+/cgu /cgu.html 200
+/contact /contact.html 200
+
 # Fallback for all other routes to SPA
 /* /index.html 200

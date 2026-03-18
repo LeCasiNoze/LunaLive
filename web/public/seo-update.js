@@ -156,42 +156,37 @@ function updateStructuredData(path, metadata) {
   
   let structuredData;
   
-  // Homepage - Organization schema
+  // Homepage - WebSite + Organization (array preserving SearchAction)
   if (path === '/') {
-    structuredData = {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "LunaLive",
-      "url": "https://lunalive.onrender.com",
-      "description": "Plateforme française de streaming casino avec lives en direct, pages casinos, clips et événements",
-      "logo": "https://lunalive.onrender.com/logo_onglet.png",
-      "mainEntity": {
-        "@type": "ItemList",
-        "name": "Sections principales",
-        "itemListElement": [
-          {
-            "@type": "WebPage",
-            "name": "Casinos",
-            "url": "https://lunalive.onrender.com/casinos"
+    structuredData = [
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "LunaLive",
+        "url": "https://lunalive.onrender.com",
+        "inLanguage": "fr",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": {
+            "@type": "EntryPoint",
+            "urlTemplate": "https://lunalive.onrender.com/browse?q={search_term_string}"
           },
-          {
-            "@type": "WebPage", 
-            "name": "Streamers",
-            "url": "https://lunalive.onrender.com/browse"
-          },
-          {
-            "@type": "WebPage",
-            "name": "Challenges",
-            "url": "https://lunalive.onrender.com/hunt"
-          },
-          {
-            "@type": "WebPage",
-            "name": "Événements",
-            "url": "https://lunalive.onrender.com/event"
-          }
-        ]
+          "query-input": "required name=search_term_string"
+        }
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "LunaLive",
+        "url": "https://lunalive.onrender.com",
+        "description": "Plateforme française de streaming casino avec lives en direct, pages casinos, clips et événements",
+        "inLanguage": "fr",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://lunalive.onrender.com/logo_onglet.png"
+        }
       }
-    };
+    ];
   }
   
   // Casinos page - ItemList schema
@@ -217,7 +212,7 @@ function updateStructuredData(path, metadata) {
     };
   }
   
-  // Browse page - ItemList schema for streamers
+  // Browse page - ItemList schema for streamers (correct ListItem wrappers)
   else if (path === '/browse') {
     structuredData = {
       "@context": "https://schema.org",
@@ -227,36 +222,51 @@ function updateStructuredData(path, metadata) {
       "url": "https://lunalive.onrender.com/browse",
       "itemListElement": [
         {
-          "@type": "Person",
-          "name": "Lunalive",
-          "url": "https://lunalive.onrender.com/s/lunalive"
+          "@type": "ListItem",
+          "position": 1,
+          "item": {
+            "@type": "Person",
+            "name": "Lunalive",
+            "url": "https://lunalive.onrender.com/s/lunalive"
+          }
         },
         {
-          "@type": "Person",
-          "name": "Bigbagutee", 
-          "url": "https://lunalive.onrender.com/s/bigbagutee"
+          "@type": "ListItem",
+          "position": 2,
+          "item": {
+            "@type": "Person",
+            "name": "Bigbagutee",
+            "url": "https://lunalive.onrender.com/s/bigbagutee"
+          }
         },
         {
-          "@type": "Person",
-          "name": "Fabiozsis",
-          "url": "https://lunalive.onrender.com/s/fabiozsis"
+          "@type": "ListItem",
+          "position": 3,
+          "item": {
+            "@type": "Person",
+            "name": "Fabiozsis",
+            "url": "https://lunalive.onrender.com/s/fabiozsis"
+          }
         }
       ]
     };
   }
   
-  // Dynamic casino pages - LocalBusiness schema (sans Review hardcodée)
+  // Dynamic casino pages - Organization + BreadcrumbList (top-level array)
   else if (path.startsWith('/casinos/') && path.length > 9) {
     const slug = path.replace('/casinos/', '');
     const name = slug.charAt(0).toUpperCase() + slug.slice(1);
-    structuredData = {
-      "@context": "https://schema.org",
-      "@type": "LocalBusiness",
-      "name": name,
-      "url": `https://lunalive.onrender.com/casinos/${slug}`,
-      "description": `Découvrez ${name} sur LunaLive : avis de la communauté, bonus et informations détaillées sur ce casino en ligne.`,
-      "inLanguage": "fr",
-      "breadcrumb": {
+    structuredData = [
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": name,
+        "url": `https://lunalive.onrender.com/casinos/${slug}`,
+        "description": `Découvrez ${name} sur LunaLive : avis de la communauté, bonus et informations détaillées sur ce casino en ligne.`,
+        "inLanguage": "fr"
+      },
+      {
+        "@context": "https://schema.org",
         "@type": "BreadcrumbList",
         "itemListElement": [
           { "@type": "ListItem", "position": 1, "name": "Accueil", "item": "https://lunalive.onrender.com/" },
@@ -264,7 +274,7 @@ function updateStructuredData(path, metadata) {
           { "@type": "ListItem", "position": 3, "name": name, "item": `https://lunalive.onrender.com/casinos/${slug}` }
         ]
       }
-    };
+    ];
   }
   
   // Dynamic streamer pages - Person schema
