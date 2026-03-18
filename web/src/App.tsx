@@ -5,6 +5,7 @@ import { Route, Routes, useLocation } from "react-router-dom";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { Topbar } from "./layout/Topbar";
 import { BottomTabs } from "./layout/BottomTabs";
+import { Footer } from "./layout/Footer";
 import CasinosPage from "./pages/CasinosPage";
 import CasinoPage from "./pages/CasinoPage";
 import LivesPage from "./pages/LivesPage";
@@ -13,12 +14,20 @@ import StreamerPage from "./pages/StreamerPage";
 import ProfilePage from "./pages/ProfilePage";
 import { ShopPage } from "./pages/ShopPage";
 import HuntPage from "./pages/HuntPage";
+import NotFoundPage from "./pages/NotFoundPage";
 
 // Lazy load heavy admin pages for performance
 const AdminPage = React.lazy(() => import("./pages/AdminPage"));
 const DashboardPage = React.lazy(() => import("./pages/DashboardPage"));
 const AdminCasinoCommentsPage = React.lazy(() => import("./pages/admin/AdminCasinoCommentsPage"));
 const ImpersonatePage = React.lazy(() => import("./pages/ImpersonatePage"));
+
+// Legal pages (lazy — pas dans le critical path)
+const MentionsLegalesPage = React.lazy(() => import("./pages/legal/MentionsLegalesPage"));
+const PolitiqueConfidentialitePage = React.lazy(() => import("./pages/legal/PolitiqueConfidentialitePage"));
+const CguPage = React.lazy(() => import("./pages/legal/CguPage"));
+const ContactPage = React.lazy(() => import("./pages/legal/ContactPage"));
+const AProposPage = React.lazy(() => import("./pages/legal/AProposPage"));
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
@@ -115,7 +124,39 @@ function AppInner() {
         } />
         <Route path="/r/:slug" element={<ReferralLandingPage />} />
         <Route path="/event" element={<EventPage />} />
+
+        {/* Legal / trust pages */}
+        <Route path="/mentions-legales" element={
+          <React.Suspense fallback={<LoadingFallback />}>
+            <MentionsLegalesPage />
+          </React.Suspense>
+        } />
+        <Route path="/politique-de-confidentialite" element={
+          <React.Suspense fallback={<LoadingFallback />}>
+            <PolitiqueConfidentialitePage />
+          </React.Suspense>
+        } />
+        <Route path="/cgu" element={
+          <React.Suspense fallback={<LoadingFallback />}>
+            <CguPage />
+          </React.Suspense>
+        } />
+        <Route path="/contact" element={
+          <React.Suspense fallback={<LoadingFallback />}>
+            <ContactPage />
+          </React.Suspense>
+        } />
+        <Route path="/a-propos" element={
+          <React.Suspense fallback={<LoadingFallback />}>
+            <AProposPage />
+          </React.Suspense>
+        } />
+
+        {/* 404 catch-all */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
+
+      <Footer />
 
       {isMobile && <BottomTabs />}
 

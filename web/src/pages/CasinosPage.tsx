@@ -729,11 +729,11 @@ export default function CasinosPage() {
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "baseline" }}>
           <div style={{ display: "grid", gap: 6 }}>
-            <div className="checktaslotTitle" style={{ fontSize: 34, lineHeight: 1.05 }}>
+            <h1 className="checktaslotTitle" style={{ fontSize: 34, lineHeight: 1.05, margin: 0 }}>
               <span className="w1">Check</span>
               <span className="w2">Ta</span>
               <span className="w3">Slot</span>
-            </div>
+            </h1>
             <div className="mutedSmall" style={{ maxWidth: 760 }}>
               Compare, check, et lis les retours — sans blabla. ✨
             </div>

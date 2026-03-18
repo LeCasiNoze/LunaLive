@@ -24,7 +24,7 @@
     <!-- OpenGraph -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="LunaLive" />
-    <meta property="og:title" content="LunaLive — Lives casino FR" />
+    <meta property="og:title" content="LunaLive — Plateforme de streaming casino" />
     <meta
       property="og:description"
       content="LunaLive est une plateforme française de streaming casino avec lives en direct, streamers, pages casinos et événements."
@@ -33,44 +33,75 @@
     <meta property="og:image" content="https://lunalive.onrender.com/logo_onglet.png" />
 
     <!-- Twitter -->
-    <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="LunaLive — Lives casino FR" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="LunaLive — Plateforme de streaming casino" />
     <meta
       name="twitter:description"
       content="LunaLive est une plateforme française de streaming casino avec lives en direct, streamers, pages casinos et événements."
     />
+    <meta name="twitter:image" content="https://lunalive.onrender.com/logo_onglet.png" />
 
-    <!-- Structured Data -->
+    <!-- Structured Data (static — WebSite + Organization) -->
     <script type="application/ld+json" id="structured-data">
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "LunaLive",
-      "url": "https://lunalive.onrender.com",
-      "description": "Plateforme française de streaming casino avec lives en direct, pages casinos, clips et événements",
-      "logo": "https://lunalive.onrender.com/logo_onglet.png"
-    }
+    [
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "LunaLive",
+        "url": "https://lunalive.onrender.com",
+        "inLanguage": "fr",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": {
+            "@type": "EntryPoint",
+            "urlTemplate": "https://lunalive.onrender.com/browse?q={search_term_string}"
+          },
+          "query-input": "required name=search_term_string"
+        }
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "LunaLive",
+        "url": "https://lunalive.onrender.com",
+        "description": "Plateforme française de streaming casino avec lives en direct, pages casinos, clips et événements",
+        "inLanguage": "fr",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://lunalive.onrender.com/logo_onglet.png"
+        }
+      }
+    ]
     </script>
 
     <link rel="icon" type="image/png" href="/logo_onglet.png" />
-    <script src="/seo-update.js"></script>
+    <script defer src="/seo-update.js"></script>
   </head>
   <body>
     <noscript>
       <div style="font-family: system-ui, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto;">
-        <h1 style="color: #7c4dff; margin-bottom: 16px;">LunaLive — Plateforme de streaming casino</h1>
-        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px; color: #333;">LunaLive est une plateforme française de streaming casino avec lives en direct, streamers, pages casinos et événements.</p>
-        <nav>
+        <h1 style="color: #7c4dff; margin-bottom: 16px;">LunaLive — Plateforme de streaming casino en direct</h1>
+        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 16px; color: #333;">LunaLive est une plateforme française de streaming casino en direct. Regardez vos streamers préférés jouer en live sur roulette, blackjack, machines à sous et bien plus.</p>
+        <p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px; color: #444;">Découvrez des avis de casinos rédigés par la communauté, participez aux événements LunaLive, suivez les challenges Hunt et soutenez vos streamers casino préférés.</p>
+        <nav aria-label="Navigation principale">
           <ul style="list-style: none; padding: 0;">
-            <li style="margin: 10px 0;"><a href="/casinos" style="color: #7c4dff; text-decoration: none;">🎰 Voir les casinos</a></li>
-            <li style="margin: 10px 0;"><a href="/browse" style="color: #7c4dff; text-decoration: none;">🧭 Parcourir les streamers</a></li>
+            <li style="margin: 10px 0;"><a href="/" style="color: #7c4dff; text-decoration: none;">📡 Lives en direct</a></li>
+            <li style="margin: 10px 0;"><a href="/casinos" style="color: #7c4dff; text-decoration: none;">🎰 Casinos — avis et notes</a></li>
+            <li style="margin: 10px 0;"><a href="/browse" style="color: #7c4dff; text-decoration: none;">🧭 Streamers casino</a></li>
             <li style="margin: 10px 0;"><a href="/hunt" style="color: #7c4dff; text-decoration: none;">🧿 Challenges Hunt</a></li>
             <li style="margin: 10px 0;"><a href="/shop" style="color: #7c4dff; text-decoration: none;">🛒 Boutique</a></li>
             <li style="margin: 10px 0;"><a href="/event" style="color: #7c4dff; text-decoration: none;">📅 Événements</a></li>
+            <li style="margin: 10px 0;"><a href="/a-propos" style="color: #7c4dff; text-decoration: none;">ℹ️ À propos</a></li>
           </ul>
         </nav>
-        <p style="margin-top: 30px; font-size: 14px; color: #666;">
-          Pour une expérience complète, veuillez activer JavaScript.
+        <p style="margin-top: 24px; font-size: 13px; color: #888;">
+          18+ — Jouez responsable. Pour une expérience complète, veuillez activer JavaScript.
+        </p>
+        <p style="margin-top: 8px; font-size: 12px; color: #aaa;">
+          <a href="/mentions-legales" style="color: #999;">Mentions légales</a> ·
+          <a href="/politique-de-confidentialite" style="color: #999;">Confidentialité</a> ·
+          <a href="/cgu" style="color: #999;">CGU</a> ·
+          <a href="/contact" style="color: #999;">Contact</a>
         </p>
       </div>
     </noscript>

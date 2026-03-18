@@ -196,35 +196,24 @@ function updateStructuredData(path, metadata) {
   
   // Casinos page - ItemList schema
   else if (path === '/casinos') {
+    const casinoItems = [
+      { name: "Brutalcasino", slug: "brutalcasino" },
+      { name: "Hypebet",      slug: "hypebet" },
+      { name: "Razed",        slug: "razed" },
+      { name: "Trickz",       slug: "trickz" }
+    ];
     structuredData = {
       "@context": "https://schema.org",
       "@type": "ItemList",
       "name": "Casinos disponibles sur LunaLive",
       "description": "Liste des meilleurs casinos en ligne testés par la communauté LunaLive",
       "url": "https://lunalive.onrender.com/casinos",
-      "numberOfItems": 4,
-      "itemListElement": [
-        {
-          "@type": "Organization",
-          "name": "Brutalcasino",
-          "url": "https://lunalive.onrender.com/casinos/brutalcasino"
-        },
-        {
-          "@type": "Organization", 
-          "name": "Hypebet",
-          "url": "https://lunalive.onrender.com/casinos/hypebet"
-        },
-        {
-          "@type": "Organization",
-          "name": "Razed",
-          "url": "https://lunalive.onrender.com/casinos/razed"
-        },
-        {
-          "@type": "Organization",
-          "name": "Trickz",
-          "url": "https://lunalive.onrender.com/casinos/trickz"
-        }
-      ]
+      "itemListElement": casinoItems.map((c, i) => ({
+        "@type": "ListItem",
+        "position": i + 1,
+        "name": c.name,
+        "url": `https://lunalive.onrender.com/casinos/${c.slug}`
+      }))
     };
   }
   
@@ -256,26 +245,24 @@ function updateStructuredData(path, metadata) {
     };
   }
   
-  // Dynamic casino pages - Organization schema
+  // Dynamic casino pages - LocalBusiness schema (sans Review hardcodée)
   else if (path.startsWith('/casinos/') && path.length > 9) {
     const slug = path.replace('/casinos/', '');
+    const name = slug.charAt(0).toUpperCase() + slug.slice(1);
     structuredData = {
       "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": slug.charAt(0).toUpperCase() + slug.slice(1),
+      "@type": "LocalBusiness",
+      "name": name,
       "url": `https://lunalive.onrender.com/casinos/${slug}`,
-      "description": `Découvrez ${slug} sur LunaLive : avis, notes, bonus et informations détaillées sur ce casino en ligne.`,
-      "mainEntity": {
-        "@type": "Review",
-        "itemReviewed": {
-          "@type": "Organization",
-          "name": slug.charAt(0).toUpperCase() + slug.slice(1)
-        },
-        "reviewRating": {
-          "@type": "Rating",
-          "ratingValue": "4.5",
-          "bestRating": "5"
-        }
+      "description": `Découvrez ${name} sur LunaLive : avis de la communauté, bonus et informations détaillées sur ce casino en ligne.`,
+      "inLanguage": "fr",
+      "breadcrumb": {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Accueil", "item": "https://lunalive.onrender.com/" },
+          { "@type": "ListItem", "position": 2, "name": "Casinos", "item": "https://lunalive.onrender.com/casinos" },
+          { "@type": "ListItem", "position": 3, "name": name, "item": `https://lunalive.onrender.com/casinos/${slug}` }
+        ]
       }
     };
   }

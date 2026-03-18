@@ -60,7 +60,7 @@ export function setSeo(opts: {
   upsertMeta("description", opts.description);
   upsertMeta("robots", robots);
 
-  upsertMeta("twitter:card", "summary");
+  upsertMeta("twitter:card", "summary_large_image");
   upsertMeta("twitter:title", opts.title);
   upsertMeta("twitter:description", opts.description);
   upsertMeta("twitter:image", image);

@@ -2,7 +2,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import Hls from "hls.js";
+// hls.js est importé dynamiquement dans le ClipPlayerModal pour alléger le bundle initial
 
 import { formatViewers } from "../lib/format";
 import { getLives } from "../lib/api";
@@ -656,7 +656,8 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
     const video = videoRef.current; if (!video) return;
     const mp4Url = String((clip as any).clipUrl || "").trim() || null;
     const hlsUrl = clip.vodUrl;
-    let hls: Hls | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let hls: any = null;
     video.preload = "metadata";
 
     if (mp4Url) {
@@ -694,18 +695,28 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
       return cleanup;
     }
 
-    if (Hls.isSupported()) {
-      hls = new Hls({ autoStartLoad: false, startPosition: start, maxBufferLength: 30, backBufferLength: 0 });
-      hls.loadSource(hlsUrl);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MEDIA_ATTACHED, () => { try { hls?.startLoad(start); } catch {} });
-      hls.on(Hls.Events.MANIFEST_PARSED, () => { try { video.currentTime = start; } catch {} video.play().catch(() => {}); });
-      return () => { try { hls?.destroy(); } catch {} cleanup(); };
-    }
+    // Import dynamique: hls.js ne bloque plus le bundle initial
+    let _destroyed = false;
+    import("hls.js").then(({ default: HlsLib }) => {
+      if (_destroyed || !video) return;
+      if (HlsLib.isSupported()) {
+        hls = new HlsLib({ autoStartLoad: false, startPosition: start, maxBufferLength: 30, backBufferLength: 0 });
+        hls.loadSource(hlsUrl);
+        hls.attachMedia(video);
+        hls.on(HlsLib.Events.MEDIA_ATTACHED, () => { try { hls?.startLoad(start); } catch {} });
+        hls.on(HlsLib.Events.MANIFEST_PARSED, () => { try { video.currentTime = start; } catch {} video.play().catch(() => {}); });
+      } else {
+        if (_destroyed) return;
+        video.src = hlsUrl;
+        video.addEventListener("loadedmetadata", onLoadedMeta);
+      }
+    }).catch(() => {
+      if (_destroyed) return;
+      video.src = hlsUrl;
+      video.addEventListener("loadedmetadata", onLoadedMeta);
+    });
 
-    video.src = hlsUrl;
-    video.addEventListener("loadedmetadata", onLoadedMeta);
-    return cleanup;
+    return () => { _destroyed = true; try { hls?.destroy(); } catch {} cleanup(); };
   }, [clip]);
 
   async function doLike() {

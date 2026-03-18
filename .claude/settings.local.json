@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -o /tmp/lunalive_homepage.html -D /tmp/lunalive_headers.txt -L --max-redirs 10 -w \"FINAL_STATUS:%{http_code}\\\\nREDIRECT_COUNT:%{num_redirects}\\\\nFINAL_URL:%{url_effective}\\\\n\" \"https://lunalive.onrender.com/\")",
+      "Bash(curl -s -o /tmp/lunalive_robots.txt -D /tmp/lunalive_robots_headers.txt -w \"ROBOTS_STATUS:%{http_code}\\\\n\" \"https://lunalive.onrender.com/robots.txt\")",
+      "Bash(curl -s -o /tmp/lunalive_sitemap.xml -D /tmp/lunalive_sitemap_headers.txt -w \"SITEMAP_STATUS:%{http_code}\\\\n\" \"https://lunalive.onrender.com/sitemap.xml\")",
+      "Bash(npm run:*)",
+      "Bash(sort -k2 -rh)"
+    ]
+  }
+}
