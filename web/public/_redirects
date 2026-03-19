@@ -5,11 +5,9 @@
 /shop.html /shop.html 200
 /event.html /event.html 200
 
-# Dynamic casino routes
+# Dynamic casino routes (only serve pre-built HTML if the file exists)
 /casinos/brutalcasino /casinos-brutalcasino.html 200
 /casinos/hypebet /casinos-hypebet.html 200
-/casinos/razed /casinos-razed.html 200
-/casinos/trickz /casinos-trickz.html 200
 
 # Dynamic streamer routes
 /s/bigbagutee /s-bigbagutee.html 200
@@ -21,6 +19,7 @@
 /s/lbkrisou /s-lbkrisou.html 200
 /s/le-joker /s-le-joker.html 200
 /s/lecasinoze /s-lecasinoze.html 200
+/s/lhasardcasin /s-lhasardcasin.html 200
 /s/lunalive /s-lunalive.html 200
 /s/quente-quente /s-quente-quente.html 200
 /s/redakb /s-redakb.html 200

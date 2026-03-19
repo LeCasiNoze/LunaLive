@@ -13,13 +13,21 @@
     <meta name="robots" content="index,follow" />
     <link rel="canonical" href="https://lunalive.onrender.com/" />
 
-    <!-- Fonts (global) -->
+    <!-- Fonts (non-blocking async load) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
+      rel="preload"
+      as="style"
       href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
+      onload="this.onload=null;this.rel='stylesheet'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
 
     <!-- OpenGraph -->
     <meta property="og:type" content="website" />
@@ -30,7 +38,7 @@
       content="LunaLive est une plateforme française de streaming casino avec lives en direct, streamers, pages casinos et événements."
     />
     <meta property="og:url" content="https://lunalive.onrender.com/" />
-    <meta property="og:image" content="https://lunalive.onrender.com/logo_onglet.png" />
+    <meta property="og:image" content="https://lunalive.onrender.com/logo.png" />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
@@ -39,7 +47,7 @@
       name="twitter:description"
       content="LunaLive est une plateforme française de streaming casino avec lives en direct, streamers, pages casinos et événements."
     />
-    <meta name="twitter:image" content="https://lunalive.onrender.com/logo_onglet.png" />
+    <meta name="twitter:image" content="https://lunalive.onrender.com/logo.png" />
 
     <!-- Structured Data (static — WebSite + Organization) -->
     <script type="application/ld+json" id="structured-data">
@@ -69,7 +77,12 @@
         "logo": {
           "@type": "ImageObject",
           "url": "https://lunalive.onrender.com/logo_onglet.png"
-        }
+        },
+        "sameAs": [
+          "https://discord.gg/93BFrsBWWB",
+          "https://www.youtube.com/@LunaLivePro",
+          "https://www.tiktok.com/@lunalive.tv"
+        ]
       }
     ]
     </script>
@@ -82,8 +95,11 @@
     <noscript>
       <div style="font-family: system-ui, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto;">
         <h1 style="color: #7c4dff; margin-bottom: 16px;">LunaLive — Plateforme de streaming casino en direct</h1>
-        <p style="font-size: 16px; line-height: 1.7; margin-bottom: 14px; color: #333;">LunaLive est une plateforme française de streaming casino en direct. Regardez gratuitement vos streamers préférés jouer en live sur roulette, blackjack, machines à sous et bien plus — sans inscription obligatoire.</p>
+        <h2 style="font-size: 18px; color: #555; margin: 16px 0 8px;">Qu'est-ce que LunaLive ?</h2>
+        <p style="font-size: 16px; line-height: 1.7; margin-bottom: 14px; color: #333;">LunaLive est une plateforme française de streaming casino en direct. Regardez gratuitement vos streamers préférés jouer en live sur roulette, blackjack, machines à sous et bien plus — sans inscription obligatoire. La plateforme est accessible sur ordinateur et mobile.</p>
+        <h2 style="font-size: 18px; color: #555; margin: 16px 0 8px;">Des évaluations de casinos transparentes</h2>
         <p style="font-size: 15px; line-height: 1.7; margin-bottom: 14px; color: #444;">Contrairement aux sites d'affiliation classiques, LunaLive publie des évaluations transparentes : chaque casino partenaire est évalué par notre équipe et par la communauté. Les casinos qui ne respectent pas les joueurs sont signalés avec les raisons précises.</p>
+        <h2 style="font-size: 18px; color: #555; margin: 16px 0 8px;">Que propose LunaLive ?</h2>
         <p style="font-size: 15px; line-height: 1.7; margin-bottom: 20px; color: #444;">Participez aux challenges Hunt avec récompenses, suivez les clips VOD des meilleures sessions, rejoignez les événements en direct et soutenez vos streamers casino préférés. LunaLive est strictement réservé aux personnes majeures (18 ans et plus).</p>
         <nav aria-label="Navigation principale">
           <ul style="list-style: none; padding: 0;">

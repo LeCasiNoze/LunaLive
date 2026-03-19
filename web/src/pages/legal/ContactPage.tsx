@@ -20,7 +20,7 @@ export default function ContactPage() {
 
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: "#a78bfa", marginBottom: 12 }}>Nous contacter</h2>
-        <p>Pour toute question relative à LunaLive, vous pouvez utiliser le bouton de signalement ⚑ présent en haut de chaque page, ou nous écrire directement via les réseaux sociaux.</p>
+        <p>Pour toute question relative à LunaLive, écrivez-nous à <a href="mailto:lunalivepro@gmail.com" style={{ color: "#a78bfa" }}>lunalivepro@gmail.com</a> ou utilisez le bouton de signalement ⚑ présent en haut de chaque page.</p>
       </section>
 
       <section style={{ marginBottom: 32 }}>

@@ -6,15 +6,18 @@ import { useIsMobile } from "./hooks/useIsMobile";
 import { Topbar } from "./layout/Topbar";
 import { BottomTabs } from "./layout/BottomTabs";
 import { Footer } from "./layout/Footer";
-import CasinosPage from "./pages/CasinosPage";
-import CasinoPage from "./pages/CasinoPage";
-import LivesPage from "./pages/LivesPage";
-import BrowsePage from "./pages/BrowsePage";
-import StreamerPage from "./pages/StreamerPage";
-import ProfilePage from "./pages/ProfilePage";
-import { ShopPage } from "./pages/ShopPage";
-import HuntPage from "./pages/HuntPage";
 import NotFoundPage from "./pages/NotFoundPage";
+
+// Lazy-load des routes publiques lourdes (code-splitting)
+const CasinosPage = React.lazy(() => import("./pages/CasinosPage"));
+const CasinoPage = React.lazy(() => import("./pages/CasinoPage"));
+const LivesPage = React.lazy(() => import("./pages/LivesPage"));
+const BrowsePage = React.lazy(() => import("./pages/BrowsePage"));
+const StreamerPage = React.lazy(() => import("./pages/StreamerPage"));
+const ProfilePage = React.lazy(() => import("./pages/ProfilePage"));
+const ShopPage = React.lazy(() => import("./pages/ShopPage").then(m => ({ default: m.ShopPage })));
+const HuntPage = React.lazy(() => import("./pages/HuntPage"));
+const EventPage = React.lazy(() => import("./pages/EventPage"));
 
 // Lazy load heavy admin pages for performance
 const AdminPage = React.lazy(() => import("./pages/AdminPage"));
@@ -45,7 +48,6 @@ const LoadingFallback = () => (
     <div style={{ fontFamily: "system-ui", color: "#7c4dff" }}>Chargement...</div>
   </div>
 );
-import EventPage from "./pages/EventPage";
 import { BgEffect } from "./components/Bgeffects";
 
 function AppInner() {

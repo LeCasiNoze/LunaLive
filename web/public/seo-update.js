@@ -184,7 +184,12 @@ function updateStructuredData(path, metadata) {
         "logo": {
           "@type": "ImageObject",
           "url": "https://lunalive.onrender.com/logo_onglet.png"
-        }
+        },
+        "sameAs": [
+          "https://discord.gg/93BFrsBWWB",
+          "https://www.youtube.com/@LunaLivePro",
+          "https://www.tiktok.com/@lunalive.tv"
+        ]
       }
     ];
   }
@@ -206,8 +211,11 @@ function updateStructuredData(path, metadata) {
       "itemListElement": casinoItems.map((c, i) => ({
         "@type": "ListItem",
         "position": i + 1,
-        "name": c.name,
-        "url": `https://lunalive.onrender.com/casinos/${c.slug}`
+        "item": {
+          "@type": "Organization",
+          "name": c.name,
+          "url": `https://lunalive.onrender.com/casinos/${c.slug}`
+        }
       }))
     };
   }

@@ -118,7 +118,7 @@ const staticRouteMetadata = {
     canonical: `${SITE_URL}/mentions-legales`,
     content: {
       h1: 'Mentions légales',
-      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Conformément aux dispositions de l'article 6 de la loi n°2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique (LCEN), le présent site est édité et exploité par LunaLive.</p>
+      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Conformément à la loi n°2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique (LCEN), le présent site est édité et exploité par LunaLive. Contact : <a href="mailto:lunalivepro@gmail.com" style="color:#7c4dff;">lunalivepro@gmail.com</a>.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Hébergement</h2>
       <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Le site LunaLive (lunalive.onrender.com) est hébergé par Render Services, Inc. — 525 Brannan St, Suite 300, San Francisco, CA 94107, États-Unis. Site : render.com.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Propriété intellectuelle</h2>
@@ -184,9 +184,9 @@ const staticRouteMetadata = {
     canonical: `${SITE_URL}/contact`,
     content: {
       h1: 'Contact — LunaLive',
-      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Pour nous contacter, signaler un contenu illicite ou inapproprié, ou exercer vos droits relatifs à vos données personnelles (accès, rectification, suppression), utilisez le formulaire de signalement disponible sur la plateforme LunaLive.</p>
+      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Pour toute question relative à LunaLive, écrivez-nous à <a href="mailto:lunalivepro@gmail.com" style="color:#7c4dff;">lunalivepro@gmail.com</a> ou utilisez le bouton de signalement ⚑ présent en haut de chaque page de la plateforme.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Données personnelles (RGPD)</h2>
-      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Pour exercer vos droits au titre du RGPD (accès, rectification, suppression, portabilité, opposition), contactez-nous via la plateforme. Vous pouvez également adresser une réclamation à la Commission Nationale de l'Informatique et des Libertés (CNIL) : cnil.fr.</p>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Pour exercer vos droits au titre du RGPD (accès, rectification, suppression, portabilité, opposition), contactez-nous à lunalivepro@gmail.com. Vous pouvez également adresser une réclamation à la Commission Nationale de l'Informatique et des Libertés (CNIL) : cnil.fr.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Aide au jeu responsable</h2>
       <p style="font-size:15px;line-height:1.7;margin-bottom:8px;color:#444;">Si vous ou un proche souffrez d'addiction au jeu, contactez le <strong>Joueurs Info Service au 09 74 75 13 13</strong> (numéro non surtaxé, disponible 7j/7) ou consultez addictaide.fr. L'accès à LunaLive est réservé aux personnes majeures (18 ans et plus).</p>`,
       links: [
@@ -222,23 +222,64 @@ function generateNoScriptContent(content) {
     </noscript>`;
 }
 
+function generatePageSchema(route, metadata) {
+  // Homepage keeps its own static schema (WebSite + SearchAction + Organization)
+  if (route === '/') return null;
+
+  const pageTypeMap = {
+    '/casinos': 'CollectionPage',
+    '/browse': 'CollectionPage',
+    '/hunt': 'WebPage',
+    '/shop': 'WebPage',
+    '/event': 'WebPage',
+    '/a-propos': 'AboutPage',
+    '/mentions-legales': 'WebPage',
+    '/politique-de-confidentialite': 'WebPage',
+    '/cgu': 'WebPage',
+    '/contact': 'ContactPage',
+  };
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': pageTypeMap[route] || 'WebPage',
+    name: metadata.title,
+    description: metadata.description,
+    url: metadata.canonical,
+    inLanguage: 'fr',
+    isPartOf: {
+      '@type': 'WebSite',
+      name: 'LunaLive',
+      url: SITE_URL,
+    },
+  };
+}
+
 function generateRouteHTML(route, metadata, baseTemplate) {
   let html = baseTemplate;
-  
+
   // Replace metadata
   html = html.replace(/<title>.*?<\/title>/, `<title>${metadata.title}</title>`);
-  html = html.replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${metadata.description}" />`);
+  html = html.replace(/<meta\s+name="description"\s+content="[^"]*"\s*\/>/, `<meta name="description" content="${metadata.description}" />`);
   html = html.replace(/<link rel="canonical" href=".*?" \/>/, `<link rel="canonical" href="${metadata.canonical}" />`);
   html = html.replace(/<meta property="og:title" content=".*?" \/>/, `<meta property="og:title" content="${metadata.title}" />`);
-  html = html.replace(/<meta property="og:description" content=".*?" \/>/, `<meta property="og:description" content="${metadata.description}" />`);
+  html = html.replace(/<meta\s+property="og:description"\s+content="[^"]*"\s*\/>/, `<meta property="og:description" content="${metadata.description}" />`);
   html = html.replace(/<meta property="og:url" content=".*?" \/>/, `<meta property="og:url" content="${metadata.canonical}" />`);
   html = html.replace(/<meta name="twitter:title" content=".*?" \/>/, `<meta name="twitter:title" content="${metadata.title}" />`);
-  html = html.replace(/<meta name="twitter:description" content=".*?" \/>/, `<meta name="twitter:description" content="${metadata.description}" />`);
-  
+  html = html.replace(/<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${metadata.description}" />`);
+
+  // Replace structured data with page-specific schema
+  const schema = generatePageSchema(route, metadata);
+  if (schema) {
+    html = html.replace(
+      /<script type="application\/ld\+json" id="structured-data">[\s\S]*?<\/script>/,
+      `<script type="application/ld+json" id="structured-data">\n    ${JSON.stringify(schema, null, 2).replace(/\n/g, '\n    ')}\n    </script>`
+    );
+  }
+
   // Replace noscript content
   const noscriptRegex = /<noscript>[\s\S]*?<\/noscript>/;
   html = html.replace(noscriptRegex, generateNoScriptContent(metadata.content));
-  
+
   return html;
 }
 
@@ -276,14 +317,14 @@ function generateDynamicRouteHTML(slug, type, baseTemplate) {
     const paragraph = `Découvrez ${slug} sur LunaLive : avis de la communauté, notes détaillées, bonus exclusifs et informations complètes sur ce casino en ligne.`;
     
     html = html.replace(/<title>.*?<\/title>/, `<title>${title}</title>`);
-    html = html.replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${description}" />`);
+    html = html.replace(/<meta\s+name="description"\s+content="[^"]*"\s*\/>/, `<meta name="description" content="${description}" />`);
     html = html.replace(/<link rel="canonical" href=".*?" \/>/, `<link rel="canonical" href="${canonical}" />`);
     html = html.replace(/<meta property="og:title" content=".*?" \/>/, `<meta property="og:title" content="${title}" />`);
-    html = html.replace(/<meta property="og:description" content=".*?" \/>/, `<meta property="og:description" content="${description}" />`);
+    html = html.replace(/<meta\s+property="og:description"\s+content="[^"]*"\s*\/>/, `<meta property="og:description" content="${description}" />`);
     html = html.replace(/<meta property="og:url" content=".*?" \/>/, `<meta property="og:url" content="${canonical}" />`);
     html = html.replace(/<meta name="twitter:title" content=".*?" \/>/, `<meta name="twitter:title" content="${title}" />`);
-    html = html.replace(/<meta name="twitter:description" content=".*?" \/>/, `<meta name="twitter:description" content="${description}" />`);
-    
+    html = html.replace(/<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${description}" />`);
+
     const content = {
       h1,
       paragraph,
@@ -293,25 +334,49 @@ function generateDynamicRouteHTML(slug, type, baseTemplate) {
         { href: '/hunt', text: '🧿 Challenges Hunt' }
       ]
     };
-    
+
+    const casinoSchema = [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'Organization',
+        name: h1,
+        url: canonical,
+        description,
+        inLanguage: 'fr',
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Accueil', item: `${SITE_URL}/` },
+          { '@type': 'ListItem', position: 2, name: 'Casinos', item: `${SITE_URL}/casinos` },
+          { '@type': 'ListItem', position: 3, name: h1, item: canonical },
+        ],
+      },
+    ];
+    html = html.replace(
+      /<script type="application\/ld\+json" id="structured-data">[\s\S]*?<\/script>/,
+      `<script type="application/ld+json" id="structured-data">\n    ${JSON.stringify(casinoSchema, null, 2).replace(/\n/g, '\n    ')}\n    </script>`
+    );
+
     const noscriptRegex = /<noscript>[\s\S]*?<\/noscript>/;
     html = html.replace(noscriptRegex, generateNoScriptContent(content));
-    
+
   } else if (type === 'streamer') {
     const title = `${slug.charAt(0).toUpperCase() + slug.slice(1)} — Streamer | LunaLive`;
     const description = `Regarde ${slug} en direct sur LunaLive : streams casino, lives et clips de la communauté.`;
     const canonical = `${SITE_URL}/s/${slug}`;
     const h1 = `${slug.charAt(0).toUpperCase() + slug.slice(1)} — Streamer Casino`;
     const paragraph = `Regarde ${slug} en direct sur LunaLive : streams casino, lives en direct, clips VOD et profils détaillés de ce streamer.`;
-    
+
     html = html.replace(/<title>.*?<\/title>/, `<title>${title}</title>`);
-    html = html.replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${description}" />`);
+    html = html.replace(/<meta\s+name="description"\s+content="[^"]*"\s*\/>/, `<meta name="description" content="${description}" />`);
     html = html.replace(/<link rel="canonical" href=".*?" \/>/, `<link rel="canonical" href="${canonical}" />`);
     html = html.replace(/<meta property="og:title" content=".*?" \/>/, `<meta property="og:title" content="${title}" />`);
-    html = html.replace(/<meta property="og:description" content=".*?" \/>/, `<meta property="og:description" content="${description}" />`);
+    html = html.replace(/<meta\s+property="og:description"\s+content="[^"]*"\s*\/>/, `<meta property="og:description" content="${description}" />`);
     html = html.replace(/<meta property="og:url" content=".*?" \/>/, `<meta property="og:url" content="${canonical}" />`);
     html = html.replace(/<meta name="twitter:title" content=".*?" \/>/, `<meta name="twitter:title" content="${title}" />`);
-    html = html.replace(/<meta name="twitter:description" content=".*?" \/>/, `<meta name="twitter:description" content="${description}" />`);
+    html = html.replace(/<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${description}" />`);
     
     const content = {
       h1,
@@ -322,7 +387,25 @@ function generateDynamicRouteHTML(slug, type, baseTemplate) {
         { href: '/event', text: '📅 Événements' }
       ]
     };
-    
+
+    const streamerSchema = {
+      '@context': 'https://schema.org',
+      '@type': 'Person',
+      name: slug.charAt(0).toUpperCase() + slug.slice(1),
+      url: canonical,
+      description,
+      knowsAbout: 'Casino streaming',
+      mainEntityOfPage: {
+        '@type': 'WebPage',
+        name: h1,
+        url: canonical,
+      },
+    };
+    html = html.replace(
+      /<script type="application\/ld\+json" id="structured-data">[\s\S]*?<\/script>/,
+      `<script type="application/ld+json" id="structured-data">\n    ${JSON.stringify(streamerSchema, null, 2).replace(/\n/g, '\n    ')}\n    </script>`
+    );
+
     const noscriptRegex = /<noscript>[\s\S]*?<\/noscript>/;
     html = html.replace(noscriptRegex, generateNoScriptContent(content));
   }

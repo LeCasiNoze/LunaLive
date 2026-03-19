@@ -3,7 +3,7 @@ const ORIGIN =
     ? window.location.origin
     : "https://lunalive.onrender.com";
 
-const DEFAULT_OG_IMAGE = `${ORIGIN}/logo_onglet.png`;
+const DEFAULT_OG_IMAGE = `${ORIGIN}/logo.png`;
 
 function upsertMeta(name: string, content: string) {
   if (!content) return;

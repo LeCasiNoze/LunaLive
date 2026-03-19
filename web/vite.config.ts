@@ -30,6 +30,8 @@ export default defineConfig({
       manifest: {
         name: "LunaLive",
         short_name: "LunaLive",
+        description: "Plateforme française de streaming casino en direct — lives, casinos évalués et communauté.",
+        lang: "fr",
         start_url: "/?source=a2hs",
         scope: "/",
         display: "standalone",

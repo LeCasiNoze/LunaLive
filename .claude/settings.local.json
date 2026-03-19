@@ -5,7 +5,17 @@
       "Bash(curl -s -o /tmp/lunalive_robots.txt -D /tmp/lunalive_robots_headers.txt -w \"ROBOTS_STATUS:%{http_code}\\\\n\" \"https://lunalive.onrender.com/robots.txt\")",
       "Bash(curl -s -o /tmp/lunalive_sitemap.xml -D /tmp/lunalive_sitemap_headers.txt -w \"SITEMAP_STATUS:%{http_code}\\\\n\" \"https://lunalive.onrender.com/sitemap.xml\")",
       "Bash(npm run:*)",
-      "Bash(sort -k2 -rh)"
+      "Bash(sort -k2 -rh)",
+      "Bash(node scripts/build-static-routes.mjs)",
+      "Bash(npx vite:*)",
+      "Bash(grep -r \"09 74 75\\\\|Joueurs.*Info\\\\|addictaide\\\\|onrender\\\\|gmail\\\\|brevo\" /c/Users/Lucas/LunaLive/web --include=*.tsx --include=*.ts --include=*.html)",
+      "Bash(grep -r \"@\\\\|email\" /c/Users/Lucas/LunaLive/api --include=*.ts --include=*.js --include=*.env)",
+      "Bash(grep -r \"Render\\\\|onrender\\\\|discord.*lunalive\\\\|youtube.*lunalive\" /c/Users/Lucas/LunaLive --include=*.tsx --include=*.ts --include=*.md --include=*.html)",
+      "Bash(grep -r \"lunalive.*twitch\\\\|lunalive.*youtube\\\\|lunalive.*discord\\\\|lunalive.*instagram\" /c/Users/Lucas/LunaLive --include=*.tsx --include=*.ts --include=*.html --include=*.md)",
+      "Bash(grep -r \"sameAs\\\\|social.*media\\\\|@.*lunalive\" /c/Users/Lucas/LunaLive/web --include=*.tsx --include=*.ts --include=*.html)",
+      "Bash(identify /c/Users/Lucas/LunaLive/web/public/*.png)",
+      "Bash(grep -rn \"og:image\\\\|og_image\" c:/Users/Lucas/LunaLive/web/src/ --include=*.ts --include=*.tsx)",
+      "Bash(grep -A4 '\"\"sameAs\"\"' c:/Users/Lucas/LunaLive/web/dist/index.html)"
     ]
   }
 }

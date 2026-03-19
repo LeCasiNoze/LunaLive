@@ -1,0 +1,27 @@
+# LunaLive
+
+> LunaLive est une plateforme française de streaming casino en direct. Regardez gratuitement les lives casino de vos streamers préférés, découvrez des casinos évalués par la communauté, participez aux challenges Hunt et suivez les événements en direct.
+
+LunaLive est strictement réservé aux personnes majeures (18 ans et plus).
+
+## Pages principales
+
+- [Accueil — Lives en direct](https://lunalive.onrender.com/): Flux de lives casino en direct, streamers actifs et contenu communauté.
+- [Casinos](https://lunalive.onrender.com/casinos): Liste des casinos en ligne évalués par la communauté LunaLive — avis, notes et bonus.
+- [Streamers](https://lunalive.onrender.com/browse): Profils de tous les streamers casino de la plateforme, avec lives, clips VOD et statistiques.
+- [Challenges Hunt](https://lunalive.onrender.com/hunt): Challenges et hunts casino avec récompenses et classements communautaires.
+- [Événements](https://lunalive.onrender.com/event): Tournois, streams spéciaux et animations en direct.
+- [À propos](https://lunalive.onrender.com/a-propos): Présentation de LunaLive, de sa mission et de ses valeurs.
+- [Mentions légales](https://lunalive.onrender.com/mentions-legales): Informations légales conformément à la loi française LCEN.
+- [Politique de confidentialité](https://lunalive.onrender.com/politique-de-confidentialite): Traitement des données personnelles, droits RGPD.
+- [CGU](https://lunalive.onrender.com/cgu): Conditions Générales d'Utilisation de la plateforme.
+- [Contact](https://lunalive.onrender.com/contact): Formulaire de signalement, droits RGPD, aide au jeu responsable.
+
+## Politique d'accès IA
+
+Les crawlers IA (GPTBot, ClaudeBot, PerplexityBot, Googlebot) sont autorisés à accéder à toutes les pages publiques.
+Les pages privées (/admin, /dashboard, /impersonate) sont exclues du crawl via robots.txt.
+
+## Jeu responsable
+
+LunaLive promeut le jeu responsable. Joueurs Info Service : 09 74 75 13 13 (non surtaxé, 7j/7). addictaide.fr.
