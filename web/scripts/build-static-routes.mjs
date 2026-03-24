@@ -28,12 +28,18 @@ const staticRouteMetadata = {
     canonical: `${SITE_URL}/casinos`,
     content: {
       h1: 'Casinos disponibles sur LunaLive',
-      paragraph: 'Découvrez les meilleurs casinos en ligne testés par la communauté LunaLive. Avis détaillés, bonus exclusifs et recommandations des streamers.',
+      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">LunaLive référence les casinos en ligne testés et évalués par la communauté de streamers. Chaque casino est noté sur sa fiabilité, ses bonus, la qualité de son support et ses conditions de retrait.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Comment sont évalués les casinos ?</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Nos streamers testent chaque casino en conditions réelles : dépôts, sessions de jeu en live, retraits et contact avec le support. Les casinos qui refusent des retraits sans raison valable ou qui appliquent des conditions abusives sont signalés publiquement avec les détails.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Casinos partenaires de la communauté</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Brutalcasino, Hypebet et d'autres casinos partenaires sont évalués régulièrement par les streamers LunaLive. Les bonus, les tours gratuits et les conditions sont vérifiés directement sur la plateforme. Consultez chaque fiche casino pour les avis détaillés de la communauté.</p>
+      <p style="font-size:14px;line-height:1.6;margin-bottom:8px;color:#555;">18+ uniquement. Le jeu peut créer une dépendance. Joueurs Info Service : 09 74 75 13 13 (7j/7, gratuit).</p>`,
       links: [
         { href: '/browse', text: '🧭 Voir les streamers' },
         { href: '/hunt', text: '🧿 Challenges Hunt' },
         { href: '/event', text: '📅 Événements' }
-      ]
+      ],
+      footer: '18+ — Jouez responsable. Joueurs Info Service : 09 74 75 13 13.'
     }
   },
   '/browse': {
@@ -42,12 +48,30 @@ const staticRouteMetadata = {
     canonical: `${SITE_URL}/browse`,
     content: {
       h1: 'Streamers Casino — LunaLive',
-      paragraph: 'Parcourez tous les streamers casino de la communauté LunaLive. Lives en direct, clips VOD, et profils détaillés de vos créateurs préférés.',
+      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Parcourez tous les streamers casino de la communauté LunaLive. Lives en direct, clips VOD, et profils détaillés de vos créateurs préférés.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Streamers de la communauté LunaLive</h2>
+      <ul style="list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:16px;">
+        <li><a href="/s/lunalive" style="color:#7c4dff;text-decoration:none;">Lunalive</a></li>
+        <li><a href="/s/bigbagutee" style="color:#7c4dff;text-decoration:none;">Bigbagutee</a></li>
+        <li><a href="/s/fabiozsis" style="color:#7c4dff;text-decoration:none;">Fabiozsis</a></li>
+        <li><a href="/s/familybearstv" style="color:#7c4dff;text-decoration:none;">Familybearstv</a></li>
+        <li><a href="/s/gorilazer" style="color:#7c4dff;text-decoration:none;">Gorilazer</a></li>
+        <li><a href="/s/jojocasino" style="color:#7c4dff;text-decoration:none;">Jojocasino</a></li>
+        <li><a href="/s/lbkrisou" style="color:#7c4dff;text-decoration:none;">Lbkrisou</a></li>
+        <li><a href="/s/lecasinoze" style="color:#7c4dff;text-decoration:none;">Lecasinoze</a></li>
+        <li><a href="/s/le-joker" style="color:#7c4dff;text-decoration:none;">Le Joker</a></li>
+        <li><a href="/s/lhasardcasin" style="color:#7c4dff;text-decoration:none;">Lhasardcasin</a></li>
+        <li><a href="/s/quente-quente" style="color:#7c4dff;text-decoration:none;">Quente Quente</a></li>
+        <li><a href="/s/redakb" style="color:#7c4dff;text-decoration:none;">Redakb</a></li>
+        <li><a href="/s/spykatra" style="color:#7c4dff;text-decoration:none;">Spykatra</a></li>
+        <li><a href="/s/ssztv" style="color:#7c4dff;text-decoration:none;">Ssztv</a></li>
+      </ul>`,
       links: [
         { href: '/casinos', text: '🎰 Voir les casinos' },
         { href: '/hunt', text: '🧿 Challenges Hunt' },
         { href: '/shop', text: '🛒 Boutique' }
-      ]
+      ],
+      footer: '18+ — Jouez responsable. Joueurs Info Service : 09 74 75 13 13.'
     }
   },
   '/hunt': {
@@ -99,7 +123,9 @@ const staticRouteMetadata = {
     content: {
       h1: 'À propos de LunaLive',
       richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">LunaLive est une plateforme française de streaming casino en direct, créée par et pour la communauté. Notre mission : offrir un espace de confiance où les passionnés de casino peuvent regarder leurs streamers préférés jouer en live, découvrir des casinos vérifiés et participer à des événements exclusifs.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Comment LunaLive évalue-t-il les casinos ?</h2>
       <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Contrairement aux sites d'affiliation classiques, LunaLive publie des évaluations transparentes : chaque casino partenaire est évalué par notre équipe ET par la communauté. Les casinos qui ne respectent pas les joueurs sont signalés avec les raisons précises.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Que propose LunaLive ?</h2>
       <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">LunaLive propose : des lives casino en direct gratuits, CheckTaSlot pour analyser les sessions de jeu, des Challenges Hunt avec récompenses, une boutique officielle, des événements communautaires et des clips VOD des meilleures sessions.</p>
       <p style="font-size:14px;line-height:1.6;margin-bottom:20px;color:#555;">Tous les contenus sont accessibles librement. Certaines fonctionnalités premium sont disponibles par abonnement. LunaLive est strictement réservé aux personnes majeures (18 ans et plus).</p>`,
       links: [
@@ -239,7 +265,7 @@ function generatePageSchema(route, metadata) {
     '/contact': 'ContactPage',
   };
 
-  return {
+  const schema = {
     '@context': 'https://schema.org',
     '@type': pageTypeMap[route] || 'WebPage',
     name: metadata.title,
@@ -252,6 +278,13 @@ function generatePageSchema(route, metadata) {
       url: SITE_URL,
     },
   };
+
+  // ContactPage — add email
+  if (route === '/contact') {
+    schema.email = 'lunalivepro@gmail.com';
+  }
+
+  return schema;
 }
 
 function generateRouteHTML(route, metadata, baseTemplate) {
@@ -276,8 +309,8 @@ function generateRouteHTML(route, metadata, baseTemplate) {
     );
   }
 
-  // Replace noscript content
-  const noscriptRegex = /<noscript>[\s\S]*?<\/noscript>/;
+  // Replace body content noscript (not the Google Fonts head noscript)
+  const noscriptRegex = /<noscript>\s*<div[\s\S]*?<\/noscript>/;
   html = html.replace(noscriptRegex, generateNoScriptContent(metadata.content));
 
   return html;
@@ -338,11 +371,16 @@ function generateDynamicRouteHTML(slug, type, baseTemplate) {
     const casinoSchema = [
       {
         '@context': 'https://schema.org',
-        '@type': 'Organization',
-        name: h1,
+        '@type': 'ItemPage',
+        name: title,
         url: canonical,
         description,
         inLanguage: 'fr',
+        isPartOf: {
+          '@type': 'WebSite',
+          name: 'LunaLive',
+          url: SITE_URL,
+        },
       },
       {
         '@context': 'https://schema.org',
@@ -359,7 +397,7 @@ function generateDynamicRouteHTML(slug, type, baseTemplate) {
       `<script type="application/ld+json" id="structured-data">\n    ${JSON.stringify(casinoSchema, null, 2).replace(/\n/g, '\n    ')}\n    </script>`
     );
 
-    const noscriptRegex = /<noscript>[\s\S]*?<\/noscript>/;
+    const noscriptRegex = /<noscript>\s*<div[\s\S]*?<\/noscript>/;
     html = html.replace(noscriptRegex, generateNoScriptContent(content));
 
   } else if (type === 'streamer') {
@@ -388,28 +426,40 @@ function generateDynamicRouteHTML(slug, type, baseTemplate) {
       ]
     };
 
-    const streamerSchema = {
-      '@context': 'https://schema.org',
-      '@type': 'Person',
-      name: slug.charAt(0).toUpperCase() + slug.slice(1),
-      url: canonical,
-      description,
-      knowsAbout: 'Casino streaming',
-      mainEntityOfPage: {
-        '@type': 'WebPage',
-        name: h1,
+    const name = slug.charAt(0).toUpperCase() + slug.slice(1);
+    const streamerSchema = [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'Person',
+        name,
         url: canonical,
+        description,
+        knowsAbout: 'Casino streaming',
+        mainEntityOfPage: {
+          '@type': 'WebPage',
+          name: h1,
+          url: canonical,
+        },
       },
-    };
+      {
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Accueil', item: `${SITE_URL}/` },
+          { '@type': 'ListItem', position: 2, name: 'Streamers', item: `${SITE_URL}/browse` },
+          { '@type': 'ListItem', position: 3, name, item: canonical },
+        ],
+      },
+    ];
     html = html.replace(
       /<script type="application\/ld\+json" id="structured-data">[\s\S]*?<\/script>/,
       `<script type="application/ld+json" id="structured-data">\n    ${JSON.stringify(streamerSchema, null, 2).replace(/\n/g, '\n    ')}\n    </script>`
     );
 
-    const noscriptRegex = /<noscript>[\s\S]*?<\/noscript>/;
+    const noscriptRegex = /<noscript>\s*<div[\s\S]*?<\/noscript>/;
     html = html.replace(noscriptRegex, generateNoScriptContent(content));
   }
-  
+
   return html;
 }
 

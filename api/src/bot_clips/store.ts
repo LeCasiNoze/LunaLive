@@ -220,15 +220,25 @@ export async function listPendingClipsForStreamer(streamerId: number, limit = 50
 export async function setClipVodInfo(
   streamerId: number,
   clipId: number,
-  info: { vod_url: string; vod_permlink?: string | null; vod_created_ts?: number | null }
+  info: { vod_url: string; vod_permlink?: string | null; vod_created_ts?: number | null; corrected_at_sec?: number | null }
 ) {
-  await pool.query(
-    `UPDATE bot_clips
-     SET vod_url=$1, vod_permlink=$2, vod_created_ts=$3
-     WHERE streamer_id=$4 AND id=$5
-       AND deleted_ts IS NULL`,
-    [info.vod_url, info.vod_permlink ?? null, info.vod_created_ts ?? null, streamerId, clipId]
-  );
+  if (info.corrected_at_sec != null) {
+    await pool.query(
+      `UPDATE bot_clips
+       SET vod_url=$1, vod_permlink=$2, vod_created_ts=$3, at_sec=$4
+       WHERE streamer_id=$5 AND id=$6
+         AND deleted_ts IS NULL`,
+      [info.vod_url, info.vod_permlink ?? null, info.vod_created_ts ?? null, info.corrected_at_sec, streamerId, clipId]
+    );
+  } else {
+    await pool.query(
+      `UPDATE bot_clips
+       SET vod_url=$1, vod_permlink=$2, vod_created_ts=$3
+       WHERE streamer_id=$4 AND id=$5
+         AND deleted_ts IS NULL`,
+      [info.vod_url, info.vod_permlink ?? null, info.vod_created_ts ?? null, streamerId, clipId]
+    );
+  }
 }
 
 /**

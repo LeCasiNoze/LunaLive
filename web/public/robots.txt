@@ -5,4 +5,16 @@ Disallow: /dashboard
 Disallow: /impersonate
 Disallow: /popout
 
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
 Sitemap: https://lunalive.onrender.com/sitemap.xml

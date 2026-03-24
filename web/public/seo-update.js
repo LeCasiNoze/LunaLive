@@ -183,7 +183,9 @@ function updateStructuredData(path, metadata) {
         "inLanguage": "fr",
         "logo": {
           "@type": "ImageObject",
-          "url": "https://lunalive.onrender.com/logo_onglet.png"
+          "url": "https://lunalive.onrender.com/logo.png",
+          "width": 714,
+          "height": 648
         },
         "sameAs": [
           "https://discord.gg/93BFrsBWWB",
@@ -194,84 +196,28 @@ function updateStructuredData(path, metadata) {
     ];
   }
   
-  // Casinos page - ItemList schema
-  else if (path === '/casinos') {
-    const casinoItems = [
-      { name: "Brutalcasino", slug: "brutalcasino" },
-      { name: "Hypebet",      slug: "hypebet" },
-      { name: "Razed",        slug: "razed" },
-      { name: "Trickz",       slug: "trickz" }
-    ];
-    structuredData = {
-      "@context": "https://schema.org",
-      "@type": "ItemList",
-      "name": "Casinos disponibles sur LunaLive",
-      "description": "Liste des meilleurs casinos en ligne testés par la communauté LunaLive",
-      "url": "https://lunalive.onrender.com/casinos",
-      "itemListElement": casinoItems.map((c, i) => ({
-        "@type": "ListItem",
-        "position": i + 1,
-        "item": {
-          "@type": "Organization",
-          "name": c.name,
-          "url": `https://lunalive.onrender.com/casinos/${c.slug}`
-        }
-      }))
-    };
+  // Casinos and Browse pages — keep static CollectionPage schema, no JS override
+  else if (path === '/casinos' || path === '/browse') {
+    return;
   }
-  
-  // Browse page - ItemList schema for streamers (correct ListItem wrappers)
-  else if (path === '/browse') {
-    structuredData = {
-      "@context": "https://schema.org",
-      "@type": "ItemList",
-      "name": "Streamers Casino sur LunaLive",
-      "description": "Liste des streamers casino de la communauté LunaLive",
-      "url": "https://lunalive.onrender.com/browse",
-      "itemListElement": [
-        {
-          "@type": "ListItem",
-          "position": 1,
-          "item": {
-            "@type": "Person",
-            "name": "Lunalive",
-            "url": "https://lunalive.onrender.com/s/lunalive"
-          }
-        },
-        {
-          "@type": "ListItem",
-          "position": 2,
-          "item": {
-            "@type": "Person",
-            "name": "Bigbagutee",
-            "url": "https://lunalive.onrender.com/s/bigbagutee"
-          }
-        },
-        {
-          "@type": "ListItem",
-          "position": 3,
-          "item": {
-            "@type": "Person",
-            "name": "Fabiozsis",
-            "url": "https://lunalive.onrender.com/s/fabiozsis"
-          }
-        }
-      ]
-    };
-  }
-  
-  // Dynamic casino pages - Organization + BreadcrumbList (top-level array)
+
+  // Dynamic casino pages - ItemPage (review page) + BreadcrumbList
   else if (path.startsWith('/casinos/') && path.length > 9) {
     const slug = path.replace('/casinos/', '');
     const name = slug.charAt(0).toUpperCase() + slug.slice(1);
     structuredData = [
       {
         "@context": "https://schema.org",
-        "@type": "Organization",
-        "name": name,
+        "@type": "ItemPage",
+        "name": `${name} — Avis Casino | LunaLive`,
         "url": `https://lunalive.onrender.com/casinos/${slug}`,
         "description": `Découvrez ${name} sur LunaLive : avis de la communauté, bonus et informations détaillées sur ce casino en ligne.`,
-        "inLanguage": "fr"
+        "inLanguage": "fr",
+        "isPartOf": {
+          "@type": "WebSite",
+          "name": "LunaLive",
+          "url": "https://lunalive.onrender.com"
+        }
       },
       {
         "@context": "https://schema.org",
@@ -284,38 +230,56 @@ function updateStructuredData(path, metadata) {
       }
     ];
   }
-  
-  // Dynamic streamer pages - Person schema
+
+  // Dynamic streamer pages - Person + BreadcrumbList
   else if (path.startsWith('/s/') && path.length > 3) {
     const slug = path.replace('/s/', '');
-    structuredData = {
-      "@context": "https://schema.org",
-      "@type": "Person",
-      "name": slug.charAt(0).toUpperCase() + slug.slice(1),
-      "url": `https://lunalive.onrender.com/s/${slug}`,
-      "description": `Regardez ${slug} en direct sur LunaLive : streams casino, lives et clips de la communauté.`,
-      "mainEntityOfPage": {
-        "@type": "WebPage",
-        "name": `${slug} — Streamer Casino`,
-        "url": `https://lunalive.onrender.com/s/${slug}`
+    const name = slug.charAt(0).toUpperCase() + slug.slice(1);
+    structuredData = [
+      {
+        "@context": "https://schema.org",
+        "@type": "Person",
+        "name": name,
+        "url": `https://lunalive.onrender.com/s/${slug}`,
+        "description": `Regardez ${slug} en direct sur LunaLive : streams casino, lives et clips de la communauté.`,
+        "knowsAbout": "Casino streaming",
+        "mainEntityOfPage": {
+          "@type": "WebPage",
+          "name": `${name} — Streamer Casino`,
+          "url": `https://lunalive.onrender.com/s/${slug}`
+        }
       },
-      "knowsAbout": "Casino streaming",
-      "performsIn": {
-        "@type": "Event",
-        "name": "Live Casino Stream",
-        "description": "Stream casino en direct"
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Accueil", "item": "https://lunalive.onrender.com/" },
+          { "@type": "ListItem", "position": 2, "name": "Streamers", "item": "https://lunalive.onrender.com/browse" },
+          { "@type": "ListItem", "position": 3, "name": name, "item": `https://lunalive.onrender.com/s/${slug}` }
+        ]
       }
-    };
+    ];
   }
-  
-  // Other static pages - WebPage schema
+
+  // Page-specific types for static pages
   else if (metadata) {
+    const pageTypeMap = {
+      '/a-propos': 'AboutPage',
+      '/contact': 'ContactPage',
+      '/mentions-legales': 'WebPage',
+      '/politique-de-confidentialite': 'WebPage',
+      '/cgu': 'WebPage',
+      '/hunt': 'WebPage',
+      '/shop': 'WebPage',
+      '/event': 'WebPage',
+    };
     structuredData = {
       "@context": "https://schema.org",
-      "@type": "WebPage",
+      "@type": pageTypeMap[path] || "WebPage",
       "name": metadata.title,
       "url": metadata.canonical,
       "description": metadata.description,
+      "inLanguage": "fr",
       "isPartOf": {
         "@type": "WebSite",
         "name": "LunaLive",

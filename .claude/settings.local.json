@@ -15,7 +15,8 @@
       "Bash(grep -r \"sameAs\\\\|social.*media\\\\|@.*lunalive\" /c/Users/Lucas/LunaLive/web --include=*.tsx --include=*.ts --include=*.html)",
       "Bash(identify /c/Users/Lucas/LunaLive/web/public/*.png)",
       "Bash(grep -rn \"og:image\\\\|og_image\" c:/Users/Lucas/LunaLive/web/src/ --include=*.ts --include=*.tsx)",
-      "Bash(grep -A4 '\"\"sameAs\"\"' c:/Users/Lucas/LunaLive/web/dist/index.html)"
+      "Bash(grep -A4 '\"\"sameAs\"\"' c:/Users/Lucas/LunaLive/web/dist/index.html)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

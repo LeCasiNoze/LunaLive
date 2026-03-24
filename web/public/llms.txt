@@ -25,3 +25,11 @@ Les pages privées (/admin, /dashboard, /impersonate) sont exclues du crawl via 
 ## Jeu responsable
 
 LunaLive promeut le jeu responsable. Joueurs Info Service : 09 74 75 13 13 (non surtaxé, 7j/7). addictaide.fr.
+
+## Contact
+
+lunalivepro@gmail.com
+
+## Mise à jour
+
+2026-03-19

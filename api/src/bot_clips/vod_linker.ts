@@ -257,11 +257,28 @@ export function startClipsVodLinker() {
                 const url = v ? pickVodUrl(v) : null;
                 if (!v || !url) continue;
 
+                // ── Correction at_sec si live_start_ts diverge du vrai départ de la VOD ──
+                // Cas de bug : DLive reset livestream.createdAt lors d'une reconnexion
+                // → at_sec a été calculé depuis le mauvais T0 (reconnect) au lieu du vrai T0 (VOD start)
+                let corrected_at_sec: number | null = null;
+                if (c.live_start_ts && v.createdAtMs) {
+                  const liveStartSec = Math.floor(Number(c.live_start_ts) / 1000);
+                  const vodStartSec  = Math.floor(Number(v.createdAtMs)   / 1000);
+                  const skewSec      = liveStartSec - vodStartSec;
+                  if (Math.abs(skewSec) > 30) {
+                    // live_start_ts diffère du vrai départ VOD : at_sec est décalé de skewSec
+                    const raw = Math.max(0, Number(c.at_sec || 0));
+                    corrected_at_sec = Math.max(0, raw + skewSec);
+                    console.log(`[VOD_LINKER] ⚠️  at_sec skew detected clip=${c.id}: live_start=${liveStartSec} vod_start=${vodStartSec} skew=${skewSec}s raw_at=${raw} → corrected=${corrected_at_sec}`);
+                  }
+                }
+
                 console.log(`[VOD_LINKER] ✅ Clip ${c.id} matched to VOD: ${v.permlink} (source: ${sourceDisplayname || 'dynamic'})`);
                 await setClipVodInfo(streamerId, c.id, {
-                  vod_url:        url,
-                  vod_permlink:   v.permlink,
-                  vod_created_ts: Number(v.createdAtMs || 0),
+                  vod_url:          url,
+                  vod_permlink:     v.permlink,
+                  vod_created_ts:   Number(v.createdAtMs || 0),
+                  corrected_at_sec: corrected_at_sec,
                 });
               } catch (e) {
                 console.log(`[VOD_LINKER] ❌ Error processing clip ${c.id}:`, e);
