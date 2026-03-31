@@ -14,6 +14,7 @@ import {
   Routes,
   type Interaction,
   type GuildMember,
+  type Message,
 } from "discord.js";
 import { earnRubisTx } from "../wallet_engine.js";
 import { discordDailyClaimTxClient, fmtRemaining, monthKeyParis } from "../routes/bot/games_claim.js";
@@ -43,11 +44,21 @@ import {
   ROLE_INSTA_ID,
   ROLE_TIKTOK_ID,
   CID_RR_PREFIX,
+  CID_SUPPORT_OPEN,
+  CID_SUPPORT_CLOSE,
+  CID_SUPPORT_ESCALATE,
 } from "./constants.js";
 
 import { maskEmail, maskSecret, safeDm, type BotCtx } from "./utils.js";
 import { createLinkCode, getLinkedUser } from "./link.js";
 import { ensureApplyMessage, buildApplyModal, dbUpsertStreamerRequest, createTicketChannel, buildStaffActionsRow, validateRulesInput, staffCanDecide, handleStaffDecisionButton } from "./apply.js";
+import {
+  ensureSupportMessage,
+  handleSupportOpen,
+  handleSupportClose,
+  handleSupportEscalate,
+  handleSupportMessage,
+} from "./support.js";
 import { isRestricted, isVerified, syncUserEverywhere } from "./sync.js";
 
 let discordClient: Client | null = null;
@@ -235,7 +246,12 @@ export async function startDiscordBot(ctx: BotCtx) {
   if (!guildId) throw new Error("Missing env DISCORD_GUILD_ID");
 
   const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMembers,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,  // Privileged intent — à activer dans le Discord Dev Portal
+    ],
     partials: [Partials.Channel],
   });
 
@@ -254,6 +270,7 @@ export async function startDiscordBot(ctx: BotCtx) {
 
     if (g) await ensureReactionRolesMessage(g, ctx, client);
     if (g) await ensureApplyMessage(g, ctx);
+    if (g) await ensureSupportMessage(g, ctx);
 
 
     setInterval(() => {
@@ -901,6 +918,24 @@ export async function startDiscordBot(ctx: BotCtx) {
         return;
       }
 
+      // ───────── Support : ouvrir un ticket
+      if (interaction.isButton() && interaction.customId === CID_SUPPORT_OPEN) {
+        await handleSupportOpen(interaction, ctx);
+        return;
+      }
+
+      // ───────── Support : fermer un ticket
+      if (interaction.isButton() && interaction.customId === CID_SUPPORT_CLOSE) {
+        await handleSupportClose(interaction, ctx);
+        return;
+      }
+
+      // ───────── Support : escalader au staff
+      if (interaction.isButton() && interaction.customId === CID_SUPPORT_ESCALATE) {
+        await handleSupportEscalate(interaction, ctx);
+        return;
+      }
+
       // ───────── Staff approve/reject buttons
       if (interaction.isButton() && interaction.customId.startsWith(CID_APPLY_DECIDE_PREFIX)) {
         const guild = interaction.guild;
@@ -959,6 +994,15 @@ export async function startDiscordBot(ctx: BotCtx) {
           else await (interaction as any).reply(payload);
         }
       } catch {}
+    }
+  });
+
+  // ───────── Messages dans les salons support
+  client.on("messageCreate", async (message: Message) => {
+    try {
+      await handleSupportMessage(message, ctx);
+    } catch (e: any) {
+      ctx.log(`[support] messageCreate error: ${e?.message || e}`);
     }
   });
 

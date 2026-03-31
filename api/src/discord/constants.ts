@@ -47,11 +47,23 @@ export const ROLE_RESTRICTED_ID = "1467140964773794005";
 export const STAFF_ROLE_IDS = ["1467140769436405981", "1467140795105546441"];
 
 // ─────────────────────────────────────────────
+// Support (salon public + tickets privés)
+// ─────────────────────────────────────────────
+// ⚠️ À remplir : ID du salon #support public sur le serveur officiel
+// Créer un salon texte public sur Discord, copier son ID ici.
+export const SUPPORT_CHANNEL_ID = process.env.DISCORD_SUPPORT_CHANNEL_ID ?? "";
+
+// ─────────────────────────────────────────────
 // Custom IDs (Discord components)
 // ─────────────────────────────────────────────
 export const CID_APPLY_OPEN = "apply:open";
 export const CID_APPLY_MODAL = "apply:modal";
 export const CID_APPLY_DECIDE_PREFIX = "apply:decide:"; // apply:decide:approve:<id> | reject
+
+// Support
+export const CID_SUPPORT_OPEN = "support:open";
+export const CID_SUPPORT_CLOSE = "support:close";
+export const CID_SUPPORT_ESCALATE = "support:escalate";
 
 // ─────────────────────────────────────────────
 // Slash commands list (guild-scoped)
