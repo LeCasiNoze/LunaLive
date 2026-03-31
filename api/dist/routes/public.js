@@ -50,7 +50,9 @@ WITH live_streamers AS (
     s.display_name AS "displayName",
     s.title,
     s.thumb_url AS "thumbUrlDb",
-    s.live_started_at AS "liveStartedAt"
+    s.live_started_at AS "liveStartedAt",
+    -- ✅ Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
+    ('/avatars/u/' || s.user_id::text) AS "avatarUrl"
   FROM streamers s
   WHERE s.is_live = TRUE
     AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
@@ -78,7 +80,8 @@ SELECT
   ls.title,
   COALESCE(v.viewers, 0)::int AS viewers,
   ls."thumbUrlDb",
-  ls."liveStartedAt"
+  ls."liveStartedAt",
+  ls."avatarUrl"
 FROM live_streamers ls
 LEFT JOIN live_viewers v ON v.streamer_id = ls.id
 ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
@@ -91,11 +94,21 @@ ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
             slug,
             displayName: String(r.displayName || ""),
             title: String(r.title || ""),
-            viewers: Number(r.viewers || 0), // ✅ viewers LunaLive
+            viewers: Number(r.viewers || 0),
             liveStartedAt: r.liveStartedAt ? String(r.liveStartedAt) : null,
             thumbUrl: r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb,
+            avatarUrl: r.avatarUrl ? String(r.avatarUrl) : null,
         };
     }));
+}));
+// ✅ LIST public content tabs (for DailyBonus modal)
+publicRouter.get("/content-list", a(async (_req, res) => {
+    const ALLOW_PREFIX = ["guide_", "daily_bonus_", "bonus_"];
+    const { rows } = await pool.query(`SELECT key, title, COALESCE(min_role,'viewer') as min_role, updated_at
+       FROM site_content
+       WHERE (${ALLOW_PREFIX.map((_, i) => `key LIKE $${i + 1}`).join(" OR ")})
+       ORDER BY key ASC`, ALLOW_PREFIX.map((p) => `${p}%`));
+    res.json({ ok: true, items: rows });
 }));
 publicRouter.get("/streamers", a(async (_req, res) => {
     const { rows } = await pool.query(`
@@ -103,18 +116,14 @@ WITH base AS (
   SELECT
     s.id,
     s.slug,
-    s.display_name AS "displayName",
+    COALESCE(s.display_name, s.slug) AS "displayName",
     s.title,
     s.is_live AS "isLive",
     s.featured,
     s.user_id AS "ownerUserId",
-    CASE
-      WHEN ua.user_id IS NOT NULL THEN ('/avatars/u/' || s.user_id::text)
-      ELSE NULL
-    END AS "avatarUrl"
+    -- ✅ Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
+    ('/avatars/u/' || s.user_id::text) AS "avatarUrl"
   FROM streamers s
-  LEFT JOIN user_avatars ua
-    ON ua.user_id = s.user_id
   WHERE (s.suspended_until IS NULL OR s.suspended_until < NOW())
 ),
 open_ls AS (
@@ -138,7 +147,7 @@ SELECT
   b.slug,
   b."displayName",
   b.title,
-  COALESCE(v.viewers, 0)::int AS viewers,     -- ✅ LunaLive viewers
+  COALESCE(v.viewers, 0)::int AS viewers,
   b."isLive",
   b.featured,
   b."ownerUserId",
@@ -149,88 +158,79 @@ ORDER BY LOWER(b."displayName") ASC
       `, [HEARTBEAT_TTL_SECONDS]);
     res.json(rows);
 }));
-// ✅ LIST public content tabs (for DailyBonus modal)
-publicRouter.get("/content-list", a(async (_req, res) => {
-    // ✅ Ajoute ajoute un préfixe stable pour tes futurs onglets
-    // Exemple conseillé: bonus_
-    const ALLOW_PREFIX = ["guide_", "daily_bonus_", "bonus_"];
-    const { rows } = await pool.query(`SELECT key, title, COALESCE(min_role,'viewer') as min_role, updated_at
-       FROM site_content
-       WHERE (${ALLOW_PREFIX.map((_, i) => `key LIKE $${i + 1}`).join(" OR ")})
-       ORDER BY key ASC`, ALLOW_PREFIX.map((p) => `${p}%`));
-    res.json({ ok: true, items: rows });
-}));
 publicRouter.get("/streamers/:slug", a(async (req, res) => {
     const slug = String(req.params.slug || "");
     const { rows } = await pool.query(`SELECT
-      s.id::text AS id,
-      s.slug,
-      s.display_name AS "displayName",
-      s.title,
-      s.viewers,
-      s.is_live AS "isLive",
-      s.live_started_at AS "liveStartedAt",
-      s.appearance AS "appearance",
-      s.offline_bg_path AS "offlineBgPath",
-      s.user_id AS "ownerUserId",
+        s.id::text AS id,
+        s.slug,
+        s.display_name AS "displayName",
+        s.title,
+        s.viewers,
+        s.is_live AS "isLive",
+        s.live_started_at AS "liveStartedAt",
+        s.appearance AS "appearance",
+        s.offline_bg_path AS "offlineBgPath",
+        s.user_id AS "ownerUserId",
 
-      -- ✅ USER (source de vérité des subs)
-      jsonb_build_object(
-        'id', u.id,
-        'username', u.username,
-        'role', u.role,
-        'user_subscriptions', COALESCE((
-          SELECT jsonb_agg(
-            jsonb_build_object(
-              'plan_code', us.plan_code,
-              'status', us.status,
-              'current_period_start', us.current_period_start,
-              'current_period_end', us.current_period_end,
-              'cancel_at_period_end', us.cancel_at_period_end,
-              'provider', us.provider,
-              'provider_subscription_id', us.provider_subscription_id
+        -- ✅ USER (source de vérité des subs)
+        jsonb_build_object(
+          'id', u.id,
+          'username', u.username,
+          'role', u.role,
+          -- ✅ Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
+          'avatarUrl', ('/avatars/u/' || s.user_id::text),
+          'user_subscriptions', COALESCE((
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'plan_code', us.plan_code,
+                'status', us.status,
+                'current_period_start', us.current_period_start,
+                'current_period_end', us.current_period_end,
+                'cancel_at_period_end', us.cancel_at_period_end,
+                'provider', us.provider,
+                'provider_subscription_id', us.provider_subscription_id
+              )
+              ORDER BY us.plan_code
             )
-            ORDER BY us.plan_code
-          )
-          FROM user_subscriptions us
-          WHERE us.user_id = u.id
-        ), '[]'::jsonb)
-      ) AS "user",
+            FROM user_subscriptions us
+            WHERE us.user_id = u.id
+          ), '[]'::jsonb)
+        ) AS "user",
 
-      -- ✅ DLive linked
-      s.dlive_use_linked AS "dliveUseLinked",
-      s.dlive_link_displayname AS "dliveLinkedDisplayname",
-      s.dlive_link_username AS "dliveLinkedUsername",
+        -- ✅ DLive linked
+        s.dlive_use_linked AS "dliveUseLinked",
+        s.dlive_link_displayname AS "dliveLinkedDisplayname",
+        s.dlive_link_username AS "dliveLinkedUsername",
 
-      -- provider assigné
-      pa.channel_slug AS "providerChannelSlug",
-      pa.channel_username AS "providerChannelUsername",
+        -- provider assigné
+        pa.channel_slug AS "providerChannelSlug",
+        pa.channel_username AS "providerChannelUsername",
 
-      -- ✅ HOST
-      hs.slug AS "hostTargetSlug",
-      hs.display_name AS "hostTargetDisplayName",
-      hs.is_live AS "hostTargetIsLive"
+        -- ✅ HOST
+        hs.slug AS "hostTargetSlug",
+        hs.display_name AS "hostTargetDisplayName",
+        hs.is_live AS "hostTargetIsLive"
 
-    FROM streamers s
+      FROM streamers s
 
-    -- ✅ join user (compte streamer)
-    LEFT JOIN users u
-      ON u.id = s.user_id
+      -- ✅ join user (compte streamer)
+      LEFT JOIN users u
+        ON u.id = s.user_id
 
-    LEFT JOIN provider_accounts pa
-      ON pa.assigned_to_streamer_id = s.id
-    AND pa.provider='dlive'
+      LEFT JOIN provider_accounts pa
+        ON pa.assigned_to_streamer_id = s.id
+       AND pa.provider = 'dlive'
 
-    LEFT JOIN streamer_hosts h
-      ON h.hoster_streamer_id = s.id
-    LEFT JOIN streamers hs
-      ON hs.id = h.target_streamer_id
-    AND (hs.suspended_until IS NULL OR hs.suspended_until < NOW())
+      LEFT JOIN streamer_hosts h
+        ON h.hoster_streamer_id = s.id
+      LEFT JOIN streamers hs
+        ON hs.id = h.target_streamer_id
+       AND (hs.suspended_until IS NULL OR hs.suspended_until < NOW())
 
-    WHERE s.slug = $1
-      AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
-    LIMIT 1
-    `, [slug]);
+      WHERE s.slug = $1
+        AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
+      LIMIT 1
+      `, [slug]);
     if (!rows[0])
         return res.status(404).json({ ok: false, error: "not_found" });
     const row = rows[0];
@@ -239,18 +239,17 @@ publicRouter.get("/streamers/:slug", a(async (req, res) => {
     let viewersNow = 0;
     if (row.isLive) {
         const v = await pool.query(`
-    SELECT COUNT(DISTINCT vs.viewer_key)::int AS n
-    FROM live_sessions ls
-    JOIN viewer_sessions vs
-      ON vs.live_session_id = ls.id
-    WHERE ls.streamer_id = $1
-      AND ls.ended_at IS NULL
-      AND vs.ended_at IS NULL
-      AND vs.last_heartbeat_at >= (NOW() - ($2::int * INTERVAL '1 second'))
+        SELECT COUNT(DISTINCT vs.viewer_key)::int AS n
+        FROM live_sessions ls
+        JOIN viewer_sessions vs
+          ON vs.live_session_id = ls.id
+        WHERE ls.streamer_id = $1
+          AND ls.ended_at IS NULL
+          AND vs.ended_at IS NULL
+          AND vs.last_heartbeat_at >= (NOW() - ($2::int * INTERVAL '1 second'))
         `, [Number(row.id), HEARTBEAT_TTL_SECONDS]);
         viewersNow = Number(v.rows?.[0]?.n ?? 0);
     }
-    // overwrites the field the front already expects
     row.viewers = viewersNow;
     // ✅ choisir la chaîne DLive effective
     const useLinked = !!row.dliveUseLinked;
@@ -260,30 +259,25 @@ publicRouter.get("/streamers/:slug", a(async (req, res) => {
     const providerUsername = row.providerChannelUsername ? String(row.providerChannelUsername) : null;
     row.channelSlug = linkedSlug || providerSlug || null;
     row.channelUsername = (useLinked ? linkedUsername : providerUsername) || null;
-    // ✅ SPECIAL CASE: LunaLive 24/24 (ne touche aucun autre streamer)
+    // ✅ SPECIAL CASE: LunaLive 24/24
     const slugLc = String(row.slug || "").toLowerCase();
     const isLuna24 = slugLc === "lunalive" || slugLc === "lunalive-2424";
     if (isLuna24) {
-        // Si useLinked est activé mais que linkedUsername est vide,
-        // on fallback sur linkedSlug (displayname) pour éviter null.
         if (useLinked) {
             row.channelUsername = linkedUsername || linkedSlug || row.channelUsername || null;
         }
-        // (optionnel) si tu veux aussi garantir channelSlug si jamais linkedSlug est vide
         row.channelSlug = linkedSlug || row.channelSlug || null;
     }
     // ✅ host actif seulement si target live
     const hostTargetIsLive = !!row.hostTargetIsLive;
     const hostTargetSlug = hostTargetIsLive && row.hostTargetSlug ? String(row.hostTargetSlug).trim() : null;
     const hostTargetDisplayName = hostTargetIsLive && row.hostTargetDisplayName ? String(row.hostTargetDisplayName).trim() : null;
-    // cleanup (ne pas leak les champs internes)
+    // cleanup
     delete row.dliveUseLinked;
     delete row.dliveLinkedDisplayname;
     delete row.dliveLinkedUsername;
     delete row.providerChannelSlug;
     delete row.providerChannelUsername;
-    // (optionnel) tu peux delete aussi hostTargetIsLive si tu veux
-    // delete row.hostTargetIsLive;
     const c = await pool.query(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id = $1`, [
         Number(row.id),
     ]);
@@ -294,7 +288,7 @@ publicRouter.get("/streamers/:slug", a(async (req, res) => {
     if (me?.id) {
         const f = await pool.query(`SELECT notify_enabled
          FROM streamer_follows
-         WHERE streamer_id=$1 AND user_id=$2
+         WHERE streamer_id = $1 AND user_id = $2
          LIMIT 1`, [Number(row.id), Number(me.id)]);
         if (f.rows?.[0]) {
             isFollowing = true;
@@ -333,7 +327,6 @@ publicRouter.post("/streamers/:slug/title", requireAuth, a(async (req, res) => {
         return res.status(400).json({ ok: false, error: "title_too_long" });
     const requesterId = Number(req.user.id);
     const requesterRole = String(req.user?.role || "viewer");
-    // streamer target
     const s = await pool.query(`SELECT id, slug, display_name AS "displayName", user_id AS "ownerUserId"
        FROM streamers
        WHERE lower(slug)=lower($1)
@@ -356,10 +349,12 @@ publicRouter.post("/streamers/:slug/title", requireAuth, a(async (req, res) => {
     const out = upd.rows?.[0];
     if (!out)
         return res.status(404).json({ ok: false, error: "not_found" });
-    // (optionnel) broadcast si tu veux que les overlays réagissent
     const io = req.app?.locals?.io;
     if (io) {
-        emitChatAndStream(io, String(out.slug), "stream:title", { slug: String(out.slug), title: String(out.title) });
+        emitChatAndStream(io, String(out.slug), "stream:title", {
+            slug: String(out.slug),
+            title: String(out.title),
+        });
     }
     return res.json({ ok: true, streamer: out });
 }));
@@ -388,12 +383,11 @@ publicRouter.post("/streamers/:slug/host", requireAuth, a(async (req, res) => {
         return res.status(403).json({ ok: false, error: "forbidden" });
     const targetSlugRaw = req.body?.targetSlug;
     const targetSlug = targetSlugRaw == null ? "" : String(targetSlugRaw).trim();
-    // ✅ STOP host
     if (!targetSlug) {
         await pool.query(`INSERT INTO streamer_hosts (hoster_streamer_id, target_streamer_id, updated_at)
          VALUES ($1, NULL, now())
          ON CONFLICT (hoster_streamer_id) DO UPDATE
-           SET target_streamer_id=NULL, updated_at=now()`, [Number(hoster.id)]);
+           SET target_streamer_id = NULL, updated_at = now()`, [Number(hoster.id)]);
         const io = req.app.locals.io;
         if (io) {
             const msg = chatStore.addSystem(String(hoster.slug), `🛑 Host arrêté.`);
@@ -401,7 +395,6 @@ publicRouter.post("/streamers/:slug/host", requireAuth, a(async (req, res) => {
         }
         return res.json({ ok: true, hostTargetSlug: null, hostTargetDisplayName: null, hostTargetIsLive: false });
     }
-    // ✅ TARGET must exist + live
     const t = await pool.query(`SELECT id, slug, display_name AS "displayName", is_live AS "isLive"
        FROM streamers
        WHERE lower(slug)=lower($1)
@@ -418,7 +411,7 @@ publicRouter.post("/streamers/:slug/host", requireAuth, a(async (req, res) => {
     await pool.query(`INSERT INTO streamer_hosts (hoster_streamer_id, target_streamer_id, updated_at)
        VALUES ($1, $2, now())
        ON CONFLICT (hoster_streamer_id) DO UPDATE
-         SET target_streamer_id=EXCLUDED.target_streamer_id, updated_at=now()`, [Number(hoster.id), Number(target.id)]);
+         SET target_streamer_id = EXCLUDED.target_streamer_id, updated_at = now()`, [Number(hoster.id), Number(target.id)]);
     const io = req.app.locals.io;
     if (io) {
         const msg = chatStore.addSystem(String(hoster.slug), `📺 ${String(hoster.displayName || hoster.slug)} host ${String(target.displayName || target.slug)} !`);
@@ -447,9 +440,9 @@ publicRouter.post("/streamers/:slug/follow", requireAuth, a(async (req, res) => 
         return res.status(400).json({ ok: false, error: "cannot_self_follow" });
     }
     const ins = await pool.query(`INSERT INTO streamer_follows (streamer_id, user_id)
-       VALUES ($1,$2)
+       VALUES ($1, $2)
        ON CONFLICT DO NOTHING`, [Number(streamer.id), Number(req.user.id)]);
-    const c = await pool.query(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id=$1`, [
+    const c = await pool.query(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id = $1`, [
         Number(streamer.id),
     ]);
     const followsCount = Number(c.rows?.[0]?.n ?? 0);
@@ -474,7 +467,7 @@ publicRouter.post("/streamers/:slug/follow", requireAuth, a(async (req, res) => 
     }
     const nf = await pool.query(`SELECT notify_enabled
        FROM streamer_follows
-       WHERE streamer_id=$1 AND user_id=$2
+       WHERE streamer_id = $1 AND user_id = $2
        LIMIT 1`, [Number(streamer.id), Number(req.user.id)]);
     const notifyEnabled = nf.rows?.[0] ? !!nf.rows[0].notify_enabled : true;
     return res.json({ ok: true, following: true, followsCount, notifyEnabled });
@@ -491,11 +484,11 @@ publicRouter.delete("/streamers/:slug/follow", requireAuth, a(async (req, res) =
     const streamer = s.rows?.[0];
     if (!streamer)
         return res.status(404).json({ ok: false, error: "streamer_not_found" });
-    await pool.query(`DELETE FROM streamer_follows WHERE streamer_id=$1 AND user_id=$2`, [
+    await pool.query(`DELETE FROM streamer_follows WHERE streamer_id = $1 AND user_id = $2`, [
         Number(streamer.id),
         Number(req.user.id),
     ]);
-    const c = await pool.query(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id=$1`, [
+    const c = await pool.query(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id = $1`, [
         Number(streamer.id),
     ]);
     const followsCount = Number(c.rows?.[0]?.n ?? 0);
@@ -513,8 +506,9 @@ publicRouter.patch("/streamers/:slug/follow/notify", requireAuth, a(async (req, 
     if (!slug)
         return res.status(400).json({ ok: false, error: "bad_slug" });
     const raw = req.body?.notifyEnabled;
-    if (typeof raw !== "boolean")
+    if (typeof raw !== "boolean") {
         return res.status(400).json({ ok: false, error: "notifyEnabled_required" });
+    }
     const notifyEnabled = raw;
     const s = await pool.query(`SELECT id, slug
        FROM streamers

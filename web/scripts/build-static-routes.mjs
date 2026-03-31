@@ -117,17 +117,21 @@ const staticRouteMetadata = {
     }
   },
   '/a-propos': {
-    title: 'À propos de LunaLive — Plateforme streaming casino FR',
-    description: 'Découvrez LunaLive : plateforme française de streaming casino en direct, évaluations honnêtes de casinos, challenges Hunt et communauté de streamers.',
+    title: 'À propos de LunaLive — Plateforme streaming casino française',
+    description: 'LunaLive est une plateforme française indépendante de streaming casino : streamers en live, évaluations transparentes de casinos, communauté et événements exclusifs.',
     canonical: `${SITE_URL}/a-propos`,
     content: {
       h1: 'À propos de LunaLive',
-      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">LunaLive est une plateforme française de streaming casino en direct, créée par et pour la communauté. Notre mission : offrir un espace de confiance où les passionnés de casino peuvent regarder leurs streamers préférés jouer en live, découvrir des casinos vérifiés et participer à des événements exclusifs.</p>
+      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">LunaLive est une plateforme française indépendante dédiée au streaming casino en direct. Créée par des passionnés pour la communauté, elle réunit des streamers casino, des évaluations transparentes de casinos en ligne et des événements exclusifs accessibles à tous les membres.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Notre mission</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Offrir un espace de confiance où les amateurs de casino peuvent suivre des streamers en live, s'informer sur les casinos en ligne grâce à des avis issus d'expériences réelles, et participer à une communauté active. LunaLive ne se substitue pas à un opérateur de jeux : la plateforme diffuse des contenus de divertissement liés au casino et référence des opérateurs légaux.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Comment LunaLive évalue-t-il les casinos ?</h2>
-      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Contrairement aux sites d'affiliation classiques, LunaLive publie des évaluations transparentes : chaque casino partenaire est évalué par notre équipe ET par la communauté. Les casinos qui ne respectent pas les joueurs sont signalés avec les raisons précises.</p>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Contrairement aux sites d'affiliation classiques, LunaLive publie des évaluations issues d'expériences réelles. Les streamers testent chaque casino en conditions authentiques : dépôt effectif, sessions de jeu en live devant la communauté, délais de retrait réels, contact avec le support client. Les critères évalués sont : la fiabilité des paiements, la transparence des conditions de bonus (wagering, plafonds), la réactivité du support et le respect général des joueurs. Un casino qui refuse des retraits sans motif valable ou applique des conditions abusives est signalé publiquement avec les preuves.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">La communauté LunaLive</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">LunaLive fédère une communauté de streamers casino francophones et de spectateurs passionnés. Les membres participent aux Challenges Hunt, votent sur les casinos, accèdent aux clips VOD des meilleures sessions et interagissent en direct dans le chat. La plateforme est indépendante de tout opérateur de casino.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Que propose LunaLive ?</h2>
-      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">LunaLive propose : des lives casino en direct gratuits, CheckTaSlot pour analyser les sessions de jeu, des Challenges Hunt avec récompenses, une boutique officielle, des événements communautaires et des clips VOD des meilleures sessions.</p>
-      <p style="font-size:14px;line-height:1.6;margin-bottom:20px;color:#555;">Tous les contenus sont accessibles librement. Certaines fonctionnalités premium sont disponibles par abonnement. LunaLive est strictement réservé aux personnes majeures (18 ans et plus).</p>`,
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Lives casino en direct gratuits — CheckTaSlot pour analyser les sessions de jeu en temps réel — Challenges Hunt avec classements et récompenses — fiches casino avec avis communautaires — événements exclusifs — clips VOD des meilleures sessions — boutique officielle.</p>
+      <p style="font-size:14px;line-height:1.6;margin-bottom:20px;color:#555;">Accès libre. Certaines fonctionnalités premium sont disponibles par abonnement. LunaLive est strictement réservé aux personnes majeures (18 ans et plus). Le jeu peut créer une dépendance : Joueurs Info Service 09 74 75 13 13 (7j/7, gratuit).</p>`,
       links: [
         { href: '/', text: 'Lives en direct' },
         { href: '/casinos', text: 'Casinos évalués' },
@@ -140,19 +144,23 @@ const staticRouteMetadata = {
   },
   '/mentions-legales': {
     title: 'Mentions légales — LunaLive',
-    description: 'Mentions légales de LunaLive — plateforme française de streaming casino. Informations sur l\'éditeur, l\'hébergement et les conditions d\'utilisation.',
+    description: 'Mentions légales de LunaLive — plateforme française de streaming casino. Éditeur, directeur de publication, hébergeur et informations légales.',
     canonical: `${SITE_URL}/mentions-legales`,
     content: {
       h1: 'Mentions légales',
-      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Conformément à la loi n°2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique (LCEN), le présent site est édité et exploité par LunaLive. Contact : <a href="mailto:lunalivepro@gmail.com" style="color:#7c4dff;">lunalivepro@gmail.com</a>.</p>
+      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Conformément à la loi n°2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique (LCEN), les mentions légales suivantes s'appliquent au site lunalive.onrender.com.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Éditeur du site</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Le site LunaLive est édité et exploité par une personne physique agissant en qualité de responsable éditorial. <strong>Directeur de la publication :</strong> le responsable de la plateforme LunaLive. Contact de l'éditeur : <a href="mailto:lunalivepro@gmail.com" style="color:#7c4dff;">lunalivepro@gmail.com</a>.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Hébergement</h2>
-      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Le site LunaLive (lunalive.onrender.com) est hébergé par Render Services, Inc. — 525 Brannan St, Suite 300, San Francisco, CA 94107, États-Unis. Site : render.com.</p>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Le site LunaLive (lunalive.onrender.com) est hébergé par <strong>Render Services, Inc.</strong> — 525 Brannan St, Suite 300, San Francisco, CA 94107, États-Unis. Site : <a href="https://render.com" style="color:#7c4dff;" rel="noopener">render.com</a>.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Propriété intellectuelle</h2>
-      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">L'ensemble des contenus publiés sur LunaLive (textes, images, données communautaires, logos) est protégé par le droit de la propriété intellectuelle. Toute reproduction, représentation ou diffusion sans autorisation expresse est interdite.</p>
-      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Données personnelles</h2>
-      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Le traitement des données personnelles est régi par notre Politique de confidentialité, conforme au RGPD (Règlement UE 2016/679) et à la loi française Informatique et Libertés.</p>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">L'ensemble des contenus publiés sur LunaLive (textes, images, données communautaires, logos, code source) est protégé par le droit de la propriété intellectuelle. Toute reproduction, représentation ou diffusion sans autorisation expresse et écrite est interdite.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Données personnelles et RGPD</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Le traitement des données personnelles est régi par notre <a href="/politique-de-confidentialite" style="color:#7c4dff;">Politique de confidentialité</a>, conforme au RGPD (Règlement UE 2016/679) et à la loi française Informatique et Libertés (loi n°78-17 du 6 janvier 1978 modifiée). Pour exercer vos droits (accès, rectification, suppression, portabilité, opposition) : <a href="mailto:lunalivepro@gmail.com" style="color:#7c4dff;">lunalivepro@gmail.com</a>. Réclamations : <a href="https://www.cnil.fr" style="color:#7c4dff;" rel="noopener">cnil.fr</a>.</p>
+      <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Limitation de responsabilité</h2>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">LunaLive est une plateforme de divertissement et d'information autour du streaming casino. LunaLive n'est pas un opérateur de jeux d'argent et ne propose pas de jeux d'argent en ligne. Les contenus diffusés sont à titre informatif et de divertissement uniquement.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Jeu responsable</h2>
-      <p style="font-size:15px;line-height:1.7;margin-bottom:8px;color:#444;">LunaLive est strictement réservé aux personnes majeures (18 ans et plus). Pour toute aide : Joueurs Info Service au 09 74 75 13 13.</p>`,
+      <p style="font-size:15px;line-height:1.7;margin-bottom:8px;color:#444;">LunaLive est strictement réservé aux personnes majeures (18 ans et plus). Le jeu peut créer une dépendance. Pour toute aide : <strong>Joueurs Info Service au 09 74 75 13 13</strong> (numéro non surtaxé, disponible 7j/7) ou <a href="https://www.addictaide.fr" style="color:#7c4dff;" rel="noopener">addictaide.fr</a>.</p>`,
       links: [
         { href: '/politique-de-confidentialite', text: 'Politique de confidentialité' },
         { href: '/cgu', text: 'CGU' },

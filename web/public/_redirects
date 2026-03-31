@@ -8,6 +8,9 @@
 # Dynamic casino routes (only serve pre-built HTML if the file exists)
 /casinos/brutalcasino /casinos-brutalcasino.html 200
 /casinos/hypebet /casinos-hypebet.html 200
+/casinos/razed /casinos-razed.html 200
+/casinos/trickz /casinos-trickz.html 200
+/casinos/bluvegaz /casinos-bluvegaz.html 200
 
 # Dynamic streamer routes
 /s/bigbagutee /s-bigbagutee.html 200

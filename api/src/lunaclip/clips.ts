@@ -1,12 +1,12 @@
 // api/src/lunaclip/clips.ts
-// Wrapper clips pour LunaClip — author='lunaclip', pre=75s, post=15s.
+// Wrapper clips pour LunaClip — author='lunaclip', pre=75s (1m15), post=15s.
 // Stocke live_start_ts pour un matching VOD précis même après coupure de stream.
 
 import type { Pool } from "pg";
 
 const LUNACLIP_AUTHOR   = "lunaclip";
-const LUNACLIP_PRE_SEC  = 80;   // 1m20 avant le moment détecté
-const LUNACLIP_POST_SEC = 10;   // 10s après le moment détecté
+const LUNACLIP_PRE_SEC  = 75;   // 1m15 avant le moment détecté
+const LUNACLIP_POST_SEC = 15;   // 15s après le moment détecté
 
 const DEDUP_WINDOW_SEC  = 20;
 const DEDUP_HORIZON_MS  = 6 * 3600 * 1000;

@@ -239,7 +239,10 @@ function requireBotKey(req, res) {
 }
 function emitChatAll(io, slug, event, data) {
     try {
-        io.to(`streamer:${slug}`).emit(event, data);
+        const s = String(slug || "").trim().toLowerCase();
+        if (!s)
+            return;
+        io.to(`chat:${s}:public`).to(`chat:${s}:popup`).emit(event, data);
     }
     catch (e) {
         console.error("emitChatAll error:", e);

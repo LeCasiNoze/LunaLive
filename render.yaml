@@ -1,0 +1,37 @@
+# render.yaml — LunaLive static site configuration
+#
+# ⚠️  Ce fichier sert de référence IaC pour Render.
+#     Il ne s'applique PAS automatiquement à un service existant créé via le dashboard.
+#     Pour activer les headers, soit :
+#       A) Copier chaque header manuellement dans Render Dashboard > Settings > Headers
+#       B) Aller dans Render Dashboard > Settings > Render.yaml et activer la sync IaC
+#
+# Les headers ci-dessous remplacent le fichier _headers (convention Netlify, ignoré par Render).
+
+services:
+  - type: web
+    name: lunalive          # ⚠️ Vérifier que ce nom correspond à ton service dans le dashboard
+    env: static
+    buildCommand: cd web && npm install && npm run build
+    staticPublishPath: web/dist
+    pullRequestPreviewsEnabled: false
+
+    headers:
+      - path: /*
+        name: Strict-Transport-Security
+        value: "max-age=31536000; includeSubDomains"
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Permissions-Policy
+        value: "camera=(), microphone=(), geolocation=()"
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://player.twitch.tv; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://lunalive-api.onrender.com wss://lunalive-api.onrender.com https:; frame-src https://player.twitch.tv https://www.twitch.tv; media-src 'self' https: blob:; worker-src blob:;"

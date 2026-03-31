@@ -43,6 +43,9 @@ async function resolveImmutableUsername(displaynameOrUsername) {
     const displayname = norm(displaynameOrUsername);
     if (!displayname)
         return null;
+    // ✅ Déjà un username immutable → pas besoin d'appel API
+    if (displayname.toLowerCase().startsWith("dlive-"))
+        return displayname;
     // 1) try as displayname (slug)
     {
         const query = `
@@ -218,12 +221,14 @@ export function ensureDliveBridge(opts) {
             if (subSent)
                 return;
             subSent = true;
-            // legacy "start"
+            // legacy "start" (subscriptions-transport-ws protocol utilisé par DLive)
             ws.send(JSON.stringify({ id: "1", type: "start", payload: { query } }));
+            console.log("[dlive_bridge] subscription sent", key, immutableUsername);
         };
         ws.on("open", () => {
             if (!ws)
                 return;
+            console.log("[dlive_bridge] ws open", key);
             ws.send(JSON.stringify({ type: "connection_init" }));
             // fallback: si ack tarde, on envoie quand même
             setTimeout(() => {
@@ -247,7 +252,9 @@ export function ensureDliveBridge(opts) {
                     scheduleReconnect(1200);
                     return;
                 }
-                if (t !== "data")
+                // ✅ "data" = legacy protocol (subscriptions-transport-ws)
+                // ✅ "next" = nouveau protocol (graphql-ws) — géré pour compatibilité future
+                if (t !== "data" && t !== "next")
                     return;
                 let payloads = msg?.payload?.data?.streamMessageReceived;
                 if (!payloads)
@@ -274,9 +281,10 @@ export function ensureDliveBridge(opts) {
             closeWs();
             scheduleReconnect(1200);
         });
-        ws.on("close", () => {
+        ws.on("close", (code, reason) => {
             if (!alive)
                 return;
+            console.log("[dlive_bridge] ws closed", key, code, reason?.toString?.() || "");
             closeWs();
             scheduleReconnect(1200);
         });
@@ -295,6 +303,7 @@ export function ensureDliveBridge(opts) {
             return;
         }
         try {
+            console.log("[dlive_bridge] resolving username", key, dn);
             const immutable = await resolveImmutableUsername(dn);
             if (!immutable) {
                 console.warn("[dlive_bridge] cannot resolve immutable username", key, dn);
@@ -302,6 +311,7 @@ export function ensureDliveBridge(opts) {
                 scheduleReconnect(2500);
                 return;
             }
+            console.log("[dlive_bridge] resolved", key, dn, "->", immutable);
             // si on change de streamer => reset dedup (sinon on risque de filtrer des ids)
             if (dliveImmutable && dliveImmutable !== immutable) {
                 seenIds.clear();

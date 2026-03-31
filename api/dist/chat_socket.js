@@ -233,23 +233,33 @@ async function sendBotChat(io, meta, body) {
 }
 // ✅ resolve dlive username for streamer (linked displayname or provider account slug)
 async function getDliveDisplaynameForStreamer(streamerId) {
-    // 1) linked
+    // 1) linked — préférer l'immutable username (dlive-xxxx) si déjà connu en DB
     {
-        const r = await pool.query(`SELECT dlive_use_linked AS "useLinked", dlive_link_displayname AS "dn"
+        const r = await pool.query(`SELECT dlive_use_linked AS "useLinked", dlive_link_username AS "username", dlive_link_displayname AS "dn"
        FROM streamers WHERE id=$1 LIMIT 1`, [streamerId]);
         const row = r.rows?.[0];
-        if (row?.useLinked && row?.dn)
-            return String(row.dn);
+        if (row?.useLinked) {
+            const u = String(row?.username || "").trim();
+            if (u)
+                return u; // ✅ username immutable direct, évite un appel API DLive
+            const d = String(row?.dn || "").trim();
+            if (d)
+                return d;
+        }
     }
     // 2) provider account assigned
     {
-        const r = await pool.query(`SELECT pa.channel_slug AS "slug"
+        const r = await pool.query(`SELECT pa.channel_slug AS "slug", pa.channel_username AS "username"
        FROM provider_accounts pa
        WHERE pa.provider='dlive' AND pa.assigned_to_streamer_id=$1
        LIMIT 1`, [streamerId]);
         const row = r.rows?.[0];
-        if (row?.slug)
-            return String(row.slug);
+        const u = String(row?.username || "").trim();
+        if (u)
+            return u;
+        const s = String(row?.slug || "").trim();
+        if (s)
+            return s;
     }
     return null;
 }

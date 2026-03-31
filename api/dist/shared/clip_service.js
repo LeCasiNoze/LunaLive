@@ -1,9 +1,9 @@
 // api/src/shared/clip_service.ts
 // Service local pour la création de clips (API uniquement)
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
-const LATENCY_PAD_SEC = 30; // Compensation latence augmentée
-const DEFAULT_PRE_SEC = 75; // 1m15 (nouvelle cible)
-const DEFAULT_POST_SEC = 15; // 15s
+const LATENCY_PAD_SEC = 10; // Compensation latence (réduit : cible 1m20 avant / 10s après)
+const DEFAULT_PRE_SEC = 75; // 1m15 dans la VOD avant at_sec → ~1m20 avant le trigger perçu
+const DEFAULT_POST_SEC = 15; // 15s dans la VOD après at_sec → ~10s après le trigger perçu
 async function dliveGql(query, variables) {
     const r = await fetch(DLIVE_ENDPOINT, {
         method: "POST",

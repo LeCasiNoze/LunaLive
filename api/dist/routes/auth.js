@@ -6,11 +6,29 @@ import { hashPassword, verifyPassword, signToken, requireAuth, getActiveSiteUser
 import { sendVerifyCode } from "../utils/mailer.js";
 export const authRouter = Router();
 // en haut du fichier (auth.ts)
+const DEFAULT_AVATARS = [
+    "/Avatar/avatar_alien.png",
+    "/Avatar/avatar_bleu.png",
+    "/Avatar/avatar_chat.png",
+    "/Avatar/avatar_chevalier.png",
+    "/Avatar/avatar_clown.png",
+    "/Avatar/avatar_demon.png",
+    "/Avatar/avatar_ghost.png",
+    "/Avatar/avatar_mage.png",
+    "/Avatar/avatar_ninja.png",
+    "/Avatar/avatar_orange.png",
+    "/Avatar/avatar_panda.png",
+    "/Avatar/avatar_phara.png",
+    "/Avatar/avatar_renard.png",
+    "/Avatar/avatar_robot.png",
+    "/Avatar/avatar_rose.png",
+    "/Avatar/avatar_sam.png",
+    "/Avatar/avatar_santa.png",
+    "/Avatar/avatar_scient.png",
+];
 function defaultAvatarPath(userId) {
-    const count = Math.max(1, Number(process.env.DEFAULT_AVATAR_COUNT ?? 20));
-    const n = (userId % count) + 1;
-    const code = String(n).padStart(3, "0");
-    return `/Avatar/avatar_${code}.png`;
+    const index = userId % DEFAULT_AVATARS.length;
+    return DEFAULT_AVATARS[index];
 }
 function isValidEmail(s) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());

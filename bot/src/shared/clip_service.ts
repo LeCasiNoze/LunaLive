@@ -3,9 +3,9 @@
 
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
 
-const LATENCY_PAD_SEC  = 30;    // Compensation latence augmentée
-const DEFAULT_PRE_SEC  = 75;   // 1m15 (nouvelle cible)
-const DEFAULT_POST_SEC = 15;   // 15s
+const LATENCY_PAD_SEC  = 0;     // Pas de compensation latence (cible: 1m15 avant / 15s après la commande)
+const DEFAULT_PRE_SEC  = 75;   // 1m15 avant la commande
+const DEFAULT_POST_SEC = 15;   // 15s après la commande
 
 type LiveStart = { createdAtMs: number; permlink: string };
 type Pool = any; // Type générique pour éviter la dépendance pg

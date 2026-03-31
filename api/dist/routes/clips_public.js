@@ -284,6 +284,7 @@ clipsPublicRouter.get("/streamers/:slug/clips", async (req, res) => {
       bc.pre_sec,
       bc.post_sec,
       bc.mp4_key,
+      bc.thumbnail_url, -- ✅ AJOUT: colonne thumbnail_url
 
       COALESCE(cnt.cnt,0)::int AS likes_count,
       CASE WHEN ul.user_id IS NULL THEN false ELSE true END AS my_liked
@@ -498,6 +499,7 @@ clipsPublicRouter.get("/clips/top", async (req, res) => {
       bc.pre_sec,
       bc.post_sec,
       bc.mp4_key,
+      bc.thumbnail_url, -- ✅ AJOUT: colonne thumbnail_url
 
       s.slug AS streamer_slug,
       s.display_name AS streamer_display_name,
@@ -554,11 +556,129 @@ clipsPublicRouter.get("/clips/top", async (req, res) => {
             durationSec,
             // ✅ vrai clip mp4 (2 min) si prêt
             clipUrl,
-            thumbUrl: `${base}/thumbs/clips/${Number(x.id)}.jpg`,
+            thumbUrl: x.thumbnail_url || `${base}/thumbs/clips/${Number(x.id)}.jpg`,
             likesCount: Number(x.likes_count || 0),
             myLiked: !!x.my_liked,
             avatarUrl,
         };
     });
     return res.json({ ok: true, total, clips });
+});
+/**
+ * GET /clips/recent?limit=50&cursor=
+ * - Clips récents de tous les streamers
+ * - auth optionnelle (renvoie myLiked)
+ * - pagination par cursor
+ */
+clipsPublicRouter.get("/clips/recent", async (req, res) => {
+    const limit = Math.max(1, Math.min(50, Number(req.query.limit || 24)));
+    const authUser = tryGetAuthUser(req);
+    const myUserId = authUser?.id != null ? Number(authUser.id) : null;
+    // cursor pagination: timestamp:id
+    const cursorRaw = decodeCursor(String(req.query.cursor || ""));
+    let cTs = null;
+    let cId = null;
+    if (cursorRaw) {
+        const parts = cursorRaw.split(":").map((x) => x.trim());
+        if (parts.length >= 2) {
+            cTs = Number(parts[0]);
+            cId = Number(parts[1]);
+        }
+        if (!Number.isFinite(cTs))
+            cTs = null;
+        if (!Number.isFinite(cId))
+            cId = null;
+    }
+    const where = [];
+    const params = [];
+    let p = 1;
+    where.push(`bc.deleted_ts IS NULL`);
+    where.push(`bc.hidden_by_streamer = false`);
+    where.push(`bc.mp4_key IS NOT NULL`);
+    if (cTs != null && cId != null) {
+        where.push(`(bc.created_ts < $${p} OR (bc.created_ts = $${p} AND bc.id < $${p + 1}))`);
+        params.push(cTs, cId);
+        p += 2;
+    }
+    const baseWhere = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const q = `
+    SELECT
+      bc.id,
+      bc.title,
+      bc.created_ts,
+      bc.at_sec,
+      bc.pre_sec,
+      bc.post_sec,
+      bc.mp4_key,
+      bc.thumbnail_url,
+
+      s.slug AS streamer_slug,
+      s.display_name AS streamer_display_name,
+      s.user_id AS owner_user_id,
+
+      COALESCE(cnt.cnt,0)::int AS likes_count,
+      CASE WHEN ul.user_id IS NULL THEN false ELSE true END AS my_liked,
+
+      CASE WHEN ua.user_id IS NOT NULL THEN true ELSE false END AS has_avatar
+
+    FROM bot_clips bc
+    JOIN streamers s ON s.id = bc.streamer_id
+
+    LEFT JOIN (
+      SELECT clip_id, COUNT(*)::int AS cnt
+      FROM clip_likes
+      GROUP BY clip_id
+    ) cnt ON cnt.clip_id = bc.id
+
+    LEFT JOIN clip_likes ul
+      ON ul.clip_id = bc.id
+     AND ul.user_id = $${p++}
+
+    LEFT JOIN user_avatars ua
+      ON ua.user_id = s.user_id
+
+    ${baseWhere}
+    ORDER BY bc.created_ts DESC, bc.id DESC
+    LIMIT $${p++}
+  `;
+    params.push(myUserId);
+    params.push(limit + 1);
+    const r = await pool.query(q, params);
+    const rows = Array.isArray(r.rows) ? r.rows : [];
+    const sliced = rows.slice(0, limit);
+    const base = apiBaseFromReq(req);
+    const clips = sliced.map((x) => {
+        const at = Math.max(0, Number(x.at_sec || 0));
+        const pre = Math.max(0, Number(x.pre_sec || 105));
+        const post = Math.max(0, Number(x.post_sec || 15));
+        const startSec = Math.max(0, at - pre);
+        const durationSec = Math.max(1, pre + post);
+        const ownerUserId = x.owner_user_id != null ? Number(x.owner_user_id) : null;
+        const avatarUrl = ownerUserId && x.has_avatar ? `${base}/avatars/u/${ownerUserId}` : null;
+        const mp4Key = String(x.mp4_key || "").trim();
+        const clipUrl = mp4Key && r2Enabled() ? `${base}/clips/${Number(x.id)}/mp4` : null;
+        return {
+            id: Number(x.id),
+            streamerSlug: String(x.streamer_slug || ""),
+            streamerDisplayName: String(x.streamer_display_name || ""),
+            ownerUserId,
+            title: x.title ?? null,
+            createdAtMs: Number(x.created_ts || 0),
+            startSec,
+            durationSec,
+            // ✅ vrai clip mp4 (2 min) si prêt
+            clipUrl,
+            thumbUrl: x.thumbnail_url || `${base}/thumbs/clips/${Number(x.id)}.jpg`,
+            likesCount: Number(x.likes_count || 0),
+            myLiked: !!x.my_liked,
+            avatarUrl,
+        };
+    });
+    let endCursor = null;
+    const hasNextPage = rows.length > limit;
+    if (clips.length) {
+        const last = clips[clips.length - 1];
+        endCursor = encodeCursor(`${last.createdAtMs}:${last.id}`);
+    }
+    return res.json({ ok: true, clips, pageInfo: { endCursor, hasNextPage } });
 });

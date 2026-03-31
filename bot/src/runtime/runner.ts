@@ -341,6 +341,20 @@ export class StreamerRunner {
         } catch {}
       }
 
+      // Forward vers DLive : newlines repliés en espace (DLive = une seule ligne)
+      try {
+        const dliveMsg = it.message.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+        if (dliveMsg) {
+          await sendDliveText(dliveMsg, "autopost");
+        }
+      } catch (e: any) {
+        try {
+          await logEvent(this.pool, this.streamer.id, "warn", "autopost dlive forward failed", {
+            err: e?.message || String(e),
+          });
+        } catch {}
+      }
+
       this.autopostTimer = setTimeout(autopostTick, Math.max(10, it.everySec) * 1000);
     };
 

@@ -16,7 +16,12 @@
       "Bash(identify /c/Users/Lucas/LunaLive/web/public/*.png)",
       "Bash(grep -rn \"og:image\\\\|og_image\" c:/Users/Lucas/LunaLive/web/src/ --include=*.ts --include=*.tsx)",
       "Bash(grep -A4 '\"\"sameAs\"\"' c:/Users/Lucas/LunaLive/web/dist/index.html)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(find c:UsersLucasLunaLiveapisrc -name *overlay* -o -name *viewer*)",
+      "Bash(find c:UsersLucasLunaLive -name *overlay* -o -name *obs* -o -name *widget*)",
+      "Bash(find /c/Users/Lucas/LunaLive/api/src -name *autopost* -o -name *auto_post*)",
+      "Bash(find /c/Users/Lucas/LunaLive -name *scheduler* -o -name *poller*)",
+      "Bash(find /c/Users/Lucas/LunaLive -name *.py -not -path */node_modules/* -not -path */temp_debug*)"
     ]
   }
 }
