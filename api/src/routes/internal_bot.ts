@@ -305,9 +305,11 @@ internalBotRouter.post(
     const body: any = req.body || {};
     const channelId = String(body.channelId || "").trim();
     const content = String(body.content || "").trim();
+    const embeds = Array.isArray(body.embeds) ? body.embeds : [];
+    const components = Array.isArray(body.components) ? body.components : [];
 
-    if (!channelId || !content) {
-      return res.status(400).json({ ok: false, error: "channelId and content required" });
+    if (!channelId) {
+      return res.status(400).json({ ok: false, error: "channelId required" });
     }
 
     try {
@@ -329,8 +331,22 @@ internalBotRouter.post(
         return res.status(404).json({ ok: false, error: "Channel not found or not text-based" });
       }
 
-      await (channel as any).send(content);
-      console.log("[api] discord message sent successfully to channel:", channelId);
+      // Construire le payload Discord
+      const payload: any = {};
+      
+      if (content) payload.content = content;
+      if (embeds.length > 0) payload.embeds = embeds;
+      if (components.length > 0) payload.components = components;
+
+      console.log("[api] discord message payload:", {
+        hasContent: !!payload.content,
+        embedCount: payload.embeds?.length || 0,
+        componentCount: payload.components?.length || 0,
+        channelId
+      });
+
+      await (channel as any).send(payload);
+      console.log("[api] discord premium message sent successfully to channel:", channelId);
       
       return res.json({ ok: true });
     } catch (e: any) {

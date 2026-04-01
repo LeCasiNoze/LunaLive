@@ -181,20 +181,71 @@ export class YouTubeNotifier {
     async notifyNewVideo(video) {
         console.log("[bot] youtube notification process started for video:", video.id);
         const lunaLiveLink = this.extractLunaLiveLink(video.description);
-        console.log("[bot] youtube lunaLive link found:", !!lunaLiveLink);
-        // Construire le message Discord
-        const message = [
-            `<@&${DISCORD_CONFIG.GLOBAL_ROLE_ID}> <@&${DISCORD_CONFIG.YOUTUBE_ROLE_ID}>`,
-            "",
-            "🎬 Nouveau clip LunaLive vient de sortir !",
-            `**${video.title}**`,
-            `▶️ Regarder : <${video.url}>`,
-        ];
-        if (lunaLiveLink) {
-            message.push(`📺 Retrouver le streamer : <${lunaLiveLink}>`);
+        const streamerName = this.extractStreamerName(video, lunaLiveLink);
+        console.log("[bot] youtube extracted data:", {
+            lunaLiveLink: !!lunaLiveLink,
+            streamerName: streamerName || 'not-found'
+        });
+        // Construire l'embed premium
+        const embed = {
+            author: {
+                name: "LunaLive • Nouveau clip",
+                icon_url: "https://lunalive.onrender.com/favicon.ico" // Fallback si disponible
+            },
+            title: this.truncateTitle(video.title, 100), // Tronquer si trop long
+            description: this.buildEmbedDescription(streamerName, lunaLiveLink),
+            color: 0x5865F2, // Couleur Discord bleue
+            timestamp: video.publishedAt.toISOString(),
+            footer: {
+                text: "LunaLive Clips",
+                icon_url: "https://lunalive.onrender.com/favicon.ico"
+            }
+        };
+        // Ajouter la miniature YouTube comme image principale
+        if (video.id) {
+            embed.image = {
+                url: `https://img.youtube.com/vi/${video.id}/maxresdefault.jpg`
+            };
         }
-        const finalMessage = message.join("\n");
-        console.log("[bot] youtube message prepared, length:", finalMessage.length);
+        // Construire les boutons
+        const buttons = [
+            {
+                type: 2, // BUTTON
+                style: 5, // LINK
+                label: "▶ Regarder le clip",
+                url: video.url
+            }
+        ];
+        // Ajouter le bouton streamer seulement si lien LunaLive trouvé
+        if (lunaLiveLink) {
+            buttons.push({
+                type: 2, // BUTTON
+                style: 5, // LINK
+                label: "📺 Voir le streamer",
+                url: lunaLiveLink
+            });
+        }
+        // Construire le message Discord avec mentions de rôles
+        const roleMentions = `<@&${DISCORD_CONFIG.GLOBAL_ROLE_ID}> <@&${DISCORD_CONFIG.YOUTUBE_ROLE_ID}>`;
+        const payload = {
+            content: roleMentions,
+            embeds: [embed]
+        };
+        // Ajouter les boutons seulement si présents
+        if (buttons.length > 0) {
+            payload.components = [
+                {
+                    type: 1, // ACTION_ROW
+                    components: buttons
+                }
+            ];
+        }
+        console.log("[bot] youtube premium embed prepared:", {
+            title: embed.title,
+            hasImage: !!embed.image,
+            buttonCount: buttons.length,
+            descriptionLength: embed.description?.length || 0
+        });
         // Envoyer via l'API interne
         const base = String(this.env.BOT_API_BASE || "").replace(/\/$/, "");
         const key = String(this.env.BOT_INTERNAL_KEY || "");
@@ -220,8 +271,9 @@ export class YouTubeNotifier {
                 "x-bot-key": key.length > 8 ? `${key.slice(0, 3)}***${key.slice(-3)}` : '***'
             },
             bodyPreview: {
-                channelId: DISCORD_CONFIG.YOUTUBE_CHANNEL_ID,
-                content: finalMessage.substring(0, 50) + "..."
+                hasContent: !!payload.content,
+                hasEmbeds: payload.embeds?.length || 0,
+                hasComponents: payload.components?.length || 0
             }
         });
         try {
@@ -233,7 +285,9 @@ export class YouTubeNotifier {
                 },
                 body: JSON.stringify({
                     channelId: DISCORD_CONFIG.YOUTUBE_CHANNEL_ID,
-                    content: finalMessage,
+                    content: payload.content,
+                    embeds: payload.embeds,
+                    components: payload.components
                 }),
             });
             console.log("[bot] youtube API response status:", response.status);
@@ -242,12 +296,14 @@ export class YouTubeNotifier {
                 console.log("[bot] youtube notification failed", response.status, errorText.slice(0, 300));
             }
             else {
-                console.log("[bot] youtube notification sent successfully");
+                console.log("[bot] youtube premium notification sent successfully");
                 try {
                     await logEvent(this.pool, null, "info", "youtube notification sent", {
                         videoId: video.id,
                         title: video.title,
                         hasLunaLiveLink: !!lunaLiveLink,
+                        streamerName: streamerName || 'unknown',
+                        embedFormat: 'premium'
                     });
                 }
                 catch { }
@@ -256,5 +312,48 @@ export class YouTubeNotifier {
         catch (e) {
             console.log("[bot] youtube notification exception", e?.message || e);
         }
+    }
+    buildEmbedDescription(streamerName, lunaLiveLink) {
+        const lines = [
+            "Un nouveau clip LunaLive est disponible sur YouTube.",
+            "",
+        ];
+        if (streamerName) {
+            lines.push(`👤 **Streamer** : ${streamerName}`);
+        }
+        if (lunaLiveLink) {
+            lines.push(`📺 **LunaLive** : <${lunaLiveLink}>`);
+        }
+        return lines.join("\n");
+    }
+    truncateTitle(title, maxLength) {
+        if (title.length <= maxLength)
+            return title;
+        return title.substring(0, maxLength - 3) + "...";
+    }
+    extractStreamerName(video, lunaLiveLink) {
+        // 1. Essayer d'extraire depuis le lien LunaLive
+        if (lunaLiveLink) {
+            const match = lunaLiveLink.match(/\/s\/([a-zA-Z0-9_-]+)/);
+            if (match && match[1]) {
+                return match[1];
+            }
+        }
+        // 2. Essayer de parser depuis le titre (format: "🎰 x 1000 · Fabiozsis | LunaLive")
+        const titleMatch = video.title.match(/[\u2022·]\s*([a-zA-Z0-9_-]+)\s*(?:\||$)/);
+        if (titleMatch && titleMatch[1]) {
+            return titleMatch[1];
+        }
+        // 3. Essayer un pattern plus simple (nom avant "|")
+        const simpleMatch = video.title.match(/^([^\|]+?)\s*\|/);
+        if (simpleMatch && simpleMatch[1]) {
+            const name = simpleMatch[1].trim();
+            // Nettoyer les emojis et symboles
+            const cleanName = name.replace(/[^\w\s-]/g, '').trim();
+            if (cleanName.length > 0 && cleanName.length < 30) {
+                return cleanName;
+            }
+        }
+        return null;
     }
 }
