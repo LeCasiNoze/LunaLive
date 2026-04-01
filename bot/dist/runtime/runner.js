@@ -84,6 +84,22 @@ export class StreamerRunner {
             let out = String(t ?? "").replace(/\r\n/g, "\n");
             if (!out.trim())
                 return;
+            // ✅ GARDE-FOU FINAL pour autopost: double vérification juste avant l'envoi
+            if (reason === "autopost") {
+                const live = await isLiveNow();
+                if (!live) {
+                    try {
+                        await logEvent(this.pool, this.streamer.id, "warn", "autopost blocked at send: streamer offline", {
+                            streamerId: this.streamer.id,
+                            slug: this.streamer.slug,
+                            messagePreview: preview(out),
+                        });
+                    }
+                    catch { }
+                    console.log(`[bot] autopost blocked at send: streamer offline slug=${this.streamer.slug} id=${this.streamer.id}`);
+                    return;
+                }
+            }
             if (out.length > BOT_TEXT_MAX) {
                 // on tronque en sécurité (normalement l’API empêchera d’enregistrer > 500)
                 out = out.slice(0, BOT_TEXT_MAX);
@@ -270,14 +286,22 @@ export class StreamerRunner {
                 return;
             if (!this.autoposts.length)
                 return;
-            // ✅ liveOnly guard: ne rien envoyer si offline
-            if (this.settings.liveOnly) {
-                const live = await isLiveNow();
-                if (!live) {
-                    // on recheck un peu plus tard sans spammer
-                    this.autopostTimer = setTimeout(autopostTick, 30_000);
-                    return;
+            // ✅ GARDE-FOU RENFORCÉ: vérification live systématique
+            const live = await isLiveNow();
+            if (!live) {
+                // Log clair du skip pour debugging
+                try {
+                    await logEvent(this.pool, this.streamer.id, "info", "autopost skipped: streamer offline", {
+                        streamerId: this.streamer.id,
+                        slug: this.streamer.slug,
+                        autopostCount: this.autoposts.length,
+                    });
                 }
+                catch { }
+                console.log(`[bot] autopost skipped: streamer offline slug=${this.streamer.slug} id=${this.streamer.id}`);
+                // on recheck un peu plus tard sans spammer
+                this.autopostTimer = setTimeout(autopostTick, 30_000);
+                return;
             }
             const it = this.autoposts.shift();
             this.autoposts.push(it);
@@ -287,6 +311,21 @@ export class StreamerRunner {
             catch (e) {
                 try {
                     await logEvent(this.pool, this.streamer.id, "warn", "autopost failed", {
+                        err: e?.message || String(e),
+                    });
+                }
+                catch { }
+            }
+            // Forward vers DLive : newlines repliés en espace (DLive = une seule ligne)
+            try {
+                const dliveMsg = it.message.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+                if (dliveMsg) {
+                    await sendDliveText(dliveMsg, "autopost");
+                }
+            }
+            catch (e) {
+                try {
+                    await logEvent(this.pool, this.streamer.id, "warn", "autopost dlive forward failed", {
                         err: e?.message || String(e),
                     });
                 }

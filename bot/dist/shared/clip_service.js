@@ -1,9 +1,9 @@
 // bot/src/shared/clip_service.ts
 // Implémentation locale pour le bot LunaLive
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
-const LATENCY_PAD_SEC = 30; // Compensation latence augmentée
-const DEFAULT_PRE_SEC = 75; // 1m15 (nouvelle cible)
-const DEFAULT_POST_SEC = 15; // 15s
+const LATENCY_PAD_SEC = 0; // Pas de compensation latence (cible: 1m15 avant / 15s après la commande)
+const DEFAULT_PRE_SEC = 75; // 1m15 avant la commande
+const DEFAULT_POST_SEC = 15; // 15s après la commande
 async function dliveGql(query, variables) {
     const r = await fetch(DLIVE_ENDPOINT, {
         method: "POST",

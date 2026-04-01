@@ -43,6 +43,8 @@ const EnvSchema = z.object({
     DLIVE_GRAPHQL_ENDPOINT: z.string().min(1).optional(), // default côté code api = https://graphigo.prd.dlive.tv/
     // health server (optionnel Render)
     PORT: z.coerce.number().int().min(1).max(65535).optional(),
+    // ✅ YouTube Notifications (optionnel, valeurs par défaut hardcodées)
+    YOUTUBE_POLL_INTERVAL_MS: z.coerce.number().int().min(30000).optional(), // 3 minutes par défaut dans config.ts
 });
 export function loadEnv() {
     const parsed = EnvSchema.safeParse(process.env);

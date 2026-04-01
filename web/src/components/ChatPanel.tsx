@@ -2103,7 +2103,14 @@ export function ChatPanel({
       giftSubLoading: false,
     });
 
+    // Marque que le menu vient d'être ouvert pour éviter la fermeture immédiate
+    menuJustOpened.current = true;
+    setTimeout(() => {
+      menuJustOpened.current = false;
+    }, 100);
+
     // ✅ si pas d'utilisateur (DLive/externe), on ne fait pas les checks user-based
+    // mais on laisse le menu ouvert pour au moins "Voir le profil"
     if (!hasUser) return;
 
     const isSelf = myId != null && Number(msg.userId) === Number(myId);
@@ -2140,10 +2147,12 @@ export function ChatPanel({
   function openMenuMouse(e: React.MouseEvent, msg: ChatMsg) {
     e.preventDefault();
     e.stopPropagation();
+    e.nativeEvent.stopImmediatePropagation();
     openMenuAt(e.clientX, e.clientY, msg);
   }
 
   const longPressTimer = React.useRef<number | null>(null);
+  const menuJustOpened = React.useRef(false);
   function onTouchStartMsg(e: React.TouchEvent, msg: ChatMsg) {
     if (msg.userId <= 0) return;
     const t = e.touches?.[0];
@@ -2298,7 +2307,9 @@ function openChatPopup() {
     <div
       style={{ height: "100%", display: "flex", flexDirection: "column" }}
       onClick={() => {
-        closeMenu();
+        if (!menuJustOpened.current) {
+          closeMenu();
+        }
       }}
     >
       {/* anim */}
@@ -2390,6 +2401,7 @@ function openChatPopup() {
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
                   openMenuAt(e.clientX, e.clientY, m);
                 }}
                 onContextMenu={(e) => openMenuMouse(e, m)}

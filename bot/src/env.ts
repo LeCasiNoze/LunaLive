@@ -53,6 +53,9 @@ const EnvSchema = z.object({
 
   // health server (optionnel Render)
   PORT: z.coerce.number().int().min(1).max(65535).optional(),
+
+  // ✅ YouTube Notifications (optionnel, valeurs par défaut hardcodées)
+  YOUTUBE_POLL_INTERVAL_MS: z.coerce.number().int().min(30000).optional(), // 3 minutes par défaut dans config.ts
 });
 
 export type BotEnv = z.infer<typeof EnvSchema>;

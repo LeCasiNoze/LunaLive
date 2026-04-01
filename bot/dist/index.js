@@ -5,6 +5,7 @@ import { loadEnv } from "./env.js";
 import { createPool } from "./db.js";
 import { Registry } from "./runtime/registry.js";
 import { logEvent } from "./log.js";
+import { YouTubeNotifier } from "./modules/notifications/youtube.js";
 import { activeWorkers, waitingWorkers, forceSwitch, skipStreamer, // ✅ NEW
 setMaxWorkers, setMinWatchSec, getSchedulerState, getLogs, setAlertMulti, setLock, } from "./lunaclip/scheduler.js";
 /** cgroup v2 helpers (RAM/CPU conteneur) */
@@ -232,6 +233,13 @@ async function main() {
     const registry = new Registry(pool, env);
     registry.start();
     const stopIpc = startLunaClipDbIpc(pool);
+    // ✅ Démarrer le notificateur YouTube (plus besoin de variables d'environnement)
+    let youtubeNotifier = null;
+    youtubeNotifier = new YouTubeNotifier(pool, env, {
+        pollIntervalMs: env.YOUTUBE_POLL_INTERVAL_MS, // optionnel, utilise la valeur par défaut si non défini
+    });
+    youtubeNotifier.start();
+    console.log("[bot] YouTube notifier started with hardcoded config");
     // (Optionnel) health server
     let server = null;
     if (env.PORT) {
@@ -250,6 +258,10 @@ async function main() {
         catch { }
         try {
             registry.stop();
+        }
+        catch { }
+        try {
+            youtubeNotifier?.stop();
         }
         catch { }
         try {
