@@ -76,6 +76,19 @@ export class YouTubeNotifier {
             });
             // Vérifier si c'est une nouvelle vidéo
             if (latestVideo.id !== this.lastVideoId) {
+                // Mode pipeline : ignorer les vidéos très récentes
+                if (this.config.ignoreRecentHours && this.config.ignoreRecentHours > 0) {
+                    const hoursSincePublished = (Date.now() - latestVideo.publishedAt.getTime()) / (1000 * 60 * 60);
+                    if (hoursSincePublished < this.config.ignoreRecentHours) {
+                        console.log("[bot] youtube ignoring recent video (pipeline mode)", {
+                            id: latestVideo.id,
+                            title: latestVideo.title,
+                            hoursSincePublished: Math.round(hoursSincePublished * 100) / 100,
+                            ignoreHours: this.config.ignoreRecentHours
+                        });
+                        return;
+                    }
+                }
                 console.log("[bot] youtube new video detected", {
                     id: latestVideo.id,
                     title: latestVideo.title,
@@ -197,7 +210,7 @@ export class YouTubeNotifier {
             console.log("[bot] youtube notification skipped: BOT_API_BASE or BOT_INTERNAL_KEY missing");
             return;
         }
-        const url = `${base}/internal/bot/chat/send`; // Temporaire pour tester
+        const url = `${base}/internal/bot/discord/send`;
         console.log("[bot] youtube sending to URL:", url);
         console.log("[bot] youtube full request config:", {
             url,
@@ -219,8 +232,8 @@ export class YouTubeNotifier {
                     "x-bot-key": key,
                 },
                 body: JSON.stringify({
-                    streamerId: 1, // ID fictif pour tester
-                    body: finalMessage,
+                    channelId: DISCORD_CONFIG.YOUTUBE_CHANNEL_ID,
+                    content: finalMessage,
                 }),
             });
             console.log("[bot] youtube API response status:", response.status);

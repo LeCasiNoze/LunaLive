@@ -273,8 +273,9 @@ async function main() {
   // ✅ Démarrer le notificateur YouTube (plus besoin de variables d'environnement)
   let youtubeNotifier: YouTubeNotifier | null = null;
   youtubeNotifier = new YouTubeNotifier(pool, env, {
-    pollIntervalMs: env.YOUTUBE_POLL_INTERVAL_MS, // optionnel, utilise la valeur par défaut si non défini
-  });
+        pollIntervalMs: env.YOUTUBE_POLL_INTERVAL_MS, // optionnel, utilise la valeur par défaut si non défini
+        ignoreRecentHours: 24, // Mode pipeline : ignorer les vidéos des dernières 24h
+      });
   youtubeNotifier.start();
   console.log("[bot] YouTube notifier started with hardcoded config");
 
