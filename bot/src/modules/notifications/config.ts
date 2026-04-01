@@ -16,3 +16,7 @@ export const YOUTUBE_CHANNEL_ID = "UCyjZ_Zf1SAjWqKXxwMIKU1A";
 
 // Fréquence de polling (3 minutes par défaut)
 export const YOUTUBE_POLL_INTERVAL_MS = 180_000;
+
+// Configuration Instagram
+export const INSTAGRAM_USERNAME = "lunalive.tv"; // Compte Instagram LunaLive
+export const INSTAGRAM_POLL_INTERVAL_MS = 180_000; // 3 minutes par défaut

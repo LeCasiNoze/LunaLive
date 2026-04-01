@@ -6,6 +6,7 @@ import { createPool } from "./db.js";
 import { Registry } from "./runtime/registry.js";
 import { logEvent } from "./log.js";
 import { YouTubeNotifier } from "./modules/notifications/youtube.js";
+import { InstagramNotifier } from "./modules/notifications/instagram.js";
 import { activeWorkers, waitingWorkers, forceSwitch, skipStreamer, // ✅ NEW
 setMaxWorkers, setMinWatchSec, getSchedulerState, getLogs, setAlertMulti, setLock, } from "./lunaclip/scheduler.js";
 /** cgroup v2 helpers (RAM/CPU conteneur) */
@@ -241,6 +242,13 @@ async function main() {
     });
     youtubeNotifier.start();
     console.log("[bot] YouTube notifier started with hardcoded config");
+    // ✅ Démarrer le notificateur Instagram
+    let instagramNotifier = null;
+    instagramNotifier = new InstagramNotifier(pool, env, {
+        ignoreStartupHistory: true, // Ignorer l'historique au premier démarrage
+    });
+    instagramNotifier.start();
+    console.log("[bot] Instagram notifier started with hardcoded config");
     // (Optionnel) health server
     let server = null;
     if (env.PORT) {
@@ -263,6 +271,10 @@ async function main() {
         catch { }
         try {
             youtubeNotifier?.stop();
+        }
+        catch { }
+        try {
+            instagramNotifier?.stop();
         }
         catch { }
         try {

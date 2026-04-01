@@ -53,6 +53,7 @@ import { mig048_lunaclip_admin_ipc } from "./mig048_lunaclip_admin_ipc.js";
 import { mig049_clips_thumbnail_url } from "./mig049_clips_thumbnail_url.js";
 import { mig051_support_tickets } from "./mig051_support_tickets.js";
 import { mig052_youtube_notifications } from "./mig052_youtube_notifications.js";
+import { mig053_instagram_notifications } from "./mig053_instagram_notifications.js";
 export async function migrateAll(pool) {
     await mig001_core(pool);
     await mig002_chat_tables(pool);
@@ -109,4 +110,5 @@ export async function migrateAll(pool) {
     await mig049_clips_thumbnail_url(pool);
     await mig051_support_tickets(pool);
     await mig052_youtube_notifications(pool);
+    await mig053_instagram_notifications(pool);
 }
