@@ -153,7 +153,8 @@ export class YouTubeNotifier {
     while ((match = entryRegex.exec(xml)) !== null) {
       const entry = match[1];
       
-      const idMatch = entry.match(/<videoId>(.*?)<\/videoId>/);
+      // Corriger les regex pour correspondre au vrai format YouTube
+      const idMatch = entry.match(/<yt:videoId>(.*?)<\/yt:videoId>/);
       const titleMatch = entry.match(/<title>(.*?)<\/title>/);
       const publishedMatch = entry.match(/<published>(.*?)<\/published>/);
       const descriptionMatch = entry.match(/<media:description>(.*?)<\/media:description>/);

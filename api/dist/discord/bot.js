@@ -175,6 +175,8 @@ export async function startDiscordBot(ctx) {
         partials: [Partials.Channel],
     });
     discordClient = client;
+    // Rendre le client disponible globalement pour l'API
+    global.discordClient = client;
     client.once("clientReady", async () => {
         ctx.log(`[discord] logged in as ${client.user?.tag ?? "unknown"}`);
         const g = await client.guilds.fetch(guildId).catch(() => null);

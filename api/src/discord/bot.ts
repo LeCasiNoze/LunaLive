@@ -256,6 +256,9 @@ export async function startDiscordBot(ctx: BotCtx) {
   });
 
   discordClient = client;
+  
+  // Rendre le client disponible globalement pour l'API
+  (global as any).discordClient = client;
 
   client.once("clientReady", async () => {
     ctx.log(`[discord] logged in as ${client.user?.tag ?? "unknown"}`);

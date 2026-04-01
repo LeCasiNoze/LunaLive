@@ -294,7 +294,54 @@ internalBotRouter.get(
 );
 
 // --------------------  
-// 5) ✅ Utility functions
+// 6) ✅ Discord message send (pour notifications YouTube)
+// --------------------  
+internalBotRouter.post(
+  "/internal/bot/discord/send",
+  express.json(),
+  async (req, res) => {
+    if (!requireBotKey(req, res)) return;
+
+    const body: any = req.body || {};
+    const channelId = String(body.channelId || "").trim();
+    const content = String(body.content || "").trim();
+
+    if (!channelId || !content) {
+      return res.status(400).json({ ok: false, error: "channelId and content required" });
+    }
+
+    try {
+      // Import dynamique pour éviter les dépendances circulaires
+      const { startDiscordBot } = await import("../discord/bot.js");
+      
+      // Le bot Discord doit être démarré pour envoyer des messages
+      // On utilise le client Discord existant
+      const discordClient = (global as any).discordClient;
+      
+      if (!discordClient) {
+        console.log("[api] discord client not available");
+        return res.status(503).json({ ok: false, error: "Discord client not available" });
+      }
+
+      const channel = await discordClient.channels.fetch(channelId).catch(() => null);
+      if (!channel || !channel.isTextBased()) {
+        console.log("[api] discord channel not found or not text-based:", channelId);
+        return res.status(404).json({ ok: false, error: "Channel not found or not text-based" });
+      }
+
+      await (channel as any).send(content);
+      console.log("[api] discord message sent successfully to channel:", channelId);
+      
+      return res.json({ ok: true });
+    } catch (e: any) {
+      console.error("[api] discord send error:", e);
+      return res.status(500).json({ ok: false, error: e?.message || "internal_error" });
+    }
+  }
+);
+
+// --------------------  
+// 7) ✅ Utility functions
 // --------------------  
 function requireBotKey(req: express.Request, res: express.Response): boolean {
   const key = String(req.headers["x-bot-key"] || "").trim();
