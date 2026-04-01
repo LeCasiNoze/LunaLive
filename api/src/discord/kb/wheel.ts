@@ -1,0 +1,88 @@
+// api/src/discord/kb/wheel.ts
+// Encyclopédie — Roue / tirage au sort (Wheel)
+// Confiance : confirmed (vérifié dans api/src/services/wheel.ts, DB schema)
+
+import type { KbEntry } from "./types.js";
+
+export const WHEEL: KbEntry[] = [
+  {
+    id: "wheel_general",
+    category: "streaming",
+    subcategory: "wheel",
+    tags: ["roue", "wheel", "tirage", "sort", "c'est quoi", "principe", "raffle"],
+    title: "C'est quoi la roue (wheel) sur LunaLive ?",
+    answer:
+      "La roue (wheel) est un tirage au sort organisé par le streamer. Les viewers paient des rubis pour entrer dans la roue, et un gagnant est tiré aléatoirement à la fin. Le gagnant reçoit une récompense définie par le streamer (rubis, etc.).",
+    roles: ["viewer", "streamer"],
+    sensitivity: "low",
+    confidence: "confirmed",
+    codeRefs: ["api/src/services/wheel.ts"],
+  },
+  {
+    id: "wheel_participer",
+    category: "streaming",
+    subcategory: "wheel",
+    tags: ["participer", "entrer", "roue", "wheel", "join", "rejoindre", "rubis", "miser"],
+    title: "Comment participer à la roue ?",
+    answer:
+      "Quand une roue est ouverte par un streamer, tu peux entrer en payant le montant de rubis requis. Plus tu mises, plus ton poids dans le tirage est élevé (donc plus de chances de gagner). La commande `!join` peut aussi être disponible dans le chat.",
+    roles: ["viewer"],
+    sensitivity: "low",
+    confidence: "confirmed",
+    prerequisites: ["Avoir suffisamment de rubis", "La roue doit être ouverte par le streamer"],
+    codeRefs: ["api/src/services/wheel.ts"],
+  },
+  {
+    id: "wheel_poids",
+    category: "streaming",
+    subcategory: "wheel",
+    tags: ["poids", "chances", "roue", "wheel", "tirage", "probabilite", "mise"],
+    title: "Est-ce que ma mise influence mes chances de gagner la roue ?",
+    answer:
+      "Oui. La roue utilise un système de poids : une mise plus élevée en rubis te donne un poids plus important dans le tirage. Les chances de chaque participant sont proportionnelles à son poids total.",
+    roles: ["viewer"],
+    sensitivity: "low",
+    confidence: "confirmed",
+    codeRefs: ["api/src/services/wheel.ts"],
+  },
+  {
+    id: "wheel_lancer_streamer",
+    category: "streaming",
+    subcategory: "wheel",
+    tags: ["lancer", "ouvrir", "roue", "wheel", "streamer", "creer", "configurer", "tirage"],
+    title: "Comment lancer une roue en tant que streamer ?",
+    answer:
+      "Depuis ton dashboard ou l'overlay, tu peux ouvrir une roue en configurant : la mise requise, la durée d'inscription, et la récompense du gagnant. Une fois la durée écoulée, le tirage est effectué automatiquement et le gagnant est annoncé.",
+    roles: ["streamer"],
+    sensitivity: "low",
+    confidence: "confirmed",
+    prerequisites: ["Avoir l'outil Roue activé dans le dashboard"],
+    codeRefs: ["api/src/services/wheel.ts", "api/src/routes/streamer.ts"],
+  },
+  {
+    id: "wheel_gagnant",
+    category: "streaming",
+    subcategory: "wheel",
+    tags: ["gagnant", "gagner", "roue", "wheel", "tirage", "resultat", "annonce"],
+    title: "Comment le gagnant est-il annoncé après le tirage ?",
+    answer:
+      "Le gagnant de la roue est annoncé dans le chat du stream et sur la page du streamer. Si tu gagnes, tes rubis sont crédités automatiquement sur ton compte.",
+    roles: ["viewer"],
+    sensitivity: "low",
+    confidence: "confirmed",
+    codeRefs: ["api/src/services/wheel.ts"],
+  },
+  {
+    id: "wheel_rubis_perdus",
+    category: "economy",
+    subcategory: "dépenses",
+    tags: ["perdre", "rubis", "roue", "wheel", "rembourse", "perte", "normal"],
+    title: "Je n'ai pas gagné la roue, mes rubis sont perdus ?",
+    answer:
+      "Oui. Si tu n'es pas tiré gagnant, ta mise en rubis est conservée par le streamer (selon la répartition 90/10). Participer à la roue est une dépense volontaire — les mises des non-gagnants ne sont pas remboursées.",
+    roles: ["viewer"],
+    sensitivity: "low",
+    confidence: "confirmed",
+    codeRefs: ["api/src/services/wheel.ts"],
+  },
+];

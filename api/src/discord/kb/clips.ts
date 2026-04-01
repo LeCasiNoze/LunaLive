@@ -1,0 +1,60 @@
+// api/src/discord/kb/clips.ts
+// Encyclopédie — LunaClip (système de clips)
+// Confiance : confirmed (vérifié dans api/src/routes/clips.ts, services/clips.ts)
+
+import type { KbEntry } from "./types.js";
+
+export const CLIPS: KbEntry[] = [
+  {
+    id: "clips_general",
+    category: "streaming",
+    subcategory: "clips",
+    tags: ["clip", "lunaclip", "c'est quoi", "principe", "enregistrer", "video", "replay"],
+    title: "C'est quoi LunaClip ?",
+    answer:
+      "LunaClip est la fonctionnalité de clips de LunaLive. Elle permet de capturer et partager des moments forts d'un stream (victoires, jackpots, moments drôles…). Les clips sont accessibles sur la page du streamer et peuvent être partagés.",
+    roles: ["viewer", "streamer"],
+    sensitivity: "low",
+    confidence: "confirmed",
+    codeRefs: ["api/src/routes/clips.ts"],
+  },
+  {
+    id: "clips_creer",
+    category: "streaming",
+    subcategory: "clips",
+    tags: ["creer", "faire", "clip", "capturer", "enregistrer", "comment", "bouton"],
+    title: "Comment créer un clip ?",
+    answer:
+      "Tu peux créer un clip depuis la page du streamer pendant un live en utilisant le bouton de clip. Le clip capture les dernières secondes du stream. Les clips sont ensuite disponibles sur la page du streamer.",
+    roles: ["viewer", "streamer"],
+    sensitivity: "low",
+    confidence: "confirmed",
+    codeRefs: ["api/src/routes/clips.ts"],
+  },
+  {
+    id: "clips_partager",
+    category: "streaming",
+    subcategory: "clips",
+    tags: ["partager", "clip", "lien", "url", "envoyer", "reseaux", "social"],
+    title: "Comment partager un clip ?",
+    answer:
+      "Chaque clip a son propre lien public. Tu peux le copier et le partager sur les réseaux sociaux ou Discord directement depuis la page du clip.",
+    roles: ["viewer", "streamer"],
+    sensitivity: "low",
+    confidence: "inferred",
+    codeRefs: ["api/src/routes/clips.ts"],
+  },
+  {
+    id: "clips_supprimer",
+    category: "streaming",
+    subcategory: "clips",
+    tags: ["supprimer", "effacer", "clip", "retirer", "moderer"],
+    title: "Comment supprimer un clip ?",
+    answer:
+      "Le streamer peut supprimer les clips faits sur sa chaîne depuis son dashboard. Les viewers peuvent supprimer leurs propres clips depuis leur profil. Pour signaler un clip inapproprié, utilise la fonction de signalement ou ouvre un ticket.",
+    roles: ["viewer", "streamer"],
+    sensitivity: "low",
+    confidence: "inferred",
+    codeRefs: ["api/src/routes/clips.ts"],
+  },
+];

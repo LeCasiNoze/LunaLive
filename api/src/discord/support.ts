@@ -16,9 +16,11 @@ import {
 
 import { pool } from "../db.js";
 import { slugify } from "../slug.js";
-import { findBestMatch } from "./support_search.js";
+import { findBestMatch, type SearchContext } from "./support_search.js";
 import { hasAnyRole } from "./sync.js";
 import { type BotCtx } from "./utils.js";
+import { isMasterUser } from "./kb/_config.js";
+import { type KbRole } from "./kb/index.js";
 import {
   CID_SUPPORT_CLOSE,
   CID_SUPPORT_ESCALATE,
@@ -359,6 +361,42 @@ export async function handleSupportOpen(
 }
 
 // ─────────────────────────────────────────────────────────────
+// Helpers intelligence support
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Détecte le rôle LunaLive d'un utilisateur à partir de son lunalive_user_id.
+ * Retourne "streamer" ou "viewer" selon le champ role en DB.
+ */
+async function detectUserRole(lunaUserId: number): Promise<KbRole> {
+  const r = await pool.query(`SELECT role FROM users WHERE id = $1`, [lunaUserId]);
+  const role = String(r.rows[0]?.role ?? "");
+  if (role.includes("streamer")) return "streamer";
+  return "viewer";
+}
+
+/**
+ * Récupère les derniers messages de l'utilisateur dans le ticket (hors message actuel).
+ * Utilisé pour le context window du moteur de recherche.
+ * Silencieux en cas d'erreur Discord.
+ */
+async function fetchRecentUserMessages(
+  channel: TextChannel,
+  userId: string,
+  beforeId: string
+): Promise<string[]> {
+  try {
+    const msgs = await channel.messages.fetch({ limit: 8, before: beforeId });
+    return msgs
+      .filter((m) => !m.author.bot && m.author.id === userId)
+      .map((m) => m.content)
+      .slice(0, 3);
+  } catch {
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // Handler : message utilisateur dans un salon support
 // ─────────────────────────────────────────────────────────────
 
@@ -389,11 +427,44 @@ export async function handleSupportMessage(message: Message, ctx: BotCtx) {
   await logMessage(Number(ticket.id), "user", userContent);
 
   try {
-    // Recherche dans la base de connaissance
-    const result = findBestMatch(userContent);
+    // ── Détection du contexte utilisateur ────────────────────────
+    const masterOverride = isMasterUser(String(message.author.id));
+
+    const isStaff =
+      !masterOverride && message.member
+        ? hasAnyRole(message.member as GuildMember, STAFF_ROLE_IDS)
+        : false;
+
+    let kbRole: KbRole | undefined;
+    const lunaUserId = ticket.lunalive_user_id ? Number(ticket.lunalive_user_id) : null;
+    const hasLinkedAccount = lunaUserId !== null;
+
+    if (masterOverride) {
+      kbRole = undefined; // master voit tout, pas de filtre rôle
+    } else if (isStaff) {
+      kbRole = "staff";
+    } else if (lunaUserId) {
+      kbRole = await detectUserRole(lunaUserId);
+    }
+
+    // ── Context window : derniers messages du ticket ──────────────
+    const recentMessages = await fetchRecentUserMessages(
+      message.channel as TextChannel,
+      String(ticket.discord_user_id),
+      String(message.id)
+    );
+
+    const searchCtx: SearchContext = {
+      role: kbRole,
+      isMaster: masterOverride,
+      recentMessages,
+      hasLinkedAccount,
+    };
+
+    // ── Recherche dans la base de connaissance ────────────────────
+    const result = findBestMatch(userContent, searchCtx);
 
     if (!result || !result.confident) {
-      // Pas de réponse fiable → proposer escalade
       const noMatchEmbed = new EmbedBuilder()
         .setTitle(clamp("🤔 Je n'ai pas trouvé de réponse", LIMITS.embedTitle))
         .setDescription(
@@ -410,34 +481,85 @@ export async function handleSupportMessage(message: Message, ctx: BotCtx) {
         )
         .setFooter({ text: "LunaLive Support" });
 
-      await message.reply({
-        embeds: [noMatchEmbed],
-        components: [buildEscalateOnlyRow()],
-      });
-
+      await message.reply({ embeds: [noMatchEmbed], components: [buildEscalateOnlyRow()] });
       await logMessage(Number(ticket.id), "bot", "Aucune réponse trouvée — escalade proposée.");
       return;
     }
 
-    // Réponse trouvée
-    const entry = result.entry;
+    const entry = result.primary;
 
+    // ── Cas sensible non confirmé → escalade directe ─────────────
+    // Si le sujet est à haute sensibilité ET l'info est partielle,
+    // le bot refuse de répondre seul et passe la main au staff.
+    if (entry.sensitivity === "high" && entry.confidence !== "confirmed") {
+      const sensitiveEmbed = new EmbedBuilder()
+        .setTitle(clamp("👤 Ce sujet nécessite le staff", LIMITS.embedTitle))
+        .setDescription(
+          clamp(
+            [
+              entry.answer,
+              "",
+              "⚠️ Ce sujet est sensible — je préfère te mettre directement en contact avec le staff pour une réponse sûre.",
+            ].join("\n"),
+            LIMITS.embedDesc
+          )
+        )
+        .setFooter({ text: "LunaLive Support" });
+
+      await message.reply({ embeds: [sensitiveEmbed], components: [buildEscalateOnlyRow()] });
+      await logMessage(Number(ticket.id), "bot", `Réponse sensible non confirmée — escalade: ${entry.id}`);
+      return;
+    }
+
+    // ── Construction de la réponse ────────────────────────────────
     const responseEmbed = new EmbedBuilder()
       .setTitle(clamp(entry.title, LIMITS.embedTitle))
-      .setDescription(clamp(entry.answer, LIMITS.embedDesc))
-      .setFooter({ text: "LunaLive Support — cette réponse t'a-t-elle aidé ?" });
+      .setDescription(clamp(entry.answer, LIMITS.embedDesc));
 
+    // Prérequis — affichés si l'utilisateur n'a pas de compte lié
+    if (entry.prerequisites && entry.prerequisites.length > 0 && !hasLinkedAccount) {
+      responseEmbed.addFields({
+        name: "📋 Prérequis",
+        value: clamp("• " + entry.prerequisites.join("\n• "), 1024),
+      });
+    }
+
+    // Entrée secondaire — si une autre catégorie semble aussi pertinente
+    if (result.secondary) {
+      responseEmbed.addFields({
+        name: "💡 Voir aussi",
+        value: clamp(
+          `**${result.secondary.title}** — dis-moi si c'est plutôt ça ta question.`,
+          1024
+        ),
+      });
+    }
+
+    // Liens utiles
     if (entry.links && entry.links.length > 0) {
       const linksText = entry.links.map((l) => `[${l.label}](${l.url})`).join(" · ");
       responseEmbed.addFields({ name: "🔗 Liens utiles", value: clamp(linksText, 1024) });
     }
+
+    // Footer selon les flags de l'entrée
+    let footerText = "LunaLive Support — cette réponse t'a aidé ?";
+    if (entry.escalate) {
+      footerText = "⚠️ Ce sujet peut nécessiter l'intervention du staff — utilise le bouton ci-dessous si besoin";
+    } else if (entry.confidence === "partial") {
+      footerText = "ℹ️ Information basée sur notre compréhension — le staff peut confirmer si besoin";
+    }
+    responseEmbed.setFooter({ text: footerText });
 
     await message.reply({
       embeds: [responseEmbed],
       components: [buildSupportActionRow()],
     });
 
-    await logMessage(Number(ticket.id), "bot", `Réponse envoyée: ${entry.id} (score=${result.score.toFixed(2)})`);
+    await logMessage(
+      Number(ticket.id),
+      "bot",
+      `Réponse: ${entry.id} (score=${result.score.toFixed(2)}, role=${kbRole ?? "unknown"}, master=${masterOverride})`
+    );
   } catch (e: any) {
     ctx.log(`[support] handleSupportMessage failed: ${e?.message || e}`);
   }

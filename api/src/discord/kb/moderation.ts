@@ -1,0 +1,86 @@
+// api/src/discord/kb/moderation.ts
+// Encyclopédie — Modération (bans, timeouts, reports, appels)
+// Confiance : confirmed pour structure (routes/moderation.ts), inferred pour flux exact
+
+import type { KbEntry } from "./types.js";
+
+export const MODERATION: KbEntry[] = [
+  {
+    id: "mod_ban_general",
+    category: "moderation",
+    subcategory: "ban",
+    tags: ["banni", "ban", "interdit", "acces", "refus", "pourquoi", "sanctionne"],
+    title: "J'ai été banni, pourquoi ?",
+    answer:
+      "Un bannissement peut survenir suite à une violation des règles de LunaLive ou du streamer concerné (comportement toxique, spam, contenu inapproprié…). Si tu penses que le ban est injustifié, tu peux faire appel via le support.",
+    roles: ["viewer"],
+    sensitivity: "high",
+    confidence: "inferred",
+    escalate: true,
+    codeRefs: ["api/src/routes/moderation.ts"],
+  },
+  {
+    id: "mod_ban_appel",
+    category: "moderation",
+    subcategory: "appel",
+    tags: ["appel", "contestation", "ban", "lever", "injuste", "contester", "recours"],
+    title: "Comment contester un ban ?",
+    answer:
+      "Pour contester un bannissement, ouvre un ticket support en expliquant la situation et en précisant la date du ban, la chaîne concernée, et pourquoi tu penses qu'il est injustifié. Le staff LunaLive examinera ta demande.",
+    roles: ["viewer"],
+    sensitivity: "high",
+    confidence: "inferred",
+    escalate: true,
+    codeRefs: ["api/src/routes/moderation.ts"],
+  },
+  {
+    id: "mod_timeout",
+    category: "moderation",
+    subcategory: "timeout",
+    tags: ["timeout", "mute", "sourdine", "temporaire", "chat", "envoyer", "bloque"],
+    title: "J'ai été mis en sourdine temporairement dans le chat",
+    answer:
+      "Un timeout (sourdine temporaire) t'empêche d'envoyer des messages dans le chat pour une durée limitée. C'est une sanction moins sévère que le ban, appliquée par un modérateur. Attends la fin du timeout — il s'expire automatiquement.",
+    roles: ["viewer"],
+    sensitivity: "medium",
+    confidence: "inferred",
+  },
+  {
+    id: "mod_signaler",
+    category: "moderation",
+    subcategory: "report",
+    tags: ["signaler", "reporter", "utilisateur", "comportement", "toxique", "abusif", "report"],
+    title: "Comment signaler un comportement abusif ?",
+    answer:
+      "Tu peux signaler un utilisateur ou un message directement depuis le chat (bouton signaler) ou en ouvrant un ticket support. Décris la situation précisément et joins des preuves si possible (screenshot, nom d'utilisateur, date).",
+    roles: ["viewer", "streamer"],
+    sensitivity: "medium",
+    confidence: "inferred",
+    escalate: true,
+  },
+  {
+    id: "mod_mots_interdits",
+    category: "moderation",
+    subcategory: "mots_interdits",
+    tags: ["mot", "interdit", "filtre", "chat", "bloque", "message", "refus", "envoyer"],
+    title: "Mes messages sont bloqués dans le chat",
+    answer:
+      "Si tes messages sont automatiquement bloqués, ils contiennent probablement un mot ou une expression dans la liste de filtrage du streamer ou de LunaLive. Reformule ton message en évitant les mots potentiellement filtrés.",
+    roles: ["viewer"],
+    sensitivity: "low",
+    confidence: "inferred",
+  },
+  {
+    id: "mod_streamer_bannir",
+    category: "moderation",
+    subcategory: "ban",
+    tags: ["bannir", "streamer", "moderer", "chat", "viewer", "outil", "dashboard"],
+    title: "Comment bannir ou modérer un viewer en tant que streamer ?",
+    answer:
+      "En tant que streamer, tu peux bannir ou mettre en sourdine un viewer directement depuis le chat (clic sur le nom) ou via ton dashboard streamer dans la section Modération. Tu peux aussi ajouter des modérateurs de confiance pour gérer ton chat.",
+    roles: ["streamer"],
+    sensitivity: "medium",
+    confidence: "inferred",
+    codeRefs: ["api/src/routes/moderation.ts"],
+  },
+];

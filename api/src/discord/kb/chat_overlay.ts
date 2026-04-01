@@ -1,0 +1,88 @@
+// api/src/discord/kb/chat_overlay.ts
+// Encyclopédie — Chat en direct et Chat Overlay/Popup OBS
+// Confiance : confirmed pour overlay (vérifié dans routes/overlay.ts), inferred pour chat général
+
+import type { KbEntry } from "./types.js";
+
+export const CHAT_OVERLAY: KbEntry[] = [
+  {
+    id: "chat_general",
+    category: "social",
+    subcategory: "chat",
+    tags: ["chat", "messages", "discuter", "parler", "live", "stream", "envoyer"],
+    title: "Comment fonctionne le chat sur LunaLive ?",
+    answer:
+      "Le chat LunaLive s'affiche en direct sur la page de chaque streamer. Tu dois être connecté pour envoyer des messages. Les abonnés ont accès à des emotes et badges exclusifs dans le chat.",
+    roles: ["viewer"],
+    sensitivity: "low",
+    confidence: "inferred",
+    prerequisites: ["Avoir un compte LunaLive connecté"],
+  },
+  {
+    id: "chat_emotes",
+    category: "social",
+    subcategory: "emotes",
+    tags: ["emote", "emoji", "icone", "chat", "abonne", "personnalisee", "afficher"],
+    title: "Comment utiliser les emotes dans le chat ?",
+    answer:
+      "Les emotes sont disponibles dans le chat via le sélecteur d'emotes. Les emotes globales LunaLive sont accessibles à tous. Les emotes personnalisées d'un streamer sont réservées à ses abonnés.",
+    roles: ["viewer"],
+    sensitivity: "low",
+    confidence: "inferred",
+  },
+  {
+    id: "chatpopup_general",
+    category: "streaming",
+    subcategory: "overlay",
+    tags: ["overlay", "popup", "obs", "chat", "afficher", "stream", "widget", "url", "lien"],
+    title: "Comment afficher le chat LunaLive dans OBS ?",
+    answer:
+      "LunaLive propose une URL de chat overlay à intégrer dans OBS comme source navigateur (Browser Source). Tu trouveras cette URL dans ton dashboard streamer, dans la section Outils / Overlay. Elle affiche le chat de ton stream en temps réel.",
+    roles: ["streamer"],
+    sensitivity: "low",
+    confidence: "confirmed",
+    prerequisites: ["Avoir une page streamer active sur LunaLive"],
+    codeRefs: ["api/src/routes/overlay.ts"],
+  },
+  {
+    id: "chatpopup_configuration",
+    category: "streaming",
+    subcategory: "overlay",
+    tags: ["configurer", "parametres", "overlay", "obs", "taille", "couleur", "police", "fond"],
+    title: "Puis-je personnaliser l'apparence du chat overlay ?",
+    answer:
+      "Oui. L'URL de chat overlay accepte des paramètres pour personnaliser l'affichage (couleurs, taille de police, fond transparent…). Consulte la section Overlay de ton dashboard pour les options disponibles et un aperçu en direct.",
+    roles: ["streamer"],
+    sensitivity: "low",
+    confidence: "inferred",
+    prerequisites: ["Avoir une page streamer active sur LunaLive"],
+    codeRefs: ["api/src/routes/overlay.ts"],
+  },
+  {
+    id: "chatpopup_probleme",
+    category: "streaming",
+    subcategory: "overlay",
+    tags: ["ne fonctionne pas", "bug", "vide", "noir", "overlay", "chat", "obs", "erreur", "affiche pas"],
+    title: "Mon chat overlay ne s'affiche pas dans OBS",
+    answer:
+      "Si ton chat overlay ne s'affiche pas dans OBS :\n1. Vérifie que tu utilises l'URL correcte depuis ton dashboard (section Outils / Overlay)\n2. Dans OBS, assure-toi que la source navigateur a l'option « Actualiser le navigateur quand la scène devient active » cochée\n3. Vérifie que ton stream est bien en live sur LunaLive\n4. Essaie de rafraîchir la source navigateur dans OBS\n\nSi le problème persiste, ouvre un ticket support.",
+    roles: ["streamer"],
+    sensitivity: "low",
+    confidence: "inferred",
+    escalate: false,
+    codeRefs: ["api/src/routes/overlay.ts"],
+  },
+  {
+    id: "chat_ban_message",
+    category: "social",
+    subcategory: "chat",
+    tags: ["banni", "interdit", "chat", "envoyer", "message", "impossible", "bloque"],
+    title: "Je ne peux plus envoyer de messages dans le chat",
+    answer:
+      "Si tu ne peux plus envoyer de messages dans le chat d'un streamer, plusieurs causes sont possibles :\n• Tu as été temporairement mis en sourdine (timeout) par un modérateur\n• Tu as été banni du chat de ce streamer\n• Tu n'es pas connecté\n\nSi tu penses qu'il s'agit d'une erreur, tu peux faire appel via le support.",
+    roles: ["viewer"],
+    sensitivity: "medium",
+    confidence: "inferred",
+    escalate: true,
+  },
+];

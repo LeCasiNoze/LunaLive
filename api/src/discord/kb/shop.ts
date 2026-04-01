@@ -1,0 +1,75 @@
+// api/src/discord/kb/shop.ts
+// Encyclopédie — Boutique, cosmétiques, talents
+// Confiance : confirmed pour existence (routes/shop.ts), partial pour détails exact
+
+import type { KbEntry } from "./types.js";
+
+export const SHOP: KbEntry[] = [
+  {
+    id: "shop_general",
+    category: "economy",
+    subcategory: "dépenses",
+    tags: ["boutique", "shop", "c'est quoi", "acheter", "depenser", "rubis", "cosmetique"],
+    title: "C'est quoi la boutique LunaLive ?",
+    answer:
+      "La boutique LunaLive te permet d'utiliser tes rubis pour acheter des cosmétiques (skins de chat, effets visuels, badges) et des talents (bonus passifs ou actifs améliorant ton expérience). L'accès se fait depuis ton profil.",
+    roles: ["viewer", "streamer"],
+    sensitivity: "low",
+    confidence: "confirmed",
+    codeRefs: ["api/src/routes/shop.ts"],
+  },
+  {
+    id: "shop_cosmetiques",
+    category: "economy",
+    subcategory: "dépenses",
+    tags: ["cosmetique", "skin", "effet", "badge", "chat", "apparence", "visuel", "acheter"],
+    title: "Quels cosmétiques peut-on acheter dans la boutique ?",
+    answer:
+      "La boutique propose différents types de cosmétiques : skins pour les messages du chat, effets visuels, badges de profil. Les articles disponibles et leurs prix en rubis sont visibles directement dans la boutique.",
+    roles: ["viewer", "streamer"],
+    sensitivity: "low",
+    confidence: "confirmed",
+    codeRefs: ["api/src/routes/shop.ts"],
+  },
+  {
+    id: "shop_talents",
+    category: "economy",
+    subcategory: "dépenses",
+    tags: ["talent", "bonus", "passif", "actif", "acheter", "amelioration", "avantage"],
+    title: "C'est quoi les talents dans la boutique ?",
+    answer:
+      "Les talents sont des améliorations achetables en rubis qui apportent des bonus passifs ou actifs. Par exemple : multiplicateur de gains de rubis, accès prioritaire à certaines fonctionnalités, etc. Les détails sont disponibles dans la boutique.",
+    roles: ["viewer"],
+    sensitivity: "low",
+    confidence: "confirmed",
+    codeRefs: ["api/src/routes/shop.ts"],
+  },
+  {
+    id: "shop_achat_non_recu",
+    category: "economy",
+    subcategory: "dépenses",
+    tags: ["achat", "non recu", "pas reçu", "boutique", "cosmetique", "talent", "rubis", "deduit", "bug"],
+    title: "J'ai acheté quelque chose dans la boutique mais je ne le reçois pas",
+    answer:
+      "Si tes rubis ont été débités mais que l'article n'apparaît pas :\n1. Reconnecte-toi sur LunaLive\n2. Vérifie ton inventaire dans ton profil\n3. Si l'article est absent et les rubis débités, ouvre un ticket support avec la date et le nom de l'article.",
+    roles: ["viewer"],
+    sensitivity: "high",
+    confidence: "inferred",
+    escalate: true,
+    codeRefs: ["api/src/routes/shop.ts"],
+  },
+  {
+    id: "shop_remboursement",
+    category: "economy",
+    subcategory: "dépenses",
+    tags: ["remboursement", "annuler", "achat", "boutique", "retour", "rubis", "rembourse"],
+    title: "Peut-on se faire rembourser un achat en boutique ?",
+    answer:
+      "Les achats en boutique ne sont généralement pas remboursables une fois effectués. Si tu penses avoir fait un achat par erreur, ouvre un ticket support rapidement — l'équipe étudiera la situation au cas par cas.",
+    roles: ["viewer"],
+    sensitivity: "medium",
+    confidence: "partial",
+    escalate: true,
+    staffNotes: "Politique de remboursement non documentée dans le code. Toujours escalader, ne pas promettre de remboursement.",
+  },
+];
