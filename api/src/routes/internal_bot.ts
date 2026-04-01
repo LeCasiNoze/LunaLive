@@ -360,13 +360,19 @@ function requireBotKey(req: express.Request, res: express.Response): boolean {
     internalBotKeyLength: process.env.INTERNAL_BOT_KEY?.length || 0,
     botInternalKeyLength: process.env.BOT_INTERNAL_KEY?.length || 0,
     candidatesCount: candidates.length,
-    keyLength: key.length
+    keyLength: key.length,
+    keyPrefix: key.length > 8 ? `${key.slice(0, 3)}***${key.slice(-3)}` : '***',
+    receivedKey: key.length > 0 ? `[${key.length} chars]` : 'EMPTY',
+    candidates: candidates.map(k => k.length > 8 ? `${k.slice(0, 3)}***${k.slice(-3)}` : '***')
   });
 
   if (!candidates.length || !candidates.includes(key)) {
+    console.log("[api] auth failed: key not found in candidates");
     res.status(401).json({ ok: false, error: "invalid_bot_key" });
     return false;
   }
+  
+  console.log("[api] auth success");
   return true;
 }
 

@@ -189,7 +189,9 @@ export class YouTubeNotifier {
             hasApiBase: !!base,
             hasInternalKey: !!key,
             apiBaseLength: base.length,
-            keyLength: key.length
+            keyLength: key.length,
+            keyPrefix: key.length > 8 ? `${key.slice(0, 3)}***${key.slice(-3)}` : '***',
+            fullKey: key.length > 0 ? `[${key.length} chars]` : 'EMPTY'
         });
         if (!base || !key) {
             console.log("[bot] youtube notification skipped: BOT_API_BASE or BOT_INTERNAL_KEY missing");
