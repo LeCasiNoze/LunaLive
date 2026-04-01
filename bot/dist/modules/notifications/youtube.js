@@ -197,8 +197,20 @@ export class YouTubeNotifier {
             console.log("[bot] youtube notification skipped: BOT_API_BASE or BOT_INTERNAL_KEY missing");
             return;
         }
-        const url = `${base}/internal/bot/discord/send`;
+        const url = `${base}/internal/bot/chat/send`; // Temporaire pour tester
         console.log("[bot] youtube sending to URL:", url);
+        console.log("[bot] youtube full request config:", {
+            url,
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                "x-bot-key": key.length > 8 ? `${key.slice(0, 3)}***${key.slice(-3)}` : '***'
+            },
+            bodyPreview: {
+                channelId: DISCORD_CONFIG.YOUTUBE_CHANNEL_ID,
+                content: finalMessage.substring(0, 50) + "..."
+            }
+        });
         try {
             const response = await fetch(url, {
                 method: "POST",
@@ -207,8 +219,8 @@ export class YouTubeNotifier {
                     "x-bot-key": key,
                 },
                 body: JSON.stringify({
-                    channelId: DISCORD_CONFIG.YOUTUBE_CHANNEL_ID,
-                    content: finalMessage,
+                    streamerId: 1, // ID fictif pour tester
+                    body: finalMessage,
                 }),
             });
             console.log("[bot] youtube API response status:", response.status);
