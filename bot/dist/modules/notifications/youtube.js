@@ -59,11 +59,21 @@ export class YouTubeNotifier {
     }
     async poll() {
         try {
+            console.log("[bot] youtube polling started...");
             const videos = await this.fetchLatestVideos();
-            if (!videos.length)
+            console.log("[bot] youtube fetched videos count:", videos.length);
+            if (!videos.length) {
+                console.log("[bot] youtube no videos found");
                 return;
+            }
             // Prendre la vidéo la plus récente
             const latestVideo = videos[0];
+            console.log("[bot] youtube latest video:", {
+                id: latestVideo.id,
+                title: latestVideo.title,
+                publishedAt: latestVideo.publishedAt,
+                lastVideoId: this.lastVideoId
+            });
             // Vérifier si c'est une nouvelle vidéo
             if (latestVideo.id !== this.lastVideoId) {
                 console.log("[bot] youtube new video detected", {
@@ -72,6 +82,9 @@ export class YouTubeNotifier {
                 });
                 await this.notifyNewVideo(latestVideo);
                 await this.saveVideoId(latestVideo.id);
+            }
+            else {
+                console.log("[bot] youtube no new video (same as last)");
             }
         }
         catch (e) {
@@ -152,7 +165,9 @@ export class YouTubeNotifier {
         return match ? match[0] : null;
     }
     async notifyNewVideo(video) {
+        console.log("[bot] youtube notification process started for video:", video.id);
         const lunaLiveLink = this.extractLunaLiveLink(video.description);
+        console.log("[bot] youtube lunaLive link found:", !!lunaLiveLink);
         // Construire le message Discord
         const message = [
             `<@&${DISCORD_CONFIG.GLOBAL_ROLE_ID}> <@&${DISCORD_CONFIG.YOUTUBE_ROLE_ID}>`,
@@ -165,14 +180,22 @@ export class YouTubeNotifier {
             message.push(`📺 Retrouver le streamer : <${lunaLiveLink}>`);
         }
         const finalMessage = message.join("\n");
+        console.log("[bot] youtube message prepared, length:", finalMessage.length);
         // Envoyer via l'API interne
         const base = String(this.env.BOT_API_BASE || "").replace(/\/$/, "");
         const key = String(this.env.BOT_INTERNAL_KEY || "");
+        console.log("[bot] youtube API config check:", {
+            hasApiBase: !!base,
+            hasInternalKey: !!key,
+            apiBaseLength: base.length,
+            keyLength: key.length
+        });
         if (!base || !key) {
             console.log("[bot] youtube notification skipped: BOT_API_BASE or BOT_INTERNAL_KEY missing");
             return;
         }
         const url = `${base}/internal/bot/discord/send`;
+        console.log("[bot] youtube sending to URL:", url);
         try {
             const response = await fetch(url, {
                 method: "POST",
@@ -185,6 +208,7 @@ export class YouTubeNotifier {
                     content: finalMessage,
                 }),
             });
+            console.log("[bot] youtube API response status:", response.status);
             if (!response.ok) {
                 const errorText = await response.text().catch(() => "");
                 console.log("[bot] youtube notification failed", response.status, errorText.slice(0, 300));
