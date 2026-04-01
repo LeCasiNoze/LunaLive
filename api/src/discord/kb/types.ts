@@ -1,95 +1,152 @@
 // api/src/discord/kb/types.ts
-// Types étendus pour l'encyclopédie interne LunaLive
+// Types de l'encyclopédie LunaLive — v2 avec blocs structurés
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Rôles concernés par une entrée
+// Types fondamentaux (inchangés)
 // ─────────────────────────────────────────────────────────────────────────────
+
 export type KbRole =
-  | "viewer"    // Spectateur connecté sur la plateforme
-  | "streamer"  // Streamer avec page active
-  | "staff"     // Modérateur / admin LunaLive
-  | "all";      // Tout le monde (public, non connecté inclus)
+  | "viewer"
+  | "streamer"
+  | "staff"
+  | "all";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sensibilité (impact si réponse incorrecte)
-// ─────────────────────────────────────────────────────────────────────────────
-export type KbSensitivity =
-  | "low"    // Info générale, aucun impact en cas d'erreur
-  | "medium" // Peut causer confusion ou mauvaise utilisation
-  | "high";  // Touche à l'argent, données perso, ou décisions importantes
+export type KbSensitivity = "low" | "medium" | "high";
+export type KbConfidence  = "confirmed" | "inferred" | "partial";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Niveau de confiance de l'entrée
-// ─────────────────────────────────────────────────────────────────────────────
-export type KbConfidence =
-  | "confirmed" // Vérifié directement dans le code source
-  | "inferred"  // Déduit du code, non documenté explicitement
-  | "partial";  // Partiellement vérifié, complétion nécessaire
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Catégories principales
-// ─────────────────────────────────────────────────────────────────────────────
 export type KbCategory =
-  | "economy"     // Rubis, transactions, récompenses
-  | "social"      // Chat, emotes, interactions
-  | "streaming"   // Outils streamer (calls, rain, chest, wheel, predictions)
-  | "account"     // Compte, auth, liaison Discord
-  | "discord"     // Fonctionnalités bot Discord
-  | "moderation"  // Bans, reports, restrictions
-  | "support";    // Tickets, aide, contact
+  | "economy"
+  | "social"
+  | "streaming"
+  | "account"
+  | "discord"
+  | "moderation"
+  | "support";
+
+export type KbLink = { label: string; url: string };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Lien externe ou interne associé à une entrée
+// KbEntry — ancien format (conservé pour compatibilité)
 // ─────────────────────────────────────────────────────────────────────────────
-export type KbLink = {
-  label: string;
-  url: string;
+
+export type KbEntry = {
+  id: string;
+  category: KbCategory;
+  subcategory?: string;
+  tags: string[];
+  title: string;
+  answer: string;
+  roles: KbRole[];
+  sensitivity: KbSensitivity;
+  confidence: KbConfidence;
+  prerequisites?: string[];
+  escalate?: boolean;
+  links?: KbLink[];
+  codeRefs?: string[];
+  staffNotes?: string;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Entrée encyclopédique complète
+// KbIntent — type d'intention utilisateur
 // ─────────────────────────────────────────────────────────────────────────────
-export type KbEntry = {
-  // Identifiant unique snake_case (ex: "rubis_solde", "calls_rejoindre")
+
+export type KbIntent =
+  | "definition"   // "c'est quoi X ?"
+  | "procedure"    // "comment faire X ?"
+  | "location"     // "où est X ?"
+  | "problem"      // "X ne marche pas / pourquoi X ?"
+  | "obtain"       // "comment gagner/obtenir X ?"
+  | "manage"       // "comment gérer/voir/supprimer X ?"
+  | "configure";   // "comment activer/lier/installer X ?"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KbStep — étape procédurale
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type KbStep = {
+  text: string;
+  note?: string;    // précision ou variante de l'étape
+  role?: KbRole;    // si l'étape est spécifique à un rôle
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KbFailure — cas d'échec connu
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type KbFailure = {
+  symptom: string;    // ce que l'utilisateur voit
+  cause: string;      // pourquoi ça arrive
+  solution?: string;  // quoi faire
+  escalate?: boolean;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KbBlock — nouveau format structuré par intent/rôle/procédure
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type KbBlock = {
+  /** Identifiant unique snake_case */
   id: string;
 
-  // Catégorie principale
-  category: KbCategory;
+  /** Sujet principal (ex: "calls", "rubis") */
+  subject: string;
 
-  // Sous-catégorie libre (ex: "gains", "dépenses", "bugs")
-  subcategory?: string;
+  /** Rôles concernés par ce bloc */
+  audience: KbRole[];
 
-  // Mots-clés pour la recherche plein texte (tous en minuscules)
+  /** Intentions couvertes par ce bloc */
+  intents: KbIntent[];
+
+  /** Mots-clés pour la recherche */
   tags: string[];
 
-  // Titre court de l'entrée (affiché dans les réponses Discord)
+  /** Titre affiché dans la réponse Discord */
   title: string;
 
-  // Réponse publique (affichée à l'utilisateur)
-  // Doit être vraie avec certitude — ne pas mentionner ce qui est incertain
-  answer: string;
+  /** Résumé court 1 ligne (toujours présent) */
+  summary: string;
 
-  // Rôles concernés
-  roles: KbRole[];
+  // ── Sections structurées (optionnelles) ──────────────────────────────────
 
-  // Niveau de sensibilité
-  sensitivity: KbSensitivity;
+  /** Définition / explication du concept */
+  what_it_is?: string;
 
-  // Niveau de confiance de l'information
-  confidence: KbConfidence;
+  /** Étapes procédurales */
+  how_to_do_it?: KbStep[];
 
-  // Prérequis pour que la fonctionnalité soit disponible (optionnel)
+  /** Points d'entrée UI (ex: "Page streamer → section Calls") */
+  entry_points?: string[];
+
+  /** Commandes Discord ou chat (ex: "/claim", "!join") */
+  commands?: string[];
+
+  /** Chemins de navigation (ex: "Dashboard → Apparence → Overlays") */
+  ui_paths?: string[];
+
+  /** Prérequis nécessaires */
   prerequisites?: string[];
 
-  // Si true : le bot doit suggérer d'escalader vers le staff
+  /** Limites connues du système */
+  limits?: string[];
+
+  /** Variantes / cas particuliers */
+  variants?: { label: string; description: string }[];
+
+  /** Cas d'échec et solutions */
+  common_failures?: KbFailure[];
+
+  /** Étapes de dépannage */
+  troubleshooting?: string[];
+
+  /** IDs des blocs liés */
+  related_topics?: string[];
+
+  // ── Métadonnées ───────────────────────────────────────────────────────────
+
+  sensitivity: KbSensitivity;
+  confidence: KbConfidence;
   escalate?: boolean;
-
-  // Liens utiles associés
   links?: KbLink[];
-
-  // Références dans le code source (chemin:ligne approximatif)
-  codeRefs?: string[];
-
-  // Notes internes visibles staff uniquement (jamais affichées à l'utilisateur)
-  staffNotes?: string;
+  code_refs?: string[];
+  staff_notes?: string;
 };

@@ -65,6 +65,11 @@ export const CID_SUPPORT_OPEN = "support:open";
 export const CID_SUPPORT_CLOSE = "support:close";
 export const CID_SUPPORT_ESCALATE = "support:escalate";
 
+// Support — boutons d'évaluation de réponse bot
+// Format : support:rate:{rating}:{ticketId}:{entryId}
+// rating ∈ "helpful" | "ok" | "bad"
+export const CID_SUPPORT_RATE_PREFIX = "support:rate:";
+
 // ─────────────────────────────────────────────
 // Slash commands list (guild-scoped)
 // ─────────────────────────────────────────────

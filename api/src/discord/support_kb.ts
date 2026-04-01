@@ -4,10 +4,14 @@
 
 export type {
   KbEntry,
+  KbBlock,
+  KbIntent,
+  KbStep,
+  KbFailure,
   KbLink,
   KbRole,
   KbCategory,
   KbSensitivity,
   KbConfidence,
 } from "./kb/index.js";
-export { KB_ENTRIES } from "./kb/index.js";
+export { KB_ENTRIES, KB_BLOCKS } from "./kb/index.js";

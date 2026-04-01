@@ -1,17 +1,40 @@
 // bot/src/modules/notifications/instagram.ts
 import type { Pool } from "pg";
-import type { BotEnv } from "../../env.js";
-import { logEvent } from "../../log.js";
-import { DISCORD_CONFIG, INSTAGRAM_USERNAME, INSTAGRAM_POLL_INTERVAL_MS } from "./config.js";
+
+// Configuration Discord
+const DISCORD_CONFIG = {
+  YOUTUBE_CHANNEL_ID: "1467142269122383883",
+  GLOBAL_ROLE_ID: "1468982992910155908",
+  INSTAGRAM_ROLE_ID: "1468983120664723507",
+};
+
+// Configuration Instagram
+const INSTAGRAM_USERNAME = "lunalive.tv";
+const INSTAGRAM_POLL_INTERVAL_MS = 180000; // 3 minutes
+
+// TEMP INSTAGRAM SESSION CONFIG - TO REPLACE LATER
+const INSTAGRAM_SESSION = {
+  cookie: "sessionid=YOUR_SESSION_ID; ig_cb=1; csrftoken=YOUR_CSRF_TOKEN; mid=YOUR_MID; ds_user_id=YOUR_USER_ID; shbid=YOUR_SHBID; shbts=YOUR_SHBTS; rur=YOUR_RUR",
+  csrftoken: "YOUR_CSRF_TOKEN",
+  lsd: "YOUR_LSD",
+  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  targetUserId: "80302456225",
+  appId: "936619743392459",
+  asbdId: "359341",
+  fbFriendlyName: "PolarisProfileReelsTabContentQuery",
+  rootFieldName: "xdt_api__v1__clips__user__connection_v2"
+};
 
 export interface InstagramReel {
-  id: string;
-  shortcode: string;
+  id: string; // pk
+  shortcode: string; // code
   url: string;
   title: string;
   description: string;
   thumbnail: string;
   publishedAt: Date;
+  likes?: number;
+  comments?: number;
 }
 
 export interface InstagramNotifierConfig {
@@ -26,7 +49,7 @@ export class InstagramNotifier {
 
   constructor(
     private pool: Pool,
-    private env: BotEnv,
+    private env: any,
     private config: InstagramNotifierConfig = {}
   ) {
     // Utiliser les valeurs hardcodées par défaut
@@ -42,14 +65,12 @@ export class InstagramNotifier {
     console.log("[bot] instagram notifier start", {
       username: INSTAGRAM_USERNAME,
       pollIntervalMs: this.config.pollIntervalMs,
+      method: "graphql"
     });
 
-    // Charger le dernier Reel notifié
     this.loadLastReelId().then(() => {
-      // Démarrer le polling
       this.timer = setInterval(() => this.poll(), this.config.pollIntervalMs!);
-      // Premier poll immédiat
-      this.poll();
+      this.poll(); // Premier poll immédiat
     });
   }
 
@@ -96,9 +117,9 @@ export class InstagramNotifier {
     this.isPolling = true;
     
     try {
-      console.log("[bot] instagram polling started...");
-      const reels = await this.fetchLatestReels();
-      console.log("[bot] instagram fetched reels count:", reels.length);
+      console.log("[bot] instagram graphql fetch started");
+      const reels = await this.fetchLatestReelsGraphQL();
+      console.log("[bot] instagram graphql reels count found:", reels.length);
       
       if (!reels.length) {
         console.log("[bot] instagram no reels found");
@@ -107,13 +128,7 @@ export class InstagramNotifier {
 
       // Prendre le Reel le plus récent
       const latestReel = reels[0];
-      console.log("[bot] instagram latest reel:", {
-        id: latestReel.id,
-        title: latestReel.title,
-        publishedAt: latestReel.publishedAt,
-        lastReelId: this.lastReelId,
-        idStability: latestReel.id === latestReel.shortcode ? "shortcode_stable" : "id_based"
-      });
+      console.log("[bot] instagram latest reel code:", latestReel.shortcode, "pk:", latestReel.id);
 
       // Validation de l'ID du Reel
       if (!latestReel.id || latestReel.id.length < 5) {
@@ -127,7 +142,7 @@ export class InstagramNotifier {
         if (this.config.ignoreStartupHistory && !this.lastReelId) {
           console.log("[bot] instagram ignoring history on first startup", {
             reelId: latestReel.id,
-            title: latestReel.title,
+            reelCode: latestReel.shortcode,
             reason: "first_startup_ignore_history"
           });
           // Sauvegarder ce Reel comme point de départ mais ne pas notifier
@@ -137,7 +152,7 @@ export class InstagramNotifier {
 
         console.log("[bot] instagram new reel detected", {
           id: latestReel.id,
-          title: latestReel.title,
+          code: latestReel.shortcode,
           previousId: this.lastReelId
         });
 
@@ -148,216 +163,162 @@ export class InstagramNotifier {
       }
     } catch (e: any) {
       console.log("[bot] instagram poll error", e?.message || e);
-      
-      try {
-        await logEvent(this.pool, null, "error", "instagram poll error", {
-          error: e?.message || String(e),
-        });
-      } catch {}
     } finally {
       this.isPolling = false;
     }
   }
 
-  private async fetchLatestReels(): Promise<InstagramReel[]> {
-    // Méthode simple : scraping de la page publique Instagram
-    const url = `https://www.instagram.com/${INSTAGRAM_USERNAME}/`;
+  private async fetchLatestReelsGraphQL(): Promise<InstagramReel[]> {
+    const url = "https://www.instagram.com/graphql/query";
     
+    // Variables pour la requête GraphQL
+    const variables = {
+      data: {
+        count: 12,
+        include_feed_info: true,
+        latest_best_reels: true,
+        seen_ids: [],
+        cursor: null
+      },
+      target_user_id: INSTAGRAM_SESSION.targetUserId,
+      scale: 1
+    };
+
+    // Requête GraphQL pour les Reels
+    const queryHash = "305b69e3d5a1e3b6c4f4c5c8f5a8d2e"; // Hash pour PolarisProfileReelsTabContentQuery
+    
+    const requestBody = {
+      variables: JSON.stringify(variables),
+      doc_id: queryHash
+    };
+
     try {
+      console.log("[bot] instagram graphql request prepared", {
+        url,
+        targetUserId: INSTAGRAM_SESSION.targetUserId,
+        fbFriendlyName: INSTAGRAM_SESSION.fbFriendlyName,
+        rootFieldName: INSTAGRAM_SESSION.rootFieldName
+      });
+
       const response = await fetch(url, {
+        method: "POST",
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.5",
-          "Accept-Encoding": "gzip, deflate",
-          "Connection": "keep-alive",
-          "Upgrade-Insecure-Requests": "1",
-        }
+          "User-Agent": INSTAGRAM_SESSION.userAgent,
+          "Accept": "*/*",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Accept-Encoding": "gzip, deflate, br",
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-CSRFToken": INSTAGRAM_SESSION.csrftoken,
+          "X-ASBD-ID": INSTAGRAM_SESSION.asbdId,
+          "X-FB-Friendly-Name": INSTAGRAM_SESSION.fbFriendlyName,
+          "X-Root-Field-Name": INSTAGRAM_SESSION.rootFieldName,
+          "X-App-ID": INSTAGRAM_SESSION.appId,
+          "X-IG-App-ID": INSTAGRAM_SESSION.appId,
+          "X-Requested-With": "XMLHttpRequest",
+          "Referer": `https://www.instagram.com/${INSTAGRAM_USERNAME}/`,
+          "Origin": "https://www.instagram.com",
+          "Cookie": INSTAGRAM_SESSION.cookie,
+          "X-Instagram-AJAX": "100",
+          "X-IG-WWW-Claim": "0"
+        },
+        body: new URLSearchParams(requestBody).toString()
+      });
+
+      console.log("[bot] instagram graphql status:", {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        console.log("[bot] instagram graphql HTTP error:", response.status, response.statusText);
+        return [];
       }
 
-      const html = await response.text();
-      return this.parseInstagramPage(html);
-    } catch (e: any) {
-      throw new Error(`Failed to fetch Instagram page: ${e?.message || e}`);
-    }
-  }
-
-  private parseInstagramPage(html: string): InstagramReel[] {
-    const reels: InstagramReel[] = [];
-    
-    try {
-      console.log("[bot] instagram parsing page HTML...");
+      const jsonResponse: any = await response.json();
       
-      // Méthode 1: Essayer window._sharedData (peut encore fonctionner)
-      const jsonMatch = html.match(/window\._sharedData\s*=\s*({.+?});/);
-      if (jsonMatch) {
-        console.log("[bot] instagram found sharedData, parsing...");
-        try {
-          const sharedData = JSON.parse(jsonMatch[1]);
-          const reelsFromShared = this.parseSharedData(sharedData);
-          if (reelsFromShared.length > 0) {
-            console.log("[bot] instagram sharedData parsing successful:", reelsFromShared.length, "reels");
-            return reelsFromShared;
-          }
-        } catch (e: any) {
-          console.log("[bot] instagram sharedData parsing failed:", e?.message || (typeof e === 'string' ? e : 'unknown error'));
-        }
+      console.log("[bot] instagram graphql response analysis:", {
+        hasData: !!jsonResponse.data,
+        hasErrors: !!jsonResponse.errors,
+        errorsCount: jsonResponse.errors?.length || 0,
+        dataKeys: jsonResponse.data ? Object.keys(jsonResponse.data) : []
+      });
+
+      if (jsonResponse.errors) {
+        console.log("[bot] instagram graphql errors:", jsonResponse.errors);
+        return [];
       }
 
-      // Méthode 2: Parser les données JSON inline dans le HTML
-      const jsonInlineDataMatches = html.matchAll(/<script[^>]*type="application\/json"[^>]*>(.*?)<\/script>/gs);
-      for (const match of jsonInlineDataMatches) {
-        try {
-          const jsonData = JSON.parse(match[1]);
-          const reelsFromInline = this.extractReelsFromJsonData(jsonData);
-          if (reelsFromInline.length > 0) {
-            console.log("[bot] instagram inline JSON parsing successful:", reelsFromInline.length, "reels");
-            return reelsFromInline;
-          }
-        } catch (e) {
-          // Ignorer les erreurs de parsing inline
-        }
-      }
-
-      // Méthode 3: Chercher les données directement dans le HTML (fallback)
-      const reelsFromHtml = this.parseHtmlDirectly(html);
-      if (reelsFromHtml.length > 0) {
-        console.log("[bot] instagram direct HTML parsing successful:", reelsFromHtml.length, "reels");
-        return reelsFromHtml;
-      }
-
-      console.log("[bot] instagram no reels found with any parsing method");
-      return reels;
+      return this.parseGraphQLResponse(jsonResponse);
     } catch (e: any) {
-      console.log("[bot] instagram parsing error:", e?.message || e);
-      return reels;
+      console.log("[bot] instagram graphql fetch exception:", {
+        message: e?.message || e,
+        stack: e?.stack || 'no stack',
+        name: e?.name || 'unknown'
+      });
+      return [];
     }
   }
 
-  private parseSharedData(sharedData: any): InstagramReel[] {
+  private parseGraphQLResponse(response: any): InstagramReel[] {
     const reels: InstagramReel[] = [];
     
     try {
-      const userData = sharedData?.entry_data?.ProfilePage?.[0]?.graphql?.user;
-      if (!userData) {
-        console.log("[bot] instagram no user data in sharedData");
+      const reelsData = response.data?.[INSTAGRAM_SESSION.rootFieldName];
+      
+      if (!reelsData) {
+        console.log("[bot] instagram graphql no reels data found in response");
         return reels;
       }
 
-      const mediaEdges = userData?.edge_owner_to_timeline_media?.edges || [];
-      
-      for (const edge of mediaEdges) {
-        const node = edge.node;
+      const edges = reelsData.edges || [];
+      console.log("[bot] instagram graphql edges found:", edges.length);
+
+      for (const edge of edges) {
+        const media = edge.node?.media;
         
-        if (node.__typename !== "GraphVideo" || !node.is_video) {
+        if (!media || media.product_type !== "clips") {
           continue;
         }
 
-        const reel = this.createReelFromNode(node);
+        const reel = this.createReelFromGraphQLMedia(media);
         if (reel) reels.push(reel);
       }
+
+      // Trier par date (plus récent en premier)
+      return reels.sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
     } catch (e: any) {
-      console.log("[bot] instagram sharedData processing error:", e?.message || e);
+      console.log("[bot] instagram graphql parsing error:", e?.message || e);
+      return reels;
     }
-    
-    return reels;
   }
 
-  private extractReelsFromJsonData(jsonData: any): InstagramReel[] {
-    const reels: InstagramReel[] = [];
-    
+  private createReelFromGraphQLMedia(media: any): InstagramReel | null {
     try {
-      // Chercher des structures de médias dans les données JSON
-      if (jsonData?.data?.user?.edge_owner_to_timeline_media?.edges) {
-        const edges = jsonData.data.user.edge_owner_to_timeline_media.edges;
-        for (const edge of edges) {
-          const node = edge.node;
-          if (node.__typename === "GraphVideo" && node.is_video) {
-            const reel = this.createReelFromNode(node);
-            if (reel) reels.push(reel);
-          }
-        }
-      }
-    } catch (e: any) {
-      console.log("[bot] instagram JSON data extraction error:", e?.message || e);
-    }
-    
-    return reels;
-  }
+      const pk = media.pk?.toString() || "";
+      const code = media.code || "";
+      const title = media.caption?.text || "Nouveau Reel LunaLive";
+      const description = media.caption?.text || "";
+      const thumbnail = media.image_versions2?.candidates?.[0]?.url || "";
+      const takenAt = media.taken_at ? new Date(media.taken_at * 1000) : new Date();
+      const likes = media.like_count || 0;
+      const comments = media.comment_count || 0;
 
-  private parseHtmlDirectly(html: string): InstagramReel[] {
-    const reels: InstagramReel[] = [];
-    
-    try {
-      // Chercher les URLs de Reels directement dans le HTML
-      const reelUrlMatches = html.matchAll(/https:\/\/www\.instagram\.com\/reel\/([A-Za-z0-9_-]+)/g);
-      
-      for (const match of reelUrlMatches) {
-        const shortcode = match[1];
-        const url = match[0];
-        
-        // Extraire les informations contextuelles autour de l'URL
-        const contextStart = Math.max(0, html.indexOf(match[0]) - 500);
-        const contextEnd = Math.min(html.length, html.indexOf(match[0]) + 500);
-        const context = html.substring(contextStart, contextEnd);
-        
-        // Essayer d'extraire une description ou titre
-        let title = "Nouveau Reel LunaLive";
-        let description = "";
-        
-        // Chercher du texte contextuel qui pourrait être une description
-        const textMatch = context.match(/>([^<]{20,100})</);
-        if (textMatch) {
-          const potentialText = textMatch[1].trim();
-          if (potentialText.length > 20 && !potentialText.includes('<') && !potentialText.includes('http')) {
-            title = this.extractFirstLine(potentialText);
-            description = potentialText;
-          }
-        }
-        
-        reels.push({
-          id: shortcode,
-          shortcode,
-          url,
-          title,
-          description,
-          thumbnail: "", // Pas accessible sans parsing JSON
-          publishedAt: new Date(),
-        });
-      }
-      
-      console.log("[bot] instagram direct HTML found", reels.length, "reel URLs");
-    } catch (e: any) {
-      console.log("[bot] instagram direct HTML parsing error:", e?.message || e);
-    }
-    
-    return reels;
-  }
-
-  private createReelFromNode(node: any): InstagramReel | null {
-    try {
-      const shortcode = node.shortcode || "";
-      const id = node.id || shortcode;
-      const title = node.edge_media_to_caption?.edges?.[0]?.node?.text || "Nouveau Reel LunaLive";
-      const description = node.edge_media_to_caption?.edges?.[0]?.node?.text || "";
-      const thumbnail = node.display_url || "";
-      const takenAt = node.taken_at ? new Date(node.taken_at * 1000) : new Date();
+      console.log("[bot] instagram latest reel thumbnail found:", !!thumbnail);
 
       return {
-        id,
-        shortcode,
-        url: `https://www.instagram.com/reel/${shortcode}/`,
+        id: pk,
+        shortcode: code,
+        url: `https://www.instagram.com/reel/${code}/`,
         title: this.extractFirstLine(title),
         description,
         thumbnail,
         publishedAt: takenAt,
+        likes,
+        comments
       };
     } catch (e: any) {
-      console.log("[bot] instagram error creating reel from node:", e?.message || e);
+      console.log("[bot] instagram error creating reel from GraphQL media:", e?.message || e);
       return null;
     }
   }
@@ -377,59 +338,69 @@ export class InstagramNotifier {
     return firstLine || "Nouveau Reel LunaLive";
   }
 
+  private truncateTitle(title: string, maxLength: number): string {
+    if (title.length <= maxLength) return title;
+    return title.substring(0, maxLength - 3) + "...";
+  }
+
   private extractLunaLiveLink(description: string): string | null {
-    // Chercher un lien LunaLive dans la description
-    const lunaLiveRegex = /https:\/\/lunalive\.onrender\.com\/s\/([a-zA-Z0-9_-]+)/g;
-    const match = lunaLiveRegex.exec(description);
-    return match ? match[0] : null;
+    // Chercher les liens vers LunaLive dans la description
+    const lunaLiveRegex = /https:\/\/lunalive\.onrender\.com\/s\/([a-zA-Z0-9_-]+)/gi;
+    const match = description.match(lunaLiveRegex);
+    
+    if (match) {
+      return match[0];
+    }
+    
+    // Chercher les mentions de streamers connus
+    const knownStreamers = ["fabiozsis", "lecasinoze", "lunalive", "twitch"];
+    for (const streamer of knownStreamers) {
+      if (description.toLowerCase().includes(streamer.toLowerCase())) {
+        return `https://lunalive.onrender.com/s/${streamer}`;
+      }
+    }
+    
+    return null;
   }
 
   private extractStreamerName(reel: InstagramReel, lunaLiveLink: string | null): string | null {
-    // 1. Essayer d'extraire depuis le lien LunaLive
+    // Extraire le nom du streamer depuis le lien LunaLive
     if (lunaLiveLink) {
-      const match = lunaLiveLink.match(/\/s\/([a-zA-Z0-9_-]+)/);
-      if (match && match[1]) {
+      const match = lunaLiveLink.match(/\/s\/([a-zA-Z0-9_-]+)/i);
+      if (match) {
         return match[1];
       }
     }
-
-    // 2. Essayer de parser depuis la description
-    const descMatch = reel.description.match(/streamer[:\s]+([a-zA-Z0-9_-]+)/i);
-    if (descMatch && descMatch[1]) {
-      return descMatch[1];
-    }
-
-    // 3. Chercher des mots-clés communs
-    const keywords = ["fabiozsis", "lecasinoze", "boubou", "lucas"];
-    for (const keyword of keywords) {
-      if (reel.description.toLowerCase().includes(keyword.toLowerCase())) {
-        return keyword;
+    
+    // Chercher dans la description
+    const patterns = [
+      /streamer[:\s]*([a-zA-Z0-9_-]+)/i,
+      /by[:\s]*([a-zA-Z0-9_-]+)/i,
+      /avec[:\s]*([a-zA-Z0-9_-]+)/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = reel.description.match(pattern);
+      if (match) {
+        return match[1];
       }
     }
-
+    
     return null;
   }
 
   private buildEmbedDescription(streamerName: string | null, lunaLiveLink: string | null): string {
-    const lines = [
-      "Un nouveau Reel LunaLive est disponible sur Instagram.",
-      "",
-    ];
-
+    let description = "Un nouveau Reel LunaLive est disponible sur Instagram.";
+    
     if (streamerName) {
-      lines.push(`👤 **Streamer** : ${streamerName}`);
+      description += `\n\n👤 **Streamer** : ${streamerName}`;
     }
-
+    
     if (lunaLiveLink) {
-      lines.push(`📺 **LunaLive** : <${lunaLiveLink}>`);
+      description += `\n📺 **LunaLive** : <${lunaLiveLink}>`;
     }
-
-    return lines.join("\n");
-  }
-
-  private truncateTitle(title: string, maxLength: number): string {
-    if (title.length <= maxLength) return title;
-    return title.substring(0, maxLength - 3) + "...";
+    
+    return description;
   }
 
   private async notifyNewReel(reel: InstagramReel): Promise<void> {
@@ -577,19 +548,7 @@ export class InstagramNotifier {
         const errorText = await response.text().catch(() => "");
         console.log("[bot] instagram notification failed", response.status, errorText.slice(0, 300));
       } else {
-        console.log("[bot] instagram premium notification sent successfully");
-        
-        try {
-          await logEvent(this.pool, null, "info", "instagram notification sent", {
-            reelId: reel.id,
-            title: reel.title,
-            hasLunaLiveLink: !!lunaLiveLink,
-            streamerName: streamerName || 'unknown',
-            embedFormat: 'premium',
-            buttonCount: buttons.length,
-            hasThumbnail: !!reel.thumbnail
-          });
-        } catch {}
+        console.log("[bot] instagram notification sent successfully");
       }
     } catch (e: any) {
       console.log("[bot] instagram notification exception", e?.message || e);

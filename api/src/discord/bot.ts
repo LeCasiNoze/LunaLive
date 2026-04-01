@@ -47,6 +47,7 @@ import {
   CID_SUPPORT_OPEN,
   CID_SUPPORT_CLOSE,
   CID_SUPPORT_ESCALATE,
+  CID_SUPPORT_RATE_PREFIX,
 } from "./constants.js";
 
 import { maskEmail, maskSecret, safeDm, type BotCtx } from "./utils.js";
@@ -58,6 +59,7 @@ import {
   handleSupportClose,
   handleSupportEscalate,
   handleSupportMessage,
+  handleSupportRate,
 } from "./support.js";
 import { isRestricted, isVerified, syncUserEverywhere } from "./sync.js";
 
@@ -936,6 +938,12 @@ export async function startDiscordBot(ctx: BotCtx) {
       // ───────── Support : escalader au staff
       if (interaction.isButton() && interaction.customId === CID_SUPPORT_ESCALATE) {
         await handleSupportEscalate(interaction, ctx);
+        return;
+      }
+
+      // ───────── Support : évaluation de réponse bot
+      if (interaction.isButton() && interaction.customId.startsWith(CID_SUPPORT_RATE_PREFIX)) {
+        await handleSupportRate(interaction, ctx);
         return;
       }
 
