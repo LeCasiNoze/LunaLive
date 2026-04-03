@@ -187,9 +187,9 @@ async function tick(accessToken: string, userId: string): Promise<void> {
     ORDER BY pj.scheduled_at ASC
   `);
 
-  if (rows.length === 0) return;
+  console.log(`${LOG} tick — ${rows.length} job(s) found (scheduled & due)`);
 
-  console.log(`${LOG} ${rows.length} job(s) ready to publish`);
+  if (rows.length === 0) return;
 
   // Traitement séquentiel — un seul job à la fois
   for (const job of rows) {
