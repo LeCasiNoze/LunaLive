@@ -13,7 +13,7 @@
 import { pool } from "./db.js";
 
 const LOG = "[IG COMMENT SCHEDULER]";
-const POLL_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+const POLL_INTERVAL_MS = 10_000; // DEBUG — 10s (remettre à 10 * 60 * 1000 après les tests)
 const DISCORD_LUNALIVE = "https://discord.gg/VSbCZQ4gyT";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,6 +113,98 @@ async function metaGet(path: string, params: Record<string, string>): Promise<an
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Vérification des permissions et connectivité
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function verifyInstagramPermissions(accessToken: string, userId: string): Promise<void> {
+  console.log(`${LOG} Vérification des permissions Instagram...`);
+  
+  try {
+    // Test de connectivité basique
+    const userData = await metaGet(`/${userId}`, {
+      fields: "id,username,account_type",
+      access_token: accessToken,
+    });
+    console.log(`${LOG} ✅ Connectivité OK — user: @${userData.username} (${userData.account_type})`);
+
+    // Vérification des permissions requises
+    const permissionsData = await metaGet(`/${userId}/permissions`, {
+      access_token: accessToken,
+    });
+    
+    const requiredPermissions = ["instagram_basic", "pages_show_list", "instagram_manage_comments"];
+    if (permissionsData.data) {
+      const permissions = permissionsData.data.map((p: any) => p.permission);
+      const missing = requiredPermissions.filter(p => !permissions.includes(p));
+      
+      if (missing.length > 0) {
+        console.warn(`${LOG} ⚠️ Permissions manquantes: ${missing.join(", ")}`);
+      } else {
+        console.log(`${LOG} ✅ Permissions de base OK`);
+      }
+
+      // Vérification spécifique pour les messages (DM)
+      if (permissions.includes("instagram_manage_messages")) {
+        console.log(`${LOG} ✅ Permission DM (instagram_manage_messages) OK`);
+      } else {
+        console.warn(`${LOG} ⚠️ Permission DM manquante — les envois de DM échoueront`);
+      }
+    }
+  } catch (e: any) {
+    console.error(`${LOG} ❌ Erreur de vérification des permissions: ${e?.message ?? e}`);
+    throw e;
+  }
+}
+
+async function checkDatabaseState(): Promise<void> {
+  console.log(`${LOG} Vérification de l'état de la base de données...`);
+  
+  try {
+    // Vérification table ig_comment_tracking
+    const trackingResult = await pool.query(`
+      SELECT COUNT(*) as total, 
+             COUNT(CASE WHEN track_until > NOW() THEN 1 END) as active
+      FROM ig_comment_tracking
+    `);
+    const { total, active } = trackingResult.rows[0];
+    console.log(`${LOG} 📊 Tracking: ${active}/${total} posts actifs`);
+
+    // Vérification table streamer_ig_config
+    const configResult = await pool.query(`
+      SELECT COUNT(*) as total,
+             COUNT(CASE WHEN active = true THEN 1 END) as active
+      FROM streamer_ig_config
+    `);
+    const { total: configTotal, active: configActive } = configResult.rows[0];
+    console.log(`${LOG} 📊 Configs: ${configActive}/${configTotal} streamers actifs`);
+
+    // Détail des streamers actifs
+    if (configActive > 0) {
+      const streamersResult = await pool.query(`
+        SELECT streamer_slug, trigger_word, active
+        FROM streamer_ig_config
+        WHERE active = true
+      `);
+      console.log(`${LOG} 📝 Streamers configurés:`);
+      streamersResult.rows.forEach(row => {
+        console.log(`${LOG}    - @${row.streamer_slug}: trigger="${row.trigger_word}"`);
+      });
+    }
+
+    // Vérification table ig_comment_replies (pour éviter les doublons)
+    const repliesResult = await pool.query(`
+      SELECT COUNT(*) as total,
+             MAX(created_at) as last_reply
+      FROM ig_comment_replies
+    `);
+    const { total: repliesTotal, last_reply } = repliesResult.rows[0];
+    console.log(`${LOG} 📊 Réponses envoyées: ${repliesTotal}${last_reply ? ` (dernière: ${last_reply})` : ""}`);
+  } catch (e: any) {
+    console.error(`${LOG} ❌ Erreur de vérification DB: ${e?.message ?? e}`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Types DB
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -151,52 +243,73 @@ async function processTrackedPost(
   accessToken: string,
   userId: string
 ): Promise<void> {
+  console.log(`${LOG} [tracking #${row.id}] 📝 Traitement du post @${row.streamer_slug} (media: ${row.media_id})`);
+  
   // Récupérer les commentaires du post
   let commentsData: any;
   try {
+    console.log(`${LOG} [tracking #${row.id}] 🔍 Récupération des commentaires...`);
     commentsData = await metaGet(`/${row.media_id}/comments`, {
       fields: "id,text,username,timestamp,from",
       access_token: accessToken,
     });
+    console.log(`${LOG} [tracking #${row.id}] ✅ ${commentsData?.data?.length ?? 0} commentaire(s) trouvé(s)`);
   } catch (e: any) {
-    console.error(`${LOG} [tracking #${row.id}] failed to fetch comments: ${e?.message ?? e}`);
+    console.error(`${LOG} [tracking #${row.id}] ❌ failed to fetch comments: ${e?.message ?? e}`);
     return;
   }
 
   const comments: IgComment[] = commentsData?.data ?? [];
   const triggerLower = config.trigger_word.toLowerCase();
+  console.log(`${LOG} [tracking #${row.id}] 🎯 Trigger word: "${config.trigger_word}" (${comments.length} commentaires à analyser)`);
+
+  let processedCount = 0;
+  let skippedCount = 0;
 
   for (const comment of comments) {
     const commentText = String(comment.text ?? "");
     const commentId   = String(comment.id ?? "");
     const username    = String(comment.username ?? comment.from?.username ?? "");
 
-    if (!commentId || !username) continue;
+    if (!commentId || !username) {
+      skippedCount++;
+      continue;
+    }
 
     // Anti-doublon
     const already = await pool.query(
       `SELECT 1 FROM ig_comment_replies WHERE comment_id = $1 LIMIT 1`,
       [commentId]
     );
-    if ((already.rowCount ?? 0) > 0) continue;
+    if ((already.rowCount ?? 0) > 0) {
+      console.log(`${LOG} [tracking #${row.id}] ⏭️ Commentaire ${commentId} déjà traité`);
+      skippedCount++;
+      continue;
+    }
 
     // Filtre trigger_word (case insensitive)
-    if (!commentText.toLowerCase().includes(triggerLower)) continue;
+    if (!commentText.toLowerCase().includes(triggerLower)) {
+      console.log(`${LOG} [tracking #${row.id}] ⏭️ Commentaire ${commentId} ne contient pas le trigger`);
+      skippedCount++;
+      continue;
+    }
 
+    processedCount++;
     console.log(
-      `${LOG} [tracking #${row.id}] comment matched — id=${commentId} user=${username} text="${commentText.slice(0, 60)}"`
+      `${LOG} [tracking #${row.id}] 🎯 COMMENT MATCH — id=${commentId} user=${username} text="${commentText.slice(0, 60)}"`
     );
 
     // ── Répondre au commentaire publiquement ──────────────────────────────
     const replyText = buildCommentReply();
     try {
+      console.log(`${LOG} [tracking #${row.id}] 💬 Envoi de la réponse publique...`);
       await metaPost(`/${row.media_id}/replies`, {
         message: replyText,
         access_token: accessToken,
       });
-      console.log(`${LOG} [tracking #${row.id}] public reply sent — comment=${commentId}`);
+      console.log(`${LOG} [tracking #${row.id}] ✅ Réponse publique envoyée — comment=${commentId}`);
     } catch (e: any) {
-      console.error(`${LOG} [tracking #${row.id}] public reply failed: ${e?.message ?? e}`);
+      console.error(`${LOG} [tracking #${row.id}] ❌ Réponse publique échouée: ${e?.message ?? e}`);
       // On continue quand même pour tenter le DM
     }
 
@@ -216,6 +329,7 @@ async function processTrackedPost(
       });
 
       try {
+        console.log(`${LOG} [tracking #${row.id}] 📩 Envoi du DM à ${username}...`);
         await metaPost(`/${userId}/messages`, {
           recipient: JSON.stringify({ id: fromId }),
           message:   JSON.stringify({ text: dmText }),
@@ -223,17 +337,17 @@ async function processTrackedPost(
         });
         dmSent   = true;
         dmSentAt = new Date();
-        console.log(`${LOG} [tracking #${row.id}] DM sent — user=${username} (${fromId})`);
+        console.log(`${LOG} [tracking #${row.id}] ✅ DM envoyé — user=${username} (${fromId})`);
       } catch (e: any) {
         const msg = String(e?.message ?? e);
         if (msg.includes("200") || msg.includes("permission") || msg.includes("instagram_manage_messages")) {
-          console.log(`${LOG} [tracking #${row.id}] DM SKIPPED — permission: ${msg.slice(0, 120)}`);
+          console.log(`${LOG} [tracking #${row.id}] ⚠️ DM BLOQUÉ — permission: ${msg.slice(0, 120)}`);
         } else {
-          console.error(`${LOG} [tracking #${row.id}] DM failed: ${msg.slice(0, 200)}`);
+          console.error(`${LOG} [tracking #${row.id}] ❌ DM échoué: ${msg.slice(0, 200)}`);
         }
       }
     } else {
-      console.log(`${LOG} [tracking #${row.id}] DM SKIPPED — no from.id on comment ${commentId}`);
+      console.log(`${LOG} [tracking #${row.id}] ⚠️ DM ignoré — pas de from.id sur le commentaire ${commentId}`);
     }
 
     // ── Enregistrer le commentaire traité ─────────────────────────────────
@@ -245,6 +359,8 @@ async function processTrackedPost(
       [commentId, row.media_id, username, commentText.slice(0, 1000), dmSent, dmSentAt]
     );
   }
+
+  console.log(`${LOG} [tracking #${row.id}] 📊 Bilan: ${processedCount} traité(s), ${skippedCount} ignoré(s)`);
 
   // Mettre à jour last_checked_at
   await pool.query(
@@ -299,6 +415,7 @@ async function tick(accessToken: string, userId: string): Promise<void> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function startIgCommentScheduler(): void {
+  console.log(`${LOG} init...`);
   const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN ?? "";
   const userId      = process.env.INSTAGRAM_USER_ID ?? "";
 
@@ -321,7 +438,25 @@ export function startIgCommentScheduler(): void {
     }
   };
 
-  // Délai de 15s au démarrage — laisser les migrations finir
+  // Vérifications initiales au démarrage (asynchrones, non bloquantes)
+  const initialChecks = async () => {
+    try {
+      console.log(`${LOG} 🔍 Démarrage des vérifications initiales...`);
+      
+      // Vérification DB en premier (plus rapide)
+      await checkDatabaseState();
+      
+      // Vérification permissions API (peut échouer)
+      await verifyInstagramPermissions(accessToken, userId);
+      
+      console.log(`${LOG} ✅ Vérifications initiales terminées — démarrage du scheduler`);
+    } catch (e: any) {
+      console.error(`${LOG} ⚠️ Vérifications initiales échouées mais démarrage quand même: ${e?.message ?? e}`);
+    }
+  };
+
+  // Démarrer les vérifications après 5s, puis le premier tick après 15s total
+  setTimeout(initialChecks, 5_000);
   setTimeout(
     () => safeTick().catch((e) => console.error(`${LOG} first tick failed:`, e)),
     15_000
@@ -333,5 +468,5 @@ export function startIgCommentScheduler(): void {
   );
   (id as any).unref?.();
 
-  console.log(`${LOG} started — polling every ${POLL_INTERVAL_MS / 60000}min`);
+  console.log(`${LOG} started — polling every ${POLL_INTERVAL_MS / 1000}s (DEBUG MODE)`);
 }
