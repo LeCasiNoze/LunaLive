@@ -271,7 +271,7 @@ async function processTrackedPost(
     // L'endpoint correct est /{comment_id}/replies (pas /{media_id}/replies)
     const replyText = buildCommentReply();
     try {
-      console.log(`${LOG} [tracking #${row.id}] 💬 Envoi de la réponse publique...`);
+      console.log(`${LOG} [tracking #${row.id}] 💬 reply sur commentId=${commentId} (media_id du tracking=${row.media_id})`);
       await metaPost(`/${commentId}/replies`, {
         message: replyText,
         access_token: accessToken,
