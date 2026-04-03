@@ -31,6 +31,7 @@ const PolitiqueConfidentialitePage = React.lazy(() => import("./pages/legal/Poli
 const CguPage = React.lazy(() => import("./pages/legal/CguPage"));
 const ContactPage = React.lazy(() => import("./pages/legal/ContactPage"));
 const AProposPage = React.lazy(() => import("./pages/legal/AProposPage"));
+const OffresStreamerPage = React.lazy(() => import("./pages/OffresStreamerPage"));
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
@@ -151,6 +152,12 @@ function AppInner() {
         <Route path="/a-propos" element={
           <React.Suspense fallback={<LoadingFallback />}>
             <AProposPage />
+          </React.Suspense>
+        } />
+
+        <Route path="/offres_streamers/:slug" element={
+          <React.Suspense fallback={<LoadingFallback />}>
+            <OffresStreamerPage />
           </React.Suspense>
         } />
 

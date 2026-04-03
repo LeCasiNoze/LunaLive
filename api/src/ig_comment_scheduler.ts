@@ -268,10 +268,9 @@ async function processTrackedPost(
     );
 
     // ── Répondre au commentaire publiquement ──────────────────────────────
-    // L'endpoint correct est /{comment_id}/replies (pas /{media_id}/replies)
-    const replyText = buildCommentReply();
+    const replyText = `🎁 Voilà l'offre → lunalive.onrender.com/offres_streamers/${row.streamer_slug}`;
     try {
-      console.log(`${LOG} [tracking #${row.id}] 💬 reply sur commentId=${commentId} (media_id du tracking=${row.media_id})`);
+      console.log(`${LOG} [tracking #${row.id}] 💬 reply sur commentId=${commentId}`);
       await metaPost(`/${commentId}/replies`, {
         message: replyText,
         access_token: accessToken,
@@ -279,65 +278,15 @@ async function processTrackedPost(
       console.log(`${LOG} [tracking #${row.id}] ✅ Réponse publique envoyée — comment=${commentId}`);
     } catch (e: any) {
       console.error(`${LOG} [tracking #${row.id}] ❌ Réponse publique échouée: ${e?.message ?? e}`);
-      // On continue quand même pour tenter le DM
-    }
-
-    // ── Envoyer un DM ─────────────────────────────────────────────────────
-    // fromId = PSID (Page-Scoped ID) du commentateur, fourni par comment.from.id
-    let dmSent = false;
-    let dmSentAt: Date | null = null;
-
-    const fromId = comment.from?.id;
-    if (fromId) {
-      const dmText = buildDm({
-        username,
-        streamerSlug: row.streamer_slug,
-        offerLabel:   config.offer_label,
-        processInfo:  config.process_info,
-        discordUrl:   config.discord_url,
-        extraUrl:     config.extra_url,
-      });
-
-      try {
-        console.log(`${LOG} [tracking #${row.id}] 📩 Envoi du DM à ${username} (psid=${fromId})...`);
-        // L'API Messages attend du JSON, pas du form-urlencoded
-        const dmRes = await fetch(
-          `https://graph.facebook.com/v19.0/${userId}/messages?access_token=${encodeURIComponent(accessToken)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              recipient: { id: fromId },
-              message: { text: dmText },
-            }),
-          }
-        );
-        const dmData = (await dmRes.json()) as any;
-        if (dmData?.error) {
-          throw new Error(`Meta API error [${dmData.error.code}] ${dmData.error.type}: ${dmData.error.message}`);
-        }
-        dmSent   = true;
-        dmSentAt = new Date();
-        console.log(`${LOG} [tracking #${row.id}] ✅ DM envoyé — user=${username} (psid=${fromId})`);
-      } catch (e: any) {
-        const msg = String(e?.message ?? e);
-        if (msg.includes("200") || msg.includes("permission") || msg.includes("instagram_manage_messages")) {
-          console.log(`${LOG} [tracking #${row.id}] ⚠️ DM BLOQUÉ — permission: ${msg.slice(0, 120)}`);
-        } else {
-          console.error(`${LOG} [tracking #${row.id}] ❌ DM échoué: ${msg.slice(0, 200)}`);
-        }
-      }
-    } else {
-      console.log(`${LOG} [tracking #${row.id}] ⚠️ DM ignoré — pas de from.id (PSID) sur le commentaire ${commentId}`);
     }
 
     // ── Enregistrer le commentaire traité ─────────────────────────────────
     await pool.query(
       `INSERT INTO ig_comment_replies
          (comment_id, media_id, username, comment_text, dm_sent, dm_sent_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
+       VALUES ($1, $2, $3, $4, false, null)
        ON CONFLICT (comment_id) DO NOTHING`,
-      [commentId, row.media_id, username, commentText.slice(0, 1000), dmSent, dmSentAt]
+      [commentId, row.media_id, username, commentText.slice(0, 1000)]
     );
   }
 
