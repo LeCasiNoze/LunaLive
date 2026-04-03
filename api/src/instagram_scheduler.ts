@@ -176,6 +176,16 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function tick(accessToken: string, userId: string): Promise<void> {
+  // DEBUG temporaire — vérif pool + données brutes
+  const testResult = await pool.query(
+    "SELECT COUNT(*) FROM publish_jobs WHERE platform = $1 AND status = $2",
+    ["instagram", "scheduled"]
+  );
+  console.log(`${LOG} DEBUG — count instagram/scheduled:`, testResult.rows[0].count);
+
+  const dbCheck = await pool.query("SELECT current_database(), NOW()");
+  console.log(`${LOG} DEBUG — db=${dbCheck.rows[0].current_database} now=${dbCheck.rows[0].now}`);
+
   const { rows } = await pool.query<PublishJob>(`
     SELECT pj.id, pj.clip_id, pj.edit_job_id, pj.title, pj.description, pj.scheduled_at,
            ej.output_url
