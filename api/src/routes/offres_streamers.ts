@@ -11,7 +11,7 @@ offresStreamersRouter.get("/offres-streamers/:slug", async (req, res) => {
 
   try {
     const { rows } = await pool.query(
-      `SELECT streamer_slug, offer_label, process_info, discord_url, extra_url
+      `SELECT streamer_slug, offer_label, offer_detail, process_info, discord_url, extra_url
        FROM streamer_ig_config
        WHERE LOWER(streamer_slug) = $1 AND active = true
        LIMIT 1`,

@@ -8,6 +8,7 @@ const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.co
 type OffreData = {
   streamer_slug: string;
   offer_label: string | null;
+  offer_detail: string | null;
   process_info: string | null;
   discord_url: string | null;
   extra_url: string | null;
@@ -203,18 +204,16 @@ export default function OffresStreamerPage() {
 
         {/* Offre card */}
         <Card style={{ marginBottom: 20, background: "linear-gradient(135deg,rgba(124,92,252,0.12),rgba(91,142,248,0.08))", border: "1px solid rgba(124,92,252,0.30)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: data.offer_detail ? 10 : 0 }}>
             <span style={{ fontSize: 26 }}>🎁</span>
             <span style={{ fontSize: 19, fontWeight: 800, color: "#c4b5fd" }}>
               {data.offer_label ?? "Offre exclusive"}
             </span>
           </div>
-          {data.extra_url && (
-            <div style={{ marginTop: 4 }}>
-              <ExternalLink href={data.extra_url}>
-                <span>👉</span> Accéder à l'offre
-              </ExternalLink>
-            </div>
+          {data.offer_detail && (
+            <p style={{ margin: "0 0 0 38px", fontSize: 15, color: "rgba(235,232,255,0.80)", lineHeight: 1.55 }}>
+              {data.offer_detail}
+            </p>
           )}
         </Card>
 
@@ -225,7 +224,29 @@ export default function OffresStreamerPage() {
               <span>📋</span> Comment en profiter
             </h2>
             {steps.map((s, i) => (
-              <Step key={i} n={i + 1}>{s}</Step>
+              <React.Fragment key={i}>
+                <Step n={i + 1}>{s}</Step>
+                {i === 0 && data.extra_url && (
+                  <div style={{ marginLeft: 52, marginTop: -12, marginBottom: 20 }}>
+                    <ExternalLink href={data.extra_url}>
+                      <span>👉</span> Accéder à l'offre
+                    </ExternalLink>
+                  </div>
+                )}
+                {i === 1 && (
+                  <div style={{ marginLeft: 52, marginTop: -12, marginBottom: 20, fontSize: 13, color: "rgba(200,195,240,.60)", lineHeight: 1.6 }}>
+                    Si tu n'as pas de wallet crypto, tu peux te créer un compte CoinBase en 5 min ici :{" "}
+                    <a
+                      href="https://coinbase.com/join/X8DGKD8?src=referral-link"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "#a78bfa", fontWeight: 600, textDecoration: "none" }}
+                    >
+                      coinbase.com/join/X8DGKD8
+                    </a>
+                  </div>
+                )}
+              </React.Fragment>
             ))}
           </Card>
         )}
