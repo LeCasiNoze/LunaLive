@@ -268,10 +268,11 @@ async function processTrackedPost(
     );
 
     // ── Répondre au commentaire publiquement ──────────────────────────────
+    // L'endpoint correct est /{comment_id}/replies (pas /{media_id}/replies)
     const replyText = buildCommentReply();
     try {
       console.log(`${LOG} [tracking #${row.id}] 💬 Envoi de la réponse publique...`);
-      await metaPost(`/${row.media_id}/replies`, {
+      await metaPost(`/${commentId}/replies`, {
         message: replyText,
         access_token: accessToken,
       });
@@ -282,6 +283,7 @@ async function processTrackedPost(
     }
 
     // ── Envoyer un DM ─────────────────────────────────────────────────────
+    // fromId = PSID (Page-Scoped ID) du commentateur, fourni par comment.from.id
     let dmSent = false;
     let dmSentAt: Date | null = null;
 
@@ -297,15 +299,26 @@ async function processTrackedPost(
       });
 
       try {
-        console.log(`${LOG} [tracking #${row.id}] 📩 Envoi du DM à ${username}...`);
-        await metaPost(`/${userId}/messages`, {
-          recipient: JSON.stringify({ id: fromId }),
-          message:   JSON.stringify({ text: dmText }),
-          access_token: accessToken,
-        });
+        console.log(`${LOG} [tracking #${row.id}] 📩 Envoi du DM à ${username} (psid=${fromId})...`);
+        // L'API Messages attend du JSON, pas du form-urlencoded
+        const dmRes = await fetch(
+          `https://graph.facebook.com/v19.0/${userId}/messages?access_token=${encodeURIComponent(accessToken)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              recipient: { id: fromId },
+              message: { text: dmText },
+            }),
+          }
+        );
+        const dmData = (await dmRes.json()) as any;
+        if (dmData?.error) {
+          throw new Error(`Meta API error [${dmData.error.code}] ${dmData.error.type}: ${dmData.error.message}`);
+        }
         dmSent   = true;
         dmSentAt = new Date();
-        console.log(`${LOG} [tracking #${row.id}] ✅ DM envoyé — user=${username} (${fromId})`);
+        console.log(`${LOG} [tracking #${row.id}] ✅ DM envoyé — user=${username} (psid=${fromId})`);
       } catch (e: any) {
         const msg = String(e?.message ?? e);
         if (msg.includes("200") || msg.includes("permission") || msg.includes("instagram_manage_messages")) {
@@ -315,7 +328,7 @@ async function processTrackedPost(
         }
       }
     } else {
-      console.log(`${LOG} [tracking #${row.id}] ⚠️ DM ignoré — pas de from.id sur le commentaire ${commentId}`);
+      console.log(`${LOG} [tracking #${row.id}] ⚠️ DM ignoré — pas de from.id (PSID) sur le commentaire ${commentId}`);
     }
 
     // ── Enregistrer le commentaire traité ─────────────────────────────────

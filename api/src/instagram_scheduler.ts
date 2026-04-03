@@ -141,8 +141,18 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
     access_token: accessToken,
   });
 
-  const mediaId = String(publishData.id);
-  console.log(`${LOG} [job #${job.id}] published — media_id=${mediaId}`);
+  const containerId = String(publishData.id);
+  console.log(`${LOG} [job #${job.id}] published — container_id=${containerId}`);
+
+  // STEP 4b — Récupérer le vrai media_id du post publié
+  // publishData.id est le container_id, pas le media_id final
+  const mediaListData = await metaGet(`/${userId}/media`, {
+    fields: "id,timestamp",
+    limit: "1",
+    access_token: accessToken,
+  });
+  const mediaId = String(mediaListData?.data?.[0]?.id ?? containerId);
+  console.log(`${LOG} [job #${job.id}] real media_id=${mediaId}`);
 
   // STEP 5 — Récupérer le permalink
   const permalinkData = await metaGet(`/${mediaId}`, {
