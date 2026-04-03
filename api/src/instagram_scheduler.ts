@@ -245,8 +245,11 @@ export function startInstagramScheduler(): void {
     }
   };
 
-  // Premier tick immédiat au démarrage
-  safeTick().catch((e) => console.error(`${LOG} first tick failed:`, e));
+  // Délai avant le premier tick — laisse le temps aux migrations de se terminer
+  setTimeout(
+    () => safeTick().catch((e) => console.error(`${LOG} first tick failed:`, e)),
+    10_000
+  );
 
   const id = setInterval(
     () => safeTick().catch((e) => console.error(`${LOG} tick failed:`, e)),
