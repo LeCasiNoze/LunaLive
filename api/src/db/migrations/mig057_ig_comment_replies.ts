@@ -10,6 +10,7 @@ export async function mig057_ig_comment_replies(pool: Pool): Promise<void> {
       media_id VARCHAR(50) NOT NULL,
       username VARCHAR(100) NOT NULL,
       comment_text TEXT,
+      replied_at   TIMESTAMP NOT NULL DEFAULT NOW(),
       dm_sent BOOLEAN DEFAULT FALSE,
       dm_sent_at TIMESTAMP WITH TIME ZONE,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
