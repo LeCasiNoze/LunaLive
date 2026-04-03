@@ -116,44 +116,12 @@ async function metaGet(path: string, params: Record<string, string>): Promise<an
 // Vérification des permissions et connectivité
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function verifyInstagramPermissions(accessToken: string, userId: string): Promise<void> {
-  console.log(`${LOG} Vérification des permissions Instagram...`);
-  
-  try {
-    // Test de connectivité basique
-    const userData = await metaGet(`/${userId}`, {
-      fields: "id,username",
-      access_token: accessToken,
-    });
-    console.log(`${LOG} ✅ Connectivité OK — user: @${userData.username}`);
-
-    // Vérification des permissions requises
-    const permissionsData = await metaGet(`/${userId}/permissions`, {
-      access_token: accessToken,
-    });
-    
-    const requiredPermissions = ["instagram_basic", "pages_show_list", "instagram_manage_comments"];
-    if (permissionsData.data) {
-      const permissions = permissionsData.data.map((p: any) => p.permission);
-      const missing = requiredPermissions.filter(p => !permissions.includes(p));
-      
-      if (missing.length > 0) {
-        console.warn(`${LOG} ⚠️ Permissions manquantes: ${missing.join(", ")}`);
-      } else {
-        console.log(`${LOG} ✅ Permissions de base OK`);
-      }
-
-      // Vérification spécifique pour les messages (DM)
-      if (permissions.includes("instagram_manage_messages")) {
-        console.log(`${LOG} ✅ Permission DM (instagram_manage_messages) OK`);
-      } else {
-        console.warn(`${LOG} ⚠️ Permission DM manquante — les envois de DM échoueront`);
-      }
-    }
-  } catch (e: any) {
-    console.error(`${LOG} ❌ Erreur de vérification des permissions: ${e?.message ?? e}`);
-    throw e;
-  }
+async function verifyInstagramConnectivity(accessToken: string, userId: string): Promise<void> {
+  const userData = await metaGet(`/${userId}`, {
+    fields: "id,username",
+    access_token: accessToken,
+  });
+  console.log(`${LOG} ✅ Connectivité OK — user: @${userData.username}`);
 }
 
 async function checkDatabaseState(): Promise<void> {
@@ -447,7 +415,7 @@ export function startIgCommentScheduler(): void {
       await checkDatabaseState();
       
       // Vérification permissions API (peut échouer)
-      await verifyInstagramPermissions(accessToken, userId);
+      await verifyInstagramConnectivity(accessToken, userId);
       
       console.log(`${LOG} ✅ Vérifications initiales terminées — démarrage du scheduler`);
     } catch (e: any) {
