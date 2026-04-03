@@ -122,10 +122,10 @@ async function verifyInstagramPermissions(accessToken: string, userId: string): 
   try {
     // Test de connectivité basique
     const userData = await metaGet(`/${userId}`, {
-      fields: "id,username,account_type",
+      fields: "id,username",
       access_token: accessToken,
     });
-    console.log(`${LOG} ✅ Connectivité OK — user: @${userData.username} (${userData.account_type})`);
+    console.log(`${LOG} ✅ Connectivité OK — user: @${userData.username}`);
 
     // Vérification des permissions requises
     const permissionsData = await metaGet(`/${userId}/permissions`, {
