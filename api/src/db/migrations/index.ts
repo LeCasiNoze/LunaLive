@@ -60,6 +60,7 @@ import { mig052_youtube_notifications } from "./mig052_youtube_notifications.js"
 import { mig053_instagram_notifications } from "./mig053_instagram_notifications.js";
 import { mig054_support_intelligence } from "./mig054_support_intelligence.js";
 import { mig055_publish_jobs } from "./mig055_publish_jobs.js";
+import { mig056_ig_comment_tracking } from "./mig056_ig_comment_tracking.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -136,4 +137,5 @@ export async function migrateAll(pool: Pool) {
   await mig053_instagram_notifications(pool);
   await mig054_support_intelligence(pool);
   await mig055_publish_jobs(pool);
+  await mig056_ig_comment_tracking(pool);
 }

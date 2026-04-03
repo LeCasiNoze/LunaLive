@@ -168,6 +168,23 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
     [job.clip_id]
   );
 
+  // STEP 6b — Enregistrer le post pour monitoring des commentaires (72h)
+  const slugRow = await pool.query(
+    `SELECT streamer_slug FROM clip_inbox WHERE clip_id = $1 LIMIT 1`,
+    [job.clip_id]
+  );
+  const streamerSlug = String(slugRow.rows[0]?.streamer_slug ?? "");
+
+  if (streamerSlug) {
+    await pool.query(
+      `INSERT INTO ig_comment_tracking (publish_job_id, clip_id, streamer_slug, media_id, track_until)
+       VALUES ($1, $2, $3, $4, NOW() + INTERVAL '72 hours')
+       ON CONFLICT DO NOTHING`,
+      [job.id, job.clip_id, streamerSlug, mediaId]
+    );
+    console.log(`${LOG} [job #${job.id}] comment tracking registered — slug=${streamerSlug} media=${mediaId}`);
+  }
+
   console.log(`${LOG} [job #${job.id}] done ✓ — ${permalink}`);
 }
 

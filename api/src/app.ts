@@ -104,6 +104,9 @@ import { adminEventsRouter } from "./routes/admin_events.js";
 // ✅ LunaClip — routes dans l'api, scheduler dans le bot
 import { lunaclipRouter } from "./lunaclip/routes.js";
 
+// Instagram comments monitoring
+import { igCommentsRouter } from "./routes/ig_comments.js";
+
 export function createApp() {
   const app = express();
 
@@ -156,6 +159,7 @@ export function createApp() {
   app.use("/api", dliveRepostRouter);
   app.use("/api", eventsRouter);
   app.use("/api", eventsViewerWeekRouter);
+  app.use("/api", igCommentsRouter);
 
   app.use(streamerVodsRouter);
 

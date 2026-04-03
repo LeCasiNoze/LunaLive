@@ -21,6 +21,7 @@ import { startAgendaNotifPoller } from "./agenda_notif_poller.js";
 import { startDiscordBot } from "./discord/bot.js";
 import { startEventsEnginePoller } from "./events/engine.js";
 import { startInstagramScheduler } from "./instagram_scheduler.js";
+import { startIgCommentScheduler } from "./ig_comment_scheduler.js";
 
 const port = Number(process.env.PORT || 3001);
 
@@ -171,6 +172,7 @@ function setupGracefulShutdown(server: http.Server) {
   startClipsMp4Renderer();
   startClipsMp4Cleanup();
   startInstagramScheduler();
+  startIgCommentScheduler();
 
   if (process.env.RUN_DISCORD_BOT === "1") {
     startDiscordBot({
