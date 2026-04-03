@@ -203,6 +203,18 @@ async function tick(accessToken: string, userId: string): Promise<void> {
   const dbCheck = await pool.query("SELECT current_database(), NOW()");
   console.log(`${LOG} DEBUG — db=${dbCheck.rows[0].current_database} now=${dbCheck.rows[0].now}`);
 
+  // DEBUG — afficher les jobs instagram/scheduled sans filtre de date pour diagnostiquer
+  const rawJobs = await pool.query(
+    `SELECT pj.id, pj.status, pj.scheduled_at,
+            pj.scheduled_at <= NOW() AS is_due,
+            NOW() AS db_now,
+            ej.id AS ej_id, ej.output_url IS NOT NULL AS has_url
+     FROM publish_jobs pj
+     LEFT JOIN edit_jobs ej ON ej.id = pj.edit_job_id
+     WHERE pj.platform = 'instagram' AND pj.status = 'scheduled'`
+  );
+  console.log(`${LOG} DEBUG raw jobs:`, JSON.stringify(rawJobs.rows));
+
   const { rows } = await pool.query<PublishJob>(`
     SELECT pj.id, pj.clip_id, pj.edit_job_id, pj.title, pj.description, pj.scheduled_at,
            ej.output_url
