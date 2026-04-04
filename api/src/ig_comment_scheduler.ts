@@ -13,7 +13,7 @@
 import { pool } from "./db.js";
 
 const LOG = "[IG COMMENT SCHEDULER]";
-const POLL_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+const POLL_INTERVAL_MS = 60 * 1000; // 1 minute
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phrases aléatoires
@@ -99,12 +99,13 @@ async function metaGet(path: string, params: Record<string, string>): Promise<an
 // Vérification des permissions et connectivité
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function verifyInstagramConnectivity(accessToken: string, userId: string): Promise<void> {
+async function verifyInstagramConnectivity(accessToken: string, userId: string): Promise<string> {
   const userData = await metaGet(`/${userId}`, {
     fields: "id,username",
     access_token: accessToken,
   });
-  console.log(`${LOG} ✅ Connecté — @${userData.username}`);
+  console.log(`${LOG} ✅ Connecté — @${userData.username} (id=${userData.id})`);
+  return String(userData.username ?? "");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -144,7 +145,8 @@ async function processTrackedPost(
   row: TrackingRow,
   config: StreamerConfig,
   accessToken: string,
-  userId: string // ID numérique du compte bot — les commentaires postés par ce compte sont ignorés
+  userId: string,
+  botUsername: string // username du compte bot — ses propres commentaires sont ignorés
 ): Promise<void> {
   // Récupérer les commentaires du post
   let commentsData: any;
@@ -174,9 +176,12 @@ async function processTrackedPost(
       continue;
     }
 
-    // Ignorer les commentaires du bot lui-même
+    // Ignorer les commentaires du bot lui-même (par userId ou username)
     const fromId = String(comment.from?.id ?? "");
-    if (fromId && fromId === userId) { skippedCount++; continue; }
+    if ((fromId && fromId === userId) || (botUsername && username === botUsername)) {
+      skippedCount++;
+      continue;
+    }
 
     // Anti-doublon
     const already = await pool.query(
@@ -241,7 +246,7 @@ async function processTrackedPost(
 // Tick principal
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function tick(accessToken: string, userId: string): Promise<void> {
+async function tick(accessToken: string, userId: string, botUsername: string): Promise<void> {
   // Posts encore dans la fenêtre de monitoring
   const { rows } = await pool.query<TrackingRow>(`
     SELECT id, publish_job_id, clip_id, streamer_slug, media_id, track_until
@@ -269,7 +274,7 @@ async function tick(accessToken: string, userId: string): Promise<void> {
     const config = cfgResult.rows[0];
 
     try {
-      await processTrackedPost(row, config, accessToken, userId);
+      await processTrackedPost(row, config, accessToken, userId, botUsername);
     } catch (e: any) {
       console.error(
         `${LOG} [tracking #${row.id}] unexpected error: ${e?.message ?? e}`
@@ -293,6 +298,7 @@ export function startIgCommentScheduler(): void {
   }
 
   let running = false;
+  let botUsername = "";
   let intervalId: ReturnType<typeof setInterval> | null = null;
 
   const stopDueToTokenError = (err: MetaTokenError) => {
@@ -306,7 +312,7 @@ export function startIgCommentScheduler(): void {
     if (running) return;
     running = true;
     try {
-      await tick(accessToken, userId);
+      await tick(accessToken, userId, botUsername);
     } catch (e: any) {
       if (e instanceof MetaTokenError) { stopDueToTokenError(e); }
       else { console.error(`${LOG} tick error: ${e?.message ?? e}`); }
@@ -317,7 +323,7 @@ export function startIgCommentScheduler(): void {
 
   const initialChecks = async () => {
     try {
-      await verifyInstagramConnectivity(accessToken, userId);
+      botUsername = await verifyInstagramConnectivity(accessToken, userId);
     } catch (e: any) {
       if (e instanceof MetaTokenError) stopDueToTokenError(e);
       else console.error(`${LOG} ⚠️ Vérification initiale échouée: ${e?.message ?? e}`);
