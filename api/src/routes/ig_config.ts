@@ -43,6 +43,7 @@ igConfigRouter.get("/ig-config/:slug", requireAdminKey, async (req, res) => {
 
 // ─── POST /api/ig-config — upsert par streamer_slug ──────────────────────────
 igConfigRouter.post("/ig-config", requireAdminKey, async (req, res) => {
+  console.log("[ig-config DEBUG] raw body:", JSON.stringify(req.body));
   // LOG COMPLET du body entrant pour diagnostic
   console.log("[ig-config] POST body:", JSON.stringify(req.body));
 
