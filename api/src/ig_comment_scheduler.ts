@@ -264,22 +264,19 @@ async function processTrackedPost(
       console.error(`${LOG} [tracking #${row.id}] ❌ Réponse publique échouée: ${e?.message ?? e}`);
     }
 
-    // ── Liker le commentaire (non bloquant) ───────────────────────────────
+    // ── Enregistrer le commentaire traité (anti-doublon) ─────────────────
     try {
-      await metaPost(`/${commentId}/likes`, { access_token: accessToken });
-      console.log(`${LOG} [tracking #${row.id}] ✅ Like envoyé — comment=${commentId}`);
+      const insertResult = await pool.query(
+        `INSERT INTO ig_comment_replies
+           (comment_id, media_id, username, comment_text, dm_sent, dm_sent_at)
+         VALUES ($1, $2, $3, $4, false, null)
+         ON CONFLICT (comment_id) DO NOTHING`,
+        [commentId, row.media_id, username, commentText.slice(0, 1000)]
+      );
+      console.log(`${LOG} [tracking #${row.id}] 💾 anti-doublon enregistré — rows=${insertResult.rowCount}`);
     } catch (e: any) {
-      console.error(`${LOG} [tracking #${row.id}] ❌ Like échoué (non bloquant): ${e?.message ?? e}`);
+      console.error(`${LOG} [tracking #${row.id}] ❌ anti-doublon INSERT échoué: ${e?.message ?? e}`);
     }
-
-    // ── Enregistrer le commentaire traité ─────────────────────────────────
-    await pool.query(
-      `INSERT INTO ig_comment_replies
-         (comment_id, media_id, username, comment_text, dm_sent, dm_sent_at)
-       VALUES ($1, $2, $3, $4, false, null)
-       ON CONFLICT (comment_id) DO NOTHING`,
-      [commentId, row.media_id, username, commentText.slice(0, 1000)]
-    );
   }
 
   console.log(`${LOG} [tracking #${row.id}] 📊 Bilan: ${processedCount} traité(s), ${skippedCount} ignoré(s)`);

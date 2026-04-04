@@ -74,7 +74,7 @@ function buildDmText(cfg: StreamerConfig): string {
 
   // Lien offre
   if (cfg.extra_url) {
-    lines.push(`👉 Lien direct : ${cfg.extra_url}`);
+    lines.push(`👉 Lien pour créer ton compte : ${cfg.extra_url}`);
     lines.push("");
   }
 
