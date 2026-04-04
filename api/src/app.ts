@@ -107,6 +107,7 @@ import { lunaclipRouter } from "./lunaclip/routes.js";
 // Instagram comments monitoring
 import { igCommentsRouter } from "./routes/ig_comments.js";
 import { offresStreamersRouter } from "./routes/offres_streamers.js";
+import { igWebhookRouter } from "./ig_dm_scheduler.js";
 
 export function createApp() {
   const app = express();
@@ -162,6 +163,7 @@ export function createApp() {
   app.use("/api", eventsViewerWeekRouter);
   app.use("/api", igCommentsRouter);
   app.use("/api", offresStreamersRouter);
+  app.use(igWebhookRouter);
 
   app.use(streamerVodsRouter);
 

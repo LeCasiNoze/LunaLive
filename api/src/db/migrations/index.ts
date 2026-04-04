@@ -63,6 +63,7 @@ import { mig055_publish_jobs } from "./mig055_publish_jobs.js";
 import { mig056_ig_comment_tracking } from "./mig056_ig_comment_tracking.js";
 import { mig057_ig_comment_replies } from "./mig057_ig_comment_replies.js";
 import { mig058_streamer_ig_offer_detail } from "./mig058_streamer_ig_offer_detail.js";
+import { mig059_ig_dm_replies } from "./mig059_ig_dm_replies.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -142,4 +143,5 @@ export async function migrateAll(pool: Pool) {
   await mig056_ig_comment_tracking(pool);
   await mig057_ig_comment_replies(pool);
   await mig058_streamer_ig_offer_detail(pool);
+  await mig059_ig_dm_replies(pool);
 }

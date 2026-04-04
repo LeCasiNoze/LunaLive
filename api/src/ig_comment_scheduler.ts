@@ -20,69 +20,53 @@ const DISCORD_LUNALIVE = "https://discord.gg/VSbCZQ4gyT";
 // Phrases aléatoires
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SENT   = ["C'est envoyé", "Check tes DM", "Bien reçu", "Ça part", "Hop, c'est parti", "Dans ta boîte"];
-const FOLLOW = [
-  "hésite pas à follow pour ne rien rater",
-  "un p'tit follow ça fait plaisir",
-  "pense à follow pour les prochains clips",
-  "le follow c'est gratuit et ça aide",
-  "follow pour rester dans la boucle",
-  "abonne-toi pour ne pas louper la suite",
-];
-const EMOJIS = ["👀", "🎰", "🔥", "💬", "✅", "👇", "🙌"];
-const SALUT  = ["Salut {{username}} !", "Yo {{username}} !", "Hey {{username}} !"];
-const MERCI  = [
-  "Merci pour ton soutien 🙌",
-  "Bonne chance à toi 🎰",
-  "On se retrouve sur le live !",
-  "À bientôt sur LunaLive 🔥",
-];
-
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function buildCommentReply(): string {
-  return `${pick(SENT)}, ${pick(FOLLOW)} ${pick(EMOJIS)}`;
+// ─── Construction de la réponse publique au commentaire ───────────────────────
+// Chaque partie est choisie aléatoirement pour éviter les doublons.
+
+function buildCommentReply(streamerSlug: string): string {
+  const GREETINGS = [
+    "Salut !",
+    "Yo !",
+    "Wesh !",
+    "Hey !",
+    "Coucou !",
+    "Oi !",
+  ];
+  const OFFER_INTROS = [
+    "🎁 Voilà l'offre",
+    "🔥 Check ici",
+    "👇 Le lien direct",
+    "🎯 C'est par là",
+    "✨ Tiens, l'offre",
+    "🎰 Le lien",
+  ];
+  const FOLLOWS = [
+    "hésite pas à follow pour ne rien rater",
+    "un follow c'est gratuit et ça aide vraiment",
+    "pense à follow pour les prochains clips",
+    "abonne-toi pour pas louper la suite",
+    "le follow c'est toujours dispo",
+    "follow pour rester dans la boucle",
+  ];
+  const DM_INVITES = [
+    `Si t'as besoin de plus d'infos, envoie-moi "${streamerSlug}" en DM :)`,
+    `Des questions ? Envoie "${streamerSlug}" en DM, je t'explique tout 👌`,
+    `Pour plus de détails, MP-moi "${streamerSlug}" 😊`,
+    `Besoin d'aide ? Envoie "${streamerSlug}" en DM et je te guide 🎯`,
+    `Des infos en plus ? Balance "${streamerSlug}" en DM 💬`,
+  ];
+
+  const url = `https://lunalive.onrender.com/offres_streamers/${streamerSlug}`;
+  return (
+    `${pick(GREETINGS)} ${pick(OFFER_INTROS)} → ${url}\n` +
+    `${pick(FOLLOWS)} — ${pick(DM_INVITES)}`
+  );
 }
 
-function buildDm(opts: {
-  username: string;
-  streamerSlug: string;
-  offerLabel: string | null;
-  processInfo: string | null;
-  discordUrl: string | null;
-  extraUrl: string | null;
-}): string {
-  const { username, streamerSlug, offerLabel, processInfo, discordUrl, extraUrl } = opts;
-
-  const header = pick(SALUT).replace("{{username}}", "@" + username);
-  const offerLine = offerLabel ? ` (${offerLabel})` : "";
-  const processLine = processInfo
-    ? processInfo
-    : "Tu pourras retrouver l'éventuel processus sur son discord :\n👇";
-
-  return [
-    header,
-    "",
-    `Comme promis, voilà le DM pour profiter de l'offre ${streamerSlug}${offerLine} :`,
-    processLine,
-    extraUrl ?? "",
-    "",
-    "Tu auras peut-être besoin d'ouvrir un ticket sur son Discord pour qu'il s'occupe de toi :",
-    discordUrl ?? "",
-    "",
-    "Retrouve-le en live ici :",
-    `https://lunalive.onrender.com/s/${streamerSlug}`,
-    "",
-    `Rejoins aussi le Discord LunaLive pour être au courant de tout :`,
-    DISCORD_LUNALIVE,
-    "",
-    pick(MERCI),
-  ]
-    .join("\n")
-    .trim();
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers Meta Graph API
@@ -282,7 +266,7 @@ async function processTrackedPost(
     );
 
     // ── Répondre au commentaire publiquement ──────────────────────────────
-    const replyText = `🎁 Voilà l'offre → lunalive.onrender.com/offres_streamers/${row.streamer_slug}`;
+    const replyText = buildCommentReply(row.streamer_slug);
     try {
       console.log(`${LOG} [tracking #${row.id}] 💬 reply sur commentId=${commentId}`);
       await metaPost(`/${commentId}/replies`, {
@@ -292,6 +276,14 @@ async function processTrackedPost(
       console.log(`${LOG} [tracking #${row.id}] ✅ Réponse publique envoyée — comment=${commentId}`);
     } catch (e: any) {
       console.error(`${LOG} [tracking #${row.id}] ❌ Réponse publique échouée: ${e?.message ?? e}`);
+    }
+
+    // ── Liker le commentaire (non bloquant) ───────────────────────────────
+    try {
+      await metaPost(`/${commentId}/likes`, { access_token: accessToken });
+      console.log(`${LOG} [tracking #${row.id}] ✅ Like envoyé — comment=${commentId}`);
+    } catch (e: any) {
+      console.error(`${LOG} [tracking #${row.id}] ❌ Like échoué (non bloquant): ${e?.message ?? e}`);
     }
 
     // ── Enregistrer le commentaire traité ─────────────────────────────────
