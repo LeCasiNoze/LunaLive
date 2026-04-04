@@ -224,28 +224,6 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function tick(accessToken: string, userId: string): Promise<void> {
-  // DEBUG temporaire — vérif pool + données brutes
-  const testResult = await pool.query(
-    "SELECT COUNT(*) FROM publish_jobs WHERE platform = $1 AND status = $2",
-    ["instagram", "scheduled"]
-  );
-  console.log(`${LOG} DEBUG — count instagram/scheduled:`, testResult.rows[0].count);
-
-  const dbCheck = await pool.query("SELECT current_database(), NOW()");
-  console.log(`${LOG} DEBUG — db=${dbCheck.rows[0].current_database} now=${dbCheck.rows[0].now}`);
-
-  // DEBUG — afficher les jobs instagram/scheduled sans filtre de date pour diagnostiquer
-  const rawJobs = await pool.query(
-    `SELECT pj.id, pj.status, pj.scheduled_at,
-            pj.scheduled_at <= NOW() AS is_due,
-            NOW() AS db_now,
-            ej.id AS ej_id, ej.output_url IS NOT NULL AS has_url
-     FROM publish_jobs pj
-     LEFT JOIN edit_jobs ej ON ej.id = pj.edit_job_id
-     WHERE pj.platform = 'instagram' AND pj.status = 'scheduled'`
-  );
-  console.log(`${LOG} DEBUG raw jobs:`, JSON.stringify(rawJobs.rows));
-
   const { rows } = await pool.query<PublishJob>(`
     SELECT pj.id, pj.clip_id, pj.edit_job_id, pj.title, pj.description, pj.scheduled_at,
            ej.output_url
@@ -257,9 +235,9 @@ async function tick(accessToken: string, userId: string): Promise<void> {
     ORDER BY pj.scheduled_at ASC
   `);
 
-  console.log(`${LOG} tick — ${rows.length} job(s) found (scheduled & due)`);
-
   if (rows.length === 0) return;
+
+  console.log(`${LOG} tick — ${rows.length} job(s) à traiter`);
 
   // Traitement séquentiel — un seul job à la fois
   for (const job of rows) {

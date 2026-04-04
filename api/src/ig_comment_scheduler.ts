@@ -13,8 +13,7 @@
 import { pool } from "./db.js";
 
 const LOG = "[IG COMMENT SCHEDULER]";
-const POLL_INTERVAL_MS = 10_000; // DEBUG — 10s (remettre à 10 * 60 * 1000 après les tests)
-const DISCORD_LUNALIVE = "https://discord.gg/VSbCZQ4gyT";
+const POLL_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phrases aléatoires
@@ -105,55 +104,7 @@ async function verifyInstagramConnectivity(accessToken: string, userId: string):
     fields: "id,username",
     access_token: accessToken,
   });
-  console.log(`${LOG} ✅ Connectivité OK — user: @${userData.username}`);
-}
-
-async function checkDatabaseState(): Promise<void> {
-  console.log(`${LOG} Vérification de l'état de la base de données...`);
-  
-  try {
-    // Vérification table ig_comment_tracking
-    const trackingResult = await pool.query(`
-      SELECT COUNT(*) as total, 
-             COUNT(CASE WHEN track_until > NOW() THEN 1 END) as active
-      FROM ig_comment_tracking
-    `);
-    const { total, active } = trackingResult.rows[0];
-    console.log(`${LOG} 📊 Tracking: ${active}/${total} posts actifs`);
-
-    // Vérification table streamer_ig_config
-    const configResult = await pool.query(`
-      SELECT COUNT(*) as total,
-             COUNT(CASE WHEN active = true THEN 1 END) as active
-      FROM streamer_ig_config
-    `);
-    const { total: configTotal, active: configActive } = configResult.rows[0];
-    console.log(`${LOG} 📊 Configs: ${configActive}/${configTotal} streamers actifs`);
-
-    // Détail des streamers actifs
-    if (configActive > 0) {
-      const streamersResult = await pool.query(`
-        SELECT streamer_slug, trigger_word, active
-        FROM streamer_ig_config
-        WHERE active = true
-      `);
-      console.log(`${LOG} 📝 Streamers configurés:`);
-      streamersResult.rows.forEach(row => {
-        console.log(`${LOG}    - @${row.streamer_slug}: trigger="${row.trigger_word}"`);
-      });
-    }
-
-    // Vérification table ig_comment_replies (pour éviter les doublons)
-    const repliesResult = await pool.query(`
-      SELECT COUNT(*) as total,
-             MAX(created_at) as last_reply
-      FROM ig_comment_replies
-    `);
-    const { total: repliesTotal, last_reply } = repliesResult.rows[0];
-    console.log(`${LOG} 📊 Réponses envoyées: ${repliesTotal}${last_reply ? ` (dernière: ${last_reply})` : ""}`);
-  } catch (e: any) {
-    console.error(`${LOG} ❌ Erreur de vérification DB: ${e?.message ?? e}`);
-  }
+  console.log(`${LOG} ✅ Connecté — @${userData.username}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -193,27 +144,22 @@ async function processTrackedPost(
   row: TrackingRow,
   config: StreamerConfig,
   accessToken: string,
-  userId: string
+  userId: string // ID numérique du compte bot — les commentaires postés par ce compte sont ignorés
 ): Promise<void> {
-  console.log(`${LOG} [tracking #${row.id}] 📝 Traitement du post @${row.streamer_slug} (media: ${row.media_id})`);
-  
   // Récupérer les commentaires du post
   let commentsData: any;
   try {
-    console.log(`${LOG} [tracking #${row.id}] 🔍 Récupération des commentaires...`);
     commentsData = await metaGet(`/${row.media_id}/comments`, {
       fields: "id,text,username,timestamp,from",
       access_token: accessToken,
     });
-    console.log(`${LOG} [tracking #${row.id}] ✅ ${commentsData?.data?.length ?? 0} commentaire(s) trouvé(s)`);
   } catch (e: any) {
-    console.error(`${LOG} [tracking #${row.id}] ❌ failed to fetch comments: ${e?.message ?? e}`);
+    console.error(`${LOG} [tracking #${row.id}] ❌ fetch comments: ${e?.message ?? e}`);
     return;
   }
 
   const comments: IgComment[] = commentsData?.data ?? [];
   const triggerLower = config.trigger_word.toLowerCase();
-  console.log(`${LOG} [tracking #${row.id}] 🎯 Trigger word: "${config.trigger_word}" (${comments.length} commentaires à analyser)`);
 
   let processedCount = 0;
   let skippedCount = 0;
@@ -228,23 +174,19 @@ async function processTrackedPost(
       continue;
     }
 
+    // Ignorer les commentaires du bot lui-même
+    const fromId = String(comment.from?.id ?? "");
+    if (fromId && fromId === userId) { skippedCount++; continue; }
+
     // Anti-doublon
     const already = await pool.query(
       `SELECT 1 FROM ig_comment_replies WHERE comment_id = $1 LIMIT 1`,
       [commentId]
     );
-    if ((already.rowCount ?? 0) > 0) {
-      console.log(`${LOG} [tracking #${row.id}] ⏭️ Commentaire ${commentId} déjà traité`);
-      skippedCount++;
-      continue;
-    }
+    if ((already.rowCount ?? 0) > 0) { skippedCount++; continue; }
 
-    // Filtre trigger_word (case insensitive)
-    if (!commentText.toLowerCase().includes(triggerLower)) {
-      console.log(`${LOG} [tracking #${row.id}] ⏭️ Commentaire ${commentId} ne contient pas le trigger`);
-      skippedCount++;
-      continue;
-    }
+    // Filtre trigger_word
+    if (!commentText.toLowerCase().includes(triggerLower)) { skippedCount++; continue; }
 
     console.log(
       `${LOG} [tracking #${row.id}] 🎯 COMMENT MATCH — id=${commentId} user=${username} text="${commentText.slice(0, 60)}"`
@@ -261,36 +203,32 @@ async function processTrackedPost(
         [commentId, row.media_id, username, commentText.slice(0, 1000)]
       );
       claimed = (insertResult.rowCount ?? 0) > 0;
-      console.log(`${LOG} [tracking #${row.id}] 💾 anti-doublon INSERT — rows=${insertResult.rowCount} claimed=${claimed}`);
     } catch (e: any) {
       console.error(`${LOG} [tracking #${row.id}] ❌ anti-doublon INSERT échoué: ${e?.message ?? e}`);
       skippedCount++;
       continue;
     }
 
-    if (!claimed) {
-      console.log(`${LOG} [tracking #${row.id}] ⏭️ Commentaire ${commentId} déjà en base (INSERT conflict), skip`);
-      skippedCount++;
-      continue;
-    }
+    if (!claimed) { skippedCount++; continue; }
 
     processedCount++;
 
     // ── Répondre au commentaire publiquement ──────────────────────────────
     const replyText = buildCommentReply(row.streamer_slug);
     try {
-      console.log(`${LOG} [tracking #${row.id}] 💬 reply sur commentId=${commentId}`);
       await metaPost(`/${commentId}/replies`, {
         message: replyText,
         access_token: accessToken,
       });
-      console.log(`${LOG} [tracking #${row.id}] ✅ Réponse publique envoyée — comment=${commentId}`);
+      console.log(`${LOG} ✅ Reply — @${username} (comment=${commentId})`);
     } catch (e: any) {
-      console.error(`${LOG} [tracking #${row.id}] ❌ Réponse publique échouée: ${e?.message ?? e}`);
+      console.error(`${LOG} ❌ Reply échoué — comment=${commentId}: ${e?.message ?? e}`);
     }
   }
 
-  console.log(`${LOG} [tracking #${row.id}] 📊 Bilan: ${processedCount} traité(s), ${skippedCount} ignoré(s)`);
+  if (processedCount > 0) {
+    console.log(`${LOG} [tracking #${row.id}] ${processedCount} réponse(s) envoyée(s)`);
+  }
 
   // Mettre à jour last_checked_at
   await pool.query(
@@ -377,19 +315,12 @@ export function startIgCommentScheduler(): void {
     }
   };
 
-  // Vérifications initiales au démarrage (asynchrones, non bloquantes)
   const initialChecks = async () => {
     try {
-      console.log(`${LOG} 🔍 Démarrage des vérifications initiales...`);
-      await checkDatabaseState();
       await verifyInstagramConnectivity(accessToken, userId);
-      console.log(`${LOG} ✅ Vérifications initiales terminées — démarrage du scheduler`);
     } catch (e: any) {
-      if (e instanceof MetaTokenError) {
-        stopDueToTokenError(e);
-      } else {
-        console.error(`${LOG} ⚠️ Vérifications initiales échouées mais démarrage quand même: ${e?.message ?? e}`);
-      }
+      if (e instanceof MetaTokenError) stopDueToTokenError(e);
+      else console.error(`${LOG} ⚠️ Vérification initiale échouée: ${e?.message ?? e}`);
     }
   };
 
@@ -412,5 +343,5 @@ export function startIgCommentScheduler(): void {
   );
   (intervalId as any).unref?.();
 
-  console.log(`${LOG} started — polling every ${POLL_INTERVAL_MS / 1000}s (DEBUG MODE)`);
+  console.log(`${LOG} started — polling every ${POLL_INTERVAL_MS / 1000}s`);
 }

@@ -43,10 +43,6 @@ igConfigRouter.get("/ig-config/:slug", requireAdminKey, async (req, res) => {
 
 // ─── POST /api/ig-config — upsert par streamer_slug ──────────────────────────
 igConfigRouter.post("/ig-config", requireAdminKey, async (req, res) => {
-  console.log("[ig-config DEBUG] raw body:", JSON.stringify(req.body));
-  // LOG COMPLET du body entrant pour diagnostic
-  console.log("[ig-config] POST body:", JSON.stringify(req.body));
-
   const {
     streamer_slug,
     trigger_word,
@@ -58,11 +54,6 @@ igConfigRouter.post("/ig-config", requireAdminKey, async (req, res) => {
     instagram_username = null,
     active             = true,
   } = req.body ?? {};
-
-  console.log("[ig-config] POST parsed fields:", {
-    streamer_slug, trigger_word, offer_label, offer_detail,
-    process_info, discord_url, extra_url, instagram_username, active,
-  });
 
   if (!streamer_slug || !trigger_word) {
     return void res.status(400).json({ ok: false, error: "streamer_slug et trigger_word sont requis" });
@@ -88,12 +79,10 @@ igConfigRouter.post("/ig-config", requireAdminKey, async (req, res) => {
       slugLower, trigger_word, offer_label, offer_detail,
       process_info, discord_url, extra_url, instagram_username, active,
     ];
-    console.log("[ig-config] UPDATE query params:", updateParams);
 
     const updateResult = await pool.query(updateQ, updateParams);
 
     if ((updateResult.rowCount ?? 0) > 0) {
-      console.log("[ig-config] ✅ UPDATE ok — row:", JSON.stringify(updateResult.rows[0]));
       return void res.json({ ok: true, data: updateResult.rows[0] });
     }
 
@@ -108,10 +97,8 @@ igConfigRouter.post("/ig-config", requireAdminKey, async (req, res) => {
       streamer_slug, trigger_word, offer_label, offer_detail,
       process_info, discord_url, extra_url, instagram_username, active,
     ];
-    console.log("[ig-config] INSERT query params:", insertParams);
 
     const insertResult = await pool.query(insertQ, insertParams);
-    console.log("[ig-config] ✅ INSERT ok — row:", JSON.stringify(insertResult.rows[0]));
     res.json({ ok: true, data: insertResult.rows[0] });
 
   } catch (e: any) {
