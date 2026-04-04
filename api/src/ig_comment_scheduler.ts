@@ -101,13 +101,27 @@ async function metaPost(path: string, params: Record<string, string>): Promise<a
   return data;
 }
 
+// Token invalidity codes — [190] = expired/logged out, [102] = session expired
+const TOKEN_INVALID_CODES = new Set([190, 102, 463, 467]);
+
+class MetaTokenError extends Error {
+  constructor(code: number, message: string) {
+    super(`Meta API error [${code}]: ${message}`);
+    this.name = "MetaTokenError";
+  }
+}
+
 async function metaGet(path: string, params: Record<string, string>): Promise<any> {
   const url = new URL(`https://graph.facebook.com/v19.0${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetch(url.toString());
   const data = (await res.json()) as any;
   if (data?.error) {
-    throw new Error(`Meta API error [${data.error.code}] ${data.error.type}: ${data.error.message}`);
+    const code = Number(data.error.code ?? 0);
+    if (TOKEN_INVALID_CODES.has(code)) {
+      throw new MetaTokenError(code, data.error.message);
+    }
+    throw new Error(`Meta API error [${code}] ${data.error.type}: ${data.error.message}`);
   }
   return data;
 }
@@ -355,6 +369,14 @@ export function startIgCommentScheduler(): void {
   }
 
   let running = false;
+  let intervalId: ReturnType<typeof setInterval> | null = null;
+
+  const stopDueToTokenError = (err: MetaTokenError) => {
+    console.error(`${LOG} 🔴 TOKEN EXPIRÉ — polling arrêté définitivement.`);
+    console.error(`${LOG} 👉 Génère un nouveau long-lived token Meta et mets à jour INSTAGRAM_ACCESS_TOKEN sur Render.`);
+    console.error(`${LOG}    Détail: ${err.message}`);
+    if (intervalId) { clearInterval(intervalId); intervalId = null; }
+  };
 
   const safeTick = async () => {
     if (running) return;
@@ -362,7 +384,8 @@ export function startIgCommentScheduler(): void {
     try {
       await tick(accessToken, userId);
     } catch (e: any) {
-      console.error(`${LOG} tick error: ${e?.message ?? e}`);
+      if (e instanceof MetaTokenError) { stopDueToTokenError(e); }
+      else { console.error(`${LOG} tick error: ${e?.message ?? e}`); }
     } finally {
       running = false;
     }
@@ -372,31 +395,36 @@ export function startIgCommentScheduler(): void {
   const initialChecks = async () => {
     try {
       console.log(`${LOG} 🔍 Démarrage des vérifications initiales...`);
-      
-      // Vérification DB en premier (plus rapide)
       await checkDatabaseState();
-      
-      // Vérification permissions API (peut échouer)
       await verifyInstagramConnectivity(accessToken, userId);
-      
       console.log(`${LOG} ✅ Vérifications initiales terminées — démarrage du scheduler`);
     } catch (e: any) {
-      console.error(`${LOG} ⚠️ Vérifications initiales échouées mais démarrage quand même: ${e?.message ?? e}`);
+      if (e instanceof MetaTokenError) {
+        stopDueToTokenError(e);
+      } else {
+        console.error(`${LOG} ⚠️ Vérifications initiales échouées mais démarrage quand même: ${e?.message ?? e}`);
+      }
     }
   };
 
   // Démarrer les vérifications après 5s, puis le premier tick après 15s total
   setTimeout(initialChecks, 5_000);
   setTimeout(
-    () => safeTick().catch((e) => console.error(`${LOG} first tick failed:`, e)),
+    () => safeTick().catch((e) => {
+      if (e instanceof MetaTokenError) stopDueToTokenError(e);
+      else console.error(`${LOG} first tick failed:`, e);
+    }),
     15_000
   );
 
-  const id = setInterval(
-    () => safeTick().catch((e) => console.error(`${LOG} tick failed:`, e)),
+  intervalId = setInterval(
+    () => safeTick().catch((e) => {
+      if (e instanceof MetaTokenError) stopDueToTokenError(e);
+      else console.error(`${LOG} tick failed:`, e);
+    }),
     POLL_INTERVAL_MS
   );
-  (id as any).unref?.();
+  (intervalId as any).unref?.();
 
   console.log(`${LOG} started — polling every ${POLL_INTERVAL_MS / 1000}s (DEBUG MODE)`);
 }
