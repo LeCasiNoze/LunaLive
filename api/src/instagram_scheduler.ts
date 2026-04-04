@@ -116,10 +116,31 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
 
   // STEP 2 — Créer le container Reel
   console.log(`${LOG} [job #${job.id}] creating container...`);
+
+  // Récupérer le slug du clip et l'éventuel pseudo Instagram du streamer
+  const slugForCaption = await pool.query(
+    `SELECT ci.streamer_slug, sic.instagram_username
+     FROM clip_inbox ci
+     LEFT JOIN streamer_ig_config sic
+       ON LOWER(sic.streamer_slug) = LOWER(ci.streamer_slug) AND sic.active = true
+     WHERE ci.clip_id = $1
+     LIMIT 1`,
+    [job.clip_id]
+  );
+  const streamerSlugRaw     = String(slugForCaption.rows[0]?.streamer_slug ?? "");
+  const instagramUsername   = String(slugForCaption.rows[0]?.instagram_username ?? "").trim();
+
+  // Remplacer le slug par @pseudo_insta dans la description si disponible
+  let caption = job.description ?? job.title ?? "";
+  if (instagramUsername && streamerSlugRaw) {
+    const slugRegex = new RegExp(streamerSlugRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    caption = caption.replace(slugRegex, `@${instagramUsername}`);
+  }
+
   const containerData = await metaPost(`/${userId}/media`, {
     video_url: job.output_url,
     media_type: "REELS",
-    caption: job.description ?? job.title ?? "",
+    caption,
     share_to_feed: "true",
     access_token: accessToken,
   });

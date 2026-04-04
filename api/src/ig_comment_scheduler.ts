@@ -34,37 +34,23 @@ function buildCommentReply(streamerSlug: string): string {
     "Wesh !",
     "Hey !",
     "Coucou !",
-    "Oi !",
   ];
-  const OFFER_INTROS = [
-    "🎁 Voilà l'offre",
-    "🔥 Check ici",
-    "👇 Le lien direct",
-    "🎯 C'est par là",
-    "✨ Tiens, l'offre",
-    "🎰 Le lien",
+  const DESOLE = [
+    `Désolé les liens marchent pas dans les comms, envoie-moi "${streamerSlug}" en DM 😅`,
+    `Les liens cliquables c'est pas possible ici, MP-moi "${streamerSlug}" en DM 🙏`,
+    `Impossible de mettre un lien ici, balance-moi "${streamerSlug}" en DM :/`,
+    `Les liens passent pas dans les commentaires, envoie "${streamerSlug}" en DM 😬`,
+    `Je peux pas mettre de lien ici, envoie-moi "${streamerSlug}" en MP 😊`,
   ];
   const FOLLOWS = [
-    "hésite pas à follow pour ne rien rater",
-    "un follow c'est gratuit et ça aide vraiment",
-    "pense à follow pour les prochains clips",
-    "abonne-toi pour pas louper la suite",
-    "le follow c'est toujours dispo",
-    "follow pour rester dans la boucle",
-  ];
-  const DM_INVITES = [
-    `Si t'as besoin de plus d'infos, envoie-moi "${streamerSlug}" en DM :)`,
-    `Des questions ? Envoie "${streamerSlug}" en DM, je t'explique tout 👌`,
-    `Pour plus de détails, MP-moi "${streamerSlug}" 😊`,
-    `Besoin d'aide ? Envoie "${streamerSlug}" en DM et je te guide 🎯`,
-    `Des infos en plus ? Balance "${streamerSlug}" en DM 💬`,
+    "hésite pas à follow pour ne rien rater !",
+    "un follow c'est gratuit et ça aide vraiment !",
+    "pense à follow pour les prochains clips !",
+    "abonne-toi pour pas louper la suite !",
+    "le follow c'est toujours dispo !",
   ];
 
-  const url = `https://lunalive.onrender.com/offres_streamers/${streamerSlug}`;
-  return (
-    `${pick(GREETINGS)} ${pick(OFFER_INTROS)} → ${url}\n` +
-    `${pick(FOLLOWS)} — ${pick(DM_INVITES)}`
-  );
+  return `${pick(GREETINGS)} ${pick(DESOLE)}\n${pick(FOLLOWS)}`;
 }
 
 

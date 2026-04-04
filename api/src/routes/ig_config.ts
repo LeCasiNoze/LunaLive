@@ -8,18 +8,16 @@ import { requireAdminKey } from "../auth.js";
 
 export const igConfigRouter = Router();
 
-// GET /api/ig-config — liste toutes les configs
+const SELECT_FIELDS =
+  "id, streamer_slug, trigger_word, offer_label, offer_detail, " +
+  "process_info, discord_url, extra_url, instagram_username, active, created_at";
+
+// ─── GET /api/ig-config ───────────────────────────────────────────────────────
 igConfigRouter.get("/ig-config", requireAdminKey, async (_req, res) => {
   try {
-    const { rows } = await pool.query(`
-      SELECT
-        id, streamer_slug, trigger_word,
-        offer_label, offer_detail,
-        process_info, discord_url, extra_url, active,
-        created_at
-      FROM streamer_ig_config
-      ORDER BY streamer_slug ASC
-    `);
+    const { rows } = await pool.query(
+      `SELECT ${SELECT_FIELDS} FROM streamer_ig_config ORDER BY streamer_slug ASC`
+    );
     res.json({ ok: true, data: rows });
   } catch (e: any) {
     console.error("[ig-config] GET error:", e?.message ?? e);
@@ -27,17 +25,12 @@ igConfigRouter.get("/ig-config", requireAdminKey, async (_req, res) => {
   }
 });
 
-// GET /api/ig-config/:slug — config d'un streamer
+// ─── GET /api/ig-config/:slug ─────────────────────────────────────────────────
 igConfigRouter.get("/ig-config/:slug", requireAdminKey, async (req, res) => {
   const slug = String(req.params.slug).toLowerCase();
   try {
     const { rows } = await pool.query(
-      `SELECT id, streamer_slug, trigger_word,
-              offer_label, offer_detail,
-              process_info, discord_url, extra_url, active
-       FROM streamer_ig_config
-       WHERE LOWER(streamer_slug) = $1
-       LIMIT 1`,
+      `SELECT ${SELECT_FIELDS} FROM streamer_ig_config WHERE LOWER(streamer_slug) = $1 LIMIT 1`,
       [slug]
     );
     if (rows.length === 0) return void res.status(404).json({ ok: false, error: "not_found" });
@@ -48,51 +41,91 @@ igConfigRouter.get("/ig-config/:slug", requireAdminKey, async (req, res) => {
   }
 });
 
-// POST /api/ig-config — créer ou mettre à jour (upsert par streamer_slug)
+// ─── POST /api/ig-config — upsert par streamer_slug ──────────────────────────
 igConfigRouter.post("/ig-config", requireAdminKey, async (req, res) => {
+  // LOG COMPLET du body entrant pour diagnostic
+  console.log("[ig-config] POST body:", JSON.stringify(req.body));
+
   const {
     streamer_slug,
     trigger_word,
-    offer_label    = null,
-    offer_detail   = null,
-    process_info   = null,
-    discord_url    = null,
-    extra_url      = null,
-    active         = true,
+    offer_label        = null,
+    offer_detail       = null,
+    process_info       = null,
+    discord_url        = null,
+    extra_url          = null,
+    instagram_username = null,
+    active             = true,
   } = req.body ?? {};
+
+  console.log("[ig-config] POST parsed fields:", {
+    streamer_slug, trigger_word, offer_label, offer_detail,
+    process_info, discord_url, extra_url, instagram_username, active,
+  });
 
   if (!streamer_slug || !trigger_word) {
     return void res.status(400).json({ ok: false, error: "streamer_slug et trigger_word sont requis" });
   }
 
+  const slugLower = String(streamer_slug).toLowerCase();
+
   try {
-    const { rows } = await pool.query(
+    // 1. Tenter un UPDATE
+    const updateQ =
+      `UPDATE streamer_ig_config SET
+         trigger_word       = $2,
+         offer_label        = $3,
+         offer_detail       = $4,
+         process_info       = $5,
+         discord_url        = $6,
+         extra_url          = $7,
+         instagram_username = $8,
+         active             = $9
+       WHERE LOWER(streamer_slug) = $1
+       RETURNING ${SELECT_FIELDS}`;
+    const updateParams = [
+      slugLower, trigger_word, offer_label, offer_detail,
+      process_info, discord_url, extra_url, instagram_username, active,
+    ];
+    console.log("[ig-config] UPDATE query params:", updateParams);
+
+    const updateResult = await pool.query(updateQ, updateParams);
+
+    if ((updateResult.rowCount ?? 0) > 0) {
+      console.log("[ig-config] ✅ UPDATE ok — row:", JSON.stringify(updateResult.rows[0]));
+      return void res.json({ ok: true, data: updateResult.rows[0] });
+    }
+
+    // 2. Aucune ligne existante → INSERT
+    const insertQ =
       `INSERT INTO streamer_ig_config
-         (streamer_slug, trigger_word, offer_label, offer_detail, process_info, discord_url, extra_url, active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (streamer_slug) DO UPDATE SET
-         trigger_word  = EXCLUDED.trigger_word,
-         offer_label   = EXCLUDED.offer_label,
-         offer_detail  = EXCLUDED.offer_detail,
-         process_info  = EXCLUDED.process_info,
-         discord_url   = EXCLUDED.discord_url,
-         extra_url     = EXCLUDED.extra_url,
-         active        = EXCLUDED.active
-       RETURNING id, streamer_slug, trigger_word, offer_label, offer_detail,
-                 process_info, discord_url, extra_url, active`,
-      [streamer_slug, trigger_word, offer_label, offer_detail, process_info, discord_url, extra_url, active]
-    );
-    res.json({ ok: true, data: rows[0] });
+         (streamer_slug, trigger_word, offer_label, offer_detail, process_info,
+          discord_url, extra_url, instagram_username, active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING ${SELECT_FIELDS}`;
+    const insertParams = [
+      streamer_slug, trigger_word, offer_label, offer_detail,
+      process_info, discord_url, extra_url, instagram_username, active,
+    ];
+    console.log("[ig-config] INSERT query params:", insertParams);
+
+    const insertResult = await pool.query(insertQ, insertParams);
+    console.log("[ig-config] ✅ INSERT ok — row:", JSON.stringify(insertResult.rows[0]));
+    res.json({ ok: true, data: insertResult.rows[0] });
+
   } catch (e: any) {
     console.error("[ig-config] POST error:", e?.message ?? e);
-    res.status(500).json({ ok: false, error: "server_error" });
+    res.status(500).json({ ok: false, error: "server_error", detail: e?.message });
   }
 });
 
-// PATCH /api/ig-config/:slug — mise à jour partielle
+// ─── PATCH /api/ig-config/:slug — mise à jour partielle ──────────────────────
 igConfigRouter.patch("/ig-config/:slug", requireAdminKey, async (req, res) => {
   const slug = String(req.params.slug).toLowerCase();
-  const allowed = ["trigger_word", "offer_label", "offer_detail", "process_info", "discord_url", "extra_url", "active"];
+  const allowed = [
+    "trigger_word", "offer_label", "offer_detail", "process_info",
+    "discord_url", "extra_url", "instagram_username", "active",
+  ];
 
   const fields: string[] = [];
   const values: any[]    = [];
@@ -113,8 +146,7 @@ igConfigRouter.patch("/ig-config/:slug", requireAdminKey, async (req, res) => {
       `UPDATE streamer_ig_config
        SET ${fields.join(", ")}
        WHERE LOWER(streamer_slug) = $1
-       RETURNING id, streamer_slug, trigger_word, offer_label, offer_detail,
-                 process_info, discord_url, extra_url, active`,
+       RETURNING ${SELECT_FIELDS}`,
       [slug, ...values]
     );
     if (rows.length === 0) return void res.status(404).json({ ok: false, error: "not_found" });
@@ -125,7 +157,7 @@ igConfigRouter.patch("/ig-config/:slug", requireAdminKey, async (req, res) => {
   }
 });
 
-// DELETE /api/ig-config/:slug — désactiver (soft delete)
+// ─── DELETE /api/ig-config/:slug — soft delete ───────────────────────────────
 igConfigRouter.delete("/ig-config/:slug", requireAdminKey, async (req, res) => {
   const slug = String(req.params.slug).toLowerCase();
   try {
