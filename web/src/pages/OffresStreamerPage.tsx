@@ -14,85 +14,122 @@ type OffreData = {
   extra_url: string | null;
 };
 
-// ─── helpers visuels ──────────────────────────────────────────────────────────
+// Extract first money amount ("25€", "50 €") from a string
+function extractAmount(text: string | null): string | null {
+  if (!text) return null;
+  const m = text.match(/(\d+(?:[,.]\d+)?)\s*€/);
+  return m ? `${m[1]}€` : null;
+}
 
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+// ─── Styles globaux & animations ─────────────────────────────────────────────
+const GLOBAL_CSS = `
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.lu-fade { animation: fadeUp 0.45s cubic-bezier(0.22,1,0.36,1) both; }
+.lu-d1   { animation-delay: 0.04s; }
+.lu-d2   { animation-delay: 0.13s; }
+.lu-d3   { animation-delay: 0.22s; }
+.lu-d4   { animation-delay: 0.31s; }
+.lu-d5   { animation-delay: 0.40s; }
+`;
+
+// ─── Composants ──────────────────────────────────────────────────────────────
+
+function Card({ children, style, cls }: { children: React.ReactNode; style?: React.CSSProperties; cls?: string }) {
   return (
-    <div style={{
-      background: "rgba(14,11,26,0.72)",
-      border: "1px solid rgba(124,92,252,0.18)",
-      borderRadius: 16,
-      padding: "28px 28px",
-      backdropFilter: "blur(12px)",
-      ...style,
-    }}>
+    <div
+      className={cls}
+      style={{
+        background: "rgba(14,11,26,0.75)",
+        border: "1px solid rgba(124,92,252,0.18)",
+        borderRadius: 20,
+        padding: "24px 20px",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        ...style,
+      }}
+    >
       {children}
     </div>
   );
 }
 
-function Badge({ children }: { children: React.ReactNode }) {
+function StreamerAvatar({ slug, avatarUrl }: { slug: string; avatarUrl: string | null }) {
+  const [broken, setBroken] = React.useState(false);
+  const src = avatarUrl && !broken ? `${BASE}${avatarUrl}` : null;
+  const ring: React.CSSProperties = {
+    width: 84, height: 84,
+    borderRadius: "50%",
+    border: "3px solid rgba(124,92,252,0.55)",
+    boxShadow: "0 0 0 5px rgba(124,92,252,0.12), 0 8px 32px rgba(124,92,252,0.20)",
+    flexShrink: 0,
+  };
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={slug}
+        onError={() => setBroken(true)}
+        style={{ ...ring, objectFit: "cover" }}
+      />
+    );
+  }
   return (
-    <span style={{
-      display: "inline-block",
-      background: "rgba(124,92,252,0.18)",
-      color: "#a78bfa",
-      border: "1px solid rgba(124,92,252,0.30)",
-      borderRadius: 999,
-      padding: "3px 14px",
-      fontSize: 12,
-      fontWeight: 700,
-      letterSpacing: "0.04em",
-      textTransform: "uppercase",
+    <div style={{
+      ...ring,
+      background: "linear-gradient(135deg,#7c5cfc,#5b8ef8)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: 28, fontWeight: 900, color: "#fff",
     }}>
-      {children}
-    </span>
+      {slug.slice(0, 2).toUpperCase()}
+    </div>
   );
 }
 
-function Step({ n, children }: { n: number; children: React.ReactNode }) {
+function StepBubble({ n, children }: { n: number; children: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 20 }}>
+    <div style={{ display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 14 }}>
       <div style={{
         flexShrink: 0,
-        width: 36, height: 36,
+        width: 32, height: 32,
         borderRadius: "50%",
         background: "linear-gradient(135deg,#7c5cfc,#5b8ef8)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontWeight: 800, fontSize: 15, color: "#fff",
-        boxShadow: "0 4px 18px rgba(124,92,252,0.35)",
+        fontWeight: 800, fontSize: 13, color: "#fff",
+        boxShadow: "0 4px 14px rgba(124,92,252,0.35)",
+        marginTop: 2,
       }}>
         {n}
       </div>
-      <div style={{ paddingTop: 6, fontSize: 15, lineHeight: 1.6, color: "rgba(235,232,255,0.88)" }}>
+      <div style={{ paddingTop: 6, fontSize: 14, lineHeight: 1.65, color: "rgba(235,232,255,0.88)" }}>
         {children}
       </div>
     </div>
   );
 }
 
-function ExternalLink({ href, children }: { href: string; children: React.ReactNode }) {
+function SmallCta({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
       style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        background: "linear-gradient(135deg,#7c5cfc,#5b8ef8)",
-        color: "#fff",
-        borderRadius: 12,
-        padding: "12px 22px",
-        fontWeight: 700,
-        fontSize: 14,
+        display: "inline-flex", alignItems: "center", gap: 6,
+        background: "rgba(124,92,252,0.14)",
+        color: "#a78bfa",
+        border: "1px solid rgba(124,92,252,0.32)",
+        borderRadius: 10,
+        padding: "7px 14px",
+        fontWeight: 700, fontSize: 13,
         textDecoration: "none",
-        boxShadow: "0 4px 24px rgba(124,92,252,0.35)",
-        transition: "opacity .15s",
+        transition: "background .15s",
       }}
-      onMouseEnter={e => (e.currentTarget.style.opacity = "0.85")}
-      onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
+      onMouseEnter={e => (e.currentTarget.style.background = "rgba(124,92,252,0.24)")}
+      onMouseLeave={e => (e.currentTarget.style.background = "rgba(124,92,252,0.14)")}
     >
       {children}
     </a>
@@ -104,6 +141,7 @@ function ExternalLink({ href, children }: { href: string; children: React.ReactN
 export default function OffresStreamerPage() {
   const { slug } = useParams<{ slug: string }>();
   const [data, setData] = React.useState<OffreData | null>(null);
+  const [avatarUrl, setAvatarUrl] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<"loading" | "ok" | "notfound" | "error">("loading");
 
   React.useEffect(() => {
@@ -116,6 +154,12 @@ export default function OffresStreamerPage() {
         else setStatus("notfound");
       })
       .catch(() => setStatus("error"));
+
+    // Best-effort: fetch streamer avatar
+    fetch(`${BASE}/streamers/${encodeURIComponent(slug)}`)
+      .then(r => r.json())
+      .then((j: any) => { if (j?.data?.avatarUrl) setAvatarUrl(j.data.avatarUrl); })
+      .catch(() => { /* silent */ });
   }, [slug]);
 
   React.useEffect(() => {
@@ -131,111 +175,198 @@ export default function OffresStreamerPage() {
     }
   }, [status, data]);
 
-  const styles = {
-    wrap: {
-      minHeight: "100vh",
-      background: "#090610",
-      color: "rgba(235,232,255,0.94)",
-      fontFamily: "system-ui, sans-serif",
-    } as React.CSSProperties,
-    inner: {
-      maxWidth: 640,
-      margin: "0 auto",
-      padding: "48px 20px 80px",
-    } as React.CSSProperties,
+  const wrap: React.CSSProperties = {
+    minHeight: "100vh",
+    background: "linear-gradient(180deg,#0e0b1e 0%,#090610 55%)",
+    color: "rgba(235,232,255,0.94)",
+    fontFamily: "system-ui,-apple-system,sans-serif",
   };
 
-  // ── États de chargement ──────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────
   if (status === "loading") {
     return (
-      <div style={styles.wrap}>
-        <div style={styles.inner}>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", color: "rgba(200,195,240,.5)", fontSize: 15 }}>
-            <span style={{ display: "inline-block", width: 18, height: 18, border: "2px solid #7c5cfc", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
-            Chargement…
-          </div>
+      <div style={wrap}>
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: 120 }}>
+          <span style={{
+            display: "inline-block", width: 22, height: 22,
+            border: "2.5px solid #7c5cfc", borderTopColor: "transparent",
+            borderRadius: "50%", animation: "spin 0.7s linear infinite",
+          }} />
         </div>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <style>{GLOBAL_CSS}</style>
       </div>
     );
   }
 
-  if (status === "notfound") {
+  if (status === "notfound" || status === "error") {
     return (
-      <div style={styles.wrap}>
-        <div style={styles.inner}>
-          <div style={{ textAlign: "center", padding: "60px 0" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#c4b5fd", marginBottom: 8 }}>Offre introuvable</h1>
-            <p style={{ color: "rgba(200,195,240,.55)", marginBottom: 32 }}>Cette page d'offre n'existe pas ou n'est plus active.</p>
-            <Link to="/" style={{ color: "#7c5cfc", fontWeight: 600 }}>← Retour à LunaLive</Link>
-          </div>
+      <div style={wrap}>
+        <div style={{ maxWidth: 400, margin: "0 auto", padding: "90px 20px", textAlign: "center" }}>
+          <div style={{ fontSize: 46, marginBottom: 14 }}>🔍</div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#c4b5fd", marginBottom: 8 }}>Offre introuvable</h1>
+          <p style={{ color: "rgba(200,195,240,.50)", marginBottom: 32, lineHeight: 1.6 }}>
+            Cette page d'offre n'existe pas ou n'est plus active.
+          </p>
+          <Link to="/" style={{ color: "#7c5cfc", fontWeight: 600 }}>← Retour à LunaLive</Link>
         </div>
+        <style>{GLOBAL_CSS}</style>
       </div>
     );
   }
 
   if (!data) return null;
 
-  // Découpe process_info en étapes si elle contient des lignes numérotées
   const steps = (data.process_info ?? "")
     .split("\n")
     .map(l => l.replace(/^\d+\s*[-.)]\s*/, "").trim())
     .filter(Boolean);
 
-  return (
-    <div style={styles.wrap}>
-      <div style={styles.inner}>
+  const amount = extractAmount(data.offer_detail) ?? extractAmount(data.offer_label);
 
-        {/* Header */}
-        <div style={{ marginBottom: 36, textAlign: "center" }}>
-          <Badge>Offre exclusive</Badge>
-          <h1 style={{ fontSize: 30, fontWeight: 900, marginTop: 16, marginBottom: 6, background: "linear-gradient(135deg,#c4b5fd,#7c5cfc)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-            {data.offer_label ?? `Offre ${data.streamer_slug}`}
-          </h1>
-          <p style={{ fontSize: 15, color: "rgba(200,195,240,.60)", marginBottom: 0 }}>
-            Proposée par{" "}
-            <Link to={`/s/${data.streamer_slug}`} style={{ color: "#a78bfa", fontWeight: 700, textDecoration: "none" }}>
+  return (
+    <div style={wrap}>
+      <style>{GLOBAL_CSS}</style>
+      <div style={{ maxWidth: 480, margin: "0 auto", padding: "36px 16px 80px" }}>
+
+        {/* ── Hero ─────────────────────────────────────────────────────────── */}
+        <div
+          className="lu-fade lu-d1"
+          style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, marginBottom: 28, textAlign: "center" }}
+        >
+          <StreamerAvatar slug={data.streamer_slug} avatarUrl={avatarUrl} />
+
+          <div>
+            {/* Badge */}
+            <span style={{
+              display: "inline-block",
+              background: "rgba(124,92,252,0.16)",
+              color: "#a78bfa",
+              border: "1px solid rgba(124,92,252,0.28)",
+              borderRadius: 999,
+              padding: "3px 13px",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.07em",
+              textTransform: "uppercase",
+              marginBottom: 10,
+            }}>
+              🎁 Offre exclusive
+            </span>
+
+            <h1 style={{
+              fontSize: 26, fontWeight: 900, margin: "0 0 4px",
+              background: "linear-gradient(135deg,#c4b5fd 30%,#7c5cfc)",
+              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+            }}>
               @{data.streamer_slug}
-            </Link>
-            {" "}sur LunaLive
-          </p>
+            </h1>
+
+            <p style={{ fontSize: 13, color: "rgba(200,195,240,.45)", margin: 0 }}>
+              Offre partenaire sur LunaLive
+            </p>
+          </div>
         </div>
 
-        {/* Offre card */}
-        <Card style={{ marginBottom: 20, background: "linear-gradient(135deg,rgba(124,92,252,0.12),rgba(91,142,248,0.08))", border: "1px solid rgba(124,92,252,0.30)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: data.offer_detail ? 10 : 0 }}>
-            <span style={{ fontSize: 26 }}>🎁</span>
-            <span style={{ fontSize: 19, fontWeight: 800, color: "#c4b5fd" }}>
-              {data.offer_label ?? "Offre exclusive"}
-            </span>
-          </div>
+        {/* ── Carte offre (above the fold) ────────────────────────────────── */}
+        <Card
+          cls="lu-fade lu-d2"
+          style={{
+            marginBottom: 14,
+            background: "linear-gradient(145deg,rgba(124,92,252,0.13),rgba(91,142,248,0.07))",
+            border: "1px solid rgba(124,92,252,0.35)",
+            textAlign: "center",
+            padding: "32px 24px 28px",
+          }}
+        >
+          {/* Montant en très grand */}
+          {amount && (
+            <div style={{
+              fontSize: 72,
+              fontWeight: 900,
+              lineHeight: 1,
+              marginBottom: 10,
+              background: "linear-gradient(135deg,#c4b5fd,#7c5cfc)",
+              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+              letterSpacing: "-3px",
+            }}>
+              {amount}
+            </div>
+          )}
+
+          {/* Label court */}
+          {data.offer_label && (
+            <div style={{ fontSize: 17, fontWeight: 800, color: "rgba(235,232,255,.92)", marginBottom: 8 }}>
+              {data.offer_label}
+            </div>
+          )}
+
+          {/* Détail */}
           {data.offer_detail && (
-            <p style={{ margin: "0 0 0 38px", fontSize: 15, color: "rgba(235,232,255,0.80)", lineHeight: 1.55 }}>
+            <p style={{ fontSize: 14, color: "rgba(200,195,240,.60)", margin: "0 0 24px", lineHeight: 1.65 }}>
               {data.offer_detail}
             </p>
           )}
+
+          {/* CTA primaire */}
+          {data.extra_url && (
+            <a
+              href={data.extra_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                background: "linear-gradient(135deg,#7c5cfc,#5b8ef8)",
+                color: "#fff",
+                borderRadius: 14,
+                padding: "14px 0",
+                fontWeight: 800,
+                fontSize: 15,
+                textDecoration: "none",
+                boxShadow: "0 6px 28px rgba(124,92,252,0.40)",
+                width: "100%",
+                maxWidth: 320,
+                transition: "opacity .15s, transform .15s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = "0.88"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.transform = "none"; }}
+            >
+              🎯 Accéder à l'offre
+            </a>
+          )}
         </Card>
 
-        {/* Étapes */}
+        {/* ── Étapes ───────────────────────────────────────────────────────── */}
         {steps.length > 0 && (
-          <Card style={{ marginBottom: 20 }}>
-            <h2 style={{ fontSize: 15, fontWeight: 800, color: "#a78bfa", marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
+          <Card cls="lu-fade lu-d3" style={{ marginBottom: 14 }}>
+            <h2 style={{
+              fontSize: 11, fontWeight: 800, color: "#a78bfa",
+              marginBottom: 18, letterSpacing: "0.07em", textTransform: "uppercase",
+              display: "flex", alignItems: "center", gap: 7,
+            }}>
               <span>📋</span> Comment en profiter
             </h2>
+
             {steps.map((s, i) => (
               <React.Fragment key={i}>
-                <Step n={i + 1}>{s}</Step>
+                <StepBubble n={i + 1}>{s}</StepBubble>
+
+                {/* Lien inline sous l'étape 1 */}
                 {i === 0 && data.extra_url && (
-                  <div style={{ marginLeft: 52, marginTop: -12, marginBottom: 20 }}>
-                    <ExternalLink href={data.extra_url}>
-                      <span>👉</span> Accéder à l'offre
-                    </ExternalLink>
+                  <div style={{ marginLeft: 46, marginTop: -6, marginBottom: 16 }}>
+                    <SmallCta href={data.extra_url}>👉 Accéder à l'offre</SmallCta>
                   </div>
                 )}
+
+                {/* Note Coinbase sous l'étape 2 */}
                 {i === 1 && (
-                  <div style={{ marginLeft: 52, marginTop: -12, marginBottom: 20, fontSize: 13, color: "rgba(200,195,240,.60)", lineHeight: 1.6 }}>
-                    Si tu n'as pas de wallet crypto, tu peux te créer un compte CoinBase en 5 min ici :{" "}
+                  <div style={{
+                    marginLeft: 46, marginTop: -6, marginBottom: 16,
+                    fontSize: 12, color: "rgba(200,195,240,.50)", lineHeight: 1.7,
+                  }}>
+                    Pas de wallet crypto ?{" "}
                     <a
                       href="https://coinbase.com/join/X8DGKD8?src=referral-link"
                       target="_blank"
@@ -244,6 +375,7 @@ export default function OffresStreamerPage() {
                     >
                       coinbase.com/join/X8DGKD8
                     </a>
+                    {" "}— compte créé en 5 min.
                   </div>
                 )}
               </React.Fragment>
@@ -251,56 +383,72 @@ export default function OffresStreamerPage() {
           </Card>
         )}
 
-        {/* Discord */}
+        {/* ── Discord ──────────────────────────────────────────────────────── */}
         {data.discord_url && (
-          <Card style={{ marginBottom: 20 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-              <span style={{ fontSize: 22 }}>💬</span>
+          <Card
+            cls="lu-fade lu-d4"
+            style={{ marginBottom: 14, border: "1px solid rgba(88,101,242,0.25)" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                background: "rgba(88,101,242,0.18)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#5865F2">
+                  <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+                </svg>
+              </div>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 15, color: "rgba(235,232,255,.92)" }}>Besoin d'aide ?</div>
-                <div style={{ fontSize: 13, color: "rgba(200,195,240,.55)", marginTop: 2 }}>Ouvre un ticket sur le Discord du streamer</div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: "rgba(235,232,255,.90)" }}>Besoin d'aide ?</div>
+                <div style={{ fontSize: 12, color: "rgba(200,195,240,.45)", marginTop: 2 }}>Rejoins le Discord du streamer</div>
               </div>
             </div>
-            <ExternalLink href={data.discord_url}>
-              <span>🎮</span> Rejoindre le Discord
-            </ExternalLink>
+            <a
+              href={data.discord_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                background: "#5865F2",
+                color: "#fff",
+                borderRadius: 12,
+                padding: "13px 20px",
+                fontWeight: 700, fontSize: 14,
+                textDecoration: "none",
+                boxShadow: "0 4px 18px rgba(88,101,242,0.28)",
+                transition: "opacity .15s",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = "0.88")}
+              onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
+            >
+              Rejoindre le Discord
+            </a>
           </Card>
         )}
 
-        {/* Streamer live */}
-        <Card style={{ marginBottom: 32, textAlign: "center" }}>
-          <div style={{ fontSize: 14, color: "rgba(200,195,240,.55)", marginBottom: 14 }}>Retrouve le streamer en live sur LunaLive</div>
+        {/* ── LunaLive footer ──────────────────────────────────────────────── */}
+        <div className="lu-fade lu-d5" style={{ textAlign: "center", paddingTop: 10 }}>
           <Link
             to={`/s/${data.streamer_slug}`}
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              background: "rgba(124,92,252,0.15)",
-              color: "#a78bfa",
-              border: "1px solid rgba(124,92,252,0.30)",
-              borderRadius: 12,
-              padding: "10px 20px",
-              fontWeight: 700,
-              fontSize: 14,
-              textDecoration: "none",
+              display: "inline-flex", alignItems: "center", gap: 6,
+              fontSize: 13, color: "rgba(167,139,250,.55)",
+              textDecoration: "none", fontWeight: 600,
             }}
           >
-            <span>📺</span> Voir la page de @{data.streamer_slug}
+            📺 Voir @{data.streamer_slug} en live sur LunaLive
           </Link>
-        </Card>
-
-        {/* Footer nav */}
-        <div style={{ textAlign: "center", fontSize: 12, color: "rgba(160,155,210,.40)" }}>
-          <Link to="/" style={{ color: "rgba(124,92,252,.7)", textDecoration: "none" }}>← LunaLive</Link>
-          {" · "}
-          <Link to="/browse" style={{ color: "rgba(124,92,252,.7)", textDecoration: "none" }}>Streamers</Link>
-          {" · "}
-          <Link to="/casinos" style={{ color: "rgba(124,92,252,.7)", textDecoration: "none" }}>Casinos</Link>
+          <div style={{ fontSize: 11, color: "rgba(100,95,150,.35)", marginTop: 14 }}>
+            <Link to="/" style={{ color: "rgba(124,92,252,.45)", textDecoration: "none" }}>← LunaLive</Link>
+            {" · "}
+            <Link to="/browse" style={{ color: "rgba(124,92,252,.45)", textDecoration: "none" }}>Streamers</Link>
+            {" · "}
+            <Link to="/casinos" style={{ color: "rgba(124,92,252,.45)", textDecoration: "none" }}>Casinos</Link>
+          </div>
         </div>
 
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
