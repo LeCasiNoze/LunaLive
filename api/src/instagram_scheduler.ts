@@ -29,7 +29,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function metaPost(path: string, params: Record<string, string>): Promise<any> {
-  const res = await fetch(`https://graph.facebook.com/v19.0${path}`, {
+  const res = await fetch(`https://graph.instagram.com/v19.0${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(params).toString(),
@@ -44,7 +44,7 @@ async function metaPost(path: string, params: Record<string, string>): Promise<a
 }
 
 async function metaGet(path: string, params: Record<string, string>): Promise<any> {
-  const url = new URL(`https://graph.facebook.com/v19.0${path}`);
+  const url = new URL(`https://graph.instagram.com/v19.0${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetch(url.toString());
   const data = (await res.json()) as any;

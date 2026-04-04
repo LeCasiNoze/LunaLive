@@ -110,7 +110,7 @@ async function sendInstagramDm(senderId: string, text: string): Promise<void> {
     throw new Error("INSTAGRAM_PAGE_ID ou INSTAGRAM_PAGE_TOKEN non défini");
   }
 
-  const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/messages`, {
+  const res = await fetch(`https://graph.instagram.com/v19.0/${pageId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

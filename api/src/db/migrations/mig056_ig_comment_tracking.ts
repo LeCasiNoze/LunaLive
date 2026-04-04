@@ -23,8 +23,7 @@ export async function mig056_ig_comment_tracking(pool: Pool) {
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_ig_comment_tracking_active
-      ON ig_comment_tracking (track_until)
-      WHERE track_until > NOW();
+      ON ig_comment_tracking (track_until);
   `);
 
   await pool.query(`
