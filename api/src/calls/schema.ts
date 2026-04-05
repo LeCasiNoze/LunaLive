@@ -2,6 +2,9 @@
 import type { Pool } from "pg";
 
 export async function ensureCallsSchema(pool: Pool) {
+  // pg_trgm needed for fuzzy slot search
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`).catch(() => {});
+
   // Queue
   await pool.query(`
     CREATE TABLE IF NOT EXISTS calls_queue (
