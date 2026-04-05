@@ -77,20 +77,22 @@ publicSlotsRouter.post("/call", async (req, res) => {
 });
 
 // POST /api/public/slots/resolve
-// Résout un nom de slot (alias de /call mais sans validation de commande)
+// Résout un nom de slot — accepte "l bandit" ou "!call l bandit"
 publicSlotsRouter.post("/resolve", async (req, res) => {
   try {
     const { query } = req.body;
 
     if (!query || typeof query !== "string") {
-      return res.json({ 
-        ok: false, 
+      return res.json({
+        ok: false,
         error: "missing_query",
-        message: "Le paramètre 'query' est requis" 
+        message: "Le paramètre 'query' est requis"
       });
     }
 
-    const resolved = await resolveSlot(pool, query.trim());
+    // strip "!call " prefix if present
+    const raw = query.trim().replace(/^!call\s+/i, "").trim();
+    const resolved = await resolveSlot(pool, raw);
     if (!resolved) {
       return res.json({ 
         ok: false, 

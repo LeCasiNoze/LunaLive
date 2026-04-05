@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -si \"https://lunalive-api.onrender.com/slots/search?q=bandit\")"
+    ]
+  }
+}
