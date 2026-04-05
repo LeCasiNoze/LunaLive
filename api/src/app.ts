@@ -119,6 +119,7 @@ export function createApp() {
 
   app.get("/healthz", (_req, res) => res.status(200).send("ok"));
   app.use(express.json({ limit: "3mb" }));
+  app.use("/api/public/slots", publicSlotsRouter);
 
   app.use("/billing", billingRouter);
   app.use(streamerUploadsRouter);
