@@ -1,0 +1,16 @@
+{
+  "name": "dlive-chat-reader",
+  "version": "1.0.0",
+  "description": "Module autonome pour lire le chat DLive en temps réel",
+  "main": "dlive-chat-reader.js",
+  "scripts": {
+    "start": "node dlive-chat-reader.js",
+    "test": "node dlive-chat-reader.js dlive-abc123"
+  },
+  "dependencies": {
+    "ws": "^8.14.0"
+  },
+  "keywords": ["dlive", "chat", "websocket", "graphql"],
+  "author": "Extracted from LunaLive",
+  "license": "MIT"
+}

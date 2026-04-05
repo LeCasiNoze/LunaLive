@@ -14,6 +14,82 @@
 import { pool } from "./db.js";
 
 const LOG = "[INSTAGRAM SCHEDULER]";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notification Discord — envoyée après publication réussie d'un Reel
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DISCORD_CHANNEL_ID   = process.env.DISCORD_INSTAGRAM_CHANNEL_ID  || "1467142269122383883";
+const DISCORD_GLOBAL_ROLE  = process.env.DISCORD_GLOBAL_ROLE_ID         || "1468982992910155908";
+const DISCORD_INSTA_ROLE   = process.env.DISCORD_INSTAGRAM_ROLE_ID      || "1468983120664723507";
+
+async function sendReelPublishedNotification(opts: {
+  permalink:    string;
+  caption:      string;
+  streamerSlug: string;
+  thumbnailUrl: string | null;
+  jobId:        number;
+}): Promise<void> {
+  const discordClient = (global as any).discordClient;
+  if (!discordClient) {
+    console.log(`${LOG} [job #${opts.jobId}] Discord client absent — notif skippée`);
+    return;
+  }
+
+  try {
+    const channel = await discordClient.channels.fetch(DISCORD_CHANNEL_ID).catch(() => null);
+    if (!channel || !(channel as any).isTextBased?.()) {
+      console.log(`${LOG} [job #${opts.jobId}] Discord channel introuvable — notif skippée`);
+      return;
+    }
+
+    const webBase = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
+    const streamerUrl = `${webBase}/s/${encodeURIComponent(opts.streamerSlug)}`;
+
+    // Titre = première ligne de la caption, sans hashtags, max 100 chars
+    const firstLine = opts.caption.split("\n")[0]
+      .replace(/#\S+/g, "")
+      .replace(/@\S+/g, "")
+      .trim()
+      .slice(0, 100) || "Nouveau Reel LunaLive";
+
+    const embed: Record<string, any> = {
+      author: {
+        name: "LunaLive • Nouveau Reel Instagram",
+        icon_url: `${webBase}/favicon.ico`,
+      },
+      title: firstLine,
+      url: opts.permalink,
+      description: `📺 **Streamer** : [${opts.streamerSlug}](${streamerUrl})`,
+      color: 0xE4405F, // rose Instagram
+      timestamp: new Date().toISOString(),
+      footer: { text: "LunaLive", icon_url: `${webBase}/favicon.ico` },
+    };
+
+    if (opts.thumbnailUrl) {
+      embed.image = { url: opts.thumbnailUrl };
+    }
+
+    const payload: Record<string, any> = {
+      content: `<@&${DISCORD_GLOBAL_ROLE}> <@&${DISCORD_INSTA_ROLE}>`,
+      embeds: [embed],
+      components: [
+        {
+          type: 1,
+          components: [
+            { type: 2, style: 5, label: "📸 Voir le Reel",    url: opts.permalink },
+            { type: 2, style: 5, label: "📺 Voir le streamer", url: streamerUrl },
+          ],
+        },
+      ],
+    };
+
+    await (channel as any).send(payload);
+    console.log(`${LOG} [job #${opts.jobId}] ✅ Discord notif envoyée — ${opts.permalink}`);
+  } catch (e: any) {
+    console.error(`${LOG} [job #${opts.jobId}] ❌ Discord notif échouée: ${e?.message ?? e}`);
+  }
+}
 const POLL_INTERVAL_MS = 60_000;
 
 // Polling du container Meta — max 20 tentatives × 5s = 100s
@@ -175,13 +251,14 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
   const mediaId = String(mediaListData?.data?.[0]?.id ?? containerId);
   console.log(`${LOG} [job #${job.id}] real media_id=${mediaId}`);
 
-  // STEP 5 — Récupérer le permalink
+  // STEP 5 — Récupérer le permalink + thumbnail
   const permalinkData = await metaGet(`/${mediaId}`, {
-    fields: "permalink",
+    fields: "permalink,thumbnail_url",
     access_token: accessToken,
   });
 
-  const permalink = String(permalinkData.permalink ?? "");
+  const permalink    = String(permalinkData.permalink     ?? "");
+  const thumbnailUrl = String(permalinkData.thumbnail_url ?? "") || null;
   console.log(`${LOG} [job #${job.id}] permalink=${permalink}`);
 
   // STEP 6 — Marquer done dans la DB
@@ -215,6 +292,15 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
     );
     console.log(`${LOG} [job #${job.id}] comment tracking registered — slug=${streamerSlug} media=${mediaId}`);
   }
+
+  // STEP 7 — Notification Discord
+  await sendReelPublishedNotification({
+    permalink,
+    caption,
+    streamerSlug: streamerSlug || streamerSlugRaw,
+    thumbnailUrl,
+    jobId: job.id,
+  });
 
   console.log(`${LOG} [job #${job.id}] done ✓ — ${permalink}`);
 }

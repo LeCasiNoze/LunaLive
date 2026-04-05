@@ -72,6 +72,7 @@ import { callsRouter } from "./routes/calls.js";
 import { callsPcallRouter } from "./routes/calls_pcall.js";
 import { callsHuntRouter } from "./routes/calls_hunt.js";
 import { hunt2Router } from "./routes/hunt2.js";
+import { publicSlotsRouter } from "./routes/public-slots.js";
 
 // Billing / uploads / emotes / reports / admin content
 import { billingRouter } from "./routes/billing.js";
@@ -236,6 +237,7 @@ export function createApp() {
   app.use("/overlay/api", overlayApiRouter);
 
   app.use("/slots", slotsRouter);
+  app.use("/api/public/slots", publicSlotsRouter);
   app.use("/calls", callsHuntRouter);
   app.use("/calls", callsRouter);
   app.use("/calls", callsPcallRouter);
