@@ -41,10 +41,15 @@ export function StreamKeysCard({
 
       {!connection ? (
         <div className="muted">
-          Aucun compte DLive/DayLive assigné pour l’instant.
+          Aucune plateforme de stream configurée pour l'instant.
         </div>
       ) : (
         <>
+          <div className="field">
+            <label>Plateforme</label>
+            <input value={connection.provider === "dlive" ? "DLive" : "Rumble"} readOnly />
+          </div>
+
           <div className="field">
             <label>RTMP URL</label>
             <input value={connection.rtmpUrl} readOnly />

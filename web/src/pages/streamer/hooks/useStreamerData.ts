@@ -34,6 +34,27 @@ export type StreamerNormalized = {
   rumbleEmbedUrl: string | null;
 };
 
+// Fonction utilitaire pour déterminer automatiquement la plateforme
+function getPlatform(streamer: any): "dlive" | "rumble" | null {
+  // Si le champ platform est explicitement défini, l'utiliser
+  if (streamer?.platform) {
+    return streamer.platform === "rumble" ? "rumble" : "dlive";
+  }
+  
+  // Logique de déduction automatique
+  // Si le streamer a une chaîne DLive liée (channelSlug), utiliser DLive
+  if (streamer?.channelSlug || streamer?.channel_slug) {
+    return "dlive";
+  }
+  
+  // Si le streamer a une URL Rumble embed configurée, utiliser Rumble
+  if (streamer?.rumbleEmbedUrl || streamer?.rumble_embed_url) {
+    return "rumble";
+  }
+  
+  // Par défaut, si aucune plateforme n'est détectée, retourner null (inactif)
+  return null;
+}
 
 function normalizeStreamer(response: any): StreamerNormalized {
   const s = response?.streamer || response;
@@ -111,9 +132,8 @@ function normalizeStreamer(response: any): StreamerNormalized {
     rumbleStaticVideoUrl: (s?.rumbleStaticVideoUrl ?? s?.rumble_static_video_url) || null,
 
     // Platform info (temporaire pour LeCasiNoze)
-    platform: (s?.platform ?? "dlive") || null,
+    platform: getPlatform(s),
     rumbleEmbedUrl: (s?.rumbleEmbedUrl ?? s?.rumble_embed_url) || null,
-
   };
 }
 

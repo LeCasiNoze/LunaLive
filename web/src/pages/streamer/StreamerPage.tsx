@@ -15,7 +15,6 @@ import {
 } from "../../lib/api";
 import { DlivePlayer } from "../../components/DlivePlayer";
 import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
-import RumbleStaticPlayer from "../../components/RumbleStaticPlayer";
 import RumbleEmbedPlayer from "../../components/RumbleEmbedPlayer";
 import { ChatPanel } from "../../components/ChatPanel";
 import { LoginModal } from "../../components/LoginModal";
@@ -581,14 +580,43 @@ function StreamerPageDesktop() {
           <div className="cinemaStage">
             <div className="cinemaPlayerCard">
               {streamer.isLive ? (
-                String(slug || "").toLowerCase() === "lecasinoze" ? (
-                  <RumbleStaticPlayer
-                    staticVideoUrl={streamer.rumbleStaticVideoUrl || ""}
+                streamer.platform === "rumble" && streamer.rumbleEmbedUrl ? (
+                  <RumbleEmbedPlayer embedUrl={streamer.rumbleEmbedUrl} title={streamer.title} isLive={streamer.isLive} />
+                ) : streamer.platform === "rumble" ? (
+                  <RumbleStreamPlayer
+                    hlsUrl={streamer.rumbleHlsUrl}
+                    thumbnailUrl={streamer.rumbleThumbnailUrl || streamer.offlineBgUrl}
                     title={streamer.title}
                     isLive={streamer.isLive}
                   />
-                ) : (
+                ) : streamer.platform === "dlive" ? (
                   <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
+                ) : (
+                  // Cas inactif : aucune plateforme configurée
+                  <div style={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    justifyContent: "center", 
+                    height: 360,
+                    background: "linear-gradient(135deg, rgba(124,92,252,.12), rgba(59,77,200,.09))",
+                    borderRadius: 16,
+                    border: "1px solid rgba(124,92,252,.16)",
+                    fontFamily: "'Syne',system-ui,sans-serif",
+                    color: "rgba(196,181,253,.70)",
+                    fontSize: 14,
+                    textAlign: "center",
+                    padding: 20
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: "rgba(235,232,255,.90)" }}>
+                        Stream inactif
+                      </div>
+                      <div>
+                        Ce streamer n'a aucune plateforme configurée.<br/>
+                        Contacte un administrateur pour activer ce stream.
+                      </div>
+                    </div>
+                  </div>
                 )
               ) : (
                 <OfflineCard
@@ -700,19 +728,43 @@ function StreamerPageDesktop() {
           {/* Player */}
           <div ref={playerWrapRef}>
             {streamer.isLive ? (
-              String(slug || "").toLowerCase() === "lecasinoze" &&
-              streamer.platform === "rumble" &&
-              streamer.rumbleEmbedUrl ? (
+              streamer.platform === "rumble" && streamer.rumbleEmbedUrl ? (
                 <RumbleEmbedPlayer embedUrl={streamer.rumbleEmbedUrl} title={streamer.title} isLive={streamer.isLive} />
-              ) : String(slug || "").toLowerCase() === "lecasinoze" ? (
+              ) : streamer.platform === "rumble" ? (
                 <RumbleStreamPlayer
                   hlsUrl={streamer.rumbleHlsUrl}
                   thumbnailUrl={streamer.rumbleThumbnailUrl || streamer.offlineBgUrl}
                   title={streamer.title}
                   isLive={streamer.isLive}
                 />
-              ) : (
+              ) : streamer.platform === "dlive" ? (
                 <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
+              ) : (
+                // Cas inactif : aucune plateforme configurée
+                <div style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "center", 
+                  height: 360,
+                  background: "linear-gradient(135deg, rgba(124,92,252,.12), rgba(59,77,200,.09))",
+                  borderRadius: 16,
+                  border: "1px solid rgba(124,92,252,.16)",
+                  fontFamily: "'Syne',system-ui,sans-serif",
+                  color: "rgba(196,181,253,.70)",
+                  fontSize: 14,
+                  textAlign: "center",
+                  padding: 20
+                }}>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: "rgba(235,232,255,.90)" }}>
+                      Stream inactif
+                    </div>
+                    <div>
+                      Ce streamer n'a aucune plateforme configurée.<br/>
+                      Contacte un administrateur pour activer ce stream.
+                    </div>
+                  </div>
+                </div>
               )
             ) : (
               <OfflineCard displayName={displayName} title={streamer.title} offlineBgUrl={streamer.offlineBgUrl ?? undefined} />

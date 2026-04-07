@@ -103,7 +103,7 @@ export type ApiMyStreamer = {
 };
 
 export type ApiStreamConnection = {
-  provider: "dlive";
+  provider: "dlive" | "rumble";
   channelSlug: string;
   rtmpUrl: string;
   streamKey: string;
