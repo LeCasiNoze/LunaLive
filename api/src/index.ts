@@ -8,6 +8,7 @@ import { migrate, pool } from "./db.js";
 import { createApp } from "./app.js";
 import { attachChat } from "./chat_socket.js";
 import { startDlivePoller } from "./dlive_poller.js";
+import { startRumblePoller } from "./rumble_poller.js";
 import { startChestJobs } from "./chest_jobs.js";
 
 import { ensureBotClips } from "./bot_clips/store.js";
@@ -166,6 +167,7 @@ function setupGracefulShutdown(server: http.Server) {
   startStatsCleanup();
   startEventsEnginePoller(60_000);
   startDlivePoller(io);
+  startRumblePoller(io);
   startChestJobs(io);
   startAgendaNotifPoller(30_000);
   startClipsVodLinker();
