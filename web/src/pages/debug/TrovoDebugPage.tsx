@@ -3,6 +3,7 @@
 
 import * as React from "react";
 import { useState } from "react";
+import TrovoPlayer from "../../components/TrovoPlayer";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
@@ -376,104 +377,3 @@ export default function TrovoDebugPage() {
   );
 }
 
-// Import dynamique pour éviter les erreurs si le composant n'existe pas encore
-function TrovoPlayer({ playUrl, timeShiftUrl }: { playUrl?: string | null; timeShiftUrl?: string | null }) {
-  const [selectedSource, setSelectedSource] = useState<"timeshift" | "main">("timeshift");
-  const [playerState, setPlayerState] = useState<"loading" | "playing" | "error">("loading");
-  const [error, setError] = useState<string | null>(null);
-
-  React.useEffect(() => {
-    setSelectedSource(timeShiftUrl ? "timeshift" : "main");
-  }, [timeShiftUrl]);
-
-  const currentUrl = selectedSource === "timeshift" ? timeShiftUrl : playUrl;
-
-  React.useEffect(() => {
-    if (!currentUrl) {
-      setPlayerState("error");
-      setError("Aucune URL disponible");
-      return;
-    }
-
-    setPlayerState("loading");
-    setError(null);
-
-    // Détection du type de flux
-    const isHls = currentUrl.includes(".m3u8");
-    const isFlv = currentUrl.includes(".flv");
-
-    console.log(`[trovo-player] Source: ${selectedSource}, Type: ${isHls ? "HLS" : isFlv ? "FLV" : "Unknown"}, URL: ${currentUrl.substring(0, 100)}...`);
-
-    // Pour le moment, on affiche juste les infos sans tenter la lecture
-    setPlayerState("playing");
-  }, [currentUrl, selectedSource]);
-
-  return (
-    <div>
-      <div style={{ marginBottom: "12px" }}>
-        <strong style={{ color: "#fff" }}>Source sélectionnée:</strong>
-        <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
-          {timeShiftUrl && (
-            <button
-              onClick={() => setSelectedSource("timeshift")}
-              style={{
-                padding: "4px 8px",
-                borderRadius: "4px",
-                border: selectedSource === "timeshift" ? "1px solid #4caf50" : "1px solid rgba(255, 255, 255, 0.3)",
-                background: selectedSource === "timeshift" ? "rgba(76, 175, 80, 0.3)" : "rgba(255, 255, 255, 0.1)",
-                color: "#fff",
-                fontSize: "12px"
-              }}
-            >
-              Timeshift HLS (.m3u8)
-            </button>
-          )}
-          {playUrl && (
-            <button
-              onClick={() => setSelectedSource("main")}
-              style={{
-                padding: "4px 8px",
-                borderRadius: "4px",
-                border: selectedSource === "main" ? "1px solid #4caf50" : "1px solid rgba(255, 255, 255, 0.3)",
-                background: selectedSource === "main" ? "rgba(76, 175, 80, 0.3)" : "rgba(255, 255, 255, 0.1)",
-                color: "#fff",
-                fontSize: "12px"
-              }}
-            >
-              Main FLV (.flv)
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div style={{
-        background: "rgba(0, 0, 0, 0.4)",
-        border: "1px solid rgba(255, 255, 255, 0.2)",
-        borderRadius: "8px",
-        padding: "16px",
-        textAlign: "center"
-      }}>
-        {playerState === "loading" && <div style={{ color: "#fff" }}>Chargement...</div>}
-        {playerState === "playing" && (
-          <div>
-            <div style={{ color: "#4caf50", marginBottom: "8px" }}>Source détectée et prête pour lecture</div>
-            <div style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.6)" }}>
-              Type: {currentUrl?.includes(".m3u8") ? "HLS" : currentUrl?.includes(".flv") ? "FLV" : "Unknown"}
-            </div>
-            <div style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.6)", marginTop: "4px" }}>
-              URL: {currentUrl?.substring(0, 80)}...
-            </div>
-            <div style={{ marginTop: "12px", color: "rgba(255, 255, 255, 0.8)" }}>
-              <em>Player Trovo en construction - lecture vidéo non implémentée dans ce POC</em>
-            </div>
-          </div>
-        )}
-        {playerState === "error" && (
-          <div style={{ color: "#f44336" }}>
-            Erreur: {error}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
