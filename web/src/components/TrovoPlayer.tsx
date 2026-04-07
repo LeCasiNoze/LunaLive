@@ -22,18 +22,18 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
   const hlsRef = React.useRef<any>(null);
   const flvRef = React.useRef<any>(null);
 
-  // Auto-sélection de la source
+  // Auto-sélection de la source - PRIORITÉ ABSOLUE FLV
   React.useEffect(() => {
-    if (timeShiftUrl && timeShiftUrl.includes(".m3u8")) {
-      setSelectedSource("timeshift");
-    } else if (playUrl && playUrl.includes(".flv")) {
-      setSelectedSource("main");
+    if (playUrl && playUrl.includes(".flv")) {
+      setSelectedSource("main"); // PRIORITÉ 1: FLV principal
+    } else if (timeShiftUrl && timeShiftUrl.includes(".m3u8")) {
+      setSelectedSource("timeshift"); // PRIORITÉ 2: Fallback HLS timeshift
     } else {
-      setSelectedSource("auto");
+      setSelectedSource("auto"); // Auto-détection
     }
   }, [timeShiftUrl, playUrl]);
 
-  const currentUrl = selectedSource === "timeshift" ? timeShiftUrl : selectedSource === "main" ? playUrl : (timeShiftUrl || playUrl);
+  const currentUrl = selectedSource === "main" ? playUrl : selectedSource === "timeshift" ? timeShiftUrl : (playUrl || timeShiftUrl);
 
   const cleanupPlayers = () => {
     // Cleanup HLS
@@ -364,8 +364,8 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
   };
 
   const getSourceDescription = () => {
-    if (selectedSource === "timeshift") return "Timeshift HLS (.m3u8)";
-    if (selectedSource === "main") return "Main FLV (.flv)";
+    if (selectedSource === "main") return "Main FLV (priorité)";
+    if (selectedSource === "timeshift") return "Timeshift HLS (fallback)";
     return "Auto";
   };
 
@@ -379,50 +379,61 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
     return "Inconnu";
   };
 
+  const getPriorityBadge = () => {
+    if (selectedSource === "main" && detectedType === "flv") {
+      return " (PRIMAIRE)";
+    }
+    if (selectedSource === "timeshift" && detectedType === "hls") {
+      return " (FALLBACK)";
+    }
+    return "";
+  };
+
   return (
     <div style={{ width: "100%" }}>
       {/* Sélecteur de source */}
       <div style={{ marginBottom: "12px" }}>
         <strong style={{ color: "#fff", display: "block", marginBottom: "4px" }}>Source vidéo:</strong>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-          {timeShiftUrl && (
-            <button
-              onClick={() => handleSourceChange("timeshift")}
-              disabled={playerState === "loading"}
-              style={{
-                padding: "6px 12px",
-                borderRadius: "6px",
-                border: selectedSource === "timeshift" ? "1px solid #4caf50" : "1px solid rgba(255, 255, 255, 0.3)",
-                background: selectedSource === "timeshift" ? "rgba(76, 175, 80, 0.3)" : "rgba(255, 255, 255, 0.1)",
-                color: "#fff",
-                fontSize: "12px",
-                cursor: playerState === "loading" ? "not-allowed" : "pointer",
-                opacity: playerState === "loading" ? 0.6 : 1
-              }}
-            >
-              Timeshift HLS (.m3u8)
-            </button>
-          )}
-          {playUrl && (
+          {playUrl && playUrl.includes(".flv") && (
             <button
               onClick={() => handleSourceChange("main")}
               disabled={playerState === "loading"}
               style={{
                 padding: "6px 12px",
                 borderRadius: "6px",
-                border: selectedSource === "main" ? "1px solid #4caf50" : "1px solid rgba(255, 255, 255, 0.3)",
+                border: selectedSource === "main" ? "2px solid #4caf50" : "1px solid rgba(255, 255, 255, 0.3)",
                 background: selectedSource === "main" ? "rgba(76, 175, 80, 0.3)" : "rgba(255, 255, 255, 0.1)",
+                color: "#fff",
+                fontSize: "12px",
+                cursor: playerState === "loading" ? "not-allowed" : "pointer",
+                opacity: playerState === "loading" ? 0.6 : 1,
+                fontWeight: selectedSource === "main" ? "bold" : "normal"
+              }}
+            >
+              Main FLV (PRIMAIRE)
+            </button>
+          )}
+          {timeShiftUrl && timeShiftUrl.includes(".m3u8") && (
+            <button
+              onClick={() => handleSourceChange("timeshift")}
+              disabled={playerState === "loading"}
+              style={{
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: selectedSource === "timeshift" ? "1px solid #ff9800" : "1px solid rgba(255, 255, 255, 0.3)",
+                background: selectedSource === "timeshift" ? "rgba(255, 152, 0, 0.3)" : "rgba(255, 255, 255, 0.1)",
                 color: "#fff",
                 fontSize: "12px",
                 cursor: playerState === "loading" ? "not-allowed" : "pointer",
                 opacity: playerState === "loading" ? 0.6 : 1
               }}
             >
-              Main FLV (.flv)
+              Timeshift HLS (FALLBACK)
             </button>
           )}
           <div style={{ color: "rgba(255, 255, 255, 0.8)", fontSize: "12px", marginLeft: "8px" }}>
-            Actuel: <strong>{getSourceDescription()}</strong> ({getTechnologyDescription()})
+            Actuel: <strong>{getSourceDescription()}</strong> {getPriorityBadge()}
           </div>
         </div>
       </div>
