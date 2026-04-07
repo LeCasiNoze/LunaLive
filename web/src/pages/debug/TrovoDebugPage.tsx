@@ -92,6 +92,52 @@ export default function TrovoDebugPage() {
       margin: "0 auto",
       fontFamily: "system-ui, -apple-system, sans-serif"
     }}>
+      {/* MARQUEUR VISUEL IMPOSSIBLE À RATÉ */}
+      <div style={{
+        background: "linear-gradient(135deg, #e91e63, #9c27b0)",
+        border: "3px solid #ffeb3b",
+        borderRadius: "12px",
+        padding: "20px",
+        marginBottom: "20px",
+        textAlign: "center",
+        boxShadow: "0 4px 20px rgba(233, 30, 99, 0.5)",
+        animation: "pulse 2s infinite"
+      }}>
+        <h1 style={{
+          margin: "0 0 8px 0",
+          color: "#fff",
+          fontSize: "28px",
+          fontWeight: "bold",
+          textShadow: "2px 2px 4px rgba(0,0,0,0.5)"
+        }}>
+          TROVO DEBUG PAGE ACTIVE
+        </h1>
+        <p style={{
+          margin: "0",
+          color: "#ffeb3b",
+          fontSize: "16px",
+          fontWeight: "bold"
+        }}>
+          Build contains Trovo debug route
+        </p>
+        <button
+          onClick={() => alert("Trovo Debug Ping - Route active!")}
+          style={{
+            marginTop: "12px",
+            padding: "8px 16px",
+            borderRadius: "6px",
+            border: "2px solid #fff",
+            background: "rgba(255, 255, 255, 0.2)",
+            color: "#fff",
+            fontSize: "14px",
+            fontWeight: "bold",
+            cursor: "pointer"
+          }}
+        >
+          Trovo Debug Ping
+        </button>
+      </div>
+
       <div style={{
         background: "rgba(124, 92, 252, 0.1)",
         border: "1px solid rgba(124, 92, 252, 0.3)",
@@ -317,6 +363,15 @@ export default function TrovoDebugPage() {
           )}
         </div>
       )}
+
+      {/* Style pour l'animation */}
+      <style>{`
+        @keyframes pulse {
+          0% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.8; transform: scale(1.02); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
     </div>
   );
 }
