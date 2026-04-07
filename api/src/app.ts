@@ -7,6 +7,7 @@ import { requireAuth, requireAdminKey } from "./auth.js";
 
 import { registerChatRoutes } from "./chat_routes.js";
 import { registerHlsProxy } from "./hls_proxy.js";
+import { registerTrovoProxy } from "./trovo_proxy.js";
 import { registerStatsRoutes } from "./stats_routes.js";
 
 // Core routers
@@ -250,6 +251,7 @@ export function createApp() {
   app.use(hunt2Router);
 
   registerHlsProxy(app);
+  registerTrovoProxy(app);
   app.options("/hls", (_req, res) => res.sendStatus(204));
 
   app.use((err: any, _req: any, res: any, _next: any) => {
