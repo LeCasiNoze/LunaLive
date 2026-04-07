@@ -177,7 +177,7 @@ export function RumbleAccountsAdminSection({ adminKey }: { adminKey: string }) {
         <div className="panelTitle">Liste des comptes Rumble</div>
 
         {accounts.map((acc) => {
-          const isAssigned = !!acc.assigned_to_streamer_id;
+          const isAssigned = !!(acc.assigned_to_streamer_id || acc.assignedStreamerId);
           return (
             <div
               key={acc.id}
@@ -229,7 +229,7 @@ export function RumbleAccountsAdminSection({ adminKey }: { adminKey: string }) {
                 {isAssigned ? (
                   <>
                     <b>ASSIGNÉ</b> à LeCasiNoze{" "}
-                    <span className="mutedSmall">(ID: {acc.assigned_to_streamer_id})</span>
+                    <span className="mutedSmall">(ID: {acc.assigned_to_streamer_id || acc.assignedStreamerId})</span>
                   </>
                 ) : (
                   <b>LIBRE</b>
