@@ -8,44 +8,61 @@ export type TrovoPlayerProps = {
   timeShiftUrl?: string | null;
 };
 
+type PlayerState = "idle" | "loading" | "playing" | "paused" | "ended" | "error" | "not_implemented";
+
 export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps) {
-  const [selectedSource, setSelectedSource] = React.useState<"timeshift" | "main">("timeshift");
-  const [playerState, setPlayerState] = React.useState<"loading" | "playing" | "paused" | "error" | "not_implemented">("loading");
+  const [selectedSource, setSelectedSource] = React.useState<"timeshift" | "main" | "auto">("auto");
+  const [playerState, setPlayerState] = React.useState<PlayerState>("idle");
   const [error, setError] = React.useState<string | null>(null);
   const [detectedType, setDetectedType] = React.useState<"hls" | "flv" | "unknown">("unknown");
   const [actualSource, setActualSource] = React.useState<string>("");
+  const [usingNativeHls, setUsingNativeHls] = React.useState(false);
 
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const hlsRef = React.useRef<any>(null);
+  const flvRef = React.useRef<any>(null);
 
+  // Auto-sélection de la source
   React.useEffect(() => {
-    setSelectedSource(timeShiftUrl ? "timeshift" : "main");
-  }, [timeShiftUrl]);
+    if (timeShiftUrl && timeShiftUrl.includes(".m3u8")) {
+      setSelectedSource("timeshift");
+    } else if (playUrl && playUrl.includes(".flv")) {
+      setSelectedSource("main");
+    } else {
+      setSelectedSource("auto");
+    }
+  }, [timeShiftUrl, playUrl]);
 
-  const currentUrl = selectedSource === "timeshift" ? timeShiftUrl : playUrl;
+  const currentUrl = selectedSource === "timeshift" ? timeShiftUrl : selectedSource === "main" ? playUrl : (timeShiftUrl || playUrl);
 
-  const initializePlayer = async () => {
-    if (!currentUrl || !videoRef.current) {
-      setPlayerState("error");
-      setError("Aucune URL disponible ou élément vidéo non prêt");
-      return;
+  const cleanupPlayers = () => {
+    // Cleanup HLS
+    if (hlsRef.current) {
+      try {
+        hlsRef.current.destroy();
+        console.log("[trovo-player] HLS instance destroyed");
+      } catch (err) {
+        console.warn("[trovo-player] Error destroying HLS:", err);
+      }
+      hlsRef.current = null;
     }
 
-    setPlayerState("loading");
-    setError(null);
-    setActualSource(currentUrl);
+    // Cleanup FLV
+    if (flvRef.current) {
+      try {
+        flvRef.current.destroy();
+        console.log("[trovo-player] FLV instance destroyed");
+      } catch (err) {
+        console.warn("[trovo-player] Error destroying FLV:", err);
+      }
+      flvRef.current = null;
+    }
 
-    // Détection du type de flux
-    if (currentUrl.includes(".m3u8")) {
-      setDetectedType("hls");
-      await initializeHlsPlayer(currentUrl);
-    } else if (currentUrl.includes(".flv")) {
-      setDetectedType("flv");
-      await initializeFlvPlayer(currentUrl);
-    } else {
-      setDetectedType("unknown");
-      setPlayerState("not_implemented");
-      setError(`Format non supporté: ${currentUrl.split('.').pop()}`);
+    // Cleanup video
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.src = "";
+      videoRef.current.load();
     }
   };
 
@@ -59,25 +76,20 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
       // Import dynamique de hls.js
       const Hls = await import("hls.js").then(module => module.default);
       
+      // Vérifier support natif
+      if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        console.log("[trovo-player] Using native HLS support");
+        setUsingNativeHls(true);
+        video.src = url;
+        await attachVideoEvents(video);
+        return;
+      }
+
       if (!Hls.isSupported()) {
-        // Fallback natif pour Safari/iOS
-        if (video.canPlayType("application/vnd.apple.mpegurl")) {
-          console.log("[trovo-player] Using native HLS support");
-          video.src = url;
-          await attemptPlay(video);
-          return;
-        } else {
-          throw new Error("HLS non supporté par ce navigateur");
-        }
+        throw new Error("HLS non supporté par ce navigateur");
       }
 
-      // Nettoyer l'instance précédente
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-
-      // Créer nouvelle instance HLS.js
+      // Créer instance HLS.js
       const hls = new Hls({
         debug: false,
         enableWorker: true,
@@ -99,6 +111,7 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
         console.log("[trovo-player] HLS manifest parsed, levels available:", data.levels?.length || 0);
+        setPlayerState("loading");
         attemptPlay(video);
       });
 
@@ -107,15 +120,15 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              setError("Erreur réseau HLS");
+              setError("Erreur réseau HLS: " + data.details);
               setPlayerState("error");
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              setError("Erreur média HLS");
+              setError("Erreur média HLS: " + data.details);
               setPlayerState("error");
               break;
             default:
-              setError(`Erreur HLS: ${data.details}`);
+              setError("Erreur HLS: " + data.details);
               setPlayerState("error");
               break;
           }
@@ -124,11 +137,12 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
 
       hls.loadSource(url);
       hls.attachMedia(video);
+      setUsingNativeHls(false);
 
     } catch (err) {
       const errorMessage = (err as Error).message;
       console.error("[trovo-player] HLS initialization failed:", errorMessage);
-      setError(`HLS: ${errorMessage}`);
+      setError("HLS: " + errorMessage);
       setPlayerState("error");
     }
   };
@@ -147,12 +161,6 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
         throw new Error("FLV non supporté par ce navigateur");
       }
 
-      // Nettoyer l'instance précédente
-      if (videoRef.current && (videoRef.current as any)._flvPlayer) {
-        (videoRef.current as any)._flvPlayer.destroy();
-        (videoRef.current as any)._flvPlayer = null;
-      }
-
       // Créer player FLV
       const flvPlayer = flvjs.createPlayer({
         type: "flv",
@@ -164,15 +172,11 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
         hasVideo: true,
       });
 
-      (videoRef.current as any)._flvPlayer = flvPlayer;
-
-      flvPlayer.attachMediaElement(video);
-      flvPlayer.load();
-      flvPlayer.play();
+      flvRef.current = flvPlayer;
 
       flvPlayer.on(flvjs.Events.ERROR, (errorType, errorDetail) => {
         console.error("[trovo-player] FLV error:", errorType, errorDetail);
-        setError(`FLV: ${errorType}`);
+        setError("FLV: " + errorType + " - " + errorDetail);
         setPlayerState("error");
       });
 
@@ -180,39 +184,123 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
         console.log("[trovo-player] FLV loading complete");
       });
 
-      // Écouter les événements vidéo
-      video.addEventListener("play", () => setPlayerState("playing"));
-      video.addEventListener("pause", () => setPlayerState("paused"));
-      video.addEventListener("ended", () => setPlayerState("paused"));
-
-      await attemptPlay(video);
+      flvPlayer.attachMediaElement(video);
+      flvPlayer.load();
+      
+      await attachVideoEvents(video);
 
     } catch (err) {
       const errorMessage = (err as Error).message;
       console.error("[trovo-player] FLV initialization failed:", errorMessage);
-      setError(`FLV: ${errorMessage}`);
+      setError("FLV: " + errorMessage);
       setPlayerState("error");
     }
+  };
+
+  const attachVideoEvents = (video: HTMLVideoElement) => {
+    return new Promise<void>((resolve) => {
+      const handlePlay = () => {
+        console.log("[trovo-player] Video play event");
+        setPlayerState("playing");
+      };
+
+      const handlePause = () => {
+        console.log("[trovo-player] Video pause event");
+        setPlayerState("paused");
+      };
+
+      const handleEnded = () => {
+        console.log("[trovo-player] Video ended event");
+        setPlayerState("ended");
+      };
+
+      const handleError = (e: Event) => {
+        console.error("[trovo-player] Video error event:", e);
+        const videoError = (e.target as HTMLVideoElement).error;
+        if (videoError) {
+          setError("Vidéo: " + videoError.message);
+        } else {
+          setError("Erreur vidéo inconnue");
+        }
+        setPlayerState("error");
+      };
+
+      const handleCanPlay = () => {
+        console.log("[trovo-player] Video can play");
+        resolve();
+      };
+
+      video.addEventListener("play", handlePlay);
+      video.addEventListener("pause", handlePause);
+      video.addEventListener("ended", handleEnded);
+      video.addEventListener("error", handleError);
+      video.addEventListener("canplay", handleCanPlay);
+
+      // Cleanup function
+      return () => {
+        video.removeEventListener("play", handlePlay);
+        video.removeEventListener("pause", handlePause);
+        video.removeEventListener("ended", handleEnded);
+        video.removeEventListener("error", handleError);
+        video.removeEventListener("canplay", handleCanPlay);
+      };
+    });
   };
 
   const attemptPlay = async (video: HTMLVideoElement) => {
     try {
       await video.play();
-      setPlayerState("playing");
       console.log("[trovo-player] Playback started successfully");
+      setPlayerState("playing");
     } catch (playError) {
       console.error("[trovo-player] Play failed:", playError);
-      setError(`Lecture: ${(playError as Error).message}`);
-      setPlayerState("error");
+      const errorMessage = (playError as Error).message;
+      if (errorMessage.includes("autoplay")) {
+        setError("Autoplay bloqué - cliquez sur le bouton Play");
+        setPlayerState("paused");
+      } else {
+        setError("Lecture: " + errorMessage);
+        setPlayerState("error");
+      }
     }
   };
 
-  const handlePlay = () => {
+  const initializePlayer = async () => {
+    if (!currentUrl || !videoRef.current) {
+      setPlayerState("error");
+      setError("Aucune URL disponible ou élément vidéo non prêt");
+      return;
+    }
+
+    cleanupPlayers();
+    setPlayerState("loading");
+    setError(null);
+    setActualSource(currentUrl);
+    setUsingNativeHls(false);
+
+    // Détection du type de flux
+    if (currentUrl.includes(".m3u8")) {
+      setDetectedType("hls");
+      await initializeHlsPlayer(currentUrl);
+    } else if (currentUrl.includes(".flv")) {
+      setDetectedType("flv");
+      await initializeFlvPlayer(currentUrl);
+    } else {
+      setDetectedType("unknown");
+      setPlayerState("not_implemented");
+      setError(`Format non supporté: ${currentUrl.split('.').pop()}`);
+    }
+  };
+
+  const handlePlay = async () => {
     if (videoRef.current) {
-      videoRef.current.play().then(() => setPlayerState("playing")).catch(err => {
-        setError(`Play: ${(err as Error).message}`);
+      try {
+        await videoRef.current.play();
+        setPlayerState("playing");
+      } catch (err) {
+        setError("Play: " + (err as Error).message);
         setPlayerState("error");
-      });
+      }
     }
   };
 
@@ -231,33 +319,31 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
     }
   };
 
+  const handleReload = () => {
+    initializePlayer();
+  };
+
   const handleSourceChange = (source: "timeshift" | "main") => {
     setSelectedSource(source);
   };
 
   React.useEffect(() => {
-    initializePlayer();
+    if (currentUrl) {
+      initializePlayer();
+    }
   }, [currentUrl]);
 
   React.useEffect(() => {
-    return () => {
-      // Cleanup
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-      if (videoRef.current && (videoRef.current as any)._flvPlayer) {
-        (videoRef.current as any)._flvPlayer.destroy();
-        (videoRef.current as any)._flvPlayer = null;
-      }
-    };
+    return cleanupPlayers;
   }, []);
 
   const getStatusColor = () => {
     switch (playerState) {
+      case "idle": return "#9e9e9e";
       case "loading": return "#ffc107";
       case "playing": return "#4caf50";
       case "paused": return "#ff9800";
+      case "ended": return "#9e9e9e";
       case "error": return "#f44336";
       case "not_implemented": return "#9e9e9e";
       default: return "#9e9e9e";
@@ -266,13 +352,31 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
 
   const getStatusText = () => {
     switch (playerState) {
+      case "idle": return "En attente";
       case "loading": return "Chargement...";
       case "playing": return "Lecture en cours";
       case "paused": return "En pause";
+      case "ended": return "Terminé";
       case "error": return "Erreur";
       case "not_implemented": return "Non implémenté";
       default: return "Inconnu";
     }
+  };
+
+  const getSourceDescription = () => {
+    if (selectedSource === "timeshift") return "Timeshift HLS (.m3u8)";
+    if (selectedSource === "main") return "Main FLV (.flv)";
+    return "Auto";
+  };
+
+  const getTechnologyDescription = () => {
+    if (detectedType === "hls") {
+      return usingNativeHls ? "HLS Natif" : "HLS.js";
+    }
+    if (detectedType === "flv") {
+      return "flv.js";
+    }
+    return "Inconnu";
   };
 
   return (
@@ -280,7 +384,7 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
       {/* Sélecteur de source */}
       <div style={{ marginBottom: "12px" }}>
         <strong style={{ color: "#fff", display: "block", marginBottom: "4px" }}>Source vidéo:</strong>
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
           {timeShiftUrl && (
             <button
               onClick={() => handleSourceChange("timeshift")}
@@ -317,6 +421,9 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
               Main FLV (.flv)
             </button>
           )}
+          <div style={{ color: "rgba(255, 255, 255, 0.8)", fontSize: "12px", marginLeft: "8px" }}>
+            Actuel: <strong>{getSourceDescription()}</strong> ({getTechnologyDescription()})
+          </div>
         </div>
       </div>
 
@@ -366,6 +473,21 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
           }}
         >
           Stop
+        </button>
+        <button
+          onClick={handleReload}
+          disabled={playerState === "loading"}
+          style={{
+            padding: "4px 8px",
+            borderRadius: "4px",
+            border: "1px solid rgba(255, 255, 255, 0.3)",
+            background: "rgba(255, 255, 255, 0.1)",
+            color: "#fff",
+            fontSize: "11px",
+            cursor: playerState === "loading" ? "not-allowed" : "pointer"
+          }}
+        >
+          Reload Source
         </button>
       </div>
 
@@ -458,20 +580,17 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
         )}
 
         {/* Informations techniques */}
-        {playerState === "playing" && (
+        {playerState === "playing" && videoRef.current && (
           <div style={{
             fontSize: "12px",
             color: "rgba(255, 255, 255, 0.6)",
             marginTop: "12px"
           }}>
             <div>Format: {detectedType.toUpperCase()}</div>
-            <div>Source: {selectedSource === "timeshift" ? "Timeshift" : "Main"}</div>
-            {videoRef.current && (
-              <>
-                <div>Durée: {videoRef.current.duration ? videoRef.current.duration.toFixed(1) + "s" : "Live"}</div>
-                <div>Temps: {videoRef.current.currentTime.toFixed(1)}s</div>
-              </>
-            )}
+            <div>Source: {getSourceDescription()}</div>
+            <div>Technologie: {getTechnologyDescription()}</div>
+            <div>Durée: {videoRef.current.duration ? videoRef.current.duration.toFixed(1) + "s" : "Live"}</div>
+            <div>Temps: {videoRef.current.currentTime.toFixed(1)}s</div>
           </div>
         )}
       </div>
