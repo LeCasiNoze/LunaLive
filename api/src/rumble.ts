@@ -157,127 +157,15 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
     const isLive = userStream?.is_live === true;
     const viewersCount = userStream?.watching_now || userStream?.viewers || userStream?.viewer_count || null;
     
-    // Résoudre les vraies URLs depuis la Static Video URL
-    let hlsUrl = null;
-    let publicUrl = videoUrl;
-    let embedUrl = null;
-    let watchUrl = null;
-    
-    // Stratégie LeCasiNoze : scraper la static video URL
-    // https://rumble.com/user/LeCasiNoze/live
+    // Données basiques pour LeCasiNoze - pas de résolution HLS côté backend
     const staticVideoUrl = "https://rumble.com/user/LeCasiNoze/live";
     
-    console.log(`[rumble] Using Static Video URL strategy: ${staticVideoUrl}`);
+    console.log(`[rumble] Using basic data strategy - static URL: ${staticVideoUrl}`);
     
-    if (staticVideoUrl) {
-      try {
-        console.log(`[rumble] Fetching static video page: ${staticVideoUrl}`);
-        
-        // Fetch la page statique pour trouver les vraies URLs
-        const response = await fetch(staticVideoUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Accept-Encoding": "gzip, deflate",
-            "Connection": "keep-alive",
-          }
-        });
-        
-        console.log(`[rumble] Static video page HTTP status: ${response.status}`);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        
-        const html = await response.text();
-        console.log(`[rumble] Static video page fetched successfully (${html.length} chars)`);
-        
-        // Chercher les vraies URLs dans le HTML
-        const urlPatterns = [
-          // Watch URL patterns
-          /["']([^"']*rumble\.com\/v[^"']*\.html[^"']*)["']/gi,
-          /["']([^"']*rumble\.com\/v[^"']*)["']/gi,
-          /href=["']([^"']*rumble\.com\/v[^"']*\.html[^"']*)["']/gi,
-          /href=["']([^"']*rumble\.com\/v[^"']*)["']/gi,
-          
-          // Embed URL patterns  
-          /["']([^"']*rumble\.com\/embed\/[^"']*)["']/gi,
-          /embed["\s]*:\s*["']([^"']+)["']/gi,
-          
-          // Direct HLS patterns
-          /["']([^"']*\.m3u8[^"']*)["']/gi,
-          /source["\s]*:\s*["']([^"']*\.m3u8[^"']*)["']/gi,
-          /hls["\s]*:\s*["']([^"']+)["']/gi,
-          
-          // General video URL patterns
-          /["']([^"']*\.mp4[^"']*)["']/gi,
-          /video_url["\s]*:\s*["']([^"']+)["']/gi,
-          /watch_url["\s]*:\s*["']([^"']+)["']/gi,
-        ];
-        
-        let foundWatchUrl = null;
-        let foundEmbedUrl = null;
-        let foundHlsUrl = null;
-        
-        for (const pattern of urlPatterns) {
-          const matches = html.match(pattern);
-          if (matches) {
-            for (const match of matches) {
-              const url = match.replace(/["']/g, '').trim();
-              
-              if (url.includes('.m3u8') && url.startsWith('http')) {
-                foundHlsUrl = url;
-                console.log(`[rumble] Found HLS URL: ${url}`);
-              } else if (url.includes('/embed/') && url.startsWith('http')) {
-                foundEmbedUrl = url;
-                console.log(`[rumble] Found embed URL: ${url}`);
-              } else if (url.includes('rumble.com/v') && url.startsWith('http')) {
-                foundWatchUrl = url;
-                console.log(`[rumble] Found watch URL: ${url}`);
-              }
-            }
-          }
-        }
-        
-        // Utiliser les URLs trouvées
-        publicUrl = foundWatchUrl || staticVideoUrl;
-        embedUrl = foundEmbedUrl;
-        hlsUrl = foundHlsUrl;
-        
-        console.log(`[rumble] Final extracted URLs - watch: ${foundWatchUrl}, embed: ${foundEmbedUrl}, hls: ${foundHlsUrl}`);
-        
-        // Si pas d'HLS directe, essayer de scraper l'embed trouvé
-        if (!hlsUrl && foundEmbedUrl) {
-          console.log(`[rumble] No direct HLS found, trying to scrape embed: ${foundEmbedUrl}`);
-          try {
-            hlsUrl = await resolveRumbleHlsUrl(foundEmbedUrl);
-            console.log(`[rumble] Resolved HLS from embed: ${hlsUrl}`);
-          } catch (embedError) {
-            console.error(`[rumble] Failed to resolve HLS from embed:`, embedError);
-          }
-        }
-        
-      } catch (error) {
-        console.error(`[rumble] Error scraping static video page:`, error);
-        
-        // Fallback : essayer avec l'ID de l'API si disponible
-        const fallbackId = userStream?.id;
-        if (fallbackId) {
-          const fallbackEmbedUrl = `https://rumble.com/embed/${fallbackId}`;
-          console.log(`[rumble] Trying fallback with API ID: ${fallbackEmbedUrl}`);
-          
-          try {
-            hlsUrl = await resolveRumbleHlsUrl(fallbackEmbedUrl);
-            embedUrl = fallbackEmbedUrl;
-            publicUrl = `https://rumble.com/${fallbackId}`;
-            console.log(`[rumble] Resolved fallback HLS: ${hlsUrl}`);
-          } catch (fallbackError) {
-            console.error(`[rumble] Fallback also failed:`, fallbackError);
-          }
-        }
-      }
-    }
+    // Utiliser uniquement les données de l'API Live
+    const publicUrl = staticVideoUrl;
+    const embedUrl = null;
+    const hlsUrl = null; // Résolu côté frontend
     
     console.log(`[rumble] Final URLs - publicUrl: ${publicUrl}, embedUrl: ${embedUrl}, hlsUrl: ${hlsUrl}`);
 

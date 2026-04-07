@@ -373,6 +373,7 @@ publicRouter.get(
           (row as any).rumbleHlsUrl = rumble.hls_url;
           (row as any).rumbleVideoUrl = rumble.video_url;
           (row as any).rumbleThumbnailUrl = rumble.thumbnail_url;
+          (row as any).rumbleStaticVideoUrl = "https://rumble.com/user/LeCasiNoze/live";
           (row as any).streamProvider = "rumble";
           
           console.log(`[public] LeCasiNoze: Using Rumble live data - ${rumble.title}`);

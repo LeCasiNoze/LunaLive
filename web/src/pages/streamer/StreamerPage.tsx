@@ -9,6 +9,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { watchHeartbeat, me, getLives, updateMyStreamerTitle, updateStreamerTitleBySlug } from "../../lib/api";
 import { DlivePlayer }   from "../../components/DlivePlayer";
 import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
+import RumbleStaticPlayer from "../../components/RumbleStaticPlayer";
 import { ChatPanel }     from "../../components/ChatPanel";
 import { LoginModal }    from "../../components/LoginModal";
 import { SubModal }      from "../../components/SubModal";
@@ -530,9 +531,8 @@ function StreamerPageDesktop() {
               ? (
                 // LOGIQUE SPÉCIALE LeCasiNoze - RUMBLE ONLY
                 String(slug || "").toLowerCase() === "lecasinoze" ? (
-                  <RumbleStreamPlayer
-                    hlsUrl={(streamer as any).rumbleHlsUrl}
-                    thumbnailUrl={(streamer as any).rumbleThumbnailUrl || streamer.offlineBgUrl}
+                  <RumbleStaticPlayer
+                    staticVideoUrl={(streamer as any).rumbleStaticVideoUrl}
                     title={streamer.title}
                     isLive={streamer.isLive}
                   />
