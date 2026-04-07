@@ -9,6 +9,7 @@ import {
   adminCreateRumbleAccount,
   adminDeleteRumbleAccount,
   adminReleaseRumbleAccount,
+  adminAssignRumbleAccount,
 } from "../../lib/api";
 
 const RUMBLE_RTMP = "rtmp://live.rumble.com/live";
@@ -98,6 +99,20 @@ export function RumbleAccountsAdminSection({ adminKey }: { adminKey: string }) {
       setStreamKey("");
       setSelectedStreamerId("");
       
+      await refresh();
+    } catch (e: any) {
+      setErr(String(e?.message || e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function assignAccount(accountId: number, streamerId: string) {
+    setBusy(true);
+    setErr(null);
+    
+    try {
+      await adminAssignRumbleAccount(adminKey, accountId, streamerId);
       await refresh();
     } catch (e: any) {
       setErr(String(e?.message || e));
@@ -211,16 +226,43 @@ export function RumbleAccountsAdminSection({ adminKey }: { adminKey: string }) {
                     Dissocier
                   </button>
                 ) : (
-                  <button
-                    className="btnGhostSmall"
-                    onClick={async () => {
-                      await adminDeleteRumbleAccount(adminKey, acc.id);
-                      await refresh();
-                    }}
-                    disabled={busy}
-                  >
-                    Supprimer
-                  </button>
+                  <>
+                    <select 
+                      value="" 
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          assignAccount(acc.id, e.target.value);
+                        }
+                      }}
+                      disabled={busy}
+                      style={{ 
+                        marginRight: 8, 
+                        padding: "4px 8px", 
+                        borderRadius: 6, 
+                        border: "1px solid rgba(124,92,252,.3)", 
+                        background: "rgba(124,92,252,.1)", 
+                        color: "rgba(235,232,255,.9)", 
+                        fontSize: 12 
+                      }}
+                    >
+                      <option value="">Assigner à...</option>
+                      {eligibleStreamers.map((s) => (
+                        <option key={s.streamerId} value={s.streamerId}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="btnGhostSmall"
+                      onClick={async () => {
+                        await adminDeleteRumbleAccount(adminKey, acc.id);
+                        await refresh();
+                      }}
+                      disabled={busy}
+                    >
+                      Supprimer
+                    </button>
+                  </>
                 )}
               </div>
 
