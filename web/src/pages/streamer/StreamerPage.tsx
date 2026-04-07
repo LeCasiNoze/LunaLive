@@ -8,6 +8,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { watchHeartbeat, me, getLives, updateMyStreamerTitle, updateStreamerTitleBySlug } from "../../lib/api";
 import { DlivePlayer }   from "../../components/DlivePlayer";
+import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
 import { ChatPanel }     from "../../components/ChatPanel";
 import { LoginModal }    from "../../components/LoginModal";
 import { SubModal }      from "../../components/SubModal";
@@ -526,7 +527,19 @@ function StreamerPageDesktop() {
         <div className="cinemaStage">
           <div className="cinemaPlayerCard">
             {streamer.isLive
-              ? <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
+              ? (
+                // LOGIQUE SPÉCIALE LeCasiNoze - RUMBLE ONLY
+                String(slug || "").toLowerCase() === "lecasinoze" ? (
+                  <RumbleStreamPlayer
+                    hlsUrl={(streamer as any).rumbleHlsUrl}
+                    thumbnailUrl={(streamer as any).rumbleThumbnailUrl || streamer.offlineBgUrl}
+                    title={streamer.title}
+                    isLive={streamer.isLive}
+                  />
+                ) : (
+                  <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
+                )
+              )
               : <OfflineCard displayName={displayName} title={streamer.title} offlineBgUrl={streamer.offlineBgUrl ?? undefined} />}
           </div>
         </div>
@@ -594,9 +607,21 @@ function StreamerPageDesktop() {
 
           {/* Player */}
           <div ref={playerWrapRef}>
-            {streamer.isLive
-              ? <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
-              : <OfflineCard displayName={displayName} title={streamer.title} offlineBgUrl={streamer.offlineBgUrl ?? undefined} />}
+            {streamer.isLive ? (
+              // LOGIQUE SPÉCIALE LeCasiNoze - RUMBLE ONLY
+              String(slug || "").toLowerCase() === "lecasinoze" ? (
+                <RumbleStreamPlayer
+                  hlsUrl={(streamer as any).rumbleHlsUrl}
+                  thumbnailUrl={(streamer as any).rumbleThumbnailUrl || streamer.offlineBgUrl}
+                  title={streamer.title}
+                  isLive={streamer.isLive}
+                />
+              ) : (
+                <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
+              )
+            ) : (
+              <OfflineCard displayName={displayName} title={streamer.title} offlineBgUrl={streamer.offlineBgUrl ?? undefined} />
+            )}
           </div>
 
           {/* ── BANNER ─────────────────────────────────────────── */}

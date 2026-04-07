@@ -31,6 +31,7 @@ import { adminDeletePendingRegistration } from "../lib/api";
 
 import { UsersAdminSection } from "../components/admin/UsersAdminSection";
 import { ProviderAccountsAdminSection } from "../components/admin/ProviderAccountsAdminSection";
+import { RumbleAccountsAdminSection } from "../components/admin/RumbleAccountsAdminSection";
 import { CasinosAdminSection } from "../components/admin/CasinosAdminSection";
 import { Link } from "react-router-dom";
 import { EmotesAdminSection } from "../components/admin/EmotesAdminSection";
@@ -696,6 +697,13 @@ export default function AdminPage() {
                 label="Ajout de compte DLive"
                 hint="Pool DLive (RTMP fixe)"
                 onClick={() => goto("providers")}
+              />
+              <NavButton
+                active={tab === "rumble"}
+                icon="🏃‍♂️"
+                label="Ajout de compte Rumble"
+                hint="LeCasiNoze (RTMP fixe)"
+                onClick={() => goto("rumble")}
               />
             </div>
           </Card>
@@ -1585,6 +1593,21 @@ export default function AdminPage() {
               right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
             >
               <ProviderAccountsAdminSection adminKey={key} />
+            </Card>
+          ) : null}
+
+          {tab === "rumble" ? (
+            <Card
+              title={
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>📹</span>
+                  Ajout de compte Rumble (LeCasiNoze)
+                </span>
+              }
+              subtitle="RTMP fixe: rtmp://live.rumble.com/live — Gestion des comptes Rumble."
+              right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
+            >
+              <RumbleAccountsAdminSection adminKey={key} />
             </Card>
           ) : null}
 

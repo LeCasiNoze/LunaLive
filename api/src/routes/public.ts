@@ -342,6 +342,50 @@ publicRouter.get(
     delete row.providerChannelSlug;
     delete row.providerChannelUsername;
 
+    // ====================================================================
+    // LOGIQUE SPÉCIALE LeCasiNoze - RUMBLE ONLY
+    // ====================================================================
+    const isLeCasiNoze = String(row.slug || "").toLowerCase() === "lecasinoze";
+    
+    if (isLeCasiNoze) {
+      // Récupérer les infos Rumble pour LeCasiNoze
+      const rumbleInfo = await pool.query(
+        `SELECT is_live, title, viewers_count, hls_url, video_url, thumbnail_url
+         FROM streamer_rumble_info
+         WHERE streamer_id = $1
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+        [Number(row.id)]
+      );
+
+      if (rumbleInfo.rows[0]) {
+        const rumble = rumbleInfo.rows[0];
+        
+        // Forcer l'état live depuis Rumble
+        row.isLive = !!rumble.is_live;
+        
+        // Utiliser les infos Rumble si live
+        if (rumble.is_live) {
+          row.title = rumble.title || row.title;
+          row.viewers = rumble.viewers_count || row.viewers;
+          
+          // Ajouter les infos Rumble spécifiques
+          (row as any).rumbleHlsUrl = rumble.hls_url;
+          (row as any).rumbleVideoUrl = rumble.video_url;
+          (row as any).rumbleThumbnailUrl = rumble.thumbnail_url;
+          (row as any).streamProvider = "rumble";
+          
+          console.log(`[public] LeCasiNoze: Using Rumble live data - ${rumble.title}`);
+        } else {
+          (row as any).streamProvider = "rumble";
+          console.log(`[public] LeCasiNoze: Rumble offline`);
+        }
+      } else {
+        (row as any).streamProvider = "rumble";
+        console.log(`[public] LeCasiNoze: No Rumble data found`);
+      }
+    }
+
     const c = await pool.query(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id = $1`, [
       Number(row.id),
     ]);
