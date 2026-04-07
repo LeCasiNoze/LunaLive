@@ -157,30 +157,43 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
     const isLive = userStream?.is_live === true;
     const viewersCount = userStream?.watching_now || userStream?.viewers || userStream?.viewer_count || null;
     
-    // Résoudre la vraie URL HLS depuis la page Rumble
+    // Résoudre la vraie URL HLS depuis la Static Video URL stable
     let hlsUrl = null;
     let publicUrl = videoUrl;
     let embedUrl = null;
     
-    if (videoUrl) {
-      console.log(`[rumble] Resolving HLS for videoUrl: ${videoUrl}`);
+    // Stratégie LeCasiNoze : utiliser la Static Video URL stable
+    // https://rumble.com/user/LeCasiNoze/live
+    const staticVideoUrl = "https://rumble.com/user/LeCasiNoze/live";
+    
+    console.log(`[rumble] Using Static Video URL strategy: ${staticVideoUrl}`);
+    
+    if (staticVideoUrl) {
+      publicUrl = staticVideoUrl;
+      embedUrl = staticVideoUrl.replace('/user/', '/embed/');
+      
+      console.log(`[rumble] Generated embedUrl from static URL: ${embedUrl}`);
+      console.log(`[rumble] Generated publicUrl: ${publicUrl}`);
       
       try {
-        // Construire l'URL embed Rumble
-        const videoId = videoUrl.match(/\/([^\/]+)$/)?.[1];
-        if (videoId) {
-          embedUrl = `https://rumble.com/embed/${videoId}`;
-          console.log(`[rumble] Generated embedUrl: ${embedUrl}`);
-          
-          // Scraper la page embed pour trouver la vraie URL HLS
-          hlsUrl = await resolveRumbleHlsUrl(embedUrl);
-          console.log(`[rumble] Resolved hlsUrl: ${hlsUrl}`);
-        }
+        // Scraper la page static pour trouver la vraie URL HLS du live courant
+        hlsUrl = await resolveRumbleHlsUrl(embedUrl);
+        console.log(`[rumble] Resolved hlsUrl: ${hlsUrl}`);
       } catch (error) {
-        console.error(`[rumble] Error resolving HLS URL:`, error);
-        // Fallback : essayer l'URL directe si elle ressemble à une URL HLS
-        if (videoUrl.includes('.m3u8')) {
-          hlsUrl = videoUrl;
+        console.error(`[rumble] Error resolving HLS URL from static URL:`, error);
+        
+        // Fallback : essayer avec l'ID de l'API si disponible
+        const fallbackId = userStream?.id;
+        if (fallbackId) {
+          const fallbackEmbedUrl = `https://rumble.com/embed/${fallbackId}`;
+          console.log(`[rumble] Trying fallback with API ID: ${fallbackEmbedUrl}`);
+          
+          try {
+            hlsUrl = await resolveRumbleHlsUrl(fallbackEmbedUrl);
+            console.log(`[rumble] Resolved fallback hlsUrl: ${hlsUrl}`);
+          } catch (fallbackError) {
+            console.error(`[rumble] Fallback also failed:`, fallbackError);
+          }
         }
       }
     }
