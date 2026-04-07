@@ -42,12 +42,25 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
     const data = await fetchRumbleData(apiKey);
     
     // Parser la réponse Rumble Live API
-    const livestreams = data?.livestreams || [];
+    // La structure peut être soit data.livestreams soit directement un tableau
+    let livestreams = [];
+    
+    if (Array.isArray(data?.livestreams)) {
+      livestreams = data.livestreams;
+    } else if (Array.isArray(data)) {
+      livestreams = data;
+    }
+    
+    console.log(`[rumble] Found ${livestreams.length} livestreams in API response`);
+    console.log(`[rumble] Looking for username: ${username}`);
+    
     const userStream = livestreams.find((stream: any) => 
-      stream?.username?.toLowerCase() === username.toLowerCase()
+      stream?.username?.toLowerCase() === username.toLowerCase() ||
+      stream?.user?.username?.toLowerCase() === username.toLowerCase()
     );
 
     if (!userStream) {
+      console.log(`[rumble] No stream found for username: ${username}`);
       return {
         username: username,
         isLive: false,
@@ -60,10 +73,13 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
       };
     }
 
+    console.log(`[rumble] Found stream for ${username}:`, JSON.stringify(userStream, null, 2));
+
     // Extraire les URLs du stream
-    const videoUrl = userStream?.url || null;
-    const thumbnailUrl = userStream?.thumbnail || null;
-    const createdAt = userStream?.created_at || null;
+    const videoUrl = userStream?.url || userStream?.watch_url || null;
+    const thumbnailUrl = userStream?.thumbnail || userStream?.image || null;
+    const createdAt = userStream?.created_at || userStream?.published_at || null;
+    const title = userStream?.title || userStream?.name || `Live de ${username}`;
     
     // Construire l'URL HLS si disponible
     let hlsUrl = null;
