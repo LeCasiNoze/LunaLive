@@ -17,6 +17,14 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
   const [detectedType, setDetectedType] = React.useState<"hls" | "flv" | "unknown">("unknown");
   const [actualSource, setActualSource] = React.useState<string>("");
   const [usingNativeHls, setUsingNativeHls] = React.useState(false);
+  const [hlsDebugInfo, setHlsDebugInfo] = React.useState({
+    nativeSupport: false,
+    hlsSupported: false,
+    manifestLoaded: false,
+    mediaAttached: false,
+    lastError: null as string | null,
+    lastVideoError: null as string | null
+  });
 
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const hlsRef = React.useRef<any>(null);
@@ -75,63 +83,134 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
 
       // Import dynamique de hls.js
       const Hls = await import("hls.js").then(module => module.default);
-      
-      // Vérifier support natif
-      if (video.canPlayType("application/vnd.apple.mpegurl")) {
-        console.log("[trovo-player] Using native HLS support");
-        setUsingNativeHls(true);
-        video.src = url;
-        await attachVideoEvents(video);
-        return;
-      }
 
-      if (!Hls.isSupported()) {
-        throw new Error("HLS non supporté par ce navigateur");
-      }
+      const initHlsPlayer = async (url: string, video: HTMLVideoElement) => {
+        if (!url || !video) {
+          throw new Error("URL ou vidéo manquante");
+        }
 
-      // Créer instance HLS.js
-      const hls = new Hls({
-        debug: false,
-        enableWorker: true,
-        lowLatencyMode: false,
-        backBufferLength: 30,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 10,
-        maxLiveSyncPlaybackRate: 1.0,
-      });
+        // Vérifier le support natif HLS
+        const nativeSupport = !!video.canPlayType("application/vnd.apple.mpegurl");
+        const hlsSupported = Hls.isSupported();
+        
+        setHlsDebugInfo(prev => ({
+          ...prev,
+          nativeSupport,
+          hlsSupported
+        }));
 
-      hlsRef.current = hls;
+        console.log("[trovo-player] HLS debug:", {
+          url: url.substring(0, 100) + "...",
+          nativeSupport,
+          hlsSupported,
+          videoElement: !!video
+        });
 
-      // Configuration des événements
-      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-        console.log("[trovo-player] HLS media attached");
-      });
+        // Support natif HLS (Safari)
+        if (nativeSupport) {
+          console.log("[trovo-player] Using native HLS support");
+          setUsingNativeHls(true);
+          video.src = url;
+          await attachVideoEvents(video);
+          return;
+        }
 
-      hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
-        console.log("[trovo-player] HLS manifest parsed, levels available:", data.levels?.length || 0);
-        setPlayerState("loading");
-        attemptPlay(video);
-      });
+        if (!hlsSupported) {
+          throw new Error("HLS non supporté par ce navigateur");
+        }
 
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        console.error("[trovo-player] HLS error:", data);
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              setError("Erreur réseau HLS: " + data.details);
-              setPlayerState("error");
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              setError("Erreur média HLS: " + data.details);
-              setPlayerState("error");
-              break;
-            default:
-              setError("Erreur HLS: " + data.details);
-              setPlayerState("error");
-              break;
+        // Créer instance HLS.js
+        const hls = new Hls({
+          debug: true, // Activer le debug pour voir tous les événements
+          enableWorker: true,
+          lowLatencyMode: false,
+          backBufferLength: 30,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
+          liveSyncDurationCount: 3,
+          liveMaxLatencyDurationCount: 10,
+          maxLiveSyncPlaybackRate: 1.0,
+        });
+
+        hlsRef.current = hls;
+
+        // Configuration des événements HLS.js
+        hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+          console.log("[trovo-player] HLS event: MEDIA_ATTACHED");
+          setHlsDebugInfo(prev => ({ ...prev, mediaAttached: true }));
+        });
+
+        hls.on(Hls.Events.MEDIA_DETACHED, () => {
+          console.log("[trovo-player] HLS event: MEDIA_DETACHED");
+          setHlsDebugInfo(prev => ({ ...prev, mediaAttached: false }));
+        });
+
+        hls.on(Hls.Events.MANIFEST_LOADING, (_, data) => {
+          console.log("[trovo-player] HLS event: MANIFEST_LOADING", { url: data.url });
+        });
+
+        hls.on(Hls.Events.MANIFEST_LOADED, (_, data) => {
+          console.log("[trovo-player] HLS event: MANIFEST_LOADED", { 
+            levels: data.levels?.length || 0,
+            url: data.url
+          });
+        });
+
+        hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+          console.log("[trovo-player] HLS event: MANIFEST_PARSED", { 
+            levels: data.levels?.length || 0,
+            stats: data.stats
+          });
+          setHlsDebugInfo(prev => ({ ...prev, manifestLoaded: true }));
+          setPlayerState("loading");
+          attemptPlay(video);
+        });
+
+        hls.on(Hls.Events.LEVEL_LOADING, (_, data) => {
+          console.log("[trovo-player] HLS event: LEVEL_LOADING", { level: data.level });
+        });
+
+        hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+          console.log("[trovo-player] HLS event: LEVEL_LOADED", { 
+            level: data.level,
+            details: data.details
+          });
+        });
+
+        hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
+          console.log("[trovo-player] HLS event: FRAG_LOADED", { 
+            frag: data.frag.url?.substring(0, 50) + "..."
+          });
+        });
+
+        hls.on(Hls.Events.ERROR, (_, data) => {
+          console.error("[trovo-player] HLS event: ERROR", {
+            type: data.type,
+            details: data.details,
+            fatal: data.fatal,
+            error: data.error?.message
+          });
+          
+          const errorMsg = `HLS Error: ${data.type} - ${data.details}`;
+          setHlsDebugInfo(prev => ({ ...prev, lastError: errorMsg }));
+          
+          if (data.fatal) {
+            switch (data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                setError("Erreur réseau HLS: " + data.details);
+                setPlayerState("error");
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                setError("Erreur média HLS: " + data.details);
+                setPlayerState("error");
+                break;
+              default:
+                setError("Erreur HLS fatale: " + data.details);
+                setPlayerState("error");
+                break;
+            }
           }
+        });
         }
       });
 
