@@ -103,7 +103,7 @@ export async function searchSlots(pool, qRaw, limit) {
     LIMIT 80
     `, [like]);
     const qToks = tokenize(qKey);
-    const scored = r.rows
+    let scored = r.rows
         .map((row) => ({
         name: String(row.name),
         nameKey: String(row.nameKey),
@@ -113,6 +113,35 @@ export async function searchSlots(pool, qRaw, limit) {
     }))
         .sort((a, b) => b.s - a.s)
         .slice(0, limit);
+    // Fuzzy fallback via pg_trgm si rien trouvé ou score faible
+    if (!scored.length || scored[0].s < 100) {
+        try {
+            const tr = await pool.query(`
+        SELECT
+          name,
+          name_key AS "nameKey",
+          provider_norm AS "provider",
+          image_url AS "imageUrl",
+          word_similarity($1, name_key) AS sim
+        FROM slots_catalog
+        WHERE word_similarity($1, name_key) > 0.15
+        ORDER BY sim DESC
+        LIMIT $2
+        `, [qKey, limit]);
+            if (tr.rows.length) {
+                scored = tr.rows.map((row) => ({
+                    name: String(row.name),
+                    nameKey: String(row.nameKey),
+                    provider: row.provider ? String(row.provider) : null,
+                    imageUrl: row.imageUrl ? String(row.imageUrl) : null,
+                    s: Math.round(Number(row.sim) * 1000),
+                }));
+            }
+        }
+        catch {
+            // pg_trgm not available, skip
+        }
+    }
     return scored.map((x) => ({ name: x.name, provider: x.provider, imageUrl: x.imageUrl }));
 }
 export async function resolveSlot(pool, input) {
@@ -128,7 +157,13 @@ export async function resolveSlot(pool, input) {
             imageUrl: exact.rows[0].imageUrl ? String(exact.rows[0].imageUrl) : null,
         };
     }
-    const cand = await searchSlots(pool, q, 10);
+    let cand = await searchSlots(pool, q, 10);
+    // fallback: si rien trouvé, réessayer avec le token le plus long (gère les fautes/abréviations)
+    if (!cand.length) {
+        const toks = tokenize(qKey).filter(t => t.length > 2).sort((a, b) => b.length - a.length);
+        if (toks[0])
+            cand = await searchSlots(pool, toks[0], 10);
+    }
     if (!cand.length)
         return null;
     if (qKey.length < 3)

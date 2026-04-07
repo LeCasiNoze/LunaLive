@@ -5,11 +5,11 @@ import { Client, GatewayIntentBits, Partials, REST, Routes, } from "discord.js";
 import { earnRubisTx } from "../wallet_engine.js";
 import { discordDailyClaimTxClient, fmtRemaining, monthKeyParis } from "../routes/bot/games_claim.js";
 import { SLOT_BET_RUBIS, SLOT_COOLDOWN_MS, rollSlotOutcome, slotCheckAndTouchCooldownTx, buildSpinFrames, fmtRemaining as fmtRemainingSlot, } from "./games_slot.js";
-import { GUILD_ID, SLASH_COMMANDS, CID_APPLY_DECIDE_PREFIX, CID_APPLY_MODAL, CID_APPLY_OPEN, OFFICIAL_WELCOME_CHANNEL_ID, OFFICIAL_GOODBYE_CHANNEL_ID, OFFICIAL_LINK_CHANNEL_ID, OFFICIAL_GAMES_CHANNEL_ID, OFFICIAL_REACTION_ROLES_CHANNEL_ID, ROLE_RESEAUX_GLOBAL_ID, ROLE_YOUTUBE_ID, ROLE_INSTA_ID, ROLE_TIKTOK_ID, CID_RR_PREFIX, CID_SUPPORT_OPEN, CID_SUPPORT_CLOSE, CID_SUPPORT_ESCALATE, } from "./constants.js";
+import { GUILD_ID, SLASH_COMMANDS, CID_APPLY_DECIDE_PREFIX, CID_APPLY_MODAL, CID_APPLY_OPEN, OFFICIAL_WELCOME_CHANNEL_ID, OFFICIAL_GOODBYE_CHANNEL_ID, OFFICIAL_LINK_CHANNEL_ID, OFFICIAL_GAMES_CHANNEL_ID, OFFICIAL_REACTION_ROLES_CHANNEL_ID, ROLE_RESEAUX_GLOBAL_ID, ROLE_YOUTUBE_ID, ROLE_INSTA_ID, ROLE_TIKTOK_ID, CID_RR_PREFIX, CID_SUPPORT_OPEN, CID_SUPPORT_CLOSE, CID_SUPPORT_ESCALATE, CID_SUPPORT_RATE_PREFIX, } from "./constants.js";
 import { maskEmail, maskSecret, safeDm } from "./utils.js";
 import { createLinkCode, getLinkedUser } from "./link.js";
 import { ensureApplyMessage, buildApplyModal, dbUpsertStreamerRequest, createTicketChannel, buildStaffActionsRow, validateRulesInput, staffCanDecide, handleStaffDecisionButton } from "./apply.js";
-import { ensureSupportMessage, handleSupportOpen, handleSupportClose, handleSupportEscalate, handleSupportMessage, } from "./support.js";
+import { ensureSupportMessage, handleSupportOpen, handleSupportClose, handleSupportEscalate, handleSupportMessage, handleSupportRate, } from "./support.js";
 import { isRestricted, isVerified, syncUserEverywhere } from "./sync.js";
 let discordClient = null;
 const DEFAULT_WELCOME = `Bienvenue à {user} sur le serveur officiel de LunaLive\n` +
@@ -749,6 +749,11 @@ export async function startDiscordBot(ctx) {
             // ───────── Support : escalader au staff
             if (interaction.isButton() && interaction.customId === CID_SUPPORT_ESCALATE) {
                 await handleSupportEscalate(interaction, ctx);
+                return;
+            }
+            // ───────── Support : évaluation de réponse bot
+            if (interaction.isButton() && interaction.customId.startsWith(CID_SUPPORT_RATE_PREFIX)) {
+                await handleSupportRate(interaction, ctx);
                 return;
             }
             // ───────── Staff approve/reject buttons

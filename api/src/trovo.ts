@@ -68,43 +68,76 @@ const TROVO_HEADERS = {
   "Content-Type": "text/plain"
 };
 
+function generateRandomHex(): string {
+  return Math.random().toString(16).substring(2, 18);
+}
+
+function encodeClientInfo(): string {
+  const clientInfo = {
+    platform: "web",
+    browser: "chrome",
+    version: "120.0.0.0",
+    os: "windows",
+    os_version: "10.0",
+    device_type: "desktop"
+  };
+  return encodeURIComponent(JSON.stringify(clientInfo));
+}
+
 async function callTrovoGraphQL(spaceName: string): Promise<TrovoGraphQLResponse> {
-  const body = JSON.stringify([{
-    operationName: "space_SpaceReadService_GetRoomInfo",
-    variables: {
-      params: {
-        terminalSpaceID: { spaceName },
-        dataVer: "SPACE_ROOM_VER_V0",
-        dataFormat: "SPACE_ROOM_DATA_TYPE_JSON",
-        needRecVisit: true
-      }
-    },
-    extensions: { singleReq: true }
-  }]);
+  const chunk = "1";
+  const reqms = Date.now().toString();
+  const qid = generateRandomHex();
+  const cli = "4";
+  const client_info = encodeClientInfo();
+  const from = encodeURIComponent(`%2Fs%2F${spaceName}`);
+  const locale = "FR";
+  const resolution = "1050*1680";
+
+  // Construire l'URL complète avec query string
+  const url = `${TROVO_ENDPOINTS[0]}?chunk=${chunk}&reqms=${reqms}&qid=${qid}&cli=${cli}&client_info=${client_info}&from=${from}&locale=${locale}&resolution=${resolution}`;
+
+  // Body exact comme string brute
+  const body = `[{"operationName":"space_SpaceReadService_GetRoomInfo","variables":{"params":{"terminalSpaceID":{"spaceName":"${spaceName}"},"dataVer":"SPACE_ROOM_VER_V0","dataFormat":"SPACE_ROOM_DATA_TYPE_JSON","needRecVisit":true}},"extensions":{"singleReq":true}}]`;
+
+  // Logging avant l'appel
+  console.log(`[trovo] Request URL: ${url}`);
+  console.log(`[trovo] Request Headers:`, TROVO_HEADERS);
+  console.log(`[trovo] Request Body: ${body}`);
 
   let lastError: Error | null = null;
 
   for (const endpoint of TROVO_ENDPOINTS) {
     try {
-      console.log(`[trovo] Trying endpoint: ${endpoint} for spaceName: ${spaceName}`);
+      const requestUrl = `${endpoint}?chunk=${chunk}&reqms=${reqms}&qid=${qid}&cli=${cli}&client_info=${client_info}&from=${from}&locale=${locale}&resolution=${resolution}`;
       
-      const response = await fetch(endpoint, {
+      console.log(`[trovo] Trying endpoint: ${requestUrl} for spaceName: ${spaceName}`);
+      
+      const response = await fetch(requestUrl, {
         method: "POST",
         headers: TROVO_HEADERS,
         body
       });
 
+      console.log(`[trovo] Response Status: ${response.status} ${response.statusText}`);
+      console.log(`[trovo] Response Headers:`, Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
+        const responseText = await response.text();
+        console.error(`[trovo] Non-200 Response Body: ${responseText}`);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json() as TrovoGraphQLResponse;
+      const responseText = await response.text();
+      console.log(`[trovo] Raw Response: ${responseText}`);
+
+      const data = JSON.parse(responseText) as TrovoGraphQLResponse;
       
       if (data.errors && data.errors.length > 0) {
         throw new Error(`GraphQL errors: ${data.errors.map(e => e.message).join(", ")}`);
       }
 
-      console.log(`[trovo] Success from endpoint: ${endpoint}`);
+      console.log(`[trovo] Success from endpoint: ${requestUrl}`);
       return data;
     } catch (error) {
       lastError = error as Error;

@@ -1,7 +1,11 @@
 // api/src/discord/kb/index.ts
 // Export central de l'encyclopédie LunaLive
-// Agrège toutes les entrées KB des modules thématiques
+// KB_ENTRIES = anciens blocs textuels (fallback)
+// KB_BLOCKS  = nouveaux blocs structurés par intent/rôle (prioritaires)
 export { isMasterUser, MASTER_DISCORD_USER_ID } from "./_config.js";
+// ── Nouveaux blocs enrichis (prioritaires dans la recherche) ─────────────────
+export { KB_BLOCKS } from "./blocks/index.js";
+// ── Anciens blocs textuels (fallback si pas de bloc enrichi) ─────────────────
 import { RUBIS } from "./rubis.js";
 import { ABONNEMENTS } from "./abonnements.js";
 import { CALLS } from "./calls.js";

@@ -1,0 +1,425 @@
+// api/src/instagram_scheduler.ts
+//
+// Scheduler Instagram — publie automatiquement des Reels planifiés sur Instagram
+// via Meta Graph API v19.0.
+//
+// Source des jobs : table publish_jobs (partagée avec lunaclip-local)
+// Interval de polling : 60 secondes
+// Concurrence : un seul job à la fois (running guard)
+//
+// Variables d'environnement requises :
+//   INSTAGRAM_ACCESS_TOKEN  — token long-lived (60 jours)
+//   INSTAGRAM_USER_ID       — ID numérique du compte Instagram Business
+import { pool } from "./db.js";
+const LOG = "[INSTAGRAM SCHEDULER]";
+// ─────────────────────────────────────────────────────────────────────────────
+// Collaboration Instagram — tentative de collaboration avec timeout et fallback
+// ─────────────────────────────────────────────────────────────────────────────
+const COLLABORATION_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
+async function attemptCollaboration(accessToken, userId, instagramUsername, jobId) {
+    try {
+        console.log(`${LOG} [job #${jobId}] attempting collaboration with @${instagramUsername}`);
+        // Créer une collaboration via l'API Meta
+        // Note: L'API Meta Graph ne supporte pas directement les collaborations dans les Reels
+        // Cette fonction prépare le terrain pour une future implémentation
+        // Pour l'instant, nous simulons une tentative et retournons un échec pour forcer le fallback
+        // Simulation d'une tentative de collaboration
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Simuler un délai de traitement
+        // Pour l'instant, nous retournons toujours un échec car l'API Meta ne supporte pas
+        // directement les collaborations dans les Reels
+        return {
+            success: false,
+            error: "Collaboration API not yet supported for Reels"
+        };
+    }
+    catch (e) {
+        console.error(`${LOG} [job #${jobId}] collaboration attempt failed:`, e?.message ?? e);
+        return {
+            success: false,
+            error: e?.message ?? "Unknown collaboration error"
+        };
+    }
+}
+async function checkCollaborationTimeout(pool, jobId) {
+    const result = await pool.query(`
+    SELECT collaboration_started_at, collaboration_timeout_sec
+    FROM publish_jobs 
+    WHERE id = $1 AND collaboration_status = 'pending'
+  `, [jobId]);
+    if (result.rows.length === 0)
+        return false;
+    const startedAt = new Date(result.rows[0].collaboration_started_at);
+    const timeoutSec = result.rows[0].collaboration_timeout_sec || 1200;
+    const timeoutMs = timeoutSec * 1000;
+    return (Date.now() - startedAt.getTime()) > timeoutMs;
+}
+async function handleCollaborationTimeout(pool, job) {
+    console.log(`${LOG} [job #${job.id}] collaboration timeout, falling back to mention`);
+    // Marquer la collaboration comme timeout
+    await pool.query(`
+    UPDATE publish_jobs 
+    SET collaboration_status = 'timeout', 
+        collaboration_error_msg = 'Collaboration timeout after 20 minutes'
+    WHERE id = $1
+  `, [job.id]);
+    // Enregistrer dans la table des collaborations
+    await pool.query(`
+    UPDATE instagram_collaborations 
+    SET status = 'timeout', 
+        completed_at = NOW(),
+        error_msg = 'Collaboration timeout after 20 minutes'
+    WHERE publish_job_id = $1 AND status = 'pending'
+  `, [job.id]);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// Notification Discord — envoyée après publication réussie d'un Reel
+// ─────────────────────────────────────────────────────────────────────────────
+const DISCORD_CHANNEL_ID = process.env.DISCORD_INSTAGRAM_CHANNEL_ID || "1467142269122383883";
+const DISCORD_GLOBAL_ROLE = process.env.DISCORD_GLOBAL_ROLE_ID || "1468982992910155908";
+const DISCORD_INSTA_ROLE = process.env.DISCORD_INSTAGRAM_ROLE_ID || "1468983120664723507";
+async function sendReelPublishedNotification(opts) {
+    const discordClient = global.discordClient;
+    if (!discordClient) {
+        console.log(`${LOG} [job #${opts.jobId}] Discord client absent — notif skippée`);
+        return;
+    }
+    try {
+        const channel = await discordClient.channels.fetch(DISCORD_CHANNEL_ID).catch(() => null);
+        if (!channel || !channel.isTextBased?.()) {
+            console.log(`${LOG} [job #${opts.jobId}] Discord channel introuvable — notif skippée`);
+            return;
+        }
+        const webBase = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
+        const streamerUrl = `${webBase}/s/${encodeURIComponent(opts.streamerSlug)}`;
+        // Titre = première ligne de la caption, sans hashtags, max 100 chars
+        const firstLine = opts.caption.split("\n")[0]
+            .replace(/#\S+/g, "")
+            .replace(/@\S+/g, "")
+            .trim()
+            .slice(0, 100) || "Nouveau Reel LunaLive";
+        const embed = {
+            author: {
+                name: "LunaLive • Nouveau Reel Instagram",
+                icon_url: `${webBase}/favicon.ico`,
+            },
+            title: firstLine,
+            url: opts.permalink,
+            description: `📺 **Streamer** : [${opts.streamerSlug}](${streamerUrl})`,
+            color: 0xE4405F, // rose Instagram
+            timestamp: new Date().toISOString(),
+            footer: { text: "LunaLive", icon_url: `${webBase}/favicon.ico` },
+        };
+        if (opts.thumbnailUrl) {
+            embed.image = { url: opts.thumbnailUrl };
+        }
+        const payload = {
+            content: `<@&${DISCORD_GLOBAL_ROLE}> <@&${DISCORD_INSTA_ROLE}>`,
+            embeds: [embed],
+            components: [
+                {
+                    type: 1,
+                    components: [
+                        { type: 2, style: 5, label: "📸 Voir le Reel", url: opts.permalink },
+                        { type: 2, style: 5, label: "📺 Voir le streamer", url: streamerUrl },
+                    ],
+                },
+            ],
+        };
+        await channel.send(payload);
+        console.log(`${LOG} [job #${opts.jobId}] ✅ Discord notif envoyée — ${opts.permalink}`);
+    }
+    catch (e) {
+        console.error(`${LOG} [job #${opts.jobId}] ❌ Discord notif échouée: ${e?.message ?? e}`);
+    }
+}
+const POLL_INTERVAL_MS = 60_000;
+// Polling du container Meta — max 20 tentatives × 5s = 100s
+const CONTAINER_POLL_MAX = 20;
+const CONTAINER_POLL_DELAY_MS = 5_000;
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers HTTP (Meta Graph API v19.0)
+// ─────────────────────────────────────────────────────────────────────────────
+function sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+}
+async function metaPost(path, params) {
+    const res = await fetch(`https://graph.instagram.com/v19.0${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(params).toString(),
+    });
+    const data = (await res.json());
+    if (data?.error) {
+        throw new Error(`Meta API error [${data.error.code}]: ${data.error.message}`);
+    }
+    return data;
+}
+async function metaGet(path, params) {
+    const url = new URL(`https://graph.instagram.com/v19.0${path}`);
+    for (const [k, v] of Object.entries(params))
+        url.searchParams.set(k, v);
+    const res = await fetch(url.toString());
+    const data = (await res.json());
+    if (data?.error) {
+        throw new Error(`Meta API error [${data.error.code}]: ${data.error.message}`);
+    }
+    return data;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// Attente que le container Meta soit FINISHED
+// ─────────────────────────────────────────────────────────────────────────────
+async function waitForContainerFinished(creationId, accessToken, jobId) {
+    for (let attempt = 1; attempt <= CONTAINER_POLL_MAX; attempt++) {
+        await sleep(CONTAINER_POLL_DELAY_MS);
+        const data = await metaGet(`/${creationId}`, {
+            fields: "status_code",
+            access_token: accessToken,
+        });
+        const code = String(data.status_code ?? "");
+        console.log(`${LOG} [job #${jobId}] container=${creationId} status=${code} (${attempt}/${CONTAINER_POLL_MAX})`);
+        if (code === "FINISHED")
+            return;
+        if (code === "ERROR")
+            throw new Error("Container processing failed (status=ERROR)");
+        if (code === "EXPIRED")
+            throw new Error("Container expired before publishing");
+        // IN_PROGRESS → continue
+    }
+    throw new Error(`Container still IN_PROGRESS after ${(CONTAINER_POLL_MAX * CONTAINER_POLL_DELAY_MS) / 1000}s`);
+}
+async function processJob(job, accessToken, userId) {
+    console.log(`${LOG} [job #${job.id}] start — clip=${job.clip_id} scheduled_at=${job.scheduled_at.toISOString()} url=${job.output_url}`);
+    // STEP 1 — Marquer le job en cours
+    await pool.query(`UPDATE publish_jobs SET status = 'uploading', started_at = NOW() WHERE id = $1`, [job.id]);
+    // STEP 2 — Créer le container Reel
+    console.log(`${LOG} [job #${job.id}] creating container...`);
+    // Récupérer le slug du clip et l'éventuel pseudo Instagram du streamer
+    const slugForCaption = await pool.query(`SELECT ci.streamer_slug, sic.instagram_username
+     FROM clip_inbox ci
+     LEFT JOIN streamer_ig_config sic
+       ON LOWER(sic.streamer_slug) = LOWER(ci.streamer_slug) AND sic.active = true
+     WHERE ci.clip_id = $1
+     LIMIT 1`, [job.clip_id]);
+    const streamerSlugRaw = String(slugForCaption.rows[0]?.streamer_slug ?? "");
+    const instagramUsername = String(slugForCaption.rows[0]?.instagram_username ?? "").trim();
+    // Logique de collaboration Instagram
+    let caption = job.description ?? job.title ?? "";
+    let collaborationAttempted = false;
+    if (instagramUsername && streamerSlugRaw) {
+        console.log(`${LOG} [job #${job.id}] Instagram username found: @${instagramUsername}, attempting collaboration`);
+        // Marquer la tentative de collaboration
+        await pool.query(`
+      UPDATE publish_jobs 
+      SET collaboration_attempted = TRUE, 
+          collaboration_username = $2,
+          collaboration_started_at = NOW(),
+          collaboration_status = 'pending'
+      WHERE id = $1
+    `, [job.id, instagramUsername]);
+        // Enregistrer dans la table des collaborations
+        await pool.query(`
+      INSERT INTO instagram_collaborations (publish_job_id, streamer_slug, instagram_username, status)
+      VALUES ($1, $2, $3, 'pending')
+      ON CONFLICT (publish_job_id) DO UPDATE SET
+        status = 'pending',
+        started_at = NOW()
+    `, [job.id, streamerSlugRaw, instagramUsername]);
+        // Tenter la collaboration
+        const collabResult = await attemptCollaboration(accessToken, userId, instagramUsername, job.id);
+        if (collabResult.success) {
+            // Collaboration réussie
+            await pool.query(`
+        UPDATE publish_jobs 
+        SET collaboration_status = 'success',
+            collaboration_media_id = $2
+        WHERE id = $1
+      `, [job.id, collabResult.mediaId]);
+            await pool.query(`
+        UPDATE instagram_collaborations 
+        SET status = 'success', 
+            media_id = $2,
+            permalink = $3,
+            completed_at = NOW()
+        WHERE publish_job_id = $1
+      `, [job.id, collabResult.mediaId, collabResult.permalink]);
+            console.log(`${LOG} [job #${job.id}] collaboration successful with @${instagramUsername}`);
+            // Pour l'instant, on utilise quand même la mention car l'API collaboration n'est pas encore disponible
+            const slugRegex = new RegExp(streamerSlugRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+            caption = caption.replace(slugRegex, `@${instagramUsername}`);
+        }
+        else {
+            // Collaboration échouée, fallback vers mention simple
+            await pool.query(`
+        UPDATE publish_jobs 
+        SET collaboration_status = 'failed',
+            collaboration_error_msg = $2
+        WHERE id = $1
+      `, [job.id, collabResult.error]);
+            await pool.query(`
+        UPDATE instagram_collaborations 
+        SET status = 'failed', 
+            error_msg = $2,
+            completed_at = NOW()
+        WHERE publish_job_id = $1
+      `, [job.id, collabResult.error]);
+            console.log(`${LOG} [job #${job.id}] collaboration failed: ${collabResult.error}, falling back to mention`);
+            // Fallback: remplacer le slug par @username dans la description
+            const slugRegex = new RegExp(streamerSlugRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+            caption = caption.replace(slugRegex, `@${instagramUsername}`);
+        }
+        collaborationAttempted = true;
+    }
+    else {
+        console.log(`${LOG} [job #${job.id}] no Instagram username found for slug ${streamerSlugRaw}, using default caption`);
+    }
+    const containerData = await metaPost(`/${userId}/media`, {
+        video_url: job.output_url,
+        media_type: "REELS",
+        caption,
+        share_to_feed: "true",
+        access_token: accessToken,
+    });
+    const creationId = String(containerData.id);
+    console.log(`${LOG} [job #${job.id}] container created — creation_id=${creationId}`);
+    // STEP 3 — Attendre que le container soit FINISHED
+    console.log(`${LOG} [job #${job.id}] waiting for container (max ${(CONTAINER_POLL_MAX * CONTAINER_POLL_DELAY_MS) / 1000}s)...`);
+    await waitForContainerFinished(creationId, accessToken, job.id);
+    console.log(`${LOG} [job #${job.id}] container FINISHED`);
+    // STEP 4 — Publier
+    console.log(`${LOG} [job #${job.id}] publishing...`);
+    const publishData = await metaPost(`/${userId}/media_publish`, {
+        creation_id: creationId,
+        access_token: accessToken,
+    });
+    const containerId = String(publishData.id);
+    console.log(`${LOG} [job #${job.id}] published — container_id=${containerId}`);
+    // STEP 4b — Récupérer le vrai media_id du post publié
+    // publishData.id est le container_id, pas le media_id final
+    const mediaListData = await metaGet(`/${userId}/media`, {
+        fields: "id,timestamp",
+        limit: "1",
+        access_token: accessToken,
+    });
+    const mediaId = String(mediaListData?.data?.[0]?.id ?? containerId);
+    console.log(`${LOG} [job #${job.id}] real media_id=${mediaId}`);
+    // STEP 5 — Récupérer le permalink + thumbnail
+    const permalinkData = await metaGet(`/${mediaId}`, {
+        fields: "permalink,thumbnail_url",
+        access_token: accessToken,
+    });
+    const permalink = String(permalinkData.permalink ?? "");
+    const thumbnailUrl = String(permalinkData.thumbnail_url ?? "") || null;
+    console.log(`${LOG} [job #${job.id}] permalink=${permalink}`);
+    // STEP 6 — Marquer done dans la DB
+    await pool.query(`UPDATE publish_jobs
+     SET status = 'done', finished_at = NOW(), platform_url = $2, platform_id = $3
+     WHERE id = $1`, [job.id, permalink, mediaId]);
+    await pool.query(`UPDATE clip_inbox
+     SET instagram_status = 'instagram_posted', updated_at = NOW()
+     WHERE clip_id = $1`, [job.clip_id]);
+    // STEP 6b — Enregistrer le post pour monitoring des commentaires (72h)
+    const slugRow = await pool.query(`SELECT streamer_slug FROM clip_inbox WHERE clip_id = $1 LIMIT 1`, [job.clip_id]);
+    const streamerSlug = String(slugRow.rows[0]?.streamer_slug ?? "");
+    if (streamerSlug) {
+        await pool.query(`INSERT INTO ig_comment_tracking (publish_job_id, clip_id, streamer_slug, media_id, track_until)
+       VALUES ($1, $2, $3, $4, NOW() + INTERVAL '72 hours')
+       ON CONFLICT DO NOTHING`, [job.id, job.clip_id, streamerSlug, mediaId]);
+        console.log(`${LOG} [job #${job.id}] comment tracking registered — slug=${streamerSlug} media=${mediaId}`);
+    }
+    // STEP 7 — Notification Discord
+    await sendReelPublishedNotification({
+        permalink,
+        caption,
+        streamerSlug: streamerSlug || streamerSlugRaw,
+        thumbnailUrl,
+        jobId: job.id,
+    });
+    console.log(`${LOG} [job #${job.id}] done ✓ — ${permalink}`);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// Tick principal — interroge la DB et traite les jobs en attente
+// ─────────────────────────────────────────────────────────────────────────────
+async function tick(accessToken, userId) {
+    // 1. Vérifier les timeouts de collaboration en attente
+    const timeoutJobs = await pool.query(`
+    SELECT pj.id, pj.clip_id, pj.edit_job_id, pj.title, pj.description, pj.scheduled_at,
+           ej.output_url
+    FROM   publish_jobs pj
+    JOIN   edit_jobs ej ON ej.id = pj.edit_job_id
+    WHERE  pj.platform = 'instagram'
+      AND  pj.collaboration_status = 'pending'
+      AND  pj.collaboration_started_at IS NOT NULL
+      AND  pj.collaboration_started_at < NOW() - (pj.collaboration_timeout_sec || 1200) * INTERVAL '1 second'
+  `);
+    for (const job of timeoutJobs.rows) {
+        try {
+            await handleCollaborationTimeout(pool, job);
+        }
+        catch (e) {
+            console.error(`${LOG} [job #${job.id}] timeout handling failed:`, e?.message ?? e);
+        }
+    }
+    // 2. Traiter les jobs scheduled normaux
+    const { rows } = await pool.query(`
+    SELECT pj.id, pj.clip_id, pj.edit_job_id, pj.title, pj.description, pj.scheduled_at,
+           ej.output_url
+    FROM   publish_jobs pj
+    JOIN   edit_jobs ej ON ej.id = pj.edit_job_id
+    WHERE  pj.platform      = 'instagram'
+      AND  pj.status        = 'scheduled'
+      AND  pj.scheduled_at <= NOW()
+    ORDER BY pj.scheduled_at ASC
+  `);
+    if (rows.length === 0)
+        return;
+    console.log(`${LOG} tick — ${rows.length} job(s) à traiter`);
+    // Traitement séquentiel — un seul job à la fois
+    for (const job of rows) {
+        try {
+            await processJob(job, accessToken, userId);
+        }
+        catch (e) {
+            const msg = String(e?.message ?? e).slice(0, 500);
+            console.error(`${LOG} [job #${job.id}] FAILED — ${msg}`);
+            try {
+                await pool.query(`UPDATE publish_jobs
+           SET status = 'error', error_msg = $2, finished_at = NOW()
+           WHERE id = $1`, [job.id, msg]);
+            }
+            catch (dbErr) {
+                console.error(`${LOG} [job #${job.id}] could not write error to DB:`, dbErr?.message ?? dbErr);
+            }
+        }
+    }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// Point d'entrée — démarre le poller
+// ─────────────────────────────────────────────────────────────────────────────
+export function startInstagramScheduler() {
+    const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN ?? "";
+    const userId = process.env.INSTAGRAM_USER_ID ?? "";
+    if (!accessToken || !userId) {
+        console.log(`${LOG} skipped — INSTAGRAM_ACCESS_TOKEN or INSTAGRAM_USER_ID not set`);
+        return;
+    }
+    let running = false;
+    const safeTick = async () => {
+        if (running)
+            return; // Évite tout chevauchement d'exécution
+        running = true;
+        try {
+            await tick(accessToken, userId);
+        }
+        catch (e) {
+            console.error(`${LOG} tick error: ${e?.message ?? e}`);
+        }
+        finally {
+            running = false;
+        }
+    };
+    // Délai avant le premier tick — laisse le temps aux migrations de se terminer
+    setTimeout(() => safeTick().catch((e) => console.error(`${LOG} first tick failed:`, e)), 10_000);
+    const id = setInterval(() => safeTick().catch((e) => console.error(`${LOG} tick failed:`, e)), POLL_INTERVAL_MS);
+    id.unref?.(); // Ne pas bloquer l'arrêt du process
+    console.log(`${LOG} started — polling every ${POLL_INTERVAL_MS / 1000}s`);
+}

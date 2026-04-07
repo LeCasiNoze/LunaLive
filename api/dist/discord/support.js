@@ -4,9 +4,10 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder
 import { pool } from "../db.js";
 import { slugify } from "../slug.js";
 import { findBestMatch } from "./support_search.js";
+import { buildBlockResponse } from "./support_response.js";
 import { hasAnyRole } from "./sync.js";
 import { isMasterUser } from "./kb/_config.js";
-import { CID_SUPPORT_CLOSE, CID_SUPPORT_ESCALATE, CID_SUPPORT_OPEN, STAFF_DECISIONS_CHANNEL_ID, STAFF_ROLE_IDS, STAFF_TICKETS_CATEGORY_ID, SUPPORT_CHANNEL_ID, } from "./constants.js";
+import { CID_SUPPORT_CLOSE, CID_SUPPORT_ESCALATE, CID_SUPPORT_OPEN, CID_SUPPORT_RATE_PREFIX, STAFF_DECISIONS_CHANNEL_ID, STAFF_ROLE_IDS, STAFF_TICKETS_CATEGORY_ID, SUPPORT_CHANNEL_ID, } from "./constants.js";
 // ─────────────────────────────────────────────────────────────
 // Limites Discord (safe caps)
 // ─────────────────────────────────────────────────────────────
@@ -62,6 +63,24 @@ async function closeTicketDb(ticketId) {
 async function escalateTicketDb(ticketId) {
     await pool.query(`UPDATE support_tickets SET status = 'escalated' WHERE id = $1`, [ticketId]);
 }
+async function logUnanswered(opts) {
+    try {
+        await pool.query(`INSERT INTO support_unanswered
+         (question, ticket_id, discord_user_id, best_match_id, best_match_score, failure_reason, probable_subject)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
+            opts.question.slice(0, 2000),
+            opts.ticketId,
+            opts.discordUserId,
+            opts.bestMatchId ?? null,
+            opts.bestMatchScore ?? null,
+            opts.failureReason,
+            opts.probableSubject ?? null,
+        ]);
+    }
+    catch {
+        // non-bloquant
+    }
+}
 // ─────────────────────────────────────────────────────────────
 // Composants Discord réutilisables
 // ─────────────────────────────────────────────────────────────
@@ -78,6 +97,19 @@ function buildEscalateOnlyRow() {
     return new ActionRowBuilder().addComponents(new ButtonBuilder()
         .setCustomId(clamp(CID_SUPPORT_ESCALATE, LIMITS.customId))
         .setLabel(clamp("👤 Contacter le staff", LIMITS.buttonLabel))
+        .setStyle(ButtonStyle.Danger));
+}
+function buildRatingRow(ticketId, entryId) {
+    const sid = String(entryId).slice(0, 50);
+    return new ActionRowBuilder().addComponents(new ButtonBuilder()
+        .setCustomId(clamp(`${CID_SUPPORT_RATE_PREFIX}helpful:${ticketId}:${sid}`, LIMITS.customId))
+        .setLabel("👍 Utile")
+        .setStyle(ButtonStyle.Success), new ButtonBuilder()
+        .setCustomId(clamp(`${CID_SUPPORT_RATE_PREFIX}ok:${ticketId}:${sid}`, LIMITS.customId))
+        .setLabel("😐 Partiellement")
+        .setStyle(ButtonStyle.Secondary), new ButtonBuilder()
+        .setCustomId(clamp(`${CID_SUPPORT_RATE_PREFIX}bad:${ticketId}:${sid}`, LIMITS.customId))
+        .setLabel("👎 Pas utile")
         .setStyle(ButtonStyle.Danger));
 }
 // ─────────────────────────────────────────────────────────────
@@ -336,6 +368,14 @@ export async function handleSupportMessage(message, ctx) {
         // ── Recherche dans la base de connaissance ────────────────────
         const result = findBestMatch(userContent, searchCtx);
         if (!result || !result.confident) {
+            await logUnanswered({
+                question: userContent,
+                ticketId: Number(ticket.id),
+                discordUserId: String(message.author.id),
+                bestMatchId: result?.primary ? result.primary.id : undefined,
+                bestMatchScore: result?.score,
+                failureReason: !result ? "no_match" : "low_score",
+            });
             const noMatchEmbed = new EmbedBuilder()
                 .setTitle(clamp("🤔 Je n'ai pas trouvé de réponse", LIMITS.embedTitle))
                 .setDescription(clamp([
@@ -350,60 +390,89 @@ export async function handleSupportMessage(message, ctx) {
             await logMessage(Number(ticket.id), "bot", "Aucune réponse trouvée — escalade proposée.");
             return;
         }
-        const entry = result.primary;
+        const entryId = result.primary.id;
+        const sensitivity = result.primary.sensitivity;
+        const confidence = result.primary.confidence;
         // ── Cas sensible non confirmé → escalade directe ─────────────
-        // Si le sujet est à haute sensibilité ET l'info est partielle,
-        // le bot refuse de répondre seul et passe la main au staff.
-        if (entry.sensitivity === "high" && entry.confidence !== "confirmed") {
+        if (sensitivity === "high" && confidence !== "confirmed") {
+            const sensitiveDesc = result.isBlock
+                ? result.primary.summary
+                : result.primary.answer;
             const sensitiveEmbed = new EmbedBuilder()
                 .setTitle(clamp("👤 Ce sujet nécessite le staff", LIMITS.embedTitle))
                 .setDescription(clamp([
-                entry.answer,
+                sensitiveDesc,
                 "",
                 "⚠️ Ce sujet est sensible — je préfère te mettre directement en contact avec le staff pour une réponse sûre.",
             ].join("\n"), LIMITS.embedDesc))
                 .setFooter({ text: "LunaLive Support" });
             await message.reply({ embeds: [sensitiveEmbed], components: [buildEscalateOnlyRow()] });
-            await logMessage(Number(ticket.id), "bot", `Réponse sensible non confirmée — escalade: ${entry.id}`);
+            await logMessage(Number(ticket.id), "bot", `Réponse sensible non confirmée — escalade: ${entryId}`);
             return;
         }
+        // ── Boutons d'évaluation ──────────────────────────────────────
+        const ratingRow = buildRatingRow(Number(ticket.id), entryId);
         // ── Construction de la réponse ────────────────────────────────
-        const responseEmbed = new EmbedBuilder()
-            .setTitle(clamp(entry.title, LIMITS.embedTitle))
-            .setDescription(clamp(entry.answer, LIMITS.embedDesc));
-        // Prérequis — affichés si l'utilisateur n'a pas de compte lié
-        if (entry.prerequisites && entry.prerequisites.length > 0 && !hasLinkedAccount) {
-            responseEmbed.addFields({
-                name: "📋 Prérequis",
-                value: clamp("• " + entry.prerequisites.join("\n• "), 1024),
+        const responseEmbed = new EmbedBuilder();
+        if (result.isBlock) {
+            // Nouveau format enrichi — utilise le response builder
+            const block = result.primary;
+            const resp = buildBlockResponse(block, result.intent, kbRole);
+            responseEmbed
+                .setTitle(clamp(resp.title, LIMITS.embedTitle))
+                .setDescription(clamp(resp.description, LIMITS.embedDesc));
+            for (const f of resp.fields) {
+                responseEmbed.addFields({ name: f.name, value: clamp(f.value, 1024) });
+            }
+            if (result.secondary) {
+                responseEmbed.addFields({
+                    name: "💡 Voir aussi",
+                    value: clamp(`**${result.secondary.title}** — dis-moi si c'est plutôt ça ta question.`, 1024),
+                });
+            }
+            responseEmbed.setFooter({
+                text: clamp(resp.footerHint ?? "LunaLive Support — cette réponse t'a aidé ?", 2048),
             });
         }
-        // Entrée secondaire — si une autre catégorie semble aussi pertinente
-        if (result.secondary) {
-            responseEmbed.addFields({
-                name: "💡 Voir aussi",
-                value: clamp(`**${result.secondary.title}** — dis-moi si c'est plutôt ça ta question.`, 1024),
-            });
+        else {
+            // Format legacy KbEntry
+            const entry = result.primary;
+            responseEmbed
+                .setTitle(clamp(entry.title, LIMITS.embedTitle))
+                .setDescription(clamp(entry.answer, LIMITS.embedDesc));
+            // Prérequis — affichés si l'utilisateur n'a pas de compte lié
+            if (entry.prerequisites && entry.prerequisites.length > 0 && !hasLinkedAccount) {
+                responseEmbed.addFields({
+                    name: "📋 Prérequis",
+                    value: clamp("• " + entry.prerequisites.join("\n• "), 1024),
+                });
+            }
+            if (result.secondary) {
+                responseEmbed.addFields({
+                    name: "💡 Voir aussi",
+                    value: clamp(`**${result.secondary.title}** — dis-moi si c'est plutôt ça ta question.`, 1024),
+                });
+            }
+            if (entry.links && entry.links.length > 0) {
+                responseEmbed.addFields({
+                    name: "🔗 Liens utiles",
+                    value: clamp(entry.links.map((l) => `[${l.label}](${l.url})`).join(" · "), 1024),
+                });
+            }
+            let footerText = "LunaLive Support — cette réponse t'a aidé ?";
+            if (entry.escalate) {
+                footerText = "⚠️ Ce sujet peut nécessiter l'intervention du staff — utilise le bouton ci-dessous si besoin";
+            }
+            else if (entry.confidence === "partial") {
+                footerText = "ℹ️ Information basée sur notre compréhension — le staff peut confirmer si besoin";
+            }
+            responseEmbed.setFooter({ text: footerText });
         }
-        // Liens utiles
-        if (entry.links && entry.links.length > 0) {
-            const linksText = entry.links.map((l) => `[${l.label}](${l.url})`).join(" · ");
-            responseEmbed.addFields({ name: "🔗 Liens utiles", value: clamp(linksText, 1024) });
-        }
-        // Footer selon les flags de l'entrée
-        let footerText = "LunaLive Support — cette réponse t'a aidé ?";
-        if (entry.escalate) {
-            footerText = "⚠️ Ce sujet peut nécessiter l'intervention du staff — utilise le bouton ci-dessous si besoin";
-        }
-        else if (entry.confidence === "partial") {
-            footerText = "ℹ️ Information basée sur notre compréhension — le staff peut confirmer si besoin";
-        }
-        responseEmbed.setFooter({ text: footerText });
         await message.reply({
             embeds: [responseEmbed],
-            components: [buildSupportActionRow()],
+            components: [ratingRow, buildSupportActionRow()],
         });
-        await logMessage(Number(ticket.id), "bot", `Réponse: ${entry.id} (score=${result.score.toFixed(2)}, role=${kbRole ?? "unknown"}, master=${masterOverride})`);
+        await logMessage(Number(ticket.id), "bot", `Réponse: ${entryId} (score=${result.score.toFixed(2)}, intent=${result.intent}, block=${result.isBlock}, role=${kbRole ?? "unknown"}, master=${masterOverride})`);
     }
     catch (e) {
         ctx.log(`[support] handleSupportMessage failed: ${e?.message || e}`);
@@ -495,6 +564,44 @@ export async function handleSupportEscalate(interaction, ctx) {
         .setFooter({ text: "LunaLive Support" });
     await interaction.reply({ embeds: [escalateEmbed] });
     ctx.log(`[support] ticket #${ticket.id} escalated by ${interaction.user.id}`);
+}
+// ─────────────────────────────────────────────────────────────
+// Handler : boutons d'évaluation de réponse bot
+// Custom ID format : support:rate:{rating}:{ticketId}:{entryId}
+// ─────────────────────────────────────────────────────────────
+export async function handleSupportRate(interaction, ctx) {
+    // Extraire les composants du custom ID
+    // Format : support:rate:helpful:123:rubis_gagner
+    const parts = String(interaction.customId).split(":");
+    // parts[0]="support" [1]="rate" [2]=rating [3]=ticketId [4..]=entryId
+    const ratingRaw = parts[2];
+    const ticketId = parts[3];
+    const entryId = parts.slice(4).join(":");
+    const ratingMap = {
+        helpful: "helpful",
+        ok: "ok",
+        bad: "not_helpful",
+    };
+    const rating = ratingMap[ratingRaw];
+    if (!rating || !ticketId || !entryId) {
+        await interaction.reply({ ephemeral: true, content: "Interaction invalide." });
+        return;
+    }
+    try {
+        await pool.query(`INSERT INTO support_ratings (ticket_id, message_id, kb_entry_id, rating, discord_user_id)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (ticket_id, message_id) DO UPDATE SET rating = EXCLUDED.rating`, [ticketId, String(interaction.message?.id ?? ""), entryId, rating, String(interaction.user.id)]);
+    }
+    catch {
+        // non-bloquant
+    }
+    const labels = {
+        helpful: "👍 Merci pour ton retour !",
+        ok: "😐 Noté, on va améliorer ça.",
+        not_helpful: "👎 Merci — le staff pourra t'aider via le bouton ci-dessous.",
+    };
+    await interaction.reply({ ephemeral: true, content: labels[rating] ?? "Merci !" });
+    ctx.log(`[support] rating ticket=${ticketId} entry=${entryId} rating=${rating} user=${interaction.user.id}`);
 }
 // ─────────────────────────────────────────────────────────────
 // Vérifie si le bot staff peut décider (réutilise le même check que apply)

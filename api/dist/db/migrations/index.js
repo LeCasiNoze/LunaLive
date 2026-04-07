@@ -54,6 +54,15 @@ import { mig049_clips_thumbnail_url } from "./mig049_clips_thumbnail_url.js";
 import { mig051_support_tickets } from "./mig051_support_tickets.js";
 import { mig052_youtube_notifications } from "./mig052_youtube_notifications.js";
 import { mig053_instagram_notifications } from "./mig053_instagram_notifications.js";
+import { mig054_support_intelligence } from "./mig054_support_intelligence.js";
+import { mig055_publish_jobs } from "./mig055_publish_jobs.js";
+import { mig056_ig_comment_tracking } from "./mig056_ig_comment_tracking.js";
+import { mig057_ig_comment_replies } from "./mig057_ig_comment_replies.js";
+import { mig058_streamer_ig_offer_detail } from "./mig058_streamer_ig_offer_detail.js";
+import { mig059_ig_dm_replies } from "./mig059_ig_dm_replies.js";
+import { mig060_ig_config_constraints } from "./mig060_ig_config_constraints.js";
+import { mig061_ig_config_instagram_username } from "./mig061_ig_config_instagram_username.js";
+import { mig062_instagram_collaboration } from "./mig062_instagram_collaboration.js";
 export async function migrateAll(pool) {
     await mig001_core(pool);
     await mig002_chat_tables(pool);
@@ -111,4 +120,13 @@ export async function migrateAll(pool) {
     await mig051_support_tickets(pool);
     await mig052_youtube_notifications(pool);
     await mig053_instagram_notifications(pool);
+    await mig054_support_intelligence(pool);
+    await mig055_publish_jobs(pool);
+    await mig056_ig_comment_tracking(pool);
+    await mig057_ig_comment_replies(pool);
+    await mig058_streamer_ig_offer_detail(pool);
+    await mig059_ig_dm_replies(pool);
+    await mig060_ig_config_constraints(pool);
+    await mig061_ig_config_instagram_username(pool);
+    await mig062_instagram_collaboration(pool);
 }

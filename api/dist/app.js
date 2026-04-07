@@ -62,6 +62,7 @@ import { callsRouter } from "./routes/calls.js";
 import { callsPcallRouter } from "./routes/calls_pcall.js";
 import { callsHuntRouter } from "./routes/calls_hunt.js";
 import { hunt2Router } from "./routes/hunt2.js";
+import { publicSlotsRouter } from "./routes/public-slots.js";
 // Billing / uploads / emotes / reports / admin content
 import { billingRouter } from "./routes/billing.js";
 import { uploadsRouter } from "./routes/uploads.js";
@@ -88,14 +89,22 @@ import { adminReferralsRouter } from "./routes/admin_referrals.js";
 import { eventsRouter } from "./routes/events.js";
 import { eventsViewerWeekRouter } from "./routes/events_viewer_week.js";
 import { adminEventsRouter } from "./routes/admin_events.js";
-// ✅ LunaClip — routes dans l'api, scheduler dans le bot
 import { lunaclipRouter } from "./lunaclip/routes.js";
+// Debug routes
+import { trovoDebugRouter } from "./routes/trovo_debug.js";
+// Instagram comments monitoring
+import { igCommentsRouter } from "./routes/ig_comments.js";
+import { offresStreamersRouter } from "./routes/offres_streamers.js";
+import { igWebhookRouter } from "./ig_dm_scheduler.js";
+import { igConfigRouter } from "./routes/ig_config.js";
+import { igCollaborationsRouter } from "./routes/ig_collaborations.js";
 export function createApp() {
     const app = express();
     app.set("trust proxy", 1);
     app.use(cors());
     app.get("/healthz", (_req, res) => res.status(200).send("ok"));
     app.use(express.json({ limit: "3mb" }));
+    app.use("/api/public/slots", publicSlotsRouter);
     app.use("/billing", billingRouter);
     app.use(streamerUploadsRouter);
     app.use(avatarRouter);
@@ -133,6 +142,12 @@ export function createApp() {
     app.use("/api", dliveRepostRouter);
     app.use("/api", eventsRouter);
     app.use("/api", eventsViewerWeekRouter);
+    app.use("/api", igCommentsRouter);
+    app.use("/api", offresStreamersRouter);
+    app.use("/api", igConfigRouter);
+    app.use("/api", igCollaborationsRouter);
+    app.use(igWebhookRouter);
+    app.use("/api/debug", trovoDebugRouter);
     app.use(streamerVodsRouter);
     registerChatRoutes(app);
     registerStatsRoutes(app);
@@ -184,6 +199,7 @@ export function createApp() {
     app.use(meProfileRouter);
     app.use("/overlay/api", overlayApiRouter);
     app.use("/slots", slotsRouter);
+    app.use("/api/public/slots", publicSlotsRouter);
     app.use("/calls", callsHuntRouter);
     app.use("/calls", callsRouter);
     app.use("/calls", callsPcallRouter);

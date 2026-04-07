@@ -1,3 +1,3 @@
 // api/src/discord/kb/types.ts
-// Types étendus pour l'encyclopédie interne LunaLive
+// Types de l'encyclopédie LunaLive — v2 avec blocs structurés
 export {};
