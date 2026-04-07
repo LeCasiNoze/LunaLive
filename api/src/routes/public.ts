@@ -157,10 +157,23 @@ WITH base AS (
     s.is_live AS "isLive",
     s.featured,
     s.user_id AS "ownerUserId",
-    -- ✅ Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
+    -- Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
     ('/avatars/u/' || s.user_id::text) AS "avatarUrl"
   FROM streamers s
   WHERE (s.suspended_until IS NULL OR s.suspended_until < NOW())
+),
+rumble_lives AS (
+  SELECT 
+    s.id AS streamer_id,
+    r.is_live,
+    r.title AS rumble_title,
+    r.viewers_count AS rumble_viewers
+  FROM streamers s
+  LEFT JOIN rumble_accounts ra ON s.id = ra.assigned_to_streamer_id
+  LEFT JOIN streamer_rumble_info r ON s.id = r.streamer_id
+  WHERE ra.username IS NOT NULL
+    AND r.is_live = true
+    AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
 ),
 open_ls AS (
   SELECT streamer_id, id AS live_session_id
@@ -182,13 +195,14 @@ SELECT
   b.id::text AS id,
   b.slug,
   b."displayName",
-  b.title,
-  COALESCE(v.viewers, 0)::int AS viewers,
-  b."isLive",
+  COALESCE(rl.rumble_title, b.title) AS title,
+  COALESCE(rl.rumble_viewers, v.viewers, 0)::int AS viewers,
+  COALESCE(b."isLive", rl.is_live) AS "isLive",
   b.featured,
   b."ownerUserId",
   b."avatarUrl"
 FROM base b
+LEFT JOIN rumble_lives rl ON b.id = rl.streamer_id
 LEFT JOIN live_viewers v ON v.streamer_id = b.id
 ORDER BY LOWER(b."displayName") ASC
       `,
