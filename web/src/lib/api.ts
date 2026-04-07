@@ -107,6 +107,7 @@ export type ApiStreamConnection = {
   channelSlug: string;
   rtmpUrl: string;
   streamKey: string;
+  enabled?: boolean;
 };
 
 export type CosmeticItem = {

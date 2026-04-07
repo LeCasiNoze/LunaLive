@@ -36,12 +36,23 @@ export type StreamerNormalized = {
 
 // Fonction utilitaire pour déterminer automatiquement la plateforme
 function getPlatform(streamer: any): "dlive" | "rumble" | null {
-  // Si le champ platform est explicitement défini, l'utiliser
+  // Si le champ platform est explicitement défini, l'utiliser (pour compatibilité)
   if (streamer?.platform) {
     return streamer.platform === "rumble" ? "rumble" : "dlive";
   }
   
-  // Logique de déduction automatique
+  // NOUVELLE LOGIQUE : Priorité DLive enabled > Rumble disponible > Inactif
+  // Si le streamer a une connexion DLive active et enabled, utiliser DLive
+  if (streamer?.dliveConnection?.enabled && streamer?.dliveConnection?.channelSlug) {
+    return "dlive";
+  }
+  
+  // Si le streamer a une connexion Rumble disponible, utiliser Rumble
+  if (streamer?.rumbleConnection?.username || streamer?.rumbleEmbedUrl || streamer?.rumble_embed_url) {
+    return "rumble";
+  }
+  
+  // Ancienne logique de compatibilité (si pas de nouvelles structures)
   // Si le streamer a une chaîne DLive liée (channelSlug), utiliser DLive
   if (streamer?.channelSlug || streamer?.channel_slug) {
     return "dlive";

@@ -241,7 +241,8 @@ streamerRouter.get(
       `SELECT pa.provider,
               pa.channel_slug AS "channelSlug",
               pa.rtmp_url AS "rtmpUrl",
-              pa.stream_key AS "streamKey"
+              pa.stream_key AS "streamKey",
+              pa.enabled
        FROM provider_accounts pa
        JOIN streamers s ON s.id = pa.assigned_to_streamer_id
        WHERE s.user_id = $1

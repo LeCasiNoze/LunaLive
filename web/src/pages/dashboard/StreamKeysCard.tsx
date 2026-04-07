@@ -50,6 +50,25 @@ export function StreamKeysCard({
             <input value={connection.provider === "dlive" ? "DLive" : "Rumble"} readOnly />
           </div>
 
+          {connection.provider === "dlive" && (
+            <div className="field">
+              <label>Activer DLive</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={connection.enabled !== false}
+                  onChange={(e) => {
+                    // TODO: Implémenter l'API pour activer/désactiver
+                    console.log("Toggle DLive enabled:", e.target.checked);
+                  }}
+                />
+                <span className="muted">
+                  {connection.enabled !== false ? "DLive activé" : "DLive désactivé (utilisera Rumble)"}
+                </span>
+              </div>
+            </div>
+          )}
+
           <div className="field">
             <label>RTMP URL</label>
             <input value={connection.rtmpUrl} readOnly />
