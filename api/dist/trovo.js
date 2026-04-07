@@ -60,12 +60,48 @@ async function callTrovoGraphQL(spaceName) {
             }
             const responseText = await response.text();
             console.log(`[trovo] Raw Response: ${responseText}`);
-            const data = JSON.parse(responseText);
-            if (data.errors && data.errors.length > 0) {
-                throw new Error(`GraphQL errors: ${data.errors.map(e => e.message).join(", ")}`);
+            // Parser la réponse - peut être un objet ou un tableau
+            let parsedResponse;
+            try {
+                const parsed = JSON.parse(responseText);
+                if (Array.isArray(parsed)) {
+                    // Forme tableau: response[0].data.space_SpaceReadService_GetRoomInfo
+                    const hasArrayResponse = true;
+                    const room = parsed[0]?.data?.space_SpaceReadService_GetRoomInfo;
+                    const hasRoomInfo = !!room;
+                    const hasJsData = !!room?.jsData;
+                    console.log(`[trovo] Parsing: hasArrayResponse=${hasArrayResponse}, hasRoomInfo=${hasRoomInfo}, hasJsData=${hasJsData}`);
+                    if (hasRoomInfo && hasJsData) {
+                        parsedResponse = {
+                            data: {
+                                space_SpaceReadService_GetRoomInfo: {
+                                    jsData: room.jsData
+                                }
+                            }
+                        };
+                    }
+                    else {
+                        throw new Error(`Array response missing data: hasRoomInfo=${hasRoomInfo}, hasJsData=${hasJsData}`);
+                    }
+                }
+                else {
+                    // Forme objet: response.data.space_SpaceReadService_GetRoomInfo
+                    const hasArrayResponse = false;
+                    const room = parsed.data?.space_SpaceReadService_GetRoomInfo;
+                    const hasRoomInfo = !!room;
+                    const hasJsData = !!room?.jsData;
+                    console.log(`[trovo] Parsing: hasArrayResponse=${hasArrayResponse}, hasRoomInfo=${hasRoomInfo}, hasJsData=${hasJsData}`);
+                    parsedResponse = parsed;
+                }
+            }
+            catch (parseError) {
+                throw new Error(`Failed to parse response JSON: ${parseError.message}`);
+            }
+            if (parsedResponse.errors && parsedResponse.errors.length > 0) {
+                throw new Error(`GraphQL errors: ${parsedResponse.errors.map(e => e.message).join(", ")}`);
             }
             console.log(`[trovo] Success from endpoint: ${requestUrl}`);
-            return data;
+            return parsedResponse;
         }
         catch (error) {
             lastError = error;
@@ -108,6 +144,7 @@ export async function fetchTrovoRoomInfo(spaceName) {
     try {
         const response = await callTrovoGraphQL(spaceName.trim());
         if (!response.data?.space_SpaceReadService_GetRoomInfo?.jsData) {
+            notes.push(`No jsData found in Trovo response`);
             return {
                 ok: false,
                 spaceName: spaceName.trim(),
@@ -124,12 +161,20 @@ export async function fetchTrovoRoomInfo(spaceName) {
                 bestPlayUrl: null,
                 bestTimeShiftUrl: null,
                 rawAvailable: false,
-                notes: ["No jsData found in Trovo response"]
+                notes
             };
         }
-        const jsData = parseTrovoJsData(response.data.space_SpaceReadService_GetRoomInfo.jsData);
+        const jsDataRaw = response.data.space_SpaceReadService_GetRoomInfo.jsData;
+        console.log(`[trovo] jsDataRaw length: ${jsDataRaw.length}, preview: ${jsDataRaw.substring(0, 200)}...`);
+        const jsData = parseTrovoJsData(jsDataRaw);
         const streamInfo = jsData.programInfo?.streamInfo || [];
-        notes.push(`Found ${streamInfo.length} stream qualities`);
+        const streamInfoCount = streamInfo.length;
+        console.log(`[trovo] streamInfoCount: ${streamInfoCount}`);
+        console.log(`[trovo] isLive: ${!!jsData.isLive}`);
+        console.log(`[trovo] programInfo.title: ${jsData.programInfo?.title || 'null'}`);
+        console.log(`[trovo] channelId: ${jsData.channelId || 'null'}`);
+        console.log(`[trovo] roomId: ${jsData.roomId || 'null'}`);
+        notes.push(`Found ${streamInfoCount} stream qualities`);
         notes.push(`isLive: ${!!jsData.isLive}`);
         const qualities = streamInfo.map((stream, index) => ({
             desc: stream.desc || `Quality ${index + 1}`,
@@ -147,6 +192,8 @@ export async function fetchTrovoRoomInfo(spaceName) {
             const selectedQuality = defaultQuality || qualities[0];
             bestPlayUrl = selectedQuality.playUrl;
             bestTimeShiftUrl = selectedQuality.playTimeShiftUrl;
+            console.log(`[trovo] selectedBestPlayUrl: ${bestPlayUrl?.substring(0, 100) || 'null'}...`);
+            console.log(`[trovo] selectedBestTimeShiftUrl: ${bestTimeShiftUrl?.substring(0, 100) || 'null'}...`);
             notes.push(`Selected quality: ${selectedQuality.desc}`);
             if (defaultQuality) {
                 notes.push(`Used defaultLevelType: ${jsData.programInfo?.defaultLevelType}`);
