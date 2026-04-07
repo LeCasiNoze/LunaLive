@@ -29,7 +29,7 @@ async function resolveRumblePlaybackFromStaticPage(staticLiveUrl: string): Promi
     // 1. Fetch la page statique du streamer
     const response = await fetch(staticLiveUrl, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36)",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Encoding": "gzip, deflate, br",
@@ -38,13 +38,23 @@ async function resolveRumblePlaybackFromStaticPage(staticLiveUrl: string): Promi
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "none",
-        "Cache-Control": "max-age=0"
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Referer": "https://rumble.com/"
       }
     });
     
     if (!response.ok) {
+      console.error(`[rumble] Static page fetch failed: HTTP ${response.status}`);
+      console.error(`[rumble] Response headers:`, Object.fromEntries(response.headers.entries()));
+      console.error(`[rumble] CF-Ray: ${response.headers.get('cf-ray') || 'none'}`);
       throw new Error(`HTTP ${response.status}`);
     }
+    
+    console.log(`[rumble] Static page fetch success: HTTP ${response.status}`);
+    console.log(`[rumble] Response headers:`, Object.fromEntries(response.headers.entries()));
+    console.log(`[rumble] CF-Ray: ${response.headers.get('cf-ray') || 'none'}`);
+    console.log(`[rumble] Content-Type: ${response.headers.get('content-type') || 'none'}`);
     
     const html = await response.text();
     console.log(`[rumble] Static page fetched (${html.length} chars)`);
