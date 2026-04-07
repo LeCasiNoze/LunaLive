@@ -6,31 +6,37 @@
 import * as React from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { watchHeartbeat, me, getLives, updateMyStreamerTitle, updateStreamerTitleBySlug } from "../../lib/api";
-import { DlivePlayer }   from "../../components/DlivePlayer";
+import {
+  watchHeartbeat,
+  me,
+  getLives,
+  updateMyStreamerTitle,
+  updateStreamerTitleBySlug,
+} from "../../lib/api";
+import { DlivePlayer } from "../../components/DlivePlayer";
 import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
 import RumbleStaticPlayer from "../../components/RumbleStaticPlayer";
 import RumbleEmbedPlayer from "../../components/RumbleEmbedPlayer";
-import { ChatPanel }     from "../../components/ChatPanel";
-import { LoginModal }    from "../../components/LoginModal";
-import { SubModal }      from "../../components/SubModal";
-import { useAuth }       from "../../auth/AuthProvider";
+import { ChatPanel } from "../../components/ChatPanel";
+import { LoginModal } from "../../components/LoginModal";
+import { SubModal } from "../../components/SubModal";
+import { useAuth } from "../../auth/AuthProvider";
 import { svgThumb } from "../../lib/thumb";
-import { setSeo, setDynamicRouteSeo }        from "../../lib/seo";
+import { setSeo, setDynamicRouteSeo } from "../../lib/seo";
 
 import { EyeIcon, ChatIcon, BellIcon } from "./components/icons";
 import { LiveDurationText, getAnonId } from "./utils";
-import { useResponsive }   from "./hooks/useResponsive";
-import { useCinema }       from "./hooks/useCinema";
+import { useResponsive } from "./hooks/useResponsive";
+import { useCinema } from "./hooks/useCinema";
 import { useStreamerData } from "./hooks/useStreamerData";
-import { useChest }        from "./hooks/useChest";
-import { ChestToast }      from "./components/ChestToast";
-import { ChestModal }      from "./components/ChestModal";
+import { useChest } from "./hooks/useChest";
+import { ChestToast } from "./components/ChestToast";
+import { ChestModal } from "./components/ChestModal";
 
-import { AboutTab }  from "./tabs/AboutTab";
-import { VodTab }    from "./tabs/VodTab";
+import { AboutTab } from "./tabs/AboutTab";
+import { VodTab } from "./tabs/VodTab";
 import { AgendaTab } from "./tabs/AgendaTab";
-import { ClipsTab }  from "./tabs/ClipsTab";
+import { ClipsTab } from "./tabs/ClipsTab";
 
 import StreamerPageMobile from "./StreamerPage.mobile";
 
@@ -55,7 +61,7 @@ function pickStreamerAvatarUrlFromStreamer(streamer: any) {
   return svgThumb(streamer?.displayName || "Streamer");
 }
 
-type TabKey    = "about" | "clips" | "vod" | "agenda";
+type TabKey = "about" | "clips" | "vod" | "agenda";
 type GiftStatus = { remaining: number; canClaim: boolean; myClaimed: boolean };
 
 function fmt(n: any) {
@@ -286,7 +292,6 @@ export default function StreamerPage() {
   React.useEffect(() => {
     const s = String(slug || "").trim();
     if (!s) return;
-    // Use dynamic SEO for fallback when data is not loaded yet
     setDynamicRouteSeo(`/s/${s}`);
   }, [slug]);
 
@@ -298,42 +303,42 @@ export default function StreamerPage() {
 ════════════════════════════════════════════════════════════════ */
 function StreamerPageDesktop() {
   const { slug } = useParams();
-  const auth      = useAuth() as any;
-  const token     = auth?.token ?? null;
-  const myRole    = String(auth?.user?.role ?? "guest");
-  const myUserId  = auth?.user?.id != null ? Number(auth.user.id) : null;
+  const auth = useAuth() as any;
+  const token = auth?.token ?? null;
+  const myRole = String(auth?.user?.role ?? "guest");
+  const myUserId = auth?.user?.id != null ? Number(auth.user.id) : null;
 
-  const navigate  = useNavigate();
-  const location  = useLocation();
-  const hostedBy  = React.useMemo(() => new URLSearchParams(location.search).get("hostedBy"), [location.search]);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const hostedBy = React.useMemo(() => new URLSearchParams(location.search).get("hostedBy"), [location.search]);
 
   /* ── state (identique à l'original) ────────────────────────── */
-  const [loginOpen,      setLoginOpen]      = React.useState(false);
-  const [tab,            setTab]            = React.useState<TabKey>("about");
+  const [loginOpen, setLoginOpen] = React.useState(false);
+  const [tab, setTab] = React.useState<TabKey>("about");
   const [liveViewersNow, setLiveViewersNow] = React.useState<number | null>(null);
 
-  const [subOpen,    setSubOpen]    = React.useState(false);
+  const [subOpen, setSubOpen] = React.useState(false);
   const [subLoading, setSubLoading] = React.useState(false);
-  const [subError,   setSubError]   = React.useState<string | null>(null);
+  const [subError, setSubError] = React.useState<string | null>(null);
 
-  const [giftLoading,  setGiftLoading]  = React.useState(false);
-  const [giftError,    setGiftError]    = React.useState<string | null>(null);
-  const [giftStatus,   setGiftStatus]   = React.useState<GiftStatus | null>(null);
+  const [giftLoading, setGiftLoading] = React.useState(false);
+  const [giftError, setGiftError] = React.useState<string | null>(null);
+  const [giftStatus, setGiftStatus] = React.useState<GiftStatus | null>(null);
   const [claimLoading, setClaimLoading] = React.useState(false);
-  const [claimError,   setClaimError]   = React.useState<string | null>(null);
+  const [claimError, setClaimError] = React.useState<string | null>(null);
 
-  const [hostOpen,     setHostOpen]     = React.useState(false);
-  const [hostBusy,     setHostBusy]     = React.useState(false);
-  const [hostError,    setHostError]    = React.useState<string | null>(null);
-  const [hostQuery,    setHostQuery]    = React.useState("");
-  const [hostLives,    setHostLives]    = React.useState<any[]>([]);
+  const [hostOpen, setHostOpen] = React.useState(false);
+  const [hostBusy, setHostBusy] = React.useState(false);
+  const [hostError, setHostError] = React.useState<string | null>(null);
+  const [hostQuery, setHostQuery] = React.useState("");
+  const [hostLives, setHostLives] = React.useState<any[]>([]);
   const [hostOverride, setHostOverride] = React.useState<{ slug: string | null; displayName: string | null } | null>(null);
 
-  const [actionsOpen,    setActionsOpen]    = React.useState(false);
-  const [editTitleOpen,  setEditTitleOpen]  = React.useState(false);
+  const [actionsOpen, setActionsOpen] = React.useState(false);
+  const [editTitleOpen, setEditTitleOpen] = React.useState(false);
   const [editTitleDraft, setEditTitleDraft] = React.useState("");
-  const [editTitleBusy,  setEditTitleBusy]  = React.useState(false);
-  const [editTitleErr,   setEditTitleErr]   = React.useState<string | null>(null);
+  const [editTitleBusy, setEditTitleBusy] = React.useState(false);
+  const [editTitleErr, setEditTitleErr] = React.useState<string | null>(null);
   const [, bump] = React.useState(0);
 
   /* ── hooks (identiques) ─────────────────────────────────────── */
@@ -341,33 +346,43 @@ function StreamerPageDesktop() {
   const { cinema, chatOpen, enterCinema, leaveCinema, openCinemaChat, closeCinemaChat } = useCinema(isMobile);
 
   const {
-    loading, streamer,
-    followsCount, setFollowsCount,
-    isFollowing, notifyEnabled,
-    followLoading, toggleFollow, toggleNotify,
+    loading,
+    streamer,
+    followsCount,
+    setFollowsCount,
+    isFollowing,
+    notifyEnabled,
+    followLoading,
+    toggleFollow,
+    toggleNotify,
   } = useStreamerData(slug ?? null, token, () => setLoginOpen(true));
 
   const handleFollowsCount = React.useCallback((n: number) => setFollowsCount(n), [setFollowsCount]);
 
-  const isOwner    = !!(myUserId != null && streamer?.ownerUserId != null && Number(streamer.ownerUserId) === Number(myUserId));
-  const isAdmin    = myRole === "admin";
-  const isModLike  = ["mod","moderator","streamer_mod","streamer_moderator"].includes(myRole);
-  const canEditTabs  = isOwner || isAdmin;
+  const isOwner = !!(myUserId != null && streamer?.ownerUserId != null && Number(streamer.ownerUserId) === Number(myUserId));
+  const isAdmin = myRole === "admin";
+  const isModLike = ["mod", "moderator", "streamer_mod", "streamer_moderator"].includes(myRole);
+  const canEditTabs = isOwner || isAdmin;
   const canEditTitle = isOwner || isAdmin || isModLike;
 
-  const hostTargetSlug        = hostOverride?.slug        ?? (streamer as any)?.hostTargetSlug        ?? null;
+  const hostTargetSlug = hostOverride?.slug ?? (streamer as any)?.hostTargetSlug ?? null;
   const hostTargetDisplayName = hostOverride?.displayName ?? (streamer as any)?.hostTargetDisplayName ?? null;
-  const hostTargetIsLive      = !!((streamer as any)?.hostTargetIsLive);
+  const hostTargetIsLive = !!((streamer as any)?.hostTargetIsLive);
 
-  React.useEffect(() => { setHostOverride(null); }, [slug]);
+  React.useEffect(() => {
+    setHostOverride(null);
+  }, [slug]);
 
   React.useEffect(() => {
     if (!slug || !streamer || isOwner || hostedBy || !hostTargetSlug || !hostTargetIsLive) return;
     if (String(hostTargetSlug).toLowerCase() === String(slug).toLowerCase()) return;
-    const t = window.setTimeout(() => navigate(
-      `/s/${encodeURIComponent(String(hostTargetSlug))}?hostedBy=${encodeURIComponent(String(slug))}`,
-      { replace: true }
-    ), 900);
+    const t = window.setTimeout(
+      () =>
+        navigate(`/s/${encodeURIComponent(String(hostTargetSlug))}?hostedBy=${encodeURIComponent(String(slug))}`, {
+          replace: true,
+        }),
+      900
+    );
     return () => window.clearTimeout(t);
   }, [slug, streamer, isOwner, hostTargetSlug, hostTargetIsLive, hostedBy, navigate]);
 
@@ -377,7 +392,7 @@ function StreamerPageDesktop() {
     try {
       const r: any = await me(token);
       if (r?.ok && r?.user) {
-        if   (typeof auth?.setUser  === "function") auth.setUser(r.user);
+        if (typeof auth?.setUser === "function") auth.setUser(r.user);
         else if (typeof auth?.setAuth === "function") auth.setAuth((p: any) => ({ ...(p || {}), user: r.user }));
       }
     } catch {}
@@ -386,34 +401,40 @@ function StreamerPageDesktop() {
   async function fetchGiftStatus() {
     if (!slug) return;
     try {
-      const r = await fetch(
-        `${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/status`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : undefined }
-      ).then(x => x.json());
+      const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/status`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      }).then((x) => x.json());
       if (r?.ok) setGiftStatus({ remaining: Number(r.remaining || 0), canClaim: !!r.canClaim, myClaimed: !!r.myClaimed });
     } catch {}
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  React.useEffect(() => { fetchGiftStatus(); }, [slug, token]);
+  React.useEffect(() => {
+    fetchGiftStatus();
+  }, [slug, token]);
 
   const chest = useChest({
-    slug: slug ?? null, token, apiBase: apiBase(),
-    isOwner, isLive: !!streamer?.isLive,
+    slug: slug ?? null,
+    token,
+    apiBase: apiBase(),
+    isOwner,
+    isLive: !!streamer?.isLive,
     onRequireLogin: () => setLoginOpen(true),
-    onAfterDeposit: async () => { await refreshMeIfPossible(); },
+    onAfterDeposit: async () => {
+      await refreshMeIfPossible();
+    },
   });
 
   React.useEffect(() => {
-    const onJoin    = () => chest.join();
-    const onView    = () => chest.setChestModalOpen(true);
+    const onJoin = () => chest.join();
+    const onView = () => chest.setChestModalOpen(true);
     const onDismiss = () => chest.setToast(null);
-    window.addEventListener("ui:chest_join",    onJoin    as any);
-    window.addEventListener("ui:chest_view",    onView    as any);
+    window.addEventListener("ui:chest_join", onJoin as any);
+    window.addEventListener("ui:chest_view", onView as any);
     window.addEventListener("ui:chest_dismiss", onDismiss as any);
     return () => {
-      window.removeEventListener("ui:chest_join",    onJoin    as any);
-      window.removeEventListener("ui:chest_view",    onView    as any);
+      window.removeEventListener("ui:chest_join", onJoin as any);
+      window.removeEventListener("ui:chest_view", onView as any);
       window.removeEventListener("ui:chest_dismiss", onDismiss as any);
     };
   }, [chest]);
@@ -431,13 +452,21 @@ function StreamerPageDesktop() {
       } catch {}
     };
     beat();
-    const t   = window.setInterval(beat, 15_000);
-    const vis = () => { if (document.visibilityState === "visible") beat(); };
+    const t = window.setInterval(beat, 15_000);
+    const vis = () => {
+      if (document.visibilityState === "visible") beat();
+    };
     document.addEventListener("visibilitychange", vis);
-    return () => { stopped = true; window.clearInterval(t); document.removeEventListener("visibilitychange", vis); };
+    return () => {
+      stopped = true;
+      window.clearInterval(t);
+      document.removeEventListener("visibilitychange", vis);
+    };
   }, [slug, token, streamer?.isLive]);
 
-  React.useEffect(() => { if (!streamer?.isLive) setLiveViewersNow(null); }, [streamer?.isLive]);
+  React.useEffect(() => {
+    if (!streamer?.isLive) setLiveViewersNow(null);
+  }, [streamer?.isLive]);
 
   React.useEffect(() => {
     const s = String(slug || "").trim();
@@ -455,19 +484,21 @@ function StreamerPageDesktop() {
 
   /* ── player + banner height sync (identique) ────────────────── */
   const playerWrapRef = React.useRef<HTMLDivElement | null>(null);
-  const metaWrapRef   = React.useRef<HTMLDivElement | null>(null);
-  const [leftStackH,  setLeftStackH] = React.useState<number>(0);
+  const metaWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const [leftStackH, setLeftStackH] = React.useState<number>(0);
 
   const measureLeftStack = React.useCallback(() => {
     const a = playerWrapRef.current?.getBoundingClientRect?.().height ?? 0;
-    const b = metaWrapRef.current?.getBoundingClientRect?.().height   ?? 0;
+    const b = metaWrapRef.current?.getBoundingClientRect?.().height ?? 0;
     const total = Math.max(0, Math.round(a + b));
     if (total && Math.abs(total - leftStackH) > 2) setLeftStackH(total);
     if (!total && leftStackH !== 0) setLeftStackH(0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leftStackH]);
 
-  React.useLayoutEffect(() => { measureLeftStack(); }, [measureLeftStack, streamer?.isLive, streamer?.title, streamer?.displayName, followsCount]);
+  React.useLayoutEffect(() => {
+    measureLeftStack();
+  }, [measureLeftStack, streamer?.isLive, streamer?.title, streamer?.displayName, followsCount]);
 
   React.useEffect(() => {
     const RO = (window as any).ResizeObserver as (new (cb: () => void) => ResizeObserver) | undefined;
@@ -475,62 +506,81 @@ function StreamerPageDesktop() {
     if (RO) {
       ro = new RO(() => measureLeftStack());
       if (playerWrapRef.current) ro.observe(playerWrapRef.current);
-      if (metaWrapRef.current)   ro.observe(metaWrapRef.current);
+      if (metaWrapRef.current) ro.observe(metaWrapRef.current);
     }
     const onR = () => measureLeftStack();
     window.addEventListener("resize", onR);
-    return () => { window.removeEventListener("resize", onR); try { ro?.disconnect(); } catch {} };
+    return () => {
+      window.removeEventListener("resize", onR);
+      try {
+        ro?.disconnect();
+      } catch {}
+    };
   }, [measureLeftStack]);
 
   /* ── Early exits ─────────────────────────────────────────────── */
-  if (loading) return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:320 }}>
-      <div style={{ fontFamily:"'Syne',system-ui,sans-serif", color:"rgba(196,181,253,.65)", fontSize:14 }}>Chargement…</div>
-    </div>
-  );
-  if (!streamer) return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:320 }}>
-      <div style={{ fontFamily:"'Syne',system-ui,sans-serif", color:"rgba(252,165,165,.75)", fontSize:14 }}>Streamer introuvable</div>
-    </div>
-  );
+  if (loading)
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 320 }}>
+        <div style={{ fontFamily: "'Syne',system-ui,sans-serif", color: "rgba(196,181,253,.65)", fontSize: 14 }}>
+          Chargement…
+        </div>
+      </div>
+    );
+
+  if (!streamer)
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 320 }}>
+        <div style={{ fontFamily: "'Syne',system-ui,sans-serif", color: "rgba(252,165,165,.75)", fontSize: 14 }}>
+          Streamer introuvable
+        </div>
+      </div>
+    );
 
   /* ── Derived values ──────────────────────────────────────────── */
-  const showMiniChat  = isMobile && isPortrait && !cinema;
-  const viewers       = streamer.isLive ? (liveViewersNow ?? streamer.viewers) : 0;
-  const myRubis       = Number(auth?.user?.rubis ?? 0);
-  const mySubTickets  = Math.max(0, Math.floor(Number(auth?.user?.coupons?.sub_ticket ?? auth?.user?.tokens?.sub_ticket ?? 0)));
-  const avatarUrl     = pickStreamerAvatarUrlFromStreamer(streamer);
-  const displayName   = streamer.displayName ? String(streamer.displayName) : `@${String(slug || "")}`;
-  const initials      = initialsOf(displayName);
+  const showMiniChat = isMobile && isPortrait && !cinema;
+  const viewers = streamer.isLive ? liveViewersNow ?? streamer.viewers : 0;
+  const myRubis = Number(auth?.user?.rubis ?? 0);
+  const mySubTickets = Math.max(0, Math.floor(Number(auth?.user?.coupons?.sub_ticket ?? auth?.user?.tokens?.sub_ticket ?? 0)));
+  const avatarUrl = pickStreamerAvatarUrlFromStreamer(streamer);
+  const displayName = streamer.displayName ? String(streamer.displayName) : `@${String(slug || "")}`;
+  const initials = initialsOf(displayName);
   const SUB_PRICE_RUBIS = 500;
 
   /* ── save title ──────────────────────────────────────────────── */
   async function saveNewTitle() {
     if (!token || !slug) return;
     const next = String(editTitleDraft || "").trim();
-    if (!next) { setEditTitleErr("Titre vide."); return; }
-    setEditTitleBusy(true); setEditTitleErr(null);
+    if (!next) {
+      setEditTitleErr("Titre vide.");
+      return;
+    }
+    setEditTitleBusy(true);
+    setEditTitleErr(null);
     try {
       if (isOwner) await updateMyStreamerTitle(String(token), next);
-      else         await updateStreamerTitleBySlug(String(token), String(slug), next);
+      else await updateStreamerTitleBySlug(String(token), String(slug), next);
       (streamer as any).title = next;
-      bump(x => x + 1);
-      setEditTitleOpen(false); setActionsOpen(false);
-    } catch (e: any) { setEditTitleErr(String(e?.message || "Erreur")); }
-    finally { setEditTitleBusy(false); }
+      bump((x) => x + 1);
+      setEditTitleOpen(false);
+      setActionsOpen(false);
+    } catch (e: any) {
+      setEditTitleErr(String(e?.message || "Erreur"));
+    } finally {
+      setEditTitleBusy(false);
+    }
   }
 
   /* ─────────────────────────────────────────────────────────────
      CINEMA MODE
   ───────────────────────────────────────────────────────────── */
-  if (cinema) return (
-    <>
-      <div className="cinemaRoot">
-        <div className="cinemaStage">
-          <div className="cinemaPlayerCard">
-            {streamer.isLive
-              ? (
-                // LOGIQUE SPÉCIALE LeCasiNoze - RUMBLE ONLY
+  if (cinema)
+    return (
+      <>
+        <div className="cinemaRoot">
+          <div className="cinemaStage">
+            <div className="cinemaPlayerCard">
+              {streamer.isLive ? (
                 String(slug || "").toLowerCase() === "lecasinoze" ? (
                   <RumbleStaticPlayer
                     staticVideoUrl={streamer.rumbleStaticVideoUrl || ""}
@@ -540,33 +590,50 @@ function StreamerPageDesktop() {
                 ) : (
                   <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
                 )
-              )
-              : <OfflineCard displayName={displayName} title={streamer.title} offlineBgUrl={streamer.offlineBgUrl ?? undefined} />}
-          </div>
-        </div>
-        <div className="cinemaTopBar">
-          <button className="btnGhostSmall" type="button" onClick={leaveCinema}>✕ Quitter</button>
-          <button className="btnPrimarySmall" type="button" onClick={openCinemaChat}>
-            <span style={{ display:"inline-flex", alignItems:"center", gap:8 }}><ChatIcon /> Chat</span>
-          </button>
-        </div>
-        {chatOpen && (
-          <div className="chatSheetBackdrop" onClick={closeCinemaChat} role="presentation">
-            <div className="chatSheet" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
-              <div className="chatSheetTop">
-                <div />
-                <button className="iconBtn" onClick={closeCinemaChat} type="button" aria-label="Fermer">✕</button>
-              </div>
-              <div className="chatSheetBody">
-                <ChatPanel slug={String(slug||"")} onRequireLogin={() => setLoginOpen(true)} compact autoFocus={!isMobile} onFollowsCount={handleFollowsCount} />
-              </div>
+              ) : (
+                <OfflineCard
+                  displayName={displayName}
+                  title={streamer.title}
+                  offlineBgUrl={streamer.offlineBgUrl ?? undefined}
+                />
+              )}
             </div>
           </div>
-        )}
-      </div>
-      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
-    </>
-  );
+          <div className="cinemaTopBar">
+            <button className="btnGhostSmall" type="button" onClick={leaveCinema}>
+              ✕ Quitter
+            </button>
+            <button className="btnPrimarySmall" type="button" onClick={openCinemaChat}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <ChatIcon /> Chat
+              </span>
+            </button>
+          </div>
+          {chatOpen && (
+            <div className="chatSheetBackdrop" onClick={closeCinemaChat} role="presentation">
+              <div className="chatSheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+                <div className="chatSheetTop">
+                  <div />
+                  <button className="iconBtn" onClick={closeCinemaChat} type="button" aria-label="Fermer">
+                    ✕
+                  </button>
+                </div>
+                <div className="chatSheetBody">
+                  <ChatPanel
+                    slug={String(slug || "")}
+                    onRequireLogin={() => setLoginOpen(true)}
+                    compact
+                    autoFocus={!isMobile}
+                    onFollowsCount={handleFollowsCount}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+      </>
+    );
 
   /* ─────────────────────────────────────────────────────────────
      RENDER PRINCIPAL
@@ -577,25 +644,50 @@ function StreamerPageDesktop() {
 
       {/* ── Toast coffre ── */}
       <ChestToast
-        toast={chest.toast} isOwner={isOwner}
-        canJoinNow={chest.canJoinNow} alreadyJoined={chest.alreadyJoined} joinLoading={chest.joinLoading}
-        onJoin={chest.join} onView={() => chest.setChestModalOpen(true)}
-        error={chest.chestError} onClose={() => chest.setToast(null)}
+        toast={chest.toast}
+        isOwner={isOwner}
+        canJoinNow={chest.canJoinNow}
+        alreadyJoined={chest.alreadyJoined}
+        joinLoading={chest.joinLoading}
+        onJoin={chest.join}
+        onView={() => chest.setChestModalOpen(true)}
+        error={chest.chestError}
+        onClose={() => chest.setToast(null)}
       />
 
       {/* ── Bandeaux contextuels (host) ── */}
       {hostedBy && (
-        <div style={{ marginBottom:10, padding:"8px 14px", borderRadius:14,
-          border:"1px solid rgba(124,92,252,.12)", background:"rgba(124,92,252,.05)",
-          fontFamily:"'Syne',system-ui,sans-serif", fontSize:12, color:"rgba(167,139,250,.72)" }}>
-          📺 Hosté par <strong style={{ color:"rgba(235,232,255,.88)" }}>{hostedBy}</strong>
+        <div
+          style={{
+            marginBottom: 10,
+            padding: "8px 14px",
+            borderRadius: 14,
+            border: "1px solid rgba(124,92,252,.12)",
+            background: "rgba(124,92,252,.05)",
+            fontFamily: "'Syne',system-ui,sans-serif",
+            fontSize: 12,
+            color: "rgba(167,139,250,.72)",
+          }}
+        >
+          📺 Hosté par <strong style={{ color: "rgba(235,232,255,.88)" }}>{hostedBy}</strong>
         </div>
       )}
+
       {!isOwner && hostTargetSlug && hostTargetIsLive && (
-        <div style={{ marginBottom:10, padding:"8px 14px", borderRadius:14,
-          border:"1px solid rgba(251,191,36,.14)", background:"rgba(251,191,36,.05)",
-          fontFamily:"'Syne',system-ui,sans-serif", fontSize:12, color:"rgba(253,230,138,.72)" }}>
-          📺 Redirection vers <strong style={{ color:"rgba(253,230,138,.90)" }}>{hostTargetDisplayName || hostTargetSlug}</strong>…
+        <div
+          style={{
+            marginBottom: 10,
+            padding: "8px 14px",
+            borderRadius: 14,
+            border: "1px solid rgba(251,191,36,.14)",
+            background: "rgba(251,191,36,.05)",
+            fontFamily: "'Syne',system-ui,sans-serif",
+            fontSize: 12,
+            color: "rgba(253,230,138,.72)",
+          }}
+        >
+          📺 Redirection vers{" "}
+          <strong style={{ color: "rgba(253,230,138,.90)" }}>{hostTargetDisplayName || hostTargetSlug}</strong>…
         </div>
       )}
 
@@ -603,142 +695,118 @@ function StreamerPageDesktop() {
           GRILLE — player + chat
       ══════════════════════════════════════════════════════════ */}
       <div className="streamGrid">
-              // LOGIQUE SPÉCIALE LeCasiNoze - RUMBLE ONLY
-              String(slug || "").toLowerCase() === "lecasinoze" ? (
-                <RumbleStaticPlayer
-                  staticVideoUrl={streamer.rumbleStaticVideoUrl || ""}
+        {/* ── Colonne gauche ── */}
+        <div className="streamMain">
+          {/* Player */}
+          <div ref={playerWrapRef}>
+            {streamer.isLive ? (
+              String(slug || "").toLowerCase() === "lecasinoze" &&
+              streamer.platform === "rumble" &&
+              streamer.rumbleEmbedUrl ? (
+                <RumbleEmbedPlayer embedUrl={streamer.rumbleEmbedUrl} title={streamer.title} isLive={streamer.isLive} />
+              ) : String(slug || "").toLowerCase() === "lecasinoze" ? (
+                <RumbleStreamPlayer
+                  hlsUrl={streamer.rumbleHlsUrl}
+                  thumbnailUrl={streamer.rumbleThumbnailUrl || streamer.offlineBgUrl}
                   title={streamer.title}
                   isLive={streamer.isLive}
                 />
               ) : (
                 <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
               )
-            )
-            : <OfflineCard displayName={displayName} title={streamer.title} offlineBgUrl={streamer.offlineBgUrl ?? undefined} />}
-        </div>
-      </div>
-      <div className="cinemaTopBar">
-        <button className="btnGhostSmall" type="button" onClick={leaveCinema}>✕ Quitter</button>
-        <button className="btnPrimarySmall" type="button" onClick={openCinemaChat}>
-          <span style={{ display:"inline-flex", alignItems:"center", gap:8 }}><ChatIcon /> Chat</span>
-        </button>
-      </div>
-      {chatOpen && (
-        <div className="chatSheetBackdrop" onClick={closeCinemaChat} role="presentation">
-          <div className="chatSheet" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
-            <div className="chatSheetTop">
-              <div />
-              <button className="iconBtn" onClick={closeCinemaChat} type="button" aria-label="Fermer">✕</button>
-            </div>
-            <div className="chatSheetBody">
-              <ChatPanel slug={String(slug||"")} onRequireLogin={() => setLoginOpen(true)} compact autoFocus={!isMobile} onFollowsCount={handleFollowsCount} />
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-    <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
-  </>
-);
-
-/* ─────────────────────────────────────────────────────────────
-  RENDER PRINCIPAL
- ───────────────────────────────────────────────────────────── */
-return (
-  <div className="streamPage sp-root">
-    <style>{SP_STYLES}</style>
-
-    {/* ── Toast coffre ── */}
-    <ChestToast
-      toast={chest.toast} isOwner={isOwner}
-      canJoinNow={chest.canJoinNow} alreadyJoined={chest.alreadyJoined} joinLoading={chest.joinLoading}
-      onJoin={chest.join} onView={() => chest.setChestModalOpen(true)}
-      error={chest.chestError} onClose={() => chest.setToast(null)}
-    />
-
-    {/* ── Bandeaux contextuels (host) ── */}
-    {hostedBy && (
-      <div style={{ marginBottom:10, padding:"8px 14px", borderRadius:14,
-        border:"1px solid rgba(124,92,252,.12)", background:"rgba(124,92,252,.05)",
-        fontFamily:"'Syne',system-ui,sans-serif", fontSize:12, color:"rgba(167,139,250,.72)" }}>
-        📺 Hosté par <strong style={{ color:"rgba(235,232,255,.88)" }}>{hostedBy}</strong>
-      </div>
-    )}
-    {!isOwner && hostTargetSlug && hostTargetIsLive && (
-      <div style={{ marginBottom:10, padding:"8px 14px", borderRadius:14,
-        border:"1px solid rgba(251,191,36,.14)", background:"rgba(251,191,36,.05)",
-        fontFamily:"'Syne',system-ui,sans-serif", fontSize:12, color:"rgba(253,230,138,.72)" }}>
-        📺 Redirection vers <strong style={{ color:"rgba(253,230,138,.90)" }}>{hostTargetDisplayName || hostTargetSlug}</strong>…
-      </div>
-    )}
-
-    {/* ══════════════════════════════════════════════════════════
-        GRILLE — player + chat
-    ══════════════════════════════════════════════════════════ */}
-    <div className="streamGrid">
-      {/* ── Colonne gauche ── */}
-      <div className="streamMain">
-
-        {/* Player */}
-        <div ref={playerWrapRef}>
-          {streamer.isLive ? (
-            // LOGIQUE SPÉCIALE LeCasiNoze - RUMBLE EMBED
-            String(slug || "").toLowerCase() === "lecasinoze" && streamer.platform === "rumble" && streamer.rumbleEmbedUrl ? (
-              <RumbleEmbedPlayer
-                embedUrl={streamer.rumbleEmbedUrl}
-                title={streamer.title}
-                isLive={streamer.isLive}
-              />
-            ) : String(slug || "").toLowerCase() === "lecasinoze" ? (
-              <RumbleStreamPlayer
-                hlsUrl={streamer.rumbleHlsUrl}
-                thumbnailUrl={streamer.rumbleThumbnailUrl || streamer.offlineBgUrl}
-                title={streamer.title}
-                isLive={streamer.isLive}
-              />
             ) : (
-              <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
-            )
-          ) : (
-            <OfflineCard displayName={displayName} title={streamer.title} offlineBgUrl={streamer.offlineBgUrl ?? undefined} />
-            <div className={`sp-glass${streamer.isLive ? " sp-live-border" : ""}`}
-              style={{ marginTop:12, padding:"14px 16px" }}>
+              <OfflineCard displayName={displayName} title={streamer.title} offlineBgUrl={streamer.offlineBgUrl ?? undefined} />
+            )}
+          </div>
 
+          {/* BANNER */}
+          <div ref={metaWrapRef}>
+            <div className={`sp-glass${streamer.isLive ? " sp-live-border" : ""}`} style={{ marginTop: 12, padding: "14px 16px" }}>
               {/* déco radial fond */}
-              <div aria-hidden style={{ position:"absolute", inset:0, pointerEvents:"none", zIndex:0,
-                background:"radial-gradient(700px 200px at 0% 60%,rgba(124,92,252,.10),transparent 60%),radial-gradient(500px 200px at 100% 40%,rgba(59,77,200,.08),transparent 60%)" }} />
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  pointerEvents: "none",
+                  zIndex: 0,
+                  background:
+                    "radial-gradient(700px 200px at 0% 60%,rgba(124,92,252,.10),transparent 60%),radial-gradient(500px 200px at 100% 40%,rgba(59,77,200,.08),transparent 60%)",
+                }}
+              />
 
-              <div style={{ position:"relative", zIndex:1, display:"flex", alignItems:"center", gap:14 }}>
-
+              <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 14 }}>
                 {/* Avatar */}
-                <div style={{ position:"relative", flexShrink:0 }}>
-                  <div style={{ width:56, height:56, borderRadius:16,
-                    border:"1px solid rgba(124,92,252,.28)",
-                    background:"linear-gradient(135deg,rgba(124,92,252,.18),rgba(59,77,200,.10))",
-                    display:"grid", placeItems:"center", overflow:"hidden",
-                    boxShadow:"0 8px 24px rgba(124,92,252,.22)" }}>
-                    {avatarUrl
-                      ? <img src={String(avatarUrl)} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                      : <span style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:800, fontSize:20, color:"rgba(196,181,253,.90)" }}>{initials}</span>}
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  <div
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: 16,
+                      border: "1px solid rgba(124,92,252,.28)",
+                      background: "linear-gradient(135deg,rgba(124,92,252,.18),rgba(59,77,200,.10))",
+                      display: "grid",
+                      placeItems: "center",
+                      overflow: "hidden",
+                      boxShadow: "0 8px 24px rgba(124,92,252,.22)",
+                    }}
+                  >
+                    {avatarUrl ? (
+                      <img src={String(avatarUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    ) : (
+                      <span
+                        style={{
+                          fontFamily: "'Syne',system-ui,sans-serif",
+                          fontWeight: 800,
+                          fontSize: 20,
+                          color: "rgba(196,181,253,.90)",
+                        }}
+                      >
+                        {initials}
+                      </span>
+                    )}
                   </div>
                   {streamer.isLive && (
-                    <div style={{ position:"absolute", bottom:-2, right:-2, width:14, height:14, borderRadius:999,
-                      background:"rgba(239,68,68,.90)", border:"2.5px solid rgba(11,9,22,.95)",
-                      boxShadow:"0 0 10px rgba(239,68,68,.60)" }} />
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: -2,
+                        right: -2,
+                        width: 14,
+                        height: 14,
+                        borderRadius: 999,
+                        background: "rgba(239,68,68,.90)",
+                        border: "2.5px solid rgba(11,9,22,.95)",
+                        boxShadow: "0 0 10px rgba(239,68,68,.60)",
+                      }}
+                    />
                   )}
                 </div>
 
                 {/* Meta */}
-                <div style={{ minWidth:0, flex:1 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
                   {/* Ligne 1 : nom + status chips */}
-                  <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                    <span className="sp-title-grad" style={{ fontSize:20, maxWidth:300, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} title={displayName}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span
+                      className="sp-title-grad"
+                      style={{ fontSize: 20, maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      title={displayName}
+                    >
                       {displayName}
                     </span>
 
                     {streamer.isLive ? (
                       <span className="sp-pill sp-pill-live">
-                        <span style={{ width:6, height:6, borderRadius:999, background:"rgba(239,68,68,.90)", display:"inline-block", animation:"sp-dot-pulse 1.8s ease-in-out infinite" }} />
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: 999,
+                            background: "rgba(239,68,68,.90)",
+                            display: "inline-block",
+                            animation: "sp-dot-pulse 1.8s ease-in-out infinite",
+                          }}
+                        />
                         LIVE
                       </span>
                     ) : (
@@ -746,32 +814,50 @@ return (
                     )}
 
                     {streamer.isLive && (
-                      <span className="sp-pill"><EyeIcon /> {fmt(viewers)}</span>
+                      <span className="sp-pill">
+                        <EyeIcon /> {fmt(viewers)}
+                      </span>
                     )}
+
                     {streamer.isLive && (
-                      <span className="sp-pill" style={{ color:"rgba(167,139,250,.65)" }}>
+                      <span className="sp-pill" style={{ color: "rgba(167,139,250,.65)" }}>
                         ⏱ <LiveDurationText isLive={streamer.isLive} startedAtMs={streamer.liveStartedAtMs} />
                       </span>
                     )}
-                    {giftStatus?.myClaimed && (
-                      <span className="sp-pill sp-pill-green">✅ Sub offert</span>
-                    )}
+
+                    {giftStatus?.myClaimed && <span className="sp-pill sp-pill-green">✅ Sub offert</span>}
                   </div>
 
                   {/* Ligne 2 : abonnés + titre live */}
-                  <div style={{ marginTop:5, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                  <div style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     {typeof followsCount === "number" && (
-                      <span style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700, fontSize:12, color:"rgba(196,181,253,.55)" }}>
+                      <span
+                        style={{
+                          fontFamily: "'Syne',system-ui,sans-serif",
+                          fontWeight: 700,
+                          fontSize: 12,
+                          color: "rgba(196,181,253,.55)",
+                        }}
+                      >
                         {fmt(followsCount)} abonnés
                       </span>
                     )}
                     {typeof followsCount === "number" && streamer.title && (
-                      <span style={{ color:"rgba(124,92,252,.28)", fontSize:13 }}>·</span>
+                      <span style={{ color: "rgba(124,92,252,.28)", fontSize: 13 }}>·</span>
                     )}
                     {streamer.title && (
-                      <span style={{ fontFamily:"'Syne',system-ui,sans-serif", fontSize:12, color:"rgba(167,139,250,.58)",
-                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:560 }}
-                        title={String(streamer.title)}>
+                      <span
+                        style={{
+                          fontFamily: "'Syne',system-ui,sans-serif",
+                          fontSize: 12,
+                          color: "rgba(167,139,250,.58)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          maxWidth: 560,
+                        }}
+                        title={String(streamer.title)}
+                      >
                         {streamer.title}
                       </span>
                     )}
@@ -779,110 +865,171 @@ return (
                 </div>
 
                 {/* Actions */}
-                <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                   {/* Suivre */}
-                  <button type="button"
+                  <button
+                    type="button"
                     className={isFollowing ? "btnGhostSmall" : "btnPrimarySmall"}
-                    disabled={followLoading} onClick={toggleFollow}
-                    style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700, minWidth:80 }}>
+                    disabled={followLoading}
+                    onClick={toggleFollow}
+                    style={{ fontFamily: "'Syne',system-ui,sans-serif", fontWeight: 700, minWidth: 80 }}
+                  >
                     {followLoading ? "…" : isFollowing ? "✓ Suivi" : "Suivre"}
                   </button>
 
                   {/* Sub */}
-                  <button type="button" className="btnPrimarySmall"
-                    onClick={() => { if (!token) return setLoginOpen(true); setSubError(null); setGiftError(null); setSubOpen(true); }}
-                    style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700 }}>
+                  <button
+                    type="button"
+                    className="btnPrimarySmall"
+                    onClick={() => {
+                      if (!token) return setLoginOpen(true);
+                      setSubError(null);
+                      setGiftError(null);
+                      setSubOpen(true);
+                    }}
+                    style={{ fontFamily: "'Syne',system-ui,sans-serif", fontWeight: 700 }}
+                  >
                     ⭐ SUB
                   </button>
 
                   {/* Gift claim */}
-                  {!!giftStatus?.remaining && (
-                    token && giftStatus.canClaim ? (
-                      <button type="button" className="btnPrimarySmall" disabled={claimLoading}
+                  {!!giftStatus?.remaining &&
+                    (token && giftStatus.canClaim ? (
+                      <button
+                        type="button"
+                        className="btnPrimarySmall"
+                        disabled={claimLoading}
                         onClick={async () => {
                           if (!token || !slug) return;
-                          setClaimLoading(true); setClaimError(null);
+                          setClaimLoading(true);
+                          setClaimError(null);
                           try {
-                            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/claim`,
-                              { method:"POST", headers:{ Authorization:`Bearer ${token}` } }
-                            ).then(x => x.json());
+                            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs/claim`, {
+                              method: "POST",
+                              headers: { Authorization: `Bearer ${token}` },
+                            }).then((x) => x.json());
                             if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
-                            await refreshMeIfPossible(); await fetchGiftStatus();
-                          } catch (e: any) { setClaimError(String(e?.message || "Erreur")); }
-                          finally { setClaimLoading(false); }
+                            await refreshMeIfPossible();
+                            await fetchGiftStatus();
+                          } catch (e: any) {
+                            setClaimError(String(e?.message || "Erreur"));
+                          } finally {
+                            setClaimLoading(false);
+                          }
                         }}
-                        style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700 }}>
+                        style={{ fontFamily: "'Syne',system-ui,sans-serif", fontWeight: 700 }}
+                      >
                         {claimLoading ? "…" : `🎁 ${fmt(giftStatus.remaining)}`}
                       </button>
                     ) : (
-                      <button type="button" className="btnGhostSmall"
-                        onClick={() => { if (!token) return setLoginOpen(true); setSubOpen(true); }}
-                        style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700 }}>
+                      <button
+                        type="button"
+                        className="btnGhostSmall"
+                        onClick={() => {
+                          if (!token) return setLoginOpen(true);
+                          setSubOpen(true);
+                        }}
+                        style={{ fontFamily: "'Syne',system-ui,sans-serif", fontWeight: 700 }}
+                      >
                         🎁 {fmt(giftStatus.remaining)}
                       </button>
-                    )
-                  )}
+                    ))}
 
                   {/* Coffre */}
-                  <button type="button" className="btnGhostSmall"
-                    onClick={() => { chest.setChestError(null); chest.setChestModalOpen(true); }}
-                    style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700 }}
-                    title="Coffre">
+                  <button
+                    type="button"
+                    className="btnGhostSmall"
+                    onClick={() => {
+                      chest.setChestError(null);
+                      chest.setChestModalOpen(true);
+                    }}
+                    style={{ fontFamily: "'Syne',system-ui,sans-serif", fontWeight: 700 }}
+                    title="Coffre"
+                  >
                     🎁{chest.chestBalance > 0 ? ` ${chest.chestBalance}` : ""}
                   </button>
 
                   {/* ⋯ menu */}
-                  <button type="button" className="btnGhostSmall"
+                  <button
+                    type="button"
+                    className="btnGhostSmall"
                     onClick={() => setActionsOpen(true)}
-                    style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700, fontSize:18, lineHeight:1, padding:"5px 11px" }}
-                    title="Plus d'options">
+                    style={{
+                      fontFamily: "'Syne',system-ui,sans-serif",
+                      fontWeight: 700,
+                      fontSize: 18,
+                      lineHeight: 1,
+                      padding: "5px 11px",
+                    }}
+                    title="Plus d'options"
+                  >
                     ⋯
                   </button>
                 </div>
-
               </div>
             </div>
           </div>
 
           {/* Mobile mini chat */}
           {showMiniChat && (
-            <div className="panel mobileMiniChat" style={{ padding:0, marginTop:12 }}>
+            <div className="panel mobileMiniChat" style={{ padding: 0, marginTop: 12 }}>
               <div className="streamChatHeader">
                 <div className="streamChatHeaderLeft">
-                  <div className="mutedSmall" style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
+                  <div className="mutedSmall" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <EyeIcon /> {fmt(viewers)} viewer
                   </div>
                 </div>
-                <div className="mutedSmall">rôle : <strong style={{ color:"rgba(255,255,255,.9)" }}>{myRole}</strong></div>
+                <div className="mutedSmall">
+                  rôle : <strong style={{ color: "rgba(255,255,255,.9)" }}>{myRole}</strong>
+                </div>
               </div>
               <div className="streamChatBody">
-                <ChatPanel slug={String(slug||"")} onRequireLogin={() => setLoginOpen(true)} compact onFollowsCount={handleFollowsCount} />
+                <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} compact onFollowsCount={handleFollowsCount} />
               </div>
             </div>
           )}
         </div>
 
         {/* ── Chat sidebar ── */}
-        <aside className="panel streamChat streamChatFixed" style={{
-          padding:0,
-          height:    leftStackH > 0 ? leftStackH : undefined,
-          maxHeight: leftStackH > 0 ? leftStackH : undefined,
-        }}>
+        <aside
+          className="panel streamChat streamChatFixed"
+          style={{
+            padding: 0,
+            height: leftStackH > 0 ? leftStackH : undefined,
+            maxHeight: leftStackH > 0 ? leftStackH : undefined,
+          }}
+        >
           <div className="sp-chat-head">
-            <div className="sp-title-grad" style={{ fontSize:14, marginBottom:4 }}>
+            <div className="sp-title-grad" style={{ fontSize: 14, marginBottom: 4 }}>
               {streamer.displayName || ""}
             </div>
             {streamer.isLive && (
-              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                <span style={{ width:6, height:6, borderRadius:999, background:"rgba(239,68,68,.85)", display:"inline-block", animation:"sp-dot-pulse 1.8s ease-in-out infinite" }} />
-                <span style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700, fontSize:11, color:"rgba(252,165,165,.75)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: 999,
+                    background: "rgba(239,68,68,.85)",
+                    display: "inline-block",
+                    animation: "sp-dot-pulse 1.8s ease-in-out infinite",
+                  }}
+                />
+                <span
+                  style={{
+                    fontFamily: "'Syne',system-ui,sans-serif",
+                    fontWeight: 700,
+                    fontSize: 11,
+                    color: "rgba(252,165,165,.75)",
+                  }}
+                >
                   LIVE · {fmt(viewers)}
                 </span>
               </div>
             )}
           </div>
-          <div className="streamChatBody" style={{ flex:1, minHeight:0 }}>
-            <ChatPanel slug={String(slug||"")} onRequireLogin={() => setLoginOpen(true)} onFollowsCount={handleFollowsCount} />
+          <div className="streamChatBody" style={{ flex: 1, minHeight: 0 }}>
+            <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} onFollowsCount={handleFollowsCount} />
           </div>
         </aside>
       </div>
@@ -890,19 +1037,30 @@ return (
       {/* ══════════════════════════════════════════════════════════
           BOTTOM PANEL — tabs
       ══════════════════════════════════════════════════════════ */}
-      <div className="sp-glass" style={{ marginTop:14 }}>
+      <div className="sp-glass" style={{ marginTop: 14 }}>
         {/* Tabs row */}
-        <div style={{ display:"flex", gap:8, padding:"12px 14px 0", flexWrap:"wrap", position:"relative", zIndex:1 }}>
-          {([ ["about","À propos"], ["clips","Clips"], ["vod","VOD"], ["agenda","Agenda"] ] as [TabKey,string][]).map(([k, l]) => (
-            <button key={k} type="button" className={`sp-tab${tab===k ? " active" : ""}`} onClick={() => setTab(k)}>{l}</button>
+        <div style={{ display: "flex", gap: 8, padding: "12px 14px 0", flexWrap: "wrap", position: "relative", zIndex: 1 }}>
+          {(
+            [
+              ["about", "À propos"],
+              ["clips", "Clips"],
+              ["vod", "VOD"],
+              ["agenda", "Agenda"],
+            ] as [TabKey, string][]
+          ).map(([k, l]) => (
+            <button key={k} type="button" className={`sp-tab${tab === k ? " active" : ""}`} onClick={() => setTab(k)}>
+              {l}
+            </button>
           ))}
         </div>
 
         {/* Tab content */}
-        <div style={{ padding:"14px", minHeight:80, animation:"sp-tab-in 220ms ease-out both", position:"relative", zIndex:1 }} key={tab}>
-          {tab === "about"  && slug ? <AboutTab  slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
-          {tab === "clips"  && slug ? <ClipsTab  slug={String(slug)} token={token} isOwner={isOwner} onRequireLogin={() => setLoginOpen(true)} /> : null}
-          {tab === "vod"    && slug ? <VodTab    slug={String(slug)} /> : null}
+        <div style={{ padding: "14px", minHeight: 80, animation: "sp-tab-in 220ms ease-out both", position: "relative", zIndex: 1 }} key={tab}>
+          {tab === "about" && slug ? <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
+          {tab === "clips" && slug ? (
+            <ClipsTab slug={String(slug)} token={token} isOwner={isOwner} onRequireLogin={() => setLoginOpen(true)} />
+          ) : null}
+          {tab === "vod" && slug ? <VodTab slug={String(slug)} /> : null}
           {tab === "agenda" && slug ? <AgendaTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
         </div>
       </div>
@@ -914,54 +1072,110 @@ return (
       {/* ── Actions drawer ── */}
       {actionsOpen && (
         <div className="sp-backdrop" role="presentation" onClick={() => setActionsOpen(false)}>
-          <div role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
             className="sp-modal"
-            style={{ position:"absolute", top:16, right:16, bottom:16, width:"min(380px,92vw)",
-              display:"flex", flexDirection:"column", animation:"sp-slide-right 180ms ease" }}>
-
+            style={{
+              position: "absolute",
+              top: 16,
+              right: 16,
+              bottom: 16,
+              width: "min(380px,92vw)",
+              display: "flex",
+              flexDirection: "column",
+              animation: "sp-slide-right 180ms ease",
+            }}
+          >
             <div className="sp-modal-head">
               <span className="sp-modal-title">Options</span>
-              <button className="btnGhostSmall" onClick={() => setActionsOpen(false)} type="button" aria-label="Fermer">✕</button>
+              <button className="btnGhostSmall" onClick={() => setActionsOpen(false)} type="button" aria-label="Fermer">
+                ✕
+              </button>
             </div>
 
-            <div className="sp-modal-body" style={{ display:"flex", flexDirection:"column", gap:8 }}>
-              {claimError && <div style={{ fontSize:12, color:"rgba(252,165,165,.88)", fontFamily:"'Syne',system-ui,sans-serif" }}>{claimError}</div>}
+            <div className="sp-modal-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {claimError && (
+                <div style={{ fontSize: 12, color: "rgba(252,165,165,.88)", fontFamily: "'Syne',system-ui,sans-serif" }}>
+                  {claimError}
+                </div>
+              )}
 
               {canEditTitle && (
-                <button type="button" className="sp-row"
-                  onClick={() => { if (!token) return setLoginOpen(true); setEditTitleErr(null); setEditTitleDraft(String(streamer.title||"")); setEditTitleOpen(true); }}>
+                <button
+                  type="button"
+                  className="sp-row"
+                  onClick={() => {
+                    if (!token) return setLoginOpen(true);
+                    setEditTitleErr(null);
+                    setEditTitleDraft(String(streamer.title || ""));
+                    setEditTitleOpen(true);
+                  }}
+                >
                   <span>✏️ Modifier le titre</span>
-                  <span style={{ fontSize:11, color:"rgba(167,139,250,.50)" }}>Modération</span>
+                  <span style={{ fontSize: 11, color: "rgba(167,139,250,.50)" }}>Modération</span>
                 </button>
               )}
 
               {isFollowing && (
                 <button type="button" className="sp-row" disabled={followLoading} onClick={toggleNotify}>
-                  <span style={{ display:"inline-flex", alignItems:"center", gap:8 }}><BellIcon on={notifyEnabled} /> Notifications</span>
-                  <span style={{ fontSize:11, color:"rgba(167,139,250,.50)" }}>{notifyEnabled ? "On" : "Off"}</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <BellIcon on={notifyEnabled} /> Notifications
+                  </span>
+                  <span style={{ fontSize: 11, color: "rgba(167,139,250,.50)" }}>{notifyEnabled ? "On" : "Off"}</span>
                 </button>
               )}
 
               {isOwner && (
-                <button type="button" className="sp-row"
-                  onClick={() => { if (!token) return setLoginOpen(true); setHostError(null); setHostOpen(true); setActionsOpen(false); }}>
+                <button
+                  type="button"
+                  className="sp-row"
+                  onClick={() => {
+                    if (!token) return setLoginOpen(true);
+                    setHostError(null);
+                    setHostOpen(true);
+                    setActionsOpen(false);
+                  }}
+                >
                   <span>📺 Host</span>
-                  <span style={{ fontSize:11, color:"rgba(167,139,250,.50)" }}>Gérer</span>
+                  <span style={{ fontSize: 11, color: "rgba(167,139,250,.50)" }}>Gérer</span>
                 </button>
               )}
 
-              <button type="button" className="sp-row" onClick={() => { setActionsOpen(false); enterCinema(); }}>
+              <button
+                type="button"
+                className="sp-row"
+                onClick={() => {
+                  setActionsOpen(false);
+                  enterCinema();
+                }}
+              >
                 <span>⛶ Plein écran</span>
-                <span style={{ fontSize:11, color:"rgba(167,139,250,.50)" }}>Cinéma</span>
+                <span style={{ fontSize: 11, color: "rgba(167,139,250,.50)" }}>Cinéma</span>
               </button>
 
               {/* Solde */}
-              <div style={{ marginTop:6, padding:"12px 14px", borderRadius:14,
-                border:"1px solid rgba(124,92,252,.10)", background:"rgba(124,92,252,.04)" }}>
-                <div className="sp-label" style={{ marginBottom:8 }}>Mon solde</div>
-                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                  {[["💎",`${fmt(myRubis)} rubis`],["🎟️",`${fmt(mySubTickets)} ticket${mySubTickets>1?"s":""}`]].map(([ico,txt]) => (
-                    <span key={String(txt)} className="sp-pill">{ico} {txt}</span>
+              <div
+                style={{
+                  marginTop: 6,
+                  padding: "12px 14px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(124,92,252,.10)",
+                  background: "rgba(124,92,252,.04)",
+                }}
+              >
+                <div className="sp-label" style={{ marginBottom: 8 }}>
+                  Mon solde
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {[
+                    ["💎", `${fmt(myRubis)} rubis`],
+                    ["🎟️", `${fmt(mySubTickets)} ticket${mySubTickets > 1 ? "s" : ""}`],
+                  ].map(([ico, txt]) => (
+                    <span key={String(txt)} className="sp-pill">
+                      {ico} {txt}
+                    </span>
                   ))}
                 </div>
               </div>
@@ -972,27 +1186,70 @@ return (
 
       {/* ── Edit title modal ── */}
       {editTitleOpen && (
-        <div className="sp-backdrop" role="presentation" onClick={() => { if (editTitleBusy) return; setEditTitleOpen(false); }}
-          style={{ display:"grid", placeItems:"center", padding:14 }}>
-          <div role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}
-            className="sp-modal" style={{ width:"min(560px,96vw)" }}>
-
+        <div
+          className="sp-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (editTitleBusy) return;
+            setEditTitleOpen(false);
+          }}
+          style={{ display: "grid", placeItems: "center", padding: 14 }}
+        >
+          <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} className="sp-modal" style={{ width: "min(560px,96vw)" }}>
             <div className="sp-modal-head">
               <span className="sp-modal-title">Modifier le titre</span>
-              <button className="btnGhostSmall" type="button" onClick={() => editTitleBusy ? null : setEditTitleOpen(false)} aria-label="Fermer">✕</button>
+              <button
+                className="btnGhostSmall"
+                type="button"
+                onClick={() => (editTitleBusy ? null : setEditTitleOpen(false))}
+                aria-label="Fermer"
+              >
+                ✕
+              </button>
             </div>
 
             <div className="sp-modal-body">
-              {editTitleErr && <div style={{ fontSize:12, color:"rgba(252,165,165,.88)", marginBottom:10, fontFamily:"'Syne',system-ui,sans-serif" }}>{editTitleErr}</div>}
-              <div style={{ fontSize:12, color:"rgba(167,139,250,.60)", marginBottom:10, fontFamily:"'Syne',system-ui,sans-serif" }}>
-                Actuel : <strong style={{ color:"rgba(235,232,255,.85)" }}>{String(streamer.title||"")}</strong>
+              {editTitleErr && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "rgba(252,165,165,.88)",
+                    marginBottom: 10,
+                    fontFamily: "'Syne',system-ui,sans-serif",
+                  }}
+                >
+                  {editTitleErr}
+                </div>
+              )}
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "rgba(167,139,250,.60)",
+                  marginBottom: 10,
+                  fontFamily: "'Syne',system-ui,sans-serif",
+                }}
+              >
+                Actuel : <strong style={{ color: "rgba(235,232,255,.85)" }}>{String(streamer.title || "")}</strong>
               </div>
-              <input className="sp-input" value={editTitleDraft} onChange={e => setEditTitleDraft(e.target.value)}
-                maxLength={140} placeholder="Nouveau titre…" disabled={editTitleBusy} />
-              <div style={{ display:"flex", gap:10, marginTop:14, justifyContent:"flex-end" }}>
-                <button type="button" className="btnGhostSmall" disabled={editTitleBusy} onClick={() => setEditTitleOpen(false)}>Annuler</button>
-                <button type="button" className="btnPrimarySmall" disabled={editTitleBusy} onClick={saveNewTitle}
-                  style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700 }}>
+              <input
+                className="sp-input"
+                value={editTitleDraft}
+                onChange={(e) => setEditTitleDraft(e.target.value)}
+                maxLength={140}
+                placeholder="Nouveau titre…"
+                disabled={editTitleBusy}
+              />
+              <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end" }}>
+                <button type="button" className="btnGhostSmall" disabled={editTitleBusy} onClick={() => setEditTitleOpen(false)}>
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  className="btnPrimarySmall"
+                  disabled={editTitleBusy}
+                  onClick={saveNewTitle}
+                  style={{ fontFamily: "'Syne',system-ui,sans-serif", fontWeight: 700 }}
+                >
                   {editTitleBusy ? "…" : "Enregistrer"}
                 </button>
               </div>
@@ -1003,87 +1260,183 @@ return (
 
       {/* ── Host modal ── */}
       {hostOpen && (
-        <div className="chatSheetBackdrop" onClick={() => setHostOpen(false)} role="presentation" style={{ zIndex:60 }}>
-          <div className="chatSheet" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true"
-            style={{ maxWidth:560, borderRadius:22, border:"1px solid rgba(124,92,252,.20)",
-              background:"rgba(11,9,22,.95)", backdropFilter:"blur(20px)", position:"relative", overflow:"hidden" }}>
-
+        <div className="chatSheetBackdrop" onClick={() => setHostOpen(false)} role="presentation" style={{ zIndex: 60 }}>
+          <div
+            className="chatSheet"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            style={{
+              maxWidth: 560,
+              borderRadius: 22,
+              border: "1px solid rgba(124,92,252,.20)",
+              background: "rgba(11,9,22,.95)",
+              backdropFilter: "blur(20px)",
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
             {/* reflet haut */}
-            <div aria-hidden style={{ position:"absolute", top:0, left:"8%", right:"8%", height:1, zIndex:2,
-              background:"linear-gradient(90deg,transparent,rgba(167,139,250,.28) 40%,rgba(91,142,248,.18) 60%,transparent)", pointerEvents:"none" }} />
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                top: 0,
+                left: "8%",
+                right: "8%",
+                height: 1,
+                zIndex: 2,
+                background:
+                  "linear-gradient(90deg,transparent,rgba(167,139,250,.28) 40%,rgba(91,142,248,.18) 60%,transparent)",
+                pointerEvents: "none",
+              }}
+            />
 
-            <div className="chatSheetTop" style={{ borderBottom:"1px solid rgba(124,92,252,.12)" }}>
+            <div className="chatSheetTop" style={{ borderBottom: "1px solid rgba(124,92,252,.12)" }}>
               <span className="sp-modal-title">📺 Host</span>
-              <button className="iconBtn" onClick={() => setHostOpen(false)} type="button" aria-label="Fermer">✕</button>
+              <button className="iconBtn" onClick={() => setHostOpen(false)} type="button" aria-label="Fermer">
+                ✕
+              </button>
             </div>
 
-            <div className="chatSheetBody" style={{ padding:16 }}>
+            <div className="chatSheetBody" style={{ padding: 16 }}>
               {hostTargetSlug && (
-                <div style={{ marginBottom:14, padding:12, borderRadius:14,
-                  border:"1px solid rgba(124,92,252,.14)", background:"rgba(124,92,252,.06)" }}>
-                  <div className="sp-label" style={{ marginBottom:6 }}>Host actuel</div>
-                  <div style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:800, fontSize:14, color:"rgba(235,232,255,.90)" }}>
+                <div
+                  style={{
+                    marginBottom: 14,
+                    padding: 12,
+                    borderRadius: 14,
+                    border: "1px solid rgba(124,92,252,.14)",
+                    background: "rgba(124,92,252,.06)",
+                  }}
+                >
+                  <div className="sp-label" style={{ marginBottom: 6 }}>
+                    Host actuel
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "'Syne',system-ui,sans-serif",
+                      fontWeight: 800,
+                      fontSize: 14,
+                      color: "rgba(235,232,255,.90)",
+                    }}
+                  >
                     {hostTargetDisplayName || `@${hostTargetSlug}`}
                   </div>
-                  <button type="button" className="btnGhostSmall" disabled={hostBusy} style={{ marginTop:10 }}
+                  <button
+                    type="button"
+                    className="btnGhostSmall"
+                    disabled={hostBusy}
+                    style={{ marginTop: 10 }}
                     onClick={async () => {
-                      if (!token||!slug) return; setHostBusy(true); setHostError(null);
+                      if (!token || !slug) return;
+                      setHostBusy(true);
+                      setHostError(null);
                       try {
-                        const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/host`,
-                          { method:"POST", headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`}, body:JSON.stringify({targetSlug:null}) }
-                        ).then(x=>x.json());
-                        if (!r?.ok) throw new Error(String(r?.error||"Erreur"));
-                        setHostOverride({slug:null,displayName:null});
-                      } catch(e:any){setHostError(String(e?.message||"Erreur"));}
-                      finally{setHostBusy(false);}
-                    }}>
-                    {hostBusy?"…":"Stop host"}
+                        const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/host`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ targetSlug: null }),
+                        }).then((x) => x.json());
+                        if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+                        setHostOverride({ slug: null, displayName: null });
+                      } catch (e: any) {
+                        setHostError(String(e?.message || "Erreur"));
+                      } finally {
+                        setHostBusy(false);
+                      }
+                    }}
+                  >
+                    {hostBusy ? "…" : "Stop host"}
                   </button>
                 </div>
               )}
 
-              <div style={{ display:"flex", gap:10, marginBottom:12 }}>
-                <input className="sp-input" value={hostQuery} onChange={e => setHostQuery(e.target.value)}
-                  placeholder="Rechercher un streamer live…" style={{ flex:1 }} />
-                <button type="button" className="btnGhostSmall" disabled={hostBusy}
+              <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                <input
+                  className="sp-input"
+                  value={hostQuery}
+                  onChange={(e) => setHostQuery(e.target.value)}
+                  placeholder="Rechercher un streamer live…"
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="btnGhostSmall"
+                  disabled={hostBusy}
                   onClick={async () => {
-                    setHostBusy(true); setHostError(null);
-                    try { const lives=await getLives(); setHostLives((lives as any[]).filter(x=>String(x.slug||"").toLowerCase()!==String(slug||"").toLowerCase())); }
-                    catch(e:any){setHostError(String(e?.message||"Erreur"));}
-                    finally{setHostBusy(false);}
-                  }}>
-                  {hostBusy?"…":"↻"}
+                    setHostBusy(true);
+                    setHostError(null);
+                    try {
+                      const lives = await getLives();
+                      setHostLives((lives as any[]).filter((x) => String(x.slug || "").toLowerCase() !== String(slug || "").toLowerCase()));
+                    } catch (e: any) {
+                      setHostError(String(e?.message || "Erreur"));
+                    } finally {
+                      setHostBusy(false);
+                    }
+                  }}
+                >
+                  {hostBusy ? "…" : "↻"}
                 </button>
               </div>
 
-              {hostError && <div style={{ fontSize:12, color:"rgba(252,165,165,.88)", marginBottom:10, fontFamily:"'Syne',system-ui,sans-serif" }}>{hostError}</div>}
+              {hostError && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "rgba(252,165,165,.88)",
+                    marginBottom: 10,
+                    fontFamily: "'Syne',system-ui,sans-serif",
+                  }}
+                >
+                  {hostError}
+                </div>
+              )}
 
-              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                {(hostLives||[])
-                  .filter(x => { const q=hostQuery.trim().toLowerCase(); return !q || String(x.displayName||x.slug||"").toLowerCase().includes(q); })
-                  .slice(0,30)
-                  .map(x => (
-                    <button key={String(x.id||x.slug)} type="button" className="sp-row" disabled={hostBusy}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {(hostLives || [])
+                  .filter((x) => {
+                    const q = hostQuery.trim().toLowerCase();
+                    return !q || String(x.displayName || x.slug || "").toLowerCase().includes(q);
+                  })
+                  .slice(0, 30)
+                  .map((x) => (
+                    <button
+                      key={String(x.id || x.slug)}
+                      type="button"
+                      className="sp-row"
+                      disabled={hostBusy}
                       onClick={async () => {
-                        if (!token||!slug) return; const target=String(x.slug||"").trim(); if(!target) return;
-                        setHostBusy(true); setHostError(null);
+                        if (!token || !slug) return;
+                        const target = String(x.slug || "").trim();
+                        if (!target) return;
+                        setHostBusy(true);
+                        setHostError(null);
                         try {
-                          const r=await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/host`,
-                            {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({targetSlug:target})}
-                          ).then(xx=>xx.json());
-                          if(!r?.ok) throw new Error(String(r?.error||"Erreur"));
-                          setHostOverride({slug:r.hostTargetSlug,displayName:r.hostTargetDisplayName});
+                          const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/host`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ targetSlug: target }),
+                          }).then((xx) => xx.json());
+                          if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+                          setHostOverride({ slug: r.hostTargetSlug, displayName: r.hostTargetDisplayName });
                           setHostOpen(false);
-                        } catch(e:any){setHostError(String(e?.message||"Erreur"));}
-                        finally{setHostBusy(false);}
-                      }}>
-                      <span style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700 }}>{x.displayName||`@${x.slug}`}</span>
-                      <span style={{ fontSize:11, color:"rgba(167,139,250,.50)" }}>{Number(x.viewers||0)} viewers</span>
+                        } catch (e: any) {
+                          setHostError(String(e?.message || "Erreur"));
+                        } finally {
+                          setHostBusy(false);
+                        }
+                      }}
+                    >
+                      <span style={{ fontFamily: "'Syne',system-ui,sans-serif", fontWeight: 700 }}>{x.displayName || `@${x.slug}`}</span>
+                      <span style={{ fontSize: 11, color: "rgba(167,139,250,.50)" }}>{Number(x.viewers || 0)} viewers</span>
                     </button>
                   ))}
               </div>
+
               {!hostLives?.length && (
-                <div style={{ marginTop:10, fontFamily:"'Syne',system-ui,sans-serif", fontSize:12, color:"rgba(167,139,250,.50)" }}>
+                <div style={{ marginTop: 10, fontFamily: "'Syne',system-ui,sans-serif", fontSize: 12, color: "rgba(167,139,250,.50)" }}>
                   Clique ↻ pour charger les lives.
                 </div>
               )}
@@ -1094,63 +1447,111 @@ return (
 
       {/* ── ChestModal ── */}
       <ChestModal
-        open={chest.chestModalOpen} onClose={() => chest.setChestModalOpen(false)}
-        chestLoading={chest.chestLoading} chestBalance={chest.chestBalance}
-        chest={chest.chest} opening={chest.opening} remainingSec={chest.remainingSec}
-        progress={chest.progress} error={chest.chestError} onRefresh={chest.refreshChest}
-        isOwner={isOwner} openingId={chest.openingId}
-        alreadyJoined={chest.alreadyJoined} joinLoading={chest.joinLoading} onJoin={chest.join}
-        isLive={streamer.isLive} chestHasOpen={chest.chestHasOpen}
-        ownerLoading={chest.ownerLoading} onOpen={chest.open}
-        depositAmount={chest.depositAmount} setDepositAmount={chest.setDepositAmount}
-        depositNote={chest.depositNote}    setDepositNote={chest.setDepositNote}
-        depositLoading={chest.depositLoading} onDeposit={chest.deposit}
+        open={chest.chestModalOpen}
+        onClose={() => chest.setChestModalOpen(false)}
+        chestLoading={chest.chestLoading}
+        chestBalance={chest.chestBalance}
+        chest={chest.chest}
+        opening={chest.opening}
+        remainingSec={chest.remainingSec}
+        progress={chest.progress}
+        error={chest.chestError}
+        onRefresh={chest.refreshChest}
+        isOwner={isOwner}
+        openingId={chest.openingId}
+        alreadyJoined={chest.alreadyJoined}
+        joinLoading={chest.joinLoading}
+        onJoin={chest.join}
+        isLive={streamer.isLive}
+        chestHasOpen={chest.chestHasOpen}
+        ownerLoading={chest.ownerLoading}
+        onOpen={chest.open}
+        depositAmount={chest.depositAmount}
+        setDepositAmount={chest.setDepositAmount}
+        depositNote={chest.depositNote}
+        setDepositNote={chest.setDepositNote}
+        depositLoading={chest.depositLoading}
+        onDeposit={chest.deposit}
       />
 
       {/* ── SubModal ── */}
       <SubModal
-        open={subOpen} onClose={() => setSubOpen(false)}
-        streamerName={streamer.displayName ? streamer.displayName : `@${String(slug||"")}`}
-        priceRubis={SUB_PRICE_RUBIS} myRubis={myRubis} mySubTickets={mySubTickets}
-        disableSelfTicket={isOwner} loading={subLoading} error={subError}
-        onGoShop={() => { setSubOpen(false); window.location.href="/shop"; }}
+        open={subOpen}
+        onClose={() => setSubOpen(false)}
+        streamerName={streamer.displayName ? streamer.displayName : `@${String(slug || "")}`}
+        priceRubis={SUB_PRICE_RUBIS}
+        myRubis={myRubis}
+        mySubTickets={mySubTickets}
+        disableSelfTicket={isOwner}
+        loading={subLoading}
+        error={subError}
+        onGoShop={() => {
+          setSubOpen(false);
+          window.location.href = "/shop";
+        }}
         onPaySelf={async (mode) => {
-          if (!token||!slug) return; setSubLoading(true); setSubError(null);
+          if (!token || !slug) return;
+          setSubLoading(true);
+          setSubError(null);
           try {
             const useTicket = mode === "ticket";
-            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/subscribe`,
-              { method:"POST", headers:{ Authorization:`Bearer ${token}`, ...(useTicket?{"Content-Type":"application/json"}:{}) },
-                body:useTicket?JSON.stringify({useTicket:true}):undefined }
-            ).then(x=>x.json());
-            if (!r?.ok) throw new Error(String(r?.error||"Erreur"));
-            await refreshMeIfPossible(); await fetchGiftStatus(); setSubOpen(false);
-          } catch(e:any){ setSubError(String(e?.message||"Erreur")); }
-          finally { setSubLoading(false); }
+            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/subscribe`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, ...(useTicket ? { "Content-Type": "application/json" } : {}) },
+              body: useTicket ? JSON.stringify({ useTicket: true }) : undefined,
+            }).then((x) => x.json());
+            if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+            await refreshMeIfPossible();
+            await fetchGiftStatus();
+            setSubOpen(false);
+          } catch (e: any) {
+            setSubError(String(e?.message || "Erreur"));
+          } finally {
+            setSubLoading(false);
+          }
         }}
         onPayRubis={async () => {
-          if (!token||!slug) return; setSubLoading(true); setSubError(null);
+          if (!token || !slug) return;
+          setSubLoading(true);
+          setSubError(null);
           try {
-            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/subscribe`,
-              { method:"POST", headers:{ Authorization:`Bearer ${token}` } }
-            ).then(x=>x.json());
-            if (!r?.ok) throw new Error(String(r?.error||"Erreur"));
-            await refreshMeIfPossible(); await fetchGiftStatus(); setSubOpen(false);
-          } catch(e:any){ setSubError(String(e?.message||"Erreur")); }
-          finally { setSubLoading(false); }
+            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/subscribe`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+            }).then((x) => x.json());
+            if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+            await refreshMeIfPossible();
+            await fetchGiftStatus();
+            setSubOpen(false);
+          } catch (e: any) {
+            setSubError(String(e?.message || "Erreur"));
+          } finally {
+            setSubLoading(false);
+          }
         }}
         onPayGiftSubs={async (count, useTicketsMaybe) => {
-          if (!token||!slug) return; setGiftLoading(true); setGiftError(null);
-          const useTickets = Math.max(0, Math.floor(Number(useTicketsMaybe||0)));
+          if (!token || !slug) return;
+          setGiftLoading(true);
+          setGiftError(null);
+          const useTickets = Math.max(0, Math.floor(Number(useTicketsMaybe || 0)));
           try {
-            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs`,
-              { method:"POST", headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`}, body:JSON.stringify({count,useTickets}) }
-            ).then(x=>x.json());
-            if (!r?.ok) throw new Error(String(r?.error||"Erreur"));
-            await refreshMeIfPossible(); await fetchGiftStatus(); setSubOpen(false);
-          } catch(e:any){ setGiftError(String(e?.message||"Erreur")); }
-          finally { setGiftLoading(false); }
+            const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(String(slug))}/gift-subs`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ count, useTickets }),
+            }).then((x) => x.json());
+            if (!r?.ok) throw new Error(String(r?.error || "Erreur"));
+            await refreshMeIfPossible();
+            await fetchGiftStatus();
+            setSubOpen(false);
+          } catch (e: any) {
+            setGiftError(String(e?.message || "Erreur"));
+          } finally {
+            setGiftLoading(false);
+          }
         }}
-        giftLoading={giftLoading} giftError={giftError}
+        giftLoading={giftLoading}
+        giftError={giftError}
       />
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
@@ -1159,29 +1560,97 @@ return (
 }
 
 /* ─── Offline card (extracted component) ────────────────────── */
-function OfflineCard({ displayName, title, offlineBgUrl }: { displayName: string; title?: string; offlineBgUrl?: string }) {
+function OfflineCard({
+  displayName,
+  title,
+  offlineBgUrl,
+}: {
+  displayName: string;
+  title?: string;
+  offlineBgUrl?: string;
+}) {
   return (
-    <div className="sp-offline" style={{
-      background: offlineBgUrl
-        ? `linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,.16)),url(${offlineBgUrl}) center/cover no-repeat`
-        : "linear-gradient(135deg,rgba(124,92,252,.12),rgba(59,77,200,.09))",
-    }}>
-      <div aria-hidden style={{ position:"absolute", inset:0, pointerEvents:"none",
-        background:"radial-gradient(60% 45% at 50% 100%,rgba(124,92,252,.16),transparent)" }} />
-      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"flex-end",
-        background:"linear-gradient(to top,rgba(0,0,0,.58),transparent)" }}>
-        <div style={{ padding:22 }}>
-          <div style={{ display:"inline-flex", alignItems:"center", gap:7, padding:"5px 12px", borderRadius:999, marginBottom:10,
-            border:"1px solid rgba(196,181,253,.16)", background:"rgba(124,92,252,.10)" }}>
-            <div style={{ width:7, height:7, borderRadius:999, background:"rgba(196,181,253,.48)" }} />
-            <span style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700, fontSize:11, color:"rgba(196,181,253,.68)" }}>OFFLINE</span>
+    <div
+      className="sp-offline"
+      style={{
+        background: offlineBgUrl
+          ? `linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,.16)),url(${offlineBgUrl}) center/cover no-repeat`
+          : "linear-gradient(135deg,rgba(124,92,252,.12),rgba(59,77,200,.09))",
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          background: "radial-gradient(60% 45% at 50% 100%,rgba(124,92,252,.16),transparent)",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          alignItems: "flex-end",
+          background: "linear-gradient(to top,rgba(0,0,0,.58),transparent)",
+        }}
+      >
+        <div style={{ padding: 22 }}>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
+              padding: "5px 12px",
+              borderRadius: 999,
+              marginBottom: 10,
+              border: "1px solid rgba(196,181,253,.16)",
+              background: "rgba(124,92,252,.10)",
+            }}
+          >
+            <div style={{ width: 7, height: 7, borderRadius: 999, background: "rgba(196,181,253,.48)" }} />
+            <span
+              style={{
+                fontFamily: "'Syne',system-ui,sans-serif",
+                fontWeight: 700,
+                fontSize: 11,
+                color: "rgba(196,181,253,.68)",
+              }}
+            >
+              OFFLINE
+            </span>
           </div>
-          <div style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:800, fontSize:24, letterSpacing:-.4,
-            background:"linear-gradient(90deg,#c4b5fd,#a78bfa)", WebkitBackgroundClip:"text", backgroundClip:"text", color:"transparent" }}>
+          <div
+            style={{
+              fontFamily: "'Syne',system-ui,sans-serif",
+              fontWeight: 800,
+              fontSize: 24,
+              letterSpacing: -0.4,
+              background: "linear-gradient(90deg,#c4b5fd,#a78bfa)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
             {displayName}
           </div>
-          {title && <div style={{ marginTop:5, fontSize:13, color:"rgba(196,181,253,.55)", fontFamily:"'Syne',system-ui,sans-serif",
-            maxWidth:480, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{title}</div>}
+          {title && (
+            <div
+              style={{
+                marginTop: 5,
+                fontSize: 13,
+                color: "rgba(196,181,253,.55)",
+                fontFamily: "'Syne',system-ui,sans-serif",
+                maxWidth: 480,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {title}
+            </div>
+          )}
         </div>
       </div>
     </div>
