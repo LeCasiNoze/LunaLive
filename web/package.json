@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "flv.js": "^1.6.2",
     "framer-motion": "^12.24.11",
     "hls.js": "^1.6.15",
     "lucide-react": "^0.562.0",

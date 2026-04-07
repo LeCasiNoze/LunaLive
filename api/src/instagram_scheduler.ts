@@ -12,8 +12,91 @@
 //   INSTAGRAM_USER_ID       — ID numérique du compte Instagram Business
 
 import { pool } from "./db.js";
+import type { Pool } from "pg";
 
 const LOG = "[INSTAGRAM SCHEDULER]";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Collaboration Instagram — tentative de collaboration avec timeout et fallback
+// ─────────────────────────────────────────────────────────────────────────────
+
+const COLLABORATION_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
+
+async function attemptCollaboration(
+  accessToken: string,
+  userId: string,
+  instagramUsername: string,
+  jobId: number
+): Promise<{ success: boolean; mediaId?: string; permalink?: string; error?: string }> {
+  try {
+    console.log(`${LOG} [job #${jobId}] attempting collaboration with @${instagramUsername}`);
+
+    // Créer une collaboration via l'API Meta
+    // Note: L'API Meta Graph ne supporte pas directement les collaborations dans les Reels
+    // Cette fonction prépare le terrain pour une future implémentation
+    // Pour l'instant, nous simulons une tentative et retournons un échec pour forcer le fallback
+    
+    // Simulation d'une tentative de collaboration
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Simuler un délai de traitement
+
+    // Pour l'instant, nous retournons toujours un échec car l'API Meta ne supporte pas
+    // directement les collaborations dans les Reels
+    return {
+      success: false,
+      error: "Collaboration API not yet supported for Reels"
+    };
+
+  } catch (e: any) {
+    console.error(`${LOG} [job #${jobId}] collaboration attempt failed:`, e?.message ?? e);
+    return {
+      success: false,
+      error: e?.message ?? "Unknown collaboration error"
+    };
+  }
+}
+
+async function checkCollaborationTimeout(
+  pool: Pool,
+  jobId: number
+): Promise<boolean> {
+  const result = await pool.query(`
+    SELECT collaboration_started_at, collaboration_timeout_sec
+    FROM publish_jobs 
+    WHERE id = $1 AND collaboration_status = 'pending'
+  `, [jobId]);
+
+  if (result.rows.length === 0) return false;
+
+  const startedAt = new Date(result.rows[0].collaboration_started_at);
+  const timeoutSec = result.rows[0].collaboration_timeout_sec || 1200;
+  const timeoutMs = timeoutSec * 1000;
+
+  return (Date.now() - startedAt.getTime()) > timeoutMs;
+}
+
+async function handleCollaborationTimeout(
+  pool: Pool,
+  job: PublishJob
+): Promise<void> {
+  console.log(`${LOG} [job #${job.id}] collaboration timeout, falling back to mention`);
+
+  // Marquer la collaboration comme timeout
+  await pool.query(`
+    UPDATE publish_jobs 
+    SET collaboration_status = 'timeout', 
+        collaboration_error_msg = 'Collaboration timeout after 20 minutes'
+    WHERE id = $1
+  `, [job.id]);
+
+  // Enregistrer dans la table des collaborations
+  await pool.query(`
+    UPDATE instagram_collaborations 
+    SET status = 'timeout', 
+        completed_at = NOW(),
+        error_msg = 'Collaboration timeout after 20 minutes'
+    WHERE publish_job_id = $1 AND status = 'pending'
+  `, [job.id]);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Notification Discord — envoyée après publication réussie d'un Reel
@@ -206,11 +289,84 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
   const streamerSlugRaw     = String(slugForCaption.rows[0]?.streamer_slug ?? "");
   const instagramUsername   = String(slugForCaption.rows[0]?.instagram_username ?? "").trim();
 
-  // Remplacer le slug par @pseudo_insta dans la description si disponible
+  // Logique de collaboration Instagram
   let caption = job.description ?? job.title ?? "";
+  let collaborationAttempted = false;
+  
   if (instagramUsername && streamerSlugRaw) {
-    const slugRegex = new RegExp(streamerSlugRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-    caption = caption.replace(slugRegex, `@${instagramUsername}`);
+    console.log(`${LOG} [job #${job.id}] Instagram username found: @${instagramUsername}, attempting collaboration`);
+    
+    // Marquer la tentative de collaboration
+    await pool.query(`
+      UPDATE publish_jobs 
+      SET collaboration_attempted = TRUE, 
+          collaboration_username = $2,
+          collaboration_started_at = NOW(),
+          collaboration_status = 'pending'
+      WHERE id = $1
+    `, [job.id, instagramUsername]);
+
+    // Enregistrer dans la table des collaborations
+    await pool.query(`
+      INSERT INTO instagram_collaborations (publish_job_id, streamer_slug, instagram_username, status)
+      VALUES ($1, $2, $3, 'pending')
+      ON CONFLICT (publish_job_id) DO UPDATE SET
+        status = 'pending',
+        started_at = NOW()
+    `, [job.id, streamerSlugRaw, instagramUsername]);
+
+    // Tenter la collaboration
+    const collabResult = await attemptCollaboration(accessToken, userId, instagramUsername, job.id);
+    
+    if (collabResult.success) {
+      // Collaboration réussie
+      await pool.query(`
+        UPDATE publish_jobs 
+        SET collaboration_status = 'success',
+            collaboration_media_id = $2
+        WHERE id = $1
+      `, [job.id, collabResult.mediaId]);
+
+      await pool.query(`
+        UPDATE instagram_collaborations 
+        SET status = 'success', 
+            media_id = $2,
+            permalink = $3,
+            completed_at = NOW()
+        WHERE publish_job_id = $1
+      `, [job.id, collabResult.mediaId, collabResult.permalink]);
+
+      console.log(`${LOG} [job #${job.id}] collaboration successful with @${instagramUsername}`);
+      // Pour l'instant, on utilise quand même la mention car l'API collaboration n'est pas encore disponible
+      const slugRegex = new RegExp(streamerSlugRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+      caption = caption.replace(slugRegex, `@${instagramUsername}`);
+    } else {
+      // Collaboration échouée, fallback vers mention simple
+      await pool.query(`
+        UPDATE publish_jobs 
+        SET collaboration_status = 'failed',
+            collaboration_error_msg = $2
+        WHERE id = $1
+      `, [job.id, collabResult.error]);
+
+      await pool.query(`
+        UPDATE instagram_collaborations 
+        SET status = 'failed', 
+            error_msg = $2,
+            completed_at = NOW()
+        WHERE publish_job_id = $1
+      `, [job.id, collabResult.error]);
+
+      console.log(`${LOG} [job #${job.id}] collaboration failed: ${collabResult.error}, falling back to mention`);
+      
+      // Fallback: remplacer le slug par @username dans la description
+      const slugRegex = new RegExp(streamerSlugRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+      caption = caption.replace(slugRegex, `@${instagramUsername}`);
+    }
+    
+    collaborationAttempted = true;
+  } else {
+    console.log(`${LOG} [job #${job.id}] no Instagram username found for slug ${streamerSlugRaw}, using default caption`);
   }
 
   const containerData = await metaPost(`/${userId}/media`, {
@@ -310,6 +466,27 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function tick(accessToken: string, userId: string): Promise<void> {
+  // 1. Vérifier les timeouts de collaboration en attente
+  const timeoutJobs = await pool.query(`
+    SELECT pj.id, pj.clip_id, pj.edit_job_id, pj.title, pj.description, pj.scheduled_at,
+           ej.output_url
+    FROM   publish_jobs pj
+    JOIN   edit_jobs ej ON ej.id = pj.edit_job_id
+    WHERE  pj.platform = 'instagram'
+      AND  pj.collaboration_status = 'pending'
+      AND  pj.collaboration_started_at IS NOT NULL
+      AND  pj.collaboration_started_at < NOW() - (pj.collaboration_timeout_sec || 1200) * INTERVAL '1 second'
+  `);
+
+  for (const job of timeoutJobs.rows) {
+    try {
+      await handleCollaborationTimeout(pool, job as PublishJob);
+    } catch (e: any) {
+      console.error(`${LOG} [job #${job.id}] timeout handling failed:`, e?.message ?? e);
+    }
+  }
+
+  // 2. Traiter les jobs scheduled normaux
   const { rows } = await pool.query<PublishJob>(`
     SELECT pj.id, pj.clip_id, pj.edit_job_id, pj.title, pj.description, pj.scheduled_at,
            ej.output_url

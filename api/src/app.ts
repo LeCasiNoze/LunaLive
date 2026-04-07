@@ -102,14 +102,15 @@ import { eventsRouter } from "./routes/events.js";
 import { eventsViewerWeekRouter } from "./routes/events_viewer_week.js";
 import { adminEventsRouter } from "./routes/admin_events.js";
 
-// ✅ LunaClip — routes dans l'api, scheduler dans le bot
-import { lunaclipRouter } from "./lunaclip/routes.js";
+// Debug routes
+import { trovoDebugRouter } from "./routes/trovo_debug.js";
 
 // Instagram comments monitoring
 import { igCommentsRouter } from "./routes/ig_comments.js";
 import { offresStreamersRouter } from "./routes/offres_streamers.js";
 import { igWebhookRouter } from "./ig_dm_scheduler.js";
 import { igConfigRouter } from "./routes/ig_config.js";
+import { igCollaborationsRouter } from "./routes/ig_collaborations.js";
 
 export function createApp() {
   const app = express();
@@ -167,7 +168,10 @@ export function createApp() {
   app.use("/api", igCommentsRouter);
   app.use("/api", offresStreamersRouter);
   app.use("/api", igConfigRouter);
+  app.use("/api", igCollaborationsRouter);
   app.use(igWebhookRouter);
+
+  app.use("/api/debug", trovoDebugRouter);
 
   app.use(streamerVodsRouter);
 

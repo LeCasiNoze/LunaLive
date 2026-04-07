@@ -33,6 +33,9 @@ const ContactPage = React.lazy(() => import("./pages/legal/ContactPage"));
 const AProposPage = React.lazy(() => import("./pages/legal/AProposPage"));
 const OffresStreamerPage = React.lazy(() => import("./pages/OffresStreamerPage"));
 
+// Debug pages
+const TrovoDebugPage = React.lazy(() => import("./pages/debug/TrovoDebugPage"));
+
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
 import { GoLiveNotifier } from "./components/GoLiveNotifier";
@@ -127,6 +130,13 @@ function AppInner() {
         } />
         <Route path="/r/:slug" element={<ReferralLandingPage />} />
         <Route path="/event" element={<EventPage />} />
+
+        {/* Debug routes */}
+        <Route path="/debug/trovo" element={
+          <React.Suspense fallback={<LoadingFallback />}>
+            <TrovoDebugPage />
+          </React.Suspense>
+        } />
 
         {/* Legal / trust pages */}
         <Route path="/mentions-legales" element={

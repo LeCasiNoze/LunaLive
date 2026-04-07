@@ -66,6 +66,7 @@ import { mig058_streamer_ig_offer_detail } from "./mig058_streamer_ig_offer_deta
 import { mig059_ig_dm_replies } from "./mig059_ig_dm_replies.js";
 import { mig060_ig_config_constraints } from "./mig060_ig_config_constraints.js";
 import { mig061_ig_config_instagram_username } from "./mig061_ig_config_instagram_username.js";
+import { mig062_instagram_collaboration } from "./mig062_instagram_collaboration.js";
 
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
@@ -148,4 +149,5 @@ export async function migrateAll(pool: Pool) {
   await mig059_ig_dm_replies(pool);
   await mig060_ig_config_constraints(pool);
   await mig061_ig_config_instagram_username(pool);
+  await mig062_instagram_collaboration(pool);
 }
