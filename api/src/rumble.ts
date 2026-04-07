@@ -16,6 +16,80 @@ type RumbleLiveInfo = {
 
 const RUMBLE_API_BASE = "https://rumble.com/-livestream-api/get-data";
 
+// Fonction pour résoudre l'URL HLS depuis la page embed Rumble
+async function resolveRumbleHlsUrl(embedUrl: string): Promise<string | null> {
+  try {
+    console.log(`[rumble] Scraping embed page: ${embedUrl}`);
+    
+    const response = await fetch(embedUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const html = await response.text();
+    
+    // Chercher les URLs HLS dans le HTML de la page embed
+    const hlsPatterns = [
+      /["']([^"']*\.m3u8[^"']*)["']/gi,
+      /["']([^"']*\/live-hls\/[^"']*)["']/gi,
+      /["']([^"']*\/hls\/[^"']*)["']/gi,
+      /hls["\s]*:\s*["']([^"']+)["']/gi,
+      /source["\s]*:\s*["']([^"']*\.m3u8[^"']*)["']/gi,
+    ];
+    
+    for (const pattern of hlsPatterns) {
+      const matches = html.match(pattern);
+      if (matches) {
+        for (const match of matches) {
+          const url = match.replace(/["']/g, '');
+          if (url.includes('.m3u8') && url.startsWith('http')) {
+            console.log(`[rumble] Found HLS URL: ${url}`);
+            return url;
+          }
+        }
+      }
+    }
+    
+    // Chercher aussi dans les scripts JavaScript
+    const scriptMatches = html.match(/<script[^>]*>([\s\S]*?)<\/script>/gi);
+    if (scriptMatches) {
+      for (const script of scriptMatches) {
+        const jsContent = script.replace(/<script[^>]*>/, '').replace(/<\/script>/, '');
+        
+        for (const pattern of hlsPatterns) {
+          const matches = jsContent.match(pattern);
+          if (matches) {
+            for (const match of matches) {
+              const url = match.replace(/["']/g, '');
+              if (url.includes('.m3u8') && url.startsWith('http')) {
+                console.log(`[rumble] Found HLS URL in script: ${url}`);
+                return url;
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    console.log(`[rumble] No HLS URL found in embed page`);
+    return null;
+    
+  } catch (error) {
+    console.error(`[rumble] Error scraping HLS URL:`, error);
+    return null;
+  }
+}
+
 function esc(s: string) {
   return String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"').trim();
 }
@@ -83,16 +157,35 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
     const isLive = userStream?.is_live === true;
     const viewersCount = userStream?.watching_now || userStream?.viewers || userStream?.viewer_count || null;
     
-    // Construire l'URL HLS si disponible
+    // Résoudre la vraie URL HLS depuis la page Rumble
     let hlsUrl = null;
+    let publicUrl = videoUrl;
+    let embedUrl = null;
+    
     if (videoUrl) {
-      // Rumble utilise généralement des URLs HLS avec .m3u8
-      // On essaie de construire l'URL HLS à partir de l'URL vidéo
-      const videoId = videoUrl.match(/\/([^\/]+)$/)?.[1];
-      if (videoId) {
-        hlsUrl = `https://1a-1791.com/live/${videoId}/live-hls/*/chunklist_i1.m3u8`;
+      console.log(`[rumble] Resolving HLS for videoUrl: ${videoUrl}`);
+      
+      try {
+        // Construire l'URL embed Rumble
+        const videoId = videoUrl.match(/\/([^\/]+)$/)?.[1];
+        if (videoId) {
+          embedUrl = `https://rumble.com/embed/${videoId}`;
+          console.log(`[rumble] Generated embedUrl: ${embedUrl}`);
+          
+          // Scraper la page embed pour trouver la vraie URL HLS
+          hlsUrl = await resolveRumbleHlsUrl(embedUrl);
+          console.log(`[rumble] Resolved hlsUrl: ${hlsUrl}`);
+        }
+      } catch (error) {
+        console.error(`[rumble] Error resolving HLS URL:`, error);
+        // Fallback : essayer l'URL directe si elle ressemble à une URL HLS
+        if (videoUrl.includes('.m3u8')) {
+          hlsUrl = videoUrl;
+        }
       }
     }
+    
+    console.log(`[rumble] Final URLs - publicUrl: ${publicUrl}, embedUrl: ${embedUrl}, hlsUrl: ${hlsUrl}`);
 
     console.log(`[rumble] Stream info - isLive: ${isLive}, title: "${title}", viewers: ${viewersCount}`);
 
