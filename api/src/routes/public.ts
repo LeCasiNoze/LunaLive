@@ -244,7 +244,7 @@ publicRouter.get(
           ), '[]'::jsonb)
         ) AS "user",
 
-        -- ✅ DLive linked
+        -- DLive linked
         s.dlive_use_linked AS "dliveUseLinked",
         s.dlive_link_displayname AS "dliveLinkedDisplayname",
         s.dlive_link_username AS "dliveLinkedUsername",
@@ -252,6 +252,24 @@ publicRouter.get(
         -- provider assigné
         pa.channel_slug AS "providerChannelSlug",
         pa.channel_username AS "providerChannelUsername",
+
+        -- Connexion DLive complète avec enabled
+        jsonb_build_object(
+          'provider', pa.provider,
+          'channelSlug', pa.channel_slug,
+          'rtmpUrl', pa.rtmp_url,
+          'streamKey', pa.stream_key,
+          'enabled', pa.enabled
+        ) AS "dliveConnection",
+
+        -- Connexion Rumble
+        jsonb_build_object(
+          'provider', 'rumble',
+          'username', ra.username,
+          'rtmpUrl', ra.rtmp_url,
+          'streamKey', ra.stream_key,
+          'assignedAt', ra.assigned_at
+        ) AS "rumbleConnection",
 
         -- ✅ HOST
         hs.slug AS "hostTargetSlug",
@@ -267,6 +285,9 @@ publicRouter.get(
       LEFT JOIN provider_accounts pa
         ON pa.assigned_to_streamer_id = s.id
        AND pa.provider = 'dlive'
+
+      LEFT JOIN rumble_accounts ra
+        ON ra.assigned_to_streamer_id = s.id
 
       LEFT JOIN streamer_hosts h
         ON h.hoster_streamer_id = s.id

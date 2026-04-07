@@ -4,6 +4,7 @@ import { enablePushNotifications } from "../../../lib/push";
 import { followStreamer, getStreamer, setFollowNotify, unfollowStreamer } from "../../../lib/api";
 
 export type StreamerNormalized = {
+  // Core fields
   raw: any;
   title: string;
   displayName: string;
@@ -14,24 +15,37 @@ export type StreamerNormalized = {
   offlineBgUrl: string | null;
   liveStartedAtMs: number | null;
   ownerUserId: number;
-
-  // ✅ SUBS owner
-  ownerHasViewerSub: boolean;
-  ownerHasStreamerSub: boolean;
-
-  // HOST
   hostTargetSlug: string | null;
   hostTargetDisplayName: string | null;
   hostTargetIsLive: boolean;
+  ownerHasViewerSub: boolean;
+  ownerHasStreamerSub: boolean;
 
   // Rumble fields (LeCasiNoze support)
   rumbleHlsUrl: string | null;
   rumbleThumbnailUrl: string | null;
   rumbleStaticVideoUrl: string | null;
 
-  // Platform info (temporaire pour LeCasiNoze)
+  // Platform info
   platform: "dlive" | "rumble" | null;
   rumbleEmbedUrl: string | null;
+  
+  // Connection info for automatic platform detection
+  dliveConnection?: {
+    provider: "dlive";
+    channelSlug: string;
+    rtmpUrl: string;
+    streamKey: string;
+    enabled?: boolean;
+  } | null;
+  
+  rumbleConnection?: {
+    provider: "rumble";
+    username: string;
+    rtmpUrl: string;
+    streamKey: string;
+    assignedAt?: string;
+  } | null;
 };
 
 // Fonction utilitaire pour déterminer automatiquement la plateforme
@@ -41,9 +55,10 @@ function getPlatform(streamer: any): "dlive" | "rumble" | null {
     return streamer.platform === "rumble" ? "rumble" : "dlive";
   }
   
-  // NOUVELLE LOGIQUE : Priorité DLive enabled > Rumble disponible > Inactif
-  // Si le streamer a une connexion DLive active et enabled, utiliser DLive
-  if (streamer?.dliveConnection?.enabled && streamer?.dliveConnection?.channelSlug) {
+  // NOUVELLE LOGIQUE : Priorité DLive enabled/coché > Rumble disponible > Inactif
+  // Si le streamer a une connexion DLive active et enabled (ou useLinked), utiliser DLive
+  const dliveEnabled = streamer?.dliveConnection?.enabled || streamer?.dliveUseLinked || streamer?.raw?.dlive_use_linked;
+  if (dliveEnabled && streamer?.dliveConnection?.channelSlug) {
     return "dlive";
   }
   
@@ -142,9 +157,13 @@ function normalizeStreamer(response: any): StreamerNormalized {
     rumbleThumbnailUrl: (s?.rumbleThumbnailUrl ?? s?.rumble_thumbnail_url) || null,
     rumbleStaticVideoUrl: (s?.rumbleStaticVideoUrl ?? s?.rumble_static_video_url) || null,
 
-    // Platform info (temporaire pour LeCasiNoze)
+    // Platform info
     platform: getPlatform(s),
     rumbleEmbedUrl: (s?.rumbleEmbedUrl ?? s?.rumble_embed_url) || null,
+    
+    // Connection info for automatic platform detection
+    dliveConnection: s?.dliveConnection || null,
+    rumbleConnection: s?.rumbleConnection || null,
   };
 }
 
