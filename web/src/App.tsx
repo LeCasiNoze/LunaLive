@@ -35,6 +35,7 @@ const OffresStreamerPage = React.lazy(() => import("./pages/OffresStreamerPage")
 
 // Debug pages
 const TrovoDebugPage = React.lazy(() => import("./pages/debug/TrovoDebugPage"));
+const RumbleDebugPage = React.lazy(() => import("./pages/debug/RumbleDebugPage"));
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
@@ -135,6 +136,11 @@ function AppInner() {
         <Route path="/debug/trovo" element={
           <React.Suspense fallback={<LoadingFallback />}>
             <TrovoDebugPage />
+          </React.Suspense>
+        } />
+        <Route path="/debug/rumble" element={
+          <React.Suspense fallback={<LoadingFallback />}>
+            <RumbleDebugPage />
           </React.Suspense>
         } />
 
