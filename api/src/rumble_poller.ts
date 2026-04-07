@@ -47,7 +47,7 @@ async function updateLeCasiNozeLiveState(
        SET 
          is_live = true,
          live_started_at = COALESCE(live_started_at, $2),
-         title = COALESCE($3, title),
+         title = COALESCE($3, title, 'Live sur Rumble'),
          viewers = COALESCE($4, viewers),
          updated_at = NOW()
        WHERE id = $1`,
@@ -83,7 +83,7 @@ async function updateLeCasiNozeLiveState(
       `UPDATE streamers
        SET 
          is_live = false,
-         title = NULL,
+         title = 'Hors ligne',
          viewers = 0,
          updated_at = NOW()
        WHERE id = $1`,
