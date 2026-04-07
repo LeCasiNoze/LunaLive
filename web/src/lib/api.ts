@@ -330,13 +330,22 @@ export type ApiStreamerPage = {
 
   // ✅ notif bell (si user connecté + follow)
   notifyEnabled?: boolean;
+
+  // ✅ Rumble fields (LeCasiNoze support)
+  rumbleHlsUrl?: string | null;
+  rumbleThumbnailUrl?: string | null;
+  rumbleStaticVideoUrl?: string | null;
+
+  // Platform info (temporaire pour LeCasiNoze)
+  platform?: "dlive" | "rumble" | null;
+  rumbleEmbedUrl?: string | null;
 };
 
 export type ApiContentItem = {
   key: string;
   title: string | null;
   html: string;
-  min_role?: ContentMinRole | null; // ✅ NEW
+  min_role?: ContentMinRole | null; // NEW
   updatedAt?: string | null;
 };
 

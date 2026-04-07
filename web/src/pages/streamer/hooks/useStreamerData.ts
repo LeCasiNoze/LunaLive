@@ -19,10 +19,19 @@ export type StreamerNormalized = {
   ownerHasViewerSub: boolean;
   ownerHasStreamerSub: boolean;
 
-  // ✅ HOST
+  // HOST
   hostTargetSlug: string | null;
   hostTargetDisplayName: string | null;
   hostTargetIsLive: boolean;
+
+  // Rumble fields (LeCasiNoze support)
+  rumbleHlsUrl: string | null;
+  rumbleThumbnailUrl: string | null;
+  rumbleStaticVideoUrl: string | null;
+
+  // Platform info (temporaire pour LeCasiNoze)
+  platform: "dlive" | "rumble" | null;
+  rumbleEmbedUrl: string | null;
 };
 
 
@@ -95,6 +104,15 @@ function normalizeStreamer(response: any): StreamerNormalized {
     hostTargetIsLive: !!hostTargetIsLive,
     ownerHasViewerSub,
     ownerHasStreamerSub,
+
+    // Rumble fields (LeCasiNoze support)
+    rumbleHlsUrl: (s?.rumbleHlsUrl ?? s?.rumble_hls_url) || null,
+    rumbleThumbnailUrl: (s?.rumbleThumbnailUrl ?? s?.rumble_thumbnail_url) || null,
+    rumbleStaticVideoUrl: (s?.rumbleStaticVideoUrl ?? s?.rumble_static_video_url) || null,
+
+    // Platform info (temporaire pour LeCasiNoze)
+    platform: (s?.platform ?? "dlive") || null,
+    rumbleEmbedUrl: (s?.rumbleEmbedUrl ?? s?.rumble_embed_url) || null,
 
   };
 }

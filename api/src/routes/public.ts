@@ -216,13 +216,15 @@ publicRouter.get(
         s.appearance AS "appearance",
         s.offline_bg_path AS "offlineBgPath",
         s.user_id AS "ownerUserId",
+        s.platform,
+        s.rumble_embed_url AS "rumbleEmbedUrl",
 
-        -- ✅ USER (source de vérité des subs)
+        -- USER (source de vérité des subs)
         jsonb_build_object(
           'id', u.id,
           'username', u.username,
           'role', u.role,
-          -- ✅ Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
+          -- Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
           'avatarUrl', ('/avatars/u/' || s.user_id::text),
           'user_subscriptions', COALESCE((
             SELECT jsonb_agg(

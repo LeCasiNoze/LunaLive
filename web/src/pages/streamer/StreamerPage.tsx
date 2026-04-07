@@ -10,6 +10,7 @@ import { watchHeartbeat, me, getLives, updateMyStreamerTitle, updateStreamerTitl
 import { DlivePlayer }   from "../../components/DlivePlayer";
 import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
 import RumbleStaticPlayer from "../../components/RumbleStaticPlayer";
+import RumbleEmbedPlayer from "../../components/RumbleEmbedPlayer";
 import { ChatPanel }     from "../../components/ChatPanel";
 import { LoginModal }    from "../../components/LoginModal";
 import { SubModal }      from "../../components/SubModal";
@@ -532,7 +533,7 @@ function StreamerPageDesktop() {
                 // LOGIQUE SPÉCIALE LeCasiNoze - RUMBLE ONLY
                 String(slug || "").toLowerCase() === "lecasinoze" ? (
                   <RumbleStaticPlayer
-                    staticVideoUrl={(streamer as any).rumbleStaticVideoUrl}
+                    staticVideoUrl={streamer.rumbleStaticVideoUrl || ""}
                     title={streamer.title}
                     isLive={streamer.isLive}
                   />
@@ -602,30 +603,104 @@ function StreamerPageDesktop() {
           GRILLE — player + chat
       ══════════════════════════════════════════════════════════ */}
       <div className="streamGrid">
-        {/* ── Colonne gauche ── */}
-        <div className="streamMain">
-
-          {/* Player */}
-          <div ref={playerWrapRef}>
-            {streamer.isLive ? (
               // LOGIQUE SPÉCIALE LeCasiNoze - RUMBLE ONLY
               String(slug || "").toLowerCase() === "lecasinoze" ? (
-                <RumbleStreamPlayer
-                  hlsUrl={(streamer as any).rumbleHlsUrl}
-                  thumbnailUrl={(streamer as any).rumbleThumbnailUrl || streamer.offlineBgUrl}
+                <RumbleStaticPlayer
+                  staticVideoUrl={streamer.rumbleStaticVideoUrl || ""}
                   title={streamer.title}
                   isLive={streamer.isLive}
                 />
               ) : (
                 <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
               )
-            ) : (
-              <OfflineCard displayName={displayName} title={streamer.title} offlineBgUrl={streamer.offlineBgUrl ?? undefined} />
-            )}
+            )
+            : <OfflineCard displayName={displayName} title={streamer.title} offlineBgUrl={streamer.offlineBgUrl ?? undefined} />}
+        </div>
+      </div>
+      <div className="cinemaTopBar">
+        <button className="btnGhostSmall" type="button" onClick={leaveCinema}>✕ Quitter</button>
+        <button className="btnPrimarySmall" type="button" onClick={openCinemaChat}>
+          <span style={{ display:"inline-flex", alignItems:"center", gap:8 }}><ChatIcon /> Chat</span>
+        </button>
+      </div>
+      {chatOpen && (
+        <div className="chatSheetBackdrop" onClick={closeCinemaChat} role="presentation">
+          <div className="chatSheet" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="chatSheetTop">
+              <div />
+              <button className="iconBtn" onClick={closeCinemaChat} type="button" aria-label="Fermer">✕</button>
+            </div>
+            <div className="chatSheetBody">
+              <ChatPanel slug={String(slug||"")} onRequireLogin={() => setLoginOpen(true)} compact autoFocus={!isMobile} onFollowsCount={handleFollowsCount} />
+            </div>
           </div>
+        </div>
+      )}
+    </div>
+    <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+  </>
+);
 
-          {/* ── BANNER ─────────────────────────────────────────── */}
-          <div ref={metaWrapRef}>
+/* ─────────────────────────────────────────────────────────────
+  RENDER PRINCIPAL
+ ───────────────────────────────────────────────────────────── */
+return (
+  <div className="streamPage sp-root">
+    <style>{SP_STYLES}</style>
+
+    {/* ── Toast coffre ── */}
+    <ChestToast
+      toast={chest.toast} isOwner={isOwner}
+      canJoinNow={chest.canJoinNow} alreadyJoined={chest.alreadyJoined} joinLoading={chest.joinLoading}
+      onJoin={chest.join} onView={() => chest.setChestModalOpen(true)}
+      error={chest.chestError} onClose={() => chest.setToast(null)}
+    />
+
+    {/* ── Bandeaux contextuels (host) ── */}
+    {hostedBy && (
+      <div style={{ marginBottom:10, padding:"8px 14px", borderRadius:14,
+        border:"1px solid rgba(124,92,252,.12)", background:"rgba(124,92,252,.05)",
+        fontFamily:"'Syne',system-ui,sans-serif", fontSize:12, color:"rgba(167,139,250,.72)" }}>
+        📺 Hosté par <strong style={{ color:"rgba(235,232,255,.88)" }}>{hostedBy}</strong>
+      </div>
+    )}
+    {!isOwner && hostTargetSlug && hostTargetIsLive && (
+      <div style={{ marginBottom:10, padding:"8px 14px", borderRadius:14,
+        border:"1px solid rgba(251,191,36,.14)", background:"rgba(251,191,36,.05)",
+        fontFamily:"'Syne',system-ui,sans-serif", fontSize:12, color:"rgba(253,230,138,.72)" }}>
+        📺 Redirection vers <strong style={{ color:"rgba(253,230,138,.90)" }}>{hostTargetDisplayName || hostTargetSlug}</strong>…
+      </div>
+    )}
+
+    {/* ══════════════════════════════════════════════════════════
+        GRILLE — player + chat
+    ══════════════════════════════════════════════════════════ */}
+    <div className="streamGrid">
+      {/* ── Colonne gauche ── */}
+      <div className="streamMain">
+
+        {/* Player */}
+        <div ref={playerWrapRef}>
+          {streamer.isLive ? (
+            // LOGIQUE SPÉCIALE LeCasiNoze - RUMBLE EMBED
+            String(slug || "").toLowerCase() === "lecasinoze" && streamer.platform === "rumble" && streamer.rumbleEmbedUrl ? (
+              <RumbleEmbedPlayer
+                embedUrl={streamer.rumbleEmbedUrl}
+                title={streamer.title}
+                isLive={streamer.isLive}
+              />
+            ) : String(slug || "").toLowerCase() === "lecasinoze" ? (
+              <RumbleStreamPlayer
+                hlsUrl={streamer.rumbleHlsUrl}
+                thumbnailUrl={streamer.rumbleThumbnailUrl || streamer.offlineBgUrl}
+                title={streamer.title}
+                isLive={streamer.isLive}
+              />
+            ) : (
+              <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
+            )
+          ) : (
+            <OfflineCard displayName={displayName} title={streamer.title} offlineBgUrl={streamer.offlineBgUrl ?? undefined} />
             <div className={`sp-glass${streamer.isLive ? " sp-live-border" : ""}`}
               style={{ marginTop:12, padding:"14px 16px" }}>
 
