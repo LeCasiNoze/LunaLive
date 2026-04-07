@@ -68,6 +68,10 @@ import { mig060_ig_config_constraints } from "./mig060_ig_config_constraints.js"
 import { mig061_ig_config_instagram_username } from "./mig061_ig_config_instagram_username.js";
 import { mig062_instagram_collaboration } from "./mig062_instagram_collaboration.js";
 
+// Rumble migrations
+import { mig040_rumble_info } from "./mig040_rumble_info.js";
+import { mig041_rumble_accounts } from "./mig041_rumble_accounts.js";
+
 export async function migrateAll(pool: Pool) {
   await mig001_core(pool);
   await mig002_chat_tables(pool);
@@ -150,4 +154,8 @@ export async function migrateAll(pool: Pool) {
   await mig060_ig_config_constraints(pool);
   await mig061_ig_config_instagram_username(pool);
   await mig062_instagram_collaboration(pool);
+
+  // Rumble migrations
+  await mig040_rumble_info(pool);
+  await mig041_rumble_accounts(pool);
 }

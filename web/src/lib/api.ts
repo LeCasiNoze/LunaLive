@@ -187,10 +187,10 @@ export async function adminCreateProviderAccount(
   adminKey: string,
   payload: { provider?: string; channelSlug: string; rtmpUrl?: string; streamKey: string }
 ) {
-  return j<{ ok: true }>(`/admin/provider-accounts`, {
+  return j<{ ok: true; accounts: AdminProviderAccountRow[] }>("/admin/provider-accounts", {
     method: "POST",
     headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ ...payload, rtmpUrl: payload.rtmpUrl ?? DLIVE_RTMP_URL }),
+    body: JSON.stringify(payload),
   });
 }
 

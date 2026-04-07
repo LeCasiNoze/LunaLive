@@ -5,6 +5,12 @@ import * as React from "react";
 import {
   adminListUsers,
   getStreamers,
+  adminListRumbleAccounts,
+  adminCreateRumbleAccount,
+  adminUpdateRumbleAccount,
+  adminDeleteRumbleAccount,
+  adminAssignRumbleAccount,
+  adminReleaseRumbleAccount,
 } from "../../lib/api";
 
 const RUMBLE_RTMP = "rtmp://live.rumble.com/live";
@@ -36,33 +42,20 @@ export function RumbleAccountsAdminSection({ adminKey }: { adminKey: string }) {
   async function refresh() {
     setErr(null);
     
-    // Pour l'instant, on simule les comptes Rumble (à remplacer par vrai appel API)
-    // TODO: Remplacer par adminListRumbleAccounts(adminKey) quand l'endpoint sera créé
-    
     try {
-      const [users, streamers] = await Promise.all([
+      const [rumbleAccounts, users, streamers] = await Promise.all([
+        adminListRumbleAccounts(adminKey),
         adminListUsers(adminKey),
         getStreamers(),
       ]);
 
+      setAccounts(rumbleAccounts.accounts);
+
       const slugToId = new Map<string, string>();
       for (const s of streamers) slugToId.set(String(s.slug), String(s.id));
 
-      // Simuler des comptes Rumble (à remplacer par vrais données)
-      const mockAccounts = [
-        {
-          id: 1,
-          username: "LeCasiNoze",
-          rtmp_url: RUMBLE_RTMP,
-          assigned_to_streamer_id: slugToId.get("lecasinoze") || null,
-          assigned_at: new Date().toISOString(),
-        }
-      ];
-      
-      setAccounts(mockAccounts);
-
       const assigned = new Set<string>();
-      for (const acc of mockAccounts) if (acc.assigned_to_streamer_id) assigned.add(String(acc.assigned_to_streamer_id));
+      for (const acc of rumbleAccounts.accounts) if (acc.assignedStreamerId) assigned.add(String(acc.assignedStreamerId));
 
       const eligible: Array<{ streamerId: string; label: string }> = [];
       for (const u of users.users) {
@@ -93,19 +86,11 @@ export function RumbleAccountsAdminSection({ adminKey }: { adminKey: string }) {
     setErr(null);
     
     try {
-      // TODO: Remplacer par vrai appel API quand l'endpoint sera créé
-      // await adminCreateRumbleAccount(adminKey, {
-      //   username: username.trim(),
-      //   apiKey: apiKey.trim(),
-      //   rtmpUrl: RUMBLE_RTMP,
-      //   streamKey: streamKey.trim(),
-      //   assignedToStreamerId: selectedStreamerId || null,
-      // });
-      
-      console.log("Simulation: Ajout compte Rumble", {
+      await adminCreateRumbleAccount(adminKey, {
         username: username.trim(),
-        apiKey: maskKey(apiKey.trim()),
-        streamKey: maskKey(streamKey.trim()),
+        apiKey: apiKey.trim(),
+        rtmpUrl: RUMBLE_RTMP,
+        streamKey: streamKey.trim(),
         assignedToStreamerId: selectedStreamerId || null,
       });
       
@@ -220,8 +205,7 @@ export function RumbleAccountsAdminSection({ adminKey }: { adminKey: string }) {
                   <button
                     className="btnGhostSmall"
                     onClick={async () => {
-                      // TODO: Implémenter la dissociation
-                      console.log("Dissocier compte Rumble", acc.id);
+                      await adminReleaseRumbleAccount(adminKey, acc.id);
                       await refresh();
                     }}
                     disabled={busy}
@@ -232,8 +216,7 @@ export function RumbleAccountsAdminSection({ adminKey }: { adminKey: string }) {
                   <button
                     className="btnGhostSmall"
                     onClick={async () => {
-                      // TODO: Implémenter la suppression
-                      console.log("Supprimer compte Rumble", acc.id);
+                      await adminDeleteRumbleAccount(adminKey, acc.id);
                       await refresh();
                     }}
                     disabled={busy}
