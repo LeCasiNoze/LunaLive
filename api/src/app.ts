@@ -101,6 +101,7 @@ import { adminReferralsRouter } from "./routes/admin_referrals.js";
 import { eventsRouter } from "./routes/events.js";
 import { eventsViewerWeekRouter } from "./routes/events_viewer_week.js";
 import { adminEventsRouter } from "./routes/admin_events.js";
+import { lunaclipRouter } from "./lunaclip/routes.js";
 
 // Debug routes
 import { trovoDebugRouter } from "./routes/trovo_debug.js";
