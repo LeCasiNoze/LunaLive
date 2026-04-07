@@ -350,7 +350,7 @@ publicRouter.get(
     if (isLeCasiNoze) {
       // Récupérer les infos Rumble pour LeCasiNoze
       const rumbleInfo = await pool.query(
-        `SELECT is_live, title, viewers_count, hls_url, video_url, thumbnail_url
+        `SELECT is_live, title, viewers_count, hls_url, video_url, thumbnail_url, live_id
          FROM streamer_rumble_info
          WHERE streamer_id = $1
          ORDER BY updated_at DESC
@@ -373,6 +373,7 @@ publicRouter.get(
           (row as any).rumbleHlsUrl = rumble.hls_url;
           (row as any).rumbleVideoUrl = rumble.video_url;
           (row as any).rumbleThumbnailUrl = rumble.thumbnail_url;
+          (row as any).rumbleLiveId = rumble.live_id;
           (row as any).rumbleStaticVideoUrl = "https://rumble.com/user/LeCasiNoze/live";
           (row as any).streamProvider = "rumble";
           

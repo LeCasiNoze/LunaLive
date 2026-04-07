@@ -3,32 +3,42 @@
 
 import { pool } from "./db.js";
 
-type RumbleLiveInfo = {
-  username: string | null;
+export interface RumbleLiveInfo {
+  username: string;
   isLive: boolean;
   viewersCount: number | null;
   title: string | null;
   thumbnailUrl: string | null;
   videoUrl: string | null;
   hlsUrl: string | null;
+  videoId: string | null;
   createdAt: string | null;
 };
 
 const RUMBLE_API_BASE = "https://rumble.com/-livestream-api/get-data";
 
-// Fonction pour résoudre l'URL HLS depuis la page embed Rumble
-async function resolveRumbleHlsUrl(embedUrl: string): Promise<string | null> {
+// Fonction pour résoudre le playback Rumble depuis la page statique
+async function resolveRumblePlaybackFromStaticPage(staticLiveUrl: string): Promise<{
+  videoId: string | null;
+  hlsUrl: string | null;
+  watchUrl: string | null;
+}> {
   try {
-    console.log(`[rumble] Scraping embed page: ${embedUrl}`);
+    console.log(`[rumble] Resolving playback from static page: ${staticLiveUrl}`);
     
-    const response = await fetch(embedUrl, {
+    // 1. Fetch la page statique du streamer
+    const response = await fetch(staticLiveUrl, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Accept-Encoding": "gzip, deflate",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Cache-Control": "max-age=0"
       }
     });
     
@@ -37,56 +47,88 @@ async function resolveRumbleHlsUrl(embedUrl: string): Promise<string | null> {
     }
     
     const html = await response.text();
+    console.log(`[rumble] Static page fetched (${html.length} chars)`);
     
-    // Chercher les URLs HLS dans le HTML de la page embed
-    const hlsPatterns = [
-      /["']([^"']*\.m3u8[^"']*)["']/gi,
-      /["']([^"']*\/live-hls\/[^"']*)["']/gi,
-      /["']([^"']*\/hls\/[^"']*)["']/gi,
-      /hls["\s]*:\s*["']([^"']+)["']/gi,
-      /source["\s]*:\s*["']([^"']*\.m3u8[^"']*)["']/gi,
+    // 2. Extraire le videoId depuis Rumble("play", {...})
+    // Pattern robuste pour trouver: Rumble("play", {"video":"v75zwfe", ...})
+    const videoIdPatterns = [
+      /Rumble\s*\(\s*["']play["']\s*,\s*\{[^}]*["']video["']\s*:\s*["'](v[a-zA-Z0-9]+)["'][^}]*\}/gi,
+      /Rumble\s*\(\s*["']play["']\s*,\s*\{[^}]*video\s*:\s*["'](v[a-zA-Z0-9]+)["'][^}]*\}/gi,
+      /["']video["']\s*:\s*["'](v[a-zA-Z0-9]+)["']/gi
     ];
     
-    for (const pattern of hlsPatterns) {
-      const matches = html.match(pattern);
-      if (matches) {
-        for (const match of matches) {
-          const url = match.replace(/["']/g, '');
-          if (url.includes('.m3u8') && url.startsWith('http')) {
-            console.log(`[rumble] Found HLS URL: ${url}`);
-            return url;
-          }
+    let videoId = null;
+    for (const pattern of videoIdPatterns) {
+      const match = html.match(pattern);
+      if (match) {
+        const videoIdMatch = match[0].match(/["'](v[a-zA-Z0-9]+)["']/);
+        if (videoIdMatch) {
+          videoId = videoIdMatch[1];
+          console.log(`[rumble] Found videoId: ${videoId}`);
+          break;
         }
       }
     }
     
-    // Chercher aussi dans les scripts JavaScript
-    const scriptMatches = html.match(/<script[^>]*>([\s\S]*?)<\/script>/gi);
-    if (scriptMatches) {
-      for (const script of scriptMatches) {
-        const jsContent = script.replace(/<script[^>]*>/, '').replace(/<\/script>/, '');
-        
-        for (const pattern of hlsPatterns) {
-          const matches = jsContent.match(pattern);
-          if (matches) {
-            for (const match of matches) {
-              const url = match.replace(/["']/g, '');
-              if (url.includes('.m3u8') && url.startsWith('http')) {
-                console.log(`[rumble] Found HLS URL in script: ${url}`);
-                return url;
-              }
-            }
-          }
-        }
-      }
+    if (!videoId) {
+      console.log(`[rumble] No videoId found in static page`);
+      return { videoId: null, hlsUrl: null, watchUrl: null };
     }
     
-    console.log(`[rumble] No HLS URL found in embed page`);
-    return null;
+    // 3. Appeler l'endpoint embedJS pour récupérer les URLs de playback
+    const embedJsUrl = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${videoId}&ad_wt=0`;
+    console.log(`[rumble] Fetching embedJS: ${embedJsUrl}`);
+    
+    const embedResponse = await fetch(embedJsUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://rumble.com/",
+        "Origin": "https://rumble.com"
+      }
+    });
+    
+    if (!embedResponse.ok) {
+      throw new Error(`EmbedJS HTTP ${embedResponse.status}`);
+    }
+    
+    const embedData = await embedResponse.json();
+    console.log(`[rumble] EmbedJS response received`);
+    
+    // 4. Extraire l'URL HLS depuis la réponse JSON
+    // Priorité 1: u.hls.url, Fallback: ua.hls.auto.url
+    let hlsUrl = null;
+    
+    if (embedData?.u?.hls?.url) {
+      hlsUrl = embedData.u.hls.url;
+      console.log(`[rumble] Found HLS URL (u.hls.url): ${hlsUrl}`);
+    } else if (embedData?.ua?.hls?.auto?.url) {
+      hlsUrl = embedData.ua.hls.auto.url;
+      console.log(`[rumble] Found HLS URL (ua.hls.auto.url): ${hlsUrl}`);
+    }
+    
+    // 5. Essayer de construire une watch URL si possible
+    let watchUrl = null;
+    if (embedData?.l) {
+      watchUrl = `https://rumble.com/${embedData.l}`;
+      console.log(`[rumble] Constructed watch URL: ${watchUrl}`);
+    } else if (videoId) {
+      watchUrl = `https://rumble.com/${videoId}`;
+      console.log(`[rumble] Fallback watch URL: ${watchUrl}`);
+    }
+    
+    console.log(`[rumble] Playback resolution complete - videoId: ${videoId}, hlsUrl: ${hlsUrl ? 'FOUND' : 'NULL'}, watchUrl: ${watchUrl}`);
+    
+    return {
+      videoId,
+      hlsUrl,
+      watchUrl
+    };
     
   } catch (error) {
-    console.error(`[rumble] Error scraping HLS URL:`, error);
-    return null;
+    console.error(`[rumble] Error resolving playback from static page:`, error);
+    return { videoId: null, hlsUrl: null, watchUrl: null };
   }
 }
 
@@ -137,6 +179,7 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
         thumbnailUrl: null,
         videoUrl: null,
         hlsUrl: null,
+        videoId: null,
         createdAt: null,
       };
     }
@@ -157,17 +200,27 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
     const isLive = userStream?.is_live === true;
     const viewersCount = userStream?.watching_now || userStream?.viewers || userStream?.viewer_count || null;
     
-    // Données basiques pour LeCasiNoze - pas de résolution HLS côté backend
+    // Résolution du playback depuis la page statique
     const staticVideoUrl = "https://rumble.com/user/LeCasiNoze/live";
     
-    console.log(`[rumble] Using basic data strategy - static URL: ${staticVideoUrl}`);
+    let hlsUrl = null;
+    let videoId = null;
+    let watchUrl = null;
     
-    // Utiliser uniquement les données de l'API Live
-    const publicUrl = staticVideoUrl;
+    if (isLive) {
+      console.log(`[rumble] Stream is live, resolving playback from static page`);
+      const playback = await resolveRumblePlaybackFromStaticPage(staticVideoUrl);
+      hlsUrl = playback.hlsUrl;
+      videoId = playback.videoId;
+      watchUrl = playback.watchUrl;
+    } else {
+      console.log(`[rumble] Stream is offline, skipping playback resolution`);
+    }
+    
+    const publicUrl = watchUrl || staticVideoUrl;
     const embedUrl = null;
-    const hlsUrl = null; // Résolu côté frontend
     
-    console.log(`[rumble] Final URLs - publicUrl: ${publicUrl}, embedUrl: ${embedUrl}, hlsUrl: ${hlsUrl}`);
+    console.log(`[rumble] Final URLs - publicUrl: ${publicUrl}, embedUrl: ${embedUrl}, hlsUrl: ${hlsUrl}, videoId: ${videoId}`);
 
     console.log(`[rumble] Stream info - isLive: ${isLive}, title: "${title}", viewers: ${viewersCount}`);
 
@@ -179,6 +232,7 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
       thumbnailUrl: thumbnailUrl,
       videoUrl: videoUrl,
       hlsUrl: hlsUrl,
+      videoId: videoId,  // Ajout du videoId résolu
       createdAt: createdAt,
     };
   } catch (e) {
@@ -193,6 +247,7 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
       thumbnailUrl: null,
       videoUrl: null,
       hlsUrl: null,
+      videoId: null,
       createdAt: null,
     };
   }
@@ -237,6 +292,7 @@ export async function fetchLeCasiNozeRumbleInfo(): Promise<RumbleLiveInfo> {
       thumbnailUrl: null,
       videoUrl: null,
       hlsUrl: null,
+      videoId: null,
       createdAt: null,
     };
   }
@@ -254,6 +310,7 @@ export async function fetchLeCasiNozeRumbleInfo(): Promise<RumbleLiveInfo> {
       thumbnailUrl: null,
       videoUrl: null,
       hlsUrl: null,
+      videoId: null,
       createdAt: null,
     };
   }

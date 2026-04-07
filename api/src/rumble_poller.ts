@@ -23,21 +23,17 @@ async function getStreamerIdBySlug(slug: string): Promise<number | null> {
   return id != null ? Number(id) : null;
 }
 
-async function updateLeCasiNozeLiveState(
+async function updateRumbleInfo(
+  streamerId: number,
   isLive: boolean,
   title: string | null,
   viewersCount: number | null,
   hlsUrl: string | null,
   videoUrl: string | null,
   thumbnailUrl: string | null,
+  videoId: string | null,
   io?: IOServer
 ) {
-  const streamerId = await getStreamerIdBySlug(LE_CASINOZE_SLUG);
-  if (!streamerId) {
-    console.error(`[rumble-poller] Streamer ${LE_CASINOZE_SLUG} not found`);
-    return;
-  }
-
   const now = new Date();
 
   if (isLive) {
@@ -58,8 +54,8 @@ async function updateLeCasiNozeLiveState(
     await pool.query(
       `INSERT INTO streamer_rumble_info (
          streamer_id, is_live, title, viewers_count, 
-         hls_url, video_url, thumbnail_url, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         hls_url, video_url, thumbnail_url, live_id, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
        ON CONFLICT (streamer_id) DO UPDATE SET
          is_live = EXCLUDED.is_live,
          title = EXCLUDED.title,
@@ -67,8 +63,9 @@ async function updateLeCasiNozeLiveState(
          hls_url = EXCLUDED.hls_url,
          video_url = EXCLUDED.video_url,
          thumbnail_url = EXCLUDED.thumbnail_url,
+         live_id = EXCLUDED.live_id,
          updated_at = NOW()`,
-      [streamerId, isLive, title, viewersCount, hlsUrl, videoUrl, thumbnailUrl]
+      [streamerId, isLive, title, viewersCount, hlsUrl, videoUrl, thumbnailUrl, videoId]
     );
 
     console.log(`[rumble-poller] ${LE_CASINOZE_SLUG} is LIVE: "${title}" (${viewersCount} viewers)`);
@@ -115,23 +112,34 @@ async function updateLeCasiNozeLiveState(
 }
 
 async function pollLeCasiNoze(io?: IOServer) {
+  const streamerId = await getStreamerIdBySlug(LE_CASINOZE_SLUG);
+  if (!streamerId) {
+    console.error(`[rumble-poller] Streamer ${LE_CASINOZE_SLUG} not found`);
+    return;
+  }
+
   try {
     const info = await fetchLeCasiNozeRumbleInfo();
     
-    await updateLeCasiNozeLiveState(
+    await updateRumbleInfo(
+      streamerId,
       info.isLive,
       info.title,
       info.viewersCount,
       info.hlsUrl,
       info.videoUrl,
       info.thumbnailUrl,
+      info.videoId,
       io
     );
   } catch (e) {
     console.error(`[rumble-poller] Error polling ${LE_CASINOZE_SLUG}:`, e);
     
     // En cas d'erreur, considérer comme offline
-    await updateLeCasiNozeLiveState(false, null, null, null, null, null);
+    const streamerId = await getStreamerIdBySlug(LE_CASINOZE_SLUG);
+    if (streamerId) {
+      await updateRumbleInfo(streamerId, false, null, null, null, null, null, null, io);
+    }
   }
 }
 

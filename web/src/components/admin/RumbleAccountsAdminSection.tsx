@@ -7,9 +7,7 @@ import {
   getStreamers,
   adminListRumbleAccounts,
   adminCreateRumbleAccount,
-  adminUpdateRumbleAccount,
   adminDeleteRumbleAccount,
-  adminAssignRumbleAccount,
   adminReleaseRumbleAccount,
 } from "../../lib/api";
 

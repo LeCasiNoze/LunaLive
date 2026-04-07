@@ -2032,3 +2032,82 @@ export async function adminDeletePendingRegistration(adminKey: string, id: numbe
   if (!r.ok || !data?.ok) throw new Error(data?.error || "delete_failed");
   return data as { ok: true };
 }
+
+// ──────────────────────────────────────────
+// 🎪 Rumble Accounts Admin
+// ──────────────────────────────────────────
+
+export type AdminRumbleAccountRow = {
+  id: number;
+  username: string;
+  apiKey: string;
+  rtmpUrl: string;
+  streamKey: string;
+  assignedStreamerId: string | null;
+  assignedAt: string | null;
+  releasedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function adminListRumbleAccounts(adminKey: string) {
+  return j<{ ok: true; accounts: AdminRumbleAccountRow[] }>("/admin/rumble-accounts", {
+    headers: { "x-admin-key": adminKey },
+  });
+}
+
+export async function adminCreateRumbleAccount(
+  adminKey: string,
+  payload: { 
+    username: string; 
+    apiKey: string; 
+    rtmpUrl: string; 
+    streamKey: string; 
+    assignedToStreamerId?: string | null;
+  }
+) {
+  return j<{ ok: true; account: AdminRumbleAccountRow }>("/admin/rumble-accounts", {
+    method: "POST",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminUpdateRumbleAccount(
+  adminKey: string,
+  id: number,
+  payload: Partial<{ 
+    username: string; 
+    apiKey: string; 
+    rtmpUrl: string; 
+    streamKey: string; 
+  }>
+) {
+  return j<{ ok: true; account: AdminRumbleAccountRow }>(`/admin/rumble-accounts/${id}`, {
+    method: "PATCH",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminDeleteRumbleAccount(adminKey: string, id: number) {
+  return j<{ ok: true }>(`/admin/rumble-accounts/${id}`, {
+    method: "DELETE",
+    headers: { "x-admin-key": adminKey },
+  });
+}
+
+export async function adminAssignRumbleAccount(adminKey: string, id: number, streamerId: string) {
+  return j<{ ok: true }>(`/admin/rumble-accounts/${id}/assign`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ streamerId: Number(streamerId) }),
+  });
+}
+
+export async function adminReleaseRumbleAccount(adminKey: string, id: number) {
+  return j<{ ok: true }>(`/admin/rumble-accounts/${id}/release`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey },
+  });
+}

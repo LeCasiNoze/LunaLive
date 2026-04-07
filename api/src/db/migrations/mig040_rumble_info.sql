@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS streamer_rumble_info (
   hls_url TEXT,
   video_url TEXT,
   thumbnail_url TEXT,
+  live_id TEXT,
   updated_at TIMESTAMP DEFAULT NOW(),
   created_at TIMESTAMP DEFAULT NOW()
 );
