@@ -22,12 +22,12 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
   const hlsRef = React.useRef<any>(null);
   const flvRef = React.useRef<any>(null);
 
-  // Auto-sélection de la source - PRIORITÉ ABSOLUE FLV
+  // Auto-sélection de la source - PRIORITÉ HLS TIMESHIFT
   React.useEffect(() => {
-    if (playUrl && playUrl.includes(".flv")) {
-      setSelectedSource("main"); // PRIORITÉ 1: FLV principal
-    } else if (timeShiftUrl && timeShiftUrl.includes(".m3u8")) {
-      setSelectedSource("timeshift"); // PRIORITÉ 2: Fallback HLS timeshift
+    if (timeShiftUrl && timeShiftUrl.includes(".m3u8")) {
+      setSelectedSource("timeshift"); // PRIORITÉ 1: HLS timeshift (fonctionnel)
+    } else if (playUrl && playUrl.includes(".flv")) {
+      setSelectedSource("main"); // PRIORITÉ 2: FLV principal (expérimental)
     } else {
       setSelectedSource("auto"); // Auto-détection
     }
@@ -364,8 +364,8 @@ export default function TrovoPlayer({ playUrl, timeShiftUrl }: TrovoPlayerProps)
   };
 
   const getSourceDescription = () => {
-    if (selectedSource === "main") return "Main FLV (priorité)";
-    if (selectedSource === "timeshift") return "Timeshift HLS (fallback)";
+    if (selectedSource === "timeshift") return "Timeshift HLS (PRIMAIRE)";
+    if (selectedSource === "main") return "Main FLV (EXPÉRIMENTAL)";
     return "Auto";
   };
 
