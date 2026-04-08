@@ -121,6 +121,11 @@ export function createApp() {
 
   app.get("/healthz", (_req, res) => res.status(200).send("ok"));
   app.use(express.json({ limit: "3mb" }));
+
+  // HLS proxy enregistré en premier — avant tout middleware d'auth
+  registerHlsProxy(app);
+  app.options("/hls", (_req, res) => res.sendStatus(204));
+
   app.use("/api/public/slots", publicSlotsRouter);
 
   app.use("/billing", billingRouter);
@@ -248,9 +253,6 @@ export function createApp() {
   app.use("/calls", callsRouter);
   app.use("/calls", callsPcallRouter);
   app.use(hunt2Router);
-
-  registerHlsProxy(app);
-  app.options("/hls", (_req, res) => res.sendStatus(204));
 
   app.use((err: any, _req: any, res: any, _next: any) => {
     console.error(err);
