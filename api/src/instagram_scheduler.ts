@@ -475,7 +475,7 @@ async function tick(accessToken: string, userId: string): Promise<void> {
     WHERE  pj.platform = 'instagram'
       AND  pj.collaboration_status = 'pending'
       AND  pj.collaboration_started_at IS NOT NULL
-      AND  pj.collaboration_started_at < NOW() - (pj.collaboration_timeout_sec || 1200) * INTERVAL '1 second'
+      AND  pj.collaboration_started_at < NOW() - COALESCE(pj.collaboration_timeout_sec, 1200) * INTERVAL '1 second'
   `);
 
   for (const job of timeoutJobs.rows) {
