@@ -4,7 +4,6 @@
 import * as React from "react";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
-const HLS_BASE = (import.meta.env.VITE_HLS_BASE ?? API_BASE).replace(/\/$/, "");
 
 function toProxiedHls(url: string): string {
   // Rumble HLS doit passer par le proxy Render (pas le CF Worker — CF→CF est bloqué)
