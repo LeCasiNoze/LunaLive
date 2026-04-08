@@ -79,7 +79,7 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
     const hls = hlsRef.current;
     if (!hls) return;
     try {
-      const capIdx = pickBestCapIndex(hls.levels || [], 720);
+      const capIdx = pickBestCapIndex(hls.levels || [], 1080);
       if (q === "auto") {
         hls.currentLevel = -1;
         hls.autoLevelCapping = capIdx >= 0 ? capIdx : -1;
@@ -145,8 +145,8 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
       const unique = uniqBy(lvls, (x) => String(x.height || x.label));
       unique.sort((a, b) => (b.height || 0) - (a.height || 0));
 
-      const capIdx = pickBestCapIndex(levels, 720);
-      const autoLabel = capIdx >= 0 ? "Auto (max 720p)" : "Auto (recommandé)";
+      const capIdx = pickBestCapIndex(levels, 1080);
+      const autoLabel = capIdx >= 0 ? "Auto (max 1080p)" : "Auto (recommandé)";
       const opts: LevelOpt[] = [{ key: "auto", label: autoLabel }, ...unique];
 
       setLevelsUI(opts);

@@ -41,21 +41,24 @@ async function updateRumbleInfo(
     ? (() => { try { const ms = new Date(liveCreatedAt).getTime(); return Number.isFinite(ms) ? ms : null; } catch { return null; } })()
     : null;
 
+  const slug = LE_CASINOZE_SLUG;
+  const room = `stream:${slug.toLowerCase()}`;
+  const wasLive = lastLiveState;
+
   if (isLive) {
-    // Mettre à jour l'état live
+    // Mettre à jour streamers
     await pool.query(
       `UPDATE streamers
-       SET 
-         is_live = true,
-         live_started_at = COALESCE(live_started_at, $2),
-         title = COALESCE($3, title, 'Live sur Rumble'),
-         viewers = COALESCE($4, viewers),
-         updated_at = NOW()
+       SET is_live = true,
+           live_started_at = COALESCE(live_started_at, $2),
+           title = COALESCE($3, title, 'Live sur Rumble'),
+           viewers = COALESCE($4, viewers),
+           updated_at = NOW()
        WHERE id = $1`,
       [streamerId, now, title, viewersCount]
     );
 
-    // Stocker les infos Rumble dans une table séparée pour LeCasiNoze
+    // Stocker les infos Rumble
     await pool.query(
       `INSERT INTO streamer_rumble_info (
          streamer_id, is_live, title, viewers_count,
@@ -74,21 +77,45 @@ async function updateRumbleInfo(
       [streamerId, isLive, title, viewersCount, hlsUrl, videoUrl, thumbnailUrl, videoId, liveStartedAtMs]
     );
 
-    console.log(`[rumble-poller] ${LE_CASINOZE_SLUG} is LIVE: "${title}" (${viewersCount} viewers)`);
+    // ── Transition OFF → ON ──────────────────────────────────────────────────
+    if (!wasLive) {
+      console.log(`[rumble-poller] ${slug} went LIVE: "${title}"`);
 
-    // Notifier les followers si c'est un nouveau live
-    if (!lastLiveState) {
+      // Ouvrir une live_session (comme DLive)
+      await pool.query(
+        `INSERT INTO live_sessions (streamer_id, started_at)
+         VALUES ($1, NOW())
+         ON CONFLICT (streamer_id) WHERE ended_at IS NULL
+         DO NOTHING`,
+        [streamerId]
+      ).catch(() => {});
+
+      // Émettre sur le socket room (fait apparaître dans la liste Lives)
+      io?.to(room).emit("stream:viewers", {
+        slug,
+        isLive: true,
+        viewers: viewersCount ?? 0,
+      });
+
+      // Notifier les followers (toast + push)
       await notifyFollowersGoLive(io, streamerId);
+    } else {
+      // Juste update viewers
+      io?.to(room).emit("stream:viewers", {
+        slug,
+        isLive: true,
+        viewers: viewersCount ?? 0,
+      });
     }
   } else {
-    // Mettre à jour l'état offline
+    // Mettre à jour streamers
     await pool.query(
       `UPDATE streamers
-       SET 
-         is_live = false,
-         title = 'Hors ligne',
-         viewers = 0,
-         updated_at = NOW()
+       SET is_live = false,
+           title = 'Hors ligne',
+           viewers = 0,
+           live_started_at = NULL,
+           updated_at = NOW()
        WHERE id = $1`,
       [streamerId]
     );
@@ -109,9 +136,33 @@ async function updateRumbleInfo(
          updated_at = NOW()`,
       [streamerId, isLive, null, null, null, null, null]
     );
-    // live_id et live_started_at restent inchangés (dernier live connu → utile pour VOD)
 
-    console.log(`[rumble-poller] ${LE_CASINOZE_SLUG} is OFFLINE`);
+    // ── Transition ON → OFF ──────────────────────────────────────────────────
+    if (wasLive) {
+      console.log(`[rumble-poller] ${slug} went OFFLINE`);
+
+      // Fermer la live_session (comme DLive)
+      await pool.query(
+        `UPDATE live_sessions SET ended_at = NOW()
+         WHERE streamer_id = $1 AND ended_at IS NULL`,
+        [streamerId]
+      ).catch(() => {});
+
+      // Fermer les viewer_sessions encore ouvertes
+      await pool.query(
+        `UPDATE viewer_sessions
+         SET ended_at = COALESCE(last_heartbeat_at, NOW())
+         WHERE streamer_id = $1 AND ended_at IS NULL`,
+        [streamerId]
+      ).catch(() => {});
+
+      // Émettre offline sur le socket room
+      io?.to(room).emit("stream:viewers", {
+        slug,
+        isLive: false,
+        viewers: 0,
+      });
+    }
   }
 
   lastLiveState = isLive;
