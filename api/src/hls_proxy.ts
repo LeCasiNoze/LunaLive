@@ -167,9 +167,11 @@ export function registerHlsProxy(app: Express) {
       origin: isRumble ? "https://rumble.com" : "https://dlive.tv",
     };
 
-    // Range passthrough (hls.js peut l'utiliser selon navigateur)
+    // Range passthrough uniquement pour les segments binaires — jamais pour les playlists .m3u8
+    // (un Range sur une playlist donne un 206 partiel → M3U8 tronqué → parse fail hls.js)
+    const isPlaylistUrl = target.pathname.toLowerCase().endsWith(".m3u8");
     const range = req.headers.range ? String(req.headers.range) : "";
-    if (range) headers.range = range;
+    if (range && !isPlaylistUrl) headers.range = range;
 
     // Abort upstream si le client coupe (évite congestion + stalls)
     const ac = new AbortController();
