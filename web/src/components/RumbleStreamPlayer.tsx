@@ -3,6 +3,13 @@
 
 import * as React from "react";
 
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+const HLS_BASE = (import.meta.env.VITE_HLS_BASE ?? API_BASE).replace(/\/$/, "");
+
+function toProxiedHls(url: string): string {
+  return `${HLS_BASE}/hls?u=${encodeURIComponent(url)}`;
+}
+
 export type RumbleStreamPlayerProps = {
   hlsUrl?: string | null;
   thumbnailUrl?: string | null;
@@ -245,7 +252,11 @@ export default function RumbleStreamPlayer({
     setPlayerState("loading");
     setError(null);
 
-    initHlsPlayer(hlsUrl, video);
+    // Passer par le proxy HLS pour éviter les CORS (même logique que DlivePlayer)
+    const proxiedUrl = toProxiedHls(hlsUrl);
+    addLog(`Using proxied HLS: ${proxiedUrl}`);
+
+    initHlsPlayer(proxiedUrl, video);
 
     // Cleanup
     return () => {

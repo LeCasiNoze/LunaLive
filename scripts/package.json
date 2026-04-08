@@ -1,16 +1,15 @@
 {
-  "name": "dlive-chat-reader",
+  "name": "lunalive-scripts",
   "version": "1.0.0",
-  "description": "Module autonome pour lire le chat DLive en temps réel",
-  "main": "dlive-chat-reader.js",
+  "type": "module",
+  "description": "Scripts utilitaires LunaLive",
   "scripts": {
-    "start": "node dlive-chat-reader.js",
-    "test": "node dlive-chat-reader.js dlive-abc123"
+    "db": "node db-query.js",
+    "rumble": "node test-rumble-api.js"
   },
   "dependencies": {
     "ws": "^8.14.0"
   },
-  "keywords": ["dlive", "chat", "websocket", "graphql"],
-  "author": "Extracted from LunaLive",
+  "keywords": [],
   "license": "MIT"
 }

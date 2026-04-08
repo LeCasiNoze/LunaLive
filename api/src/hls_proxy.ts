@@ -27,7 +27,14 @@ function hostMatches(host: string, pattern: string) {
   return h === p;
 }
 
-const DEFAULT_ALLOWED = ["live.prd.dlive.tv", "*.dlive.tv", "*.dlivecdn.com", "dlivecdn.com"];
+const DEFAULT_ALLOWED = [
+  // DLive
+  "live.prd.dlive.tv", "*.dlive.tv", "*.dlivecdn.com", "dlivecdn.com",
+  // Rumble CDN
+  "*.rumble.cloud", "rumble.cloud",
+  "*.rumble.com", "rumble.com",
+  "1a-1791.com", "*.1a-1791.com", // CDN réel Rumble (segments HLS)
+];
 
 function isAllowedHost(host: string) {
   const extra = String(process.env.HLS_PROXY_ALLOW_HOSTS || "")
@@ -136,11 +143,12 @@ export function registerHlsProxy(app: Express) {
     const uaIn = String(req.headers["user-agent"] || "Mozilla/5.0");
     const ua = isIOSUA(uaIn) && isDliveHost(target.hostname) ? DESKTOP_UA : uaIn;
 
+    const isRumble = target.hostname.includes("rumble");
     const headers: Record<string, string> = {
       accept: String(req.headers.accept || "*/*"),
       "user-agent": ua,
-      referer: "https://dlive.tv/",
-      origin: "https://dlive.tv",
+      referer: isRumble ? "https://rumble.com/" : "https://dlive.tv/",
+      origin: isRumble ? "https://rumble.com" : "https://dlive.tv",
     };
 
     // Range passthrough (hls.js peut l'utiliser selon navigateur)

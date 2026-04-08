@@ -153,3 +153,31 @@ Un sprint est terminé si :
 4. ce qui est prêt
 5. ce qui reste à faire
 6. niveau de confiance honnête
+
+## Économie de tokens
+- Ne pas répéter l'état de l'existant si déjà analysé dans la session
+- Préférer les diffs/blocs de code courts aux rewrites complets
+- Aller droit au but : pas de preamble, pas de reformulation de la demande
+- Lire uniquement les fichiers nécessaires, pas l'arborescence entière
+- Une seule lecture par fichier sauf si modification depuis
+
+## Priorité absolue : flux HLS Rumble
+DLive ferme → migration vers Rumble en cours. La priorité n°1 est de récupérer le flux HLS Rumble de façon fiable et stable pour n'importe quel compte, sans dépendre du scraping HTML (bloqué par Cloudflare).
+
+Pistes par ordre de priorité :
+1. API Rumble `/get-data?key=...` → retourne-t-elle le videoId ou l'URL HLS directement ?
+2. `stream_key` en DB → construire l'URL HLS depuis le stream key (pattern CDN Rumble stable)
+3. `embedJS/u3/?v={videoId}` → fonctionne si on a le videoId sans scraping
+4. Worker avec browser automation (Puppeteer) → dernier recours
+
+Le HLS proxy (`hls_proxy.ts`) doit être étendu pour autoriser les CDN Rumble.
+Les infos stables (stream_key) ne changent jamais → à préférer aux infos dynamiques (videoId).
+
+## Intégration Rumble — état actuel
+- `rumble_accounts` table : `username`, `api_key`, `stream_key`, `rtmp_url`, `assigned_to_streamer_id`
+- `streamer_rumble_info` table : cache live info (hls_url, video_url, etc.)
+- `rumble_poller.ts` : poll toutes les 30s, appelle `fetchLeCasiNozeRumbleInfo()`
+- `rumble.ts` : scrape page statique → extrait videoId → appelle embedJS → HLS
+- Problème : scraping bloqué par Cloudflare côté serveur
+- `hls_proxy.ts` : CORS proxy, actuellement limité aux hosts DLive uniquement
+- Seul LeCasiNoze a un compte Rumble lié pour l'instant
