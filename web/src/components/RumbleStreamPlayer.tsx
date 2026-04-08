@@ -160,18 +160,6 @@ export default function RumbleStreamPlayer({
         liveSyncDurationCount: 3,
         liveMaxLatencyDurationCount: 10,
         maxLiveSyncPlaybackRate: 1.0,
-        // Injecte les headers Rumble sur les requêtes directes vers 1a-1791.com
-        fetchSetup: (context, initParams) => {
-          const u = context.url || "";
-          if (u.includes("1a-1791.com") || u.includes("rumble.com")) {
-            (initParams as any).headers = {
-              ...(initParams as any).headers,
-              "referer": "https://rumble.com/",
-              "origin": "https://rumble.com",
-            };
-          }
-          return new Request(u, initParams as RequestInit);
-        },
       });
 
       hlsRef.current = hls;
@@ -198,12 +186,12 @@ export default function RumbleStreamPlayer({
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              setError("Erreur réseau HLS: " + data.details);
-              setPlayerState("error");
+              addLog("HLS fatal network error — trying to recover");
+              hls.startLoad();
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              setError("Erreur média HLS: " + data.details);
-              setPlayerState("error");
+              addLog("HLS fatal media error — trying recoverMediaError()");
+              hls.recoverMediaError();
               break;
             default:
               setError("Erreur HLS fatale: " + data.details);

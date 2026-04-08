@@ -46,18 +46,6 @@ function isAllowedHost(host: string) {
   return patterns.some((p) => hostMatches(host, p));
 }
 
-// Hosts dont les segments TS ont CORS * → le browser peut les charger directement
-// MAIS les playlists enfants (.m3u8) passent toujours par le proxy (session IP CDN)
-const DIRECT_SEGMENT_HOSTS = ["1a-1791.com"];
-
-function isDirectSegmentHost(host: string) {
-  return DIRECT_SEGMENT_HOSTS.some(h => host === h || host.endsWith("." + h));
-}
-
-function isM3u8Url(url: string) {
-  return url.split("?")[0].endsWith(".m3u8");
-}
-
 function proxyUrl(u: string) {
   return `/hls?u=${encodeURIComponent(u)}`;
 }
@@ -80,10 +68,8 @@ function rewriteM3u8(text: string, base: URL) {
 
       // rewrite segment / child playlist lines
       const abs = new URL(s, base).toString();
-      const host = new URL(abs).hostname;
-      // Segments TS sur CDN CORS ouvert → directs (économise bande passante Render)
-      // Playlists .m3u8 → toujours via proxy (session IP CDN)
-      if (isDirectSegmentHost(host) && !isM3u8Url(abs)) return abs;
+      // Tout passe par le proxy — y compris les segments 1a-1791.com
+      // (nécessaire pour injecter les headers Rumble et éviter DEMUXER_ERROR)
       return proxyUrl(abs);
     })
     .join("\n");
@@ -159,7 +145,7 @@ export function registerHlsProxy(app: Express) {
     const uaIn = String(req.headers["user-agent"] || "Mozilla/5.0");
     const ua = isIOSUA(uaIn) && isDliveHost(target.hostname) ? DESKTOP_UA : uaIn;
 
-    const isRumble = target.hostname.includes("rumble");
+    const isRumble = target.hostname.includes("rumble") || target.hostname.includes("1a-1791.com");
     const headers: Record<string, string> = {
       accept: String(req.headers.accept || "*/*"),
       "user-agent": ua,
