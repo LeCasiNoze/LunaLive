@@ -46,11 +46,16 @@ function isAllowedHost(host: string) {
   return patterns.some((p) => hostMatches(host, p));
 }
 
-// Hosts dont les segments ont CORS * → le browser peut les charger directement
-const DIRECT_CDN_HOSTS = ["1a-1791.com"];
+// Hosts dont les segments TS ont CORS * → le browser peut les charger directement
+// MAIS les playlists enfants (.m3u8) passent toujours par le proxy (session IP CDN)
+const DIRECT_SEGMENT_HOSTS = ["1a-1791.com"];
 
-function isDirectCdnHost(host: string) {
-  return DIRECT_CDN_HOSTS.some(h => host === h || host.endsWith("." + h));
+function isDirectSegmentHost(host: string) {
+  return DIRECT_SEGMENT_HOSTS.some(h => host === h || host.endsWith("." + h));
+}
+
+function isM3u8Url(url: string) {
+  return url.split("?")[0].endsWith(".m3u8");
 }
 
 function proxyUrl(u: string) {
@@ -69,9 +74,6 @@ function rewriteM3u8(text: string, base: URL) {
       if (s.startsWith("#")) {
         return line.replace(/URI="([^"]+)"/g, (_m, uri) => {
           const abs = new URL(uri, base).toString();
-          const host = new URL(abs).hostname;
-          // CORS * sur ce CDN → URL directe, pas de proxy
-          if (isDirectCdnHost(host)) return `URI="${abs}"`;
           return `URI="${proxyUrl(abs)}"`;
         });
       }
@@ -79,8 +81,9 @@ function rewriteM3u8(text: string, base: URL) {
       // rewrite segment / child playlist lines
       const abs = new URL(s, base).toString();
       const host = new URL(abs).hostname;
-      // Playlists enfants (chunklist) sur CDN direct → URL directe
-      if (isDirectCdnHost(host)) return abs;
+      // Segments TS sur CDN CORS ouvert → directs (économise bande passante Render)
+      // Playlists .m3u8 → toujours via proxy (session IP CDN)
+      if (isDirectSegmentHost(host) && !isM3u8Url(abs)) return abs;
       return proxyUrl(abs);
     })
     .join("\n");
