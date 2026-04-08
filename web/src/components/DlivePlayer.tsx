@@ -384,8 +384,8 @@ export function DlivePlayer({
 
     const RESYNC_THRESHOLD_SEC = 10; // si > 10s derrière => resync
     const IOS_LIVE_SAFETY_SEC = 1.5; // seek à end - 1.5s
-    const STALL_GRACE_MS = 8000; // si pas de progrès pendant 8s => recovery
-    const PROGRESS_EPS = 0.02; // 20ms de progrès = ok
+    const STALL_GRACE_MS = 20_000; // si pas de progrès pendant 20s => recovery (évite faux positifs)
+    const PROGRESS_EPS = 0.5; // 500ms de progrès = ok (20ms était trop fin, causait des faux stalls)
 
     let lastT = Number(video.currentTime || 0);
     let lastProgressAt = Date.now();
@@ -647,8 +647,18 @@ export function DlivePlayer({
       if (Number(video.currentTime || 0) <= 0.01) return;
       if (since < STALL_GRACE_MS) return;
 
-      const hls = hlsRef.current;
+      // ✅ Ne déclencher le recovery QUE si le décodeur est vraiment bloqué
+      // readyState 0/1/2 = pas de données / HAVE_METADATA / HAVE_CURRENT_DATA → stall réel
+      // readyState 3/4 = HAVE_FUTURE_DATA / HAVE_ENOUGH_DATA → la vidéo joue, faux positif
+      if (video.readyState >= 3) {
+        // Le décodeur a des données — ce n'est pas un vrai stall, juste timeupdate lent
+        // Remettre le compteur pour éviter de re-détecter au prochain tick
+        lastProgressAt = Date.now();
+        lastT = Number(video.currentTime || 0);
+        return;
+      }
 
+      const hls = hlsRef.current;
       dbgLog("stall detected", {
         sinceMs: since,
         ct: Number(video.currentTime || 0).toFixed(2),
@@ -657,33 +667,11 @@ export function DlivePlayer({
         mode: hls ? "hlsjs" : "native",
       });
 
-      // Recovery escalier
-      safePlay(video);
-      try {
-        video.currentTime = Number(video.currentTime || 0) + 0.1;
-      } catch {}
-
+      // Recovery minimal — pas de recoverMediaError() qui freeze le décodeur système
       if (hls) {
-        try {
-          hls.recoverMediaError();
-        } catch {}
-        try {
-          hls.startLoad(-1);
-        } catch {}
+        try { hls.startLoad(-1); } catch {}
       } else {
-        try {
-          const cur = video.currentTime || 0;
-          const base = video.src || "";
-          if (base) {
-            const sep = base.includes("?") ? "&" : "?";
-            video.src = `${base}${sep}t=${Date.now()}`;
-            video.load();
-            try {
-              video.currentTime = cur;
-            } catch {}
-            safePlay(video);
-          }
-        } catch {}
+        safePlay(video);
       }
 
       lastProgressAt = Date.now();
