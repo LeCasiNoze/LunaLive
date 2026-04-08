@@ -32,9 +32,14 @@ async function updateRumbleInfo(
   videoUrl: string | null,
   thumbnailUrl: string | null,
   videoId: string | null,
-  io?: IOServer
+  io?: IOServer,
+  liveCreatedAt?: string | null   // ISO string from Rumble API (created_on)
 ) {
   const now = new Date();
+  // Convertit created_on en ms pour le vod_linker (at_sec calculation)
+  const liveStartedAtMs: number | null = liveCreatedAt
+    ? (() => { try { const ms = new Date(liveCreatedAt).getTime(); return Number.isFinite(ms) ? ms : null; } catch { return null; } })()
+    : null;
 
   if (isLive) {
     // Mettre à jour l'état live
@@ -53,9 +58,9 @@ async function updateRumbleInfo(
     // Stocker les infos Rumble dans une table séparée pour LeCasiNoze
     await pool.query(
       `INSERT INTO streamer_rumble_info (
-         streamer_id, is_live, title, viewers_count, 
-         hls_url, video_url, thumbnail_url, live_id, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+         streamer_id, is_live, title, viewers_count,
+         hls_url, video_url, thumbnail_url, live_id, live_started_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
        ON CONFLICT (streamer_id) DO UPDATE SET
          is_live = EXCLUDED.is_live,
          title = EXCLUDED.title,
@@ -64,8 +69,9 @@ async function updateRumbleInfo(
          video_url = EXCLUDED.video_url,
          thumbnail_url = EXCLUDED.thumbnail_url,
          live_id = EXCLUDED.live_id,
+         live_started_at = EXCLUDED.live_started_at,
          updated_at = NOW()`,
-      [streamerId, isLive, title, viewersCount, hlsUrl, videoUrl, thumbnailUrl, videoId]
+      [streamerId, isLive, title, viewersCount, hlsUrl, videoUrl, thumbnailUrl, videoId, liveStartedAtMs]
     );
 
     console.log(`[rumble-poller] ${LE_CASINOZE_SLUG} is LIVE: "${title}" (${viewersCount} viewers)`);
@@ -87,10 +93,10 @@ async function updateRumbleInfo(
       [streamerId]
     );
 
-    // Mettre à jour les infos Rumble
+    // Mettre à jour les infos Rumble — NE PAS écraser live_id (utile pour les VODs)
     await pool.query(
       `INSERT INTO streamer_rumble_info (
-         streamer_id, is_live, title, viewers_count, 
+         streamer_id, is_live, title, viewers_count,
          hls_url, video_url, thumbnail_url, updated_at
        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
        ON CONFLICT (streamer_id) DO UPDATE SET
@@ -103,6 +109,7 @@ async function updateRumbleInfo(
          updated_at = NOW()`,
       [streamerId, isLive, null, null, null, null, null]
     );
+    // live_id et live_started_at restent inchangés (dernier live connu → utile pour VOD)
 
     console.log(`[rumble-poller] ${LE_CASINOZE_SLUG} is OFFLINE`);
   }
@@ -130,27 +137,34 @@ async function pollLeCasiNoze(io?: IOServer) {
       info.videoUrl,
       info.thumbnailUrl,
       info.videoId,
-      io
+      io,
+      info.createdAt
     );
   } catch (e) {
     console.error(`[rumble-poller] Error polling ${LE_CASINOZE_SLUG}:`, e);
-    
-    // En cas d'erreur, considérer comme offline
-    const streamerId = await getStreamerIdBySlug(LE_CASINOZE_SLUG);
-    if (streamerId) {
-      await updateRumbleInfo(streamerId, false, null, null, null, null, null, null, io);
-    }
+    // Ne pas re-tenter des appels DB ici — si la DB est down, ça crasherait le process
   }
 }
 
+async function ensureRumbleInfoColumns() {
+  await pool.query(`ALTER TABLE streamer_rumble_info ADD COLUMN IF NOT EXISTS live_id TEXT;`).catch(() => {});
+  await pool.query(`ALTER TABLE streamer_rumble_info ADD COLUMN IF NOT EXISTS live_started_at BIGINT;`).catch(() => {});
+}
+
 export function startRumblePoller(io?: IOServer) {
+  // Assure les colonnes supplémentaires au démarrage
+  ensureRumbleInfoColumns().catch(e => console.error("[rumble-poller] ensureColumns failed", e));
+
   console.log(`[rumble-poller] Starting polling for ${LE_CASINOZE_SLUG} every ${INTERVAL_MS}ms`);
   
   // Premier poll immédiat
-  pollLeCasiNoze(io);
-  
+  pollLeCasiNoze(io).catch(e => console.error("[rumble-poller] first tick failed", e));
+
   // Polling régulier
-  const interval = setInterval(() => pollLeCasiNoze(io), INTERVAL_MS);
+  const interval = setInterval(
+    () => pollLeCasiNoze(io).catch(e => console.error("[rumble-poller] tick failed", e)),
+    INTERVAL_MS
+  );
   
   return () => {
     clearInterval(interval);

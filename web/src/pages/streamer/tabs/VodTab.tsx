@@ -4,6 +4,16 @@ import * as React from "react";
 import Hls from "hls.js";
 import { getStreamerVods, type ApiVod } from "../../../lib/api_streamer_tabs";
 
+const API_BASE = ((import.meta as any).env?.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+function toProxied(url: string): string {
+  if (!url) return url;
+  // Proxify les URLs Rumble via notre backend (CORS + headers Rumble)
+  if (/rumble\.com|1a-1791\.com/i.test(url)) {
+    return `${API_BASE}/hls?u=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
+
 const whiteStroke = { color:"#fff", textShadow:`-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000` };
 function fmtDuration(sec: number) {
   sec = Math.max(0, Math.floor(sec || 0));
@@ -104,7 +114,7 @@ function VodModal({ vod, onClose }: { vod: ApiVod; onClose: () => void }) {
   React.useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const url = vod.bestHlsUrl;
+    const url = toProxied(vod.bestHlsUrl || "");
     if (!url) return;
     let hls: Hls | null = null;
     if (video.canPlayType("application/vnd.apple.mpegurl")) {

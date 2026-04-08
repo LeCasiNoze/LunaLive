@@ -182,12 +182,38 @@ streamerVodsRouter.get(
     }
 
     if (!source) {
+      // Pas de DLive → essayer Rumble VOD (dernier live_id connu)
+      const rumbleRow = await pool.query(
+        `SELECT live_id, title, thumbnail_url, live_started_at
+         FROM streamer_rumble_info WHERE streamer_id=$1 LIMIT 1`,
+        [row.id]
+      ).then(r => r.rows[0] || null).catch(() => null);
+
+      const liveId = rumbleRow?.live_id ? String(rumbleRow.live_id).replace(/^v/, "") : null;
+      if (liveId) {
+        const hlsUrl = `https://rumble.com/live-hls-dvr/${liveId}/playlist.m3u8`;
+        const createdAtMs = rumbleRow.live_started_at ? Number(rumbleRow.live_started_at) : 0;
+        return res.json({
+          ok: true,
+          reason: "ok",
+          source: "rumble",
+          pageInfo: { endCursor: null, hasNextPage: false },
+          vods: [{
+            permlink: `rumble_${liveId}`,
+            title: rumbleRow.title ? String(rumbleRow.title) : "Dernier live Rumble",
+            thumbnailUrl: rumbleRow.thumbnail_url ? String(rumbleRow.thumbnail_url) : null,
+            lengthSec: 0,
+            createdAtMs,
+            viewCount: 0,
+            bestHlsUrl: hlsUrl,
+          }],
+        });
+      }
+
       return res.json({
         ok: true,
         reason: "no_source",
         channelSlug: null,
-        providerChannelSlug: canUseProvider ? providerChannelSlug : null,
-        linkedChannel: canUseLinked ? linkedChannel : null,
         source: null,
         pageInfo: { endCursor: null, hasNextPage: false },
         vods: [],

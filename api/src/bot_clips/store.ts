@@ -19,6 +19,8 @@ export type BotClipRow = {
   live_permlink: string | null;
   // ✅ source LunaLive radio (snapshot)
   source_displayname: string | null;
+  // ✅ plateforme du live au moment du clip
+  platform?: string | null; // 'dlive' | 'rumble' | 'trovo'
 
   hidden_by_streamer?: boolean;
   deleted_ts?: number | null; // ms
@@ -84,8 +86,8 @@ export async function ensureBotClips() {
 
   await pool.query(`ALTER TABLE bot_clips ADD COLUMN IF NOT EXISTS live_start_ts BIGINT;`);
   await pool.query(`ALTER TABLE bot_clips ADD COLUMN IF NOT EXISTS live_permlink TEXT;`);
-  
   await pool.query(`ALTER TABLE bot_clips ADD COLUMN IF NOT EXISTS source_displayname TEXT;`);
+  await pool.query(`ALTER TABLE bot_clips ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT 'dlive';`);
   
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_bot_clips_live_permlink ON bot_clips(live_permlink) WHERE live_permlink IS NOT NULL;`);
   
