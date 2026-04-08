@@ -153,12 +153,25 @@ export default function RumbleStreamPlayer({
         debug: false,
         enableWorker: true,
         lowLatencyMode: false,
+        startPosition: -1,            // toujours démarrer au live edge (ignore les 4200 vieux segments DVR)
         backBufferLength: 30,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
         liveSyncDurationCount: 3,
         liveMaxLatencyDurationCount: 10,
         maxLiveSyncPlaybackRate: 1.0,
+        // Injecte les headers Rumble sur les requêtes directes vers 1a-1791.com
+        fetchSetup: (context, initParams) => {
+          const u = context.url || "";
+          if (u.includes("1a-1791.com") || u.includes("rumble.com")) {
+            (initParams as any).headers = {
+              ...(initParams as any).headers,
+              "referer": "https://rumble.com/",
+              "origin": "https://rumble.com",
+            };
+          }
+          return new Request(u, initParams as RequestInit);
+        },
       });
 
       hlsRef.current = hls;

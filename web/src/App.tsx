@@ -39,6 +39,7 @@ const RumbleDebugPage = React.lazy(() => import("./pages/debug/RumbleDebugPage")
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
+import { WelcomeModal } from "./components/WelcomeModal";
 import { GoLiveNotifier } from "./components/GoLiveNotifier";
 import { DailyBonusToast } from "./components/DailyBonusToast";
 import { AchievementsToast } from "./components/AchievementsToast";
@@ -62,6 +63,7 @@ function AppInner() {
 
   const [loginOpen, setLoginOpen] = React.useState(false);
   const [achievementsOpen, setAchievementsOpen] = React.useState(false);
+  const [welcomeOpen, setWelcomeOpen] = React.useState(false);
 
   React.useEffect(() => {
     setLoginOpen(false);
@@ -77,11 +79,27 @@ function AppInner() {
   }
 }, [location.pathname, location.search]);
 
-  // ✅ listeners globaux (si tu les utilises avec CallsToast actions)
+  // listeners globaux (si tu les utilises avec CallsToast actions)
   React.useEffect(() => {
     const onAchievements = () => setAchievementsOpen(true);
+    const onLoginSuccess = () => {
+      // TEMPORAIRE : Désactiver la règle de 24h pour les tests
+      // Le WelcomeModal s'affichera à chaque connexion
+      // TODO: Réactiver la règle de 24h après validation
+      
+      // Attendre que le LoginModal soit bien fermé avant d'afficher le WelcomeModal
+      setTimeout(() => {
+        setWelcomeOpen(true);
+      }, 200);
+    };
+    
     window.addEventListener("ui:achievements_open", onAchievements as any);
-    return () => window.removeEventListener("ui:achievements_open", onAchievements as any);
+    window.addEventListener("ui:login_success", onLoginSuccess as any);
+    
+    return () => {
+      window.removeEventListener("ui:achievements_open", onAchievements as any);
+      window.removeEventListener("ui:login_success", onLoginSuccess as any);
+    };
   }, []);
 
   return (
@@ -186,6 +204,7 @@ function AppInner() {
       {isMobile && <BottomTabs />}
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+      <WelcomeModal open={welcomeOpen} onClose={() => setWelcomeOpen(false)} />
       <AchievementsModal open={achievementsOpen} onClose={() => setAchievementsOpen(false)} />
     </div>
   );

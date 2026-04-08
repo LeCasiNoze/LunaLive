@@ -239,6 +239,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       const r = await login(u, password);
       setAuth(r.token, r.user);
       clearPersistedRef(); setRefSlug(null); onClose();
+      window.dispatchEvent(new CustomEvent("ui:login_success"));
     } catch (e: any) { setErr(String(e?.message || "Erreur")); }
     finally { setBusy(false); }
   }
@@ -279,6 +280,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       const r = await registerVerify(u, c);
       setAuth(r.token, r.user);
       clearPersistedRef(); setRefSlug(null); onClose();
+      window.dispatchEvent(new CustomEvent("ui:login_success"));
     } catch (e: any) { setErr(String(e?.message || "Erreur")); }
     finally { setBusy(false); }
   }
