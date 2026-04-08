@@ -7,7 +7,8 @@ const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrende
 const HLS_BASE = (import.meta.env.VITE_HLS_BASE ?? API_BASE).replace(/\/$/, "");
 
 function toProxiedHls(url: string): string {
-  return `${HLS_BASE}/hls?u=${encodeURIComponent(url)}`;
+  // Rumble HLS doit passer par le proxy Render (pas le CF Worker — CF→CF est bloqué)
+  return `${API_BASE}/hls?u=${encodeURIComponent(url)}`;
 }
 
 export type RumbleStreamPlayerProps = {

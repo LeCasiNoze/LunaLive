@@ -46,6 +46,13 @@ function isAllowedHost(host: string) {
   return patterns.some((p) => hostMatches(host, p));
 }
 
+// Hosts dont les segments ont CORS * → le browser peut les charger directement
+const DIRECT_CDN_HOSTS = ["1a-1791.com"];
+
+function isDirectCdnHost(host: string) {
+  return DIRECT_CDN_HOSTS.some(h => host === h || host.endsWith("." + h));
+}
+
 function proxyUrl(u: string) {
   return `/hls?u=${encodeURIComponent(u)}`;
 }
@@ -62,12 +69,18 @@ function rewriteM3u8(text: string, base: URL) {
       if (s.startsWith("#")) {
         return line.replace(/URI="([^"]+)"/g, (_m, uri) => {
           const abs = new URL(uri, base).toString();
+          const host = new URL(abs).hostname;
+          // CORS * sur ce CDN → URL directe, pas de proxy
+          if (isDirectCdnHost(host)) return `URI="${abs}"`;
           return `URI="${proxyUrl(abs)}"`;
         });
       }
 
       // rewrite segment / child playlist lines
       const abs = new URL(s, base).toString();
+      const host = new URL(abs).hostname;
+      // Playlists enfants (chunklist) sur CDN direct → URL directe
+      if (isDirectCdnHost(host)) return abs;
       return proxyUrl(abs);
     })
     .join("\n");
