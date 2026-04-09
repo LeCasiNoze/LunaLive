@@ -38,6 +38,7 @@ import { EmotesAdminSection } from "../components/admin/EmotesAdminSection";
 import { ReportsAdminSection } from "../components/admin/ReportsAdminSection";
 import { SubscriptionsAdminSection } from "../components/admin/SubscriptionsAdminSection";
 import { LunaClipAdminSection } from "../components/admin/Lunaclipadminsection";
+import { PlatformStatsSection } from "../components/admin/PlatformStatsSection";
 
 const SS_KEY = "lunalive_admin_key_v1";
 const SS_TAB = "lunalive_admin_tab_v1";
@@ -590,6 +591,7 @@ export default function AdminPage() {
           >
             <div style={{ display: "grid", gap: 10 }}>
               <NavButton active={tab === "overview"} icon="🏠" label="Aperçu" hint="Vue globale + raccourcis" onClick={() => goto("overview")} />
+              <NavButton active={tab === "monitoring"} icon="📊" label="Monitoring" hint="Stats live, audience, ressources" onClick={() => goto("monitoring")} />
 
               <NavButton
                 active={tab === "content"}
@@ -768,6 +770,21 @@ export default function AdminPage() {
                   <div style={{ fontSize: 26, fontWeight: 950, marginTop: 4 }}>{streamers.length}</div>
                 </div>
               </div>
+            </Card>
+          ) : null}
+
+          {tab === "monitoring" ? (
+            <Card
+              title={
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>📊</span>
+                  Monitoring plateforme
+                </span>
+              }
+              subtitle="Audience, croissance, ressources serveur — mis à jour toutes les 30s."
+              right={<button className="btnSecondary" type="button" onClick={() => goto("overview")}>← Retour</button>}
+            >
+              <PlatformStatsSection adminKey={key} />
             </Card>
           ) : null}
 

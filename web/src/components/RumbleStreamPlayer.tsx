@@ -3,9 +3,10 @@ import * as React from "react";
 import Hls from "hls.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+const HLS_BASE = (import.meta.env.VITE_HLS_BASE ?? API_BASE).replace(/\/$/, "");
 
 function toProxiedHls(url: string): string {
-  return `${API_BASE}/hls?u=${encodeURIComponent(url)}`;
+  return `${HLS_BASE}/hls?u=${encodeURIComponent(url)}`;
 }
 
 function safePlay(video: HTMLVideoElement) {

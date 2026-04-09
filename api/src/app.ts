@@ -98,6 +98,7 @@ import { referralRouter } from "./routes/referral.js";
 import { welcomeRouter } from "./routes/welcome.js";
 import { adminAuthRouter } from "./routes/admin_auth.js";
 import { adminReferralsRouter } from "./routes/admin_referrals.js";
+import { adminPlatformStatsRouter } from "./routes/admin_platform_stats.js";
 import { eventsRouter } from "./routes/events.js";
 import { eventsViewerWeekRouter } from "./routes/events_viewer_week.js";
 import { adminEventsRouter } from "./routes/admin_events.js";
@@ -147,6 +148,7 @@ export function createApp() {
     next();
   });
 
+  app.use(adminPlatformStatsRouter);
   app.use("/admin/casinos/comments", requireAdminKey, adminCasinoCommentsRouter);
   app.use("/admin/reports",          requireAdminKey, adminReportsRouter);
   app.use("/admin/events",           requireAdminKey, adminEventsRouter);
