@@ -83,11 +83,9 @@ function AppInner() {
   React.useEffect(() => {
     const onAchievements = () => setAchievementsOpen(true);
     const onLoginSuccess = () => {
-      // TEMPORAIRE : Désactiver la règle de 24h pour les tests
-      // Le WelcomeModal s'affichera à chaque connexion
-      // TODO: Réactiver la règle de 24h après validation
-      
-      // Attendre que le LoginModal soit bien fermé avant d'afficher le WelcomeModal
+      const TWENTY_FOUR_H = 24 * 60 * 60 * 1000;
+      const last = Number(localStorage.getItem("ll_welcome_seen") || 0);
+      if (Date.now() - last < TWENTY_FOUR_H) return;
       setTimeout(() => {
         setWelcomeOpen(true);
       }, 200);
@@ -204,7 +202,7 @@ function AppInner() {
       {isMobile && <BottomTabs />}
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
-      <WelcomeModal open={welcomeOpen} onClose={() => setWelcomeOpen(false)} />
+      <WelcomeModal open={welcomeOpen} onClose={() => { localStorage.setItem("ll_welcome_seen", String(Date.now())); setWelcomeOpen(false); }} />
       <AchievementsModal open={achievementsOpen} onClose={() => setAchievementsOpen(false)} />
     </div>
   );
