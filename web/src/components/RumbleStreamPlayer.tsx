@@ -102,15 +102,27 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
 
     const proxiedUrl = toProxiedHls(hlsUrl);
 
-    // Safari / iOS : HLS natif
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = proxiedUrl;
-      safePlay(video);
-      setCanChooseQuality(false);
-      return () => { video.pause(); video.removeAttribute("src"); video.load(); };
+    // HLS.js en priorité — Chrome 130+ supporte HLS nativement mais son player DVR
+    // ne sait pas chercher le live edge. HLS.js donne un contrôle total.
+    // Safari/iOS uniquement : HLS natif (HLS.js non supporté)
+    if (!Hls.isSupported()) {
+      if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = proxiedUrl;
+        // Safari + DVR : forcer le seek au live edge dès que la durée est connue
+        const onMeta = () => {
+          if (video.duration && Number.isFinite(video.duration) && video.duration > 10) {
+            video.currentTime = video.duration - 4;
+          }
+          safePlay(video);
+        };
+        video.addEventListener("loadedmetadata", onMeta, { once: true });
+        return () => {
+          video.removeEventListener("loadedmetadata", onMeta);
+          video.pause(); video.removeAttribute("src"); video.load();
+        };
+      }
+      return;
     }
-
-    if (!Hls.isSupported()) return;
 
     const hls = new Hls({
       enableWorker: true,
