@@ -61,8 +61,19 @@ async function resolveHlsFromEmbedJs(videoIdWithV: string): Promise<string | nul
     });
     if (!r.ok) return null;
     const d = await r.json();
-    return d?.u?.hls?.url || d?.ua?.hls?.auto?.url || null;
-  } catch {
+
+    // Log complet pour debug — on cherche une URL CDN (1a-1791.com) au lieu de live-hls-dvr
+    const hlsU = d?.u?.hls?.url ?? null;
+    const hlsAuto = d?.ua?.hls?.auto?.url ?? null;
+    const allKeys = d ? Object.keys(d) : [];
+    console.log(`[rumble][embedJS] keys=${JSON.stringify(allKeys)}`);
+    if (d?.u) console.log(`[rumble][embedJS] u.keys=${JSON.stringify(Object.keys(d.u))}`);
+    if (d?.ua) console.log(`[rumble][embedJS] ua.keys=${JSON.stringify(Object.keys(d.ua))}`);
+    console.log(`[rumble][embedJS] u.hls.url=${hlsU} | ua.hls.auto.url=${hlsAuto}`);
+
+    return hlsU || hlsAuto || null;
+  } catch (e) {
+    console.error(`[rumble][embedJS] error:`, e);
     return null;
   }
 }

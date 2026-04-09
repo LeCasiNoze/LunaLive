@@ -99,7 +99,7 @@ function trySwapLivestreamHost(u: URL): URL | null {
 function withCors(h: Headers) {
   const out = new Headers(h);
   for (const [k, v] of Object.entries(CORS_HEADERS)) out.set(k, v);
-  out.set("x-hls-worker-ver", "2026-02-19-a"); // change à chaque deploy
+  out.set("x-hls-worker-ver", "2026-04-09-a"); // change à chaque deploy
   return out;
 }
 
@@ -165,17 +165,29 @@ export default {
 
 
     const BROWSER_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
     const headers = new Headers();
-    headers.set("accept", "*/*");
-    headers.set("accept-language", "en-US,en;q=0.9");
+    headers.set("accept", "application/vnd.apple.mpegurl, application/x-mpegurl, */*;q=0.9");
+    headers.set("accept-language", "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7");
+    headers.set("accept-encoding", "gzip, deflate, br");
     headers.set("user-agent", BROWSER_UA);
 
     // browser-like headers (souvent requis)
     const isRumble = target.hostname.includes('rumble') || target.hostname.includes('1a-1791');
+    const isLiveDvr = target.pathname.includes('live-hls-dvr');
     headers.set('referer', isRumble ? 'https://rumble.com/' : 'https://dlive.tv/');
-    headers.set('origin', isRumble ? 'https://rumble.com' : 'https://dlive.tv');
+    // Ne pas envoyer origin pour live-hls-dvr — rumble bloque origin cross-site sur cet endpoint
+    if (!isLiveDvr) {
+      headers.set('origin', isRumble ? 'https://rumble.com' : 'https://dlive.tv');
+    }
+    // Sec-* headers requis par Cloudflare Bot Management pour ne pas être flaggé bot
+    headers.set('sec-ch-ua', '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"');
+    headers.set('sec-ch-ua-mobile', '?0');
+    headers.set('sec-ch-ua-platform', '"Windows"');
+    headers.set('sec-fetch-dest', 'empty');
+    headers.set('sec-fetch-mode', 'cors');
+    headers.set('sec-fetch-site', isRumble ? 'same-origin' : 'cross-site');
 
     // Range (pour segments)
     const range = request.headers.get("range");
