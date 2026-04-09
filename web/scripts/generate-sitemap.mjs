@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const SITE = (process.env.SITE_URL || "https://lunalive.onrender.com").replace(/\/+$/, "");
+const SITE = (process.env.SITE_URL || "https://lunalive.win").replace(/\/+$/, "");
 const API = (
   process.env.SITEMAP_API_BASE ||
   process.env.VITE_API_BASE ||

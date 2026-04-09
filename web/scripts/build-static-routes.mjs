@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const SITE_URL = 'https://lunalive.onrender.com';
+const SITE_URL = 'https://lunalive.win';
 const API = 'https://lunalive-api.onrender.com';
 
 // Route metadata for static pages
@@ -148,11 +148,11 @@ const staticRouteMetadata = {
     canonical: `${SITE_URL}/mentions-legales`,
     content: {
       h1: 'Mentions légales',
-      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Conformément à la loi n°2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique (LCEN), les mentions légales suivantes s'appliquent au site lunalive.onrender.com.</p>
+      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Conformément à la loi n°2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique (LCEN), les mentions légales suivantes s'appliquent au site lunalive.win.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Éditeur du site</h2>
       <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Le site LunaLive est édité et exploité par une personne physique agissant en qualité de responsable éditorial. <strong>Directeur de la publication :</strong> le responsable de la plateforme LunaLive. Contact de l'éditeur : <a href="mailto:lunalivepro@gmail.com" style="color:#7c4dff;">lunalivepro@gmail.com</a>.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Hébergement</h2>
-      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Le site LunaLive (lunalive.onrender.com) est hébergé par <strong>Render Services, Inc.</strong> — 525 Brannan St, Suite 300, San Francisco, CA 94107, États-Unis. Site : <a href="https://render.com" style="color:#7c4dff;" rel="noopener">render.com</a>.</p>
+      <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">Le site LunaLive (lunalive.win) est hébergé par <strong>Render Services, Inc.</strong> — 525 Brannan St, Suite 300, San Francisco, CA 94107, États-Unis. Site : <a href="https://render.com" style="color:#7c4dff;" rel="noopener">render.com</a>.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Propriété intellectuelle</h2>
       <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">L'ensemble des contenus publiés sur LunaLive (textes, images, données communautaires, logos, code source) est protégé par le droit de la propriété intellectuelle. Toute reproduction, représentation ou diffusion sans autorisation expresse et écrite est interdite.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Données personnelles et RGPD</h2>
@@ -197,7 +197,7 @@ const staticRouteMetadata = {
     canonical: `${SITE_URL}/cgu`,
     content: {
       h1: 'Conditions Générales d\'Utilisation',
-      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Les présentes Conditions Générales d'Utilisation (CGU) régissent l'accès et l'utilisation de la plateforme LunaLive (lunalive.onrender.com). En accédant à LunaLive, vous acceptez sans réserve les présentes CGU.</p>
+      richContent: `<p style="font-size:16px;line-height:1.7;margin-bottom:14px;color:#333;">Les présentes Conditions Générales d'Utilisation (CGU) régissent l'accès et l'utilisation de la plateforme LunaLive (lunalive.win). En accédant à LunaLive, vous acceptez sans réserve les présentes CGU.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Conditions d'accès</h2>
       <p style="font-size:15px;line-height:1.7;margin-bottom:14px;color:#444;">L'utilisation de LunaLive est strictement réservée aux personnes majeures (18 ans et plus). En vous inscrivant, vous certifiez avoir l'âge légal requis dans votre pays de résidence pour accéder à des contenus liés aux jeux de casino.</p>
       <h2 style="font-size:18px;color:#7c4dff;margin:20px 0 10px;">Comportement utilisateur</h2>

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const SITE_URL = 'https://lunalive.onrender.com';
+const SITE_URL = 'https://lunalive.win';
 
 // Route-specific metadata
 const routeMetadata = {

@@ -17,4 +17,4 @@ Allow: /
 User-agent: PerplexityBot
 Allow: /
 
-Sitemap: https://lunalive.onrender.com/sitemap.xml
+Sitemap: https://lunalive.win/sitemap.xml
