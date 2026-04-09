@@ -1,5 +1,4 @@
 // web/src/components/WelcomeModal.tsx
-import * as React from "react";
 import { createPortal } from "react-dom";
 const DISCORD_INVITE_URL = "https://discord.gg/93BFrsBWWB";
 
