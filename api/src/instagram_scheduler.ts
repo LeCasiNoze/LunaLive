@@ -17,41 +17,32 @@ import type { Pool } from "pg";
 const LOG = "[INSTAGRAM SCHEDULER]";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Collaboration Instagram — tentative de collaboration avec timeout et fallback
+// ─────────────────────────────────────────────────────────────────────────────
+// Résolution du user ID Instagram depuis un username (Business Discovery API)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const COLLABORATION_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
-
-async function attemptCollaboration(
+async function resolveInstagramUserId(
+  username: string,
   accessToken: string,
-  userId: string,
-  instagramUsername: string,
+  igAccountId: string,
   jobId: number
-): Promise<{ success: boolean; mediaId?: string; permalink?: string; error?: string }> {
+): Promise<string | null> {
   try {
-    console.log(`${LOG} [job #${jobId}] attempting collaboration with @${instagramUsername}`);
-
-    // Créer une collaboration via l'API Meta
-    // Note: L'API Meta Graph ne supporte pas directement les collaborations dans les Reels
-    // Cette fonction prépare le terrain pour une future implémentation
-    // Pour l'instant, nous simulons une tentative et retournons un échec pour forcer le fallback
-    
-    // Simulation d'une tentative de collaboration
-    await new Promise(resolve => setTimeout(resolve, 2000)); // Simuler un délai de traitement
-
-    // Pour l'instant, nous retournons toujours un échec car l'API Meta ne supporte pas
-    // directement les collaborations dans les Reels
-    return {
-      success: false,
-      error: "Collaboration API not yet supported for Reels"
-    };
-
+    const data = await metaGet(`/${igAccountId}`, {
+      fields: "business_discovery.fields(id,username)",
+      username,
+      access_token: accessToken,
+    });
+    const resolvedId = data?.business_discovery?.id;
+    if (resolvedId) {
+      console.log(`${LOG} [job #${jobId}] resolved @${username} → ig_id=${resolvedId}`);
+      return String(resolvedId);
+    }
+    console.log(`${LOG} [job #${jobId}] @${username} not resolvable via Business Discovery (personal account?)`);
+    return null;
   } catch (e: any) {
-    console.error(`${LOG} [job #${jobId}] collaboration attempt failed:`, e?.message ?? e);
-    return {
-      success: false,
-      error: e?.message ?? "Unknown collaboration error"
-    };
+    console.log(`${LOG} [job #${jobId}] Business Discovery @${username} failed: ${e?.message}`);
+    return null;
   }
 }
 
@@ -291,91 +282,83 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
 
   // Logique de collaboration Instagram
   let caption = job.description ?? job.title ?? "";
-  let collaborationAttempted = false;
-  
+  // ── Collaboration Instagram ──────────────────────────────────────────────────
+  // Si le streamer a un pseudo Instagram configuré :
+  //   1. Résoudre son username → IG user ID via Business Discovery API
+  //   2. Créer le container Reel AVEC collaborators=[userId] → invitation envoyée
+  //   3. Si l'API échoue (compte perso, permissions manquantes, etc.) → fallback @mention
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  let collabIgUserId: string | null = null;
+  const slugRegex = new RegExp(streamerSlugRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+
   if (instagramUsername && streamerSlugRaw) {
-    console.log(`${LOG} [job #${job.id}] Instagram username found: @${instagramUsername}, attempting collaboration`);
-    
-    // Marquer la tentative de collaboration
+    collabIgUserId = await resolveInstagramUserId(instagramUsername, accessToken, userId, job.id);
+
     await pool.query(`
-      UPDATE publish_jobs 
-      SET collaboration_attempted = TRUE, 
+      UPDATE publish_jobs
+      SET collaboration_attempted = TRUE,
           collaboration_username = $2,
           collaboration_started_at = NOW(),
-          collaboration_status = 'pending'
+          collaboration_status = $3
       WHERE id = $1
-    `, [job.id, instagramUsername]);
+    `, [job.id, instagramUsername, collabIgUserId ? "pending" : "failed"]);
 
-    // Enregistrer dans la table des collaborations
     await pool.query(`
       INSERT INTO instagram_collaborations (publish_job_id, streamer_slug, instagram_username, status)
-      VALUES ($1, $2, $3, 'pending')
-      ON CONFLICT (publish_job_id) DO UPDATE SET
-        status = 'pending',
-        started_at = NOW()
-    `, [job.id, streamerSlugRaw, instagramUsername]);
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (publish_job_id) DO UPDATE SET status = $4, started_at = NOW()
+    `, [job.id, streamerSlugRaw, instagramUsername, collabIgUserId ? "pending" : "failed"]);
 
-    // Tenter la collaboration
-    const collabResult = await attemptCollaboration(accessToken, userId, instagramUsername, job.id);
-    
-    if (collabResult.success) {
-      // Collaboration réussie
-      await pool.query(`
-        UPDATE publish_jobs 
-        SET collaboration_status = 'success',
-            collaboration_media_id = $2
-        WHERE id = $1
-      `, [job.id, collabResult.mediaId]);
-
-      await pool.query(`
-        UPDATE instagram_collaborations 
-        SET status = 'success', 
-            media_id = $2,
-            permalink = $3,
-            completed_at = NOW()
-        WHERE publish_job_id = $1
-      `, [job.id, collabResult.mediaId, collabResult.permalink]);
-
-      console.log(`${LOG} [job #${job.id}] collaboration successful with @${instagramUsername}`);
-      // Pour l'instant, on utilise quand même la mention car l'API collaboration n'est pas encore disponible
-      const slugRegex = new RegExp(streamerSlugRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-      caption = caption.replace(slugRegex, `@${instagramUsername}`);
-    } else {
-      // Collaboration échouée, fallback vers mention simple
-      await pool.query(`
-        UPDATE publish_jobs 
-        SET collaboration_status = 'failed',
-            collaboration_error_msg = $2
-        WHERE id = $1
-      `, [job.id, collabResult.error]);
-
-      await pool.query(`
-        UPDATE instagram_collaborations 
-        SET status = 'failed', 
-            error_msg = $2,
-            completed_at = NOW()
-        WHERE publish_job_id = $1
-      `, [job.id, collabResult.error]);
-
-      console.log(`${LOG} [job #${job.id}] collaboration failed: ${collabResult.error}, falling back to mention`);
-      
-      // Fallback: remplacer le slug par @username dans la description
-      const slugRegex = new RegExp(streamerSlugRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    if (!collabIgUserId) {
+      // Impossible de résoudre → fallback @mention direct
+      console.log(`${LOG} [job #${job.id}] @${instagramUsername} unresolvable — using @mention fallback`);
       caption = caption.replace(slugRegex, `@${instagramUsername}`);
     }
-    
-    collaborationAttempted = true;
-  } else {
-    console.log(`${LOG} [job #${job.id}] no Instagram username found for slug ${streamerSlugRaw}, using default caption`);
   }
 
-  const containerData = await metaPost(`/${userId}/media`, {
-    video_url: job.output_url,
-    media_type: "REELS",
-    caption,
-    share_to_feed: "true",
-    access_token: accessToken,
-  });
+  // ── Création du container ─────────────────────────────────────────────────
+  // Essai avec collaborators si on a l'ID, sinon container standard
+  let containerData: any;
+
+  if (collabIgUserId) {
+    try {
+      containerData = await metaPost(`/${userId}/media`, {
+        video_url: job.output_url,
+        media_type: "REELS",
+        caption,
+        share_to_feed: "true",
+        collaborators: JSON.stringify([collabIgUserId]),
+        access_token: accessToken,
+      });
+      console.log(`${LOG} [job #${job.id}] container created WITH collab @${instagramUsername} (ig_id=${collabIgUserId})`);
+    } catch (e: any) {
+      // L'API a refusé le collaborators (permissions, compte non éligible, etc.)
+      console.log(`${LOG} [job #${job.id}] collab container rejected: ${e?.message} — falling back to @mention`);
+      collabIgUserId = null;
+      caption = caption.replace(slugRegex, `@${instagramUsername}`);
+
+      await pool.query(`
+        UPDATE publish_jobs SET collaboration_status = 'failed', collaboration_error_msg = $2 WHERE id = $1
+      `, [job.id, e?.message ?? "collab container rejected"]);
+      await pool.query(`
+        UPDATE instagram_collaborations SET status = 'failed', error_msg = $2, completed_at = NOW() WHERE publish_job_id = $1
+      `, [job.id, e?.message ?? "collab container rejected"]);
+    }
+  }
+
+  if (!containerData) {
+    containerData = await metaPost(`/${userId}/media`, {
+      video_url: job.output_url,
+      media_type: "REELS",
+      caption,
+      share_to_feed: "true",
+      access_token: accessToken,
+    });
+    if (!collabIgUserId && instagramUsername) {
+      console.log(`${LOG} [job #${job.id}] container created with @mention fallback`);
+    }
+  }
 
   const creationId = String(containerData.id);
   console.log(`${LOG} [job #${job.id}] container created — creation_id=${creationId}`);
@@ -424,6 +407,18 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
      WHERE id = $1`,
     [job.id, permalink, mediaId]
   );
+
+  // Mettre à jour le statut de collaboration si invitation envoyée
+  if (collabIgUserId) {
+    // L'invitation a été envoyée avec le container — statut "invited" (en attente d'acceptation)
+    await pool.query(`
+      UPDATE publish_jobs SET collaboration_status = 'invited', collaboration_media_id = $2 WHERE id = $1
+    `, [job.id, mediaId]);
+    await pool.query(`
+      UPDATE instagram_collaborations SET status = 'invited', media_id = $2, permalink = $3 WHERE publish_job_id = $1
+    `, [job.id, mediaId, permalink]);
+    console.log(`${LOG} [job #${job.id}] collab invitation sent to @${instagramUsername} — awaiting acceptance in IG app`);
+  }
 
   await pool.query(
     `UPDATE clip_inbox
