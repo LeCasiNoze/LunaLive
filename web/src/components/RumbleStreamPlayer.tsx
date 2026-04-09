@@ -39,6 +39,38 @@ function pickBestCapIndex(levels: any[], maxHeight: number): number {
   return best;
 }
 
+function UnmuteButton({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement> }) {
+  const [muted, setMuted] = React.useState(true);
+
+  React.useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const sync = () => setMuted(v.muted);
+    v.addEventListener("volumechange", sync);
+    return () => v.removeEventListener("volumechange", sync);
+  }, [videoRef]);
+
+  if (!muted) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => { const v = videoRef.current; if (v) { v.muted = false; v.volume = 1; } }}
+      style={{
+        position: "absolute", top: 12, left: 12,
+        display: "inline-flex", alignItems: "center", gap: 6,
+        padding: "7px 12px", borderRadius: 10,
+        background: "rgba(10,10,18,0.82)", backdropFilter: "blur(10px)",
+        border: "1px solid rgba(255,255,255,0.18)",
+        color: "rgba(255,255,255,0.9)", cursor: "pointer", fontSize: 13, fontWeight: 600,
+        boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+      }}
+    >
+      🔇 Activer le son
+    </button>
+  );
+}
+
 function GearIcon({ size = 18 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -325,11 +357,14 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
           controls
           playsInline
           autoPlay
+          muted
           preload="auto"
           disableRemotePlayback
           poster={thumbnailUrl || undefined}
           style={{ width: "100%", display: "block", background: "rgba(0,0,0,0.25)" }}
         />
+        {/* Bouton unmute — autoplay n'est autorisé qu'en muted, l'user clique pour activer le son */}
+        <UnmuteButton videoRef={videoRef} />
 
         {canChooseQuality && (
           <div ref={menuRef} style={{ position: "absolute", right: 10, bottom: 10 }}>
