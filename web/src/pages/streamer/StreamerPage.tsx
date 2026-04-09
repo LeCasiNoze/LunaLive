@@ -452,13 +452,17 @@ function StreamerPageDesktop() {
     };
     beat();
     const t = window.setInterval(beat, 15_000);
+    let visTimer: number | null = null;
     const vis = () => {
-      if (document.visibilityState === "visible") beat();
+      if (document.visibilityState !== "visible") return;
+      if (visTimer) window.clearTimeout(visTimer);
+      visTimer = window.setTimeout(() => { visTimer = null; beat(); }, 2000);
     };
     document.addEventListener("visibilitychange", vis);
     return () => {
       stopped = true;
       window.clearInterval(t);
+      if (visTimer) window.clearTimeout(visTimer);
       document.removeEventListener("visibilitychange", vis);
     };
   }, [slug, token, streamer?.isLive]);
@@ -473,23 +477,28 @@ function StreamerPageDesktop() {
 
     const name = String(streamer.displayName || s).trim();
     const livePart = streamer.isLive ? "en live" : "hors ligne";
+    const viewersLabel = streamer.isLive && liveViewersNow != null && liveViewersNow > 0
+      ? `👁 ${liveViewersNow} · `
+      : "";
 
     setSeo({
-      title: `${name} — Live, clips et infos | LunaLive`,
+      title: `${viewersLabel}${name} — Live, clips et infos | LunaLive`,
       description: `Regarde ${name} sur LunaLive : streamer casino ${livePart}, clips, VOD et informations du profil.`,
       path: `/s/${encodeURIComponent(s)}`,
     });
-  }, [slug, streamer]);
+  }, [slug, streamer, liveViewersNow]);
 
-  /* ── player + banner height sync (identique) ────────────────── */
+  /* ── player height → chat height sync ───────────────────────── */
   const playerWrapRef = React.useRef<HTMLDivElement | null>(null);
   const metaWrapRef = React.useRef<HTMLDivElement | null>(null);
   const [leftStackH, setLeftStackH] = React.useState<number>(0);
 
   const measureLeftStack = React.useCallback(() => {
-    const a = playerWrapRef.current?.getBoundingClientRect?.().height ?? 0;
-    const b = metaWrapRef.current?.getBoundingClientRect?.().height ?? 0;
-    const total = Math.max(0, Math.round(a + b));
+    // On aligne le bas du chat sur le bas du player (pas de la bannière)
+    const playerH = playerWrapRef.current?.getBoundingClientRect?.().height ?? 0;
+    // On plafonne à la hauteur utile du viewport pour que le bouton Envoyer reste visible
+    const maxH = typeof window !== "undefined" ? window.innerHeight - 104 : 9999;
+    const total = Math.max(0, Math.min(Math.round(playerH), maxH));
     if (total && Math.abs(total - leftStackH) > 2) setLeftStackH(total);
     if (!total && leftStackH !== 0) setLeftStackH(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1048,7 +1057,6 @@ function StreamerPageDesktop() {
           style={{
             padding: 0,
             height: leftStackH > 0 ? leftStackH : undefined,
-            maxHeight: leftStackH > 0 ? leftStackH : undefined,
           }}
         >
           <div className="sp-chat-head">

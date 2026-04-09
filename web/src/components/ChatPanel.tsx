@@ -1373,6 +1373,7 @@ export function ChatPanel({
   const [messages, setMessages] = React.useState<ChatMsg[]>([]);
   const [input, setInput] = React.useState("");
   const [sending, setSending] = React.useState(false);
+  const [socketConnected, setSocketConnected] = React.useState(true);
 
   // ✅ IMPORTANT: join DOIT être déclaré avant mentionList/useMemo
   const [join, setJoin] = React.useState<JoinAck | null>(null);
@@ -1871,7 +1872,10 @@ export function ChatPanel({
 
     sockRef.current = socket;
 
+    socket.on("connect", () => setSocketConnected(true));
+    socket.on("disconnect", () => setSocketConnected(false));
     socket.on("connect_error", (e: any) => {
+      setSocketConnected(false);
       setError(String(e?.message || "socket_connect_error"));
     });
 
@@ -2344,6 +2348,18 @@ function openChatPopup() {
       </style>
 
       <ChatHeader compact={!!compact} join={join} isBanned={isBanned} isTimedOut={isTimedOut} timeoutUntil={timeoutUntil} />
+
+      {/* bandeau reconnexion */}
+      {!socketConnected && (
+        <div style={{
+          padding: "6px 12px", fontSize: 12, fontWeight: 700,
+          background: "rgba(245,158,11,0.14)", borderBottom: "1px solid rgba(245,158,11,0.22)",
+          color: "rgba(253,230,138,0.90)", display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
+        }}>
+          <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "#f59e0b", animation: "sp-dot-pulse 1.4s ease-in-out infinite" }} />
+          Reconnexion en cours…
+        </div>
+      )}
 
       {/* zone scroll + jump */}
       <div style={{ flex: 1, minHeight: 0, position: "relative" }}>

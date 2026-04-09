@@ -112,19 +112,35 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
 
     const hls = new Hls({
       enableWorker: true,
-      lowLatencyMode: false,
-      startPosition: -1,
+      lowLatencyMode: true,
       backBufferLength: 30,
-      maxBufferLength: 30,
-      maxMaxBufferLength: 60,
-      liveSyncDurationCount: 3,
-      liveMaxLatencyDurationCount: 10,
+      // live-edge
+      liveSyncDurationCount: 2,
+      liveMaxLatencyDurationCount: 6,
+      liveDurationInfinity: true,
       maxLiveSyncPlaybackRate: 1.0,
+      // buffer
+      maxBufferLength: 20,
+      maxMaxBufferLength: 30,
+      maxBufferHole: 0.7,
+      maxFragLookUpTolerance: 0.2,
+      // ABR conservateur
       abrBandWidthFactor: 0.8,
       abrBandWidthUpFactor: 0.7,
-      fragLoadingMaxRetry: 6,
-      levelLoadingMaxRetry: 6,
-      manifestLoadingMaxRetry: 6,
+      // retries réseau
+      fragLoadingMaxRetry: 8,
+      fragLoadingRetryDelay: 700,
+      fragLoadingMaxRetryTimeout: 10000,
+      levelLoadingMaxRetry: 8,
+      levelLoadingRetryDelay: 700,
+      levelLoadingMaxRetryTimeout: 10000,
+      manifestLoadingMaxRetry: 8,
+      manifestLoadingRetryDelay: 700,
+      manifestLoadingMaxRetryTimeout: 10000,
+      // nudge sur trou de buffer
+      nudgeMaxRetry: 8,
+      nudgeOffset: 0.1,
+      startFragPrefetch: true,
     });
 
     hlsRef.current = hls;
@@ -172,16 +188,61 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
       safePlay(video);
     });
 
+    let mediaErrorRetries = 0;
     hls.on(Hls.Events.ERROR, (_e, data) => {
       if (!data.fatal) return;
       try {
-        if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-        else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad(-1);
-        else hls.destroy();
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          if (mediaErrorRetries < 3) { mediaErrorRetries++; hls.recoverMediaError(); }
+          else hls.destroy();
+        } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          hls.startLoad(-1);
+        } else {
+          hls.destroy();
+        }
       } catch {}
     });
 
+    // ── Stall watchdog ─────────────────────────────────────────
+    const STALL_GRACE_MS = 20_000;
+    const PROGRESS_EPS = 0.5;
+    let lastT = Number(video.currentTime || 0);
+    let lastProgressAt = Date.now();
+
+    const onTimeUpdate = () => {
+      const nowT = Number(video.currentTime || 0);
+      if (Math.abs(nowT - lastT) > PROGRESS_EPS) { lastT = nowT; lastProgressAt = Date.now(); }
+    };
+    const onPlaying = () => { lastProgressAt = Date.now(); lastT = Number(video.currentTime || 0); };
+    video.addEventListener("timeupdate", onTimeUpdate);
+    video.addEventListener("playing", onPlaying);
+
+    const tStall = window.setInterval(() => {
+      if (!video || video.paused || document.hidden) return;
+      if (Number(video.currentTime || 0) <= 0.01) return;
+      if (Date.now() - lastProgressAt < STALL_GRACE_MS) return;
+      if (video.readyState >= 3) { lastProgressAt = Date.now(); lastT = Number(video.currentTime || 0); return; }
+      try { hls.startLoad(-1); } catch {}
+      lastProgressAt = Date.now(); lastT = Number(video.currentTime || 0);
+    }, 3000);
+
+    // ── Live-edge resync ────────────────────────────────────────
+    const RESYNC_THRESHOLD_SEC = 10;
+    const tLiveEdge = window.setInterval(() => {
+      if (!video || video.paused || document.hidden) return;
+      if (typeof (hls as any).liveSyncPosition !== "number") return;
+      const livePos = Number((hls as any).liveSyncPosition);
+      const ct = Number(video.currentTime || 0);
+      if (Number.isFinite(livePos) && livePos - ct > RESYNC_THRESHOLD_SEC) {
+        try { video.currentTime = livePos; } catch {}
+      }
+    }, 7000);
+
     return () => {
+      window.clearInterval(tStall);
+      window.clearInterval(tLiveEdge);
+      video.removeEventListener("timeupdate", onTimeUpdate);
+      video.removeEventListener("playing", onPlaying);
       try { hls.destroy(); } catch {}
       hlsRef.current = null;
     };
@@ -219,6 +280,7 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
           playsInline
           autoPlay
           preload="auto"
+          disableRemotePlayback
           poster={thumbnailUrl || undefined}
           style={{ width: "100%", display: "block", background: "rgba(0,0,0,0.25)" }}
         />

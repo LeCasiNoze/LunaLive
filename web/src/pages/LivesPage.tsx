@@ -241,6 +241,7 @@ function LiveCardBody({ live, accentColor }: {
           <img
             src={getStreamerAvatarUrl(live) || svgThumb(live.displayName || "Streamer")}
             alt=""
+            loading="lazy"
             style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).src = svgThumb(live.displayName || "Streamer"); }}
           />
@@ -890,6 +891,7 @@ function MonthClipsListModal({ title, clips, total, onClose, onPickClip, zIndex 
                         {c.avatarUrl && (
                           <img
                             src={absolutize(c.avatarUrl) || c.avatarUrl} alt=""
+                            loading="lazy"
                             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                           />
                         )}
@@ -1056,9 +1058,19 @@ export default function LivesPage() {
 
   React.useEffect(() => {
     const id = window.setInterval(() => { if (document.visibilityState === "visible") load({ silent: true }); }, 20_000);
-    const onVis = () => { if (document.visibilityState === "visible") load({ silent: true }); };
+    let visTimer: number | null = null;
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      // Délai de 3s pour ne pas saturer la bande passante des autres lecteurs actifs
+      if (visTimer) window.clearTimeout(visTimer);
+      visTimer = window.setTimeout(() => { load({ silent: true }); visTimer = null; }, 3000);
+    };
     document.addEventListener("visibilitychange", onVis);
-    return () => { window.clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+      if (visTimer) window.clearTimeout(visTimer);
+    };
   }, [load]);
 
   const totals = React.useMemo(() => ({

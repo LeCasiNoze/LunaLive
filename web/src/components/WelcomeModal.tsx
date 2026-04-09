@@ -1,8 +1,6 @@
 // web/src/components/WelcomeModal.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { useOnClickOutside, asHTMLElementRef } from "../hooks/useOnClickOutside";
-
 const DISCORD_INVITE_URL = "https://discord.gg/93BFrsBWWB";
 
 /* CSS injecté UNE FOIS au niveau module */
@@ -110,15 +108,12 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
 }
 
 export function WelcomeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const boxRef = React.useRef<HTMLDivElement>(null);
-  useOnClickOutside([asHTMLElementRef(boxRef)], onClose, open);
-
   if (!open) return null;
 
   return createPortal(
     <div className="welcome-backdrop" role="presentation"
       onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="welcome-dialog" role="dialog" aria-modal="true" ref={boxRef}
+      <div className="welcome-dialog" role="dialog" aria-modal="true"
         onMouseDown={e => e.stopPropagation()}>
 
         {/* Header */}

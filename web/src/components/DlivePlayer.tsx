@@ -141,6 +141,8 @@ export function DlivePlayer({
 
   const [levelsUI, setLevelsUI] = React.useState<LevelOpt[]>([{ key: "auto", label: "Auto (recommandé)" }]);
   const [canChooseQuality, setCanChooseQuality] = React.useState(false);
+  const [qualityBadge, setQualityBadge] = React.useState<string | null>(null);
+  const qualityBadgeTimerRef = React.useRef<number | null>(null);
 
   const ios = isIOS();
   const safari = isSafariUA();
@@ -902,7 +904,7 @@ export function DlivePlayer({
       }
     });
 
-    // ✅ DEBUG LOGGING: Changements de niveau ABR
+    // ✅ Niveau ABR — badge visible 3s
     hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => {
       const currentLevel = hls.levels[data?.level];
       dbgLog("LEVEL SWITCHED", {
@@ -913,6 +915,12 @@ export function DlivePlayer({
         currentLevel: hls.currentLevel,
         autoLevelCapping: hls.autoLevelCapping
       });
+      const label = currentLevel?.height ? `${currentLevel.height}p` : null;
+      if (label) {
+        setQualityBadge(label);
+        if (qualityBadgeTimerRef.current) window.clearTimeout(qualityBadgeTimerRef.current);
+        qualityBadgeTimerRef.current = window.setTimeout(() => { setQualityBadge(null); qualityBadgeTimerRef.current = null; }, 3000);
+      }
     });
 
     // ✅ DEBUG LOGGING: Fragment loading
@@ -961,8 +969,21 @@ export function DlivePlayer({
           playsInline
           autoPlay
           preload="auto"
+          disableRemotePlayback
           style={{ width: "100%", display: "block", background: "rgba(0,0,0,0.25)" }}
         />
+
+        {/* Badge qualité ABR — apparaît 3s lors d'un changement automatique */}
+        {qualityBadge && (
+          <div style={{
+            position: "absolute", top: 10, left: 10, pointerEvents: "none",
+            padding: "4px 9px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+            background: "rgba(10,10,18,0.72)", backdropFilter: "blur(8px)",
+            border: "1px solid rgba(180,160,255,0.22)", color: "rgba(235,235,255,0.90)",
+          }}>
+            {qualityBadge}
+          </div>
+        )}
 
         {/* Engrenage intégré au player (overlay) */}
         {canChooseQuality && !ios && (

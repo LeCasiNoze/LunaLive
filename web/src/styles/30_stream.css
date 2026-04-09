@@ -91,13 +91,15 @@
 
 /* chat sticky à droite */
 .streamChat{
-  height: calc(100dvh - 86px - 18px);
   position: sticky;
   top: 86px;
+  /* hauteur par défaut = viewport minus topbar ; le JS peut la réduire via inline style */
+  height: calc(100dvh - 86px - 18px);
+  max-height: calc(100dvh - 86px - 18px);
   display:flex;
   flex-direction: column;
   overflow: hidden;
-  min-height: 520px;
+  min-height: 400px;
 }
 
 .streamChatHeader{
@@ -150,10 +152,15 @@
 }
 .streamTabContent{ min-height: 80px; }
 
-/* responsive */
+/* responsive — tablet intermédiaire : chat réduit pour laisser de la place au player */
+@media (min-width: 1101px) and (max-width: 1380px){
+  .streamGrid{ grid-template-columns: minmax(0, 1fr) 300px; gap: 10px; }
+}
+
+/* responsive — mobile / petite fenêtre */
 @media (max-width: 1100px){
   .streamGrid{ grid-template-columns: 1fr; }
-  .streamChat{ position: static; height: auto; }
+  .streamChat{ position: static; height: auto; max-height: none; }
   .streamFollowBox{ align-items: flex-start; }
   .streamHeaderBar{ align-items:flex-start; }
 }
