@@ -122,8 +122,9 @@ export function PlatformStatsSection({ adminKey }: { adminKey: string }) {
 
   const { users, streamers, casinos, viewers, streams, server } = stats;
   const memPct = Math.round((server.memoryMb.heapUsed / server.memoryMb.heapTotal) * 100);
-  const memColor = memPct > 85 ? "#ef4444" : memPct > 65 ? "#f59e0b" : "#22c55e";
-  const dbUsedPct = server.db.total > 0 ? Math.round(((server.db.total - server.db.idle) / server.db.total) * 100) : 0;
+  const memColor = memPct > 95 ? "#ef4444" : memPct > 80 ? "#f59e0b" : "#22c55e";
+  const dbActive = server.db.total - server.db.idle;
+  const dbUsedPct = server.db.total > 0 ? Math.round((dbActive / server.db.total) * 100) : 0;
   const dbColor = dbUsedPct > 80 ? "#ef4444" : dbUsedPct > 60 ? "#f59e0b" : "#22c55e";
 
   return (
@@ -212,10 +213,10 @@ export function PlatformStatsSection({ adminKey }: { adminKey: string }) {
         <div style={{ padding: "14px 16px", borderRadius: 14, border: `1px solid ${dbColor}44`, background: `${dbColor}0d` }}>
           <div style={{ fontSize: 11, opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Pool DB (pg)</div>
           <DbBar used={server.db.total - server.db.idle} total={server.db.total} label="Connexions actives" />
-          {server.db.waiting > 0 && (
-            <div style={{ fontSize: 12, color: "#ef4444", fontWeight: 700 }}>⚠ {server.db.waiting} en attente</div>
+          {server.db.waiting > 3 && (
+            <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700 }}>⚠ {server.db.waiting} en attente</div>
           )}
-          <div style={{ fontSize: 11, opacity: 0.5 }}>Idle : {server.db.idle} · Total : {server.db.total}</div>
+          <div style={{ fontSize: 11, opacity: 0.5 }}>Actives : {dbActive} · Idle : {server.db.idle} · Max : {server.db.total}</div>
         </div>
       </div>
 

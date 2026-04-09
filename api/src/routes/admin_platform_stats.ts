@@ -54,7 +54,6 @@ adminPlatformStatsRouter.get(
       streamSessionsMonth,
       totalStreamMinutesMonth,
 
-      dbPool,
       mem,
       uptime,
     ] = await Promise.all([
@@ -118,19 +117,19 @@ adminPlatformStatsRouter.get(
         WHERE started_at >= $1
       `, [som], "v"),
 
-      // ── DB pool ────────────────────────────────────
-      Promise.resolve({
-        total: pool.totalCount,
-        idle: pool.idleCount,
-        waiting: pool.waitingCount,
-      }),
-
       // ── Mémoire process ───────────────────────────
       Promise.resolve(process.memoryUsage()),
 
       // ── Uptime process ────────────────────────────
       Promise.resolve(Math.floor(process.uptime())),
     ]);
+
+    // Pool stats capturés APRÈS les queries pour refléter l'état repos
+    const dbPool = {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount,
+    };
 
     res.json({
       ok: true,
