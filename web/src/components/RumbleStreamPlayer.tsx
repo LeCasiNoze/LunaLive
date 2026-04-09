@@ -6,6 +6,8 @@ const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrende
 const HLS_BASE = (import.meta.env.VITE_HLS_BASE ?? API_BASE).replace(/\/$/, "");
 
 function toProxiedHls(url: string): string {
+  // 1a-1791.com est le CDN Rumble avec CORS * — pas besoin de proxy
+  if (url.includes("1a-1791.com")) return url;
   return `${HLS_BASE}/hls?u=${encodeURIComponent(url)}`;
 }
 
@@ -54,36 +56,7 @@ export type RumbleStreamPlayerProps = {
   isLive?: boolean;
 };
 
-/**
- * Rumble live-hls-dvr URLs require Rumble session cookies — the CF Worker gets
- * 403 because it has no cookies.  In that case we fall back to an iframe embed.
- * CDN URLs (1a-1791.com) can go through HLS.js + proxy normally.
- */
-function getRumbleEmbedUrl(hlsUrl: string): string | null {
-  const m = hlsUrl.match(/rumble\.com\/live-hls-dvr\/([^/?#]+)/);
-  if (!m) return null;
-  return `https://rumble.com/embed/v${m[1]}/?autoplay=2&rel=0`;
-}
-
 export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: RumbleStreamPlayerProps) {
-  // If it's a live-hls-dvr URL, render an embed iframe — no proxy needed
-  const embedUrl = hlsUrl && isLive ? getRumbleEmbedUrl(hlsUrl) : null;
-  if (embedUrl) {
-    return (
-      <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ position: "relative", paddingBottom: "56.25%", height: 0 }}>
-          <iframe
-            src={embedUrl}
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none" }}
-            allowFullScreen
-            allow="autoplay; fullscreen"
-            title="Rumble Live"
-            referrerPolicy="origin"
-          />
-        </div>
-      </div>
-    );
-  }
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const hlsRef = React.useRef<Hls | null>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
