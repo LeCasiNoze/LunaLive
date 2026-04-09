@@ -92,6 +92,7 @@ casinosPublicRouter.get(
       return topScore(b.avgRating, b.ratingsCount, C) - topScore(a.avgRating, a.ratingsCount, C);
     });
 
+    res.set("Cache-Control", "public, max-age=30");
     res.json({ ok: true, podium, casinos, watchlist });
   })
 );

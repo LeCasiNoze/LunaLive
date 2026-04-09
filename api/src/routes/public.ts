@@ -105,6 +105,7 @@ ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
       [HEARTBEAT_TTL_SECONDS]
     );
 
+    res.set("Cache-Control", "public, max-age=5");
     res.json(
       rows.map((r: any) => {
         const slug = String(r.slug || "").trim();
