@@ -104,12 +104,14 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
     let hlsUrl: string | null = null;
     let videoUrl: string | null = null;
 
-    if (isLive && rawId) {
-      // Construction directe de l'URL HLS (pas de scraping, pas d'appel embedJS)
-      hlsUrl = buildRumbleHlsUrl(rawId);
+    if (isLive && rawId && videoId) {
+      // Priorité : embedJS → URL CDN directe (1a-1791.com), accessible sans session Rumble
+      // Fallback : construction directe live-hls-dvr (peut 403 si non authentifié)
+      const embedHls = await resolveHlsFromEmbedJs(videoId);
+      hlsUrl = embedHls || buildRumbleHlsUrl(rawId);
       videoUrl = `https://rumble.com/user/${username}/live`;
 
-      console.log(`[rumble] ${username}: LIVE — videoId=${videoId}, hlsUrl=${hlsUrl}`);
+      console.log(`[rumble] ${username}: LIVE — videoId=${videoId}, hlsUrl=${hlsUrl} (source: ${embedHls ? "embedJS" : "direct"})`);
     } else {
       console.log(`[rumble] ${username}: offline`);
     }
