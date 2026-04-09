@@ -114,35 +114,34 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
 
     const hls = new Hls({
       enableWorker: true,
-      lowLatencyMode: true,
-      backBufferLength: 30,
-      // live-edge
-      liveSyncDurationCount: 2,
-      liveMaxLatencyDurationCount: 6,
+      lowLatencyMode: false,   // Rumble n'utilise pas LL-HLS (pas de #EXT-X-PART)
+      backBufferLength: 8,
+      // live-edge — DVR playlist: on doit forcer le start au live edge
+      liveSyncDurationCount: 3,
+      liveMaxLatencyDurationCount: 8,
       liveDurationInfinity: true,
-      maxLiveSyncPlaybackRate: 1.0,
+      maxLiveSyncPlaybackRate: 1.05,
       // buffer
-      maxBufferLength: 20,
-      maxMaxBufferLength: 30,
-      maxBufferHole: 0.7,
+      maxBufferLength: 16,
+      maxMaxBufferLength: 24,
+      maxBufferHole: 0.5,
       maxFragLookUpTolerance: 0.2,
       // ABR conservateur
       abrBandWidthFactor: 0.8,
       abrBandWidthUpFactor: 0.7,
       // retries réseau
-      fragLoadingMaxRetry: 8,
-      fragLoadingRetryDelay: 700,
-      fragLoadingMaxRetryTimeout: 10000,
-      levelLoadingMaxRetry: 8,
-      levelLoadingRetryDelay: 700,
-      levelLoadingMaxRetryTimeout: 10000,
-      manifestLoadingMaxRetry: 8,
-      manifestLoadingRetryDelay: 700,
-      manifestLoadingMaxRetryTimeout: 10000,
-      // nudge sur trou de buffer
-      nudgeMaxRetry: 8,
+      fragLoadingMaxRetry: 6,
+      fragLoadingRetryDelay: 1000,
+      fragLoadingMaxRetryTimeout: 8000,
+      levelLoadingMaxRetry: 6,
+      levelLoadingRetryDelay: 1000,
+      levelLoadingMaxRetryTimeout: 8000,
+      manifestLoadingMaxRetry: 6,
+      manifestLoadingRetryDelay: 1000,
+      manifestLoadingMaxRetryTimeout: 8000,
+      nudgeMaxRetry: 6,
       nudgeOffset: 0.1,
-      startFragPrefetch: true,
+      startFragPrefetch: false,
     });
 
     hlsRef.current = hls;
@@ -187,8 +186,41 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
         }
       } catch {}
 
+      // DVR playlist : currentTime peut être à 0 (début du DVR, il y a des heures).
+      // On force le seek au live edge avant de jouer.
+      const seekToLiveEdge = () => {
+        try {
+          const livePos = (hls as any).liveSyncPosition;
+          if (typeof livePos === "number" && Number.isFinite(livePos) && livePos > 0) {
+            video.currentTime = livePos;
+          } else if (video.duration && Number.isFinite(video.duration) && video.duration > 10) {
+            video.currentTime = video.duration - 4;
+          }
+        } catch {}
+      };
+
+      seekToLiveEdge();
       safePlay(video);
     });
+
+    // Après que le premier buffer est chargé, re-vérifier qu'on est au live edge
+    hls.on(Hls.Events.BUFFER_APPENDED, (() => {
+      let done = false;
+      return () => {
+        if (done) return;
+        done = true;
+        try {
+          const livePos = (hls as any).liveSyncPosition;
+          if (typeof livePos === "number" && Number.isFinite(livePos) && livePos > 0) {
+            const ct = video.currentTime;
+            // Si on est à plus de 30s du live edge, corriger
+            if (livePos - ct > 30) {
+              video.currentTime = livePos;
+            }
+          }
+        } catch {}
+      };
+    })());
 
     let mediaErrorRetries = 0;
     hls.on(Hls.Events.ERROR, (_e, data) => {
