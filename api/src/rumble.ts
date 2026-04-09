@@ -16,9 +16,6 @@ export interface RumbleLiveInfo {
 
 const RUMBLE_API_BASE = "https://rumble.com/-livestream-api/get-data";
 
-function esc(s: string) {
-  return String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"').trim();
-}
 
 async function fetchRumbleData(apiKey: string) {
   const url = `${RUMBLE_API_BASE}?key=${encodeURIComponent(apiKey)}`;
@@ -79,20 +76,37 @@ async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<string | nul
     const text = await r.text();
     if (!text.startsWith("#EXTM3U")) return null;
 
+    // Collecter toutes les chunklist URLs CDN avec leur bandwidth (pour prendre la meilleure qualité)
+    let bestUrl: string | null = null;
+    let bestBandwidth = -1;
+    let lastBandwidth = -1;
     for (const line of text.split("\n")) {
       const s = line.trim();
-      if (!s || s.startsWith("#")) continue;
+      if (!s) continue;
+      if (s.startsWith("#EXT-X-STREAM-INF")) {
+        const bwMatch = s.match(/BANDWIDTH=(\d+)/);
+        lastBandwidth = bwMatch ? parseInt(bwMatch[1], 10) : 0;
+        continue;
+      }
+      if (s.startsWith("#")) continue;
       try {
         const u = new URL(s, finalUrl);
         if (!u.hostname.includes("rumble.com")) {
-          // URL absolue CDN trouvée dans la playlist → retourner l'URL de base du CDN
-          // ex: https://1a-1791.com/live/gke17oc4/live-hls/pt2p-0wz3/chunklist_i1_DVR.m3u8
-          // → https://1a-1791.com/live/gke17oc4/live-hls/pt2p-0wz3/playlist.m3u8
-          const cdnBase = u.toString().replace(/chunklist[^/]*$/, "playlist.m3u8");
-          console.log(`[rumble][redirect] CDN URL from m3u8 parse: ${cdnBase}`);
-          return cdnBase;
+          // URL CDN absolue (1a-1791.com) — utiliser la meilleure qualité
+          if (lastBandwidth > bestBandwidth) {
+            bestBandwidth = lastBandwidth;
+            bestUrl = u.toString();
+          } else if (bestUrl === null) {
+            bestUrl = u.toString();
+          }
         }
       } catch {}
+      lastBandwidth = -1;
+    }
+
+    if (bestUrl) {
+      console.log(`[rumble][redirect] CDN chunklist (bw=${bestBandwidth}): ${bestUrl}`);
+      return bestUrl;
     }
 
     return null;
