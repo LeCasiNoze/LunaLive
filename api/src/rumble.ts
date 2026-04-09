@@ -45,6 +45,64 @@ function buildRumbleHlsUrl(rawId: string): string {
 }
 
 /**
+ * Suit la redirection de live-hls-dvr côté serveur pour obtenir l'URL CDN réelle (1a-1791.com).
+ * Le Worker Cloudflare est bloqué par Rumble's Cloudflare WAF avant la redirection.
+ * Render (AWS IPs) n'est pas bloqué → peut suivre le redirect et stocker l'URL CDN publique.
+ */
+async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<string | null> {
+  try {
+    const r = await fetch(liveHlsDvrUrl, {
+      method: "GET",
+      redirect: "follow",
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "accept": "application/vnd.apple.mpegurl, application/x-mpegurl, */*;q=0.9",
+        "accept-language": "en-US,en;q=0.9",
+        "referer": "https://rumble.com/",
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+      },
+    });
+
+    const finalUrl = r.url; // URL après redirections
+    console.log(`[rumble][redirect] ${liveHlsDvrUrl} → status=${r.status} finalUrl=${finalUrl}`);
+
+    if (!r.ok) return null;
+
+    // Si on a été redirigé vers le CDN (pas rumble.com), c'est notre URL
+    if (finalUrl && !finalUrl.includes("rumble.com/live-hls-dvr")) {
+      return finalUrl;
+    }
+
+    // Sinon, parser le m3u8 pour trouver les URLs CDN dans les sous-playlists
+    const text = await r.text();
+    if (!text.startsWith("#EXTM3U")) return null;
+
+    for (const line of text.split("\n")) {
+      const s = line.trim();
+      if (!s || s.startsWith("#")) continue;
+      try {
+        const u = new URL(s, finalUrl);
+        if (!u.hostname.includes("rumble.com")) {
+          // URL absolue CDN trouvée dans la playlist → retourner l'URL de base du CDN
+          // ex: https://1a-1791.com/live/gke17oc4/live-hls/pt2p-0wz3/chunklist_i1_DVR.m3u8
+          // → https://1a-1791.com/live/gke17oc4/live-hls/pt2p-0wz3/playlist.m3u8
+          const cdnBase = u.toString().replace(/chunklist[^/]*$/, "playlist.m3u8");
+          console.log(`[rumble][redirect] CDN URL from m3u8 parse: ${cdnBase}`);
+          return cdnBase;
+        }
+      } catch {}
+    }
+
+    return null;
+  } catch (e) {
+    console.error(`[rumble][redirect] error:`, e);
+    return null;
+  }
+}
+
+/**
  * Fallback: appelle embedJS pour récupérer l'URL HLS si la construction directe échoue.
  * Nécessite le videoId avec préfixe "v".
  */
@@ -116,13 +174,22 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
     let videoUrl: string | null = null;
 
     if (isLive && rawId && videoId) {
-      // Priorité : embedJS → URL CDN directe (1a-1791.com), accessible sans session Rumble
-      // Fallback : construction directe live-hls-dvr (peut 403 si non authentifié)
-      const embedHls = await resolveHlsFromEmbedJs(videoId);
-      hlsUrl = embedHls || buildRumbleHlsUrl(rawId);
       videoUrl = `https://rumble.com/user/${username}/live`;
 
-      console.log(`[rumble] ${username}: LIVE — videoId=${videoId}, hlsUrl=${hlsUrl} (source: ${embedHls ? "embedJS" : "direct"})`);
+      // 1. embedJS → peut retourner une URL CDN ou live-hls-dvr
+      const embedHls = await resolveHlsFromEmbedJs(videoId);
+      const rawHls = embedHls || buildRumbleHlsUrl(rawId);
+
+      // 2. Si live-hls-dvr : suivre la redirection côté serveur (Render) pour obtenir l'URL CDN
+      //    Le Worker CF est bloqué par Cloudflare WAF sur rumble.com, Render (AWS) ne l'est pas
+      if (rawHls.includes("live-hls-dvr")) {
+        const cdnHls = await resolveRedirectToCdn(rawHls);
+        hlsUrl = cdnHls || rawHls;
+      } else {
+        hlsUrl = rawHls;
+      }
+
+      console.log(`[rumble] ${username}: LIVE — videoId=${videoId}, hlsUrl=${hlsUrl}`);
     } else {
       console.log(`[rumble] ${username}: offline`);
     }
