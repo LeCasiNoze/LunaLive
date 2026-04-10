@@ -37,6 +37,9 @@ const OffresStreamerPage = React.lazy(() => import("./pages/OffresStreamerPage")
 const TrovoDebugPage = React.lazy(() => import("./pages/debug/TrovoDebugPage"));
 const RumbleDebugPage = React.lazy(() => import("./pages/debug/RumbleDebugPage"));
 
+// Affi Editor — outil interne accessible sur /editorFSN
+const AffiEditorPage = React.lazy(() => import("./pages/AffiEditorPage"));
+
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
 import { WelcomeModal } from "./components/WelcomeModal";
@@ -103,7 +106,9 @@ function AppInner() {
   return (
     <div className="app">
       <BgEffect type="cards" />
-      {!isMobile && <Topbar onOpenLogin={() => setLoginOpen(true)} onLogout={logout} />}
+      {!isMobile && location.pathname !== "/editorFSN" && (
+        <Topbar onOpenLogin={() => setLoginOpen(true)} onLogout={logout} />
+      )}
 
       <GoLiveNotifier />
       <DailyBonusToast />
@@ -117,6 +122,13 @@ function AppInner() {
           </React.Suspense>
         } />
         <Route path="/popout/chat/:slug" element={<ChatPopupPage />} />
+
+        {/* Affi template editor — outil interne */}
+        <Route path="/editorFSN" element={
+          <React.Suspense fallback={<LoadingFallback />}>
+            <AffiEditorPage />
+          </React.Suspense>
+        } />
 
         <Route path="/" element={<LivesPage />} />
         <Route path="/browse" element={<BrowsePage />} />
