@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Affi Template Editor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0d1a;
+      --bg2: #141428;
+      --bg3: #1c1c35;
+      --border: #2a2a4a;
+      --accent: #FFD700;
+      --accent2: #b38600;
+      --text: #e0e0f0;
+      --muted: #888aaa;
+      --danger: #e0115f;
+      --success: #00e676;
+      --panel-w: 310px;
+      --picker-w: 148px;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ─── HEADER ─────────────────────────────────────── */
+    .header {
+      height: 52px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 16px;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .header-logo {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+
+    .header-logo span { color: var(--text); font-weight: 400; }
+
+    .header-spacer { flex: 1; }
+
+    .badge-fetch-error {
+      font-size: 0.78rem;
+      color: var(--danger);
+      background: rgba(224,17,95,0.1);
+      border: 1px solid rgba(224,17,95,0.3);
+      padding: 4px 10px;
+      border-radius: 4px;
+      display: none;
+    }
+
+    .btn {
+      padding: 7px 16px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+    }
+    .btn-primary:hover { background: #ffe234; }
+    .btn-primary:active { transform: translateY(1px); }
+
+    .btn-secondary {
+      background: var(--bg3);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ─── MAIN ───────────────────────────────────────── */
+    .main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ─── MODEL PICKER ───────────────────────────────── */
+    .model-picker {
+      width: var(--picker-w);
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 12px 8px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .model-picker h3 {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 4px;
+      padding: 0 4px;
+    }
+
+    .model-card {
+      background: var(--bg3);
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+    }
+
+    .model-card:hover { border-color: #555; }
+
+    .model-card.active {
+      border-color: var(--accent);
+      background: rgba(255,215,0,0.05);
+    }
+
+    .model-thumb {
+      width: 100%;
+      height: 72px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      overflow: hidden;
+      background: #0a0a15;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .model-thumb svg {
+      width: 90%;
+      height: 90%;
+    }
+
+    .model-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .model-desc {
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* ─── CONFIG PANEL ───────────────────────────────── */
+    .config-panel {
+      width: var(--panel-w);
+      background: var(--bg);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      flex-shrink: 0;
+      padding-bottom: 20px;
+    }
+
+    .config-section {
+      border-bottom: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .config-section-header {
+      padding: 12px 16px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+      transition: color 0.15s;
+    }
+    .config-section-header:hover { color: var(--text); }
+
+    .config-section-body {
+      padding: 4px 16px 16px;
+    }
+
+    .field {
+      margin-bottom: 12px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+
+    .field input[type="text"],
+    .field input[type="url"],
+    .field textarea {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      padding: 7px 10px;
+      font-size: 0.82rem;
+      font-family: inherit;
+      transition: border-color 0.15s;
+      resize: vertical;
+    }
+
+    .field input:focus,
+    .field textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .field textarea { min-height: 52px; }
+
+    .color-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .color-row input[type="color"] {
+      width: 36px;
+      height: 30px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: none;
+      cursor: pointer;
+      padding: 1px;
+      flex-shrink: 0;
+    }
+
+    .color-row input[type="text"] {
+      flex: 1;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      padding: 4px 8px;
+      font-size: 0.8rem;
+      font-family: 'Consolas', monospace;
+    }
+
+    .color-row input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    /* Model4 conditional fields */
+    .m4-only { display: none; }
+    .not-m4 { display: block; }
+    body.model4 .m4-only { display: block; }
+    body.model4 .not-m4 { display: none; }
+
+    /* ─── PREVIEW PANEL ──────────────────────────────── */
+    .preview-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .preview-toolbar {
+      height: 36px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .preview-toolbar span {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .preview-size-btns {
+      display: flex;
+      gap: 4px;
+      margin-left: auto;
+    }
+
+    .preview-size-btn {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 3px 9px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+    .preview-size-btn.active,
+    .preview-size-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .preview-wrap {
+      flex: 1;
+      overflow: auto;
+      display: flex;
+      justify-content: center;
+      background: #111;
+    }
+
+    #preview-iframe {
+      border: none;
+      background: white;
+      transition: width 0.2s;
+    }
+
+    #preview-iframe.desktop { width: 100%; height: 100%; }
+    #preview-iframe.tablet  { width: 768px; height: 100%; }
+    #preview-iframe.mobile  { width: 390px; height: 100%; }
+
+    /* ─── LOADING OVERLAY ────────────────────────────── */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      gap: 16px;
+    }
+
+    .loading-overlay.hidden { display: none; }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-overlay p { color: var(--muted); font-size: 0.9rem; }
+
+    .loading-overlay .error-msg {
+      color: var(--danger);
+      font-size: 0.85rem;
+      max-width: 440px;
+      text-align: center;
+      background: rgba(224,17,95,0.08);
+      border: 1px solid rgba(224,17,95,0.2);
+      padding: 16px 24px;
+      border-radius: 8px;
+      display: none;
+    }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+  <!-- Loading overlay -->
+  <div class="loading-overlay" id="overlay">
+    <div class="spinner"></div>
+    <p id="overlay-msg">Chargement des templates…</p>
+    <div class="error-msg" id="overlay-error">
+      <strong>Impossible de charger les templates.</strong><br><br>
+      Ouvre l'éditeur via un serveur HTTP local :<br>
+      <code style="background:#111;padding:4px 8px;border-radius:3px;margin-top:8px;display:inline-block;">
+        npx serve Affi_template
+      </code><br><br>
+      Ou utilise l'extension <strong>Live Server</strong> dans VS Code<br>
+      (clic droit sur editor.html → "Open with Live Server")
+    </div>
+  </div>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-logo">🎨 Affi <span>Template Editor</span></div>
+    <div class="header-spacer"></div>
+    <button class="btn btn-secondary" onclick="resetForm()">Réinitialiser</button>
+    <button class="btn btn-primary" onclick="exportHtml()">⬇ Exporter HTML</button>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- Model picker -->
+    <div class="model-picker">
+      <h3>Modèle</h3>
+
+      <div class="model-card active" id="mc-1" onclick="selectModel(1)">
+        <div class="model-thumb">
+          <!-- Side-by-side, image height fixe -->
+          <svg viewBox="0 0 120 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="120" height="70" fill="#0a0a18"/>
+            <rect x="4" y="6" width="52" height="8" rx="2" fill="#1e1e3a"/>
+            <rect x="4" y="17" width="52" height="3" rx="1" fill="#252545"/>
+            <rect x="4" y="22" width="40" height="3" rx="1" fill="#252545"/>
+            <rect x="4" y="30" width="18" height="6" rx="1" fill="#332200"/>
+            <rect x="64" y="4" width="52" height="24" rx="2" fill="#1e1e3a"/>
+            <rect x="64" y="4" width="52" height="10" rx="2" fill="#FFD70022"/>
+            <rect x="64" y="30" width="52" height="4" rx="1" fill="#252545"/>
+            <rect x="64" y="37" width="52" height="10" rx="2" fill="#FFD700"/>
+            <rect x="4" y="52" width="112" height="12" rx="2" fill="#1e1e3a"/>
+          </svg>
+        </div>
+        <div class="model-label">Modèle 1</div>
+        <div class="model-desc">Side-by-side</div>
+      </div>
+
+      <div class="model-card" id="mc-2" onclick="selectModel(2)">
+        <div class="model-thumb">
+          <!-- Side-by-side, image 16/9 -->
+          <svg viewBox="0 0 120 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="120" height="70" fill="#0a0a18"/>
+            <rect x="4" y="6" width="52" height="8" rx="2" fill="#1e1e3a"/>
+            <rect x="4" y="17" width="52" height="3" rx="1" fill="#252545"/>
+            <rect x="4" y="22" width="40" height="3" rx="1" fill="#252545"/>
+            <rect x="4" y="30" width="18" height="6" rx="1" fill="#332200"/>
+            <rect x="64" y="4" width="52" height="28" rx="2" fill="#1e1e3a"/>
+            <rect x="64" y="4" width="52" height="14" rx="2" fill="#E0115F22"/>
+            <rect x="64" y="32" width="52" height="4" rx="1" fill="#252545"/>
+            <rect x="64" y="39" width="52" height="10" rx="2" fill="#FFD700"/>
+            <rect x="4" y="52" width="112" height="12" rx="2" fill="#1e1e3a"/>
+          </svg>
+        </div>
+        <div class="model-label">Modèle 2</div>
+        <div class="model-desc">16/9 image</div>
+      </div>
+
+      <div class="model-card" id="mc-3" onclick="selectModel(3)">
+        <div class="model-thumb">
+          <!-- Même layout, image différente -->
+          <svg viewBox="0 0 120 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="120" height="70" fill="#0a0a18"/>
+            <rect x="4" y="6" width="52" height="8" rx="2" fill="#1e1e3a"/>
+            <rect x="4" y="17" width="52" height="3" rx="1" fill="#252545"/>
+            <rect x="4" y="22" width="40" height="3" rx="1" fill="#252545"/>
+            <rect x="4" y="30" width="18" height="6" rx="1" fill="#332200"/>
+            <rect x="64" y="4" width="52" height="28" rx="2" fill="#1e1e3a"/>
+            <rect x="64" y="4" width="52" height="14" rx="2" fill="#00E67622"/>
+            <rect x="64" y="32" width="52" height="4" rx="1" fill="#252545"/>
+            <rect x="64" y="39" width="52" height="10" rx="2" fill="#FFD700"/>
+            <rect x="4" y="52" width="112" height="12" rx="2" fill="#1e1e3a"/>
+          </svg>
+        </div>
+        <div class="model-label">Modèle 3</div>
+        <div class="model-desc">16/9 variante</div>
+      </div>
+
+      <div class="model-card" id="mc-4" onclick="selectModel(4)">
+        <div class="model-thumb">
+          <!-- Centré + 2 cards -->
+          <svg viewBox="0 0 120 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="120" height="70" fill="#0a0a18"/>
+            <rect x="14" y="4" width="92" height="6" rx="2" fill="#1e1e3a"/>
+            <rect x="24" y="13" width="72" height="3" rx="1" fill="#252545"/>
+            <rect x="4" y="22" width="54" height="26" rx="2" fill="#1e1e3a"/>
+            <rect x="4" y="22" width="54" height="11" rx="2" fill="#FFD70022"/>
+            <rect x="4" y="40" width="54" height="8" rx="2" fill="#FFD700"/>
+            <rect x="62" y="22" width="54" height="26" rx="2" fill="#1e1e3a"/>
+            <rect x="62" y="22" width="54" height="11" rx="2" fill="#E0115F22"/>
+            <rect x="62" y="40" width="54" height="8" rx="2" fill="#FFD700"/>
+            <rect x="4" y="54" width="112" height="12" rx="2" fill="#1e1e3a"/>
+          </svg>
+        </div>
+        <div class="model-label">Modèle 4</div>
+        <div class="model-desc">2 cartes centrées</div>
+      </div>
+    </div>
+
+    <!-- Config panel -->
+    <div class="config-panel" id="config-panel">
+
+      <!-- COULEURS -->
+      <div class="config-section">
+        <div class="config-section-header" onclick="toggleSection(this)">
+          Couleurs
+          <span>▾</span>
+        </div>
+        <div class="config-section-body">
+          <div class="field">
+            <label>Fond page</label>
+            <div class="color-row">
+              <input type="color" id="c-bg-page" value="#080212" oninput="syncColor(this,'t-bg-page')">
+              <input type="text" id="t-bg-page" value="#080212" maxlength="7" oninput="syncText(this,'c-bg-page')" onblur="refreshPreview()">
+            </div>
+          </div>
+          <div class="field">
+            <label>Fond carte</label>
+            <div class="color-row">
+              <input type="color" id="c-bg-card" value="#150821" oninput="syncColor(this,'t-bg-card')">
+              <input type="text" id="t-bg-card" value="#150821" maxlength="7" oninput="syncText(this,'c-bg-card')" onblur="refreshPreview()">
+            </div>
+          </div>
+          <div class="field">
+            <label>Or (accent principal)</label>
+            <div class="color-row">
+              <input type="color" id="c-brand-gold" value="#FFD700" oninput="syncColor(this,'t-brand-gold')">
+              <input type="text" id="t-brand-gold" value="#FFD700" maxlength="7" oninput="syncText(this,'c-brand-gold')" onblur="refreshPreview()">
+            </div>
+          </div>
+          <div class="field">
+            <label>Ruby (accent secondaire)</label>
+            <div class="color-row">
+              <input type="color" id="c-brand-ruby" value="#E0115F" oninput="syncColor(this,'t-brand-ruby')">
+              <input type="text" id="t-brand-ruby" value="#E0115F" maxlength="7" oninput="syncText(this,'c-brand-ruby')" onblur="refreshPreview()">
+            </div>
+          </div>
+          <div class="field">
+            <label>Vert (casino-green)</label>
+            <div class="color-row">
+              <input type="color" id="c-casino-green" value="#00E676" oninput="syncColor(this,'t-casino-green')">
+              <input type="text" id="t-casino-green" value="#00E676" maxlength="7" oninput="syncText(this,'c-casino-green')" onblur="refreshPreview()">
+            </div>
+          </div>
+          <div class="field">
+            <label>Bordure</label>
+            <div class="color-row">
+              <input type="color" id="c-border" value="#331A47" oninput="syncColor(this,'t-border')">
+              <input type="text" id="t-border" value="#331A47" maxlength="7" oninput="syncText(this,'c-border')" onblur="refreshPreview()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- IMAGE & LIEN -->
+      <div class="config-section">
+        <div class="config-section-header" onclick="toggleSection(this)">
+          Image & Lien d'affiliation
+          <span>▾</span>
+        </div>
+        <div class="config-section-body">
+          <!-- Modèles 1-3 : 1 image -->
+          <div class="field not-m4">
+            <label>URL image principale</label>
+            <input type="url" id="img-url" placeholder="https://..." oninput="refreshPreview()">
+          </div>
+
+          <!-- Modèle 4 : 2 images -->
+          <div class="field m4-only">
+            <label>URL image carte 1</label>
+            <input type="url" id="img-url-1" placeholder="https://..." oninput="refreshPreview()">
+          </div>
+          <div class="field m4-only">
+            <label>URL image carte 2</label>
+            <input type="url" id="img-url-2" placeholder="https://..." oninput="refreshPreview()">
+          </div>
+
+          <div class="field">
+            <label>Lien d'affiliation</label>
+            <input type="url" id="affi-link" placeholder="https://casino.com/..." oninput="refreshPreview()">
+          </div>
+        </div>
+      </div>
+
+      <!-- OFFRE -->
+      <div class="config-section">
+        <div class="config-section-header" onclick="toggleSection(this)">
+          Offre
+          <span>▾</span>
+        </div>
+        <div class="config-section-body">
+          <div class="field">
+            <label>Titre de l'offre</label>
+            <input type="text" id="offer-title" value="Offre de Bienvenue" oninput="refreshPreview()">
+          </div>
+          <div class="field">
+            <label>Texte dépôt</label>
+            <input type="text" id="deposit-text" value="Déposez 10€" oninput="refreshPreview()">
+          </div>
+          <div class="field">
+            <label>Texte reçu</label>
+            <input type="text" id="receive-text" value="Recevez 20€" oninput="refreshPreview()">
+          </div>
+          <!-- Model4 card 2 offer (optionnel) -->
+          <div class="m4-only">
+            <div class="field" style="margin-top:8px;">
+              <label style="color:#FFD700">Carte 2 — texte dépôt</label>
+              <input type="text" id="deposit-text-2" value="Déposez 20€" oninput="refreshPreview()">
+            </div>
+            <div class="field">
+              <label style="color:#FFD700">Carte 2 — texte reçu</label>
+              <input type="text" id="receive-text-2" value="Recevez 40€" oninput="refreshPreview()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TEXTES -->
+      <div class="config-section">
+        <div class="config-section-header" onclick="toggleSection(this)">
+          Textes
+          <span>▾</span>
+        </div>
+        <div class="config-section-body">
+          <div class="field">
+            <label>Badge VIP</label>
+            <input type="text" id="badge-text" value="Club VIP Certifié" oninput="refreshPreview()">
+          </div>
+          <div class="field">
+            <label>Titre H1 (avant le span)</label>
+            <input type="text" id="hero-title-before" value="Accès VIP : Doublez votre capital" oninput="refreshPreview()">
+          </div>
+          <div class="field">
+            <label>H1 — texte en or (dans span)</label>
+            <input type="text" id="hero-title-span" value="immédiatement." oninput="refreshPreview()">
+          </div>
+          <div class="field">
+            <label>Sous-titre hero</label>
+            <textarea id="hero-subtitle" oninput="refreshPreview()">Rejoignez un cercle de jeu exclusif et régulé. Votre premier dépôt est doublé automatiquement sur votre solde en toute discrétion et sécurité.</textarea>
+          </div>
+          <div class="field">
+            <label>Texte bouton (carte)</label>
+            <input type="text" id="btn-text" value="JOUER" oninput="refreshPreview()">
+          </div>
+          <div class="field">
+            <label>Texte sticky CTA</label>
+            <input type="text" id="sticky-text" value="🎰 JOUER MAINTENANT" oninput="refreshPreview()">
+          </div>
+          <div class="field">
+            <label>Nom du casino (footer)</label>
+            <input type="text" id="casino-name" value="Celsius Games" oninput="refreshPreview()">
+          </div>
+          <div class="field">
+            <label>Balise &lt;title&gt;</label>
+            <input type="text" id="page-title" value="Offre VIP | Jouer Maintenant" oninput="refreshPreview()">
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Preview panel -->
+    <div class="preview-panel">
+      <div class="preview-toolbar">
+        <span id="preview-label">Aperçu live — Modèle 1</span>
+        <div class="preview-size-btns">
+          <button class="preview-size-btn active" onclick="setViewport('desktop', this)">Desktop</button>
+          <button class="preview-size-btn" onclick="setViewport('tablet', this)">Tablette</button>
+          <button class="preview-size-btn" onclick="setViewport('mobile', this)">Mobile</button>
+        </div>
+      </div>
+      <div class="preview-wrap">
+        <iframe id="preview-iframe" class="desktop"></iframe>
+      </div>
+    </div>
+
+  </div><!-- .main -->
+
+  <script>
+    // ─── STATE ────────────────────────────────────────────────────────────────
+    const templates = {}; // { 1: '<html>...', 2: ..., 3: ..., 4: ... }
+    let currentModel = 1;
+    let debounceTimer = null;
+
+    // ─── LOAD TEMPLATES ────────────────────────────────────────────────────────
+    async function loadTemplates() {
+      const overlay = document.getElementById('overlay');
+      const msg = document.getElementById('overlay-msg');
+      const errEl = document.getElementById('overlay-error');
+
+      let allOk = true;
+
+      for (let i = 1; i <= 4; i++) {
+        msg.textContent = `Chargement model${i}.html…`;
+        try {
+          const r = await fetch(`./model${i}.html`);
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          templates[i] = await r.text();
+        } catch (e) {
+          console.error(`model${i}.html:`, e);
+          allOk = false;
+          break;
+        }
+      }
+
+      if (!allOk) {
+        msg.style.display = 'none';
+        document.querySelector('.spinner').style.display = 'none';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      overlay.classList.add('hidden');
+      initDefaults();
+      refreshPreview();
+    }
+
+    // ─── DEFAULTS from template 1 ────────────────────────────────────────────
+    function initDefaults() {
+      // image URLs from templates
+      document.getElementById('img-url').value = extractFirstImgSrc(templates[1]);
+      document.getElementById('img-url-1').value = extractImgSrcN(templates[4], 0);
+      document.getElementById('img-url-2').value = extractImgSrcN(templates[4], 1);
+      // affi link
+      document.getElementById('affi-link').value = extractFirstAffiLink(templates[1]);
+    }
+
+    function extractFirstImgSrc(html) {
+      const m = html.match(/<div class="promo-image-container">\s*<img src="([^"]+)"/);
+      return m ? m[1] : '';
+    }
+
+    function extractImgSrcN(html, n) {
+      const all = [...html.matchAll(/<div class="promo-image-container">\s*<img src="([^"]+)"/g)];
+      return all[n] ? all[n][1] : '';
+    }
+
+    function extractFirstAffiLink(html) {
+      const m = html.match(/href="(https?:\/\/[^"]+)" class="btn-jouer"/);
+      return m ? m[1] : '';
+    }
+
+    // ─── APPLY CONFIG TO HTML ─────────────────────────────────────────────────
+    function applyConfig(html, model) {
+      const get = (id) => document.getElementById(id).value;
+
+      // ── Colors ──────────────────────────────────────────────────────────────
+      const colorMap = {
+        '--bg-page':       get('t-bg-page'),
+        '--bg-card':       get('t-bg-card'),
+        '--brand-gold':    get('t-brand-gold'),
+        '--brand-ruby':    get('t-brand-ruby'),
+        '--casino-green':  get('t-casino-green'),
+        '--border-color':  get('t-border'),
+      };
+
+      for (const [varName, value] of Object.entries(colorMap)) {
+        if (!value) continue;
+        // Replace in :root CSS variable
+        const escaped = varName.replace(/[-]/g, '\\-');
+        html = html.replace(
+          new RegExp(`(${escaped}:\\s*)#[0-9a-fA-F]{3,6}`, 'g'),
+          (_, prefix) => prefix + value
+        );
+      }
+
+      // Also update the rgba() glow values derived from brand-gold and brand-ruby
+      // (skip — these are hardcoded and cosmetic, user controls main vars)
+
+      // ── Images ──────────────────────────────────────────────────────────────
+      if (model === 4) {
+        const img1 = get('img-url-1');
+        const img2 = get('img-url-2');
+        let imgCount = 0;
+        html = html.replace(/(<div class="promo-image-container">\s*<img) src="[^"]*"/g, (match, before) => {
+          imgCount++;
+          if (imgCount === 1 && img1) return `${before} src="${img1}"`;
+          if (imgCount === 2 && img2) return `${before} src="${img2}"`;
+          return match;
+        });
+      } else {
+        const imgUrl = get('img-url');
+        if (imgUrl) {
+          let replaced = false;
+          html = html.replace(/(<div class="promo-image-container">\s*<img) src="[^"]*"/g, (match, before) => {
+            if (!replaced) { replaced = true; return `${before} src="${imgUrl}"`; }
+            return match;
+          });
+        }
+      }
+
+      // ── Affiliate links ──────────────────────────────────────────────────────
+      const affiLink = get('affi-link');
+      if (affiLink) {
+        html = html.replace(/href="[^"]*" class="btn-jouer"/g, `href="${affiLink}" class="btn-jouer"`);
+        html = html.replace(/href="[^"]*" class="sticky-cta"/g, `href="${affiLink}" class="sticky-cta"`);
+      }
+
+      // ── Offer title ──────────────────────────────────────────────────────────
+      const offerTitle = get('offer-title');
+      if (offerTitle) {
+        html = html.replace(/<div class="offer-title">[^<]*<\/div>/g, `<div class="offer-title">${esc(offerTitle)}</div>`);
+      }
+
+      // ── Deposit / Receive (model 1-3: single, model4: 2 sets) ───────────────
+      if (model === 4) {
+        const depositTexts = [get('deposit-text'), get('deposit-text-2')];
+        const receiveTexts = [get('receive-text'), get('receive-text-2')];
+        let depCount = 0, recCount = 0;
+        html = html.replace(/<span class="step-deposit">[^<]*<\/span>/g, () => {
+          const t = depositTexts[depCount] || depositTexts[0];
+          depCount++;
+          return `<span class="step-deposit">${esc(t)}</span>`;
+        });
+        html = html.replace(/<span class="step-receive">[^<]*<\/span>/g, () => {
+          const t = receiveTexts[recCount] || receiveTexts[0];
+          recCount++;
+          return `<span class="step-receive">${esc(t)}</span>`;
+        });
+      } else {
+        const dep = get('deposit-text');
+        const rec = get('receive-text');
+        if (dep) html = html.replace(/<span class="step-deposit">[^<]*<\/span>/, `<span class="step-deposit">${esc(dep)}</span>`);
+        if (rec) html = html.replace(/<span class="step-receive">[^<]*<\/span>/, `<span class="step-receive">${esc(rec)}</span>`);
+      }
+
+      // ── Badge ────────────────────────────────────────────────────────────────
+      const badge = get('badge-text');
+      if (badge) {
+        html = html.replace(/(class="badge-premium">[^<]*<\/svg>\s*)([^<]*?)(\s*<\/div>)/,
+          (match, before, _old, after) => `${before}${esc(badge)}${after}`);
+      }
+
+      // ── Hero title (h1) ──────────────────────────────────────────────────────
+      const titleBefore = get('hero-title-before');
+      const titleSpan   = get('hero-title-span');
+      if (titleBefore || titleSpan) {
+        html = html.replace(
+          /<h1 class="hero-title">.*?<\/h1>/s,
+          `<h1 class="hero-title">${esc(titleBefore)} <span>${esc(titleSpan)}</span></h1>`
+        );
+      }
+
+      // ── Hero subtitle ────────────────────────────────────────────────────────
+      const subtitle = get('hero-subtitle');
+      if (subtitle) {
+        html = html.replace(
+          /<p class="hero-subtitle">[^<]*<\/p>/,
+          `<p class="hero-subtitle">${esc(subtitle)}</p>`
+        );
+      }
+
+      // ── Button text ──────────────────────────────────────────────────────────
+      const btnTxt = get('btn-text');
+      if (btnTxt) {
+        html = html.replace(/(href="[^"]*" class="btn-jouer">\s*)([^<]*)(\s*<\/a>)/g,
+          (match, before, _old, after) => `${before}${esc(btnTxt)}${after}`);
+      }
+
+      // ── Sticky CTA text ──────────────────────────────────────────────────────
+      const stickyTxt = get('sticky-text');
+      if (stickyTxt) {
+        html = html.replace(
+          /(class="sticky-cta">)([^<]*)(<\/a>)/,
+          (_, before, _old, after) => `${before}${stickyTxt}${after}`
+        );
+      }
+
+      // ── Casino name ──────────────────────────────────────────────────────────
+      const casinoName = get('casino-name');
+      if (casinoName && casinoName !== 'Celsius Games') {
+        html = html.replace(/Celsius Games/g, esc(casinoName));
+      }
+
+      // ── Page title ───────────────────────────────────────────────────────────
+      const pageTitle = get('page-title');
+      if (pageTitle) {
+        html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(pageTitle)}</title>`);
+      }
+
+      return html;
+    }
+
+    // simple HTML escape (for text nodes)
+    function esc(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    // ─── PREVIEW ──────────────────────────────────────────────────────────────
+    function refreshPreview() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (!templates[currentModel]) return;
+        const html = applyConfig(templates[currentModel], currentModel);
+        const iframe = document.getElementById('preview-iframe');
+        iframe.srcdoc = html;
+      }, 120);
+    }
+
+    // ─── MODEL SELECT ─────────────────────────────────────────────────────────
+    function selectModel(n) {
+      currentModel = n;
+
+      // Update active card
+      for (let i = 1; i <= 4; i++) {
+        document.getElementById(`mc-${i}`).classList.toggle('active', i === n);
+      }
+
+      // Update preview label
+      document.getElementById('preview-label').textContent = `Aperçu live — Modèle ${n}`;
+
+      // Toggle model4-specific fields
+      document.body.classList.toggle('model4', n === 4);
+
+      refreshPreview();
+    }
+
+    // ─── VIEWPORT ─────────────────────────────────────────────────────────────
+    function setViewport(size, btn) {
+      const iframe = document.getElementById('preview-iframe');
+      iframe.className = size;
+      document.querySelectorAll('.preview-size-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    // ─── COLOR SYNC ───────────────────────────────────────────────────────────
+    function syncColor(colorInput, textId) {
+      document.getElementById(textId).value = colorInput.value;
+      refreshPreview();
+    }
+
+    function syncText(textInput, colorId) {
+      const val = textInput.value;
+      if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+        document.getElementById(colorId).value = val;
+        refreshPreview();
+      }
+    }
+
+    // ─── SECTION TOGGLE ───────────────────────────────────────────────────────
+    function toggleSection(header) {
+      const body = header.nextElementSibling;
+      const arrow = header.querySelector('span');
+      const collapsed = body.style.display === 'none';
+      body.style.display = collapsed ? '' : 'none';
+      arrow.textContent = collapsed ? '▾' : '▸';
+    }
+
+    // ─── RESET ────────────────────────────────────────────────────────────────
+    function resetForm() {
+      // Re-read defaults from current template
+      document.getElementById('t-bg-page').value = '#080212';
+      document.getElementById('c-bg-page').value = '#080212';
+      document.getElementById('t-bg-card').value = '#150821';
+      document.getElementById('c-bg-card').value = '#150821';
+      document.getElementById('t-brand-gold').value = '#FFD700';
+      document.getElementById('c-brand-gold').value = '#FFD700';
+      document.getElementById('t-brand-ruby').value = '#E0115F';
+      document.getElementById('c-brand-ruby').value = '#E0115F';
+      document.getElementById('t-casino-green').value = '#00E676';
+      document.getElementById('c-casino-green').value = '#00E676';
+      document.getElementById('t-border').value = '#331A47';
+      document.getElementById('c-border').value = '#331A47';
+
+      document.getElementById('offer-title').value = 'Offre de Bienvenue';
+      document.getElementById('deposit-text').value = 'Déposez 10€';
+      document.getElementById('receive-text').value = 'Recevez 20€';
+      document.getElementById('deposit-text-2').value = 'Déposez 20€';
+      document.getElementById('receive-text-2').value = 'Recevez 40€';
+      document.getElementById('badge-text').value = 'Club VIP Certifié';
+      document.getElementById('hero-title-before').value = 'Accès VIP : Doublez votre capital';
+      document.getElementById('hero-title-span').value = 'immédiatement.';
+      document.getElementById('hero-subtitle').value = 'Rejoignez un cercle de jeu exclusif et régulé. Votre premier dépôt est doublé automatiquement sur votre solde en toute discrétion et sécurité.';
+      document.getElementById('btn-text').value = 'JOUER';
+      document.getElementById('sticky-text').value = '🎰 JOUER MAINTENANT';
+      document.getElementById('casino-name').value = 'Celsius Games';
+      document.getElementById('page-title').value = 'Offre VIP | Jouer Maintenant';
+
+      initDefaults();
+      refreshPreview();
+    }
+
+    // ─── EXPORT ───────────────────────────────────────────────────────────────
+    function exportHtml() {
+      if (!templates[currentModel]) return;
+      const html = applyConfig(templates[currentModel], currentModel);
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `affi_model${currentModel}_export.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    // ─── BOOT ─────────────────────────────────────────────────────────────────
+    loadTemplates();
+  </script>
+</body>
+</html>

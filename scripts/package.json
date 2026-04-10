@@ -5,11 +5,17 @@
   "description": "Scripts utilitaires LunaLive",
   "scripts": {
     "db": "node db-query.js",
-    "rumble": "node test-rumble-api.js"
+    "rumble": "node test-rumble-api.js",
+    "slots-broadcast": "node dlive-slots-broadcaster.js",
+    "slots-broadcast:dry": "cross-env DRY_RUN=1 node dlive-slots-broadcaster.js",
+    "slots-broadcast:list": "cross-env LIST_ONLY=1 node dlive-slots-broadcaster.js"
   },
   "dependencies": {
     "ws": "^8.14.0"
   },
   "keywords": [],
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "cross-env": "^10.1.0"
+  }
 }
