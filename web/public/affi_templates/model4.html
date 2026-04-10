@@ -191,13 +191,15 @@
             overflow: hidden;
             border-bottom: 2px solid var(--border-color);
             aspect-ratio: 16 / 9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .promo-image-container img {
             width: 100%;
             height: 100%;
-            object-fit: cover;
-            object-position: center center;
+            object-fit: contain;
             display: block;
         }
 

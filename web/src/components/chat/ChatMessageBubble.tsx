@@ -186,12 +186,13 @@ function renderBodyRich(
 
 /* ─── Main component ─────────────────────────────────────── */
 export function ChatMessageBubble({
-  msg, streamerAppearance, currentUsername, resolveEmote,
+  msg, streamerAppearance, currentUsername, resolveEmote, isGrouped,
 }: {
   msg: ChatMsgLike;
   streamerAppearance: StreamerAppearance;
   currentUsername?: string | null;
   resolveEmote?: ResolveEmote;
+  isGrouped?: boolean;
 }) {
   const isDlive = !!(msg as any)?.dlive;
   const dliveFrom = ((msg as any)?.dliveRestreamFrom ?? null) as string | null;
@@ -239,101 +240,119 @@ export function ChatMessageBubble({
 
   return (
     <div
-      className={`chatMsgRow ${frameClass(frame?.frameId)} ${isPinged ? "chatPinged" : ""} ${isDlive ? "chatMsgRow--dlive" : ""} ${isBot ? "chatMsgRow--bot" : ""}`}
+      className={[
+        "chatMsgRow",
+        frameClass(frame?.frameId),
+        isPinged     ? "chatPinged"       : "",
+        isDlive      ? "chatMsgRow--dlive" : "",
+        isBot        ? "chatMsgRow--bot"   : "",
+        isGrouped    ? "chatMsgRow--grouped" : "",
+      ].filter(Boolean).join(" ")}
       style={rowStyle}>
       <div className="chatMsgInner">
 
-        {/* ── Avatar ── */}
-        <div className={`chatAvatarBorder ${avatarBorderClass((avatar as any).borderId)}`}>
-          <div className="chatAvatarCircle">
-            {avatarUrl && !imgErr ? (
-              <img className="chatAvatarImg" src={avatarUrl} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setImgErr(true)} />
-            ) : getInitials(msg.username)}
-          </div>
-          {hatEmoji ? <div className="chatHatEmoji" aria-hidden="true">{hatEmoji}</div> : null}
+        {/* ── Avatar : toujours affiché sur le 1er message, slot invisible sur les groupés ── */}
+        <div className={`chatAvatarBorder chatAvatarSlot ${avatarBorderClass((avatar as any).borderId)}`}>
+          {!isGrouped ? (
+            <>
+              <div className="chatAvatarCircle">
+                {avatarUrl && !imgErr ? (
+                  <img className="chatAvatarImg" src={avatarUrl} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setImgErr(true)} />
+                ) : getInitials(msg.username)}
+              </div>
+              {hatEmoji ? <div className="chatHatEmoji" aria-hidden="true">{hatEmoji}</div> : null}
+            </>
+          ) : null}
         </div>
 
         {/* ── Contenu ── */}
         <div className="chatMsgContent" style={{ minWidth:0 }}>
-          <div className="chatMsgTop">
-            <div className="chatMsgTopLeft" style={{ minWidth:0, display:"flex", flexWrap:"wrap", alignItems:"center", gap:5 }}>
 
-              {/* Badge BOT */}
-              {isBot ? (
-                <span className="chatBadge badge--bot"
-                  style={{ fontWeight:950, border:"1px solid rgba(239,68,68,.28)", background:"rgba(239,68,68,.12)", color:"rgba(252,165,165,.95)" }}
-                  title="Bot">BOT</span>
-              ) : null}
+          {/* Header : caché pour les messages groupés */}
+          {!isGrouped ? (
+            <>
+              <div className="chatMsgTop">
+                <div className="chatMsgTopLeft" style={{ minWidth:0, display:"flex", flexWrap:"wrap", alignItems:"center", gap:5 }}>
 
-              {/* Badges cosmétiques */}
-              {badges.length ? (
-                <div className="chatBadges">
-                  {badges.map((b: any) => (
-                    <span key={b.id}
-                      className={`chatBadge badge--${b.tier || "silver"}`}
-                      style={{
-                        ...(b.borderColor  ? { borderColor:b.borderColor }       : null),
-                        ...(b.textColor    ? { color:b.textColor }               : null),
-                        ...(b.backgroundColor ? { backgroundColor:b.backgroundColor } : null),
-                      }}>
-                      {b.icon ? <span className="chatBadgeIcon">{b.icon}</span> : null}
-                      {badgeLabel(b)}
-                    </span>
-                  ))}
+                  {/* Badge BOT */}
+                  {isBot ? (
+                    <span className="chatBadge badge--bot"
+                      style={{ fontWeight:950, border:"1px solid rgba(239,68,68,.28)", background:"rgba(239,68,68,.12)", color:"rgba(252,165,165,.95)" }}
+                      title="Bot">BOT</span>
+                  ) : null}
+
+                  {/* Badges cosmétiques */}
+                  {badges.length ? (
+                    <div className="chatBadges">
+                      {badges.map((b: any) => (
+                        <span key={b.id}
+                          className={`chatBadge badge--${b.tier || "silver"}`}
+                          style={{
+                            ...(b.borderColor     ? { borderColor:b.borderColor }           : null),
+                            ...(b.textColor       ? { color:b.textColor }                   : null),
+                            ...(b.backgroundColor ? { backgroundColor:b.backgroundColor }   : null),
+                          }}>
+                          {b.icon ? <span className="chatBadgeIcon">{b.icon}</span> : null}
+                          {badgeLabel(b)}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {/* Username */}
+                  <div
+                    className={`chatUsername ${usernameEffectClass(unameEffect as any)}`}
+                    style={{
+                      ["--uname-color" as any]: isBot
+                        ? "rgba(252,165,165,.95)"
+                        : (effectiveUnameColor ?? "var(--chat-name-color)"),
+                      ...(isBot ? { fontWeight:950, letterSpacing:".5px", textTransform:"uppercase" } : null),
+                      opacity: isDlive ? .92 : undefined,
+                    } as React.CSSProperties}
+                    title={msg.username}>
+                    {msg.username}
+
+                    {/* Pill DLive */}
+                    {isDlive ? (
+                      <span style={{
+                        display:"inline-block", marginLeft:7, padding:"1px 7px",
+                        borderRadius:999, fontSize:11, fontWeight:800,
+                        border:"1px solid rgba(255,255,255,.10)",
+                        background:"rgba(255,255,255,.06)",
+                        opacity:.88, verticalAlign:"middle",
+                      }} title="Retransmis depuis DLive">
+                        {dliveFrom ? `DLive · ${dliveFrom}` : "DLive"}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* Timestamp (caché, visible au hover via CSS) */}
+                <div className="chatTimestamp" style={{ opacity: isDlive ? .75 : undefined }}>
+                  {formatHHMM(msg.createdAt)}
+                </div>
+              </div>
+
+              {/* Titre sous username */}
+              {titleInfo ? (
+                <div
+                  className={`chatTitle ${titleTierClass(titleInfo.tier as any)}`}
+                  data-title-code={titleInfo.code}
+                  style={{ marginTop:2, fontSize:".90em", fontStyle:"italic", textDecoration:"underline", opacity:.95 }}
+                  title={titleInfo.code}>
+                  {titleInfo.text}
                 </div>
               ) : null}
-
-              {/* Username */}
-              <div
-                className={`chatUsername ${usernameEffectClass(unameEffect as any)}`}
-                style={{
-                  ["--uname-color" as any]: isBot
-                    ? "rgba(252,165,165,.95)"
-                    : (effectiveUnameColor ?? "var(--chat-name-color)"),
-                  ...(isBot ? { fontWeight:950, letterSpacing:".5px", textTransform:"uppercase" } : null),
-                  opacity: isDlive ? .92 : undefined,
-                } as React.CSSProperties}
-                title={msg.username}>
-                {msg.username}
-
-                {/* Pill DLive */}
-                {isDlive ? (
-                  <span style={{
-                    display:"inline-block", marginLeft:7, padding:"1px 7px",
-                    borderRadius:999, fontSize:11, fontWeight:800,
-                    border:"1px solid rgba(255,255,255,.10)",
-                    background:"rgba(255,255,255,.06)",
-                    opacity:.88, verticalAlign:"middle",
-                  }} title="Retransmis depuis DLive">
-                    {dliveFrom ? `DLive · ${dliveFrom}` : "DLive"}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-
-            {/* Timestamp */}
-            <div className="chatTimestamp" style={{ opacity: isDlive ? .75 : undefined }}>
-              {formatHHMM(msg.createdAt)}
-            </div>
-          </div>
-
-          {/* Titre sous username */}
-          {titleInfo ? (
-            <div
-              className={`chatTitle ${titleTierClass(titleInfo.tier as any)}`}
-              data-title-code={titleInfo.code}
-              style={{ marginTop:2, fontSize:".90em", fontStyle:"italic", textDecoration:"underline", opacity:.95 }}
-              title={titleInfo.code}>
-              {titleInfo.text}
-            </div>
+            </>
           ) : null}
 
           {/* Corps du message */}
-          <div 
+          <div
             className={`chatBodyText ${isEmotesOnly(String(msg.body ?? "")) ? "emotes-only" : ""}`}
             style={{
               minWidth:0, whiteSpace:"pre-wrap", overflowWrap:"anywhere",
               wordBreak:"break-word", lineHeight:1.3,
+              marginTop: isGrouped ? 0 : undefined,
               opacity: isDlive ? .92 : undefined,
               color:"var(--chat-msg-color,rgba(235,232,255,.88))",
             }}>

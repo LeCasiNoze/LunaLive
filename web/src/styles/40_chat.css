@@ -186,7 +186,46 @@
   font-size: 12px;
   font-weight: 800;
   flex: 0 0 auto;
+  /* Caché par défaut, révélé au hover de la bulle */
+  opacity: 0;
+  transition: opacity 0.18s ease;
 }
+.chatMsgRow:hover .chatTimestamp{
+  opacity: 1;
+}
+
+/* ─── Message groupé (continuation même user ≤ 2min) ─────────────── */
+.chatMsgRow--grouped{
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  /* Réduit l'écart avec la bulle précédente */
+  margin-top: -5px;
+}
+.chatMsgRow--grouped:hover{
+  background: rgba(255,255,255,0.025);
+  border-color: rgba(255,255,255,0.05);
+}
+/* Le slot avatar devient un simple espaceur invisible (maintient l'alignement) */
+.chatMsgRow--grouped .chatAvatarSlot{
+  visibility: hidden;
+  pointer-events: none;
+}
+/* Petit trait vertical à gauche pour indiquer la continuation */
+.chatMsgRow--grouped .chatMsgContent::before{
+  content: '';
+  display: block;
+  position: absolute;
+  left: -8px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.06);
+}
+.chatMsgContent{ position: relative; }
 
 .chatBadges{ display:flex; gap: 6px; flex-wrap: wrap; }
 .chatBadge{

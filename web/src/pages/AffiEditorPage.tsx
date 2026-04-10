@@ -373,7 +373,7 @@ export default function AffiEditorPage() {
     (async () => {
       const loaded: Record<number, string> = {};
       try {
-        for (let i = 1; i <= 4; i++) {
+        for (const i of [1, 4]) {
           const r = await fetch(`/affi_templates/model${i}.html`);
           if (!r.ok) throw new Error(`model${i}.html HTTP ${r.status}`);
           loaded[i] = await r.text();
@@ -457,7 +457,7 @@ export default function AffiEditorPage() {
         {/* ── MODEL PICKER ──────────────────────────────────────────────────── */}
         <div style={s.picker}>
           <div style={s.pickerTitle}>MODÈLE</div>
-          {[1, 2, 3, 4].map((n) => (
+          {([1, 4] as const).map((n) => (
             <button
               key={n}
               style={{
@@ -471,7 +471,7 @@ export default function AffiEditorPage() {
               </div>
               <div style={s.modelLabel}>Modèle {n}</div>
               <div style={s.modelDesc}>
-                {n === 1 ? "Side-by-side" : n === 2 ? "16/9 image" : n === 3 ? "16/9 variante" : "2 cartes"}
+                {n === 1 ? "Side-by-side" : "2 cartes"}
               </div>
             </button>
           ))}
