@@ -307,6 +307,131 @@ function ColorField({ label, value, onChange }: ColorFieldProps) {
   );
 }
 
+// ─── PRESET IMAGES ───────────────────────────────────────────────────────────
+
+const PRESET_IMAGES = [
+  {
+    url: "https://cdn.phototourl.com/member/2026-04-09-240bb1e8-d188-4130-81ae-8e3f88143efc.png",
+    label: "Penalty Duel",
+  },
+  {
+    url: "https://cdn.phototourl.com/free/2026-04-09-c5dee0f7-cdad-427c-bd2e-bcbb6f4b24a6.png",
+    label: "Jeu des Mines",
+  },
+  {
+    url: "https://cdn.phototourl.com/member/2026-04-10-af97004c-818f-40d3-b081-404c3ad3dfa7.png",
+    label: "Nouveau 1",
+  },
+  {
+    url: "https://cdn.phototourl.com/member/2026-04-10-ec62e857-165d-4a93-9cec-a314c7636d9c.jpg",
+    label: "Nouveau 2",
+  },
+];
+
+interface ImagePickerProps {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}
+function ImagePicker({ label, value, onChange }: ImagePickerProps) {
+  const isCustom = value !== "" && !PRESET_IMAGES.some((p) => p.url === value);
+  const [showCustom, setShowCustom] = useState(isCustom);
+
+  function select(url: string) {
+    setShowCustom(false);
+    onChange(url);
+  }
+
+  function openCustom() {
+    setShowCustom(true);
+    onChange("");
+  }
+
+  return (
+    <div style={s.field}>
+      <label style={s.label}>{label}</label>
+      {/* Grille 2×2 presets + bouton custom */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 6 }}>
+        {PRESET_IMAGES.map((p) => {
+          const active = value === p.url;
+          return (
+            <button
+              key={p.url}
+              onClick={() => select(p.url)}
+              title={p.label}
+              style={{
+                position: "relative",
+                padding: 0,
+                border: `2px solid ${active ? "#FFD700" : "#2a2a4a"}`,
+                borderRadius: 6,
+                overflow: "hidden",
+                cursor: "pointer",
+                background: "#000",
+                aspectRatio: "16/9",
+                transition: "border-color 0.15s",
+              }}
+            >
+              <img
+                src={p.url}
+                alt={p.label}
+                style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+              />
+              {active && (
+                <div style={{
+                  position: "absolute", inset: 0,
+                  background: "rgba(255,215,0,0.12)",
+                  display: "flex", alignItems: "flex-end", justifyContent: "center",
+                  paddingBottom: 4,
+                }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: "#FFD700", background: "rgba(0,0,0,0.6)", padding: "1px 5px", borderRadius: 3 }}>
+                    ✓
+                  </span>
+                </div>
+              )}
+            </button>
+          );
+        })}
+
+        {/* Bouton URL personnalisée */}
+        <button
+          onClick={openCustom}
+          style={{
+            border: `2px solid ${showCustom ? "#FFD700" : "#2a2a4a"}`,
+            borderRadius: 6,
+            background: showCustom ? "rgba(255,215,0,0.06)" : "#1c1c35",
+            color: showCustom ? "#FFD700" : "#666",
+            cursor: "pointer",
+            fontSize: 11,
+            fontWeight: 700,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 4,
+            aspectRatio: "16/9",
+            transition: "border-color 0.15s, color 0.15s",
+          }}
+        >
+          <span style={{ fontSize: 16 }}>🔗</span>
+          <span>URL custom</span>
+        </button>
+      </div>
+
+      {/* Champ texte : affiché si custom sélectionné */}
+      {showCustom && (
+        <input
+          type="url"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="https://..."
+          autoFocus
+          style={{ ...s.input, marginTop: 2 }}
+        />
+      )}
+    </div>
+  );
+}
+
 interface TextFieldProps {
   label: string;
   value: string;
@@ -498,28 +623,22 @@ export default function AffiEditorPage() {
 
           <Section title="Image & Lien d'affiliation">
             {currentModel !== 4 ? (
-              <TextField
-                label="URL image principale"
+              <ImagePicker
+                label="Image principale"
                 value={cfg.imgUrl}
                 onChange={set("imgUrl")}
-                placeholder="https://..."
-                type="url"
               />
             ) : (
               <>
-                <TextField
-                  label="URL image carte 1"
+                <ImagePicker
+                  label="Image carte 1"
                   value={cfg.imgUrl1}
                   onChange={set("imgUrl1")}
-                  placeholder="https://..."
-                  type="url"
                 />
-                <TextField
-                  label="URL image carte 2"
+                <ImagePicker
+                  label="Image carte 2"
                   value={cfg.imgUrl2}
                   onChange={set("imgUrl2")}
-                  placeholder="https://..."
-                  type="url"
                 />
               </>
             )}
