@@ -167,13 +167,27 @@ export async function fetchTrovoRoomInfo(spaceName) {
         const jsDataRaw = response.data.space_SpaceReadService_GetRoomInfo.jsData;
         console.log(`[trovo] jsDataRaw length: ${jsDataRaw.length}, preview: ${jsDataRaw.substring(0, 200)}...`);
         const jsData = parseTrovoJsData(jsDataRaw);
-        const streamInfo = jsData.programInfo?.streamInfo || [];
+        const programInfo = jsData?.programInfo || {};
+        const streamInfo = programInfo.streamInfo || [];
+        const channelInfo = jsData?.channelInfo || {};
+        const roomInfo = jsData?.roomInfo || {};
+        // Corriger le mapping pour channelId et roomId
+        const channelId = channelInfo.channelID || null;
+        const roomId = roomInfo.roomID || null;
+        // Logs détaillés pour debugging
+        console.log("[trovo-debug] jsData parsed:", {
+            hasProgramInfo: !!programInfo,
+            hasStreamInfo: !!streamInfo,
+            streamInfoCount: streamInfo.length,
+            channelInfoKeys: Object.keys(channelInfo),
+            roomInfoKeys: Object.keys(roomInfo),
+            channelId,
+            roomId
+        });
         const streamInfoCount = streamInfo.length;
         console.log(`[trovo] streamInfoCount: ${streamInfoCount}`);
         console.log(`[trovo] isLive: ${!!jsData.isLive}`);
         console.log(`[trovo] programInfo.title: ${jsData.programInfo?.title || 'null'}`);
-        console.log(`[trovo] channelId: ${jsData.channelId || 'null'}`);
-        console.log(`[trovo] roomId: ${jsData.roomId || 'null'}`);
         notes.push(`Found ${streamInfoCount} stream qualities`);
         notes.push(`isLive: ${!!jsData.isLive}`);
         const qualities = streamInfo.map((stream, index) => ({

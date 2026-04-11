@@ -33,6 +33,7 @@ import { adminRubisRouter } from "./routes/admin_rubis.js";
 
 // Features
 import { achievementsRouter } from "./routes/achievements.js";
+import { featureEventsRouter } from "./routes/feature_events.js";
 import { cosmeticsRouter } from "./routes/cosmetics.js";
 import { cosmeticsCatalogRoutes } from "./routes/cosmetics_catalog_routes.js";
 import { avatarRouter } from "./routes/avatar.js";
@@ -87,6 +88,7 @@ import { adminReportsRouter } from "./routes/admin_reports.js";
 import { adminSubscriptionsRouter } from "./routes/admin_subscriptions.js";
 import { adminContentRouter } from "./routes/admin_content.js";
 import { publicContentRouter } from "./routes/public_content.js";
+import { expensesRouter } from "./routes/expenses.js";
 
 // Discord routes
 import { meDiscordLinkRouter } from "./routes/bot/me_discord_link.js";
@@ -179,6 +181,7 @@ export function createApp() {
   app.use("/api", offresStreamersRouter);
   app.use("/api", igConfigRouter);
   app.use("/api", igCollaborationsRouter);
+  app.use("/api", expensesRouter);
   app.use(igWebhookRouter);
 
   app.use("/api/debug", trovoDebugRouter);
@@ -232,6 +235,7 @@ export function createApp() {
 
   app.use("/me/daily-bonus",    requireAuth, dailyBonusRoutes);
   app.use("/me/achievements",   requireAuth, achievementsRouter);
+  app.use("/me/feature-events", requireAuth, featureEventsRouter);
 
   app.use(cosmeticsRouter);
   app.use(shopRouter);

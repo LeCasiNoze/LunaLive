@@ -538,6 +538,163 @@ adminRouter.post("/admin/provider-accounts/:id/assign", requireAdminKey, a(async
     }
 }));
 // ─────────────────────────────────────────────
+// Rumble accounts endpoints
+// ─────────────────────────────────────────────
+adminRouter.get("/admin/rumble-accounts", requireAdminKey, a(async (_req, res) => {
+    const { rows } = await pool.query(`
+      SELECT
+        ra.id,
+        ra.username,
+        ra.rtmp_url AS "rtmpUrl",
+        ra.assigned_at AS "assignedAt",
+        ra.released_at AS "releasedAt",
+        s.id::text AS "assignedStreamerId",
+        s.slug AS "assignedStreamerSlug",
+        s.display_name AS "assignedStreamerName",
+        u.username AS "assignedUsername"
+      FROM rumble_accounts ra
+      LEFT JOIN streamers s ON s.id = ra.assigned_to_streamer_id
+      LEFT JOIN users u ON u.id = s.user_id
+      ORDER BY ra.id ASC
+    `);
+    res.json({ ok: true, accounts: rows });
+}));
+adminRouter.post("/admin/rumble-accounts", requireAdminKey, a(async (req, res) => {
+    const username = String(req.body.username || "").trim();
+    const apiKey = String(req.body.apiKey || "").trim();
+    const rtmpUrl = String(req.body.rtmpUrl || "rtmp://live.rumble.com/live").trim();
+    const streamKey = String(req.body.streamKey || "").trim();
+    const assignedToStreamerId = req.body.assignedToStreamerId ? Number(req.body.assignedToStreamerId) : null;
+    if (!username)
+        return res.status(400).json({ ok: false, error: "username_required" });
+    if (!apiKey)
+        return res.status(400).json({ ok: false, error: "apiKey_required" });
+    if (!streamKey)
+        return res.status(400).json({ ok: false, error: "streamKey_required" });
+    try {
+        const { rows } = await pool.query(`INSERT INTO rumble_accounts (username, api_key, rtmp_url, stream_key, assigned_to_streamer_id, assigned_at)
+         VALUES ($1,$2,$3,$4,$5,NOW())
+         RETURNING id, username, rtmp_url AS "rtmpUrl", assigned_at AS "assignedAt"`, [username, apiKey, rtmpUrl, streamKey, assignedToStreamerId]);
+        res.json({ ok: true, account: rows[0] });
+    }
+    catch (e) {
+        if (e.code === "23505") {
+            return res.status(409).json({ ok: false, error: "username_already_exists" });
+        }
+        throw e;
+    }
+}));
+adminRouter.put("/admin/rumble-accounts/:id", requireAdminKey, a(async (req, res) => {
+    const id = Number(req.params.id);
+    const { username, apiKey, streamKey, assignedToStreamerId } = req.body;
+    if (!id)
+        return res.status(400).json({ ok: false, error: "bad_id" });
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+    if (username !== undefined) {
+        updates.push(`username = $${paramIndex++}`);
+        values.push(String(username).trim());
+    }
+    if (apiKey !== undefined) {
+        updates.push(`api_key = $${paramIndex++}`);
+        values.push(String(apiKey).trim());
+    }
+    if (streamKey !== undefined) {
+        updates.push(`stream_key = $${paramIndex++}`);
+        values.push(String(streamKey).trim());
+    }
+    if (assignedToStreamerId !== undefined) {
+        updates.push(`assigned_to_streamer_id = $${paramIndex++}`);
+        updates.push(`assigned_at = $${paramIndex++}`);
+        values.push(assignedToStreamerId ? Number(assignedToStreamerId) : null);
+        values.push(assignedToStreamerId ? new Date() : null);
+    }
+    updates.push(`updated_at = NOW()`);
+    if (updates.length === 0) {
+        return res.status(400).json({ ok: false, error: "no_updates" });
+    }
+    values.push(id);
+    const { rows } = await pool.query(`UPDATE rumble_accounts
+       SET ${updates.join(', ')}
+       WHERE id = $${paramIndex}
+       RETURNING id, username, rtmp_url AS "rtmpUrl", assigned_at AS "assignedAt"`, values);
+    if (!rows[0])
+        return res.status(404).json({ ok: false, error: "not_found" });
+    res.json({ ok: true, account: rows[0] });
+}));
+adminRouter.delete("/admin/rumble-accounts/:id", requireAdminKey, a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id)
+        return res.status(400).json({ ok: false, error: "bad_id" });
+    const { rowCount } = await pool.query(`DELETE FROM rumble_accounts WHERE id = $1`, [id]);
+    if (!rowCount)
+        return res.status(404).json({ ok: false, error: "not_found" });
+    res.json({ ok: true });
+}));
+adminRouter.post("/admin/rumble-accounts/:id/assign", requireAdminKey, a(async (req, res) => {
+    const id = Number(req.params.id);
+    const streamerId = Number(req.body.streamerId);
+    if (!id)
+        return res.status(400).json({ ok: false, error: "bad_id" });
+    if (!streamerId)
+        return res.status(400).json({ ok: false, error: "streamerId_required" });
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        const acc = await client.query(`SELECT id, assigned_to_streamer_id
+         FROM rumble_accounts
+         WHERE id=$1
+         FOR UPDATE`, [id]);
+        if (!acc.rows[0]) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ ok: false, error: "not_found" });
+        }
+        if (acc.rows[0].assigned_to_streamer_id) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({ ok: false, error: "already_assigned" });
+        }
+        const s = await client.query(`SELECT id FROM streamers WHERE id=$1 LIMIT 1`, [streamerId]);
+        if (!s.rows[0]) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ ok: false, error: "streamer_not_found" });
+        }
+        const already = await client.query(`SELECT 1 FROM rumble_accounts WHERE assigned_to_streamer_id=$1 LIMIT 1`, [
+            streamerId,
+        ]);
+        if (already.rows[0]) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({ ok: false, error: "streamer_already_has_account" });
+        }
+        await client.query(`UPDATE rumble_accounts
+         SET assigned_to_streamer_id=$1, assigned_at=NOW(), released_at=NULL
+         WHERE id=$2`, [streamerId, id]);
+        await client.query("COMMIT");
+        res.json({ ok: true });
+    }
+    catch (e) {
+        try {
+            await client.query("ROLLBACK");
+        }
+        catch { }
+        throw e;
+    }
+    finally {
+        client.release();
+    }
+}));
+adminRouter.post("/admin/rumble-accounts/:id/release", requireAdminKey, a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id)
+        return res.status(400).json({ ok: false, error: "bad_id" });
+    const { rowCount } = await pool.query(`UPDATE rumble_accounts
+       SET assigned_to_streamer_id=NULL, assigned_at=NULL, released_at=NOW()
+       WHERE id=$1 AND assigned_to_streamer_id IS NOT NULL`, [id]);
+    if (!rowCount)
+        return res.status(404).json({ ok: false, error: "not_found" });
+    res.json({ ok: true });
+}));
+// ─────────────────────────────────────────────
 // Slots updater
 // ─────────────────────────────────────────────
 adminRouter.post("/admin/slots/update", requireAdminKey, a(async (_req, res) => {

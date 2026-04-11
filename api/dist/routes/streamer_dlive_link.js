@@ -258,6 +258,10 @@ streamerDliveLinkRouter.post("/toggle", requireAuth, async (req, res) => {
     await pool.query(`UPDATE users SET dlive_use_linked=$2 WHERE id=$1`, [userId, useLinked]);
     if (streamerId) {
         await pool.query(`UPDATE streamers SET dlive_use_linked=$2 WHERE id=$1`, [streamerId, useLinked]);
+        // NOUVEAU: Mettre à jour le champ enabled dans provider_accounts
+        await pool.query(`UPDATE provider_accounts 
+       SET enabled = $2 
+       WHERE assigned_to_streamer_id = $1 AND provider = 'dlive'`, [streamerId, useLinked]);
     }
     res.json({ ok: true });
 });

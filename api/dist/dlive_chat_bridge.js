@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
 const GRAPHIGOSTREAM_WS = process.env.DLIVE_GRAPHIGOSTREAM_WS || "wss://graphigostream.prd.dlive.tv";
 const bridges = new Map();
@@ -120,6 +121,8 @@ export function ensureDliveBridge(opts) {
     let alive = true;
     let publicOn = !!opts.publicOn;
     let popupOn = !!opts.popupOn;
+    // Méta du streamer Luna côté DB : résolu une fois au démarrage du bridge
+    let streamerMeta = null;
     // displayname/slug fourni depuis LunaLive settings
     let dliveUsername = opts.dliveUsername ? norm(opts.dliveUsername) : null;
     // resolved immutable username (dlive-xxxx)
@@ -201,6 +204,26 @@ export function ensureDliveBridge(opts) {
             opts.io.to(`chat:${opts.slug}:public`).emit("chat:message", chatMsg);
         if (popupOn)
             opts.io.to(`chat:${opts.slug}:popup`).emit("chat:message", chatMsg);
+        // ─── Bang commands DLive → même comportement que sur Luna ──────────────
+        // Si le viewer DLive tape !call, !pcall, etc., on l'exécute côté Luna.
+        // actorUserId = 0 (pas de compte Luna) : les toasts n'arriveront pas mais
+        // la commande s'exécute normalement (ajout en queue, broadcast overlay…).
+        const bang = parseBangCommand(normed.body);
+        if (bang && streamerMeta) {
+            handleCallsCommand({
+                pool: opts.pool,
+                io: opts.io,
+                slug: opts.slug,
+                streamerId: streamerMeta.id,
+                streamerOwnerUserId: streamerMeta.ownerUserId,
+                actorUserId: 0, // viewer DLive sans compte Luna
+                actorUsername: normed.username,
+                actorRole: "viewer",
+                canMod: false,
+                cmd: bang.cmd,
+                arg: bang.arg,
+            }).catch((e) => console.warn("[dlive_bridge] handleCallsCommand error", opts.slug, e?.message || e));
+        }
     };
     const startWs = (immutableUsername) => {
         closeWs();
@@ -312,6 +335,23 @@ export function ensureDliveBridge(opts) {
                 return;
             }
             console.log("[dlive_bridge] resolved", key, dn, "->", immutable);
+            // Résolution du streamer Luna (une seule fois par bridge)
+            if (!streamerMeta) {
+                try {
+                    const r = await opts.pool.query(`SELECT id, user_id AS owner_user_id FROM streamers WHERE slug = $1 LIMIT 1`, [opts.slug]);
+                    const row = r.rows[0];
+                    if (row) {
+                        streamerMeta = {
+                            id: Number(row.id),
+                            ownerUserId: row.owner_user_id ? Number(row.owner_user_id) : null,
+                        };
+                        console.log("[dlive_bridge] streamerMeta resolved", opts.slug, streamerMeta.id);
+                    }
+                }
+                catch (e) {
+                    console.warn("[dlive_bridge] streamerMeta lookup failed", opts.slug, e?.message);
+                }
+            }
             // si on change de streamer => reset dedup (sinon on risque de filtrer des ids)
             if (dliveImmutable && dliveImmutable !== immutable) {
                 seenIds.clear();

@@ -110,9 +110,10 @@ function startFfmpegToMp4(job, vodUrl, startSec, durSec, title, r2Key) {
     }
     catch { }
     const ffmpegPath = getFfmpegPath();
-    const HLS_HEADERS = "Origin: https://dlive.tv\r\n" +
-        "Referer: https://dlive.tv/\r\n" +
-        "User-Agent: Mozilla/5.0\r\n";
+    const isRumbleVod = /rumble\.com|1a-1791\.com/i.test(vodUrl);
+    const HLS_HEADERS = isRumbleVod
+        ? "Origin: https://rumble.com\r\nReferer: https://rumble.com/\r\nUser-Agent: Mozilla/5.0\r\n"
+        : "Origin: https://dlive.tv\r\nReferer: https://dlive.tv/\r\nUser-Agent: Mozilla/5.0\r\n";
     const args = [];
     const add = (k, v) => {
         args.push(k);
@@ -360,13 +361,12 @@ botClipsRouter.post("/download/start", express.json(), async (req, res) => {
         const job = newJob(streamerId, clipId, dur);
         updateJob(job, { status: "running", message: "Préparation…", percent: 2 });
         // check vod reachable
+        const isRumble = /rumble\.com|1a-1791\.com/i.test(clip.vod_url);
         const head = await fetch(clip.vod_url, {
             method: "GET",
-            headers: {
-                Origin: "https://dlive.tv",
-                Referer: "https://dlive.tv/",
-                "User-Agent": "Mozilla/5.0",
-            },
+            headers: isRumble
+                ? { Origin: "https://rumble.com", Referer: "https://rumble.com/", "User-Agent": "Mozilla/5.0" }
+                : { Origin: "https://dlive.tv", Referer: "https://dlive.tv/", "User-Agent": "Mozilla/5.0" },
         }).catch(() => null);
         if (!head || !head.ok) {
             const msg = `VOD inaccessible (HTTP ${head?.status || 0})`;

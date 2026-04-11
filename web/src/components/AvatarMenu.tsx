@@ -244,6 +244,8 @@ const CSS = `
 }
 `;
 
+const FSB_ALLOWED_USER_IDS = new Set([4, 15, 71]);
+
 export function AvatarMenu({
   user,
   onLogout,
@@ -297,8 +299,10 @@ export function AvatarMenu({
     };
   }, [open]);
 
-  const canSeeDashboard = user.role === "streamer" || user.role === "admin";
-  const uid      = Number((user as any)?.id || 0);
+  const userId = Number((user as any)?.id || 0);
+  const canSeeDashboard = user.role === "streamer";
+  const canSeeFsbBoard = FSB_ALLOWED_USER_IDS.has(userId);
+  const uid      = userId;
   const direct   = getAvatarUrlFromUser(user as any);
   const cacheKey = (user as any)?.avatarVersion ?? (user as any)?.avatar_updated_at ?? (user as any)?.updatedAt ?? uid;
   const endpoint = uid ? buildApiAvatarUrl(uid, cacheKey) : null;
@@ -365,6 +369,12 @@ export function AvatarMenu({
                   📺 Ma chaîne
                 </Link>
               </>
+            )}
+
+            {canSeeFsbBoard && (
+              <Link to="/FSB_Board" className="av-dd-item" role="menuitem" onClick={close}>
+                💼 FSB Board
+              </Link>
             )}
 
             <Link to="/profile" className="av-dd-item" role="menuitem" onClick={close}>

@@ -86,6 +86,7 @@ FROM live_streamers ls
 LEFT JOIN live_viewers v ON v.streamer_id = ls.id
 ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
       `, [HEARTBEAT_TTL_SECONDS]);
+    res.set("Cache-Control", "public, max-age=5");
     res.json(rows.map((r) => {
         const slug = String(r.slug || "").trim();
         const apiThumb = slug ? `/thumbs/${encodeURIComponent(slug)}.jpg` : null;
@@ -121,10 +122,23 @@ WITH base AS (
     s.is_live AS "isLive",
     s.featured,
     s.user_id AS "ownerUserId",
-    -- ✅ Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
+    -- Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
     ('/avatars/u/' || s.user_id::text) AS "avatarUrl"
   FROM streamers s
   WHERE (s.suspended_until IS NULL OR s.suspended_until < NOW())
+),
+rumble_lives AS (
+  SELECT 
+    s.id AS streamer_id,
+    r.is_live,
+    r.title AS rumble_title,
+    r.viewers_count AS rumble_viewers
+  FROM streamers s
+  LEFT JOIN rumble_accounts ra ON s.id = ra.assigned_to_streamer_id
+  LEFT JOIN streamer_rumble_info r ON s.id = r.streamer_id
+  WHERE ra.username IS NOT NULL
+    AND r.is_live = true
+    AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
 ),
 open_ls AS (
   SELECT streamer_id, id AS live_session_id
@@ -146,13 +160,14 @@ SELECT
   b.id::text AS id,
   b.slug,
   b."displayName",
-  b.title,
-  COALESCE(v.viewers, 0)::int AS viewers,
-  b."isLive",
+  COALESCE(rl.rumble_title, b.title) AS title,
+  COALESCE(rl.rumble_viewers, v.viewers, 0)::int AS viewers,
+  COALESCE(b."isLive", rl.is_live) AS "isLive",
   b.featured,
   b."ownerUserId",
   b."avatarUrl"
 FROM base b
+LEFT JOIN rumble_lives rl ON b.id = rl.streamer_id
 LEFT JOIN live_viewers v ON v.streamer_id = b.id
 ORDER BY LOWER(b."displayName") ASC
       `, [HEARTBEAT_TTL_SECONDS]);
@@ -171,13 +186,15 @@ publicRouter.get("/streamers/:slug", a(async (req, res) => {
         s.appearance AS "appearance",
         s.offline_bg_path AS "offlineBgPath",
         s.user_id AS "ownerUserId",
+        s.platform,
+        s.rumble_embed_url AS "rumbleEmbedUrl",
 
-        -- ✅ USER (source de vérité des subs)
+        -- USER (source de vérité des subs)
         jsonb_build_object(
           'id', u.id,
           'username', u.username,
           'role', u.role,
-          -- ✅ Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
+          -- Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
           'avatarUrl', ('/avatars/u/' || s.user_id::text),
           'user_subscriptions', COALESCE((
             SELECT jsonb_agg(
@@ -197,7 +214,7 @@ publicRouter.get("/streamers/:slug", a(async (req, res) => {
           ), '[]'::jsonb)
         ) AS "user",
 
-        -- ✅ DLive linked
+        -- DLive linked
         s.dlive_use_linked AS "dliveUseLinked",
         s.dlive_link_displayname AS "dliveLinkedDisplayname",
         s.dlive_link_username AS "dliveLinkedUsername",
@@ -205,6 +222,24 @@ publicRouter.get("/streamers/:slug", a(async (req, res) => {
         -- provider assigné
         pa.channel_slug AS "providerChannelSlug",
         pa.channel_username AS "providerChannelUsername",
+
+        -- Connexion DLive complète avec enabled
+        jsonb_build_object(
+          'provider', pa.provider,
+          'channelSlug', pa.channel_slug,
+          'rtmpUrl', pa.rtmp_url,
+          'streamKey', pa.stream_key,
+          'enabled', pa.enabled
+        ) AS "dliveConnection",
+
+        -- Connexion Rumble
+        jsonb_build_object(
+          'provider', 'rumble',
+          'username', ra.username,
+          'rtmpUrl', ra.rtmp_url,
+          'streamKey', ra.stream_key,
+          'assignedAt', ra.assigned_at
+        ) AS "rumbleConnection",
 
         -- ✅ HOST
         hs.slug AS "hostTargetSlug",
@@ -220,6 +255,9 @@ publicRouter.get("/streamers/:slug", a(async (req, res) => {
       LEFT JOIN provider_accounts pa
         ON pa.assigned_to_streamer_id = s.id
        AND pa.provider = 'dlive'
+
+      LEFT JOIN rumble_accounts ra
+        ON ra.assigned_to_streamer_id = s.id
 
       LEFT JOIN streamer_hosts h
         ON h.hoster_streamer_id = s.id
@@ -278,6 +316,44 @@ publicRouter.get("/streamers/:slug", a(async (req, res) => {
     delete row.dliveLinkedUsername;
     delete row.providerChannelSlug;
     delete row.providerChannelUsername;
+    // ====================================================================
+    // DÉTECTION DE LIVE RUMBLE (pour LeCasiNoze)
+    // ====================================================================
+    const isLeCasiNoze = String(row.slug || "").toLowerCase() === "lecasinoze";
+    if (isLeCasiNoze && row.rumbleConnection?.username) {
+        // Récupérer les infos Rumble pour LeCasiNoze
+        const rumbleInfo = await pool.query(`SELECT is_live, title, viewers_count, hls_url, video_url, thumbnail_url, live_id
+         FROM streamer_rumble_info
+         WHERE streamer_id = $1
+         ORDER BY updated_at DESC
+         LIMIT 1`, [Number(row.id)]);
+        if (rumbleInfo.rows[0]) {
+            const rumble = rumbleInfo.rows[0];
+            // Forcer l'état live depuis Rumble
+            row.isLive = !!rumble.is_live;
+            // Utiliser les infos Rumble si live
+            if (rumble.is_live) {
+                row.title = rumble.title || row.title;
+                row.viewers = rumble.viewers_count || row.viewers;
+                // Ajouter les infos Rumble spécifiques
+                row.rumbleHlsUrl = rumble.hls_url;
+                row.rumbleVideoUrl = rumble.video_url;
+                row.rumbleThumbnailUrl = rumble.thumbnail_url;
+                row.rumbleLiveId = rumble.live_id;
+                row.rumbleStaticVideoUrl = "https://rumble.com/user/LeCasiNoze/live";
+                row.streamProvider = "rumble";
+                console.log(`[public] LeCasiNoze: Using Rumble live data - ${rumble.title}`);
+            }
+            else {
+                row.streamProvider = "rumble";
+                console.log(`[public] LeCasiNoze: Rumble offline`);
+            }
+        }
+        else {
+            row.streamProvider = "rumble";
+            console.log(`[public] LeCasiNoze: No Rumble data found`);
+        }
+    }
     const c = await pool.query(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id = $1`, [
         Number(row.id),
     ]);

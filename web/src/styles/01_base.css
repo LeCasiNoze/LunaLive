@@ -42,17 +42,30 @@ button, .navItem, .pill,
 *::-webkit-scrollbar-thumb { background: rgba(124, 92, 252, 0.22); border-radius: 4px; }
 *::-webkit-scrollbar-thumb:hover { background: rgba(124, 92, 252, 0.42); }
 
-.app       { min-height: 100vh; }
+.app       { position: relative; min-height: 100vh; isolation: isolate; background: transparent; }
 .container { padding: 18px; max-width: 1200px; margin: 0 auto; padding-bottom: 18px; }
 .pageTitle h1 { margin: 10px 0 4px; font-size: 28px; }
 .muted      { margin: 0; color: var(--muted); font-size: 14px; }
 .mutedSmall { color: var(--muted); font-size: 12px; }
 
-/* LavaLamp (position:fixed z-index:0) est en dessous, contenu au-dessus */
-#root, .app {
+/* root above ambient body layers, app manages its own stacking */
+#root {
   position: relative;
   z-index: 1;
   background: transparent;
+}
+
+.appBgLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.appContentLayer {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
 }
 
 /* ── Grain premium — jamais animé ── */

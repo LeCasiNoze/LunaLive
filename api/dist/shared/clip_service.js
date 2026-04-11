@@ -147,10 +147,11 @@ export async function addClipPg(p) {
             await client.query("ROLLBACK");
             return { ok: false, reason: "duplicate" };
         }
-        // ✅ on stocke live_start_ts, live_permlink et source LunaLive pour que le vod_linker trouve la bonne VOD
-        const ins = await client.query(`INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts, live_start_ts, live_permlink, source_displayname)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-       RETURNING id`, [streamerId, p.title, p.author, at, pre, post, nowMs, p.liveStartTs, p.livePermlink, p.sourceDisplayname]);
+        const platform = p.platform || "dlive";
+        const vodUrl = p.vodUrl || null;
+        const ins = await client.query(`INSERT INTO bot_clips(streamer_id, title, author, at_sec, pre_sec, post_sec, created_ts, live_start_ts, live_permlink, source_displayname, platform, vod_url)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       RETURNING id`, [streamerId, p.title, p.author, at, pre, post, nowMs, p.liveStartTs, p.livePermlink, p.sourceDisplayname, platform, vodUrl]);
         const newId = Number(ins.rows?.[0]?.id || 0);
         if (!unlimited) {
             await client.query(`WITH to_del AS (
@@ -196,17 +197,54 @@ export async function createAutoClipForStreamer(p) {
 export async function createClipForStreamer(p) {
     const { pool, streamerId, title, author, preSec, postSec, forcedOffsetSec } = p;
     try {
-        // Récupérer le channel slug et la source displayname
+        const platform = await getStreamerPlatform(pool, streamerId);
+        // ── Rumble path ────────────────────────────────────────────────────────────
+        if (platform === "rumble") {
+            const rumble = await getRumbleLiveInfoForClip(pool, streamerId);
+            if (!rumble?.isLive || !rumble.hlsUrl) {
+                return { ok: false, reason: "live_not_active" };
+            }
+            let offset;
+            if (forcedOffsetSec !== undefined) {
+                offset = Math.max(0, forcedOffsetSec);
+            }
+            else if (rumble.liveStartedAtMs) {
+                const nowSec = Math.floor(Date.now() / 1000);
+                const startSec = Math.floor(rumble.liveStartedAtMs / 1000);
+                offset = Math.max(0, nowSec - startSec);
+            }
+            else {
+                offset = 0;
+            }
+            const isAutoClip = !author || author === "lunaclip";
+            const finalPreSec = isAutoClip ? DEFAULT_PRE_SEC : Math.min(Math.max(0, Math.floor(preSec || DEFAULT_PRE_SEC)), 300);
+            const finalPostSec = isAutoClip ? DEFAULT_POST_SEC : Math.min(Math.max(0, Math.floor(postSec || DEFAULT_POST_SEC)), 60);
+            const res = await addClipPg({
+                pool,
+                streamerId,
+                title: title || rumble.title || null,
+                author: author || null,
+                atSec: offset,
+                preSec: finalPreSec,
+                postSec: finalPostSec,
+                liveStartTs: rumble.liveStartedAtMs || Date.now(),
+                livePermlink: rumble.liveId || "",
+                platform: "rumble",
+                vodUrl: rumble.hlsUrl, // disponible immédiatement — pas besoin du vod_linker
+            });
+            if (!res.ok && res.reason === "duplicate")
+                return { ok: false, reason: "duplicate" };
+            return res;
+        }
+        // ── DLive path (existant) ──────────────────────────────────────────────────
         const { channelSlug, sourceDisplayname } = await getDliveChannelSlugForStreamer(pool, streamerId);
         if (!channelSlug) {
             return { ok: false, reason: "streamer_dlive_not_found" };
         }
-        // Vérifier que le live est actif
         const live = await fetchLiveStart(channelSlug).catch(() => null);
         if (!live) {
             return { ok: false, reason: "live_not_active" };
         }
-        // Calculer l'offset du clip
         let offset;
         if (forcedOffsetSec !== undefined) {
             offset = Math.max(0, forcedOffsetSec);
@@ -216,16 +254,13 @@ export async function createClipForStreamer(p) {
             const startSec = Math.floor(live.createdAtMs / 1000);
             offset = Math.max(0, nowSec - startSec + LATENCY_PAD_SEC);
         }
-        // 🛡️ Validation défensive : clips manuels uniquement
-        const isAutoClip = !p.author || p.author === 'lunaclip';
+        const isAutoClip = !p.author || p.author === "lunaclip";
         let finalPreSec, finalPostSec;
         if (isAutoClip) {
-            // 🎯 Auto-clip : toujours 75/15, ignore les valeurs externes
             finalPreSec = DEFAULT_PRE_SEC;
             finalPostSec = DEFAULT_POST_SEC;
         }
         else {
-            // ✅ Manuel : respecter les valeurs utilisateur (avec limites de sécurité)
             finalPreSec = Math.min(Math.max(0, Math.floor(preSec || DEFAULT_PRE_SEC)), 300);
             finalPostSec = Math.min(Math.max(0, Math.floor(postSec || DEFAULT_POST_SEC)), 60);
         }
@@ -240,6 +275,7 @@ export async function createClipForStreamer(p) {
             liveStartTs: live.createdAtMs,
             livePermlink: live.permlink,
             sourceDisplayname,
+            platform: "dlive",
         });
         if (!res.ok && res.reason === "duplicate") {
             return { ok: false, reason: "duplicate" };
@@ -249,6 +285,24 @@ export async function createClipForStreamer(p) {
     catch (e) {
         return { ok: false, reason: e?.message || "unknown_error" };
     }
+}
+async function getStreamerPlatform(pool, streamerId) {
+    const r = await pool.query(`SELECT platform FROM streamers WHERE id=$1 LIMIT 1`, [streamerId]);
+    return r.rows?.[0]?.platform ? String(r.rows[0].platform) : null;
+}
+async function getRumbleLiveInfoForClip(pool, streamerId) {
+    const r = await pool.query(`SELECT is_live, hls_url, live_id, live_started_at, title
+     FROM streamer_rumble_info WHERE streamer_id=$1 LIMIT 1`, [streamerId]);
+    const row = r.rows?.[0];
+    if (!row)
+        return null;
+    return {
+        isLive: !!row.is_live,
+        hlsUrl: row.hls_url ? String(row.hls_url) : null,
+        liveId: row.live_id ? String(row.live_id) : null,
+        liveStartedAtMs: row.live_started_at ? Number(row.live_started_at) : null,
+        title: row.title ? String(row.title) : null,
+    };
 }
 export function formatClipTime(totalSec) {
     const s = Math.max(0, Math.floor(totalSec));

@@ -5,6 +5,7 @@ import { HuntTabs } from "./HuntTabs";
 import { WheelTab } from "./WheelTab";
 import { RainTab } from "./RainTab";
 import { PredictionsTab } from "./PredictionsTab";
+import { trackFeatureEvent } from "../../lib/feature_events";
 
 export function BotMenu({
   open,
@@ -48,6 +49,11 @@ export function BotMenu({
     if (!open) return;
     setTab("call");
   }, [open]);
+
+  React.useEffect(() => {
+    if (!open || !token || !slug) return;
+    void trackFeatureEvent(token, { kind: "bot_tab", subject: `${slug}|${tab}` });
+  }, [open, slug, tab, token]);
 
   const [dockPos, setDockPos] = React.useState({ x: 16, y: 16 });
 

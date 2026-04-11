@@ -21,7 +21,14 @@ function hostMatches(host, pattern) {
         return h === p.slice(2) || h.endsWith(p.slice(1));
     return h === p;
 }
-const DEFAULT_ALLOWED = ["live.prd.dlive.tv", "*.dlive.tv", "*.dlivecdn.com", "dlivecdn.com"];
+const DEFAULT_ALLOWED = [
+    // DLive
+    "live.prd.dlive.tv", "*.dlive.tv", "*.dlivecdn.com", "dlivecdn.com",
+    // Rumble CDN
+    "*.rumble.cloud", "rumble.cloud",
+    "*.rumble.com", "rumble.com",
+    "1a-1791.com", "*.1a-1791.com", // CDN réel Rumble (segments HLS)
+];
 function isAllowedHost(host) {
     const extra = String(process.env.HLS_PROXY_ALLOW_HOSTS || "")
         .split(",")
@@ -49,6 +56,8 @@ function rewriteM3u8(text, base) {
         }
         // rewrite segment / child playlist lines
         const abs = new URL(s, base).toString();
+        // Tout passe par le proxy — y compris les segments 1a-1791.com
+        // (nécessaire pour injecter les headers Rumble et éviter DEMUXER_ERROR)
         return proxyUrl(abs);
     })
         .join("\n");
@@ -105,15 +114,18 @@ export function registerHlsProxy(app) {
         // iOS + Dlive: user-agent desktop pour éviter certains comportements
         const uaIn = String(req.headers["user-agent"] || "Mozilla/5.0");
         const ua = isIOSUA(uaIn) && isDliveHost(target.hostname) ? DESKTOP_UA : uaIn;
+        const isRumble = target.hostname.includes("rumble") || target.hostname.includes("1a-1791.com");
         const headers = {
             accept: String(req.headers.accept || "*/*"),
             "user-agent": ua,
-            referer: "https://dlive.tv/",
-            origin: "https://dlive.tv",
+            referer: isRumble ? "https://rumble.com/" : "https://dlive.tv/",
+            origin: isRumble ? "https://rumble.com" : "https://dlive.tv",
         };
-        // Range passthrough (hls.js peut l'utiliser selon navigateur)
+        // Range passthrough uniquement pour les segments binaires — jamais pour les playlists .m3u8
+        // (un Range sur une playlist donne un 206 partiel → M3U8 tronqué → parse fail hls.js)
+        const isPlaylistUrl = target.pathname.toLowerCase().endsWith(".m3u8");
         const range = req.headers.range ? String(req.headers.range) : "";
-        if (range)
+        if (range && !isPlaylistUrl)
             headers.range = range;
         // Abort upstream si le client coupe (évite congestion + stalls)
         const ac = new AbortController();

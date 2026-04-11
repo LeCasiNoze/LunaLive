@@ -10,10 +10,31 @@ async function getStreamerBySlug(slug) {
     return r.rows[0] || null;
 }
 async function cleanupOldMessages(streamerId) {
-    // rétention 3 jours => après 3 jours sans activité, chat vide
-    await db.query(`delete from chat_messages
-     where streamer_id = $1
-       and created_at < now() - interval '3 days'`, [streamerId]);
+    // 1. Agréger les stats dans chat_message_stats AVANT de supprimer,
+    //    pour ne pas perdre le compte des messages envoyés/reçus.
+    //    On n'agrège que les messages non-supprimés (deleted_at IS NULL)
+    //    car les suppressions mod ne doivent pas compter dans les stats positives.
+    await db.query(`INSERT INTO chat_message_stats
+       (user_id, streamer_id, messages_sent, first_message_at, last_message_at)
+     SELECT
+       user_id,
+       streamer_id,
+       COUNT(*)                AS messages_sent,
+       MIN(created_at)         AS first_message_at,
+       MAX(created_at)         AS last_message_at
+     FROM chat_messages
+     WHERE streamer_id = $1
+       AND created_at < now() - interval '7 days'
+       AND deleted_at IS NULL
+     GROUP BY user_id, streamer_id
+     ON CONFLICT (user_id, streamer_id) DO UPDATE SET
+       messages_sent    = chat_message_stats.messages_sent    + EXCLUDED.messages_sent,
+       last_message_at  = GREATEST(chat_message_stats.last_message_at,  EXCLUDED.last_message_at),
+       first_message_at = LEAST(chat_message_stats.first_message_at, EXCLUDED.first_message_at)`, [streamerId]);
+    // 2. Supprimer les messages (non-supprimés et supprimés) de plus de 7 jours
+    await db.query(`DELETE FROM chat_messages
+     WHERE streamer_id = $1
+       AND created_at < now() - interval '7 days'`, [streamerId]);
 }
 export function registerChatHttp(app) {
     // 50 derniers messages (pas d’historique long)

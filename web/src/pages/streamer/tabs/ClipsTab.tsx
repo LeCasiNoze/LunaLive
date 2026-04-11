@@ -3,6 +3,7 @@
 import * as React from "react";
 import Hls from "hls.js";
 import { deleteStreamerClip, getStreamerClips, toggleClipLike, type ApiClip } from "../../../lib/api_streamer_clips";
+import { trackFeatureEvent } from "../../../lib/feature_events";
 
 const whiteStroke = { color:"#fff", textShadow:`-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000` };
 function fmtDuration(sec: number) {
@@ -62,6 +63,10 @@ export function ClipsTab({ slug, token, isOwner, onRequireLogin }: { slug: strin
   }
 
   React.useEffect(() => { setClips([]); setCursor(null); setHasNext(false); setOpenClip(null); loadMore(true); /* eslint-disable-next-line */ }, [slug, sort]);
+  React.useEffect(() => {
+    if (!token || !openClip) return;
+    void trackFeatureEvent(token, { kind: "clip_open", subject: `${slug}|${openClip.id}` });
+  }, [openClip, slug, token]);
 
   async function onToggleLike(c: ApiClip) {
     if (!token) return onRequireLogin();

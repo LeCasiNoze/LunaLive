@@ -27,6 +27,7 @@ import { subscriptionsRouter } from "./routes/subscriptions.js";
 import { adminRubisRouter } from "./routes/admin_rubis.js";
 // Features
 import { achievementsRouter } from "./routes/achievements.js";
+import { featureEventsRouter } from "./routes/feature_events.js";
 import { cosmeticsRouter } from "./routes/cosmetics.js";
 import { cosmeticsCatalogRoutes } from "./routes/cosmetics_catalog_routes.js";
 import { avatarRouter } from "./routes/avatar.js";
@@ -76,6 +77,7 @@ import { adminReportsRouter } from "./routes/admin_reports.js";
 import { adminSubscriptionsRouter } from "./routes/admin_subscriptions.js";
 import { adminContentRouter } from "./routes/admin_content.js";
 import { publicContentRouter } from "./routes/public_content.js";
+import { expensesRouter } from "./routes/expenses.js";
 // Discord routes
 import { meDiscordLinkRouter } from "./routes/bot/me_discord_link.js";
 import { discordLinkConsumeRouter } from "./routes/bot/discord_link_consume.js";
@@ -86,6 +88,8 @@ import { referralRouter } from "./routes/referral.js";
 import { welcomeRouter } from "./routes/welcome.js";
 import { adminAuthRouter } from "./routes/admin_auth.js";
 import { adminReferralsRouter } from "./routes/admin_referrals.js";
+import { adminPlatformStatsRouter } from "./routes/admin_platform_stats.js";
+import { adminRumbleRouter } from "./routes/admin_rumble.js";
 import { eventsRouter } from "./routes/events.js";
 import { eventsViewerWeekRouter } from "./routes/events_viewer_week.js";
 import { adminEventsRouter } from "./routes/admin_events.js";
@@ -104,6 +108,9 @@ export function createApp() {
     app.use(cors());
     app.get("/healthz", (_req, res) => res.status(200).send("ok"));
     app.use(express.json({ limit: "3mb" }));
+    // HLS proxy enregistré en premier — avant tout middleware d'auth
+    registerHlsProxy(app);
+    app.options("/hls", (_req, res) => res.sendStatus(204));
     app.use("/api/public/slots", publicSlotsRouter);
     app.use("/billing", billingRouter);
     app.use(streamerUploadsRouter);
@@ -121,6 +128,8 @@ export function createApp() {
         res.setHeader("x-build", "comments-fix-2026-01-14-1505");
         next();
     });
+    app.use(adminPlatformStatsRouter);
+    app.use(adminRumbleRouter);
     app.use("/admin/casinos/comments", requireAdminKey, adminCasinoCommentsRouter);
     app.use("/admin/reports", requireAdminKey, adminReportsRouter);
     app.use("/admin/events", requireAdminKey, adminEventsRouter);
@@ -146,6 +155,7 @@ export function createApp() {
     app.use("/api", offresStreamersRouter);
     app.use("/api", igConfigRouter);
     app.use("/api", igCollaborationsRouter);
+    app.use("/api", expensesRouter);
     app.use(igWebhookRouter);
     app.use("/api/debug", trovoDebugRouter);
     app.use(streamerVodsRouter);
@@ -183,6 +193,7 @@ export function createApp() {
     app.use(predictionsRouter);
     app.use("/me/daily-bonus", requireAuth, dailyBonusRoutes);
     app.use("/me/achievements", requireAuth, achievementsRouter);
+    app.use("/me/feature-events", requireAuth, featureEventsRouter);
     app.use(cosmeticsRouter);
     app.use(shopRouter);
     app.use("/shop/talents", shopTalentsRouter);
@@ -204,8 +215,6 @@ export function createApp() {
     app.use("/calls", callsRouter);
     app.use("/calls", callsPcallRouter);
     app.use(hunt2Router);
-    registerHlsProxy(app);
-    app.options("/hls", (_req, res) => res.sendStatus(204));
     app.use((err, _req, res, _next) => {
         console.error(err);
         res.status(500).json({ ok: false, error: "server_error" });

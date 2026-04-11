@@ -31,6 +31,7 @@ import { useStreamerData } from "./hooks/useStreamerData";
 import { useChest } from "./hooks/useChest";
 import { ChestToast } from "./components/ChestToast";
 import { ChestModal } from "./components/ChestModal";
+import { trackFeatureEvent } from "../../lib/feature_events";
 
 import { AboutTab } from "./tabs/AboutTab";
 import { VodTab } from "./tabs/VodTab";
@@ -371,6 +372,12 @@ function StreamerPageDesktop() {
   React.useEffect(() => {
     setHostOverride(null);
   }, [slug]);
+
+  React.useEffect(() => {
+    const streamerSlug = String(slug || "").trim();
+    if (!token || !streamerSlug) return;
+    void trackFeatureEvent(token, { kind: "streamer_tab", subject: `${streamerSlug}|${tab}` });
+  }, [slug, tab, token]);
 
   React.useEffect(() => {
     if (!slug || !streamer || isOwner || hostedBy || !hostTargetSlug || !hostTargetIsLive) return;

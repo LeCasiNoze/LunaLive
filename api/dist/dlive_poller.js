@@ -12,7 +12,6 @@ const LUNA24_SOURCES_DISPLAYNAMES = [
     "iBenoo",
     "ekanos",
     "Kawa",
-    "Kriminel",
     "Bichou",
     "MagouilleTv",
     "Put4click_live",

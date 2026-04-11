@@ -23,6 +23,7 @@ import { AboutTab } from "./tabs/AboutTab";
 import { VodTab } from "./tabs/VodTab";
 import { AgendaTab } from "./tabs/AgendaTab";
 import { ClipsTab } from "./tabs/ClipsTab";
+import { trackFeatureEvent } from "../../lib/feature_events";
 
 function apiBase() { return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com"; }
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
@@ -411,6 +412,11 @@ export default function StreamerPageMobile() {
 
   React.useEffect(() => { if (!streamer?.isLive) setLiveViewersNow(null); }, [streamer?.isLive]);
   React.useEffect(() => { setTab("chat"); setTabView("chat"); }, [slug]);
+  React.useEffect(() => {
+    const streamerSlug = String(slug || "").trim();
+    if (!token || !streamerSlug || tab === "chat") return;
+    void trackFeatureEvent(token, { kind: "streamer_tab", subject: `${streamerSlug}|${tab}` });
+  }, [slug, tab, token]);
 
   // Swipe tabs
   const swipeRef = React.useRef({ x0: 0, t0: 0, active: false });
