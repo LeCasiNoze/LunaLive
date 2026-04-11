@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../auth.js";
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
+import { requireFsbAccess } from "./fsb_guard.js";
 
 const expenseCategories = [
   "giveaway",
@@ -11,8 +12,6 @@ const expenseCategories = [
   "abonnement",
   "personnalise",
 ] as const;
-const allowedExpenseBoardUserIds = new Set([4, 15, 71]);
-
 const isoDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "invalid_date")
@@ -71,18 +70,6 @@ function normalizeExpenseInput(input: z.infer<typeof expenseInputSchema>) {
   };
 }
 
-function isExpenseBoardAllowed(user: any) {
-  const userId = Number(user?.id || 0);
-  return allowedExpenseBoardUserIds.has(userId);
-}
-
-function requireExpenseBoardAccess(req: any, res: any, next: any) {
-  if (!isExpenseBoardAllowed(req.user)) {
-    return res.status(403).json({ ok: false, error: "forbidden" });
-  }
-  return next();
-}
-
 function normalizeDateOnly(value: any): string | null {
   if (!value) return null;
   if (typeof value === "string") return value.slice(0, 10);
@@ -114,7 +101,7 @@ function getExpenseId(param: any) {
 
 export const expensesRouter = Router();
 
-expensesRouter.use("/expenses", requireAuth, requireExpenseBoardAccess);
+expensesRouter.use("/expenses", requireAuth, requireFsbAccess);
 
 expensesRouter.get(
   "/expenses",

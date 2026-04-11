@@ -89,6 +89,7 @@ import { adminSubscriptionsRouter } from "./routes/admin_subscriptions.js";
 import { adminContentRouter } from "./routes/admin_content.js";
 import { publicContentRouter } from "./routes/public_content.js";
 import { expensesRouter } from "./routes/expenses.js";
+import { fsbDashboardRouter } from "./routes/fsb_dashboard.js";
 
 // Discord routes
 import { meDiscordLinkRouter } from "./routes/bot/me_discord_link.js";
@@ -182,6 +183,7 @@ export function createApp() {
   app.use("/api", igConfigRouter);
   app.use("/api", igCollaborationsRouter);
   app.use("/api", expensesRouter);
+  app.use("/api", fsbDashboardRouter);
   app.use(igWebhookRouter);
 
   app.use("/api/debug", trovoDebugRouter);

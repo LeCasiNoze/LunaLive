@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import type { User } from "../lib/types";
 import { useOnClickOutside, asHTMLElementRef } from "../hooks/useOnClickOutside";
 import { initialOf } from "../lib/format";
+import { canAccessFsbBoard } from "../lib/fsb_access";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
@@ -244,8 +245,6 @@ const CSS = `
 }
 `;
 
-const FSB_ALLOWED_USER_IDS = new Set([4, 15, 71]);
-
 export function AvatarMenu({
   user,
   onLogout,
@@ -301,7 +300,7 @@ export function AvatarMenu({
 
   const userId = Number((user as any)?.id || 0);
   const canSeeDashboard = user.role === "streamer";
-  const canSeeFsbBoard = FSB_ALLOWED_USER_IDS.has(userId);
+  const canSeeFsbBoard = canAccessFsbBoard({ id: userId });
   const uid      = userId;
   const direct   = getAvatarUrlFromUser(user as any);
   const cacheKey = (user as any)?.avatarVersion ?? (user as any)?.avatar_updated_at ?? (user as any)?.updatedAt ?? uid;

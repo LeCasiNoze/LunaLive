@@ -2,7 +2,8 @@
 // Éditeur de templates d'affiliation — accessible sur /editorFSN
 // Aucun topbar ni footer : la page prend tout l'écran.
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -485,6 +486,8 @@ function Section({ title, children, defaultOpen = true }: SectionProps) {
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 
 export default function AffiEditorPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [currentModel, setCurrentModel] = useState(1);
   const [cfg, setCfg] = useState<Config>(DEFAULT_CONFIG);
   const [templates, setTemplates] = useState<Record<number, string>>({});
@@ -492,6 +495,10 @@ export default function AffiEditorPage() {
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const returnTo = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("returnTo") || "/FSB_Board?section=tools";
+  }, [location.search]);
 
   // ── Load templates ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -568,6 +575,9 @@ export default function AffiEditorPage() {
       <div style={s.header}>
         <div style={s.logo}>🎨 <span style={{ color: "#eee", fontWeight: 400 }}>Affi</span> Editor</div>
         <div style={{ flex: 1 }} />
+        <button style={{ ...s.btn, ...s.btnSecondary }} onClick={() => navigate(returnTo)}>
+          Retour au board
+        </button>
         <button style={{ ...s.btn, ...s.btnSecondary }} onClick={() => setCfg(DEFAULT_CONFIG)}>
           Réinitialiser
         </button>
