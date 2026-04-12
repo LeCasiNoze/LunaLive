@@ -133,8 +133,9 @@ export default function AgencyPortalPage() {
   const [username, setUsername] = React.useState(prefilledUsername);
   const [password, setPassword] = React.useState("");
   const [agency, setAgency] = React.useState<Awaited<ReturnType<typeof getMyAgencyStats>>["agency"] | null>(null);
-  const cpaVisible = Boolean(agency?.assignments.some((assignment) => assignment.stats.showCpaToStreamer));
-  const rsVisible = Boolean(agency?.assignments.some((assignment) => assignment.stats.showRsToStreamer));
+  const assignments = agency?.assignments ?? [];
+  const cpaVisible = assignments.some((assignment) => assignment.stats.showCpaToStreamer);
+  const rsVisible = assignments.some((assignment) => assignment.stats.showRsToStreamer);
   const hasVisibleAmounts = cpaVisible || rsVisible;
 
   React.useEffect(() => {
@@ -300,6 +301,11 @@ export default function AgencyPortalPage() {
                   <span>Sur {monthLabel(monthKey)}</span>
                 </div>
                 <div className="agency-stat">
+                  <small>FTD</small>
+                  <strong>{num(agency.summary.ftdCount)}</strong>
+                  <span>Base de calcul CPA</span>
+                </div>
+                <div className="agency-stat">
                   <small>Depot total</small>
                   <strong>{eur(agency.summary.totalDeposits)}</strong>
                   <span>Volume declare</span>
@@ -319,6 +325,20 @@ export default function AgencyPortalPage() {
                   <strong>{visibleMoney(agency.summary.visibleTotal, hasVisibleAmounts)}</strong>
                   <span>Maj {dateTime(agency.updatedAt)}</span>
                 </div>
+                {canPreview ? (
+                  <>
+                    <div className="agency-stat">
+                      <small>Marge agence</small>
+                      <strong>{eur(agency.summary.agencyTotal)}</strong>
+                      <span>CPA + RS agence</span>
+                    </div>
+                    <div className="agency-stat">
+                      <small>Total genere</small>
+                      <strong>{eur(agency.summary.grossTotal)}</strong>
+                      <span>Net affi + marge agence</span>
+                    </div>
+                  </>
+                ) : null}
               </div>
 
               <div className="agency-list">
@@ -349,6 +369,10 @@ export default function AgencyPortalPage() {
                         <strong>{num(assignment.stats.depositCount)}</strong>
                       </div>
                       <div className="agency-subcard">
+                        <small>FTD</small>
+                        <strong>{num(assignment.stats.ftdCount)}</strong>
+                      </div>
+                      <div className="agency-subcard">
                         <small>Depot total</small>
                         <strong>{eur(assignment.stats.totalDeposits)}</strong>
                       </div>
@@ -369,6 +393,18 @@ export default function AgencyPortalPage() {
                           )}
                         </strong>
                       </div>
+                      {canPreview ? (
+                        <>
+                          <div className="agency-subcard">
+                            <small>Marge agence</small>
+                            <strong>{eur(assignment.earnings.agencyTotal)}</strong>
+                          </div>
+                          <div className="agency-subcard">
+                            <small>Total genere</small>
+                            <strong>{eur(assignment.earnings.grossTotal)}</strong>
+                          </div>
+                        </>
+                      ) : null}
                     </div>
 
                     <div className="agency-mini">
@@ -376,6 +412,11 @@ export default function AgencyPortalPage() {
                         CPA {assignment.stats.showCpaToStreamer ? "visible" : "masque"} | RS{" "}
                         {assignment.stats.showRsToStreamer ? "visible" : "masque"} | Maj {dateTime(assignment.updatedAt)}
                       </div>
+                      {canPreview ? (
+                        <div className="agency-muted">
+                          Marge agence: CPA {eur(assignment.earnings.agencyCpa)} | RS {eur(assignment.earnings.agencyRs)}
+                        </div>
+                      ) : null}
                       {assignment.notes ? <div className="agency-muted">{assignment.notes}</div> : null}
                       {parseLinks(assignment.linksText).length ? (
                         <div className="agency-links">

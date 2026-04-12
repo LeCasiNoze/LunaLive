@@ -53,7 +53,7 @@ export function AgencySection({ streamer }: { streamer: ApiMyStreamer }) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
               gap: 10,
               marginTop: 14,
             }}
@@ -65,6 +65,10 @@ export function AgencySection({ streamer }: { streamer: ApiMyStreamer }) {
             <div className="panel">
               <div className="mutedSmall">Depots</div>
               <div style={{ fontSize: 20, fontWeight: 800, marginTop: 6 }}>{num(agency.summary.depositCount)}</div>
+            </div>
+            <div className="panel">
+              <div className="mutedSmall">FTD</div>
+              <div style={{ fontSize: 20, fontWeight: 800, marginTop: 6 }}>{num(agency.summary.ftdCount)}</div>
             </div>
             <div className="panel">
               <div className="mutedSmall">Total visible</div>

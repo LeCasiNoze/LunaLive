@@ -33,8 +33,8 @@ export type AgencyAssignmentStats = {
   monthKey: string;
   signups: number | null;
   depositCount: number | null;
+  ftdCount: number | null;
   totalDeposits: number | null;
-  cpaValue: number | null;
   rsValue: number | null;
   showCpaToStreamer: boolean;
   showRsToStreamer: boolean;
@@ -43,6 +43,8 @@ export type AgencyAssignmentStats = {
 };
 
 export type AgencyAssignmentPayouts = {
+  grossCpaUnit: number | null;
+  grossCpa: number;
   streamerCpaUnit: number | null;
   streamerErsRate: number | null;
   agencyCpaUnit: number | null;
@@ -53,6 +55,7 @@ export type AgencyAssignmentPayouts = {
   agencyErs: number;
   streamerTotal: number;
   agencyTotal: number;
+  grossTotal: number;
 };
 
 export type AgencyAssignment = {
@@ -179,8 +182,8 @@ export type AgencyStatsInput = {
   monthKey: string;
   signups: number | null;
   depositCount: number | null;
+  ftdCount: number | null;
   totalDeposits: number | null;
-  cpaValue: number | null;
   rsValue: number | null;
   showCpaToStreamer: boolean;
   showRsToStreamer: boolean;
@@ -211,14 +214,19 @@ export type MyAgencyStatsResponse = {
       deal: {
         id: number;
         name: string;
-        cpaPerDeposit: number | null;
+        cpaPerFtd: number | null;
         rsPercent: number | null;
       };
       stats: AgencyAssignmentStats;
       earnings: {
+        grossCpa: number;
         cpa: number;
         rs: number;
         total: number;
+        agencyCpa: number;
+        agencyRs: number;
+        agencyTotal: number;
+        grossTotal: number;
         visibleCpa: number | null;
         visibleRs: number | null;
         visibleTotal: number;
@@ -228,9 +236,14 @@ export type MyAgencyStatsResponse = {
     summary: {
       signups: number;
       depositCount: number;
+      ftdCount: number;
       totalDeposits: number;
       cpa: number;
       rs: number;
+      agencyCpa: number;
+      agencyRs: number;
+      agencyTotal: number;
+      grossTotal: number;
       visibleCpa: number;
       visibleRs: number;
       visibleTotal: number;

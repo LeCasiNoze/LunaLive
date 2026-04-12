@@ -194,8 +194,8 @@ export function FsbAgencySection() {
   const [statsAssignmentId, setStatsAssignmentId] = React.useState("");
   const [statsSignups, setStatsSignups] = React.useState("");
   const [statsDepositCount, setStatsDepositCount] = React.useState("");
+  const [statsFtdCount, setStatsFtdCount] = React.useState("");
   const [statsDeposits, setStatsDeposits] = React.useState("");
-  const [statsCpaValue, setStatsCpaValue] = React.useState("");
   const [statsRsValue, setStatsRsValue] = React.useState("");
   const [showCpaToStreamer, setShowCpaToStreamer] = React.useState(true);
   const [showRsToStreamer, setShowRsToStreamer] = React.useState(true);
@@ -306,8 +306,8 @@ export function FsbAgencySection() {
     if (!selectedStatsAssignment) {
       setStatsSignups("");
       setStatsDepositCount("");
+      setStatsFtdCount("");
       setStatsDeposits("");
-      setStatsCpaValue("");
       setStatsRsValue("");
       setShowCpaToStreamer(true);
       setShowRsToStreamer(true);
@@ -317,10 +317,10 @@ export function FsbAgencySection() {
     setStatsDepositCount(
       selectedStatsAssignment.stats.depositCount == null ? "" : String(selectedStatsAssignment.stats.depositCount)
     );
+    setStatsFtdCount(selectedStatsAssignment.stats.ftdCount == null ? "" : String(selectedStatsAssignment.stats.ftdCount));
     setStatsDeposits(
       selectedStatsAssignment.stats.totalDeposits == null ? "" : String(selectedStatsAssignment.stats.totalDeposits)
     );
-    setStatsCpaValue(selectedStatsAssignment.stats.cpaValue == null ? "" : String(selectedStatsAssignment.stats.cpaValue));
     setStatsRsValue(selectedStatsAssignment.stats.rsValue == null ? "" : String(selectedStatsAssignment.stats.rsValue));
     setShowCpaToStreamer(Boolean(selectedStatsAssignment.stats.showCpaToStreamer));
     setShowRsToStreamer(Boolean(selectedStatsAssignment.stats.showRsToStreamer));
@@ -521,8 +521,8 @@ export function FsbAgencySection() {
           monthKey,
           signups: toNumberOrNull(statsSignups),
           depositCount: toNumberOrNull(statsDepositCount),
+          ftdCount: toNumberOrNull(statsFtdCount),
           totalDeposits: toNumberOrNull(statsDeposits),
-          cpaValue: toNumberOrNull(statsCpaValue),
           rsValue: toNumberOrNull(statsRsValue),
           showCpaToStreamer,
           showRsToStreamer,
@@ -1071,6 +1071,17 @@ export function FsbAgencySection() {
                   onChange={(e) => setStatsDepositCount(e.target.value)}
                 />
               </div>
+              <div className="fsb-field">
+                <label>FTD</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={statsFtdCount}
+                  onChange={(e) => setStatsFtdCount(e.target.value)}
+                />
+              </div>
               <div className="fsb-field fsb-field-full">
                 <label>Depot total</label>
                 <input
@@ -1080,17 +1091,6 @@ export function FsbAgencySection() {
                   step="0.01"
                   value={statsDeposits}
                   onChange={(e) => setStatsDeposits(e.target.value)}
-                />
-              </div>
-              <div className="fsb-field">
-                <label>CPA</label>
-                <input
-                  className="fsb-input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={statsCpaValue}
-                  onChange={(e) => setStatsCpaValue(e.target.value)}
                 />
               </div>
               <div className="fsb-field">
@@ -1155,36 +1155,40 @@ export function FsbAgencySection() {
               </div>
               <div className="fsb-listitem">
                 <div className="fsb-listmain">
-                  <strong>Montants saisis</strong>
+                  <strong>Net affi</strong>
                   <div className="fsb-listmeta">
-                    CPA {eur(selectedStatsAssignment.stats.cpaValue)} | RS {eur(selectedStatsAssignment.stats.rsValue)}
+                    FTD {num(selectedStatsAssignment.stats.ftdCount)} | CPA {eur(selectedStatsAssignment.payouts.streamerCpa)} | RS{" "}
+                    {eur(selectedStatsAssignment.payouts.streamerErs)}
                   </div>
                 </div>
-                <span className="fsb-tag">
-                  {eur(Number(selectedStatsAssignment.stats.cpaValue || 0) + Number(selectedStatsAssignment.stats.rsValue || 0))}
-                </span>
+                <span className="fsb-tag">{eur(selectedStatsAssignment.payouts.streamerTotal)}</span>
               </div>
               <div className="fsb-listitem">
                 <div className="fsb-listmain">
-                  <strong>Visibilite streamer</strong>
+                  <strong>Marge agence</strong>
                   <div className="fsb-listmeta">
-                    CPA {selectedStatsAssignment.stats.showCpaToStreamer ? "visible" : "masque"} | RS{" "}
-                    {selectedStatsAssignment.stats.showRsToStreamer ? "visible" : "masque"}
+                    CPA {eur(selectedStatsAssignment.payouts.agencyCpa)} | RS {eur(selectedStatsAssignment.payouts.agencyErs)}
                   </div>
                 </div>
-                <span className="fsb-tag">
-                  {eur(
-                    (selectedStatsAssignment.stats.showCpaToStreamer ? Number(selectedStatsAssignment.stats.cpaValue || 0) : 0) +
-                      (selectedStatsAssignment.stats.showRsToStreamer ? Number(selectedStatsAssignment.stats.rsValue || 0) : 0)
-                  )}
-                </span>
+                <span className="fsb-tag">{eur(selectedStatsAssignment.payouts.agencyTotal)}</span>
+              </div>
+              <div className="fsb-listitem">
+                <div className="fsb-listmain">
+                  <strong>Total genere</strong>
+                  <div className="fsb-listmeta">
+                    Brut {eur(selectedStatsAssignment.payouts.grossCpa)} | Visible streamer: CPA{" "}
+                    {selectedStatsAssignment.stats.showCpaToStreamer ? "oui" : "non"} | RS{" "}
+                    {selectedStatsAssignment.stats.showRsToStreamer ? "oui" : "non"}
+                  </div>
+                </div>
+                <span className="fsb-tag">{eur(selectedStatsAssignment.payouts.grossTotal)}</span>
               </div>
               <div className="fsb-listitem">
                 <div className="fsb-listmain">
                   <strong>Donnees du mois</strong>
                   <div className="fsb-listmeta">
-                    Inscrits {num(selectedStatsAssignment.stats.signups)} | Depots {num(selectedStatsAssignment.stats.depositCount)}
-                    {" | "}Depot total {eur(selectedStatsAssignment.stats.totalDeposits)}
+                    Inscrits {num(selectedStatsAssignment.stats.signups)} | Depots {num(selectedStatsAssignment.stats.depositCount)} |
+                    {" "}FTD {num(selectedStatsAssignment.stats.ftdCount)} | Depot total {eur(selectedStatsAssignment.stats.totalDeposits)}
                   </div>
                 </div>
                 <span className="fsb-tag">Maj {dateTime(selectedStatsAssignment.stats.updatedAt || selectedStatsAssignment.updatedAt)}</span>
@@ -1304,8 +1308,8 @@ export function FsbAgencySection() {
                 <th>Assignation</th>
                 <th>Periode</th>
                 <th>Stats {monthLabel(monthKey)}</th>
-                <th>CPA / RS</th>
-                <th>Visible streamer</th>
+                <th>Net affi</th>
+                <th>Marge agence</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -1329,27 +1333,25 @@ export function FsbAgencySection() {
                   <td>
                     <strong>Inscrits {num(assignment.stats.signups)}</strong>
                     <div className="fsb-sub">
-                      Depots {num(assignment.stats.depositCount)} | Depot total{" "}
+                      Depots {num(assignment.stats.depositCount)} | FTD {num(assignment.stats.ftdCount)} | Depot total{" "}
                       {assignment.stats.totalDeposits == null ? "-" : eur(assignment.stats.totalDeposits)}
                     </div>
                     <div className="fsb-sub">Maj {dateTime(assignment.stats.updatedAt || assignment.updatedAt)}</div>
                   </td>
                   <td>
-                    <strong>{eur(Number(assignment.stats.cpaValue || 0) + Number(assignment.stats.rsValue || 0))}</strong>
+                    <strong>{eur(assignment.payouts.streamerTotal)}</strong>
                     <div className="fsb-sub">
-                      CPA {eur(assignment.stats.cpaValue)} | RS {eur(assignment.stats.rsValue)}
+                      CPA {eur(assignment.payouts.streamerCpa)} | RS {eur(assignment.payouts.streamerErs)}
+                    </div>
+                    <div className="fsb-sub">
+                      Visible: CPA {assignment.stats.showCpaToStreamer ? "oui" : "non"} | RS{" "}
+                      {assignment.stats.showRsToStreamer ? "oui" : "non"}
                     </div>
                   </td>
                   <td>
-                    <strong>
-                      {eur(
-                        (assignment.stats.showCpaToStreamer ? Number(assignment.stats.cpaValue || 0) : 0) +
-                          (assignment.stats.showRsToStreamer ? Number(assignment.stats.rsValue || 0) : 0)
-                      )}
-                    </strong>
+                    <strong>{eur(assignment.payouts.agencyTotal)}</strong>
                     <div className="fsb-sub">
-                      CPA {assignment.stats.showCpaToStreamer ? "visible" : "masque"} | RS{" "}
-                      {assignment.stats.showRsToStreamer ? "visible" : "masque"}
+                      CPA {eur(assignment.payouts.agencyCpa)} | RS {eur(assignment.payouts.agencyErs)}
                     </div>
                   </td>
                   <td>
