@@ -126,6 +126,16 @@ const PAGE_CSS = `
 .fsb-more{color:var(--muted);font-size:12px}
 .fsb-week{margin-top:18px;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
 .fsb-emptyblock{display:grid;place-items:center;min-height:120px;border-radius:16px;border:1px dashed rgba(255,255,255,.08);color:var(--muted);font-size:13px}
+.fsb-tabs{display:flex;gap:4px;flex-wrap:wrap;margin-top:18px;border-bottom:1px solid var(--bd);padding-bottom:0}
+.fsb-tab{padding:10px 18px;border-radius:12px 12px 0 0;border:1px solid transparent;border-bottom:none;background:transparent;color:var(--muted);font:inherit;font-weight:700;cursor:pointer;transition:color .12s}
+.fsb-tab:hover{color:var(--text)}
+.fsb-tab-active{background:var(--panel);border-color:var(--bd);border-bottom-color:var(--panel);color:var(--text);margin-bottom:-1px}
+.fsb-tab-content{margin-top:18px}
+.fsb-hint{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5}
+.fsb-form-section{background:var(--panel);border:1px solid var(--bd);border-radius:20px;padding:18px;margin-bottom:18px}
+.fsb-form-section h4{margin:0 0 14px;font-size:15px;letter-spacing:-.02em}
+.fsb-badge{display:inline-flex;align-items:center;padding:4px 9px;border-radius:999px;font-size:11px;font-weight:800;background:rgba(255,178,107,.16);color:rgba(255,200,140,1);border:1px solid rgba(255,178,107,.22)}
+.fsb-badge-green{background:rgba(120,231,180,.14);color:rgba(140,231,180,1);border-color:rgba(120,231,180,.22)}
 .fsb-thumbrow{display:flex;gap:12px;align-items:center}
 .fsb-thumb{width:68px;height:68px;border-radius:16px;object-fit:cover;background:rgba(255,255,255,.04);flex-shrink:0}
 .fsb-thumb-placeholder{display:grid;place-items:center;background:linear-gradient(135deg,rgba(255,178,107,.22),rgba(113,213,210,.16));font-weight:800}

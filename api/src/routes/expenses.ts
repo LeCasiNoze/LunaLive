@@ -222,10 +222,15 @@ function computeAgencyPayouts(input: {
 }
 
 function resolveAgencyPaymentDate(paymentDate: string, monthKey: string) {
+  // Activity in monthKey is paid in month+1 (e.g. avril → paiement en mai)
   const [year, month] = monthKey.split("-").map(Number);
+  // Date.UTC uses 0-indexed months; passing month (1-based) gives the next month
+  const next = new Date(Date.UTC(year, month, 1));
+  const nextYear = next.getUTCFullYear();
+  const nextMonth = next.getUTCMonth() + 1; // back to 1-based
   const anchorDay = Number(paymentDate.slice(8, 10));
-  const day = Math.min(anchorDay, daysInMonth(year, month));
-  return `${monthKey}-${String(day).padStart(2, "0")}`;
+  const day = Math.min(anchorDay, daysInMonth(nextYear, nextMonth));
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 async function syncAgencyExpensesForMonth(monthKey: string) {
