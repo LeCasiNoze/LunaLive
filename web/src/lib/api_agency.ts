@@ -98,6 +98,7 @@ export type AgencyStreamer = {
   lunaliveUserId: number | null;
   accessUserId: number | null;
   accessUsername: string | null;
+  accessCode?: string | null;
   notes: string | null;
   createdAt: string | null;
   updatedAt: string | null;

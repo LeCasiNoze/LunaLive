@@ -76,6 +76,7 @@ import { mig066_expenses } from "./mig066_expenses.js";
 import { mig067_agency } from "./mig067_agency.js";
 import { mig068_agency_monthly } from "./mig068_agency_monthly.js";
 import { mig069_agency_stat_fields } from "./mig069_agency_stat_fields.js";
+import { mig070_agency_access_code } from "./mig070_agency_access_code.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -171,6 +172,7 @@ export async function migrateAll(pool: Pool) {
   await mig067_agency(pool);
   await mig068_agency_monthly(pool);
   await mig069_agency_stat_fields(pool);
+  await mig070_agency_access_code(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

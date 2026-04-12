@@ -218,6 +218,7 @@ export function FsbAgencySection() {
           [
             streamer.displayName,
             streamer.accessUsername,
+            streamer.accessCode,
             streamer.notes,
             ...streamer.assignments.map((assignment) => `${assignment.deal.casinoName} ${assignment.deal.name}`),
           ]
@@ -593,14 +594,14 @@ export function FsbAgencySection() {
             </div>
           </div>
           <div className="fsb-actions">
-            <button className="fsb-btn" onClick={() => setMonthKey(addMonths(monthKey, -1))}>
+            <button className="fsb-btn" type="button" onClick={() => setMonthKey(addMonths(monthKey, -1))}>
               Mois precedent
             </button>
             <span className="fsb-pill">{monthLabel(monthKey)}</span>
-            <button className="fsb-btn" onClick={() => setMonthKey(addMonths(monthKey, 1))}>
+            <button className="fsb-btn" type="button" onClick={() => setMonthKey(addMonths(monthKey, 1))}>
               Mois suivant
             </button>
-            <button className="fsb-btn" onClick={() => void load(monthKey)}>
+            <button className="fsb-btn" type="button" onClick={() => void load(monthKey)}>
               {loading ? "Actualisation..." : "Rafraichir"}
             </button>
           </div>
@@ -611,6 +612,7 @@ export function FsbAgencySection() {
             {data.historyMonths.slice(0, 8).map((item) => (
               <button
                 key={item}
+                type="button"
                 className={`fsb-navbtn ${item === monthKey ? "fsb-navbtn-active" : ""}`}
                 onClick={() => setMonthKey(item)}
               >
@@ -661,9 +663,9 @@ export function FsbAgencySection() {
           <div className="fsb-sectionhead">
             <div>
               <h3 style={{ margin: 0 }}>Acces streamer genere</h3>
-              <div className="fsb-muted">Le code d acces n est affiche qu ici apres creation ou reset.</div>
+              <div className="fsb-muted">Le code d acces est affiche ici apres creation ou reset, puis reste visible dans la liste des streamers.</div>
             </div>
-            <button className="fsb-btn" onClick={() => setGeneratedAccess(null)}>
+            <button className="fsb-btn" type="button" onClick={() => setGeneratedAccess(null)}>
               Fermer
             </button>
           </div>
@@ -698,7 +700,7 @@ export function FsbAgencySection() {
               <div className="fsb-muted">Base de reference pour les deals.</div>
             </div>
             {casinoForm.id ? (
-              <button className="fsb-btn" onClick={resetCasinoForm}>
+              <button className="fsb-btn" type="button" onClick={resetCasinoForm}>
                 Annuler
               </button>
             ) : null}
@@ -738,7 +740,7 @@ export function FsbAgencySection() {
               <div className="fsb-muted">Le deal definit les regles CPA et RS.</div>
             </div>
             {dealForm.id ? (
-              <button className="fsb-btn" onClick={resetDealForm}>
+              <button className="fsb-btn" type="button" onClick={resetDealForm}>
                 Annuler
               </button>
             ) : null}
@@ -842,7 +844,7 @@ export function FsbAgencySection() {
               <div className="fsb-muted">Creation de la fiche agence et, si nouveau, d un acces streamer dedie.</div>
             </div>
             {streamerForm.id ? (
-              <button className="fsb-btn" onClick={resetStreamerForm}>
+              <button className="fsb-btn" type="button" onClick={resetStreamerForm}>
                 Annuler
               </button>
             ) : null}
@@ -937,7 +939,7 @@ export function FsbAgencySection() {
               <div className="fsb-muted">Un streamer peut cumuler plusieurs deals avec ses dates et liens.</div>
             </div>
             {assignmentForm.id ? (
-              <button className="fsb-btn" onClick={resetAssignmentForm}>
+              <button className="fsb-btn" type="button" onClick={resetAssignmentForm}>
                 Annuler
               </button>
             ) : null}
@@ -1251,6 +1253,9 @@ export function FsbAgencySection() {
                       <td>
                         <strong>{streamer.accessUsername || "-"}</strong>
                         <div className="fsb-sub">Maj {dateTime(streamer.updatedAt)}</div>
+                        <div className="fsb-sub">
+                          Code: {streamer.accessCode || "Non recuperable pour l instant, fais Reset code"}
+                        </div>
                       </td>
                       <td>
                         <div className="fsb-inline">
@@ -1273,9 +1278,9 @@ export function FsbAgencySection() {
                       </td>
                       <td>
                         <div className="fsb-inline">
-                          <button onClick={() => startEditStreamer(streamer)}>Modifier</button>
-                          <button onClick={() => void handleResetAccess(streamer.id)}>Reset code</button>
-                          <button onClick={() => void handleDeleteStreamer(streamer.id)}>Supprimer</button>
+                          <button type="button" onClick={() => startEditStreamer(streamer)}>Modifier</button>
+                          <button type="button" onClick={() => void handleResetAccess(streamer.id)}>Reset code</button>
+                          <button type="button" onClick={() => void handleDeleteStreamer(streamer.id)}>Supprimer</button>
                         </div>
                       </td>
                     </tr>
@@ -1356,9 +1361,9 @@ export function FsbAgencySection() {
                   </td>
                   <td>
                     <div className="fsb-inline">
-                      <button onClick={() => startEditAssignment(assignment)}>Modifier</button>
-                      <button onClick={() => setStatsAssignmentId(String(assignment.id))}>Stats</button>
-                      <button onClick={() => void handleDeleteAssignment(assignment.id)}>Supprimer</button>
+                      <button type="button" onClick={() => startEditAssignment(assignment)}>Modifier</button>
+                      <button type="button" onClick={() => setStatsAssignmentId(String(assignment.id))}>Stats</button>
+                      <button type="button" onClick={() => void handleDeleteAssignment(assignment.id)}>Supprimer</button>
                     </div>
                   </td>
                 </tr>
@@ -1395,8 +1400,8 @@ export function FsbAgencySection() {
                     <td>{casino.notes || "-"}</td>
                     <td>
                       <div className="fsb-inline">
-                        <button onClick={() => startEditCasino(casino.id)}>Modifier</button>
-                        <button onClick={() => void handleDeleteCasino(casino.id)}>Supprimer</button>
+                        <button type="button" onClick={() => startEditCasino(casino.id)}>Modifier</button>
+                        <button type="button" onClick={() => void handleDeleteCasino(casino.id)}>Supprimer</button>
                       </div>
                     </td>
                   </tr>
@@ -1448,8 +1453,8 @@ export function FsbAgencySection() {
                     </td>
                     <td>
                       <div className="fsb-inline">
-                        <button onClick={() => startEditDeal(deal.id)}>Modifier</button>
-                        <button onClick={() => void handleDeleteDeal(deal.id)}>Supprimer</button>
+                        <button type="button" onClick={() => startEditDeal(deal.id)}>Modifier</button>
+                        <button type="button" onClick={() => void handleDeleteDeal(deal.id)}>Supprimer</button>
                       </div>
                     </td>
                   </tr>

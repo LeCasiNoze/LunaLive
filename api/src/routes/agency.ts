@@ -388,6 +388,7 @@ function buildDashboardQuery(monthKey: string, extraWhereSql = "", extraParams: 
         ags.linked_streamer_id,
         ags.lunalive_user_id,
         ags.access_user_id,
+        ags.access_code_plain,
         ags.notes AS streamer_notes,
         ags.created_at AS streamer_created_at,
         ags.updated_at AS streamer_updated_at,
@@ -455,6 +456,7 @@ function mapDashboardRows(rows: any[], monthKey: string) {
         lunaliveUserId: row.lunalive_user_id == null ? null : Number(row.lunalive_user_id),
         accessUserId: row.access_user_id == null ? null : Number(row.access_user_id),
         accessUsername: row.access_username == null ? null : String(row.access_username),
+        accessCode: row.access_code_plain == null ? null : String(row.access_code_plain),
         notes: row.streamer_notes == null ? null : String(row.streamer_notes),
         createdAt: toIso(row.streamer_created_at),
         updatedAt: toIso(row.streamer_updated_at),
@@ -1063,9 +1065,10 @@ agencyRouter.post(
           linked_streamer_id,
           lunalive_user_id,
           access_user_id,
+          access_code_plain,
           notes
         )
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id
         `,
         [
@@ -1073,6 +1076,7 @@ agencyRouter.post(
           linked?.id ?? null,
           linked?.user_id ?? null,
           generatedAccess.id,
+          generatedAccess.password,
           payload.notes,
         ]
       );
@@ -1233,13 +1237,21 @@ agencyRouter.post(
         await client.query(
           `
           UPDATE agency_streamers
-          SET access_user_id = $2, updated_at = NOW()
+          SET access_user_id = $2, access_code_plain = $3, updated_at = NOW()
           WHERE id = $1
           `,
-          [id.data, generatedAccess.id]
+          [id.data, generatedAccess.id, generatedAccess.password]
         );
       } else {
         generatedAccess = await resetAgencyAccessPassword(client, Number(streamer.access_user_id));
+        await client.query(
+          `
+          UPDATE agency_streamers
+          SET access_code_plain = $2, updated_at = NOW()
+          WHERE id = $1
+          `,
+          [id.data, generatedAccess.password]
+        );
       }
 
       await client.query("COMMIT");
