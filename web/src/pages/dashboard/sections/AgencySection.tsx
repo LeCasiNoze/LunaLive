@@ -59,16 +59,16 @@ export function AgencySection({ streamer }: { streamer: ApiMyStreamer }) {
             }}
           >
             <div className="panel">
-              <div className="mutedSmall">Signups</div>
+              <div className="mutedSmall">Inscrits</div>
               <div style={{ fontSize: 20, fontWeight: 800, marginTop: 6 }}>{num(agency.summary.signups)}</div>
             </div>
             <div className="panel">
-              <div className="mutedSmall">FTD</div>
-              <div style={{ fontSize: 20, fontWeight: 800, marginTop: 6 }}>{num(agency.summary.ftd)}</div>
+              <div className="mutedSmall">Depots</div>
+              <div style={{ fontSize: 20, fontWeight: 800, marginTop: 6 }}>{num(agency.summary.depositCount)}</div>
             </div>
             <div className="panel">
-              <div className="mutedSmall">Gain total</div>
-              <div style={{ fontSize: 20, fontWeight: 800, marginTop: 6 }}>{eur(agency.summary.total)}</div>
+              <div className="mutedSmall">Total visible</div>
+              <div style={{ fontSize: 20, fontWeight: 800, marginTop: 6 }}>{eur(agency.summary.visibleTotal)}</div>
             </div>
           </div>
 

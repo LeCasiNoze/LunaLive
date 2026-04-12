@@ -94,6 +94,14 @@ function toNumberOrNull(value: string) {
   return Number.isFinite(next) ? next : null;
 }
 
+function normalizeText(value: string | null | undefined) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 type CasinoFormState = {
   id: number | null;
   name: string;
@@ -114,7 +122,6 @@ type DealFormState = {
 type StreamerFormState = {
   id: number | null;
   displayName: string;
-  linkedStreamerId: string;
   notes: string;
   initialDealId: string;
   initialStartDate: string;
@@ -153,7 +160,6 @@ const EMPTY_DEAL_FORM: DealFormState = {
 const EMPTY_STREAMER_FORM: StreamerFormState = {
   id: null,
   displayName: "",
-  linkedStreamerId: "",
   notes: "",
   initialDealId: "",
   initialStartDate: "",
@@ -187,13 +193,86 @@ export function FsbAgencySection() {
 
   const [statsAssignmentId, setStatsAssignmentId] = React.useState("");
   const [statsSignups, setStatsSignups] = React.useState("");
-  const [statsFtd, setStatsFtd] = React.useState("");
+  const [statsDepositCount, setStatsDepositCount] = React.useState("");
   const [statsDeposits, setStatsDeposits] = React.useState("");
+  const [statsCpaValue, setStatsCpaValue] = React.useState("");
+  const [statsRsValue, setStatsRsValue] = React.useState("");
+  const [showCpaToStreamer, setShowCpaToStreamer] = React.useState(true);
+  const [showRsToStreamer, setShowRsToStreamer] = React.useState(true);
+  const [streamerSearch, setStreamerSearch] = React.useState("");
+  const [streamerSort, setStreamerSort] = React.useState("name");
+  const [dealSort, setDealSort] = React.useState("casino-name");
 
   const selectedStatsAssignment = React.useMemo(
     () => data?.assignments.find((item) => String(item.id) === statsAssignmentId) || null,
     [data?.assignments, statsAssignmentId]
   );
+
+  const filteredStreamers = React.useMemo(() => {
+    const search = normalizeText(streamerSearch);
+    const items = [...(data?.streamers || [])];
+
+    const filtered = !search
+      ? items
+      : items.filter((streamer) =>
+          [
+            streamer.displayName,
+            streamer.accessUsername,
+            streamer.notes,
+            ...streamer.assignments.map((assignment) => `${assignment.deal.casinoName} ${assignment.deal.name}`),
+          ]
+            .map((value) => normalizeText(value))
+            .some((value) => value.includes(search))
+        );
+
+    filtered.sort((left, right) => {
+      if (streamerSort === "updated") {
+        return String(right.updatedAt || "").localeCompare(String(left.updatedAt || ""));
+      }
+
+      if (streamerSort === "assignments") {
+        const assignmentDiff = right.assignments.length - left.assignments.length;
+        if (assignmentDiff !== 0) return assignmentDiff;
+      }
+
+      if (streamerSort === "active") {
+        const rightActive = right.assignments.filter((item) => item.activeDuringMonth).length;
+        const leftActive = left.assignments.filter((item) => item.activeDuringMonth).length;
+        const activeDiff = rightActive - leftActive;
+        if (activeDiff !== 0) return activeDiff;
+      }
+
+      return normalizeText(left.displayName).localeCompare(normalizeText(right.displayName), "fr");
+    });
+
+    return filtered;
+  }, [data?.streamers, monthKey, streamerSearch, streamerSort]);
+
+  const sortedDeals = React.useMemo(() => {
+    const items = [...(data?.deals || [])];
+
+    items.sort((left, right) => {
+      if (dealSort === "updated") {
+        return String(right.updatedAt || "").localeCompare(String(left.updatedAt || ""));
+      }
+
+      if (dealSort === "cpa") {
+        const cpaDiff = Number(right.cpaAmount || 0) - Number(left.cpaAmount || 0);
+        if (cpaDiff !== 0) return cpaDiff;
+      }
+
+      if (dealSort === "rs") {
+        const rsDiff = Number(right.ersPercent || 0) - Number(left.ersPercent || 0);
+        if (rsDiff !== 0) return rsDiff;
+      }
+
+      const casinoCompare = normalizeText(left.casinoName).localeCompare(normalizeText(right.casinoName), "fr");
+      if (casinoCompare !== 0) return casinoCompare;
+      return normalizeText(left.name).localeCompare(normalizeText(right.name), "fr");
+    });
+
+    return items;
+  }, [data?.deals, dealSort]);
 
   const load = React.useCallback(async (targetMonth: string) => {
     setLoading(true);
@@ -226,15 +305,25 @@ export function FsbAgencySection() {
   React.useEffect(() => {
     if (!selectedStatsAssignment) {
       setStatsSignups("");
-      setStatsFtd("");
+      setStatsDepositCount("");
       setStatsDeposits("");
+      setStatsCpaValue("");
+      setStatsRsValue("");
+      setShowCpaToStreamer(true);
+      setShowRsToStreamer(true);
       return;
     }
     setStatsSignups(selectedStatsAssignment.stats.signups == null ? "" : String(selectedStatsAssignment.stats.signups));
-    setStatsFtd(selectedStatsAssignment.stats.ftd == null ? "" : String(selectedStatsAssignment.stats.ftd));
+    setStatsDepositCount(
+      selectedStatsAssignment.stats.depositCount == null ? "" : String(selectedStatsAssignment.stats.depositCount)
+    );
     setStatsDeposits(
       selectedStatsAssignment.stats.totalDeposits == null ? "" : String(selectedStatsAssignment.stats.totalDeposits)
     );
+    setStatsCpaValue(selectedStatsAssignment.stats.cpaValue == null ? "" : String(selectedStatsAssignment.stats.cpaValue));
+    setStatsRsValue(selectedStatsAssignment.stats.rsValue == null ? "" : String(selectedStatsAssignment.stats.rsValue));
+    setShowCpaToStreamer(Boolean(selectedStatsAssignment.stats.showCpaToStreamer));
+    setShowRsToStreamer(Boolean(selectedStatsAssignment.stats.showRsToStreamer));
   }, [selectedStatsAssignment]);
 
   function resetCasinoForm() {
@@ -303,7 +392,6 @@ export function FsbAgencySection() {
     setStreamerForm({
       id: streamer.id,
       displayName: streamer.displayName,
-      linkedStreamerId: streamer.linkedStreamerId == null ? "" : String(streamer.linkedStreamerId),
       notes: streamer.notes || "",
       initialDealId: "",
       initialStartDate: "",
@@ -323,15 +411,6 @@ export function FsbAgencySection() {
       linksText: assignment.linksText || "",
       notes: assignment.notes || "",
     });
-  }
-
-  function handleLinkedStreamerChange(value: string) {
-    setStreamerForm((prev) => ({ ...prev, linkedStreamerId: value }));
-    if (!value || streamerForm.displayName.trim()) return;
-    const match = data?.availableStreamers.find((item) => String(item.streamerId) === value);
-    if (match) {
-      setStreamerForm((prev) => ({ ...prev, displayName: prev.displayName || match.displayName }));
-    }
   }
 
   async function saveCasino(event: React.FormEvent<HTMLFormElement>) {
@@ -379,7 +458,6 @@ export function FsbAgencySection() {
           streamerForm.id,
           {
             displayName: streamerForm.displayName.trim(),
-            linkedStreamerId: streamerForm.linkedStreamerId ? Number(streamerForm.linkedStreamerId) : null,
             notes: streamerForm.notes.trim() ? streamerForm.notes.trim() : null,
           },
           monthKey
@@ -389,7 +467,6 @@ export function FsbAgencySection() {
       return createAgencyStreamer(
         {
           displayName: streamerForm.displayName.trim(),
-          linkedStreamerId: streamerForm.linkedStreamerId ? Number(streamerForm.linkedStreamerId) : null,
           notes: streamerForm.notes.trim() ? streamerForm.notes.trim() : null,
           initialDealId: streamerForm.initialDealId ? Number(streamerForm.initialDealId) : null,
           initialStartDate: streamerForm.initialStartDate || null,
@@ -443,8 +520,12 @@ export function FsbAgencySection() {
         {
           monthKey,
           signups: toNumberOrNull(statsSignups),
-          ftd: toNumberOrNull(statsFtd),
+          depositCount: toNumberOrNull(statsDepositCount),
           totalDeposits: toNumberOrNull(statsDeposits),
+          cpaValue: toNumberOrNull(statsCpaValue),
+          rsValue: toNumberOrNull(statsRsValue),
+          showCpaToStreamer,
+          showRsToStreamer,
         },
         monthKey
       )
@@ -479,9 +560,26 @@ export function FsbAgencySection() {
     await runMutation("reset-access", () => resetAgencyStreamerAccess(streamerId, monthKey));
   }
 
+  function getConsultationPath(streamer: Pick<AgencyStreamer, "accessUsername">) {
+    const username = streamer.accessUsername ? `?username=${encodeURIComponent(streamer.accessUsername)}` : "";
+    return `/agency${username}`;
+  }
+
+  function toAbsoluteUrl(path: string) {
+    if (typeof window === "undefined") return path;
+    return `${window.location.origin}${path}`;
+  }
+
+  function getPreviewPath(streamer: Pick<AgencyStreamer, "id" | "accessUsername">) {
+    const params = new URLSearchParams();
+    params.set("preview", String(streamer.id));
+    if (streamer.accessUsername) params.set("username", streamer.accessUsername);
+    return `/agency?${params.toString()}`;
+  }
+
   const loginUrl =
     generatedAccess && typeof window !== "undefined"
-      ? `${window.location.origin}${generatedAccess.loginPath}`
+      ? `${window.location.origin}${generatedAccess.loginPath}?username=${encodeURIComponent(generatedAccess.username)}`
       : generatedAccess?.loginPath || null;
 
   return (
@@ -491,7 +589,7 @@ export function FsbAgencySection() {
           <div>
             <h2 className="fsb-sectiontitle">Agence</h2>
             <div className="fsb-muted">
-              Multi-deals, historique mensuel, acces streamer dedie et calculs CPA / ERS.
+              Multi-deals, historique mensuel, acces streamer dedie et stats mensuelles CPA / RS.
             </div>
           </div>
           <div className="fsb-actions">
@@ -548,7 +646,7 @@ export function FsbAgencySection() {
           <div className="fsb-stat">
             <small>Net streamers</small>
             <strong>{eur(data?.summary.streamerEarnings ?? 0)}</strong>
-            <span>Visible cote streamer</span>
+            <span>Total saisi cote streamer</span>
           </div>
           <div className="fsb-stat">
             <small>Marge agence</small>
@@ -563,7 +661,7 @@ export function FsbAgencySection() {
           <div className="fsb-sectionhead">
             <div>
               <h3 style={{ margin: 0 }}>Acces streamer genere</h3>
-              <div className="fsb-muted">Le mot de passe n est affiche qu ici apres creation ou reset.</div>
+              <div className="fsb-muted">Le code d acces n est affiche qu ici apres creation ou reset.</div>
             </div>
             <button className="fsb-btn" onClick={() => setGeneratedAccess(null)}>
               Fermer
@@ -575,12 +673,18 @@ export function FsbAgencySection() {
               <input className="fsb-input" value={generatedAccess.username} readOnly />
             </div>
             <div className="fsb-field">
-              <label>Mot de passe</label>
+              <label>Code d acces</label>
               <input className="fsb-input" value={generatedAccess.password} readOnly />
             </div>
             <div className="fsb-field fsb-field-full">
-              <label>Lien</label>
+              <label>Lien de consultation</label>
               <input className="fsb-input" value={loginUrl || generatedAccess.loginPath} readOnly />
+            </div>
+            <div className="fsb-field fsb-field-full">
+              <label>Connexion</label>
+              <div className="fsb-muted">
+                Le streamer ouvre ce lien, son username est pre-rempli, puis il entre son code d acces.
+              </div>
             </div>
           </div>
         </section>
@@ -631,7 +735,7 @@ export function FsbAgencySection() {
           <div className="fsb-sectionhead">
             <div>
               <h3 style={{ margin: 0 }}>{dealForm.id ? "Modifier un deal" : "Ajouter un deal"}</h3>
-              <div className="fsb-muted">Le deal definit les regles CPA et ERS.</div>
+              <div className="fsb-muted">Le deal definit les regles CPA et RS.</div>
             </div>
             {dealForm.id ? (
               <button className="fsb-btn" onClick={resetDealForm}>
@@ -667,7 +771,7 @@ export function FsbAgencySection() {
                 />
               </div>
               <div className="fsb-field">
-                <label>CPA total / FTD</label>
+                <label>CPA total / depot</label>
                 <input
                   className="fsb-input"
                   type="number"
@@ -678,7 +782,7 @@ export function FsbAgencySection() {
                 />
               </div>
               <div className="fsb-field">
-                <label>Part agence / FTD</label>
+                <label>Part agence / depot</label>
                 <input
                   className="fsb-input"
                   type="number"
@@ -689,7 +793,7 @@ export function FsbAgencySection() {
                 />
               </div>
               <div className="fsb-field">
-                <label>ERS total %</label>
+                <label>RS total %</label>
                 <input
                   className="fsb-input"
                   type="number"
@@ -701,7 +805,7 @@ export function FsbAgencySection() {
                 />
               </div>
               <div className="fsb-field">
-                <label>Part agence ERS %</label>
+                <label>Part agence RS %</label>
                 <input
                   className="fsb-input"
                   type="number"
@@ -745,21 +849,6 @@ export function FsbAgencySection() {
           </div>
           <form onSubmit={saveStreamer}>
             <div className="fsb-grid">
-              <div className="fsb-field">
-                <label>Lien LunaLive</label>
-                <select
-                  className="fsb-select"
-                  value={streamerForm.linkedStreamerId}
-                  onChange={(e) => handleLinkedStreamerChange(e.target.value)}
-                >
-                  <option value="">Aucun</option>
-                  {(data?.availableStreamers || []).map((streamer) => (
-                    <option key={streamer.streamerId} value={streamer.streamerId}>
-                      {streamer.displayName} (@{streamer.slug})
-                    </option>
-                  ))}
-                </select>
-              </div>
               <div className="fsb-field">
                 <label>Nom affiche</label>
                 <input
@@ -961,7 +1050,7 @@ export function FsbAgencySection() {
                 </select>
               </div>
               <div className="fsb-field">
-                <label>Signups</label>
+                <label>Nombre d inscrits</label>
                 <input
                   className="fsb-input"
                   type="number"
@@ -972,18 +1061,18 @@ export function FsbAgencySection() {
                 />
               </div>
               <div className="fsb-field">
-                <label>FTD</label>
+                <label>Nombre de depots</label>
                 <input
                   className="fsb-input"
                   type="number"
                   min="0"
                   step="1"
-                  value={statsFtd}
-                  onChange={(e) => setStatsFtd(e.target.value)}
+                  value={statsDepositCount}
+                  onChange={(e) => setStatsDepositCount(e.target.value)}
                 />
               </div>
               <div className="fsb-field fsb-field-full">
-                <label>Total deposits</label>
+                <label>Depot total</label>
                 <input
                   className="fsb-input"
                   type="number"
@@ -993,6 +1082,44 @@ export function FsbAgencySection() {
                   onChange={(e) => setStatsDeposits(e.target.value)}
                 />
               </div>
+              <div className="fsb-field">
+                <label>CPA</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={statsCpaValue}
+                  onChange={(e) => setStatsCpaValue(e.target.value)}
+                />
+              </div>
+              <div className="fsb-field">
+                <label>RS</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={statsRsValue}
+                  onChange={(e) => setStatsRsValue(e.target.value)}
+                />
+              </div>
+              <label className="fsb-check">
+                <input
+                  type="checkbox"
+                  checked={showCpaToStreamer}
+                  onChange={(e) => setShowCpaToStreamer(e.target.checked)}
+                />
+                Afficher le CPA au streamer
+              </label>
+              <label className="fsb-check">
+                <input
+                  type="checkbox"
+                  checked={showRsToStreamer}
+                  onChange={(e) => setShowRsToStreamer(e.target.checked)}
+                />
+                Afficher le RS au streamer
+              </label>
             </div>
             <div className="fsb-modal-actions">
               <button className="fsb-btn fsb-btn-primary" type="submit" disabled={saving === "stats" || !statsAssignmentId}>
@@ -1006,7 +1133,7 @@ export function FsbAgencySection() {
           <div className="fsb-sectionhead">
             <div>
               <h3 style={{ margin: 0 }}>Apercu selectionne</h3>
-              <div className="fsb-muted">Lecture rapide du deal et des gains pour le mois en cours.</div>
+              <div className="fsb-muted">Lecture rapide du deal et de ce que l affi verra pour le mois en cours.</div>
             </div>
           </div>
 
@@ -1028,29 +1155,36 @@ export function FsbAgencySection() {
               </div>
               <div className="fsb-listitem">
                 <div className="fsb-listmain">
-                  <strong>Net streamer</strong>
+                  <strong>Montants saisis</strong>
                   <div className="fsb-listmeta">
-                    CPA {eur(selectedStatsAssignment.payouts.streamerCpa)} | ERS {eur(selectedStatsAssignment.payouts.streamerErs)}
+                    CPA {eur(selectedStatsAssignment.stats.cpaValue)} | RS {eur(selectedStatsAssignment.stats.rsValue)}
                   </div>
                 </div>
-                <span className="fsb-tag">{eur(selectedStatsAssignment.payouts.streamerTotal)}</span>
+                <span className="fsb-tag">
+                  {eur(Number(selectedStatsAssignment.stats.cpaValue || 0) + Number(selectedStatsAssignment.stats.rsValue || 0))}
+                </span>
               </div>
               <div className="fsb-listitem">
                 <div className="fsb-listmain">
-                  <strong>Marge agence</strong>
+                  <strong>Visibilite streamer</strong>
                   <div className="fsb-listmeta">
-                    CPA {eur(selectedStatsAssignment.payouts.agencyCpa)} | ERS {eur(selectedStatsAssignment.payouts.agencyErs)}
+                    CPA {selectedStatsAssignment.stats.showCpaToStreamer ? "visible" : "masque"} | RS{" "}
+                    {selectedStatsAssignment.stats.showRsToStreamer ? "visible" : "masque"}
                   </div>
                 </div>
-                <span className="fsb-tag">{eur(selectedStatsAssignment.payouts.agencyTotal)}</span>
+                <span className="fsb-tag">
+                  {eur(
+                    (selectedStatsAssignment.stats.showCpaToStreamer ? Number(selectedStatsAssignment.stats.cpaValue || 0) : 0) +
+                      (selectedStatsAssignment.stats.showRsToStreamer ? Number(selectedStatsAssignment.stats.rsValue || 0) : 0)
+                  )}
+                </span>
               </div>
               <div className="fsb-listitem">
                 <div className="fsb-listmain">
-                  <strong>Regles nettes streamer</strong>
+                  <strong>Donnees du mois</strong>
                   <div className="fsb-listmeta">
-                    CPA / FTD {selectedStatsAssignment.payouts.streamerCpaUnit == null ? "-" : eur(selectedStatsAssignment.payouts.streamerCpaUnit)}
-                    {" | "}
-                    ERS {pct(selectedStatsAssignment.payouts.streamerErsRate)}
+                    Inscrits {num(selectedStatsAssignment.stats.signups)} | Depots {num(selectedStatsAssignment.stats.depositCount)}
+                    {" | "}Depot total {eur(selectedStatsAssignment.stats.totalDeposits)}
                   </div>
                 </div>
                 <span className="fsb-tag">Maj {dateTime(selectedStatsAssignment.stats.updatedAt || selectedStatsAssignment.updatedAt)}</span>
@@ -1068,7 +1202,22 @@ export function FsbAgencySection() {
         <div className="fsb-sectionhead">
           <div>
             <h3 style={{ margin: 0 }}>Streamers agences</h3>
-            <div className="fsb-muted">Acces, lien LunaLive, nombre de deals et actions rapides.</div>
+            <div className="fsb-muted">Acces, lien de consultation et preview affi en un clic.</div>
+          </div>
+          <div className="fsb-actions">
+            <input
+              className="fsb-input"
+              style={{ width: 220 }}
+              value={streamerSearch}
+              onChange={(e) => setStreamerSearch(e.target.value)}
+              placeholder="Rechercher un streamer"
+            />
+            <select className="fsb-select" value={streamerSort} onChange={(e) => setStreamerSort(e.target.value)}>
+              <option value="name">Trier: nom</option>
+              <option value="updated">Trier: maj recente</option>
+              <option value="active">Trier: actifs ce mois</option>
+              <option value="assignments">Trier: nb deals</option>
+            </select>
           </div>
         </div>
         <div className="fsb-tablewrap">
@@ -1077,41 +1226,65 @@ export function FsbAgencySection() {
               <tr>
                 <th>Streamer</th>
                 <th>Acces</th>
-                <th>LunaLive</th>
+                <th>Consultation</th>
                 <th>Assignations</th>
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {(data?.streamers || []).map((streamer) => (
-                <tr key={streamer.id}>
-                  <td>
-                    <strong>{streamer.displayName}</strong>
-                    <div className="fsb-sub">{streamer.notes || "Aucune note"}</div>
-                  </td>
-                  <td>
-                    <strong>{streamer.accessUsername || "-"}</strong>
-                    <div className="fsb-sub">Maj {dateTime(streamer.updatedAt)}</div>
-                  </td>
-                  <td>
-                    <strong>{streamer.linkedStreamerSlug ? `@${streamer.linkedStreamerSlug}` : "-"}</strong>
-                    <div className="fsb-sub">{streamer.linkedStreamerName || "Pas de streamer lie"}</div>
-                  </td>
-                  <td>
-                    <strong>{streamer.assignments.length}</strong>
-                    <div className="fsb-sub">
-                      {streamer.assignments.filter((item) => item.activeDuringMonth).length} actifs sur {monthLabel(monthKey)}
-                    </div>
-                  </td>
-                  <td>
-                    <div className="fsb-inline">
-                      <button onClick={() => startEditStreamer(streamer)}>Modifier</button>
-                      <button onClick={() => void handleResetAccess(streamer.id)}>Reset acces</button>
-                      <button onClick={() => void handleDeleteStreamer(streamer.id)}>Supprimer</button>
-                    </div>
+              {filteredStreamers.map((streamer) => (
+                (() => {
+                  const consultationPath = getConsultationPath(streamer);
+                  const consultationUrl = toAbsoluteUrl(consultationPath);
+                  const previewPath = getPreviewPath(streamer);
+
+                  return (
+                    <tr key={streamer.id}>
+                      <td>
+                        <strong>{streamer.displayName}</strong>
+                        <div className="fsb-sub">{streamer.notes || "Aucune note"}</div>
+                      </td>
+                      <td>
+                        <strong>{streamer.accessUsername || "-"}</strong>
+                        <div className="fsb-sub">Maj {dateTime(streamer.updatedAt)}</div>
+                      </td>
+                      <td>
+                        <div className="fsb-inline">
+                          <a className="fsb-jump" href={consultationPath} target="_blank" rel="noreferrer">
+                            Page affi
+                          </a>
+                          <a className="fsb-jump" href={previewPath} target="_blank" rel="noreferrer">
+                            Voir comme affi
+                          </a>
+                        </div>
+                        <div className="fsb-sub" style={{ wordBreak: "break-all" }}>
+                          {consultationUrl}
+                        </div>
+                      </td>
+                      <td>
+                        <strong>{streamer.assignments.length}</strong>
+                        <div className="fsb-sub">
+                          {streamer.assignments.filter((item) => item.activeDuringMonth).length} actifs sur {monthLabel(monthKey)}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="fsb-inline">
+                          <button onClick={() => startEditStreamer(streamer)}>Modifier</button>
+                          <button onClick={() => void handleResetAccess(streamer.id)}>Reset code</button>
+                          <button onClick={() => void handleDeleteStreamer(streamer.id)}>Supprimer</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })()
+              ))}
+              {!filteredStreamers.length ? (
+                <tr>
+                  <td colSpan={5}>
+                    <div className="fsb-sub">Aucun streamer ne correspond a la recherche.</div>
                   </td>
                 </tr>
-              ))}
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -1131,8 +1304,8 @@ export function FsbAgencySection() {
                 <th>Assignation</th>
                 <th>Periode</th>
                 <th>Stats {monthLabel(monthKey)}</th>
-                <th>Net streamer</th>
-                <th>Marge agence</th>
+                <th>CPA / RS</th>
+                <th>Visible streamer</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -1154,23 +1327,29 @@ export function FsbAgencySection() {
                     <div className="fsb-sub">{assignment.activeDuringMonth ? "Actif ce mois" : "Hors plage ce mois"}</div>
                   </td>
                   <td>
-                    <strong>Signups {num(assignment.stats.signups)}</strong>
+                    <strong>Inscrits {num(assignment.stats.signups)}</strong>
                     <div className="fsb-sub">
-                      FTD {num(assignment.stats.ftd)} | Deposits{" "}
+                      Depots {num(assignment.stats.depositCount)} | Depot total{" "}
                       {assignment.stats.totalDeposits == null ? "-" : eur(assignment.stats.totalDeposits)}
                     </div>
                     <div className="fsb-sub">Maj {dateTime(assignment.stats.updatedAt || assignment.updatedAt)}</div>
                   </td>
                   <td>
-                    <strong>{eur(assignment.payouts.streamerTotal)}</strong>
+                    <strong>{eur(Number(assignment.stats.cpaValue || 0) + Number(assignment.stats.rsValue || 0))}</strong>
                     <div className="fsb-sub">
-                      CPA {eur(assignment.payouts.streamerCpa)} | ERS {eur(assignment.payouts.streamerErs)}
+                      CPA {eur(assignment.stats.cpaValue)} | RS {eur(assignment.stats.rsValue)}
                     </div>
                   </td>
                   <td>
-                    <strong>{eur(assignment.payouts.agencyTotal)}</strong>
+                    <strong>
+                      {eur(
+                        (assignment.stats.showCpaToStreamer ? Number(assignment.stats.cpaValue || 0) : 0) +
+                          (assignment.stats.showRsToStreamer ? Number(assignment.stats.rsValue || 0) : 0)
+                      )}
+                    </strong>
                     <div className="fsb-sub">
-                      CPA {eur(assignment.payouts.agencyCpa)} | ERS {eur(assignment.payouts.agencyErs)}
+                      CPA {assignment.stats.showCpaToStreamer ? "visible" : "masque"} | RS{" "}
+                      {assignment.stats.showRsToStreamer ? "visible" : "masque"}
                     </div>
                   </td>
                   <td>
@@ -1231,6 +1410,14 @@ export function FsbAgencySection() {
               <h3 style={{ margin: 0 }}>Deals</h3>
               <div className="fsb-muted">Regles financieres et marge agence.</div>
             </div>
+            <div className="fsb-actions">
+              <select className="fsb-select" value={dealSort} onChange={(e) => setDealSort(e.target.value)}>
+                <option value="casino-name">Trier: casino puis nom</option>
+                <option value="updated">Trier: maj recente</option>
+                <option value="cpa">Trier: CPA desc</option>
+                <option value="rs">Trier: RS desc</option>
+              </select>
+            </div>
           </div>
           <div className="fsb-tablewrap">
             <table className="fsb-table">
@@ -1238,12 +1425,12 @@ export function FsbAgencySection() {
                 <tr>
                   <th>Deal</th>
                   <th>CPA</th>
-                  <th>ERS</th>
+                  <th>RS</th>
                   <th>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {(data?.deals || []).map((deal: AgencyDeal) => (
+                {sortedDeals.map((deal: AgencyDeal) => (
                   <tr key={deal.id}>
                     <td>
                       <strong>{deal.name}</strong>
@@ -1265,6 +1452,13 @@ export function FsbAgencySection() {
                     </td>
                   </tr>
                 ))}
+                {!sortedDeals.length ? (
+                  <tr>
+                    <td colSpan={4}>
+                      <div className="fsb-sub">Aucun deal disponible.</div>
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>

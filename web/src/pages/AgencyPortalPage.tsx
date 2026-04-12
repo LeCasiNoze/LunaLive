@@ -1,8 +1,9 @@
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { login } from "../lib/api";
-import { getMyAgencyStats } from "../lib/api_agency";
+import { getFsbAgencyStreamerPreview, getMyAgencyStats } from "../lib/api_agency";
+import { canAccessFsbBoard } from "../lib/fsb_access";
 
 function currentMonthKey() {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -39,14 +40,6 @@ function num(value: number | null | undefined) {
   return Number(value).toLocaleString("fr-FR");
 }
 
-function pct(value: number | null | undefined) {
-  if (value == null) return "-";
-  return `${Number(value).toLocaleString("fr-FR", {
-    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
-    maximumFractionDigits: 2,
-  })}%`;
-}
-
 function dateOnly(value: string | null | undefined) {
   if (!value) return "-";
   const [year, month, day] = value.split("-").map(Number);
@@ -81,6 +74,10 @@ function parseLinks(text: string | null | undefined) {
       const label = line.replace(url, "").replace(/[:\-]\s*$/, "").trim() || url;
       return { label, url };
     });
+}
+
+function visibleMoney(value: number | null | undefined, visible: boolean) {
+  return visible ? eur(value) : "Masque";
 }
 
 const PAGE_CSS = `
@@ -121,36 +118,53 @@ linear-gradient(180deg,#07101d,#091426 55%,#0b1627);color:var(--text)}
 `;
 
 export default function AgencyPortalPage() {
+  const [searchParams] = useSearchParams();
   const { user, setAuth, logout } = useAuth();
   const [monthKey, setMonthKey] = React.useState(currentMonthKey);
   const [loading, setLoading] = React.useState(false);
   const [loginBusy, setLoginBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [username, setUsername] = React.useState("");
+  const previewId = React.useMemo(() => {
+    const raw = Number(searchParams.get("preview") || 0);
+    return Number.isFinite(raw) && raw > 0 ? raw : null;
+  }, [searchParams]);
+  const prefilledUsername = React.useMemo(() => searchParams.get("username") || "", [searchParams]);
+  const canPreview = Boolean(previewId && canAccessFsbBoard(user));
+  const [username, setUsername] = React.useState(prefilledUsername);
   const [password, setPassword] = React.useState("");
   const [agency, setAgency] = React.useState<Awaited<ReturnType<typeof getMyAgencyStats>>["agency"] | null>(null);
+  const cpaVisible = Boolean(agency?.assignments.some((assignment) => assignment.stats.showCpaToStreamer));
+  const rsVisible = Boolean(agency?.assignments.some((assignment) => assignment.stats.showRsToStreamer));
+  const hasVisibleAmounts = cpaVisible || rsVisible;
+
+  React.useEffect(() => {
+    setUsername(prefilledUsername);
+  }, [prefilledUsername]);
 
   const load = React.useCallback(async (targetMonth: string) => {
-    if (!user) return;
+    if (!user && !canPreview) return;
     setLoading(true);
     setError(null);
     try {
-      const response = await getMyAgencyStats(targetMonth);
+      const response =
+        canPreview && previewId
+          ? await getFsbAgencyStreamerPreview(previewId, targetMonth)
+          : await getMyAgencyStats(targetMonth);
       setAgency(response.agency);
     } catch (err: any) {
       setError(String(err?.message || "Impossible de charger les stats agence."));
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [canPreview, previewId, user]);
 
   React.useEffect(() => {
-    if (!user) {
+    if (!user && !canPreview) {
       setAgency(null);
       return;
     }
     void load(monthKey);
-  }, [load, monthKey, user]);
+  }, [canPreview, load, monthKey, user]);
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -167,7 +181,7 @@ export default function AgencyPortalPage() {
     }
   }
 
-  if (!user) {
+  if (!user && !canPreview) {
     return (
       <main className="agency-portal">
         <style>{PAGE_CSS}</style>
@@ -175,7 +189,7 @@ export default function AgencyPortalPage() {
           <section className="agency-shell agency-auth">
             <h1 className="agency-title">Portail Agence</h1>
             <div className="agency-muted" style={{ marginTop: 10 }}>
-              Connecte-toi avec les identifiants transmis par l agence pour consulter tes stats mensuelles.
+              Ouvre ton lien de consultation, le username est pre-rempli, puis entre le code d acces transmis par l agence.
             </div>
             {error ? <div className="agency-alert">{error}</div> : null}
             <form onSubmit={handleLogin}>
@@ -184,7 +198,7 @@ export default function AgencyPortalPage() {
                 <input className="agency-input" value={username} onChange={(e) => setUsername(e.target.value)} required />
               </div>
               <div className="agency-field">
-                <label>Mot de passe</label>
+                <label>Code d acces</label>
                 <input
                   className="agency-input"
                   type="password"
@@ -221,6 +235,11 @@ export default function AgencyPortalPage() {
                   ? `${agency.streamer.displayName} | ${monthLabel(monthKey)}`
                   : "Aucune statistique agence liee a ce compte pour le moment."}
               </div>
+              {canPreview ? (
+                <div className="agency-muted" style={{ marginTop: 6 }}>
+                  Preview admin actif. Cette page reproduit ce que l affi voit.
+                </div>
+              ) : null}
             </div>
             <div className="agency-actions">
               <button className="agency-btn" onClick={() => setMonthKey(addMonths(monthKey, -1))}>
@@ -233,9 +252,15 @@ export default function AgencyPortalPage() {
               <button className="agency-btn" onClick={() => void load(monthKey)}>
                 {loading ? "Actualisation..." : "Rafraichir"}
               </button>
-              <button className="agency-btn" onClick={logout}>
-                Se deconnecter
-              </button>
+              {canPreview ? (
+                <Link className="agency-linkbtn" to="/FSB_Board">
+                  Retour board
+                </Link>
+              ) : (
+                <button className="agency-btn" onClick={logout}>
+                  Se deconnecter
+                </button>
+              )}
             </div>
           </div>
 
@@ -265,33 +290,33 @@ export default function AgencyPortalPage() {
             <>
               <div className="agency-grid">
                 <div className="agency-stat">
-                  <small>Signups</small>
+                  <small>Inscrits</small>
                   <strong>{num(agency.summary.signups)}</strong>
                   <span>Sur {monthLabel(monthKey)}</span>
                 </div>
                 <div className="agency-stat">
-                  <small>FTD</small>
-                  <strong>{num(agency.summary.ftd)}</strong>
+                  <small>Nombre de depots</small>
+                  <strong>{num(agency.summary.depositCount)}</strong>
                   <span>Sur {monthLabel(monthKey)}</span>
                 </div>
                 <div className="agency-stat">
-                  <small>Total deposits</small>
+                  <small>Depot total</small>
                   <strong>{eur(agency.summary.totalDeposits)}</strong>
                   <span>Volume declare</span>
                 </div>
                 <div className="agency-stat">
-                  <small>Gain CPA</small>
-                  <strong>{eur(agency.summary.cpa)}</strong>
-                  <span>Net streamer</span>
+                  <small>CPA visible</small>
+                  <strong>{visibleMoney(agency.summary.visibleCpa, cpaVisible)}</strong>
+                  <span>{cpaVisible ? "Affiche sur la page affi" : "Masque ce mois"}</span>
                 </div>
                 <div className="agency-stat">
-                  <small>Gain ERS</small>
-                  <strong>{eur(agency.summary.ers)}</strong>
-                  <span>Net streamer</span>
+                  <small>RS visible</small>
+                  <strong>{visibleMoney(agency.summary.visibleRs, rsVisible)}</strong>
+                  <span>{rsVisible ? "Affiche sur la page affi" : "Masque ce mois"}</span>
                 </div>
                 <div className="agency-stat">
-                  <small>Gain total</small>
-                  <strong>{eur(agency.summary.total)}</strong>
+                  <small>Total visible</small>
+                  <strong>{visibleMoney(agency.summary.visibleTotal, hasVisibleAmounts)}</strong>
                   <span>Maj {dateTime(agency.updatedAt)}</span>
                 </div>
               </div>
@@ -316,34 +341,40 @@ export default function AgencyPortalPage() {
 
                     <div className="agency-subgrid">
                       <div className="agency-subcard">
-                        <small>Signups</small>
+                        <small>Inscrits</small>
                         <strong>{num(assignment.stats.signups)}</strong>
                       </div>
                       <div className="agency-subcard">
-                        <small>FTD</small>
-                        <strong>{num(assignment.stats.ftd)}</strong>
+                        <small>Nombre de depots</small>
+                        <strong>{num(assignment.stats.depositCount)}</strong>
                       </div>
                       <div className="agency-subcard">
-                        <small>Total deposits</small>
+                        <small>Depot total</small>
                         <strong>{eur(assignment.stats.totalDeposits)}</strong>
                       </div>
                       <div className="agency-subcard">
-                        <small>CPA net / FTD</small>
-                        <strong>{assignment.deal.cpaPerFtdNet == null ? "-" : eur(assignment.deal.cpaPerFtdNet)}</strong>
+                        <small>CPA</small>
+                        <strong>{visibleMoney(assignment.earnings.visibleCpa, assignment.stats.showCpaToStreamer)}</strong>
                       </div>
                       <div className="agency-subcard">
-                        <small>ERS net</small>
-                        <strong>{pct(assignment.deal.ersPercentNet)}</strong>
+                        <small>RS</small>
+                        <strong>{visibleMoney(assignment.earnings.visibleRs, assignment.stats.showRsToStreamer)}</strong>
                       </div>
                       <div className="agency-subcard">
-                        <small>Gain total</small>
-                        <strong>{eur(assignment.earnings.total)}</strong>
+                        <small>Total visible</small>
+                        <strong>
+                          {visibleMoney(
+                            assignment.earnings.visibleTotal,
+                            assignment.stats.showCpaToStreamer || assignment.stats.showRsToStreamer
+                          )}
+                        </strong>
                       </div>
                     </div>
 
                     <div className="agency-mini">
                       <div className="agency-muted">
-                        CPA {eur(assignment.earnings.cpa)} | ERS {eur(assignment.earnings.ers)} | Maj {dateTime(assignment.updatedAt)}
+                        CPA {assignment.stats.showCpaToStreamer ? "visible" : "masque"} | RS{" "}
+                        {assignment.stats.showRsToStreamer ? "visible" : "masque"} | Maj {dateTime(assignment.updatedAt)}
                       </div>
                       {assignment.notes ? <div className="agency-muted">{assignment.notes}</div> : null}
                       {parseLinks(assignment.linksText).length ? (

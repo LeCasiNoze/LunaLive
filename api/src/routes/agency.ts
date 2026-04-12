@@ -46,6 +46,14 @@ const nullablePositiveInt = z.preprocess((value) => {
   return Number.isFinite(next) ? Math.trunc(next) : value;
 }, z.number().int().positive().nullable());
 
+const boolInput = z.preprocess((value) => {
+  if (value === true || value === "true" || value === 1 || value === "1" || value === "on") return true;
+  if (value === false || value === "false" || value === 0 || value === "0" || value == null || value === "") {
+    return false;
+  }
+  return value;
+}, z.boolean());
+
 const idParamSchema = z.coerce.number().int().positive();
 
 const casinoInputSchema = z.object({
@@ -150,8 +158,12 @@ const assignmentCreateSchema = assignmentBaseSchema.safeExtend({
 const statsInputSchema = z.object({
   monthKey: z.preprocess((value) => String(value == null ? "" : value).trim(), z.string().regex(monthKeyPattern)),
   signups: intOrNull.optional().default(null),
-  ftd: intOrNull.optional().default(null),
+  depositCount: intOrNull.optional().default(null),
   totalDeposits: moneyOrNull.optional().default(null),
+  cpaValue: moneyOrNull.optional().default(null),
+  rsValue: moneyOrNull.optional().default(null),
+  showCpaToStreamer: boolInput.optional().default(true),
+  showRsToStreamer: boolInput.optional().default(true),
 });
 
 function currentParisDateKey() {
@@ -219,26 +231,30 @@ function roundMoney(value: number | null) {
 }
 
 function computeAgencyPayouts(input: {
-  ftd?: number | null;
+  depositCount?: number | null;
   totalDeposits?: number | null;
+  cpaValue?: number | null;
+  rsValue?: number | null;
   cpaAmount?: number | null;
   cpaAgencyCut?: number | null;
   ersPercent?: number | null;
   ersAgencyPercent?: number | null;
 }) {
-  const ftd = Number(input.ftd || 0);
+  const depositCount = Number(input.depositCount || 0);
   const totalDeposits = Number(input.totalDeposits || 0);
+  const enteredCpa = Number(input.cpaValue || 0);
+  const enteredRs = Number(input.rsValue || 0);
   const cpaAmount = Number(input.cpaAmount || 0);
   const cpaAgencyCut = Number(input.cpaAgencyCut || 0);
   const ersPercent = Number(input.ersPercent || 0);
   const ersAgencyPercent = Number(input.ersAgencyPercent || 0);
 
-  const streamerCpaUnit = Math.max(cpaAmount - cpaAgencyCut, 0);
-  const streamerCpa = roundMoney(ftd * streamerCpaUnit) || 0;
-  const agencyCpa = roundMoney(ftd * cpaAgencyCut) || 0;
+  const streamerCpa = roundMoney(enteredCpa) || 0;
+  const streamerCpaUnit = depositCount > 0 ? roundMoney(streamerCpa / depositCount) : null;
+  const agencyCpa = roundMoney(depositCount * cpaAgencyCut) || 0;
 
-  const streamerErsRate = Math.max(ersPercent - ersAgencyPercent, 0);
-  const streamerErs = roundMoney((totalDeposits * streamerErsRate) / 100) || 0;
+  const streamerErs = roundMoney(enteredRs) || 0;
+  const streamerErsRate = totalDeposits > 0 ? roundMoney((streamerErs / totalDeposits) * 100) : null;
   const agencyErs = roundMoney((totalDeposits * ersAgencyPercent) / 100) || 0;
 
   return {
@@ -391,8 +407,13 @@ function buildDashboardQuery(monthKey: string, extraWhereSql = "", extraParams: 
         d.ers_percent,
         d.ers_agency_percent,
         st.signups,
+        st.deposit_count,
         st.ftd,
         st.total_deposits,
+        st.cpa_value,
+        st.rs_value,
+        st.show_cpa_to_streamer,
+        st.show_rs_to_streamer,
         st.created_at AS stat_created_at,
         st.updated_at AS stat_updated_at
       FROM agency_streamers ags
@@ -443,8 +464,17 @@ function mapDashboardRows(rows: any[], monthKey: string) {
     const stats = {
       monthKey,
       signups: row.signups == null ? null : Number(row.signups),
-      ftd: row.ftd == null ? null : Number(row.ftd),
+      depositCount:
+        row.deposit_count == null
+          ? row.ftd == null
+            ? null
+            : Number(row.ftd)
+          : Number(row.deposit_count),
       totalDeposits: row.total_deposits == null ? null : Number(row.total_deposits),
+      cpaValue: row.cpa_value == null ? null : Number(row.cpa_value),
+      rsValue: row.rs_value == null ? null : Number(row.rs_value),
+      showCpaToStreamer: Boolean(row.show_cpa_to_streamer),
+      showRsToStreamer: Boolean(row.show_rs_to_streamer),
       createdAt: toIso(row.stat_created_at),
       updatedAt: toIso(row.stat_updated_at),
     };
@@ -475,8 +505,10 @@ function mapDashboardRows(rows: any[], monthKey: string) {
       stats,
       deal,
       payouts: computeAgencyPayouts({
-        ftd: stats.ftd,
+        depositCount: stats.depositCount,
         totalDeposits: stats.totalDeposits,
+        cpaValue: stats.cpaValue,
+        rsValue: stats.rsValue,
         cpaAmount: deal.cpaAmount,
         cpaAgencyCut: deal.cpaAgencyCut,
         ersPercent: deal.ersPercent,
@@ -622,31 +654,29 @@ async function getAgencyDashboardPayload(monthKey: string) {
   };
 }
 
-async function getAgencyStreamerForUser(userId: number, monthKey: string) {
-  const query = buildDashboardQuery(monthKey, "WHERE ags.access_user_id = $2 OR ags.lunalive_user_id = $2", [userId]);
-  const result = await pool.query(query.sql, query.params);
-  if (!result.rows[0]) return null;
-
-  const { streamers } = mapDashboardRows(result.rows, monthKey);
-  const streamer = streamers[0];
+async function buildAgencyStreamerPayload(streamer: any, monthKey: string) {
   if (!streamer) return null;
 
   const summary = streamer.assignments.reduce(
     (acc: any, assignment: any) => {
       acc.signups += Number(assignment.stats.signups || 0);
-      acc.ftd += Number(assignment.stats.ftd || 0);
+      acc.depositCount += Number(assignment.stats.depositCount || 0);
       acc.totalDeposits += Number(assignment.stats.totalDeposits || 0);
       acc.cpa += Number(assignment.payouts.streamerCpa || 0);
-      acc.ers += Number(assignment.payouts.streamerErs || 0);
+      acc.rs += Number(assignment.payouts.streamerErs || 0);
+      acc.visibleCpa += assignment.stats.showCpaToStreamer ? Number(assignment.payouts.streamerCpa || 0) : 0;
+      acc.visibleRs += assignment.stats.showRsToStreamer ? Number(assignment.payouts.streamerErs || 0) : 0;
       acc.total += Number(assignment.payouts.streamerTotal || 0);
       return acc;
     },
     {
       signups: 0,
-      ftd: 0,
+      depositCount: 0,
       totalDeposits: 0,
       cpa: 0,
-      ers: 0,
+      rs: 0,
+      visibleCpa: 0,
+      visibleRs: 0,
       total: 0,
     }
   );
@@ -674,10 +704,13 @@ async function getAgencyStreamerForUser(userId: number, monthKey: string) {
     streamer,
     summary: {
       signups: summary.signups,
-      ftd: summary.ftd,
+      depositCount: summary.depositCount,
       totalDeposits: roundMoney(summary.totalDeposits) || 0,
       cpa: roundMoney(summary.cpa) || 0,
-      ers: roundMoney(summary.ers) || 0,
+      rs: roundMoney(summary.rs) || 0,
+      visibleCpa: roundMoney(summary.visibleCpa) || 0,
+      visibleRs: roundMoney(summary.visibleRs) || 0,
+      visibleTotal: roundMoney(summary.visibleCpa + summary.visibleRs) || 0,
       total: roundMoney(summary.total) || 0,
     },
     updatedAt:
@@ -689,12 +722,42 @@ async function getAgencyStreamerForUser(userId: number, monthKey: string) {
   };
 }
 
+async function getAgencyStreamerForUser(userId: number, monthKey: string) {
+  const query = buildDashboardQuery(monthKey, "WHERE ags.access_user_id = $2 OR ags.lunalive_user_id = $2", [userId]);
+  const result = await pool.query(query.sql, query.params);
+  if (!result.rows[0]) return null;
+
+  const { streamers } = mapDashboardRows(result.rows, monthKey);
+  const streamer = streamers[0];
+  if (!streamer) return null;
+
+  return buildAgencyStreamerPayload(streamer, monthKey);
+}
+
+async function getAgencyStreamerPreviewById(agencyStreamerId: number, monthKey: string) {
+  const query = buildDashboardQuery(monthKey, "WHERE ags.id = $2", [agencyStreamerId]);
+  const result = await pool.query(query.sql, query.params);
+  if (!result.rows[0]) return null;
+
+  const { streamers } = mapDashboardRows(result.rows, monthKey);
+  const streamer = streamers[0];
+  if (!streamer) return null;
+
+  return buildAgencyStreamerPayload(streamer, monthKey);
+}
+
 function isForeignKeyError(error: any) {
   return String(error?.code || "") === "23503";
 }
 
 function isNotNullStats(payload: z.infer<typeof statsInputSchema>) {
-  return payload.signups != null || payload.ftd != null || payload.totalDeposits != null;
+  return (
+    payload.signups != null ||
+    payload.depositCount != null ||
+    payload.totalDeposits != null ||
+    payload.cpaValue != null ||
+    payload.rsValue != null
+  );
 }
 
 agencyRouter.use("/fsb/agency", requireAuth, requireFsbAccess);
@@ -1281,29 +1344,58 @@ agencyRouter.put(
           assignment_id,
           month_key,
           signups,
+          deposit_count,
           ftd,
-          total_deposits
+          total_deposits,
+          cpa_value,
+          rs_value,
+          show_cpa_to_streamer,
+          show_rs_to_streamer
         )
-        VALUES ($1, $2::date, $3, $4, $5)
+        VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (assignment_id, month_key)
         DO UPDATE SET
           signups = EXCLUDED.signups,
+          deposit_count = EXCLUDED.deposit_count,
           ftd = EXCLUDED.ftd,
           total_deposits = EXCLUDED.total_deposits,
+          cpa_value = EXCLUDED.cpa_value,
+          rs_value = EXCLUDED.rs_value,
+          show_cpa_to_streamer = EXCLUDED.show_cpa_to_streamer,
+          show_rs_to_streamer = EXCLUDED.show_rs_to_streamer,
           updated_at = NOW()
         `,
         [
           id.data,
           monthStartDate(parsed.data.monthKey),
           parsed.data.signups,
-          parsed.data.ftd,
+          parsed.data.depositCount,
+          parsed.data.depositCount,
           parsed.data.totalDeposits == null ? null : roundMoney(parsed.data.totalDeposits),
+          parsed.data.cpaValue == null ? null : roundMoney(parsed.data.cpaValue),
+          parsed.data.rsValue == null ? null : roundMoney(parsed.data.rsValue),
+          parsed.data.showCpaToStreamer,
+          parsed.data.showRsToStreamer,
         ]
       );
     }
 
     const dashboard = await getAgencyDashboardPayload(readMonthKey(req));
     return res.json({ ok: true, ...dashboard });
+  })
+);
+
+agencyRouter.get(
+  "/fsb/agency/streamers/:id/preview",
+  a(async (req, res) => {
+    const id = idParamSchema.safeParse((req as any).params?.id);
+    if (!id.success) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const monthKey = readMonthKey(req);
+    const agency = await getAgencyStreamerPreviewById(id.data, monthKey);
+    if (!agency) return res.status(404).json({ ok: false, error: "not_found" });
+
+    return res.json({ ok: true, monthKey, agency, preview: true });
   })
 );
 
@@ -1340,14 +1432,19 @@ agencyRouter.get(
           deal: {
             id: assignment.dealId,
             name: assignment.deal.name,
-            cpaPerFtdNet: assignment.payouts.streamerCpaUnit,
-            ersPercentNet: assignment.payouts.streamerErsRate,
+            cpaPerDeposit: assignment.payouts.streamerCpaUnit,
+            rsPercent: assignment.payouts.streamerErsRate,
           },
           stats: assignment.stats,
           earnings: {
             cpa: assignment.payouts.streamerCpa,
-            ers: assignment.payouts.streamerErs,
+            rs: assignment.payouts.streamerErs,
             total: assignment.payouts.streamerTotal,
+            visibleCpa: assignment.stats.showCpaToStreamer ? assignment.payouts.streamerCpa : null,
+            visibleRs: assignment.stats.showRsToStreamer ? assignment.payouts.streamerErs : null,
+            visibleTotal:
+              (assignment.stats.showCpaToStreamer ? assignment.payouts.streamerCpa : 0) +
+              (assignment.stats.showRsToStreamer ? assignment.payouts.streamerErs : 0),
           },
           updatedAt: assignment.stats.updatedAt || assignment.updatedAt,
         })),

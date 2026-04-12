@@ -32,8 +32,12 @@ export type AgencyAvailableStreamer = {
 export type AgencyAssignmentStats = {
   monthKey: string;
   signups: number | null;
-  ftd: number | null;
+  depositCount: number | null;
   totalDeposits: number | null;
+  cpaValue: number | null;
+  rsValue: number | null;
+  showCpaToStreamer: boolean;
+  showRsToStreamer: boolean;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -141,7 +145,6 @@ export type AgencyDealInput = {
 
 export type AgencyStreamerCreateInput = {
   displayName: string;
-  linkedStreamerId: number | null;
   notes: string | null;
   initialDealId: number | null;
   initialStartDate: string | null;
@@ -152,7 +155,6 @@ export type AgencyStreamerCreateInput = {
 
 export type AgencyStreamerUpdateInput = {
   displayName: string;
-  linkedStreamerId: number | null;
   notes: string | null;
 };
 
@@ -176,8 +178,12 @@ export type AgencyAssignmentUpdateInput = {
 export type AgencyStatsInput = {
   monthKey: string;
   signups: number | null;
-  ftd: number | null;
+  depositCount: number | null;
   totalDeposits: number | null;
+  cpaValue: number | null;
+  rsValue: number | null;
+  showCpaToStreamer: boolean;
+  showRsToStreamer: boolean;
 };
 
 export type MyAgencyStatsResponse = {
@@ -205,28 +211,38 @@ export type MyAgencyStatsResponse = {
       deal: {
         id: number;
         name: string;
-        cpaPerFtdNet: number | null;
-        ersPercentNet: number | null;
+        cpaPerDeposit: number | null;
+        rsPercent: number | null;
       };
       stats: AgencyAssignmentStats;
       earnings: {
         cpa: number;
-        ers: number;
+        rs: number;
         total: number;
+        visibleCpa: number | null;
+        visibleRs: number | null;
+        visibleTotal: number;
       };
       updatedAt: string | null;
     }>;
     summary: {
       signups: number;
-      ftd: number;
+      depositCount: number;
       totalDeposits: number;
       cpa: number;
-      ers: number;
+      rs: number;
+      visibleCpa: number;
+      visibleRs: number;
+      visibleTotal: number;
       total: number;
     };
     historyMonths: string[];
     updatedAt: string | null;
   };
+};
+
+export type AgencyPreviewResponse = MyAgencyStatsResponse & {
+  preview?: boolean;
 };
 
 const BASE = (
@@ -339,7 +355,7 @@ export function deleteAgencyDeal(id: number, monthKey?: string | null) {
 export function createAgencyStreamer(payload: AgencyStreamerCreateInput, monthKey?: string | null) {
   return request<AgencyDashboardResponse>(withMonth("/api/fsb/agency/streamers", monthKey), {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, linkedStreamerId: null }),
   });
 }
 
@@ -348,7 +364,7 @@ export function updateAgencyStreamer(id: number, payload: AgencyStreamerUpdateIn
     withMonth(`/api/fsb/agency/streamers/${encodeURIComponent(String(id))}`, monthKey),
     {
       method: "PUT",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, linkedStreamerId: null }),
     }
   );
 }
@@ -403,4 +419,10 @@ export function updateAgencyStats(id: number, payload: AgencyStatsInput, monthKe
 
 export function getMyAgencyStats(monthKey?: string | null) {
   return request<MyAgencyStatsResponse>(withMonth("/api/agency/me", monthKey));
+}
+
+export function getFsbAgencyStreamerPreview(id: number, monthKey?: string | null) {
+  return request<AgencyPreviewResponse>(
+    withMonth(`/api/fsb/agency/streamers/${encodeURIComponent(String(id))}/preview`, monthKey)
+  );
 }
