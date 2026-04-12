@@ -275,8 +275,7 @@ async function syncAgencyExpensesForMonth(monthKey: string) {
     );
 
     const validAssignmentIds: number[] = [];
-    let agencyPlus = 0;
-    let agencyMinus = 0;
+    let grossIncome = 0;
 
     for (const row of result.rows) {
       const payouts = computeAgencyPayouts({
@@ -288,8 +287,7 @@ async function syncAgencyExpensesForMonth(monthKey: string) {
         ersAgencyPercent: row.ers_agency_percent == null ? null : Number(row.ers_agency_percent),
       });
 
-      agencyPlus += Number(payouts.agencyTotal || 0);
-      agencyMinus += Number(payouts.streamerTotal || 0);
+      grossIncome += Number(payouts.grossTotal || 0);
 
       if (payouts.streamerTotal <= 0) continue;
 
@@ -359,11 +357,7 @@ async function syncAgencyExpensesForMonth(monthKey: string) {
 
     await client.query("COMMIT");
 
-    return {
-      plus: roundMoney(agencyPlus) || 0,
-      minus: roundMoney(agencyMinus) || 0,
-      net: roundMoney(agencyPlus - agencyMinus) || 0,
-    };
+    return { grossIncome: roundMoney(grossIncome) || 0 };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -425,6 +419,15 @@ expensesRouter.get(
     const nextMonthStart = nextMonthStartDate(monthKey);
     const agencySummary = await syncAgencyExpensesForMonth(monthKey);
 
+    // Query streamer payouts due this month (date in current month, regardless of which activity month they relate to)
+    const dueThisMonthResult = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
+       WHERE source_type = 'agency_streamer_payout'
+         AND date >= $1::date AND date < $2::date`,
+      [monthStart, nextMonthStart]
+    );
+    const dueThisMonth = Number(dueThisMonthResult.rows[0]?.total || 0);
+
     const expensesResult = await pool.query(
       `
       SELECT
@@ -453,7 +456,7 @@ expensesRouter.get(
       )
       OR (
         source_type = 'agency_streamer_payout'
-        AND agency_month_key = $1::date
+        AND date >= $1::date AND date < $2::date
       )
       ORDER BY date DESC, created_at DESC
       `,
@@ -497,6 +500,9 @@ expensesRouter.get(
       { total: 0, paid: 0, due: 0 }
     );
 
+    const agencyIncome = agencySummary.grossIncome;
+    const agencyNet = roundMoney(agencyIncome - dueThisMonth) || 0;
+
     return res.json({
       ok: true,
       monthKey,
@@ -506,9 +512,9 @@ expensesRouter.get(
         total: roundMoney(summary.total) || 0,
         paid: roundMoney(summary.paid) || 0,
         due: roundMoney(summary.due) || 0,
-        agencyPlus: agencySummary.plus,
-        agencyMinus: agencySummary.minus,
-        agencyNet: agencySummary.net,
+        agencyIncome,
+        agencyDue: roundMoney(dueThisMonth) || 0,
+        agencyNet,
       },
     });
   })

@@ -47,7 +47,7 @@ type FormState = {
 const SECTION_LABELS: Record<BoardSection, string> = {
   home: "Accueil",
   expenses: "Frais societe",
-  instagram: "Agenda Instagram",
+  instagram: "Agenda",
   agency: "Agence",
   tools: "Outils",
 };
@@ -530,8 +530,8 @@ export default function FsbBoardPage() {
     total: 0,
     paid: 0,
     due: 0,
-    agencyPlus: 0,
-    agencyMinus: 0,
+    agencyIncome: 0,
+    agencyDue: 0,
     agencyNet: 0,
   });
   const [expensesLoading, setExpensesLoading] = React.useState(false);
@@ -805,7 +805,7 @@ export default function FsbBoardPage() {
       <div className="pageTitle">
         <h1>FSB Board</h1>
         <div className="fsb-nav">
-          {(["home", "expenses", "instagram", "agency", "tools"] as BoardSection[]).map((item) => (
+          {(["home", "expenses", "agency", "instagram", "tools"] as BoardSection[]).map((item) => (
             <button
               key={item}
               className={`fsb-navbtn ${section === item ? "fsb-navbtn-active" : ""}`}
@@ -1062,19 +1062,21 @@ export default function FsbBoardPage() {
                   <span>Reste a regler sur le mois</span>
                 </div>
                 <div className="fsb-stat">
-                  <small>Agence +</small>
-                  <strong>{eur(expenseSummary.agencyPlus)}</strong>
-                  <span>Marge agence generee sur {monthLabel(monthKeyValue)}</span>
+                  <small>Revenu agence brut</small>
+                  <strong>{eur(expenseSummary.agencyIncome)}</strong>
+                  <span>Genere par les affis sur {monthLabel(monthKeyValue)}</span>
                 </div>
                 <div className="fsb-stat">
-                  <small>Agence -</small>
-                  <strong>{eur(expenseSummary.agencyMinus)}</strong>
-                  <span>Somme a envoyer aux affis</span>
+                  <small>Paiements dus ce mois</small>
+                  <strong>{eur(expenseSummary.agencyDue)}</strong>
+                  <span>Versements affis exigibles en {monthLabel(monthKeyValue)}</span>
                 </div>
                 <div className="fsb-stat">
-                  <small>Solde agence</small>
-                  <strong>{eur(expenseSummary.agencyNet)}</strong>
-                  <span>Plus moins moins sur le mois</span>
+                  <small>Solde agence net</small>
+                  <strong style={{ color: expenseSummary.agencyNet >= 0 ? "inherit" : "#ff9090" }}>
+                    {eur(expenseSummary.agencyNet)}
+                  </strong>
+                  <span>Revenu brut moins versements dus</span>
                 </div>
               </div>
             </section>

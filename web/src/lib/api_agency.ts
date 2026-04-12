@@ -66,6 +66,7 @@ export type AgencyAssignment = {
   startDate: string | null;
   endDate: string | null;
   paymentDate: string | null;
+  paymentFrequency: "monthly" | "biweekly";
   linksText: string | null;
   notes: string | null;
   createdAt: string | null;
@@ -173,6 +174,7 @@ export type AgencyAssignmentInput = {
   startDate: string | null;
   endDate: string | null;
   paymentDate: string | null;
+  paymentFrequency: "monthly" | "biweekly";
   linksText: string | null;
   notes: string | null;
 };
@@ -182,6 +184,7 @@ export type AgencyAssignmentUpdateInput = {
   startDate: string | null;
   endDate: string | null;
   paymentDate: string | null;
+  paymentFrequency: "monthly" | "biweekly";
   linksText: string | null;
   notes: string | null;
 };

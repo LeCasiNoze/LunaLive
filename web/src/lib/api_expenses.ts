@@ -49,8 +49,8 @@ export type ExpenseListSummary = {
   total: number;
   paid: number;
   due: number;
-  agencyPlus: number;
-  agencyMinus: number;
+  agencyIncome: number;
+  agencyDue: number;
   agencyNet: number;
 };
 

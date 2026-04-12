@@ -152,6 +152,10 @@ const assignmentBaseSchema = z
     startDate: dateOnlyOrNull.optional().default(null),
     endDate: dateOnlyOrNull.optional().default(null),
     paymentDate: dateOnlyOrNull.optional().default(null),
+    paymentFrequency: z.preprocess(
+      (v) => (v == null || v === "" ? "monthly" : String(v).trim()),
+      z.enum(["monthly", "biweekly"]).default("monthly")
+    ),
     linksText: textOrNull(4000).optional().default(null),
     notes: textOrNull(4000).optional().default(null),
   })
@@ -418,6 +422,7 @@ function buildDashboardQuery(monthKey: string, extraWhereSql = "", extraParams: 
         asa.start_date,
         asa.end_date,
         asa.payment_date,
+        asa.payment_frequency,
         asa.links_text,
         asa.notes AS assignment_notes,
         asa.created_at AS assignment_created_at,
@@ -527,6 +532,7 @@ function mapDashboardRows(rows: any[], monthKey: string) {
       startDate: toDateOnly(row.start_date),
       endDate: toDateOnly(row.end_date),
       paymentDate: toDateOnly(row.payment_date),
+      paymentFrequency: String(row.payment_frequency || "monthly") as "monthly" | "biweekly",
       linksText: row.links_text == null ? null : String(row.links_text),
       notes: row.assignment_notes == null ? null : String(row.assignment_notes),
       createdAt: toIso(row.assignment_created_at),
@@ -1119,10 +1125,11 @@ agencyRouter.post(
             start_date,
             end_date,
             payment_date,
+            payment_frequency,
             links_text,
             notes
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
           `,
           [
             agencyStreamerId,
@@ -1130,6 +1137,7 @@ agencyRouter.post(
             payload.initialStartDate || currentParisDateKey(),
             payload.initialEndDate,
             payload.initialPaymentDate || payload.initialStartDate || currentParisDateKey(),
+            "monthly",
             payload.initialLinksText,
             payload.initialAssignmentNotes,
           ]
@@ -1333,10 +1341,11 @@ agencyRouter.post(
           start_date,
           end_date,
           payment_date,
+          payment_frequency,
           links_text,
           notes
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         `,
         [
           payload.agencyStreamerId,
@@ -1344,6 +1353,7 @@ agencyRouter.post(
           payload.startDate || currentParisDateKey(),
           payload.endDate,
           payload.paymentDate || payload.startDate || currentParisDateKey(),
+          payload.paymentFrequency || "monthly",
           payload.linksText,
           payload.notes,
         ]
@@ -1385,8 +1395,9 @@ agencyRouter.put(
           start_date = $3,
           end_date = $4,
           payment_date = $5,
-          links_text = $6,
-          notes = $7,
+          payment_frequency = $6,
+          links_text = $7,
+          notes = $8,
           updated_at = NOW()
         WHERE id = $1
         RETURNING id
@@ -1397,6 +1408,7 @@ agencyRouter.put(
           payload.startDate || currentParisDateKey(),
           payload.endDate,
           payload.paymentDate || payload.startDate || currentParisDateKey(),
+          payload.paymentFrequency || "monthly",
           payload.linksText,
           payload.notes,
         ]

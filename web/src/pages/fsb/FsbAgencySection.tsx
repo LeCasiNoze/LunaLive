@@ -145,6 +145,7 @@ type AssignmentFormState = {
   startDate: string;
   endDate: string;
   paymentDate: string;
+  paymentFrequency: "monthly" | "biweekly";
   linksText: string;
   notes: string;
 };
@@ -161,7 +162,7 @@ const EMPTY_STREAMER_FORM: StreamerFormState = {
 };
 const EMPTY_ASSIGNMENT_FORM: AssignmentFormState = {
   id: null, agencyStreamerId: "", dealId: "",
-  startDate: "", endDate: "", paymentDate: "", linksText: "", notes: "",
+  startDate: "", endDate: "", paymentDate: "", paymentFrequency: "monthly", linksText: "", notes: "",
 };
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -350,6 +351,7 @@ export function FsbAgencySection() {
       startDate: assignment.startDate || "",
       endDate: assignment.endDate || "",
       paymentDate: assignment.paymentDate || "",
+      paymentFrequency: assignment.paymentFrequency || "monthly",
       linksText: assignment.linksText || "",
       notes: assignment.notes || "",
     });
@@ -426,6 +428,7 @@ export function FsbAgencySection() {
       startDate: assignmentForm.startDate || null,
       endDate: assignmentForm.endDate || null,
       paymentDate: assignmentForm.paymentDate || null,
+      paymentFrequency: assignmentForm.paymentFrequency || "monthly" as "monthly" | "biweekly",
       linksText: assignmentForm.linksText.trim() || null,
       notes: assignmentForm.notes.trim() || null,
     };
@@ -672,6 +675,7 @@ export function FsbAgencySection() {
                           </div>
                           <div className="fsb-sub">
                             Paie le {assignment.paymentDate ? dateOnly(assignment.paymentDate) : "-"} du mois suivant
+                            {" · "}{assignment.paymentFrequency === "biweekly" ? "Bimensuel" : "Mensuel"}
                           </div>
                         </td>
                         <td>
@@ -998,7 +1002,18 @@ export function FsbAgencySection() {
                     />
                   </div>
                   <div className="fsb-field">
-                    <label>Jour de paiement mensuel</label>
+                    <label>Frequence de paiement</label>
+                    <select
+                      className="fsb-select"
+                      value={assignmentForm.paymentFrequency}
+                      onChange={(e) => setAssignmentForm((p) => ({ ...p, paymentFrequency: e.target.value as "monthly" | "biweekly" }))}
+                    >
+                      <option value="monthly">Mensuel</option>
+                      <option value="biweekly">Bimensuel (toutes les 2 semaines)</option>
+                    </select>
+                  </div>
+                  <div className="fsb-field">
+                    <label>Jour de paiement (date de reference)</label>
                     <input
                       className="fsb-input"
                       type="date"
