@@ -34,6 +34,12 @@ const moneyOrNull = z.preprocess((value) => {
   return Number.isFinite(next) ? next : value;
 }, z.number().min(0).max(1_000_000).nullable());
 
+const signedMoneyOrNull = z.preprocess((value) => {
+  if (value == null || value === "") return null;
+  const next = Number(value);
+  return Number.isFinite(next) ? next : value;
+}, z.number().min(-1_000_000).max(1_000_000).nullable());
+
 const percentOrNull = z.preprocess((value) => {
   if (value == null || value === "") return null;
   const next = Number(value);
@@ -100,6 +106,7 @@ const agencyStreamerUpdateSchema = z.object({
   displayName: z.string().trim().min(1).max(160),
   linkedStreamerId: nullablePositiveInt.optional().default(null),
   notes: textOrNull(4000).optional().default(null),
+  publicNote: textOrNull(4000).optional().default(null),
 });
 
 const agencyStreamerCreateSchema = agencyStreamerUpdateSchema
@@ -107,12 +114,19 @@ const agencyStreamerCreateSchema = agencyStreamerUpdateSchema
     initialDealId: nullablePositiveInt.optional().default(null),
     initialStartDate: dateOnlyOrNull.optional().default(null),
     initialEndDate: dateOnlyOrNull.optional().default(null),
+    initialPaymentDate: dateOnlyOrNull.optional().default(null),
     initialLinksText: textOrNull(4000).optional().default(null),
     initialAssignmentNotes: textOrNull(4000).optional().default(null),
   })
   .superRefine((value, ctx) => {
     if (!value.initialDealId) {
-      if (value.initialStartDate || value.initialEndDate || value.initialLinksText || value.initialAssignmentNotes) {
+      if (
+        value.initialStartDate ||
+        value.initialEndDate ||
+        value.initialPaymentDate ||
+        value.initialLinksText ||
+        value.initialAssignmentNotes
+      ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["initialDealId"],
@@ -137,6 +151,7 @@ const assignmentBaseSchema = z
     dealId: z.coerce.number().int().positive(),
     startDate: dateOnlyOrNull.optional().default(null),
     endDate: dateOnlyOrNull.optional().default(null),
+    paymentDate: dateOnlyOrNull.optional().default(null),
     linksText: textOrNull(4000).optional().default(null),
     notes: textOrNull(4000).optional().default(null),
   })
@@ -161,7 +176,7 @@ const statsInputSchema = z.object({
   depositCount: intOrNull.optional().default(null),
   ftdCount: intOrNull.optional().default(null),
   totalDeposits: moneyOrNull.optional().default(null),
-  rsValue: moneyOrNull.optional().default(null),
+  rsValue: signedMoneyOrNull.optional().default(null),
   showCpaToStreamer: boolInput.optional().default(true),
   showRsToStreamer: boolInput.optional().default(true),
 });
@@ -254,6 +269,7 @@ function computeAgencyPayouts(input: {
   const agencyCpa = roundMoney(ftdCount * cpaAgencyCut) || 0;
 
   const streamerErs = roundMoney(enteredRs) || 0;
+  const payableStreamerErs = roundMoney(Math.max(streamerErs, 0)) || 0;
   const streamerErsRate = totalDeposits > 0 ? roundMoney((streamerErs / totalDeposits) * 100) : null;
   const agencyErs = roundMoney((totalDeposits * ersAgencyPercent) / 100) || 0;
 
@@ -267,10 +283,11 @@ function computeAgencyPayouts(input: {
     streamerCpa,
     agencyCpa,
     streamerErs,
+    payableStreamerErs,
     agencyErs,
-    streamerTotal: roundMoney(streamerCpa + streamerErs) || 0,
+    streamerTotal: roundMoney(streamerCpa + payableStreamerErs) || 0,
     agencyTotal: roundMoney(agencyCpa + agencyErs) || 0,
-    grossTotal: roundMoney(grossCpa + streamerErs + agencyErs) || 0,
+    grossTotal: roundMoney(grossCpa + payableStreamerErs + agencyErs) || 0,
   };
 }
 
@@ -389,6 +406,7 @@ function buildDashboardQuery(monthKey: string, extraWhereSql = "", extraParams: 
         ags.lunalive_user_id,
         ags.access_user_id,
         ags.access_code_plain,
+        ags.public_note,
         ags.notes AS streamer_notes,
         ags.created_at AS streamer_created_at,
         ags.updated_at AS streamer_updated_at,
@@ -399,6 +417,7 @@ function buildDashboardQuery(monthKey: string, extraWhereSql = "", extraParams: 
         asa.deal_id,
         asa.start_date,
         asa.end_date,
+        asa.payment_date,
         asa.links_text,
         asa.notes AS assignment_notes,
         asa.created_at AS assignment_created_at,
@@ -457,6 +476,7 @@ function mapDashboardRows(rows: any[], monthKey: string) {
         accessUserId: row.access_user_id == null ? null : Number(row.access_user_id),
         accessUsername: row.access_username == null ? null : String(row.access_username),
         accessCode: row.access_code_plain == null ? null : String(row.access_code_plain),
+        publicNote: row.public_note == null ? null : String(row.public_note),
         notes: row.streamer_notes == null ? null : String(row.streamer_notes),
         createdAt: toIso(row.streamer_created_at),
         updatedAt: toIso(row.streamer_updated_at),
@@ -506,6 +526,7 @@ function mapDashboardRows(rows: any[], monthKey: string) {
       streamerDisplayName: String(row.streamer_display_name || ""),
       startDate: toDateOnly(row.start_date),
       endDate: toDateOnly(row.end_date),
+      paymentDate: toDateOnly(row.payment_date),
       linksText: row.links_text == null ? null : String(row.links_text),
       notes: row.assignment_notes == null ? null : String(row.assignment_notes),
       createdAt: toIso(row.assignment_created_at),
@@ -678,6 +699,8 @@ async function buildAgencyStreamerPayload(streamer: any, monthKey: string) {
       acc.agencyRs += Number(assignment.payouts.agencyErs || 0);
       acc.visibleCpa += assignment.stats.showCpaToStreamer ? Number(assignment.payouts.streamerCpa || 0) : 0;
       acc.visibleRs += assignment.stats.showRsToStreamer ? Number(assignment.payouts.streamerErs || 0) : 0;
+      acc.visibleTotal += assignment.stats.showCpaToStreamer ? Number(assignment.payouts.streamerCpa || 0) : 0;
+      acc.visibleTotal += assignment.stats.showRsToStreamer ? Number(assignment.payouts.payableStreamerErs || 0) : 0;
       acc.total += Number(assignment.payouts.streamerTotal || 0);
       acc.agencyTotal += Number(assignment.payouts.agencyTotal || 0);
       acc.grossTotal += Number(assignment.payouts.grossTotal || 0);
@@ -694,6 +717,7 @@ async function buildAgencyStreamerPayload(streamer: any, monthKey: string) {
       agencyRs: 0,
       visibleCpa: 0,
       visibleRs: 0,
+      visibleTotal: 0,
       total: 0,
       agencyTotal: 0,
       grossTotal: 0,
@@ -732,7 +756,7 @@ async function buildAgencyStreamerPayload(streamer: any, monthKey: string) {
       agencyRs: roundMoney(summary.agencyRs) || 0,
       visibleCpa: roundMoney(summary.visibleCpa) || 0,
       visibleRs: roundMoney(summary.visibleRs) || 0,
-      visibleTotal: roundMoney(summary.visibleCpa + summary.visibleRs) || 0,
+      visibleTotal: roundMoney(summary.visibleTotal) || 0,
       total: roundMoney(summary.total) || 0,
       agencyTotal: roundMoney(summary.agencyTotal) || 0,
       grossTotal: roundMoney(summary.grossTotal) || 0,
@@ -778,6 +802,7 @@ function serializeAgencyPortalPayload(agency: any) {
       linkedStreamerSlug: agency.streamer.linkedStreamerSlug,
       linkedStreamerName: agency.streamer.linkedStreamerName,
       accessUsername: agency.streamer.accessUsername,
+      publicNote: agency.streamer.publicNote,
     },
     assignments: agency.streamer.assignments.map((assignment: any) => ({
       id: assignment.id,
@@ -810,7 +835,7 @@ function serializeAgencyPortalPayload(agency: any) {
         visibleRs: assignment.stats.showRsToStreamer ? assignment.payouts.streamerErs : null,
         visibleTotal:
           (assignment.stats.showCpaToStreamer ? assignment.payouts.streamerCpa : 0) +
-          (assignment.stats.showRsToStreamer ? assignment.payouts.streamerErs : 0),
+          (assignment.stats.showRsToStreamer ? assignment.payouts.payableStreamerErs : 0),
       },
       updatedAt: assignment.stats.updatedAt || assignment.updatedAt,
     })),
@@ -1066,9 +1091,10 @@ agencyRouter.post(
           lunalive_user_id,
           access_user_id,
           access_code_plain,
+          public_note,
           notes
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id
         `,
         [
@@ -1077,6 +1103,7 @@ agencyRouter.post(
           linked?.user_id ?? null,
           generatedAccess.id,
           generatedAccess.password,
+          payload.publicNote,
           payload.notes,
         ]
       );
@@ -1091,16 +1118,18 @@ agencyRouter.post(
             deal_id,
             start_date,
             end_date,
+            payment_date,
             links_text,
             notes
           )
-          VALUES ($1, $2, $3, $4, $5, $6)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
           `,
           [
             agencyStreamerId,
             payload.initialDealId,
             payload.initialStartDate || currentParisDateKey(),
             payload.initialEndDate,
+            payload.initialPaymentDate || payload.initialStartDate || currentParisDateKey(),
             payload.initialLinksText,
             payload.initialAssignmentNotes,
           ]
@@ -1165,12 +1194,13 @@ agencyRouter.put(
           display_name = $2,
           linked_streamer_id = $3,
           lunalive_user_id = $4,
-          notes = $5,
+          public_note = $5,
+          notes = $6,
           updated_at = NOW()
         WHERE id = $1
         RETURNING id
         `,
-        [id.data, payload.displayName.trim(), linked?.id ?? null, linked?.user_id ?? null, payload.notes]
+        [id.data, payload.displayName.trim(), linked?.id ?? null, linked?.user_id ?? null, payload.publicNote, payload.notes]
       );
 
       if (!result.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
@@ -1302,16 +1332,18 @@ agencyRouter.post(
           deal_id,
           start_date,
           end_date,
+          payment_date,
           links_text,
           notes
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         `,
         [
           payload.agencyStreamerId,
           payload.dealId,
           payload.startDate || currentParisDateKey(),
           payload.endDate,
+          payload.paymentDate || payload.startDate || currentParisDateKey(),
           payload.linksText,
           payload.notes,
         ]
@@ -1352,8 +1384,9 @@ agencyRouter.put(
           deal_id = $2,
           start_date = $3,
           end_date = $4,
-          links_text = $5,
-          notes = $6,
+          payment_date = $5,
+          links_text = $6,
+          notes = $7,
           updated_at = NOW()
         WHERE id = $1
         RETURNING id
@@ -1363,6 +1396,7 @@ agencyRouter.put(
           payload.dealId,
           payload.startDate || currentParisDateKey(),
           payload.endDate,
+          payload.paymentDate || payload.startDate || currentParisDateKey(),
           payload.linksText,
           payload.notes,
         ]

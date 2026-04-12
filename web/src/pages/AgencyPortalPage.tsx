@@ -76,10 +76,6 @@ function parseLinks(text: string | null | undefined) {
     });
 }
 
-function visibleMoney(value: number | null | undefined, visible: boolean) {
-  return visible ? eur(value) : "Masque";
-}
-
 const PAGE_CSS = `
 .agency-portal{--bg:#081120;--panel:rgba(10,18,34,.92);--line:rgba(255,255,255,.08);--text:#eef5ff;--muted:rgba(214,225,242,.72);min-height:100vh;background:
 radial-gradient(circle at top left,rgba(255,178,107,.14),transparent 28%),
@@ -136,7 +132,10 @@ export default function AgencyPortalPage() {
   const assignments = agency?.assignments ?? [];
   const cpaVisible = assignments.some((assignment) => assignment.stats.showCpaToStreamer);
   const rsVisible = assignments.some((assignment) => assignment.stats.showRsToStreamer);
-  const hasVisibleAmounts = cpaVisible || rsVisible;
+  const relevantAssignments = React.useMemo(() => {
+    const active = assignments.filter((assignment) => assignment.activeDuringMonth);
+    return active.length ? active : assignments;
+  }, [assignments]);
 
   React.useEffect(() => {
     setUsername(prefilledUsername);
@@ -238,19 +237,19 @@ export default function AgencyPortalPage() {
               </div>
               {canPreview ? (
                 <div className="agency-muted" style={{ marginTop: 6 }}>
-                  Preview admin actif. Cette page reproduit ce que l affi voit.
+                  Preview admin actif. Les montants masques cote affi restent visibles ici.
                 </div>
               ) : null}
             </div>
             <div className="agency-actions">
-              <button className="agency-btn" onClick={() => setMonthKey(addMonths(monthKey, -1))}>
+              <button className="agency-btn" type="button" onClick={() => setMonthKey(addMonths(monthKey, -1))}>
                 Mois precedent
               </button>
               <span className="agency-pill">{monthLabel(monthKey)}</span>
-              <button className="agency-btn" onClick={() => setMonthKey(addMonths(monthKey, 1))}>
+              <button className="agency-btn" type="button" onClick={() => setMonthKey(addMonths(monthKey, 1))}>
                 Mois suivant
               </button>
-              <button className="agency-btn" onClick={() => void load(monthKey)}>
+              <button className="agency-btn" type="button" onClick={() => void load(monthKey)}>
                 {loading ? "Actualisation..." : "Rafraichir"}
               </button>
               {canPreview ? (
@@ -271,6 +270,7 @@ export default function AgencyPortalPage() {
                 <button
                   key={item}
                   className={`agency-btn ${item === monthKey ? "agency-btn-primary" : ""}`}
+                  type="button"
                   onClick={() => setMonthKey(item)}
                 >
                   {monthLabel(item)}
@@ -310,19 +310,23 @@ export default function AgencyPortalPage() {
                   <strong>{eur(agency.summary.totalDeposits)}</strong>
                   <span>Volume declare</span>
                 </div>
+                {canPreview || cpaVisible ? (
+                  <div className="agency-stat">
+                    <small>CPA</small>
+                    <strong>{eur(canPreview ? agency.summary.cpa : agency.summary.visibleCpa)}</strong>
+                    <span>Net affi</span>
+                  </div>
+                ) : null}
+                {canPreview || rsVisible ? (
+                  <div className="agency-stat">
+                    <small>RS</small>
+                    <strong>{eur(canPreview ? agency.summary.rs : agency.summary.visibleRs)}</strong>
+                    <span>Le total ne descend jamais sous 0 sur le RS</span>
+                  </div>
+                ) : null}
                 <div className="agency-stat">
-                  <small>CPA visible</small>
-                  <strong>{visibleMoney(agency.summary.visibleCpa, cpaVisible)}</strong>
-                  <span>{cpaVisible ? "Affiche sur la page affi" : "Masque ce mois"}</span>
-                </div>
-                <div className="agency-stat">
-                  <small>RS visible</small>
-                  <strong>{visibleMoney(agency.summary.visibleRs, rsVisible)}</strong>
-                  <span>{rsVisible ? "Affiche sur la page affi" : "Masque ce mois"}</span>
-                </div>
-                <div className="agency-stat">
-                  <small>Total visible</small>
-                  <strong>{visibleMoney(agency.summary.visibleTotal, hasVisibleAmounts)}</strong>
+                  <small>{canPreview ? "Total a payer" : "Total"}</small>
+                  <strong>{eur(canPreview ? agency.summary.total : agency.summary.visibleTotal)}</strong>
                   <span>Maj {dateTime(agency.updatedAt)}</span>
                 </div>
                 {canPreview ? (
@@ -341,8 +345,14 @@ export default function AgencyPortalPage() {
                 ) : null}
               </div>
 
+              {agency.streamer.publicNote ? (
+                <div className="agency-card" style={{ marginTop: 18 }}>
+                  <div className="agency-muted">{agency.streamer.publicNote}</div>
+                </div>
+              ) : null}
+
               <div className="agency-list">
-                {agency.assignments.map((assignment) => (
+                {relevantAssignments.map((assignment) => (
                   <article key={assignment.id} className="agency-card">
                     <div className="agency-cardhead">
                       <div>
@@ -359,65 +369,14 @@ export default function AgencyPortalPage() {
                       </span>
                     </div>
 
-                    <div className="agency-subgrid">
-                      <div className="agency-subcard">
-                        <small>Inscrits</small>
-                        <strong>{num(assignment.stats.signups)}</strong>
-                      </div>
-                      <div className="agency-subcard">
-                        <small>Nombre de depots</small>
-                        <strong>{num(assignment.stats.depositCount)}</strong>
-                      </div>
-                      <div className="agency-subcard">
-                        <small>FTD</small>
-                        <strong>{num(assignment.stats.ftdCount)}</strong>
-                      </div>
-                      <div className="agency-subcard">
-                        <small>Depot total</small>
-                        <strong>{eur(assignment.stats.totalDeposits)}</strong>
-                      </div>
-                      <div className="agency-subcard">
-                        <small>CPA</small>
-                        <strong>{visibleMoney(assignment.earnings.visibleCpa, assignment.stats.showCpaToStreamer)}</strong>
-                      </div>
-                      <div className="agency-subcard">
-                        <small>RS</small>
-                        <strong>{visibleMoney(assignment.earnings.visibleRs, assignment.stats.showRsToStreamer)}</strong>
-                      </div>
-                      <div className="agency-subcard">
-                        <small>Total visible</small>
-                        <strong>
-                          {visibleMoney(
-                            assignment.earnings.visibleTotal,
-                            assignment.stats.showCpaToStreamer || assignment.stats.showRsToStreamer
-                          )}
-                        </strong>
-                      </div>
-                      {canPreview ? (
-                        <>
-                          <div className="agency-subcard">
-                            <small>Marge agence</small>
-                            <strong>{eur(assignment.earnings.agencyTotal)}</strong>
-                          </div>
-                          <div className="agency-subcard">
-                            <small>Total genere</small>
-                            <strong>{eur(assignment.earnings.grossTotal)}</strong>
-                          </div>
-                        </>
-                      ) : null}
-                    </div>
-
                     <div className="agency-mini">
-                      <div className="agency-muted">
-                        CPA {assignment.stats.showCpaToStreamer ? "visible" : "masque"} | RS{" "}
-                        {assignment.stats.showRsToStreamer ? "visible" : "masque"} | Maj {dateTime(assignment.updatedAt)}
-                      </div>
                       {canPreview ? (
                         <div className="agency-muted">
-                          Marge agence: CPA {eur(assignment.earnings.agencyCpa)} | RS {eur(assignment.earnings.agencyRs)}
+                          A payer: {eur(assignment.earnings.total)} | Marge agence: {eur(assignment.earnings.agencyTotal)} |
+                          {" "}Total genere: {eur(assignment.earnings.grossTotal)} | Maj {dateTime(assignment.updatedAt)}
                         </div>
                       ) : null}
-                      {assignment.notes ? <div className="agency-muted">{assignment.notes}</div> : null}
+                      {canPreview && assignment.notes ? <div className="agency-muted">{assignment.notes}</div> : null}
                       {parseLinks(assignment.linksText).length ? (
                         <div className="agency-links">
                           {parseLinks(assignment.linksText).map((item, index) =>

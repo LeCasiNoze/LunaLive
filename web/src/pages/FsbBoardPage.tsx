@@ -5,10 +5,13 @@ import {
   createExpense,
   deleteExpense,
   listExpenses,
+  setExpensePaid,
   updateExpense,
   type Expense,
   type ExpenseCategory,
   type ExpenseInput,
+  type ExpenseListSummary,
+  type ExpenseVisibleRow,
 } from "../lib/api_expenses";
 import {
   getFsbInstagramDashboard,
@@ -39,13 +42,6 @@ type FormState = {
   isRecurring: boolean;
   recurrenceEndDate: string;
   notes: string;
-};
-
-type VisibleExpense = {
-  source: Expense;
-  occurrenceDate: string;
-  isProjected: boolean;
-  status: "paid" | "due";
 };
 
 const SECTION_LABELS: Record<BoardSection, string> = {
@@ -286,34 +282,6 @@ function instagramFetchRange(view: InstagramView, focusDate: string) {
   return { from: startOfCalendarMonth(focusDate), toExclusive: addDays(endOfCalendarMonth(focusDate), 1) };
 }
 
-function makeVisible(expense: Expense, monthKeyValue: string, today: string): VisibleExpense | null {
-  if (!expense.isRecurring) {
-    if (!expense.date.startsWith(monthKeyValue)) return null;
-    return {
-      source: expense,
-      occurrenceDate: expense.date,
-      isProjected: false,
-      status: expense.date < today ? "paid" : "due",
-    };
-  }
-
-  if (monthKeyValue < expense.date.slice(0, 7)) return null;
-
-  const [year, month] = monthKeyValue.split("-").map(Number);
-  const anchorDay = Number(expense.date.slice(8, 10));
-  const occurrenceDay = Math.min(anchorDay, daysInMonth(year, month));
-  const occurrenceDate = `${monthKeyValue}-${String(occurrenceDay).padStart(2, "0")}`;
-
-  if (expense.recurrenceEndDate && occurrenceDate > expense.recurrenceEndDate) return null;
-
-  return {
-    source: expense,
-    occurrenceDate,
-    isProjected: occurrenceDate !== expense.date,
-    status: occurrenceDate < today ? "paid" : "due",
-  };
-}
-
 function defaultForm(): FormState {
   return {
     description: "",
@@ -547,7 +515,15 @@ export default function FsbBoardPage() {
   const canAccess = canAccessFsbBoard(user);
   const editorHref = `/editorFSN?returnTo=${encodeURIComponent("/FSB_Board?section=tools")}`;
 
-  const [expenses, setExpenses] = React.useState<Expense[]>([]);
+  const [expenseRows, setExpenseRows] = React.useState<ExpenseVisibleRow[]>([]);
+  const [expenseSummary, setExpenseSummary] = React.useState<ExpenseListSummary>({
+    total: 0,
+    paid: 0,
+    due: 0,
+    agencyPlus: 0,
+    agencyMinus: 0,
+    agencyNet: 0,
+  });
   const [expensesLoading, setExpensesLoading] = React.useState(false);
   const [expensesError, setExpensesError] = React.useState<string | null>(null);
   const [monthKeyValue, setMonthKeyValue] = React.useState(currentMonthKey);
@@ -584,18 +560,19 @@ export default function FsbBoardPage() {
     setExpensesLoading(true);
     setExpensesError(null);
     try {
-      const response = await listExpenses();
-      setExpenses(response.expenses);
+      const response = await listExpenses(monthKeyValue);
+      setExpenseRows(response.visibleExpenses);
+      setExpenseSummary(response.summary);
     } catch (err: any) {
       setExpensesError(String(err?.message || "Chargement impossible."));
     } finally {
       setExpensesLoading(false);
     }
-  }, [canAccess, token]);
+  }, [canAccess, monthKeyValue, token]);
 
   React.useEffect(() => {
     void reloadExpenses();
-  }, [reloadExpenses]);
+  }, [reloadExpenses, section]);
 
   const instagramRange = React.useMemo(
     () => ({
@@ -628,34 +605,17 @@ export default function FsbBoardPage() {
 
   const today = React.useMemo(() => todayKey(), []);
 
-  const expenseRows = React.useMemo(() => {
-    const visible = expenses
-      .map((expense) => makeVisible(expense, monthKeyValue, today))
-      .filter(Boolean) as VisibleExpense[];
-
-    return visible.sort((a, b) => {
+  const sortedExpenseRows = React.useMemo(() => {
+    const rows = [...expenseRows];
+    return rows.sort((a, b) => {
       if (sortBy === "amount") {
-        const delta = a.source.amount - b.source.amount;
+        const delta = a.expense.amount - b.expense.amount;
         return sortDirection === "asc" ? delta : -delta;
       }
       const delta = a.occurrenceDate.localeCompare(b.occurrenceDate);
       return sortDirection === "asc" ? delta : -delta;
     });
-  }, [expenses, monthKeyValue, sortBy, sortDirection, today]);
-
-  const expenseStats = React.useMemo(
-    () =>
-      expenseRows.reduce(
-        (acc, row) => {
-          acc.total += row.source.amount;
-          if (row.status === "paid") acc.paid += row.source.amount;
-          else acc.due += row.source.amount;
-          return acc;
-        },
-        { total: 0, paid: 0, due: 0 }
-      ),
-    [expenseRows]
-  );
+  }, [expenseRows, sortBy, sortDirection]);
 
   const instagramDisplayItems = React.useMemo(() => {
     const items = instagramData?.items || [];
@@ -723,14 +683,12 @@ export default function FsbBoardPage() {
       }
 
       if (editing) {
-        const response = await updateExpense(editing.id, payload);
-        setExpenses((current) =>
-          current.map((expense) => (expense.id === editing.id ? response.expense : expense))
-        );
+        await updateExpense(editing.id, payload);
       } else {
-        const response = await createExpense(payload);
-        setExpenses((current) => [response.expense, ...current]);
+        await createExpense(payload);
       }
+
+      await reloadExpenses();
 
       setModalOpen(false);
       setEditing(null);
@@ -749,9 +707,21 @@ export default function FsbBoardPage() {
     if (!window.confirm(message)) return;
     try {
       await deleteExpense(expense.id);
-      setExpenses((current) => current.filter((row) => row.id !== expense.id));
+      await reloadExpenses();
     } catch (err: any) {
       setExpensesError(String(err?.message || "Suppression impossible."));
+    }
+  }
+
+  async function onTogglePaid(row: ExpenseVisibleRow) {
+    try {
+      await setExpensePaid(row.expense.id, {
+        paid: !row.paid,
+        occurrenceDate: row.expense.isRecurring ? row.occurrenceDate : null,
+      });
+      await reloadExpenses();
+    } catch (err: any) {
+      setExpensesError(String(err?.message || "Mise a jour du paiement impossible."));
     }
   }
 
@@ -852,7 +822,7 @@ export default function FsbBoardPage() {
                 <div className="fsb-stats" style={{ marginTop: 0 }}>
                   <div className="fsb-stat">
                     <small>Total</small>
-                    <strong>{eur(expenseStats.total)}</strong>
+                    <strong>{eur(expenseSummary.total)}</strong>
                     <span>{expenseRows.length} ligne(s)</span>
                   </div>
                 </div>
@@ -1049,7 +1019,7 @@ export default function FsbBoardPage() {
                     {monthLabel(monthKeyValue)}
                   </h2>
                   <div className="fsb-muted" style={{ marginTop: 6 }}>
-                    Les recurrentes sont reprojetees a partir du jour du mois de la depense source.
+                    Frais manuels + paiements agence sur la date de paiement des assignations.
                   </div>
                 </div>
                 <div className="fsb-actions">
@@ -1068,18 +1038,33 @@ export default function FsbBoardPage() {
               <div className="fsb-stats">
                 <div className="fsb-stat">
                   <small>Total du mois</small>
-                  <strong>{eur(expenseStats.total)}</strong>
+                  <strong>{eur(expenseSummary.total)}</strong>
                   <span>{expenseRows.length} ligne(s) visibles</span>
                 </div>
                 <div className="fsb-stat">
                   <small>Deja paye</small>
-                  <strong>{eur(expenseStats.paid)}</strong>
-                  <span>Statut derive des dates deja passees</span>
+                  <strong>{eur(expenseSummary.paid)}</strong>
+                  <span>Marque manuellement comme paye</span>
                 </div>
                 <div className="fsb-stat">
                   <small>A payer</small>
-                  <strong>{eur(expenseStats.due)}</strong>
-                  <span>Inclut les echeances d aujourd hui et futures</span>
+                  <strong>{eur(expenseSummary.due)}</strong>
+                  <span>Reste a regler sur le mois</span>
+                </div>
+                <div className="fsb-stat">
+                  <small>Agence +</small>
+                  <strong>{eur(expenseSummary.agencyPlus)}</strong>
+                  <span>Marge agence generee sur {monthLabel(monthKeyValue)}</span>
+                </div>
+                <div className="fsb-stat">
+                  <small>Agence -</small>
+                  <strong>{eur(expenseSummary.agencyMinus)}</strong>
+                  <span>Somme a envoyer aux affis</span>
+                </div>
+                <div className="fsb-stat">
+                  <small>Solde agence</small>
+                  <strong>{eur(expenseSummary.agencyNet)}</strong>
+                  <span>Plus moins moins sur le mois</span>
                 </div>
               </div>
             </section>
@@ -1117,11 +1102,11 @@ export default function FsbBoardPage() {
               </div>
             </section>
 
-            {expenseRows.length === 0 && !expensesLoading ? (
+            {sortedExpenseRows.length === 0 && !expensesLoading ? (
               <section className="fsb-empty">
                 <h3 style={{ margin: 0 }}>Aucun frais sur ce mois</h3>
                 <p className="fsb-copy" style={{ marginTop: 10 }}>
-                  Ajoute un premier frais ou change de mois pour inspecter les occurrences recurrentes.
+                  Ajoute un frais manuel ou renseigne des stats agence avec une date de paiement.
                 </p>
               </section>
             ) : (
@@ -1138,20 +1123,24 @@ export default function FsbBoardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {expenseRows.map((row) => (
-                      <tr key={`${row.source.id}:${row.occurrenceDate}`}>
+                    {sortedExpenseRows.map((row) => (
+                      <tr key={row.key}>
                         <td>
                           <strong>{dateLabel(row.occurrenceDate)}</strong>
-                          <div className="fsb-sub">Source : {dateLabel(row.source.date)}</div>
+                          <div className="fsb-sub">Source : {dateLabel(row.expense.date)}</div>
+                          {row.paidAt ? <div className="fsb-sub">Paye le {dateLabel(row.paidAt.slice(0, 10))}</div> : null}
                         </td>
                         <td>
-                          <strong>{row.source.description}</strong>
-                          <div className="fsb-sub">{row.source.notes || "Aucune note"}</div>
+                          <strong>{row.expense.description}</strong>
+                          <div className="fsb-sub">{row.expense.notes || "Aucune note"}</div>
                         </td>
                         <td>
                           <div className="fsb-tags">
-                            <span className="fsb-tag">{CATEGORY_LABELS[row.source.category]}</span>
-                            {row.source.isRecurring ? (
+                            <span className="fsb-tag">{CATEGORY_LABELS[row.expense.category]}</span>
+                            {row.expense.sourceType === "agency_streamer_payout" ? (
+                              <span className="fsb-tag fsb-tag-rec">Genere agence</span>
+                            ) : null}
+                            {row.expense.isRecurring ? (
                               <span className="fsb-tag fsb-tag-rec">
                                 {row.isProjected ? "Recurrent projete" : "Recurrent"}
                               </span>
@@ -1159,17 +1148,24 @@ export default function FsbBoardPage() {
                           </div>
                         </td>
                         <td>
-                          <strong>{eur(row.source.amount)}</strong>
+                          <strong>{eur(row.expense.amount)}</strong>
                         </td>
                         <td>
-                          <span className={`fsb-tag ${row.status === "paid" ? "fsb-tag-paid" : "fsb-tag-due"}`}>
-                            {row.status === "paid" ? "Paye" : "A payer"}
+                          <span className={`fsb-tag ${row.paid ? "fsb-tag-paid" : "fsb-tag-due"}`}>
+                            {row.paid ? "Paye" : "A payer"}
                           </span>
                         </td>
                         <td>
                           <div className="fsb-inline">
-                            <button onClick={() => openEdit(row.source)}>Modifier</button>
-                            <button onClick={() => void onDelete(row.source)}>Supprimer</button>
+                            <button type="button" onClick={() => void onTogglePaid(row)}>
+                              {row.paid ? "Remettre a payer" : "Marquer paye"}
+                            </button>
+                            {row.canEdit ? (
+                              <button type="button" onClick={() => openEdit(row.expense)}>Modifier</button>
+                            ) : null}
+                            {row.canDelete ? (
+                              <button type="button" onClick={() => void onDelete(row.expense)}>Supprimer</button>
+                            ) : null}
                           </div>
                         </td>
                       </tr>

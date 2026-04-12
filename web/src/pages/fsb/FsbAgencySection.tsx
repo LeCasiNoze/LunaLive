@@ -123,9 +123,11 @@ type StreamerFormState = {
   id: number | null;
   displayName: string;
   notes: string;
+  publicNote: string;
   initialDealId: string;
   initialStartDate: string;
   initialEndDate: string;
+  initialPaymentDate: string;
   initialLinksText: string;
   initialAssignmentNotes: string;
 };
@@ -136,6 +138,7 @@ type AssignmentFormState = {
   dealId: string;
   startDate: string;
   endDate: string;
+  paymentDate: string;
   linksText: string;
   notes: string;
 };
@@ -161,9 +164,11 @@ const EMPTY_STREAMER_FORM: StreamerFormState = {
   id: null,
   displayName: "",
   notes: "",
+  publicNote: "",
   initialDealId: "",
   initialStartDate: "",
   initialEndDate: "",
+  initialPaymentDate: "",
   initialLinksText: "",
   initialAssignmentNotes: "",
 };
@@ -174,6 +179,7 @@ const EMPTY_ASSIGNMENT_FORM: AssignmentFormState = {
   dealId: "",
   startDate: "",
   endDate: "",
+  paymentDate: "",
   linksText: "",
   notes: "",
 };
@@ -394,9 +400,11 @@ export function FsbAgencySection() {
       id: streamer.id,
       displayName: streamer.displayName,
       notes: streamer.notes || "",
+      publicNote: streamer.publicNote || "",
       initialDealId: "",
       initialStartDate: "",
       initialEndDate: "",
+      initialPaymentDate: "",
       initialLinksText: "",
       initialAssignmentNotes: "",
     });
@@ -409,6 +417,7 @@ export function FsbAgencySection() {
       dealId: String(assignment.dealId),
       startDate: assignment.startDate || "",
       endDate: assignment.endDate || "",
+      paymentDate: assignment.paymentDate || "",
       linksText: assignment.linksText || "",
       notes: assignment.notes || "",
     });
@@ -460,6 +469,7 @@ export function FsbAgencySection() {
           {
             displayName: streamerForm.displayName.trim(),
             notes: streamerForm.notes.trim() ? streamerForm.notes.trim() : null,
+            publicNote: streamerForm.publicNote.trim() ? streamerForm.publicNote.trim() : null,
           },
           monthKey
         );
@@ -469,9 +479,11 @@ export function FsbAgencySection() {
         {
           displayName: streamerForm.displayName.trim(),
           notes: streamerForm.notes.trim() ? streamerForm.notes.trim() : null,
+          publicNote: streamerForm.publicNote.trim() ? streamerForm.publicNote.trim() : null,
           initialDealId: streamerForm.initialDealId ? Number(streamerForm.initialDealId) : null,
           initialStartDate: streamerForm.initialStartDate || null,
           initialEndDate: streamerForm.initialEndDate || null,
+          initialPaymentDate: streamerForm.initialPaymentDate || null,
           initialLinksText: streamerForm.initialLinksText.trim() ? streamerForm.initialLinksText.trim() : null,
           initialAssignmentNotes: streamerForm.initialAssignmentNotes.trim()
             ? streamerForm.initialAssignmentNotes.trim()
@@ -502,6 +514,7 @@ export function FsbAgencySection() {
         dealId,
         startDate: assignmentForm.startDate || null,
         endDate: assignmentForm.endDate || null,
+        paymentDate: assignmentForm.paymentDate || null,
         linksText: assignmentForm.linksText.trim() ? assignmentForm.linksText.trim() : null,
         notes: assignmentForm.notes.trim() ? assignmentForm.notes.trim() : null,
       };
@@ -896,6 +909,15 @@ export function FsbAgencySection() {
                     />
                   </div>
                   <div className="fsb-field">
+                    <label>Date de paiement</label>
+                    <input
+                      className="fsb-input"
+                      type="date"
+                      value={streamerForm.initialPaymentDate}
+                      onChange={(e) => setStreamerForm((prev) => ({ ...prev, initialPaymentDate: e.target.value }))}
+                    />
+                  </div>
+                  <div className="fsb-field">
                     <label>Notes assignation</label>
                     <input
                       className="fsb-input"
@@ -921,6 +943,14 @@ export function FsbAgencySection() {
                   className="fsb-textarea"
                   value={streamerForm.notes}
                   onChange={(e) => setStreamerForm((prev) => ({ ...prev, notes: e.target.value }))}
+                />
+              </div>
+              <div className="fsb-field fsb-field-full">
+                <label>Note qu il peut consulter</label>
+                <textarea
+                  className="fsb-textarea"
+                  value={streamerForm.publicNote}
+                  onChange={(e) => setStreamerForm((prev) => ({ ...prev, publicNote: e.target.value }))}
                 />
               </div>
             </div>
@@ -996,6 +1026,15 @@ export function FsbAgencySection() {
                   type="date"
                   value={assignmentForm.endDate}
                   onChange={(e) => setAssignmentForm((prev) => ({ ...prev, endDate: e.target.value }))}
+                />
+              </div>
+              <div className="fsb-field">
+                <label>Date de paiement</label>
+                <input
+                  className="fsb-input"
+                  type="date"
+                  value={assignmentForm.paymentDate}
+                  onChange={(e) => setAssignmentForm((prev) => ({ ...prev, paymentDate: e.target.value }))}
                 />
               </div>
               <div className="fsb-field fsb-field-full">
@@ -1100,7 +1139,6 @@ export function FsbAgencySection() {
                 <input
                   className="fsb-input"
                   type="number"
-                  min="0"
                   step="0.01"
                   value={statsRsValue}
                   onChange={(e) => setStatsRsValue(e.target.value)}
@@ -1109,18 +1147,18 @@ export function FsbAgencySection() {
               <label className="fsb-check">
                 <input
                   type="checkbox"
-                  checked={showCpaToStreamer}
-                  onChange={(e) => setShowCpaToStreamer(e.target.checked)}
+                  checked={!showCpaToStreamer}
+                  onChange={(e) => setShowCpaToStreamer(!e.target.checked)}
                 />
-                Afficher le CPA au streamer
+                Masquer le CPA au streamer
               </label>
               <label className="fsb-check">
                 <input
                   type="checkbox"
-                  checked={showRsToStreamer}
-                  onChange={(e) => setShowRsToStreamer(e.target.checked)}
+                  checked={!showRsToStreamer}
+                  onChange={(e) => setShowRsToStreamer(!e.target.checked)}
                 />
-                Afficher le RS au streamer
+                Masquer le RS au streamer
               </label>
             </div>
             <div className="fsb-modal-actions">
@@ -1149,6 +1187,7 @@ export function FsbAgencySection() {
                   <div className="fsb-listmeta">
                     {selectedStatsAssignment.deal.name} | du {dateOnly(selectedStatsAssignment.startDate)}
                     {selectedStatsAssignment.endDate ? ` au ${dateOnly(selectedStatsAssignment.endDate)}` : " sans fin"}
+                    {selectedStatsAssignment.paymentDate ? ` | paiement le ${dateOnly(selectedStatsAssignment.paymentDate)}` : ""}
                   </div>
                 </div>
                 <span className={`fsb-tag ${selectedStatsAssignment.activeDuringMonth ? "fsb-tag-paid" : ""}`}>
@@ -1178,9 +1217,7 @@ export function FsbAgencySection() {
                 <div className="fsb-listmain">
                   <strong>Total genere</strong>
                   <div className="fsb-listmeta">
-                    Brut {eur(selectedStatsAssignment.payouts.grossCpa)} | Visible streamer: CPA{" "}
-                    {selectedStatsAssignment.stats.showCpaToStreamer ? "oui" : "non"} | RS{" "}
-                    {selectedStatsAssignment.stats.showRsToStreamer ? "oui" : "non"}
+                    Brut {eur(selectedStatsAssignment.payouts.grossCpa)} | Total a regler {eur(selectedStatsAssignment.payouts.streamerTotal)}
                   </div>
                 </div>
                 <span className="fsb-tag">{eur(selectedStatsAssignment.payouts.grossTotal)}</span>
@@ -1333,6 +1370,9 @@ export function FsbAgencySection() {
                   <td>
                     <strong>Du {dateOnly(assignment.startDate)}</strong>
                     <div className="fsb-sub">{assignment.endDate ? `Au ${dateOnly(assignment.endDate)}` : "Sans date de fin"}</div>
+                    <div className="fsb-sub">
+                      {assignment.paymentDate ? `Paiement le ${dateOnly(assignment.paymentDate)}` : "Paiement non defini"}
+                    </div>
                     <div className="fsb-sub">{assignment.activeDuringMonth ? "Actif ce mois" : "Hors plage ce mois"}</div>
                   </td>
                   <td>
@@ -1347,10 +1387,6 @@ export function FsbAgencySection() {
                     <strong>{eur(assignment.payouts.streamerTotal)}</strong>
                     <div className="fsb-sub">
                       CPA {eur(assignment.payouts.streamerCpa)} | RS {eur(assignment.payouts.streamerErs)}
-                    </div>
-                    <div className="fsb-sub">
-                      Visible: CPA {assignment.stats.showCpaToStreamer ? "oui" : "non"} | RS{" "}
-                      {assignment.stats.showRsToStreamer ? "oui" : "non"}
                     </div>
                   </td>
                   <td>

@@ -16,6 +16,10 @@ export type Expense = {
   isRecurring: boolean;
   recurrenceEndDate: string | null;
   notes: string | null;
+  paidAt: string | null;
+  sourceType: "manual" | "agency_streamer_payout";
+  agencyAssignmentId: number | null;
+  agencyMonthKey: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -28,6 +32,39 @@ export type ExpenseInput = {
   isRecurring: boolean;
   recurrenceEndDate: string | null;
   notes: string | null;
+};
+
+export type ExpenseVisibleRow = {
+  key: string;
+  expense: Expense;
+  occurrenceDate: string;
+  isProjected: boolean;
+  paid: boolean;
+  paidAt: string | null;
+  canEdit: boolean;
+  canDelete: boolean;
+};
+
+export type ExpenseListSummary = {
+  total: number;
+  paid: number;
+  due: number;
+  agencyPlus: number;
+  agencyMinus: number;
+  agencyNet: number;
+};
+
+export type ExpenseListResponse = {
+  ok: true;
+  monthKey: string;
+  expenses: Expense[];
+  visibleExpenses: ExpenseVisibleRow[];
+  summary: ExpenseListSummary;
+};
+
+export type ExpensePaymentInput = {
+  paid: boolean;
+  occurrenceDate?: string | null;
 };
 
 const BASE = (
@@ -79,8 +116,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-export function listExpenses() {
-  return request<{ ok: true; expenses: Expense[] }>("/api/expenses");
+export function listExpenses(monthKey?: string | null) {
+  const suffix = monthKey ? `?month=${encodeURIComponent(monthKey)}` : "";
+  return request<ExpenseListResponse>(`/api/expenses${suffix}`);
 }
 
 export function createExpense(payload: ExpenseInput) {
@@ -100,5 +138,12 @@ export function updateExpense(id: string, payload: ExpenseInput) {
 export function deleteExpense(id: string) {
   return request<{ ok: true; id: string }>(`/api/expenses/${encodeURIComponent(id)}`, {
     method: "DELETE",
+  });
+}
+
+export function setExpensePaid(id: string, payload: ExpensePaymentInput) {
+  return request<{ ok: true }>(`/api/expenses/${encodeURIComponent(id)}/payment`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
   });
 }

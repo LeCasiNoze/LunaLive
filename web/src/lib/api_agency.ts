@@ -65,6 +65,7 @@ export type AgencyAssignment = {
   streamerDisplayName: string;
   startDate: string | null;
   endDate: string | null;
+  paymentDate: string | null;
   linksText: string | null;
   notes: string | null;
   createdAt: string | null;
@@ -99,6 +100,7 @@ export type AgencyStreamer = {
   accessUserId: number | null;
   accessUsername: string | null;
   accessCode?: string | null;
+  publicNote?: string | null;
   notes: string | null;
   createdAt: string | null;
   updatedAt: string | null;
@@ -150,9 +152,11 @@ export type AgencyDealInput = {
 export type AgencyStreamerCreateInput = {
   displayName: string;
   notes: string | null;
+  publicNote: string | null;
   initialDealId: number | null;
   initialStartDate: string | null;
   initialEndDate: string | null;
+  initialPaymentDate: string | null;
   initialLinksText: string | null;
   initialAssignmentNotes: string | null;
 };
@@ -160,6 +164,7 @@ export type AgencyStreamerCreateInput = {
 export type AgencyStreamerUpdateInput = {
   displayName: string;
   notes: string | null;
+  publicNote: string | null;
 };
 
 export type AgencyAssignmentInput = {
@@ -167,6 +172,7 @@ export type AgencyAssignmentInput = {
   dealId: number;
   startDate: string | null;
   endDate: string | null;
+  paymentDate: string | null;
   linksText: string | null;
   notes: string | null;
 };
@@ -175,6 +181,7 @@ export type AgencyAssignmentUpdateInput = {
   dealId: number;
   startDate: string | null;
   endDate: string | null;
+  paymentDate: string | null;
   linksText: string | null;
   notes: string | null;
 };
@@ -200,6 +207,7 @@ export type MyAgencyStatsResponse = {
       linkedStreamerSlug: string | null;
       linkedStreamerName: string | null;
       accessUsername: string | null;
+      publicNote?: string | null;
     };
     assignments: Array<{
       id: number;
