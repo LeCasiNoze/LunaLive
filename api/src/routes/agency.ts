@@ -143,7 +143,7 @@ const assignmentBaseSchema = z
     }
   });
 
-const assignmentCreateSchema = assignmentBaseSchema.extend({
+const assignmentCreateSchema = assignmentBaseSchema.safeExtend({
   agencyStreamerId: z.coerce.number().int().positive(),
 });
 
