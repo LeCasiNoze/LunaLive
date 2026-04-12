@@ -3,6 +3,7 @@ import type { ApiMyStreamer } from "../../lib/api";
 
 export type DashboardTab =
   | "overview"
+  | "agency"
   | "lunabot"
   | "stream"
   | "moderation"
@@ -13,15 +14,16 @@ export type DashboardTab =
   | "settings";
 
 const ICONS: Record<DashboardTab, string> = {
-  overview: "✨",
-  lunabot: "🤖",
-  stream: "🎬",
-  moderation: "🛡️",
-  appearance: "🎨",
-  emotes: "😀",
-  earnings: "💰",
-  stats: "📈",
-  settings: "⚙️",
+  overview: "OV",
+  agency: "AG",
+  lunabot: "LB",
+  stream: "ST",
+  moderation: "MD",
+  appearance: "AP",
+  emotes: "EM",
+  earnings: "RV",
+  stats: "ST",
+  settings: "CFG",
 };
 
 export function DashboardSidebar({
@@ -34,15 +36,16 @@ export function DashboardSidebar({
   streamer: ApiMyStreamer;
 }) {
   const items: { id: DashboardTab; label: string; hint?: string }[] = [
-    { id: "overview", label: "Vue d’ensemble", hint: "Résumé + liaison DLive" },
-    { id: "lunabot", label: "LunaBot", hint: "Commandes • Auto-messages • Logs" },
-    { id: "stream", label: "Stream", hint: "Titre + clés RTMP" },
-    { id: "moderation", label: "Modération", hint: "Modos / bans / règles chat" },
+    { id: "overview", label: "Vue d'ensemble", hint: "Resume + liaison DLive" },
+    { id: "agency", label: "Agence", hint: "Subaffiliation - stats - gains" },
+    { id: "lunabot", label: "LunaBot", hint: "Commandes - auto-messages - logs" },
+    { id: "stream", label: "Stream", hint: "Titre + cles RTMP" },
+    { id: "moderation", label: "Moderation", hint: "Modos - bans - regles chat" },
     { id: "appearance", label: "Apparence", hint: "Offline + chat + skins" },
-    { id: "emotes", label: "Emojis & GIFs", hint: "Ajouter • supprimer • limites" },
-    { id: "earnings", label: "Revenus", hint: "Solde • répartition • cashout" },
-    { id: "stats", label: "Stats", hint: "Analytics / périodes" },
-    { id: "settings", label: "Paramètres" },
+    { id: "emotes", label: "Emojis & GIFs", hint: "Ajouter - supprimer - limites" },
+    { id: "earnings", label: "Revenus", hint: "Solde - repartition - cashout" },
+    { id: "stats", label: "Stats", hint: "Analytics / periodes" },
+    { id: "settings", label: "Parametres" },
   ];
 
   return (
@@ -86,23 +89,16 @@ export function DashboardSidebar({
           cursor: pointer;
           border-radius: 18px;
           border: 1px solid rgba(255,255,255,0.10);
-
-          /* glass + un peu plus clair pour lire */
           background:
             radial-gradient(140px 90px at 18% 0%, rgba(255,255,255,0.06), rgba(0,0,0,0) 60%),
             rgba(0,0,0,0.22);
-
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
-
           padding: 11px 12px;
           display:flex;
           gap: 10px;
           align-items:flex-start;
-
-          /* IMPORTANT: force la lisibilité */
           color: rgba(255,255,255,0.88);
-
           transition: transform .08s ease, background .12s ease, border-color .12s ease, box-shadow .12s ease;
           outline: none;
         }
@@ -144,7 +140,8 @@ export function DashboardSidebar({
           border: 1px solid rgba(255,255,255,0.12);
           background: rgba(255,255,255,0.06);
           flex: 0 0 30px;
-          font-size: 14px;
+          font-size: 11px;
+          font-weight: 900;
           box-shadow: inset 0 -8px 16px rgba(0,0,0,0.20);
         }
         .llDashItemActive .llDashIcon{
@@ -163,8 +160,6 @@ export function DashboardSidebar({
           letter-spacing: -0.2px;
           font-size: 14px;
           line-height: 1.2;
-
-          /* lisibilité */
           color: rgba(255,255,255,0.92);
           text-shadow: 0 1px 0 rgba(0,0,0,0.20);
         }
@@ -172,7 +167,7 @@ export function DashboardSidebar({
           font-size: 12px;
           line-height: 1.25;
           color: rgba(255,255,255,0.64);
-          opacity: 1; /* on évite le double-dimming */
+          opacity: 1;
         }
 
         @media (prefers-reduced-motion: reduce){

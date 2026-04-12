@@ -20,6 +20,7 @@ import { AppearanceSection }  from "./dashboard/sections/AppearanceSection";
 import { EarningsSection }    from "./dashboard/sections/EarningsSection";
 import { StatsSection }       from "./dashboard/sections/StatsSection";
 import { SettingsSection }    from "./dashboard/sections/SettingsSection";
+import { AgencySection }      from "./dashboard/sections/AgencySection";
 
 function fmt(n: number | null | undefined) {
   const v = Number(n);
@@ -259,6 +260,7 @@ export default function DashboardPage() {
           <div className="dash-card">
             <div style={{ padding:16 }}>
               {tab === "overview"   && <OverviewSection streamer={streamer} connection={connection} onGoStream={()=>setTab("stream")} onGoModeration={()=>setTab("moderation")} />}
+              {tab === "agency"     && <AgencySection streamer={streamer} />}
               {tab === "lunabot"    && <LunaBotSection streamer={streamer} />}
               {tab === "stream"     && <StreamSection streamer={streamer} connection={connection} onSaveTitle={async(title)=>{ if (!token) return; const r=await updateMyStreamerTitle(token,title); setStreamer(r.streamer); }} />}
               {tab === "moderation" && <ModerationSection streamer={streamer} />}

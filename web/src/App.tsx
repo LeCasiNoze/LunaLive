@@ -23,6 +23,7 @@ const EventPage = React.lazy(() => import("./pages/EventPage"));
 const AdminPage = React.lazy(() => import("./pages/AdminPage"));
 const DashboardPage = React.lazy(() => import("./pages/DashboardPage"));
 const FsbBoardPage = React.lazy(() => import("./pages/FsbBoardPage"));
+const AgencyPortalPage = React.lazy(() => import("./pages/AgencyPortalPage"));
 const AdminCasinoCommentsPage = React.lazy(() => import("./pages/admin/AdminCasinoCommentsPage"));
 const ImpersonatePage = React.lazy(() => import("./pages/ImpersonatePage"));
 
@@ -65,6 +66,7 @@ function AppInner() {
   const location = useLocation();
   const isMobile = useIsMobile();
   const { logout, token } = useAuth();
+  const hideChrome = location.pathname === "/editorFSN" || location.pathname.startsWith("/agency");
 
   const [loginOpen, setLoginOpen] = React.useState(false);
   const [achievementsOpen, setAchievementsOpen] = React.useState(false);
@@ -124,7 +126,7 @@ function AppInner() {
       </div>
 
       <div className="appContentLayer">
-        {!isMobile && location.pathname !== "/editorFSN" && (
+        {!isMobile && !hideChrome && (
           <Topbar onOpenLogin={() => setLoginOpen(true)} onLogout={logout} />
         )}
 
@@ -150,6 +152,14 @@ function AppInner() {
             element={
               <React.Suspense fallback={<LoadingFallback />}>
                 <AffiEditorPage />
+              </React.Suspense>
+            }
+          />
+          <Route
+            path="/agency"
+            element={
+              <React.Suspense fallback={<LoadingFallback />}>
+                <AgencyPortalPage />
               </React.Suspense>
             }
           />
@@ -274,9 +284,9 @@ function AppInner() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
 
-        <Footer />
+        {!hideChrome && <Footer />}
 
-        {isMobile && <BottomTabs />}
+        {isMobile && !hideChrome && <BottomTabs />}
 
         <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
         <WelcomeModal

@@ -73,6 +73,8 @@ import { mig063_instagram_collab_unique } from "./mig063_instagram_collab_unique
 import { mig064_chat_message_stats } from "./mig064_chat_message_stats.js";
 import { mig065_feature_events } from "./mig065_feature_events.js";
 import { mig066_expenses } from "./mig066_expenses.js";
+import { mig067_agency } from "./mig067_agency.js";
+import { mig068_agency_monthly } from "./mig068_agency_monthly.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -165,6 +167,8 @@ export async function migrateAll(pool: Pool) {
   await mig064_chat_message_stats(pool);
   await mig065_feature_events(pool);
   await mig066_expenses(pool);
+  await mig067_agency(pool);
+  await mig068_agency_monthly(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

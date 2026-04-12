@@ -16,6 +16,7 @@ import {
   type FsbInstagramItem,
 } from "../lib/api_fsb_dashboard";
 import { canAccessFsbBoard } from "../lib/fsb_access";
+import { FsbAgencySection } from "./fsb/FsbAgencySection";
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   giveaway: "Giveaway",
@@ -25,7 +26,7 @@ const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   personnalise: "Personnalise",
 };
 
-type BoardSection = "home" | "expenses" | "instagram" | "tools";
+type BoardSection = "home" | "expenses" | "instagram" | "agency" | "tools";
 type SortBy = "date" | "amount";
 type SortDirection = "asc" | "desc";
 type InstagramView = "week" | "month";
@@ -51,6 +52,7 @@ const SECTION_LABELS: Record<BoardSection, string> = {
   home: "Accueil",
   expenses: "Frais societe",
   instagram: "Agenda Instagram",
+  agency: "Agence",
   tools: "Outils",
 };
 
@@ -140,7 +142,7 @@ const PAGE_CSS = `
 `;
 
 function normalizeSection(value: string | null): BoardSection {
-  if (value === "expenses" || value === "instagram" || value === "tools") return value;
+  if (value === "expenses" || value === "instagram" || value === "agency" || value === "tools") return value;
   return "home";
 }
 
@@ -823,7 +825,7 @@ export default function FsbBoardPage() {
       <div className="pageTitle">
         <h1>FSB Board</h1>
         <div className="fsb-nav">
-          {(["home", "expenses", "instagram", "tools"] as BoardSection[]).map((item) => (
+          {(["home", "expenses", "instagram", "agency", "tools"] as BoardSection[]).map((item) => (
             <button
               key={item}
               className={`fsb-navbtn ${section === item ? "fsb-navbtn-active" : ""}`}
@@ -937,6 +939,26 @@ export default function FsbBoardPage() {
                   </Link>
                   <button className="fsb-btn" onClick={() => setSection("tools")}>
                     Voir les outils
+                  </button>
+                </div>
+              </div>
+
+              <div className="fsb-card fsb-module">
+                <div className="fsb-sectionhead">
+                  <div>
+                    <strong>Agence</strong>
+                    <div className="fsb-copy">
+                      Casinos, deals, streamers subaffiliation et calculs des gains.
+                    </div>
+                  </div>
+                  <span className="fsb-pill fsb-pill-soft">Interne</span>
+                </div>
+                <div className="fsb-copy">
+                  Module de gestion agence avec separation du net streamer et de la marge agence.
+                </div>
+                <div className="fsb-actions" style={{ marginTop: "auto" }}>
+                  <button className="fsb-btn fsb-btn-primary" onClick={() => setSection("agency")}>
+                    Ouvrir agence
                   </button>
                 </div>
               </div>
@@ -1436,6 +1458,7 @@ export default function FsbBoardPage() {
             </section>
           </>
         ) : null}
+        {section === "agency" ? <FsbAgencySection /> : null}
         {section === "tools" ? (
           <section className="fsb-grid-3">
             <div className="fsb-card fsb-module">

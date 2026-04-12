@@ -1,0 +1,1275 @@
+import * as React from "react";
+import {
+  createAgencyAssignment,
+  createAgencyCasino,
+  createAgencyDeal,
+  createAgencyStreamer,
+  deleteAgencyAssignment,
+  deleteAgencyCasino,
+  deleteAgencyDeal,
+  deleteAgencyStreamer,
+  getFsbAgencyDashboard,
+  resetAgencyStreamerAccess,
+  updateAgencyAssignment,
+  updateAgencyCasino,
+  updateAgencyDeal,
+  updateAgencyStats,
+  updateAgencyStreamer,
+  type AgencyAssignment,
+  type AgencyDashboardResponse,
+  type AgencyDeal,
+  type AgencyGeneratedAccess,
+  type AgencyStreamer,
+} from "../../lib/api_agency";
+
+function currentMonthKey() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${map.year}-${map.month}`;
+}
+
+function addMonths(monthKey: string, delta: number) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "UTC",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function eur(value: number | null | undefined) {
+  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value || 0));
+}
+
+function pct(value: number | null | undefined) {
+  if (value == null) return "-";
+  return `${Number(value).toLocaleString("fr-FR", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}%`;
+}
+
+function num(value: number | null | undefined) {
+  if (value == null) return "-";
+  return Number(value).toLocaleString("fr-FR");
+}
+
+function dateOnly(value: string | null | undefined) {
+  if (!value) return "-";
+  const [year, month, day] = value.split("-").map(Number);
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+function dateTime(value: string | null | undefined) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "Europe/Paris",
+  }).format(date);
+}
+
+function toNumberOrNull(value: string) {
+  const text = value.trim();
+  if (!text) return null;
+  const next = Number(text.replace(",", "."));
+  return Number.isFinite(next) ? next : null;
+}
+
+type CasinoFormState = {
+  id: number | null;
+  name: string;
+  notes: string;
+};
+
+type DealFormState = {
+  id: number | null;
+  casinoId: string;
+  name: string;
+  cpaAmount: string;
+  cpaAgencyCut: string;
+  ersPercent: string;
+  ersAgencyPercent: string;
+  notes: string;
+};
+
+type StreamerFormState = {
+  id: number | null;
+  displayName: string;
+  linkedStreamerId: string;
+  notes: string;
+  initialDealId: string;
+  initialStartDate: string;
+  initialEndDate: string;
+  initialLinksText: string;
+  initialAssignmentNotes: string;
+};
+
+type AssignmentFormState = {
+  id: number | null;
+  agencyStreamerId: string;
+  dealId: string;
+  startDate: string;
+  endDate: string;
+  linksText: string;
+  notes: string;
+};
+
+const EMPTY_CASINO_FORM: CasinoFormState = {
+  id: null,
+  name: "",
+  notes: "",
+};
+
+const EMPTY_DEAL_FORM: DealFormState = {
+  id: null,
+  casinoId: "",
+  name: "",
+  cpaAmount: "",
+  cpaAgencyCut: "",
+  ersPercent: "",
+  ersAgencyPercent: "",
+  notes: "",
+};
+
+const EMPTY_STREAMER_FORM: StreamerFormState = {
+  id: null,
+  displayName: "",
+  linkedStreamerId: "",
+  notes: "",
+  initialDealId: "",
+  initialStartDate: "",
+  initialEndDate: "",
+  initialLinksText: "",
+  initialAssignmentNotes: "",
+};
+
+const EMPTY_ASSIGNMENT_FORM: AssignmentFormState = {
+  id: null,
+  agencyStreamerId: "",
+  dealId: "",
+  startDate: "",
+  endDate: "",
+  linksText: "",
+  notes: "",
+};
+
+export function FsbAgencySection() {
+  const [monthKey, setMonthKey] = React.useState(currentMonthKey);
+  const [data, setData] = React.useState<AgencyDashboardResponse | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [saving, setSaving] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [generatedAccess, setGeneratedAccess] = React.useState<AgencyGeneratedAccess | null>(null);
+
+  const [casinoForm, setCasinoForm] = React.useState<CasinoFormState>(EMPTY_CASINO_FORM);
+  const [dealForm, setDealForm] = React.useState<DealFormState>(EMPTY_DEAL_FORM);
+  const [streamerForm, setStreamerForm] = React.useState<StreamerFormState>(EMPTY_STREAMER_FORM);
+  const [assignmentForm, setAssignmentForm] = React.useState<AssignmentFormState>(EMPTY_ASSIGNMENT_FORM);
+
+  const [statsAssignmentId, setStatsAssignmentId] = React.useState("");
+  const [statsSignups, setStatsSignups] = React.useState("");
+  const [statsFtd, setStatsFtd] = React.useState("");
+  const [statsDeposits, setStatsDeposits] = React.useState("");
+
+  const selectedStatsAssignment = React.useMemo(
+    () => data?.assignments.find((item) => String(item.id) === statsAssignmentId) || null,
+    [data?.assignments, statsAssignmentId]
+  );
+
+  const load = React.useCallback(async (targetMonth: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await getFsbAgencyDashboard(targetMonth);
+      setData(response);
+      setMonthKey(response.monthKey);
+    } catch (err: any) {
+      setError(String(err?.message || "Chargement agence impossible."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void load(monthKey);
+  }, [load, monthKey]);
+
+  React.useEffect(() => {
+    if (!data?.assignments.length) {
+      setStatsAssignmentId("");
+      return;
+    }
+    if (!statsAssignmentId || !data.assignments.some((item) => String(item.id) === statsAssignmentId)) {
+      setStatsAssignmentId(String(data.assignments[0].id));
+    }
+  }, [data?.assignments, statsAssignmentId]);
+
+  React.useEffect(() => {
+    if (!selectedStatsAssignment) {
+      setStatsSignups("");
+      setStatsFtd("");
+      setStatsDeposits("");
+      return;
+    }
+    setStatsSignups(selectedStatsAssignment.stats.signups == null ? "" : String(selectedStatsAssignment.stats.signups));
+    setStatsFtd(selectedStatsAssignment.stats.ftd == null ? "" : String(selectedStatsAssignment.stats.ftd));
+    setStatsDeposits(
+      selectedStatsAssignment.stats.totalDeposits == null ? "" : String(selectedStatsAssignment.stats.totalDeposits)
+    );
+  }, [selectedStatsAssignment]);
+
+  function resetCasinoForm() {
+    setCasinoForm(EMPTY_CASINO_FORM);
+  }
+
+  function resetDealForm() {
+    setDealForm(EMPTY_DEAL_FORM);
+  }
+
+  function resetStreamerForm() {
+    setStreamerForm(EMPTY_STREAMER_FORM);
+  }
+
+  function resetAssignmentForm() {
+    setAssignmentForm(EMPTY_ASSIGNMENT_FORM);
+  }
+
+  function applyResponse(response: AgencyDashboardResponse) {
+    setData(response);
+    setMonthKey(response.monthKey);
+    setGeneratedAccess(response.generatedAccess ?? null);
+  }
+
+  async function runMutation(label: string, action: () => Promise<AgencyDashboardResponse>) {
+    setSaving(label);
+    setError(null);
+    try {
+      const response = await action();
+      applyResponse(response);
+      return response;
+    } catch (err: any) {
+      setError(String(err?.message || "Action impossible."));
+      return null;
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  function startEditCasino(id: number) {
+    const casino = data?.casinos.find((item) => item.id === id);
+    if (!casino) return;
+    setCasinoForm({
+      id: casino.id,
+      name: casino.name,
+      notes: casino.notes || "",
+    });
+  }
+
+  function startEditDeal(id: number) {
+    const deal = data?.deals.find((item) => item.id === id);
+    if (!deal) return;
+    setDealForm({
+      id: deal.id,
+      casinoId: String(deal.casinoId),
+      name: deal.name,
+      cpaAmount: deal.cpaAmount == null ? "" : String(deal.cpaAmount),
+      cpaAgencyCut: deal.cpaAgencyCut == null ? "" : String(deal.cpaAgencyCut),
+      ersPercent: deal.ersPercent == null ? "" : String(deal.ersPercent),
+      ersAgencyPercent: deal.ersAgencyPercent == null ? "" : String(deal.ersAgencyPercent),
+      notes: deal.notes || "",
+    });
+  }
+
+  function startEditStreamer(streamer: AgencyStreamer) {
+    setStreamerForm({
+      id: streamer.id,
+      displayName: streamer.displayName,
+      linkedStreamerId: streamer.linkedStreamerId == null ? "" : String(streamer.linkedStreamerId),
+      notes: streamer.notes || "",
+      initialDealId: "",
+      initialStartDate: "",
+      initialEndDate: "",
+      initialLinksText: "",
+      initialAssignmentNotes: "",
+    });
+  }
+
+  function startEditAssignment(assignment: AgencyAssignment) {
+    setAssignmentForm({
+      id: assignment.id,
+      agencyStreamerId: String(assignment.agencyStreamerId),
+      dealId: String(assignment.dealId),
+      startDate: assignment.startDate || "",
+      endDate: assignment.endDate || "",
+      linksText: assignment.linksText || "",
+      notes: assignment.notes || "",
+    });
+  }
+
+  function handleLinkedStreamerChange(value: string) {
+    setStreamerForm((prev) => ({ ...prev, linkedStreamerId: value }));
+    if (!value || streamerForm.displayName.trim()) return;
+    const match = data?.availableStreamers.find((item) => String(item.streamerId) === value);
+    if (match) {
+      setStreamerForm((prev) => ({ ...prev, displayName: prev.displayName || match.displayName }));
+    }
+  }
+
+  async function saveCasino(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const response = await runMutation("casino", () => {
+      const payload = {
+        name: casinoForm.name.trim(),
+        notes: casinoForm.notes.trim() ? casinoForm.notes.trim() : null,
+      };
+      return casinoForm.id
+        ? updateAgencyCasino(casinoForm.id, payload, monthKey)
+        : createAgencyCasino(payload, monthKey);
+    });
+    if (response) resetCasinoForm();
+  }
+
+  async function saveDeal(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const casinoId = Number(dealForm.casinoId || 0);
+    if (!casinoId) {
+      setError("Choisis un casino.");
+      return;
+    }
+
+    const response = await runMutation("deal", () => {
+      const payload = {
+        casinoId,
+        name: dealForm.name.trim(),
+        cpaAmount: toNumberOrNull(dealForm.cpaAmount),
+        cpaAgencyCut: toNumberOrNull(dealForm.cpaAgencyCut),
+        ersPercent: toNumberOrNull(dealForm.ersPercent),
+        ersAgencyPercent: toNumberOrNull(dealForm.ersAgencyPercent),
+        notes: dealForm.notes.trim() ? dealForm.notes.trim() : null,
+      };
+      return dealForm.id ? updateAgencyDeal(dealForm.id, payload, monthKey) : createAgencyDeal(payload, monthKey);
+    });
+    if (response) resetDealForm();
+  }
+
+  async function saveStreamer(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const response = await runMutation("streamer", () => {
+      if (streamerForm.id) {
+        return updateAgencyStreamer(
+          streamerForm.id,
+          {
+            displayName: streamerForm.displayName.trim(),
+            linkedStreamerId: streamerForm.linkedStreamerId ? Number(streamerForm.linkedStreamerId) : null,
+            notes: streamerForm.notes.trim() ? streamerForm.notes.trim() : null,
+          },
+          monthKey
+        );
+      }
+
+      return createAgencyStreamer(
+        {
+          displayName: streamerForm.displayName.trim(),
+          linkedStreamerId: streamerForm.linkedStreamerId ? Number(streamerForm.linkedStreamerId) : null,
+          notes: streamerForm.notes.trim() ? streamerForm.notes.trim() : null,
+          initialDealId: streamerForm.initialDealId ? Number(streamerForm.initialDealId) : null,
+          initialStartDate: streamerForm.initialStartDate || null,
+          initialEndDate: streamerForm.initialEndDate || null,
+          initialLinksText: streamerForm.initialLinksText.trim() ? streamerForm.initialLinksText.trim() : null,
+          initialAssignmentNotes: streamerForm.initialAssignmentNotes.trim()
+            ? streamerForm.initialAssignmentNotes.trim()
+            : null,
+        },
+        monthKey
+      );
+    });
+    if (response) resetStreamerForm();
+  }
+
+  async function saveAssignment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const dealId = Number(assignmentForm.dealId || 0);
+    const agencyStreamerId = Number(assignmentForm.agencyStreamerId || 0);
+
+    if (!dealId) {
+      setError("Choisis un deal.");
+      return;
+    }
+    if (!assignmentForm.id && !agencyStreamerId) {
+      setError("Choisis un streamer.");
+      return;
+    }
+
+    const response = await runMutation("assignment", () => {
+      const payload = {
+        dealId,
+        startDate: assignmentForm.startDate || null,
+        endDate: assignmentForm.endDate || null,
+        linksText: assignmentForm.linksText.trim() ? assignmentForm.linksText.trim() : null,
+        notes: assignmentForm.notes.trim() ? assignmentForm.notes.trim() : null,
+      };
+      return assignmentForm.id
+        ? updateAgencyAssignment(assignmentForm.id, payload, monthKey)
+        : createAgencyAssignment({ agencyStreamerId, ...payload }, monthKey);
+    });
+    if (response) resetAssignmentForm();
+  }
+
+  async function saveStats(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!statsAssignmentId) return;
+    await runMutation("stats", () =>
+      updateAgencyStats(
+        Number(statsAssignmentId),
+        {
+          monthKey,
+          signups: toNumberOrNull(statsSignups),
+          ftd: toNumberOrNull(statsFtd),
+          totalDeposits: toNumberOrNull(statsDeposits),
+        },
+        monthKey
+      )
+    );
+  }
+
+  async function handleDeleteCasino(id: number) {
+    if (!window.confirm("Supprimer ce casino ?")) return;
+    const response = await runMutation("delete-casino", () => deleteAgencyCasino(id, monthKey));
+    if (response && casinoForm.id === id) resetCasinoForm();
+  }
+
+  async function handleDeleteDeal(id: number) {
+    if (!window.confirm("Supprimer ce deal ?")) return;
+    const response = await runMutation("delete-deal", () => deleteAgencyDeal(id, monthKey));
+    if (response && dealForm.id === id) resetDealForm();
+  }
+
+  async function handleDeleteStreamer(id: number) {
+    if (!window.confirm("Supprimer ce streamer et ses assignations ?")) return;
+    const response = await runMutation("delete-streamer", () => deleteAgencyStreamer(id, monthKey));
+    if (response && streamerForm.id === id) resetStreamerForm();
+  }
+
+  async function handleDeleteAssignment(id: number) {
+    if (!window.confirm("Supprimer cette assignation ?")) return;
+    const response = await runMutation("delete-assignment", () => deleteAgencyAssignment(id, monthKey));
+    if (response && assignmentForm.id === id) resetAssignmentForm();
+  }
+
+  async function handleResetAccess(streamerId: number) {
+    await runMutation("reset-access", () => resetAgencyStreamerAccess(streamerId, monthKey));
+  }
+
+  const loginUrl =
+    generatedAccess && typeof window !== "undefined"
+      ? `${window.location.origin}${generatedAccess.loginPath}`
+      : generatedAccess?.loginPath || null;
+
+  return (
+    <>
+      <section className="fsb-card">
+        <div className="fsb-sectionhead">
+          <div>
+            <h2 className="fsb-sectiontitle">Agence</h2>
+            <div className="fsb-muted">
+              Multi-deals, historique mensuel, acces streamer dedie et calculs CPA / ERS.
+            </div>
+          </div>
+          <div className="fsb-actions">
+            <button className="fsb-btn" onClick={() => setMonthKey(addMonths(monthKey, -1))}>
+              Mois precedent
+            </button>
+            <span className="fsb-pill">{monthLabel(monthKey)}</span>
+            <button className="fsb-btn" onClick={() => setMonthKey(addMonths(monthKey, 1))}>
+              Mois suivant
+            </button>
+            <button className="fsb-btn" onClick={() => void load(monthKey)}>
+              {loading ? "Actualisation..." : "Rafraichir"}
+            </button>
+          </div>
+        </div>
+
+        {data?.historyMonths?.length ? (
+          <div className="fsb-pills" style={{ marginTop: 14 }}>
+            {data.historyMonths.slice(0, 8).map((item) => (
+              <button
+                key={item}
+                className={`fsb-navbtn ${item === monthKey ? "fsb-navbtn-active" : ""}`}
+                onClick={() => setMonthKey(item)}
+              >
+                {monthLabel(item)}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {error ? <div className="fsb-alert">{error}</div> : null}
+
+        <div className="fsb-stats">
+          <div className="fsb-stat">
+            <small>Casinos</small>
+            <strong>{data?.summary.casinos ?? 0}</strong>
+            <span>Base partenaires</span>
+          </div>
+          <div className="fsb-stat">
+            <small>Deals</small>
+            <strong>{data?.summary.deals ?? 0}</strong>
+            <span>Offres disponibles</span>
+          </div>
+          <div className="fsb-stat">
+            <small>Streamers</small>
+            <strong>{data?.summary.streamers ?? 0}</strong>
+            <span>Fiches agence</span>
+          </div>
+          <div className="fsb-stat">
+            <small>Assignations actives</small>
+            <strong>{data?.summary.activeAssignments ?? 0}</strong>
+            <span>Sur {monthLabel(monthKey)}</span>
+          </div>
+          <div className="fsb-stat">
+            <small>Net streamers</small>
+            <strong>{eur(data?.summary.streamerEarnings ?? 0)}</strong>
+            <span>Visible cote streamer</span>
+          </div>
+          <div className="fsb-stat">
+            <small>Marge agence</small>
+            <strong>{eur(data?.summary.agencyEarnings ?? 0)}</strong>
+            <span>Interne uniquement</span>
+          </div>
+        </div>
+      </section>
+
+      {generatedAccess ? (
+        <section className="fsb-card" style={{ marginTop: 18 }}>
+          <div className="fsb-sectionhead">
+            <div>
+              <h3 style={{ margin: 0 }}>Acces streamer genere</h3>
+              <div className="fsb-muted">Le mot de passe n est affiche qu ici apres creation ou reset.</div>
+            </div>
+            <button className="fsb-btn" onClick={() => setGeneratedAccess(null)}>
+              Fermer
+            </button>
+          </div>
+          <div className="fsb-grid" style={{ marginTop: 14 }}>
+            <div className="fsb-field">
+              <label>Username</label>
+              <input className="fsb-input" value={generatedAccess.username} readOnly />
+            </div>
+            <div className="fsb-field">
+              <label>Mot de passe</label>
+              <input className="fsb-input" value={generatedAccess.password} readOnly />
+            </div>
+            <div className="fsb-field fsb-field-full">
+              <label>Lien</label>
+              <input className="fsb-input" value={loginUrl || generatedAccess.loginPath} readOnly />
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="fsb-grid-2" style={{ marginTop: 18 }}>
+        <section className="fsb-card">
+          <div className="fsb-sectionhead">
+            <div>
+              <h3 style={{ margin: 0 }}>{casinoForm.id ? "Modifier un casino" : "Ajouter un casino"}</h3>
+              <div className="fsb-muted">Base de reference pour les deals.</div>
+            </div>
+            {casinoForm.id ? (
+              <button className="fsb-btn" onClick={resetCasinoForm}>
+                Annuler
+              </button>
+            ) : null}
+          </div>
+          <form onSubmit={saveCasino}>
+            <div className="fsb-grid">
+              <div className="fsb-field fsb-field-full">
+                <label>Nom</label>
+                <input
+                  className="fsb-input"
+                  value={casinoForm.name}
+                  onChange={(e) => setCasinoForm((prev) => ({ ...prev, name: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="fsb-field fsb-field-full">
+                <label>Notes</label>
+                <textarea
+                  className="fsb-textarea"
+                  value={casinoForm.notes}
+                  onChange={(e) => setCasinoForm((prev) => ({ ...prev, notes: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="fsb-modal-actions">
+              <button className="fsb-btn fsb-btn-primary" type="submit" disabled={saving === "casino"}>
+                {saving === "casino" ? "Enregistrement..." : casinoForm.id ? "Mettre a jour" : "Creer"}
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section className="fsb-card">
+          <div className="fsb-sectionhead">
+            <div>
+              <h3 style={{ margin: 0 }}>{dealForm.id ? "Modifier un deal" : "Ajouter un deal"}</h3>
+              <div className="fsb-muted">Le deal definit les regles CPA et ERS.</div>
+            </div>
+            {dealForm.id ? (
+              <button className="fsb-btn" onClick={resetDealForm}>
+                Annuler
+              </button>
+            ) : null}
+          </div>
+          <form onSubmit={saveDeal}>
+            <div className="fsb-grid">
+              <div className="fsb-field">
+                <label>Casino</label>
+                <select
+                  className="fsb-select"
+                  value={dealForm.casinoId}
+                  onChange={(e) => setDealForm((prev) => ({ ...prev, casinoId: e.target.value }))}
+                  required
+                >
+                  <option value="">Choisir</option>
+                  {(data?.casinos || []).map((casino) => (
+                    <option key={casino.id} value={casino.id}>
+                      {casino.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="fsb-field">
+                <label>Nom</label>
+                <input
+                  className="fsb-input"
+                  value={dealForm.name}
+                  onChange={(e) => setDealForm((prev) => ({ ...prev, name: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="fsb-field">
+                <label>CPA total / FTD</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={dealForm.cpaAmount}
+                  onChange={(e) => setDealForm((prev) => ({ ...prev, cpaAmount: e.target.value }))}
+                />
+              </div>
+              <div className="fsb-field">
+                <label>Part agence / FTD</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={dealForm.cpaAgencyCut}
+                  onChange={(e) => setDealForm((prev) => ({ ...prev, cpaAgencyCut: e.target.value }))}
+                />
+              </div>
+              <div className="fsb-field">
+                <label>ERS total %</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={dealForm.ersPercent}
+                  onChange={(e) => setDealForm((prev) => ({ ...prev, ersPercent: e.target.value }))}
+                />
+              </div>
+              <div className="fsb-field">
+                <label>Part agence ERS %</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={dealForm.ersAgencyPercent}
+                  onChange={(e) => setDealForm((prev) => ({ ...prev, ersAgencyPercent: e.target.value }))}
+                />
+              </div>
+              <div className="fsb-field fsb-field-full">
+                <label>Notes</label>
+                <textarea
+                  className="fsb-textarea"
+                  value={dealForm.notes}
+                  onChange={(e) => setDealForm((prev) => ({ ...prev, notes: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="fsb-modal-actions">
+              <button className="fsb-btn fsb-btn-primary" type="submit" disabled={saving === "deal"}>
+                {saving === "deal" ? "Enregistrement..." : dealForm.id ? "Mettre a jour" : "Creer"}
+              </button>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section className="fsb-grid-2" style={{ marginTop: 18 }}>
+        <section className="fsb-card">
+          <div className="fsb-sectionhead">
+            <div>
+              <h3 style={{ margin: 0 }}>{streamerForm.id ? "Modifier un streamer" : "Ajouter un streamer"}</h3>
+              <div className="fsb-muted">Creation de la fiche agence et, si nouveau, d un acces streamer dedie.</div>
+            </div>
+            {streamerForm.id ? (
+              <button className="fsb-btn" onClick={resetStreamerForm}>
+                Annuler
+              </button>
+            ) : null}
+          </div>
+          <form onSubmit={saveStreamer}>
+            <div className="fsb-grid">
+              <div className="fsb-field">
+                <label>Lien LunaLive</label>
+                <select
+                  className="fsb-select"
+                  value={streamerForm.linkedStreamerId}
+                  onChange={(e) => handleLinkedStreamerChange(e.target.value)}
+                >
+                  <option value="">Aucun</option>
+                  {(data?.availableStreamers || []).map((streamer) => (
+                    <option key={streamer.streamerId} value={streamer.streamerId}>
+                      {streamer.displayName} (@{streamer.slug})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="fsb-field">
+                <label>Nom affiche</label>
+                <input
+                  className="fsb-input"
+                  value={streamerForm.displayName}
+                  onChange={(e) => setStreamerForm((prev) => ({ ...prev, displayName: e.target.value }))}
+                  required
+                />
+              </div>
+              {!streamerForm.id ? (
+                <>
+                  <div className="fsb-field">
+                    <label>Deal initial</label>
+                    <select
+                      className="fsb-select"
+                      value={streamerForm.initialDealId}
+                      onChange={(e) => setStreamerForm((prev) => ({ ...prev, initialDealId: e.target.value }))}
+                    >
+                      <option value="">Aucun pour l instant</option>
+                      {(data?.deals || []).map((deal) => (
+                        <option key={deal.id} value={deal.id}>
+                          {deal.casinoName} - {deal.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="fsb-field">
+                    <label>Date debut</label>
+                    <input
+                      className="fsb-input"
+                      type="date"
+                      value={streamerForm.initialStartDate}
+                      onChange={(e) => setStreamerForm((prev) => ({ ...prev, initialStartDate: e.target.value }))}
+                    />
+                  </div>
+                  <div className="fsb-field">
+                    <label>Date fin</label>
+                    <input
+                      className="fsb-input"
+                      type="date"
+                      value={streamerForm.initialEndDate}
+                      onChange={(e) => setStreamerForm((prev) => ({ ...prev, initialEndDate: e.target.value }))}
+                    />
+                  </div>
+                  <div className="fsb-field">
+                    <label>Notes assignation</label>
+                    <input
+                      className="fsb-input"
+                      value={streamerForm.initialAssignmentNotes}
+                      onChange={(e) =>
+                        setStreamerForm((prev) => ({ ...prev, initialAssignmentNotes: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="fsb-field fsb-field-full">
+                    <label>Liens utiles</label>
+                    <textarea
+                      className="fsb-textarea"
+                      value={streamerForm.initialLinksText}
+                      onChange={(e) => setStreamerForm((prev) => ({ ...prev, initialLinksText: e.target.value }))}
+                    />
+                  </div>
+                </>
+              ) : null}
+              <div className="fsb-field fsb-field-full">
+                <label>Notes profil</label>
+                <textarea
+                  className="fsb-textarea"
+                  value={streamerForm.notes}
+                  onChange={(e) => setStreamerForm((prev) => ({ ...prev, notes: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="fsb-modal-actions">
+              <button className="fsb-btn fsb-btn-primary" type="submit" disabled={saving === "streamer"}>
+                {saving === "streamer" ? "Enregistrement..." : streamerForm.id ? "Mettre a jour" : "Creer"}
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section className="fsb-card">
+          <div className="fsb-sectionhead">
+            <div>
+              <h3 style={{ margin: 0 }}>{assignmentForm.id ? "Modifier une assignation" : "Ajouter une assignation"}</h3>
+              <div className="fsb-muted">Un streamer peut cumuler plusieurs deals avec ses dates et liens.</div>
+            </div>
+            {assignmentForm.id ? (
+              <button className="fsb-btn" onClick={resetAssignmentForm}>
+                Annuler
+              </button>
+            ) : null}
+          </div>
+          <form onSubmit={saveAssignment}>
+            <div className="fsb-grid">
+              {!assignmentForm.id ? (
+                <div className="fsb-field">
+                  <label>Streamer</label>
+                  <select
+                    className="fsb-select"
+                    value={assignmentForm.agencyStreamerId}
+                    onChange={(e) => setAssignmentForm((prev) => ({ ...prev, agencyStreamerId: e.target.value }))}
+                    required
+                  >
+                    <option value="">Choisir</option>
+                    {(data?.streamers || []).map((streamer) => (
+                      <option key={streamer.id} value={streamer.id}>
+                        {streamer.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              <div className="fsb-field">
+                <label>Deal</label>
+                <select
+                  className="fsb-select"
+                  value={assignmentForm.dealId}
+                  onChange={(e) => setAssignmentForm((prev) => ({ ...prev, dealId: e.target.value }))}
+                  required
+                >
+                  <option value="">Choisir</option>
+                  {(data?.deals || []).map((deal) => (
+                    <option key={deal.id} value={deal.id}>
+                      {deal.casinoName} - {deal.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="fsb-field">
+                <label>Date debut</label>
+                <input
+                  className="fsb-input"
+                  type="date"
+                  value={assignmentForm.startDate}
+                  onChange={(e) => setAssignmentForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                />
+              </div>
+              <div className="fsb-field">
+                <label>Date fin</label>
+                <input
+                  className="fsb-input"
+                  type="date"
+                  value={assignmentForm.endDate}
+                  onChange={(e) => setAssignmentForm((prev) => ({ ...prev, endDate: e.target.value }))}
+                />
+              </div>
+              <div className="fsb-field fsb-field-full">
+                <label>Liens utiles</label>
+                <textarea
+                  className="fsb-textarea"
+                  value={assignmentForm.linksText}
+                  onChange={(e) => setAssignmentForm((prev) => ({ ...prev, linksText: e.target.value }))}
+                />
+              </div>
+              <div className="fsb-field fsb-field-full">
+                <label>Notes</label>
+                <textarea
+                  className="fsb-textarea"
+                  value={assignmentForm.notes}
+                  onChange={(e) => setAssignmentForm((prev) => ({ ...prev, notes: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="fsb-modal-actions">
+              <button className="fsb-btn fsb-btn-primary" type="submit" disabled={saving === "assignment"}>
+                {saving === "assignment" ? "Enregistrement..." : assignmentForm.id ? "Mettre a jour" : "Creer"}
+              </button>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section className="fsb-grid-2" style={{ marginTop: 18 }}>
+        <section className="fsb-card">
+          <div className="fsb-sectionhead">
+            <div>
+              <h3 style={{ margin: 0 }}>Stats du mois</h3>
+              <div className="fsb-muted">Si les valeurs sont vides, le mois est considere comme non renseigne.</div>
+            </div>
+            <span className="fsb-tag">{monthLabel(monthKey)}</span>
+          </div>
+          <form onSubmit={saveStats}>
+            <div className="fsb-grid">
+              <div className="fsb-field fsb-field-full">
+                <label>Assignation</label>
+                <select
+                  className="fsb-select"
+                  value={statsAssignmentId}
+                  onChange={(e) => setStatsAssignmentId(e.target.value)}
+                  required
+                >
+                  <option value="">Choisir</option>
+                  {(data?.assignments || []).map((assignment) => (
+                    <option key={assignment.id} value={assignment.id}>
+                      {assignment.streamerDisplayName} - {assignment.deal.casinoName} - {assignment.deal.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="fsb-field">
+                <label>Signups</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={statsSignups}
+                  onChange={(e) => setStatsSignups(e.target.value)}
+                />
+              </div>
+              <div className="fsb-field">
+                <label>FTD</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={statsFtd}
+                  onChange={(e) => setStatsFtd(e.target.value)}
+                />
+              </div>
+              <div className="fsb-field fsb-field-full">
+                <label>Total deposits</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={statsDeposits}
+                  onChange={(e) => setStatsDeposits(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="fsb-modal-actions">
+              <button className="fsb-btn fsb-btn-primary" type="submit" disabled={saving === "stats" || !statsAssignmentId}>
+                {saving === "stats" ? "Enregistrement..." : "Mettre a jour"}
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section className="fsb-card">
+          <div className="fsb-sectionhead">
+            <div>
+              <h3 style={{ margin: 0 }}>Apercu selectionne</h3>
+              <div className="fsb-muted">Lecture rapide du deal et des gains pour le mois en cours.</div>
+            </div>
+          </div>
+
+          {selectedStatsAssignment ? (
+            <div className="fsb-list">
+              <div className="fsb-listitem">
+                <div className="fsb-listmain">
+                  <strong>
+                    {selectedStatsAssignment.streamerDisplayName} - {selectedStatsAssignment.deal.casinoName}
+                  </strong>
+                  <div className="fsb-listmeta">
+                    {selectedStatsAssignment.deal.name} | du {dateOnly(selectedStatsAssignment.startDate)}
+                    {selectedStatsAssignment.endDate ? ` au ${dateOnly(selectedStatsAssignment.endDate)}` : " sans fin"}
+                  </div>
+                </div>
+                <span className={`fsb-tag ${selectedStatsAssignment.activeDuringMonth ? "fsb-tag-paid" : ""}`}>
+                  {selectedStatsAssignment.activeDuringMonth ? "Actif ce mois" : "Hors plage"}
+                </span>
+              </div>
+              <div className="fsb-listitem">
+                <div className="fsb-listmain">
+                  <strong>Net streamer</strong>
+                  <div className="fsb-listmeta">
+                    CPA {eur(selectedStatsAssignment.payouts.streamerCpa)} | ERS {eur(selectedStatsAssignment.payouts.streamerErs)}
+                  </div>
+                </div>
+                <span className="fsb-tag">{eur(selectedStatsAssignment.payouts.streamerTotal)}</span>
+              </div>
+              <div className="fsb-listitem">
+                <div className="fsb-listmain">
+                  <strong>Marge agence</strong>
+                  <div className="fsb-listmeta">
+                    CPA {eur(selectedStatsAssignment.payouts.agencyCpa)} | ERS {eur(selectedStatsAssignment.payouts.agencyErs)}
+                  </div>
+                </div>
+                <span className="fsb-tag">{eur(selectedStatsAssignment.payouts.agencyTotal)}</span>
+              </div>
+              <div className="fsb-listitem">
+                <div className="fsb-listmain">
+                  <strong>Regles nettes streamer</strong>
+                  <div className="fsb-listmeta">
+                    CPA / FTD {selectedStatsAssignment.payouts.streamerCpaUnit == null ? "-" : eur(selectedStatsAssignment.payouts.streamerCpaUnit)}
+                    {" | "}
+                    ERS {pct(selectedStatsAssignment.payouts.streamerErsRate)}
+                  </div>
+                </div>
+                <span className="fsb-tag">Maj {dateTime(selectedStatsAssignment.stats.updatedAt || selectedStatsAssignment.updatedAt)}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="fsb-emptyblock" style={{ marginTop: 16 }}>
+              Selectionne une assignation pour voir le detail.
+            </div>
+          )}
+        </section>
+      </section>
+
+      <section className="fsb-card" style={{ marginTop: 18 }}>
+        <div className="fsb-sectionhead">
+          <div>
+            <h3 style={{ margin: 0 }}>Streamers agences</h3>
+            <div className="fsb-muted">Acces, lien LunaLive, nombre de deals et actions rapides.</div>
+          </div>
+        </div>
+        <div className="fsb-tablewrap">
+          <table className="fsb-table">
+            <thead>
+              <tr>
+                <th>Streamer</th>
+                <th>Acces</th>
+                <th>LunaLive</th>
+                <th>Assignations</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data?.streamers || []).map((streamer) => (
+                <tr key={streamer.id}>
+                  <td>
+                    <strong>{streamer.displayName}</strong>
+                    <div className="fsb-sub">{streamer.notes || "Aucune note"}</div>
+                  </td>
+                  <td>
+                    <strong>{streamer.accessUsername || "-"}</strong>
+                    <div className="fsb-sub">Maj {dateTime(streamer.updatedAt)}</div>
+                  </td>
+                  <td>
+                    <strong>{streamer.linkedStreamerSlug ? `@${streamer.linkedStreamerSlug}` : "-"}</strong>
+                    <div className="fsb-sub">{streamer.linkedStreamerName || "Pas de streamer lie"}</div>
+                  </td>
+                  <td>
+                    <strong>{streamer.assignments.length}</strong>
+                    <div className="fsb-sub">
+                      {streamer.assignments.filter((item) => item.activeDuringMonth).length} actifs sur {monthLabel(monthKey)}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="fsb-inline">
+                      <button onClick={() => startEditStreamer(streamer)}>Modifier</button>
+                      <button onClick={() => void handleResetAccess(streamer.id)}>Reset acces</button>
+                      <button onClick={() => void handleDeleteStreamer(streamer.id)}>Supprimer</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="fsb-card" style={{ marginTop: 18 }}>
+        <div className="fsb-sectionhead">
+          <div>
+            <h3 style={{ margin: 0 }}>Assignations et stats</h3>
+            <div className="fsb-muted">Une ligne = un deal actif ou historique pour un streamer.</div>
+          </div>
+        </div>
+        <div className="fsb-tablewrap">
+          <table className="fsb-table">
+            <thead>
+              <tr>
+                <th>Assignation</th>
+                <th>Periode</th>
+                <th>Stats {monthLabel(monthKey)}</th>
+                <th>Net streamer</th>
+                <th>Marge agence</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data?.assignments || []).map((assignment) => (
+                <tr key={assignment.id}>
+                  <td>
+                    <strong>{assignment.streamerDisplayName}</strong>
+                    <div className="fsb-sub">
+                      {assignment.deal.casinoName} - {assignment.deal.name}
+                    </div>
+                    <div className="fsb-sub" style={{ whiteSpace: "pre-wrap" }}>
+                      {assignment.linksText || "Pas de lien utile"}
+                    </div>
+                  </td>
+                  <td>
+                    <strong>Du {dateOnly(assignment.startDate)}</strong>
+                    <div className="fsb-sub">{assignment.endDate ? `Au ${dateOnly(assignment.endDate)}` : "Sans date de fin"}</div>
+                    <div className="fsb-sub">{assignment.activeDuringMonth ? "Actif ce mois" : "Hors plage ce mois"}</div>
+                  </td>
+                  <td>
+                    <strong>Signups {num(assignment.stats.signups)}</strong>
+                    <div className="fsb-sub">
+                      FTD {num(assignment.stats.ftd)} | Deposits{" "}
+                      {assignment.stats.totalDeposits == null ? "-" : eur(assignment.stats.totalDeposits)}
+                    </div>
+                    <div className="fsb-sub">Maj {dateTime(assignment.stats.updatedAt || assignment.updatedAt)}</div>
+                  </td>
+                  <td>
+                    <strong>{eur(assignment.payouts.streamerTotal)}</strong>
+                    <div className="fsb-sub">
+                      CPA {eur(assignment.payouts.streamerCpa)} | ERS {eur(assignment.payouts.streamerErs)}
+                    </div>
+                  </td>
+                  <td>
+                    <strong>{eur(assignment.payouts.agencyTotal)}</strong>
+                    <div className="fsb-sub">
+                      CPA {eur(assignment.payouts.agencyCpa)} | ERS {eur(assignment.payouts.agencyErs)}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="fsb-inline">
+                      <button onClick={() => startEditAssignment(assignment)}>Modifier</button>
+                      <button onClick={() => setStatsAssignmentId(String(assignment.id))}>Stats</button>
+                      <button onClick={() => void handleDeleteAssignment(assignment.id)}>Supprimer</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="fsb-grid-2" style={{ marginTop: 18 }}>
+        <section className="fsb-card">
+          <div className="fsb-sectionhead">
+            <div>
+              <h3 style={{ margin: 0 }}>Casinos</h3>
+              <div className="fsb-muted">Base de reference.</div>
+            </div>
+          </div>
+          <div className="fsb-tablewrap">
+            <table className="fsb-table">
+              <thead>
+                <tr>
+                  <th>Casino</th>
+                  <th>Notes</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.casinos || []).map((casino) => (
+                  <tr key={casino.id}>
+                    <td>
+                      <strong>{casino.name}</strong>
+                      <div className="fsb-sub">Maj {dateTime(casino.updatedAt)}</div>
+                    </td>
+                    <td>{casino.notes || "-"}</td>
+                    <td>
+                      <div className="fsb-inline">
+                        <button onClick={() => startEditCasino(casino.id)}>Modifier</button>
+                        <button onClick={() => void handleDeleteCasino(casino.id)}>Supprimer</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="fsb-card">
+          <div className="fsb-sectionhead">
+            <div>
+              <h3 style={{ margin: 0 }}>Deals</h3>
+              <div className="fsb-muted">Regles financieres et marge agence.</div>
+            </div>
+          </div>
+          <div className="fsb-tablewrap">
+            <table className="fsb-table">
+              <thead>
+                <tr>
+                  <th>Deal</th>
+                  <th>CPA</th>
+                  <th>ERS</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.deals || []).map((deal: AgencyDeal) => (
+                  <tr key={deal.id}>
+                    <td>
+                      <strong>{deal.name}</strong>
+                      <div className="fsb-sub">{deal.casinoName}</div>
+                    </td>
+                    <td>
+                      <strong>{deal.cpaAmount == null ? "-" : eur(deal.cpaAmount)}</strong>
+                      <div className="fsb-sub">Agence {deal.cpaAgencyCut == null ? "-" : eur(deal.cpaAgencyCut)}</div>
+                    </td>
+                    <td>
+                      <strong>{pct(deal.ersPercent)}</strong>
+                      <div className="fsb-sub">Agence {pct(deal.ersAgencyPercent)}</div>
+                    </td>
+                    <td>
+                      <div className="fsb-inline">
+                        <button onClick={() => startEditDeal(deal.id)}>Modifier</button>
+                        <button onClick={() => void handleDeleteDeal(deal.id)}>Supprimer</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </>
+  );
+}
