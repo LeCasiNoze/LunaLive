@@ -1,17 +1,16 @@
 <!doctype html>
-<html lang="fr" data-variant="__VARIANT__">
+<html lang="fr" data-variant="ruby">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LeCasiNoze - Dépose 20€, joue avec 40€</title>
   <meta name="description" content="Bonus 100% sur ton premier depot. Credite instantanement. Sans code promo.">
-  <link rel="stylesheet" href="/affi_templates/golden_chance_chest/shared/landing-base.css">
+  <link rel="stylesheet" href="./golden_chance_chest/shared/landing-base.css">
   <style>
     @import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap");
 
     :root {
-      --chest-aspect: 3 / 2;
-      --chest-offset-x: -10px;
+      --chest-aspect: 1 / 1;
       --page-bg: #0f0d14;
       --page-bg-2: #18141f;
       --panel-bg: rgba(12, 10, 18, 0.8);
@@ -46,11 +45,11 @@
       --avatar-bg: rgba(151, 143, 171, 0.34);
       --footer-card-bg: rgba(33, 31, 39, 0.84);
       --footer-card-border: rgba(255, 255, 255, 0.08);
-      --hero-bg-image: url("/affi_templates/golden_chance_chest/variants/__VARIANT__/background.png");
+      --hero-bg-image: url("./golden_chance_chest/variants/ruby/background.png");
     }
 
     html[data-variant="ruby"] {
-      --chest-aspect: 3 / 2;
+      --chest-aspect: 1 / 1;
       --page-bg: #120b10;
       --page-bg-2: #1d1217;
       --panel-bg: rgba(18, 10, 13, 0.82);
@@ -296,14 +295,18 @@
     }
 
     .info-box {
-      display: none;
+      max-width: 420px;
+      margin: 0 auto 16px;
+      background: rgba(18, 15, 25, 0.72);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
     }
 
     .promo-image-container {
       position: relative;
       width: min(100%, 500px);
       aspect-ratio: var(--chest-aspect, 1 / 1);
-      margin: 0 auto 2px;
+      margin: 0 auto 6px;
       padding: 0;
       border: 0;
       border-radius: 0;
@@ -313,20 +316,6 @@
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-
-    .promo-image-container::before {
-      content: "";
-      position: absolute;
-      inset: 14% 14% 18%;
-      border-radius: 999px;
-      background: radial-gradient(circle, var(--accent-light) 0%, transparent 72%);
-      filter: blur(16px);
-      opacity: 0;
-      transform: scale(0.9);
-      transition: opacity 220ms ease, transform 220ms ease;
-      z-index: 0;
-      pointer-events: none;
     }
 
     .promo-image-container::after {
@@ -349,57 +338,12 @@
       width: 100%;
       height: 100%;
       object-fit: contain;
-      object-position: center bottom;
+      object-position: center center;
       max-width: none;
       max-height: none;
       margin: 0;
       filter: drop-shadow(0 20px 36px rgba(0, 0, 0, 0.46));
       animation: none;
-      transform: translate3d(var(--chest-offset-x, 0px), var(--chest-translate, 0px), 0);
-      transition: filter 220ms ease, transform 220ms ease;
-    }
-
-    .chest-link,
-    .final-chest-link {
-      outline: none;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .chest-link:focus-visible,
-    .final-chest-link:focus-visible {
-      outline: none;
-    }
-
-    /* Supprimer tout cadre/box-shadow hérité sur hover */
-    .chest-link:hover .promo-image-container,
-    .chest-link:focus-visible .promo-image-container,
-    .final-chest-link:hover .promo-image-container,
-    .final-chest-link:focus-visible .promo-image-container {
-      transform: none;
-      box-shadow: none;
-      border: 0;
-      outline: none;
-    }
-
-    .chest-link:hover .promo-image-container::before,
-    .chest-link:focus-visible .promo-image-container::before,
-    .final-chest-link:hover .promo-image-container::before,
-    .final-chest-link:focus-visible .promo-image-container::before {
-      opacity: 0.4;
-      transform: scale(1.04);
-    }
-
-    /* Neon glow + scale sur le coffre uniquement */
-    .chest-link:hover .promo-image-container img,
-    .chest-link:focus-visible .promo-image-container img,
-    .final-chest-link:hover .promo-image-container img,
-    .final-chest-link:focus-visible .promo-image-container img {
-      transform: translate3d(var(--chest-offset-x, 0px), var(--chest-translate, 0px), 0) scale(1.06);
-      filter:
-        drop-shadow(0 0 8px var(--accent-light))
-        drop-shadow(0 0 18px var(--accent))
-        drop-shadow(0 0 30px var(--accent-soft))
-        drop-shadow(0 22px 38px rgba(0, 0, 0, 0.52));
     }
 
     .btn-jouer {
@@ -555,20 +499,18 @@
 
     .benefit-stack {
       display: flex;
-      flex: 1;
-      flex-direction: column;
+      flex-direction: row;
       align-items: stretch;
-      justify-content: center;
-      gap: 12px;
+      gap: 6px;
       margin-top: 20px;
     }
 
     .benefit-card {
       position: relative;
       overflow: visible;
-      flex: 0 0 auto;
+      flex: 1;
       min-width: 0;
-      padding: 20px 16px 18px;
+      padding: 18px 6px 14px;
       border-radius: 18px;
       border: 1px solid var(--card-border);
       background:
@@ -628,7 +570,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      flex: 0 0 auto;
+      flex: 0 0 22px;
       font-family: "Bebas Neue", sans-serif;
       font-size: 1.4rem;
       color: var(--accent);
@@ -908,8 +850,8 @@
 
     .final-chest-link:hover,
     .final-chest-link:focus-visible {
-      transform: none;
-      filter: none;
+      transform: translateY(-4px) scale(1.02);
+      filter: brightness(1.08) drop-shadow(0 0 18px var(--accent-soft));
     }
 
     .cta-final-btn {
@@ -961,206 +903,6 @@
       display: none;
     }
 
-    @media (min-width: 721px) {
-      .hero-bg {
-        background:
-          linear-gradient(180deg, rgba(0, 0, 0, 0.38) 0%, rgba(0, 0, 0, 0.08) 34%, rgba(0, 0, 0, 0.58) 100%),
-          radial-gradient(circle at 50% 18%, var(--hero-spot) 0%, transparent 34%),
-          var(--hero-bg-image) center top / auto 100% no-repeat,
-          var(--page-bg);
-      }
-
-      .hero-section {
-        padding-top: 26px;
-        padding-bottom: 18px;
-      }
-
-      .hero-content {
-        width: min(100%, 470px);
-        margin: 0 auto;
-        min-height: calc(100svh - 44px);
-        padding-top: clamp(20px, 3.5vh, 32px);
-      }
-
-      .brand-signature {
-        gap: 8px;
-        margin-bottom: 16px;
-      }
-
-      .brand-signature-line {
-        width: min(220px, 24vw);
-      }
-
-      .brand-logo-text .brand-logo-main {
-        font-size: clamp(2.18rem, 4.8vw, 3.3rem);
-        letter-spacing: 0.18em;
-      }
-
-      .brand-logo-text .brand-logo-sub {
-        margin-top: 4px;
-        font-size: clamp(0.72rem, 1.3vw, 0.96rem);
-        letter-spacing: 0.56em;
-      }
-
-      .offer-copy {
-        max-width: 410px;
-        margin-top: 10px;
-      }
-
-      .hero-title {
-        font-size: clamp(3rem, 5.7vw, 4.18rem);
-        line-height: 0.92;
-      }
-
-      .hero-subtitle {
-        max-width: 19.4rem;
-        margin-top: 14px;
-        font-size: 0.93rem;
-      }
-
-      .live-count {
-        margin-top: 14px;
-        font-size: 0.72rem;
-      }
-
-      .hero-card {
-        width: min(100%, 456px);
-        transform: translateY(-6px);
-      }
-
-      .promo-image-container {
-        width: min(100%, 456px);
-      }
-
-      .promo-image-container img {
-        --chest-translate: -10px;
-      }
-
-      .cta-cluster {
-        width: min(100%, 336px);
-      }
-
-      .btn-jouer {
-        width: min(100%, 336px);
-        margin-top: -8px;
-        font-size: 0.98rem;
-      }
-
-      .micro-proof {
-        margin-top: 10px;
-        font-size: 0.62rem;
-      }
-
-      .gold-panel-section,
-      .footer-note-modern {
-        max-width: 456px;
-      }
-
-      .gold-panel {
-        padding: 20px 16px 22px;
-      }
-    }
-
-    @media (min-width: 721px) and (max-height: 980px) {
-      .hero-section {
-        padding-top: 20px;
-        padding-bottom: 14px;
-      }
-
-      .hero-content {
-        min-height: calc(100svh - 32px);
-        padding-top: 14px;
-      }
-
-      .brand-signature {
-        margin-bottom: 12px;
-      }
-
-      .offer-copy {
-        margin-top: 6px;
-      }
-
-      .hero-subtitle {
-        margin-top: 11px;
-      }
-
-      .live-count {
-        margin-top: 11px;
-      }
-
-      .hero-card {
-        transform: translateY(-16px);
-      }
-
-      .promo-image-container {
-        width: min(100%, 430px);
-      }
-
-      .promo-image-container img {
-        --chest-translate: -16px;
-      }
-
-      .cta-cluster {
-        width: min(100%, 320px);
-      }
-
-      .btn-jouer {
-        width: min(100%, 320px);
-        margin-top: -18px;
-        padding-top: 14px;
-        padding-bottom: 14px;
-      }
-
-      .micro-proof {
-        margin-top: 6px;
-      }
-    }
-
-    @media (min-width: 721px) and (max-height: 860px) {
-      .hero-content {
-        padding-top: 8px;
-      }
-
-      .brand-logo-text .brand-logo-main {
-        font-size: clamp(2rem, 4.5vw, 2.9rem);
-      }
-
-      .hero-title {
-        font-size: clamp(2.72rem, 5.2vw, 3.7rem);
-      }
-
-      .hero-subtitle {
-        max-width: 18.2rem;
-        font-size: 0.88rem;
-        line-height: 1.42;
-      }
-
-      .live-count {
-        font-size: 0.67rem;
-      }
-
-      .hero-card {
-        transform: translateY(-26px);
-      }
-
-      .promo-image-container {
-        width: min(100%, 394px);
-      }
-
-      .promo-image-container img {
-        --chest-translate: -24px;
-      }
-
-      .btn-jouer {
-        width: min(100%, 304px);
-        margin-top: -26px;
-      }
-
-      .micro-proof {
-        font-size: 0.56rem;
-      }
-    }
-
     @media (max-width: 860px) {
       .gold-panel-section {
         min-height: var(--mobile-panel-height);
@@ -1176,7 +918,8 @@
       }
 
       .gold-panel-benefits .benefit-stack {
-        justify-content: center;
+        flex: 1;
+        justify-content: space-evenly;
       }
 
       .gold-panel-reviews .review-list {
@@ -1266,6 +1009,10 @@
         transform: translateY(-8px);
       }
 
+      .info-box {
+        display: none;
+      }
+
       .offer-title {
         font-size: 1.45rem;
       }
@@ -1277,7 +1024,7 @@
       }
 
       .promo-image-container img {
-        --chest-translate: -16px;
+        transform: translateY(-16px);
       }
 
       .btn-jouer {
@@ -1314,8 +1061,8 @@
       .hero-bg {
         background:
           linear-gradient(180deg, rgba(0, 0, 0, 0.28) 0%, rgba(0, 0, 0, 0.04) 34%, rgba(0, 0, 0, 0.5) 100%),
-          radial-gradient(circle at 50% 18%, var(--hero-spot) 0%, transparent 30%),
-          var(--hero-bg-image) center top / auto 100% no-repeat,
+          radial-gradient(circle at 50% 18%, rgba(212, 168, 67, 0.12) 0%, transparent 30%),
+          url("./golden_chance_chest/variants/ruby/background.png") center top / auto 100% no-repeat,
           var(--page-bg);
       }
 
@@ -1367,7 +1114,7 @@
       }
 
       .promo-image-container img {
-        --chest-translate: -22px;
+        transform: translateY(-22px);
       }
 
       .btn-jouer {
@@ -1406,84 +1153,6 @@
         font-size: clamp(2.5rem, 9vw, 3.4rem);
       }
     }
-
-    @media (max-width: 720px) and (max-height: 900px) {
-      .hero-section {
-        padding-bottom: 10px;
-      }
-
-      .hero-content {
-        min-height: calc(100svh - 22px);
-        padding-top: clamp(18px, 3vh, 30px);
-      }
-
-      .offer-copy {
-        margin-top: 6px;
-      }
-
-      .hero-subtitle {
-        margin-top: 12px;
-      }
-
-      .live-count {
-        margin-top: 12px;
-      }
-
-      .hero-card {
-        transform: translateY(-18px);
-      }
-
-      .promo-image-container img {
-        --chest-translate: -24px;
-      }
-
-      .btn-jouer {
-        margin-top: -24px;
-      }
-
-      .micro-proof {
-        margin-top: 4px;
-      }
-    }
-
-    @media (max-width: 430px) and (max-height: 860px) {
-      .hero-content {
-        padding-top: 34px;
-      }
-
-      .brand-signature {
-        margin-bottom: 12px;
-      }
-
-      .hero-title {
-        font-size: clamp(2.18rem, 10.8vw, 3rem);
-      }
-
-      .hero-subtitle {
-        font-size: 0.8rem;
-        line-height: 1.38;
-      }
-
-      .live-count {
-        font-size: 0.62rem;
-      }
-
-      .hero-card {
-        transform: translateY(-28px);
-      }
-
-      .promo-image-container img {
-        --chest-translate: -30px;
-      }
-
-      .btn-jouer {
-        margin-top: -32px;
-      }
-
-      .micro-proof {
-        font-size: 0.54rem;
-      }
-    }
   </style>
 </head>
 <body>
@@ -1503,8 +1172,8 @@
           </div>
 
           <div class="offer-copy" data-offer-deposit="20" data-offer-bonus="20" data-offer-total="40">
-            <h1 class="hero-title">D&Eacute;POSE 20&euro; <span>JOUE A 40&euro;</span></h1>
-            <p class="hero-subtitle"><strong>+20&euro; offerts</strong> d&egrave;s ton premier d&eacute;p&ocirc;t.</p>
+            <h1 class="hero-title">DEPOSE 20EUR <span>JOUE A 40EUR</span></h1>
+            <p class="hero-subtitle">+20EUR offerts dès ton premier dépôt.</p>
             <p class="live-count"><span class="live-dot"></span><span data-live-count>214</span> joueurs inscrits aujourd'hui</p>
           </div>
 
@@ -1521,8 +1190,8 @@
 
             <a href="https://gueuledange.jeutiktok.fr/" class="chest-link" target="_blank" rel="noopener noreferrer">
               <div class="promo-image-container">
-                <img src="/affi_templates/golden_chance_chest/variants/__VARIANT__/chest.png" alt="Coffre bonus" data-asset-img>
-                <div class="asset-placeholder">Ajoute `/affi_templates/golden_chance_chest/variants/__VARIANT__/chest.png` pour afficher le coffre.</div>
+                <img src="./golden_chance_chest/variants/ruby/chest.png" alt="Coffre bonus" data-asset-img>
+                <div class="asset-placeholder">Ajoute `./golden_chance_chest/variants/ruby/chest.png` pour afficher le coffre.</div>
               </div>
             </a>
 
@@ -1648,7 +1317,7 @@
           <div class="cta-final-chest">
             <a href="https://gueuledange.jeutiktok.fr/" class="final-chest-link" target="_blank" rel="noopener noreferrer">
               <div class="promo-image-container cta-chest-container">
-                <img src="/affi_templates/golden_chance_chest/variants/__VARIANT__/chest.png" alt="Coffre bonus final">
+                <img src="./golden_chance_chest/variants/ruby/chest.png" alt="Coffre bonus final">
               </div>
             </a>
           </div>
@@ -1671,6 +1340,6 @@
     <a href="https://gueuledange.jeutiktok.fr/" class="sticky-cta" target="_blank" rel="noopener noreferrer">R&Eacute;CLAME TES <span data-bind-offer-value="bonus">20&euro;</span> OFFERTS</a>
   </div>
 
-  <script src="/affi_templates/golden_chance_chest/shared/landing-base.js"></script>
+  <script src="./golden_chance_chest/shared/landing-base.js"></script>
 </body>
 </html>

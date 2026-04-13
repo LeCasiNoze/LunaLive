@@ -94,6 +94,12 @@ function replaceAllLiteral(source: string, search: string, replacement: string) 
   return source.split(search).join(replacement);
 }
 
+function absolutizeAffiTemplateUrls(html: string, origin: string) {
+  return html
+    .replace(/(["'(])\/affi_templates\//g, `$1${origin}/affi_templates/`)
+    .replace(/(`)\/affi_templates\//g, `$1${origin}/affi_templates/`);
+}
+
 async function fetchAsDataUrl(url: string) {
   const response = await fetch(url);
   if (!response.ok) {
@@ -770,13 +776,15 @@ export default function AffiEditorPage() {
     let html = applyConfig(tmpl, cfg, currentModel, goldenVariant);
 
     if (currentModel === 5) {
+      const origin = window.location.origin;
+
       // Inliner landing-base.css pour un export autonome
       try {
         const cssResp = await fetch("/affi_templates/golden_chance_chest/shared/landing-base.css");
         if (cssResp.ok) {
           const css = await cssResp.text();
           html = html.replace(
-            `<link rel="stylesheet" href="/affi_templates/golden_chance_chest/shared/landing-base.css">`,
+            /<link rel="stylesheet" href="\/affi_templates\/golden_chance_chest\/shared\/landing-base\.css">\s*/i,
             `<style>\n${css}\n</style>`
           );
         }
@@ -788,7 +796,7 @@ export default function AffiEditorPage() {
         if (jsResp.ok) {
           const js = await jsResp.text();
           html = html.replace(
-            `<script src="/affi_templates/golden_chance_chest/shared/landing-base.js"></script>`,
+            /<script src="\/affi_templates\/golden_chance_chest\/shared\/landing-base\.js"><\/script>\s*/i,
             `<script>\n${js}\n</script>`
           );
         }
@@ -807,8 +815,8 @@ export default function AffiEditorPage() {
           ];
       html = await inlineAssetCandidates(html, chestCandidates);
 
-      // Fallback: garde des chemins relatifs si un asset n'a pas pu être inline
-      html = html.replace(/\/affi_templates\//g, "./");
+      // Fallback robuste: liens absolus vers l'instance qui a généré l'export
+      html = absolutizeAffiTemplateUrls(html, origin);
     }
 
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
