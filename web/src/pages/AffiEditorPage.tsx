@@ -817,6 +817,10 @@ export default function AffiEditorPage() {
 
       // Fallback robuste: liens absolus vers l'instance qui a généré l'export
       html = absolutizeAffiTemplateUrls(html, origin);
+
+      // Les navigateurs Chromium sont capricieux avec les fichiers locaux + target=_blank.
+      // En export autonome, on préfère une navigation simple dans le même onglet.
+      html = html.replace(/target="_blank"/g, 'target="_self"');
     }
 
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
