@@ -46,7 +46,7 @@
       --avatar-bg: rgba(151, 143, 171, 0.34);
       --footer-card-bg: rgba(33, 31, 39, 0.84);
       --footer-card-border: rgba(255, 255, 255, 0.08);
-      --hero-bg-image: url("/affi_templates/golden_chance_chest/variants/__VARIANT__/background.png");
+      --hero-bg-image: none;
     }
 
     html[data-variant="ruby"] {
@@ -164,11 +164,28 @@
       height: 100svh;
       z-index: 0;
       transform: none;
+      overflow: hidden;
+      background: var(--page-bg);
+    }
+
+    .hero-bg::after {
+      content: "";
+      position: absolute;
+      inset: 0;
       background:
         linear-gradient(180deg, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0.08) 34%, rgba(0, 0, 0, 0.58) 100%),
-        radial-gradient(circle at 50% 18%, var(--hero-spot) 0%, transparent 34%),
-        var(--hero-bg-image) center center / contain no-repeat,
-        var(--page-bg);
+        radial-gradient(circle at 50% 18%, var(--hero-spot) 0%, transparent 34%);
+      pointer-events: none;
+    }
+
+    .hero-bg-media {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center center;
+      display: block;
     }
 
     .hero-section {
@@ -1488,7 +1505,9 @@
 </head>
 <body>
   <div class="page">
-    <div class="hero-bg" aria-hidden="true"></div>
+    <div class="hero-bg" aria-hidden="true">
+      <img class="hero-bg-media" src="/affi_templates/golden_chance_chest/variants/__VARIANT__/background.png" alt="">
+    </div>
 
     <main class="shell">
       <section class="hero-section">

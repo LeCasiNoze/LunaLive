@@ -91,6 +91,7 @@ import { publicContentRouter } from "./routes/public_content.js";
 import { expensesRouter } from "./routes/expenses.js";
 import { fsbDashboardRouter } from "./routes/fsb_dashboard.js";
 import { agencyRouter } from "./routes/agency.js";
+import { requireFsbAccess } from "./routes/fsb_guard.js";
 
 // Discord routes
 import { meDiscordLinkRouter } from "./routes/bot/me_discord_link.js";
@@ -118,6 +119,7 @@ import { offresStreamersRouter } from "./routes/offres_streamers.js";
 import { igWebhookRouter } from "./ig_dm_scheduler.js";
 import { igConfigRouter } from "./routes/ig_config.js";
 import { igCollaborationsRouter } from "./routes/ig_collaborations.js";
+import { fsbAffiPagesRouter, publicAffiPagesRouter } from "./routes/affi_pages.js";
 
 export function createApp() {
   const app = express();
@@ -183,6 +185,8 @@ export function createApp() {
   app.use("/api", offresStreamersRouter);
   app.use("/api", igConfigRouter);
   app.use("/api", igCollaborationsRouter);
+  app.use("/api", publicAffiPagesRouter);
+  app.use("/api", requireAuth, requireFsbAccess, fsbAffiPagesRouter);
   app.use("/api", expensesRouter);
   app.use("/api", fsbDashboardRouter);
   app.use("/api", agencyRouter);

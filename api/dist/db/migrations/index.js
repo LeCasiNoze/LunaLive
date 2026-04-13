@@ -68,6 +68,14 @@ import { mig063_instagram_collab_unique } from "./mig063_instagram_collab_unique
 import { mig064_chat_message_stats } from "./mig064_chat_message_stats.js";
 import { mig065_feature_events } from "./mig065_feature_events.js";
 import { mig066_expenses } from "./mig066_expenses.js";
+import { mig067_agency } from "./mig067_agency.js";
+import { mig068_agency_monthly } from "./mig068_agency_monthly.js";
+import { mig069_agency_stat_fields } from "./mig069_agency_stat_fields.js";
+import { mig070_agency_access_code } from "./mig070_agency_access_code.js";
+import { mig071_agency_public_note_and_negative_rs } from "./mig071_agency_public_note_and_negative_rs.js";
+import { mig072_agency_payment_expenses } from "./mig072_agency_payment_expenses.js";
+import { mig073_agency_payment_frequency } from "./mig073_agency_payment_frequency.js";
+import { mig074_affi_landing_pages } from "./mig074_affi_landing_pages.js";
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
 import { mig041_rumble_accounts } from "./mig041_rumble_accounts.js";
@@ -141,6 +149,14 @@ export async function migrateAll(pool) {
     await mig064_chat_message_stats(pool);
     await mig065_feature_events(pool);
     await mig066_expenses(pool);
+    await mig067_agency(pool);
+    await mig068_agency_monthly(pool);
+    await mig069_agency_stat_fields(pool);
+    await mig070_agency_access_code(pool);
+    await mig071_agency_public_note_and_negative_rs(pool);
+    await mig072_agency_payment_expenses(pool);
+    await mig073_agency_payment_frequency(pool);
+    await mig074_affi_landing_pages(pool);
     // Rumble migrations
     await mig040_rumble_info(pool);
     await mig041_rumble_accounts(pool);

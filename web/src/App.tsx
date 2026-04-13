@@ -66,7 +66,11 @@ function AppInner() {
   const location = useLocation();
   const isMobile = useIsMobile();
   const { logout, token } = useAuth();
-  const hideChrome = location.pathname === "/editorFSN" || location.pathname.startsWith("/agency");
+  const isStandaloneReferral = location.pathname.startsWith("/r/");
+  const hideChrome =
+    location.pathname === "/editorFSN" ||
+    location.pathname.startsWith("/agency") ||
+    isStandaloneReferral;
 
   const [loginOpen, setLoginOpen] = React.useState(false);
   const [achievementsOpen, setAchievementsOpen] = React.useState(false);
@@ -121,19 +125,25 @@ function AppInner() {
 
   return (
     <div className="app">
-      <div className="appBgLayer" aria-hidden="true">
-        <BgEffect type="cards" />
-      </div>
+      {!isStandaloneReferral && (
+        <div className="appBgLayer" aria-hidden="true">
+          <BgEffect type="cards" />
+        </div>
+      )}
 
       <div className="appContentLayer">
         {!isMobile && !hideChrome && (
           <Topbar onOpenLogin={() => setLoginOpen(true)} onLogout={logout} />
         )}
 
-        <GoLiveNotifier />
-        <DailyBonusToast />
-        <AchievementsToast />
-        <CallsToast />
+        {!isStandaloneReferral && (
+          <>
+            <GoLiveNotifier />
+            <DailyBonusToast />
+            <AchievementsToast />
+            <CallsToast />
+          </>
+        )}
 
         <Routes>
           <Route
@@ -288,15 +298,19 @@ function AppInner() {
 
         {isMobile && !hideChrome && <BottomTabs />}
 
-        <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
-        <WelcomeModal
-          open={welcomeOpen}
-          onClose={() => {
-            localStorage.setItem("ll_welcome_seen", String(Date.now()));
-            setWelcomeOpen(false);
-          }}
-        />
-        <AchievementsModal open={achievementsOpen} onClose={() => setAchievementsOpen(false)} />
+        {!isStandaloneReferral && (
+          <>
+            <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+            <WelcomeModal
+              open={welcomeOpen}
+              onClose={() => {
+                localStorage.setItem("ll_welcome_seen", String(Date.now()));
+                setWelcomeOpen(false);
+              }}
+            />
+            <AchievementsModal open={achievementsOpen} onClose={() => setAchievementsOpen(false)} />
+          </>
+        )}
       </div>
     </div>
   );

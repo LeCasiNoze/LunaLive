@@ -4,6 +4,15 @@
 
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../auth/AuthProvider";
+import { canAccessFsbBoard } from "../lib/fsb_access";
+import {
+  createFsbAffiPage,
+  deleteFsbAffiPage,
+  listFsbAffiPages,
+  type FsbAffiPage,
+  updateFsbAffiPage,
+} from "../lib/api_affi_pages";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -673,11 +682,47 @@ function Section({ title, children, defaultOpen = true }: SectionProps) {
   );
 }
 
+function slugifyLandingSegment(value: string) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
+
+function buildPublishedPageSlug(model: number, cfg: Config, variant: GoldenChanceVariant) {
+  const brandSource =
+    model === 5
+      ? cfg.goldenBrandMain || cfg.goldenPageTitle || "landing"
+      : cfg.casinoName || cfg.pageTitle || `modele-${model}`;
+  const brandPart = slugifyLandingSegment(brandSource) || "landing";
+  return model === 5
+    ? `${brandPart}-golden-chest-${variant}`
+    : `${brandPart}-model${model}`;
+}
+
+function buildPublishedBrandName(model: number, cfg: Config) {
+  const raw = model === 5 ? cfg.goldenBrandMain : cfg.casinoName;
+  return String(raw || "").trim() || `Modele ${model}`;
+}
+
+function buildPublishedTitle(model: number, cfg: Config) {
+  const raw = model === 5 ? cfg.goldenPageTitle : cfg.pageTitle;
+  return String(raw || "").trim() || buildPublishedBrandName(model, cfg);
+}
+
+function isGoldenVariant(value: string | null | undefined): value is GoldenChanceVariant {
+  return value === "gold" || value === "ruby" || value === "emerald" || value === "sapphire";
+}
+
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 
 export default function AffiEditorPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { token, user } = useAuth();
   const [currentModel, setCurrentModel] = useState(1);
   const [goldenVariant, setGoldenVariant] = useState<GoldenChanceVariant>("gold");
   const [cfg, setCfg] = useState<Config>(DEFAULT_CONFIG);
@@ -686,10 +731,29 @@ export default function AffiEditorPage() {
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const blobUrlRef = useRef<string | null>(null);
+  const [savedPages, setSavedPages] = useState<FsbAffiPage[]>([]);
+  const [loadingPages, setLoadingPages] = useState(false);
+  const [selectedPageId, setSelectedPageId] = useState<number | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [pageNotice, setPageNotice] = useState<string | null>(null);
+  const [pageAction, setPageAction] = useState<"create" | "update" | "delete" | null>(null);
   const returnTo = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return params.get("returnTo") || "/FSB_Board?section=tools";
   }, [location.search]);
+  const canManagePublishedPages = canAccessFsbBoard(user);
+  const selectedPage = useMemo(
+    () => savedPages.find((page) => page.id === selectedPageId) ?? null,
+    [savedPages, selectedPageId]
+  );
+  const publishedSlugPreview = useMemo(
+    () => buildPublishedPageSlug(currentModel, cfg, goldenVariant),
+    [currentModel, cfg, goldenVariant]
+  );
+  const publishedUrlPreview = useMemo(() => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    return `${origin}/r/${publishedSlugPreview}`;
+  }, [publishedSlugPreview]);
 
   // ── Load templates ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -729,6 +793,116 @@ export default function AffiEditorPage() {
       }
     })();
   }, []);
+
+  async function refreshPublishedPages(nextSelectedId?: number | null) {
+    if (!token || !canManagePublishedPages) return;
+    setLoadingPages(true);
+    setPageError(null);
+    try {
+      const response = await listFsbAffiPages(token);
+      setSavedPages(response.items);
+      if (typeof nextSelectedId === "number") {
+        setSelectedPageId(nextSelectedId);
+      } else if (nextSelectedId === null) {
+        setSelectedPageId(null);
+      }
+    } catch (error: any) {
+      setPageError(String(error?.message || "Impossible de charger les pages publiees."));
+    } finally {
+      setLoadingPages(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!token || !canManagePublishedPages) return;
+    void refreshPublishedPages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, canManagePublishedPages]);
+
+  function loadPublishedPageInEditor(page: FsbAffiPage) {
+    setCurrentModel(Number(page.model || 5));
+    if (isGoldenVariant(page.variant)) {
+      setGoldenVariant(page.variant);
+    }
+    setCfg({ ...DEFAULT_CONFIG, ...(page.config || {}) });
+    setSelectedPageId(page.id);
+    setPageError(null);
+    setPageNotice(`Edition chargee : /r/${page.slug}`);
+  }
+
+  function resetDraft() {
+    setCfg({ ...DEFAULT_CONFIG });
+    setGoldenVariant("gold");
+    setSelectedPageId(null);
+    setPageError(null);
+    setPageNotice(null);
+  }
+
+  async function publishCurrentPage() {
+    if (!token || !canManagePublishedPages) {
+      setPageError("Connexion FSB requise pour publier une page sur le site.");
+      return;
+    }
+
+    const payload = {
+      slug: buildPublishedPageSlug(currentModel, cfg, goldenVariant),
+      model: currentModel,
+      variant: currentModel === 5 ? goldenVariant : null,
+      brandName: buildPublishedBrandName(currentModel, cfg),
+      title: buildPublishedTitle(currentModel, cfg),
+      config: { ...cfg },
+    };
+
+    const isUpdate = Boolean(selectedPageId);
+    setPageAction(isUpdate ? "update" : "create");
+    setPageError(null);
+    setPageNotice(null);
+
+    try {
+      const response = isUpdate
+        ? await updateFsbAffiPage(token, Number(selectedPageId), payload)
+        : await createFsbAffiPage(token, payload);
+      const page = response.item;
+      await refreshPublishedPages(page.id);
+      loadPublishedPageInEditor(page);
+      setPageNotice(
+        isUpdate
+          ? `Page mise a jour : ${window.location.origin}/r/${page.slug}`
+          : `Page creee : ${window.location.origin}/r/${page.slug}`
+      );
+    } catch (error: any) {
+      setPageError(String(error?.message || "Impossible de publier cette page."));
+    } finally {
+      setPageAction(null);
+    }
+  }
+
+  async function removePublishedPage(page: FsbAffiPage) {
+    if (!token || !canManagePublishedPages) {
+      setPageError("Connexion FSB requise pour supprimer une page.");
+      return;
+    }
+    if (!window.confirm(`Supprimer la page ${page.slug} ?`)) return;
+
+    setPageAction("delete");
+    setPageError(null);
+    setPageNotice(null);
+
+    try {
+      await deleteFsbAffiPage(token, page.id);
+      const shouldClearSelection = selectedPageId === page.id;
+      await refreshPublishedPages(shouldClearSelection ? null : selectedPageId);
+      if (shouldClearSelection) {
+        resetDraft();
+      } else {
+        setPageNotice(`Page supprimee : /r/${page.slug}`);
+      }
+    } catch (error: any) {
+      setPageError(String(error?.message || "Impossible de supprimer cette page."));
+    } finally {
+      setPageAction(null);
+    }
+  }
 
   // ── Live preview ───────────────────────────────────────────────────────────
   function pushPreview(tmpl: string, c: Config, model: number, variant: GoldenChanceVariant) {
@@ -850,8 +1024,16 @@ export default function AffiEditorPage() {
         <button style={{ ...s.btn, ...s.btnSecondary }} onClick={() => navigate(returnTo)}>
           Retour au board
         </button>
-        <button style={{ ...s.btn, ...s.btnSecondary }} onClick={() => { setCfg(DEFAULT_CONFIG); setGoldenVariant("gold"); }}>
+        <button style={{ ...s.btn, ...s.btnSecondary }} onClick={resetDraft}>
           Réinitialiser
+        </button>
+        <button
+          style={{ ...s.btn, ...s.btnSuccess, opacity: canManagePublishedPages ? 1 : 0.55 }}
+          onClick={publishCurrentPage}
+          disabled={!canManagePublishedPages || pageAction === "create" || pageAction === "update"}
+          title={canManagePublishedPages ? publishedUrlPreview : "Acces FSB requis"}
+        >
+          {selectedPageId ? "Mettre à jour" : "Créer"}
         </button>
         <button style={{ ...s.btn, ...s.btnPrimary }} onClick={exportHtml}>
           ⬇ Exporter HTML
@@ -893,6 +1075,90 @@ export default function AffiEditorPage() {
               Vérifiez que les fichiers sont bien dans <code>web/public/affi_templates/</code>.
             </div>
           )}
+
+          <Section title="Pages créées" defaultOpen={true}>
+            <div style={s.helperText}>URL publiee pour ce brouillon</div>
+            <div style={s.urlPreview}>{publishedUrlPreview}</div>
+
+            {!canManagePublishedPages && (
+              <div style={s.inlineWarn}>
+                Acces FSB requis pour creer, modifier ou supprimer des pages publiees.
+              </div>
+            )}
+
+            {selectedPage && (
+              <div style={s.inlineInfo}>
+                Edition en cours : <strong>/r/{selectedPage.slug}</strong>
+              </div>
+            )}
+
+            {pageError && <div style={s.inlineError}>{pageError}</div>}
+            {pageNotice && <div style={s.inlineNotice}>{pageNotice}</div>}
+
+            <div style={s.savedPageTools}>
+              <button style={s.smallActionBtn} onClick={resetDraft}>
+                Nouveau brouillon
+              </button>
+              {selectedPage && (
+                <button
+                  style={s.smallActionBtn}
+                  onClick={() => window.open(`${window.location.origin}/r/${selectedPage.slug}`, "_blank", "noopener,noreferrer")}
+                >
+                  Ouvrir la page
+                </button>
+              )}
+            </div>
+
+            <div style={s.savedPageList}>
+              {loadingPages ? (
+                <div style={s.savedPageEmpty}>Chargement des pages...</div>
+              ) : savedPages.length === 0 ? (
+                <div style={s.savedPageEmpty}>Aucune page creee pour le moment.</div>
+              ) : (
+                savedPages.map((page) => {
+                  const active = page.id === selectedPageId;
+                  return (
+                    <div
+                      key={page.id}
+                      style={{
+                        ...s.savedPageCard,
+                        ...(active ? s.savedPageCardActive : {}),
+                      }}
+                    >
+                      <div style={s.savedPageHeader}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={s.savedPageTitle}>{page.brandName || page.slug}</div>
+                          <div style={s.savedPageMeta}>
+                            /r/{page.slug} · Modèle {page.model}
+                            {page.variant ? ` · ${page.variant}` : ""}
+                          </div>
+                        </div>
+                        {active && <span style={s.savedPageBadge}>Actuelle</span>}
+                      </div>
+                      <div style={s.savedPageActions}>
+                        <button style={s.smallActionBtn} onClick={() => loadPublishedPageInEditor(page)}>
+                          Charger
+                        </button>
+                        <button
+                          style={s.smallActionBtn}
+                          onClick={() => window.open(`${window.location.origin}/r/${page.slug}`, "_blank", "noopener,noreferrer")}
+                        >
+                          Ouvrir
+                        </button>
+                        <button
+                          style={{ ...s.smallActionBtn, ...s.smallActionBtnDanger }}
+                          onClick={() => void removePublishedPage(page)}
+                          disabled={pageAction === "delete"}
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </Section>
 
           {currentModel !== 5 && (
             <>
@@ -988,6 +1254,8 @@ export default function AffiEditorPage() {
               </Section>
 
               <Section title="Hero">
+                <TextField label="Pseudo / marque" value={cfg.goldenBrandMain} onChange={set("goldenBrandMain")} />
+                <TextField label="Sous-ligne logo (optionnelle)" value={cfg.goldenBrandSub} onChange={set("goldenBrandSub")} />
                 <TextField label="Titre ligne 1" value={cfg.goldenHeroTitleBefore} onChange={set("goldenHeroTitleBefore")} />
                 <TextField label="Titre ligne 2" value={cfg.goldenHeroTitleSpan} onChange={set("goldenHeroTitleSpan")} />
                 <TextField label="Sous-titre" value={cfg.goldenHeroSubtitle} onChange={set("goldenHeroSubtitle")} multiline />
@@ -1083,6 +1351,10 @@ const s: Record<string, React.CSSProperties> = {
   btnPrimary: {
     background: "#FFD700",
     color: "#000",
+  },
+  btnSuccess: {
+    background: "#2ccf85",
+    color: "#07110c",
   },
   btnSecondary: {
     background: "#1c1c35",
@@ -1256,6 +1528,141 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: "0.72rem",
     lineHeight: 1.5,
     wordBreak: "break-word",
+  },
+  urlPreview: {
+    marginBottom: 10,
+    padding: "10px 12px",
+    background: "#151528",
+    border: "1px solid #2a2a4a",
+    borderRadius: 8,
+    color: "#f0e8b8",
+    fontSize: "0.72rem",
+    fontFamily: "monospace",
+    lineHeight: 1.45,
+    wordBreak: "break-all",
+  },
+  inlineError: {
+    marginBottom: 10,
+    padding: "9px 10px",
+    background: "rgba(255, 96, 96, 0.12)",
+    border: "1px solid rgba(255, 96, 96, 0.26)",
+    borderRadius: 8,
+    color: "#ffb2b2",
+    fontSize: "0.72rem",
+    lineHeight: 1.45,
+  },
+  inlineWarn: {
+    marginBottom: 10,
+    padding: "9px 10px",
+    background: "rgba(255, 215, 0, 0.09)",
+    border: "1px solid rgba(255, 215, 0, 0.22)",
+    borderRadius: 8,
+    color: "#f2d978",
+    fontSize: "0.72rem",
+    lineHeight: 1.45,
+  },
+  inlineNotice: {
+    marginBottom: 10,
+    padding: "9px 10px",
+    background: "rgba(44, 207, 133, 0.12)",
+    border: "1px solid rgba(44, 207, 133, 0.26)",
+    borderRadius: 8,
+    color: "#a9efd0",
+    fontSize: "0.72rem",
+    lineHeight: 1.45,
+  },
+  inlineInfo: {
+    marginBottom: 10,
+    padding: "9px 10px",
+    background: "rgba(111, 150, 207, 0.12)",
+    border: "1px solid rgba(111, 150, 207, 0.22)",
+    borderRadius: 8,
+    color: "#c8daf8",
+    fontSize: "0.72rem",
+    lineHeight: 1.45,
+  },
+  savedPageTools: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    marginBottom: 12,
+  },
+  smallActionBtn: {
+    padding: "7px 10px",
+    borderRadius: 8,
+    border: "1px solid #2a2a4a",
+    background: "#1c1c35",
+    color: "#e0e0f0",
+    fontSize: "0.7rem",
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  smallActionBtnDanger: {
+    color: "#ffb2b2",
+    borderColor: "rgba(255, 96, 96, 0.28)",
+    background: "rgba(95, 26, 34, 0.42)",
+  },
+  savedPageList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  savedPageCard: {
+    border: "1px solid #262642",
+    borderRadius: 10,
+    background: "#131325",
+    padding: 10,
+  },
+  savedPageCardActive: {
+    borderColor: "#FFD700",
+    boxShadow: "0 0 0 1px rgba(255, 215, 0, 0.18) inset",
+  },
+  savedPageHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    alignItems: "flex-start",
+    marginBottom: 8,
+  },
+  savedPageTitle: {
+    fontSize: "0.78rem",
+    fontWeight: 700,
+    color: "#f4f0df",
+    wordBreak: "break-word",
+  },
+  savedPageMeta: {
+    fontSize: "0.66rem",
+    color: "#8f8fb4",
+    marginTop: 4,
+    lineHeight: 1.4,
+    wordBreak: "break-word",
+  },
+  savedPageBadge: {
+    padding: "4px 7px",
+    borderRadius: 999,
+    fontSize: "0.6rem",
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: ".06em",
+    background: "rgba(255, 215, 0, 0.14)",
+    color: "#FFD700",
+    border: "1px solid rgba(255, 215, 0, 0.24)",
+    flexShrink: 0,
+  },
+  savedPageActions: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  savedPageEmpty: {
+    border: "1px dashed #2a2a4a",
+    borderRadius: 10,
+    padding: 12,
+    color: "#8b8ba9",
+    fontSize: "0.72rem",
+    lineHeight: 1.45,
+    textAlign: "center",
+    background: "#121222",
   },
   errorBanner: {
     margin: 12,
