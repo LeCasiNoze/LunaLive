@@ -63,6 +63,13 @@ function shortDate(dateKey: string) {
     .format(new Date(Date.UTC(year, month - 1, day)));
 }
 
+/** True if updatedAt (ISO datetime) falls within [weekStart, weekEnd] date keys. */
+function isUpdatedInWeek(updatedAt: string | null | undefined, weekStart: string, weekEnd: string): boolean {
+  if (!updatedAt) return false;
+  const dateKey = updatedAt.slice(0, 10);
+  return dateKey >= weekStart && dateKey <= weekEnd;
+}
+
 function eur(value: number | null | undefined) {
   return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value || 0));
 }
@@ -431,12 +438,7 @@ export default function AgencyPortalPage() {
                     <div className="ap-loading">Chargement...</div>
                   ) : (
                     <>
-                      <div className="ap-banner">
-                        Les chiffres ci-dessous correspondent au mois entier de {monthLabel(weekMonthKey)}.
-                        Les stats hebdomadaires granulaires ne sont pas encore disponibles.
-                      </div>
-
-                      {/* Weekly summary (monthly data) */}
+                      {/* Weekly summary */}
                       {weekAssignments.length > 0 && (
                         <>
                           <div className="ap-section-label">Deals actifs cette semaine</div>
@@ -458,25 +460,39 @@ export default function AgencyPortalPage() {
                         <div className="ap-empty">Aucun deal actif cette semaine.</div>
                       )}
 
-                      {/* Monthly totals for context */}
-                      {weekAssignments.length > 0 && (
-                        <>
-                          <div className="ap-section-label">Totaux du mois ({monthLabel(weekMonthKey)})</div>
-                          <div className="ap-grid">
-                            <MonthStatCard label="Inscrits" value={num(agency.summary.signups)} sub={monthLabel(weekMonthKey)} />
-                            <MonthStatCard label="FTD" value={num(agency.summary.ftdCount)} sub="Premiers depots" />
-                            <MonthStatCard label="Nb depots" value={num(agency.summary.depositCount)} sub="Total" />
-                            <MonthStatCard label="Volume" value={eur(agency.summary.totalDeposits)} sub="Cumul mois" />
-                            {(canPreview || cpaVisible) && (
-                              <MonthStatCard label="CPA" value={eur(canPreview ? agency.summary.cpa : agency.summary.visibleCpa)} sub="Net affilie" />
+                      {/* Totals for the week period */}
+                      {weekAssignments.length > 0 && (() => {
+                        const currentWeekStart = getWeekMonday(currentParisDateKey());
+                        const isCurrentWeek = weekStart === currentWeekStart;
+                        const anyUpdated = weekAssignments.some((a) => isUpdatedInWeek(a.stats.updatedAt, weekStart, weekEnd));
+                        const showTotals = !isCurrentWeek || anyUpdated || canPreview;
+                        return (
+                          <>
+                            <div className="ap-section-label">
+                              Totaux {isCurrentWeek ? "de la semaine" : `du mois (${monthLabel(weekMonthKey)})`}
+                            </div>
+                            {!showTotals ? (
+                              <div className="ap-banner" style={{ background: "rgba(255,178,107,.06)", borderColor: "rgba(255,178,107,.14)", color: "rgba(255,178,107,.8)" }}>
+                                Aucune mise à jour reçue pour cette semaine. Les chiffres seront visibles dès que l'agence aura saisi tes stats.
+                              </div>
+                            ) : (
+                              <div className="ap-grid">
+                                <MonthStatCard label="Inscrits" value={num(agency.summary.signups)} sub={monthLabel(weekMonthKey)} />
+                                <MonthStatCard label="FTD" value={num(agency.summary.ftdCount)} sub="Premiers dépôts" />
+                                <MonthStatCard label="Nb dépôts" value={num(agency.summary.depositCount)} sub="Total" />
+                                <MonthStatCard label="Volume" value={eur(agency.summary.totalDeposits)} sub="Cumul" />
+                                {(canPreview || cpaVisible) && (
+                                  <MonthStatCard label="CPA" value={eur(canPreview ? agency.summary.cpa : agency.summary.visibleCpa)} sub="Net affilié" />
+                                )}
+                                {(canPreview || rsVisible) && (
+                                  <MonthStatCard label="RS" value={eur(canPreview ? agency.summary.rs : agency.summary.visibleRs)} sub="Revenue share" />
+                                )}
+                                <MonthStatCard label={canPreview ? "A payer" : "Total"} accent value={eur(canPreview ? agency.summary.total : agency.summary.visibleTotal)} sub={`Màj ${dateTime(agency.updatedAt)}`} />
+                              </div>
                             )}
-                            {(canPreview || rsVisible) && (
-                              <MonthStatCard label="RS" value={eur(canPreview ? agency.summary.rs : agency.summary.visibleRs)} sub="Revenue share" />
-                            )}
-                            <MonthStatCard label={canPreview ? "A payer" : "Total"} accent value={eur(canPreview ? agency.summary.total : agency.summary.visibleTotal)} sub={`Maj ${dateTime(agency.updatedAt)}`} />
-                          </div>
-                        </>
-                      )}
+                          </>
+                        );
+                      })()}
 
                       {agency.streamer.publicNote && (
                         <div className="ap-note" style={{ marginTop: 18 }}>{agency.streamer.publicNote}</div>
@@ -677,6 +693,13 @@ function WeekAssignmentCard({
   const overlapEnd = assignment.endDate && assignment.endDate < weekEnd ? assignment.endDate : weekEnd;
   const fullWeek = overlapStart === weekStart && overlapEnd === weekEnd;
 
+  // Weekly-zero logic: current week shows 0 unless stats were updated this week
+  const currentWeekStart = getWeekMonday(currentParisDateKey());
+  const isCurrentWeek = weekStart === currentWeekStart;
+  const updatedThisWeek = isUpdatedInWeek(assignment.stats.updatedAt, weekStart, weekEnd);
+  // For past weeks OR if stats were updated this week → show real data
+  const showRealStats = !isCurrentWeek || updatedThisWeek || canPreview;
+
   return (
     <article className="ap-card ap-card-week">
       <div className="ap-cardhead">
@@ -689,31 +712,50 @@ function WeekAssignmentCard({
             {fullWeek
               ? "Actif toute la semaine"
               : `Actif du ${shortDate(overlapStart)} au ${shortDate(overlapEnd)}`}
+            {isCurrentWeek && !updatedThisWeek && !canPreview && (
+              <span style={{ marginLeft: 8, color: "rgba(255,178,107,.7)", fontSize: 11 }}>
+                · Mise à jour en attente
+              </span>
+            )}
+            {isCurrentWeek && updatedThisWeek && assignment.stats.updatedAt && (
+              <span style={{ marginLeft: 8, color: "rgba(120,231,180,.7)", fontSize: 11 }}>
+                · Mis à jour le {shortDate(assignment.stats.updatedAt.slice(0, 10))}
+              </span>
+            )}
           </div>
         </div>
         <span className="ap-pill ap-pill-ok">Actif</span>
       </div>
 
       {(canPreview || cpaV || rsV) && (
-        <>
-          <div className="ap-cardmeta" style={{ marginTop: 10, fontSize: 11, textTransform: "uppercase", letterSpacing: ".06em" }}>
-            Stats du mois (chiffres mensuels)
+        <div className="ap-subgrid">
+          <div className="ap-substat">
+            <small>Inscrits</small>
+            <strong>{showRealStats ? (assignment.stats.signups ?? "-") : "0"}</strong>
           </div>
-          <div className="ap-subgrid">
-            <div className="ap-substat"><small>Inscrits</small><strong>{assignment.stats.signups ?? "-"}</strong></div>
-            <div className="ap-substat"><small>FTD</small><strong>{assignment.stats.ftdCount ?? "-"}</strong></div>
-            {(canPreview || cpaV) && (
-              <div className="ap-substat"><small>CPA</small><strong>{eur(canPreview ? assignment.earnings.cpa : assignment.earnings.visibleCpa)}</strong></div>
-            )}
-            {(canPreview || rsV) && (
-              <div className="ap-substat"><small>RS</small><strong>{eur(canPreview ? assignment.earnings.rs : assignment.earnings.visibleRs)}</strong></div>
-            )}
+          <div className="ap-substat">
+            <small>FTD</small>
+            <strong>{showRealStats ? (assignment.stats.ftdCount ?? "-") : "0"}</strong>
+          </div>
+          {(canPreview || cpaV) && (
             <div className="ap-substat">
-              <small>{canPreview ? "A payer" : "Total"}</small>
-              <strong>{eur(canPreview ? assignment.earnings.total : assignment.earnings.visibleTotal)}</strong>
+              <small>CPA</small>
+              <strong>{showRealStats ? eur(canPreview ? assignment.earnings.cpa : assignment.earnings.visibleCpa) : eur(0)}</strong>
             </div>
+          )}
+          {(canPreview || rsV) && (
+            <div className="ap-substat">
+              <small>RS</small>
+              <strong>{showRealStats ? eur(canPreview ? assignment.earnings.rs : assignment.earnings.visibleRs) : eur(0)}</strong>
+            </div>
+          )}
+          <div className="ap-substat">
+            <small>{canPreview ? "A payer" : "Total"}</small>
+            <strong style={{ color: showRealStats ? undefined : "var(--muted)" }}>
+              {showRealStats ? eur(canPreview ? assignment.earnings.total : assignment.earnings.visibleTotal) : eur(0)}
+            </strong>
           </div>
-        </>
+        </div>
       )}
 
       {links.length > 0 && (
