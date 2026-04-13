@@ -51,6 +51,8 @@ interface Config {
   goldenHeroSubtitle: string;
   goldenPageTitle: string;
   goldenChestUrl: string;
+  goldenGameImageUrl: string;
+  goldenVisualMode: string;
 }
 
 type GoldenChanceVariant = "gold" | "ruby" | "emerald" | "sapphire";
@@ -87,6 +89,8 @@ const DEFAULT_CONFIG: Config = {
   goldenHeroSubtitle: "+20EUR offerts dès ton premier dépôt.",
   goldenPageTitle: "LeCasiNoze - Dépose 20€, joue avec 40€",
   goldenChestUrl: "",
+  goldenGameImageUrl: "",
+  goldenVisualMode: "chest",
 };
 
 // ─── APPLY CONFIG ─────────────────────────────────────────────────────────────
@@ -145,6 +149,32 @@ async function inlineAssetCandidates(html: string, candidates: string[]) {
   return html;
 }
 
+function getGoldenVisualMode(cfg: Config): "chest" | "games" {
+  return String(cfg.goldenVisualMode || "").trim().toLowerCase() === "games" ? "games" : "chest";
+}
+
+function getGoldenVisualCandidates(cfg: Config, goldenVariant: GoldenChanceVariant) {
+  if (getGoldenVisualMode(cfg) === "games") {
+    const custom = String(cfg.goldenGameImageUrl || "").trim();
+    if (custom) return [custom];
+    return [
+      `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.png`,
+      `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.webp`,
+      `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.jpg`,
+      `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.jpeg`,
+    ];
+  }
+
+  const custom = String(cfg.goldenChestUrl || "").trim();
+  if (custom) return [custom];
+  return [
+    `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.png`,
+    `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.webp`,
+    `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.jpg`,
+    `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.jpeg`,
+  ];
+}
+
 function applyConfig(
   html: string,
   cfg: Config,
@@ -174,14 +204,15 @@ function applyConfig(
       );
     }
 
-    if (cfg.goldenChestUrl) {
-      const safeChestUrl = escAttr(cfg.goldenChestUrl);
+    const goldenVisualUrl = getGoldenVisualCandidates(cfg, goldenVariant)[0];
+    if (goldenVisualUrl) {
+      const safeChestUrl = escAttr(goldenVisualUrl);
       html = html.replace(
-        /(<img src=")[^"]*(" alt="Coffre bonus" data-asset-img>)/,
+        /(<img[^>]*data-visual-img="hero"[^>]*src=")[^"]*(")/,
         `$1${safeChestUrl}$2`
       );
       html = html.replace(
-        /(<img src=")[^"]*(" alt="Coffre bonus final">)/,
+        /(<img[^>]*data-visual-img="final"[^>]*src=")[^"]*(")/,
         `$1${safeChestUrl}$2`
       );
     }
@@ -713,6 +744,46 @@ function buildPublishedTitle(model: number, cfg: Config) {
   return String(raw || "").trim() || buildPublishedBrandName(model, cfg);
 }
 
+function buildPublishedPayload(model: number, cfg: Config, variant: GoldenChanceVariant) {
+  return {
+    slug: buildPublishedPageSlug(model, cfg, variant),
+    model,
+    variant: model === 5 ? variant : null,
+    brandName: buildPublishedBrandName(model, cfg),
+    title: buildPublishedTitle(model, cfg),
+    config: { ...cfg },
+  };
+}
+
+function buildPageSignature(input: {
+  model: number;
+  variant: string | null;
+  brandName: string;
+  title: string;
+  config: Record<string, string>;
+}) {
+  return JSON.stringify({
+    model: Number(input.model || 0),
+    variant: input.variant ?? null,
+    brandName: String(input.brandName || ""),
+    title: String(input.title || ""),
+    config: input.config || {},
+  });
+}
+
+function formatPublishedPageDate(value: string | null | undefined) {
+  if (!value) return "Date inconnue";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function isGoldenVariant(value: string | null | undefined): value is GoldenChanceVariant {
   return value === "gold" || value === "ruby" || value === "emerald" || value === "sapphire";
 }
@@ -754,6 +825,40 @@ export default function AffiEditorPage() {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     return `${origin}/r/${publishedSlugPreview}`;
   }, [publishedSlugPreview]);
+  const draftPayload = useMemo(
+    () => buildPublishedPayload(currentModel, cfg, goldenVariant),
+    [currentModel, cfg, goldenVariant]
+  );
+  const selectedPageSignature = useMemo(() => {
+    if (!selectedPage) return "";
+    const selectedConfig = {
+      ...DEFAULT_CONFIG,
+      ...(selectedPage.config || {}),
+    } as Record<string, string>;
+    return buildPageSignature({
+      model: Number(selectedPage.model || 0),
+      variant: selectedPage.model === 5 ? selectedPage.variant ?? null : null,
+      brandName: String(selectedPage.brandName || ""),
+      title: String(selectedPage.title || ""),
+      config: selectedConfig,
+    });
+  }, [selectedPage]);
+  const draftSignature = useMemo(
+    () =>
+      buildPageSignature({
+        model: draftPayload.model,
+        variant: draftPayload.variant,
+        brandName: draftPayload.brandName,
+        title: draftPayload.title,
+        config: draftPayload.config,
+      }),
+    [draftPayload]
+  );
+  const hasUnsavedChanges = Boolean(selectedPage && draftSignature !== selectedPageSignature);
+  const otherPages = useMemo(
+    () => savedPages.filter((page) => page.id !== selectedPageId),
+    [savedPages, selectedPageId]
+  );
 
   // ── Load templates ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -844,14 +949,7 @@ export default function AffiEditorPage() {
       return;
     }
 
-    const payload = {
-      slug: buildPublishedPageSlug(currentModel, cfg, goldenVariant),
-      model: currentModel,
-      variant: currentModel === 5 ? goldenVariant : null,
-      brandName: buildPublishedBrandName(currentModel, cfg),
-      title: buildPublishedTitle(currentModel, cfg),
-      config: { ...cfg },
-    };
+    const payload = draftPayload;
 
     const isUpdate = Boolean(selectedPageId);
     setPageAction(isUpdate ? "update" : "create");
@@ -872,6 +970,29 @@ export default function AffiEditorPage() {
       );
     } catch (error: any) {
       setPageError(String(error?.message || "Impossible de publier cette page."));
+    } finally {
+      setPageAction(null);
+    }
+  }
+
+  async function saveCurrentPageAsVariant() {
+    if (!token || !canManagePublishedPages) {
+      setPageError("Connexion FSB requise pour creer une variante.");
+      return;
+    }
+
+    setPageAction("create");
+    setPageError(null);
+    setPageNotice(null);
+
+    try {
+      const response = await createFsbAffiPage(token, draftPayload);
+      const page = response.item;
+      await refreshPublishedPages(page.id);
+      loadPublishedPageInEditor(page);
+      setPageNotice(`Variante creee : ${window.location.origin}/r/${page.slug}`);
+    } catch (error: any) {
+      setPageError(String(error?.message || "Impossible de creer cette variante."));
     } finally {
       setPageAction(null);
     }
@@ -982,12 +1103,7 @@ export default function AffiEditorPage() {
       ];
       html = await inlineAssetCandidates(html, backgroundCandidates);
 
-      const chestCandidates = cfg.goldenChestUrl
-        ? [cfg.goldenChestUrl]
-        : [
-            `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.png`,
-          ];
-      html = await inlineAssetCandidates(html, chestCandidates);
+      html = await inlineAssetCandidates(html, getGoldenVisualCandidates(cfg, goldenVariant));
 
       // Fallback robuste: liens absolus vers l'instance qui a généré l'export
       html = absolutizeAffiTemplateUrls(html, origin);
@@ -1027,6 +1143,16 @@ export default function AffiEditorPage() {
         <button style={{ ...s.btn, ...s.btnSecondary }} onClick={resetDraft}>
           Réinitialiser
         </button>
+        {selectedPageId && hasUnsavedChanges && (
+          <button
+            style={{ ...s.btn, ...s.btnVariant, opacity: canManagePublishedPages ? 1 : 0.55 }}
+            onClick={saveCurrentPageAsVariant}
+            disabled={!canManagePublishedPages || pageAction === "create" || pageAction === "update"}
+            title="Creer une nouvelle page a partir de cette version modifiee"
+          >
+            Enregistrer une variante
+          </button>
+        )}
         <button
           style={{ ...s.btn, ...s.btnSuccess, opacity: canManagePublishedPages ? 1 : 0.55 }}
           onClick={publishCurrentPage}
@@ -1079,6 +1205,16 @@ export default function AffiEditorPage() {
           <Section title="Pages créées" defaultOpen={true}>
             <div style={s.helperText}>URL publiee pour ce brouillon</div>
             <div style={s.urlPreview}>{publishedUrlPreview}</div>
+            <div style={s.savedPageStats}>
+              <div style={s.savedPageStatCard}>
+                <div style={s.savedPageStatValue}>{savedPages.length}</div>
+                <div style={s.savedPageStatLabel}>pages</div>
+              </div>
+              <div style={s.savedPageStatCard}>
+                <div style={s.savedPageStatValue}>{selectedPage ? "1" : "0"}</div>
+                <div style={s.savedPageStatLabel}>active</div>
+              </div>
+            </div>
 
             {!canManagePublishedPages && (
               <div style={s.inlineWarn}>
@@ -1089,6 +1225,11 @@ export default function AffiEditorPage() {
             {selectedPage && (
               <div style={s.inlineInfo}>
                 Edition en cours : <strong>/r/{selectedPage.slug}</strong>
+              </div>
+            )}
+            {selectedPage && hasUnsavedChanges && (
+              <div style={s.inlineWarn}>
+                Cette page a des modifications locales non enregistrees. Tu peux la mettre a jour ou enregistrer une variante.
               </div>
             )}
 
@@ -1115,25 +1256,61 @@ export default function AffiEditorPage() {
               ) : savedPages.length === 0 ? (
                 <div style={s.savedPageEmpty}>Aucune page creee pour le moment.</div>
               ) : (
-                savedPages.map((page) => {
-                  const active = page.id === selectedPageId;
+                <>
+                  {selectedPage && (
+                    <>
+                      <div style={s.savedPageGroupTitle}>Page active</div>
+                      <div style={{ ...s.savedPageCard, ...s.savedPageCardActive }}>
+                        <div style={s.savedPageHeader}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={s.savedPageTitle}>{selectedPage.brandName || selectedPage.slug}</div>
+                            <div style={s.savedPageSlug}>/r/{selectedPage.slug}</div>
+                            <div style={s.savedPageMeta}>
+                              Modèle {selectedPage.model}
+                              {selectedPage.variant ? ` · ${selectedPage.variant}` : ""}
+                              {selectedPage.updatedAt ? ` · ${formatPublishedPageDate(selectedPage.updatedAt)}` : ""}
+                            </div>
+                          </div>
+                          <span style={s.savedPageBadge}>Active</span>
+                        </div>
+                        <div style={s.savedPageActions}>
+                          <button style={s.smallActionBtn} onClick={() => loadPublishedPageInEditor(selectedPage)}>
+                            Recharger
+                          </button>
+                          <button
+                            style={s.smallActionBtn}
+                            onClick={() => window.open(`${window.location.origin}/r/${selectedPage.slug}`, "_blank", "noopener,noreferrer")}
+                          >
+                            Ouvrir
+                          </button>
+                          <button
+                            style={{ ...s.smallActionBtn, ...s.smallActionBtnDanger }}
+                            onClick={() => void removePublishedPage(selectedPage)}
+                            disabled={pageAction === "delete"}
+                          >
+                            Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  {otherPages.length > 0 && <div style={s.savedPageGroupTitle}>Autres pages</div>}
+                  {otherPages.map((page) => {
                   return (
                     <div
                       key={page.id}
-                      style={{
-                        ...s.savedPageCard,
-                        ...(active ? s.savedPageCardActive : {}),
-                      }}
+                      style={s.savedPageCard}
                     >
                       <div style={s.savedPageHeader}>
                         <div style={{ minWidth: 0 }}>
                           <div style={s.savedPageTitle}>{page.brandName || page.slug}</div>
+                          <div style={s.savedPageSlug}>/r/{page.slug}</div>
                           <div style={s.savedPageMeta}>
                             /r/{page.slug} · Modèle {page.model}
                             {page.variant ? ` · ${page.variant}` : ""}
                           </div>
                         </div>
-                        {active && <span style={s.savedPageBadge}>Actuelle</span>}
+                        <span style={s.savedPageTag}>{page.variant ? page.variant : `M${page.model}`}</span>
                       </div>
                       <div style={s.savedPageActions}>
                         <button style={s.smallActionBtn} onClick={() => loadPublishedPageInEditor(page)}>
@@ -1155,7 +1332,8 @@ export default function AffiEditorPage() {
                       </div>
                     </div>
                   );
-                })
+                })}
+                </>
               )}
             </div>
           </Section>
@@ -1233,7 +1411,7 @@ export default function AffiEditorPage() {
                 <VariantPicker value={goldenVariant} onChange={setGoldenVariant} />
               </Section>
 
-              <Section title="Lien & coffre">
+              <Section title="Lien & visuels">
                 <TextField
                   label="Lien d'affiliation"
                   value={cfg.affiLink}
@@ -1241,6 +1419,31 @@ export default function AffiEditorPage() {
                   placeholder="https://casino.com/ref/..."
                   type="url"
                 />
+                <div style={s.field}>
+                  <label style={s.label}>Visuel principal</label>
+                  <div style={s.variantGrid}>
+                    <button
+                      style={{
+                        ...s.variantBtn,
+                        ...(getGoldenVisualMode(cfg) === "chest" ? s.variantBtnActive : {}),
+                      }}
+                      onClick={() => set("goldenVisualMode")("chest")}
+                    >
+                      <span style={s.visualModeIcon}>🧰</span>
+                      <span>Coffre</span>
+                    </button>
+                    <button
+                      style={{
+                        ...s.variantBtn,
+                        ...(getGoldenVisualMode(cfg) === "games" ? s.variantBtnActive : {}),
+                      }}
+                      onClick={() => set("goldenVisualMode")("games")}
+                    >
+                      <span style={s.visualModeIcon}>🎮</span>
+                      <span>Image jeux</span>
+                    </button>
+                  </div>
+                </div>
                 <TextField
                   label="Image du coffre (optionnelle)"
                   value={cfg.goldenChestUrl}
@@ -1248,8 +1451,16 @@ export default function AffiEditorPage() {
                   placeholder="https://.../chest.png"
                   type="url"
                 />
+                <TextField
+                  label="Image jeux (optionnelle)"
+                  value={cfg.goldenGameImageUrl}
+                  onChange={set("goldenGameImageUrl")}
+                  placeholder="https://.../jeux.png"
+                  type="url"
+                />
                 <div style={s.helperText}>
-                  Laisse ce champ vide pour utiliser automatiquement le coffre de la couleur selectionnee.
+                  Si `Coffre` est selectionne, le template utilise `chest` de la couleur en cours.
+                  Si `Image jeux` est selectionnee, il utilise automatiquement `jeux` dans le dossier de la variante.
                 </div>
               </Section>
 
@@ -1355,6 +1566,11 @@ const s: Record<string, React.CSSProperties> = {
   btnSuccess: {
     background: "#2ccf85",
     color: "#07110c",
+  },
+  btnVariant: {
+    background: "#2a2348",
+    color: "#f2e7ff",
+    border: "1px solid rgba(194, 146, 255, 0.36)",
   },
   btnSecondary: {
     background: "#1c1c35",
@@ -1518,6 +1734,11 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 999,
     flexShrink: 0,
   },
+  visualModeIcon: {
+    width: 16,
+    textAlign: "center",
+    flexShrink: 0,
+  },
   helperText: {
     marginBottom: 10,
     padding: "9px 10px",
@@ -1531,15 +1752,40 @@ const s: Record<string, React.CSSProperties> = {
   },
   urlPreview: {
     marginBottom: 10,
-    padding: "10px 12px",
-    background: "#151528",
-    border: "1px solid #2a2a4a",
-    borderRadius: 8,
-    color: "#f0e8b8",
-    fontSize: "0.72rem",
+    padding: "12px 13px",
+    background: "linear-gradient(180deg, #18182c 0%, #121225 100%)",
+    border: "1px solid rgba(255, 215, 0, 0.14)",
+    borderRadius: 10,
+    color: "#f7efc5",
+    fontSize: "0.74rem",
     fontFamily: "monospace",
-    lineHeight: 1.45,
+    lineHeight: 1.5,
     wordBreak: "break-all",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+  },
+  savedPageStats: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+    marginBottom: 10,
+  },
+  savedPageStatCard: {
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid #262642",
+    background: "linear-gradient(180deg, #17172b 0%, #121223 100%)",
+  },
+  savedPageStatValue: {
+    fontSize: "1rem",
+    fontWeight: 800,
+    color: "#f4f0df",
+  },
+  savedPageStatLabel: {
+    marginTop: 3,
+    fontSize: "0.66rem",
+    textTransform: "uppercase",
+    letterSpacing: ".08em",
+    color: "#8f8fb4",
   },
   inlineError: {
     marginBottom: 10,
@@ -1607,15 +1853,25 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 10,
   },
+  savedPageGroupTitle: {
+    fontSize: "0.68rem",
+    textTransform: "uppercase",
+    letterSpacing: ".12em",
+    fontWeight: 800,
+    color: "#9f9fc1",
+    marginTop: 2,
+    marginBottom: 2,
+  },
   savedPageCard: {
-    border: "1px solid #262642",
-    borderRadius: 10,
-    background: "#131325",
-    padding: 10,
+    border: "1px solid #2a2a46",
+    borderRadius: 12,
+    background: "linear-gradient(180deg, #17172c 0%, #111120 100%)",
+    padding: 12,
+    boxShadow: "0 12px 24px rgba(0,0,0,0.16)",
   },
   savedPageCardActive: {
     borderColor: "#FFD700",
-    boxShadow: "0 0 0 1px rgba(255, 215, 0, 0.18) inset",
+    boxShadow: "0 0 0 1px rgba(255, 215, 0, 0.18) inset, 0 14px 28px rgba(0,0,0,0.18)",
   },
   savedPageHeader: {
     display: "flex",
@@ -1625,15 +1881,29 @@ const s: Record<string, React.CSSProperties> = {
     marginBottom: 8,
   },
   savedPageTitle: {
-    fontSize: "0.78rem",
+    fontSize: "0.82rem",
     fontWeight: 700,
     color: "#f4f0df",
     wordBreak: "break-word",
   },
+  savedPageSlug: {
+    marginTop: 6,
+    display: "inline-flex",
+    maxWidth: "100%",
+    padding: "4px 8px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.04)",
+    color: "#d7dbf6",
+    fontSize: "0.65rem",
+    fontFamily: "monospace",
+    lineHeight: 1.35,
+    wordBreak: "break-all",
+  },
   savedPageMeta: {
     fontSize: "0.66rem",
     color: "#8f8fb4",
-    marginTop: 4,
+    marginTop: 8,
     lineHeight: 1.4,
     wordBreak: "break-word",
   },
@@ -1647,6 +1917,18 @@ const s: Record<string, React.CSSProperties> = {
     background: "rgba(255, 215, 0, 0.14)",
     color: "#FFD700",
     border: "1px solid rgba(255, 215, 0, 0.24)",
+    flexShrink: 0,
+  },
+  savedPageTag: {
+    padding: "4px 7px",
+    borderRadius: 999,
+    fontSize: "0.6rem",
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: ".06em",
+    background: "rgba(111, 150, 207, 0.14)",
+    color: "#c8daf8",
+    border: "1px solid rgba(111, 150, 207, 0.22)",
     flexShrink: 0,
   },
   savedPageActions: {

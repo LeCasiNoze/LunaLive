@@ -37,6 +37,8 @@ type Config = {
   goldenHeroSubtitle: string;
   goldenPageTitle: string;
   goldenChestUrl: string;
+  goldenGameImageUrl: string;
+  goldenVisualMode: string;
 };
 
 const DEFAULT_CONFIG: Config = {
@@ -71,6 +73,8 @@ const DEFAULT_CONFIG: Config = {
   goldenHeroSubtitle: "+20EUR offerts des ton premier depot.",
   goldenPageTitle: "Landing bonus",
   goldenChestUrl: "",
+  goldenGameImageUrl: "",
+  goldenVisualMode: "chest",
 };
 
 function esc(str: string) {
@@ -79,6 +83,32 @@ function esc(str: string) {
 
 function escAttr(str: string) {
   return esc(str).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function getGoldenVisualMode(cfg: Config): "chest" | "games" {
+  return String(cfg.goldenVisualMode || "").trim().toLowerCase() === "games" ? "games" : "chest";
+}
+
+function getGoldenVisualCandidates(cfg: Config, goldenVariant: GoldenChanceVariant) {
+  if (getGoldenVisualMode(cfg) === "games") {
+    const custom = String(cfg.goldenGameImageUrl || "").trim();
+    if (custom) return [custom];
+    return [
+      `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.png`,
+      `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.webp`,
+      `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.jpg`,
+      `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.jpeg`,
+    ];
+  }
+
+  const custom = String(cfg.goldenChestUrl || "").trim();
+  if (custom) return [custom];
+  return [
+    `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.png`,
+    `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.webp`,
+    `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.jpg`,
+    `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.jpeg`,
+  ];
 }
 
 function applyConfig(
@@ -101,10 +131,11 @@ function applyConfig(
       );
     }
 
-    if (cfg.goldenChestUrl) {
-      const safeChestUrl = escAttr(cfg.goldenChestUrl);
-      html = html.replace(/(<img src=")[^"]*(" alt="Coffre bonus" data-asset-img>)/, `$1${safeChestUrl}$2`);
-      html = html.replace(/(<img src=")[^"]*(" alt="Coffre bonus final">)/, `$1${safeChestUrl}$2`);
+    const goldenVisualUrl = getGoldenVisualCandidates(cfg, goldenVariant)[0];
+    if (goldenVisualUrl) {
+      const safeChestUrl = escAttr(goldenVisualUrl);
+      html = html.replace(/(<img[^>]*data-visual-img="hero"[^>]*src=")[^"]*(")/, `$1${safeChestUrl}$2`);
+      html = html.replace(/(<img[^>]*data-visual-img="final"[^>]*src=")[^"]*(")/, `$1${safeChestUrl}$2`);
     }
 
     html = html.replace(/(<span class="brand-logo-main">)([^<]*)(<\/span>)/, `$1${esc(cfg.goldenBrandMain)}$3`);
