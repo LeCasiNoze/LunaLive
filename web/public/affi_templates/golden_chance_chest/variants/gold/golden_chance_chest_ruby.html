@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="fr" data-variant="__VARIANT__">
+<html lang="fr" data-variant="ruby">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LeCasiNoze - Dépose 20€, joue avec 40€</title>
   <meta name="description" content="Bonus 100% sur ton premier depot. Credite instantanement. Sans code promo.">
-  <link rel="stylesheet" href="/affi_templates/golden_chance_chest/shared/landing-base.css">
+  <link rel="stylesheet" href="./golden_chance_chest/shared/landing-base.css">
   <style>
     @import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap");
 
@@ -45,11 +45,11 @@
       --avatar-bg: rgba(151, 143, 171, 0.34);
       --footer-card-bg: rgba(33, 31, 39, 0.84);
       --footer-card-border: rgba(255, 255, 255, 0.08);
-      --hero-bg-image: url("/affi_templates/golden_chance_chest/variants/__VARIANT__/background.png");
+      --hero-bg-image: url("./golden_chance_chest/variants/ruby/background.png");
     }
 
     html[data-variant="ruby"] {
-      --chest-aspect: 1 / 1;
+      --chest-aspect: 3 / 2;
       --page-bg: #120b10;
       --page-bg-2: #1d1217;
       --panel-bg: rgba(18, 10, 13, 0.82);
@@ -295,7 +295,11 @@
     }
 
     .info-box {
-      display: none;
+      max-width: 420px;
+      margin: 0 auto 16px;
+      background: rgba(18, 15, 25, 0.72);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
     }
 
     .promo-image-container {
@@ -340,26 +344,6 @@
       margin: 0;
       filter: drop-shadow(0 20px 36px rgba(0, 0, 0, 0.46));
       animation: none;
-      transform: translateY(var(--chest-translate, 0px));
-      transition: filter 220ms ease, transform 220ms ease;
-    }
-
-    /* Supprimer le cadre/box-shadow hérité de landing-base.css sur hover */
-    .chest-link:hover .promo-image-container,
-    .chest-link:focus-visible .promo-image-container {
-      transform: none;
-      box-shadow: none;
-      border: 0;
-    }
-
-    /* Neon glow + scale sur l'image en hover */
-    .chest-link:hover .promo-image-container img,
-    .chest-link:focus-visible .promo-image-container img {
-      transform: translateY(var(--chest-translate, 0px)) scale(1.07);
-      filter:
-        drop-shadow(0 0 14px var(--accent))
-        drop-shadow(0 0 32px var(--accent-soft))
-        drop-shadow(0 22px 38px rgba(0, 0, 0, 0.52));
     }
 
     .btn-jouer {
@@ -1025,6 +1009,10 @@
         transform: translateY(-8px);
       }
 
+      .info-box {
+        display: none;
+      }
+
       .offer-title {
         font-size: 1.45rem;
       }
@@ -1036,7 +1024,7 @@
       }
 
       .promo-image-container img {
-        --chest-translate: -16px;
+        transform: translateY(-16px);
       }
 
       .btn-jouer {
@@ -1074,7 +1062,7 @@
         background:
           linear-gradient(180deg, rgba(0, 0, 0, 0.28) 0%, rgba(0, 0, 0, 0.04) 34%, rgba(0, 0, 0, 0.5) 100%),
           radial-gradient(circle at 50% 18%, rgba(212, 168, 67, 0.12) 0%, transparent 30%),
-          url("/affi_templates/golden_chance_chest/variants/__VARIANT__/background.png") center top / auto 100% no-repeat,
+          url("./golden_chance_chest/variants/ruby/background.png") center top / auto 100% no-repeat,
           var(--page-bg);
       }
 
@@ -1126,7 +1114,7 @@
       }
 
       .promo-image-container img {
-        --chest-translate: -22px;
+        transform: translateY(-22px);
       }
 
       .btn-jouer {
@@ -1184,8 +1172,8 @@
           </div>
 
           <div class="offer-copy" data-offer-deposit="20" data-offer-bonus="20" data-offer-total="40">
-            <h1 class="hero-title">D&Eacute;POSE 20&euro; <span>JOUE A 40&euro;</span></h1>
-            <p class="hero-subtitle"><strong>+20&euro; offerts</strong> d&egrave;s ton premier d&eacute;p&ocirc;t.</p>
+            <h1 class="hero-title">DEPOSE 20EUR <span>JOUE A 40EUR</span></h1>
+            <p class="hero-subtitle">+20EUR offerts dès ton premier dépôt.</p>
             <p class="live-count"><span class="live-dot"></span><span data-live-count>214</span> joueurs inscrits aujourd'hui</p>
           </div>
 
@@ -1202,8 +1190,8 @@
 
             <a href="https://gueuledange.jeutiktok.fr/" class="chest-link" target="_blank" rel="noopener noreferrer">
               <div class="promo-image-container">
-                <img src="/affi_templates/golden_chance_chest/variants/__VARIANT__/chest.png" alt="Coffre bonus" data-asset-img>
-                <div class="asset-placeholder">Ajoute `/affi_templates/golden_chance_chest/variants/__VARIANT__/chest.png` pour afficher le coffre.</div>
+                <img src="./golden_chance_chest/variants/ruby/chest.png" alt="Coffre bonus" data-asset-img>
+                <div class="asset-placeholder">Ajoute `./golden_chance_chest/variants/ruby/chest.png` pour afficher le coffre.</div>
               </div>
             </a>
 
@@ -1329,7 +1317,7 @@
           <div class="cta-final-chest">
             <a href="https://gueuledange.jeutiktok.fr/" class="final-chest-link" target="_blank" rel="noopener noreferrer">
               <div class="promo-image-container cta-chest-container">
-                <img src="/affi_templates/golden_chance_chest/variants/__VARIANT__/chest.png" alt="Coffre bonus final">
+                <img src="./golden_chance_chest/variants/ruby/chest.png" alt="Coffre bonus final">
               </div>
             </a>
           </div>
@@ -1352,6 +1340,6 @@
     <a href="https://gueuledange.jeutiktok.fr/" class="sticky-cta" target="_blank" rel="noopener noreferrer">R&Eacute;CLAME TES <span data-bind-offer-value="bonus">20&euro;</span> OFFERTS</a>
   </div>
 
-  <script src="/affi_templates/golden_chance_chest/shared/landing-base.js"></script>
+  <script src="./golden_chance_chest/shared/landing-base.js"></script>
 </body>
 </html>
