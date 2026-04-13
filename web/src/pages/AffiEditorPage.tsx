@@ -2,7 +2,7 @@
 // Éditeur de templates d'affiliation — accessible sur /editorFSN
 // Aucun topbar ni footer : la page prend tout l'écran.
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -639,7 +639,7 @@ export default function AffiEditorPage() {
   const [loadError, setLoadError] = useState(false);
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
   const returnTo = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return params.get("returnTo") || "/FSB_Board?section=tools";
@@ -685,16 +685,39 @@ export default function AffiEditorPage() {
   }, []);
 
   // ── Live preview ───────────────────────────────────────────────────────────
-  const updatePreview = useCallback(() => {
-    if (!templates[currentModel] || !iframeRef.current) return;
-    const html = applyConfig(templates[currentModel], cfg, currentModel, goldenVariant);
-    iframeRef.current.srcdoc = html;
-  }, [templates, currentModel, cfg, goldenVariant]);
+  function pushPreview(tmpl: string, c: Config, model: number, variant: GoldenChanceVariant) {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const raw = applyConfig(tmpl, c, model, variant);
+    const base = `<base href="${window.location.origin}/">`;
+    const html = raw.replace("<head>", `<head>\n  ${base}`);
+    if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+    const blob = new Blob([html], { type: "text/html" });
+    blobUrlRef.current = URL.createObjectURL(blob);
+    iframe.src = blobUrlRef.current;
+  }
 
+  // Immédiat quand on change de modèle / variante / templates chargés
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(updatePreview, 120);
-  }, [updatePreview]);
+    const tmpl = templates[currentModel];
+    if (!tmpl) return;
+    pushPreview(tmpl, cfg, currentModel, goldenVariant);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentModel, goldenVariant, templates]);
+
+  // Debounced pour l'édition live des champs
+  useEffect(() => {
+    const tmpl = templates[currentModel];
+    if (!tmpl) return;
+    const tid = setTimeout(() => pushPreview(tmpl, cfg, currentModel, goldenVariant), 120);
+    return () => clearTimeout(tid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg]);
+
+  // Cleanup blob URL à la destruction
+  useEffect(() => () => {
+    if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+  }, []);
 
   // ── Set a single config key ────────────────────────────────────────────────
   const set = (key: keyof Config) => (value: string) =>
