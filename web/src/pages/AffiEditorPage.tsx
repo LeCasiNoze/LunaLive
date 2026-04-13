@@ -41,6 +41,7 @@ interface Config {
   goldenHeroTitleSpan: string;
   goldenHeroSubtitle: string;
   goldenPageTitle: string;
+  goldenChestUrl: string;
 }
 
 type GoldenChanceVariant = "gold" | "ruby" | "emerald" | "sapphire";
@@ -76,12 +77,17 @@ const DEFAULT_CONFIG: Config = {
   goldenHeroTitleSpan: "JOUE A 40EUR",
   goldenHeroSubtitle: "+20EUR offerts des ton premier depot.",
   goldenPageTitle: "Gueule d'Ange - Depose 20EUR, joue avec 40EUR",
+  goldenChestUrl: "",
 };
 
 // ─── APPLY CONFIG ─────────────────────────────────────────────────────────────
 
 function esc(str: string) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function escAttr(str: string) {
+  return esc(str).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function applyConfig(
@@ -94,21 +100,34 @@ function applyConfig(
     html = html.replace(/__VARIANT__/g, goldenVariant);
 
     if (cfg.affiLink) {
+      const safeAffiLink = escAttr(cfg.affiLink);
       html = html.replace(
         /href="[^"]*" class="btn-jouer"/g,
-        `href="${cfg.affiLink}" class="btn-jouer"`
+        `href="${safeAffiLink}" class="btn-jouer"`
       );
       html = html.replace(
         /href="[^"]*" class="sticky-cta"/g,
-        `href="${cfg.affiLink}" class="sticky-cta"`
+        `href="${safeAffiLink}" class="sticky-cta"`
       );
       html = html.replace(
         /href="[^"]*" class="chest-link"/g,
-        `href="${cfg.affiLink}" class="chest-link"`
+        `href="${safeAffiLink}" class="chest-link"`
       );
       html = html.replace(
         /href="[^"]*" class="final-chest-link"/g,
-        `href="${cfg.affiLink}" class="final-chest-link"`
+        `href="${safeAffiLink}" class="final-chest-link"`
+      );
+    }
+
+    if (cfg.goldenChestUrl) {
+      const safeChestUrl = escAttr(cfg.goldenChestUrl);
+      html = html.replace(
+        /(<img src=")[^"]*(" alt="Coffre bonus" data-asset-img>)/,
+        `$1${safeChestUrl}$2`
+      );
+      html = html.replace(
+        /(<img src=")[^"]*(" alt="Coffre bonus final">)/,
+        `$1${safeChestUrl}$2`
       );
     }
 
@@ -193,13 +212,14 @@ function applyConfig(
   }
 
   if (cfg.affiLink) {
+    const safeAffiLink = escAttr(cfg.affiLink);
     html = html.replace(
       /href="[^"]*" class="btn-jouer"/g,
-      `href="${cfg.affiLink}" class="btn-jouer"`
+      `href="${safeAffiLink}" class="btn-jouer"`
     );
     html = html.replace(
       /href="[^"]*" class="sticky-cta"/g,
-      `href="${cfg.affiLink}" class="sticky-cta"`
+      `href="${safeAffiLink}" class="sticky-cta"`
     );
   }
 
@@ -643,6 +663,7 @@ export default function AffiEditorPage() {
         const m5 = loaded[5];
         const imgMatch = m1.match(/<div class="promo-image-container">\s*<img src="([^"]+)"/);
         const linkMatch = m1.match(/href="([^"]+)" class="btn-jouer"/);
+        const linkMatch5 = m5.match(/href="([^"]+)" class="btn-jouer"/);
         const imgs4 = [...m4.matchAll(/<div class="promo-image-container">\s*<img src="([^"]+)"/g)];
         const brandMainMatch = m5.match(/<span class="brand-logo-main">([^<]+)</);
         const brandSubMatch = m5.match(/<span class="brand-logo-sub">([^<]+)</);
@@ -650,7 +671,7 @@ export default function AffiEditorPage() {
         setCfg((prev) => ({
           ...prev,
           imgUrl: imgMatch?.[1] ?? "",
-          affiLink: linkMatch?.[1] ?? "",
+          affiLink: linkMatch5?.[1] ?? linkMatch?.[1] ?? "",
           imgUrl1: imgs4[0]?.[1] ?? "",
           imgUrl2: imgs4[1]?.[1] ?? "",
           goldenBrandMain: brandMainMatch?.[1] ?? prev.goldenBrandMain,
@@ -759,75 +780,78 @@ export default function AffiEditorPage() {
 
           {currentModel !== 5 && (
             <>
-          <Section title="Couleurs">
-            <ColorField label="Fond page"          value={cfg.bgPage}       onChange={set("bgPage")} />
-            <ColorField label="Fond carte"          value={cfg.bgCard}       onChange={set("bgCard")} />
-            <ColorField label="Or (accent principal)" value={cfg.brandGold}  onChange={set("brandGold")} />
-            <ColorField label="Ruby (secondaire)"   value={cfg.brandRuby}    onChange={set("brandRuby")} />
-            <ColorField label="Vert (casino-green)" value={cfg.casinoGreen}  onChange={set("casinoGreen")} />
-            <ColorField label="Bordure"             value={cfg.borderColor}  onChange={set("borderColor")} />
-          </Section>
+              <Section title="Couleurs">
+                <ColorField label="Fond page" value={cfg.bgPage} onChange={set("bgPage")} />
+                <ColorField label="Fond carte" value={cfg.bgCard} onChange={set("bgCard")} />
+                <ColorField label="Or (accent principal)" value={cfg.brandGold} onChange={set("brandGold")} />
+                <ColorField label="Ruby (secondaire)" value={cfg.brandRuby} onChange={set("brandRuby")} />
+                <ColorField label="Vert (casino-green)" value={cfg.casinoGreen} onChange={set("casinoGreen")} />
+                <ColorField label="Bordure" value={cfg.borderColor} onChange={set("borderColor")} />
+              </Section>
 
-          <Section title="Image & Lien d'affiliation">
-            {currentModel !== 4 ? (
-              <ImagePicker
-                label="Image principale"
-                value={cfg.imgUrl}
-                onChange={set("imgUrl")}
-              />
-            ) : (
-              <>
-                <ImagePicker
-                  label="Image carte 1"
-                  value={cfg.imgUrl1}
-                  onChange={set("imgUrl1")}
+              <Section title="Image & Lien d'affiliation">
+                {currentModel !== 4 ? (
+                  <ImagePicker
+                    label="Image principale"
+                    value={cfg.imgUrl}
+                    onChange={set("imgUrl")}
+                  />
+                ) : (
+                  <>
+                    <ImagePicker
+                      label="Image carte 1"
+                      value={cfg.imgUrl1}
+                      onChange={set("imgUrl1")}
+                    />
+                    <ImagePicker
+                      label="Image carte 2"
+                      value={cfg.imgUrl2}
+                      onChange={set("imgUrl2")}
+                    />
+                  </>
+                )}
+                <TextField
+                  label="Lien d'affiliation"
+                  value={cfg.affiLink}
+                  onChange={set("affiLink")}
+                  placeholder="https://casino.com/ref/..."
+                  type="url"
                 />
-                <ImagePicker
-                  label="Image carte 2"
-                  value={cfg.imgUrl2}
-                  onChange={set("imgUrl2")}
-                />
-              </>
-            )}
-            <TextField
-              label="Lien d'affiliation"
-              value={cfg.affiLink}
-              onChange={set("affiLink")}
-              placeholder="https://casino.com/ref/..."
-              type="url"
-            />
-          </Section>
+              </Section>
 
-          <Section title="Offre">
-            <TextField label="Titre offre"    value={cfg.offerTitle}   onChange={set("offerTitle")} />
-            <TextField label="Texte dépôt"    value={cfg.depositText}  onChange={set("depositText")} />
-            <TextField label="Texte reçu"     value={cfg.receiveText}  onChange={set("receiveText")} />
-            {currentModel === 4 && (
-              <>
-                <div style={{ ...s.label, color: "#FFD700", marginTop: 8 }}>Carte 2</div>
-                <TextField label="Texte dépôt (carte 2)" value={cfg.depositText2} onChange={set("depositText2")} />
-                <TextField label="Texte reçu (carte 2)"  value={cfg.receiveText2} onChange={set("receiveText2")} />
-              </>
-            )}
-          </Section>
+              <Section title="Offre">
+                <TextField label="Titre offre" value={cfg.offerTitle} onChange={set("offerTitle")} />
+                <TextField label="Texte dépôt" value={cfg.depositText} onChange={set("depositText")} />
+                <TextField label="Texte reçu" value={cfg.receiveText} onChange={set("receiveText")} />
+                {currentModel === 4 && (
+                  <>
+                    <div style={{ ...s.label, color: "#FFD700", marginTop: 8 }}>Carte 2</div>
+                    <TextField label="Texte dépôt (carte 2)" value={cfg.depositText2} onChange={set("depositText2")} />
+                    <TextField label="Texte reçu (carte 2)" value={cfg.receiveText2} onChange={set("receiveText2")} />
+                  </>
+                )}
+              </Section>
 
-          <Section title="Textes" defaultOpen={false}>
-            <TextField label="Badge VIP"           value={cfg.badgeText}         onChange={set("badgeText")} />
-            <TextField label="H1 — texte principal" value={cfg.heroTitleBefore}  onChange={set("heroTitleBefore")} />
-            <TextField label="H1 — texte en or"    value={cfg.heroTitleSpan}     onChange={set("heroTitleSpan")} />
-            <TextField label="Sous-titre"           value={cfg.heroSubtitle}      onChange={set("heroSubtitle")} multiline />
-            <TextField label="Texte bouton (carte)" value={cfg.btnText}           onChange={set("btnText")} />
-            <TextField label="Sticky CTA"           value={cfg.stickyText}        onChange={set("stickyText")} />
-            <TextField label="Nom du casino (footer)" value={cfg.casinoName}      onChange={set("casinoName")} />
-            <TextField label="Balise <title>"       value={cfg.pageTitle}         onChange={set("pageTitle")} />
-          </Section>
+              <Section title="Textes" defaultOpen={false}>
+                <TextField label="Badge VIP" value={cfg.badgeText} onChange={set("badgeText")} />
+                <TextField label="H1 — texte principal" value={cfg.heroTitleBefore} onChange={set("heroTitleBefore")} />
+                <TextField label="H1 — texte en or" value={cfg.heroTitleSpan} onChange={set("heroTitleSpan")} />
+                <TextField label="Sous-titre" value={cfg.heroSubtitle} onChange={set("heroSubtitle")} multiline />
+                <TextField label="Texte bouton (carte)" value={cfg.btnText} onChange={set("btnText")} />
+                <TextField label="Sticky CTA" value={cfg.stickyText} onChange={set("stickyText")} />
+                <TextField label="Nom du casino (footer)" value={cfg.casinoName} onChange={set("casinoName")} />
+                <TextField label="Balise <title>" value={cfg.pageTitle} onChange={set("pageTitle")} />
+              </Section>
             </>
           )}
 
           {currentModel === 5 && (
             <>
-              <Section title="Variante & assets">
+              <Section title="Palette & assets">
                 <VariantPicker value={goldenVariant} onChange={setGoldenVariant} />
+                <div style={s.helperText}>
+                  La couleur change automatiquement le fond, le coffre par defaut et toute la palette de la page.
+                </div>
                 <div style={s.helperText}>
                   Background :
                   <br />
@@ -838,6 +862,9 @@ export default function AffiEditorPage() {
                   <br />
                   <code>/web/public/affi_templates/golden_chance_chest/variants/{goldenVariant}/chest.png</code>
                 </div>
+              </Section>
+
+              <Section title="Lien & coffre">
                 <TextField
                   label="Lien d'affiliation"
                   value={cfg.affiLink}
@@ -845,6 +872,16 @@ export default function AffiEditorPage() {
                   placeholder="https://casino.com/ref/..."
                   type="url"
                 />
+                <TextField
+                  label="Image du coffre (optionnelle)"
+                  value={cfg.goldenChestUrl}
+                  onChange={set("goldenChestUrl")}
+                  placeholder="https://.../chest.png"
+                  type="url"
+                />
+                <div style={s.helperText}>
+                  Laisse ce champ vide pour utiliser automatiquement le coffre de la couleur selectionnee.
+                </div>
               </Section>
 
               <Section title="Identite & hero">
