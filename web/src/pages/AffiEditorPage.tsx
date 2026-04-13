@@ -71,12 +71,12 @@ const DEFAULT_CONFIG: Config = {
   stickyText: "🎰 JOUER MAINTENANT",
   casinoName: "Celsius Games",
   pageTitle: "Offre VIP | Jouer Maintenant",
-  goldenBrandMain: "Gueule",
-  goldenBrandSub: "d'Ange",
+  goldenBrandMain: "LeCasiNoze",
+  goldenBrandSub: "",
   goldenHeroTitleBefore: "DEPOSE 20EUR",
   goldenHeroTitleSpan: "JOUE A 40EUR",
-  goldenHeroSubtitle: "+20EUR offerts des ton premier depot.",
-  goldenPageTitle: "Gueule d'Ange - Depose 20EUR, joue avec 40EUR",
+  goldenHeroSubtitle: "+20EUR offerts dès ton premier dépôt.",
+  goldenPageTitle: "LeCasiNoze - Dépose 20€, joue avec 40€",
   goldenChestUrl: "",
 };
 
@@ -102,8 +102,8 @@ function applyConfig(
     if (cfg.affiLink) {
       const safeAffiLink = escAttr(cfg.affiLink);
       html = html.replace(
-        /href="[^"]*" class="btn-jouer"/g,
-        `href="${safeAffiLink}" class="btn-jouer"`
+        /href="[^"]*" class="(btn-jouer[^"]*)"/g,
+        `href="${safeAffiLink}" class="$1"`
       );
       html = html.replace(
         /href="[^"]*" class="sticky-cta"/g,
@@ -849,19 +849,6 @@ export default function AffiEditorPage() {
             <>
               <Section title="Palette & assets">
                 <VariantPicker value={goldenVariant} onChange={setGoldenVariant} />
-                <div style={s.helperText}>
-                  La couleur change automatiquement le fond, le coffre par defaut et toute la palette de la page.
-                </div>
-                <div style={s.helperText}>
-                  Background :
-                  <br />
-                  <code>/web/public/affi_templates/golden_chance_chest/variants/{goldenVariant}/background.jpg</code>
-                </div>
-                <div style={s.helperText}>
-                  Coffre :
-                  <br />
-                  <code>/web/public/affi_templates/golden_chance_chest/variants/{goldenVariant}/chest.png</code>
-                </div>
               </Section>
 
               <Section title="Lien & coffre">
@@ -884,9 +871,7 @@ export default function AffiEditorPage() {
                 </div>
               </Section>
 
-              <Section title="Identite & hero">
-                <TextField label="Pseudo ligne 1" value={cfg.goldenBrandMain} onChange={set("goldenBrandMain")} />
-                <TextField label="Pseudo ligne 2" value={cfg.goldenBrandSub} onChange={set("goldenBrandSub")} />
+              <Section title="Hero">
                 <TextField label="Titre ligne 1" value={cfg.goldenHeroTitleBefore} onChange={set("goldenHeroTitleBefore")} />
                 <TextField label="Titre ligne 2" value={cfg.goldenHeroTitleSpan} onChange={set("goldenHeroTitleSpan")} />
                 <TextField label="Sous-titre" value={cfg.goldenHeroSubtitle} onChange={set("goldenHeroSubtitle")} multiline />

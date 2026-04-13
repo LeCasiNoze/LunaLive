@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gueule d'Ange - Depose 20EUR, joue avec 40EUR</title>
+  <title>LeCasiNoze - Dépose 20€, joue avec 40€</title>
   <meta name="description" content="Bonus 100% sur ton premier depot. Credite instantanement. Sans code promo.">
   <link rel="stylesheet" href="/affi_templates/golden_chance_chest/shared/landing-base.css">
   <style>
@@ -237,6 +237,11 @@
       text-shadow:
         0 0 14px rgba(212, 168, 67, 0.2),
         0 2px 14px rgba(0, 0, 0, 0.72);
+    }
+
+    .brand-logo-sub:empty {
+      display: none;
+      margin: 0;
     }
 
     .offer-copy {
@@ -494,15 +499,18 @@
 
     .benefit-stack {
       display: flex;
-      flex-direction: column;
-      gap: 14px;
-      margin-top: 18px;
+      flex-direction: row;
+      align-items: stretch;
+      gap: 6px;
+      margin-top: 20px;
     }
 
     .benefit-card {
       position: relative;
       overflow: visible;
-      padding: 20px 16px 18px;
+      flex: 1;
+      min-width: 0;
+      padding: 18px 6px 14px;
       border-radius: 18px;
       border: 1px solid var(--card-border);
       background:
@@ -516,6 +524,9 @@
       background:
         radial-gradient(circle at top, var(--total-glow) 0%, transparent 44%),
         linear-gradient(180deg, var(--total-surface-top) 0%, var(--total-surface-bottom) 100%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        0 0 22px var(--total-glow);
     }
 
     .benefit-card-badge {
@@ -523,43 +534,85 @@
       left: 50%;
       top: -10px;
       transform: translateX(-50%);
-      padding: 3px 11px 4px;
+      white-space: nowrap;
+      padding: 3px 9px 4px;
       border-radius: 999px;
-      background: #d7dbe6;
-      color: #1e1b22;
-      font-size: 0.62rem;
+      background: var(--accent);
+      color: var(--accent-contrast);
+      font-size: 0.56rem;
       font-weight: 800;
-      letter-spacing: 0.24em;
+      letter-spacing: 0.22em;
       text-transform: uppercase;
-      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+      box-shadow: 0 4px 12px var(--accent-soft);
     }
 
     .benefit-value {
       font-family: "Bebas Neue", sans-serif;
-      font-size: clamp(3.1rem, 13vw, 4.2rem);
+      font-size: clamp(2.4rem, 10vw, 3.6rem);
       line-height: 0.92;
       letter-spacing: 0.02em;
       color: #f7f3eb;
     }
 
     .benefit-card-total .benefit-value {
-      color: var(--accent);
+      color: var(--accent-light);
+      text-shadow: 0 0 18px var(--total-glow);
     }
 
     .benefit-label {
       margin-top: 6px;
-      color: rgba(226, 233, 255, 0.78);
-      font-size: 0.98rem;
+      color: rgba(226, 233, 255, 0.68);
+      font-size: 0.76rem;
+      line-height: 1.3;
     }
 
     .benefit-divider {
       display: flex;
       align-items: center;
       justify-content: center;
+      flex: 0 0 22px;
       font-family: "Bebas Neue", sans-serif;
-      font-size: 1.55rem;
-      color: #f6f1e6;
+      font-size: 1.4rem;
+      color: var(--accent);
       line-height: 1;
+      opacity: 0.72;
+    }
+
+    .trust-score-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding-bottom: 18px;
+      margin-top: 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .trust-score-number {
+      font-family: "Bebas Neue", sans-serif;
+      font-size: 4.2rem;
+      line-height: 1;
+      color: #00b67a;
+      text-shadow: 0 0 22px rgba(0, 182, 122, 0.28);
+    }
+
+    .trust-score-right {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .trust-score-stars {
+      color: #00b67a;
+      font-size: 1.08rem;
+      letter-spacing: 0.06em;
+    }
+
+    .trust-score-label {
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: rgba(244, 240, 235, 0.64);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
     }
 
     .review-list {
@@ -666,9 +719,11 @@
     }
 
     .faq-card-modern[open] {
-      border-color: rgba(212, 168, 67, 0.82);
+      border-color: var(--accent-ring);
+      border-left: 3px solid var(--accent);
       box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.04),
+        0 0 18px var(--accent-soft),
         0 14px 24px rgba(0, 0, 0, 0.12);
     }
 
@@ -731,7 +786,7 @@
 
     .cta-final-modern {
       text-align: center;
-      padding-bottom: 22px;
+      padding-bottom: 24px;
     }
 
     .cta-final-title {
@@ -744,40 +799,74 @@
     }
 
     .cta-final-title span {
-      color: var(--accent);
+      color: var(--accent-light);
     }
 
-    .cta-final-note {
-      margin-top: 10px;
-      color: var(--accent);
-      font-size: 0.82rem;
-      line-height: 1.4;
+    .cta-final-urgency {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 12px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--accent-ring);
+      background: rgba(0, 0, 0, 0.26);
+      color: var(--accent-light);
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .cta-final-urgency-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.75); }
     }
 
     .cta-final-chest {
-      margin-top: 24px;
-    }
-
-    .final-chest-link {
-      display: inline-block;
-      transition: transform 180ms ease, filter 180ms ease;
-    }
-
-    .final-chest-link:hover,
-    .final-chest-link:focus-visible {
-      transform: translateY(-2px);
-      filter: brightness(1.04);
-    }
-
-    .cta-final-chest {
+      margin-top: 6px;
       display: flex;
       justify-content: center;
     }
 
-    .cta-final-chest a {
+    .cta-chest-container {
+      width: min(90%, 320px);
+      margin: 0 auto;
+    }
+
+    .final-chest-link {
+      display: inline-block;
+      transition: transform 220ms ease, filter 220ms ease;
+    }
+
+    .final-chest-link:hover,
+    .final-chest-link:focus-visible {
+      transform: translateY(-4px) scale(1.02);
+      filter: brightness(1.08) drop-shadow(0 0 18px var(--accent-soft));
+    }
+
+    .cta-final-btn {
       display: block;
-      width: min(100%, 280px);
-      height: 240px;
+      width: min(100%, 380px);
+      margin: 4px auto 0;
+      font-size: 1.1rem;
+      letter-spacing: 0.14em;
+    }
+
+    .cta-final-foot {
+      margin-top: 14px;
+      color: rgba(226, 230, 238, 0.44);
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
     }
 
     .cta-final-chest img {
@@ -1076,8 +1165,8 @@
           <div class="brand-signature">
             <span class="brand-signature-line" aria-hidden="true"></span>
             <div class="brand-logo-text">
-              <span class="brand-logo-main">Gueule</span>
-              <span class="brand-logo-sub">d'Ange</span>
+              <span class="brand-logo-main">LeCasiNoze</span>
+              <span class="brand-logo-sub"></span>
             </div>
             <span class="brand-signature-line" aria-hidden="true"></span>
           </div>
@@ -1144,12 +1233,15 @@
 
       <section class="section gold-panel-section">
         <div class="gold-panel gold-panel-reviews">
-          <div class="gold-panel-kicker">
-            <span class="gold-panel-kicker-star">&#9733;</span>
-            <span>Trustpilot</span>
-          </div>
           <h2 class="gold-panel-title">AVIS <span>V&Eacute;RIFI&Eacute;S</span></h2>
-          <p class="gold-panel-meta">599 avis sur <a href="https://www.trustpilot.com/review/celsiuscasino.com?stars=5" target="_blank" rel="noopener noreferrer">Trustpilot</a> &middot; <a href="https://www.trustpilot.com/review/celsiuscasino.com?stars=5" target="_blank" rel="noopener noreferrer">Celsius Casino</a></p>
+
+          <div class="trust-score-header">
+            <div class="trust-score-number">4.9</div>
+            <div class="trust-score-right">
+              <div class="trust-score-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+              <div class="trust-score-label">599 avis Trustpilot</div>
+            </div>
+          </div>
 
           <div class="review-list">
             <article class="review-card-modern">
@@ -1213,14 +1305,26 @@
 
       <section class="section gold-panel-section">
         <div class="gold-panel gold-panel-final cta-final-modern">
-          <h2 class="cta-final-title">PR&Ecirc;T &Agrave; <span>OUVRIR</span><br>LE COFFRE ?</h2>
-          <p class="cta-final-note">&#8987; Offre valable aujourd'hui uniquement</p>
+          <h2 class="cta-final-title">PR&Ecirc;T &Agrave; <span>OUVRIR</span><br>LE COFFRE&nbsp;?</h2>
+
+          <div>
+            <span class="cta-final-urgency">
+              <span class="cta-final-urgency-dot"></span>
+              Offre valable aujourd'hui uniquement
+            </span>
+          </div>
 
           <div class="cta-final-chest">
             <a href="https://gueuledange.jeutiktok.fr/" class="final-chest-link" target="_blank" rel="noopener noreferrer">
-              <img src="/affi_templates/golden_chance_chest/variants/__VARIANT__/chest.png" alt="Coffre bonus final">
+              <div class="promo-image-container cta-chest-container">
+                <img src="/affi_templates/golden_chance_chest/variants/__VARIANT__/chest.png" alt="Coffre bonus final">
+              </div>
             </a>
           </div>
+
+          <a href="https://gueuledange.jeutiktok.fr/" class="btn-jouer cta-final-btn" target="_blank" rel="noopener noreferrer">
+            OUVRIR MON COFFRE &rarr;
+          </a>
 
           <p class="cta-final-foot">Sans engagement &middot; 18+</p>
         </div>
