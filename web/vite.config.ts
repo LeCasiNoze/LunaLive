@@ -13,6 +13,8 @@ export default defineConfig({
       // ✅ FIX: autoriser le precache > 2MiB (ton bundle fait ~2.37MB)
       injectManifest: {
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MiB
+        // Self-contained affiliate exports can be very large and don't belong in the app-shell precache.
+        globIgnores: ["affi_templates/**/*.html"],
       },
 
       // tu registers à la main -> pas d'auto inject
