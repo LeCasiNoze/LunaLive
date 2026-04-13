@@ -67,16 +67,6 @@ function num(value: number | null | undefined) {
   return Number(value).toLocaleString("fr-FR");
 }
 
-function dateOnly(value: string | null | undefined) {
-  if (!value) return "-";
-  const [year, month, day] = value.split("-").map(Number);
-  return new Intl.DateTimeFormat("fr-FR", {
-    timeZone: "UTC",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(Date.UTC(year, month - 1, day)));
-}
 
 function dateTime(value: string | null | undefined) {
   if (!value) return "-";
@@ -663,7 +653,7 @@ export function FsbAgencySection() {
                 />
                 <select className="fsb-select" style={{ width: "auto" }} value={streamerSort} onChange={(e) => setStreamerSort(e.target.value)}>
                   <option value="name">Trier : nom</option>
-                  <option value="updated">Trier : màj récente</option>
+                  <option value="updated">Trier : Maj récente</option>
                   <option value="active">Trier : actifs ce mois</option>
                   <option value="assignments">Trier : nb deals</option>
                 </select>
@@ -1219,7 +1209,7 @@ export function FsbAgencySection() {
                   </div>
                   <select className="fsb-select" style={{ width: "auto" }} value={dealSort} onChange={(e) => setDealSort(e.target.value)}>
                     <option value="casino-name">Trier : casino puis nom</option>
-                    <option value="updated">Trier : màj récente</option>
+                    <option value="updated">Trier : Maj récente</option>
                     <option value="cpa">Trier : CPA desc</option>
                     <option value="rs">Trier : RS desc</option>
                   </select>
