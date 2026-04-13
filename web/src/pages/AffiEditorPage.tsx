@@ -90,6 +90,46 @@ function escAttr(str: string) {
   return esc(str).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+function replaceAllLiteral(source: string, search: string, replacement: string) {
+  return source.split(search).join(replacement);
+}
+
+async function fetchAsDataUrl(url: string) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${url}: ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error(`Unable to convert ${url} to data URL`));
+      }
+    };
+    reader.onerror = () => reject(reader.error ?? new Error(`Unable to read ${url}`));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function inlineAssetCandidates(html: string, candidates: string[]) {
+  for (const candidate of candidates) {
+    if (!html.includes(candidate)) continue;
+    try {
+      const dataUrl = await fetchAsDataUrl(candidate);
+      html = replaceAllLiteral(html, candidate, dataUrl);
+      return html;
+    } catch {
+      // try next candidate
+    }
+  }
+
+  return html;
+}
+
 function applyConfig(
   html: string,
   cfg: Config,
@@ -724,12 +764,53 @@ export default function AffiEditorPage() {
     setCfg((prev) => ({ ...prev, [key]: value }));
 
   // ── Export ─────────────────────────────────────────────────────────────────
-  function exportHtml() {
-    if (!templates[currentModel]) return;
-    let html = applyConfig(templates[currentModel], cfg, currentModel, goldenVariant);
+  async function exportHtml() {
+    const tmpl = templates[currentModel];
+    if (!tmpl) return;
+    let html = applyConfig(tmpl, cfg, currentModel, goldenVariant);
+
     if (currentModel === 5) {
+      // Inliner landing-base.css pour un export autonome
+      try {
+        const cssResp = await fetch("/affi_templates/golden_chance_chest/shared/landing-base.css");
+        if (cssResp.ok) {
+          const css = await cssResp.text();
+          html = html.replace(
+            `<link rel="stylesheet" href="/affi_templates/golden_chance_chest/shared/landing-base.css">`,
+            `<style>\n${css}\n</style>`
+          );
+        }
+      } catch { /* garde le lien externe en fallback */ }
+
+      // Inliner landing-base.js
+      try {
+        const jsResp = await fetch("/affi_templates/golden_chance_chest/shared/landing-base.js");
+        if (jsResp.ok) {
+          const js = await jsResp.text();
+          html = html.replace(
+            `<script src="/affi_templates/golden_chance_chest/shared/landing-base.js"></script>`,
+            `<script>\n${js}\n</script>`
+          );
+        }
+      } catch { /* garde le lien externe en fallback */ }
+
+      const backgroundCandidates = [
+        `/affi_templates/golden_chance_chest/variants/${goldenVariant}/background.png`,
+        `/affi_templates/golden_chance_chest/variants/${goldenVariant}/background.jpg`,
+      ];
+      html = await inlineAssetCandidates(html, backgroundCandidates);
+
+      const chestCandidates = cfg.goldenChestUrl
+        ? [cfg.goldenChestUrl]
+        : [
+            `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.png`,
+          ];
+      html = await inlineAssetCandidates(html, chestCandidates);
+
+      // Fallback: garde des chemins relatifs si un asset n'a pas pu être inline
       html = html.replace(/\/affi_templates\//g, "./");
     }
+
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

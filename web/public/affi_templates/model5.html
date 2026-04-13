@@ -10,7 +10,8 @@
     @import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap");
 
     :root {
-      --chest-aspect: 1 / 1;
+      --chest-aspect: 3 / 2;
+      --chest-offset-x: -10px;
       --page-bg: #0f0d14;
       --page-bg-2: #18141f;
       --panel-bg: rgba(12, 10, 18, 0.8);
@@ -49,7 +50,7 @@
     }
 
     html[data-variant="ruby"] {
-      --chest-aspect: 1 / 1;
+      --chest-aspect: 3 / 2;
       --page-bg: #120b10;
       --page-bg-2: #1d1217;
       --panel-bg: rgba(18, 10, 13, 0.82);
@@ -302,7 +303,7 @@
       position: relative;
       width: min(100%, 500px);
       aspect-ratio: var(--chest-aspect, 1 / 1);
-      margin: 0 auto 6px;
+      margin: 0 auto 2px;
       padding: 0;
       border: 0;
       border-radius: 0;
@@ -312,6 +313,20 @@
       display: flex;
       align-items: center;
       justify-content: center;
+    }
+
+    .promo-image-container::before {
+      content: "";
+      position: absolute;
+      inset: 14% 14% 18%;
+      border-radius: 999px;
+      background: radial-gradient(circle, var(--accent-light) 0%, transparent 72%);
+      filter: blur(16px);
+      opacity: 0;
+      transform: scale(0.9);
+      transition: opacity 220ms ease, transform 220ms ease;
+      z-index: 0;
+      pointer-events: none;
     }
 
     .promo-image-container::after {
@@ -334,31 +349,56 @@
       width: 100%;
       height: 100%;
       object-fit: contain;
-      object-position: center center;
+      object-position: center bottom;
       max-width: none;
       max-height: none;
       margin: 0;
       filter: drop-shadow(0 20px 36px rgba(0, 0, 0, 0.46));
       animation: none;
-      transform: translateY(var(--chest-translate, 0px));
+      transform: translate3d(var(--chest-offset-x, 0px), var(--chest-translate, 0px), 0);
       transition: filter 220ms ease, transform 220ms ease;
     }
 
-    /* Supprimer le cadre/box-shadow hérité de landing-base.css sur hover */
+    .chest-link,
+    .final-chest-link {
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .chest-link:focus-visible,
+    .final-chest-link:focus-visible {
+      outline: none;
+    }
+
+    /* Supprimer tout cadre/box-shadow hérité sur hover */
     .chest-link:hover .promo-image-container,
-    .chest-link:focus-visible .promo-image-container {
+    .chest-link:focus-visible .promo-image-container,
+    .final-chest-link:hover .promo-image-container,
+    .final-chest-link:focus-visible .promo-image-container {
       transform: none;
       box-shadow: none;
       border: 0;
+      outline: none;
     }
 
-    /* Neon glow + scale sur l'image en hover */
+    .chest-link:hover .promo-image-container::before,
+    .chest-link:focus-visible .promo-image-container::before,
+    .final-chest-link:hover .promo-image-container::before,
+    .final-chest-link:focus-visible .promo-image-container::before {
+      opacity: 0.4;
+      transform: scale(1.04);
+    }
+
+    /* Neon glow + scale sur le coffre uniquement */
     .chest-link:hover .promo-image-container img,
-    .chest-link:focus-visible .promo-image-container img {
-      transform: translateY(var(--chest-translate, 0px)) scale(1.07);
+    .chest-link:focus-visible .promo-image-container img,
+    .final-chest-link:hover .promo-image-container img,
+    .final-chest-link:focus-visible .promo-image-container img {
+      transform: translate3d(var(--chest-offset-x, 0px), var(--chest-translate, 0px), 0) scale(1.06);
       filter:
-        drop-shadow(0 0 14px var(--accent))
-        drop-shadow(0 0 32px var(--accent-soft))
+        drop-shadow(0 0 8px var(--accent-light))
+        drop-shadow(0 0 18px var(--accent))
+        drop-shadow(0 0 30px var(--accent-soft))
         drop-shadow(0 22px 38px rgba(0, 0, 0, 0.52));
     }
 
@@ -515,18 +555,20 @@
 
     .benefit-stack {
       display: flex;
-      flex-direction: row;
+      flex: 1;
+      flex-direction: column;
       align-items: stretch;
-      gap: 6px;
+      justify-content: center;
+      gap: 12px;
       margin-top: 20px;
     }
 
     .benefit-card {
       position: relative;
       overflow: visible;
-      flex: 1;
+      flex: 0 0 auto;
       min-width: 0;
-      padding: 18px 6px 14px;
+      padding: 20px 16px 18px;
       border-radius: 18px;
       border: 1px solid var(--card-border);
       background:
@@ -586,7 +628,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      flex: 0 0 22px;
+      flex: 0 0 auto;
       font-family: "Bebas Neue", sans-serif;
       font-size: 1.4rem;
       color: var(--accent);
@@ -866,8 +908,8 @@
 
     .final-chest-link:hover,
     .final-chest-link:focus-visible {
-      transform: translateY(-4px) scale(1.02);
-      filter: brightness(1.08) drop-shadow(0 0 18px var(--accent-soft));
+      transform: none;
+      filter: none;
     }
 
     .cta-final-btn {
@@ -919,6 +961,106 @@
       display: none;
     }
 
+    @media (min-width: 721px) {
+      .hero-bg {
+        background:
+          linear-gradient(180deg, rgba(0, 0, 0, 0.38) 0%, rgba(0, 0, 0, 0.08) 34%, rgba(0, 0, 0, 0.58) 100%),
+          radial-gradient(circle at 50% 18%, var(--hero-spot) 0%, transparent 34%),
+          var(--hero-bg-image) center top / auto 100% no-repeat,
+          var(--page-bg);
+      }
+
+      .hero-section {
+        padding-top: 26px;
+        padding-bottom: 18px;
+      }
+
+      .hero-content {
+        width: min(100%, 470px);
+        margin: 0 auto;
+        min-height: calc(100svh - 44px);
+        padding-top: clamp(20px, 3.5vh, 32px);
+      }
+
+      .brand-signature {
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      .brand-signature-line {
+        width: min(220px, 24vw);
+      }
+
+      .brand-logo-text .brand-logo-main {
+        font-size: clamp(2.18rem, 4.8vw, 3.3rem);
+        letter-spacing: 0.18em;
+      }
+
+      .brand-logo-text .brand-logo-sub {
+        margin-top: 4px;
+        font-size: clamp(0.72rem, 1.3vw, 0.96rem);
+        letter-spacing: 0.56em;
+      }
+
+      .offer-copy {
+        max-width: 410px;
+        margin-top: 10px;
+      }
+
+      .hero-title {
+        font-size: clamp(3rem, 5.7vw, 4.18rem);
+        line-height: 0.92;
+      }
+
+      .hero-subtitle {
+        max-width: 19.4rem;
+        margin-top: 14px;
+        font-size: 0.93rem;
+      }
+
+      .live-count {
+        margin-top: 14px;
+        font-size: 0.72rem;
+      }
+
+      .hero-card {
+        width: min(100%, 456px);
+        transform: translateY(-6px);
+      }
+
+      .promo-image-container {
+        width: min(100%, 456px);
+      }
+
+      .promo-image-container img {
+        --chest-translate: -10px;
+      }
+
+      .cta-cluster {
+        width: min(100%, 336px);
+      }
+
+      .btn-jouer {
+        width: min(100%, 336px);
+        margin-top: -8px;
+        font-size: 0.98rem;
+      }
+
+      .micro-proof {
+        margin-top: 10px;
+        font-size: 0.62rem;
+      }
+
+      .gold-panel-section,
+      .footer-note-modern {
+        max-width: 456px;
+      }
+
+      .gold-panel {
+        padding: 20px 16px 22px;
+      }
+    }
+
     @media (max-width: 860px) {
       .gold-panel-section {
         min-height: var(--mobile-panel-height);
@@ -934,8 +1076,7 @@
       }
 
       .gold-panel-benefits .benefit-stack {
-        flex: 1;
-        justify-content: space-evenly;
+        justify-content: center;
       }
 
       .gold-panel-reviews .review-list {
@@ -1073,8 +1214,8 @@
       .hero-bg {
         background:
           linear-gradient(180deg, rgba(0, 0, 0, 0.28) 0%, rgba(0, 0, 0, 0.04) 34%, rgba(0, 0, 0, 0.5) 100%),
-          radial-gradient(circle at 50% 18%, rgba(212, 168, 67, 0.12) 0%, transparent 30%),
-          url("/affi_templates/golden_chance_chest/variants/__VARIANT__/background.png") center top / auto 100% no-repeat,
+          radial-gradient(circle at 50% 18%, var(--hero-spot) 0%, transparent 30%),
+          var(--hero-bg-image) center top / auto 100% no-repeat,
           var(--page-bg);
       }
 
