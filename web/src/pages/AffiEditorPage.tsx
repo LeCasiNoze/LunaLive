@@ -35,7 +35,15 @@ interface Config {
   stickyText: string;
   casinoName: string;
   pageTitle: string;
+  goldenBrandMain: string;
+  goldenBrandSub: string;
+  goldenHeroTitleBefore: string;
+  goldenHeroTitleSpan: string;
+  goldenHeroSubtitle: string;
+  goldenPageTitle: string;
 }
+
+type GoldenChanceVariant = "gold" | "ruby" | "emerald" | "sapphire";
 
 const DEFAULT_CONFIG: Config = {
   bgPage: "#080212",
@@ -62,6 +70,12 @@ const DEFAULT_CONFIG: Config = {
   stickyText: "🎰 JOUER MAINTENANT",
   casinoName: "Celsius Games",
   pageTitle: "Offre VIP | Jouer Maintenant",
+  goldenBrandMain: "Gueule",
+  goldenBrandSub: "d'Ange",
+  goldenHeroTitleBefore: "DEPOSE 20EUR",
+  goldenHeroTitleSpan: "JOUE A 40EUR",
+  goldenHeroSubtitle: "+20EUR offerts des ton premier depot.",
+  goldenPageTitle: "Gueule d'Ange - Depose 20EUR, joue avec 40EUR",
 };
 
 // ─── APPLY CONFIG ─────────────────────────────────────────────────────────────
@@ -70,8 +84,72 @@ function esc(str: string) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function applyConfig(html: string, cfg: Config, model: number): string {
-  // CSS variables
+function applyConfig(
+  html: string,
+  cfg: Config,
+  model: number,
+  goldenVariant: GoldenChanceVariant
+): string {
+  if (model === 5) {
+    html = html.replace(/__VARIANT__/g, goldenVariant);
+
+    if (cfg.affiLink) {
+      html = html.replace(
+        /href="[^"]*" class="btn-jouer"/g,
+        `href="${cfg.affiLink}" class="btn-jouer"`
+      );
+      html = html.replace(
+        /href="[^"]*" class="sticky-cta"/g,
+        `href="${cfg.affiLink}" class="sticky-cta"`
+      );
+      html = html.replace(
+        /href="[^"]*" class="chest-link"/g,
+        `href="${cfg.affiLink}" class="chest-link"`
+      );
+      html = html.replace(
+        /href="[^"]*" class="final-chest-link"/g,
+        `href="${cfg.affiLink}" class="final-chest-link"`
+      );
+    }
+
+    if (cfg.goldenBrandMain) {
+      html = html.replace(
+        /(<span class="brand-logo-main">)([^<]*)(<\/span>)/,
+        `$1${esc(cfg.goldenBrandMain)}$3`
+      );
+    }
+
+    if (cfg.goldenBrandSub) {
+      html = html.replace(
+        /(<span class="brand-logo-sub">)([^<]*)(<\/span>)/,
+        `$1${esc(cfg.goldenBrandSub)}$3`
+      );
+    }
+
+    if (cfg.goldenHeroTitleBefore || cfg.goldenHeroTitleSpan) {
+      html = html.replace(
+        /<h1 class="hero-title">[\s\S]*?<\/h1>/,
+        `<h1 class="hero-title">${esc(cfg.goldenHeroTitleBefore)} <span>${esc(cfg.goldenHeroTitleSpan)}</span></h1>`
+      );
+    }
+
+    if (cfg.goldenHeroSubtitle) {
+      html = html.replace(
+        /<p class="hero-subtitle">[\s\S]*?<\/p>/,
+        `<p class="hero-subtitle">${esc(cfg.goldenHeroSubtitle)}</p>`
+      );
+    }
+
+    if (cfg.goldenPageTitle) {
+      html = html.replace(
+        /<title>[^<]*<\/title>/,
+        `<title>${esc(cfg.goldenPageTitle)}</title>`
+      );
+    }
+
+    return html;
+  }
+
   const colorVars: [string, string][] = [
     ["--bg-page", cfg.bgPage],
     ["--bg-card", cfg.bgCard],
@@ -89,7 +167,6 @@ function applyConfig(html: string, cfg: Config, model: number): string {
     );
   }
 
-  // Images
   if (model === 4) {
     let imgCount = 0;
     html = html.replace(
@@ -101,23 +178,20 @@ function applyConfig(html: string, cfg: Config, model: number): string {
         return match;
       }
     );
-  } else {
-    if (cfg.imgUrl) {
-      let replaced = false;
-      html = html.replace(
-        /(<div class="promo-image-container">\s*<img) src="[^"]*"/g,
-        (match, before) => {
-          if (!replaced) {
-            replaced = true;
-            return `${before} src="${cfg.imgUrl}"`;
-          }
-          return match;
+  } else if (cfg.imgUrl) {
+    let replaced = false;
+    html = html.replace(
+      /(<div class="promo-image-container">\s*<img) src="[^"]*"/g,
+      (match, before) => {
+        if (!replaced) {
+          replaced = true;
+          return `${before} src="${cfg.imgUrl}"`;
         }
-      );
-    }
+        return match;
+      }
+    );
   }
 
-  // Affiliate links
   if (cfg.affiLink) {
     html = html.replace(
       /href="[^"]*" class="btn-jouer"/g,
@@ -129,7 +203,6 @@ function applyConfig(html: string, cfg: Config, model: number): string {
     );
   }
 
-  // Offer title (all occurrences in model4)
   if (cfg.offerTitle) {
     html = html.replace(
       /<div class="offer-title">[^<]*<\/div>/g,
@@ -137,11 +210,11 @@ function applyConfig(html: string, cfg: Config, model: number): string {
     );
   }
 
-  // Deposit / receive
   if (model === 4) {
     const deps = [cfg.depositText, cfg.depositText2];
     const recs = [cfg.receiveText, cfg.receiveText2];
-    let d = 0, r = 0;
+    let d = 0;
+    let r = 0;
     html = html.replace(/<span class="step-deposit">[^<]*<\/span>/g, () => {
       const t = deps[d] || deps[0];
       d++;
@@ -165,7 +238,6 @@ function applyConfig(html: string, cfg: Config, model: number): string {
       );
   }
 
-  // Badge text
   if (cfg.badgeText) {
     html = html.replace(
       /(class="badge-premium">[^<]*<\/svg>\s*)([^<]*?)(\s*<\/div>)/,
@@ -173,7 +245,6 @@ function applyConfig(html: string, cfg: Config, model: number): string {
     );
   }
 
-  // H1
   if (cfg.heroTitleBefore || cfg.heroTitleSpan) {
     html = html.replace(
       /<h1 class="hero-title">[\s\S]*?<\/h1>/,
@@ -181,7 +252,6 @@ function applyConfig(html: string, cfg: Config, model: number): string {
     );
   }
 
-  // Hero subtitle
   if (cfg.heroSubtitle) {
     html = html.replace(
       /<p class="hero-subtitle">[^<]*<\/p>/,
@@ -189,7 +259,6 @@ function applyConfig(html: string, cfg: Config, model: number): string {
     );
   }
 
-  // Button text
   if (cfg.btnText) {
     html = html.replace(
       /(href="[^"]*" class="btn-jouer">\s*)([^<]*)(\s*<\/a>)/g,
@@ -197,7 +266,6 @@ function applyConfig(html: string, cfg: Config, model: number): string {
     );
   }
 
-  // Sticky CTA
   if (cfg.stickyText) {
     html = html.replace(
       /(class="sticky-cta">)([^<]*)(<\/a>)/,
@@ -205,12 +273,10 @@ function applyConfig(html: string, cfg: Config, model: number): string {
     );
   }
 
-  // Casino name
   if (cfg.casinoName && cfg.casinoName !== "Celsius Games") {
     html = html.replace(/Celsius Games/g, esc(cfg.casinoName));
   }
 
-  // Page title
   if (cfg.pageTitle) {
     html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(cfg.pageTitle)}</title>`);
   }
@@ -273,6 +339,17 @@ function ModelThumb({ n }: { n: number }) {
         <rect x="4" y="54" width="112" height="12" rx="2" fill="#1e1e3a" />
       </svg>
     ),
+    5: (
+      <svg viewBox="0 0 120 70" fill="none">
+        <rect width="120" height="70" rx="8" fill="#15131c" />
+        <rect x="8" y="5" width="104" height="60" rx="10" fill="#2b2833" stroke="#524e59" />
+        <rect x="22" y="10" width="76" height="4" rx="2" fill="#d4a843" opacity="0.9" />
+        <rect x="30" y="18" width="60" height="14" rx="4" fill="#1e1b22" />
+        <rect x="24" y="36" width="72" height="5" rx="2.5" fill="#f5efe4" />
+        <rect x="32" y="44" width="56" height="5" rx="2.5" fill="#d4a843" />
+        <rect x="17" y="54" width="86" height="7" rx="3.5" fill="#4a4040" />
+      </svg>
+    ),
   };
   return <>{thumbs[n]}</>;
 }
@@ -327,6 +404,17 @@ const PRESET_IMAGES = [
     url: "https://cdn.phototourl.com/member/2026-04-10-ec62e857-165d-4a93-9cec-a314c7636d9c.jpg",
     label: "Nouveau 2",
   },
+];
+
+const GOLDEN_VARIANTS: Array<{
+  value: GoldenChanceVariant;
+  label: string;
+  accent: string;
+}> = [
+  { value: "gold", label: "Or", accent: "#d4a843" },
+  { value: "ruby", label: "Rubis", accent: "#bf6861" },
+  { value: "emerald", label: "Emeraude", accent: "#69b98d" },
+  { value: "sapphire", label: "Saphir", accent: "#6f96cf" },
 ];
 
 interface ImagePickerProps {
@@ -465,6 +553,42 @@ function TextField({ label, value, onChange, placeholder, multiline, type = "tex
   );
 }
 
+interface VariantPickerProps {
+  value: GoldenChanceVariant;
+  onChange: (value: GoldenChanceVariant) => void;
+}
+function VariantPicker({ value, onChange }: VariantPickerProps) {
+  return (
+    <div style={s.field}>
+      <label style={s.label}>Variante couleur</label>
+      <div style={s.variantGrid}>
+        {GOLDEN_VARIANTS.map((variant) => {
+          const active = value === variant.value;
+          return (
+            <button
+              key={variant.value}
+              onClick={() => onChange(variant.value)}
+              style={{
+                ...s.variantBtn,
+                ...(active ? s.variantBtnActive : {}),
+                borderColor: active ? variant.accent : "#2a2a4a",
+              }}
+            >
+              <span
+                style={{
+                  ...s.variantSwatch,
+                  background: `linear-gradient(135deg, ${variant.accent}, rgba(255,255,255,0.92))`,
+                }}
+              />
+              <span>{variant.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface SectionProps {
   title: string;
   children: React.ReactNode;
@@ -489,6 +613,7 @@ export default function AffiEditorPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [currentModel, setCurrentModel] = useState(1);
+  const [goldenVariant, setGoldenVariant] = useState<GoldenChanceVariant>("gold");
   const [cfg, setCfg] = useState<Config>(DEFAULT_CONFIG);
   const [templates, setTemplates] = useState<Record<number, string>>({});
   const [loadError, setLoadError] = useState(false);
@@ -505,7 +630,7 @@ export default function AffiEditorPage() {
     (async () => {
       const loaded: Record<number, string> = {};
       try {
-        for (const i of [1, 4]) {
+        for (const i of [1, 4, 5]) {
           const r = await fetch(`/affi_templates/model${i}.html`);
           if (!r.ok) throw new Error(`model${i}.html HTTP ${r.status}`);
           loaded[i] = await r.text();
@@ -515,9 +640,12 @@ export default function AffiEditorPage() {
         // Init image/link defaults from template 1
         const m1 = loaded[1];
         const m4 = loaded[4];
+        const m5 = loaded[5];
         const imgMatch = m1.match(/<div class="promo-image-container">\s*<img src="([^"]+)"/);
         const linkMatch = m1.match(/href="([^"]+)" class="btn-jouer"/);
         const imgs4 = [...m4.matchAll(/<div class="promo-image-container">\s*<img src="([^"]+)"/g)];
+        const brandMainMatch = m5.match(/<span class="brand-logo-main">([^<]+)</);
+        const brandSubMatch = m5.match(/<span class="brand-logo-sub">([^<]+)</);
 
         setCfg((prev) => ({
           ...prev,
@@ -525,6 +653,8 @@ export default function AffiEditorPage() {
           affiLink: linkMatch?.[1] ?? "",
           imgUrl1: imgs4[0]?.[1] ?? "",
           imgUrl2: imgs4[1]?.[1] ?? "",
+          goldenBrandMain: brandMainMatch?.[1] ?? prev.goldenBrandMain,
+          goldenBrandSub: brandSubMatch?.[1] ?? prev.goldenBrandSub,
         }));
       } catch (e) {
         console.error("AffiEditor: failed to load templates", e);
@@ -536,9 +666,9 @@ export default function AffiEditorPage() {
   // ── Live preview ───────────────────────────────────────────────────────────
   const updatePreview = useCallback(() => {
     if (!templates[currentModel] || !iframeRef.current) return;
-    const html = applyConfig(templates[currentModel], cfg, currentModel);
+    const html = applyConfig(templates[currentModel], cfg, currentModel, goldenVariant);
     iframeRef.current.srcdoc = html;
-  }, [templates, currentModel, cfg]);
+  }, [templates, currentModel, cfg, goldenVariant]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -552,12 +682,17 @@ export default function AffiEditorPage() {
   // ── Export ─────────────────────────────────────────────────────────────────
   function exportHtml() {
     if (!templates[currentModel]) return;
-    const html = applyConfig(templates[currentModel], cfg, currentModel);
+    let html = applyConfig(templates[currentModel], cfg, currentModel, goldenVariant);
+    if (currentModel === 5) {
+      html = html.replace(/\/affi_templates\//g, "./");
+    }
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `affi_model${currentModel}_export.html`;
+    a.download = currentModel === 5
+      ? `golden_chance_chest_${goldenVariant}.html`
+      : `affi_model${currentModel}_export.html`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -578,7 +713,7 @@ export default function AffiEditorPage() {
         <button style={{ ...s.btn, ...s.btnSecondary }} onClick={() => navigate(returnTo)}>
           Retour au board
         </button>
-        <button style={{ ...s.btn, ...s.btnSecondary }} onClick={() => setCfg(DEFAULT_CONFIG)}>
+        <button style={{ ...s.btn, ...s.btnSecondary }} onClick={() => { setCfg(DEFAULT_CONFIG); setGoldenVariant("gold"); }}>
           Réinitialiser
         </button>
         <button style={{ ...s.btn, ...s.btnPrimary }} onClick={exportHtml}>
@@ -592,7 +727,7 @@ export default function AffiEditorPage() {
         {/* ── MODEL PICKER ──────────────────────────────────────────────────── */}
         <div style={s.picker}>
           <div style={s.pickerTitle}>MODÈLE</div>
-          {([1, 4] as const).map((n) => (
+          {([1, 4, 5] as const).map((n) => (
             <button
               key={n}
               style={{
@@ -606,7 +741,7 @@ export default function AffiEditorPage() {
               </div>
               <div style={s.modelLabel}>Modèle {n}</div>
               <div style={s.modelDesc}>
-                {n === 1 ? "Side-by-side" : "2 cartes"}
+                {n === 1 ? "Side-by-side" : n === 4 ? "2 cartes" : "Golden Chest"}
               </div>
             </button>
           ))}
@@ -622,6 +757,8 @@ export default function AffiEditorPage() {
             </div>
           )}
 
+          {currentModel !== 5 && (
+            <>
           <Section title="Couleurs">
             <ColorField label="Fond page"          value={cfg.bgPage}       onChange={set("bgPage")} />
             <ColorField label="Fond carte"          value={cfg.bgCard}       onChange={set("bgCard")} />
@@ -684,6 +821,42 @@ export default function AffiEditorPage() {
             <TextField label="Nom du casino (footer)" value={cfg.casinoName}      onChange={set("casinoName")} />
             <TextField label="Balise <title>"       value={cfg.pageTitle}         onChange={set("pageTitle")} />
           </Section>
+            </>
+          )}
+
+          {currentModel === 5 && (
+            <>
+              <Section title="Variante & assets">
+                <VariantPicker value={goldenVariant} onChange={setGoldenVariant} />
+                <div style={s.helperText}>
+                  Background :
+                  <br />
+                  <code>/web/public/affi_templates/golden_chance_chest/variants/{goldenVariant}/background.jpg</code>
+                </div>
+                <div style={s.helperText}>
+                  Coffre :
+                  <br />
+                  <code>/web/public/affi_templates/golden_chance_chest/variants/{goldenVariant}/chest.png</code>
+                </div>
+                <TextField
+                  label="Lien d'affiliation"
+                  value={cfg.affiLink}
+                  onChange={set("affiLink")}
+                  placeholder="https://casino.com/ref/..."
+                  type="url"
+                />
+              </Section>
+
+              <Section title="Identite & hero">
+                <TextField label="Pseudo ligne 1" value={cfg.goldenBrandMain} onChange={set("goldenBrandMain")} />
+                <TextField label="Pseudo ligne 2" value={cfg.goldenBrandSub} onChange={set("goldenBrandSub")} />
+                <TextField label="Titre ligne 1" value={cfg.goldenHeroTitleBefore} onChange={set("goldenHeroTitleBefore")} />
+                <TextField label="Titre ligne 2" value={cfg.goldenHeroTitleSpan} onChange={set("goldenHeroTitleSpan")} />
+                <TextField label="Sous-titre" value={cfg.goldenHeroSubtitle} onChange={set("goldenHeroSubtitle")} multiline />
+                <TextField label="Balise <title>" value={cfg.goldenPageTitle} onChange={set("goldenPageTitle")} />
+              </Section>
+            </>
+          )}
 
         </div>
 
@@ -903,6 +1076,48 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     padding: 1,
     flexShrink: 0,
+  },
+  variantGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+    marginBottom: 10,
+  },
+  variantBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+    padding: "10px 12px",
+    background: "#1c1c35",
+    border: "1px solid #2a2a4a",
+    borderRadius: 8,
+    color: "#e0e0f0",
+    cursor: "pointer",
+    fontSize: "0.8rem",
+    fontWeight: 600,
+    textAlign: "left",
+  },
+  variantBtnActive: {
+    background: "rgba(255,255,255,0.04)",
+    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.04)",
+  },
+  variantSwatch: {
+    width: 14,
+    height: 14,
+    borderRadius: 999,
+    flexShrink: 0,
+  },
+  helperText: {
+    marginBottom: 10,
+    padding: "9px 10px",
+    background: "rgba(255,255,255,0.03)",
+    border: "1px solid #2a2a4a",
+    borderRadius: 6,
+    color: "#b8b9c7",
+    fontSize: "0.72rem",
+    lineHeight: 1.5,
+    wordBreak: "break-word",
   },
   errorBanner: {
     margin: 12,

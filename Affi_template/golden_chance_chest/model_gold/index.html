@@ -1,0 +1,1087 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gueule d'Ange - Depose 20EUR, joue avec 40EUR</title>
+  <meta name="description" content="Bonus 100% sur ton premier depot. Credite instantanement. Sans code promo.">
+  <link rel="stylesheet" href="../shared/landing-base.css">
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap");
+
+    :root {
+      --page-bg: #0f0d14;
+      --page-bg-2: #18141f;
+      --panel-bg: rgba(12, 10, 18, 0.8);
+      --card-bg: rgba(22, 18, 30, 0.88);
+      --card-border: rgba(255, 255, 255, 0.14);
+      --accent: #d4a843;
+      --accent-light: #f0c84a;
+      --accent-dark: #856128;
+      --accent-soft: rgba(212, 168, 67, 0.18);
+      --accent-ring: rgba(212, 168, 67, 0.34);
+      --accent-contrast: #0a0910;
+      --headline-gold: #d2a645;
+      --success: #2ccf85;
+      --hero-bg-image: url("./assets/background.jpg");
+    }
+
+    .page {
+      background:
+        linear-gradient(180deg, #070609 0%, #0f0d14 68%, #16131c 100%);
+    }
+
+    .hero-bg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 100svh;
+      z-index: 0;
+      transform: none;
+      background:
+        linear-gradient(180deg, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0.08) 34%, rgba(0, 0, 0, 0.58) 100%),
+        radial-gradient(circle at 50% 18%, rgba(212, 168, 67, 0.16) 0%, transparent 34%),
+        url("./assets/background.jpg") center center / contain no-repeat,
+        var(--page-bg);
+    }
+
+    .hero-section {
+      position: relative;
+      min-height: 100svh;
+      padding: clamp(22px, 4vh, 42px) 20px 20px;
+      overflow: hidden;
+    }
+
+    .hero-content {
+      min-height: calc(100svh - 42px);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+
+    .badge-premium {
+      margin-bottom: 14px;
+    }
+
+    .brand-signature {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .brand-signature-line {
+      width: min(260px, 54vw);
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 235, 182, 0.18), rgba(212, 168, 67, 0.78), rgba(255, 235, 182, 0.18), transparent);
+      opacity: 0.92;
+    }
+
+    .brand-logo-text {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 0;
+      text-transform: uppercase;
+      line-height: 0.96;
+      text-shadow:
+        0 2px 18px rgba(0, 0, 0, 0.86),
+        0 0 24px rgba(212, 168, 67, 0.18);
+    }
+
+    .brand-logo-text .brand-logo-main {
+      font-family: "Cinzel", serif;
+      font-weight: 700;
+      font-size: clamp(2.5rem, 6vw, 4.6rem);
+      letter-spacing: 0.16em;
+      color: #f6efdd;
+      text-shadow:
+        0 0 18px rgba(212, 168, 67, 0.16),
+        0 2px 18px rgba(0, 0, 0, 0.84);
+    }
+
+    .brand-logo-text .brand-logo-sub {
+      margin-top: 6px;
+      padding-left: 0.62em;
+      font-family: "Cinzel", serif;
+      font-weight: 600;
+      font-size: clamp(0.9rem, 1.9vw, 1.45rem);
+      letter-spacing: 0.62em;
+      color: var(--accent-light);
+      text-shadow:
+        0 0 14px rgba(212, 168, 67, 0.2),
+        0 2px 14px rgba(0, 0, 0, 0.72);
+    }
+
+    .offer-copy {
+      max-width: 470px;
+      margin: 8px auto 0;
+    }
+
+    .hero-title {
+      margin: 0;
+      font-size: clamp(2.72rem, 8.8vw, 4.72rem);
+      line-height: 0.9;
+      letter-spacing: 0.038em;
+      text-shadow: 0 2px 18px rgba(0, 0, 0, 0.86);
+    }
+
+    .hero-title span {
+      display: block;
+      margin-top: 0.02em;
+      color: var(--headline-gold);
+      text-shadow:
+        0 0 12px rgba(181, 136, 36, 0.1),
+        0 2px 18px rgba(0, 0, 0, 0.86);
+    }
+
+    .hero-subtitle {
+      max-width: 23rem;
+      margin-top: 13px;
+      font-size: clamp(0.96rem, 1.7vw, 1.02rem);
+      line-height: 1.52;
+      font-weight: 500;
+      color: rgba(248, 244, 239, 0.9);
+      text-wrap: balance;
+    }
+
+    .live-count {
+      margin-top: 12px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .hero-card {
+      width: min(100%, 520px);
+      margin-top: auto;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: none;
+      box-shadow: none;
+      backdrop-filter: none;
+    }
+
+    .info-box {
+      max-width: 420px;
+      margin: 0 auto 16px;
+      background: rgba(18, 15, 25, 0.72);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+    }
+
+    .promo-image-container {
+      width: min(100%, 520px);
+      aspect-ratio: auto;
+      margin: 0 auto 6px;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: none;
+      box-shadow: none;
+      overflow: visible;
+    }
+
+    .promo-image-container::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: 10px;
+      width: min(78%, 320px);
+      height: 34px;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0) 72%);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .promo-image-container img {
+      position: relative;
+      z-index: 1;
+      width: min(100%, 360px);
+      max-width: 82vw;
+      max-height: none;
+      margin: 0 auto;
+      filter: drop-shadow(0 20px 36px rgba(0, 0, 0, 0.46));
+      animation: none;
+    }
+
+    .btn-jouer {
+      width: min(100%, 430px);
+      margin: 2px auto 0;
+      position: relative;
+      overflow: hidden;
+      border-radius: 20px;
+      padding-top: 16px;
+      padding-bottom: 16px;
+      letter-spacing: 0.18em;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.2),
+        0 0 22px rgba(212, 168, 67, 0.16),
+        0 10px 20px rgba(0, 0, 0, 0.28);
+    }
+
+    .btn-jouer::before {
+      content: "";
+      position: absolute;
+      top: -18%;
+      bottom: -18%;
+      left: -36%;
+      width: 28%;
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 246, 214, 0.28), rgba(255, 255, 255, 0));
+      transform: skewX(-20deg) translateX(-140%);
+      animation: ctaSweep 4.8s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    .btn-jouer::after {
+      content: "";
+      position: absolute;
+      inset: 1px;
+      border-radius: inherit;
+      border: 1px solid rgba(255, 248, 230, 0.1);
+      pointer-events: none;
+    }
+
+    .cta-cluster {
+      width: min(100%, 430px);
+      margin: 0 auto;
+    }
+
+    .micro-proof {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      margin-top: 10px;
+      font-size: 0.68rem;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      color: rgba(240, 200, 74, 0.88);
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.62);
+    }
+
+    .micro-proof-icon {
+      color: rgba(240, 200, 74, 0.96);
+      text-shadow: 0 0 10px rgba(212, 168, 67, 0.22);
+      font-size: 0.78rem;
+      line-height: 1;
+    }
+
+    @keyframes ctaSweep {
+      0%,
+      58%,
+      100% {
+        transform: skewX(-20deg) translateX(-140%);
+      }
+      76% {
+        transform: skewX(-20deg) translateX(420%);
+      }
+    }
+
+    .gold-panel-section {
+      max-width: 430px;
+      padding: 0 10px 12px;
+    }
+
+    .gold-panel-section::before {
+      display: none;
+    }
+
+    .gold-panel {
+      position: relative;
+      overflow: hidden;
+      padding: 20px 16px 24px;
+      border-radius: 28px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background:
+        radial-gradient(circle at top left, rgba(212, 168, 67, 0.14) 0%, transparent 28%),
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.06) 0%, transparent 24%),
+        linear-gradient(180deg, rgba(49, 46, 58, 0.96) 0%, rgba(35, 32, 41, 0.98) 100%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 22px 38px rgba(0, 0, 0, 0.26),
+        0 0 0 1px rgba(255, 255, 255, 0.02);
+    }
+
+    .gold-panel::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 230, 170, 0.46), transparent);
+      pointer-events: none;
+    }
+
+    .gold-panel-title {
+      margin: 0;
+      text-align: left;
+      font-family: "Bebas Neue", sans-serif;
+      font-size: clamp(2.55rem, 9vw, 3.55rem);
+      line-height: 0.94;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .gold-panel-title span {
+      color: var(--accent);
+    }
+
+    .gold-panel-kicker {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: #00b67a;
+    }
+
+    .gold-panel-kicker-star {
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    .gold-panel-meta {
+      margin: 8px 0 0;
+      color: rgba(244, 240, 235, 0.88);
+      font-size: 0.98rem;
+      line-height: 1.5;
+    }
+
+    .gold-panel-meta a {
+      color: var(--accent-light);
+    }
+
+    .gold-panel-caption {
+      display: none;
+    }
+
+    .benefit-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .benefit-card {
+      position: relative;
+      overflow: visible;
+      padding: 20px 16px 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background:
+        linear-gradient(180deg, rgba(74, 70, 84, 0.82) 0%, rgba(56, 51, 66, 0.92) 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      text-align: center;
+    }
+
+    .benefit-card-total {
+      border-color: rgba(212, 168, 67, 0.62);
+      background:
+        radial-gradient(circle at top, rgba(212, 168, 67, 0.12) 0%, transparent 44%),
+        linear-gradient(180deg, rgba(63, 52, 26, 0.9) 0%, rgba(45, 37, 20, 0.96) 100%);
+    }
+
+    .benefit-card-badge {
+      position: absolute;
+      left: 50%;
+      top: -10px;
+      transform: translateX(-50%);
+      padding: 3px 11px 4px;
+      border-radius: 999px;
+      background: #d7dbe6;
+      color: #1e1b22;
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+    }
+
+    .benefit-value {
+      font-family: "Bebas Neue", sans-serif;
+      font-size: clamp(3.1rem, 13vw, 4.2rem);
+      line-height: 0.92;
+      letter-spacing: 0.02em;
+      color: #f7f3eb;
+    }
+
+    .benefit-card-total .benefit-value {
+      color: var(--accent);
+    }
+
+    .benefit-label {
+      margin-top: 6px;
+      color: rgba(226, 233, 255, 0.78);
+      font-size: 0.98rem;
+    }
+
+    .benefit-divider {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: "Bebas Neue", sans-serif;
+      font-size: 1.55rem;
+      color: #f6f1e6;
+      line-height: 1;
+    }
+
+    .review-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .review-card-modern {
+      padding: 17px 16px 14px;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background:
+        linear-gradient(180deg, rgba(68, 65, 78, 0.82) 0%, rgba(54, 50, 64, 0.94) 100%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.03),
+        0 10px 20px rgba(0, 0, 0, 0.14);
+    }
+
+    .review-stars-modern {
+      color: #00b67a;
+      font-size: 0.92rem;
+      letter-spacing: 0.12em;
+    }
+
+    .review-text-modern {
+      margin: 14px 0 15px;
+      color: #ffffff;
+      font-size: 0.98rem;
+      line-height: 1.62;
+    }
+
+    .review-divider-modern {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.14);
+    }
+
+    .review-meta-modern {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .review-avatar-modern {
+      width: 34px;
+      height: 34px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: rgba(151, 143, 171, 0.34);
+      color: #f5f1e7;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .review-name-modern {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .review-date-modern {
+      margin-top: 2px;
+      color: rgba(219, 223, 232, 0.7);
+      font-size: 0.74rem;
+    }
+
+    .trustpilot-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 14px;
+      padding: 0;
+      border: 0;
+      color: rgba(255, 224, 169, 0.9);
+      font-size: 0.98rem;
+      font-weight: 500;
+      background: none;
+      box-shadow: none;
+    }
+
+    .trustpilot-button:hover,
+    .trustpilot-button:focus-visible {
+      color: #ffffff;
+    }
+
+    .faq-list-modern {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .faq-card-modern {
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background:
+        linear-gradient(180deg, rgba(68, 65, 77, 0.78) 0%, rgba(56, 52, 64, 0.92) 100%);
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    .faq-card-modern[open] {
+      border-color: rgba(212, 168, 67, 0.82);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.04),
+        0 14px 24px rgba(0, 0, 0, 0.12);
+    }
+
+    .faq-card-modern summary {
+      list-style: none;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 15px 18px;
+      cursor: pointer;
+      font-size: 0.98rem;
+      line-height: 1.42;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .faq-question-text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .faq-card-modern summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .faq-card-modern summary::after {
+      content: "+";
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(173, 174, 188, 0.36);
+      color: rgba(226, 230, 238, 0.84);
+      font-size: 0.9rem;
+      line-height: 1;
+    }
+
+    .faq-card-modern[open] summary {
+      box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+    }
+
+    .faq-card-modern[open] summary::after {
+      content: "×";
+      border-color: rgba(173, 174, 188, 0.42);
+    }
+
+    .faq-answer-modern {
+      padding: 12px 18px 16px;
+      color: rgba(225, 229, 237, 0.8);
+      font-size: 0.9rem;
+      line-height: 1.54;
+    }
+
+    .faq-card-modern[open] summary::after {
+      content: "\00d7";
+    }
+
+    .cta-final-modern {
+      text-align: center;
+      padding-bottom: 22px;
+    }
+
+    .cta-final-title {
+      margin: 0;
+      font-family: "Bebas Neue", sans-serif;
+      font-size: clamp(3rem, 10vw, 4.3rem);
+      line-height: 0.9;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .cta-final-title span {
+      color: var(--accent);
+    }
+
+    .cta-final-note {
+      margin-top: 10px;
+      color: var(--accent);
+      font-size: 0.82rem;
+      line-height: 1.4;
+    }
+
+    .cta-final-chest {
+      margin-top: 24px;
+    }
+
+    .final-chest-link {
+      display: inline-block;
+      transition: transform 180ms ease, filter 180ms ease;
+    }
+
+    .final-chest-link:hover,
+    .final-chest-link:focus-visible {
+      transform: translateY(-2px);
+      filter: brightness(1.04);
+    }
+
+    .cta-final-chest img {
+      width: min(100%, 226px);
+      margin: 0 auto;
+      filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.34));
+    }
+
+    .cta-final-foot {
+      margin-top: 22px;
+      color: rgba(244, 240, 235, 0.88);
+      font-size: 0.86rem;
+      font-weight: 600;
+    }
+
+    .footer-note-modern {
+      max-width: 430px;
+      padding: 0 10px 20px;
+    }
+
+    .footer-note-modern .legal-card {
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(33, 31, 39, 0.84);
+      box-shadow: none;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.78rem;
+    }
+
+    .legacy-section {
+      display: none;
+    }
+
+    @media (max-width: 860px) {
+      .gold-panel-section {
+        min-height: var(--mobile-panel-height);
+        display: flex;
+        align-items: stretch;
+      }
+
+      .gold-panel {
+        width: 100%;
+        min-height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .gold-panel-benefits .benefit-stack {
+        flex: 1;
+        justify-content: space-evenly;
+      }
+
+      .gold-panel-reviews .review-list {
+        gap: 12px;
+      }
+
+      .gold-panel-reviews .trustpilot-button {
+        margin-top: auto;
+        padding-top: 12px;
+      }
+
+      .gold-panel-faq .faq-list-modern {
+        flex: 1;
+        justify-content: space-between;
+      }
+
+      .gold-panel-final {
+        justify-content: space-between;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .hero-bg {
+        background:
+          linear-gradient(180deg, rgba(0, 0, 0, 0.34) 0%, rgba(0, 0, 0, 0.06) 34%, rgba(0, 0, 0, 0.54) 100%),
+          radial-gradient(circle at 50% 18%, rgba(212, 168, 67, 0.14) 0%, transparent 32%),
+          url("./assets/background.jpg") center top / auto 100% no-repeat,
+          var(--page-bg);
+      }
+
+      .hero-section {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-bottom: 16px;
+      }
+
+      .hero-content {
+        min-height: calc(100svh - 32px);
+        padding-top: clamp(34px, 6vh, 58px);
+      }
+
+      .brand-logo-text {
+        margin-bottom: 0;
+      }
+
+      .brand-signature {
+        gap: 8px;
+        margin-bottom: 18px;
+      }
+
+      .brand-signature-line {
+        width: min(198px, 52vw);
+      }
+
+      .brand-logo-text .brand-logo-main {
+        font-size: clamp(1.86rem, 8.6vw, 2.9rem);
+        letter-spacing: 0.18em;
+      }
+
+      .brand-logo-text .brand-logo-sub {
+        margin-top: 4px;
+        font-size: clamp(0.7rem, 2.8vw, 1rem);
+        letter-spacing: 0.58em;
+      }
+
+      .hero-title {
+        font-size: clamp(2.62rem, 13vw, 3.92rem);
+        line-height: 0.92;
+        letter-spacing: 0.04em;
+      }
+
+      .offer-copy {
+        margin-top: 10px;
+      }
+
+      .hero-subtitle {
+        max-width: 18.3rem;
+        margin-top: 16px;
+        font-size: 0.9rem;
+      }
+
+      .live-count {
+        margin-top: 15px;
+      }
+
+      .hero-card {
+        transform: translateY(-8px);
+      }
+
+      .info-box {
+        display: none;
+      }
+
+      .offer-title {
+        font-size: 1.45rem;
+      }
+
+      .promo-image-container img {
+        width: min(100%, 252px);
+        transform: translateY(-16px);
+      }
+
+      .btn-jouer {
+        width: min(100%, 324px);
+        margin-top: -6px;
+        font-size: 0.98rem;
+        letter-spacing: 0.16em;
+      }
+
+      .micro-proof {
+        margin-top: 10px;
+        font-size: 0.62rem;
+      }
+
+      .gold-panel-section {
+        padding-left: 4px;
+        padding-right: 4px;
+      }
+
+      .gold-panel {
+        padding: 18px 14px 20px;
+      }
+
+      .gold-panel-title {
+        font-size: clamp(2.25rem, 8vw, 3rem);
+      }
+
+      .benefit-value {
+        font-size: clamp(2.7rem, 11vw, 3.6rem);
+      }
+    }
+
+    @media (max-width: 430px) {
+      .hero-bg {
+        background:
+          linear-gradient(180deg, rgba(0, 0, 0, 0.28) 0%, rgba(0, 0, 0, 0.04) 34%, rgba(0, 0, 0, 0.5) 100%),
+          radial-gradient(circle at 50% 18%, rgba(212, 168, 67, 0.12) 0%, transparent 30%),
+          url("./assets/background.jpg") center top / auto 100% no-repeat,
+          var(--page-bg);
+      }
+
+      .hero-content {
+        padding-top: 52px;
+      }
+
+      .hero-title {
+        font-size: clamp(2.42rem, 12vw, 3.36rem);
+        line-height: 0.94;
+        letter-spacing: 0.032em;
+      }
+
+      .offer-copy {
+        margin-top: 12px;
+      }
+
+      .brand-signature {
+        margin-bottom: 16px;
+      }
+
+      .brand-logo-text .brand-logo-main {
+        font-size: clamp(1.72rem, 8.2vw, 2.26rem);
+      }
+
+      .brand-logo-text .brand-logo-sub {
+        font-size: 0.68rem;
+        letter-spacing: 0.54em;
+      }
+
+      .hero-subtitle {
+        max-width: 17.4rem;
+        font-size: 0.84rem;
+        line-height: 1.44;
+      }
+
+      .live-count {
+        font-size: 0.66rem;
+        margin-top: 13px;
+      }
+
+      .hero-card {
+        transform: translateY(-12px);
+      }
+
+      .promo-image-container img {
+        width: min(100%, 228px);
+        transform: translateY(-22px);
+      }
+
+      .btn-jouer {
+        width: min(100%, 308px);
+        padding-top: 14px;
+        padding-bottom: 14px;
+        font-size: 0.94rem;
+        margin-top: -12px;
+      }
+
+      .micro-proof {
+        font-size: 0.58rem;
+      }
+
+      .gold-panel {
+        padding: 18px 12px 18px;
+      }
+
+      .gold-panel-title {
+        font-size: clamp(2.05rem, 7.8vw, 2.7rem);
+      }
+
+      .gold-panel-meta {
+        font-size: 0.92rem;
+      }
+
+      .review-text-modern {
+        font-size: 0.92rem;
+      }
+
+      .faq-card-modern summary {
+        font-size: 0.95rem;
+      }
+
+      .cta-final-title {
+        font-size: clamp(2.5rem, 9vw, 3.4rem);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="hero-bg" aria-hidden="true"></div>
+
+    <main class="shell">
+      <section class="hero-section">
+        <div class="hero-content">
+          <div class="brand-signature">
+            <span class="brand-signature-line" aria-hidden="true"></span>
+            <div class="brand-logo-text">
+              <span class="brand-logo-main">Gueule</span>
+              <span class="brand-logo-sub">d'Ange</span>
+            </div>
+            <span class="brand-signature-line" aria-hidden="true"></span>
+          </div>
+
+          <div class="offer-copy" data-offer-deposit="20" data-offer-bonus="20" data-offer-total="40">
+            <h1 class="hero-title">D&Eacute;POSE 20&euro; <span>JOUE A 40&euro;</span></h1>
+            <p class="hero-subtitle"><strong>+20&euro; offerts</strong> d&egrave;s ton premier d&eacute;p&ocirc;t.</p>
+            <p class="live-count"><span class="live-dot"></span><span data-live-count>214</span> joueurs inscrits aujourd'hui</p>
+          </div>
+
+          <div class="hero-card">
+            <div class="info-box">
+              <div class="info-title">Offre du moment</div>
+              <div class="offer-title">Offre de Bienvenue</div>
+              <div class="info-steps">
+                <span class="step-deposit">DEPOSE 20EUR</span>
+                <span class="step-arrow">+</span>
+                <span class="step-receive">RECOIS 20EUR</span>
+              </div>
+            </div>
+
+            <a href="https://gueuledange.jeutiktok.fr/" class="chest-link" target="_blank" rel="noopener noreferrer">
+              <div class="promo-image-container">
+                <img src="./assets/chest.png" alt="Coffre bonus" data-asset-img>
+                <div class="asset-placeholder">Ajoute `./assets/chest.png` pour afficher le coffre.</div>
+              </div>
+            </a>
+
+            <div class="cta-cluster">
+              <a href="https://gueuledange.jeutiktok.fr/" class="btn-jouer" target="_blank" rel="noopener noreferrer">R&Eacute;CLAME TES <span data-bind-offer-value="bonus">20&euro;</span> OFFERTS</a>
+              <p class="micro-proof"><span class="micro-proof-icon">&#10003;</span>Bonus cr&eacute;dit&eacute; en moins de 30 secondes</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section gold-panel-section">
+        <div class="gold-panel gold-panel-benefits">
+          <h2 class="gold-panel-title">CE QUE TU <span>GAGNES</span></h2>
+
+          <div class="benefit-stack">
+            <article class="benefit-card">
+              <div class="benefit-value" data-bind-offer-value="deposit">20&euro;</div>
+              <div class="benefit-label">Ton d&eacute;p&ocirc;t</div>
+            </article>
+
+            <div class="benefit-divider">+</div>
+
+            <article class="benefit-card">
+              <span class="benefit-card-badge">OFFERT</span>
+              <div class="benefit-value" data-bind-offer-value="bonus">20&euro;</div>
+              <div class="benefit-label">Bonus instantan&eacute;</div>
+            </article>
+
+            <div class="benefit-divider">=</div>
+
+            <article class="benefit-card benefit-card-total">
+              <div class="benefit-value" data-bind-offer-value="total">40&euro;</div>
+              <div class="benefit-label">Pour jouer maintenant</div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section gold-panel-section">
+        <div class="gold-panel gold-panel-reviews">
+          <div class="gold-panel-kicker">
+            <span class="gold-panel-kicker-star">&#9733;</span>
+            <span>Trustpilot</span>
+          </div>
+          <h2 class="gold-panel-title">AVIS <span>V&Eacute;RIFI&Eacute;S</span></h2>
+          <p class="gold-panel-meta">599 avis sur <a href="https://www.trustpilot.com/review/celsiuscasino.com?stars=5" target="_blank" rel="noopener noreferrer">Trustpilot</a> &middot; <a href="https://www.trustpilot.com/review/celsiuscasino.com?stars=5" target="_blank" rel="noopener noreferrer">Celsius Casino</a></p>
+
+          <div class="review-list">
+            <article class="review-card-modern">
+              <div class="review-stars-modern">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+              <p class="review-text-modern">"Incroyable exp&eacute;rience, gros bonus, d&eacute;p&ocirc;t et retrait tr&egrave;s rapides. Je recommande."</p>
+              <div class="review-divider-modern"></div>
+              <div class="review-meta-modern">
+                <div class="review-avatar-modern">R</div>
+                <div>
+                  <div class="review-name-modern">Roman</div>
+                  <div class="review-date-modern">8 avr. 2026</div>
+                </div>
+              </div>
+            </article>
+
+            <article class="review-card-modern">
+              <div class="review-stars-modern">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+              <p class="review-text-modern">"Casino au top, retrait rapide !"</p>
+              <div class="review-divider-modern"></div>
+              <div class="review-meta-modern">
+                <div class="review-avatar-modern">M</div>
+                <div>
+                  <div class="review-name-modern">Makina</div>
+                  <div class="review-date-modern">31 mars 2026</div>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <a class="trustpilot-button" href="https://www.trustpilot.com/review/celsiuscasino.com?stars=5" target="_blank" rel="noopener noreferrer">Voir les 599 avis sur Trustpilot &rarr;</a>
+        </div>
+      </section>
+
+      <section class="section gold-panel-section">
+        <div class="gold-panel gold-panel-faq">
+          <h2 class="gold-panel-title">TES <span>QUESTIONS</span></h2>
+
+          <div class="faq-list-modern">
+            <details class="faq-card-modern" open>
+              <summary><span class="faq-question-text">Le bonus de 20&euro; est garanti ?</span></summary>
+              <div class="faq-answer-modern">Oui. D&egrave;s que ton premier d&eacute;p&ocirc;t de 20&euro; est valid&eacute;, le bonus est ajout&eacute; automatiquement.</div>
+            </details>
+
+            <details class="faq-card-modern">
+              <summary><span class="faq-question-text">Le bonus s'applique-t-il &agrave; tous les d&eacute;p&ocirc;ts ?</span></summary>
+              <div class="faq-answer-modern">Non. Il s'applique uniquement &agrave; ton tout premier d&eacute;p&ocirc;t valid&eacute;.</div>
+            </details>
+
+            <details class="faq-card-modern">
+              <summary><span class="faq-question-text">Je peux retirer mes gains ?</span></summary>
+              <div class="faq-answer-modern">Oui. Retrait disponible quand tu veux. D&eacute;lai habituel sous 24h.</div>
+            </details>
+
+            <details class="faq-card-modern">
+              <summary><span class="faq-question-text">C'est fiable et s&eacute;curis&eacute; ?</span></summary>
+              <div class="faq-answer-modern">Oui. Plateforme licenci&eacute;e, transactions chiffr&eacute;es SSL et compte prot&eacute;g&eacute;.</div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="section gold-panel-section">
+        <div class="gold-panel gold-panel-final cta-final-modern">
+          <h2 class="cta-final-title">PR&Ecirc;T &Agrave; <span>OUVRIR</span><br>LE COFFRE ?</h2>
+          <p class="cta-final-note">&#8987; Offre valable aujourd'hui uniquement</p>
+
+          <div class="cta-final-chest">
+            <a href="https://gueuledange.jeutiktok.fr/" class="final-chest-link" target="_blank" rel="noopener noreferrer">
+              <img src="./assets/chest.png" alt="Coffre bonus final">
+            </a>
+          </div>
+
+          <p class="cta-final-foot">Sans engagement &middot; 18+</p>
+        </div>
+      </section>
+
+      <section class="section footer-note-modern">
+        <div class="legal-card">
+          Jouer comporte des risques. 18+ uniquement.
+        </div>
+      </section>
+    </main>
+
+    <a href="https://gueuledange.jeutiktok.fr/" class="sticky-cta" target="_blank" rel="noopener noreferrer">R&Eacute;CLAME TES <span data-bind-offer-value="bonus">20&euro;</span> OFFERTS</a>
+  </div>
+
+  <script src="../shared/landing-base.js"></script>
+</body>
+</html>
