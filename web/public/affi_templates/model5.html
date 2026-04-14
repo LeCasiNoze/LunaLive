@@ -1011,16 +1011,118 @@
         justify-content: center;
       }
 
-      /* ── Two-column grid ── */
+      /* ── 721-899px : colonne unique élargie ── */
       .hero-content {
-        width: min(100%, 1100px);
+        width: min(100%, 560px);
+        margin: 0 auto;
+        min-height: calc(100svh - 44px);
+        padding-top: clamp(20px, 3.5vh, 32px);
+        text-align: center;
+      }
+
+      .brand-signature {
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      .brand-signature-line {
+        width: min(220px, 24vw);
+      }
+
+      .brand-logo-text {
+        align-items: center;
+      }
+
+      .brand-logo-text .brand-logo-main {
+        font-size: clamp(2.4rem, 4.8vw, 3.3rem);
+        letter-spacing: 0.18em;
+      }
+
+      .brand-logo-text .brand-logo-sub {
+        margin-top: 4px;
+        font-size: clamp(0.72rem, 1.3vw, 0.96rem);
+        letter-spacing: 0.56em;
+      }
+
+      .offer-copy {
+        max-width: 100%;
+        margin-top: 10px;
+      }
+
+      .hero-title {
+        font-size: clamp(3rem, 5.5vw, 4.2rem);
+        line-height: 0.92;
+      }
+
+      .hero-subtitle {
+        max-width: 22rem;
+        margin-top: 14px;
+        font-size: 0.93rem;
+      }
+
+      .live-count {
+        margin-top: 14px;
+        font-size: 0.72rem;
+      }
+
+      .hero-card {
+        width: min(100%, 460px);
+        transform: translateY(-6px);
+      }
+
+      .promo-image-container {
+        width: min(100%, 460px);
+      }
+
+      .promo-image-container img {
+        --chest-translate: -10px;
+      }
+
+      .cta-cluster {
+        width: min(100%, 340px);
+      }
+
+      .btn-jouer {
+        width: min(100%, 340px);
+        margin-top: -8px;
+        font-size: 0.98rem;
+      }
+
+      .micro-proof {
+        margin-top: 10px;
+        font-size: 0.62rem;
+      }
+
+      .gold-panel-section,
+      .footer-note-modern {
+        max-width: 560px;
+      }
+
+      .gold-panel {
+        padding: 20px 16px 22px;
+      }
+    }
+
+    /* ── ≥900px : layout deux colonnes ── */
+    @media (min-width: 900px) {
+      .hero-section {
+        padding: 0;
+        min-height: 100svh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .hero-content {
+        width: min(100%, 1140px);
         min-height: unset;
-        padding: clamp(32px, 5vh, 64px) clamp(32px, 5vw, 80px);
+        padding: clamp(32px, 5vh, 60px) clamp(40px, 5vw, 80px);
         display: grid;
         grid-template-columns: 1fr 1fr;
         grid-template-rows: auto auto 1fr;
         align-items: center;
-        gap: 0 clamp(32px, 4vw, 64px);
+        gap: 0 clamp(40px, 4vw, 72px);
         text-align: left;
       }
 
@@ -1028,12 +1130,7 @@
         grid-column: 1;
         grid-row: 1;
         align-items: flex-start;
-        gap: 6px;
         margin-bottom: 20px;
-      }
-
-      .brand-signature-line {
-        width: min(180px, 20vw);
       }
 
       .brand-logo-text {
@@ -1041,14 +1138,7 @@
       }
 
       .brand-logo-text .brand-logo-main {
-        font-size: clamp(2.4rem, 4vw, 3.6rem);
-        letter-spacing: 0.18em;
-      }
-
-      .brand-logo-text .brand-logo-sub {
-        margin-top: 4px;
-        font-size: clamp(0.72rem, 1.1vw, 0.9rem);
-        letter-spacing: 0.52em;
+        font-size: clamp(2.6rem, 3.8vw, 4rem);
       }
 
       .offer-copy {
@@ -1056,26 +1146,18 @@
         grid-row: 2;
         max-width: 100%;
         margin: 0;
-        text-align: left;
       }
 
       .hero-title {
-        font-size: clamp(3rem, 5vw, 4.4rem);
-        line-height: 0.9;
+        font-size: clamp(3.2rem, 5vw, 5rem);
+        line-height: 0.88;
       }
 
       .hero-subtitle {
-        max-width: 28rem;
-        margin-top: 16px;
-        font-size: clamp(0.9rem, 1.2vw, 1rem);
+        max-width: 100%;
+        font-size: clamp(0.9rem, 1.1vw, 1.05rem);
       }
 
-      .live-count {
-        margin-top: 14px;
-        font-size: 0.74rem;
-      }
-
-      /* Hero-card (chest + button) → right column, spans all rows */
       .hero-card {
         grid-column: 2;
         grid-row: 1 / 4;
@@ -1089,36 +1171,23 @@
       }
 
       .promo-image-container {
-        width: min(100%, 480px);
-      }
-
-      .promo-image-container img {
-        --chest-translate: -10px;
+        width: min(100%, 500px);
       }
 
       .cta-cluster {
-        width: min(100%, 360px);
-        margin-top: 8px;
+        width: min(100%, 380px);
+        margin-top: 10px;
       }
 
       .btn-jouer {
-        width: min(100%, 360px);
+        width: 100%;
         margin-top: 0;
-        font-size: 1rem;
-      }
-
-      .micro-proof {
-        margin-top: 10px;
-        font-size: 0.64rem;
+        font-size: 1.05rem;
       }
 
       .gold-panel-section,
       .footer-note-modern {
-        max-width: 600px;
-      }
-
-      .gold-panel {
-        padding: 24px 20px 26px;
+        max-width: 640px;
       }
     }
 
