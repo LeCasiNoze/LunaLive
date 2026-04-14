@@ -139,7 +139,7 @@ function applyConfig(
     if (getGoldenVisualMode(cfg) === "none") {
       html = html.replace(
         /<\/style>/,
-        `.chest-link, .final-chest-link, .cta-final-chest, .info-box { display: none !important; }
+        `.chest-link, .final-chest-link, .cta-final-chest, .info-box, .gold-panel-final { display: none !important; }
 .hero-bg-overlay {
   position: absolute;
   inset: 0;
