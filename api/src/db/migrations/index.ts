@@ -81,6 +81,7 @@ import { mig071_agency_public_note_and_negative_rs } from "./mig071_agency_publi
 import { mig072_agency_payment_expenses } from "./mig072_agency_payment_expenses.js";
 import { mig073_agency_payment_frequency } from "./mig073_agency_payment_frequency.js";
 import { mig074_affi_landing_pages } from "./mig074_affi_landing_pages.js";
+import { mig075_expenses_agency_unique_fix } from "./mig075_expenses_agency_unique_fix.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -181,6 +182,7 @@ export async function migrateAll(pool: Pool) {
   await mig072_agency_payment_expenses(pool);
   await mig073_agency_payment_frequency(pool);
   await mig074_affi_landing_pages(pool);
+  await mig075_expenses_agency_unique_fix(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);
