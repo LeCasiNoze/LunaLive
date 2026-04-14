@@ -1,5 +1,5 @@
 // api/src/discord/stats_fabio.ts
-// Salon stats + commande /stats (mod only, éphémère)
+// Salon stats — message épinglé auto-mis-à-jour (pas de slash command)
 
 import { ChannelType, type Client, type GuildMember, type TextChannel } from "discord.js";
 import { pool } from "../db.js";
@@ -14,22 +14,35 @@ import {
   FABIO_ROLE_NOTIF_YT,
   FABIO_ROLE_NOTIF_TW,
   FABIO_NOTIF_CHANNEL_ID,
-  CID_FABIO_TICKET_APPROVE,
+  FABIO_STATS_CHANNEL_ID,
 } from "./constants.js";
 
 export const CID_STATS_LIST = "fabio:stats:list:"; // + casino slug
 
 let statsChannelId: string | null = null;
+let statsMsgId: string | null = null;
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 export async function ensureStatsChannel(client: Client, ctx: BotCtx) {
   const guild = await client.guilds.fetch(FABIO_GUILD_ID).catch(() => null);
   if (!guild) return;
 
-  const channels = await guild.channels.fetch().catch(() => null);
-  let ch = channels?.find(
-    (c) => c?.parentId === FABIO_CAT_MODO_ID && c?.name?.includes("stats")
-  );
+  // Utiliser l'ID constant si on le connaît déjà
+  let ch: TextChannel | null = null;
+
+  if (FABIO_STATS_CHANNEL_ID) {
+    ch = await client.channels.fetch(FABIO_STATS_CHANNEL_ID).catch(() => null) as TextChannel | null;
+  }
+
+  if (!ch) {
+    const channels = await guild.channels.fetch().catch(() => null);
+    const found = channels?.find(
+      (c) => c?.parentId === FABIO_CAT_MODO_ID && c?.name?.includes("stats")
+    );
+    if (found) {
+      ch = await client.channels.fetch(found.id).catch(() => null) as TextChannel | null;
+    }
+  }
 
   if (!ch) {
     ch = await guild.channels.create({
@@ -44,48 +57,64 @@ export async function ensureStatsChannel(client: Client, ctx: BotCtx) {
     }).catch((e) => { ctx.log(`[stats_fabio] create channel: ${e?.message}`); return null; });
   }
 
-  if (ch) {
-    statsChannelId = ch.id;
-    ctx.log(`[stats_fabio] stats channel ready: ${ch.id}`);
-  }
+  if (!ch) return;
+  statsChannelId = ch.id;
+  ctx.log(`[stats_fabio] stats channel ready: ${ch.id}`);
 
-  // Renommer le salon notifs
+  // Renommer le salon notifs si besoin
   try {
     const notifCh = await client.channels.fetch(FABIO_NOTIF_CHANNEL_ID).catch(() => null) as TextChannel | null;
     if (notifCh && !notifCh.name.includes("notif")) {
       await notifCh.setName("〈🔔〉｜notifs").catch(() => {});
     }
   } catch { /* ignore */ }
+
+  // Trouver ou créer le message stats épinglé
+  try {
+    const msgs = await ch.messages.fetch({ limit: 20 }).catch(() => null);
+    const existing = msgs?.find(
+      (m) => m.author.id === client.user?.id && m.embeds[0]?.title?.includes("Statistiques")
+    );
+    if (existing) {
+      statsMsgId = existing.id;
+    } else {
+      const sent = await ch.send({
+        embeds: [buildLoadingEmbed()],
+        components: [],
+      });
+      statsMsgId = sent.id;
+      await sent.pin().catch(() => {});
+    }
+  } catch (e: any) {
+    ctx.log(`[stats_fabio] message setup error: ${e?.message}`);
+  }
+
+  // Premier refresh
+  await refreshStatsMessage(client, ctx);
 }
 
-// ─── Handler /stats ───────────────────────────────────────────────────────────
-export async function handleStatsCommand(interaction: any, ctx: BotCtx) {
-  // Restriction : seulement dans le salon stats, seulement les mods
-  if (statsChannelId && interaction.channelId !== statsChannelId) {
-    await interaction.reply({
-      ephemeral: true,
-      content: `❌ Cette commande est réservée au salon <#${statsChannelId}>.`,
-    });
-    return;
-  }
+function buildLoadingEmbed() {
+  return {
+    title: "📊 Statistiques — Fabiozsis",
+    description: "_Chargement en cours..._",
+    color: 0x2F3136,
+  };
+}
 
-  const member = interaction.member as GuildMember;
-  const isMod = member.roles.cache.has(FABIO_ROLE_MOD_ID) || member.roles.cache.has(FABIO_ROLE_CHEF_ID);
-  if (!isMod) {
-    await interaction.reply({ ephemeral: true, content: "❌ Réservé aux modérateurs." });
-    return;
-  }
-
-  await interaction.deferReply({ ephemeral: true });
+// ─── Refresh du message stats ─────────────────────────────────────────────────
+export async function refreshStatsMessage(client: Client, ctx: BotCtx) {
+  if (!statsChannelId || !statsMsgId) return;
 
   try {
-    const guild = await interaction.client.guilds.fetch(FABIO_GUILD_ID);
-    await guild.members.fetch(); // charge le cache complet
+    const guild = await client.guilds.fetch(FABIO_GUILD_ID).catch(() => null);
+    if (!guild) return;
+
+    await guild.members.fetch().catch(() => {}); // charge le cache
 
     // ── Membres serveur ──────────────────────────────────────────────────────
     const totalMembers = guild.memberCount;
     const countRole = (roleId: string) =>
-      guild.members.cache.filter((m) => m.roles.cache.has(roleId)).size;
+      guild.members.cache.filter((m: any) => m.roles.cache.has(roleId)).size;
 
     const nbStream = countRole(FABIO_ROLE_NOTIF_STREAM);
     const nbInsta  = countRole(FABIO_ROLE_NOTIF_INSTA);
@@ -98,8 +127,9 @@ export async function handleStatsCommand(interaction: any, ctx: BotCtx) {
         COUNT(*)                                        AS total,
         COUNT(*) FILTER (WHERE status = 'approved')    AS approved,
         COUNT(*) FILTER (WHERE status = 'rejected')    AS rejected,
-        COUNT(*) FILTER (WHERE status = 'pending')     AS pending,
-        COALESCE(SUM(deposit_amount)  FILTER (WHERE status = 'approved'), 0) AS total_deposited,
+        COUNT(*) FILTER (WHERE status = 'pending'
+          AND state NOT IN ('closed','refused','appeal_pending'))  AS pending,
+        COALESCE(SUM(deposit_amount)   FILTER (WHERE status = 'approved'), 0) AS total_deposited,
         COALESCE(SUM(reimburse_amount) FILTER (WHERE status = 'approved'), 0) AS total_reimbursed
       FROM discord_casino_tickets
       WHERE guild_id = $1
@@ -112,70 +142,88 @@ export async function handleStatsCommand(interaction: any, ctx: BotCtx) {
         COUNT(*)                                     AS total,
         COUNT(*) FILTER (WHERE status = 'approved') AS approved,
         COUNT(*) FILTER (WHERE status = 'rejected') AS rejected,
-        COUNT(*) FILTER (WHERE status = 'pending')  AS pending,
-        COALESCE(SUM(deposit_amount) FILTER (WHERE status = 'approved'), 0) AS deposited
+        COUNT(*) FILTER (WHERE status = 'pending'
+          AND state NOT IN ('closed','refused','appeal_pending')) AS pending,
+        COALESCE(SUM(deposit_amount)   FILTER (WHERE status = 'approved'), 0) AS deposited,
+        COALESCE(SUM(reimburse_amount) FILTER (WHERE status = 'approved'), 0) AS reimbursed
       FROM discord_casino_tickets
       WHERE guild_id = $1
       GROUP BY casino
-      ORDER BY approved DESC
+      ORDER BY total DESC
     `, [FABIO_GUILD_ID]);
 
     const casinoLines = byCasino.rows.map((r) =>
-      `▸ **${r.casino}** — ${r.approved} validés · ${r.rejected} refusés · ${r.pending} en attente · ${r.deposited}€ déposés`
+      `▸ **${r.casino}** — ✅ ${r.approved} · ❌ ${r.rejected} · ⏳ ${r.pending} en attente — déposé **${r.deposited}€** · remboursé **${r.reimbursed}€**`
     ).join("\n") || "_Aucun ticket pour l'instant._";
 
-    // ── Boutons liste par casino ─────────────────────────────────────────────
+    // ── Giveaways actifs ─────────────────────────────────────────────────────
+    const giveawayStats = await pool.query(`
+      SELECT COUNT(*) FILTER (WHERE state = 'active') AS active,
+             COUNT(*) FILTER (WHERE state = 'ended')  AS ended
+      FROM discord_giveaways WHERE guild_id = $1
+    `, [FABIO_GUILD_ID]);
+    const gs = giveawayStats.rows[0];
+
+    // ── Boutons par casino ───────────────────────────────────────────────────
     const casinoButtons = byCasino.rows.slice(0, 5).map((r) => ({
       type: 2, style: 2,
       custom_id: `${CID_STATS_LIST}${r.casino}`,
-      label: `📋 Liste ${r.casino}`,
+      label: `📋 ${r.casino}`,
     }));
+    const components = casinoButtons.length ? [{ type: 1, components: casinoButtons }] : [];
 
-    const components = casinoButtons.length ? [{
-      type: 1,
-      components: casinoButtons,
-    }] : [];
+    const embed = {
+      title: "📊 Statistiques — Fabiozsis",
+      color: 0x2F3136,
+      fields: [
+        {
+          name: "👥 Serveur",
+          value:
+            `Total membres : **${totalMembers}**\n` +
+            `🔴 Stream : **${nbStream}** · 📸 Insta : **${nbInsta}** · ▶️ YT : **${nbYT}** · 🐦 Twitter : **${nbTW}**`,
+          inline: false,
+        },
+        {
+          name: "🎫 Tickets",
+          value:
+            `Total : **${ts.total}** — ` +
+            `✅ Validés : **${ts.approved}** · ❌ Refusés : **${ts.rejected}** · ⏳ En attente : **${ts.pending}**`,
+          inline: false,
+        },
+        {
+          name: "💰 Montants",
+          value:
+            `Déposé (validés) : **${ts.total_deposited}€** · Remboursé : **${ts.total_reimbursed}€**`,
+          inline: false,
+        },
+        {
+          name: "🎰 Par casino",
+          value: casinoLines,
+          inline: false,
+        },
+        {
+          name: "🎉 Giveaways",
+          value: `En cours : **${gs.active}** · Terminés : **${gs.ended}**`,
+          inline: false,
+        },
+      ],
+      footer: { text: `Mis à jour` },
+      timestamp: new Date().toISOString(),
+    };
 
-    await interaction.editReply({
-      embeds: [{
-        title: "📊 Statistiques — Fabiozsis",
-        color: 0x2F3136,
-        fields: [
-          {
-            name: "👥 Serveur",
-            value:
-              `Total membres : **${totalMembers}**\n` +
-              `🔴 Stream : **${nbStream}** · 📸 Insta : **${nbInsta}** · ▶️ YT : **${nbYT}** · 🐦 Twitter : **${nbTW}**`,
-            inline: false,
-          },
-          {
-            name: "🎫 Tickets",
-            value:
-              `Total : **${ts.total}** — ` +
-              `✅ Validés : **${ts.approved}** · ❌ Refusés : **${ts.rejected}** · ⏳ En attente : **${ts.pending}**`,
-            inline: false,
-          },
-          {
-            name: "💰 Montants",
-            value:
-              `Total déposé (validés) : **${ts.total_deposited}€**\n` +
-              `Total remboursé : **${ts.total_reimbursed}€**`,
-            inline: false,
-          },
-          {
-            name: "🎰 Par casino",
-            value: casinoLines,
-            inline: false,
-          },
-        ],
-        footer: { text: `Données en temps réel · ${new Date().toLocaleString("fr-FR")}` },
-        timestamp: new Date().toISOString(),
-      }],
-      components,
-    });
+    const ch = await client.channels.fetch(statsChannelId).catch(() => null) as TextChannel | null;
+    if (!ch) return;
+
+    const msg = await ch.messages.fetch(statsMsgId).catch(() => null);
+    if (msg) {
+      await msg.edit({ embeds: [embed], components } as any);
+    } else {
+      const sent = await ch.send({ embeds: [embed], components } as any);
+      statsMsgId = sent.id;
+      await sent.pin().catch(() => {});
+    }
   } catch (e: any) {
-    ctx.log(`[stats_fabio] handleStatsCommand error: ${e?.message}`);
-    await interaction.editReply({ content: "❌ Erreur lors du chargement des stats." });
+    ctx.log(`[stats_fabio] refreshStatsMessage error: ${e?.message}`);
   }
 }
 

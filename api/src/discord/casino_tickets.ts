@@ -11,6 +11,7 @@ import {
 } from "discord.js";
 import { pool } from "../db.js";
 import { getActiveOffers, getOfferById, type CasinoOffer } from "./casino_offers.js";
+import { refreshStatsMessage } from "./stats_fabio.js";
 import { type BotCtx } from "./utils.js";
 import {
   FABIO_GUILD_ID,
@@ -700,6 +701,9 @@ export async function handleFabioRejectModal(interaction: any, ticketId: string,
 
   // Sync message vérif-tickets (motif refus, boutons retirés)
   await syncVerifMessage(interaction.client, ticketId, ctx);
+
+  // Rafraîchir les stats
+  refreshStatsMessage(interaction.client as Client, ctx).catch(() => {});
 }
 
 // ─── Handler: bouton Appel ────────────────────────────────────────────────────
@@ -848,6 +852,9 @@ export async function handleFabioVirement(interaction: any, ticketId: string, ct
 
   // Log dans logs-tickets
   await postClosingLog(interaction.client, ticket, "approved", ctx);
+
+  // Rafraîchir les stats
+  refreshStatsMessage(interaction.client as Client, ctx).catch(() => {});
 }
 
 // ─── Vérif-tickets : embed dynamique ─────────────────────────────────────────

@@ -65,7 +65,8 @@ import { isRestricted, isVerified, syncUserEverywhere } from "./sync.js";
 import { ensureTicketPanel, autoCloseExpiredTickets, checkInactiveTickets, handleFabioTicketType, handleFabioOfferSelect, handleFabioTicketModal, handleFabioTicketMessage, handleFabioApprove, handleFabioReimburseSelect, handleFabioReject, handleFabioRejectModal, handleFabioAppeal, handleFabioAppealAck, handleFabioVirement } from "./casino_tickets.js";
 import { ensureOfferDashboard } from "./casino_offers.js";
 import { ensureFabioWelcomeChannels, handleFabioMemberJoin, handleFabioMemberLeave } from "./welcome_fabio.js";
-import { ensureStatsChannel, handleStatsCommand, handleStatsList, CID_STATS_LIST } from "./stats_fabio.js";
+import { ensureStatsChannel, handleStatsList, refreshStatsMessage, CID_STATS_LIST } from "./stats_fabio.js";
+import { ensureGiveawaySetup, handleGiveawayCommand, handleGiveawayEnter, handleGiveawayCancel, checkExpiredGiveaways } from "./giveaway_fabio.js";
 import {
   FABIO_GUILD_ID,
   FABIO_ROLE_NOTIF_INSTA, FABIO_ROLE_NOTIF_YT, FABIO_ROLE_NOTIF_TW, FABIO_ROLE_NOTIF_STREAM,
@@ -82,6 +83,8 @@ import {
   CID_FABIO_TICKET_APPEAL_ACK,
   CID_FABIO_OFFER_ADD,
   CID_FABIO_OFFER_ADD_MODAL,
+  CID_FABIO_GIVEAWAY_ENTER,
+  CID_FABIO_GIVEAWAY_CANCEL,
 } from "./constants.js";
 import { buildAddOfferModal, parseAddOfferModal, createOffer, refreshDashboard } from "./casino_offers.js";
 
@@ -304,11 +307,16 @@ export async function startDiscordBot(ctx: BotCtx) {
     await ensureOfferDashboard(client, ctx);
     await ensureFabioWelcomeChannels(client, ctx);
     await ensureStatsChannel(client, ctx);
+    await ensureGiveawaySetup(client, ctx);
 
     // Cron auto-close tickets (toutes les 5 min)
     setInterval(() => autoCloseExpiredTickets(client, ctx), 5 * 60 * 1000);
     // Cron relances inactivité (toutes les 5 min)
     setInterval(() => checkInactiveTickets(client, ctx), 5 * 60 * 1000);
+    // Cron giveaways expirés (toutes les minutes)
+    setInterval(() => checkExpiredGiveaways(client, ctx), 60 * 1000);
+    // Cron stats refresh (toutes les 10 min)
+    setInterval(() => refreshStatsMessage(client, ctx), 10 * 60 * 1000);
 
     setInterval(() => {
       pool
@@ -503,6 +511,17 @@ export async function startDiscordBot(ctx: BotCtx) {
         const ticketId = rest.slice(0, lastColon);
         const decision = rest.slice(lastColon + 1) as "accept" | "reject";
         await handleFabioAppealAck(interaction, ticketId, decision, ctx); return;
+      }
+
+      // ── Fabiozsis — giveaway entrer/se retirer ───────────────────────────
+      if (interaction.isButton() && interaction.customId.startsWith(CID_FABIO_GIVEAWAY_ENTER)) {
+        const giveawayId = interaction.customId.slice(CID_FABIO_GIVEAWAY_ENTER.length);
+        await handleGiveawayEnter(interaction, giveawayId, ctx); return;
+      }
+
+      if (interaction.isButton() && interaction.customId.startsWith(CID_FABIO_GIVEAWAY_CANCEL)) {
+        const giveawayId = interaction.customId.slice(CID_FABIO_GIVEAWAY_CANCEL.length);
+        await handleGiveawayCancel(interaction, giveawayId, ctx); return;
       }
 
       // ── Fabiozsis — admin ajout offre ────────────────────────────────────
@@ -904,8 +923,8 @@ export async function startDiscordBot(ctx: BotCtx) {
           return;
         }
 
-        if (interaction.commandName === "stats" && interaction.guildId === FABIO_GUILD_ID) {
-          await handleStatsCommand(interaction, ctx);
+        if (interaction.commandName === "giveaway" && interaction.guildId === FABIO_GUILD_ID) {
+          await handleGiveawayCommand(interaction, ctx);
           return;
         }
 
