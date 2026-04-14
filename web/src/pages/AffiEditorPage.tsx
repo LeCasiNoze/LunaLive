@@ -1157,7 +1157,9 @@ export default function AffiEditorPage() {
         }
       } catch { /* garde le lien externe en fallback */ }
 
-      if (!cfg.goldenBackgroundUrl) {
+      if (cfg.goldenBackgroundUrl) {
+        html = await inlineAssetCandidates(html, [cfg.goldenBackgroundUrl]);
+      } else {
         const backgroundCandidates = [
           `/affi_templates/golden_chance_chest/variants/${goldenVariant}/background.png`,
           `/affi_templates/golden_chance_chest/variants/${goldenVariant}/background.jpg`,
