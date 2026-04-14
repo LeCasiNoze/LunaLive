@@ -151,8 +151,11 @@ async function inlineAssetCandidates(html: string, candidates: string[]) {
   return html;
 }
 
-function getGoldenVisualMode(cfg: Config): "chest" | "games" {
-  return String(cfg.goldenVisualMode || "").trim().toLowerCase() === "games" ? "games" : "chest";
+function getGoldenVisualMode(cfg: Config): "chest" | "games" | "none" {
+  const v = String(cfg.goldenVisualMode || "").trim().toLowerCase();
+  if (v === "games") return "games";
+  if (v === "none") return "none";
+  return "chest";
 }
 
 function getGoldenVisualCandidates(cfg: Config, goldenVariant: GoldenChanceVariant) {
@@ -206,17 +209,24 @@ function applyConfig(
       );
     }
 
-    const goldenVisualUrl = getGoldenVisualCandidates(cfg, goldenVariant)[0];
-    if (goldenVisualUrl) {
-      const safeChestUrl = escAttr(goldenVisualUrl);
+    if (getGoldenVisualMode(cfg) === "none") {
       html = html.replace(
-        /(<img[^>]*data-visual-img="hero"[^>]*src=")[^"]*(")/,
-        `$1${safeChestUrl}$2`
+        /<\/style>/,
+        `.chest-link, .final-chest-link, .cta-final-chest { display: none !important; }</style>`
       );
-      html = html.replace(
-        /(<img[^>]*data-visual-img="final"[^>]*src=")[^"]*(")/,
-        `$1${safeChestUrl}$2`
-      );
+    } else {
+      const goldenVisualUrl = getGoldenVisualCandidates(cfg, goldenVariant)[0];
+      if (goldenVisualUrl) {
+        const safeChestUrl = escAttr(goldenVisualUrl);
+        html = html.replace(
+          /(<img[^>]*data-visual-img="hero"[^>]*src=")[^"]*(")/,
+          `$1${safeChestUrl}$2`
+        );
+        html = html.replace(
+          /(<img[^>]*data-visual-img="final"[^>]*src=")[^"]*(")/,
+          `$1${safeChestUrl}$2`
+        );
+      }
     }
 
     if (cfg.goldenBackgroundUrl) {
@@ -1453,6 +1463,16 @@ export default function AffiEditorPage() {
                     >
                       <span style={s.visualModeIcon}>🎮</span>
                       <span>Image jeux</span>
+                    </button>
+                    <button
+                      style={{
+                        ...s.variantBtn,
+                        ...(getGoldenVisualMode(cfg) === "none" ? s.variantBtnActive : {}),
+                      }}
+                      onClick={() => set("goldenVisualMode")("none")}
+                    >
+                      <span style={s.visualModeIcon}>🚫</span>
+                      <span>Aucun</span>
                     </button>
                   </div>
                 </div>
