@@ -41,6 +41,39 @@ type Config = {
   goldenVisualMode: string;
   goldenBackgroundUrl: string;
   goldenCtaPosition: string;
+  // Typography base
+  t_brandFs: string;
+  t_brandFf: string;
+  t_brandLs: string;
+  t_brandColor: string;
+  t_titleFs: string;
+  t_titleFf: string;
+  t_titleLs: string;
+  t_titleColor: string;
+  t_subFs: string;
+  t_subFf: string;
+  t_subLs: string;
+  t_subColor: string;
+  t_ctaFs: string;
+  t_ctaFf: string;
+  t_ctaLs: string;
+  // Mobile overrides
+  t_brandFsM: string;
+  t_titleFsM: string;
+  t_subFsM: string;
+  t_ctaFsM: string;
+  // Desktop overrides
+  t_brandFsD: string;
+  t_titleFsD: string;
+  t_subFsD: string;
+  t_ctaFsD: string;
+  // Position offsets
+  p_brandX: string;
+  p_brandY: string;
+  p_offerX: string;
+  p_offerY: string;
+  p_ctaX: string;
+  p_ctaY: string;
 };
 
 const DEFAULT_CONFIG: Config = {
@@ -79,7 +112,121 @@ const DEFAULT_CONFIG: Config = {
   goldenVisualMode: "chest",
   goldenBackgroundUrl: "",
   goldenCtaPosition: "top",
+  t_brandFs: "",
+  t_brandFf: "",
+  t_brandLs: "",
+  t_brandColor: "",
+  t_titleFs: "",
+  t_titleFf: "",
+  t_titleLs: "",
+  t_titleColor: "",
+  t_subFs: "",
+  t_subFf: "",
+  t_subLs: "",
+  t_subColor: "",
+  t_ctaFs: "",
+  t_ctaFf: "",
+  t_ctaLs: "",
+  t_brandFsM: "",
+  t_titleFsM: "",
+  t_subFsM: "",
+  t_ctaFsM: "",
+  t_brandFsD: "",
+  t_titleFsD: "",
+  t_subFsD: "",
+  t_ctaFsD: "",
+  p_brandX: "",
+  p_brandY: "",
+  p_offerX: "",
+  p_offerY: "",
+  p_ctaX: "",
+  p_ctaY: "",
 };
+
+const FONT_MAP: Record<string, string> = {
+  "Cinzel": "Cinzel:wght@400;600;700",
+  "Bebas Neue": "Bebas+Neue",
+  "Oswald": "Oswald:wght@400;500;700",
+  "Montserrat": "Montserrat:wght@400;600;700;800",
+  "Playfair Display": "Playfair+Display:wght@700;900",
+  "Raleway": "Raleway:wght@400;600;700;800",
+  "Inter": "Inter:wght@400;500;600;700;800",
+  "Anton": "Anton",
+  "Roboto Condensed": "Roboto+Condensed:wght@400;700",
+};
+
+function buildCustomVarsCSS(cfg: Config): string {
+  const lines: string[] = [];
+
+  const base = (prop: string, val: string) => {
+    if (val) lines.push(`:root { ${prop}: ${val}; }`);
+  };
+  const mobile = (prop: string, val: string) => {
+    if (val) lines.push(`@media (max-width: 720px) { :root { ${prop}: ${val}; } }`);
+  };
+  const desktop = (prop: string, val: string) => {
+    if (val) lines.push(`@media (min-width: 721px) { :root { ${prop}: ${val}; } }`);
+  };
+
+  base("--cu-brand-fs", cfg.t_brandFs);
+  mobile("--cu-brand-fs", cfg.t_brandFsM);
+  desktop("--cu-brand-fs", cfg.t_brandFsD);
+
+  base("--cu-title-fs", cfg.t_titleFs);
+  mobile("--cu-title-fs", cfg.t_titleFsM);
+  desktop("--cu-title-fs", cfg.t_titleFsD);
+
+  base("--cu-sub-fs", cfg.t_subFs);
+  mobile("--cu-sub-fs", cfg.t_subFsM);
+  desktop("--cu-sub-fs", cfg.t_subFsD);
+
+  base("--cu-cta-fs", cfg.t_ctaFs);
+  mobile("--cu-cta-fs", cfg.t_ctaFsM);
+  desktop("--cu-cta-fs", cfg.t_ctaFsD);
+
+  base("--cu-brand-ff", cfg.t_brandFf ? `"${cfg.t_brandFf}", sans-serif` : "");
+  base("--cu-brand-ls", cfg.t_brandLs);
+  base("--cu-brand-color", cfg.t_brandColor);
+
+  base("--cu-title-ff", cfg.t_titleFf ? `"${cfg.t_titleFf}", sans-serif` : "");
+  base("--cu-title-ls", cfg.t_titleLs);
+  base("--cu-title-color", cfg.t_titleColor);
+
+  base("--cu-sub-ff", cfg.t_subFf ? `"${cfg.t_subFf}", sans-serif` : "");
+  base("--cu-sub-ls", cfg.t_subLs);
+  base("--cu-sub-color", cfg.t_subColor);
+
+  base("--cu-cta-ff", cfg.t_ctaFf ? `"${cfg.t_ctaFf}", sans-serif` : "");
+  base("--cu-cta-ls", cfg.t_ctaLs);
+
+  const bx = cfg.p_brandX || "";
+  const by = cfg.p_brandY || "";
+  const ox = cfg.p_offerX || "";
+  const oy = cfg.p_offerY || "";
+  const cx = cfg.p_ctaX || "";
+  const cy = cfg.p_ctaY || "";
+
+  if (bx || by || ox || oy || cx || cy) {
+    const vars: string[] = [];
+    if (bx) vars.push(`--cu-brand-tx: ${bx};`);
+    if (by) vars.push(`--cu-brand-ty: ${by};`);
+    if (ox) vars.push(`--cu-offer-tx: ${ox};`);
+    if (oy) vars.push(`--cu-offer-ty: ${oy};`);
+    if (cx) vars.push(`--cu-cta-tx: ${cx};`);
+    if (cy) vars.push(`--cu-cta-ty: ${cy};`);
+    if (vars.length) lines.push(`:root { ${vars.join(" ")} }`);
+  }
+
+  return lines.join("\n");
+}
+
+function getGoogleFontsUrl(cfg: Config): string | null {
+  const ffs = [cfg.t_brandFf, cfg.t_titleFf, cfg.t_subFf, cfg.t_ctaFf].filter(Boolean);
+  const unique = [...new Set(ffs)];
+  const families = unique.map((f) => FONT_MAP[f]).filter(Boolean);
+  if (families.length === 0) return null;
+  return `https://fonts.googleapis.com/css2?${families.map((f) => `family=${f}`).join("&")}&display=swap`;
+}
 
 function esc(str: string) {
   return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -142,6 +289,7 @@ function applyConfig(
       html = html.replace(
         /<\/style>/,
         `.chest-link, .final-chest-link, .cta-final-chest, .info-box, .gold-panel-final, .hero-card { display: none !important; }
+.hero-content { justify-content: center !important; }
 .hero-bg-overlay {
   position: absolute;
   inset: 0;
@@ -225,6 +373,19 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     );
     html = html.replace(/<p class="hero-subtitle">[\s\S]*?<\/p>/, `<p class="hero-subtitle">${esc(cfg.goldenHeroSubtitle)}</p>`);
     html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(cfg.goldenPageTitle)}</title>`);
+
+    // Inject CSS custom vars before </style>
+    const cssVars = buildCustomVarsCSS(cfg);
+    if (cssVars) {
+      html = html.replace(/<\/style>/, `${cssVars}\n</style>`);
+    }
+
+    // Inject Google Fonts link if needed
+    const fontsUrl = getGoogleFontsUrl(cfg);
+    if (fontsUrl) {
+      html = html.replace(/<\/head>/, `  <link rel="stylesheet" href="${fontsUrl}">\n</head>`);
+    }
+
     return html;
   }
 

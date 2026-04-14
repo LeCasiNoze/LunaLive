@@ -55,6 +55,39 @@ interface Config {
   goldenVisualMode: string;
   goldenBackgroundUrl: string;
   goldenCtaPosition: string; // "top" | "bottom"
+  // Typography — base (all breakpoints)
+  t_brandFs: string;
+  t_brandFf: string;
+  t_brandLs: string;
+  t_brandColor: string;
+  t_titleFs: string;
+  t_titleFf: string;
+  t_titleLs: string;
+  t_titleColor: string;
+  t_subFs: string;
+  t_subFf: string;
+  t_subLs: string;
+  t_subColor: string;
+  t_ctaFs: string;
+  t_ctaFf: string;
+  t_ctaLs: string;
+  // Typography — mobile overrides (max-width: 720px)
+  t_brandFsM: string;
+  t_titleFsM: string;
+  t_subFsM: string;
+  t_ctaFsM: string;
+  // Typography — desktop overrides (min-width: 721px)
+  t_brandFsD: string;
+  t_titleFsD: string;
+  t_subFsD: string;
+  t_ctaFsD: string;
+  // Position offsets in px
+  p_brandX: string;
+  p_brandY: string;
+  p_offerX: string;
+  p_offerY: string;
+  p_ctaX: string;
+  p_ctaY: string;
 }
 
 type GoldenChanceVariant = "gold" | "ruby" | "emerald" | "sapphire";
@@ -95,7 +128,137 @@ const DEFAULT_CONFIG: Config = {
   goldenVisualMode: "chest",
   goldenBackgroundUrl: "",
   goldenCtaPosition: "top",
+  // Typography base
+  t_brandFs: "",
+  t_brandFf: "",
+  t_brandLs: "",
+  t_brandColor: "",
+  t_titleFs: "",
+  t_titleFf: "",
+  t_titleLs: "",
+  t_titleColor: "",
+  t_subFs: "",
+  t_subFf: "",
+  t_subLs: "",
+  t_subColor: "",
+  t_ctaFs: "",
+  t_ctaFf: "",
+  t_ctaLs: "",
+  // Mobile overrides
+  t_brandFsM: "",
+  t_titleFsM: "",
+  t_subFsM: "",
+  t_ctaFsM: "",
+  // Desktop overrides
+  t_brandFsD: "",
+  t_titleFsD: "",
+  t_subFsD: "",
+  t_ctaFsD: "",
+  // Position offsets
+  p_brandX: "",
+  p_brandY: "",
+  p_offerX: "",
+  p_offerY: "",
+  p_ctaX: "",
+  p_ctaY: "",
 };
+
+// ─── TYPOGRAPHY / CSS VARS ───────────────────────────────────────────────────
+
+const FONT_MAP: Record<string, string> = {
+  "Cinzel": "Cinzel:wght@400;600;700",
+  "Bebas Neue": "Bebas+Neue",
+  "Oswald": "Oswald:wght@400;500;700",
+  "Montserrat": "Montserrat:wght@400;600;700;800",
+  "Playfair Display": "Playfair+Display:wght@700;900",
+  "Raleway": "Raleway:wght@400;600;700;800",
+  "Inter": "Inter:wght@400;500;600;700;800",
+  "Anton": "Anton",
+  "Roboto Condensed": "Roboto+Condensed:wght@400;700",
+};
+
+export const FONT_NAMES = Object.keys(FONT_MAP);
+
+function buildCustomVarsCSS(cfg: Config): string {
+  const lines: string[] = [];
+
+  // Helper: push a base :root declaration
+  const base = (prop: string, val: string) => {
+    if (val) lines.push(`:root { ${prop}: ${val}; }`);
+  };
+  // Helper: push a @media mobile override
+  const mobile = (prop: string, val: string) => {
+    if (val) lines.push(`@media (max-width: 720px) { :root { ${prop}: ${val}; } }`);
+  };
+  // Helper: push a @media desktop override
+  const desktop = (prop: string, val: string) => {
+    if (val) lines.push(`@media (min-width: 721px) { :root { ${prop}: ${val}; } }`);
+  };
+
+  // Font-size: base + mobile + desktop variants
+  base("--cu-brand-fs", cfg.t_brandFs);
+  mobile("--cu-brand-fs", cfg.t_brandFsM);
+  desktop("--cu-brand-fs", cfg.t_brandFsD);
+
+  base("--cu-title-fs", cfg.t_titleFs);
+  mobile("--cu-title-fs", cfg.t_titleFsM);
+  desktop("--cu-title-fs", cfg.t_titleFsD);
+
+  base("--cu-sub-fs", cfg.t_subFs);
+  mobile("--cu-sub-fs", cfg.t_subFsM);
+  desktop("--cu-sub-fs", cfg.t_subFsD);
+
+  base("--cu-cta-fs", cfg.t_ctaFs);
+  mobile("--cu-cta-fs", cfg.t_ctaFsM);
+  desktop("--cu-cta-fs", cfg.t_ctaFsD);
+
+  // Font-family, letter-spacing, color — base only
+  base("--cu-brand-ff", cfg.t_brandFf ? `"${cfg.t_brandFf}", sans-serif` : "");
+  base("--cu-brand-ls", cfg.t_brandLs);
+  base("--cu-brand-color", cfg.t_brandColor);
+
+  base("--cu-title-ff", cfg.t_titleFf ? `"${cfg.t_titleFf}", sans-serif` : "");
+  base("--cu-title-ls", cfg.t_titleLs);
+  base("--cu-title-color", cfg.t_titleColor);
+
+  base("--cu-sub-ff", cfg.t_subFf ? `"${cfg.t_subFf}", sans-serif` : "");
+  base("--cu-sub-ls", cfg.t_subLs);
+  base("--cu-sub-color", cfg.t_subColor);
+
+  base("--cu-cta-ff", cfg.t_ctaFf ? `"${cfg.t_ctaFf}", sans-serif` : "");
+  base("--cu-cta-ls", cfg.t_ctaLs);
+
+  // Position offsets
+  const bx = cfg.p_brandX ? `${cfg.p_brandX}` : "";
+  const by = cfg.p_brandY ? `${cfg.p_brandY}` : "";
+  const ox = cfg.p_offerX ? `${cfg.p_offerX}` : "";
+  const oy = cfg.p_offerY ? `${cfg.p_offerY}` : "";
+  const cx = cfg.p_ctaX ? `${cfg.p_ctaX}` : "";
+  const cy = cfg.p_ctaY ? `${cfg.p_ctaY}` : "";
+
+  // Only output if non-empty
+  const posLines: string[] = [];
+  if (bx || by || ox || oy || cx || cy) {
+    const vars: string[] = [];
+    if (bx) vars.push(`--cu-brand-tx: ${bx};`);
+    if (by) vars.push(`--cu-brand-ty: ${by};`);
+    if (ox) vars.push(`--cu-offer-tx: ${ox};`);
+    if (oy) vars.push(`--cu-offer-ty: ${oy};`);
+    if (cx) vars.push(`--cu-cta-tx: ${cx};`);
+    if (cy) vars.push(`--cu-cta-ty: ${cy};`);
+    if (vars.length) posLines.push(`:root { ${vars.join(" ")} }`);
+  }
+
+  return [...lines, ...posLines].join("\n");
+}
+
+function getGoogleFontsUrl(cfg: Config): string | null {
+  const ffs = [cfg.t_brandFf, cfg.t_titleFf, cfg.t_subFf, cfg.t_ctaFf].filter(Boolean);
+  const unique = [...new Set(ffs)];
+  const families = unique.map((f) => FONT_MAP[f]).filter(Boolean);
+  if (families.length === 0) return null;
+  return `https://fonts.googleapis.com/css2?${families.map((f) => `family=${f}`).join("&")}&display=swap`;
+}
 
 // ─── APPLY CONFIG ─────────────────────────────────────────────────────────────
 
@@ -215,6 +378,7 @@ function applyConfig(
       html = html.replace(
         /<\/style>/,
         `.chest-link, .final-chest-link, .cta-final-chest, .info-box, .gold-panel-final, .hero-card { display: none !important; }
+.hero-content { justify-content: center !important; }
 .hero-bg-overlay {
   position: absolute;
   inset: 0;
@@ -328,6 +492,21 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
       html = html.replace(
         /<title>[^<]*<\/title>/,
         `<title>${esc(cfg.goldenPageTitle)}</title>`
+      );
+    }
+
+    // Inject CSS custom vars before </style>
+    const cssVars = buildCustomVarsCSS(cfg);
+    if (cssVars) {
+      html = html.replace(/<\/style>/, `${cssVars}\n</style>`);
+    }
+
+    // Inject Google Fonts link in <head> if needed
+    const fontsUrl = getGoogleFontsUrl(cfg);
+    if (fontsUrl) {
+      html = html.replace(
+        /<\/head>/,
+        `  <link rel="stylesheet" href="${fontsUrl}">\n</head>`
       );
     }
 
@@ -792,6 +971,129 @@ function Section({ title, children, defaultOpen = true }: SectionProps) {
   );
 }
 
+// ─── STYLE CONTROL ───────────────────────────────────────────────────────────
+
+interface StyleControlProps {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type: "range-text" | "select" | "color" | "text";
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: string[];
+}
+
+function StyleControl({ label, value, onChange, placeholder, type, min = 0, max = 100, step = 0.1, options = [] }: StyleControlProps) {
+  return (
+    <div style={s.field}>
+      <label style={s.label}>{label}</label>
+      {type === "select" && (
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ ...s.input, cursor: "pointer" }}
+        >
+          <option value="">— hérité —</option>
+          {options.map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      )}
+      {type === "color" && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            type="color"
+            value={value || "#ffffff"}
+            onChange={(e) => onChange(e.target.value)}
+            style={s.colorPicker}
+          />
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder || "#ffffff"}
+            style={{ ...s.input, fontFamily: "monospace", flex: 1 }}
+          />
+          {value && (
+            <button style={{ ...s.btn, ...s.btnSecondary, padding: "4px 8px", fontSize: "0.72rem" }} onClick={() => onChange("")}>✕</button>
+          )}
+        </div>
+      )}
+      {type === "range-text" && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            value={parseFloat(value) || 0}
+            onChange={(e) => onChange(e.target.value + (value.includes("rem") ? "rem" : "px"))}
+            style={{ flex: 1, accentColor: "#FFD700" }}
+          />
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder || ""}
+            style={{ ...s.input, width: 70, flex: "none" }}
+          />
+          {value && (
+            <button style={{ ...s.btn, ...s.btnSecondary, padding: "4px 8px", fontSize: "0.72rem" }} onClick={() => onChange("")}>✕</button>
+          )}
+        </div>
+      )}
+      {type === "text" && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder || ""}
+            style={{ ...s.input, flex: 1 }}
+          />
+          {value && (
+            <button style={{ ...s.btn, ...s.btnSecondary, padding: "4px 8px", fontSize: "0.72rem" }} onClick={() => onChange("")}>✕</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── OFFSET CONTROL ───────────────────────────────────────────────────────────
+
+function OffsetControl({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const numVal = parseInt(value, 10);
+  const safeNum = isNaN(numVal) ? 0 : numVal;
+  return (
+    <div style={s.field}>
+      <label style={{ ...s.label, display: "flex", justifyContent: "space-between" }}>
+        <span>{label}</span>
+        <span style={{ color: "#FFD700", fontFamily: "monospace" }}>{value || "0px"}</span>
+      </label>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <input
+          type="range"
+          min={-200}
+          max={200}
+          step={1}
+          value={safeNum}
+          onChange={(e) => onChange(e.target.value + "px")}
+          style={{ flex: 1, accentColor: "#FFD700" }}
+        />
+        <input
+          type="number"
+          value={safeNum}
+          onChange={(e) => onChange(e.target.value + "px")}
+          style={{ ...s.input, width: 60, flex: "none" }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function slugifyLandingSegment(value: string) {
   return String(value || "")
     .normalize("NFD")
@@ -879,6 +1181,8 @@ export default function AffiEditorPage() {
   const [templates, setTemplates] = useState<Record<number, string>>({});
   const [loadError, setLoadError] = useState(false);
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
+  const [rightTab, setRightTab] = useState<"content" | "style" | "layout">("content");
+  const [styleDevice, setStyleDevice] = useState<"all" | "mobile" | "desktop">("all");
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const blobUrlRef = useRef<string | null>(null);
   const [savedPages, setSavedPages] = useState<FsbAffiPage[]>([]);
@@ -1212,6 +1516,18 @@ export default function AffiEditorPage() {
   // ── Iframe width by viewport ───────────────────────────────────────────────
   const iframeWidth = viewport === "desktop" ? "100%" : viewport === "tablet" ? "768px" : "390px";
 
+  // ── Style tab helpers ─────────────────────────────────────────────────────
+  // Returns the correct config key for a typography prop given the current device tab
+  function typoKey(base: keyof Config, mKey: keyof Config, dKey: keyof Config): keyof Config {
+    if (styleDevice === "mobile") return mKey;
+    if (styleDevice === "desktop") return dKey;
+    return base;
+  }
+
+  function typoPlaceholder(base: keyof Config): string {
+    return String(cfg[base] || "");
+  }
+
   // ─── RENDER ─────────────────────────────────────────────────────────────────
   return (
     <div style={s.root}>
@@ -1219,9 +1535,14 @@ export default function AffiEditorPage() {
       {/* ── HEADER ──────────────────────────────────────────────────────────── */}
       <div style={s.header}>
         <div style={s.logo}>🎨 <span style={{ color: "#eee", fontWeight: 400 }}>Affi</span> Editor</div>
+        {selectedPage && (
+          <span style={{ fontSize: "0.74rem", color: "#9f9fc1", fontFamily: "monospace", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            /r/{selectedPage.slug}
+          </span>
+        )}
         <div style={{ flex: 1 }} />
         <button style={{ ...s.btn, ...s.btnSecondary }} onClick={() => navigate(returnTo)}>
-          Retour au board
+          Retour
         </button>
         <button style={{ ...s.btn, ...s.btnSecondary }} onClick={resetDraft}>
           Réinitialiser
@@ -1233,7 +1554,7 @@ export default function AffiEditorPage() {
             disabled={!canManagePublishedPages || pageAction === "create" || pageAction === "update"}
             title="Creer une nouvelle page a partir de cette version modifiee"
           >
-            Enregistrer une variante
+            + Variante
           </button>
         )}
         <button
@@ -1245,391 +1566,133 @@ export default function AffiEditorPage() {
           {selectedPageId ? "Mettre à jour" : "Créer"}
         </button>
         <button style={{ ...s.btn, ...s.btnPrimary }} onClick={exportHtml}>
-          ⬇ Exporter HTML
+          ⬇ Export
         </button>
       </div>
 
       {/* ── BODY ────────────────────────────────────────────────────────────── */}
       <div style={s.body}>
 
-        {/* ── MODEL PICKER ──────────────────────────────────────────────────── */}
-        <div style={s.picker}>
-          <div style={s.pickerTitle}>MODÈLE</div>
-          {([1, 4, 5] as const).map((n) => (
-            <button
-              key={n}
-              style={{
-                ...s.modelCard,
-                ...(currentModel === n ? s.modelCardActive : {}),
-              }}
-              onClick={() => setCurrentModel(n)}
-            >
-              <div style={s.modelThumb}>
-                <ModelThumb n={n} />
-              </div>
-              <div style={s.modelLabel}>Modèle {n}</div>
-              <div style={s.modelDesc}>
-                {n === 1 ? "Side-by-side" : n === 4 ? "2 cartes" : "Golden Chest"}
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {/* ── CONFIG PANEL ──────────────────────────────────────────────────── */}
-        <div style={s.configPanel}>
+        {/* ── LEFT SIDEBAR ──────────────────────────────────────────────────── */}
+        <div style={s.leftSidebar}>
+          {/* Pages list */}
+          <div style={s.sidebarSectionTitle}>
+            <span>Pages</span>
+            <button style={s.sidebarNewBtn} onClick={resetDraft} title="Nouveau brouillon">+</button>
+          </div>
 
           {loadError && (
-            <div style={s.errorBanner}>
-              Impossible de charger les templates depuis <code>/affi_templates/</code>.<br />
-              Vérifiez que les fichiers sont bien dans <code>web/public/affi_templates/</code>.
+            <div style={{ ...s.inlineError, margin: "8px 8px 0" }}>
+              Templates introuvables dans <code>/affi_templates/</code>.
             </div>
           )}
 
-          <Section title="Pages créées" defaultOpen={true}>
-            <div style={s.helperText}>URL publiee pour ce brouillon</div>
-            <div style={s.urlPreview}>{publishedUrlPreview}</div>
-            <div style={s.savedPageStats}>
-              <div style={s.savedPageStatCard}>
-                <div style={s.savedPageStatValue}>{savedPages.length}</div>
-                <div style={s.savedPageStatLabel}>pages</div>
-              </div>
-              <div style={s.savedPageStatCard}>
-                <div style={s.savedPageStatValue}>{selectedPage ? "1" : "0"}</div>
-                <div style={s.savedPageStatLabel}>active</div>
-              </div>
-            </div>
+          {pageError && <div style={{ ...s.inlineError, margin: "8px 8px 0" }}>{pageError}</div>}
+          {pageNotice && <div style={{ ...s.inlineNotice, margin: "8px 8px 0" }}>{pageNotice}</div>}
 
-            {!canManagePublishedPages && (
-              <div style={s.inlineWarn}>
-                Acces FSB requis pour creer, modifier ou supprimer des pages publiees.
-              </div>
-            )}
-
-            {selectedPage && (
-              <div style={s.inlineInfo}>
-                Edition en cours : <strong>/r/{selectedPage.slug}</strong>
-              </div>
-            )}
-            {selectedPage && hasUnsavedChanges && (
-              <div style={s.inlineWarn}>
-                Cette page a des modifications locales non enregistrees. Tu peux la mettre a jour ou enregistrer une variante.
-              </div>
-            )}
-
-            {pageError && <div style={s.inlineError}>{pageError}</div>}
-            {pageNotice && <div style={s.inlineNotice}>{pageNotice}</div>}
-
-            <div style={s.savedPageTools}>
-              <button style={s.smallActionBtn} onClick={resetDraft}>
-                Nouveau brouillon
-              </button>
-              {selectedPage && (
-                <button
-                  style={s.smallActionBtn}
-                  onClick={() => window.open(`${window.location.origin}/r/${selectedPage.slug}`, "_blank", "noopener,noreferrer")}
-                >
-                  Ouvrir la page
-                </button>
-              )}
-            </div>
-
-            <div style={s.savedPageList}>
-              {loadingPages ? (
-                <div style={s.savedPageEmpty}>Chargement des pages...</div>
-              ) : savedPages.length === 0 ? (
-                <div style={s.savedPageEmpty}>Aucune page creee pour le moment.</div>
-              ) : (
-                <>
-                  {selectedPage && (
-                    <>
-                      <div style={s.savedPageGroupTitle}>Page active</div>
-                      <div style={{ ...s.savedPageCard, ...s.savedPageCardActive }}>
-                        <div style={s.savedPageHeader}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={s.savedPageTitle}>{selectedPage.brandName || selectedPage.slug}</div>
-                            <div style={s.savedPageSlug}>/r/{selectedPage.slug}</div>
-                            <div style={s.savedPageMeta}>
-                              Modèle {selectedPage.model}
-                              {selectedPage.variant ? ` · ${selectedPage.variant}` : ""}
-                              {selectedPage.updatedAt ? ` · ${formatPublishedPageDate(selectedPage.updatedAt)}` : ""}
-                            </div>
-                          </div>
-                          <span style={s.savedPageBadge}>Active</span>
-                        </div>
-                        <div style={s.savedPageActions}>
-                          <button style={s.smallActionBtn} onClick={() => loadPublishedPageInEditor(selectedPage)}>
-                            Recharger
-                          </button>
-                          <button
-                            style={s.smallActionBtn}
-                            onClick={() => window.open(`${window.location.origin}/r/${selectedPage.slug}`, "_blank", "noopener,noreferrer")}
-                          >
-                            Ouvrir
-                          </button>
-                          <button
-                            style={{ ...s.smallActionBtn, ...s.smallActionBtnDanger }}
-                            onClick={() => void removePublishedPage(selectedPage)}
-                            disabled={pageAction === "delete"}
-                          >
-                            Supprimer
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                  {otherPages.length > 0 && <div style={s.savedPageGroupTitle}>Autres pages</div>}
-                  {otherPages.map((page) => {
-                  return (
-                    <div
-                      key={page.id}
-                      style={s.savedPageCard}
+          <div style={s.sidebarPageList}>
+            {loadingPages ? (
+              <div style={s.sidebarPageEmpty}>Chargement...</div>
+            ) : savedPages.length === 0 ? (
+              <div style={s.sidebarPageEmpty}>Aucune page</div>
+            ) : (
+              savedPages.map((page) => {
+                const isActive = page.id === selectedPageId;
+                return (
+                  <div
+                    key={page.id}
+                    style={{ ...s.sidebarPageCard, ...(isActive ? s.sidebarPageCardActive : {}) }}
+                  >
+                    <button
+                      style={s.sidebarPageBtn}
+                      onClick={() => loadPublishedPageInEditor(page)}
                     >
-                      <div style={s.savedPageHeader}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={s.savedPageTitle}>{page.brandName || page.slug}</div>
-                          <div style={s.savedPageSlug}>/r/{page.slug}</div>
-                          <div style={s.savedPageMeta}>
-                            /r/{page.slug} · Modèle {page.model}
-                            {page.variant ? ` · ${page.variant}` : ""}
-                          </div>
-                        </div>
-                        <span style={s.savedPageTag}>{page.variant ? page.variant : `M${page.model}`}</span>
+                      <div style={s.sidebarPageName}>{page.brandName || page.slug}</div>
+                      <div style={s.sidebarPageMeta}>
+                        M{page.model}{page.variant ? ` · ${page.variant}` : ""}
                       </div>
-                      <div style={s.savedPageActions}>
-                        <button style={s.smallActionBtn} onClick={() => loadPublishedPageInEditor(page)}>
-                          Charger
-                        </button>
-                        <button
-                          style={s.smallActionBtn}
-                          onClick={() => window.open(`${window.location.origin}/r/${page.slug}`, "_blank", "noopener,noreferrer")}
-                        >
-                          Ouvrir
-                        </button>
-                        <button
-                          style={{ ...s.smallActionBtn, ...s.smallActionBtnDanger }}
-                          onClick={() => void removePublishedPage(page)}
-                          disabled={pageAction === "delete"}
-                        >
-                          Supprimer
-                        </button>
-                      </div>
+                    </button>
+                    <div style={s.sidebarPageActions}>
+                      <button
+                        style={s.sidebarIconBtn}
+                        title="Ouvrir"
+                        onClick={() => window.open(`${window.location.origin}/r/${page.slug}`, "_blank", "noopener,noreferrer")}
+                      >↗</button>
+                      <button
+                        style={{ ...s.sidebarIconBtn, color: "#ffb2b2" }}
+                        title="Supprimer"
+                        onClick={() => void removePublishedPage(page)}
+                        disabled={pageAction === "delete"}
+                      >✕</button>
                     </div>
-                  );
-                })}
-                </>
-              )}
-            </div>
-          </Section>
+                  </div>
+                );
+              })
+            )}
+          </div>
 
-          {currentModel !== 5 && (
-            <>
-              <Section title="Couleurs">
-                <ColorField label="Fond page" value={cfg.bgPage} onChange={set("bgPage")} />
-                <ColorField label="Fond carte" value={cfg.bgCard} onChange={set("bgCard")} />
-                <ColorField label="Or (accent principal)" value={cfg.brandGold} onChange={set("brandGold")} />
-                <ColorField label="Ruby (secondaire)" value={cfg.brandRuby} onChange={set("brandRuby")} />
-                <ColorField label="Vert (casino-green)" value={cfg.casinoGreen} onChange={set("casinoGreen")} />
-                <ColorField label="Bordure" value={cfg.borderColor} onChange={set("borderColor")} />
-              </Section>
+          <div style={s.sidebarDivider} />
 
-              <Section title="Image & Lien d'affiliation">
-                {currentModel !== 4 ? (
-                  <ImagePicker
-                    label="Image principale"
-                    value={cfg.imgUrl}
-                    onChange={set("imgUrl")}
-                  />
-                ) : (
-                  <>
-                    <ImagePicker
-                      label="Image carte 1"
-                      value={cfg.imgUrl1}
-                      onChange={set("imgUrl1")}
-                    />
-                    <ImagePicker
-                      label="Image carte 2"
-                      value={cfg.imgUrl2}
-                      onChange={set("imgUrl2")}
-                    />
-                  </>
-                )}
-                <TextField
-                  label="Lien d'affiliation"
-                  value={cfg.affiLink}
-                  onChange={set("affiLink")}
-                  placeholder="https://casino.com/ref/..."
-                  type="url"
-                />
-              </Section>
+          {/* Model picker */}
+          <div style={s.sidebarSectionTitle}>
+            <span>Modèle</span>
+          </div>
+          <div style={s.sidebarModelList}>
+            {([1, 4, 5] as const).map((n) => (
+              <button
+                key={n}
+                style={{ ...s.modelCard, ...(currentModel === n ? s.modelCardActive : {}) }}
+                onClick={() => setCurrentModel(n)}
+              >
+                <div style={s.modelThumb}>
+                  <ModelThumb n={n} />
+                </div>
+                <div style={s.modelLabel}>M{n}</div>
+                <div style={s.modelDesc}>
+                  {n === 1 ? "Side" : n === 4 ? "2 cartes" : "Golden"}
+                </div>
+              </button>
+            ))}
+          </div>
 
-              <Section title="Offre">
-                <TextField label="Titre offre" value={cfg.offerTitle} onChange={set("offerTitle")} />
-                <TextField label="Texte dépôt" value={cfg.depositText} onChange={set("depositText")} />
-                <TextField label="Texte reçu" value={cfg.receiveText} onChange={set("receiveText")} />
-                {currentModel === 4 && (
-                  <>
-                    <div style={{ ...s.label, color: "#FFD700", marginTop: 8 }}>Carte 2</div>
-                    <TextField label="Texte dépôt (carte 2)" value={cfg.depositText2} onChange={set("depositText2")} />
-                    <TextField label="Texte reçu (carte 2)" value={cfg.receiveText2} onChange={set("receiveText2")} />
-                  </>
-                )}
-              </Section>
-
-              <Section title="Textes" defaultOpen={false}>
-                <TextField label="Badge VIP" value={cfg.badgeText} onChange={set("badgeText")} />
-                <TextField label="H1 — texte principal" value={cfg.heroTitleBefore} onChange={set("heroTitleBefore")} />
-                <TextField label="H1 — texte en or" value={cfg.heroTitleSpan} onChange={set("heroTitleSpan")} />
-                <TextField label="Sous-titre" value={cfg.heroSubtitle} onChange={set("heroSubtitle")} multiline />
-                <TextField label="Texte bouton (carte)" value={cfg.btnText} onChange={set("btnText")} />
-                <TextField label="Sticky CTA" value={cfg.stickyText} onChange={set("stickyText")} />
-                <TextField label="Nom du casino (footer)" value={cfg.casinoName} onChange={set("casinoName")} />
-                <TextField label="Balise <title>" value={cfg.pageTitle} onChange={set("pageTitle")} />
-              </Section>
-            </>
-          )}
-
+          {/* Variant picker for model 5 */}
           {currentModel === 5 && (
             <>
-              <Section title="Palette & assets">
+              <div style={s.sidebarDivider} />
+              <div style={s.sidebarSectionTitle}><span>Variante</span></div>
+              <div style={{ padding: "0 8px 8px" }}>
                 <VariantPicker value={goldenVariant} onChange={setGoldenVariant} />
-              </Section>
-
-              <Section title="Lien & visuels">
-                <TextField
-                  label="Lien d'affiliation"
-                  value={cfg.affiLink}
-                  onChange={set("affiLink")}
-                  placeholder="https://casino.com/ref/..."
-                  type="url"
-                />
-                <div style={s.field}>
-                  <label style={s.label}>Visuel principal</label>
-                  <div style={s.variantGrid}>
-                    <button
-                      style={{
-                        ...s.variantBtn,
-                        ...(getGoldenVisualMode(cfg) === "chest" ? s.variantBtnActive : {}),
-                      }}
-                      onClick={() => set("goldenVisualMode")("chest")}
-                    >
-                      <span style={s.visualModeIcon}>🧰</span>
-                      <span>Coffre</span>
-                    </button>
-                    <button
-                      style={{
-                        ...s.variantBtn,
-                        ...(getGoldenVisualMode(cfg) === "games" ? s.variantBtnActive : {}),
-                      }}
-                      onClick={() => set("goldenVisualMode")("games")}
-                    >
-                      <span style={s.visualModeIcon}>🎮</span>
-                      <span>Image jeux</span>
-                    </button>
-                    <button
-                      style={{
-                        ...s.variantBtn,
-                        ...(getGoldenVisualMode(cfg) === "none" ? s.variantBtnActive : {}),
-                      }}
-                      onClick={() => set("goldenVisualMode")("none")}
-                    >
-                      <span style={s.visualModeIcon}>🚫</span>
-                      <span>Aucun</span>
-                    </button>
-                  </div>
-                </div>
-                <div style={s.field}>
-                  <label style={s.label}>Image du coffre (optionnelle)</label>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input
-                      type="url"
-                      value={cfg.goldenChestUrl}
-                      onChange={(e) => set("goldenChestUrl")(e.target.value)}
-                      placeholder="https://.../chest.png"
-                      style={{ ...s.input, flex: 1, marginTop: 0 }}
-                    />
-                    {cfg.goldenChestUrl && (
-                      <button
-                        style={{ ...s.btn, ...s.btnSecondary, padding: "5px 10px", fontSize: "0.78rem" }}
-                        onClick={() => set("goldenChestUrl")("")}
-                        title="Retirer l'image du coffre"
-                      >
-                        ✕ Retirer
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <TextField
-                  label="Image jeux (optionnelle)"
-                  value={cfg.goldenGameImageUrl}
-                  onChange={set("goldenGameImageUrl")}
-                  placeholder="https://.../jeux.png"
-                  type="url"
-                />
-                <TextField
-                  label="Image de fond (optionnelle)"
-                  value={cfg.goldenBackgroundUrl}
-                  onChange={set("goldenBackgroundUrl")}
-                  placeholder="https://.../background.jpg"
-                  type="url"
-                />
-                {getGoldenVisualMode(cfg) === "none" && (
-                  <div style={s.field}>
-                    <label style={s.label}>Position du bouton (mobile, sans coffre)</label>
-                    <div style={s.variantGrid}>
-                      <button
-                        style={{ ...s.variantBtn, ...(cfg.goldenCtaPosition !== "bottom" ? s.variantBtnActive : {}) }}
-                        onClick={() => set("goldenCtaPosition")("top")}
-                      >
-                        <span style={s.visualModeIcon}>⬆</span>
-                        <span>Sous le texte</span>
-                      </button>
-                      <button
-                        style={{ ...s.variantBtn, ...(cfg.goldenCtaPosition === "bottom" ? s.variantBtnActive : {}) }}
-                        onClick={() => set("goldenCtaPosition")("bottom")}
-                      >
-                        <span style={s.visualModeIcon}>⬇</span>
-                        <span>Bas d'écran</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <div style={s.helperText}>
-                  Si `Coffre` est selectionne, le template utilise `chest` de la couleur en cours.
-                  Si `Image jeux` est selectionnee, il utilise automatiquement `jeux` dans le dossier de la variante.
-                  L'image de fond remplace le background par defaut de la variante.
-                </div>
-              </Section>
-
-              <Section title="Hero">
-                <TextField label="Pseudo / marque" value={cfg.goldenBrandMain} onChange={set("goldenBrandMain")} />
-                <TextField label="Sous-ligne logo (optionnelle)" value={cfg.goldenBrandSub} onChange={set("goldenBrandSub")} />
-                <TextField label="Titre ligne 1" value={cfg.goldenHeroTitleBefore} onChange={set("goldenHeroTitleBefore")} />
-                <TextField label="Titre ligne 2" value={cfg.goldenHeroTitleSpan} onChange={set("goldenHeroTitleSpan")} />
-                <TextField label="Sous-titre" value={cfg.goldenHeroSubtitle} onChange={set("goldenHeroSubtitle")} multiline />
-                <TextField label="Balise <title>" value={cfg.goldenPageTitle} onChange={set("goldenPageTitle")} />
-              </Section>
+              </div>
             </>
           )}
 
+          {selectedPage && hasUnsavedChanges && (
+            <div style={{ ...s.inlineWarn, margin: "8px 8px 0" }}>
+              Modifications non enregistrées
+            </div>
+          )}
+          {!canManagePublishedPages && (
+            <div style={{ ...s.inlineWarn, margin: "8px 8px 0" }}>
+              Accès FSB requis pour publier
+            </div>
+          )}
         </div>
 
-        {/* ── PREVIEW ─────────────────────────────────────────────────────── */}
+        {/* ── CENTER PREVIEW ────────────────────────────────────────────────── */}
         <div style={s.previewPanel}>
           <div style={s.previewToolbar}>
             <span style={{ fontSize: 12, color: "#888" }}>
-              Aperçu live — Modèle {currentModel}
+              Modèle {currentModel}
             </span>
             <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
               {(["desktop", "tablet", "mobile"] as const).map((v) => (
                 <button
                   key={v}
-                  style={{
-                    ...s.vpBtn,
-                    ...(viewport === v ? s.vpBtnActive : {}),
-                  }}
+                  style={{ ...s.vpBtn, ...(viewport === v ? s.vpBtnActive : {}) }}
                   onClick={() => setViewport(v)}
                 >
-                  {v === "desktop" ? "Desktop" : v === "tablet" ? "Tablette" : "Mobile"}
+                  {v === "desktop" ? "🖥" : v === "tablet" ? "📱" : "📱"}
+                  {" "}{v === "desktop" ? "Desktop" : v === "tablet" ? "Tablette" : "Mobile"}
                 </button>
               ))}
             </div>
@@ -1637,14 +1700,339 @@ export default function AffiEditorPage() {
           <div style={s.previewWrap}>
             <iframe
               ref={iframeRef}
-              style={{
-                ...s.iframe,
-                width: iframeWidth,
-                maxWidth: iframeWidth,
-              }}
+              style={{ ...s.iframe, width: iframeWidth, maxWidth: iframeWidth }}
               title="preview"
             />
           </div>
+        </div>
+
+        {/* ── RIGHT PANEL ───────────────────────────────────────────────────── */}
+        <div style={s.rightPanel}>
+          {/* Tab bar */}
+          <div style={s.tabBar}>
+            {(["content", "style", "layout"] as const).map((tab) => (
+              <button
+                key={tab}
+                style={{ ...s.tabBtn, ...(rightTab === tab ? s.tabBtnActive : {}) }}
+                onClick={() => setRightTab(tab)}
+              >
+                {tab === "content" ? "Contenu" : tab === "style" ? "Style" : "Disposition"}
+              </button>
+            ))}
+          </div>
+
+          {/* ── TAB: CONTENU ──────────────────────────────────────────────── */}
+          {rightTab === "content" && (
+            <div style={s.tabContent}>
+
+              {/* URL preview */}
+              <div style={{ padding: "10px 14px 0" }}>
+                <div style={s.urlPreview}>{publishedUrlPreview}</div>
+              </div>
+
+              {currentModel !== 5 && (
+                <>
+                  <Section title="Couleurs">
+                    <ColorField label="Fond page" value={cfg.bgPage} onChange={set("bgPage")} />
+                    <ColorField label="Fond carte" value={cfg.bgCard} onChange={set("bgCard")} />
+                    <ColorField label="Or" value={cfg.brandGold} onChange={set("brandGold")} />
+                    <ColorField label="Ruby" value={cfg.brandRuby} onChange={set("brandRuby")} />
+                    <ColorField label="Vert" value={cfg.casinoGreen} onChange={set("casinoGreen")} />
+                    <ColorField label="Bordure" value={cfg.borderColor} onChange={set("borderColor")} />
+                  </Section>
+
+                  <Section title="Image & Lien">
+                    {currentModel !== 4 ? (
+                      <ImagePicker label="Image principale" value={cfg.imgUrl} onChange={set("imgUrl")} />
+                    ) : (
+                      <>
+                        <ImagePicker label="Image carte 1" value={cfg.imgUrl1} onChange={set("imgUrl1")} />
+                        <ImagePicker label="Image carte 2" value={cfg.imgUrl2} onChange={set("imgUrl2")} />
+                      </>
+                    )}
+                    <TextField label="Lien d'affiliation" value={cfg.affiLink} onChange={set("affiLink")} placeholder="https://casino.com/ref/..." type="url" />
+                  </Section>
+
+                  <Section title="Offre">
+                    <TextField label="Titre offre" value={cfg.offerTitle} onChange={set("offerTitle")} />
+                    <TextField label="Texte dépôt" value={cfg.depositText} onChange={set("depositText")} />
+                    <TextField label="Texte reçu" value={cfg.receiveText} onChange={set("receiveText")} />
+                    {currentModel === 4 && (
+                      <>
+                        <div style={{ ...s.label, color: "#FFD700", marginTop: 8 }}>Carte 2</div>
+                        <TextField label="Texte dépôt (carte 2)" value={cfg.depositText2} onChange={set("depositText2")} />
+                        <TextField label="Texte reçu (carte 2)" value={cfg.receiveText2} onChange={set("receiveText2")} />
+                      </>
+                    )}
+                  </Section>
+
+                  <Section title="Textes" defaultOpen={false}>
+                    <TextField label="Badge VIP" value={cfg.badgeText} onChange={set("badgeText")} />
+                    <TextField label="H1 — texte principal" value={cfg.heroTitleBefore} onChange={set("heroTitleBefore")} />
+                    <TextField label="H1 — texte en or" value={cfg.heroTitleSpan} onChange={set("heroTitleSpan")} />
+                    <TextField label="Sous-titre" value={cfg.heroSubtitle} onChange={set("heroSubtitle")} multiline />
+                    <TextField label="Texte bouton" value={cfg.btnText} onChange={set("btnText")} />
+                    <TextField label="Sticky CTA" value={cfg.stickyText} onChange={set("stickyText")} />
+                    <TextField label="Nom du casino" value={cfg.casinoName} onChange={set("casinoName")} />
+                    <TextField label="Balise title" value={cfg.pageTitle} onChange={set("pageTitle")} />
+                  </Section>
+                </>
+              )}
+
+              {currentModel === 5 && (
+                <>
+                  <Section title="Général">
+                    <TextField label="Lien d'affiliation" value={cfg.affiLink} onChange={set("affiLink")} placeholder="https://casino.com/ref/..." type="url" />
+                    <TextField label="Balise title" value={cfg.goldenPageTitle} onChange={set("goldenPageTitle")} />
+                  </Section>
+
+                  <Section title="Hero">
+                    <TextField label="Pseudo / marque" value={cfg.goldenBrandMain} onChange={set("goldenBrandMain")} />
+                    <TextField label="Sous-ligne logo" value={cfg.goldenBrandSub} onChange={set("goldenBrandSub")} />
+                    <TextField label="Titre ligne 1" value={cfg.goldenHeroTitleBefore} onChange={set("goldenHeroTitleBefore")} />
+                    <TextField label="Titre ligne 2" value={cfg.goldenHeroTitleSpan} onChange={set("goldenHeroTitleSpan")} />
+                    <TextField label="Sous-titre" value={cfg.goldenHeroSubtitle} onChange={set("goldenHeroSubtitle")} multiline />
+                  </Section>
+
+                  <Section title="Visuel">
+                    <div style={s.field}>
+                      <label style={s.label}>Visuel principal</label>
+                      <div style={s.variantGrid}>
+                        <button style={{ ...s.variantBtn, ...(getGoldenVisualMode(cfg) === "chest" ? s.variantBtnActive : {}) }} onClick={() => set("goldenVisualMode")("chest")}>
+                          <span style={s.visualModeIcon}>🧰</span><span>Coffre</span>
+                        </button>
+                        <button style={{ ...s.variantBtn, ...(getGoldenVisualMode(cfg) === "games" ? s.variantBtnActive : {}) }} onClick={() => set("goldenVisualMode")("games")}>
+                          <span style={s.visualModeIcon}>🎮</span><span>Jeux</span>
+                        </button>
+                        <button style={{ ...s.variantBtn, ...(getGoldenVisualMode(cfg) === "none" ? s.variantBtnActive : {}) }} onClick={() => set("goldenVisualMode")("none")}>
+                          <span style={s.visualModeIcon}>🚫</span><span>Aucun</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div style={s.field}>
+                      <label style={s.label}>Image du coffre (optionnelle)</label>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <input type="url" value={cfg.goldenChestUrl} onChange={(e) => set("goldenChestUrl")(e.target.value)} placeholder="https://.../chest.png" style={{ ...s.input, flex: 1, marginTop: 0 }} />
+                        {cfg.goldenChestUrl && (
+                          <button style={{ ...s.btn, ...s.btnSecondary, padding: "5px 10px", fontSize: "0.78rem" }} onClick={() => set("goldenChestUrl")("")}>✕</button>
+                        )}
+                      </div>
+                    </div>
+                    <TextField label="Image jeux (optionnelle)" value={cfg.goldenGameImageUrl} onChange={set("goldenGameImageUrl")} placeholder="https://.../jeux.png" type="url" />
+                    <TextField label="Image de fond (optionnelle)" value={cfg.goldenBackgroundUrl} onChange={set("goldenBackgroundUrl")} placeholder="https://.../background.jpg" type="url" />
+                    {getGoldenVisualMode(cfg) === "none" && (
+                      <div style={s.field}>
+                        <label style={s.label}>Position bouton (mode sans coffre)</label>
+                        <div style={s.variantGrid}>
+                          <button style={{ ...s.variantBtn, ...(cfg.goldenCtaPosition !== "bottom" ? s.variantBtnActive : {}) }} onClick={() => set("goldenCtaPosition")("top")}>
+                            <span style={s.visualModeIcon}>⬆</span><span>Sous le texte</span>
+                          </button>
+                          <button style={{ ...s.variantBtn, ...(cfg.goldenCtaPosition === "bottom" ? s.variantBtnActive : {}) }} onClick={() => set("goldenCtaPosition")("bottom")}>
+                            <span style={s.visualModeIcon}>⬇</span><span>Bas d'écran</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Section>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── TAB: STYLE (model 5 only) ─────────────────────────────────── */}
+          {rightTab === "style" && (
+            <div style={s.tabContent}>
+              {currentModel !== 5 ? (
+                <div style={{ padding: "20px 14px", color: "#888", fontSize: "0.8rem", textAlign: "center" }}>
+                  L'onglet Style est disponible uniquement pour le modèle 5 (Golden Chest).
+                </div>
+              ) : (
+                <>
+                  {/* Device toggle */}
+                  <div style={s.deviceToggle}>
+                    {(["all", "mobile", "desktop"] as const).map((d) => (
+                      <button
+                        key={d}
+                        style={{ ...s.deviceBtn, ...(styleDevice === d ? s.deviceBtnActive : {}) }}
+                        onClick={() => setStyleDevice(d)}
+                      >
+                        {d === "all" ? "✱ Tous" : d === "mobile" ? "📱 Mobile" : "🖥 Desktop"}
+                      </button>
+                    ))}
+                  </div>
+                  {styleDevice !== "all" && (
+                    <div style={{ padding: "4px 14px 0", color: "#9f9fc1", fontSize: "0.7rem" }}>
+                      {styleDevice === "mobile"
+                        ? "Override mobile (max 720px) — surcharge la valeur base"
+                        : "Override desktop (min 721px) — surcharge la valeur base"}
+                    </div>
+                  )}
+
+                  <Section title="Brand (Logo / Pseudo)">
+                    <StyleControl
+                      label="Taille de police"
+                      value={String(cfg[typoKey("t_brandFs", "t_brandFsM", "t_brandFsD")] || "")}
+                      onChange={(v) => set(typoKey("t_brandFs", "t_brandFsM", "t_brandFsD"))(v)}
+                      placeholder={styleDevice !== "all" ? typoPlaceholder("t_brandFs") || "ex: 3rem" : "ex: 3rem"}
+                      type="text"
+                    />
+                    {styleDevice === "all" && (
+                      <>
+                        <StyleControl
+                          label="Police"
+                          value={cfg.t_brandFf}
+                          onChange={set("t_brandFf")}
+                          type="select"
+                          options={FONT_NAMES}
+                        />
+                        <StyleControl
+                          label="Letter spacing"
+                          value={cfg.t_brandLs}
+                          onChange={set("t_brandLs")}
+                          placeholder="ex: 0.16em"
+                          type="text"
+                        />
+                        <StyleControl
+                          label="Couleur"
+                          value={cfg.t_brandColor}
+                          onChange={set("t_brandColor")}
+                          type="color"
+                        />
+                      </>
+                    )}
+                  </Section>
+
+                  <Section title="Titre (H1)">
+                    <StyleControl
+                      label="Taille de police"
+                      value={String(cfg[typoKey("t_titleFs", "t_titleFsM", "t_titleFsD")] || "")}
+                      onChange={(v) => set(typoKey("t_titleFs", "t_titleFsM", "t_titleFsD"))(v)}
+                      placeholder={styleDevice !== "all" ? typoPlaceholder("t_titleFs") || "ex: 4rem" : "ex: 4rem"}
+                      type="text"
+                    />
+                    {styleDevice === "all" && (
+                      <>
+                        <StyleControl
+                          label="Police"
+                          value={cfg.t_titleFf}
+                          onChange={set("t_titleFf")}
+                          type="select"
+                          options={FONT_NAMES}
+                        />
+                        <StyleControl
+                          label="Letter spacing"
+                          value={cfg.t_titleLs}
+                          onChange={set("t_titleLs")}
+                          placeholder="ex: 0.04em"
+                          type="text"
+                        />
+                        <StyleControl
+                          label="Couleur"
+                          value={cfg.t_titleColor}
+                          onChange={set("t_titleColor")}
+                          type="color"
+                        />
+                      </>
+                    )}
+                  </Section>
+
+                  <Section title="Sous-titre">
+                    <StyleControl
+                      label="Taille de police"
+                      value={String(cfg[typoKey("t_subFs", "t_subFsM", "t_subFsD")] || "")}
+                      onChange={(v) => set(typoKey("t_subFs", "t_subFsM", "t_subFsD"))(v)}
+                      placeholder={styleDevice !== "all" ? typoPlaceholder("t_subFs") || "ex: 1rem" : "ex: 1rem"}
+                      type="text"
+                    />
+                    {styleDevice === "all" && (
+                      <>
+                        <StyleControl
+                          label="Police"
+                          value={cfg.t_subFf}
+                          onChange={set("t_subFf")}
+                          type="select"
+                          options={FONT_NAMES}
+                        />
+                        <StyleControl
+                          label="Letter spacing"
+                          value={cfg.t_subLs}
+                          onChange={set("t_subLs")}
+                          placeholder="ex: normal"
+                          type="text"
+                        />
+                        <StyleControl
+                          label="Couleur"
+                          value={cfg.t_subColor}
+                          onChange={set("t_subColor")}
+                          type="color"
+                        />
+                      </>
+                    )}
+                  </Section>
+
+                  <Section title="Bouton CTA">
+                    <StyleControl
+                      label="Taille de police"
+                      value={String(cfg[typoKey("t_ctaFs", "t_ctaFsM", "t_ctaFsD")] || "")}
+                      onChange={(v) => set(typoKey("t_ctaFs", "t_ctaFsM", "t_ctaFsD"))(v)}
+                      placeholder={styleDevice !== "all" ? typoPlaceholder("t_ctaFs") || "ex: 1rem" : "ex: 1rem"}
+                      type="text"
+                    />
+                    {styleDevice === "all" && (
+                      <>
+                        <StyleControl
+                          label="Police"
+                          value={cfg.t_ctaFf}
+                          onChange={set("t_ctaFf")}
+                          type="select"
+                          options={FONT_NAMES}
+                        />
+                        <StyleControl
+                          label="Letter spacing"
+                          value={cfg.t_ctaLs}
+                          onChange={set("t_ctaLs")}
+                          placeholder="ex: 0.18em"
+                          type="text"
+                        />
+                      </>
+                    )}
+                  </Section>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── TAB: DISPOSITION (model 5 only) ──────────────────────────── */}
+          {rightTab === "layout" && (
+            <div style={s.tabContent}>
+              {currentModel !== 5 ? (
+                <div style={{ padding: "20px 14px", color: "#888", fontSize: "0.8rem", textAlign: "center" }}>
+                  L'onglet Disposition est disponible uniquement pour le modèle 5 (Golden Chest).
+                </div>
+              ) : (
+                <>
+                  <div style={{ padding: "12px 14px 4px", color: "#9f9fc1", fontSize: "0.72rem" }}>
+                    Décalage des blocs par rapport à leur position naturelle (en px).
+                  </div>
+
+                  <Section title="Brand (Logo)">
+                    <OffsetControl label="Décalage horizontal (X)" value={cfg.p_brandX} onChange={set("p_brandX")} />
+                    <OffsetControl label="Décalage vertical (Y)" value={cfg.p_brandY} onChange={set("p_brandY")} />
+                  </Section>
+
+                  <Section title="Offre (Titre + Sous-titre)">
+                    <OffsetControl label="Décalage horizontal (X)" value={cfg.p_offerX} onChange={set("p_offerX")} />
+                    <OffsetControl label="Décalage vertical (Y)" value={cfg.p_offerY} onChange={set("p_offerY")} />
+                  </Section>
+
+                  <Section title="Bouton CTA">
+                    <OffsetControl label="Décalage horizontal (X)" value={cfg.p_ctaX} onChange={set("p_ctaX")} />
+                    <OffsetControl label="Décalage vertical (Y)" value={cfg.p_ctaY} onChange={set("p_ctaY")} />
+                  </Section>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
       </div>{/* .body */}
@@ -2091,6 +2479,167 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: "0.78rem",
     color: "#e0115f",
     lineHeight: 1.6,
+  },
+
+  // Left sidebar
+  leftSidebar: {
+    width: 180,
+    background: "#141428",
+    borderRight: "1px solid #2a2a4a",
+    overflowY: "auto",
+    padding: 0,
+    flexShrink: 0,
+    display: "flex",
+    flexDirection: "column",
+  },
+  sidebarSectionTitle: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "10px 10px 6px",
+    fontSize: "0.66rem",
+    textTransform: "uppercase" as const,
+    letterSpacing: 1,
+    color: "#666",
+  },
+  sidebarNewBtn: {
+    background: "#1c1c35",
+    border: "1px solid #2a2a4a",
+    borderRadius: 4,
+    color: "#888",
+    cursor: "pointer",
+    fontSize: "1rem",
+    lineHeight: 1,
+    padding: "0px 6px 2px",
+  },
+  sidebarPageList: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 4,
+    padding: "0 6px",
+    overflowY: "auto" as const,
+    maxHeight: 220,
+  },
+  sidebarPageEmpty: {
+    padding: "6px 4px",
+    color: "#666",
+    fontSize: "0.7rem",
+    textAlign: "center" as const,
+  },
+  sidebarPageCard: {
+    border: "1px solid #2a2a46",
+    borderRadius: 8,
+    background: "#17172c",
+    overflow: "hidden",
+  },
+  sidebarPageCardActive: {
+    borderColor: "#FFD700",
+    background: "rgba(255,215,0,0.04)",
+  },
+  sidebarPageBtn: {
+    display: "block",
+    width: "100%",
+    padding: "6px 8px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    textAlign: "left" as const,
+  },
+  sidebarPageName: {
+    fontSize: "0.72rem",
+    fontWeight: 700,
+    color: "#f4f0df",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
+  },
+  sidebarPageMeta: {
+    fontSize: "0.62rem",
+    color: "#8f8fb4",
+    marginTop: 2,
+  },
+  sidebarPageActions: {
+    display: "flex",
+    borderTop: "1px solid #2a2a46",
+  },
+  sidebarIconBtn: {
+    flex: 1,
+    padding: "4px 0",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    color: "#888",
+    fontSize: "0.8rem",
+  },
+  sidebarDivider: {
+    height: 1,
+    background: "#2a2a4a",
+    margin: "8px 0",
+  },
+  sidebarModelList: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 6,
+    padding: "0 8px 8px",
+  },
+
+  // Right panel
+  rightPanel: {
+    width: 290,
+    background: "#0d0d1a",
+    borderLeft: "1px solid #2a2a4a",
+    overflowY: "hidden",
+    flexShrink: 0,
+    display: "flex",
+    flexDirection: "column" as const,
+  },
+  tabBar: {
+    display: "flex",
+    borderBottom: "1px solid #2a2a4a",
+    flexShrink: 0,
+  },
+  tabBtn: {
+    flex: 1,
+    padding: "10px 4px",
+    fontSize: "0.72rem",
+    fontWeight: 600,
+    background: "none",
+    border: "none",
+    borderBottom: "2px solid transparent",
+    color: "#666",
+    cursor: "pointer",
+  },
+  tabBtnActive: {
+    color: "#FFD700",
+    borderBottomColor: "#FFD700",
+    background: "rgba(255,215,0,0.03)",
+  },
+  tabContent: {
+    flex: 1,
+    overflowY: "auto" as const,
+    paddingBottom: 20,
+  },
+  deviceToggle: {
+    display: "flex",
+    gap: 4,
+    padding: "10px 14px 6px",
+  },
+  deviceBtn: {
+    flex: 1,
+    padding: "5px 4px",
+    fontSize: "0.68rem",
+    fontWeight: 600,
+    background: "#1c1c35",
+    border: "1px solid #2a2a4a",
+    borderRadius: 5,
+    color: "#666",
+    cursor: "pointer",
+    whiteSpace: "nowrap" as const,
+  },
+  deviceBtnActive: {
+    borderColor: "#FFD700",
+    color: "#FFD700",
+    background: "rgba(255,215,0,0.05)",
   },
 
   // Preview

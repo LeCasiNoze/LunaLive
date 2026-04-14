@@ -218,6 +218,9 @@
       align-items: center;
       gap: 10px;
       margin-bottom: 18px;
+      position: relative;
+      top: var(--cu-brand-ty, 0px);
+      left: var(--cu-brand-tx, 0px);
     }
 
     .brand-signature-line {
@@ -240,11 +243,11 @@
     }
 
     .brand-logo-text .brand-logo-main {
-      font-family: "Cinzel", serif;
+      font-family: var(--cu-brand-ff, "Cinzel", serif);
       font-weight: 700;
-      font-size: clamp(2.5rem, 6vw, 4.6rem);
-      letter-spacing: 0.16em;
-      color: #f6efdd;
+      font-size: var(--cu-brand-fs, clamp(2.5rem, 6vw, 4.6rem));
+      letter-spacing: var(--cu-brand-ls, 0.16em);
+      color: var(--cu-brand-color, #f6efdd);
       text-shadow:
         0 0 18px rgba(212, 168, 67, 0.16),
         0 2px 18px rgba(0, 0, 0, 0.84);
@@ -271,13 +274,18 @@
     .offer-copy {
       max-width: 470px;
       margin: 8px auto 0;
+      position: relative;
+      top: var(--cu-offer-ty, 0px);
+      left: var(--cu-offer-tx, 0px);
     }
 
     .hero-title {
       margin: 0;
-      font-size: clamp(2.72rem, 8.8vw, 4.72rem);
+      font-size: var(--cu-title-fs, clamp(2.72rem, 8.8vw, 4.72rem));
+      font-family: var(--cu-title-ff, inherit);
       line-height: 0.9;
-      letter-spacing: 0.038em;
+      letter-spacing: var(--cu-title-ls, 0.038em);
+      color: var(--cu-title-color, inherit);
       text-shadow: 0 2px 18px rgba(0, 0, 0, 0.86);
     }
 
@@ -293,10 +301,12 @@
     .hero-subtitle {
       max-width: 23rem;
       margin-top: 13px;
-      font-size: clamp(0.96rem, 1.7vw, 1.02rem);
+      font-size: var(--cu-sub-fs, clamp(0.96rem, 1.7vw, 1.02rem));
+      font-family: var(--cu-sub-ff, inherit);
       line-height: 1.52;
       font-weight: 500;
-      color: rgba(248, 244, 239, 0.9);
+      letter-spacing: var(--cu-sub-ls, normal);
+      color: var(--cu-sub-color, rgba(248, 244, 239, 0.9));
       text-wrap: balance;
     }
 
@@ -433,7 +443,9 @@
       border-radius: 20px;
       padding-top: 16px;
       padding-bottom: 16px;
-      letter-spacing: 0.18em;
+      font-size: var(--cu-cta-fs, inherit);
+      font-family: var(--cu-cta-ff, inherit);
+      letter-spacing: var(--cu-cta-ls, 0.18em);
       box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.2),
         0 0 22px rgba(212, 168, 67, 0.16),
@@ -465,6 +477,9 @@
     .cta-cluster {
       width: min(100%, 430px);
       margin: 0 auto;
+      position: relative;
+      top: var(--cu-cta-ty, 0px);
+      left: var(--cu-cta-tx, 0px);
     }
 
     .micro-proof {
