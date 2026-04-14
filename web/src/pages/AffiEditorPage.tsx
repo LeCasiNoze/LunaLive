@@ -1152,18 +1152,7 @@ function buildPageSignature(input: {
   });
 }
 
-function _formatPublishedPageDate(value: string | null | undefined) {
-  if (!value) return "Date inconnue";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat("fr-FR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
+
 
 function isGoldenVariant(value: string | null | undefined): value is GoldenChanceVariant {
   return value === "gold" || value === "ruby" || value === "emerald" || value === "sapphire";
@@ -1238,11 +1227,6 @@ export default function AffiEditorPage() {
     [draftPayload]
   );
   const hasUnsavedChanges = Boolean(selectedPage && draftSignature !== selectedPageSignature);
-  const _otherPages = useMemo(
-    () => savedPages.filter((page) => page.id !== selectedPageId),
-    [savedPages, selectedPageId]
-  );
-
   // ── Load templates ─────────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {

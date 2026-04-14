@@ -346,7 +346,7 @@ function PromoZone({ promo }: { promo: OverlayConfig["promo"] }) {
 
 // ─── Overlay renderer ─────────────────────────────────────────────────────────
 
-function OverlayRenderer({ config, isPreview }: { config: OverlayConfig; isPreview?: boolean }) {
+function OverlayRenderer({ config }: { config: OverlayConfig }) {
   return (
     <div style={{
       position: "relative",

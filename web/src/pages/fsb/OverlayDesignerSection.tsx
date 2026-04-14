@@ -292,7 +292,6 @@ function PreviewStatsBar({ stats, scale }: { stats: StatsZoneConfig; scale: numb
   const sansFont = "'Inter', 'Segoe UI', system-ui, sans-serif";
 
   const commands = (stats.showCommands ? stats.commands ?? [] : []).filter(Boolean);
-  const hasRight = (stats.showViewers && stats.viewersText) || (stats.showFollowers && stats.followersText) || stats.showClock;
 
   return (
     <div style={{
