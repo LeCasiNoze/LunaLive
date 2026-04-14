@@ -53,6 +53,7 @@ interface Config {
   goldenChestUrl: string;
   goldenGameImageUrl: string;
   goldenVisualMode: string;
+  goldenBackgroundUrl: string;
 }
 
 type GoldenChanceVariant = "gold" | "ruby" | "emerald" | "sapphire";
@@ -91,6 +92,7 @@ const DEFAULT_CONFIG: Config = {
   goldenChestUrl: "",
   goldenGameImageUrl: "",
   goldenVisualMode: "chest",
+  goldenBackgroundUrl: "",
 };
 
 // ─── APPLY CONFIG ─────────────────────────────────────────────────────────────
@@ -214,6 +216,14 @@ function applyConfig(
       html = html.replace(
         /(<img[^>]*data-visual-img="final"[^>]*src=")[^"]*(")/,
         `$1${safeChestUrl}$2`
+      );
+    }
+
+    if (cfg.goldenBackgroundUrl) {
+      const safeBgUrl = escAttr(cfg.goldenBackgroundUrl);
+      html = html.replace(
+        /(<img[^>]*class="hero-bg-media"[^>]*src=")[^"]*(")/,
+        `$1${safeBgUrl}$2`
       );
     }
 
@@ -1097,11 +1107,13 @@ export default function AffiEditorPage() {
         }
       } catch { /* garde le lien externe en fallback */ }
 
-      const backgroundCandidates = [
-        `/affi_templates/golden_chance_chest/variants/${goldenVariant}/background.png`,
-        `/affi_templates/golden_chance_chest/variants/${goldenVariant}/background.jpg`,
-      ];
-      html = await inlineAssetCandidates(html, backgroundCandidates);
+      if (!cfg.goldenBackgroundUrl) {
+        const backgroundCandidates = [
+          `/affi_templates/golden_chance_chest/variants/${goldenVariant}/background.png`,
+          `/affi_templates/golden_chance_chest/variants/${goldenVariant}/background.jpg`,
+        ];
+        html = await inlineAssetCandidates(html, backgroundCandidates);
+      }
 
       html = await inlineAssetCandidates(html, getGoldenVisualCandidates(cfg, goldenVariant));
 

@@ -69,44 +69,88 @@ export type OverlayConfig = {
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
 
-function defaultCam(x: number, y: number, w: number, h: number, label: string): CamZoneConfig {
+// Layout reference (% of 1920x1080) — from wireframe:
+//
+//  ┌──────────────────────────────────────────────────────────────┐
+//  │                    INFOS (100% × 6%)                        │
+//  ├────────────────────────────────────────┬─────────────────────┤
+//  │                                        │  CAM 2 (28% × 22%) │
+//  │         SLOT (72% × 94%)               ├─────────────────────┤
+//  │   [slot s'étend si cam principale GS]  │  CHAT  (28% × 37%) │
+//  ├──────────┬─────────────────────────────┤                     │
+//  │ CAM1(GS) │   PUB (52% × 48%)          ├─────────────────────┤
+//  │ 20% × 48%│                             │  CAM 3 (28% × 35%) │
+//  └──────────┴─────────────────────────────┴─────────────────────┘
+
+function defaultCam(x: number, y: number, w: number, h: number, label: string, greenscreen = false): CamZoneConfig {
   return {
-    enabled: true, greenscreen: false,
-    borderColor: "#6366f1", borderWidth: 3, borderRadius: 16,
+    enabled: true, greenscreen,
+    borderColor: "#6366f1", borderWidth: 3, borderRadius: 12,
     label, x, y, w, h,
   };
 }
 
+function defaultStats(w = 100): StatsZoneConfig {
+  return {
+    enabled: true, x: 0, y: 0, w, h: 6,
+    bgColor: "#0a1628", bgOpacity: 88, textColor: "#dde8ff",
+    showTimer: true, showTitle: true, titleText: "LunaLive",
+    showViewers: true, viewersText: "—",
+    showFollowers: false, followersText: "—",
+    borderRadius: 0,
+  };
+}
+
 const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
+  // ── SOLO: cam principale en GS bas-gauche, slot pleine hauteur gauche, chat droit
   solo: {
-    cams: [defaultCam(1, 65, 20, 34, "Cam principale")],
-    slot: { enabled: true, showFrame: true, frameColor: "#334155", frameWidth: 2, borderRadius: 12, label: "Slot", x: 22, y: 0, w: 56, h: 100 },
-    stats: { enabled: true, x: 0, y: 0, w: 78, h: 7, bgColor: "#0a1628", bgOpacity: 80, textColor: "#dde8ff", showTimer: true, showTitle: true, titleText: "LunaLive", showViewers: true, viewersText: "—", showFollowers: false, followersText: "—", borderRadius: 0 },
-    chat: { enabled: false, x: 79, y: 0, w: 21, h: 64, chatUrl: "", bgOpacity: 0, borderRadius: 8 },
-    promo: { enabled: true, x: 79, y: 65, w: 21, h: 35, imageUrl: "", borderRadius: 12, objectFit: "contain" },
+    cams: [defaultCam(0, 52, 20, 48, "Cam principale", true)],
+    slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 6,  w: 72, h: 94 },
+    stats: defaultStats(),
+    chat:  { enabled: true,  x: 72, y: 6,  w: 28, h: 94, chatUrl: "", bgOpacity: 0, borderRadius: 0 },
+    promo: { enabled: true,  x: 20, y: 52, w: 52, h: 48, imageUrl: "", borderRadius: 0, objectFit: "contain" },
   },
+
+  // ── DOUBLE: cam principale GS bas-gauche + cam 2 haut-droite, chat droite milieu, promo bas-centre
   double: {
     cams: [
-      defaultCam(0, 69, 19, 31, "Cam 1"),
-      defaultCam(20, 69, 19, 31, "Cam 2"),
+      defaultCam(0, 52, 20, 48, "Cam principale", true),
+      defaultCam(72, 6, 28, 22, "Cam 2"),
     ],
-    slot: { enabled: true, showFrame: true, frameColor: "#334155", frameWidth: 2, borderRadius: 12, label: "Slot", x: 40, y: 0, w: 39, h: 100 },
-    stats: { enabled: true, x: 0, y: 0, w: 79, h: 7, bgColor: "#0a1628", bgOpacity: 80, textColor: "#dde8ff", showTimer: true, showTitle: true, titleText: "LunaLive", showViewers: true, viewersText: "—", showFollowers: false, followersText: "—", borderRadius: 0 },
-    chat: { enabled: false, x: 80, y: 0, w: 20, h: 64, chatUrl: "", bgOpacity: 0, borderRadius: 8 },
-    promo: { enabled: true, x: 80, y: 65, w: 20, h: 35, imageUrl: "", borderRadius: 12, objectFit: "contain" },
+    slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 6,  w: 72, h: 94 },
+    stats: defaultStats(),
+    chat:  { enabled: true,  x: 72, y: 28, w: 28, h: 72, chatUrl: "", bgOpacity: 0, borderRadius: 0 },
+    promo: { enabled: true,  x: 20, y: 52, w: 52, h: 48, imageUrl: "", borderRadius: 0, objectFit: "contain" },
   },
+
+  // ── TRIPLE: cam principale GS bas-gauche + cam 2 haut-droite + cam 3 bas-droite
+  //    → layout wireframe exact
   triple: {
     cams: [
-      defaultCam(0, 71, 18, 29, "Cam 1"),
-      defaultCam(19, 71, 18, 29, "Cam 2"),
-      defaultCam(38, 71, 18, 29, "Cam 3"),
+      defaultCam(0,  52, 20, 48, "Cam principale", true), // GS, bas-gauche
+      defaultCam(72,  6, 28, 22, "Cam 2"),                 // haut-droite (face streamer)
+      defaultCam(72, 65, 28, 35, "Cam 3"),                 // bas-droite
     ],
-    slot: { enabled: true, showFrame: true, frameColor: "#334155", frameWidth: 2, borderRadius: 12, label: "Slot", x: 57, y: 0, w: 25, h: 100 },
-    stats: { enabled: true, x: 0, y: 0, w: 82, h: 7, bgColor: "#0a1628", bgOpacity: 80, textColor: "#dde8ff", showTimer: true, showTitle: true, titleText: "LunaLive", showViewers: true, viewersText: "—", showFollowers: false, followersText: "—", borderRadius: 0 },
-    chat: { enabled: false, x: 82, y: 0, w: 18, h: 64, chatUrl: "", bgOpacity: 0, borderRadius: 8 },
-    promo: { enabled: true, x: 82, y: 65, w: 18, h: 35, imageUrl: "", borderRadius: 12, objectFit: "contain" },
+    slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 6,  w: 72, h: 94 },
+    stats: defaultStats(),
+    chat:  { enabled: true,  x: 72, y: 28, w: 28, h: 37, chatUrl: "", bgOpacity: 0, borderRadius: 0 },
+    promo: { enabled: true,  x: 20, y: 52, w: 52, h: 48, imageUrl: "", borderRadius: 0, objectFit: "contain" },
   },
 };
+
+// ─── Slot auto-resize helper (quand cam principale toggle greenscreen) ────────
+
+export function autoResizeSlot(config: OverlayConfig, cam0Greenscreen: boolean): Partial<SlotZoneConfig> {
+  const statsBottom = config.stats.y + config.stats.h; // bas de la barre infos
+  if (cam0Greenscreen) {
+    // Slot s'étend sur toute la hauteur restante (cam GS = pas de cadre, streamer par-dessus)
+    return { y: statsBottom, h: 100 - statsBottom };
+  } else {
+    // Slot s'arrête au-dessus de la cam 1
+    const cam0 = config.cams[0];
+    return { y: statsBottom, h: Math.max(cam0.y - statsBottom, 10) };
+  }
+}
 
 export function defaultConfig(mode: OverlayMode): OverlayConfig {
   return { mode, ...structuredClone(PRESETS[mode]) };
@@ -395,6 +439,11 @@ function CamPanel({
       <Toggle label="Activer" checked={cam.enabled} onChange={(v) => onChange({ enabled: v })} />
       <hr style={S.sep} />
       <Toggle label="Fond vert (greenscreen — pas de cadre)" checked={cam.greenscreen} onChange={(v) => onChange({ greenscreen: v })} />
+      {cam.greenscreen && (
+        <p style={{ margin: 0, fontSize: 11, color: "rgba(34,211,238,.8)", lineHeight: 1.5, background: "rgba(34,211,238,.07)", border: "1px solid rgba(34,211,238,.18)", borderRadius: 8, padding: "8px 10px" }}>
+          ✓ Mode fond vert actif — la zone Slot s'etend automatiquement sous la cam. Le streamer sera composite par OBS au-dessus du slot.
+        </p>
+      )}
       {!cam.greenscreen && (
         <>
           <hr style={S.sep} />
@@ -591,7 +640,13 @@ export function OverlayDesignerSection() {
   function updateCam(index: number, patch: Partial<CamZoneConfig>) {
     setConfig((c) => {
       const cams = c.cams.map((cam, i) => i === index ? { ...cam, ...patch } : cam);
-      return { ...c, cams };
+      let next = { ...c, cams };
+      // Auto-resize slot quand la cam principale (index 0) toggle greenscreen
+      if (index === 0 && "greenscreen" in patch) {
+        const slotPatch = autoResizeSlot(next, Boolean(patch.greenscreen));
+        next = { ...next, slot: { ...next.slot, ...slotPatch } };
+      }
+      return next;
     });
   }
 
