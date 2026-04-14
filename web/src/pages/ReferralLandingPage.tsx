@@ -40,6 +40,7 @@ type Config = {
   goldenGameImageUrl: string;
   goldenVisualMode: string;
   goldenBackgroundUrl: string;
+  goldenCtaPosition: string;
 };
 
 const DEFAULT_CONFIG: Config = {
@@ -77,6 +78,7 @@ const DEFAULT_CONFIG: Config = {
   goldenGameImageUrl: "",
   goldenVisualMode: "chest",
   goldenBackgroundUrl: "",
+  goldenCtaPosition: "top",
 };
 
 function esc(str: string) {
@@ -148,8 +150,20 @@ function applyConfig(
   display: block;
 }
 .hero-section { position: relative; z-index: 2; }
-.no-chest-cta { margin-top: 18px !important; }
-.no-chest-cta .btn-jouer { margin-top: 0 !important; }
+${String(cfg.goldenCtaPosition || "").trim() === "bottom"
+  ? `.no-chest-cta {
+  position: absolute;
+  bottom: clamp(20px, 4vh, 36px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(90%, 360px);
+  z-index: 3;
+  margin: 0 !important;
+}
+.no-chest-cta .btn-jouer { margin-top: 0 !important; width: 100%; }`
+  : `.no-chest-cta { margin-top: 18px !important; }
+.no-chest-cta .btn-jouer { margin-top: 0 !important; }`
+}
 </style>`
       );
       html = html.replace(
@@ -173,9 +187,14 @@ function applyConfig(
   }
   var liveCount = document.querySelector('.live-count');
   var ctaCluster = document.querySelector('.cta-cluster');
-  if (liveCount && ctaCluster) {
+  if (ctaCluster) {
     ctaCluster.classList.add('no-chest-cta');
-    liveCount.parentNode.insertBefore(ctaCluster, liveCount.nextSibling);
+    ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
+      ? `var heroSection = document.querySelector('.hero-section');
+    if (heroSection) { heroSection.appendChild(ctaCluster); }`
+      : `var liveCount = document.querySelector('.live-count');
+    if (liveCount) { liveCount.parentNode.insertBefore(ctaCluster, liveCount.nextSibling); }`
+    }
   }
 })();
 </script>
