@@ -1152,7 +1152,7 @@ function buildPageSignature(input: {
   });
 }
 
-function formatPublishedPageDate(value: string | null | undefined) {
+function _formatPublishedPageDate(value: string | null | undefined) {
   if (!value) return "Date inconnue";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
@@ -1238,7 +1238,7 @@ export default function AffiEditorPage() {
     [draftPayload]
   );
   const hasUnsavedChanges = Boolean(selectedPage && draftSignature !== selectedPageSignature);
-  const otherPages = useMemo(
+  const _otherPages = useMemo(
     () => savedPages.filter((page) => page.id !== selectedPageId),
     [savedPages, selectedPageId]
   );

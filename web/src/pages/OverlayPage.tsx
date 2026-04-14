@@ -18,6 +18,71 @@ function useStreamTimer() {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
 
+function useClock() {
+  const [time, setTime] = React.useState(() => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  });
+  React.useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setTime(`${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`);
+    };
+    const id = setInterval(tick, 10000);
+    return () => clearInterval(id);
+  }, []);
+  return time;
+}
+
+// ─── CSS animations (injectées une fois) ─────────────────────────────────────
+
+const BG_STYLE_ID = "overlay-bg-anim";
+
+function injectBgAnimations() {
+  if (document.getElementById(BG_STYLE_ID)) return;
+  const s = document.createElement("style");
+  s.id = BG_STYLE_ID;
+  s.textContent = `
+    @keyframes bgZoom {
+      0%   { transform: scale(1)    translate(0, 0); }
+      33%  { transform: scale(1.08) translate(-1%, 0.5%); }
+      66%  { transform: scale(1.05) translate(1%, -0.5%); }
+      100% { transform: scale(1)    translate(0, 0); }
+    }
+    @keyframes bgDrift {
+      0%   { transform: scale(1.1) translate(0, 0); }
+      50%  { transform: scale(1.1) translate(-3%, -1.5%); }
+      100% { transform: scale(1.1) translate(0, 0); }
+    }
+    @keyframes bgBreathe {
+      0%, 100% { transform: scale(1); }
+      50%      { transform: scale(1.04); }
+    }
+    @keyframes liveDot {
+      0%, 100% { opacity: 1;   transform: scale(1); }
+      50%      { opacity: 0.25; transform: scale(0.55); }
+    }
+    @keyframes cmdGlow {
+      0%, 100% { background: rgba(99,102,241,.1); border-color: rgba(99,102,241,.28); color: #c7d2fe; }
+      50%      { background: rgba(99,102,241,.22); border-color: rgba(99,102,241,.55); color: #e0e7ff; }
+    }
+    @keyframes timerFlash {
+      0%  { opacity: 1; }
+      8%  { opacity: 0.55; }
+      16% { opacity: 1; }
+    }
+    @keyframes clockIcon {
+      0%   { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes viewerPing {
+      0%, 100% { box-shadow: 0 0 0   0   rgba(99,102,241,0); }
+      50%      { box-shadow: 0 0 10px 3px rgba(99,102,241,.35); }
+    }
+  `;
+  document.head.appendChild(s);
+}
+
 // ─── Zone position helper ─────────────────────────────────────────────────────
 
 function rect(z: ZoneRect): React.CSSProperties {
@@ -31,35 +96,56 @@ function rect(z: ZoneRect): React.CSSProperties {
   };
 }
 
-// ─── Cam zone ─────────────────────────────────────────────────────────────────
+// ─── Background zone ──────────────────────────────────────────────────────────
 
-function CamZone({ cam, isPreview }: {
-  cam: OverlayConfig["cams"][number];
-  isPreview?: boolean;
-}) {
-  if (!cam.enabled) return null;
+function BackgroundZone({ bg }: { bg: OverlayConfig["background"] }) {
+  React.useEffect(() => { injectBgAnimations(); }, []);
 
-  const base: React.CSSProperties = { ...rect(cam), overflow: "hidden" };
+  if (!bg.enabled || !bg.imageUrl) return null;
 
-  if (cam.greenscreen) {
-    // Transparent area — no border, nothing rendered
-    return isPreview ? (
-      <div style={{
-        ...base,
-        border: "2px dashed rgba(99,102,241,.4)",
-        borderRadius: cam.borderRadius,
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}>
-        <span style={{ fontSize: "clamp(8px, 1.5vw, 13px)", color: "rgba(148,178,232,.5)", fontWeight: 700 }}>
-          ⬜ Greenscreen
-        </span>
-      </div>
-    ) : null;
-  }
+  const animName = bg.animated
+    ? bg.animationType === "zoom" ? "bgZoom"
+      : bg.animationType === "drift" ? "bgDrift"
+      : "bgBreathe"
+    : "none";
 
   return (
     <div style={{
-      ...base,
+      position: "absolute", inset: 0,
+      overflow: "hidden",
+      zIndex: 0,
+    }}>
+      <img
+        src={bg.imageUrl}
+        alt=""
+        style={{
+          position: "absolute", inset: "-5%",
+          width: "110%", height: "110%",
+          objectFit: "cover",
+          opacity: (bg.opacity ?? 100) / 100,
+          animation: bg.animated
+            ? `${animName} ${bg.animationSpeed ?? 30}s ease-in-out infinite`
+            : "none",
+          transformOrigin: "center center",
+          pointerEvents: "none",
+        }}
+        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+      />
+    </div>
+  );
+}
+
+// ─── Cam zone ─────────────────────────────────────────────────────────────────
+
+function CamZone({ cam }: {
+  cam: OverlayConfig["cams"][number];
+}) {
+  if (!cam.enabled) return null;
+
+  return (
+    <div style={{
+      ...rect(cam),
+      overflow: "hidden",
       border: `${cam.borderWidth}px solid ${cam.borderColor}`,
       borderRadius: cam.borderRadius,
       background: "transparent",
@@ -84,21 +170,25 @@ function SlotZone({ slot }: { slot: OverlayConfig["slot"] }) {
 // ─── Stats zone ───────────────────────────────────────────────────────────────
 
 function StatsZone({ stats }: { stats: OverlayConfig["stats"] }) {
+  React.useEffect(() => { injectBgAnimations(); }, []);
+
   const timer = useStreamTimer();
+  const clock = useClock();
   if (!stats.enabled) return null;
 
-  const bg = stats.bgColor || "#0a1628";
-  const opacity = (stats.bgOpacity ?? 80) / 100;
-  const r = parseInt(bg.slice(1, 3), 16);
-  const g = parseInt(bg.slice(3, 5), 16);
-  const b = parseInt(bg.slice(5, 7), 16);
-  const bgRgba = `rgba(${r},${g},${b},${opacity})`;
+  const bgHex = stats.bgColor || "#0a1628";
+  const op = (stats.bgOpacity ?? 80) / 100;
+  const rr = parseInt(bgHex.slice(1, 3), 16);
+  const gg = parseInt(bgHex.slice(3, 5), 16);
+  const bb = parseInt(bgHex.slice(5, 7), 16);
+  const bgRgba = `rgba(${rr},${gg},${bb},${op})`;
 
-  const items: { icon: string; text: string }[] = [];
-  if (stats.showTimer) items.push({ icon: "⏱", text: timer });
-  if (stats.showTitle && stats.titleText) items.push({ icon: "🎮", text: stats.titleText });
-  if (stats.showViewers && stats.viewersText) items.push({ icon: "👁", text: stats.viewersText });
-  if (stats.showFollowers && stats.followersText) items.push({ icon: "❤️", text: stats.followersText });
+  const tc = stats.textColor || "#dde8ff";
+  const fs = `clamp(9px, ${(stats.fontSize ?? 13) * 0.075}vw, ${stats.fontSize ?? 13}px)`;
+  const fsMono: React.CSSProperties = { fontFamily: "'Courier New', 'JetBrains Mono', monospace", fontWeight: 800, letterSpacing: ".04em" };
+  const fsSans: React.CSSProperties = { fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif", fontWeight: 700 };
+
+  const commands = (stats.showCommands ? stats.commands ?? [] : []).filter(Boolean);
 
   return (
     <div style={{
@@ -107,28 +197,100 @@ function StatsZone({ stats }: { stats: OverlayConfig["stats"] }) {
       borderRadius: stats.borderRadius,
       display: "flex",
       alignItems: "center",
-      gap: "clamp(8px, 1.5vw, 20px)",
-      padding: "0 clamp(8px, 1.5vw, 18px)",
+      justifyContent: "space-between",
+      padding: "0 1.2%",
       overflow: "hidden",
+      boxSizing: "border-box",
     }}>
-      {items.map((item, i) => (
-        <React.Fragment key={i}>
-          {i > 0 && <span style={{ color: "rgba(255,255,255,.2)", fontSize: "clamp(10px, 1.2vw, 16px)" }}>·</span>}
-          <span style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "clamp(3px, .5vw, 6px)",
-            color: stats.textColor || "#dde8ff",
-            fontSize: "clamp(9px, 1.2vw, 15px)",
-            fontWeight: 700,
-            fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
-            whiteSpace: "nowrap",
-          }}>
-            <span style={{ fontSize: "clamp(9px, 1vw, 13px)" }}>{item.icon}</span>
-            {item.text}
+
+      {/* ── GAUCHE : titre (coin) + timer juste après ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: ".6%", flexShrink: 0 }}>
+        {stats.showTitle && stats.titleText && (
+          <span style={{ color: tc, fontSize: fs, ...fsSans, opacity: 0.85 }}>
+            {stats.titleText}
           </span>
-        </React.Fragment>
-      ))}
+        )}
+        {stats.showTitle && stats.titleText && stats.showTimer && (
+          <span style={{ color: "rgba(255,255,255,.18)", fontSize: fs, userSelect: "none", padding: "0 .2%" }}>|</span>
+        )}
+        {stats.showTimer && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: ".3%", color: tc, fontSize: fs, ...fsMono }}>
+            <span style={{
+              display: "inline-block",
+              width: ".55em", height: ".55em",
+              borderRadius: "50%",
+              background: "#6366f1",
+              boxShadow: "0 0 6px #6366f1",
+              flexShrink: 0,
+              animation: "liveDot 1.8s ease-in-out infinite",
+            }} />
+            <span style={{ animation: "timerFlash 2s steps(1) infinite" }}>{timer}</span>
+          </span>
+        )}
+      </div>
+
+      {/* ── CENTRE : commandes ── */}
+      {commands.length > 0 && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: ".4%",
+          position: "absolute", left: "50%", transform: "translateX(-50%)",
+        }}>
+          {commands.map((cmd, i) => (
+            <span key={i} style={{
+              display: "inline-flex", alignItems: "center",
+              padding: ".15em .65em",
+              borderRadius: "999px",
+              border: "1px solid rgba(99,102,241,.32)",
+              background: "rgba(99,102,241,.12)",
+              color: "#c7d2fe",
+              fontSize: `calc(${fs} * 1.08)`,
+              letterSpacing: ".02em",
+              ...fsMono,
+              cursor: "default",
+              animation: `cmdGlow ${3 + i * 0.7}s ease-in-out infinite`,
+            }}>{cmd}</span>
+          ))}
+        </div>
+      )}
+
+      {/* ── DROITE : horloge + viewers/followers (viewers en coin) ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: ".6%", flexShrink: 0 }}>
+        {stats.showClock && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: ".25%", color: tc, fontSize: fs, ...fsMono }}>
+            <span style={{
+              display: "inline-block", fontSize: "1em",
+              animation: "clockIcon 12s linear infinite",
+              transformOrigin: "center",
+              lineHeight: 1,
+            }}>◷</span>
+            {clock}
+          </span>
+        )}
+        {stats.showClock && (stats.showViewers || stats.showFollowers) && (
+          <span style={{ color: "rgba(255,255,255,.18)", fontSize: fs, userSelect: "none", padding: "0 .2%" }}>|</span>
+        )}
+        {stats.showFollowers && stats.followersText && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: ".3%", color: tc, fontSize: fs, ...fsSans }}>
+            <span style={{ color: "#f472b6", fontSize: ".9em" }}>♥</span>
+            {stats.followersText}
+          </span>
+        )}
+        {stats.showFollowers && stats.followersText && stats.showViewers && stats.viewersText && (
+          <span style={{ color: "rgba(255,255,255,.18)", fontSize: fs, userSelect: "none", padding: "0 .2%" }}>|</span>
+        )}
+        {stats.showViewers && stats.viewersText && (
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: ".35%",
+            color: tc, fontSize: fs, ...fsSans,
+            animation: "viewerPing 3s ease-in-out infinite",
+            borderRadius: "4px",
+            padding: ".05em .3em",
+          }}>
+            <span style={{ color: "#818cf8", fontSize: ".85em", letterSpacing: "-.02em" }}>●</span>
+            {stats.viewersText} <span style={{ opacity: 0.6, fontSize: ".9em" }}>viewers</span>
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -193,13 +355,17 @@ function OverlayRenderer({ config, isPreview }: { config: OverlayConfig; isPrevi
       overflow: "hidden",
       background: "transparent",
     }}>
-      {config.cams.map((cam, i) => (
-        <CamZone key={i} cam={cam} isPreview={isPreview} />
-      ))}
+      {/* Fond en tout premier (derrière tout) */}
+      <BackgroundZone bg={config.background} />
+      {/* Zones principales */}
       <SlotZone slot={config.slot} />
       <StatsZone stats={config.stats} />
       <ChatZone chat={config.chat} />
       <PromoZone promo={config.promo} />
+      {/* Cams en dernier = par-dessus le slot */}
+      {config.cams.map((cam, i) => (
+        <CamZone key={i} cam={cam} />
+      ))}
     </div>
   );
 }
@@ -276,7 +442,7 @@ export default function OverlayPage() {
         inset: 0,
         background: isPreview ? "#07101f" : "transparent",
       }}>
-        <OverlayRenderer config={config} isPreview={isPreview} />
+        <OverlayRenderer config={config} />
       </div>
 
       {/* Preview badge */}

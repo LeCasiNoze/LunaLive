@@ -305,3 +305,33 @@ meOverlayRouter.post(
     return res.json({ ok: true, url });
   })
 );
+
+/** =========================
+ *  ✅ Upload fond d'overlay
+ *  POST /me/overlay/bg/upload (multipart)
+ *  field: file (image)
+ *  ========================= */
+meOverlayRouter.post(
+  "/bg/upload",
+  upload.single("file"),
+  a(async (req: any, res) => {
+    const uid = getUserId(req);
+    if (!uid) return res.status(401).json({ ok: false, error: "unauthorized" });
+
+    const f = req.file as any;
+    if (!f || !f.buffer) return res.status(400).json({ ok: false, error: "missing_file" });
+
+    const ext = safeExtFromMime("image", f.mimetype);
+    if (!ext) return res.status(400).json({ ok: false, error: "bad_mime" });
+
+    const dir = path.join(process.cwd(), "uploads", "overlay-bg", `u${uid}`);
+    fs.mkdirSync(dir, { recursive: true });
+
+    const fname = `bg-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+    const abs = path.join(dir, fname);
+    fs.writeFileSync(abs, f.buffer);
+
+    const url = `${publicBase(req)}/uploads/overlay-bg/u${uid}/${fname}`;
+    return res.json({ ok: true, url });
+  })
+);
