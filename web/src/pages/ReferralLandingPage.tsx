@@ -39,6 +39,7 @@ type Config = {
   goldenChestUrl: string;
   goldenGameImageUrl: string;
   goldenVisualMode: string;
+  goldenBackgroundUrl: string;
 };
 
 const DEFAULT_CONFIG: Config = {
@@ -75,6 +76,7 @@ const DEFAULT_CONFIG: Config = {
   goldenChestUrl: "",
   goldenGameImageUrl: "",
   goldenVisualMode: "chest",
+  goldenBackgroundUrl: "",
 };
 
 function esc(str: string) {
@@ -85,8 +87,11 @@ function escAttr(str: string) {
   return esc(str).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-function getGoldenVisualMode(cfg: Config): "chest" | "games" {
-  return String(cfg.goldenVisualMode || "").trim().toLowerCase() === "games" ? "games" : "chest";
+function getGoldenVisualMode(cfg: Config): "chest" | "games" | "none" {
+  const v = String(cfg.goldenVisualMode || "").trim().toLowerCase();
+  if (v === "games") return "games";
+  if (v === "none") return "none";
+  return "chest";
 }
 
 function getGoldenVisualCandidates(cfg: Config, goldenVariant: GoldenChanceVariant) {
@@ -131,11 +136,66 @@ function applyConfig(
       );
     }
 
-    const goldenVisualUrl = getGoldenVisualCandidates(cfg, goldenVariant)[0];
-    if (goldenVisualUrl) {
-      const safeChestUrl = escAttr(goldenVisualUrl);
-      html = html.replace(/(<img[^>]*data-visual-img="hero"[^>]*src=")[^"]*(")/, `$1${safeChestUrl}$2`);
-      html = html.replace(/(<img[^>]*data-visual-img="final"[^>]*src=")[^"]*(")/, `$1${safeChestUrl}$2`);
+    if (getGoldenVisualMode(cfg) === "none") {
+      html = html.replace(
+        /<\/style>/,
+        `.chest-link, .final-chest-link, .cta-final-chest, .info-box { display: none !important; }
+.hero-bg-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  cursor: pointer;
+  display: block;
+}
+.hero-section { position: relative; z-index: 2; }
+.no-chest-cta { margin-top: 18px !important; }
+.no-chest-cta .btn-jouer { margin-top: 0 !important; }
+</style>`
+      );
+      html = html.replace(
+        /<\/body>/,
+        `<script>
+(function () {
+  var jouerBtn = document.querySelector('.btn-jouer');
+  if (jouerBtn) {
+    var href = jouerBtn.getAttribute('href');
+    var target = jouerBtn.getAttribute('target') || '_blank';
+    var rel = jouerBtn.getAttribute('rel') || 'noopener noreferrer';
+    if (href) {
+      var overlay = document.createElement('a');
+      overlay.href = href;
+      overlay.target = target;
+      overlay.rel = rel;
+      overlay.className = 'hero-bg-overlay';
+      var heroBg = document.querySelector('.hero-bg');
+      if (heroBg) heroBg.appendChild(overlay);
+    }
+  }
+  var liveCount = document.querySelector('.live-count');
+  var ctaCluster = document.querySelector('.cta-cluster');
+  if (liveCount && ctaCluster) {
+    ctaCluster.classList.add('no-chest-cta');
+    liveCount.parentNode.insertBefore(ctaCluster, liveCount.nextSibling);
+  }
+})();
+</script>
+</body>`
+      );
+    } else {
+      const goldenVisualUrl = getGoldenVisualCandidates(cfg, goldenVariant)[0];
+      if (goldenVisualUrl) {
+        const safeChestUrl = escAttr(goldenVisualUrl);
+        html = html.replace(/(<img[^>]*data-visual-img="hero"[^>]*src=")[^"]*(")/, `$1${safeChestUrl}$2`);
+        html = html.replace(/(<img[^>]*data-visual-img="final"[^>]*src=")[^"]*(")/, `$1${safeChestUrl}$2`);
+      }
+    }
+
+    if (cfg.goldenBackgroundUrl) {
+      const safeBgUrl = escAttr(cfg.goldenBackgroundUrl);
+      html = html.replace(
+        /(<img[^>]*class="hero-bg-media"[^>]*src=")[^"]*(")/,
+        `$1${safeBgUrl}$2`
+      );
     }
 
     html = html.replace(/(<span class="brand-logo-main">)([^<]*)(<\/span>)/, `$1${esc(cfg.goldenBrandMain)}$3`);
