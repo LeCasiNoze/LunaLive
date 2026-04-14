@@ -83,6 +83,7 @@ import { mig073_agency_payment_frequency } from "./mig073_agency_payment_frequen
 import { mig074_affi_landing_pages } from "./mig074_affi_landing_pages.js";
 import { mig075_expenses_agency_unique_fix } from "./mig075_expenses_agency_unique_fix.js";
 import { mig076_agency_ftd_full_benef } from "./mig076_agency_ftd_full_benef.js";
+import { mig077_discord_casino_offers } from "./mig077_discord_casino_offers.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -185,6 +186,7 @@ export async function migrateAll(pool: Pool) {
   await mig074_affi_landing_pages(pool);
   await mig075_expenses_agency_unique_fix(pool);
   await mig076_agency_ftd_full_benef(pool);
+  await mig077_discord_casino_offers(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

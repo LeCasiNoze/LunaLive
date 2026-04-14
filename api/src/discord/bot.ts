@@ -62,6 +62,26 @@ import {
   handleSupportRate,
 } from "./support.js";
 import { isRestricted, isVerified, syncUserEverywhere } from "./sync.js";
+import { ensureTicketPanel, autoCloseExpiredTickets, handleFabioTicketType, handleFabioOfferSelect, handleFabioTicketModal, handleFabioTicketMessage, handleFabioApprove, handleFabioReimburseSelect, handleFabioReject, handleFabioRejectModal, handleFabioAppeal, handleFabioAppealAck, handleFabioVirement } from "./casino_tickets.js";
+import { ensureOfferDashboard } from "./casino_offers.js";
+import {
+  FABIO_GUILD_ID,
+  FABIO_ROLE_NOTIF_INSTA, FABIO_ROLE_NOTIF_YT, FABIO_ROLE_NOTIF_TW, FABIO_ROLE_NOTIF_STREAM,
+  CID_FABIO_NOTIF_ROLE,
+  CID_FABIO_TICKET_TYPE,
+  CID_FABIO_TICKET_OFFER,
+  CID_FABIO_TICKET_MODAL,
+  CID_FABIO_TICKET_APPROVE,
+  CID_FABIO_TICKET_REJECT,
+  CID_FABIO_TICKET_REJECT_MODAL,
+  CID_FABIO_TICKET_REIMBURSE,
+  CID_FABIO_TICKET_VIREMENT,
+  CID_FABIO_TICKET_APPEAL,
+  CID_FABIO_TICKET_APPEAL_ACK,
+  CID_FABIO_OFFER_ADD,
+  CID_FABIO_OFFER_ADD_MODAL,
+} from "./constants.js";
+import { buildAddOfferModal, parseAddOfferModal, createOffer, refreshDashboard } from "./casino_offers.js";
 
 let discordClient: Client | null = null;
 
@@ -277,6 +297,12 @@ export async function startDiscordBot(ctx: BotCtx) {
     if (g) await ensureApplyMessage(g, ctx);
     if (g) await ensureSupportMessage(g, ctx);
 
+    // ── Fabiozsis guild
+    await ensureTicketPanel(client, ctx);
+    await ensureOfferDashboard(client, ctx);
+
+    // Cron auto-close tickets (toutes les 5 min)
+    setInterval(() => autoCloseExpiredTickets(client, ctx), 5 * 60 * 1000);
 
     setInterval(() => {
       pool
@@ -372,8 +398,107 @@ export async function startDiscordBot(ctx: BotCtx) {
     }
   });
 
+  // ── messageCreate — tickets Fabiozsis ────────────────────────────────────────
+  client.on("messageCreate", async (message: Message) => {
+    try {
+      if (message.guildId !== FABIO_GUILD_ID) return;
+      await handleFabioTicketMessage(message, ctx);
+    } catch (e: any) {
+      ctx.log(`[discord] messageCreate fabio error: ${e?.message}`);
+    }
+  });
+
   client.on("interactionCreate", async (interaction: Interaction) => {
     try {
+      // ── Fabiozsis — notif rôles (toggle) ──────────────────────────────────
+      if (interaction.isButton() && interaction.customId.startsWith(CID_FABIO_NOTIF_ROLE)) {
+        const roleId = interaction.customId.slice(CID_FABIO_NOTIF_ROLE.length);
+        const validRoles = [FABIO_ROLE_NOTIF_INSTA, FABIO_ROLE_NOTIF_YT, FABIO_ROLE_NOTIF_TW, FABIO_ROLE_NOTIF_STREAM];
+        if (!validRoles.includes(roleId)) { await interaction.reply({ ephemeral: true, content: "Rôle inconnu." }); return; }
+        const member = interaction.member as GuildMember;
+        const { added } = await toggleRole(member, roleId);
+        await interaction.reply({ ephemeral: true, content: added ? "✅ Rôle de notification ajouté !" : "✅ Rôle de notification retiré." });
+        return;
+      }
+
+      // ── Fabiozsis — panel ticket type ─────────────────────────────────────
+      if (interaction.isButton() && interaction.customId.startsWith(CID_FABIO_TICKET_TYPE)) {
+        await handleFabioTicketType(interaction); return;
+      }
+
+      // ── Fabiozsis — select offre ──────────────────────────────────────────
+      if (interaction.isStringSelectMenu() && interaction.customId === CID_FABIO_TICKET_OFFER) {
+        await handleFabioOfferSelect(interaction); return;
+      }
+
+      // ── Fabiozsis — modal ticket submit ───────────────────────────────────
+      if (interaction.isModalSubmit() && interaction.customId.startsWith(CID_FABIO_TICKET_MODAL)) {
+        const offerId = interaction.customId.slice(CID_FABIO_TICKET_MODAL.length);
+        await handleFabioTicketModal(interaction, offerId, ctx); return;
+      }
+
+      // ── Fabiozsis — bouton Valider ────────────────────────────────────────
+      if (interaction.isButton() && interaction.customId.startsWith(CID_FABIO_TICKET_APPROVE)) {
+        const ticketId = interaction.customId.slice(CID_FABIO_TICKET_APPROVE.length);
+        await handleFabioApprove(interaction, ticketId); return;
+      }
+
+      // ── Fabiozsis — select méthode remboursement ──────────────────────────
+      if (interaction.isStringSelectMenu() && interaction.customId.startsWith(CID_FABIO_TICKET_REIMBURSE)) {
+        const ticketId = interaction.customId.slice(CID_FABIO_TICKET_REIMBURSE.length);
+        await handleFabioReimburseSelect(interaction, ticketId, ctx); return;
+      }
+
+      // ── Fabiozsis — bouton Refuser ────────────────────────────────────────
+      if (interaction.isButton() && interaction.customId.startsWith(CID_FABIO_TICKET_REJECT)) {
+        const ticketId = interaction.customId.slice(CID_FABIO_TICKET_REJECT.length);
+        await handleFabioReject(interaction, ticketId); return;
+      }
+
+      // ── Fabiozsis — modal refus submit ────────────────────────────────────
+      if (interaction.isModalSubmit() && interaction.customId.startsWith(CID_FABIO_TICKET_REJECT_MODAL)) {
+        const ticketId = interaction.customId.slice(CID_FABIO_TICKET_REJECT_MODAL.length);
+        await handleFabioRejectModal(interaction, ticketId, ctx); return;
+      }
+
+      // ── Fabiozsis — bouton Virement envoyé ───────────────────────────────
+      if (interaction.isButton() && interaction.customId.startsWith(CID_FABIO_TICKET_VIREMENT)) {
+        const ticketId = interaction.customId.slice(CID_FABIO_TICKET_VIREMENT.length);
+        await handleFabioVirement(interaction, ticketId, ctx); return;
+      }
+
+      // ── Fabiozsis — bouton Appel ──────────────────────────────────────────
+      if (interaction.isButton() && interaction.customId.startsWith(CID_FABIO_TICKET_APPEAL)) {
+        const ticketId = interaction.customId.slice(CID_FABIO_TICKET_APPEAL.length);
+        await handleFabioAppeal(interaction, ticketId, ctx); return;
+      }
+
+      // ── Fabiozsis — décision appel ────────────────────────────────────────
+      if (interaction.isButton() && interaction.customId.startsWith(CID_FABIO_TICKET_APPEAL_ACK)) {
+        const rest = interaction.customId.slice(CID_FABIO_TICKET_APPEAL_ACK.length); // ticketId:decision
+        const lastColon = rest.lastIndexOf(":");
+        const ticketId = rest.slice(0, lastColon);
+        const decision = rest.slice(lastColon + 1) as "accept" | "reject";
+        await handleFabioAppealAck(interaction, ticketId, decision, ctx); return;
+      }
+
+      // ── Fabiozsis — admin ajout offre ────────────────────────────────────
+      if (interaction.isButton() && interaction.customId === CID_FABIO_OFFER_ADD) {
+        await interaction.showModal(buildAddOfferModal()); return;
+      }
+      if (interaction.isModalSubmit() && interaction.customId === CID_FABIO_OFFER_ADD_MODAL) {
+        const fields: Record<string, string> = {};
+        for (const row of (interaction as any).components) {
+          for (const c of row.components) fields[c.customId] = c.value;
+        }
+        const parsed = parseAddOfferModal(fields);
+        if ("error" in parsed) { await interaction.reply({ ephemeral: true, content: `❌ ${parsed.error}` }); return; }
+        await createOffer({ guild_id: FABIO_GUILD_ID, created_by: interaction.user.id, ...parsed });
+        await refreshDashboard(interaction.client as Client, ctx);
+        await interaction.reply({ ephemeral: true, content: "✅ Offre créée et dashboard mis à jour." });
+        return;
+      }
+
       // ───────── Reaction roles buttons (serveur officiel)
       if (interaction.isButton() && interaction.customId.startsWith(CID_RR_PREFIX)) {
         const guild = interaction.guild;

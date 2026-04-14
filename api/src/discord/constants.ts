@@ -71,6 +71,55 @@ export const CID_SUPPORT_ESCALATE = "support:escalate";
 export const CID_SUPPORT_RATE_PREFIX = "support:rate:";
 
 // ─────────────────────────────────────────────
+// Fabiozsis — serveur streamer externe
+// ─────────────────────────────────────────────
+export const FABIO_GUILD_ID = "1237715340386107472";
+
+// Catégories
+export const FABIO_CAT_TICKETS_ID    = "1241389159705477180";
+export const FABIO_CAT_MODO_ID       = "1493585209822675004";
+export const FABIO_CAT_INFOS_ID      = "1237715340889161851";
+
+// Salons
+export const FABIO_LOGS_TICKETS_ID   = "1241389161001385984"; // 〈📋〉｜logs-tickets
+export const FABIO_MODO_LOGS_BOT_ID  = "1493585221214539950"; // 〈📋〉｜logs-bot
+export const FABIO_ROLE_CHANNEL_ID   = "1493585239782723584"; // 〈❄〉｜choix-de-rôle
+
+// Rôles
+export const FABIO_ROLE_MOD_ID       = "1237718032768438312"; // 🔪︱Modérateur
+export const FABIO_ROLE_CHEF_ID      = "1469716646624104459"; // 👑︱Le Chef
+export const FABIO_ROLE_MEMBRE_ID    = "1469711361163395193"; // 🙍︱Membres
+export const FABIO_ROLE_NOTIF_INSTA  = "1493586435876327485";
+export const FABIO_ROLE_NOTIF_YT     = "1493586439412121692";
+export const FABIO_ROLE_NOTIF_TW     = "1493586446651494543";
+export const FABIO_ROLE_NOTIF_STREAM = "1493586450518769664";
+
+// Custom IDs — tickets casino
+export const CID_FABIO_TICKET_OPEN       = "fabio:ticket:open";
+export const CID_FABIO_TICKET_TYPE       = "fabio:ticket:type";       // select menu
+export const CID_FABIO_TICKET_OFFER      = "fabio:ticket:offer";      // select menu offre
+export const CID_FABIO_TICKET_MODAL      = "fabio:ticket:modal:";     // + offerId
+export const CID_FABIO_TICKET_APPROVE      = "fabio:ticket:approve:";        // + ticketId
+export const CID_FABIO_TICKET_REJECT       = "fabio:ticket:reject:";         // + ticketId
+export const CID_FABIO_TICKET_REJECT_MODAL = "fabio:ticket:reject_modal:";   // + ticketId
+export const CID_FABIO_TICKET_REIMBURSE    = "fabio:ticket:reimburse:";      // + ticketId
+export const CID_FABIO_TICKET_VIREMENT     = "fabio:ticket:virement:";       // + ticketId
+export const CID_FABIO_TICKET_APPEAL       = "fabio:ticket:appeal:";         // + ticketId
+export const CID_FABIO_TICKET_APPEAL_ACK   = "fabio:ticket:appeal_ack:";     // + ticketId:accept|reject
+
+// Custom IDs — gestion offres (admin)
+export const CID_FABIO_OFFER_ADD         = "fabio:offer:add";
+export const CID_FABIO_OFFER_ADD_MODAL   = "fabio:offer:add_modal";
+export const CID_FABIO_OFFER_EDIT        = "fabio:offer:edit";        // select menu
+export const CID_FABIO_OFFER_EDIT_MODAL  = "fabio:offer:edit_modal:"; // + offerId
+export const CID_FABIO_OFFER_TOGGLE      = "fabio:offer:toggle";      // select menu
+export const CID_FABIO_OFFER_EVENT       = "fabio:offer:event";       // select menu → modal
+export const CID_FABIO_OFFER_EVENT_MODAL = "fabio:offer:event_modal:"; // + offerId
+
+// Custom IDs — rôles notifs
+export const CID_FABIO_NOTIF_ROLE = "notif_role:"; // + roleId
+
+// ─────────────────────────────────────────────
 // Slash commands list (guild-scoped)
 // ─────────────────────────────────────────────
 export const SLASH_COMMANDS = [
