@@ -102,6 +102,7 @@ const PAGE_CSS = `
 .fsb-field-full{grid-column:1/-1}
 .fsb-field label{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:800}
 .fsb-input,.fsb-select,.fsb-textarea{width:100%;box-sizing:border-box;border-radius:12px;border:1px solid var(--bd);background:rgba(255,255,255,.04);color:var(--text);font:inherit;padding:12px 13px}
+.fsb-select option{color:#0d1b2e;background:#fff}
 .fsb-textarea{min-height:120px;resize:vertical}
 .fsb-check{display:flex;gap:10px;align-items:center;font-weight:700}
 .fsb-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}

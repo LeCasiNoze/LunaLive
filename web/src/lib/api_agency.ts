@@ -34,6 +34,7 @@ export type AgencyAssignmentStats = {
   signups: number | null;
   depositCount: number | null;
   ftdCount: number | null;
+  ftdFullBenef: number | null;
   totalDeposits: number | null;
   rsValue: number | null;
   showCpaToStreamer: boolean;
@@ -194,6 +195,7 @@ export type AgencyStatsInput = {
   signups: number | null;
   depositCount: number | null;
   ftdCount: number | null;
+  ftdFullBenef: number | null;
   totalDeposits: number | null;
   rsValue: number | null;
   showCpaToStreamer: boolean;

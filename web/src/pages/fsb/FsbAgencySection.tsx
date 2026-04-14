@@ -176,6 +176,8 @@ export function FsbAgencySection() {
   const [statsSignups, setStatsSignups] = React.useState("");
   const [statsDepositCount, setStatsDepositCount] = React.useState("");
   const [statsFtdCount, setStatsFtdCount] = React.useState("");
+  const [statsFtdFullBenef, setStatsFtdFullBenef] = React.useState("");
+  const [enableFullBenef, setEnableFullBenef] = React.useState(false);
   const [statsDeposits, setStatsDeposits] = React.useState("");
   const [statsRsValue, setStatsRsValue] = React.useState("");
   const [showCpaToStreamer, setShowCpaToStreamer] = React.useState(true);
@@ -261,12 +263,16 @@ export function FsbAgencySection() {
   React.useEffect(() => {
     if (!selectedStatsAssignment) {
       setStatsSignups(""); setStatsDepositCount(""); setStatsFtdCount("");
+      setStatsFtdFullBenef(""); setEnableFullBenef(false);
       setStatsDeposits(""); setStatsRsValue(""); setShowCpaToStreamer(true); setShowRsToStreamer(true);
       return;
     }
     setStatsSignups(selectedStatsAssignment.stats.signups == null ? "" : String(selectedStatsAssignment.stats.signups));
     setStatsDepositCount(selectedStatsAssignment.stats.depositCount == null ? "" : String(selectedStatsAssignment.stats.depositCount));
     setStatsFtdCount(selectedStatsAssignment.stats.ftdCount == null ? "" : String(selectedStatsAssignment.stats.ftdCount));
+    const fb = selectedStatsAssignment.stats.ftdFullBenef;
+    setStatsFtdFullBenef(fb == null ? "" : String(fb));
+    setEnableFullBenef(fb != null && fb > 0);
     setStatsDeposits(selectedStatsAssignment.stats.totalDeposits == null ? "" : String(selectedStatsAssignment.stats.totalDeposits));
     setStatsRsValue(selectedStatsAssignment.stats.rsValue == null ? "" : String(selectedStatsAssignment.stats.rsValue));
     setShowCpaToStreamer(Boolean(selectedStatsAssignment.stats.showCpaToStreamer));
@@ -441,6 +447,7 @@ export function FsbAgencySection() {
         signups: toNumberOrNull(statsSignups),
         depositCount: toNumberOrNull(statsDepositCount),
         ftdCount: toNumberOrNull(statsFtdCount),
+        ftdFullBenef: enableFullBenef ? toNumberOrNull(statsFtdFullBenef) : null,
         totalDeposits: toNumberOrNull(statsDeposits),
         rsValue: toNumberOrNull(statsRsValue),
         showCpaToStreamer,
@@ -748,6 +755,9 @@ export function FsbAgencySection() {
                                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13 }}>
                                   <StatChip label="Inscrits" value={num(assignment.stats.signups)} />
                                   <StatChip label="FTD" value={num(assignment.stats.ftdCount)} />
+                                  {assignment.stats.ftdFullBenef != null && assignment.stats.ftdFullBenef > 0 && (
+                                    <StatChip label="Full bénef" value={`+${assignment.stats.ftdFullBenef}`} />
+                                  )}
                                   <StatChip label="Dépôts" value={num(assignment.stats.depositCount)} />
                                   <StatChip label="Volume" value={assignment.stats.totalDeposits == null ? "-" : eur(assignment.stats.totalDeposits)} />
                                   <StatChip label="Net affilié" value={eur(assignment.payouts.streamerTotal)} accent />
@@ -790,8 +800,40 @@ export function FsbAgencySection() {
                                       <input className="fsb-input" type="number" min="0" step="1" value={statsSignups} onChange={(e) => setStatsSignups(e.target.value)} />
                                     </div>
                                     <div className="fsb-field">
-                                      <label>FTD (base CPA)</label>
+                                      <label>FTD total</label>
                                       <input className="fsb-input" type="number" min="0" step="1" value={statsFtdCount} onChange={(e) => setStatsFtdCount(e.target.value)} />
+                                    </div>
+                                    <div className="fsb-field">
+                                      <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={enableFullBenef}
+                                          onChange={(e) => {
+                                            setEnableFullBenef(e.target.checked);
+                                            if (!e.target.checked) setStatsFtdFullBenef("");
+                                          }}
+                                        />
+                                        Full bénef (FTD agence)
+                                      </label>
+                                      {enableFullBenef && (
+                                        <>
+                                          <input
+                                            className="fsb-input"
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            max={statsFtdCount || undefined}
+                                            value={statsFtdFullBenef}
+                                            onChange={(e) => setStatsFtdFullBenef(e.target.value)}
+                                            placeholder="Nb FTD full bénef"
+                                          />
+                                          {statsFtdCount && statsFtdFullBenef && (
+                                            <div className="fsb-hint" style={{ marginTop: 4 }}>
+                                              Affilié voit : {Math.max(Number(statsFtdCount) - Number(statsFtdFullBenef), 0)} FTD · Agence full bénef : {statsFtdFullBenef}
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
                                     </div>
                                     <div className="fsb-field">
                                       <label>Nb dépôts</label>
