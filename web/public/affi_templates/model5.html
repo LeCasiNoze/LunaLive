@@ -152,7 +152,6 @@
     }
 
     .page {
-      position: relative;
       background:
         linear-gradient(180deg, var(--page-gradient-top) 0%, var(--page-gradient-mid) 68%, var(--page-gradient-bottom) 100%);
     }
@@ -162,9 +161,11 @@
       top: 0;
       left: 0;
       right: 0;
-      bottom: 0;
       min-height: 100svh;
+      height: 100dvh;
+      height: 100svh;
       z-index: 0;
+      transform: none;
       overflow: hidden;
       background: var(--page-bg);
     }
@@ -984,7 +985,13 @@
     }
 
     @media (min-width: 721px) {
+      .page {
+        position: relative;
+      }
+
       .hero-bg {
+        height: auto;
+        bottom: 0;
         background:
           linear-gradient(180deg, rgba(0, 0, 0, 0.38) 0%, rgba(0, 0, 0, 0.08) 34%, rgba(0, 0, 0, 0.58) 100%),
           radial-gradient(circle at 50% 18%, var(--hero-spot) 0%, transparent 34%),
@@ -1222,6 +1229,11 @@
     }
 
     @media (max-width: 720px) {
+      .hero-bg {
+        min-height: 100svh;
+        height: 100dvh;
+      }
+
       .hero-bg-media {
         object-position: center top;
         transform: scale(1.08);
