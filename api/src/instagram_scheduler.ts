@@ -13,6 +13,7 @@
 
 import { pool } from "./db.js";
 import type { Pool } from "pg";
+import { FABIO_STREAMER_SLUG, FABIO_NOTIF_CHANNEL_ID, FABIO_ROLE_NOTIF_INSTA } from "./discord/constants.js";
 
 const LOG = "[INSTAGRAM SCHEDULER]";
 
@@ -159,7 +160,43 @@ async function sendReelPublishedNotification(opts: {
     };
 
     await (channel as any).send(payload);
-    console.log(`${LOG} [job #${opts.jobId}] ✅ Discord notif envoyée — ${opts.permalink}`);
+    console.log(`${LOG} [job #${opts.jobId}] ✅ Discord notif LunaLive envoyée — ${opts.permalink}`);
+
+    // ─── Notif Fabiozsis si c'est son clip ────────────────────────────────────
+    if (opts.streamerSlug.toLowerCase() === FABIO_STREAMER_SLUG) {
+      try {
+        const fabioChannel = await discordClient.channels.fetch(FABIO_NOTIF_CHANNEL_ID).catch(() => null);
+        if (fabioChannel?.isTextBased?.()) {
+          await (fabioChannel as any).send({
+            content: `<@&${FABIO_ROLE_NOTIF_INSTA}>`,
+            embeds: [{
+              author: {
+                name: "Fabiozsis • Nouveau Reel Instagram",
+                icon_url: `${webBase}/favicon.ico`,
+              },
+              title: firstLine,
+              url: opts.permalink,
+              description: `Un nouveau clip vient d'être posté sur Instagram ! 📸`,
+              color: 0xE4405F,
+              ...(opts.thumbnailUrl ? { image: { url: opts.thumbnailUrl } } : {}),
+              timestamp: new Date().toISOString(),
+              footer: { text: "Instagram • Fabiozsis" },
+            }],
+            components: [{
+              type: 1,
+              components: [
+                { type: 2, style: 5, label: "📸 Voir le Reel", url: opts.permalink },
+                { type: 2, style: 5, label: "📺 LunaLive", url: streamerUrl },
+              ],
+            }],
+            allowedMentions: { parse: ["roles"] },
+          });
+          console.log(`${LOG} [job #${opts.jobId}] ✅ Discord notif Fabiozsis envoyée`);
+        }
+      } catch (e2: any) {
+        console.warn(`${LOG} [job #${opts.jobId}] Fabiozsis Discord notif failed: ${e2?.message}`);
+      }
+    }
   } catch (e: any) {
     console.error(`${LOG} [job #${opts.jobId}] ❌ Discord notif échouée: ${e?.message ?? e}`);
   }

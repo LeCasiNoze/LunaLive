@@ -62,8 +62,10 @@ import {
   handleSupportRate,
 } from "./support.js";
 import { isRestricted, isVerified, syncUserEverywhere } from "./sync.js";
-import { ensureTicketPanel, autoCloseExpiredTickets, handleFabioTicketType, handleFabioOfferSelect, handleFabioTicketModal, handleFabioTicketMessage, handleFabioApprove, handleFabioReimburseSelect, handleFabioReject, handleFabioRejectModal, handleFabioAppeal, handleFabioAppealAck, handleFabioVirement } from "./casino_tickets.js";
+import { ensureTicketPanel, autoCloseExpiredTickets, checkInactiveTickets, handleFabioTicketType, handleFabioOfferSelect, handleFabioTicketModal, handleFabioTicketMessage, handleFabioApprove, handleFabioReimburseSelect, handleFabioReject, handleFabioRejectModal, handleFabioAppeal, handleFabioAppealAck, handleFabioVirement } from "./casino_tickets.js";
 import { ensureOfferDashboard } from "./casino_offers.js";
+import { ensureFabioWelcomeChannels, handleFabioMemberJoin, handleFabioMemberLeave } from "./welcome_fabio.js";
+import { ensureStatsChannel, handleStatsCommand, handleStatsList, CID_STATS_LIST } from "./stats_fabio.js";
 import {
   FABIO_GUILD_ID,
   FABIO_ROLE_NOTIF_INSTA, FABIO_ROLE_NOTIF_YT, FABIO_ROLE_NOTIF_TW, FABIO_ROLE_NOTIF_STREAM,
@@ -300,9 +302,13 @@ export async function startDiscordBot(ctx: BotCtx) {
     // ── Fabiozsis guild
     await ensureTicketPanel(client, ctx);
     await ensureOfferDashboard(client, ctx);
+    await ensureFabioWelcomeChannels(client, ctx);
+    await ensureStatsChannel(client, ctx);
 
     // Cron auto-close tickets (toutes les 5 min)
     setInterval(() => autoCloseExpiredTickets(client, ctx), 5 * 60 * 1000);
+    // Cron relances inactivité (toutes les 5 min)
+    setInterval(() => checkInactiveTickets(client, ctx), 5 * 60 * 1000);
 
     setInterval(() => {
       pool
@@ -316,6 +322,12 @@ export async function startDiscordBot(ctx: BotCtx) {
 
   client.on("guildMemberAdd", async (member) => {
     try {
+      // ── Fabiozsis ─────────────────────────────────────────────────────────
+      if (member.guild.id === FABIO_GUILD_ID) {
+        await handleFabioMemberJoin(member, client, ctx);
+        return;
+      }
+
       // 1) Welcome (si guild claim + config active + channel défini)
       const cfg = await loadWelcomeCfg(String(member.guild.id));
       if (cfg?.welcomeEnabled && cfg.welcomeChannelId) {
@@ -362,6 +374,12 @@ export async function startDiscordBot(ctx: BotCtx) {
 
   client.on("guildMemberRemove", async (member) => {
     try {
+      // ── Fabiozsis ─────────────────────────────────────────────────────────
+      if (member.guild.id === FABIO_GUILD_ID) {
+        await handleFabioMemberLeave(member, client, ctx);
+        return;
+      }
+
       const cfg = await loadWelcomeCfg(String(member.guild.id));
       if (!cfg?.goodbyeEnabled || !cfg.goodbyeChannelId) return;
 
@@ -411,6 +429,11 @@ export async function startDiscordBot(ctx: BotCtx) {
   client.on("interactionCreate", async (interaction: Interaction) => {
     try {
       // ── Fabiozsis — notif rôles (toggle) ──────────────────────────────────
+      if (interaction.isButton() && interaction.customId.startsWith(CID_STATS_LIST)) {
+        const casino = interaction.customId.slice(CID_STATS_LIST.length);
+        await handleStatsList(interaction, casino, ctx); return;
+      }
+
       if (interaction.isButton() && interaction.customId.startsWith(CID_FABIO_NOTIF_ROLE)) {
         const roleId = interaction.customId.slice(CID_FABIO_NOTIF_ROLE.length);
         const validRoles = [FABIO_ROLE_NOTIF_INSTA, FABIO_ROLE_NOTIF_YT, FABIO_ROLE_NOTIF_TW, FABIO_ROLE_NOTIF_STREAM];
@@ -493,7 +516,7 @@ export async function startDiscordBot(ctx: BotCtx) {
         }
         const parsed = parseAddOfferModal(fields);
         if ("error" in parsed) { await interaction.reply({ ephemeral: true, content: `❌ ${parsed.error}` }); return; }
-        await createOffer({ guild_id: FABIO_GUILD_ID, created_by: interaction.user.id, ...parsed });
+        await createOffer({ guild_id: FABIO_GUILD_ID, created_by: interaction.user.id, ...parsed }, interaction.client as Client);
         await refreshDashboard(interaction.client as Client, ctx);
         await interaction.reply({ ephemeral: true, content: "✅ Offre créée et dashboard mis à jour." });
         return;
@@ -878,6 +901,11 @@ export async function startDiscordBot(ctx: BotCtx) {
               (mail ? `Email : **${mail}**\n` : "") +
               `Rôle LunaLive : **${linked.role}**`,
           });
+          return;
+        }
+
+        if (interaction.commandName === "stats" && interaction.guildId === FABIO_GUILD_ID) {
+          await handleStatsCommand(interaction, ctx);
           return;
         }
 

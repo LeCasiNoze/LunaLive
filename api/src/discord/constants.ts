@@ -84,6 +84,11 @@ export const FABIO_CAT_INFOS_ID      = "1237715340889161851";
 export const FABIO_LOGS_TICKETS_ID   = "1241389161001385984"; // 〈📋〉｜logs-tickets
 export const FABIO_MODO_LOGS_BOT_ID  = "1493585221214539950"; // 〈📋〉｜logs-bot
 export const FABIO_ROLE_CHANNEL_ID   = "1493585239782723584"; // 〈❄〉｜choix-de-rôle
+export const FABIO_NOTIF_CHANNEL_ID  = "1469708191406227693"; // 〈🔔〉｜notifs (stream + insta)
+
+// Identifiants LunaLive (DB)
+export const FABIO_STREAMER_ID       = 23;
+export const FABIO_STREAMER_SLUG     = "fabiozsis";
 
 // Rôles
 export const FABIO_ROLE_MOD_ID       = "1237718032768438312"; // 🔪︱Modérateur
@@ -134,4 +139,7 @@ export const SLASH_COMMANDS = [
   // ✅ Blackjack
   { name: "blackjack", description: "Jouer au blackjack (20 rubis, 1x / 12h)" },
   { name: "blackjack_plus", description: "Blackjack+ (side bets) (25 rubis, 1x / 12h)" },
+
+  // ✅ Stats Fabiozsis (mods uniquement, éphémère)
+  { name: "stats", description: "Statistiques du serveur & tickets casino [mod]" },
 ] as const;

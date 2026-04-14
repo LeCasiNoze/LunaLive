@@ -31,10 +31,23 @@ export type CasinoOffer = {
   type: "permanent" | "event";
   event_end_at: Date | null;
   active: boolean;
+  discord_role_id: string | null;
   created_by: string | null;
   created_at: Date;
   updated_at: Date;
 };
+
+// Couleurs par casino (hex → int)
+const CASINO_COLORS: Record<string, number> = {
+  "razed":         0xC0392B, // rouge sang
+  "brutal-casino": 0x8E44AD, // violet
+  "cresus":        0xF39C12, // or
+  "winoui":        0x2980B9, // bleu
+  "tortuga":       0x16A085, // vert sombre
+};
+function casinoColor(slug: string): number {
+  return CASINO_COLORS[slug.toLowerCase()] ?? 0x2ECC71;
+}
 
 // ─── DB ops ───────────────────────────────────────────────────────────────────
 
@@ -65,30 +78,55 @@ export async function getOfferById(id: string): Promise<CasinoOffer | null> {
   return r.rows[0] ?? null;
 }
 
-export async function createOffer(data: {
-  guild_id: string;
-  casino: string;
-  label: string;
-  description?: string;
-  min_deposit: number;
-  reimburse_amt: number;
-  reimburse_type: "casino" | "wallet";
-  crypto?: string;
-  type?: "permanent" | "event";
-  event_end_at?: Date;
-  created_by?: string;
-}): Promise<CasinoOffer> {
+export async function createOffer(
+  data: {
+    guild_id: string;
+    casino: string;
+    label: string;
+    description?: string;
+    min_deposit: number;
+    reimburse_amt: number;
+    reimburse_type: "casino" | "wallet";
+    crypto?: string;
+    type?: "permanent" | "event";
+    event_end_at?: Date;
+    created_by?: string;
+  },
+  client?: Client
+): Promise<CasinoOffer> {
+  // Créer le rôle Discord avant l'INSERT
+  let discordRoleId: string | null = null;
+  if (client) {
+    try {
+      const guild = await client.guilds.fetch(data.guild_id).catch(() => null);
+      if (guild) {
+        const roleName = data.casino.charAt(0).toUpperCase() + data.casino.slice(1);
+        const role = await guild.roles.create({
+          name: roleName,
+          color: casinoColor(data.casino),
+          hoist: false,        // ne s'affiche pas séparément
+          mentionable: false,
+          reason: `Offre casino créée : ${data.label}`,
+        });
+        discordRoleId = role.id;
+      }
+    } catch (e: any) {
+      console.warn(`[casino_offers] role create failed: ${e?.message}`);
+    }
+  }
+
   const r = await pool.query<CasinoOffer>(
     `INSERT INTO discord_casino_offers
        (guild_id, casino, label, description, min_deposit, reimburse_amt,
-        reimburse_type, crypto, type, event_end_at, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        reimburse_type, crypto, type, event_end_at, created_by, discord_role_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
      RETURNING *`,
     [
       data.guild_id, data.casino, data.label, data.description ?? null,
       data.min_deposit, data.reimburse_amt, data.reimburse_type,
       data.crypto ?? null, data.type ?? "permanent",
       data.event_end_at ?? null, data.created_by ?? null,
+      discordRoleId,
     ]
   );
   return r.rows[0];

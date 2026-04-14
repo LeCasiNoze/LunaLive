@@ -69,6 +69,7 @@ type TicketRow = {
   dup_discord: boolean;
   close_at: Date | null;
   decided_at: Date | null;
+  reminder_count: number;
 };
 
 // ─── Regex validation wallets ─────────────────────────────────────────────────
@@ -337,8 +338,11 @@ export async function handleFabioTicketModal(interaction: any, offerId: string, 
   // Anti-fraude
   const dups = await checkDuplicates(offer.casino, email, user.id);
 
+  // Récupère le displayname (pseudo serveur > pseudo global > username)
+  const displayName = (interaction.member as GuildMember)?.displayName ?? user.globalName ?? user.username;
+
   // Créer channel privé
-  const channelName = `offre-${slugify(offer.casino)}-${slugify(user.username)}`;
+  const channelName = `offre-${slugify(offer.casino)}-${slugify(displayName)}`;
   const everyoneId = guild.roles.everyone.id;
 
   let ticketChannel: TextChannel;
@@ -365,12 +369,12 @@ export async function handleFabioTicketModal(interaction: any, offerId: string, 
     `INSERT INTO discord_casino_tickets
        (guild_id, channel_id, offer_id, casino, discord_user_id, discord_username,
         casino_email, casino_pseudo, deposit_amount, dup_email, dup_discord, state,
-        reimburse_type, reimburse_amount)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending_screenshot',$12,$13)
+        reimburse_type, reimburse_amount, close_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending_screenshot',$12,$13, now() + interval '2 hours')
      RETURNING *`,
     [
       FABIO_GUILD_ID, ticketChannel.id, offerId, offer.casino,
-      user.id, user.username, email, pseudo, amount,
+      user.id, displayName, email, pseudo, amount,
       dups.dup_email, dups.dup_discord,
       offer.reimburse_type, offer.reimburse_amt,
     ]
@@ -383,7 +387,7 @@ export async function handleFabioTicketModal(interaction: any, offerId: string, 
     embeds: [{
       title: `📋 Réclamation — ${offer.label}`,
       description:
-        `**@${user.username}** — Bienvenue dans votre ticket.\n\n` +
+        `**${displayName}** — Bienvenue dans votre ticket.\n\n` +
         (dupWarn ? `${dupWarn}\n\n` : "") +
         `Merci d'**envoyer un screenshot de votre dépôt** dans ce salon.\n` +
         `La capture doit montrer clairement **le montant et votre pseudo**.\n\n` +
@@ -433,8 +437,8 @@ export async function handleFabioTicketMessage(message: Message, ctx: BotCtx) {
       }],
     });
 
-    // Post dans vérif-tickets
-    await postToVerif(message.client, ticket, screenshotUrl, ctx);
+    // Sync message vérif-tickets
+    await syncVerifMessage(message.client, ticket.id, ctx);
     return;
   }
 
@@ -462,8 +466,8 @@ export async function handleFabioTicketMessage(message: Message, ctx: BotCtx) {
       }],
     });
 
-    // Mise à jour verif-tickets
-    await updateVerifMessage(message.client, ticket, `💳 Adresse ${crypto} reçue : \`${wallet}\``, ctx);
+    // Sync message vérif-tickets
+    await syncVerifMessage(message.client, ticket.id, ctx);
     return;
   }
 
@@ -520,12 +524,7 @@ export async function handleFabioTicketMessage(message: Message, ctx: BotCtx) {
       }],
     });
 
-    await updateVerifMessage(
-      message.client, ticket,
-      `🎰 Wallet casino reçu\nURL: \`${ticket.casino_wallet_url}\`\n` +
-      (ticket.casino_wallet_crypto ? `Crypto: **${ticket.casino_wallet_crypto}**` : ""),
-      ctx
-    );
+    await syncVerifMessage(message.client, ticket.id, ctx);
     return;
   }
 }
@@ -576,7 +575,7 @@ export async function handleFabioReimburseSelect(interaction: any, ticketId: str
   if (!ticket) { await interaction.reply({ ephemeral: true, content: "❌ Ticket introuvable." }); return; }
 
   const offer = await getOfferById(ticket.offer_id);
-  const crypto = offer?.crypto ?? "USDT";
+  const crypto = "USDC"; // Toujours USDC pour les wallets privés
 
   await updateTicket(ticketId, {
     status: "approved",
@@ -588,6 +587,9 @@ export async function handleFabioReimburseSelect(interaction: any, ticketId: str
   });
 
   await interaction.update({ content: "✅ Validé.", components: [] });
+
+  // Sync message vérif-tickets (méthode choisie, nouveau statut)
+  await syncVerifMessage(interaction.client, ticketId, ctx);
 
   // Message dans le channel ticket
   const ch = await interaction.client.channels.fetch(ticket.channel_id).catch(() => null) as TextChannel | null;
@@ -696,8 +698,8 @@ export async function handleFabioRejectModal(interaction: any, ticketId: string,
     });
   }
 
-  // Mettre à jour vérif-tickets
-  await updateVerifMessage(interaction.client, ticket, `❌ Refusé par ${interaction.user.username}\nMotif: ${reason}`, ctx);
+  // Sync message vérif-tickets (motif refus, boutons retirés)
+  await syncVerifMessage(interaction.client, ticketId, ctx);
 }
 
 // ─── Handler: bouton Appel ────────────────────────────────────────────────────
@@ -716,29 +718,8 @@ export async function handleFabioAppeal(interaction: any, ticketId: string, ctx:
   await updateTicket(ticketId, { state: "appeal_pending" });
   await interaction.reply({ ephemeral: true, content: "✅ Votre appel a été transmis. Nous vous répondons sous peu." });
 
-  // Notif dans vérif-tickets
-  const verifCh = await interaction.client.channels.fetch(VERIF_TICKETS_CH).catch(() => null) as TextChannel | null;
-  if (verifCh) {
-    await verifCh.send({
-      embeds: [{
-        title: "🔔 Demande d'appel",
-        description:
-          `**${ticket.discord_username}** (<@${ticket.discord_user_id}>) souhaite faire appel.\n\n` +
-          `**Casino :** ${ticket.casino}\n` +
-          `**Motif refus :** ${ticket.reject_reason ?? "—"}\n` +
-          `**Ticket :** <#${ticket.channel_id}>`,
-        color: 0xFEE75C,
-      }],
-      content: `<@&${FABIO_ROLE_MOD_ID}>`,
-      components: [{
-        type: 1,
-        components: [
-          { type: 2, style: 3, custom_id: `${CID_FABIO_TICKET_APPEAL_ACK}${ticketId}:accept`, label: "✅ Accepter l'appel" },
-          { type: 2, style: 4, custom_id: `${CID_FABIO_TICKET_APPEAL_ACK}${ticketId}:reject`, label: "❌ Rejeter l'appel" },
-        ],
-      }],
-    });
-  }
+  // Mettre à jour le message vérif-tickets → statut + boutons décision appel
+  await syncVerifMessage(interaction.client, ticketId, ctx);
 }
 
 // ─── Handler: décision appel ──────────────────────────────────────────────────
@@ -767,23 +748,33 @@ export async function handleFabioAppealAck(interaction: any, ticketId: string, d
         content: `<@${ticket.discord_user_id}>`,
       });
     }
+
+    // Remettre les boutons Valider/Refuser dans vérif-tickets
+    await syncVerifMessage(interaction.client, ticketId, ctx);
   } else {
-    await updateTicket(ticketId, { state: "refused", close_at: new Date(Date.now() + 24 * 3600 * 1000) });
-    await interaction.update({ content: "✅ Appel rejeté.", components: [] });
+    await interaction.update({ content: "✅ Appel rejeté — fermeture du ticket.", components: [] });
 
     if (ch) {
       await ch.send({
         embeds: [{
-          title: "❌ Appel refusé",
+          title: "❌ Appel refusé — Ticket fermé",
           description:
             `<@${ticket.discord_user_id}> Votre appel a été refusé.\n` +
-            `Ce dossier sera archivé dans 24h.\n\n` +
+            `Ce dossier est maintenant clôturé.\n\n` +
             `Si vous avez d'autres questions, ouvrez un ticket via <#${PANEL_CH}>.`,
           color: 0xED4245,
         }],
         content: `<@${ticket.discord_user_id}>`,
       });
+      // Attendre 5s pour que l'user lise le message, puis supprimer
+      await new Promise((r) => setTimeout(r, 5000));
+      await ch.delete("Appel refusé — fermeture automatique").catch(() => {});
     }
+
+    await updateTicket(ticketId, { state: "closed", closed_at: new Date() });
+    // Retirer les boutons du message vérif-tickets
+    await syncVerifMessage(interaction.client, ticketId, ctx);
+    await postClosingLog(interaction.client as Client, { ...ticket, status: "rejected" }, "rejected", ctx);
   }
 }
 
@@ -807,6 +798,30 @@ export async function handleFabioVirement(interaction: any, ticketId: string, ct
     close_at: new Date(Date.now() + 24 * 3600 * 1000),
   });
 
+  // ── Frais de société (expenses) ───────────────────────────────────────────
+  const reimbAmt = ticket.reimburse_amount ?? offer?.reimburse_amt ?? 0;
+  await pool.query(
+    `INSERT INTO expenses (description, category, amount, date, is_recurring, source_type)
+     VALUES ($1, 'offres', $2, CURRENT_DATE, false, 'manual')`,
+    [
+      `Remboursement ${ticket.casino} — ${ticket.discord_username} (ticket ${ticket.id.slice(0, 8)})`,
+      reimbAmt,
+    ]
+  ).catch((e: any) => ctx.log(`[casino_tickets] expense insert failed: ${e?.message}`));
+
+  // ── Attribution rôle casino ───────────────────────────────────────────────
+  if (offer?.discord_role_id) {
+    try {
+      const guild = await (interaction.client as Client).guilds.fetch(FABIO_GUILD_ID).catch(() => null);
+      const member = await guild?.members.fetch(ticket.discord_user_id).catch(() => null);
+      if (member && !member.roles.cache.has(offer.discord_role_id)) {
+        await member.roles.add(offer.discord_role_id, `Remboursement ${ticket.casino} validé`);
+      }
+    } catch (e: any) {
+      ctx.log(`[casino_tickets] role add failed: ${e?.message}`);
+    }
+  }
+
   await interaction.update({ content: "✅ Virement marqué comme envoyé.", components: [] });
 
   const ch = await interaction.client.channels.fetch(ticket.channel_id).catch(() => null) as TextChannel | null;
@@ -828,78 +843,131 @@ export async function handleFabioVirement(interaction: any, ticketId: string, ct
     });
   }
 
+  // Retirer bouton virement, marquer résolu dans vérif-tickets
+  await syncVerifMessage(interaction.client, ticketId, ctx);
+
   // Log dans logs-tickets
   await postClosingLog(interaction.client, ticket, "approved", ctx);
 }
 
-// ─── Post dans vérif-tickets ──────────────────────────────────────────────────
-async function postToVerif(client: Client, ticket: TicketRow, screenshotUrl: string, ctx: BotCtx) {
-  try {
-    const ch = await client.channels.fetch(VERIF_TICKETS_CH).catch(() => null) as TextChannel | null;
-    if (!ch) return;
+// ─── Vérif-tickets : embed dynamique ─────────────────────────────────────────
+function buildVerifEmbed(ticket: TicketRow): object {
+  const dupWarn = fmtDupWarning(ticket);
 
-    const dupWarn = fmtDupWarning(ticket);
-    const msg = await ch.send({
-      embeds: [{
-        title: `🎫 Nouveau dossier — ${ticket.casino.charAt(0).toUpperCase() + ticket.casino.slice(1)}`,
-        description:
-          `👤 **${ticket.discord_username}** (<@${ticket.discord_user_id}>) \`${ticket.discord_user_id}\`\n` +
-          `📧 **Email casino :** \`${ticket.casino_email}\`\n` +
-          `🎭 **Pseudo casino :** \`${ticket.casino_pseudo}\`\n` +
-          `💶 **Montant déclaré :** **${ticket.deposit_amount}€**\n\n` +
-          `🔗 Ticket : <#${ticket.channel_id}>\n` +
-          (dupWarn ? `\n${dupWarn}` : ""),
-        image: { url: screenshotUrl },
-        color: dupWarn ? 0xFF4444 : 0x5865F2,
-        footer: { text: `Ticket ID: ${ticket.id}` },
-        timestamp: new Date().toISOString(),
-      }],
-      content: `<@&${FABIO_ROLE_MOD_ID}>`,
-      components: [{
+  const STATE_LABELS: Record<string, string> = {
+    pending_screenshot:        "⏳ En attente de screenshot",
+    pending_decision:          "🔍 En attente de décision",
+    pending_wallet:            "💳 En attente d'adresse wallet",
+    pending_casino_url:        "🔗 En attente d'URL casino",
+    pending_casino_screenshot: "📸 En attente de screenshot wallet",
+    pending_virement:          "💸 En attente de virement",
+    refused:                   "❌ Refusé",
+    appeal_pending:            "🔔 Appel en cours",
+    closed:                    ticket.status === "approved" ? "✅ Résolu" : "🔒 Clôturé",
+  };
+
+  let desc =
+    `👤 **${ticket.discord_username}** (<@${ticket.discord_user_id}>) \`${ticket.discord_user_id}\`\n` +
+    `📧 **Email casino :** \`${ticket.casino_email}\`\n` +
+    `🎭 **Pseudo casino :** \`${ticket.casino_pseudo}\`\n` +
+    `💶 **Montant déclaré :** **${ticket.deposit_amount}€**\n` +
+    `🔗 Ticket : <#${ticket.channel_id}>\n` +
+    `📊 **Statut :** ${STATE_LABELS[ticket.state] ?? ticket.state}`;
+
+  if (dupWarn) desc += `\n\n${dupWarn}`;
+
+  if (ticket.moderator_username) {
+    desc += `\n\n🛡️ **Mod :** ${ticket.moderator_username}`;
+  }
+  if (ticket.reimburse_method) {
+    desc += `\n💳 **Méthode :** ${ticket.reimburse_method === "wallet" ? "Wallet USDC" : "Crédit casino"}`;
+  }
+  if (ticket.reimburse_address) {
+    desc += `\n📬 **Adresse wallet :** \`${ticket.reimburse_address}\``;
+  }
+  if (ticket.casino_wallet_url) {
+    desc += `\n🔗 **URL casino wallet :** \`${ticket.casino_wallet_url}\``;
+    if (ticket.casino_wallet_crypto) desc += ` (${ticket.casino_wallet_crypto})`;
+  }
+  if (ticket.reject_reason) {
+    desc += `\n\n❌ **Motif refus :** ${ticket.reject_reason}`;
+  }
+
+  const color =
+    ticket.status === "approved" ? 0x57F287 :
+    ticket.status === "rejected" ? 0xED4245 :
+    (ticket.dup_email || ticket.dup_discord) ? 0xFF4444 : 0x5865F2;
+
+  return {
+    title: `🎫 Dossier — ${ticket.casino.charAt(0).toUpperCase() + ticket.casino.slice(1)}`,
+    description: desc.slice(0, 4096),
+    ...(ticket.deposit_screenshot_url ? { image: { url: ticket.deposit_screenshot_url } } : {}),
+    color,
+    footer: { text: `Ticket ID: ${ticket.id}` },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function buildVerifComponents(ticket: TicketRow): any[] {
+  switch (ticket.state) {
+    case "pending_decision":
+      return [{
         type: 1,
         components: [
           { type: 2, style: 3, custom_id: `${CID_FABIO_TICKET_APPROVE}${ticket.id}`, label: "✅ Valider" },
           { type: 2, style: 4, custom_id: `${CID_FABIO_TICKET_REJECT}${ticket.id}`, label: "❌ Refuser" },
         ],
-      }],
-    });
-
-    await updateTicket(ticket.id, { verif_msg_id: msg.id });
-  } catch (e: any) {
-    ctx.log(`[casino_tickets] postToVerif error: ${e?.message}`);
+      }];
+    case "pending_virement":
+      return [{
+        type: 1,
+        components: [
+          { type: 2, style: 3, custom_id: `${CID_FABIO_TICKET_VIREMENT}${ticket.id}`, label: "✅ Virement envoyé" },
+        ],
+      }];
+    case "appeal_pending":
+      return [{
+        type: 1,
+        components: [
+          { type: 2, style: 3, custom_id: `${CID_FABIO_TICKET_APPEAL_ACK}${ticket.id}:accept`, label: "✅ Accepter l'appel" },
+          { type: 2, style: 4, custom_id: `${CID_FABIO_TICKET_APPEAL_ACK}${ticket.id}:reject`, label: "❌ Rejeter l'appel" },
+        ],
+      }];
+    default:
+      return []; // closed, refused, autres → aucun bouton
   }
 }
 
-// ─── Mettre à jour message vérif-tickets ──────────────────────────────────────
-async function updateVerifMessage(client: Client, ticket: TicketRow, addedInfo: string, ctx: BotCtx) {
+// ─── Sync unique message vérif-tickets ───────────────────────────────────────
+async function syncVerifMessage(client: Client, ticketId: string, ctx: BotCtx) {
   try {
-    if (!ticket.verif_msg_id) return;
+    const ticket = await getTicketById(ticketId);
+    if (!ticket) return;
+
     const ch = await client.channels.fetch(VERIF_TICKETS_CH).catch(() => null) as TextChannel | null;
     if (!ch) return;
 
-    const msg = await ch.messages.fetch(ticket.verif_msg_id).catch(() => null);
-    if (!msg) return;
+    const embed = buildVerifEmbed(ticket);
+    const components = buildVerifComponents(ticket);
 
-    const existing = msg.embeds[0];
-    const updatedDesc = (existing?.description ?? "") + `\n\n---\n${addedInfo}`;
+    if (ticket.verif_msg_id) {
+      const msg = await ch.messages.fetch(ticket.verif_msg_id).catch(() => null);
+      if (msg) {
+        await msg.edit({ embeds: [embed], components } as any);
+        return;
+      }
+    }
 
-    const virementBtn = ticket.state === "pending_virement" || addedInfo.includes("reçu") || addedInfo.includes("reçue")
-      ? [{
-          type: 1,
-          components: [{
-            type: 2, style: 3,
-            custom_id: `${CID_FABIO_TICKET_VIREMENT}${ticket.id}`,
-            label: "✅ Virement envoyé",
-          }],
-        }]
-      : msg.components;
+    // Pas encore de message → en créer un (screenshot initial)
+    const msg = await (ch as TextChannel).send({
+      embeds: [embed],
+      content: ticket.state === "pending_decision" ? `<@&${FABIO_ROLE_MOD_ID}>` : undefined,
+      components,
+    } as any);
 
-    await msg.edit({
-      embeds: [{ ...existing?.data, description: updatedDesc.slice(0, 4096) }],
-      components: virementBtn as any,
-    });
+    await updateTicket(ticket.id, { verif_msg_id: msg.id });
   } catch (e: any) {
-    ctx.log(`[casino_tickets] updateVerifMessage error: ${e?.message}`);
+    ctx.log(`[casino_tickets] syncVerifMessage error: ${e?.message}`);
   }
 }
 
@@ -932,21 +1000,103 @@ async function postClosingLog(client: Client, ticket: TicketRow, finalStatus: st
   }
 }
 
-// ─── Auto-close cron ──────────────────────────────────────────────────────────
-export async function autoCloseExpiredTickets(client: Client, ctx: BotCtx) {
+// ─── Relances inactivité (pending_screenshot sans réponse) ───────────────────
+export async function checkInactiveTickets(client: Client, ctx: BotCtx) {
   try {
-    const r = await pool.query<TicketRow>(
-      `SELECT * FROM discord_casino_tickets WHERE close_at < now() AND state != 'closed' LIMIT 20`
+    // Tickets en attente de screenshot depuis plus de 10 min et jamais relancés
+    const toRemind1 = await pool.query<TicketRow>(
+      `SELECT * FROM discord_casino_tickets
+       WHERE state = 'pending_screenshot'
+         AND COALESCE(reminder_count, 0) = 0
+         AND created_at < now() - interval '10 minutes'
+         AND created_at > now() - interval '2 hours'
+       LIMIT 20`
     );
 
-    for (const ticket of r.rows) {
+    for (const ticket of toRemind1.rows) {
       try {
         const ch = await client.channels.fetch(ticket.channel_id).catch(() => null) as TextChannel | null;
         if (ch) {
           await ch.send({
+            content: `<@${ticket.discord_user_id}>`,
             embeds: [{
-              title: "🔒 Ticket fermé",
-              description: "Ce ticket est maintenant archivé et sera supprimé dans quelques instants.",
+              title: "⏰ On attend encore votre screenshot !",
+              description:
+                `Votre ticket est ouvert mais nous n'avons pas encore reçu votre **capture d'écran de dépôt**.\n\n` +
+                `Merci de l'envoyer dans ce salon dès que possible pour que votre demande puisse être traitée.\n\n` +
+                `*Si vous n'avez plus besoin de ce ticket, vous pouvez simplement l'ignorer — il se fermera automatiquement.*`,
+              color: 0xFEE75C,
+            }],
+          });
+        }
+        await updateTicket(ticket.id, { reminder_count: 1 });
+      } catch (e: any) {
+        ctx.log(`[casino_tickets] remind1 ${ticket.id}: ${e?.message}`);
+      }
+    }
+
+    // Deuxième relance après 1h
+    const toRemind2 = await pool.query<TicketRow>(
+      `SELECT * FROM discord_casino_tickets
+       WHERE state = 'pending_screenshot'
+         AND COALESCE(reminder_count, 0) = 1
+         AND created_at < now() - interval '1 hour'
+         AND created_at > now() - interval '2 hours'
+       LIMIT 20`
+    );
+
+    for (const ticket of toRemind2.rows) {
+      try {
+        const ch = await client.channels.fetch(ticket.channel_id).catch(() => null) as TextChannel | null;
+        if (ch) {
+          await ch.send({
+            content: `<@${ticket.discord_user_id}>`,
+            embeds: [{
+              title: "⚠️ Dernière relance — ticket bientôt fermé",
+              description:
+                `Votre ticket sera **automatiquement fermé dans 1 heure** si nous ne recevons pas votre screenshot.\n\n` +
+                `Pour valider votre remboursement, envoyez simplement une **capture d'écran de votre dépôt** dans ce salon.\n\n` +
+                `*La capture doit afficher clairement le montant et votre pseudo casino.*`,
+              color: 0xED4245,
+            }],
+          });
+        }
+        await updateTicket(ticket.id, { reminder_count: 2 });
+      } catch (e: any) {
+        ctx.log(`[casino_tickets] remind2 ${ticket.id}: ${e?.message}`);
+      }
+    }
+  } catch (e: any) {
+    ctx.log(`[casino_tickets] checkInactiveTickets error: ${e?.message}`);
+  }
+}
+
+// ─── Auto-close cron ──────────────────────────────────────────────────────────
+export async function autoCloseExpiredTickets(client: Client, ctx: BotCtx) {
+  try {
+    const r = await pool.query<TicketRow>(
+      `SELECT * FROM discord_casino_tickets
+       WHERE state != 'closed'
+         AND (
+           (close_at IS NOT NULL AND close_at < now())
+           OR
+           (state = 'pending_screenshot' AND created_at < now() - interval '2 hours')
+         )
+       LIMIT 20`
+    );
+
+    for (const ticket of r.rows) {
+      try {
+        const isInactivity = ticket.state === "pending_screenshot";
+        const ch = await client.channels.fetch(ticket.channel_id).catch(() => null) as TextChannel | null;
+
+        if (ch) {
+          await ch.send({
+            embeds: [{
+              title: isInactivity ? "🔒 Ticket fermé — inactivité" : "🔒 Ticket fermé",
+              description: isInactivity
+                ? "Ce ticket est fermé en raison d'une **absence de réponse**. Il sera supprimé dans quelques instants."
+                : "Ce ticket est maintenant archivé et sera supprimé dans quelques instants.",
               color: 0x99AAB5,
             }],
           });
@@ -954,7 +1104,29 @@ export async function autoCloseExpiredTickets(client: Client, ctx: BotCtx) {
           await ch.delete("Auto-close ticket expiré").catch(() => {});
         }
 
+        // DM si fermeture pour inactivité
+        if (isInactivity) {
+          try {
+            const user = await client.users.fetch(ticket.discord_user_id);
+            await user.send({
+              embeds: [{
+                title: "🔒 Votre ticket a été fermé",
+                description:
+                  `Bonjour **${ticket.discord_username}**,\n\n` +
+                  `Votre ticket de remboursement **${ticket.casino}** a été fermé automatiquement car aucun screenshot n'a été reçu dans les délais impartis.\n\n` +
+                  `Si vous souhaitez toujours bénéficier de l'offre, vous pouvez ouvrir un **nouveau ticket** à tout moment depuis le salon réclamation.\n\n` +
+                  `N'hésitez pas à revenir quand vous êtes prêt ! 🎰`,
+                color: 0x99AAB5,
+                footer: { text: "LunaBot — Système de remboursement" },
+              }],
+            });
+          } catch {
+            // DMs désactivés — on ignore silencieusement
+          }
+        }
+
         await updateTicket(ticket.id, { state: "closed", closed_at: new Date() });
+        await syncVerifMessage(client, ticket.id, ctx);
         await postClosingLog(client, ticket, ticket.status, ctx);
       } catch (e: any) {
         ctx.log(`[casino_tickets] auto-close ${ticket.id} error: ${e?.message}`);
