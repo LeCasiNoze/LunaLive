@@ -1456,13 +1456,27 @@ export default function AffiEditorPage() {
                     </button>
                   </div>
                 </div>
-                <TextField
-                  label="Image du coffre (optionnelle)"
-                  value={cfg.goldenChestUrl}
-                  onChange={set("goldenChestUrl")}
-                  placeholder="https://.../chest.png"
-                  type="url"
-                />
+                <div style={s.field}>
+                  <label style={s.label}>Image du coffre (optionnelle)</label>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      type="url"
+                      value={cfg.goldenChestUrl}
+                      onChange={(e) => set("goldenChestUrl")(e.target.value)}
+                      placeholder="https://.../chest.png"
+                      style={{ ...s.input, flex: 1, marginTop: 0 }}
+                    />
+                    {cfg.goldenChestUrl && (
+                      <button
+                        style={{ ...s.btn, ...s.btnSecondary, padding: "5px 10px", fontSize: "0.78rem" }}
+                        onClick={() => set("goldenChestUrl")("")}
+                        title="Retirer l'image du coffre"
+                      >
+                        ✕ Retirer
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <TextField
                   label="Image jeux (optionnelle)"
                   value={cfg.goldenGameImageUrl}
@@ -1470,9 +1484,17 @@ export default function AffiEditorPage() {
                   placeholder="https://.../jeux.png"
                   type="url"
                 />
+                <TextField
+                  label="Image de fond (optionnelle)"
+                  value={cfg.goldenBackgroundUrl}
+                  onChange={set("goldenBackgroundUrl")}
+                  placeholder="https://.../background.jpg"
+                  type="url"
+                />
                 <div style={s.helperText}>
                   Si `Coffre` est selectionne, le template utilise `chest` de la couleur en cours.
                   Si `Image jeux` est selectionnee, il utilise automatiquement `jeux` dans le dossier de la variante.
+                  L'image de fond remplace le background par defaut de la variante.
                 </div>
               </Section>
 
