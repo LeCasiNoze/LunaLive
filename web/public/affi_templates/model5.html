@@ -152,6 +152,7 @@
     }
 
     .page {
+      position: relative;
       background:
         linear-gradient(180deg, var(--page-gradient-top) 0%, var(--page-gradient-mid) 68%, var(--page-gradient-bottom) 100%);
     }
@@ -161,11 +162,9 @@
       top: 0;
       left: 0;
       right: 0;
+      bottom: 0;
       min-height: 100svh;
-      height: 100dvh;
-      height: 100svh;
       z-index: 0;
-      transform: none;
       overflow: hidden;
       background: var(--page-bg);
     }
@@ -993,6 +992,7 @@
           var(--page-bg);
       }
 
+
       .hero-section {
         padding-top: 26px;
         padding-bottom: 18px;
@@ -1222,11 +1222,6 @@
     }
 
     @media (max-width: 720px) {
-      .hero-bg {
-        min-height: 100svh;
-        height: 100dvh;
-      }
-
       .hero-bg-media {
         object-position: center top;
         transform: scale(1.08);
