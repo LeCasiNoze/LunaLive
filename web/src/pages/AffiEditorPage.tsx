@@ -212,7 +212,47 @@ function applyConfig(
     if (getGoldenVisualMode(cfg) === "none") {
       html = html.replace(
         /<\/style>/,
-        `.chest-link, .final-chest-link, .cta-final-chest { display: none !important; }</style>`
+        `.chest-link, .final-chest-link, .cta-final-chest, .info-box { display: none !important; }
+.hero-bg-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  cursor: pointer;
+  display: block;
+}
+.hero-section { position: relative; z-index: 2; }
+.no-chest-cta { margin-top: 18px !important; }
+.no-chest-cta .btn-jouer { margin-top: 0 !important; }
+</style>`
+      );
+      html = html.replace(
+        /<\/body>/,
+        `<script>
+(function () {
+  var jouerBtn = document.querySelector('.btn-jouer');
+  if (jouerBtn) {
+    var href = jouerBtn.getAttribute('href');
+    var target = jouerBtn.getAttribute('target') || '_blank';
+    var rel = jouerBtn.getAttribute('rel') || 'noopener noreferrer';
+    if (href) {
+      var overlay = document.createElement('a');
+      overlay.href = href;
+      overlay.target = target;
+      overlay.rel = rel;
+      overlay.className = 'hero-bg-overlay';
+      var heroBg = document.querySelector('.hero-bg');
+      if (heroBg) heroBg.appendChild(overlay);
+    }
+  }
+  var liveCount = document.querySelector('.live-count');
+  var ctaCluster = document.querySelector('.cta-cluster');
+  if (liveCount && ctaCluster) {
+    ctaCluster.classList.add('no-chest-cta');
+    liveCount.parentNode.insertBefore(ctaCluster, liveCount.nextSibling);
+  }
+})();
+</script>
+</body>`
       );
     } else {
       const goldenVisualUrl = getGoldenVisualCandidates(cfg, goldenVariant)[0];
