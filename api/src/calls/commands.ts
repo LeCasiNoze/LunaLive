@@ -6,6 +6,7 @@ import { resolveSlot } from "./catalog.js";
 import {
   addCall,
   countUserCalls,
+  countUserCallsByUsername,
   effectiveLimit,
   getCallsSettings,
   listCalls,
@@ -513,18 +514,28 @@ export async function handleCallsCommand(opts: {
   }
 
   // limit (mods/streamer/admin => pas de limite)
-  const bypassLimit = canMod || actorRole === "admin" || actorRole === "streamer";
+  // viewers DLive (actorUserId=0) => bypassLimit dans addCall car on fait le check ici par username
+  const isDliveViewer = actorUserId === 0;
+  const bypassLimit = canMod || actorRole === "admin" || actorRole === "streamer" || isDliveViewer;
 
   let lim = effectiveLimit(settings.perUserLimit);
 
   // talent_calls_limit => ajoute des slots par rapport à la limite streamer
-  if (!bypassLimit && lim > 0) {
+  // (pas applicable aux viewers DLive sans compte Luna)
+  if (!isDliveViewer && !bypassLimit && lim > 0) {
     const level = await getUserTalentLevel(pool, actorUserId, CALLS_TALENT_CODE);
     const bonus = callsLimitBonusFromLevel(level);
     lim = lim + bonus;
   }
 
-  if (!bypassLimit && lim > 0) {
+  // Pour les viewers DLive, on vérifie la limite par username (pas par userId=0 partagé)
+  if (isDliveViewer && lim > 0 && actorUsername) {
+    const n = await countUserCallsByUsername(pool, streamerId, actorUsername);
+    if (n >= lim) {
+      await sendBotChat(pool, io, { streamerId, slug }, `❌ @${actorUsername} : tu as déjà ${n}/${lim} calls en file.`);
+      return { handled: true, showOriginalInChat };
+    }
+  } else if (!bypassLimit && lim > 0) {
     const n = await countUserCalls(pool, streamerId, actorUserId);
     if (n >= lim) {
       emitUserToast(io, actorUserId, {

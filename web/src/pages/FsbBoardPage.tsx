@@ -20,6 +20,7 @@ import {
 } from "../lib/api_fsb_dashboard";
 import { canAccessFsbBoard } from "../lib/fsb_access";
 import { FsbAgencySection } from "./fsb/FsbAgencySection";
+import { OverlayDesignerSection } from "./fsb/OverlayDesignerSection";
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   giveaway: "Giveaway",
@@ -45,107 +46,185 @@ type FormState = {
 };
 
 const SECTION_LABELS: Record<BoardSection, string> = {
-  home: "Accueil",
-  expenses: "Frais societe",
-  instagram: "Agenda",
-  agency: "Agence",
-  tools: "Outils",
+  home: "🏠 Accueil",
+  expenses: "💸 Frais",
+  instagram: "📅 Agenda",
+  agency: "🏢 Agence",
+  tools: "🛠 Outils",
 };
 
 const PAGE_CSS = `
-.fsb{--bg:#0e1526;--panel:#121b31;--soft:#16213c;--soft2:#0d1424;--bd:rgba(255,255,255,.08);--text:#eef4ff;--muted:rgba(210,223,245,.72);color:var(--text)}
-.fsb-shell{border:1px solid var(--bd);border-radius:24px;background:radial-gradient(circle at top left,rgba(255,178,107,.16),transparent 30%),radial-gradient(circle at top right,rgba(113,213,210,.14),transparent 26%),var(--bg);box-shadow:0 28px 80px rgba(0,0,0,.38);padding:20px}
-.fsb-card,.fsb-empty,.fsb-modal{border:1px solid var(--bd);border-radius:20px;background:var(--panel);box-shadow:0 18px 44px rgba(0,0,0,.22);padding:18px}
+/* ─── FSB Board — Design System v2 ────────────────────────────────── */
+.fsb{
+  --bg:#060d1c;--panel:#0a1628;--surface:#0e1d38;--surface2:#122244;
+  --bd:rgba(60,95,175,.18);--bd-s:rgba(99,140,220,.32);
+  --text:#dde8ff;--muted:rgba(148,178,232,.62);
+  --p:#6366f1;--p-dim:rgba(99,102,241,.14);
+  --cyan:#22d3ee;--cyan-dim:rgba(34,211,238,.11);
+  --amber:#f59e0b;--amber-dim:rgba(245,158,11,.12);
+  --purple:#a855f7;--purple-dim:rgba(168,85,247,.12);
+  --green:#10b981;--green-dim:rgba(16,185,129,.12);
+  --red:#f04e4e;--red-dim:rgba(240,78,78,.1);
+  color:var(--text);font-size:14px;
+}
+.fsb-shell{
+  background:
+    radial-gradient(ellipse 70% 50% at 5% 0%,rgba(99,102,241,.12) 0%,transparent 55%),
+    radial-gradient(ellipse 55% 40% at 95% 0%,rgba(34,211,238,.08) 0%,transparent 50%),
+    var(--bg);
+  border:1px solid var(--bd);border-radius:24px;padding:28px;
+  box-shadow:0 32px 80px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);
+}
+.fsb-card,.fsb-empty{
+  border:1px solid var(--bd);border-radius:20px;padding:22px;
+  background:linear-gradient(160deg,rgba(255,255,255,.028) 0%,transparent 60%),var(--panel);
+  box-shadow:0 2px 18px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.05);
+}
 .fsb-card+.fsb-card,.fsb-card+.fsb-empty,.fsb-empty+.fsb-card{margin-top:18px}
+.fsb-modal{
+  width:min(720px,100%);max-height:88vh;overflow:auto;padding:28px;
+  border:1px solid var(--bd-s);border-radius:22px;
+  background:linear-gradient(160deg,rgba(99,102,241,.05) 0%,transparent 50%),var(--panel);
+  box-shadow:0 40px 100px rgba(0,0,0,.65),0 0 0 1px rgba(99,102,241,.1);
+}
+.fsb-nav{
+  display:flex;gap:5px;flex-wrap:wrap;align-items:center;
+  background:var(--panel);border:1px solid var(--bd);border-radius:16px;padding:5px;margin-top:14px;
+}
+.fsb-navbtn{
+  border-radius:11px;border:1px solid transparent;font:inherit;font-size:13px;font-weight:700;
+  background:transparent;color:var(--muted);cursor:pointer;padding:8px 16px;
+  transition:color .15s,background .15s,box-shadow .15s;letter-spacing:.01em;
+  text-decoration:none;display:inline-flex;align-items:center;gap:6px;
+}
+.fsb-navbtn:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.fsb-navbtn-active{
+  background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);
+  color:#fff !important;box-shadow:0 4px 20px rgba(99,102,241,.42);border-color:transparent;
+}
 .fsb-row,.fsb-sectionhead{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between}
-.fsb-actions,.fsb-inline,.fsb-tags,.fsb-nav,.fsb-pills{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.fsb-nav{margin-top:14px}
-.fsb-btn,.fsb-icon,.fsb-table button,.fsb-navbtn,.fsb-jump{border-radius:12px;border:1px solid var(--bd);font:inherit;background:rgba(255,255,255,.04);color:var(--text);cursor:pointer;transition:transform .14s ease,filter .14s ease}
-.fsb-btn:hover,.fsb-icon:hover,.fsb-table button:hover,.fsb-navbtn:hover,.fsb-jump:hover{transform:translateY(-1px);filter:brightness(1.05)}
-.fsb-btn,.fsb-navbtn,.fsb-jump{padding:11px 14px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
-.fsb-btn-primary,.fsb-navbtn-active{background:linear-gradient(135deg,rgba(255,178,107,.24),rgba(255,141,141,.14));border-color:rgba(255,178,107,.26)}
-.fsb-icon{width:44px;height:44px;display:grid;place-items:center}
-.fsb-copy,.fsb-muted{color:var(--muted);line-height:1.6}
-.fsb-sectiontitle{margin:0;font-size:24px;letter-spacing:-.03em}
-.fsb-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-top:18px}
-.fsb-stat{border:1px solid var(--bd);border-radius:18px;background:var(--soft);padding:16px}
-.fsb-stat small{display:block;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-size:11px;font-weight:800}
-.fsb-stat strong{display:block;margin-top:10px;font-size:30px;letter-spacing:-.04em}
-.fsb-stat span{display:block;margin-top:8px;color:var(--muted);font-size:13px}
-.fsb-grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
-.fsb-grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.fsb-actions,.fsb-inline,.fsb-tags,.fsb-pills{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.fsb-btn,.fsb-icon,.fsb-table button,.fsb-jump{
+  border-radius:11px;border:1px solid var(--bd);font:inherit;font-size:13px;font-weight:700;
+  background:rgba(255,255,255,.04);color:var(--text);cursor:pointer;letter-spacing:.01em;
+  transition:transform .14s,box-shadow .14s,background .14s,filter .14s;
+}
+.fsb-btn:hover,.fsb-icon:hover,.fsb-table button:hover,.fsb-jump:hover{transform:translateY(-1px);background:rgba(255,255,255,.07);filter:brightness(1.06)}
+.fsb-btn,.fsb-jump{padding:9px 16px;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none}
+.fsb-btn-primary{
+  background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);
+  border-color:rgba(139,92,246,.4);color:#fff;box-shadow:0 2px 14px rgba(99,102,241,.32);
+}
+.fsb-btn-primary:hover{box-shadow:0 4px 22px rgba(99,102,241,.52);filter:brightness(1.1)}
+.fsb-icon{width:36px;height:36px;display:grid;place-items:center;padding:0}
+.fsb-copy,.fsb-muted{color:var(--muted);line-height:1.6;font-size:13px}
+.fsb-sectiontitle{
+  margin:0;font-size:22px;font-weight:800;letter-spacing:-.04em;
+  background:linear-gradient(135deg,var(--text) 40%,var(--muted));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.fsb-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:18px}
+.fsb-stat{border:1px solid var(--bd);border-radius:16px;background:var(--surface);padding:16px 18px;position:relative;overflow:hidden}
+.fsb-stat::before{content:'';position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,var(--p),var(--cyan));border-radius:16px 16px 0 0}
+.fsb-stat small{display:block;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-size:10px;font-weight:800}
+.fsb-stat strong{display:block;margin-top:10px;font-size:28px;font-weight:800;letter-spacing:-.05em;line-height:1}
+.fsb-stat span{display:block;margin-top:6px;color:var(--muted);font-size:12px}
+.fsb-grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.fsb-grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .fsb-module{display:flex;flex-direction:column;gap:14px;min-height:220px}
-.fsb-module strong{font-size:22px;letter-spacing:-.03em}
-.fsb-pill,.fsb-tag{display:inline-flex;align-items:center;padding:7px 10px;border-radius:999px;border:1px solid var(--bd);background:rgba(255,255,255,.04);font-size:12px;font-weight:700}
-.fsb-pill-soft,.fsb-tag-scheduled,.fsb-tag-rec{background:rgba(113,213,210,.12)}
-.fsb-pill-warn,.fsb-tag-due,.fsb-tag-uploading{background:rgba(255,178,107,.12)}
-.fsb-pill-bad,.fsb-tag-error{background:rgba(255,141,141,.12)}
-.fsb-tag-paid,.fsb-tag-done{background:rgba(120,231,180,.12)}
-.fsb-list{display:grid;gap:10px;margin-top:14px}
-.fsb-listitem{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:16px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03)}
+.fsb-module strong{font-size:16px;font-weight:800;letter-spacing:-.02em}
+.fsb-pill,.fsb-tag{display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;border:1px solid var(--bd);background:rgba(255,255,255,.04);font-size:11px;font-weight:700;letter-spacing:.02em}
+.fsb-pill-soft{background:var(--cyan-dim);border-color:rgba(34,211,238,.22);color:var(--cyan)}
+.fsb-pill-warn{background:var(--amber-dim);border-color:rgba(245,158,11,.24);color:var(--amber)}
+.fsb-pill-bad{background:var(--red-dim);border-color:rgba(240,78,78,.24);color:var(--red)}
+.fsb-tag-scheduled{background:var(--cyan-dim);border-color:rgba(34,211,238,.2);color:#67e8f9}
+.fsb-tag-done,.fsb-tag-paid{background:var(--green-dim);border-color:rgba(16,185,129,.22);color:#34d399}
+.fsb-tag-due{background:var(--amber-dim);border-color:rgba(245,158,11,.24);color:#fbbf24}
+.fsb-tag-error{background:var(--red-dim);border-color:rgba(240,78,78,.24);color:#fc8181}
+.fsb-tag-uploading{background:var(--purple-dim);border-color:rgba(168,85,247,.24);color:#c084fc}
+.fsb-tag-rec{background:var(--p-dim);border-color:rgba(99,102,241,.24);color:#a5b4fc}
+.fsb-list{display:grid;gap:8px;margin-top:14px}
+.fsb-listitem{
+  display:flex;gap:12px;align-items:center;justify-content:space-between;
+  padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.055);
+  background:rgba(255,255,255,.02);transition:background .15s,border-color .15s;
+}
+.fsb-listitem:hover{background:rgba(255,255,255,.04);border-color:var(--bd-s)}
 .fsb-listmain{min-width:0}
-.fsb-listmain strong,.fsb-listmain a{display:block;color:var(--text);text-decoration:none}
-.fsb-listmeta{margin-top:4px;color:var(--muted);font-size:12px;line-height:1.45}
+.fsb-listmain strong,.fsb-listmain a{display:block;color:var(--text);text-decoration:none;font-size:14px;font-weight:700}
+.fsb-listmeta{margin-top:3px;color:var(--muted);font-size:12px;line-height:1.45}
 .fsb-toolbar{margin-top:18px}
-.fsb-tablewrap{margin-top:18px;border:1px solid var(--bd);border-radius:20px;overflow:hidden;background:var(--panel)}
+.fsb-tablewrap{margin-top:18px;border:1px solid var(--bd);border-radius:18px;overflow:hidden;background:var(--panel)}
 .fsb-table{width:100%;border-collapse:collapse}
-.fsb-table th,.fsb-table td{padding:15px 16px;text-align:left;vertical-align:top}
-.fsb-table th{background:rgba(255,255,255,.03);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.fsb-table td{border-top:1px solid rgba(255,255,255,.06)}
-.fsb-table strong{display:block}
-.fsb-sub{margin-top:6px;color:var(--muted);font-size:12px;line-height:1.55}
-.fsb-alert{margin-top:16px;padding:13px 15px;border-radius:14px;border:1px solid rgba(255,141,141,.22);background:rgba(255,141,141,.08);color:#ffd7d7}
-.fsb-backdrop{position:fixed;inset:0;background:rgba(4,8,20,.74);backdrop-filter:blur(10px);display:grid;place-items:center;padding:16px;z-index:120}
-.fsb-modal{width:min(720px,100%);max-height:88vh;overflow:auto}
-.fsb-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}
+.fsb-table th,.fsb-table td{padding:13px 16px;text-align:left;vertical-align:top}
+.fsb-table th{background:rgba(255,255,255,.025);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:800}
+.fsb-table td{border-top:1px solid rgba(255,255,255,.04)}
+.fsb-table tr:hover td{background:rgba(255,255,255,.018)}
+.fsb-table strong{display:block;font-weight:700}
+.fsb-table button{padding:6px 12px;font-size:12px}
+.fsb-sub{margin-top:4px;color:var(--muted);font-size:12px;line-height:1.5}
+.fsb-alert{margin-top:16px;padding:13px 16px;border-radius:14px;border:1px solid rgba(240,78,78,.26);background:var(--red-dim);color:#fca5a5;font-size:13px}
+.fsb-backdrop{position:fixed;inset:0;background:rgba(4,8,24,.82);backdrop-filter:blur(14px);display:grid;place-items:center;padding:16px;z-index:120}
+.fsb-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}
 .fsb-field{display:grid;gap:8px}
 .fsb-field-full{grid-column:1/-1}
-.fsb-field label{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:800}
-.fsb-input,.fsb-select,.fsb-textarea{width:100%;box-sizing:border-box;border-radius:12px;border:1px solid var(--bd);background:rgba(255,255,255,.04);color:var(--text);font:inherit;padding:12px 13px}
+.fsb-field label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:800}
+.fsb-input,.fsb-select,.fsb-textarea{
+  width:100%;box-sizing:border-box;border-radius:11px;border:1px solid var(--bd);
+  background:var(--surface);color:var(--text);font:inherit;font-size:14px;padding:10px 13px;
+  transition:border-color .15s,box-shadow .15s;outline:none;
+}
+.fsb-input:focus,.fsb-select:focus,.fsb-textarea:focus{border-color:var(--p);box-shadow:0 0 0 3px rgba(99,102,241,.18)}
 .fsb-select option{color:#0d1b2e;background:#fff}
-.fsb-textarea{min-height:120px;resize:vertical}
+.fsb-textarea{min-height:110px;resize:vertical}
 .fsb-check{display:flex;gap:10px;align-items:center;font-weight:700}
-.fsb-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
-.fsb-calendar{margin-top:18px;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
-.fsb-calendar-head{padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.fsb-day,.fsb-daylist{border-radius:18px;border:1px solid rgba(255,255,255,.06);background:var(--soft2);padding:12px;display:flex;flex-direction:column;gap:10px}
-.fsb-day{min-height:190px}
-.fsb-daylist{min-height:240px}
-.fsb-day-out{opacity:.58}
-.fsb-day-today{border-color:rgba(255,178,107,.32);box-shadow:0 0 0 1px rgba(255,178,107,.16) inset}
-.fsb-day-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.fsb-day-title{font-weight:800}
-.fsb-day-sub{font-size:12px;color:var(--muted)}
-.fsb-day-items{display:grid;gap:8px}
-.fsb-mini{display:grid;gap:5px;padding:10px 11px;border-radius:14px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);color:var(--text);text-decoration:none}
-.fsb-mini strong{font-size:13px;line-height:1.35}
-.fsb-mini small{color:var(--muted);font-size:11px;line-height:1.35}
-.fsb-mini-scheduled{border-color:rgba(113,213,210,.18)}
-.fsb-mini-done{border-color:rgba(120,231,180,.18)}
-.fsb-mini-error{border-color:rgba(255,141,141,.18)}
-.fsb-mini-uploading{border-color:rgba(255,178,107,.18)}
-.fsb-more{color:var(--muted);font-size:12px}
-.fsb-week{margin-top:18px;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
-.fsb-emptyblock{display:grid;place-items:center;min-height:120px;border-radius:16px;border:1px dashed rgba(255,255,255,.08);color:var(--muted);font-size:13px}
-.fsb-tabs{display:flex;gap:4px;flex-wrap:wrap;margin-top:18px;border-bottom:1px solid var(--bd);padding-bottom:0}
-.fsb-tab{padding:10px 18px;border-radius:12px 12px 0 0;border:1px solid transparent;border-bottom:none;background:transparent;color:var(--muted);font:inherit;font-weight:700;cursor:pointer;transition:color .12s}
+.fsb-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.fsb-calendar{margin-top:18px;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
+.fsb-calendar-head{padding:8px 6px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center}
+.fsb-day,.fsb-daylist{border-radius:16px;border:1px solid rgba(255,255,255,.052);background:var(--surface);padding:10px;display:flex;flex-direction:column;gap:8px}
+.fsb-day{min-height:180px}
+.fsb-daylist{min-height:220px}
+.fsb-day-out{opacity:.42}
+.fsb-day-today{border-color:rgba(99,102,241,.36);box-shadow:0 0 0 1px rgba(99,102,241,.16) inset,0 4px 16px rgba(99,102,241,.1)}
+.fsb-day-top{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.fsb-day-title{font-weight:800;font-size:13px}
+.fsb-day-sub{font-size:11px;color:var(--muted)}
+.fsb-day-items{display:grid;gap:6px}
+.fsb-mini{display:grid;gap:3px;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03);color:var(--text);text-decoration:none;transition:background .12s}
+.fsb-mini:hover{background:rgba(255,255,255,.06)}
+.fsb-mini strong{font-size:12px;font-weight:700;line-height:1.3}
+.fsb-mini small{color:var(--muted);font-size:11px}
+.fsb-mini-scheduled{border-color:rgba(34,211,238,.2)}
+.fsb-mini-done{border-color:rgba(16,185,129,.2)}
+.fsb-mini-error{border-color:rgba(240,78,78,.22)}
+.fsb-mini-uploading{border-color:rgba(168,85,247,.2)}
+.fsb-more{color:var(--muted);font-size:11px}
+.fsb-week{margin-top:18px;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
+.fsb-emptyblock{display:grid;place-items:center;min-height:100px;border-radius:14px;border:1px dashed rgba(255,255,255,.08);color:var(--muted);font-size:13px}
+.fsb-tabs{display:flex;gap:2px;flex-wrap:wrap;margin-top:18px;background:var(--surface);border-radius:12px;padding:4px;width:fit-content;border:1px solid var(--bd)}
+.fsb-tab{padding:7px 16px;border-radius:9px;border:1px solid transparent;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:color .12s,background .12s}
 .fsb-tab:hover{color:var(--text)}
-.fsb-tab-active{background:var(--panel);border-color:var(--bd);border-bottom-color:var(--panel);color:var(--text);margin-bottom:-1px}
+.fsb-tab-active{background:var(--panel);border-color:var(--bd);color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.22)}
 .fsb-tab-content{margin-top:18px}
 .fsb-hint{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5}
-.fsb-form-section{background:var(--panel);border:1px solid var(--bd);border-radius:20px;padding:18px;margin-bottom:18px}
-.fsb-form-section h4{margin:0 0 14px;font-size:15px;letter-spacing:-.02em}
-.fsb-badge{display:inline-flex;align-items:center;padding:4px 9px;border-radius:999px;font-size:11px;font-weight:800;background:rgba(255,178,107,.16);color:rgba(255,200,140,1);border:1px solid rgba(255,178,107,.22)}
-.fsb-badge-green{background:rgba(120,231,180,.14);color:rgba(140,231,180,1);border-color:rgba(120,231,180,.22)}
+.fsb-form-section{background:var(--surface);border:1px solid var(--bd);border-radius:18px;padding:20px;margin-bottom:16px}
+.fsb-form-section h4{margin:0 0 14px;font-size:14px;font-weight:800;letter-spacing:-.02em}
+.fsb-badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:800;background:var(--amber-dim);color:#fbbf24;border:1px solid rgba(245,158,11,.24)}
+.fsb-badge-green{background:var(--green-dim);color:#34d399;border-color:rgba(16,185,129,.24)}
 .fsb-thumbrow{display:flex;gap:12px;align-items:center}
-.fsb-thumb{width:68px;height:68px;border-radius:16px;object-fit:cover;background:rgba(255,255,255,.04);flex-shrink:0}
-.fsb-thumb-placeholder{display:grid;place-items:center;background:linear-gradient(135deg,rgba(255,178,107,.22),rgba(113,213,210,.16));font-weight:800}
+.fsb-thumb{width:64px;height:64px;border-radius:14px;object-fit:cover;background:rgba(255,255,255,.04);flex-shrink:0}
+.fsb-thumb-placeholder{display:grid;place-items:center;background:linear-gradient(135deg,var(--amber-dim),var(--cyan-dim));font-weight:800}
 .fsb-coming{display:grid;gap:10px;margin-top:14px}
-.fsb-coming div{padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)}
-.fsb-coming strong{display:block}
-@media (max-width:1100px){.fsb-grid-3,.fsb-grid-2,.fsb-week{grid-template-columns:1fr}.fsb-calendar{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:860px){.fsb-grid{grid-template-columns:1fr}.fsb-calendar{grid-template-columns:1fr}.fsb-calendar-head{display:none}}
-@media (max-width:740px){.fsb-tablewrap{overflow:auto}.fsb-table{min-width:760px}}
+.fsb-coming div{padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.052);font-size:13px}
+.fsb-coming strong{display:block;font-weight:700;margin-bottom:2px}
+.fsb-module-icon{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-size:18px;flex-shrink:0;margin-bottom:4px}
+.fsb-module-icon-amber{background:var(--amber-dim);border:1px solid rgba(245,158,11,.24)}
+.fsb-module-icon-cyan{background:var(--cyan-dim);border:1px solid rgba(34,211,238,.22)}
+.fsb-module-icon-purple{background:var(--purple-dim);border:1px solid rgba(168,85,247,.22)}
+.fsb-module-icon-indigo{background:var(--p-dim);border:1px solid rgba(99,102,241,.24)}
+@media(max-width:1100px){.fsb-grid-3,.fsb-grid-2,.fsb-week{grid-template-columns:1fr}.fsb-calendar{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:860px){.fsb-grid{grid-template-columns:1fr}.fsb-calendar{grid-template-columns:1fr}.fsb-calendar-head{display:none}.fsb-shell{padding:16px}}
+@media(max-width:740px){.fsb-tablewrap{overflow:auto}.fsb-table{min-width:760px}}
 `;
 
 function normalizeSection(value: string | null): BoardSection {
@@ -824,17 +903,25 @@ export default function FsbBoardPage() {
             <section className="fsb-grid-3">
               <div className="fsb-card fsb-module">
                 <div className="fsb-sectionhead">
-                  <div>
-                    <strong>Frais societe</strong>
-                    <div className="fsb-copy">Vue mensuelle, stats rapides et CRUD interne.</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span className="fsb-module-icon fsb-module-icon-amber">💸</span>
+                    <div>
+                      <strong>Frais societe</strong>
+                      <div className="fsb-copy">Vue mensuelle, stats rapides et CRUD interne.</div>
+                    </div>
                   </div>
-                  <span className="fsb-pill">{monthLabel(monthKeyValue)}</span>
+                  <span className="fsb-pill fsb-pill-warn">{monthLabel(monthKeyValue)}</span>
                 </div>
                 <div className="fsb-stats" style={{ marginTop: 0 }}>
                   <div className="fsb-stat">
-                    <small>Total</small>
+                    <small>Total du mois</small>
                     <strong>{eur(expenseSummary.total)}</strong>
                     <span>{expenseRows.length} ligne(s)</span>
+                  </div>
+                  <div className="fsb-stat">
+                    <small>A payer</small>
+                    <strong>{eur(expenseSummary.due)}</strong>
+                    <span>Reste a regler</span>
                   </div>
                 </div>
                 <div className="fsb-actions" style={{ marginTop: "auto" }}>
@@ -842,27 +929,30 @@ export default function FsbBoardPage() {
                     Ouvrir les frais
                   </button>
                   <button className="fsb-btn" onClick={openCreate}>
-                    Nouveau frais
+                    + Nouveau
                   </button>
                 </div>
               </div>
 
               <div className="fsb-card fsb-module">
                 <div className="fsb-sectionhead">
-                  <div>
-                    <strong>Agenda Instagram</strong>
-                    <div className="fsb-copy">
-                      Programmations detectees depuis les publish jobs.
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span className="fsb-module-icon fsb-module-icon-cyan">📅</span>
+                    <div>
+                      <strong>Agenda Instagram</strong>
+                      <div className="fsb-copy">Programmations detectees depuis les publish jobs.</div>
                     </div>
                   </div>
                   <span className="fsb-pill fsb-pill-soft">
-                    {instagramView === "week" ? "Vue semaine" : "Vue mois"}
+                    {instagramView === "week" ? "Semaine" : "Mois"}
                   </span>
                 </div>
                 <div className="fsb-pills">
-                  <span className="fsb-pill">{instagramStats.total} element(s)</span>
                   <span className="fsb-pill fsb-pill-soft">{instagramStats.scheduled} a venir</span>
                   <span className="fsb-pill">{instagramStats.published} publies</span>
+                  {instagramStats.errors > 0 && (
+                    <span className="fsb-pill fsb-pill-bad">{instagramStats.errors} erreur(s)</span>
+                  )}
                 </div>
                 <div className="fsb-list">
                   {upcomingInstagram.length ? (
@@ -892,10 +982,11 @@ export default function FsbBoardPage() {
 
               <div className="fsb-card fsb-module">
                 <div className="fsb-sectionhead">
-                  <div>
-                    <strong>Outils</strong>
-                    <div className="fsb-copy">
-                      Redirections rapides vers les outils internes deja en place.
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span className="fsb-module-icon fsb-module-icon-indigo">🛠</span>
+                    <div>
+                      <strong>Outils</strong>
+                      <div className="fsb-copy">Redirections rapides vers les outils internes.</div>
                     </div>
                   </div>
                   <span className="fsb-pill">Hub</span>
@@ -926,16 +1017,28 @@ export default function FsbBoardPage() {
 
               <div className="fsb-card fsb-module">
                 <div className="fsb-sectionhead">
-                  <div>
-                    <strong>Agence</strong>
-                    <div className="fsb-copy">
-                      Casinos, deals, streamers subaffiliation et calculs des gains.
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span className="fsb-module-icon fsb-module-icon-purple">🏢</span>
+                    <div>
+                      <strong>Agence</strong>
+                      <div className="fsb-copy">Casinos, deals, streamers subaffiliation et gains.</div>
                     </div>
                   </div>
                   <span className="fsb-pill fsb-pill-soft">Interne</span>
                 </div>
-                <div className="fsb-copy">
-                  Module de gestion agence avec separation du net streamer et de la marge agence.
+                <div className="fsb-stats" style={{ marginTop: 0 }}>
+                  <div className="fsb-stat">
+                    <small>Revenu agence brut</small>
+                    <strong>{eur(expenseSummary.agencyIncome)}</strong>
+                    <span>Genere ce mois</span>
+                  </div>
+                  <div className="fsb-stat">
+                    <small>Solde net agence</small>
+                    <strong style={{ color: expenseSummary.agencyNet >= 0 ? "inherit" : "var(--red)" }}>
+                      {eur(expenseSummary.agencyNet)}
+                    </strong>
+                    <span>Apres versements</span>
+                  </div>
                 </div>
                 <div className="fsb-actions" style={{ marginTop: "auto" }}>
                   <button className="fsb-btn fsb-btn-primary" onClick={() => setSection("agency")}>
@@ -1469,67 +1572,65 @@ export default function FsbBoardPage() {
         ) : null}
         {section === "agency" ? <FsbAgencySection /> : null}
         {section === "tools" ? (
-          <section className="fsb-grid-3">
-            <div className="fsb-card fsb-module">
-              <div className="fsb-sectionhead">
-                <div>
-                  <strong>Editeur des modeles</strong>
-                  <div className="fsb-copy">Acces direct a l outil /editorFSN.</div>
+          <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            {/* Quick-access tool cards */}
+            <div className="fsb-grid-3">
+              <div className="fsb-card fsb-module">
+                <div className="fsb-sectionhead">
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span className="fsb-module-icon fsb-module-icon-indigo">✏️</span>
+                    <div>
+                      <strong>Editeur des modeles</strong>
+                      <div className="fsb-copy">Acces direct a l outil /editorFSN.</div>
+                    </div>
+                  </div>
+                  <span className="fsb-pill">Actif</span>
                 </div>
-                <span className="fsb-pill">Actif</span>
+                <div className="fsb-actions" style={{ marginTop: "auto" }}>
+                  <Link className="fsb-btn fsb-btn-primary" to={editorHref}>
+                    Ouvrir l editeur
+                  </Link>
+                </div>
               </div>
-              <div className="fsb-copy">
-                Outil dedie a la preparation des modeles HTML avec retour direct vers le board.
+
+              <div className="fsb-card fsb-module">
+                <div className="fsb-sectionhead">
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span className="fsb-module-icon fsb-module-icon-cyan">📊</span>
+                    <div>
+                      <strong>Stats videos Instagram</strong>
+                      <div className="fsb-copy">Metrics de publication et classement clips.</div>
+                    </div>
+                  </div>
+                  <span className="fsb-pill fsb-pill-warn">Bientot</span>
+                </div>
+                <div className="fsb-coming">
+                  <div><strong>Nombre de videos publiees</strong>Volume par semaine, mois et total.</div>
+                  <div><strong>Classement des tops clips</strong>Les meilleures videos avec acces direct.</div>
+                </div>
               </div>
-              <div className="fsb-actions" style={{ marginTop: "auto" }}>
-                <Link className="fsb-btn fsb-btn-primary" to={editorHref}>
-                  Ouvrir l editeur
-                </Link>
+
+              <div className="fsb-card fsb-module">
+                <div className="fsb-sectionhead">
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span className="fsb-module-icon fsb-module-icon-amber">🔧</span>
+                    <div>
+                      <strong>Modules a venir</strong>
+                      <div className="fsb-copy">Structure prete pour les prochains outils.</div>
+                    </div>
+                  </div>
+                  <span className="fsb-pill fsb-pill-soft">Structure prete</span>
+                </div>
+                <div className="fsb-coming">
+                  <div><strong>Agenda editorial complet</strong>Reels, clips et multi-plateformes.</div>
+                  <div><strong>Suivi automation</strong>Etat des jobs et prochaines publications.</div>
+                </div>
               </div>
             </div>
 
-            <div className="fsb-card fsb-module">
-              <div className="fsb-sectionhead">
-                <div>
-                  <strong>Stats videos Instagram</strong>
-                  <div className="fsb-copy">Emplacement reserve pour les metrics de publication.</div>
-                </div>
-                <span className="fsb-pill fsb-pill-warn">Bientot</span>
-              </div>
-              <div className="fsb-coming">
-                <div>
-                  <strong>Nombre de videos publiees</strong>
-                  Volume par semaine, mois et total.
-                </div>
-                <div>
-                  <strong>Classement des tops clips</strong>
-                  Les meilleures videos avec acces direct.
-                </div>
-              </div>
-            </div>
-
-            <div className="fsb-card fsb-module">
-              <div className="fsb-sectionhead">
-                <div>
-                  <strong>Autres modules internes</strong>
-                  <div className="fsb-copy">Place reservee pour les prochains outils du board.</div>
-                </div>
-                <span className="fsb-pill fsb-pill-soft">Structure prete</span>
-              </div>
-              <div className="fsb-coming">
-                <div>
-                  <strong>Agenda editorial complet</strong>
-                  Reels, clips et suivis multi-plateformes.
-                </div>
-                <div>
-                  <strong>Suivi automation</strong>
-                  Etat des jobs, erreurs et prochaines publications.
-                </div>
-                <div>
-                  <strong>Vue performance</strong>
-                  Stats par video, tops et historiques.
-                </div>
-              </div>
+            {/* Overlay Designer — full width */}
+            <div className="fsb-card" style={{ padding: 24 }}>
+              <OverlayDesignerSection />
             </div>
           </section>
         ) : null}

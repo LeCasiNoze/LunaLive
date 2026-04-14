@@ -42,6 +42,9 @@ const RumbleDebugPage = React.lazy(() => import("./pages/debug/RumbleDebugPage")
 // Affi Editor â€” outil interne accessible sur /editorFSN
 const AffiEditorPage = React.lazy(() => import("./pages/AffiEditorPage"));
 
+// Overlay OBS — renderer transparent pour /overlay
+const OverlayPage = React.lazy(() => import("./pages/OverlayPage"));
+
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
 import { WelcomeModal } from "./components/WelcomeModal";
@@ -69,6 +72,7 @@ function AppInner() {
   const isStandaloneReferral = location.pathname.startsWith("/r/");
   const hideChrome =
     location.pathname === "/editorFSN" ||
+    location.pathname.startsWith("/overlay") ||
     location.pathname.startsWith("/agency") ||
     isStandaloneReferral;
 
@@ -155,6 +159,16 @@ function AppInner() {
             }
           />
           <Route path="/popout/chat/:slug" element={<ChatPopupPage />} />
+
+          {/* Overlay OBS — renderer transparent */}
+          <Route
+            path="/overlay"
+            element={
+              <React.Suspense fallback={null}>
+                <OverlayPage />
+              </React.Suspense>
+            }
+          />
 
           {/* Affi template editor â€” outil interne */}
           <Route
