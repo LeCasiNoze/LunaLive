@@ -136,40 +136,41 @@ function defaultBackground(): BackgroundConfig {
 
 const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
   // ── SOLO: cam principale bas-gauche (sur le slot), chat droit, promo bas-centre
+  // Tout couvre 100% du canvas (stats 5% + zones 95% = 100%)
   solo: {
     background: defaultBackground(),
-    cams: [defaultCam(0, 65, 17, 28, "Cam principale")],
-    slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 88 },
+    cams: [defaultCam(0, 65, 17, 35, "Cam principale")],  // 65+35=100
+    slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 95 }, // 5+95=100
     stats: defaultStats(),
-    chat:  { enabled: true,  x: 71, y: 5,  w: 29, h: 88, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, bgOpacity: 0, borderRadius: 0 },
-    promo: { enabled: true,  x: 17, y: 78, w: 54, h: 15, imageUrl: "", borderRadius: 0, objectFit: "contain" },
+    chat:  { enabled: true,  x: 71, y: 5,  w: 29, h: 95, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, bgOpacity: 0, borderRadius: 0 }, // 5+95=100
+    promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" }, // 78+22=100
   },
 
   // ── DOUBLE: cam principale bas-gauche + cam 2 haut-droite, chat droite milieu, promo bas-centre
   double: {
     background: defaultBackground(),
     cams: [
-      defaultCam(0,  65, 17, 28, "Cam principale"),
-      defaultCam(71,  5, 29, 22, "Cam 2"),
+      defaultCam(0,  65, 17, 35, "Cam principale"),   // 65+35=100
+      defaultCam(71,  5, 29, 22, "Cam 2"),            // 5+22=27
     ],
-    slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 88 },
+    slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 95 },
     stats: defaultStats(),
-    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 66, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, bgOpacity: 0, borderRadius: 0 },
-    promo: { enabled: true,  x: 17, y: 78, w: 54, h: 15, imageUrl: "", borderRadius: 0, objectFit: "contain" },
+    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 73, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, bgOpacity: 0, borderRadius: 0 }, // 27+73=100
+    promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
   },
 
   // ── TRIPLE: cam principale bas-gauche (sur slot) + cam 2 haut-droite + cam 3 bas-droite
   triple: {
     background: defaultBackground(),
     cams: [
-      defaultCam(0,  65, 17, 28, "Cam principale"),
-      defaultCam(71,  5, 29, 22, "Cam 2"),
-      defaultCam(71, 64, 29, 29, "Cam 3"),
+      defaultCam(0,  65, 17, 35, "Cam principale"),   // 65+35=100
+      defaultCam(71,  5, 29, 22, "Cam 2"),            // 5+22=27
+      defaultCam(71, 64, 29, 36, "Cam 3"),            // 64+36=100
     ],
-    slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 88 },
+    slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 95 },
     stats: defaultStats(),
-    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 37, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, bgOpacity: 0, borderRadius: 0 },
-    promo: { enabled: true,  x: 17, y: 78, w: 54, h: 15, imageUrl: "", borderRadius: 0, objectFit: "contain" },
+    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 37, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, bgOpacity: 0, borderRadius: 0 }, // 27+37=64 (cam3 démarre à 64)
+    promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
   },
 };
 
@@ -1249,7 +1250,40 @@ const MODES: { value: OverlayMode; label: string; icon: string }[] = [
   { value: "triple", label: "Triple cam", icon: "🎥" },
 ];
 
-const STORAGE_KEY = "lunalive-overlay-designer-v1";
+const STORAGE_KEY = "lunalive-overlay-designer-v2"; // v2: zones couvrent 100% du canvas
+
+/** Push la config vers l'OBS overlay via le backend (debounced 600ms) */
+async function pushConfigToObs(config: OverlayConfig) {
+  const token = localStorage.getItem("token") || "";
+  if (!token) return; // pas connecté
+  try {
+    await fetch("/api/me/overlay/push-config", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ config }),
+    });
+  } catch {
+    // silencieux — pas critique
+  }
+}
+
+/** Regénère le chatUrl si c'est une URL LunaLive avec de nouveaux params */
+function rebuildChatUrlIfLuna(chat: ChatZoneConfig): string {
+  const url = chat.chatUrl;
+  if (!url || !url.includes("/overlay/obs/chat.html")) return url;
+  try {
+    const u = new URL(url);
+    u.searchParams.set("font", String(Math.round(chat.fontSize ?? 14)));
+    u.searchParams.set("max", String(Math.round(chat.maxMessages ?? 8)));
+    u.searchParams.set("scale", String(Math.round((chat.scale ?? 1) * 100) / 100));
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
 
 export function OverlayDesignerSection() {
   const [config, setConfig] = React.useState<OverlayConfig>(() => {
@@ -1262,13 +1296,28 @@ export function OverlayDesignerSection() {
   const [activePanel, setActivePanel] = React.useState<string | null>(null);
   const [copied, setCopied] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
+  const [pushed, setPushed] = React.useState(false);
+  const pushTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-save à chaque modification
+  // Auto-save + push live vers OBS à chaque modification
   React.useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(config)); } catch {}
     setSaved(true);
     const t = setTimeout(() => setSaved(false), 1200);
-    return () => clearTimeout(t);
+
+    // Push debounced vers OBS (600ms après la dernière modif)
+    if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    pushTimerRef.current = setTimeout(() => {
+      pushConfigToObs(config).then(() => {
+        setPushed(true);
+        setTimeout(() => setPushed(false), 1500);
+      });
+    }, 600);
+
+    return () => {
+      clearTimeout(t);
+      if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    };
   }, [config]);
 
   const obsUrl = React.useMemo(() => {
@@ -1301,7 +1350,12 @@ export function OverlayDesignerSection() {
   }
 
   function updateChat(patch: Partial<ChatZoneConfig>) {
-    setConfig((c) => ({ ...c, chat: { ...c.chat, ...patch } }));
+    setConfig((c) => {
+      const merged = { ...c.chat, ...patch };
+      // Si c'est une URL LunaLive, regénérer avec les nouveaux params (scale/font/max)
+      const chatUrl = rebuildChatUrlIfLuna(merged);
+      return { ...c, chat: { ...merged, chatUrl } };
+    });
   }
 
   function updatePromo(patch: Partial<PromoZoneConfig>) {
@@ -1334,6 +1388,13 @@ export function OverlayDesignerSection() {
               border: `1px solid ${saved ? "rgba(16,185,129,.3)" : "transparent"}`,
               transition: "all .3s",
             }}>✓ Sauvegardé</span>
+            <span style={{
+              fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999,
+              background: pushed ? "rgba(99,102,241,.15)" : "transparent",
+              color: pushed ? "#a5b4fc" : "transparent",
+              border: `1px solid ${pushed ? "rgba(99,102,241,.3)" : "transparent"}`,
+              transition: "all .3s",
+            }}>⚡ OBS live</span>
           </div>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(148,178,232,.62)", lineHeight: 1.5 }}>
             Configure ton overlay OBS. Chaque zone est positionnee en % du canvas 1920×1080.

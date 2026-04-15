@@ -1,6 +1,34 @@
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
+import { io } from "socket.io-client";
 import { decodeConfig, type OverlayConfig, type ZoneRect } from "./fsb/OverlayDesignerSection";
+
+const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
+  ?? "https://lunalive-api.onrender.com";
+
+function extractSlugFromChatUrl(chatUrl: string): string | null {
+  try { return new URL(chatUrl).searchParams.get("slug"); } catch { return null; }
+}
+
+/** Écoute obs:config via socket et retourne la config live si disponible */
+function useLiveConfig(baseConfig: OverlayConfig): OverlayConfig {
+  const [liveConfig, setLiveConfig] = React.useState<OverlayConfig | null>(null);
+  const slug = extractSlugFromChatUrl(baseConfig.chat.chatUrl);
+
+  React.useEffect(() => {
+    if (!slug) return;
+    const socket = io(LUNA_API_BASE, { transports: ["websocket", "polling"] });
+    socket.on("connect", () => {
+      socket.emit("stream:join", { slug });
+    });
+    socket.on("obs:config", (data: any) => {
+      if (data?.config) setLiveConfig(data.config as OverlayConfig);
+    });
+    return () => { socket.disconnect(); };
+  }, [slug]);
+
+  return liveConfig ?? baseConfig;
+}
 
 // ─── Timer hook ───────────────────────────────────────────────────────────────
 
@@ -397,10 +425,14 @@ export default function OverlayPage() {
   const raw = params.get("cfg");
   const isPreview = params.get("preview") === "1";
 
-  const config = React.useMemo(() => {
+  const baseConfig = React.useMemo(() => {
     if (!raw) return null;
     return decodeConfig(raw);
   }, [raw]);
+
+  // Live config via socket (mis à jour par le designer en temps réel)
+  const config = useLiveConfig(baseConfig ?? {} as OverlayConfig);
+  const effectiveConfig = baseConfig ? config : null;
 
   // Page-level styles: fullscreen, transparent background for OBS
   React.useEffect(() => {
@@ -423,7 +455,7 @@ export default function OverlayPage() {
     return <OverlayError message="Aucune configuration fournie." />;
   }
 
-  if (!config) {
+  if (!effectiveConfig) {
     return <OverlayError message="Configuration invalide ou corrompue." />;
   }
 
@@ -443,7 +475,7 @@ export default function OverlayPage() {
         inset: 0,
         background: isPreview ? "#07101f" : "transparent",
       }}>
-        <OverlayRenderer config={config} />
+        <OverlayRenderer config={effectiveConfig} />
       </div>
 
       {/* Preview badge */}

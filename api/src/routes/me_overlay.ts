@@ -307,6 +307,34 @@ meOverlayRouter.post(
 );
 
 /** =========================
+ *  ✅ Live config push (designer → OBS overlay via socket)
+ *  POST /me/overlay/push-config
+ *  body: { config: OverlayConfig, slug?: string }
+ *  ========================= */
+meOverlayRouter.post(
+  "/push-config",
+  a(async (req: any, res) => {
+    const uid = getUserId(req);
+    if (!uid) return res.status(401).json({ ok: false, error: "unauthorized" });
+
+    const config = req.body?.config;
+    if (!config || typeof config !== "object") {
+      return res.status(400).json({ ok: false, error: "missing_config" });
+    }
+
+    const slug = String(req.body?.slug || "").trim() || (await getOwnedStreamerSlugByUserId(uid));
+    if (!slug) return res.status(404).json({ ok: false, error: "no_streamer" });
+
+    const io = (req.app?.get?.("io") || req.app?.locals?.io) as Server | undefined;
+    if (!io) return res.status(500).json({ ok: false, error: "io_missing" });
+
+    io.to(`stream:${String(slug).toLowerCase()}`).emit("obs:config", { config });
+
+    return res.json({ ok: true, slug });
+  })
+);
+
+/** =========================
  *  ✅ Upload fond d'overlay
  *  POST /me/overlay/bg/upload (multipart)
  *  field: file (image)
