@@ -8,7 +8,6 @@ import type { ChatCosmetics } from "../../lib/cosmetics";
 import {
   avatarBorderClass,
   frameClass,
-  formatHHMM,
   getInitials,
   titleTierClass,
   usernameEffectClass,
