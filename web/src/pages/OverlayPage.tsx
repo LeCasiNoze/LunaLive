@@ -10,6 +10,28 @@ function extractSlugFromChatUrl(chatUrl: string): string | null {
   try { return new URL(chatUrl).searchParams.get("slug"); } catch { return null; }
 }
 
+/** Extrait l'URL du serveur API depuis le paramètre ?api= de la chatUrl.
+ *  Si absent, essaie window.location.origin (même serveur que la page),
+ *  puis fallback sur LUNA_API_BASE. */
+function resolveSocketBase(chatUrl: string): string {
+  try {
+    const api = new URL(chatUrl).searchParams.get("api");
+    if (api) {
+      const u = new URL(api);
+      if (u.protocol === "http:" || u.protocol === "https:") return u.origin;
+    }
+  } catch {}
+  // Si la page est servie par le serveur Express (pas localhost dev),
+  // connecter le socket au même origin évite les problèmes cross-service
+  try {
+    const origin = window.location.origin;
+    if (!origin.includes("localhost") && !origin.includes("127.0.0.1")) {
+      return origin;
+    }
+  } catch {}
+  return LUNA_API_BASE;
+}
+
 /** Écoute obs:config via socket et retourne la config live si disponible.
  *  Utilise obs:subscribe (room publique, sans auth) pour que l'overlay OBS
  *  reçoive les mises à jour en temps réel sans token. */
@@ -22,10 +44,12 @@ function useLiveConfig(baseConfig: OverlayConfig): OverlayConfig {
     searchParams.get("slug") ||
     null;
 
+  const socketBase = resolveSocketBase(baseConfig.chat?.chatUrl ?? "");
+
   React.useEffect(() => {
     if (!slug) return;
 
-    const socket = io(LUNA_API_BASE, { transports: ["websocket", "polling"] });
+    const socket = io(socketBase, { transports: ["websocket", "polling"] });
 
     socket.on("connect", () => {
       // Room publique — pas d'auth requise
@@ -41,7 +65,7 @@ function useLiveConfig(baseConfig: OverlayConfig): OverlayConfig {
     });
 
     return () => { socket.disconnect(); };
-  }, [slug]);
+  }, [slug, socketBase]);
 
   return liveConfig ?? baseConfig;
 }
