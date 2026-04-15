@@ -35,8 +35,9 @@ function resolveSocketBase(chatUrl: string): string {
 /** Écoute obs:config via socket et retourne la config live si disponible.
  *  Utilise obs:subscribe (room publique, sans auth) pour que l'overlay OBS
  *  reçoive les mises à jour en temps réel sans token. */
-function useLiveConfig(baseConfig: OverlayConfig): OverlayConfig {
+function useLiveConfig(baseConfig: OverlayConfig): { config: OverlayConfig; lastUpdate: number } {
   const [liveConfig, setLiveConfig] = React.useState<OverlayConfig | null>(null);
+  const [lastUpdate, setLastUpdate] = React.useState(0);
   const [searchParams] = useSearchParams();
 
   const slug =
@@ -47,27 +48,37 @@ function useLiveConfig(baseConfig: OverlayConfig): OverlayConfig {
   const socketBase = resolveSocketBase(baseConfig.chat?.chatUrl ?? "");
 
   React.useEffect(() => {
-    if (!slug) return;
+    console.log("[Overlay] useLiveConfig effect — slug=", slug, "socketBase=", socketBase);
+    if (!slug) {
+      console.warn("[Overlay] No slug — socket NOT connected. Chat chatUrl=", baseConfig.chat?.chatUrl);
+      return;
+    }
 
     const socket = io(socketBase, { transports: ["websocket", "polling"] });
 
     socket.on("connect", () => {
-      // Room publique — pas d'auth requise
-      socket.emit("obs:subscribe", { slug });
+      console.log("[Overlay] socket connected, joining obsview:", slug);
+      socket.emit("obs:subscribe", { slug }, (ack: any) => {
+        console.log("[Overlay] obs:subscribe ack:", ack);
+      });
     });
 
     socket.on("obs:config", (data: any) => {
-      if (data?.config) setLiveConfig(data.config as OverlayConfig);
+      console.log("[Overlay] obs:config received — mode:", data?.config?.mode, "chat.x:", data?.config?.chat?.x);
+      if (data?.config) {
+        setLiveConfig(data.config as OverlayConfig);
+        setLastUpdate(Date.now());
+      }
     });
 
-    socket.on("disconnect", () => {
-      // Reconnexion automatique gérée par socket.io
+    socket.on("connect_error", (err: any) => {
+      console.error("[Overlay] socket connect_error:", err?.message);
     });
 
     return () => { socket.disconnect(); };
   }, [slug, socketBase]);
 
-  return liveConfig ?? baseConfig;
+  return { config: liveConfig ?? baseConfig, lastUpdate };
 }
 
 // ─── Timer hook ───────────────────────────────────────────────────────────────
@@ -490,6 +501,29 @@ function OverlayError({ message }: { message: string }) {
   );
 }
 
+// ─── Debug flash (disparaît après 2s) ────────────────────────────────────────
+
+function LiveFlash() {
+  const [visible, setVisible] = React.useState(true);
+  React.useEffect(() => {
+    const t = setTimeout(() => setVisible(false), 2000);
+    return () => clearTimeout(t);
+  }, []);
+  if (!visible) return null;
+  return (
+    <div style={{
+      position: "fixed", bottom: 16, right: 16, zIndex: 10000,
+      background: "rgba(34,197,94,.9)", color: "#fff",
+      fontSize: 11, fontWeight: 800, padding: "4px 10px",
+      borderRadius: 999, letterSpacing: ".05em",
+      fontFamily: "system-ui, sans-serif",
+      pointerEvents: "none",
+    }}>
+      ✓ CONFIG UPDATED
+    </div>
+  );
+}
+
 // ─── Page component ───────────────────────────────────────────────────────────
 
 export default function OverlayPage() {
@@ -503,8 +537,15 @@ export default function OverlayPage() {
   }, [raw]);
 
   // Live config via socket (mis à jour par le designer en temps réel)
-  const config = useLiveConfig(baseConfig ?? {} as OverlayConfig);
+  const { config, lastUpdate } = useLiveConfig(baseConfig ?? {} as OverlayConfig);
   const effectiveConfig = baseConfig ? config : null;
+
+  // Debug: log chaque re-render avec le config courant
+  React.useEffect(() => {
+    if (effectiveConfig) {
+      console.log("[Overlay] render — isLive:", lastUpdate > 0, "chat.x:", effectiveConfig.chat?.x, "lastUpdate:", lastUpdate);
+    }
+  });
 
   // Page-level styles: fullscreen, transparent background for OBS
   React.useEffect(() => {
@@ -572,6 +613,11 @@ export default function OverlayPage() {
         }}>
           MODE PREVIEW
         </div>
+      )}
+
+      {/* Debug flash — visible 3s après chaque mise à jour socket */}
+      {lastUpdate > 0 && (
+        <LiveFlash key={lastUpdate} />
       )}
     </>
   );
