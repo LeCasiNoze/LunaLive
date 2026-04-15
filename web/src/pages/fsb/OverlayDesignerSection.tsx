@@ -1,6 +1,4 @@
 import * as React from "react";
-import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
-import { useAuth } from "../../auth/AuthProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
