@@ -878,6 +878,26 @@
     const SLUG  = (qs.get("slug") || "").trim();
     const TOKEN = (qs.get("token") || "").trim();
 
+    // ✅ mode compact OBS (?compact=1) — avatars réduits, no timestamp, padding serré
+    const COMPACT = qs.get("compact") === "1";
+    if (COMPACT) {
+      const s = document.createElement("style");
+      s.textContent = `
+        .chatMsgRow   { padding: 5px 9px; border-radius: 10px; }
+        .chatAvatarBorder { width: 28px; height: 28px; }
+        .chatAvatarCircle { width: 24px; height: 24px; font-size: 9px; }
+        .chatAvatarImg    { width: 24px; height: 24px; }
+        .chatHatEmoji     { font-size: 11px; top: -7px; }
+        .chatTimestamp    { display: none; }
+        .chatBodyText     { margin-top: 3px; font-size: 12px; }
+        .chatUsername     { font-size: 12px; }
+        .chatTitle        { font-size: 11px; }
+        .chatBadge        { padding: 2px 5px; font-size: 9px; }
+        .chatMsgInner     { gap: 6px; }
+      `;
+      document.head.appendChild(s);
+    }
+
     // ✅ options OBS (dimensions/typo)
     const mw = Math.floor(clampNum(qs.get("mw") || 420, 260, 2000));
     document.documentElement.style.setProperty("--wrap-maxw", `${mw}px`);

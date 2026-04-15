@@ -58,6 +58,7 @@ export type ChatZoneConfig = ZoneRect & {
   scale: number;       // scale global du widget chat → ?scale= (0.1–2)
   align: "left" | "center" | "right"; // alignement des messages → ?align=
   msgBgOpacity: number; // opacité fond messages (0–1) → ?msgbg=
+  compact: boolean;    // mode overlay compact (avatars réduits, no timestamp) → ?compact=1
   bgOpacity: number;
   borderRadius: number;
 };
@@ -144,7 +145,7 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     cams: [defaultCam(0, 65, 17, 35, "Cam principale")],  // 65+35=100
     slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 95 }, // 5+95=100
     stats: defaultStats(),
-    chat:  { enabled: true,  x: 71, y: 5,  w: 29, h: 95, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, bgOpacity: 0, borderRadius: 0 }, // 5+95=100
+    chat:  { enabled: true,  x: 71, y: 5,  w: 29, h: 95, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 }, // 5+95=100
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" }, // 78+22=100
   },
 
@@ -157,7 +158,7 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     ],
     slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 95 },
     stats: defaultStats(),
-    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 73, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, bgOpacity: 0, borderRadius: 0 }, // 27+73=100
+    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 73, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 }, // 27+73=100
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
   },
 
@@ -171,7 +172,7 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     ],
     slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 95 },
     stats: defaultStats(),
-    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 37, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, bgOpacity: 0, borderRadius: 0 }, // 27+37=64 (cam3 démarre à 64)
+    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 37, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 }, // 27+37=64 (cam3 démarre à 64)
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
   },
 };
@@ -1106,7 +1107,7 @@ const LUNA_CHAT_SLUGS = ["fabiozsis", "lecasinoze"];
 const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
   ?? "https://lunalive-api.onrender.com";
 
-function lunaChatUrl(slug: string, fontSize = 14, maxMessages = 8, scale = 1, align: ChatZoneConfig["align"] = "center", msgBgOpacity = 0.92) {
+function lunaChatUrl(slug: string, fontSize = 14, maxMessages = 8, scale = 1, align: ChatZoneConfig["align"] = "center", msgBgOpacity = 0.92, compact = true) {
   const base = `${window.location.origin}/overlay/obs/chat.html`;
   const params = new URLSearchParams({
     slug,
@@ -1117,6 +1118,7 @@ function lunaChatUrl(slug: string, fontSize = 14, maxMessages = 8, scale = 1, al
     align,
     msgbg: String(Math.round(msgBgOpacity * 100) / 100),
   });
+  if (compact) params.set("compact", "1");
   return `${base}?${params.toString()}`;
 }
 
@@ -1164,7 +1166,7 @@ function ChatPanel({
             return (
               <button
                 key={slug}
-                onClick={() => onChange({ chatUrl: lunaChatUrl(slug, chat.fontSize ?? 14, chat.maxMessages ?? 8, chat.scale ?? 1, chat.align ?? "center", chat.msgBgOpacity ?? 0.92), enabled: true })}
+                onClick={() => onChange({ chatUrl: lunaChatUrl(slug, chat.fontSize ?? 14, chat.maxMessages ?? 8, chat.scale ?? 1, chat.align ?? "center", chat.msgBgOpacity ?? 0.92, chat.compact ?? true), enabled: true })}
                 style={{
                   border: `1px solid ${isActive ? "rgba(34,211,238,.5)" : "rgba(34,211,238,.2)"}`,
                   borderRadius: 8,
@@ -1243,6 +1245,11 @@ function ChatPanel({
         </div>
       </div>
 
+      <Toggle
+        label="Mode compact (avatars réduits, sans timestamp)"
+        checked={chat.compact ?? true}
+        onChange={(v) => onChange({ compact: v })}
+      />
       <NumInput label="Opacite zone (fond iframe %)" value={chat.bgOpacity} onChange={(v) => onChange({ bgOpacity: v })} min={0} max={100} step={5} />
       <NumInput label="Border radius (px)" value={chat.borderRadius} onChange={(v) => onChange({ borderRadius: v })} min={0} max={40} step={1} />
       <hr style={S.sep} />
@@ -1353,6 +1360,8 @@ function rebuildChatUrlIfLuna(chat: ChatZoneConfig): string {
     u.searchParams.set("scale", String(Math.round((chat.scale ?? 1) * 100) / 100));
     u.searchParams.set("align", chat.align ?? "center");
     u.searchParams.set("msgbg", String(Math.round((chat.msgBgOpacity ?? 0.92) * 100) / 100));
+    if (chat.compact) u.searchParams.set("compact", "1");
+    else u.searchParams.delete("compact");
     return u.toString();
   } catch {
     return url;

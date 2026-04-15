@@ -463,6 +463,15 @@ export function attachChat(io: Server) {
       }
     );
 
+    // ✅ obs:subscribe — join public overlay room (no auth)
+    // Utilisé par l'OverlayPage pour recevoir obs:config sans token
+    socket.on("obs:subscribe", ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
+      const s = String(slug || "").trim().toLowerCase();
+      if (!s) return cb?.({ ok: false, error: "bad_slug" });
+      socket.join(`obsview:${s}`);
+      cb?.({ ok: true, slug: s });
+    });
+
     socket.on(
       "chat:join",
       async (

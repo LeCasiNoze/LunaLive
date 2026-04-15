@@ -11,7 +11,8 @@ function extractSlugFromChatUrl(chatUrl: string): string | null {
 }
 
 /** Écoute obs:config via socket et retourne la config live si disponible.
- *  Le slug est extrait de chatUrl en priorité, puis du param ?slug= de la page. */
+ *  Utilise obs:subscribe (room publique, sans auth) pour que l'overlay OBS
+ *  reçoive les mises à jour en temps réel sans token. */
 function useLiveConfig(baseConfig: OverlayConfig): OverlayConfig {
   const [liveConfig, setLiveConfig] = React.useState<OverlayConfig | null>(null);
   const [searchParams] = useSearchParams();
@@ -23,13 +24,22 @@ function useLiveConfig(baseConfig: OverlayConfig): OverlayConfig {
 
   React.useEffect(() => {
     if (!slug) return;
+
     const socket = io(LUNA_API_BASE, { transports: ["websocket", "polling"] });
+
     socket.on("connect", () => {
-      socket.emit("stream:join", { slug });
+      // Room publique — pas d'auth requise
+      socket.emit("obs:subscribe", { slug });
     });
+
     socket.on("obs:config", (data: any) => {
       if (data?.config) setLiveConfig(data.config as OverlayConfig);
     });
+
+    socket.on("disconnect", () => {
+      // Reconnexion automatique gérée par socket.io
+    });
+
     return () => { socket.disconnect(); };
   }, [slug]);
 
@@ -380,6 +390,7 @@ function ChatZone({ chat }: { chat: OverlayConfig["chat"] }) {
         style={{ width: "100%", height: "100%", border: "none", background: "transparent" }}
         title="Chat"
         allow="autoplay"
+        allowTransparency={true}
       />
     </div>
   );
@@ -479,12 +490,23 @@ export default function OverlayPage() {
     document.body.style.margin = "0";
     document.body.style.padding = "0";
     document.body.style.overflow = "hidden";
+
+    // Supprime les pseudo-elements body (grain + glow ambiant) qui leakent sous OBS
+    const styleEl = document.createElement("style");
+    styleEl.id = "overlay-transparent-override";
+    styleEl.textContent = `
+      html, body { background: transparent !important; }
+      body::before, body::after { display: none !important; }
+    `;
+    document.head.appendChild(styleEl);
+
     return () => {
       document.documentElement.style.background = "";
       document.body.style.background = "";
       document.body.style.margin = "";
       document.body.style.padding = "";
       document.body.style.overflow = "";
+      document.getElementById("overlay-transparent-override")?.remove();
     };
   }, []);
 

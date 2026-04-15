@@ -362,10 +362,25 @@ meOverlayRouter.put(
   })
 );
 
+/** Extrait le slug depuis la chatUrl de la config (ex: ?slug=lecasinoze) */
+function slugFromConfigChatUrl(config: any): string {
+  try {
+    const chatUrl = String(config?.chat?.chatUrl || "");
+    if (!chatUrl) return "";
+    const u = new URL(chatUrl);
+    return u.searchParams.get("slug") ?? "";
+  } catch {
+    return "";
+  }
+}
+
 /** =========================
  *  ✅ Live config push (designer → OBS overlay via socket) + persistance DB
  *  POST /me/overlay/push-config
  *  body: { config: OverlayConfig, slug?: string }
+ *
+ *  Pour les users FSB : persist sous fabiozsis en DB
+ *  + push socket sur le slug de la chatUrl (là où l'overlay écoute réellement)
  *  ========================= */
 meOverlayRouter.post(
   "/push-config",
@@ -378,25 +393,36 @@ meOverlayRouter.post(
       return res.status(400).json({ ok: false, error: "missing_config" });
     }
 
-    // Pour les users FSB, on push toujours sur la room fabiozsis
-    let slug: string;
+    const io = (req.app?.get?.("io") || req.app?.locals?.io) as Server | undefined;
+    if (!io) return res.status(500).json({ ok: false, error: "io_missing" });
+
     if (canAccessFsbOverlay(uid)) {
-      slug = FSB_OVERLAY_SLUG;
-      // Persister aussi en DB
+      // Persist en DB sous fabiozsis
       await pool.query(
         `UPDATE streamers SET overlay_config = $1 WHERE lower(slug) = lower($2)`,
         [JSON.stringify(config), FSB_OVERLAY_SLUG]
       );
-    } else {
-      slug = String(req.body?.slug || "").trim() || (await getOwnedStreamerSlugByUserId(uid)) || "";
-      if (!slug) return res.status(404).json({ ok: false, error: "no_streamer" });
+
+      // Slugs sur lesquels émettre : slug du chat (overlay écoute là) + fabiozsis
+      const chatSlug = slugFromConfigChatUrl(config) || FSB_OVERLAY_SLUG;
+      const slugsToNotify = [...new Set([chatSlug.toLowerCase(), FSB_OVERLAY_SLUG.toLowerCase()])];
+
+      for (const s of slugsToNotify) {
+        // Room authentifiée (stream:join avec token owner/admin)
+        io.to(`stream:${s}`).emit("obs:config", { config });
+        // Room publique (obs:subscribe sans auth) — pour l'OverlayPage dans OBS
+        io.to(`obsview:${s}`).emit("obs:config", { config });
+      }
+
+      return res.json({ ok: true, slug: chatSlug });
     }
 
-    const io = (req.app?.get?.("io") || req.app?.locals?.io) as Server | undefined;
-    if (!io) return res.status(500).json({ ok: false, error: "io_missing" });
+    // Utilisateur normal (non-FSB)
+    const slug = String(req.body?.slug || "").trim() || (await getOwnedStreamerSlugByUserId(uid)) || "";
+    if (!slug) return res.status(404).json({ ok: false, error: "no_streamer" });
 
-    io.to(`stream:${String(slug).toLowerCase()}`).emit("obs:config", { config });
-
+    io.to(`stream:${slug.toLowerCase()}`).emit("obs:config", { config });
+    io.to(`obsview:${slug.toLowerCase()}`).emit("obs:config", { config });
     return res.json({ ok: true, slug });
   })
 );
