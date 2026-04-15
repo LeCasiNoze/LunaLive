@@ -603,7 +603,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
       {/* ── Bas : rediff + chat ── */}
       <div style={S.bottomRow}>
         {/* Stream + stats */}
-        <div style={{ flex: "0 0 55%", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ flex: "0 0 55%", minWidth: 0, height: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ ...S.card, flex: "1 1 0", minHeight: 0, padding: 0, overflow: "hidden" }}>
             <RumbleStreamPlayer hlsUrl={streamInfo.hlsUrl} thumbnailUrl={streamInfo.thumbUrl} isLive={streamInfo.isLive} />
           </div>
@@ -626,8 +626,8 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
           </div>
         </div>
 
-        {/* Chat — même hauteur que le bloc stream */}
-        <div style={{ ...S.card, flex: "1 1 0", minWidth: 0, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        {/* Chat — hauteur fixée par bottomRow, scroll interne */}
+        <div style={{ ...S.card, flex: "1 1 0", minWidth: 0, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", height: "100%" }}>
           <ChatPanel
             slug="fabiozsis"
             compact={false}
@@ -670,7 +670,8 @@ const S: Record<string, React.CSSProperties> = {
     display: "flex",
     gap: 12,
     alignItems: "stretch",
-    minHeight: 340,
+    height: 460,
+    flexShrink: 0,
   },
   camsRow: {
     display: "grid",
