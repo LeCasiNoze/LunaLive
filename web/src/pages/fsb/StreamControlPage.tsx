@@ -558,15 +558,32 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
         </div>
       </div>
 
-      {/* ── Middle: stream + chat ── */}
-      <div style={S.midRow}>
+      {/* ── Cams (en haut) ── */}
+      <div style={S.camsRow}>
+        {slots.map((slot, i) => (
+          <CamCard
+            key={i}
+            slotIndex={i}
+            state={slot}
+            mySlug={mySlug}
+            myCamActive={myCamActive}
+            localStream={localStream}
+            onActivate={activateCam}
+            onDeactivate={deactivateCam}
+            onFiltersChange={(patch) => handleFiltersChange(i, patch)}
+          />
+        ))}
+      </div>
+
+      {/* ── Bas : rediff + chat ── */}
+      <div style={S.bottomRow}>
         {/* Stream + stats */}
-        <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ flex: "0 0 55%", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ ...S.card, flex: "1 1 0", minHeight: 0, padding: 0, overflow: "hidden" }}>
             <RumbleStreamPlayer hlsUrl={streamInfo.hlsUrl} thumbnailUrl={streamInfo.thumbUrl} isLive={streamInfo.isLive} />
           </div>
           {/* Stats bar */}
-          <div style={{ ...S.card, padding: "10px 16px", display: "flex", gap: 24, alignItems: "center" }}>
+          <div style={{ ...S.card, padding: "10px 16px", display: "flex", gap: 20, alignItems: "center", flexShrink: 0 }}>
             {[
               { icon: "⏱", label: "Durée", value: timer },
               { icon: "👁", label: "Viewers", value: streamInfo.isLive ? String(streamInfo.viewers) : "—" },
@@ -584,35 +601,18 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
           </div>
         </div>
 
-        {/* Chat */}
-        <div style={{ ...S.card, width: 320, flexShrink: 0, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0 }}>
+        {/* Chat — même hauteur que le bloc stream */}
+        <div style={{ ...S.card, flex: "1 1 0", minWidth: 0, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <ChatPanel
             slug="fabiozsis"
             compact={false}
             autoFocus={false}
             visualMode="popup"
             botMenuVariant="dock"
-            botMenuDockWidth={320}
+            botMenuDockWidth={420}
             onRequireLogin={() => {}}
           />
         </div>
-      </div>
-
-      {/* ── Bottom: 3 cam cards ── */}
-      <div style={S.camsRow}>
-        {slots.map((slot, i) => (
-          <CamCard
-            key={i}
-            slotIndex={i}
-            state={slot}
-            mySlug={mySlug}
-            myCamActive={myCamActive}
-            localStream={localStream}
-            onActivate={activateCam}
-            onDeactivate={deactivateCam}
-            onFiltersChange={(patch) => handleFiltersChange(i, patch)}
-          />
-        ))}
       </div>
     </div>
   );
@@ -641,11 +641,11 @@ const S: Record<string, React.CSSProperties> = {
     paddingBottom: 12,
     borderBottom: "1px solid rgba(255,255,255,.05)",
   },
-  midRow: {
+  bottomRow: {
     display: "flex",
     gap: 12,
-    flex: "1 0 auto",
-    minHeight: 360,
+    alignItems: "stretch",
+    minHeight: 340,
   },
   camsRow: {
     display: "grid",
