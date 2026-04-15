@@ -386,7 +386,6 @@ function FilterSlider({
 
 export default function StreamControlPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
 
   // FSB auth guard
   if (!user || !FSB_ALLOWED_IDS.has(user.id)) {

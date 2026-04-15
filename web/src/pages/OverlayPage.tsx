@@ -123,7 +123,7 @@ function useCamStreams(socket: ReturnType<typeof io> | null): Map<number, CamStr
         socket.emit("cam:answer", { to: offerId, sdp: answer });
       };
 
-      const handleIce = async ({ from, candidate }: { from: string; candidate: RTCIceCandidateInit }) => {
+      const handleIce = async ({ candidate }: { from: string; candidate: RTCIceCandidateInit }) => {
         if (!peersRef.current.has(bc.slug)) return;
         const myPc = peersRef.current.get(bc.slug);
         if (!myPc) return;
