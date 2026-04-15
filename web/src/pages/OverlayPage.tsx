@@ -310,6 +310,7 @@ function ChatZone({ chat }: { chat: OverlayConfig["chat"] }) {
       overflow: "hidden",
     }}>
       <iframe
+        key={chat.chatUrl}
         src={chat.chatUrl}
         style={{ width: "100%", height: "100%", border: "none", background: "transparent" }}
         title="Chat"

@@ -53,6 +53,9 @@ export type StatsZoneConfig = ZoneRect & {
 export type ChatZoneConfig = ZoneRect & {
   enabled: boolean;
   chatUrl: string;
+  fontSize: number;    // taille police messages (px) → ?font=
+  maxMessages: number; // nb max messages affichés → ?max=
+  scale: number;       // scale global du widget chat → ?scale= (0.3–2)
   bgOpacity: number;
   borderRadius: number;
 };
@@ -138,7 +141,7 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     cams: [defaultCam(0, 65, 17, 28, "Cam principale")],
     slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 88 },
     stats: defaultStats(),
-    chat:  { enabled: true,  x: 71, y: 5,  w: 29, h: 88, chatUrl: "", bgOpacity: 0, borderRadius: 0 },
+    chat:  { enabled: true,  x: 71, y: 5,  w: 29, h: 88, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 15, imageUrl: "", borderRadius: 0, objectFit: "contain" },
   },
 
@@ -151,7 +154,7 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     ],
     slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 88 },
     stats: defaultStats(),
-    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 66, chatUrl: "", bgOpacity: 0, borderRadius: 0 },
+    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 66, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 15, imageUrl: "", borderRadius: 0, objectFit: "contain" },
   },
 
@@ -165,7 +168,7 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     ],
     slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 88 },
     stats: defaultStats(),
-    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 37, chatUrl: "", bgOpacity: 0, borderRadius: 0 },
+    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 37, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 15, imageUrl: "", borderRadius: 0, objectFit: "contain" },
   },
 };
@@ -486,6 +489,7 @@ function PreviewCanvasContent({ config, scale }: { config: OverlayConfig; scale:
             boxSizing: "border-box",
           }}>
             <iframe
+              key={config.chat.chatUrl}
               src={config.chat.chatUrl}
               style={{ width: "100%", height: "100%", border: "none", background: "transparent" }}
               title="Chat preview"
@@ -1078,15 +1082,34 @@ const LUNA_CHAT_SLUGS = ["fabiozsis", "lecasinoze"];
 const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
   ?? "https://lunalive-api.onrender.com";
 
-function lunaChatUrl(slug: string) {
+function lunaChatUrl(slug: string, fontSize = 14, maxMessages = 8, scale = 1) {
   const base = `${window.location.origin}/overlay/obs/chat.html`;
   const params = new URLSearchParams({
     slug,
     api: LUNA_API_BASE,
-    font: "16",   // taille réduite pour la preview
-    max: "12",
+    font: String(fontSize),
+    max: String(maxMessages),
+    scale: String(Math.round(scale * 100) / 100),
   });
   return `${base}?${params.toString()}`;
+}
+
+/** Injecte/écrase les paramètres de rendu dans n'importe quelle URL de chat */
+export function chatUrlWithParams(url: string, opts: { fontSize?: number; maxMessages?: number; scale?: number; zoneWidthPct?: number }): string {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    if (opts.fontSize != null) u.searchParams.set("font", String(Math.round(opts.fontSize)));
+    if (opts.maxMessages != null) u.searchParams.set("max", String(Math.round(opts.maxMessages)));
+    if (opts.scale != null) u.searchParams.set("scale", String(Math.round(opts.scale * 100) / 100));
+    if (opts.zoneWidthPct != null) {
+      const mw = Math.round((opts.zoneWidthPct / 100) * 1920);
+      u.searchParams.set("mw", String(mw));
+    }
+    return u.toString();
+  } catch {
+    return url;
+  }
 }
 
 function ChatPanel({
@@ -1110,22 +1133,25 @@ function ChatPanel({
       <div style={S.field}>
         <span style={S.label}>Brancher chat LunaLive</span>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {LUNA_CHAT_SLUGS.map((slug) => (
-            <button
-              key={slug}
-              onClick={() => onChange({ chatUrl: lunaChatUrl(slug), enabled: true })}
-              style={{
-                border: `1px solid ${chat.chatUrl === lunaChatUrl(slug) ? "rgba(34,211,238,.5)" : "rgba(34,211,238,.2)"}`,
-                borderRadius: 8,
-                background: chat.chatUrl === lunaChatUrl(slug) ? "rgba(34,211,238,.12)" : "rgba(34,211,238,.04)",
-                color: chat.chatUrl === lunaChatUrl(slug) ? "#67e8f9" : "rgba(103,232,249,.6)",
-                padding: "5px 12px", cursor: "pointer", font: "inherit",
-                fontSize: 12, fontWeight: 700,
-              }}
-            >
-              {slug}
-            </button>
-          ))}
+          {LUNA_CHAT_SLUGS.map((slug) => {
+            const isActive = chat.chatUrl.includes(`slug=${slug}`);
+            return (
+              <button
+                key={slug}
+                onClick={() => onChange({ chatUrl: lunaChatUrl(slug, chat.fontSize ?? 14, chat.maxMessages ?? 8, chat.scale ?? 1), enabled: true })}
+                style={{
+                  border: `1px solid ${isActive ? "rgba(34,211,238,.5)" : "rgba(34,211,238,.2)"}`,
+                  borderRadius: 8,
+                  background: isActive ? "rgba(34,211,238,.12)" : "rgba(34,211,238,.04)",
+                  color: isActive ? "#67e8f9" : "rgba(103,232,249,.6)",
+                  padding: "5px 12px", cursor: "pointer", font: "inherit",
+                  fontSize: 12, fontWeight: 700,
+                }}
+              >
+                {slug}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -1135,10 +1161,30 @@ function ChatPanel({
         onChange={(v) => onChange({ chatUrl: v })}
         placeholder="https://www.twitch.tv/popout/.../chat?popout="
       />
-      <div style={S.row2}>
-        <NumInput label="Opacite fond (%)" value={chat.bgOpacity} onChange={(v) => onChange({ bgOpacity: v })} min={0} max={100} step={5} />
-        <NumInput label="Border radius (px)" value={chat.borderRadius} onChange={(v) => onChange({ borderRadius: v })} min={0} max={40} step={1} />
+      {/* Avertissement : les changements de taille s'appliquent en re-cliquant sur le slug */}
+      <div style={{ background: "rgba(245,158,11,.07)", border: "1px solid rgba(245,158,11,.2)", borderRadius: 8, padding: "6px 10px", fontSize: 11, color: "rgba(251,191,36,.8)" }}>
+        Après avoir changé la taille, re-clique sur le slug pour recharger le chat.
       </div>
+      <div style={S.row2}>
+        <NumInput label="Police (px)" value={chat.fontSize ?? 14} onChange={(v) => onChange({ fontSize: v })} min={8} max={48} step={1} />
+        <NumInput label="Nb messages max" value={chat.maxMessages ?? 8} onChange={(v) => onChange({ maxMessages: v })} min={1} max={30} step={1} />
+      </div>
+      <div style={S.field}>
+        <span style={S.label}>Scale global du chat (0.3 = très petit · 1 = normal · 1.5 = grand)</span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <input
+            type="range" min={0.3} max={2} step={0.05}
+            value={chat.scale ?? 1}
+            onChange={(e) => onChange({ scale: Number(e.target.value) })}
+            style={{ flex: 1, accentColor: "#22d3ee" }}
+          />
+          <span style={{ color: "#dde8ff", fontWeight: 800, fontSize: 13, minWidth: 36, textAlign: "right" }}>
+            ×{(chat.scale ?? 1).toFixed(2)}
+          </span>
+        </div>
+      </div>
+      <NumInput label="Opacite fond (%)" value={chat.bgOpacity} onChange={(v) => onChange({ bgOpacity: v })} min={0} max={100} step={5} />
+      <NumInput label="Border radius (px)" value={chat.borderRadius} onChange={(v) => onChange({ borderRadius: v })} min={0} max={40} step={1} />
       <hr style={S.sep} />
       <RectInputs value={chat} onChange={onChange} />
     </Panel>
