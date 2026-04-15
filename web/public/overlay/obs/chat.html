@@ -21,6 +21,9 @@
       --chat-scale: 1;
       --chat-font: 22px;
       --chat-lh: 1.3;
+      --msg-bg-opacity: 0.92;
+      --chat-justify: flex-start;   /* left|center|flex-end */
+      --chat-origin: bottom left;   /* transform-origin selon align */
     }
 
     html, body{
@@ -31,11 +34,10 @@
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
     }
 
-    /* stack bottom-left */
     body{
       display:flex;
       align-items:flex-end;
-      justify-content:flex-start;
+      justify-content: var(--chat-justify);
     }
 
     #root{ padding:0; margin:0; }
@@ -50,7 +52,7 @@
 
       /* ✅ scale OBS */
       transform: scale(var(--chat-scale));
-      transform-origin: bottom left;
+      transform-origin: var(--chat-origin);
     }
 
     /* =========================================================================
@@ -74,9 +76,9 @@
 
     .chatMsgRow{
       border-radius: 14px;
-      border: 1px solid rgba(255,255,255,0.10);
-      background: rgba(17, 10, 23, 0.92);
-      box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+      border: 1px solid rgba(255,255,255,calc(var(--msg-bg-opacity) * 0.11));
+      background: rgba(17, 10, 23, var(--msg-bg-opacity));
+      box-shadow: 0 10px 40px rgba(0,0,0,calc(var(--msg-bg-opacity) * 0.27));
       padding: 10px 12px;
       overflow: hidden;
       will-change: transform, opacity;
@@ -880,7 +882,7 @@
     const mw = Math.floor(clampNum(qs.get("mw") || 420, 260, 2000));
     document.documentElement.style.setProperty("--wrap-maxw", `${mw}px`);
 
-    const scale = clampNum(qs.get("scale") || 1, 0.5, 3);
+    const scale = clampNum(qs.get("scale") || 1, 0.1, 3);
     document.documentElement.style.setProperty("--chat-scale", String(scale));
 
     const font = Math.floor(clampNum(qs.get("font") || 22, 10, 60));
@@ -889,11 +891,41 @@
     const lh = clampNum(qs.get("lh") || qs.get("line") || 1.3, 1.0, 2.0);
     document.documentElement.style.setProperty("--chat-lh", String(lh));
 
+    // align: left (default) | center | right
+    const alignParam = (qs.get("align") || "left").trim().toLowerCase();
+    const justifyMap = { left: "flex-start", center: "center", right: "flex-end" };
+    const originMap  = { left: "bottom left", center: "bottom center", right: "bottom right" };
+    const justify = justifyMap[alignParam] || "flex-start";
+    const origin  = originMap[alignParam]  || "bottom left";
+    document.documentElement.style.setProperty("--chat-justify", justify);
+    document.documentElement.style.setProperty("--chat-origin",  origin);
+
+    // msgbg: opacité du fond des messages (0 = transparent, 1 = plein)
+    const msgbg = clampNum(qs.get("msgbg") ?? qs.get("bg") ?? 0.92, 0, 1);
+    document.documentElement.style.setProperty("--msg-bg-opacity", String(msgbg));
+
     const stack = document.getElementById("stack");
 
     // comportement
-    const MAX  = Math.floor(clampNum(qs.get("max") || 8, 1, 50));
+    let MAX  = Math.floor(clampNum(qs.get("max") || 8, 1, 50));
     const LIFE = Math.floor(clampNum(qs.get("life") || 0, 0, 3600)); // 0 = illimité
+
+    // ✅ postMessage API — update params sans reload
+    window.addEventListener("message", function(e) {
+      const d = e.data;
+      if (!d || d.type !== "obs-chat-update") return;
+      if (d.font  != null) document.documentElement.style.setProperty("--chat-font",      `${Math.floor(clampNum(d.font, 10, 60))}px`);
+      if (d.scale != null) document.documentElement.style.setProperty("--chat-scale",     String(clampNum(d.scale, 0.1, 3)));
+      if (d.mw    != null) document.documentElement.style.setProperty("--wrap-maxw",      `${Math.floor(clampNum(d.mw, 100, 2000))}px`);
+      if (d.msgbg != null) document.documentElement.style.setProperty("--msg-bg-opacity", String(clampNum(d.msgbg, 0, 1)));
+      if (d.max   != null) { MAX = Math.floor(clampNum(d.max, 1, 50)); if (typeof clampStack === "function") clampStack(); }
+      if (d.align != null) {
+        const j2 = justifyMap[String(d.align)] || "flex-start";
+        const o2 = originMap[String(d.align)]  || "bottom left";
+        document.documentElement.style.setProperty("--chat-justify", j2);
+        document.documentElement.style.setProperty("--chat-origin",  o2);
+      }
+    });
     let viewerSkinsLevel = 1;
 
     // cosmetics cache

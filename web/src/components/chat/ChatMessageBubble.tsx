@@ -327,10 +327,7 @@ export function ChatMessageBubble({
                   </div>
                 </div>
 
-                {/* Timestamp (caché, visible au hover via CSS) */}
-                <div className="chatTimestamp" style={{ opacity: isDlive ? .75 : undefined }}>
-                  {formatHHMM(msg.createdAt)}
-                </div>
+                {/* Timestamp supprimé */}
               </div>
 
               {/* Titre sous username */}

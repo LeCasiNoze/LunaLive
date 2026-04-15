@@ -2385,24 +2385,7 @@ function openChatPopup() {
             <div style={{ opacity: 0.7, fontSize: 13 }}>Aucun message</div>
           ) : null}
 
-          {/* Pré-calcul du grouping : messages consécutifs du même user ≤ 2min */}
           {(() => {
-            const groupedIds = new Set<number | string>();
-            let lastVisible: { userId: number; createdAt: string } | null = null;
-            for (const m of messages) {
-              const isDeleted = !!m.deleted || m.body === "";
-              if (m.userId !== 0 && isDeleted) continue; // invisible → ne casse pas la chaîne
-              if (m.userId === 0) { lastVisible = null; continue; } // msg système : reset
-              if (
-                lastVisible &&
-                lastVisible.userId === m.userId &&
-                new Date(m.createdAt).getTime() - new Date(lastVisible.createdAt).getTime() < 2 * 60 * 1000
-              ) {
-                groupedIds.add(m.id);
-              }
-              lastVisible = { userId: m.userId, createdAt: m.createdAt };
-            }
-
             return messages.map((m) => {
             const isSystem = m.userId === 0;
             const isDeleted = !!m.deleted || m.body === "";
@@ -2463,7 +2446,6 @@ function openChatPopup() {
                   currentUsername={join?.me?.username ?? null}
                   resolveEmote={resolveEmote}
                   msg={{ ...m, cosmetics: effectiveCosmetics }}
-                  isGrouped={groupedIds.has(m.id)}
                 />
               </div>
             );

@@ -329,6 +329,21 @@ function ChatZone({ chat }: { chat: OverlayConfig["chat"] }) {
   if (!chat.enabled || !chat.chatUrl) return null;
 
   const opacity = (chat.bgOpacity ?? 0) / 100;
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+
+  // Met à jour les params visuels via postMessage sans recharger l'iframe
+  React.useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe?.contentWindow) return;
+    iframe.contentWindow.postMessage({
+      type:  "obs-chat-update",
+      font:  chat.fontSize ?? 14,
+      max:   chat.maxMessages ?? 8,
+      scale: chat.scale ?? 1,
+      align: chat.align ?? "center",
+      msgbg: chat.msgBgOpacity ?? 0.92,
+    }, "*");
+  }, [chat.fontSize, chat.maxMessages, chat.scale, chat.align, chat.msgBgOpacity]);
 
   return (
     <div style={{
@@ -338,6 +353,7 @@ function ChatZone({ chat }: { chat: OverlayConfig["chat"] }) {
       overflow: "hidden",
     }}>
       <iframe
+        ref={iframeRef}
         key={chat.chatUrl}
         src={chat.chatUrl}
         style={{ width: "100%", height: "100%", border: "none", background: "transparent" }}
