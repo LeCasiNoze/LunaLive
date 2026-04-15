@@ -90,7 +90,7 @@ interface Config {
   p_ctaY: string;
 }
 
-type GoldenChanceVariant = "gold" | "ruby" | "emerald" | "sapphire";
+type GoldenChanceVariant = "gold" | "ruby" | "emerald" | "sapphire" | "amethyst" | "obsidian" | "diamond" | "rose" | "bronze" | "jade";
 
 const DEFAULT_CONFIG: Config = {
   bgPage: "#080212",
@@ -377,8 +377,12 @@ function applyConfig(
     if (getGoldenVisualMode(cfg) === "none") {
       html = html.replace(
         /<\/style>/,
-        `.chest-link, .final-chest-link, .cta-final-chest, .info-box, .gold-panel-final, .hero-card { display: none !important; }
+        `.chest-link, .final-chest-link, .cta-final-chest, .info-box, .gold-panel-final, .hero-card, #section-cta-final { display: none !important; min-height: 0 !important; }
 .hero-content { justify-content: center !important; }
+@media (max-width: 720px) {
+  .hero-content { min-height: auto !important; }
+  .hero-section { padding-bottom: clamp(28px, 6vh, 48px) !important; }
+}
 .hero-bg-overlay {
   position: absolute;
   inset: 0;
@@ -775,10 +779,16 @@ const GOLDEN_VARIANTS: Array<{
   label: string;
   accent: string;
 }> = [
-  { value: "gold", label: "Or", accent: "#d4a843" },
-  { value: "ruby", label: "Rubis", accent: "#bf6861" },
-  { value: "emerald", label: "Emeraude", accent: "#69b98d" },
-  { value: "sapphire", label: "Saphir", accent: "#6f96cf" },
+  { value: "gold",     label: "Or",             accent: "#d4a843" },
+  { value: "ruby",     label: "Rubis",           accent: "#bf6861" },
+  { value: "emerald",  label: "Émeraude",        accent: "#69b98d" },
+  { value: "sapphire", label: "Saphir",          accent: "#6f96cf" },
+  { value: "amethyst", label: "Améthyste",       accent: "#b06fd8" },
+  { value: "obsidian", label: "Obsidian",        accent: "#c9aa60" },
+  { value: "diamond",  label: "Diamant",         accent: "#c2e8f8" },
+  { value: "rose",     label: "Rose",            accent: "#e87aaa" },
+  { value: "bronze",   label: "Bronze",          accent: "#c47e3a" },
+  { value: "jade",     label: "Jade",            accent: "#5cb87a" },
 ];
 
 interface ImagePickerProps {
@@ -1155,7 +1165,7 @@ function buildPageSignature(input: {
 
 
 function isGoldenVariant(value: string | null | undefined): value is GoldenChanceVariant {
-  return value === "gold" || value === "ruby" || value === "emerald" || value === "sapphire";
+  return ["gold","ruby","emerald","sapphire","amethyst","obsidian","diamond","rose","bronze","jade"].includes(value as string);
 }
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────

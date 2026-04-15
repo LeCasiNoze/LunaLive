@@ -288,8 +288,12 @@ function applyConfig(
     if (getGoldenVisualMode(cfg) === "none") {
       html = html.replace(
         /<\/style>/,
-        `.chest-link, .final-chest-link, .cta-final-chest, .info-box, .gold-panel-final, .hero-card { display: none !important; }
+        `.chest-link, .final-chest-link, .cta-final-chest, .info-box, .gold-panel-final, .hero-card, #section-cta-final { display: none !important; min-height: 0 !important; }
 .hero-content { justify-content: center !important; }
+@media (max-width: 720px) {
+  .hero-content { min-height: auto !important; }
+  .hero-section { padding-bottom: clamp(28px, 6vh, 48px) !important; }
+}
 .hero-bg-overlay {
   position: absolute;
   inset: 0;
