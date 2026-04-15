@@ -302,7 +302,7 @@ function Slider({ label, value, min, max, step = 1, onChange }: {
 
 function CamCard({
   slotIndex, state, mySlug, myCamActive, localStream,
-  onActivate, onDeactivate, onFiltersChange,
+  onActivate, onDeactivate, onFiltersChange, onSlugChange,
 }: {
   slotIndex: number;
   state: SlotState;
@@ -312,6 +312,7 @@ function CamCard({
   onActivate: () => void;
   onDeactivate: () => void;
   onFiltersChange: (f: Partial<CamFilters>) => void;
+  onSlugChange: (slug: string) => void;
 }) {
   const isMe = state.slug === mySlug && myCamActive;
   const [open, setOpen] = React.useState(false);
@@ -349,15 +350,29 @@ function CamCard({
       {/* Controls */}
       {open && (
         <div style={S.camControls}>
+          {/* Assignation du slot */}
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 9, fontWeight: 800, color: "#334155", letterSpacing: ".08em", marginBottom: 5, textTransform: "uppercase" }}>
+              Streamer assigné
+            </div>
+            <select
+              value={state.slug}
+              onChange={(e) => onSlugChange(e.target.value)}
+              style={{ ...S.select, width: "100%" }}
+            >
+              {FSB_SLUGS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
           {/* My cam: activate/deactivate */}
           {state.slug === mySlug && (
             <div style={{ marginBottom: 10 }}>
               {!myCamActive ? (
-                <button onClick={onActivate} style={{ ...S.btn, background: "rgba(99,102,241,.8)", fontSize: 11 }}>
+                <button onClick={onActivate} style={{ ...S.btn, background: "rgba(99,102,241,.8)", fontSize: 11, width: "100%", padding: "6px 0" }}>
                   ● Activer ma caméra
                 </button>
               ) : (
-                <button onClick={onDeactivate} style={{ ...S.btn, background: "rgba(239,68,68,.7)", fontSize: 11 }}>
+                <button onClick={onDeactivate} style={{ ...S.btn, background: "rgba(239,68,68,.7)", fontSize: 11, width: "100%", padding: "6px 0" }}>
                   ■ Désactiver
                 </button>
               )}
@@ -519,10 +534,19 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
       const next = [...prev];
       const newFilters = { ...next[slotIdx].filters, ...patch } as CamFilters;
       next[slotIdx] = { ...next[slotIdx], filters: newFilters };
-      // Broadcast to all (slug of that slot)
       if (socket) socket.emit("cam:filter-update", { slug: next[slotIdx].slug, filters: newFilters });
       return next;
     });
+  };
+
+  const handleSlugChange = (slotIdx: number, slug: string) => {
+    setSlots((prev) => {
+      const next = [...prev];
+      next[slotIdx] = { ...next[slotIdx], slug };
+      return next;
+    });
+    // If this is my own slot, update mySlug too
+    if (slotIdx === mySlot) setMySlug(slug);
   };
 
   return (
@@ -571,6 +595,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
             onActivate={activateCam}
             onDeactivate={deactivateCam}
             onFiltersChange={(patch) => handleFiltersChange(i, patch)}
+            onSlugChange={(slug) => handleSlugChange(i, slug)}
           />
         ))}
       </div>
