@@ -1628,6 +1628,17 @@ export default function FsbBoardPage() {
               </div>
             </div>
 
+            {/* Stream Control — accès rapide */}
+            <div className="fsb-card" style={{ padding: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 14, color: "#dde8ff", marginBottom: 2 }}>🎮 Stream Control</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>Activez vos caméras, gérez le chat et suivez les stats en direct</div>
+              </div>
+              <Link to="/stream-control" className="fsb-btn fsb-btn-primary" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
+                Ouvrir →
+              </Link>
+            </div>
+
             {/* Overlay Designer — full width */}
             <div className="fsb-card" style={{ padding: 24 }}>
               <OverlayDesignerSection />

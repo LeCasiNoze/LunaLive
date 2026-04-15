@@ -20,6 +20,9 @@ import {
 
 export let chatIo: Server | null = null;
 
+// Active cam broadcasters: slug → { socketId, slot, filters }
+const camBroadcasters = new Map<string, { socketId: string; slot: number; filters?: Record<string, number> }>();
+
 type ChatMode = "public" | "popup";
 
 type SocketData = {
@@ -472,6 +475,76 @@ export function attachChat(io: Server) {
       cb?.({ ok: true, slug: s });
     });
 
+    // ─── WebRTC cam signaling ───────────────────────────────────────────────────
+
+    // Broadcaster registers their cam (stream-control page)
+    socket.on("cam:register", ({ slug, slot }: { slug: string; slot: number }, cb?: (ack: any) => void) => {
+      const s = String(slug || "").trim().toLowerCase();
+      if (!s) return cb?.({ ok: false, error: "bad_slug" });
+      camBroadcasters.set(s, { socketId: socket.id, slot: Number(slot) || 1 });
+      socket.data.camSlug = s;
+      socket.join("fsb-cam-bcasters");
+      // Notify all current viewers
+      io.to("fsb-cam-viewers").emit("cam:registered", { slug: s, slot: Number(slot) || 1, socketId: socket.id });
+      cb?.({ ok: true, slug: s });
+    });
+
+    // Broadcaster updates camera CSS filters
+    socket.on("cam:filter-update", ({ slug, filters }: { slug: string; filters: Record<string, number> }) => {
+      const s = String(slug || "").trim().toLowerCase();
+      const bc = camBroadcasters.get(s);
+      if (bc) camBroadcasters.set(s, { ...bc, filters });
+      io.to("fsb-cam-viewers").emit("cam:filter-update", { slug: s, filters });
+    });
+
+    // Broadcaster or viewer leaves cam
+    socket.on("cam:leave", () => {
+      const slug = socket.data.camSlug as string | undefined;
+      if (slug) {
+        camBroadcasters.delete(slug);
+        socket.data.camSlug = undefined;
+        io.to("fsb-cam-viewers").emit("cam:left", { slug });
+      }
+    });
+
+    // Viewer (overlay / stream-control) subscribes to cam events + gets current list
+    socket.on("cam:viewer-join", (_: any, cb?: (ack: any) => void) => {
+      socket.join("fsb-cam-viewers");
+      const active = Array.from(camBroadcasters.entries()).map(([slug, bc]) => ({
+        slug,
+        slot: bc.slot,
+        socketId: bc.socketId,
+        filters: bc.filters ?? null,
+      }));
+      cb?.({ ok: true, active });
+    });
+
+    // Viewer requests stream from a broadcaster
+    socket.on("cam:request", ({ fromSlug }: { fromSlug: string }, cb?: (ack: any) => void) => {
+      const s = String(fromSlug || "").trim().toLowerCase();
+      const bc = camBroadcasters.get(s);
+      if (!bc) return cb?.({ ok: false, error: "broadcaster_not_found" });
+      // Forward request to broadcaster with viewer's socket id
+      io.to(bc.socketId).emit("cam:request", { viewerId: socket.id });
+      cb?.({ ok: true });
+    });
+
+    // WebRTC offer (broadcaster → viewer)
+    socket.on("cam:offer", ({ to, sdp }: { to: string; sdp: any }) => {
+      const slug = socket.data.camSlug as string | undefined;
+      io.to(to).emit("cam:offer", { from: socket.id, slug: slug ?? "", sdp });
+    });
+
+    // WebRTC answer (viewer → broadcaster)
+    socket.on("cam:answer", ({ to, sdp }: { to: string; sdp: any }) => {
+      io.to(to).emit("cam:answer", { from: socket.id, sdp });
+    });
+
+    // ICE candidates (bidirectionnel)
+    socket.on("cam:ice", ({ to, candidate }: { to: string; candidate: any }) => {
+      io.to(to).emit("cam:ice", { from: socket.id, candidate });
+    });
+
     socket.on(
       "chat:join",
       async (
@@ -815,6 +888,12 @@ export function attachChat(io: Server) {
       try {
         if (data.user && data.slug) untrackSocket(data.slug, data.user.id, socket.id);
       } catch {}
+      // Clean up cam broadcaster if this socket was broadcasting
+      const camSlug = socket.data.camSlug as string | undefined;
+      if (camSlug && camBroadcasters.get(camSlug)?.socketId === socket.id) {
+        camBroadcasters.delete(camSlug);
+        io.to("fsb-cam-viewers").emit("cam:left", { slug: camSlug });
+      }
     });
   });
 }

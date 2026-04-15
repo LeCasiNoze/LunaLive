@@ -44,6 +44,7 @@ const AffiEditorPage = React.lazy(() => import("./pages/AffiEditorPage"));
 
 // Overlay OBS — renderer transparent pour /overlay
 const OverlayPage = React.lazy(() => import("./pages/OverlayPage"));
+const StreamControlPage = React.lazy(() => import("./pages/fsb/StreamControlPage"));
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginModal } from "./components/LoginModal";
@@ -74,6 +75,7 @@ function AppInner() {
     location.pathname === "/editorFSN" ||
     location.pathname.startsWith("/overlay") ||
     location.pathname.startsWith("/agency") ||
+    location.pathname.startsWith("/stream-control") ||
     isStandaloneReferral;
 
   const [loginOpen, setLoginOpen] = React.useState(false);
@@ -166,6 +168,16 @@ function AppInner() {
             element={
               <React.Suspense fallback={null}>
                 <OverlayPage />
+              </React.Suspense>
+            }
+          />
+
+          {/* Stream Control FSB */}
+          <Route
+            path="/stream-control"
+            element={
+              <React.Suspense fallback={<LoadingFallback />}>
+                <StreamControlPage />
               </React.Suspense>
             }
           />

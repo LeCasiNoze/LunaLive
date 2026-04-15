@@ -32,12 +32,24 @@ function resolveSocketBase(chatUrl: string): string {
   return LUNA_API_BASE;
 }
 
-/** Écoute obs:config via socket et retourne la config live si disponible.
- *  Utilise obs:subscribe (room publique, sans auth) pour que l'overlay OBS
- *  reçoive les mises à jour en temps réel sans token. */
-function useLiveConfig(baseConfig: OverlayConfig): { config: OverlayConfig; lastUpdate: number } {
+const ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+];
+
+type CamFilters = { brightness: number; contrast: number; saturation: number; hue: number };
+type CamStreamEntry = { stream: MediaStream; slot: number; filters: CamFilters | null };
+
+function filterCss(f: CamFilters | null): string {
+  if (!f) return "none";
+  return `brightness(${f.brightness / 100}) contrast(${f.contrast / 100}) saturate(${f.saturation / 100}) hue-rotate(${f.hue}deg)`;
+}
+
+/** Crée et gère le socket partagé pour obs:config + WebRTC cam */
+function useOverlaySocket(baseConfig: OverlayConfig) {
   const [liveConfig, setLiveConfig] = React.useState<OverlayConfig | null>(null);
   const [lastUpdate, setLastUpdate] = React.useState(0);
+  const [socket, setSocket] = React.useState<ReturnType<typeof io> | null>(null);
   const [searchParams] = useSearchParams();
 
   const slug =
@@ -48,37 +60,128 @@ function useLiveConfig(baseConfig: OverlayConfig): { config: OverlayConfig; last
   const socketBase = resolveSocketBase(baseConfig.chat?.chatUrl ?? "");
 
   React.useEffect(() => {
-    console.log("[Overlay] useLiveConfig effect — slug=", slug, "socketBase=", socketBase);
-    if (!slug) {
-      console.warn("[Overlay] No slug — socket NOT connected. Chat chatUrl=", baseConfig.chat?.chatUrl);
-      return;
-    }
+    if (!slug) return;
+    const s = io(socketBase, { transports: ["websocket", "polling"] });
 
-    const socket = io(socketBase, { transports: ["websocket", "polling"] });
-
-    socket.on("connect", () => {
-      console.log("[Overlay] socket connected, joining obsview:", slug);
-      socket.emit("obs:subscribe", { slug }, (ack: any) => {
+    s.on("connect", () => {
+      s.emit("obs:subscribe", { slug }, (ack: any) => {
         console.log("[Overlay] obs:subscribe ack:", ack);
       });
+      // Also join cam viewer room
+      s.emit("cam:viewer-join", {});
     });
 
-    socket.on("obs:config", (data: any) => {
-      console.log("[Overlay] obs:config received — mode:", data?.config?.mode, "chat.x:", data?.config?.chat?.x);
+    s.on("obs:config", (data: any) => {
       if (data?.config) {
         setLiveConfig(data.config as OverlayConfig);
         setLastUpdate(Date.now());
       }
     });
 
-    socket.on("connect_error", (err: any) => {
+    s.on("connect_error", (err: any) => {
       console.error("[Overlay] socket connect_error:", err?.message);
     });
 
-    return () => { socket.disconnect(); };
+    setSocket(s);
+    return () => { s.disconnect(); setSocket(null); };
   }, [slug, socketBase]);
 
-  return { config: liveConfig ?? baseConfig, lastUpdate };
+  return { config: liveConfig ?? baseConfig, lastUpdate, socket };
+}
+
+/** Reçoit les flux WebRTC des cams depuis les broadcasters FSB */
+function useCamStreams(socket: ReturnType<typeof io> | null): Map<number, CamStreamEntry> {
+  const [streams, setStreams] = React.useState<Map<number, CamStreamEntry>>(new Map());
+  const peersRef = React.useRef<Map<string, RTCPeerConnection>>(new Map());
+
+  const connectToBc = React.useCallback(
+    (bc: { slug: string; slot: number; socketId: string; filters: CamFilters | null }) => {
+      if (!socket || peersRef.current.has(bc.slug)) return;
+
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      peersRef.current.set(bc.slug, pc);
+
+      pc.ontrack = ({ streams: s }) => {
+        const stream = s[0] ?? null;
+        if (!stream) return;
+        setStreams((prev) => {
+          const next = new Map(prev);
+          next.set(bc.slot, { stream, slot: bc.slot, filters: bc.filters });
+          return next;
+        });
+      };
+
+      pc.onicecandidate = ({ candidate }) => {
+        if (candidate) socket.emit("cam:ice", { to: bc.socketId, candidate });
+      };
+
+      const handleOffer = async ({ from: offerId, slug, sdp }: { from: string; slug: string; sdp: RTCSessionDescriptionInit }) => {
+        if (slug !== bc.slug) return;
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit("cam:answer", { to: offerId, sdp: answer });
+      };
+
+      const handleIce = async ({ from, candidate }: { from: string; candidate: RTCIceCandidateInit }) => {
+        if (!peersRef.current.has(bc.slug)) return;
+        const myPc = peersRef.current.get(bc.slug);
+        if (!myPc) return;
+        try { await myPc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+      };
+
+      socket.on("cam:offer", handleOffer);
+      socket.on("cam:ice", handleIce);
+
+      socket.emit("cam:request", { fromSlug: bc.slug });
+    },
+    [socket],
+  );
+
+  React.useEffect(() => {
+    if (!socket) return;
+
+    socket.emit("cam:viewer-join", {}, (ack: { ok: boolean; active: any[] }) => {
+      for (const bc of (ack?.active ?? [])) connectToBc(bc);
+    });
+
+    const onRegistered = (bc: any) => connectToBc(bc);
+    const onLeft = ({ slug }: { slug: string }) => {
+      peersRef.current.get(slug)?.close();
+      peersRef.current.delete(slug);
+      setStreams((prev) => {
+        const next = new Map(prev);
+        for (const [slot, entry] of next) {
+          if ((entry as any).slug === slug) next.delete(slot);
+        }
+        return next;
+      });
+    };
+    const onFilterUpdate = ({ slug, filters }: { slug: string; filters: CamFilters }) => {
+      setStreams((prev) => {
+        const next = new Map(prev);
+        for (const [slot, entry] of next) {
+          if ((entry as any).slug === slug) next.set(slot, { ...entry, filters });
+        }
+        return next;
+      });
+    };
+
+    socket.on("cam:registered", onRegistered);
+    socket.on("cam:left", onLeft);
+    socket.on("cam:filter-update", onFilterUpdate);
+
+    return () => {
+      socket.off("cam:registered", onRegistered);
+      socket.off("cam:left", onLeft);
+      socket.off("cam:filter-update", onFilterUpdate);
+      peersRef.current.forEach((pc) => pc.close());
+      peersRef.current.clear();
+      setStreams(new Map());
+    };
+  }, [socket, connectToBc]);
+
+  return streams;
 }
 
 // ─── Timer hook ───────────────────────────────────────────────────────────────
@@ -216,9 +319,20 @@ function BackgroundZone({ bg }: { bg: OverlayConfig["background"] }) {
 
 // ─── Cam zone ─────────────────────────────────────────────────────────────────
 
-function CamZone({ cam }: {
+function CamZone({ cam, stream, filters }: {
   cam: OverlayConfig["cams"][number];
+  stream?: MediaStream | null;
+  filters?: CamFilters | null;
 }) {
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+
+  React.useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (stream) { v.srcObject = stream; v.play().catch(() => {}); }
+    else { v.srcObject = null; }
+  }, [stream]);
+
   if (!cam.enabled) return null;
 
   return (
@@ -228,7 +342,22 @@ function CamZone({ cam }: {
       border: `${cam.borderWidth}px solid ${cam.borderColor}`,
       borderRadius: cam.borderRadius,
       background: "transparent",
-    }} />
+    }}>
+      {stream && (
+        <video
+          ref={videoRef}
+          muted
+          playsInline
+          autoPlay
+          style={{
+            width: "100%", height: "100%",
+            objectFit: "cover",
+            display: "block",
+            filter: filterCss(filters ?? null),
+          }}
+        />
+      )}
+    </div>
   );
 }
 
@@ -458,7 +587,7 @@ function PromoZone({ promo }: { promo: OverlayConfig["promo"] }) {
 
 // ─── Overlay renderer ─────────────────────────────────────────────────────────
 
-function OverlayRenderer({ config }: { config: OverlayConfig }) {
+function OverlayRenderer({ config, camStreams }: { config: OverlayConfig; camStreams: Map<number, CamStreamEntry> }) {
   return (
     <div style={{
       position: "relative",
@@ -467,17 +596,15 @@ function OverlayRenderer({ config }: { config: OverlayConfig }) {
       overflow: "hidden",
       background: "transparent",
     }}>
-      {/* Fond en tout premier (derrière tout) */}
       <BackgroundZone bg={config.background} />
-      {/* Zones principales */}
       <SlotZone slot={config.slot} />
       <StatsZone stats={config.stats} />
       <ChatZone chat={config.chat} />
       <PromoZone promo={config.promo} />
-      {/* Cams en dernier = par-dessus le slot */}
-      {config.cams.map((cam, i) => (
-        <CamZone key={i} cam={cam} />
-      ))}
+      {config.cams.map((cam, i) => {
+        const entry = camStreams.get(i + 1);
+        return <CamZone key={i} cam={cam} stream={entry?.stream} filters={entry?.filters ?? null} />;
+      })}
     </div>
   );
 }
@@ -536,16 +663,9 @@ export default function OverlayPage() {
     return decodeConfig(raw);
   }, [raw]);
 
-  // Live config via socket (mis à jour par le designer en temps réel)
-  const { config, lastUpdate } = useLiveConfig(baseConfig ?? {} as OverlayConfig);
+  const { config, lastUpdate, socket } = useOverlaySocket(baseConfig ?? {} as OverlayConfig);
   const effectiveConfig = baseConfig ? config : null;
-
-  // Debug: log chaque re-render avec le config courant
-  React.useEffect(() => {
-    if (effectiveConfig) {
-      console.log("[Overlay] render — isLive:", lastUpdate > 0, "chat.x:", effectiveConfig.chat?.x, "lastUpdate:", lastUpdate);
-    }
-  });
+  const camStreams = useCamStreams(socket);
 
   // Page-level styles: fullscreen, transparent background for OBS
   React.useEffect(() => {
@@ -599,7 +719,7 @@ export default function OverlayPage() {
         inset: 0,
         background: isPreview ? "#07101f" : "transparent",
       }}>
-        <OverlayRenderer config={effectiveConfig} />
+        <OverlayRenderer config={effectiveConfig} camStreams={camStreams} />
       </div>
 
       {/* Preview badge */}
