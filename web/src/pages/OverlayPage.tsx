@@ -10,10 +10,16 @@ function extractSlugFromChatUrl(chatUrl: string): string | null {
   try { return new URL(chatUrl).searchParams.get("slug"); } catch { return null; }
 }
 
-/** Écoute obs:config via socket et retourne la config live si disponible */
+/** Écoute obs:config via socket et retourne la config live si disponible.
+ *  Le slug est extrait de chatUrl en priorité, puis du param ?slug= de la page. */
 function useLiveConfig(baseConfig: OverlayConfig): OverlayConfig {
   const [liveConfig, setLiveConfig] = React.useState<OverlayConfig | null>(null);
-  const slug = extractSlugFromChatUrl(baseConfig.chat.chatUrl);
+  const [searchParams] = useSearchParams();
+
+  const slug =
+    extractSlugFromChatUrl(baseConfig.chat.chatUrl) ||
+    searchParams.get("slug") ||
+    null;
 
   React.useEffect(() => {
     if (!slug) return;
@@ -325,6 +331,21 @@ function StatsZone({ stats }: { stats: OverlayConfig["stats"] }) {
 
 // ─── Chat zone ────────────────────────────────────────────────────────────────
 
+/** Clé stable pour l'iframe — ignore les params visuels (font/scale/align/etc.)
+ *  pour éviter le rechargement (et la perte des messages) à chaque push de config.
+ *  Seuls slug+token+api changent réellement l'identité du chat. */
+function chatIframeKey(chatUrl: string): string {
+  try {
+    const u = new URL(chatUrl);
+    const slug  = u.searchParams.get("slug")  ?? "";
+    const token = u.searchParams.get("token") ?? "";
+    const api   = u.searchParams.get("api")   ?? "";
+    return `${u.origin}${u.pathname}|${slug}|${token}|${api}`;
+  } catch {
+    return chatUrl;
+  }
+}
+
 function ChatZone({ chat }: { chat: OverlayConfig["chat"] }) {
   if (!chat.enabled || !chat.chatUrl) return null;
 
@@ -354,7 +375,7 @@ function ChatZone({ chat }: { chat: OverlayConfig["chat"] }) {
     }}>
       <iframe
         ref={iframeRef}
-        key={chat.chatUrl}
+        key={chatIframeKey(chat.chatUrl)}
         src={chat.chatUrl}
         style={{ width: "100%", height: "100%", border: "none", background: "transparent" }}
         title="Chat"

@@ -90,7 +90,7 @@ interface Config {
   p_ctaY: string;
 }
 
-type GoldenChanceVariant = "gold" | "ruby" | "emerald" | "sapphire" | "amethyst" | "obsidian" | "diamond" | "rose" | "bronze" | "jade";
+type GoldenChanceVariant = "gold" | "ruby" | "emerald" | "sapphire" | "amethyst" | "obsidian" | "rose" | "jade";
 
 const DEFAULT_CONFIG: Config = {
   bgPage: "#080212",
@@ -779,16 +779,14 @@ const GOLDEN_VARIANTS: Array<{
   label: string;
   accent: string;
 }> = [
-  { value: "gold",     label: "Or",             accent: "#d4a843" },
-  { value: "ruby",     label: "Rubis",           accent: "#bf6861" },
-  { value: "emerald",  label: "Émeraude",        accent: "#69b98d" },
-  { value: "sapphire", label: "Saphir",          accent: "#6f96cf" },
-  { value: "amethyst", label: "Améthyste",       accent: "#b06fd8" },
-  { value: "obsidian", label: "Obsidian",        accent: "#c9aa60" },
-  { value: "diamond",  label: "Diamant",         accent: "#c2e8f8" },
-  { value: "rose",     label: "Rose",            accent: "#e87aaa" },
-  { value: "bronze",   label: "Bronze",          accent: "#c47e3a" },
-  { value: "jade",     label: "Jade",            accent: "#5cb87a" },
+  { value: "gold",     label: "Or",        accent: "#d4a843" },
+  { value: "ruby",     label: "Rubis",     accent: "#bf6861" },
+  { value: "emerald",  label: "Émeraude",  accent: "#69b98d" },
+  { value: "sapphire", label: "Saphir",    accent: "#6f96cf" },
+  { value: "amethyst", label: "Améthyste", accent: "#b06fd8" },
+  { value: "obsidian", label: "Obsidian",  accent: "#c9aa60" },
+  { value: "rose",     label: "Rose",      accent: "#e87aaa" },
+  { value: "jade",     label: "Jade",      accent: "#5cb87a" },
 ];
 
 interface ImagePickerProps {
@@ -1165,7 +1163,7 @@ function buildPageSignature(input: {
 
 
 function isGoldenVariant(value: string | null | undefined): value is GoldenChanceVariant {
-  return ["gold","ruby","emerald","sapphire","amethyst","obsidian","diamond","rose","bronze","jade"].includes(value as string);
+  return ["gold","ruby","emerald","sapphire","amethyst","obsidian","rose","jade"].includes(value as string);
 }
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────

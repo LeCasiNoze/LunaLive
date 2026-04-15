@@ -1311,22 +1311,35 @@ const MODES: { value: OverlayMode; label: string; icon: string }[] = [
 
 const STORAGE_KEY = "lunalive-overlay-designer-v3"; // v3: align + msgBgOpacity + no grouping
 
-/** Push la config vers l'OBS overlay via le backend (debounced 600ms) */
+/** Push la config vers l'OBS overlay via le backend (socket) + persiste en DB */
 async function pushConfigToObs(config: OverlayConfig) {
   const token = localStorage.getItem("token") || "";
-  if (!token) return; // pas connecté
+  if (!token) return;
   try {
     await fetch("/api/me/overlay/push-config", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ config }),
     });
   } catch {
     // silencieux — pas critique
   }
+}
+
+/** Charge la config partagée depuis le serveur */
+async function loadConfigFromDb(): Promise<OverlayConfig | null> {
+  const token = localStorage.getItem("token") || "";
+  if (!token) return null;
+  try {
+    const r = await fetch("/api/me/overlay/fsb-config", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const j = await r.json();
+    if (r.ok && j?.ok && j.config && typeof j.config === "object") {
+      return j.config as OverlayConfig;
+    }
+  } catch {}
+  return null;
 }
 
 /** Regénère le chatUrl si c'est une URL LunaLive avec de nouveaux params */
@@ -1359,14 +1372,34 @@ export function OverlayDesignerSection() {
   const [saved, setSaved] = React.useState(false);
   const [pushed, setPushed] = React.useState(false);
   const pushTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Flag pour éviter de re-push la config chargée depuis DB au mount
+  const isInitialLoad = React.useRef(true);
 
-  // Auto-save + push live vers OBS à chaque modification
+  // Chargement initial depuis DB (priorité sur localStorage)
   React.useEffect(() => {
+    loadConfigFromDb().then((dbConfig) => {
+      if (dbConfig) {
+        isInitialLoad.current = true;
+        setConfig(dbConfig);
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(dbConfig)); } catch {}
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-save localStorage + push live vers OBS + persist DB à chaque modification
+  React.useEffect(() => {
+    // Sauvegarde locale immédiate
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(config)); } catch {}
     setSaved(true);
     const t = setTimeout(() => setSaved(false), 1200);
 
-    // Push debounced vers OBS (600ms après la dernière modif)
+    // Skip le push initial (chargement depuis DB)
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false;
+      return () => clearTimeout(t);
+    }
+
+    // Push debounced vers OBS + DB (600ms après la dernière modif)
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
     pushTimerRef.current = setTimeout(() => {
       pushConfigToObs(config).then(() => {

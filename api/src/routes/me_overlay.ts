@@ -306,8 +306,64 @@ meOverlayRouter.post(
   })
 );
 
+// ─── FSB Overlay — IDs autorisés (partagé entre les 3 streameurs + SamyyZsis) ─
+const FSB_OVERLAY_ALLOWED_IDS = new Set([4, 15, 71]);
+const FSB_OVERLAY_SLUG = "fabiozsis"; // chaîne commune
+
+function canAccessFsbOverlay(uid: number): boolean {
+  return FSB_OVERLAY_ALLOWED_IDS.has(uid);
+}
+
 /** =========================
- *  ✅ Live config push (designer → OBS overlay via socket)
+ *  ✅ GET /me/overlay/fsb-config
+ *  Charge la config overlay partagée (fabiozsis)
+ *  ========================= */
+meOverlayRouter.get(
+  "/fsb-config",
+  a(async (req: any, res) => {
+    const uid = getUserId(req);
+    if (!uid || !canAccessFsbOverlay(uid)) {
+      return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+
+    const r = await pool.query(
+      `SELECT overlay_config FROM streamers WHERE lower(slug) = lower($1) LIMIT 1`,
+      [FSB_OVERLAY_SLUG]
+    );
+    const config = r.rows?.[0]?.overlay_config ?? null;
+    return res.json({ ok: true, config });
+  })
+);
+
+/** =========================
+ *  ✅ PUT /me/overlay/fsb-config
+ *  Sauvegarde la config overlay partagée (fabiozsis)
+ *  body: { config: OverlayConfig }
+ *  ========================= */
+meOverlayRouter.put(
+  "/fsb-config",
+  a(async (req: any, res) => {
+    const uid = getUserId(req);
+    if (!uid || !canAccessFsbOverlay(uid)) {
+      return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+
+    const config = req.body?.config;
+    if (!config || typeof config !== "object") {
+      return res.status(400).json({ ok: false, error: "missing_config" });
+    }
+
+    await pool.query(
+      `UPDATE streamers SET overlay_config = $1 WHERE lower(slug) = lower($2)`,
+      [JSON.stringify(config), FSB_OVERLAY_SLUG]
+    );
+
+    return res.json({ ok: true });
+  })
+);
+
+/** =========================
+ *  ✅ Live config push (designer → OBS overlay via socket) + persistance DB
  *  POST /me/overlay/push-config
  *  body: { config: OverlayConfig, slug?: string }
  *  ========================= */
@@ -322,8 +378,19 @@ meOverlayRouter.post(
       return res.status(400).json({ ok: false, error: "missing_config" });
     }
 
-    const slug = String(req.body?.slug || "").trim() || (await getOwnedStreamerSlugByUserId(uid));
-    if (!slug) return res.status(404).json({ ok: false, error: "no_streamer" });
+    // Pour les users FSB, on push toujours sur la room fabiozsis
+    let slug: string;
+    if (canAccessFsbOverlay(uid)) {
+      slug = FSB_OVERLAY_SLUG;
+      // Persister aussi en DB
+      await pool.query(
+        `UPDATE streamers SET overlay_config = $1 WHERE lower(slug) = lower($2)`,
+        [JSON.stringify(config), FSB_OVERLAY_SLUG]
+      );
+    } else {
+      slug = String(req.body?.slug || "").trim() || (await getOwnedStreamerSlugByUserId(uid)) || "";
+      if (!slug) return res.status(404).json({ ok: false, error: "no_streamer" });
+    }
 
     const io = (req.app?.get?.("io") || req.app?.locals?.io) as Server | undefined;
     if (!io) return res.status(500).json({ ok: false, error: "io_missing" });
