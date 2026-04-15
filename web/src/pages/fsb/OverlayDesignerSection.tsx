@@ -1006,7 +1006,7 @@ function BackgroundPanel({
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const token = localStorage.getItem("token") || "";
+      const token = localStorage.getItem("lunalive_token_v1") || "";
       const res = await fetch(`${LUNA_API_BASE}/me/overlay/bg/upload`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -1320,7 +1320,7 @@ const STORAGE_KEY = "lunalive-overlay-designer-v3"; // v3: align + msgBgOpacity 
 
 /** Push la config vers l'OBS overlay via le backend (socket) + persiste en DB */
 async function pushConfigToObs(config: OverlayConfig) {
-  const token = localStorage.getItem("token") || "";
+  const token = localStorage.getItem("lunalive_token_v1") || "";
   if (!token) return;
   try {
     await fetch(`${LUNA_API_BASE}/me/overlay/push-config`, {
@@ -1335,7 +1335,7 @@ async function pushConfigToObs(config: OverlayConfig) {
 
 /** Charge la config partagée depuis le serveur */
 async function loadConfigFromDb(): Promise<OverlayConfig | null> {
-  const token = localStorage.getItem("token") || "";
+  const token = localStorage.getItem("lunalive_token_v1") || "";
   if (!token) return null;
   try {
     const r = await fetch(`${LUNA_API_BASE}/me/overlay/fsb-config`, {
