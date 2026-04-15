@@ -1007,7 +1007,7 @@ function BackgroundPanel({
       const fd = new FormData();
       fd.append("file", file);
       const token = localStorage.getItem("token") || "";
-      const res = await fetch("/api/me/overlay/bg/upload", {
+      const res = await fetch(`${LUNA_API_BASE}/me/overlay/bg/upload`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: fd,
@@ -1323,7 +1323,7 @@ async function pushConfigToObs(config: OverlayConfig) {
   const token = localStorage.getItem("token") || "";
   if (!token) return;
   try {
-    await fetch("/api/me/overlay/push-config", {
+    await fetch(`${LUNA_API_BASE}/me/overlay/push-config`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ config }),
@@ -1338,7 +1338,7 @@ async function loadConfigFromDb(): Promise<OverlayConfig | null> {
   const token = localStorage.getItem("token") || "";
   if (!token) return null;
   try {
-    const r = await fetch("/api/me/overlay/fsb-config", {
+    const r = await fetch(`${LUNA_API_BASE}/me/overlay/fsb-config`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const j = await r.json();
