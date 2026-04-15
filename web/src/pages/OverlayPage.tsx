@@ -37,7 +37,11 @@ const ICE_SERVERS = [
   { urls: "stun:stun1.l.google.com:19302" },
 ];
 
-type CamFilters = { brightness: number; contrast: number; saturation: number; hue: number };
+type CamFilters = {
+  brightness: number; contrast: number; saturation: number; hue: number;
+  zoom?: number; panX?: number; panY?: number;
+  chromaKey?: boolean;
+};
 type CamStreamEntry = { stream: MediaStream; slot: number; filters: CamFilters | null };
 
 function filterCss(f: CamFilters | null): string {
@@ -335,12 +339,14 @@ function CamZone({ cam, stream, filters }: {
 
   if (!cam.enabled) return null;
 
+  const chromaKey = filters?.chromaKey ?? false;
+
   return (
     <div style={{
       ...rect(cam),
       overflow: "hidden",
-      border: `${cam.borderWidth}px solid ${cam.borderColor}`,
-      borderRadius: cam.borderRadius,
+      border: chromaKey ? "none" : `${cam.borderWidth}px solid ${cam.borderColor}`,
+      borderRadius: chromaKey ? 0 : cam.borderRadius,
       background: "transparent",
     }}>
       {stream && (
@@ -350,9 +356,13 @@ function CamZone({ cam, stream, filters }: {
           playsInline
           autoPlay
           style={{
-            width: "100%", height: "100%",
+            position: "absolute",
+            width: `${filters?.zoom ?? 100}%`,
+            height: `${filters?.zoom ?? 100}%`,
+            top: `${50 + (filters?.panY ?? 0)}%`,
+            left: `${50 + (filters?.panX ?? 0)}%`,
+            transform: "translate(-50%, -50%)",
             objectFit: "cover",
-            display: "block",
             filter: filterCss(filters ?? null),
           }}
         />
