@@ -1,4 +1,6 @@
 import * as React from "react";
+import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
+import { useAuth } from "../../auth/AuthProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1107,8 +1109,11 @@ const LUNA_CHAT_SLUGS = ["fabiozsis", "lecasinoze"];
 const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
   ?? "https://lunalive-api.onrender.com";
 
+const SITE_BASE = ((import.meta.env.VITE_SITE_URL as string | undefined) ?? "").replace(/\/$/, "")
+  || window.location.origin;
+
 function lunaChatUrl(slug: string, fontSize = 14, maxMessages = 8, scale = 1, align: ChatZoneConfig["align"] = "center", msgBgOpacity = 0.92, compact = true) {
-  const base = `${window.location.origin}/overlay/obs/chat.html`;
+  const base = `${SITE_BASE}/overlay/obs/chat.html`;
   const params = new URLSearchParams({
     slug,
     api: LUNA_API_BASE,
@@ -1425,7 +1430,7 @@ export function OverlayDesignerSection() {
 
   const obsUrl = React.useMemo(() => {
     const encoded = encodeConfig(config);
-    return `${window.location.origin}/overlay?cfg=${encoded}`;
+    return `${SITE_BASE}/overlay?cfg=${encoded}`;
   }, [config]);
 
   function changeMode(mode: OverlayMode) {

@@ -484,6 +484,8 @@ export function attachChat(io: Server) {
       camBroadcasters.set(s, { socketId: socket.id, slot: Number(slot) || 1 });
       socket.data.camSlug = s;
       socket.join("fsb-cam-bcasters");
+      // Broadcaster also joins viewers room so they receive filter updates from others
+      socket.join("fsb-cam-viewers");
       // Notify all current viewers
       io.to("fsb-cam-viewers").emit("cam:registered", { slug: s, slot: Number(slot) || 1, socketId: socket.id });
       cb?.({ ok: true, slug: s });
