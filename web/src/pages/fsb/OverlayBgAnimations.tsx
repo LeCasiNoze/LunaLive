@@ -281,7 +281,6 @@ export function OverlayBgAnimation({ preset, opacity = 100 }: { preset: string; 
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const startTime = performance.now();
 
     function resize() {
       const parent = canvas!.parentElement;
@@ -294,8 +293,9 @@ export function OverlayBgAnimation({ preset, opacity = 100 }: { preset: string; 
     if (canvas.parentElement) ro.observe(canvas.parentElement);
     resize();
 
-    function frame(now: number) {
-      const t = (now - startTime) / 1000;
+    // Date.now() = horloge murale → preview et OBS synchronisés à tout moment
+    function frame() {
+      const t = Date.now() / 1000;
       const cw = canvas!.width, ch = canvas!.height;
       if (cw > 0 && ch > 0) animRef.current?.draw(ctx!, cw, ch, t);
       rafRef.current = requestAnimationFrame(frame);
