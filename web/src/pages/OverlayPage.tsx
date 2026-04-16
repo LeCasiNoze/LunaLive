@@ -637,6 +637,10 @@ function OverlayRenderer({ config, camStreams }: { config: OverlayConfig; camStr
       <StatsZone stats={config.stats} />
       <ChatZone chat={config.chat} />
       <PromoZone promo={config.promo} />
+      {/* Rétrocompat : anciens configs qui avaient sponsor comme zone séparée */}
+      {(config as any).sponsor?.enabled && (
+        <SponsorBanner config={(config as any).sponsor} />
+      )}
       {config.cams.map((cam, i) => {
         const entry = camStreams.get(i + 1);
         return <CamZone key={i} cam={cam} stream={entry?.stream} filters={entry?.filters ?? null} />;
