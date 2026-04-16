@@ -98,21 +98,29 @@ function drawHexGrid(
       }
       ctx.closePath();
 
-      // ── Fill : de très sombre (phase=0) à vif (phase=1)
-      //    Pas de shadowBlur — entièrement fill-based, fiable dans OBS et browser
-      const fillLight = 5 + phase * 42;          // 5% → 47%
-      const fillSat   = 55 + phase * 30;         // 55% → 85%
-      const fillAlpha = 0.6 + phase * 0.4;       // toujours visible, vivid sur bright
-      ctx.fillStyle = `hsla(${hue},${fillSat}%,${fillLight}%,${fillAlpha})`;
+      // ── Fill : noir (phase=0) → neon vif (phase=1), 100% opaque (pas d'alpha)
+      //    On monte jusqu'à 70% de lightness pour effet neon visible dans OBS
+      const fillLight = 3 + phase * 67;          // 3% → 70%
+      const fillSat   = 55 + phase * 45;         // 55% → 100%
+      ctx.fillStyle = `hsl(${hue},${fillSat}%,${fillLight}%)`;
       ctx.fill();
 
+      // ── Halo blanc sur les hexes très brillants (phase > 0.7)
+      if (phase > 0.7) {
+        const bp = (phase - 0.7) / 0.3;          // 0→1
+        ctx.fillStyle = `hsla(${hue},80%,${78 + bp * 15}%,${bp * 0.45})`;
+        ctx.fill();
+      }
+
       // ── Contour lumineux sur les hexes brillants
-      if (phase > 0.45) {
-        const strokeA = (phase - 0.45) * 1.8;
-        const strokeL = 65 + phase * 20;
-        ctx.strokeStyle = `hsla(${hue},100%,${strokeL}%,${strokeA})`;
-        ctx.lineWidth = lw * (0.5 + phase * 0.8);
+      if (phase > 0.4) {
+        const strokeA = (phase - 0.4) / 0.6;
+        const strokeL = 68 + phase * 22;         // 68% → 90% (quasi-blanc)
+        ctx.strokeStyle = `hsl(${hue},100%,${strokeL}%)`;
+        ctx.lineWidth = lw * (0.4 + phase * 1.2);
+        ctx.globalAlpha = strokeA * 0.85;
         ctx.stroke();
+        ctx.globalAlpha = 1;
       }
     }
   }
