@@ -224,6 +224,8 @@ function useViewer(
       onSlotLeft(slug);
     };
     const onFilterUpdate = ({ slug, filters }: { slug: string; filters: CamFilters }) => {
+      // Ignorer son propre slug pour éviter la boucle broadcaster → viewer → broadcaster
+      if (slug === mySlug) return;
       onSlotUpdate({ slug, slot: -1, socketId: "", filters });
     };
     socket.on("cam:registered", onRegistered);
@@ -464,16 +466,18 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
     emptySlot("lecasinoze"),
   ]);
 
-  // Filtres par slug — chaque streamer a ses propres paramètres,
-  // indépendamment du slot auquel il est assigné
-  const [filtersPerSlug, setFiltersPerSlug] = React.useState<Record<string, CamFilters>>(
-    () => Object.fromEntries(FSB_SLUGS.map(s => [s, { ...DEFAULT_FILTERS }]))
-  );
+  // Filtres par (slug:slotIdx) — chaque streamer a des paramètres différents
+  // selon l'emplacement de cam occupé (cam1 ≠ cam2 même personne)
+  const [filtersPerSlugSlot, setFiltersPerSlugSlot] = React.useState<Record<string, CamFilters>>({});
 
-  // Vue dérivée : slot avec les filtres de son slug courant
-  const slotsWithFilters: SlotState[] = slots.map(slot => ({
+  // Ref toujours à jour pour accéder aux slots courants dans les callbacks async
+  const slotsRef = React.useRef(slots);
+  React.useEffect(() => { slotsRef.current = slots; }, [slots]);
+
+  // Vue dérivée : slot avec ses filtres (slug:slotIdx)
+  const slotsWithFilters: SlotState[] = slots.map((slot, i) => ({
     ...slot,
-    filters: filtersPerSlug[slot.slug] ?? { ...DEFAULT_FILTERS },
+    filters: filtersPerSlugSlot[`${slot.slug}:${i}`] ?? { ...DEFAULT_FILTERS },
   }));
 
   // My cam settings
@@ -512,12 +516,15 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
       };
       return next;
     });
-    // Mettre à jour les filtres par slug (profil du streamer)
+    // Mettre à jour les filtres par (slug:slotIdx)
     if (update.filters != null && update.slug) {
-      setFiltersPerSlug((prev) => ({
-        ...prev,
-        [update.slug]: { ...DEFAULT_FILTERS, ...update.filters! },
-      }));
+      const slotIdx = slotsRef.current.findIndex(s => s.slug === update.slug);
+      if (slotIdx >= 0) {
+        setFiltersPerSlugSlot((prev) => ({
+          ...prev,
+          [`${update.slug}:${slotIdx}`]: { ...DEFAULT_FILTERS, ...update.filters! },
+        }));
+      }
     }
   }, []);
 
@@ -526,7 +533,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   }, []);
 
   useViewer(socket, myCamActive ? mySlug : "", onSlotUpdate, onSlotLeft);
-  useBroadcaster(socket, localStream, mySlug, mySlot + 1, filtersPerSlug[mySlug] ?? DEFAULT_FILTERS, myCamActive);
+  useBroadcaster(socket, localStream, mySlug, mySlot + 1, filtersPerSlugSlot[`${mySlug}:${mySlot}`] ?? DEFAULT_FILTERS, myCamActive);
 
   const activateCam = async () => {
     setCamError(null);
@@ -549,11 +556,12 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
 
   const handleFiltersChange = (slotIdx: number, patch: Partial<CamFilters>) => {
     const slug = slots[slotIdx].slug;
-    setFiltersPerSlug((prev) => {
-      const current = prev[slug] ?? { ...DEFAULT_FILTERS };
+    const key = `${slug}:${slotIdx}`;
+    setFiltersPerSlugSlot((prev) => {
+      const current = prev[key] ?? { ...DEFAULT_FILTERS };
       const newFilters = { ...current, ...patch } as CamFilters;
       if (socket) socket.emit("cam:filter-update", { slug, filters: newFilters });
-      return { ...prev, [slug]: newFilters };
+      return { ...prev, [key]: newFilters };
     });
   };
 
@@ -563,9 +571,9 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
       next[slotIdx] = { ...next[slotIdx], slug };
       return next;
     });
-    // Broadcaster les filtres du nouveau slug immédiatement
+    // Broadcaster les filtres du nouveau slug sur ce slot
     if (socket) {
-      const filters = filtersPerSlug[slug] ?? { ...DEFAULT_FILTERS };
+      const filters = filtersPerSlugSlot[`${slug}:${slotIdx}`] ?? { ...DEFAULT_FILTERS };
       socket.emit("cam:filter-update", { slug, filters });
     }
     if (slotIdx === mySlot) setMySlug(slug);
