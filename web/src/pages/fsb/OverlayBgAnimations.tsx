@@ -98,27 +98,20 @@ function drawHexGrid(
       }
       ctx.closePath();
 
-      // ── Fill : noir (phase=0) → neon vif (phase=1), 100% opaque (pas d'alpha)
-      //    On monte jusqu'à 70% de lightness pour effet neon visible dans OBS
-      const fillLight = 3 + phase * 67;          // 3% → 70%
-      const fillSat   = 55 + phase * 45;         // 55% → 100%
+      // ── Fill : le corps de l'hexagone reste coloré (jamais blanc)
+      //    L'effet neon vient UNIQUEMENT du stroke lumineux, pas du fill
+      const fillLight = 4 + phase * 42;          // 4% → 46% : foncé → vif saturé, jamais blanc
+      const fillSat   = 60 + phase * 40;         // 60% → 100%
       ctx.fillStyle = `hsl(${hue},${fillSat}%,${fillLight}%)`;
       ctx.fill();
 
-      // ── Halo blanc sur les hexes très brillants (phase > 0.7)
-      if (phase > 0.7) {
-        const bp = (phase - 0.7) / 0.3;          // 0→1
-        ctx.fillStyle = `hsla(${hue},80%,${78 + bp * 15}%,${bp * 0.45})`;
-        ctx.fill();
-      }
-
-      // ── Contour lumineux sur les hexes brillants
-      if (phase > 0.4) {
-        const strokeA = (phase - 0.4) / 0.6;
-        const strokeL = 68 + phase * 22;         // 68% → 90% (quasi-blanc)
+      // ── Contour : toute la brillance/blanc est ici — c'est lui qui fait le neon
+      if (phase > 0.35) {
+        const strokeA = (phase - 0.35) / 0.65;   // 0→1
+        const strokeL = 62 + phase * 33;         // 62% → 95% (blanc sur les plus brillants)
         ctx.strokeStyle = `hsl(${hue},100%,${strokeL}%)`;
-        ctx.lineWidth = lw * (0.4 + phase * 1.2);
-        ctx.globalAlpha = strokeA * 0.85;
+        ctx.lineWidth = lw * (0.5 + phase * 1.6); // trait épais sur les hexes brillants
+        ctx.globalAlpha = strokeA * 0.9;
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
