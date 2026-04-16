@@ -10,7 +10,7 @@
 
   <style>
     :root{
-      color-scheme: dark;
+      /* color-scheme retiré — cause un fond système opaque dans OBS browser source iframe */
 
       /* Fallbacks (remplacés par streamer appearance) */
       --chat-name-color: #7c4dff;
@@ -30,6 +30,7 @@
       margin:0; padding:0;
       width:100%; height:100%;
       background: transparent !important;
+      background-color: transparent !important;
       overflow:hidden;
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
     }
