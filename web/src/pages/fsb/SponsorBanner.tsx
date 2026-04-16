@@ -150,7 +150,7 @@ function useMessageCycle(messages: string[], intervalSecs: number) {
     return () => clearTimeout(t);
   }, [phase, intervalSecs, messages.length]);
 
-  return { text: messages[idx], phase, setAnimStyle: (s: SponsorAnimStyle) => { style_.current = s; } };
+  return { idx, text: messages[idx], phase, setAnimStyle: (s: SponsorAnimStyle) => { style_.current = s; } };
 }
 
 // ─── Animated text ────────────────────────────────────────────────────────────
@@ -166,29 +166,38 @@ function AnimatedText({ text, phase, animStyle }: {
   const exitAnim  = EXIT_ANIM[animStyle];
   const enterDur  = ENTER_DUR[animStyle];
 
-  const charStyle = (i: number): React.CSSProperties => ({
-    display: "inline-block",
-    animation: phase === "exit"
-      ? `${exitAnim} ${EXIT_DUR}ms ease-in both`
-      : `${enterAnim} ${enterDur}ms ${EASE} both`,
-    animationDelay: phase === "enter" ? `${i * 28}ms` : "0ms",
-  });
+  const charStyle = (i: number): React.CSSProperties =>
+    phase === "hold"
+      ? { display: "inline-block", opacity: 1 }
+      : {
+          display: "inline-block",
+          animation: phase === "exit"
+            ? `${exitAnim} ${EXIT_DUR}ms ease-in both`
+            : `${enterAnim} ${enterDur}ms ${EASE} both`,
+          animationDelay: phase === "enter" ? `${i * 28}ms` : "0ms",
+        };
 
-  const wordStyle = (i: number): React.CSSProperties => ({
-    display: "inline-block",
-    marginRight: "0.28em",
-    animation: phase === "exit"
-      ? `${exitAnim} ${EXIT_DUR}ms ease-in both`
-      : `${enterAnim} ${enterDur}ms ${EASE} both`,
-    animationDelay: phase === "enter" ? `${i * 85}ms` : "0ms",
-  });
+  const wordStyle = (i: number): React.CSSProperties =>
+    phase === "hold"
+      ? { display: "inline-block", marginRight: "0.28em", opacity: 1 }
+      : {
+          display: "inline-block",
+          marginRight: "0.28em",
+          animation: phase === "exit"
+            ? `${exitAnim} ${EXIT_DUR}ms ease-in both`
+            : `${enterAnim} ${enterDur}ms ${EASE} both`,
+          animationDelay: phase === "enter" ? `${i * 85}ms` : "0ms",
+        };
 
-  const blockStyle: React.CSSProperties = {
-    display: "inline-block",
-    animation: phase === "exit"
-      ? `${exitAnim} ${EXIT_DUR}ms ease-in both`
-      : `${enterAnim} ${enterDur}ms ${EASE} both`,
-  };
+  const blockStyle: React.CSSProperties =
+    phase === "hold"
+      ? { display: "inline-block", opacity: 1 }
+      : {
+          display: "inline-block",
+          animation: phase === "exit"
+            ? `${exitAnim} ${EXIT_DUR}ms ease-in both`
+            : `${enterAnim} ${enterDur}ms ${EASE} both`,
+        };
 
   // ── Per-character
   if (PER_CHAR_STYLES.includes(animStyle)) {
@@ -281,7 +290,7 @@ function bannerContainerStyle(bs: SponsorBannerStyle): React.CSSProperties {
 export function SponsorBanner({ config }: { config: SponsorConfig }) {
   React.useEffect(() => { ensureKeyframes(); }, []);
 
-  const { text, phase, setAnimStyle } = useMessageCycle(config.messages, config.interval);
+  const { idx, text, phase, setAnimStyle } = useMessageCycle(config.messages, config.interval);
   React.useEffect(() => { setAnimStyle(config.animStyle); }, [config.animStyle, setAnimStyle]);
 
   if (!config.enabled) return null;
@@ -303,25 +312,14 @@ export function SponsorBanner({ config }: { config: SponsorConfig }) {
   return (
     <div style={{ ...bannerContainerStyle(config.bannerStyle), ...pos, gap }}>
 
-      {/* ── Left section : label + command pill — compact, taille contrôlable */}
+      {/* ── Left section : command pill — compact, taille contrôlable */}
       <div style={{
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        gap: Math.round(gap * 0.25),
         flexShrink: 0,
         width: leftWidth,
       }}>
-        <span style={{
-          fontSize: labelSize,
-          color: isDark ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.7)",
-          whiteSpace: "nowrap",
-          letterSpacing: "0.02em",
-          textAlign: "center",
-          lineHeight: 1.2,
-        }}>
-          {config.commandLabel}
-        </span>
         <div style={{
           background: "linear-gradient(135deg, #7c3aed, #9333ea)",
           borderRadius: Math.round(commandSize * 0.45),
@@ -355,7 +353,7 @@ export function SponsorBanner({ config }: { config: SponsorConfig }) {
         alignItems: "center",
       }}>
         <div
-          key={`${phase}-${text}`}
+          key={idx}
           style={{
             fontSize: textSize,
             fontWeight: 900,
