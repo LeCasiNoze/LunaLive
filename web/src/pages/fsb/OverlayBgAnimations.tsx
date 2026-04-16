@@ -50,8 +50,13 @@ function drawHexGrid(
   w: number, h: number, t: number,
   opts: HexOpts,
 ) {
-  // ── Size: fraction of canvas width → même nombre de colonnes à toute résolution
-  const sz = opts.size !== undefined ? opts.size * (w / 1920) : w / 30;
+  // ── Dimension de référence : côté court du canvas.
+  //    Cela rend l'animation strictement identique à toute résolution et tout
+  //    ratio (preview 900px, OBS 1920×1080, ultrawide, etc.).
+  const ref = Math.min(w, h);
+
+  // ── Taille : ~16 colonnes visibles sur un 16:9, peu importe la résolution
+  const sz = opts.size !== undefined ? opts.size * (ref / 1080) : ref / 14.7;
   const colStep = sz * Math.sqrt(3);
   const rowStep = sz * 1.5;
   const blur = opts.glowBlur ?? 8;
@@ -62,26 +67,25 @@ function drawHexGrid(
       const x = col * colStep + (row % 2 === 0 ? 0 : colStep / 2);
       const y = row * rowStep;
 
-      // ── Phase normalisée par la taille du canvas → même rendu à toute résolution
-      const nx = x / w;  // 0..1
-      const ny = y / h;  // 0..1
+      // ── Phase normalisée par ref (= côté court) → même nb de cycles partout
+      const nx = x / ref;
+      const ny = y / ref;
       let phase: number;
       if (opts.pulseMode) {
         phase = (Math.sin(t * opts.speed * Math.PI) + 1) / 2;
       } else if (opts.waveMode) {
-        phase = (Math.sin((nx + ny) * 14 - t * opts.speed * 1.4) + 1) / 2;
+        phase = (Math.sin((nx + ny) * 10 - t * opts.speed * 1.4) + 1) / 2;
       } else {
-        phase = (Math.sin(nx * 12 + ny * 8 + t * opts.speed) + 1) / 2;
+        phase = (Math.sin(nx * 8.5 + ny * 6 + t * opts.speed) + 1) / 2;
       }
 
       // ── Hue
       let hue: number;
       if (opts.rainbowMode) {
-        hue = (nx * 180 + ny * 120 + t * 18) % 360;
+        hue = (nx * 130 + ny * 90 + t * 18) % 360;
       } else if (opts.dualHue !== undefined) {
         hue = row % 2 === 0 ? opts.hueBase : opts.dualHue;
       } else {
-        // subtle slow cycle even in base modes
         hue = (opts.hueBase + t * 5) % 360;
       }
 
@@ -235,7 +239,7 @@ function makeHexNeonDeep(): Anim {
       hueBase: 170, hueSat: 100, speed: 0.4,
       strokeAlphaMin: 0.04, strokeAlphaMax: 0.95,
       fillAlpha: 0.30, glowBlur: 16, lineWidth: 2,
-      size: 148,
+      size: 154,
     });
   }};
 }
@@ -248,7 +252,7 @@ function makeHexNeonDense(): Anim {
       hueBase: 170, hueSat: 100, speed: 0.5,
       strokeAlphaMin: 0.05, strokeAlphaMax: 0.75,
       fillAlpha: 0.12, glowBlur: 5, lineWidth: 1,
-      size: 37,
+      size: 34,
     });
   }};
 }
