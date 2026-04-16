@@ -39,16 +39,23 @@ const DEFAULT_FILTERS: CamFilters = {
   chromaKey: false, chromaSimilarity: 80, chromaSpill: 30,
 };
 
-type SlotState = {
-  slug: string;          // qui est dans ce slot
-  filters: CamFilters;
+// Remote broadcaster entry
+type RemoteEntry = {
+  slug: string;
+  slot: number;  // 1-based slot from server
   stream: MediaStream | null;
-  socketId: string | null; // socket du broadcaster, null si vide
+  filters: CamFilters;
+  socketId: string;
 };
 
-function emptySlot(slug: string): SlotState {
-  return { slug, filters: { ...DEFAULT_FILTERS }, stream: null, socketId: null };
-}
+// Slot card data for rendering — derived, not stored
+type SlotCardData = {
+  slug: string;     // "" if empty
+  isMe: boolean;
+  active: boolean;
+  stream: MediaStream | null;
+  filters: CamFilters;
+};
 
 function filterCss(f: CamFilters): string {
   return `brightness(${f.brightness / 100}) contrast(${f.contrast / 100}) saturate(${f.saturation / 100}) hue-rotate(${f.hue}deg)`;
@@ -78,17 +85,39 @@ function useStreamTimer() {
   return h > 0 ? `${h}:${p(m)}:${p(s)}` : `${p(m)}:${p(s)}`;
 }
 
+type StreamInfo = {
+  isLive: boolean;
+  hlsUrl: string | null;      // rumbleHlsUrl from API
+  embedUrl: string | null;    // Rumble iframe embed fallback
+  thumbUrl: string | null;
+  viewers: number;
+};
+
 function useStreamInfo() {
-  const [info, setInfo] = React.useState<{ isLive: boolean; hlsUrl: string | null; thumbUrl: string | null; viewers: number }>({
-    isLive: false, hlsUrl: null, thumbUrl: null, viewers: 0,
+  const [info, setInfo] = React.useState<StreamInfo>({
+    isLive: false, hlsUrl: null, embedUrl: null, thumbUrl: null, viewers: 0,
   });
   React.useEffect(() => {
     const fetch_ = async () => {
       try {
         const r = await fetch(`${LUNA_API_BASE}/streamers/lecasinoze`);
         const j = await r.json().catch(() => null);
-        if (j) setInfo({ isLive: !!j.isLive, hlsUrl: j.hlsUrl ?? null, thumbUrl: j.thumbUrl ?? j.thumbUrlDb ?? null, viewers: j.viewers ?? 0 });
-      } catch {}
+        if (!j) return;
+        // API returns rumbleHlsUrl (not hlsUrl) for LeCasiNoze
+        const hlsUrl = j.rumbleHlsUrl ?? j.hlsUrl ?? null;
+        // Rumble embed fallback using live_id / videoId
+        const liveId = j.rumbleLiveId ?? j.liveId ?? null;
+        const videoUrl = j.rumbleVideoUrl ?? null;
+        // Embed URL: prefer videoUrl page, fallback to embed/{liveId}
+        const embedUrl = liveId
+          ? `https://rumble.com/embed/${liveId}/`
+          : videoUrl ?? null;
+        const thumbUrl = j.rumbleThumbnailUrl ?? j.thumbUrl ?? j.thumbUrlDb ?? null;
+        console.log("[StreamInfo] isLive:", !!j.isLive, "hlsUrl:", hlsUrl, "embedUrl:", embedUrl);
+        setInfo({ isLive: !!j.isLive, hlsUrl, embedUrl, thumbUrl, viewers: j.viewers ?? 0 });
+      } catch (e) {
+        console.error("[StreamInfo] fetch error:", e);
+      }
     };
     fetch_();
     const id = setInterval(fetch_, 30_000);
@@ -102,7 +131,10 @@ function useFollowers() {
   React.useEffect(() => {
     const fetch_ = async () => {
       try {
-        const r = await fetch(`${LUNA_API_BASE}/me/overlay/followers?slug=fabiozsis`);
+        const token = localStorage.getItem("lunalive_token_v1") || "";
+        const r = await fetch(`${LUNA_API_BASE}/me/overlay/followers?slug=fabiozsis`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         const j = await r.json().catch(() => null);
         if (j?.ok) setCount(j.count ?? null);
       } catch {}
@@ -128,8 +160,10 @@ function useBroadcaster(
 
   React.useEffect(() => {
     if (!socket || !active || !slug) return;
+    console.log("[Broadcaster] registering", slug, "at slot", slot);
     socket.emit("cam:register", { slug, slot });
     return () => {
+      console.log("[Broadcaster] leaving", slug);
       socket.emit("cam:leave");
       peersRef.current.forEach((pc) => pc.close());
       peersRef.current.clear();
@@ -145,6 +179,7 @@ function useBroadcaster(
     if (!socket || !active || !stream) return;
 
     const handleRequest = async ({ viewerId }: { viewerId: string }) => {
+      console.log("[Broadcaster] cam:request from viewer", viewerId, "→ creating offer");
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
       peersRef.current.set(viewerId, pc);
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
@@ -177,27 +212,71 @@ function useBroadcaster(
   }, [socket, active, stream]);
 }
 
-// ─── WebRTC viewer for remote slots ─────────────────────────────────────────
+// ─── Stable WebRTC viewer ────────────────────────────────────────────────────
+// IMPORTANT: uses mySlugRef (a ref) instead of a reactive mySlug prop.
+// This means the effect NEVER re-runs when myCamActive changes — preventing
+// the bug where activating your own cam destroyed all remote streams.
 
-function useViewer(
+function useRemoteCams(
   socket: Socket | null,
-  mySlug: string,
-  onSlotUpdate: (update: { slug: string; slot: number; socketId: string; stream?: MediaStream; filters?: CamFilters | null }) => void,
-  onSlotLeft: (slug: string) => void,
+  mySlugRef: React.MutableRefObject<string>,
 ) {
+  const [entries, setEntries] = React.useState<Map<string, RemoteEntry>>(new Map());
   const peersRef = React.useRef<Map<string, RTCPeerConnection>>(new Map());
 
-  const connect = React.useCallback((bc: { slug: string; slot: number; socketId: string; filters: CamFilters | null }) => {
-    if (!socket || bc.slug === mySlug || peersRef.current.has(bc.slug)) return;
+  const connect = React.useCallback((bc: { slug: string; slot: number; socketId: string; filters: any }) => {
+    if (!socket) return;
+    if (bc.slug === mySlugRef.current) {
+      console.log("[RemoteCams] skip self:", bc.slug);
+      return;
+    }
+    if (peersRef.current.has(bc.slug)) {
+      console.log("[RemoteCams] already connected to:", bc.slug);
+      return;
+    }
+    console.log("[RemoteCams] connecting to broadcaster:", bc.slug, "slot:", bc.slot, "socketId:", bc.socketId);
+
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     peersRef.current.set(bc.slug, pc);
 
-    onSlotUpdate({ slug: bc.slug, slot: bc.slot, socketId: bc.socketId, filters: bc.filters });
+    // Pre-register so filter updates work before video arrives
+    setEntries(prev => {
+      const next = new Map(prev);
+      next.set(bc.slug, {
+        slug: bc.slug, slot: bc.slot, stream: null,
+        filters: { ...DEFAULT_FILTERS, ...(bc.filters ?? {}) },
+        socketId: bc.socketId,
+      });
+      return next;
+    });
 
-    pc.ontrack = ({ streams }) => {
-      onSlotUpdate({ slug: bc.slug, slot: bc.slot, socketId: bc.socketId, stream: streams[0] });
+    pc.ontrack = ({ streams: s }) => {
+      const stream = s[0] ?? null;
+      console.log("[RemoteCams] ontrack for", bc.slug, "stream:", stream?.id ?? "null");
+      if (!stream) return;
+      setEntries(prev => {
+        const next = new Map(prev);
+        const ex = next.get(bc.slug);
+        if (ex) next.set(bc.slug, { ...ex, stream });
+        return next;
+      });
     };
-    pc.onicecandidate = ({ candidate }) => { if (candidate) socket.emit("cam:ice", { to: bc.socketId, candidate }); };
+
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) socket.emit("cam:ice", { to: bc.socketId, candidate });
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+        peersRef.current.delete(bc.slug);
+        setEntries(prev => {
+          const next = new Map(prev);
+          const ex = next.get(bc.slug);
+          if (ex) next.set(bc.slug, { ...ex, stream: null });
+          return next;
+        });
+      }
+    };
 
     const handleOffer = async ({ from: offerId, slug, sdp }: { from: string; slug: string; sdp: RTCSessionDescriptionInit }) => {
       if (slug !== bc.slug) return;
@@ -212,36 +291,66 @@ function useViewer(
     };
     socket.on("cam:offer", handleOffer);
     socket.on("cam:ice", handleIce);
+
+    // Request stream from this broadcaster
     socket.emit("cam:request", { fromSlug: bc.slug });
-  }, [socket, mySlug, onSlotUpdate]);
+  }, [socket, mySlugRef]);
 
   React.useEffect(() => {
     if (!socket) return;
+
+    // Get currently active broadcasters
     socket.emit("cam:viewer-join", {}, (ack: { ok: boolean; active: any[] }) => {
+      console.log("[RemoteCams] cam:viewer-join ack, active broadcasters:", ack?.active?.length ?? 0, ack?.active?.map((b: any) => `${b.slug}@slot${b.slot}`));
       for (const bc of (ack?.active ?? [])) connect(bc);
     });
-    const onRegistered = (bc: any) => connect(bc);
+
+    const onRegistered = (bc: any) => {
+      console.log("[RemoteCams] cam:registered", bc.slug, "slot:", bc.slot);
+      connect(bc);
+    };
+
     const onLeft = ({ slug }: { slug: string }) => {
+      console.log("[RemoteCams] cam:left", slug);
       peersRef.current.get(slug)?.close();
       peersRef.current.delete(slug);
-      onSlotLeft(slug);
+      setEntries(prev => { const next = new Map(prev); next.delete(slug); return next; });
     };
+
     const onFilterUpdate = ({ slug, filters }: { slug: string; filters: CamFilters }) => {
-      // Ignorer son propre slug pour éviter la boucle broadcaster → viewer → broadcaster
-      if (slug === mySlug) return;
-      onSlotUpdate({ slug, slot: -1, socketId: "", filters });
+      if (slug === mySlugRef.current) return; // skip own echo
+      setEntries(prev => {
+        const next = new Map(prev);
+        const ex = next.get(slug);
+        if (ex) next.set(slug, { ...ex, filters: { ...DEFAULT_FILTERS, ...filters } });
+        return next;
+      });
     };
+
     socket.on("cam:registered", onRegistered);
     socket.on("cam:left", onLeft);
     socket.on("cam:filter-update", onFilterUpdate);
+
     return () => {
       socket.off("cam:registered", onRegistered);
       socket.off("cam:left", onLeft);
       socket.off("cam:filter-update", onFilterUpdate);
-      peersRef.current.forEach((pc) => pc.close());
+      peersRef.current.forEach(pc => pc.close());
       peersRef.current.clear();
+      setEntries(new Map());
     };
-  }, [socket, connect, onSlotUpdate, onSlotLeft]);
+  }, [socket, connect, mySlugRef]);
+
+  const updateFilters = React.useCallback((slug: string, filters: CamFilters) => {
+    setEntries(prev => {
+      const next = new Map(prev);
+      const ex = next.get(slug);
+      if (ex) next.set(slug, { ...ex, filters });
+      return next;
+    });
+  }, []);
+
+  return { entries, updateFilters };
 }
 
 // ─── Chroma key canvas ────────────────────────────────────────────────────────
@@ -383,71 +492,48 @@ function Slider({ label, value, min, max, step = 1, onChange }: {
 // ─── Cam card ─────────────────────────────────────────────────────────────────
 
 function CamCard({
-  slotIndex, state, mySlug, myCamActive, localStream,
-  onActivate, onDeactivate, onFiltersChange, onSlugChange,
+  slotIndex, data, myCamActive,
+  onActivate, onDeactivate, onFiltersChange,
 }: {
   slotIndex: number;
-  state: SlotState;
-  mySlug: string;
+  data: SlotCardData;
   myCamActive: boolean;
-  localStream: MediaStream | null;
   onActivate: () => void;
   onDeactivate: () => void;
   onFiltersChange: (f: Partial<CamFilters>) => void;
-  onSlugChange: (slug: string) => void;
 }) {
-  const isMe = state.slug === mySlug && myCamActive;
   const [open, setOpen] = React.useState(false);
 
-  const stream = isMe ? localStream : state.stream;
-  const active = isMe ? myCamActive : !!state.socketId;
-
-  const chromaKey = state.filters.chromaKey;
-
   return (
-    <div style={{ ...S.camCard, ...(chromaKey ? { border: "2px dashed rgba(34,197,94,.35)", background: "transparent" } : {}) }}>
+    <div style={{ ...S.camCard, ...(data.filters.chromaKey ? { border: "2px dashed rgba(34,197,94,.35)", background: "transparent" } : {}) }}>
       {/* Header */}
       <div style={S.camCardHeader}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8" }}>{SLOT_LABELS[slotIndex]}</span>
           <span style={{
             fontSize: 10, padding: "1px 6px", borderRadius: 999, fontWeight: 700,
-            background: active ? "rgba(34,197,94,.12)" : "rgba(100,116,139,.08)",
-            color: active ? "#4ade80" : "#475569",
+            background: data.active ? "rgba(34,197,94,.12)" : "rgba(100,116,139,.08)",
+            color: data.active ? "#4ade80" : "#475569",
           }}>
-            {active ? `● ${state.slug}` : "○ vide"}
+            {data.slug ? `${data.active ? "●" : "○"} ${data.slug}` : "○ vide"}
           </span>
-          {isMe && <span style={{ fontSize: 9, color: "#6366f1", fontWeight: 700 }}>MOI</span>}
+          {data.isMe && <span style={{ fontSize: 9, color: "#6366f1", fontWeight: 700 }}>MOI</span>}
         </div>
-        <button onClick={() => setOpen((v) => !v)} style={S.toggleBtn}>
+        <button onClick={() => setOpen(v => !v)} style={S.toggleBtn}>
           {open ? "▲ fermer" : "▼ régler"}
         </button>
       </div>
 
       {/* Video preview */}
       <div style={{ aspectRatio: "16/9" }}>
-        <CamVideo stream={stream} filters={state.filters} muted={isMe} />
+        <CamVideo stream={data.stream} filters={data.filters} muted={data.isMe} />
       </div>
 
       {/* Controls */}
       {open && (
         <div style={S.camControls}>
-          {/* Assignation du slot */}
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 9, fontWeight: 800, color: "#334155", letterSpacing: ".08em", marginBottom: 5, textTransform: "uppercase" }}>
-              Streamer assigné
-            </div>
-            <select
-              value={state.slug}
-              onChange={(e) => onSlugChange(e.target.value)}
-              style={{ ...S.select, width: "100%" }}
-            >
-              {FSB_SLUGS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-
           {/* My cam: activate/deactivate */}
-          {state.slug === mySlug && (
+          {data.isMe && (
             <div style={{ marginBottom: 10 }}>
               {!myCamActive ? (
                 <button onClick={onActivate} style={{ ...S.btn, background: "rgba(99,102,241,.8)", fontSize: 11, width: "100%", padding: "6px 0" }}>
@@ -464,48 +550,39 @@ function CamCard({
           <div style={{ height: 1, background: "rgba(255,255,255,.05)", marginBottom: 8 }} />
 
           {/* Filters */}
-          <div style={{ fontSize: 9, fontWeight: 800, color: "#334155", letterSpacing: ".08em", marginBottom: 8, textTransform: "uppercase" }}>
-            Couleur
-          </div>
-          <Slider label="Luminosité" value={state.filters.brightness} min={50} max={150} onChange={(v) => onFiltersChange({ brightness: v })} />
-          <Slider label="Contraste" value={state.filters.contrast} min={50} max={200} onChange={(v) => onFiltersChange({ contrast: v })} />
-          <Slider label="Saturation" value={state.filters.saturation} min={0} max={200} onChange={(v) => onFiltersChange({ saturation: v })} />
-          <Slider label="Teinte" value={state.filters.hue} min={-180} max={180} onChange={(v) => onFiltersChange({ hue: v })} />
+          <div style={{ fontSize: 9, fontWeight: 800, color: "#334155", letterSpacing: ".08em", marginBottom: 8, textTransform: "uppercase" }}>Couleur</div>
+          <Slider label="Luminosité" value={data.filters.brightness} min={50} max={150} onChange={v => onFiltersChange({ brightness: v })} />
+          <Slider label="Contraste" value={data.filters.contrast} min={50} max={200} onChange={v => onFiltersChange({ contrast: v })} />
+          <Slider label="Saturation" value={data.filters.saturation} min={0} max={200} onChange={v => onFiltersChange({ saturation: v })} />
+          <Slider label="Teinte" value={data.filters.hue} min={-180} max={180} onChange={v => onFiltersChange({ hue: v })} />
 
           <div style={{ height: 1, background: "rgba(255,255,255,.05)", margin: "8px 0" }} />
-          <div style={{ fontSize: 9, fontWeight: 800, color: "#334155", letterSpacing: ".08em", marginBottom: 8, textTransform: "uppercase" }}>
-            Zoom / Recadrage
-          </div>
-          <Slider label="Zoom %" value={state.filters.zoom} min={100} max={300} onChange={(v) => onFiltersChange({ zoom: v })} />
-          <Slider label="Pan X" value={state.filters.panX} min={-50} max={50} onChange={(v) => onFiltersChange({ panX: v })} />
-          <Slider label="Pan Y" value={state.filters.panY} min={-50} max={50} onChange={(v) => onFiltersChange({ panY: v })} />
+          <div style={{ fontSize: 9, fontWeight: 800, color: "#334155", letterSpacing: ".08em", marginBottom: 8, textTransform: "uppercase" }}>Zoom / Recadrage</div>
+          <Slider label="Zoom %" value={data.filters.zoom} min={100} max={300} onChange={v => onFiltersChange({ zoom: v })} />
+          <Slider label="Pan X" value={data.filters.panX} min={-50} max={50} onChange={v => onFiltersChange({ panX: v })} />
+          <Slider label="Pan Y" value={data.filters.panY} min={-50} max={50} onChange={v => onFiltersChange({ panY: v })} />
 
           <div style={{ height: 1, background: "rgba(255,255,255,.05)", margin: "8px 0" }} />
 
           {/* Chroma key */}
           <button
-            onClick={() => onFiltersChange({ chromaKey: !state.filters.chromaKey })}
+            onClick={() => onFiltersChange({ chromaKey: !data.filters.chromaKey })}
             style={{
-              ...S.btn,
-              width: "100%",
-              padding: "6px 0",
-              marginBottom: 6,
-              background: state.filters.chromaKey
-                ? "rgba(34,197,94,.2)"
-                : "rgba(255,255,255,.04)",
-              border: `1px solid ${state.filters.chromaKey ? "rgba(34,197,94,.4)" : "rgba(255,255,255,.07)"}`,
-              color: state.filters.chromaKey ? "#4ade80" : "#64748b",
+              ...S.btn, width: "100%", padding: "6px 0", marginBottom: 6,
+              background: data.filters.chromaKey ? "rgba(34,197,94,.2)" : "rgba(255,255,255,.04)",
+              border: `1px solid ${data.filters.chromaKey ? "rgba(34,197,94,.4)" : "rgba(255,255,255,.07)"}`,
+              color: data.filters.chromaKey ? "#4ade80" : "#64748b",
               fontSize: 10,
             }}
           >
-            {state.filters.chromaKey ? "🟢 Fond vert ON" : "⬜ Fond vert"}
+            {data.filters.chromaKey ? "🟢 Fond vert ON" : "⬜ Fond vert"}
           </button>
-          {state.filters.chromaKey && (
+          {data.filters.chromaKey && (
             <div style={{ background: "rgba(34,197,94,.05)", border: "1px solid rgba(34,197,94,.15)", borderRadius: 6, padding: "8px 8px 4px", marginBottom: 6 }}>
-              <Slider label="Sensibilité (similarity)" value={state.filters.chromaSimilarity ?? 80} min={10} max={100}
-                onChange={(v) => onFiltersChange({ chromaSimilarity: v })} />
-              <Slider label="Anti-halo (spill)" value={state.filters.chromaSpill ?? 30} min={0} max={100}
-                onChange={(v) => onFiltersChange({ chromaSpill: v })} />
+              <Slider label="Sensibilité (similarity)" value={data.filters.chromaSimilarity} min={10} max={100}
+                onChange={v => onFiltersChange({ chromaSimilarity: v })} />
+              <Slider label="Anti-halo (spill)" value={data.filters.chromaSpill} min={0} max={100}
+                onChange={v => onFiltersChange({ chromaSpill: v })} />
             </div>
           )}
 
@@ -544,47 +621,33 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   const streamInfo = useStreamInfo();
   const followers = useFollowers();
 
-  // Default my slug from username
-  const defaultSlug = FSB_SLUGS.find(s => s.toLowerCase().includes(user.username.toLowerCase())) ?? FSB_SLUGS[0];
+  // My identity — derived from username, stable
+  const mySlug = React.useMemo(
+    () => FSB_SLUGS.find(s => s.toLowerCase().includes(user.username.toLowerCase())) ?? FSB_SLUGS[0],
+    [user.username],
+  );
+  // Ref so useRemoteCams never re-runs when myCamActive changes
+  const mySlugRef = React.useRef(mySlug);
+  mySlugRef.current = mySlug;
 
-  // Slots: index 0=Cam1, 1=Cam2, 2=Cam3
-  const [slots, setSlots] = React.useState<SlotState[]>([
-    emptySlot("fabiozsis"),
-    emptySlot("samyyzsis"),
-    emptySlot("lecasinoze"),
-  ]);
-
-  // Filtres par (slug:slotIdx) — chaque streamer a des paramètres différents
-  // selon l'emplacement de cam occupé (cam1 ≠ cam2 même personne)
-  const [filtersPerSlugSlot, setFiltersPerSlugSlot] = React.useState<Record<string, CamFilters>>({});
-
-  // Ref toujours à jour pour accéder aux slots courants dans les callbacks async
-  const slotsRef = React.useRef(slots);
-  React.useEffect(() => { slotsRef.current = slots; }, [slots]);
-
-  // Vue dérivée : slot avec ses filtres (slug:slotIdx)
-  const slotsWithFilters: SlotState[] = slots.map((slot, i) => ({
-    ...slot,
-    filters: filtersPerSlugSlot[`${slot.slug}:${i}`] ?? { ...DEFAULT_FILTERS },
-  }));
-
-  // My cam settings
-  const [mySlug, setMySlug] = React.useState(defaultSlug);
-  const [mySlot, setMySlot] = React.useState(0);
+  const [mySlot, setMySlot] = React.useState(0);   // 0-based UI position
   const [myCamActive, setMyCamActive] = React.useState(false);
   const [localStream, setLocalStream] = React.useState<MediaStream | null>(null);
+  const [myFilters, setMyFilters] = React.useState<CamFilters>({ ...DEFAULT_FILTERS });
   const [camError, setCamError] = React.useState<string | null>(null);
   const [msgCount, setMsgCount] = React.useState(0);
 
-  // Keep slot identity in sync with assignment
-  React.useEffect(() => {
-    setSlots((prev) => prev.map((s, i) => i === mySlot ? { ...s, slug: mySlug } : s));
-  }, [mySlug, mySlot]);
+  // STABLE viewer — never tears down when myCamActive / mySlot changes
+  const { entries: remoteEntries, updateFilters: updateRemoteFilters } = useRemoteCams(socket, mySlugRef);
 
-  // Si slot change pendant que la cam est active → déactivation automatique (1 cam par personne)
+  // Broadcaster — independent of viewer
+  useBroadcaster(socket, localStream, mySlug, mySlot + 1, myFilters, myCamActive);
+
+  // Deactivate when slot changes while active (1 cam per person)
   const prevMySlot = React.useRef(mySlot);
   React.useEffect(() => {
     if (prevMySlot.current !== mySlot && myCamActive) {
+      console.log("[CamControl] slot changed while active → deactivating");
       localStream?.getTracks().forEach(t => t.stop());
       setLocalStream(null);
       setMyCamActive(false);
@@ -592,18 +655,11 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
     prevMySlot.current = mySlot;
   }, [mySlot]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Count chat messages via socket
+  // Handle server kick (another device took the slot)
   React.useEffect(() => {
     if (!socket) return;
-    const onMsg = () => setMsgCount((n) => n + 1);
-    socket.on("chat:message", onMsg);
-    return () => { socket.off("chat:message", onMsg); };
-  }, [socket]);
-
-  // Gestion du kick serveur (un autre appareil a pris la cam)
-  React.useEffect(() => {
-    if (!socket) return;
-    const onKicked = () => {
+    const onKicked = ({ reason }: { reason?: string }) => {
+      console.log("[CamControl] cam:kicked from server, reason:", reason);
       localStream?.getTracks().forEach(t => t.stop());
       setLocalStream(null);
       setMyCamActive(false);
@@ -614,42 +670,20 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
     return () => { socket.off("cam:kicked", onKicked); };
   }, [socket, localStream]);
 
-  const onSlotUpdate = React.useCallback((update: { slug: string; slot: number; socketId: string; stream?: MediaStream; filters?: CamFilters | null }) => {
-    // Mettre à jour slot (stream + socketId)
-    setSlots((prev) => {
-      const next = [...prev];
-      let idx = update.slot > 0 ? update.slot - 1 : next.findIndex(s => s.slug === update.slug);
-      if (idx < 0 || idx > 2) idx = next.findIndex(s => s.slug === update.slug);
-      if (idx < 0) return prev;
-      next[idx] = {
-        ...next[idx],
-        slug: update.slug || next[idx].slug,
-        socketId: update.socketId !== undefined ? update.socketId : next[idx].socketId,
-        ...(update.stream !== undefined ? { stream: update.stream } : {}),
-      };
-      return next;
-    });
-    // Mettre à jour les filtres par (slug:slotIdx)
-    if (update.filters != null && update.slug) {
-      const slotIdx = slotsRef.current.findIndex(s => s.slug === update.slug);
-      if (slotIdx >= 0) {
-        setFiltersPerSlugSlot((prev) => ({
-          ...prev,
-          [`${update.slug}:${slotIdx}`]: { ...DEFAULT_FILTERS, ...update.filters! },
-        }));
-      }
-    }
-  }, []);
+  // Chat message counter
+  React.useEffect(() => {
+    if (!socket) return;
+    const onMsg = () => setMsgCount(n => n + 1);
+    socket.on("chat:message", onMsg);
+    return () => { socket.off("chat:message", onMsg); };
+  }, [socket]);
 
-  const onSlotLeft = React.useCallback((slug: string) => {
-    setSlots((prev) => prev.map(s => s.slug === slug ? { ...s, stream: null, socketId: null } : s));
-  }, []);
-
-  useViewer(socket, myCamActive ? mySlug : "", onSlotUpdate, onSlotLeft);
-  useBroadcaster(socket, localStream, mySlug, mySlot + 1, filtersPerSlugSlot[`${mySlug}:${mySlot}`] ?? DEFAULT_FILTERS, myCamActive);
+  // Cleanup stream on unmount
+  React.useEffect(() => () => { localStream?.getTracks().forEach(t => t.stop()); }, [localStream]);
 
   const activateCam = async () => {
     setCamError(null);
+    console.log("[CamControl] activating cam for", mySlug, "slot", mySlot + 1);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: false });
       setLocalStream(stream);
@@ -660,37 +694,54 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   };
 
   const deactivateCam = () => {
+    console.log("[CamControl] deactivating cam for", mySlug);
     localStream?.getTracks().forEach(t => t.stop());
     setLocalStream(null);
     setMyCamActive(false);
   };
 
-  React.useEffect(() => () => { localStream?.getTracks().forEach(t => t.stop()); }, [localStream]);
-
-  const handleFiltersChange = (slotIdx: number, patch: Partial<CamFilters>) => {
-    const slug = slots[slotIdx].slug;
-    const key = `${slug}:${slotIdx}`;
-    setFiltersPerSlugSlot((prev) => {
-      const current = prev[key] ?? { ...DEFAULT_FILTERS };
-      const newFilters = { ...current, ...patch } as CamFilters;
-      if (socket) socket.emit("cam:filter-update", { slug, filters: newFilters });
-      return { ...prev, [key]: newFilters };
-    });
-  };
-
-  const handleSlugChange = (slotIdx: number, slug: string) => {
-    setSlots((prev) => {
-      const next = [...prev];
-      next[slotIdx] = { ...next[slotIdx], slug };
-      return next;
-    });
-    // Broadcaster les filtres du nouveau slug sur ce slot
-    if (socket) {
-      const filters = filtersPerSlugSlot[`${slug}:${slotIdx}`] ?? { ...DEFAULT_FILTERS };
-      socket.emit("cam:filter-update", { slug, filters });
+  const handleFiltersChange = React.useCallback((slug: string, patch: Partial<CamFilters>) => {
+    if (!slug) return;
+    if (slug === mySlug) {
+      setMyFilters(prev => {
+        const next = { ...prev, ...patch } as CamFilters;
+        socket?.emit("cam:filter-update", { slug, filters: next });
+        return next;
+      });
+    } else {
+      const existing = remoteEntries.get(slug);
+      if (existing) {
+        const next = { ...existing.filters, ...patch } as CamFilters;
+        updateRemoteFilters(slug, next);
+        socket?.emit("cam:filter-update", { slug, filters: next });
+      }
     }
-    if (slotIdx === mySlot) setMySlug(slug);
-  };
+  }, [socket, mySlug, remoteEntries, updateRemoteFilters]);
+
+  // Build 3 display cards — derived, never stale
+  const slotCards: SlotCardData[] = [0, 1, 2].map(i => {
+    const slotNum = i + 1; // 1-based
+
+    // My slot — always show it (active or not)
+    if (i === mySlot) {
+      return {
+        slug: mySlug, isMe: true,
+        active: myCamActive,
+        stream: myCamActive ? localStream : null,
+        filters: myFilters,
+      };
+    }
+
+    // Remote cam registered at this slot position?
+    for (const [slug, entry] of remoteEntries) {
+      if (entry.slot === slotNum) {
+        return { slug, isMe: false, active: true, stream: entry.stream, filters: entry.filters };
+      }
+    }
+
+    // Empty
+    return { slug: "", isMe: false, active: false, stream: null, filters: { ...DEFAULT_FILTERS } };
+  });
 
   return (
     <div style={S.root}>
@@ -703,15 +754,11 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
             background: myCamActive ? "rgba(34,197,94,.15)" : "rgba(100,116,139,.1)",
             color: myCamActive ? "#4ade80" : "#64748b",
           }}>
-            {myCamActive ? "● EN DIRECT" : "○ HORS LIGNE"}
+            {myCamActive ? `● EN DIRECT (${mySlug} · Cam ${mySlot + 1})` : `○ ${mySlug} · HORS LIGNE`}
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {/* My cam quick assignment */}
-          <select value={mySlug} onChange={e => setMySlug(e.target.value)} style={S.select} title="Mon identité">
-            {FSB_SLUGS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select value={mySlot} onChange={e => setMySlot(Number(e.target.value))} style={S.select} title="Mon slot">
+          <select value={mySlot} onChange={e => setMySlot(Number(e.target.value))} style={S.select} title="Mon slot cam">
             {SLOT_LABELS.map((l, i) => <option key={i} value={i}>{l}</option>)}
           </select>
           {!myCamActive
@@ -727,18 +774,15 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
 
       {/* ── Cams (en haut) ── */}
       <div style={S.camsRow}>
-        {slotsWithFilters.map((slot, i) => (
+        {slotCards.map((data, i) => (
           <CamCard
             key={i}
             slotIndex={i}
-            state={slot}
-            mySlug={mySlug}
+            data={data}
             myCamActive={myCamActive}
-            localStream={localStream}
             onActivate={activateCam}
             onDeactivate={deactivateCam}
-            onFiltersChange={(patch) => handleFiltersChange(i, patch)}
-            onSlugChange={(slug) => handleSlugChange(i, slug)}
+            onFiltersChange={(patch) => handleFiltersChange(data.slug || mySlug, patch)}
           />
         ))}
       </div>
@@ -748,7 +792,22 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
         {/* Stream + stats */}
         <div style={{ flex: "0 0 55%", minWidth: 0, height: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ ...S.card, flex: "1 1 0", minHeight: 0, padding: 0, overflow: "hidden" }}>
-            <RumbleStreamPlayer hlsUrl={streamInfo.hlsUrl} thumbnailUrl={streamInfo.thumbUrl} isLive={streamInfo.isLive} />
+            {streamInfo.hlsUrl ? (
+              <RumbleStreamPlayer hlsUrl={streamInfo.hlsUrl} thumbnailUrl={streamInfo.thumbUrl} isLive={streamInfo.isLive} />
+            ) : streamInfo.isLive && streamInfo.embedUrl ? (
+              <iframe
+                src={streamInfo.embedUrl}
+                style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+                allowFullScreen
+                allow="autoplay"
+                title="Rumble live"
+              />
+            ) : (
+              <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, background: "rgba(0,0,0,.25)" }}>
+                {streamInfo.thumbUrl && <img src={streamInfo.thumbUrl} alt="" style={{ maxWidth: "80%", maxHeight: "70%", objectFit: "contain", borderRadius: 6, opacity: 0.6 }} />}
+                <span style={{ fontSize: 12, color: "#475569" }}>{streamInfo.isLive ? "HLS non disponible" : "Pas de stream"}</span>
+              </div>
+            )}
           </div>
           {/* Stats bar */}
           <div style={{ ...S.card, padding: "10px 16px", display: "flex", gap: 20, alignItems: "center", flexShrink: 0 }}>

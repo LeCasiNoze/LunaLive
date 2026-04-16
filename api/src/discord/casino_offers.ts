@@ -199,6 +199,21 @@ export async function refreshDashboard(client: Client, ctx: BotCtx) {
     const ch = await client.channels.fetch(dashboardChannelId).catch(() => null);
     if (!ch || !ch.isTextBased()) return;
 
+    // Si on n'a pas l'ID en mémoire, chercher le message existant dans le channel
+    if (!dashboardMessageId) {
+      const fetched = await (ch as any).messages.fetch({ limit: 20 }).catch(() => null);
+      if (fetched) {
+        const existing = fetched.find(
+          (m: any) =>
+            m.author?.id === client.user?.id &&
+            m.embeds?.[0]?.title === "⚙️ Gestion des Offres Casino"
+        );
+        if (existing) {
+          dashboardMessageId = existing.id;
+        }
+      }
+    }
+
     const offers = await getAllOffers(FABIO_GUILD_ID);
     const payload = buildDashboardPayload(offers);
 

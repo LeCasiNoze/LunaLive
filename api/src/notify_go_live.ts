@@ -3,6 +3,9 @@ import { pool } from "./db.js";
 import webpush from "web-push";
 import { FABIO_STREAMER_ID, FABIO_NOTIF_CHANNEL_ID, FABIO_ROLE_NOTIF_STREAM } from "./discord/constants.js";
 
+// Cooldown anti-doublons Discord : évite le double-fire dlive_poller + rumble_poller
+const fabioDiscordNotifLastSent = new Map<number, number>();
+
 let vapidReady = false;
 
 function ensureVapid() {
@@ -76,36 +79,44 @@ export async function notifyFollowersGoLive(io: IOServer | undefined, streamerId
 
   // ─── Discord notif Fabiozsis (indépendant des followers LunaLive) ───────────
   if (streamerId === FABIO_STREAMER_ID) {
-    const discordClient = (global as any).discordClient;
-    if (discordClient) {
-      try {
-        const rumbleRow = await pool.query(
-          `SELECT thumbnail_url FROM streamer_rumble_info WHERE streamer_id = $1 LIMIT 1`,
-          [streamerId]
-        );
-        const thumbnailUrl: string | null = rumbleRow.rows[0]?.thumbnail_url ?? null;
-        const ch = await discordClient.channels.fetch(FABIO_NOTIF_CHANNEL_ID).catch(() => null);
-        if (ch?.isTextBased?.()) {
-          const webBase = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
-          await (ch as any).send({
-            content: `@everyone <@&${FABIO_ROLE_NOTIF_STREAM}>`,
-            embeds: [{
-              title: `🔴 ${displayName} est en live !`,
-              description:
-                (title ? `**${title}**\n\n` : "") +
-                `Viens nous rejoindre en stream, c'est parti ! 🎰\n\n` +
-                `🌐 [Regarder sur LunaLive](${webBase}/s/${encodeURIComponent(slug)})\n` +
-                `📺 [Regarder sur Rumble](https://rumble.com/c/${encodeURIComponent(slug)})`,
-              color: 0xFF0000,
-              ...(thumbnailUrl ? { image: { url: thumbnailUrl } } : {}),
-              footer: { text: "Fabiozsis • Live Casino" },
-              timestamp: new Date().toISOString(),
-            }],
-            allowedMentions: { parse: ["everyone", "roles"] },
-          });
+    // Cooldown 3 min pour éviter le double-fire dlive_poller + rumble_poller
+    const now = Date.now();
+    const lastSent = fabioDiscordNotifLastSent.get(streamerId) ?? 0;
+    if (now - lastSent < 3 * 60 * 1000) {
+      console.log("[notify_go_live] Fabiozsis Discord notif skipped (cooldown)");
+    } else {
+      fabioDiscordNotifLastSent.set(streamerId, now);
+      const discordClient = (global as any).discordClient;
+      if (discordClient) {
+        try {
+          const rumbleRow = await pool.query(
+            `SELECT thumbnail_url FROM streamer_rumble_info WHERE streamer_id = $1 LIMIT 1`,
+            [streamerId]
+          );
+          const thumbnailUrl: string | null = rumbleRow.rows[0]?.thumbnail_url ?? null;
+          const ch = await discordClient.channels.fetch(FABIO_NOTIF_CHANNEL_ID).catch(() => null);
+          if (ch?.isTextBased?.()) {
+            const webBase = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.win").replace(/\/$/, "");
+            await (ch as any).send({
+              content: `@everyone <@&${FABIO_ROLE_NOTIF_STREAM}>`,
+              embeds: [{
+                title: `🔴 ${displayName} est en live !`,
+                description:
+                  (title ? `**${title}**\n\n` : "") +
+                  `Viens nous rejoindre en stream, c'est parti ! 🎰\n\n` +
+                  `🌐 [Regarder sur LunaLive](${webBase}/s/${encodeURIComponent(slug)})\n` +
+                  `📺 [Regarder sur DLive](https://dlive.tv/Fabiozsis)`,
+                color: 0xFF0000,
+                ...(thumbnailUrl ? { image: { url: thumbnailUrl } } : {}),
+                footer: { text: "Fabiozsis • Live Casino" },
+                timestamp: new Date().toISOString(),
+              }],
+              allowedMentions: { parse: ["everyone", "roles"] },
+            });
+          }
+        } catch (e: any) {
+          console.warn("[notify_go_live] Fabiozsis Discord notif failed:", e?.message);
         }
-      } catch (e: any) {
-        console.warn("[notify_go_live] Fabiozsis Discord notif failed:", e?.message);
       }
     }
   }
