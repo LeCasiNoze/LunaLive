@@ -811,18 +811,20 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
       <div style={S.bottomRow}>
         {/* Stream + stats */}
         <div style={{ flex: "0 0 55%", minWidth: 0, height: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ ...S.card, flex: "1 1 0", minHeight: 0, padding: 0, overflow: "hidden" }}>
-            {streamInfo.isLive && streamInfo.platform === "rumble" && streamInfo.rumbleEmbedUrl ? (
-              <RumbleEmbedPlayer embedUrl={streamInfo.rumbleEmbedUrl} title={streamInfo.title} isLive />
-            ) : streamInfo.isLive && streamInfo.platform === "rumble" ? (
-              <RumbleStreamPlayer hlsUrl={streamInfo.rumbleHlsUrl} thumbnailUrl={streamInfo.rumbleThumbnailUrl} isLive />
-            ) : streamInfo.isLive && streamInfo.platform === "dlive" ? (
-              <DlivePlayer channelSlug={streamInfo.channelSlug} channelUsername={streamInfo.channelUsername} isLive />
-            ) : (
-              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.25)" }}>
-                <span style={{ fontSize: 12, color: "#475569" }}>Pas de stream</span>
-              </div>
-            )}
+          <div style={{ ...S.card, flex: "1 1 0", minHeight: 0, padding: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "#000" }}>
+            <div style={{ width: "100%", aspectRatio: "16/9", overflow: "hidden", position: "relative" }}>
+              {streamInfo.isLive && streamInfo.platform === "rumble" && streamInfo.rumbleEmbedUrl ? (
+                <RumbleEmbedPlayer embedUrl={streamInfo.rumbleEmbedUrl} title={streamInfo.title} isLive />
+              ) : streamInfo.isLive && streamInfo.platform === "rumble" ? (
+                <RumbleStreamPlayer hlsUrl={streamInfo.rumbleHlsUrl} thumbnailUrl={streamInfo.rumbleThumbnailUrl} isLive />
+              ) : streamInfo.isLive && streamInfo.platform === "dlive" ? (
+                <DlivePlayer channelSlug={streamInfo.channelSlug} channelUsername={streamInfo.channelUsername} isLive />
+              ) : (
+                <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.25)" }}>
+                  <span style={{ fontSize: 12, color: "#475569" }}>Pas de stream</span>
+                </div>
+              )}
+            </div>
           </div>
           {/* Stats bar */}
           <div style={{ ...S.card, padding: "10px 16px", display: "flex", gap: 20, alignItems: "center", flexShrink: 0 }}>
@@ -887,7 +889,7 @@ const S: Record<string, React.CSSProperties> = {
     display: "flex",
     gap: 12,
     alignItems: "stretch",
-    height: 460,
+    height: 520,
     flexShrink: 0,
   },
   camsRow: {
