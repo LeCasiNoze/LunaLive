@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { io } from "socket.io-client";
 import { decodeConfig, type OverlayConfig, type ZoneRect } from "./fsb/OverlayDesignerSection";
 import { OverlayBgAnimation } from "./fsb/OverlayBgAnimations";
+import { SponsorBanner, defaultSponsor } from "./fsb/SponsorBanner";
 
 const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
   ?? "https://lunalive-api.onrender.com";
@@ -629,6 +630,7 @@ function OverlayRenderer({ config, camStreams }: { config: OverlayConfig; camStr
       <StatsZone stats={config.stats} />
       <ChatZone chat={config.chat} />
       <PromoZone promo={config.promo} />
+      <SponsorBanner config={config.sponsor ?? defaultSponsor()} />
       {config.cams.map((cam, i) => {
         const entry = camStreams.get(i + 1);
         return <CamZone key={i} cam={cam} stream={entry?.stream} filters={entry?.filters ?? null} />;

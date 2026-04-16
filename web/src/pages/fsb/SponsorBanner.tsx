@@ -1,0 +1,361 @@
+import * as React from "react";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type SponsorBannerStyle =
+  | "dark"          // fond sombre + bordure violet (référence)
+  | "frosted"       // glassmorphism blur
+  | "neon_border"   // bordure néon pulsée
+  | "minimal"       // ligne de bas seulement
+  | "transparent";  // texte nu, zéro fond
+
+export type SponsorAnimStyle =
+  | "stagger_up"    // lettres montent en stagger
+  | "cascade"       // lettres tombent du haut en stagger
+  | "roll"          // lettres remontent depuis leur masque (clip)
+  | "glide"         // bloc entier glisse depuis la droite
+  | "zoom"          // zoom avant → taille normale
+  | "fade_word"     // mot par mot en fondu
+  | "flicker";      // flicker néon
+
+export type SponsorConfig = {
+  enabled: boolean;
+  command: string;          // ex: "!BONUS"
+  commandLabel: string;     // ex: "Fait cette commande dans le chat"
+  messages: string[];       // textes qui tournent
+  bannerStyle: SponsorBannerStyle;
+  animStyle: SponsorAnimStyle;
+  interval: number;         // secondes entre chaque message
+  x: number; y: number; w: number; h: number; // % du canvas
+};
+
+export const SPONSOR_BANNER_STYLES: Array<{ id: SponsorBannerStyle; label: string }> = [
+  { id: "dark",        label: "Dark premium (fond sombre + bordure violet)" },
+  { id: "frosted",     label: "Frosted glass (blur + transparence)" },
+  { id: "neon_border", label: "Bordure néon pulsée" },
+  { id: "minimal",     label: "Minimal (ligne inférieure seulement)" },
+  { id: "transparent", label: "Transparent (texte seul)" },
+];
+
+export const SPONSOR_ANIM_STYLES: Array<{ id: SponsorAnimStyle; label: string }> = [
+  { id: "stagger_up", label: "Stagger up — lettres montent une par une" },
+  { id: "cascade",    label: "Cascade — lettres tombent du haut" },
+  { id: "roll",       label: "Roll — lettres remontent depuis leur masque" },
+  { id: "glide",      label: "Glide — bloc glisse depuis la droite" },
+  { id: "zoom",       label: "Zoom burst — grossit puis se pose" },
+  { id: "fade_word",  label: "Fade mot par mot" },
+  { id: "flicker",    label: "Flicker néon" },
+];
+
+export function defaultSponsor(): SponsorConfig {
+  return {
+    enabled: false,
+    command: "!BONUS",
+    commandLabel: "Fait cette commande dans le chat",
+    messages: ["WAGER NON STICKY", "RETRAIT RAPIDE", "10% CASHBACK"],
+    bannerStyle: "dark",
+    animStyle: "stagger_up",
+    interval: 4,
+    x: 5, y: 87, w: 90, h: 11,
+  };
+}
+
+// ─── CSS keyframes (injected once) ────────────────────────────────────────────
+
+const KEYFRAMES = `
+@keyframes sb-enter-up      { from { opacity:0; transform:translateY(18px)  } to { opacity:1; transform:translateY(0)     } }
+@keyframes sb-exit-up       { from { opacity:1; transform:translateY(0)     } to { opacity:0; transform:translateY(-12px) } }
+@keyframes sb-enter-cascade { from { opacity:0; transform:translateY(-22px) } to { opacity:1; transform:translateY(0)     } }
+@keyframes sb-exit-cascade  { from { opacity:1; transform:translateY(0)     } to { opacity:0; transform:translateY(14px)  } }
+@keyframes sb-enter-roll    { from { transform:translateY(105%)             } to { transform:translateY(0)                } }
+@keyframes sb-exit-roll     { from { transform:translateY(0)                } to { transform:translateY(-105%)            } }
+@keyframes sb-enter-glide   { from { opacity:0; transform:translateX(55px)  } to { opacity:1; transform:translateX(0)    } }
+@keyframes sb-exit-glide    { from { opacity:1; transform:translateX(0)     } to { opacity:0; transform:translateX(-40px) } }
+@keyframes sb-enter-zoom    { from { opacity:0; transform:scale(1.5)        } to { opacity:1; transform:scale(1)          } }
+@keyframes sb-exit-zoom     { from { opacity:1; transform:scale(1)          } to { opacity:0; transform:scale(0.65)       } }
+@keyframes sb-enter-fade    { from { opacity:0 } to { opacity:1 } }
+@keyframes sb-exit-fade     { from { opacity:1 } to { opacity:0 } }
+@keyframes sb-flicker {
+  0%{opacity:0} 12%{opacity:.95} 22%{opacity:.05} 38%{opacity:1}
+  52%{opacity:.15} 65%{opacity:1} 80%{opacity:.7} 100%{opacity:1}
+}
+@keyframes sb-neon-pulse {
+  0%,100% { box-shadow: 0 0 8px 1px rgba(139,92,246,.55), inset 0 0 8px rgba(139,92,246,.08); }
+  50%     { box-shadow: 0 0 22px 5px rgba(139,92,246,.9),  inset 0 0 16px rgba(139,92,246,.18); }
+}
+`;
+
+let _kfInjected = false;
+function ensureKeyframes() {
+  if (_kfInjected) return;
+  const s = document.createElement("style");
+  s.textContent = KEYFRAMES;
+  document.head.appendChild(s);
+  _kfInjected = true;
+}
+
+// ─── Animation config per style ───────────────────────────────────────────────
+
+const ENTER_ANIM: Record<SponsorAnimStyle, string> = {
+  stagger_up: "sb-enter-up",
+  cascade:    "sb-enter-cascade",
+  roll:       "sb-enter-roll",
+  glide:      "sb-enter-glide",
+  zoom:       "sb-enter-zoom",
+  fade_word:  "sb-enter-fade",
+  flicker:    "sb-flicker",
+};
+const EXIT_ANIM: Record<SponsorAnimStyle, string> = {
+  stagger_up: "sb-exit-up",
+  cascade:    "sb-exit-cascade",
+  roll:       "sb-exit-roll",
+  glide:      "sb-exit-glide",
+  zoom:       "sb-exit-zoom",
+  fade_word:  "sb-exit-fade",
+  flicker:    "sb-exit-fade",
+};
+const ENTER_DUR: Record<SponsorAnimStyle, number> = {
+  stagger_up: 520, cascade: 520, roll: 520,
+  glide: 480, zoom: 440, fade_word: 600, flicker: 700,
+};
+const EXIT_DUR = 320;
+
+// ─── Message cycle hook ────────────────────────────────────────────────────────
+
+type Phase = "enter" | "hold" | "exit";
+
+function useMessageCycle(messages: string[], intervalSecs: number) {
+  const [idx, setIdx]     = React.useState(0);
+  const [phase, setPhase] = React.useState<Phase>("enter");
+  const style_            = React.useRef<SponsorAnimStyle>("stagger_up"); // for timing
+
+  React.useEffect(() => {
+    let t: ReturnType<typeof setTimeout>;
+    if (phase === "enter") {
+      t = setTimeout(() => setPhase("hold"), ENTER_DUR[style_.current] + 100);
+    } else if (phase === "hold") {
+      t = setTimeout(() => setPhase("exit"), Math.max(intervalSecs * 1000, 1500));
+    } else {
+      t = setTimeout(() => {
+        setIdx(i => (i + 1) % messages.length);
+        setPhase("enter");
+      }, EXIT_DUR + 50);
+    }
+    return () => clearTimeout(t);
+  }, [phase, intervalSecs, messages.length]);
+
+  return { text: messages[idx], phase, setAnimStyle: (s: SponsorAnimStyle) => { style_.current = s; } };
+}
+
+// ─── Animated text ────────────────────────────────────────────────────────────
+
+const PER_CHAR_STYLES: SponsorAnimStyle[] = ["stagger_up", "cascade", "roll"];
+const PER_WORD_STYLES: SponsorAnimStyle[] = ["fade_word"];
+const EASE = "cubic-bezier(0.22,1,0.36,1)";
+
+function AnimatedText({ text, phase, animStyle }: {
+  text: string; phase: Phase; animStyle: SponsorAnimStyle;
+}) {
+  const enterAnim = ENTER_ANIM[animStyle];
+  const exitAnim  = EXIT_ANIM[animStyle];
+  const enterDur  = ENTER_DUR[animStyle];
+
+  const charStyle = (i: number): React.CSSProperties => ({
+    display: "inline-block",
+    animation: phase === "exit"
+      ? `${exitAnim} ${EXIT_DUR}ms ease-in both`
+      : `${enterAnim} ${enterDur}ms ${EASE} both`,
+    animationDelay: phase === "enter" ? `${i * 28}ms` : "0ms",
+  });
+
+  const wordStyle = (i: number): React.CSSProperties => ({
+    display: "inline-block",
+    marginRight: "0.28em",
+    animation: phase === "exit"
+      ? `${exitAnim} ${EXIT_DUR}ms ease-in both`
+      : `${enterAnim} ${enterDur}ms ${EASE} both`,
+    animationDelay: phase === "enter" ? `${i * 85}ms` : "0ms",
+  });
+
+  const blockStyle: React.CSSProperties = {
+    display: "inline-block",
+    animation: phase === "exit"
+      ? `${exitAnim} ${EXIT_DUR}ms ease-in both`
+      : `${enterAnim} ${enterDur}ms ${EASE} both`,
+  };
+
+  // ── Per-character
+  if (PER_CHAR_STYLES.includes(animStyle)) {
+    const isRoll = animStyle === "roll";
+    return (
+      <span>
+        {text.split("").map((ch, i) =>
+          ch === " "
+            ? <span key={i} style={{ display: "inline-block", width: "0.32em" }}>&nbsp;</span>
+            : isRoll
+              ? (
+                // roll: clip each char via overflow:hidden on wrapper
+                <span key={i} style={{ display: "inline-block", overflow: "hidden", lineHeight: 1.1, verticalAlign: "bottom" }}>
+                  <span style={charStyle(i)}>{ch}</span>
+                </span>
+              )
+              : <span key={i} style={charStyle(i)}>{ch}</span>
+        )}
+      </span>
+    );
+  }
+
+  // ── Per-word
+  if (PER_WORD_STYLES.includes(animStyle)) {
+    return (
+      <span>
+        {text.split(" ").map((w, i) => (
+          <span key={i} style={wordStyle(i)}>{w}</span>
+        ))}
+      </span>
+    );
+  }
+
+  // ── Whole block
+  return <span style={blockStyle}>{text}</span>;
+}
+
+// ─── Banner container styles ───────────────────────────────────────────────────
+
+function bannerContainerStyle(bs: SponsorBannerStyle): React.CSSProperties {
+  const base: React.CSSProperties = {
+    position: "absolute",
+    display: "flex",
+    alignItems: "center",
+    padding: "0 1.8vw",
+    gap: "1.4vw",
+    overflow: "hidden",
+  };
+  switch (bs) {
+    case "dark": return {
+      ...base,
+      background: "rgba(8,6,20,0.92)",
+      border: "2px solid rgba(139,92,246,0.65)",
+      borderRadius: "0.7vw",
+      boxShadow: "0 0 18px rgba(139,92,246,0.25), inset 0 0 30px rgba(139,92,246,0.06)",
+    };
+    case "frosted": return {
+      ...base,
+      background: "rgba(15,10,35,0.45)",
+      backdropFilter: "blur(14px)",
+      WebkitBackdropFilter: "blur(14px)",
+      border: "1px solid rgba(139,92,246,0.35)",
+      borderRadius: "0.7vw",
+    };
+    case "neon_border": return {
+      ...base,
+      background: "rgba(8,6,20,0.88)",
+      border: "2px solid rgba(139,92,246,0.7)",
+      borderRadius: "0.7vw",
+      animation: "sb-neon-pulse 2.4s ease-in-out infinite",
+    };
+    case "minimal": return {
+      ...base,
+      background: "transparent",
+      borderBottom: "2px solid rgba(139,92,246,0.7)",
+      padding: "0 0.8vw",
+    };
+    case "transparent": return {
+      ...base,
+      background: "transparent",
+    };
+  }
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
+
+export function SponsorBanner({ config }: { config: SponsorConfig }) {
+  React.useEffect(() => { ensureKeyframes(); }, []);
+
+  const { text, phase, setAnimStyle } = useMessageCycle(config.messages, config.interval);
+  React.useEffect(() => { setAnimStyle(config.animStyle); }, [config.animStyle, setAnimStyle]);
+
+  if (!config.enabled) return null;
+
+  const pos: React.CSSProperties = {
+    left:   `${config.x}%`,
+    top:    `${config.y}%`,
+    width:  `${config.w}%`,
+    height: `${config.h}%`,
+  };
+
+  const isDark = config.bannerStyle !== "transparent" && config.bannerStyle !== "minimal";
+
+  return (
+    <div style={{ ...bannerContainerStyle(config.bannerStyle), ...pos }}>
+
+      {/* ── Left section : label + command pill */}
+      <div style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: "0.35vw",
+        flexShrink: 0,
+      }}>
+        <span style={{
+          fontSize: "0.65vw",
+          color: isDark ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.7)",
+          whiteSpace: "nowrap",
+          letterSpacing: "0.02em",
+        }}>
+          {config.commandLabel}
+        </span>
+        <div style={{
+          background: "linear-gradient(135deg, #7c3aed, #9333ea)",
+          borderRadius: "0.4vw",
+          padding: "0.25vw 1.1vw",
+          fontSize: "0.95vw",
+          fontWeight: 800,
+          color: "#fff",
+          letterSpacing: "0.04em",
+          boxShadow: "0 0 12px rgba(147,51,234,0.6)",
+          whiteSpace: "nowrap",
+        }}>
+          {config.command}
+        </div>
+      </div>
+
+      {/* ── Divider */}
+      <div style={{
+        width: 1,
+        alignSelf: "stretch",
+        margin: "0.6vw 0",
+        background: isDark ? "rgba(139,92,246,0.4)" : "rgba(255,255,255,0.25)",
+        flexShrink: 0,
+      }} />
+
+      {/* ── Right section : animated text */}
+      <div style={{
+        flex: 1,
+        overflow: "hidden",
+        display: "flex",
+        alignItems: "center",
+      }}>
+        <div
+          key={`${phase}-${text}`}
+          style={{
+            fontSize: "2.2vw",
+            fontWeight: 900,
+            color: "#ffffff",
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            lineHeight: 1,
+            whiteSpace: "nowrap",
+            textShadow: isDark ? "0 0 20px rgba(139,92,246,0.5)" : "none",
+          }}
+        >
+          <AnimatedText
+            text={text}
+            phase={phase}
+            animStyle={config.animStyle}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

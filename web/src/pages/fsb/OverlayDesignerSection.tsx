@@ -1,5 +1,10 @@
 import * as React from "react";
 import { BG_PRESETS, OverlayBgAnimation } from "./OverlayBgAnimations";
+import {
+  type SponsorConfig, defaultSponsor,
+  SPONSOR_BANNER_STYLES, SPONSOR_ANIM_STYLES,
+  SponsorBanner,
+} from "./SponsorBanner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,6 +95,7 @@ export type OverlayConfig = {
   stats: StatsZoneConfig;
   chat: ChatZoneConfig;
   promo: PromoZoneConfig;
+  sponsor: SponsorConfig;
 };
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
@@ -145,38 +151,39 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
   // Tout couvre 100% du canvas (stats 5% + zones 95% = 100%)
   solo: {
     background: defaultBackground(),
-    cams: [defaultCam(0, 65, 17, 35, "Cam principale")],  // 65+35=100
-    slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 95 }, // 5+95=100
+    cams: [defaultCam(0, 65, 17, 35, "Cam principale")],
+    slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 95 },
     stats: defaultStats(),
-    chat:  { enabled: true,  x: 71, y: 5,  w: 29, h: 95, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 }, // 5+95=100
-    promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" }, // 78+22=100
+    chat:  { enabled: true,  x: 71, y: 5,  w: 29, h: 95, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 },
+    promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
+    sponsor: defaultSponsor(),
   },
 
-  // ── DOUBLE: cam principale bas-gauche + cam 2 haut-droite, chat droite milieu, promo bas-centre
   double: {
     background: defaultBackground(),
     cams: [
-      defaultCam(0,  65, 17, 35, "Cam principale"),   // 65+35=100
-      defaultCam(71,  5, 29, 22, "Cam 2"),            // 5+22=27
+      defaultCam(0,  65, 17, 35, "Cam principale"),
+      defaultCam(71,  5, 29, 22, "Cam 2"),
     ],
     slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 95 },
     stats: defaultStats(),
-    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 73, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 }, // 27+73=100
+    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 73, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
+    sponsor: defaultSponsor(),
   },
 
-  // ── TRIPLE: cam principale bas-gauche (sur slot) + cam 2 haut-droite + cam 3 bas-droite
   triple: {
     background: defaultBackground(),
     cams: [
-      defaultCam(0,  65, 17, 35, "Cam principale"),   // 65+35=100
-      defaultCam(71,  5, 29, 22, "Cam 2"),            // 5+22=27
-      defaultCam(71, 64, 29, 36, "Cam 3"),            // 64+36=100
+      defaultCam(0,  65, 17, 35, "Cam principale"),
+      defaultCam(71,  5, 29, 22, "Cam 2"),
+      defaultCam(71, 64, 29, 36, "Cam 3"),
     ],
     slot:  { enabled: true, showFrame: false, frameColor: "#334155", frameWidth: 2, borderRadius: 0, label: "Slot",  x: 0,  y: 5,  w: 71, h: 95 },
     stats: defaultStats(),
-    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 37, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 }, // 27+37=64 (cam3 démarre à 64)
+    chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 37, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
+    sponsor: defaultSponsor(),
   },
 };
 
@@ -517,6 +524,11 @@ function PreviewCanvasContent({ config, scale, chatIframeRef }: {
       }
       {/* Promo */}
       <PreviewZone rect={config.promo} color={ZONE_COLORS.promo} name={config.promo.imageUrl ? "Promo ✓" : "Promo"} disabled={!config.promo.enabled} />
+      {/* Sponsor */}
+      {config.sponsor?.enabled
+        ? <SponsorBanner config={config.sponsor} />
+        : <PreviewZone rect={config.sponsor ?? { x:5, y:87, w:90, h:11 }} color={{ bg:"rgba(251,191,36,.12)", border:"#f59e0b", label:"#fbbf24" }} name="Sponsor (OFF)" disabled />
+      }
       {/* Cams — par-dessus */}
       {config.cams.map((cam, i) => (
         <PreviewZone key={`cam-${i}`} rect={cam} color={ZONE_COLORS.cam} name={cam.label} disabled={!cam.enabled} />
@@ -1359,6 +1371,76 @@ function PromoPanel({
   );
 }
 
+// ─── Sponsor Panel ───────────────────────────────────────────────────────────
+
+function SponsorPanel({
+  sponsor, onChange, activeId, setActiveId,
+}: {
+  sponsor: SponsorConfig;
+  onChange: (patch: Partial<SponsorConfig>) => void;
+  activeId: string | null; setActiveId: (id: string | null) => void;
+}) {
+  const [msgDraft, setMsgDraft] = React.useState(sponsor.messages.join("\n"));
+
+  return (
+    <Panel id="sponsor" activeId={activeId} setActiveId={setActiveId}
+      title="🎯 Zone Sponsor"
+      badge={sponsor.enabled ? "ON" : "OFF"}
+      badgeColor={sponsor.enabled ? "#10b981" : undefined}
+    >
+      <Toggle label="Activer" checked={sponsor.enabled} onChange={(v) => onChange({ enabled: v })} />
+      <hr style={S.sep} />
+
+      {/* Commande */}
+      <div style={S.row2}>
+        <TextInput label="Commande" value={sponsor.command}
+          onChange={(v) => onChange({ command: v })} placeholder="!BONUS" />
+        <TextInput label="Label au-dessus" value={sponsor.commandLabel}
+          onChange={(v) => onChange({ commandLabel: v })} placeholder="Fait cette commande dans le chat" />
+      </div>
+
+      {/* Messages tournants */}
+      <div style={S.field}>
+        <span style={S.label}>Messages (1 par ligne)</span>
+        <textarea
+          style={{ ...S.input, height: 80, resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
+          value={msgDraft}
+          onChange={(e) => {
+            setMsgDraft(e.target.value);
+            const lines = e.target.value.split("\n").map(l => l.trim()).filter(Boolean);
+            if (lines.length > 0) onChange({ messages: lines });
+          }}
+        />
+      </div>
+      <NumInput label="Durée par message (s)" value={sponsor.interval}
+        onChange={(v) => onChange({ interval: v })} min={1} max={30} step={1} />
+
+      <hr style={S.sep} />
+
+      {/* Style bannière */}
+      <div style={S.field}>
+        <span style={S.label}>Style bannière</span>
+        <select style={S.input} value={sponsor.bannerStyle}
+          onChange={(e) => onChange({ bannerStyle: e.target.value as SponsorConfig["bannerStyle"] })}>
+          {SPONSOR_BANNER_STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+      </div>
+
+      {/* Style animation */}
+      <div style={S.field}>
+        <span style={S.label}>Animation du texte</span>
+        <select style={S.input} value={sponsor.animStyle}
+          onChange={(e) => onChange({ animStyle: e.target.value as SponsorConfig["animStyle"] })}>
+          {SPONSOR_ANIM_STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+      </div>
+
+      <hr style={S.sep} />
+      <RectInputs value={sponsor} onChange={onChange} />
+    </Panel>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const MODES: { value: OverlayMode; label: string; icon: string }[] = [
@@ -1528,6 +1610,10 @@ export function OverlayDesignerSection() {
     setConfig((c) => ({ ...c, promo: { ...c.promo, ...patch } }));
   }
 
+  function updateSponsor(patch: Partial<SponsorConfig>) {
+    setConfig((c) => ({ ...c, sponsor: { ...(c.sponsor ?? defaultSponsor()), ...patch } }));
+  }
+
   async function copyUrl() {
     try {
       await navigator.clipboard.writeText(obsUrl);
@@ -1608,6 +1694,7 @@ export function OverlayDesignerSection() {
           <StatsPanel stats={config.stats} onChange={updateStats} activeId={activePanel} setActiveId={setActivePanel} />
           <ChatPanel chat={config.chat} onChange={updateChat} activeId={activePanel} setActiveId={setActivePanel} />
           <PromoPanel promo={config.promo} onChange={updatePromo} activeId={activePanel} setActiveId={setActivePanel} />
+          <SponsorPanel sponsor={config.sponsor ?? defaultSponsor()} onChange={updateSponsor} activeId={activePanel} setActiveId={setActivePanel} />
         </div>
 
         {/* Right: preview + OBS URL */}
