@@ -55,7 +55,7 @@ function drawHexGrid(
   const sz  = opts.size !== undefined ? opts.size * (ref / 1080) : ref / 14.7;
   const colStep = sz * Math.sqrt(3);
   const rowStep = sz * 1.5;
-  const lw = opts.lineWidth ?? 1.5;
+  const lw = (opts.lineWidth ?? 1.5) * (ref / 1080); // normalisé comme sz
 
   // Fond sombre (clearRect chaque frame → pas de trail, pas de dérive de couleur)
   ctx.fillStyle = `hsl(${opts.hueBase},55%,3%)`;
