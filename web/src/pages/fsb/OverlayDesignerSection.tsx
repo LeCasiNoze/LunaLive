@@ -1,8 +1,9 @@
 import * as React from "react";
 import { BG_PRESETS, OverlayBgAnimation } from "./OverlayBgAnimations";
 import {
-  type SponsorBannerStyle, type SponsorAnimStyle,
+  type SponsorConfig, defaultSponsor,
   SPONSOR_BANNER_STYLES, SPONSOR_ANIM_STYLES,
+  SponsorBanner,
 } from "./SponsorBanner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -71,19 +72,9 @@ export type ChatZoneConfig = ZoneRect & {
 
 export type PromoZoneConfig = ZoneRect & {
   enabled: boolean;
-  // ── Mode : image statique ou bannière sponsor animée
-  mode?: "image" | "sponsor";
-  // Image mode
   imageUrl: string;
   borderRadius: number;
   objectFit: "contain" | "cover" | "fill";
-  // Sponsor mode
-  command?: string;
-  commandLabel?: string;
-  messages?: string[];
-  bannerStyle?: SponsorBannerStyle;
-  animStyle?: SponsorAnimStyle;
-  interval?: number;
 };
 
 export type BackgroundConfig = {
@@ -104,6 +95,7 @@ export type OverlayConfig = {
   stats: StatsZoneConfig;
   chat: ChatZoneConfig;
   promo: PromoZoneConfig;
+  sponsor: SponsorConfig;
 };
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
@@ -164,6 +156,7 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     stats: defaultStats(),
     chat:  { enabled: true,  x: 71, y: 5,  w: 29, h: 95, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
+    sponsor: defaultSponsor(),
   },
 
   double: {
@@ -176,6 +169,7 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     stats: defaultStats(),
     chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 73, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
+    sponsor: defaultSponsor(),
   },
 
   triple: {
@@ -189,6 +183,7 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     stats: defaultStats(),
     chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 37, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
+    sponsor: defaultSponsor(),
   },
 };
 
@@ -529,6 +524,11 @@ function PreviewCanvasContent({ config, scale, chatIframeRef }: {
       }
       {/* Promo */}
       <PreviewZone rect={config.promo} color={ZONE_COLORS.promo} name={config.promo.imageUrl ? "Promo ✓" : "Promo"} disabled={!config.promo.enabled} />
+      {/* Sponsor */}
+      {config.sponsor?.enabled
+        ? <SponsorBanner config={config.sponsor} />
+        : <PreviewZone rect={config.sponsor ?? { x:5, y:87, w:90, h:11 }} color={{ bg:"rgba(251,191,36,.12)", border:"#f59e0b", label:"#fbbf24" }} name="Sponsor (OFF)" disabled />
+      }
       {/* Cams — par-dessus */}
       {config.cams.map((cam, i) => (
         <PreviewZone key={`cam-${i}`} rect={cam} color={ZONE_COLORS.cam} name={cam.label} disabled={!cam.enabled} />
@@ -1328,85 +1328,43 @@ function PromoPanel({
   onChange: (patch: Partial<PromoZoneConfig>) => void;
   activeId: string | null; setActiveId: (id: string | null) => void;
 }) {
-  const mode = promo.mode ?? "image";
-  const [msgDraft, setMsgDraft] = React.useState((promo.messages ?? ["WAGER NON STICKY", "RETRAIT RAPIDE", "10% CASHBACK"]).join("\n"));
-
   return (
     <Panel id="promo" activeId={activeId} setActiveId={setActiveId}
-      title="🖼 Zone Promo / Sponsor"
-      badge={promo.enabled ? (mode === "sponsor" ? "Sponsor" : promo.imageUrl ? "Image OK" : "Vide") : "OFF"}
-      badgeColor={promo.enabled ? "#10b981" : undefined}
+      title="🖼 Zone Promo"
+      badge={promo.enabled ? (promo.imageUrl ? "Image OK" : "Vide") : "OFF"}
+      badgeColor={promo.enabled && promo.imageUrl ? "#10b981" : undefined}
     >
       <Toggle label="Activer" checked={promo.enabled} onChange={(v) => onChange({ enabled: v })} />
-      <div style={S.field}>
-        <span style={S.label}>Mode</span>
-        <select style={S.input} value={mode} onChange={(e) => onChange({ mode: e.target.value as "image" | "sponsor" })}>
-          <option value="image">Image / GIF statique</option>
-          <option value="sponsor">Bannière sponsor animée</option>
-        </select>
-      </div>
       <hr style={S.sep} />
-
-      {mode === "image" ? (
-        <>
-          <TextInput label="URL de l image / GIF" value={promo.imageUrl}
-            onChange={(v) => onChange({ imageUrl: v })} placeholder="https://... (jpg, png, gif, webp)" />
-          {promo.imageUrl && (
-            <img src={promo.imageUrl} alt="Preview promo"
-              style={{ width: "100%", maxHeight: 120, objectFit: "contain", borderRadius: 8, border: "1px solid rgba(60,95,175,.2)" }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-          )}
-          <div style={S.row2}>
-            <NumInput label="Border radius (px)" value={promo.borderRadius} onChange={(v) => onChange({ borderRadius: v })} min={0} max={40} step={1} />
-            <div style={S.field}>
-              <span style={S.label}>Ajustement image</span>
-              <select style={S.input} value={promo.objectFit}
-                onChange={(e) => onChange({ objectFit: e.target.value as PromoZoneConfig["objectFit"] })}>
-                <option value="contain">Contenu (contain)</option>
-                <option value="cover">Remplir (cover)</option>
-                <option value="fill">Etirer (fill)</option>
-              </select>
-            </div>
-          </div>
-        </>
-      ) : (
-        <>
-          <div style={S.row2}>
-            <TextInput label="Commande" value={promo.command ?? "!BONUS"}
-              onChange={(v) => onChange({ command: v })} placeholder="!BONUS" />
-            <TextInput label="Label commande" value={promo.commandLabel ?? "Fait cette commande dans le chat"}
-              onChange={(v) => onChange({ commandLabel: v })} placeholder="Fait cette commande dans le chat" />
-          </div>
-          <div style={S.field}>
-            <span style={S.label}>Messages (1 par ligne)</span>
-            <textarea
-              style={{ ...S.input, height: 80, resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
-              value={msgDraft}
-              onChange={(e) => {
-                setMsgDraft(e.target.value);
-                const lines = e.target.value.split("\n").map(l => l.trim()).filter(Boolean);
-                if (lines.length > 0) onChange({ messages: lines });
-              }}
-            />
-          </div>
-          <NumInput label="Durée par message (s)" value={promo.interval ?? 4}
-            onChange={(v) => onChange({ interval: v })} min={1} max={30} step={1} />
-          <div style={S.field}>
-            <span style={S.label}>Style bannière</span>
-            <select style={S.input} value={promo.bannerStyle ?? "dark"}
-              onChange={(e) => onChange({ bannerStyle: e.target.value as SponsorBannerStyle })}>
-              {SPONSOR_BANNER_STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-            </select>
-          </div>
-          <div style={S.field}>
-            <span style={S.label}>Animation du texte</span>
-            <select style={S.input} value={promo.animStyle ?? "stagger_up"}
-              onChange={(e) => onChange({ animStyle: e.target.value as SponsorAnimStyle })}>
-              {SPONSOR_ANIM_STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-            </select>
-          </div>
-        </>
+      <TextInput
+        label="URL de l image / GIF"
+        value={promo.imageUrl}
+        onChange={(v) => onChange({ imageUrl: v })}
+        placeholder="https://... (jpg, png, gif, webp)"
+      />
+      {promo.imageUrl && (
+        <img
+          src={promo.imageUrl}
+          alt="Preview promo"
+          style={{ width: "100%", maxHeight: 120, objectFit: "contain", borderRadius: 8, border: "1px solid rgba(60,95,175,.2)" }}
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
       )}
+      <div style={S.row2}>
+        <NumInput label="Border radius (px)" value={promo.borderRadius} onChange={(v) => onChange({ borderRadius: v })} min={0} max={40} step={1} />
+        <div style={S.field}>
+          <span style={S.label}>Ajustement image</span>
+          <select
+            style={S.input}
+            value={promo.objectFit}
+            onChange={(e) => onChange({ objectFit: e.target.value as PromoZoneConfig["objectFit"] })}
+          >
+            <option value="contain">Contenu (contain)</option>
+            <option value="cover">Remplir (cover)</option>
+            <option value="fill">Etirer (fill)</option>
+          </select>
+        </div>
+      </div>
       <hr style={S.sep} />
       <RectInputs value={promo} onChange={onChange} />
     </Panel>
@@ -1414,6 +1372,74 @@ function PromoPanel({
 }
 
 // ─── Sponsor Panel ───────────────────────────────────────────────────────────
+
+function SponsorPanel({
+  sponsor, onChange, activeId, setActiveId,
+}: {
+  sponsor: SponsorConfig;
+  onChange: (patch: Partial<SponsorConfig>) => void;
+  activeId: string | null; setActiveId: (id: string | null) => void;
+}) {
+  const [msgDraft, setMsgDraft] = React.useState(sponsor.messages.join("\n"));
+
+  return (
+    <Panel id="sponsor" activeId={activeId} setActiveId={setActiveId}
+      title="🎯 Zone Sponsor"
+      badge={sponsor.enabled ? "ON" : "OFF"}
+      badgeColor={sponsor.enabled ? "#10b981" : undefined}
+    >
+      <Toggle label="Activer" checked={sponsor.enabled} onChange={(v) => onChange({ enabled: v })} />
+      <hr style={S.sep} />
+
+      {/* Commande */}
+      <div style={S.row2}>
+        <TextInput label="Commande" value={sponsor.command}
+          onChange={(v) => onChange({ command: v })} placeholder="!BONUS" />
+        <TextInput label="Label au-dessus" value={sponsor.commandLabel}
+          onChange={(v) => onChange({ commandLabel: v })} placeholder="Fait cette commande dans le chat" />
+      </div>
+
+      {/* Messages tournants */}
+      <div style={S.field}>
+        <span style={S.label}>Messages (1 par ligne)</span>
+        <textarea
+          style={{ ...S.input, height: 80, resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
+          value={msgDraft}
+          onChange={(e) => {
+            setMsgDraft(e.target.value);
+            const lines = e.target.value.split("\n").map(l => l.trim()).filter(Boolean);
+            if (lines.length > 0) onChange({ messages: lines });
+          }}
+        />
+      </div>
+      <NumInput label="Durée par message (s)" value={sponsor.interval}
+        onChange={(v) => onChange({ interval: v })} min={1} max={30} step={1} />
+
+      <hr style={S.sep} />
+
+      {/* Style bannière */}
+      <div style={S.field}>
+        <span style={S.label}>Style bannière</span>
+        <select style={S.input} value={sponsor.bannerStyle}
+          onChange={(e) => onChange({ bannerStyle: e.target.value as SponsorConfig["bannerStyle"] })}>
+          {SPONSOR_BANNER_STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+      </div>
+
+      {/* Style animation */}
+      <div style={S.field}>
+        <span style={S.label}>Animation du texte</span>
+        <select style={S.input} value={sponsor.animStyle}
+          onChange={(e) => onChange({ animStyle: e.target.value as SponsorConfig["animStyle"] })}>
+          {SPONSOR_ANIM_STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+      </div>
+
+      <hr style={S.sep} />
+      <RectInputs value={sponsor} onChange={onChange} />
+    </Panel>
+  );
+}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -1584,6 +1610,10 @@ export function OverlayDesignerSection() {
     setConfig((c) => ({ ...c, promo: { ...c.promo, ...patch } }));
   }
 
+  function updateSponsor(patch: Partial<SponsorConfig>) {
+    setConfig((c) => ({ ...c, sponsor: { ...(c.sponsor ?? defaultSponsor()), ...patch } }));
+  }
+
   async function copyUrl() {
     try {
       await navigator.clipboard.writeText(obsUrl);
@@ -1664,6 +1694,7 @@ export function OverlayDesignerSection() {
           <StatsPanel stats={config.stats} onChange={updateStats} activeId={activePanel} setActiveId={setActivePanel} />
           <ChatPanel chat={config.chat} onChange={updateChat} activeId={activePanel} setActiveId={setActivePanel} />
           <PromoPanel promo={config.promo} onChange={updatePromo} activeId={activePanel} setActiveId={setActivePanel} />
+          <SponsorPanel sponsor={config.sponsor ?? defaultSponsor()} onChange={updateSponsor} activeId={activePanel} setActiveId={setActivePanel} />
         </div>
 
         {/* Right: preview + OBS URL */}
