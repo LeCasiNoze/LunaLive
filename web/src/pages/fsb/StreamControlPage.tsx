@@ -464,6 +464,18 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
     emptySlot("lecasinoze"),
   ]);
 
+  // Filtres par slug — chaque streamer a ses propres paramètres,
+  // indépendamment du slot auquel il est assigné
+  const [filtersPerSlug, setFiltersPerSlug] = React.useState<Record<string, CamFilters>>(
+    () => Object.fromEntries(FSB_SLUGS.map(s => [s, { ...DEFAULT_FILTERS }]))
+  );
+
+  // Vue dérivée : slot avec les filtres de son slug courant
+  const slotsWithFilters: SlotState[] = slots.map(slot => ({
+    ...slot,
+    filters: filtersPerSlug[slot.slug] ?? { ...DEFAULT_FILTERS },
+  }));
+
   // My cam settings
   const [mySlug, setMySlug] = React.useState(defaultSlug);
   const [mySlot, setMySlot] = React.useState(0);
@@ -486,9 +498,9 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   }, [socket]);
 
   const onSlotUpdate = React.useCallback((update: { slug: string; slot: number; socketId: string; stream?: MediaStream; filters?: CamFilters | null }) => {
+    // Mettre à jour slot (stream + socketId)
     setSlots((prev) => {
       const next = [...prev];
-      // Find slot by slug or slot number
       let idx = update.slot > 0 ? update.slot - 1 : next.findIndex(s => s.slug === update.slug);
       if (idx < 0 || idx > 2) idx = next.findIndex(s => s.slug === update.slug);
       if (idx < 0) return prev;
@@ -497,10 +509,16 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
         slug: update.slug || next[idx].slug,
         socketId: update.socketId !== undefined ? update.socketId : next[idx].socketId,
         ...(update.stream !== undefined ? { stream: update.stream } : {}),
-        ...(update.filters !== undefined && update.filters !== null ? { filters: { ...DEFAULT_FILTERS, ...update.filters } } : {}),
       };
       return next;
     });
+    // Mettre à jour les filtres par slug (profil du streamer)
+    if (update.filters != null && update.slug) {
+      setFiltersPerSlug((prev) => ({
+        ...prev,
+        [update.slug]: { ...DEFAULT_FILTERS, ...update.filters! },
+      }));
+    }
   }, []);
 
   const onSlotLeft = React.useCallback((slug: string) => {
@@ -508,7 +526,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   }, []);
 
   useViewer(socket, myCamActive ? mySlug : "", onSlotUpdate, onSlotLeft);
-  useBroadcaster(socket, localStream, mySlug, mySlot + 1, slots[mySlot]?.filters ?? DEFAULT_FILTERS, myCamActive);
+  useBroadcaster(socket, localStream, mySlug, mySlot + 1, filtersPerSlug[mySlug] ?? DEFAULT_FILTERS, myCamActive);
 
   const activateCam = async () => {
     setCamError(null);
@@ -530,12 +548,12 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   React.useEffect(() => () => { localStream?.getTracks().forEach(t => t.stop()); }, [localStream]);
 
   const handleFiltersChange = (slotIdx: number, patch: Partial<CamFilters>) => {
-    setSlots((prev) => {
-      const next = [...prev];
-      const newFilters = { ...next[slotIdx].filters, ...patch } as CamFilters;
-      next[slotIdx] = { ...next[slotIdx], filters: newFilters };
-      if (socket) socket.emit("cam:filter-update", { slug: next[slotIdx].slug, filters: newFilters });
-      return next;
+    const slug = slots[slotIdx].slug;
+    setFiltersPerSlug((prev) => {
+      const current = prev[slug] ?? { ...DEFAULT_FILTERS };
+      const newFilters = { ...current, ...patch } as CamFilters;
+      if (socket) socket.emit("cam:filter-update", { slug, filters: newFilters });
+      return { ...prev, [slug]: newFilters };
     });
   };
 
@@ -545,7 +563,11 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
       next[slotIdx] = { ...next[slotIdx], slug };
       return next;
     });
-    // If this is my own slot, update mySlug too
+    // Broadcaster les filtres du nouveau slug immédiatement
+    if (socket) {
+      const filters = filtersPerSlug[slug] ?? { ...DEFAULT_FILTERS };
+      socket.emit("cam:filter-update", { slug, filters });
+    }
     if (slotIdx === mySlot) setMySlug(slug);
   };
 
@@ -584,7 +606,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
 
       {/* ── Cams (en haut) ── */}
       <div style={S.camsRow}>
-        {slots.map((slot, i) => (
+        {slotsWithFilters.map((slot, i) => (
           <CamCard
             key={i}
             slotIndex={i}
