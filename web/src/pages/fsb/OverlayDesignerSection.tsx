@@ -1436,6 +1436,24 @@ function SponsorPanel({
       </div>
 
       <hr style={S.sep} />
+
+      {/* Tailles */}
+      <div style={S.row2}>
+        <NumInput label="Texte principal (px)" value={sponsor.textSize ?? 40}
+          onChange={(v) => onChange({ textSize: v })} min={8} max={120} step={1} />
+        <NumInput label="Largeur gauche (px)" value={sponsor.leftWidth ?? 160}
+          onChange={(v) => onChange({ leftWidth: v })} min={60} max={400} step={4} />
+      </div>
+      <div style={S.row2}>
+        <NumInput label="Bouton commande (px)" value={sponsor.commandSize ?? 16}
+          onChange={(v) => onChange({ commandSize: v })} min={8} max={48} step={1} />
+        <NumInput label="Label au-dessus (px)" value={sponsor.labelSize ?? 11}
+          onChange={(v) => onChange({ labelSize: v })} min={6} max={24} step={1} />
+      </div>
+      <NumInput label="Espacement (px)" value={sponsor.gap ?? 20}
+        onChange={(v) => onChange({ gap: v })} min={4} max={60} step={2} />
+
+      <hr style={S.sep} />
       <RectInputs value={sponsor} onChange={onChange} />
     </Panel>
   );

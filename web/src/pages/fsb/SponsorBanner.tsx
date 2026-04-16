@@ -27,6 +27,12 @@ export type SponsorConfig = {
   animStyle: SponsorAnimStyle;
   interval: number;         // secondes entre chaque message
   x: number; y: number; w: number; h: number; // % du canvas
+  // Tailles (px, calibrées 1920×1080 — CSS transform:scale les adapte au preview)
+  textSize?: number;      // police message principal  (défaut 40)
+  leftWidth?: number;     // largeur section gauche     (défaut 160)
+  commandSize?: number;   // police bouton commande     (défaut 16)
+  labelSize?: number;     // police label au-dessus     (défaut 11)
+  gap?: number;           // espacement container       (défaut 20)
 };
 
 export const SPONSOR_BANNER_STYLES: Array<{ id: SponsorBannerStyle; label: string }> = [
@@ -288,21 +294,26 @@ export function SponsorBanner({ config }: { config: SponsorConfig }) {
   };
 
   const isDark = config.bannerStyle !== "transparent" && config.bannerStyle !== "minimal";
+  const textSize    = config.textSize    ?? 40;
+  const leftWidth   = config.leftWidth   ?? 160;
+  const commandSize = config.commandSize ?? 16;
+  const labelSize   = config.labelSize   ?? 11;
+  const gap         = config.gap         ?? 20;
 
   return (
-    <div style={{ ...bannerContainerStyle(config.bannerStyle), ...pos }}>
+    <div style={{ ...bannerContainerStyle(config.bannerStyle), ...pos, gap }}>
 
-      {/* ── Left section : label + command pill — compact, taille fixe */}
+      {/* ── Left section : label + command pill — compact, taille contrôlable */}
       <div style={{
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        gap: 5,
+        gap: Math.round(gap * 0.25),
         flexShrink: 0,
-        width: 160,   // largeur fixe — laisse la majorité à la zone droite
+        width: leftWidth,
       }}>
         <span style={{
-          fontSize: 11,
+          fontSize: labelSize,
           color: isDark ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.7)",
           whiteSpace: "nowrap",
           letterSpacing: "0.02em",
@@ -313,9 +324,9 @@ export function SponsorBanner({ config }: { config: SponsorConfig }) {
         </span>
         <div style={{
           background: "linear-gradient(135deg, #7c3aed, #9333ea)",
-          borderRadius: 7,
-          padding: "5px 18px",
-          fontSize: 16,
+          borderRadius: Math.round(commandSize * 0.45),
+          padding: `${Math.round(commandSize * 0.3)}px ${Math.round(commandSize * 1.1)}px`,
+          fontSize: commandSize,
           fontWeight: 800,
           color: "#fff",
           letterSpacing: "0.04em",
@@ -346,7 +357,7 @@ export function SponsorBanner({ config }: { config: SponsorConfig }) {
         <div
           key={`${phase}-${text}`}
           style={{
-            fontSize: 40,
+            fontSize: textSize,
             fontWeight: 900,
             color: "#ffffff",
             letterSpacing: "0.06em",
