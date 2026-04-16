@@ -222,13 +222,16 @@ function AnimatedText({ text, phase, animStyle }: {
 
 // ─── Banner container styles ───────────────────────────────────────────────────
 
+// Toutes les tailles en px calibrées pour 1920×1080.
+// Le preview canvas utilise CSS transform:scale() → les px scalent correctement.
+// Les vw ne scalent PAS avec transform → éviter absolument.
 function bannerContainerStyle(bs: SponsorBannerStyle): React.CSSProperties {
   const base: React.CSSProperties = {
     position: "absolute",
     display: "flex",
     alignItems: "center",
-    padding: "0 1.8vw",
-    gap: "1.4vw",
+    padding: "0 28px",
+    gap: "20px",
     overflow: "hidden",
   };
   switch (bs) {
@@ -236,7 +239,7 @@ function bannerContainerStyle(bs: SponsorBannerStyle): React.CSSProperties {
       ...base,
       background: "rgba(8,6,20,0.92)",
       border: "2px solid rgba(139,92,246,0.65)",
-      borderRadius: "0.7vw",
+      borderRadius: 12,
       boxShadow: "0 0 18px rgba(139,92,246,0.25), inset 0 0 30px rgba(139,92,246,0.06)",
     };
     case "frosted": return {
@@ -245,20 +248,20 @@ function bannerContainerStyle(bs: SponsorBannerStyle): React.CSSProperties {
       backdropFilter: "blur(14px)",
       WebkitBackdropFilter: "blur(14px)",
       border: "1px solid rgba(139,92,246,0.35)",
-      borderRadius: "0.7vw",
+      borderRadius: 12,
     };
     case "neon_border": return {
       ...base,
       background: "rgba(8,6,20,0.88)",
       border: "2px solid rgba(139,92,246,0.7)",
-      borderRadius: "0.7vw",
+      borderRadius: 12,
       animation: "sb-neon-pulse 2.4s ease-in-out infinite",
     };
     case "minimal": return {
       ...base,
       background: "transparent",
       borderBottom: "2px solid rgba(139,92,246,0.7)",
-      padding: "0 0.8vw",
+      padding: "0 14px",
     };
     case "transparent": return {
       ...base,
@@ -289,27 +292,30 @@ export function SponsorBanner({ config }: { config: SponsorConfig }) {
   return (
     <div style={{ ...bannerContainerStyle(config.bannerStyle), ...pos }}>
 
-      {/* ── Left section : label + command pill */}
+      {/* ── Left section : label + command pill — compact, taille fixe */}
       <div style={{
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        gap: "0.35vw",
+        gap: 5,
         flexShrink: 0,
+        width: 160,   // largeur fixe — laisse la majorité à la zone droite
       }}>
         <span style={{
-          fontSize: "0.65vw",
+          fontSize: 11,
           color: isDark ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.7)",
           whiteSpace: "nowrap",
           letterSpacing: "0.02em",
+          textAlign: "center",
+          lineHeight: 1.2,
         }}>
           {config.commandLabel}
         </span>
         <div style={{
           background: "linear-gradient(135deg, #7c3aed, #9333ea)",
-          borderRadius: "0.4vw",
-          padding: "0.25vw 1.1vw",
-          fontSize: "0.95vw",
+          borderRadius: 7,
+          padding: "5px 18px",
+          fontSize: 16,
           fontWeight: 800,
           color: "#fff",
           letterSpacing: "0.04em",
@@ -324,7 +330,7 @@ export function SponsorBanner({ config }: { config: SponsorConfig }) {
       <div style={{
         width: 1,
         alignSelf: "stretch",
-        margin: "0.6vw 0",
+        margin: "10px 0",
         background: isDark ? "rgba(139,92,246,0.4)" : "rgba(255,255,255,0.25)",
         flexShrink: 0,
       }} />
@@ -332,6 +338,7 @@ export function SponsorBanner({ config }: { config: SponsorConfig }) {
       {/* ── Right section : animated text */}
       <div style={{
         flex: 1,
+        minWidth: 0,   // permet au flex item de rétrécir sous son contenu naturel
         overflow: "hidden",
         display: "flex",
         alignItems: "center",
@@ -339,7 +346,7 @@ export function SponsorBanner({ config }: { config: SponsorConfig }) {
         <div
           key={`${phase}-${text}`}
           style={{
-            fontSize: "2.2vw",
+            fontSize: 40,
             fontWeight: 900,
             color: "#ffffff",
             letterSpacing: "0.06em",
