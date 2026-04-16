@@ -50,7 +50,8 @@ function drawHexGrid(
   w: number, h: number, t: number,
   opts: HexOpts,
 ) {
-  const sz = opts.size ?? Math.max(28, w / 24);
+  // ── Size: fraction of canvas width → même nombre de colonnes à toute résolution
+  const sz = opts.size !== undefined ? opts.size * (w / 1920) : w / 30;
   const colStep = sz * Math.sqrt(3);
   const rowStep = sz * 1.5;
   const blur = opts.glowBlur ?? 8;
@@ -61,20 +62,22 @@ function drawHexGrid(
       const x = col * colStep + (row % 2 === 0 ? 0 : colStep / 2);
       const y = row * rowStep;
 
-      // ── Phase (brightness)
+      // ── Phase normalisée par la taille du canvas → même rendu à toute résolution
+      const nx = x / w;  // 0..1
+      const ny = y / h;  // 0..1
       let phase: number;
       if (opts.pulseMode) {
         phase = (Math.sin(t * opts.speed * Math.PI) + 1) / 2;
       } else if (opts.waveMode) {
-        phase = (Math.sin((x + y) * 0.016 - t * opts.speed * 1.4) + 1) / 2;
+        phase = (Math.sin((nx + ny) * 14 - t * opts.speed * 1.4) + 1) / 2;
       } else {
-        phase = (Math.sin(x * 0.014 + y * 0.009 + t * opts.speed) + 1) / 2;
+        phase = (Math.sin(nx * 12 + ny * 8 + t * opts.speed) + 1) / 2;
       }
 
       // ── Hue
       let hue: number;
       if (opts.rainbowMode) {
-        hue = (x * 0.15 + y * 0.10 + t * 18) % 360;
+        hue = (nx * 180 + ny * 120 + t * 18) % 360;
       } else if (opts.dualHue !== undefined) {
         hue = row % 2 === 0 ? opts.hueBase : opts.dualHue;
       } else {
@@ -232,7 +235,7 @@ function makeHexNeonDeep(): Anim {
       hueBase: 170, hueSat: 100, speed: 0.4,
       strokeAlphaMin: 0.04, strokeAlphaMax: 0.95,
       fillAlpha: 0.30, glowBlur: 16, lineWidth: 2,
-      size: Math.max(55, w / 13),
+      size: 148,
     });
   }};
 }
@@ -245,7 +248,7 @@ function makeHexNeonDense(): Anim {
       hueBase: 170, hueSat: 100, speed: 0.5,
       strokeAlphaMin: 0.05, strokeAlphaMax: 0.75,
       fillAlpha: 0.12, glowBlur: 5, lineWidth: 1,
-      size: Math.max(13, w / 52),
+      size: 37,
     });
   }};
 }
