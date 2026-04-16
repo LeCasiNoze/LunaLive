@@ -28,12 +28,15 @@ type CamFilters = {
   zoom: number;   // 100–300%
   panX: number;   // -50–+50%
   panY: number;   // -50–+50%
-  chromaKey: boolean; // fond vert actif → pas de bordure
+  chromaKey: boolean;         // fond vert actif
+  chromaSimilarity: number;   // 0–100 — sensibilité au vert (défaut 80)
+  chromaSpill: number;        // 0–100 — suppression du halo vert (défaut 30)
 };
 
 const DEFAULT_FILTERS: CamFilters = {
   brightness: 100, contrast: 100, saturation: 100, hue: 0,
-  zoom: 100, panX: 0, panY: 0, chromaKey: false,
+  zoom: 100, panX: 0, panY: 0,
+  chromaKey: false, chromaSimilarity: 80, chromaSpill: 30,
 };
 
 type SlotState = {
@@ -241,6 +244,77 @@ function useViewer(
   }, [socket, connect, onSlotUpdate, onSlotLeft]);
 }
 
+// ─── Chroma key canvas ────────────────────────────────────────────────────────
+
+function applyChromaKeyPixels(data: Uint8ClampedArray, similarity: number, spill: number) {
+  const sim = Math.max(0.01, similarity / 100);
+  const spillStrength = spill / 100;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i] / 255, g = data[i + 1] / 255, b = data[i + 2] / 255;
+    const excess = g - (r + b) * 0.5;
+    if (excess > 0) {
+      const threshold = Math.max(0.01, 1 - sim);
+      if (excess >= threshold) {
+        data[i + 3] = 0;
+      } else {
+        const alpha = Math.round(data[i + 3] * (1 - excess / threshold));
+        data[i + 3] = alpha;
+      }
+      if (spillStrength > 0 && data[i + 3] > 0) {
+        const deSpillG = Math.max(r, b) * 255;
+        data[i + 1] = Math.round(data[i + 1] * (1 - spillStrength) + deSpillG * spillStrength);
+      }
+    }
+  }
+}
+
+function ChromaKeyCanvas({ stream, filters, style }: {
+  stream: MediaStream; filters: CamFilters; style: React.CSSProperties;
+}) {
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const rafRef = React.useRef<number>(0);
+  const filtersRef = React.useRef(filters);
+  filtersRef.current = filters;
+
+  React.useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    video.srcObject = stream;
+    video.play().catch(() => {});
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return;
+
+    function tick() {
+      if (video!.readyState >= 2) {
+        const w = video!.videoWidth || 640;
+        const h = video!.videoHeight || 360;
+        if (canvas!.width !== w || canvas!.height !== h) {
+          canvas!.width = w; canvas!.height = h;
+        }
+        ctx!.drawImage(video!, 0, 0, w, h);
+        const imageData = ctx!.getImageData(0, 0, w, h);
+        applyChromaKeyPixels(imageData.data, filtersRef.current.chromaSimilarity, filtersRef.current.chromaSpill);
+        ctx!.putImageData(imageData, 0, 0);
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      video.srcObject = null;
+    };
+  }, [stream]);
+
+  return (
+    <>
+      <video ref={videoRef} style={{ display: "none" }} muted playsInline autoPlay />
+      <canvas ref={canvasRef} style={style} />
+    </>
+  );
+}
+
 // ─── Video element ────────────────────────────────────────────────────────────
 
 function CamVideo({ stream, filters, muted = true }: { stream: MediaStream | null; filters: CamFilters; muted?: boolean }) {
@@ -252,25 +326,31 @@ function CamVideo({ stream, filters, muted = true }: { stream: MediaStream | nul
     else { v.srcObject = null; }
   }, [stream]);
 
+  const mediaStyle: React.CSSProperties = {
+    position: "absolute",
+    width: `${filters.zoom}%`,
+    height: `${filters.zoom}%`,
+    top: `${50 + filters.panY}%`,
+    left: `${50 + filters.panX}%`,
+    transform: "translate(-50%, -50%)",
+    objectFit: "cover" as const,
+    filter: filterCss(filters),
+  };
+
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: "#000" }}>
+    <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: filters.chromaKey ? "transparent" : "#000" }}>
       {stream ? (
-        <video
-          ref={ref}
-          muted={muted}
-          playsInline
-          autoPlay
-          style={{
-            position: "absolute",
-            width: `${filters.zoom}%`,
-            height: `${filters.zoom}%`,
-            top: `${50 + filters.panY}%`,
-            left: `${50 + filters.panX}%`,
-            transform: "translate(-50%, -50%)",
-            objectFit: "cover",
-            filter: filterCss(filters),
-          }}
-        />
+        filters.chromaKey
+          ? <ChromaKeyCanvas stream={stream} filters={filters} style={mediaStyle} />
+          : (
+            <video
+              ref={ref}
+              muted={muted}
+              playsInline
+              autoPlay
+              style={mediaStyle}
+            />
+          )
       ) : (
         <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <span style={{ fontSize: 28, opacity: 0.15 }}>📷</span>
@@ -420,6 +500,14 @@ function CamCard({
           >
             {state.filters.chromaKey ? "🟢 Fond vert ON" : "⬜ Fond vert"}
           </button>
+          {state.filters.chromaKey && (
+            <div style={{ background: "rgba(34,197,94,.05)", border: "1px solid rgba(34,197,94,.15)", borderRadius: 6, padding: "8px 8px 4px", marginBottom: 6 }}>
+              <Slider label="Sensibilité (similarity)" value={state.filters.chromaSimilarity ?? 80} min={10} max={100}
+                onChange={(v) => onFiltersChange({ chromaSimilarity: v })} />
+              <Slider label="Anti-halo (spill)" value={state.filters.chromaSpill ?? 30} min={0} max={100}
+                onChange={(v) => onFiltersChange({ chromaSpill: v })} />
+            </div>
+          )}
 
           <button
             onClick={() => onFiltersChange({ ...DEFAULT_FILTERS })}
@@ -493,6 +581,17 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
     setSlots((prev) => prev.map((s, i) => i === mySlot ? { ...s, slug: mySlug } : s));
   }, [mySlug, mySlot]);
 
+  // Si slot change pendant que la cam est active → déactivation automatique (1 cam par personne)
+  const prevMySlot = React.useRef(mySlot);
+  React.useEffect(() => {
+    if (prevMySlot.current !== mySlot && myCamActive) {
+      localStream?.getTracks().forEach(t => t.stop());
+      setLocalStream(null);
+      setMyCamActive(false);
+    }
+    prevMySlot.current = mySlot;
+  }, [mySlot]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Count chat messages via socket
   React.useEffect(() => {
     if (!socket) return;
@@ -500,6 +599,20 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
     socket.on("chat:message", onMsg);
     return () => { socket.off("chat:message", onMsg); };
   }, [socket]);
+
+  // Gestion du kick serveur (un autre appareil a pris la cam)
+  React.useEffect(() => {
+    if (!socket) return;
+    const onKicked = () => {
+      localStream?.getTracks().forEach(t => t.stop());
+      setLocalStream(null);
+      setMyCamActive(false);
+      setCamError("Cam désactivée — un autre appareil a pris le slot");
+      setTimeout(() => setCamError(null), 4000);
+    };
+    socket.on("cam:kicked", onKicked);
+    return () => { socket.off("cam:kicked", onKicked); };
+  }, [socket, localStream]);
 
   const onSlotUpdate = React.useCallback((update: { slug: string; slot: number; socketId: string; stream?: MediaStream; filters?: CamFilters | null }) => {
     // Mettre à jour slot (stream + socketId)

@@ -413,6 +413,8 @@ meOverlayRouter.post(
         // Room publique (obs:subscribe sans auth) — pour l'OverlayPage dans OBS
         io.to(`obsview:${s}`).emit("obs:config", { config });
       }
+      // Room partagée designer FSB — sync en temps réel entre tous les users FSB ouverts
+      io.to("fsb:designer").emit("obs:config", { config });
 
       return res.json({ ok: true, slug: chatSlug });
     }

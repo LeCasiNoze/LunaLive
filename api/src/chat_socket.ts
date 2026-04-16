@@ -466,6 +466,12 @@ export function attachChat(io: Server) {
       }
     );
 
+    // ✅ fsb:designer-join — join shared FSB designer room for real-time config sync
+    socket.on("fsb:designer-join", (_: any, cb?: (ack: any) => void) => {
+      socket.join("fsb:designer");
+      cb?.({ ok: true });
+    });
+
     // ✅ obs:subscribe — join public overlay room (no auth)
     // Utilisé par l'OverlayPage pour recevoir obs:config sans token
     socket.on("obs:subscribe", ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
@@ -478,9 +484,22 @@ export function attachChat(io: Server) {
     // ─── WebRTC cam signaling ───────────────────────────────────────────────────
 
     // Broadcaster registers their cam (stream-control page)
+    // Enforces 1 cam per slug: if already registered under another socket, kick the old one
     socket.on("cam:register", ({ slug, slot }: { slug: string; slot: number }, cb?: (ack: any) => void) => {
       const s = String(slug || "").trim().toLowerCase();
       if (!s) return cb?.({ ok: false, error: "bad_slug" });
+
+      // Kick any existing broadcaster for this slug (different socket = different PC/tab)
+      const existing = camBroadcasters.get(s);
+      if (existing && existing.socketId !== socket.id) {
+        io.to(existing.socketId).emit("cam:kicked", { reason: "another_device_registered" });
+        const oldSocket = io.sockets.sockets.get(existing.socketId);
+        if (oldSocket) {
+          oldSocket.leave("fsb-cam-bcasters");
+          oldSocket.data.camSlug = undefined;
+        }
+      }
+
       camBroadcasters.set(s, { socketId: socket.id, slot: Number(slot) || 1 });
       socket.data.camSlug = s;
       socket.join("fsb-cam-bcasters");

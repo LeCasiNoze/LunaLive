@@ -43,6 +43,8 @@ type CamFilters = {
   brightness: number; contrast: number; saturation: number; hue: number;
   zoom?: number; panX?: number; panY?: number;
   chromaKey?: boolean;
+  chromaSimilarity?: number;
+  chromaSpill?: number;
 };
 type CamStreamEntry = { stream: MediaStream | null; slot: number; filters: CamFilters | null; slug: string };
 
@@ -340,6 +342,76 @@ function BackgroundZone({ bg }: { bg: OverlayConfig["background"] }) {
   );
 }
 
+// ─── Chroma key canvas ────────────────────────────────────────────────────────
+
+function applyChromaKeyPixels(data: Uint8ClampedArray, similarity: number, spill: number) {
+  const sim = Math.max(0.01, similarity / 100);
+  const spillStrength = spill / 100;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i] / 255, g = data[i + 1] / 255, b = data[i + 2] / 255;
+    const excess = g - (r + b) * 0.5;
+    if (excess > 0) {
+      const threshold = Math.max(0.01, 1 - sim);
+      if (excess >= threshold) {
+        data[i + 3] = 0;
+      } else {
+        data[i + 3] = Math.round(data[i + 3] * (1 - excess / threshold));
+      }
+      if (spillStrength > 0 && data[i + 3] > 0) {
+        const deSpillG = Math.max(r, b) * 255;
+        data[i + 1] = Math.round(data[i + 1] * (1 - spillStrength) + deSpillG * spillStrength);
+      }
+    }
+  }
+}
+
+function ChromaKeyCanvas({ stream, filters, style }: {
+  stream: MediaStream; filters: CamFilters; style: React.CSSProperties;
+}) {
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const rafRef = React.useRef<number>(0);
+  const filtersRef = React.useRef(filters);
+  filtersRef.current = filters;
+
+  React.useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    video.srcObject = stream;
+    video.play().catch(() => {});
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return;
+
+    function tick() {
+      if (video!.readyState >= 2) {
+        const w = video!.videoWidth || 640;
+        const h = video!.videoHeight || 360;
+        if (canvas!.width !== w || canvas!.height !== h) {
+          canvas!.width = w; canvas!.height = h;
+        }
+        ctx!.drawImage(video!, 0, 0, w, h);
+        const imageData = ctx!.getImageData(0, 0, w, h);
+        applyChromaKeyPixels(imageData.data, filtersRef.current.chromaSimilarity ?? 80, filtersRef.current.chromaSpill ?? 30);
+        ctx!.putImageData(imageData, 0, 0);
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      video.srcObject = null;
+    };
+  }, [stream]);
+
+  return (
+    <>
+      <video ref={videoRef} style={{ display: "none" }} muted playsInline autoPlay />
+      <canvas ref={canvasRef} style={style} />
+    </>
+  );
+}
+
 // ─── Cam zone ─────────────────────────────────────────────────────────────────
 
 function CamZone({ cam, stream, filters }: {
@@ -360,6 +432,17 @@ function CamZone({ cam, stream, filters }: {
 
   const chromaKey = filters?.chromaKey ?? false;
 
+  const mediaStyle: React.CSSProperties = {
+    position: "absolute",
+    width: `${filters?.zoom ?? 100}%`,
+    height: `${filters?.zoom ?? 100}%`,
+    top: `${50 + (filters?.panY ?? 0)}%`,
+    left: `${50 + (filters?.panX ?? 0)}%`,
+    transform: `translate(-50%, -50%)${cam.mirror ? " scaleX(-1)" : ""}`,
+    objectFit: "cover" as const,
+    filter: filterCss(filters ?? null),
+  };
+
   return (
     <div style={{
       ...rect(cam),
@@ -369,22 +452,17 @@ function CamZone({ cam, stream, filters }: {
       background: "transparent",
     }}>
       {stream && (
-        <video
-          ref={videoRef}
-          muted
-          playsInline
-          autoPlay
-          style={{
-            position: "absolute",
-            width: `${filters?.zoom ?? 100}%`,
-            height: `${filters?.zoom ?? 100}%`,
-            top: `${50 + (filters?.panY ?? 0)}%`,
-            left: `${50 + (filters?.panX ?? 0)}%`,
-            transform: `translate(-50%, -50%)${cam.mirror ? " scaleX(-1)" : ""}`,
-            objectFit: "cover",
-            filter: filterCss(filters ?? null),
-          }}
-        />
+        chromaKey
+          ? <ChromaKeyCanvas stream={stream} filters={filters!} style={mediaStyle} />
+          : (
+            <video
+              ref={videoRef}
+              muted
+              playsInline
+              autoPlay
+              style={mediaStyle}
+            />
+          )
       )}
     </div>
   );

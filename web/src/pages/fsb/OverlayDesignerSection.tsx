@@ -1,4 +1,5 @@
 import * as React from "react";
+import { io as ioConnect } from "socket.io-client";
 import { BG_PRESETS, OverlayBgAnimation } from "./OverlayBgAnimations";
 import {
   type SponsorConfig, defaultSponsor,
@@ -1531,9 +1532,12 @@ export function OverlayDesignerSection() {
   const [copied, setCopied] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [pushed, setPushed] = React.useState(false);
+  const [syncedBy, setSyncedBy] = React.useState<string | null>(null);
   const pushTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // Flag pour éviter de re-push la config chargée depuis DB au mount
   const isInitialLoad = React.useRef(true);
+  // Flag pour éviter de re-push la config reçue depuis un autre user via socket
+  const isRemoteUpdate = React.useRef(false);
 
   // Chargement initial depuis DB (priorité sur localStorage)
   React.useEffect(() => {
@@ -1558,6 +1562,32 @@ export function OverlayDesignerSection() {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Socket pour la sync en temps réel entre les users FSB (quand quelqu'un d'autre modifie)
+  React.useEffect(() => {
+    const s = ioConnect(LUNA_API_BASE, { transports: ["websocket", "polling"] });
+    s.on("connect", () => {
+      s.emit("fsb:designer-join");
+    });
+    s.on("obs:config", (data: any) => {
+      if (data?.config && typeof data.config === "object") {
+        isRemoteUpdate.current = true;
+        setSyncedBy("sync");
+        setTimeout(() => setSyncedBy(null), 2000);
+        setConfig((current) => {
+          const remote = data.config as OverlayConfig;
+          // Préserver chatUrl local si le remote n'en a pas
+          const merged: OverlayConfig = { ...remote };
+          if (!remote.chat?.chatUrl && current.chat?.chatUrl) {
+            merged.chat = { ...remote.chat, chatUrl: current.chat.chatUrl };
+          }
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
+          return merged;
+        });
+      }
+    });
+    return () => { s.disconnect(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-save localStorage + push live vers OBS + persist DB à chaque modification
   React.useEffect(() => {
     // Sauvegarde locale immédiate
@@ -1568,6 +1598,12 @@ export function OverlayDesignerSection() {
     // Skip le push initial (chargement depuis DB)
     if (isInitialLoad.current) {
       isInitialLoad.current = false;
+      return () => clearTimeout(t);
+    }
+
+    // Skip si c'est une mise à jour distante (pas besoin de re-pusher ce qu'on vient de recevoir)
+    if (isRemoteUpdate.current) {
+      isRemoteUpdate.current = false;
       return () => clearTimeout(t);
     }
 
@@ -1665,6 +1701,13 @@ export function OverlayDesignerSection() {
               border: `1px solid ${pushed ? "rgba(99,102,241,.3)" : "transparent"}`,
               transition: "all .3s",
             }}>⚡ OBS live</span>
+            <span style={{
+              fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999,
+              background: syncedBy ? "rgba(34,197,94,.12)" : "transparent",
+              color: syncedBy ? "#4ade80" : "transparent",
+              border: `1px solid ${syncedBy ? "rgba(34,197,94,.3)" : "transparent"}`,
+              transition: "all .3s",
+            }}>⟳ Synchro</span>
           </div>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(148,178,232,.62)", lineHeight: 1.5 }}>
             Configure ton overlay OBS. Chaque zone est positionnee en % du canvas 1920×1080.

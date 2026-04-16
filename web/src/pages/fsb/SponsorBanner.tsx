@@ -306,7 +306,6 @@ export function SponsorBanner({ config }: { config: SponsorConfig }) {
   const textSize    = config.textSize    ?? 40;
   const leftWidth   = config.leftWidth   ?? 160;
   const commandSize = config.commandSize ?? 16;
-  const labelSize   = config.labelSize   ?? 11;
   const gap         = config.gap         ?? 20;
 
   return (
