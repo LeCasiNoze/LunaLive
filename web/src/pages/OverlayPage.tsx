@@ -379,7 +379,7 @@ function CamZone({ cam, stream, filters }: {
             height: `${filters?.zoom ?? 100}%`,
             top: `${50 + (filters?.panY ?? 0)}%`,
             left: `${50 + (filters?.panX ?? 0)}%`,
-            transform: "translate(-50%, -50%)",
+            transform: `translate(-50%, -50%)${cam.mirror ? " scaleX(-1)" : ""}`,
             objectFit: "cover",
             filter: filterCss(filters ?? null),
           }}

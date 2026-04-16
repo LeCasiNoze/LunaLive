@@ -19,6 +19,7 @@ export type CamZoneConfig = ZoneRect & {
   borderWidth: number;
   borderRadius: number;
   label: string;
+  mirror?: boolean;
 };
 
 export type SlotZoneConfig = ZoneRect & {
@@ -842,6 +843,7 @@ function CamPanel({
       badgeColor={cam.enabled ? "#10b981" : undefined}
     >
       <Toggle label="Activer" checked={cam.enabled} onChange={(v) => onChange({ enabled: v })} />
+      <Toggle label="Miroir (inverser gauche/droite)" checked={!!cam.mirror} onChange={(v) => onChange({ mirror: v })} />
       <hr style={S.sep} />
       <div style={S.row2}>
         <ColorInput label="Couleur bordure" value={cam.borderColor} onChange={(v) => onChange({ borderColor: v })} />
