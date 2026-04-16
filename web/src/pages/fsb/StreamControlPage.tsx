@@ -5,13 +5,14 @@ import { io, Socket } from "socket.io-client";
 import { useAuth } from "../../auth/AuthProvider";
 import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
 import RumbleEmbedPlayer from "../../components/RumbleEmbedPlayer";
+import { DlivePlayer } from "../../components/DlivePlayer";
 import { ChatPanel } from "../../components/ChatPanel";
 
 const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
   ?? "https://lunalive-api.onrender.com";
 
 const FSB_ALLOWED_IDS = new Set([4, 15, 71]);
-const FSB_SLUGS = ["fabiozsis", "lecasinoze", "samyyzsis"];
+const FSB_SLUGS = ["fabiozsis", "samyyzsis"];
 const SLOT_LABELS = ["Cam 1", "Cam 2", "Cam 3"];
 
 const ICE_SERVERS = [
@@ -87,62 +88,52 @@ function useStreamTimer() {
 }
 
 type StreamInfo = {
-  slug: string | null;
   isLive: boolean;
-  hlsUrl: string | null;
+  platform: "rumble" | "dlive" | null;
   rumbleEmbedUrl: string | null;
-  thumbUrl: string | null;
+  rumbleHlsUrl: string | null;
+  rumbleThumbnailUrl: string | null;
+  channelSlug: string | null;
+  channelUsername: string | null;
   title: string | null;
   viewers: number;
 };
 
-// Trouve le premier membre FSB actuellement en live et retourne son stream info.
-// Priorité : d'abord /lives (liste des lives actifs), puis fallback individuel sur chaque slug FSB.
+const EMPTY_STREAM: StreamInfo = {
+  isLive: false, platform: null, rumbleEmbedUrl: null, rumbleHlsUrl: null,
+  rumbleThumbnailUrl: null, channelSlug: null, channelUsername: null, title: null, viewers: 0,
+};
+
+// Toujours le stream de fabiozsis — même logique que sa page streamer
 function useStreamInfo() {
-  const [info, setInfo] = React.useState<StreamInfo>({
-    slug: null, isLive: false, hlsUrl: null, rumbleEmbedUrl: null, thumbUrl: null, title: null, viewers: 0,
-  });
+  const [info, setInfo] = React.useState<StreamInfo>(EMPTY_STREAM);
 
   React.useEffect(() => {
     const fetch_ = async () => {
       try {
-        // 1. Trouver quel slug FSB est en live
-        let liveSlug: string | null = null;
-        try {
-          const livesRes = await fetch(`${LUNA_API_BASE}/lives`);
-          const lives: any[] = await livesRes.json().catch(() => []);
-          const match = lives.find((l: any) => FSB_SLUGS.includes(String(l.slug || "").toLowerCase()));
-          if (match) liveSlug = String(match.slug).toLowerCase();
-        } catch {}
-
-        // 2. Si aucun live trouvé via /lives, essayer chaque slug FSB individuellement
-        if (!liveSlug) {
-          for (const slug of FSB_SLUGS) {
-            try {
-              const r = await fetch(`${LUNA_API_BASE}/streamers/${slug}`);
-              const j = await r.json().catch(() => null);
-              if (j?.isLive) { liveSlug = slug; break; }
-            } catch {}
-          }
-        }
-
-        if (!liveSlug) {
-          console.log("[StreamInfo] Aucun membre FSB en live");
-          setInfo({ slug: null, isLive: false, hlsUrl: null, rumbleEmbedUrl: null, thumbUrl: null, title: null, viewers: 0 });
-          return;
-        }
-
-        // 3. Récupérer les infos complètes du streamer live
-        const r = await fetch(`${LUNA_API_BASE}/streamers/${liveSlug}`);
+        const r = await fetch(`${LUNA_API_BASE}/streamers/fabiozsis`);
         const j = await r.json().catch(() => null);
         if (!j) return;
-
-        const hlsUrl = j.rumbleHlsUrl ?? j.hlsUrl ?? null;
-        const rumbleEmbedUrl = j.rumbleEmbedUrl ?? null;
-        const thumbUrl = j.rumbleThumbnailUrl ?? j.thumbUrl ?? j.thumbUrlDb ?? null;
-        const title = j.title ?? null;
-        console.log("[StreamInfo] live slug:", liveSlug, "rumbleEmbedUrl:", rumbleEmbedUrl, "hlsUrl:", hlsUrl);
-        setInfo({ slug: liveSlug, isLive: !!j.isLive, hlsUrl, rumbleEmbedUrl, thumbUrl, title, viewers: j.viewers ?? 0 });
+        // Détecter la plateforme — même logique que useStreamerData
+        let platform: "rumble" | "dlive" | null = null;
+        if (j.streamProvider === "rumble" || j.platform === "rumble" || j.rumbleConnection?.username) {
+          platform = "rumble";
+        } else if (j.dliveConnection?.enabled || j.channelSlug || j.channelUsername) {
+          platform = "dlive";
+        }
+        console.log("[StreamInfo] fabiozsis isLive:", !!j.isLive, "platform:", platform,
+          "rumbleEmbedUrl:", j.rumbleEmbedUrl, "channelSlug:", j.channelSlug);
+        setInfo({
+          isLive: !!j.isLive,
+          platform,
+          rumbleEmbedUrl: j.rumbleEmbedUrl ?? null,
+          rumbleHlsUrl: j.rumbleHlsUrl ?? null,
+          rumbleThumbnailUrl: j.rumbleThumbnailUrl ?? null,
+          channelSlug: j.channelSlug ?? null,
+          channelUsername: j.channelUsername ?? null,
+          title: j.title ?? null,
+          viewers: j.viewers ?? 0,
+        });
       } catch (e) {
         console.error("[StreamInfo] fetch error:", e);
       }
@@ -821,13 +812,14 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
         {/* Stream + stats */}
         <div style={{ flex: "0 0 55%", minWidth: 0, height: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ ...S.card, flex: "1 1 0", minHeight: 0, padding: 0, overflow: "hidden" }}>
-            {streamInfo.rumbleEmbedUrl ? (
-              <RumbleEmbedPlayer embedUrl={streamInfo.rumbleEmbedUrl} title={streamInfo.title} isLive={streamInfo.isLive} />
-            ) : streamInfo.hlsUrl ? (
-              <RumbleStreamPlayer hlsUrl={streamInfo.hlsUrl} thumbnailUrl={streamInfo.thumbUrl} isLive={streamInfo.isLive} />
+            {streamInfo.isLive && streamInfo.platform === "rumble" && streamInfo.rumbleEmbedUrl ? (
+              <RumbleEmbedPlayer embedUrl={streamInfo.rumbleEmbedUrl} title={streamInfo.title} isLive />
+            ) : streamInfo.isLive && streamInfo.platform === "rumble" ? (
+              <RumbleStreamPlayer hlsUrl={streamInfo.rumbleHlsUrl} thumbnailUrl={streamInfo.rumbleThumbnailUrl} isLive />
+            ) : streamInfo.isLive && streamInfo.platform === "dlive" ? (
+              <DlivePlayer channelSlug={streamInfo.channelSlug} channelUsername={streamInfo.channelUsername} isLive />
             ) : (
-              <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, background: "rgba(0,0,0,.25)" }}>
-                {streamInfo.thumbUrl && <img src={streamInfo.thumbUrl} alt="" style={{ maxWidth: "80%", maxHeight: "70%", objectFit: "contain", borderRadius: 6, opacity: 0.6 }} />}
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.25)" }}>
                 <span style={{ fontSize: 12, color: "#475569" }}>Pas de stream</span>
               </div>
             )}
