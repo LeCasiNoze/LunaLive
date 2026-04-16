@@ -1110,7 +1110,11 @@ function BackgroundPanel({
         <select
           style={S.input}
           value={bg.animPreset ?? "none"}
-          onChange={(e) => onChange({ animPreset: e.target.value === "none" ? undefined : e.target.value })}
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val === "none") onChange({ animPreset: undefined });
+            else onChange({ animPreset: val, enabled: true });
+          }}
         >
           {BG_PRESETS.map((p) => (
             <option key={p.id} value={p.id}>{p.label}</option>
