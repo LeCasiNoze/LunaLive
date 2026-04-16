@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { io } from "socket.io-client";
 import { decodeConfig, type OverlayConfig, type ZoneRect } from "./fsb/OverlayDesignerSection";
 import { OverlayBgAnimation } from "./fsb/OverlayBgAnimations";
-import { SponsorBanner, defaultSponsor } from "./fsb/SponsorBanner";
+import { SponsorBanner } from "./fsb/SponsorBanner";
 
 const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
   ?? "https://lunalive-api.onrender.com";
@@ -592,23 +592,30 @@ function ChatZone({ chat }: { chat: OverlayConfig["chat"] }) {
 // ─── Promo zone ───────────────────────────────────────────────────────────────
 
 function PromoZone({ promo }: { promo: OverlayConfig["promo"] }) {
-  if (!promo.enabled || !promo.imageUrl) return null;
+  if (!promo.enabled) return null;
 
+  if (promo.mode === "sponsor") {
+    return (
+      <SponsorBanner config={{
+        enabled: true,
+        command: promo.command ?? "!BONUS",
+        commandLabel: promo.commandLabel ?? "Fait cette commande dans le chat",
+        messages: promo.messages ?? ["WAGER NON STICKY", "RETRAIT RAPIDE", "10% CASHBACK"],
+        bannerStyle: promo.bannerStyle ?? "dark",
+        animStyle: promo.animStyle ?? "stagger_up",
+        interval: promo.interval ?? 4,
+        x: promo.x, y: promo.y, w: promo.w, h: promo.h,
+      }} />
+    );
+  }
+
+  if (!promo.imageUrl) return null;
   return (
-    <div style={{
-      ...rect(promo),
-      borderRadius: promo.borderRadius,
-      overflow: "hidden",
-    }}>
+    <div style={{ ...rect(promo), borderRadius: promo.borderRadius, overflow: "hidden" }}>
       <img
         src={promo.imageUrl}
         alt=""
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: promo.objectFit || "contain",
-          display: "block",
-        }}
+        style={{ width: "100%", height: "100%", objectFit: promo.objectFit || "contain", display: "block" }}
       />
     </div>
   );
@@ -630,7 +637,6 @@ function OverlayRenderer({ config, camStreams }: { config: OverlayConfig; camStr
       <StatsZone stats={config.stats} />
       <ChatZone chat={config.chat} />
       <PromoZone promo={config.promo} />
-      <SponsorBanner config={config.sponsor ?? defaultSponsor()} />
       {config.cams.map((cam, i) => {
         const entry = camStreams.get(i + 1);
         return <CamZone key={i} cam={cam} stream={entry?.stream} filters={entry?.filters ?? null} />;
