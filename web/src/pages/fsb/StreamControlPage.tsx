@@ -87,31 +87,62 @@ function useStreamTimer() {
 }
 
 type StreamInfo = {
+  slug: string | null;
   isLive: boolean;
   hlsUrl: string | null;
-  rumbleEmbedUrl: string | null;  // champ statique DB rumble_embed_url (ne dépend pas du poller)
+  rumbleEmbedUrl: string | null;
   thumbUrl: string | null;
   title: string | null;
   viewers: number;
 };
 
+// Trouve le premier membre FSB actuellement en live et retourne son stream info.
+// Priorité : d'abord /lives (liste des lives actifs), puis fallback individuel sur chaque slug FSB.
 function useStreamInfo() {
   const [info, setInfo] = React.useState<StreamInfo>({
-    isLive: false, hlsUrl: null, rumbleEmbedUrl: null, thumbUrl: null, title: null, viewers: 0,
+    slug: null, isLive: false, hlsUrl: null, rumbleEmbedUrl: null, thumbUrl: null, title: null, viewers: 0,
   });
+
   React.useEffect(() => {
     const fetch_ = async () => {
       try {
-        const r = await fetch(`${LUNA_API_BASE}/streamers/lecasinoze`);
+        // 1. Trouver quel slug FSB est en live
+        let liveSlug: string | null = null;
+        try {
+          const livesRes = await fetch(`${LUNA_API_BASE}/lives`);
+          const lives: any[] = await livesRes.json().catch(() => []);
+          const match = lives.find((l: any) => FSB_SLUGS.includes(String(l.slug || "").toLowerCase()));
+          if (match) liveSlug = String(match.slug).toLowerCase();
+        } catch {}
+
+        // 2. Si aucun live trouvé via /lives, essayer chaque slug FSB individuellement
+        if (!liveSlug) {
+          for (const slug of FSB_SLUGS) {
+            try {
+              const r = await fetch(`${LUNA_API_BASE}/streamers/${slug}`);
+              const j = await r.json().catch(() => null);
+              if (j?.isLive) { liveSlug = slug; break; }
+            } catch {}
+          }
+        }
+
+        if (!liveSlug) {
+          console.log("[StreamInfo] Aucun membre FSB en live");
+          setInfo({ slug: null, isLive: false, hlsUrl: null, rumbleEmbedUrl: null, thumbUrl: null, title: null, viewers: 0 });
+          return;
+        }
+
+        // 3. Récupérer les infos complètes du streamer live
+        const r = await fetch(`${LUNA_API_BASE}/streamers/${liveSlug}`);
         const j = await r.json().catch(() => null);
         if (!j) return;
+
         const hlsUrl = j.rumbleHlsUrl ?? j.hlsUrl ?? null;
-        // rumbleEmbedUrl = champ statique DB, toujours présent si configuré — identique à la page streamer
         const rumbleEmbedUrl = j.rumbleEmbedUrl ?? null;
         const thumbUrl = j.rumbleThumbnailUrl ?? j.thumbUrl ?? j.thumbUrlDb ?? null;
         const title = j.title ?? null;
-        console.log("[StreamInfo] isLive:", !!j.isLive, "rumbleEmbedUrl:", rumbleEmbedUrl, "hlsUrl:", hlsUrl);
-        setInfo({ isLive: !!j.isLive, hlsUrl, rumbleEmbedUrl, thumbUrl, title, viewers: j.viewers ?? 0 });
+        console.log("[StreamInfo] live slug:", liveSlug, "rumbleEmbedUrl:", rumbleEmbedUrl, "hlsUrl:", hlsUrl);
+        setInfo({ slug: liveSlug, isLive: !!j.isLive, hlsUrl, rumbleEmbedUrl, thumbUrl, title, viewers: j.viewers ?? 0 });
       } catch (e) {
         console.error("[StreamInfo] fetch error:", e);
       }
@@ -120,6 +151,7 @@ function useStreamInfo() {
     const id = setInterval(fetch_, 30_000);
     return () => clearInterval(id);
   }, []);
+
   return info;
 }
 
