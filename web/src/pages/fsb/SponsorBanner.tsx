@@ -16,7 +16,8 @@ export type SponsorAnimStyle =
   | "glide"         // bloc entier glisse depuis la droite
   | "zoom"          // zoom avant → taille normale
   | "fade_word"     // mot par mot en fondu
-  | "flicker";      // flicker néon
+  | "flicker"       // flicker néon
+  | "random";       // style aléatoire à chaque message
 
 export type SponsorConfig = {
   enabled: boolean;
@@ -44,6 +45,7 @@ export const SPONSOR_BANNER_STYLES: Array<{ id: SponsorBannerStyle; label: strin
 ];
 
 export const SPONSOR_ANIM_STYLES: Array<{ id: SponsorAnimStyle; label: string }> = [
+  { id: "random",     label: "🎲 Aléatoire — change à chaque message" },
   { id: "stagger_up", label: "Stagger up — lettres montent une par une" },
   { id: "cascade",    label: "Cascade — lettres tombent du haut" },
   { id: "roll",       label: "Roll — lettres remontent depuis leur masque" },
@@ -102,7 +104,14 @@ function ensureKeyframes() {
 
 // ─── Animation config per style ───────────────────────────────────────────────
 
-const ENTER_ANIM: Record<SponsorAnimStyle, string> = {
+type RealAnimStyle = Exclude<SponsorAnimStyle, "random">;
+const REAL_ANIM_STYLES: RealAnimStyle[] = ["stagger_up", "cascade", "roll", "glide", "zoom", "fade_word", "flicker"];
+
+function pickRandom(): RealAnimStyle {
+  return REAL_ANIM_STYLES[Math.floor(Math.random() * REAL_ANIM_STYLES.length)];
+}
+
+const ENTER_ANIM: Record<RealAnimStyle, string> = {
   stagger_up: "sb-enter-up",
   cascade:    "sb-enter-cascade",
   roll:       "sb-enter-roll",
@@ -111,7 +120,7 @@ const ENTER_ANIM: Record<SponsorAnimStyle, string> = {
   fade_word:  "sb-enter-fade",
   flicker:    "sb-flicker",
 };
-const EXIT_ANIM: Record<SponsorAnimStyle, string> = {
+const EXIT_ANIM: Record<RealAnimStyle, string> = {
   stagger_up: "sb-exit-up",
   cascade:    "sb-exit-cascade",
   roll:       "sb-exit-roll",
@@ -120,7 +129,7 @@ const EXIT_ANIM: Record<SponsorAnimStyle, string> = {
   fade_word:  "sb-exit-fade",
   flicker:    "sb-exit-fade",
 };
-const ENTER_DUR: Record<SponsorAnimStyle, number> = {
+const ENTER_DUR: Record<RealAnimStyle, number> = {
   stagger_up: 520, cascade: 520, roll: 520,
   glide: 480, zoom: 440, fade_word: 600, flicker: 700,
 };
@@ -130,27 +139,37 @@ const EXIT_DUR = 320;
 
 type Phase = "enter" | "hold" | "exit";
 
-function useMessageCycle(messages: string[], intervalSecs: number) {
+function useMessageCycle(messages: string[], intervalSecs: number, configStyle: SponsorAnimStyle) {
   const [idx, setIdx]     = React.useState(0);
   const [phase, setPhase] = React.useState<Phase>("enter");
-  const style_            = React.useRef<SponsorAnimStyle>("stagger_up"); // for timing
+  // resolved = style concret en cours (jamais "random")
+  const resolvedRef = React.useRef<RealAnimStyle>(
+    configStyle === "random" ? pickRandom() : configStyle as RealAnimStyle
+  );
+
+  // Si le style config change (hors random), sync immédiat
+  React.useEffect(() => {
+    if (configStyle !== "random") resolvedRef.current = configStyle as RealAnimStyle;
+  }, [configStyle]);
 
   React.useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
     if (phase === "enter") {
-      t = setTimeout(() => setPhase("hold"), ENTER_DUR[style_.current] + 100);
+      t = setTimeout(() => setPhase("hold"), ENTER_DUR[resolvedRef.current] + 100);
     } else if (phase === "hold") {
       t = setTimeout(() => setPhase("exit"), Math.max(intervalSecs * 1000, 1500));
     } else {
       t = setTimeout(() => {
+        // Nouveau style aléatoire à chaque changement de message
+        if (configStyle === "random") resolvedRef.current = pickRandom();
         setIdx(i => (i + 1) % messages.length);
         setPhase("enter");
       }, EXIT_DUR + 50);
     }
     return () => clearTimeout(t);
-  }, [phase, intervalSecs, messages.length]);
+  }, [phase, intervalSecs, messages.length, configStyle]);
 
-  return { idx, text: messages[idx], phase, setAnimStyle: (s: SponsorAnimStyle) => { style_.current = s; } };
+  return { idx, text: messages[idx], phase, resolvedAnimStyle: resolvedRef.current };
 }
 
 // ─── Animated text ────────────────────────────────────────────────────────────
@@ -160,7 +179,7 @@ const PER_WORD_STYLES: SponsorAnimStyle[] = ["fade_word"];
 const EASE = "cubic-bezier(0.22,1,0.36,1)";
 
 function AnimatedText({ text, phase, animStyle }: {
-  text: string; phase: Phase; animStyle: SponsorAnimStyle;
+  text: string; phase: Phase; animStyle: RealAnimStyle;
 }) {
   const enterAnim = ENTER_ANIM[animStyle];
   const exitAnim  = EXIT_ANIM[animStyle];
@@ -290,8 +309,7 @@ function bannerContainerStyle(bs: SponsorBannerStyle): React.CSSProperties {
 export function SponsorBanner({ config }: { config: SponsorConfig }) {
   React.useEffect(() => { ensureKeyframes(); }, []);
 
-  const { idx, text, phase, setAnimStyle } = useMessageCycle(config.messages, config.interval);
-  React.useEffect(() => { setAnimStyle(config.animStyle); }, [config.animStyle, setAnimStyle]);
+  const { idx, text, phase, resolvedAnimStyle } = useMessageCycle(config.messages, config.interval, config.animStyle);
 
   if (!config.enabled) return null;
 
@@ -346,10 +364,11 @@ export function SponsorBanner({ config }: { config: SponsorConfig }) {
       {/* ── Right section : animated text */}
       <div style={{
         flex: 1,
-        minWidth: 0,   // permet au flex item de rétrécir sous son contenu naturel
+        minWidth: 0,
         overflow: "hidden",
         display: "flex",
         alignItems: "center",
+        justifyContent: "center",
       }}>
         <div
           key={idx}
@@ -361,13 +380,14 @@ export function SponsorBanner({ config }: { config: SponsorConfig }) {
             textTransform: "uppercase",
             lineHeight: 1,
             whiteSpace: "nowrap",
+            textAlign: "center",
             textShadow: isDark ? "0 0 20px rgba(139,92,246,0.5)" : "none",
           }}
         >
           <AnimatedText
             text={text}
             phase={phase}
-            animStyle={config.animStyle}
+            animStyle={resolvedAnimStyle}
           />
         </div>
       </div>
