@@ -42,7 +42,7 @@ type CamFilters = {
   zoom?: number; panX?: number; panY?: number;
   chromaKey?: boolean;
 };
-type CamStreamEntry = { stream: MediaStream; slot: number; filters: CamFilters | null };
+type CamStreamEntry = { stream: MediaStream | null; slot: number; filters: CamFilters | null; slug: string };
 
 function filterCss(f: CamFilters | null): string {
   if (!f) return "none";
@@ -105,12 +105,23 @@ function useCamStreams(socket: ReturnType<typeof io> | null): Map<number, CamStr
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
       peersRef.current.set(bc.slug, pc);
 
+      // Pré-enregistre le slot dès la connexion pour que les filter updates fonctionnent
+      // même avant que le stream vidéo soit reçu
+      setStreams((prev) => {
+        const next = new Map(prev);
+        if (!next.has(bc.slot)) {
+          next.set(bc.slot, { stream: null, slot: bc.slot, filters: bc.filters, slug: bc.slug });
+        }
+        return next;
+      });
+
       pc.ontrack = ({ streams: s }) => {
         const stream = s[0] ?? null;
         if (!stream) return;
         setStreams((prev) => {
           const next = new Map(prev);
-          next.set(bc.slot, { stream, slot: bc.slot, filters: bc.filters });
+          const existing = next.get(bc.slot);
+          next.set(bc.slot, { stream, slot: bc.slot, filters: existing?.filters ?? bc.filters, slug: bc.slug });
           return next;
         });
       };
@@ -165,7 +176,7 @@ function useCamStreams(socket: ReturnType<typeof io> | null): Map<number, CamStr
       setStreams((prev) => {
         const next = new Map(prev);
         for (const [slot, entry] of next) {
-          if ((entry as any).slug === slug) next.set(slot, { ...entry, filters });
+          if (entry.slug === slug) next.set(slot, { ...entry, filters });
         }
         return next;
       });

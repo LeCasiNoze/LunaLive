@@ -71,11 +71,13 @@ function AppInner() {
   const isMobile = useIsMobile();
   const { logout, token } = useAuth();
   const isStandaloneReferral = location.pathname.startsWith("/r/");
+  const isOverlayRoute =
+    location.pathname.startsWith("/overlay") ||
+    location.pathname.startsWith("/stream-control");
   const hideChrome =
     location.pathname === "/editorFSN" ||
-    location.pathname.startsWith("/overlay") ||
+    isOverlayRoute ||
     location.pathname.startsWith("/agency") ||
-    location.pathname.startsWith("/stream-control") ||
     isStandaloneReferral;
 
   const [loginOpen, setLoginOpen] = React.useState(false);
@@ -131,7 +133,7 @@ function AppInner() {
 
   return (
     <div className="app">
-      {!isStandaloneReferral && (
+      {!isStandaloneReferral && !isOverlayRoute && (
         <div className="appBgLayer" aria-hidden="true">
           <BgEffect type="cards" />
         </div>
