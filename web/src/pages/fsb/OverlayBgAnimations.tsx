@@ -50,24 +50,23 @@ function drawHexGrid(
   w: number, h: number, t: number,
   opts: HexOpts,
 ) {
-  // ── Dimension de référence : côté court du canvas.
-  //    Cela rend l'animation strictement identique à toute résolution et tout
-  //    ratio (preview 900px, OBS 1920×1080, ultrawide, etc.).
+  // ── Ref = côté court du canvas → même rendu à toute résolution / ratio
   const ref = Math.min(w, h);
-
-  // ── Taille : ~16 colonnes visibles sur un 16:9, peu importe la résolution
-  const sz = opts.size !== undefined ? opts.size * (ref / 1080) : ref / 14.7;
+  const sz  = opts.size !== undefined ? opts.size * (ref / 1080) : ref / 14.7;
   const colStep = sz * Math.sqrt(3);
   const rowStep = sz * 1.5;
-  const blur = opts.glowBlur ?? 8;
   const lw = opts.lineWidth ?? 1.5;
+
+  // Fond sombre (clearRect chaque frame → pas de trail, pas de dérive de couleur)
+  ctx.fillStyle = `hsl(${opts.hueBase},55%,3%)`;
+  ctx.fillRect(0, 0, w, h);
 
   for (let row = -1; row < h / rowStep + 2; row++) {
     for (let col = -1; col < w / colStep + 2; col++) {
       const x = col * colStep + (row % 2 === 0 ? 0 : colStep / 2);
       const y = row * rowStep;
 
-      // ── Phase normalisée par ref (= côté court) → même nb de cycles partout
+      // ── Phase normalisée par ref → identique à toute résolution
       const nx = x / ref;
       const ny = y / ref;
       let phase: number;
@@ -89,9 +88,7 @@ function drawHexGrid(
         hue = (opts.hueBase + t * 5) % 360;
       }
 
-      const strokeA = opts.strokeAlphaMin + phase * (opts.strokeAlphaMax - opts.strokeAlphaMin);
-
-      // ── Draw hex
+      // ── Hexagone (gap de 9% entre les cellules via 0.91)
       ctx.beginPath();
       for (let a = 0; a < 6; a++) {
         const ang = (Math.PI / 3) * a - Math.PI / 6;
@@ -101,191 +98,137 @@ function drawHexGrid(
       }
       ctx.closePath();
 
-      if (blur > 0) {
-        ctx.shadowBlur = blur * phase;
-        ctx.shadowColor = `hsla(${hue},100%,70%,0.7)`;
-      }
-      ctx.strokeStyle = `hsla(${hue},${opts.hueSat}%,60%,${strokeA})`;
-      ctx.lineWidth = lw;
-      ctx.stroke();
+      // ── Fill : de très sombre (phase=0) à vif (phase=1)
+      //    Pas de shadowBlur — entièrement fill-based, fiable dans OBS et browser
+      const fillLight = 5 + phase * 42;          // 5% → 47%
+      const fillSat   = 55 + phase * 30;         // 55% → 85%
+      const fillAlpha = 0.6 + phase * 0.4;       // toujours visible, vivid sur bright
+      ctx.fillStyle = `hsla(${hue},${fillSat}%,${fillLight}%,${fillAlpha})`;
+      ctx.fill();
 
-      if (opts.fillAlpha > 0 && phase > 0.55) {
-        ctx.fillStyle = `hsla(${hue},${opts.hueSat}%,45%,${(phase - 0.55) * opts.fillAlpha * 2.2})`;
-        ctx.fill();
+      // ── Contour lumineux sur les hexes brillants
+      if (phase > 0.45) {
+        const strokeA = (phase - 0.45) * 1.8;
+        const strokeL = 65 + phase * 20;
+        ctx.strokeStyle = `hsla(${hue},100%,${strokeL}%,${strokeA})`;
+        ctx.lineWidth = lw * (0.5 + phase * 0.8);
+        ctx.stroke();
       }
-      if (blur > 0) ctx.shadowBlur = 0;
     }
   }
 }
 
 // ─── 14 variants ──────────────────────────────────────────────────────────────
+// Note: le fond sombre est géré DANS drawHexGrid (clearRect + fill via hueBase).
+// Les variants n'ont besoin que de passer hueBase, hueSat, speed.
 
-// 1. Base — cyan / vert néon, légèrement ralenti
+// 1. Base — cyan / vert
 function makeHexNeon(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(1,3,12,0.15)"; ctx.fillRect(0, 0, w, h);
-    drawHexGrid(ctx, w, h, t, {
-      hueBase: 170, hueSat: 100, speed: 0.45,
-      strokeAlphaMin: 0.06, strokeAlphaMax: 0.85,
-      fillAlpha: 0.18, glowBlur: 8,
-    });
+    drawHexGrid(ctx, w, h, t, { hueBase: 170, hueSat: 100, speed: 0.45,
+      strokeAlphaMin: 0, strokeAlphaMax: 0, fillAlpha: 0 });
   }};
 }
 
 // 2. Bleu électrique
 function makeHexNeonBlue(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(0,2,14,0.15)"; ctx.fillRect(0, 0, w, h);
-    drawHexGrid(ctx, w, h, t, {
-      hueBase: 215, hueSat: 100, speed: 0.45,
-      strokeAlphaMin: 0.06, strokeAlphaMax: 0.88,
-      fillAlpha: 0.18, glowBlur: 9,
-    });
+    drawHexGrid(ctx, w, h, t, { hueBase: 215, hueSat: 100, speed: 0.45,
+      strokeAlphaMin: 0, strokeAlphaMax: 0, fillAlpha: 0 });
   }};
 }
 
 // 3. Violet
 function makeHexNeonPurple(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(3,1,14,0.15)"; ctx.fillRect(0, 0, w, h);
-    drawHexGrid(ctx, w, h, t, {
-      hueBase: 270, hueSat: 100, speed: 0.45,
-      strokeAlphaMin: 0.06, strokeAlphaMax: 0.85,
-      fillAlpha: 0.18, glowBlur: 9,
-    });
+    drawHexGrid(ctx, w, h, t, { hueBase: 270, hueSat: 100, speed: 0.45,
+      strokeAlphaMin: 0, strokeAlphaMax: 0, fillAlpha: 0 });
   }};
 }
 
 // 4. Magenta / rose
 function makeHexNeonMagenta(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(8,1,8,0.15)"; ctx.fillRect(0, 0, w, h);
-    drawHexGrid(ctx, w, h, t, {
-      hueBase: 315, hueSat: 100, speed: 0.45,
-      strokeAlphaMin: 0.06, strokeAlphaMax: 0.88,
-      fillAlpha: 0.20, glowBlur: 9,
-    });
+    drawHexGrid(ctx, w, h, t, { hueBase: 315, hueSat: 100, speed: 0.45,
+      strokeAlphaMin: 0, strokeAlphaMax: 0, fillAlpha: 0 });
   }};
 }
 
 // 5. Doré / ambre
 function makeHexNeonGold(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(8,5,0,0.15)"; ctx.fillRect(0, 0, w, h);
-    drawHexGrid(ctx, w, h, t, {
-      hueBase: 42, hueSat: 100, speed: 0.45,
-      strokeAlphaMin: 0.06, strokeAlphaMax: 0.88,
-      fillAlpha: 0.20, glowBlur: 10,
-    });
+    drawHexGrid(ctx, w, h, t, { hueBase: 42, hueSat: 100, speed: 0.45,
+      strokeAlphaMin: 0, strokeAlphaMax: 0, fillAlpha: 0 });
   }};
 }
 
 // 6. Rouge / orange
 function makeHexNeonRed(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(10,2,0,0.15)"; ctx.fillRect(0, 0, w, h);
-    drawHexGrid(ctx, w, h, t, {
-      hueBase: 8, hueSat: 100, speed: 0.45,
-      strokeAlphaMin: 0.06, strokeAlphaMax: 0.88,
-      fillAlpha: 0.18, glowBlur: 9,
-    });
+    drawHexGrid(ctx, w, h, t, { hueBase: 8, hueSat: 100, speed: 0.45,
+      strokeAlphaMin: 0, strokeAlphaMax: 0, fillAlpha: 0 });
   }};
 }
 
-// 7. Arc-en-ciel — spectre complet glissant
+// 7. Arc-en-ciel
 function makeHexNeonRainbow(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(2,2,12,0.15)"; ctx.fillRect(0, 0, w, h);
-    drawHexGrid(ctx, w, h, t, {
-      hueBase: 0, hueSat: 100, speed: 0.45,
-      strokeAlphaMin: 0.08, strokeAlphaMax: 0.82,
-      fillAlpha: 0.16, glowBlur: 7,
-      rainbowMode: true,
-    });
+    drawHexGrid(ctx, w, h, t, { hueBase: 0, hueSat: 100, speed: 0.45,
+      strokeAlphaMin: 0, strokeAlphaMax: 0, fillAlpha: 0, rainbowMode: true });
   }};
 }
 
-// 8. Pulsation globale — tous les hex clignotent ensemble
+// 8. Pulsation globale
 function makeHexNeonPulse(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(1,3,12,0.16)"; ctx.fillRect(0, 0, w, h);
-    drawHexGrid(ctx, w, h, t, {
-      hueBase: 170, hueSat: 100, speed: 0.6,
-      strokeAlphaMin: 0.02, strokeAlphaMax: 0.9,
-      fillAlpha: 0.28, glowBlur: 12,
-      pulseMode: true,
-    });
+    drawHexGrid(ctx, w, h, t, { hueBase: 170, hueSat: 100, speed: 0.6,
+      strokeAlphaMin: 0, strokeAlphaMax: 0, fillAlpha: 0, pulseMode: true });
   }};
 }
 
-// 9. Vague diagonale — une lumière traverse la grille
+// 9. Vague diagonale
 function makeHexNeonWave(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(0,3,14,0.15)"; ctx.fillRect(0, 0, w, h);
-    drawHexGrid(ctx, w, h, t, {
-      hueBase: 185, hueSat: 100, speed: 0.55,
-      strokeAlphaMin: 0.02, strokeAlphaMax: 0.92,
-      fillAlpha: 0.22, glowBlur: 10,
-      waveMode: true,
-    });
+    drawHexGrid(ctx, w, h, t, { hueBase: 185, hueSat: 100, speed: 0.55,
+      strokeAlphaMin: 0, strokeAlphaMax: 0, fillAlpha: 0, waveMode: true });
   }};
 }
 
-// 10. Deep — grands hex, fort contraste, dramatique
+// 10. Deep — grands hex
 function makeHexNeonDeep(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(0,2,10,0.2)"; ctx.fillRect(0, 0, w, h);
-    drawHexGrid(ctx, w, h, t, {
-      hueBase: 170, hueSat: 100, speed: 0.4,
-      strokeAlphaMin: 0.04, strokeAlphaMax: 0.95,
-      fillAlpha: 0.30, glowBlur: 16, lineWidth: 2,
-      size: 154,
-    });
+    drawHexGrid(ctx, w, h, t, { hueBase: 170, hueSat: 100, speed: 0.4,
+      strokeAlphaMin: 0, strokeAlphaMax: 0, fillAlpha: 0, lineWidth: 2, size: 154 });
   }};
 }
 
-// 11. Dense — très petits hex serrés
+// 11. Dense — petits hex serrés
 function makeHexNeonDense(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(1,3,12,0.14)"; ctx.fillRect(0, 0, w, h);
-    drawHexGrid(ctx, w, h, t, {
-      hueBase: 170, hueSat: 100, speed: 0.5,
-      strokeAlphaMin: 0.05, strokeAlphaMax: 0.75,
-      fillAlpha: 0.12, glowBlur: 5, lineWidth: 1,
-      size: 34,
-    });
+    drawHexGrid(ctx, w, h, t, { hueBase: 170, hueSat: 100, speed: 0.5,
+      strokeAlphaMin: 0, strokeAlphaMax: 0, fillAlpha: 0, lineWidth: 1, size: 34 });
   }};
 }
 
 // 12. Bicolore — rangées paires cyan, rangées impaires violet
 function makeHexNeonDual(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(2,2,14,0.15)"; ctx.fillRect(0, 0, w, h);
-    drawHexGrid(ctx, w, h, t, {
-      hueBase: 175, hueSat: 100, speed: 0.45,
-      strokeAlphaMin: 0.06, strokeAlphaMax: 0.85,
-      fillAlpha: 0.18, glowBlur: 8,
-      dualHue: 270,
-    });
+    drawHexGrid(ctx, w, h, t, { hueBase: 175, hueSat: 100, speed: 0.45,
+      strokeAlphaMin: 0, strokeAlphaMax: 0, fillAlpha: 0, dualHue: 270 });
   }};
 }
 
-// 13. Respiration douce — très lent, apaisant
+// 13. Respiration douce
 function makeHexNeonBreathe(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(0,3,12,0.12)"; ctx.fillRect(0, 0, w, h);
-    drawHexGrid(ctx, w, h, t, {
-      hueBase: 170, hueSat: 95, speed: 0.18,
-      strokeAlphaMin: 0.04, strokeAlphaMax: 0.80,
-      fillAlpha: 0.22, glowBlur: 14,
-    });
+    drawHexGrid(ctx, w, h, t, { hueBase: 170, hueSat: 95, speed: 0.18,
+      strokeAlphaMin: 0, strokeAlphaMax: 0, fillAlpha: 0 });
   }};
 }
 
-// 14. Tempête — rapide, frénétique, intense
+// 14. Tempête — rapide, intense
 function makeHexNeonStorm(): Anim {
   return { draw(ctx, w, h, t) {
-    ctx.fillStyle = "rgba(0,2,10,0.18)"; ctx.fillRect(0, 0, w, h);
     drawHexGrid(ctx, w, h, t, {
       hueBase: 160, hueSat: 100, speed: 2.2,
       strokeAlphaMin: 0.04, strokeAlphaMax: 0.95,
