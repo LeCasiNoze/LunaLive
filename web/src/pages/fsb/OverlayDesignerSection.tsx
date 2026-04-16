@@ -3,7 +3,6 @@ import { BG_PRESETS, OverlayBgAnimation } from "./OverlayBgAnimations";
 import {
   type SponsorBannerStyle, type SponsorAnimStyle,
   SPONSOR_BANNER_STYLES, SPONSOR_ANIM_STYLES,
-  SponsorBanner,
 } from "./SponsorBanner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
