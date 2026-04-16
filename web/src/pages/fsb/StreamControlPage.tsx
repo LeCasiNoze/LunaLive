@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "../../auth/AuthProvider";
 import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
+import RumbleEmbedPlayer from "../../components/RumbleEmbedPlayer";
 import { ChatPanel } from "../../components/ChatPanel";
 
 const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
@@ -87,15 +88,16 @@ function useStreamTimer() {
 
 type StreamInfo = {
   isLive: boolean;
-  hlsUrl: string | null;      // rumbleHlsUrl from API
-  embedUrl: string | null;    // Rumble iframe embed fallback
+  hlsUrl: string | null;
+  rumbleEmbedUrl: string | null;  // champ statique DB rumble_embed_url (ne dépend pas du poller)
   thumbUrl: string | null;
+  title: string | null;
   viewers: number;
 };
 
 function useStreamInfo() {
   const [info, setInfo] = React.useState<StreamInfo>({
-    isLive: false, hlsUrl: null, embedUrl: null, thumbUrl: null, viewers: 0,
+    isLive: false, hlsUrl: null, rumbleEmbedUrl: null, thumbUrl: null, title: null, viewers: 0,
   });
   React.useEffect(() => {
     const fetch_ = async () => {
@@ -103,18 +105,13 @@ function useStreamInfo() {
         const r = await fetch(`${LUNA_API_BASE}/streamers/lecasinoze`);
         const j = await r.json().catch(() => null);
         if (!j) return;
-        // API returns rumbleHlsUrl (not hlsUrl) for LeCasiNoze
         const hlsUrl = j.rumbleHlsUrl ?? j.hlsUrl ?? null;
-        // Rumble embed fallback using live_id / videoId
-        const liveId = j.rumbleLiveId ?? j.liveId ?? null;
-        const videoUrl = j.rumbleVideoUrl ?? null;
-        // Embed URL: prefer videoUrl page, fallback to embed/{liveId}
-        const embedUrl = liveId
-          ? `https://rumble.com/embed/${liveId}/`
-          : videoUrl ?? null;
+        // rumbleEmbedUrl = champ statique DB, toujours présent si configuré — identique à la page streamer
+        const rumbleEmbedUrl = j.rumbleEmbedUrl ?? null;
         const thumbUrl = j.rumbleThumbnailUrl ?? j.thumbUrl ?? j.thumbUrlDb ?? null;
-        console.log("[StreamInfo] isLive:", !!j.isLive, "hlsUrl:", hlsUrl, "embedUrl:", embedUrl);
-        setInfo({ isLive: !!j.isLive, hlsUrl, embedUrl, thumbUrl, viewers: j.viewers ?? 0 });
+        const title = j.title ?? null;
+        console.log("[StreamInfo] isLive:", !!j.isLive, "rumbleEmbedUrl:", rumbleEmbedUrl, "hlsUrl:", hlsUrl);
+        setInfo({ isLive: !!j.isLive, hlsUrl, rumbleEmbedUrl, thumbUrl, title, viewers: j.viewers ?? 0 });
       } catch (e) {
         console.error("[StreamInfo] fetch error:", e);
       }
@@ -792,20 +789,14 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
         {/* Stream + stats */}
         <div style={{ flex: "0 0 55%", minWidth: 0, height: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ ...S.card, flex: "1 1 0", minHeight: 0, padding: 0, overflow: "hidden" }}>
-            {streamInfo.hlsUrl ? (
+            {streamInfo.rumbleEmbedUrl ? (
+              <RumbleEmbedPlayer embedUrl={streamInfo.rumbleEmbedUrl} title={streamInfo.title} isLive={streamInfo.isLive} />
+            ) : streamInfo.hlsUrl ? (
               <RumbleStreamPlayer hlsUrl={streamInfo.hlsUrl} thumbnailUrl={streamInfo.thumbUrl} isLive={streamInfo.isLive} />
-            ) : streamInfo.isLive && streamInfo.embedUrl ? (
-              <iframe
-                src={streamInfo.embedUrl}
-                style={{ width: "100%", height: "100%", border: "none", display: "block" }}
-                allowFullScreen
-                allow="autoplay"
-                title="Rumble live"
-              />
             ) : (
               <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, background: "rgba(0,0,0,.25)" }}>
                 {streamInfo.thumbUrl && <img src={streamInfo.thumbUrl} alt="" style={{ maxWidth: "80%", maxHeight: "70%", objectFit: "contain", borderRadius: 6, opacity: 0.6 }} />}
-                <span style={{ fontSize: 12, color: "#475569" }}>{streamInfo.isLive ? "HLS non disponible" : "Pas de stream"}</span>
+                <span style={{ fontSize: 12, color: "#475569" }}>Pas de stream</span>
               </div>
             )}
           </div>

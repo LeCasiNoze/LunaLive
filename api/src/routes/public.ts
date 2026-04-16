@@ -402,27 +402,28 @@ publicRouter.get(
         // Forcer l'état live depuis Rumble
         row.isLive = !!rumble.is_live;
         
+        // Toujours exposer l'URL statique Rumble (utile même hors ligne)
+        (row as any).rumbleStaticVideoUrl = "https://rumble.com/user/LeCasiNoze/live";
+        (row as any).streamProvider = "rumble";
+
         // Utiliser les infos Rumble si live
         if (rumble.is_live) {
           row.title = rumble.title || row.title;
           row.viewers = rumble.viewers_count || row.viewers;
-          
-          // Ajouter les infos Rumble spécifiques
+
           (row as any).rumbleHlsUrl = rumble.hls_url;
           (row as any).rumbleVideoUrl = rumble.video_url;
           (row as any).rumbleThumbnailUrl = rumble.thumbnail_url;
           (row as any).rumbleLiveId = rumble.live_id;
-          (row as any).rumbleStaticVideoUrl = "https://rumble.com/user/LeCasiNoze/live";
-          (row as any).streamProvider = "rumble";
-          
+
           console.log(`[public] LeCasiNoze: Using Rumble live data - ${rumble.title}`);
         } else {
-          (row as any).streamProvider = "rumble";
-          console.log(`[public] LeCasiNoze: Rumble offline`);
+          console.log(`[public] LeCasiNoze: Rumble offline (static URL still exposed)`);
         }
       } else {
+        (row as any).rumbleStaticVideoUrl = "https://rumble.com/user/LeCasiNoze/live";
         (row as any).streamProvider = "rumble";
-        console.log(`[public] LeCasiNoze: No Rumble data found`);
+        console.log(`[public] LeCasiNoze: No Rumble data found (static URL exposed)`);
       }
     }
 
