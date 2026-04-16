@@ -498,7 +498,7 @@ function PreviewCanvasContent({ config, scale, chatIframeRef }: {
           }}>
             <iframe
               ref={chatIframeRef}
-              key={config.chat.chatUrl}
+              key={stableChatKey(config.chat.chatUrl)}
               src={config.chat.chatUrl}
               style={{ width: "100%", height: "100%", border: "none", background: "transparent" }}
               title="Chat preview"
@@ -1110,6 +1110,20 @@ const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
 const SITE_BASE = ((import.meta.env.VITE_SITE_URL as string | undefined) ?? "").replace(/\/$/, "")
   || window.location.origin;
 
+/** Clé stable pour l'iframe chat — identique à chatIframeKey dans OverlayPage.
+ *  Ignore les params visuels (font/scale/align/etc.) pour éviter le rechargement. */
+function stableChatKey(chatUrl: string): string {
+  try {
+    const u = new URL(chatUrl);
+    const slug  = u.searchParams.get("slug")  ?? "";
+    const token = u.searchParams.get("token") ?? "";
+    const api   = u.searchParams.get("api")   ?? "";
+    return `${u.origin}${u.pathname}|${slug}|${token}|${api}`;
+  } catch {
+    return chatUrl;
+  }
+}
+
 function lunaChatUrl(slug: string, fontSize = 14, maxMessages = 8, scale = 1, align: ChatZoneConfig["align"] = "center", msgBgOpacity = 0.92, compact = true) {
   const base = `${SITE_BASE}/overlay/obs/chat.html`;
   const params = new URLSearchParams({
@@ -1392,8 +1406,20 @@ export function OverlayDesignerSection() {
     loadConfigFromDb().then((dbConfig) => {
       if (dbConfig) {
         isInitialLoad.current = true;
-        setConfig(dbConfig);
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(dbConfig)); } catch {}
+        setConfig((current) => {
+          // Préserver le chatUrl depuis l'état local si le DB n'en a pas
+          // (évite le reset si le push DB n'avait pas encore persisté)
+          const merged: OverlayConfig = { ...dbConfig };
+          if (!dbConfig.chat?.chatUrl && current.chat?.chatUrl) {
+            merged.chat = { ...dbConfig.chat, chatUrl: current.chat.chatUrl };
+          }
+          // bgOpacity toujours 0 si non défini (fond transparent overlay)
+          if (!merged.chat.bgOpacity) {
+            merged.chat = { ...merged.chat, bgOpacity: 0 };
+          }
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
+          return merged;
+        });
       }
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

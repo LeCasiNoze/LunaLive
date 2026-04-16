@@ -554,14 +554,14 @@ function ChatZone({ chat }: { chat: OverlayConfig["chat"] }) {
     <div style={{
       ...rect(chat),
       borderRadius: chat.borderRadius,
-      background: opacity > 0 ? `rgba(0,0,0,${opacity})` : "transparent",
+      background: opacity > 0 ? `rgba(0,0,0,${opacity})` : "none",
       overflow: "hidden",
     }}>
       <iframe
         ref={iframeRef}
         key={chatIframeKey(chat.chatUrl)}
         src={chat.chatUrl}
-        style={{ width: "100%", height: "100%", border: "none", background: "transparent" }}
+        style={{ width: "100%", height: "100%", border: "none", background: "none", backgroundColor: "transparent" }}
         title="Chat"
         allow="autoplay"
         allowTransparency={true}
