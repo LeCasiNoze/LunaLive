@@ -454,7 +454,7 @@ function makeCircuitLines(w: number, h: number, hueBase: number, hueRange: numbe
   });
 }
 
-function drawCircuit(ctx: CanvasRenderingContext2D, w: number, h: number, lines: CircLine[], step: number) {
+function drawCircuit(ctx: CanvasRenderingContext2D, _w: number, _h: number, lines: CircLine[], step: number) {
   for (const ln of lines) {
     ln.progress = (ln.progress + ln.speed * 0.5) % (ln.len + step * 3);
     const drawn = Math.min(ln.progress, ln.len);
