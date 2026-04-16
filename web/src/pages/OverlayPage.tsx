@@ -2,6 +2,7 @@ import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import { io } from "socket.io-client";
 import { decodeConfig, type OverlayConfig, type ZoneRect } from "./fsb/OverlayDesignerSection";
+import { OverlayBgAnimation } from "./fsb/OverlayBgAnimations";
 
 const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
   ?? "https://lunalive-api.onrender.com";
@@ -298,7 +299,8 @@ function rect(z: ZoneRect): React.CSSProperties {
 function BackgroundZone({ bg }: { bg: OverlayConfig["background"] }) {
   React.useEffect(() => { injectBgAnimations(); }, []);
 
-  if (!bg.enabled || !bg.imageUrl) return null;
+  const hasAnim = !!(bg.animPreset && bg.animPreset !== "none");
+  if (!bg.enabled || (!bg.imageUrl && !hasAnim)) return null;
 
   const animName = bg.animated
     ? bg.animationType === "zoom" ? "bgZoom"
@@ -312,22 +314,27 @@ function BackgroundZone({ bg }: { bg: OverlayConfig["background"] }) {
       overflow: "hidden",
       zIndex: 0,
     }}>
-      <img
-        src={bg.imageUrl}
-        alt=""
-        style={{
-          position: "absolute", inset: "-5%",
-          width: "110%", height: "110%",
-          objectFit: "cover",
-          opacity: (bg.opacity ?? 100) / 100,
-          animation: bg.animated
-            ? `${animName} ${bg.animationSpeed ?? 30}s ease-in-out infinite`
-            : "none",
-          transformOrigin: "center center",
-          pointerEvents: "none",
-        }}
-        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-      />
+      {hasAnim && (
+        <OverlayBgAnimation preset={bg.animPreset!} opacity={bg.opacity} />
+      )}
+      {bg.imageUrl && (
+        <img
+          src={bg.imageUrl}
+          alt=""
+          style={{
+            position: "absolute", inset: "-5%",
+            width: "110%", height: "110%",
+            objectFit: "cover",
+            opacity: (bg.opacity ?? 100) / 100,
+            animation: bg.animated
+              ? `${animName} ${bg.animationSpeed ?? 30}s ease-in-out infinite`
+              : "none",
+            transformOrigin: "center center",
+            pointerEvents: "none",
+          }}
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      )}
     </div>
   );
 }

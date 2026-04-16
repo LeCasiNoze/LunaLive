@@ -1,4 +1,5 @@
 import * as React from "react";
+import { BG_PRESETS, OverlayBgAnimation } from "./OverlayBgAnimations";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +78,7 @@ export type BackgroundConfig = {
   animated: boolean;
   animationType: "zoom" | "drift" | "breathe";
   animationSpeed: number;    // durée cycle en secondes
+  animPreset?: string;       // fond animé canvas (ex: "particles_blue")
 };
 
 export type OverlayConfig = {
@@ -452,7 +454,11 @@ function PreviewCanvasContent({ config, scale, chatIframeRef }: {
 }) {
   return (
     <>
-      {/* Fond */}
+      {/* Fond animé CSS */}
+      {config.background.enabled && config.background.animPreset && config.background.animPreset !== "none" && (
+        <OverlayBgAnimation preset={config.background.animPreset} opacity={config.background.opacity} />
+      )}
+      {/* Fond image */}
       {config.background.enabled && config.background.imageUrl && (
         <img
           src={config.background.imageUrl}
@@ -465,7 +471,7 @@ function PreviewCanvasContent({ config, scale, chatIframeRef }: {
           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
         />
       )}
-      {config.background.enabled && !config.background.imageUrl && (
+      {config.background.enabled && !config.background.imageUrl && (!config.background.animPreset || config.background.animPreset === "none") && (
         <div style={{
           position: "absolute", inset: 0,
           background: "rgba(30,41,59,.5)",
@@ -1083,7 +1089,7 @@ function BackgroundPanel({
 
       <hr style={S.sep} />
       <NumInput label="Opacité (%)" value={bg.opacity} onChange={(v) => onChange({ opacity: v })} min={10} max={100} step={5} />
-      <Toggle label="Animation" checked={bg.animated} onChange={(v) => onChange({ animated: v })} />
+      <Toggle label="Animation (image)" checked={bg.animated} onChange={(v) => onChange({ animated: v })} />
       {bg.animated && (
         <div style={S.row2}>
           <div style={S.field}>
@@ -1095,6 +1101,28 @@ function BackgroundPanel({
             </select>
           </div>
           <NumInput label="Durée cycle (s)" value={bg.animationSpeed} onChange={(v) => onChange({ animationSpeed: v })} min={10} max={120} step={5} />
+        </div>
+      )}
+
+      <hr style={S.sep} />
+      <div style={S.field}>
+        <span style={S.label}>🎨 Fond animé CSS (sans image)</span>
+        <select
+          style={S.input}
+          value={bg.animPreset ?? "none"}
+          onChange={(e) => onChange({ animPreset: e.target.value === "none" ? undefined : e.target.value })}
+        >
+          {BG_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
+        </select>
+      </div>
+      {bg.animPreset && bg.animPreset !== "none" && (
+        <div style={{ position: "relative", width: "100%", aspectRatio: "16/9", borderRadius: 8, overflow: "hidden", border: "1px solid rgba(60,95,175,.2)", background: "#020a18" }}>
+          <OverlayBgAnimation preset={bg.animPreset} opacity={bg.opacity} />
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+            <span style={{ fontSize: 11, color: "rgba(200,220,255,.4)", fontWeight: 700 }}>PREVIEW</span>
+          </div>
         </div>
       )}
     </Panel>
