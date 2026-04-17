@@ -125,18 +125,18 @@ function clamp(n: number, min: number, max: number): number {
 export function defaultAffiButton(): AffiButton {
   return {
     id: makeButtonId(),
-    label: "Bouton",
+    label: "",            // vide par défaut quand c'est une image au-dessus du coffre
     link: "",
     imageUrl: "",
-    bgColor: "#FFD700",
-    textColor: "#000000",
-    xPct: 40,
-    yPct: 50,
-    widthPx: 180,
-    heightPx: 56,
+    bgColor: "transparent",
+    textColor: "#ffffff",
+    xPct: 35,              // centré-ish horizontalement (200px de large dans 1200–1600px viewport)
+    yPct: 5,               // tout en haut — au-dessus du coffre
+    widthPx: 220,
+    heightPx: 160,
     borderRadius: 12,
     fontSize: 18,
-    objectFit: "cover",
+    objectFit: "contain",  // image entière visible, pas croppée
   };
 }
 
@@ -741,9 +741,12 @@ function renderAffiButtonsHtml(btns: AffiButton[]): string {
     const hrefAttr = href ? ` href="${href}" target="_blank" rel="noopener noreferrer"` : "";
     const hasImage = !!b.imageUrl;
 
-    // Clamp aggressif pour éviter qu'un bouton soit invisible à cause d'une valeur aberrante
-    const xPct = clamp(Number(b.xPct), 0, 100);
-    const yPct = clamp(Number(b.yPct), 0, 100);
+    // Sanitize avec auto-reset vers un default visible si la valeur est hors plage raisonnable
+    // (ex: config persistée avec X=40000 suite à un bug d'input — on évite un bouton à jamais off-screen)
+    const rawX = Number(b.xPct);
+    const rawY = Number(b.yPct);
+    const xPct = (!Number.isFinite(rawX) || rawX < 0 || rawX > 95) ? 35 : rawX;
+    const yPct = (!Number.isFinite(rawY) || rawY < 0 || rawY > 95) ? 5  : rawY;
     const widthPx = clamp(Number(b.widthPx), 20, 2000);
     const heightPx = clamp(Number(b.heightPx), 20, 2000);
     const borderRadius = clamp(Number(b.borderRadius), 0, 200);
@@ -778,17 +781,22 @@ function renderAffiButtonsHtml(btns: AffiButton[]): string {
       "text-align:center",
       "text-decoration:none",
       "overflow:hidden",
-      "box-shadow:0 4px 14px rgba(0,0,0,.35)",
-      "border:1px solid rgba(255,255,255,.08)",
+      hasImage ? "box-shadow:none" : "box-shadow:0 4px 14px rgba(0,0,0,.35)",
+      hasImage ? "border:none" : "border:1px solid rgba(255,255,255,.08)",
       "cursor:pointer",
       "box-sizing:border-box",
     ].join(";");
 
-    const label = b.label
-      ? `<span style="position:relative;padding:0 8px;text-shadow:${textShadow};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${esc(b.label)}</span>`
+    // Balise <img> en plus du background-image pour une double garantie d'affichage
+    const imgTag = hasImage
+      ? `<img src="${escAttr(b.imageUrl)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:${b.objectFit};display:block;pointer-events:none;" />`
       : "";
 
-    return `<${tag}${hrefAttr} style="${styles}">${label}</${tag}>`;
+    const label = b.label
+      ? `<span style="position:relative;z-index:2;padding:0 8px;text-shadow:${textShadow};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${esc(b.label)}</span>`
+      : "";
+
+    return `<${tag}${hrefAttr} style="${styles}">${imgTag}${label}</${tag}>`;
   }).join("\n");
 
   // Wrapper position:fixed → flotte au-dessus du contenu quoi qu'il arrive.
