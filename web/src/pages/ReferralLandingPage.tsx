@@ -528,6 +528,7 @@ export default function ReferralLandingPage() {
         );
 
         if (cancelled) return;
+        buttonsRef.current = parseAffiButtons((cfg as any).customButtonsJson);
         setSrcDoc(html);
         setStatus("ready");
       } catch (error: any) {
@@ -571,7 +572,21 @@ export default function ReferralLandingPage() {
 
   return (
     <div style={styles.root}>
-      <iframe title="landing-affiliee" srcDoc={srcDoc} style={styles.iframe} />
+      <iframe
+        ref={iframeRef}
+        title="landing-affiliee"
+        srcDoc={srcDoc}
+        style={styles.iframe}
+        onLoad={() => {
+          const iframe = iframeRef.current;
+          if (!iframe) return;
+          try {
+            injectButtonsIntoIframe(iframe, buttonsRef.current);
+          } catch (err) {
+            console.error("[ReferralLanding] inject buttons failed:", err);
+          }
+        }}
+      />
     </div>
   );
 }
