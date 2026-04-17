@@ -125,19 +125,23 @@ function clamp(n: number, min: number, max: number): number {
 export function defaultAffiButton(): AffiButton {
   return {
     id: makeButtonId(),
-    label: "",            // vide par défaut quand c'est une image au-dessus du coffre
+    label: "",
     link: "",
     imageUrl: "",
-    bgColor: "transparent",
+    bgColor: "#000000",    // hex valide (le color picker n'accepte pas "transparent")
     textColor: "#ffffff",
-    xPct: 35,              // centré-ish horizontalement (200px de large dans 1200–1600px viewport)
-    yPct: 5,               // tout en haut — au-dessus du coffre
+    xPct: 35,
+    yPct: 5,
     widthPx: 220,
     heightPx: 160,
     borderRadius: 12,
     fontSize: 18,
-    objectFit: "contain",  // image entière visible, pas croppée
+    objectFit: "contain",
   };
+}
+
+function isValidHexColor(v: unknown): v is string {
+  return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v);
 }
 
 export function parseAffiButtons(json: string | undefined | null): AffiButton[] {
@@ -145,7 +149,14 @@ export function parseAffiButtons(json: string | undefined | null): AffiButton[] 
   try {
     const arr = JSON.parse(json);
     if (!Array.isArray(arr)) return [];
-    return arr.filter((b) => b && typeof b === "object" && typeof b.id === "string");
+    return arr
+      .filter((b) => b && typeof b === "object" && typeof b.id === "string")
+      .map((b) => ({
+        ...b,
+        // Normalise les couleurs pour que le <input type="color"> ne crashe pas
+        bgColor: isValidHexColor(b.bgColor) ? b.bgColor : "#000000",
+        textColor: isValidHexColor(b.textColor) ? b.textColor : "#ffffff",
+      }));
   } catch {
     return [];
   }
