@@ -111,6 +111,7 @@ export interface AffiButton {
   borderRadius: number;
   fontSize: number;
   objectFit: "contain" | "cover" | "fill";
+  transparent?: boolean; // si true, ignore bgColor — image affichée sans aucun fond
 }
 
 function makeButtonId(): string {
@@ -128,7 +129,7 @@ export function defaultAffiButton(): AffiButton {
     label: "",
     link: "",
     imageUrl: "",
-    bgColor: "#000000",    // hex valide (le color picker n'accepte pas "transparent")
+    bgColor: "#000000",
     textColor: "#ffffff",
     xPct: 35,
     yPct: 5,
@@ -137,6 +138,7 @@ export function defaultAffiButton(): AffiButton {
     borderRadius: 12,
     fontSize: 18,
     objectFit: "contain",
+    transparent: true,   // défaut : pas de fond — idéal pour une image PNG transparente
   };
 }
 
@@ -754,7 +756,7 @@ function renderAffiButtonsHtml(btns: AffiButton[]): string {
       label: String(b.label || ""),
       link: String(b.link || ""),
       imageUrl: String(b.imageUrl || ""),
-      bgColor: String(b.bgColor || "transparent"),
+      bgColor: String(b.bgColor || "#000000"),
       textColor: String(b.textColor || "#ffffff"),
       xPct: (!Number.isFinite(rawX) || rawX < 0 || rawX > 95) ? 35 : rawX,
       yPct: (!Number.isFinite(rawY) || rawY < 0 || rawY > 95) ? 5  : rawY,
@@ -763,6 +765,7 @@ function renderAffiButtonsHtml(btns: AffiButton[]): string {
       borderRadius: clamp(Number(b.borderRadius), 0, 200),
       fontSize: clamp(Number(b.fontSize), 8, 200),
       objectFit: String(b.objectFit || "contain"),
+      transparent: !!b.transparent,
     };
   });
 
@@ -786,6 +789,7 @@ function renderAffiButtonsHtml(btns: AffiButton[]): string {
 
     BTNS.forEach(function (b) {
       var hasImage = !!b.imageUrl;
+      var isTransparent = !!b.transparent;
       var el = document.createElement(b.link ? 'a' : 'div');
       if (b.link) {
         el.href = b.link;
@@ -796,7 +800,8 @@ function renderAffiButtonsHtml(btns: AffiButton[]): string {
       var bgSize = b.objectFit === 'cover' ? 'cover' : b.objectFit === 'fill' ? '100% 100%' : 'contain';
       var bgParts = [];
       if (hasImage) bgParts.push('url("' + b.imageUrl.replace(/"/g, '%22') + '") center center / ' + bgSize + ' no-repeat');
-      bgParts.push(b.bgColor);
+      if (!isTransparent) bgParts.push(b.bgColor);
+      var bgValue = bgParts.length ? bgParts.join(', ') : 'transparent';
 
       el.style.cssText = [
         'position:fixed !important',
@@ -805,7 +810,7 @@ function renderAffiButtonsHtml(btns: AffiButton[]): string {
         'top:' + b.yPct + '% !important',
         'width:' + b.widthPx + 'px !important',
         'height:' + b.heightPx + 'px !important',
-        'background:' + bgParts.join(', ') + ' !important',
+        'background:' + bgValue + ' !important',
         'color:' + b.textColor + ' !important',
         'border-radius:' + b.borderRadius + 'px !important',
         'font-size:' + b.fontSize + 'px !important',
@@ -816,8 +821,8 @@ function renderAffiButtonsHtml(btns: AffiButton[]): string {
         'text-align:center !important',
         'text-decoration:none !important',
         'overflow:hidden !important',
-        hasImage ? 'box-shadow:none !important' : 'box-shadow:0 4px 14px rgba(0,0,0,.35) !important',
-        hasImage ? 'border:none !important' : 'border:1px solid rgba(255,255,255,.08) !important',
+        (hasImage || isTransparent) ? 'box-shadow:none !important' : 'box-shadow:0 4px 14px rgba(0,0,0,.35) !important',
+        (hasImage || isTransparent) ? 'border:none !important' : 'border:1px solid rgba(255,255,255,.08) !important',
         'cursor:pointer !important',
         'box-sizing:border-box !important',
         'z-index:2147483647 !important',
@@ -1463,7 +1468,11 @@ function SingleButtonRow({ btn, index, onChange, onRemove }: SingleButtonRowProp
             </select>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#ddd", cursor: "pointer" }}>
+            <input type="checkbox" checked={btn.transparent ?? false} onChange={(e) => onChange({ transparent: e.target.checked })} />
+            Fond transparent (ignore la couleur de fond)
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, opacity: btn.transparent ? 0.5 : 1 }}>
             <ColorField label="Fond" value={btn.bgColor} onChange={(v) => onChange({ bgColor: v })} />
             <ColorField label="Texte" value={btn.textColor} onChange={(v) => onChange({ textColor: v })} />
           </div>
@@ -1561,6 +1570,7 @@ function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: AffiButton[
     const borderRadius = clamp(Number(b.borderRadius), 0, 200);
     const fontSize = clamp(Number(b.fontSize), 8, 200);
     const hasImage = !!b.imageUrl;
+    const isTransparent = !!b.transparent;
     const bgColor = /^#[0-9a-fA-F]{6}$/.test(b.bgColor) ? b.bgColor : "#000000";
     const textColor = /^#[0-9a-fA-F]{6}$/.test(b.textColor) ? b.textColor : "#ffffff";
 
@@ -1574,7 +1584,8 @@ function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: AffiButton[
     const bgSize = b.objectFit === "cover" ? "cover" : b.objectFit === "fill" ? "100% 100%" : "contain";
     const bgParts: string[] = [];
     if (hasImage) bgParts.push(`url("${b.imageUrl.replace(/"/g, "%22")}") center center / ${bgSize} no-repeat`);
-    bgParts.push(bgColor);
+    if (!isTransparent) bgParts.push(bgColor);
+    const backgroundValue = bgParts.length > 0 ? bgParts.join(", ") : "transparent";
 
     el.style.cssText = [
       "position:fixed!important",
@@ -1583,7 +1594,7 @@ function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: AffiButton[
       `top:${yPct}%!important`,
       `width:${widthPx}px!important`,
       `height:${heightPx}px!important`,
-      `background:${bgParts.join(", ")}!important`,
+      `background:${backgroundValue}!important`,
       `color:${textColor}!important`,
       `border-radius:${borderRadius}px!important`,
       `font-size:${fontSize}px!important`,
@@ -1594,8 +1605,8 @@ function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: AffiButton[
       "text-align:center!important",
       "text-decoration:none!important",
       "overflow:hidden!important",
-      hasImage ? "box-shadow:none!important" : "box-shadow:0 4px 14px rgba(0,0,0,.35)!important",
-      hasImage ? "border:none!important" : "border:1px solid rgba(255,255,255,.08)!important",
+      (hasImage || isTransparent) ? "box-shadow:none!important" : "box-shadow:0 4px 14px rgba(0,0,0,.35)!important",
+      (hasImage || isTransparent) ? "border:none!important" : "border:1px solid rgba(255,255,255,.08)!important",
       "cursor:pointer!important",
       "box-sizing:border-box!important",
       "z-index:2147483647!important",
