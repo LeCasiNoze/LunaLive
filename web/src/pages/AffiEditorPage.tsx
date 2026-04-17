@@ -117,6 +117,11 @@ function makeButtonId(): string {
   return `btn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function clamp(n: number, min: number, max: number): number {
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, n));
+}
+
 export function defaultAffiButton(): AffiButton {
   return {
     id: makeButtonId(),
@@ -736,6 +741,14 @@ function renderAffiButtonsHtml(btns: AffiButton[]): string {
     const hrefAttr = href ? ` href="${href}" target="_blank" rel="noopener noreferrer"` : "";
     const hasImage = !!b.imageUrl;
 
+    // Clamp aggressif pour éviter qu'un bouton soit invisible à cause d'une valeur aberrante
+    const xPct = clamp(Number(b.xPct), 0, 100);
+    const yPct = clamp(Number(b.yPct), 0, 100);
+    const widthPx = clamp(Number(b.widthPx), 20, 2000);
+    const heightPx = clamp(Number(b.heightPx), 20, 2000);
+    const borderRadius = clamp(Number(b.borderRadius), 0, 200);
+    const fontSize = clamp(Number(b.fontSize), 8, 200);
+
     // background: couleur + image (si présente) — couleur sert de fallback si l'image échoue
     const bgSize = b.objectFit === "cover" ? "cover" : b.objectFit === "fill" ? "100% 100%" : "contain";
     const bgParts: string[] = [];
@@ -750,14 +763,14 @@ function renderAffiButtonsHtml(btns: AffiButton[]): string {
     const styles = [
       "position:absolute",
       "pointer-events:auto",
-      `left:${b.xPct}%`,
-      `top:${b.yPct}%`,
-      `width:${b.widthPx}px`,
-      `height:${b.heightPx}px`,
+      `left:${xPct}%`,
+      `top:${yPct}%`,
+      `width:${widthPx}px`,
+      `height:${heightPx}px`,
       `background:${backgroundCss}`,
       `color:${escAttr(b.textColor)}`,
-      `border-radius:${b.borderRadius}px`,
-      `font-size:${b.fontSize}px`,
+      `border-radius:${borderRadius}px`,
+      `font-size:${fontSize}px`,
       "font-weight:800",
       "display:flex",
       "align-items:center",
@@ -1399,33 +1412,33 @@ function SingleButtonRow({ btn, index, onChange, onRemove }: SingleButtonRowProp
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <div style={s.field}>
               <label style={s.label}>X (% largeur)</label>
-              <input type="number" min={0} max={100} step={0.5} value={btn.xPct} onChange={(e) => onChange({ xPct: Number(e.target.value) })} style={s.input} />
+              <input type="number" min={0} max={100} step={0.5} value={btn.xPct} onChange={(e) => onChange({ xPct: clamp(Number(e.target.value), 0, 100) })} style={s.input} />
             </div>
             <div style={s.field}>
               <label style={s.label}>Y (% hauteur)</label>
-              <input type="number" min={0} max={100} step={0.5} value={btn.yPct} onChange={(e) => onChange({ yPct: Number(e.target.value) })} style={s.input} />
+              <input type="number" min={0} max={100} step={0.5} value={btn.yPct} onChange={(e) => onChange({ yPct: clamp(Number(e.target.value), 0, 100) })} style={s.input} />
             </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <div style={s.field}>
               <label style={s.label}>Largeur (px)</label>
-              <input type="number" min={20} max={800} step={2} value={btn.widthPx} onChange={(e) => onChange({ widthPx: Number(e.target.value) })} style={s.input} />
+              <input type="number" min={20} max={2000} step={2} value={btn.widthPx} onChange={(e) => onChange({ widthPx: clamp(Number(e.target.value), 20, 2000) })} style={s.input} />
             </div>
             <div style={s.field}>
               <label style={s.label}>Hauteur (px)</label>
-              <input type="number" min={20} max={400} step={2} value={btn.heightPx} onChange={(e) => onChange({ heightPx: Number(e.target.value) })} style={s.input} />
+              <input type="number" min={20} max={2000} step={2} value={btn.heightPx} onChange={(e) => onChange({ heightPx: clamp(Number(e.target.value), 20, 2000) })} style={s.input} />
             </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <div style={s.field}>
               <label style={s.label}>Radius (px)</label>
-              <input type="number" min={0} max={60} step={1} value={btn.borderRadius} onChange={(e) => onChange({ borderRadius: Number(e.target.value) })} style={s.input} />
+              <input type="number" min={0} max={200} step={1} value={btn.borderRadius} onChange={(e) => onChange({ borderRadius: clamp(Number(e.target.value), 0, 200) })} style={s.input} />
             </div>
             <div style={s.field}>
               <label style={s.label}>Taille texte</label>
-              <input type="number" min={8} max={80} step={1} value={btn.fontSize} onChange={(e) => onChange({ fontSize: Number(e.target.value) })} style={s.input} />
+              <input type="number" min={8} max={200} step={1} value={btn.fontSize} onChange={(e) => onChange({ fontSize: clamp(Number(e.target.value), 8, 200) })} style={s.input} />
             </div>
           </div>
         </div>
