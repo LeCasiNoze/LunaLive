@@ -730,80 +730,120 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
 }
 
 /** Rendu HTML des boutons custom.
- *  Positionnement : absolute dans un wrapper fixed (inset:0) pour qu'ils flottent au-dessus
- *  du contenu peu importe le scroll. Coordonnées X/Y = coin haut-gauche du bouton en % du viewport.
- *  L'image est appliquée via background-image CSS (avec couleur en fallback) au lieu d'un <img>
- *  séparé : ça évite l'échec silencieux via onerror et simplifie le stacking. */
+ *  Injection via script JS après DOMContentLoaded → la création en JS permet d'éviter
+ *  tous les problèmes potentiels de HTML injecté statique (parsing, transform ancêtre, etc.)
+ *  et garantit que les boutons sont les derniers enfants du body. */
 function renderAffiButtonsHtml(btns: AffiButton[]): string {
-  const items = btns.map((b) => {
-    const href = b.link ? escAttr(b.link) : "";
-    const tag = href ? "a" : "div";
-    const hrefAttr = href ? ` href="${href}" target="_blank" rel="noopener noreferrer"` : "";
-    const hasImage = !!b.imageUrl;
-
-    // Sanitize avec auto-reset vers un default visible si la valeur est hors plage raisonnable
-    // (ex: config persistée avec X=40000 suite à un bug d'input — on évite un bouton à jamais off-screen)
+  // Sanitize + clamp de chaque bouton
+  const sanitized = btns.map((b) => {
     const rawX = Number(b.xPct);
     const rawY = Number(b.yPct);
-    const xPct = (!Number.isFinite(rawX) || rawX < 0 || rawX > 95) ? 35 : rawX;
-    const yPct = (!Number.isFinite(rawY) || rawY < 0 || rawY > 95) ? 5  : rawY;
-    const widthPx = clamp(Number(b.widthPx), 20, 2000);
-    const heightPx = clamp(Number(b.heightPx), 20, 2000);
-    const borderRadius = clamp(Number(b.borderRadius), 0, 200);
-    const fontSize = clamp(Number(b.fontSize), 8, 200);
+    return {
+      id: String(b.id || ""),
+      label: String(b.label || ""),
+      link: String(b.link || ""),
+      imageUrl: String(b.imageUrl || ""),
+      bgColor: String(b.bgColor || "transparent"),
+      textColor: String(b.textColor || "#ffffff"),
+      xPct: (!Number.isFinite(rawX) || rawX < 0 || rawX > 95) ? 35 : rawX,
+      yPct: (!Number.isFinite(rawY) || rawY < 0 || rawY > 95) ? 5  : rawY,
+      widthPx: clamp(Number(b.widthPx), 20, 2000),
+      heightPx: clamp(Number(b.heightPx), 20, 2000),
+      borderRadius: clamp(Number(b.borderRadius), 0, 200),
+      fontSize: clamp(Number(b.fontSize), 8, 200),
+      objectFit: String(b.objectFit || "contain"),
+    };
+  });
 
-    // background: couleur + image (si présente) — couleur sert de fallback si l'image échoue
-    const bgSize = b.objectFit === "cover" ? "cover" : b.objectFit === "fill" ? "100% 100%" : "contain";
-    const bgParts: string[] = [];
-    if (hasImage) {
-      bgParts.push(`url("${escAttr(b.imageUrl)}") center center / ${bgSize} no-repeat`);
-    }
-    bgParts.push(escAttr(b.bgColor)); // toujours une couleur en dernière couche
-    const backgroundCss = bgParts.join(", ");
+  // On encode les données en JSON pour les passer au script inline.
+  // escape(</script>) pour éviter qu'un champ malicieux casse le script.
+  const dataJson = JSON.stringify(sanitized).replace(/<\/script/gi, "<\\/script");
 
-    const textShadow = hasImage ? "0 2px 6px rgba(0,0,0,.65)" : "none";
+  return `<script data-affi-custom-buttons>
+(function () {
+  var BTNS = ${dataJson};
+  if (!BTNS || !BTNS.length) return;
 
-    const styles = [
-      "position:absolute",
-      "pointer-events:auto",
-      `left:${xPct}%`,
-      `top:${yPct}%`,
-      `width:${widthPx}px`,
-      `height:${heightPx}px`,
-      `background:${backgroundCss}`,
-      `color:${escAttr(b.textColor)}`,
-      `border-radius:${borderRadius}px`,
-      `font-size:${fontSize}px`,
-      "font-weight:800",
-      "display:flex",
-      "align-items:center",
-      "justify-content:center",
-      "text-align:center",
-      "text-decoration:none",
-      "overflow:hidden",
-      hasImage ? "box-shadow:none" : "box-shadow:0 4px 14px rgba(0,0,0,.35)",
-      hasImage ? "border:none" : "border:1px solid rgba(255,255,255,.08)",
-      "cursor:pointer",
-      "box-sizing:border-box",
-    ].join(";");
+  function render() {
+    // Nettoyer un éventuel wrapper précédent (rerender en dev)
+    var prev = document.querySelector('[data-affi-buttons-wrap]');
+    if (prev) prev.parentNode.removeChild(prev);
 
-    // Balise <img> en plus du background-image pour une double garantie d'affichage
-    const imgTag = hasImage
-      ? `<img src="${escAttr(b.imageUrl)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:${b.objectFit};display:block;pointer-events:none;" />`
-      : "";
+    var wrap = document.createElement('div');
+    wrap.setAttribute('data-affi-buttons-wrap', '');
+    wrap.style.cssText = 'position:fixed !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;pointer-events:none !important;z-index:2147483647 !important;';
 
-    const label = b.label
-      ? `<span style="position:relative;z-index:2;padding:0 8px;text-shadow:${textShadow};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${esc(b.label)}</span>`
-      : "";
+    BTNS.forEach(function (b) {
+      var hasImage = !!b.imageUrl;
+      var el = document.createElement(b.link ? 'a' : 'div');
+      if (b.link) {
+        el.href = b.link;
+        el.target = '_blank';
+        el.rel = 'noopener noreferrer';
+      }
 
-    return `<${tag}${hrefAttr} style="${styles}">${imgTag}${label}</${tag}>`;
-  }).join("\n");
+      var bgSize = b.objectFit === 'cover' ? 'cover' : b.objectFit === 'fill' ? '100% 100%' : 'contain';
+      var bgParts = [];
+      if (hasImage) bgParts.push('url("' + b.imageUrl.replace(/"/g, '%22') + '") center center / ' + bgSize + ' no-repeat');
+      bgParts.push(b.bgColor);
 
-  // Wrapper position:fixed → flotte au-dessus du contenu quoi qu'il arrive.
-  // pointer-events:none sur le wrapper, auto sur les boutons → la page reste cliquable autour.
-  return `<div data-affi-custom-buttons style="position:fixed;inset:0;pointer-events:none;z-index:2147483000;">
-${items}
-</div>`;
+      el.style.cssText = [
+        'position:fixed !important',
+        'pointer-events:auto !important',
+        'left:' + b.xPct + '% !important',
+        'top:' + b.yPct + '% !important',
+        'width:' + b.widthPx + 'px !important',
+        'height:' + b.heightPx + 'px !important',
+        'background:' + bgParts.join(', ') + ' !important',
+        'color:' + b.textColor + ' !important',
+        'border-radius:' + b.borderRadius + 'px !important',
+        'font-size:' + b.fontSize + 'px !important',
+        'font-weight:800 !important',
+        'display:flex !important',
+        'align-items:center !important',
+        'justify-content:center !important',
+        'text-align:center !important',
+        'text-decoration:none !important',
+        'overflow:hidden !important',
+        hasImage ? 'box-shadow:none !important' : 'box-shadow:0 4px 14px rgba(0,0,0,.35) !important',
+        hasImage ? 'border:none !important' : 'border:1px solid rgba(255,255,255,.08) !important',
+        'cursor:pointer !important',
+        'box-sizing:border-box !important',
+        'z-index:2147483647 !important',
+        'margin:0 !important',
+        'padding:0 !important',
+      ].join(';');
+
+      // <img> tag — double garantie d'affichage
+      if (hasImage) {
+        var img = document.createElement('img');
+        img.src = b.imageUrl;
+        img.alt = '';
+        img.style.cssText = 'position:absolute !important;inset:0 !important;width:100% !important;height:100% !important;object-fit:' + b.objectFit + ' !important;display:block !important;pointer-events:none !important;';
+        el.appendChild(img);
+      }
+
+      // Label
+      if (b.label) {
+        var span = document.createElement('span');
+        span.textContent = b.label;
+        span.style.cssText = 'position:relative !important;z-index:2 !important;padding:0 8px !important;text-shadow:' + (hasImage ? '0 2px 6px rgba(0,0,0,.65)' : 'none') + ' !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;max-width:100% !important;';
+        el.appendChild(span);
+      }
+
+      wrap.appendChild(el);
+    });
+
+    document.body.appendChild(wrap);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', render);
+  } else {
+    render();
+  }
+})();
+</script>`;
 }
 
 // ─── SUB-COMPONENTS ──────────────────────────────────────────────────────────
