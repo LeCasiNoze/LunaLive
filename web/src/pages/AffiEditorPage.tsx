@@ -785,7 +785,7 @@ function renderAffiButtonsHtml(btns: AffiButton[]): string {
 
     var wrap = document.createElement('div');
     wrap.setAttribute('data-affi-buttons-wrap', '');
-    wrap.style.cssText = 'position:fixed !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;pointer-events:none !important;z-index:2147483647 !important;';
+    wrap.style.cssText = 'display:contents !important;';
 
     BTNS.forEach(function (b) {
       var hasImage = !!b.imageUrl;
@@ -804,7 +804,7 @@ function renderAffiButtonsHtml(btns: AffiButton[]): string {
       var bgValue = bgParts.length ? bgParts.join(', ') : 'transparent';
 
       el.style.cssText = [
-        'position:fixed !important',
+        'position:absolute !important',
         'pointer-events:auto !important',
         'left:' + b.xPct + '% !important',
         'top:' + b.yPct + '% !important',
@@ -1558,7 +1558,10 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
 
   const wrap = doc.createElement("div");
   wrap.setAttribute("data-affi-buttons-wrap", "");
-  wrap.style.cssText = "position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;pointer-events:none!important;z-index:2147483647!important;";
+  // display:contents → le wrapper ne génère pas de boîte, les enfants héritent du body
+  //  → les position:absolute des boutons se résolvent sur le document (initial containing block)
+  //  et scrollent avec la page.
+  wrap.style.cssText = "display:contents!important;";
 
   for (const b of buttons) {
     const rawX = Number(b.xPct);
@@ -1588,7 +1591,7 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
     const backgroundValue = bgParts.length > 0 ? bgParts.join(", ") : "transparent";
 
     el.style.cssText = [
-      "position:fixed!important",
+      "position:absolute!important",
       "pointer-events:auto!important",
       `left:${xPct}%!important`,
       `top:${yPct}%!important`,
