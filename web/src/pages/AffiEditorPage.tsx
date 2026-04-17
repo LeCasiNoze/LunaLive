@@ -1546,7 +1546,7 @@ function ButtonsEditor({ buttons, onChange }: ButtonsEditorProps) {
 
 // ─── Iframe button injection (fallback fiable) ────────────────────────────────
 
-function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: AffiButton[]) {
+export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: AffiButton[]) {
   const doc = iframe.contentDocument;
   if (!doc || !doc.body) return;
 

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getPublicAffiPage } from "../lib/api_affi_pages";
+import { parseAffiButtons, injectButtonsIntoIframe } from "./AffiEditorPage";
 
 const REF_KEY = "ref_slug";
 
@@ -498,6 +499,8 @@ export default function ReferralLandingPage() {
   const { slug } = useParams();
   const [srcDoc, setSrcDoc] = React.useState("");
   const [status, setStatus] = React.useState<"loading" | "ready" | "error">("loading");
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+  const buttonsRef = React.useRef<ReturnType<typeof parseAffiButtons>>([]);
 
   React.useEffect(() => {
     let cancelled = false;
