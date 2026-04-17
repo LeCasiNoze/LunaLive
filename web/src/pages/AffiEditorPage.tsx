@@ -724,23 +724,37 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
   return html;
 }
 
-/** Rendu HTML des boutons custom (position absolute, relative à la page) */
+/** Rendu HTML des boutons custom.
+ *  Positionnement : absolute dans un wrapper fixed (inset:0) pour qu'ils flottent au-dessus
+ *  du contenu peu importe le scroll. Coordonnées X/Y = coin haut-gauche du bouton en % du viewport.
+ *  L'image est appliquée via background-image CSS (avec couleur en fallback) au lieu d'un <img>
+ *  séparé : ça évite l'échec silencieux via onerror et simplifie le stacking. */
 function renderAffiButtonsHtml(btns: AffiButton[]): string {
   const items = btns.map((b) => {
     const href = b.link ? escAttr(b.link) : "";
     const tag = href ? "a" : "div";
     const hrefAttr = href ? ` href="${href}" target="_blank" rel="noopener noreferrer"` : "";
     const hasImage = !!b.imageUrl;
-    const bgStyle = hasImage ? "transparent" : escAttr(b.bgColor);
+
+    // background: couleur + image (si présente) — couleur sert de fallback si l'image échoue
+    const bgSize = b.objectFit === "cover" ? "cover" : b.objectFit === "fill" ? "100% 100%" : "contain";
+    const bgParts: string[] = [];
+    if (hasImage) {
+      bgParts.push(`url("${escAttr(b.imageUrl)}") center center / ${bgSize} no-repeat`);
+    }
+    bgParts.push(escAttr(b.bgColor)); // toujours une couleur en dernière couche
+    const backgroundCss = bgParts.join(", ");
+
     const textShadow = hasImage ? "0 2px 6px rgba(0,0,0,.65)" : "none";
 
     const styles = [
       "position:absolute",
+      "pointer-events:auto",
       `left:${b.xPct}%`,
       `top:${b.yPct}%`,
       `width:${b.widthPx}px`,
       `height:${b.heightPx}px`,
-      `background:${bgStyle}`,
+      `background:${backgroundCss}`,
       `color:${escAttr(b.textColor)}`,
       `border-radius:${b.borderRadius}px`,
       `font-size:${b.fontSize}px`,
@@ -748,30 +762,26 @@ function renderAffiButtonsHtml(btns: AffiButton[]): string {
       "display:flex",
       "align-items:center",
       "justify-content:center",
+      "text-align:center",
       "text-decoration:none",
       "overflow:hidden",
-      "z-index:9999",
       "box-shadow:0 4px 14px rgba(0,0,0,.35)",
       "border:1px solid rgba(255,255,255,.08)",
-      "transform:translate(-50%,-50%)",
       "cursor:pointer",
+      "box-sizing:border-box",
     ].join(";");
 
-    const img = hasImage
-      ? `<img src="${escAttr(b.imageUrl)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:${b.objectFit};display:block;" onerror="this.style.display='none'" />`
-      : "";
     const label = b.label
-      ? `<span style="position:relative;z-index:1;padding:0 8px;text-shadow:${textShadow};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${esc(b.label)}</span>`
+      ? `<span style="position:relative;padding:0 8px;text-shadow:${textShadow};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${esc(b.label)}</span>`
       : "";
 
-    return `<${tag}${hrefAttr} style="${styles}">${img}${label}</${tag}>`;
+    return `<${tag}${hrefAttr} style="${styles}">${label}</${tag}>`;
   }).join("\n");
 
-  // Wrapper avec pointer-events pour garantir clickabilité
-  return `<div data-affi-custom-buttons style="position:absolute;inset:0;pointer-events:none;z-index:9998;">
-  <div style="position:relative;width:100%;height:100%;pointer-events:none;">
-    ${items.replace(/position:absolute/g, "position:absolute;pointer-events:auto")}
-  </div>
+  // Wrapper position:fixed → flotte au-dessus du contenu quoi qu'il arrive.
+  // pointer-events:none sur le wrapper, auto sur les boutons → la page reste cliquable autour.
+  return `<div data-affi-custom-buttons style="position:fixed;inset:0;pointer-events:none;z-index:2147483000;">
+${items}
 </div>`;
 }
 
