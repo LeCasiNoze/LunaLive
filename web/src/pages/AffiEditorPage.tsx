@@ -1535,6 +1535,98 @@ function ButtonsEditor({ buttons, onChange }: ButtonsEditorProps) {
   );
 }
 
+// ─── Iframe button injection (fallback fiable) ────────────────────────────────
+
+function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: AffiButton[]) {
+  const doc = iframe.contentDocument;
+  if (!doc || !doc.body) return;
+
+  // Nettoie les éventuels boutons précédemment injectés
+  const existing = doc.querySelector("[data-affi-buttons-wrap]");
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+  if (!buttons || buttons.length === 0) return;
+
+  const wrap = doc.createElement("div");
+  wrap.setAttribute("data-affi-buttons-wrap", "");
+  wrap.style.cssText = "position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;pointer-events:none!important;z-index:2147483647!important;";
+
+  for (const b of buttons) {
+    const rawX = Number(b.xPct);
+    const rawY = Number(b.yPct);
+    const xPct = (!Number.isFinite(rawX) || rawX < 0 || rawX > 95) ? 35 : rawX;
+    const yPct = (!Number.isFinite(rawY) || rawY < 0 || rawY > 95) ? 5  : rawY;
+    const widthPx = clamp(Number(b.widthPx), 20, 2000);
+    const heightPx = clamp(Number(b.heightPx), 20, 2000);
+    const borderRadius = clamp(Number(b.borderRadius), 0, 200);
+    const fontSize = clamp(Number(b.fontSize), 8, 200);
+    const hasImage = !!b.imageUrl;
+    const bgColor = /^#[0-9a-fA-F]{6}$/.test(b.bgColor) ? b.bgColor : "#000000";
+    const textColor = /^#[0-9a-fA-F]{6}$/.test(b.textColor) ? b.textColor : "#ffffff";
+
+    const el = doc.createElement(b.link ? "a" : "div") as HTMLAnchorElement | HTMLDivElement;
+    if (b.link && el.tagName === "A") {
+      (el as HTMLAnchorElement).href = b.link;
+      (el as HTMLAnchorElement).target = "_blank";
+      (el as HTMLAnchorElement).rel = "noopener noreferrer";
+    }
+
+    const bgSize = b.objectFit === "cover" ? "cover" : b.objectFit === "fill" ? "100% 100%" : "contain";
+    const bgParts: string[] = [];
+    if (hasImage) bgParts.push(`url("${b.imageUrl.replace(/"/g, "%22")}") center center / ${bgSize} no-repeat`);
+    bgParts.push(bgColor);
+
+    el.style.cssText = [
+      "position:fixed!important",
+      "pointer-events:auto!important",
+      `left:${xPct}%!important`,
+      `top:${yPct}%!important`,
+      `width:${widthPx}px!important`,
+      `height:${heightPx}px!important`,
+      `background:${bgParts.join(", ")}!important`,
+      `color:${textColor}!important`,
+      `border-radius:${borderRadius}px!important`,
+      `font-size:${fontSize}px!important`,
+      "font-weight:800!important",
+      "display:flex!important",
+      "align-items:center!important",
+      "justify-content:center!important",
+      "text-align:center!important",
+      "text-decoration:none!important",
+      "overflow:hidden!important",
+      hasImage ? "box-shadow:none!important" : "box-shadow:0 4px 14px rgba(0,0,0,.35)!important",
+      hasImage ? "border:none!important" : "border:1px solid rgba(255,255,255,.08)!important",
+      "cursor:pointer!important",
+      "box-sizing:border-box!important",
+      "z-index:2147483647!important",
+      "margin:0!important",
+      "padding:0!important",
+      "opacity:1!important",
+      "visibility:visible!important",
+    ].join(";");
+
+    if (hasImage) {
+      const img = doc.createElement("img");
+      img.src = b.imageUrl;
+      img.alt = "";
+      img.style.cssText = `position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:${b.objectFit}!important;display:block!important;pointer-events:none!important;opacity:1!important;visibility:visible!important;`;
+      el.appendChild(img);
+    }
+
+    if (b.label) {
+      const span = doc.createElement("span");
+      span.textContent = b.label;
+      span.style.cssText = `position:relative!important;z-index:2!important;padding:0 8px!important;text-shadow:${hasImage ? "0 2px 6px rgba(0,0,0,.65)" : "none"}!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;max-width:100%!important;`;
+      el.appendChild(span);
+    }
+
+    wrap.appendChild(el);
+  }
+
+  doc.body.appendChild(wrap);
+  console.log(`[AffiEditor] Injected ${buttons.length} button(s) into iframe`);
+}
+
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 
 export default function AffiEditorPage() {
@@ -1778,6 +1870,18 @@ export default function AffiEditorPage() {
     if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
     const blob = new Blob([html], { type: "text/html" });
     blobUrlRef.current = URL.createObjectURL(blob);
+
+    // Quand l'iframe finit de charger, on injecte les boutons depuis le parent
+    // (fallback fiable si le <script> inline ne s'exécute pas).
+    const buttons = parseAffiButtons(c.customButtonsJson);
+    iframe.onload = () => {
+      try {
+        injectButtonsIntoIframe(iframe, buttons);
+      } catch (err) {
+        console.error("[AffiEditor] inject buttons failed:", err);
+      }
+    };
+
     iframe.src = blobUrlRef.current;
   }
 
