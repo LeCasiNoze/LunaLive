@@ -78,19 +78,6 @@ export type PromoZoneConfig = ZoneRect & {
   objectFit: "contain" | "cover" | "fill";
 };
 
-export type ButtonConfig = ZoneRect & {
-  id: string;            // identifiant unique (stable pour React keys)
-  enabled: boolean;
-  label: string;         // texte affiché (optionnel si image)
-  link: string;          // URL de destination (nouvel onglet)
-  imageUrl: string;      // image de fond (URL ou uploadée)
-  bgColor: string;       // couleur de fond quand pas d'image
-  textColor: string;
-  borderRadius: number;
-  fontSize: number;
-  objectFit: "contain" | "cover" | "fill";
-};
-
 export type BackgroundConfig = {
   enabled: boolean;
   imageUrl: string;          // URL directe ou uploadée
@@ -110,7 +97,6 @@ export type OverlayConfig = {
   chat: ChatZoneConfig;
   promo: PromoZoneConfig;
   sponsor: SponsorConfig;
-  buttons?: ButtonConfig[];   // boutons custom (liens vers des pages externes)
 };
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
@@ -161,26 +147,6 @@ function defaultBackground(): BackgroundConfig {
   };
 }
 
-function makeButtonId(): string {
-  return `btn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-}
-
-export function defaultButton(): ButtonConfig {
-  return {
-    id: makeButtonId(),
-    enabled: true,
-    label: "Bouton",
-    link: "",
-    imageUrl: "",
-    bgColor: "#6366f1",
-    textColor: "#ffffff",
-    borderRadius: 10,
-    fontSize: 18,
-    objectFit: "cover",
-    x: 40, y: 45, w: 15, h: 8,
-  };
-}
-
 const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
   // ── SOLO: cam principale bas-gauche (sur le slot), chat droit, promo bas-centre
   // Tout couvre 100% du canvas (stats 5% + zones 95% = 100%)
@@ -192,7 +158,6 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     chat:  { enabled: true,  x: 71, y: 5,  w: 29, h: 95, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
     sponsor: defaultSponsor(),
-    buttons: [],
   },
 
   double: {
@@ -206,7 +171,6 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 73, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
     sponsor: defaultSponsor(),
-    buttons: [],
   },
 
   triple: {
@@ -221,7 +185,6 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 37, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
     sponsor: defaultSponsor(),
-    buttons: [],
   },
 };
 
@@ -448,55 +411,6 @@ function PreviewStatsBar({ stats, scale }: { stats: StatsZoneConfig; scale: numb
   );
 }
 
-function PreviewButton({ btn, scale }: { btn: ButtonConfig; scale: number }) {
-  if (!btn.enabled) return null;
-  const hasImage = !!btn.imageUrl;
-  return (
-    <div
-      style={{
-        position: "absolute",
-        left: `${btn.x}%`, top: `${btn.y}%`,
-        width: `${btn.w}%`, height: `${btn.h}%`,
-        background: hasImage ? "transparent" : btn.bgColor,
-        color: btn.textColor,
-        borderRadius: btn.borderRadius * scale,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontWeight: 800,
-        fontSize: Math.max(6, btn.fontSize * scale),
-        overflow: "hidden",
-        boxSizing: "border-box",
-        boxShadow: hasImage ? "none" : "0 4px 14px rgba(0,0,0,.35)",
-        border: "1px solid rgba(255,255,255,.08)",
-      }}
-      title={btn.link || btn.label}
-    >
-      {hasImage && (
-        <img
-          src={btn.imageUrl}
-          alt=""
-          style={{
-            position: "absolute", inset: 0,
-            width: "100%", height: "100%",
-            objectFit: btn.objectFit || "cover",
-          }}
-          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-        />
-      )}
-      {btn.label && (
-        <span style={{
-          position: "relative", zIndex: 1,
-          padding: `0 ${6 * scale}px`,
-          textShadow: hasImage ? "0 2px 6px rgba(0,0,0,.6)" : "none",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          maxWidth: "100%",
-        }}>{btn.label}</span>
-      )}
-    </div>
-  );
-}
-
 function PreviewZone({
   rect, color, name, disabled,
 }: {
@@ -616,10 +530,6 @@ function PreviewCanvasContent({ config, scale, chatIframeRef }: {
         ? <SponsorBanner config={config.sponsor} />
         : <PreviewZone rect={config.sponsor ?? { x:5, y:87, w:90, h:11 }} color={{ bg:"rgba(251,191,36,.12)", border:"#f59e0b", label:"#fbbf24" }} name="Sponsor (OFF)" disabled />
       }
-      {/* Boutons custom */}
-      {(config.buttons ?? []).map((btn) => (
-        <PreviewButton key={btn.id} btn={btn} scale={scale} />
-      ))}
       {/* Cams — par-dessus */}
       {config.cams.map((cam, i) => (
         <PreviewZone key={`cam-${i}`} rect={cam} color={ZONE_COLORS.cam} name={cam.label} disabled={!cam.enabled} />
@@ -1550,197 +1460,6 @@ function SponsorPanel({
   );
 }
 
-// ─── Buttons Panel ────────────────────────────────────────────────────────────
-
-function SingleButtonEditor({
-  btn, onChange, onRemove, index,
-}: {
-  btn: ButtonConfig;
-  onChange: (patch: Partial<ButtonConfig>) => void;
-  onRemove: () => void;
-  index: number;
-}) {
-  const fileRef = React.useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = React.useState(false);
-  const [uploadErr, setUploadErr] = React.useState<string | null>(null);
-  const [open, setOpen] = React.useState(false);
-
-  async function handleFile(file: File) {
-    setUploading(true);
-    setUploadErr(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const token = localStorage.getItem("lunalive_token_v1") || "";
-      const res = await fetch(`${LUNA_API_BASE}/me/overlay/bg/upload`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: fd,
-      });
-      const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.url) {
-        setUploadErr(json?.error || "Erreur upload");
-      } else {
-        onChange({ imageUrl: json.url });
-      }
-    } catch {
-      setUploadErr("Erreur réseau");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <div style={{
-      border: `1px solid ${open ? "rgba(99,102,241,.32)" : "rgba(60,95,175,.18)"}`,
-      borderRadius: 10,
-      background: "rgba(14,29,56,.5)",
-      overflow: "hidden",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px" }}>
-        <button
-          onClick={() => setOpen(!open)}
-          style={{
-            flex: 1, textAlign: "left", background: "transparent", border: "none",
-            color: "#dde8ff", font: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer",
-            display: "flex", alignItems: "center", gap: 6,
-          }}
-        >
-          <span style={{
-            fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 999,
-            background: btn.enabled ? "rgba(16,185,129,.2)" : "rgba(148,148,148,.15)",
-            color: btn.enabled ? "#34d399" : "#94a3b8",
-            border: `1px solid ${btn.enabled ? "rgba(16,185,129,.3)" : "rgba(148,148,148,.2)"}`,
-          }}>#{index + 1}</span>
-          <span style={{ color: "#dde8ff" }}>{btn.label || "(sans label)"}</span>
-          <span style={{ marginLeft: "auto", fontSize: 10, color: "rgba(148,178,232,.5)", transform: open ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</span>
-        </button>
-        <button
-          onClick={onRemove}
-          style={{ border: "1px solid rgba(239,68,68,.3)", borderRadius: 6, background: "rgba(239,68,68,.08)", color: "#f87171", padding: "2px 8px", cursor: "pointer", font: "inherit", fontSize: 11 }}
-          title="Supprimer"
-        >✕</button>
-      </div>
-
-      {open && (
-        <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid rgba(60,95,175,.15)" }}>
-          <Toggle label="Activer ce bouton" checked={btn.enabled} onChange={(v) => onChange({ enabled: v })} />
-          <hr style={S.sep} />
-          <TextInput label="Label / texte" value={btn.label} onChange={(v) => onChange({ label: v })} placeholder="ex: Razed" />
-          <TextInput label="Lien (URL)" value={btn.link} onChange={(v) => onChange({ link: v })} placeholder="https://..." />
-          <hr style={S.sep} />
-          <TextInput label="Image URL (optionnel)" value={btn.imageUrl} onChange={(v) => onChange({ imageUrl: v })} placeholder="https://... ou upload ci-dessous" />
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-              style={{
-                flex: 1, border: "1px dashed rgba(99,102,241,.4)", borderRadius: 8,
-                background: "rgba(99,102,241,.06)", color: "#a5b4fc",
-                padding: "7px 0", cursor: uploading ? "wait" : "pointer",
-                font: "inherit", fontSize: 12, fontWeight: 700,
-              }}
-            >
-              {uploading ? "Upload…" : "📁 Upload image depuis le PC"}
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
-              style={{ display: "none" }}
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
-            />
-          </div>
-          {uploadErr && (
-            <p style={{ margin: 0, fontSize: 11, color: "#f87171", background: "rgba(239,68,68,.07)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 8, padding: "6px 10px" }}>
-              ✕ {uploadErr}
-            </p>
-          )}
-          {btn.imageUrl && (
-            <img
-              src={btn.imageUrl}
-              alt="Aperçu bouton"
-              style={{ width: "100%", maxHeight: 80, objectFit: "contain", borderRadius: 8, border: "1px solid rgba(60,95,175,.2)", background: "rgba(0,0,0,.2)" }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
-          )}
-          <div style={S.field}>
-            <span style={S.label}>Ajustement image</span>
-            <select style={S.input} value={btn.objectFit} onChange={(e) => onChange({ objectFit: e.target.value as ButtonConfig["objectFit"] })}>
-              <option value="cover">Remplir (cover)</option>
-              <option value="contain">Contenu (contain)</option>
-              <option value="fill">Étirer (fill)</option>
-            </select>
-          </div>
-          <hr style={S.sep} />
-          <div style={S.row2}>
-            <ColorInput label="Couleur fond" value={btn.bgColor} onChange={(v) => onChange({ bgColor: v })} />
-            <ColorInput label="Couleur texte" value={btn.textColor} onChange={(v) => onChange({ textColor: v })} />
-          </div>
-          <div style={S.row2}>
-            <NumInput label="Taille texte (px)" value={btn.fontSize} onChange={(v) => onChange({ fontSize: v })} min={8} max={80} step={1} />
-            <NumInput label="Border radius (px)" value={btn.borderRadius} onChange={(v) => onChange({ borderRadius: v })} min={0} max={60} step={1} />
-          </div>
-          <hr style={S.sep} />
-          <span style={S.label}>Position & taille (% du canvas)</span>
-          <RectInputs value={btn} onChange={onChange} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ButtonsPanel({
-  buttons, onChange, activeId, setActiveId,
-}: {
-  buttons: ButtonConfig[];
-  onChange: (next: ButtonConfig[]) => void;
-  activeId: string | null; setActiveId: (id: string | null) => void;
-}) {
-  function addButton() {
-    onChange([...buttons, defaultButton()]);
-  }
-  function updateButton(idx: number, patch: Partial<ButtonConfig>) {
-    onChange(buttons.map((b, i) => i === idx ? { ...b, ...patch } : b));
-  }
-  function removeButton(idx: number) {
-    onChange(buttons.filter((_, i) => i !== idx));
-  }
-
-  return (
-    <Panel id="buttons" activeId={activeId} setActiveId={setActiveId}
-      title="🔘 Boutons custom"
-      badge={buttons.length > 0 ? `${buttons.length}` : "0"}
-      badgeColor={buttons.length > 0 ? "#6366f1" : undefined}
-    >
-      <p style={{ margin: 0, fontSize: 12, color: "rgba(148,178,232,.62)", lineHeight: 1.5 }}>
-        Ajoute des boutons cliquables sur l'overlay. Chaque bouton peut avoir une image (URL ou upload), un lien, et une position libre.
-      </p>
-
-      {buttons.length === 0 && (
-        <div style={{ padding: "14px 10px", textAlign: "center", color: "rgba(148,178,232,.5)", fontSize: 12, background: "rgba(14,29,56,.4)", borderRadius: 8, border: "1px dashed rgba(60,95,175,.2)" }}>
-          Aucun bouton pour le moment
-        </div>
-      )}
-
-      {buttons.map((btn, i) => (
-        <SingleButtonEditor
-          key={btn.id}
-          btn={btn}
-          index={i}
-          onChange={(patch) => updateButton(i, patch)}
-          onRemove={() => removeButton(i)}
-        />
-      ))}
-
-      <button
-        onClick={addButton}
-        style={{ border: "1px dashed rgba(99,102,241,.4)", borderRadius: 8, background: "rgba(99,102,241,.06)", color: "#a5b4fc", padding: "8px 0", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 700 }}
-      >+ Ajouter un bouton</button>
-    </Panel>
-  );
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const MODES: { value: OverlayMode; label: string; icon: string }[] = [
@@ -1949,10 +1668,6 @@ export function OverlayDesignerSection() {
     setConfig((c) => ({ ...c, sponsor: { ...(c.sponsor ?? defaultSponsor()), ...patch } }));
   }
 
-  function updateButtons(next: ButtonConfig[]) {
-    setConfig((c) => ({ ...c, buttons: next }));
-  }
-
   async function copyUrl() {
     try {
       await navigator.clipboard.writeText(obsUrl);
@@ -2041,7 +1756,6 @@ export function OverlayDesignerSection() {
           <ChatPanel chat={config.chat} onChange={updateChat} activeId={activePanel} setActiveId={setActivePanel} />
           <PromoPanel promo={config.promo} onChange={updatePromo} activeId={activePanel} setActiveId={setActivePanel} />
           <SponsorPanel sponsor={config.sponsor ?? defaultSponsor()} onChange={updateSponsor} activeId={activePanel} setActiveId={setActivePanel} />
-          <ButtonsPanel buttons={config.buttons ?? []} onChange={updateButtons} activeId={activePanel} setActiveId={setActivePanel} />
         </div>
 
         {/* Right: preview + OBS URL */}

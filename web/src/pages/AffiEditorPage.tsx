@@ -14,6 +14,9 @@ import {
   updateFsbAffiPage,
 } from "../lib/api_affi_pages";
 
+// Base publique pour les URLs partageables (/r/...). Toujours lunalive.win.
+const PUBLIC_SITE = ((import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined) ?? "https://lunalive.win").replace(/\/$/, "");
+
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
 interface Config {
@@ -88,6 +91,63 @@ interface Config {
   p_offerY: string;
   p_ctaX: string;
   p_ctaY: string;
+  // Boutons custom (JSON-stringified array de AffiButton)
+  customButtonsJson: string;
+}
+
+// ─── Custom buttons ───────────────────────────────────────────────────────────
+
+export interface AffiButton {
+  id: string;
+  label: string;
+  link: string;
+  imageUrl: string;      // URL d'image (optionnelle)
+  bgColor: string;
+  textColor: string;
+  xPct: number;          // % de la largeur de page (0–100)
+  yPct: number;          // % de la hauteur de page (0–100)
+  widthPx: number;       // largeur en px
+  heightPx: number;      // hauteur en px
+  borderRadius: number;
+  fontSize: number;
+  objectFit: "contain" | "cover" | "fill";
+}
+
+function makeButtonId(): string {
+  return `btn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function defaultAffiButton(): AffiButton {
+  return {
+    id: makeButtonId(),
+    label: "Bouton",
+    link: "",
+    imageUrl: "",
+    bgColor: "#FFD700",
+    textColor: "#000000",
+    xPct: 40,
+    yPct: 50,
+    widthPx: 180,
+    heightPx: 56,
+    borderRadius: 12,
+    fontSize: 18,
+    objectFit: "cover",
+  };
+}
+
+export function parseAffiButtons(json: string | undefined | null): AffiButton[] {
+  if (!json) return [];
+  try {
+    const arr = JSON.parse(json);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((b) => b && typeof b === "object" && typeof b.id === "string");
+  } catch {
+    return [];
+  }
+}
+
+export function stringifyAffiButtons(btns: AffiButton[]): string {
+  return JSON.stringify(btns);
 }
 
 type GoldenChanceVariant = "gold" | "ruby" | "emerald" | "sapphire" | "amethyst" | "obsidian" | "rose" | "jade";
@@ -161,6 +221,7 @@ const DEFAULT_CONFIG: Config = {
   p_offerY: "",
   p_ctaX: "",
   p_ctaY: "",
+  customButtonsJson: "",
 };
 
 // ─── TYPOGRAPHY / CSS VARS ───────────────────────────────────────────────────
@@ -649,7 +710,69 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(cfg.pageTitle)}</title>`);
   }
 
+  // ── Boutons custom ─────────────────────────────────────────────────────────
+  const customButtons = parseAffiButtons(cfg.customButtonsJson);
+  if (customButtons.length > 0) {
+    const btnHtml = renderAffiButtonsHtml(customButtons);
+    if (html.includes("</body>")) {
+      html = html.replace(/<\/body>/, `${btnHtml}\n</body>`);
+    } else {
+      html = html + btnHtml;
+    }
+  }
+
   return html;
+}
+
+/** Rendu HTML des boutons custom (position absolute, relative à la page) */
+function renderAffiButtonsHtml(btns: AffiButton[]): string {
+  const items = btns.map((b) => {
+    const href = b.link ? escAttr(b.link) : "";
+    const tag = href ? "a" : "div";
+    const hrefAttr = href ? ` href="${href}" target="_blank" rel="noopener noreferrer"` : "";
+    const hasImage = !!b.imageUrl;
+    const bgStyle = hasImage ? "transparent" : escAttr(b.bgColor);
+    const textShadow = hasImage ? "0 2px 6px rgba(0,0,0,.65)" : "none";
+
+    const styles = [
+      "position:absolute",
+      `left:${b.xPct}%`,
+      `top:${b.yPct}%`,
+      `width:${b.widthPx}px`,
+      `height:${b.heightPx}px`,
+      `background:${bgStyle}`,
+      `color:${escAttr(b.textColor)}`,
+      `border-radius:${b.borderRadius}px`,
+      `font-size:${b.fontSize}px`,
+      "font-weight:800",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "text-decoration:none",
+      "overflow:hidden",
+      "z-index:9999",
+      "box-shadow:0 4px 14px rgba(0,0,0,.35)",
+      "border:1px solid rgba(255,255,255,.08)",
+      "transform:translate(-50%,-50%)",
+      "cursor:pointer",
+    ].join(";");
+
+    const img = hasImage
+      ? `<img src="${escAttr(b.imageUrl)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:${b.objectFit};display:block;" onerror="this.style.display='none'" />`
+      : "";
+    const label = b.label
+      ? `<span style="position:relative;z-index:1;padding:0 8px;text-shadow:${textShadow};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${esc(b.label)}</span>`
+      : "";
+
+    return `<${tag}${hrefAttr} style="${styles}">${img}${label}</${tag}>`;
+  }).join("\n");
+
+  // Wrapper avec pointer-events pour garantir clickabilité
+  return `<div data-affi-custom-buttons style="position:absolute;inset:0;pointer-events:none;z-index:9998;">
+  <div style="position:relative;width:100%;height:100%;pointer-events:none;">
+    ${items.replace(/position:absolute/g, "position:absolute;pointer-events:auto")}
+  </div>
+</div>`;
 }
 
 // ─── SUB-COMPONENTS ──────────────────────────────────────────────────────────
@@ -1166,6 +1289,170 @@ function isGoldenVariant(value: string | null | undefined): value is GoldenChanc
   return ["gold","ruby","emerald","sapphire","amethyst","obsidian","rose","jade"].includes(value as string);
 }
 
+// ─── CUSTOM BUTTONS EDITOR ────────────────────────────────────────────────────
+
+interface SingleButtonRowProps {
+  btn: AffiButton;
+  index: number;
+  onChange: (patch: Partial<AffiButton>) => void;
+  onRemove: () => void;
+}
+function SingleButtonRow({ btn, index, onChange, onRemove }: SingleButtonRowProps) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+  const token = (typeof window !== "undefined" ? localStorage.getItem("lunalive_token_v1") : "") || "";
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    setUploadErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? "https://lunalive-api.onrender.com";
+      const res = await fetch(`${base}/me/overlay/bg/upload`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.url) setUploadErr(json?.error || "Erreur upload");
+      else onChange({ imageUrl: json.url });
+    } catch {
+      setUploadErr("Erreur réseau");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div style={{ border: "1px solid #2a2a4a", borderRadius: 8, background: "rgba(0,0,0,0.18)", overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px" }}>
+        <button
+          onClick={() => setOpen(!open)}
+          style={{ flex: 1, textAlign: "left", background: "transparent", border: "none", color: "#ddd", font: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+        >
+          <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 999, background: "rgba(255,215,0,.15)", color: "#FFD700", border: "1px solid rgba(255,215,0,.3)" }}>
+            #{index + 1}
+          </span>
+          <span>{btn.label || "(sans label)"}</span>
+          <span style={{ marginLeft: "auto", fontSize: 10, opacity: 0.5, transform: open ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</span>
+        </button>
+        <button
+          onClick={onRemove}
+          title="Supprimer"
+          style={{ border: "1px solid rgba(239,68,68,.3)", borderRadius: 6, background: "rgba(239,68,68,.08)", color: "#f87171", padding: "2px 8px", cursor: "pointer", font: "inherit", fontSize: 11 }}
+        >✕</button>
+      </div>
+
+      {open && (
+        <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #2a2a4a" }}>
+          <TextField label="Texte (label)" value={btn.label} onChange={(v) => onChange({ label: v })} placeholder="ex: JOUER MAINTENANT" />
+          <TextField label="Lien URL" value={btn.link} onChange={(v) => onChange({ link: v })} placeholder="https://..." type="url" />
+
+          <TextField label="Image URL (optionnelle)" value={btn.imageUrl} onChange={(v) => onChange({ imageUrl: v })} placeholder="https://... ou upload" type="url" />
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              style={{ flex: 1, border: "1px dashed rgba(255,215,0,.35)", borderRadius: 6, background: "rgba(255,215,0,.06)", color: "#FFD700", padding: "6px 0", cursor: uploading ? "wait" : "pointer", font: "inherit", fontSize: 11, fontWeight: 700 }}
+            >
+              {uploading ? "Upload…" : "📁 Upload image"}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+              style={{ display: "none" }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
+            />
+          </div>
+          {uploadErr && <div style={{ fontSize: 10, color: "#f87171" }}>✕ {uploadErr}</div>}
+          {btn.imageUrl && (
+            <img src={btn.imageUrl} alt="" style={{ width: "100%", maxHeight: 60, objectFit: "contain", borderRadius: 4, background: "#000" }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          )}
+          <div style={s.field}>
+            <label style={s.label}>Ajustement image</label>
+            <select value={btn.objectFit} onChange={(e) => onChange({ objectFit: e.target.value as AffiButton["objectFit"] })} style={s.input}>
+              <option value="cover">Remplir (cover)</option>
+              <option value="contain">Contenu (contain)</option>
+              <option value="fill">Étirer (fill)</option>
+            </select>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <ColorField label="Fond" value={btn.bgColor} onChange={(v) => onChange({ bgColor: v })} />
+            <ColorField label="Texte" value={btn.textColor} onChange={(v) => onChange({ textColor: v })} />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div style={s.field}>
+              <label style={s.label}>X (% largeur)</label>
+              <input type="number" min={0} max={100} step={0.5} value={btn.xPct} onChange={(e) => onChange({ xPct: Number(e.target.value) })} style={s.input} />
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>Y (% hauteur)</label>
+              <input type="number" min={0} max={100} step={0.5} value={btn.yPct} onChange={(e) => onChange({ yPct: Number(e.target.value) })} style={s.input} />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div style={s.field}>
+              <label style={s.label}>Largeur (px)</label>
+              <input type="number" min={20} max={800} step={2} value={btn.widthPx} onChange={(e) => onChange({ widthPx: Number(e.target.value) })} style={s.input} />
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>Hauteur (px)</label>
+              <input type="number" min={20} max={400} step={2} value={btn.heightPx} onChange={(e) => onChange({ heightPx: Number(e.target.value) })} style={s.input} />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div style={s.field}>
+              <label style={s.label}>Radius (px)</label>
+              <input type="number" min={0} max={60} step={1} value={btn.borderRadius} onChange={(e) => onChange({ borderRadius: Number(e.target.value) })} style={s.input} />
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>Taille texte</label>
+              <input type="number" min={8} max={80} step={1} value={btn.fontSize} onChange={(e) => onChange({ fontSize: Number(e.target.value) })} style={s.input} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ButtonsEditorProps {
+  buttons: AffiButton[];
+  onChange: (next: AffiButton[]) => void;
+}
+function ButtonsEditor({ buttons, onChange }: ButtonsEditorProps) {
+  function add() { onChange([...buttons, defaultAffiButton()]); }
+  function update(i: number, patch: Partial<AffiButton>) {
+    onChange(buttons.map((b, idx) => idx === i ? { ...b, ...patch } : b));
+  }
+  function remove(i: number) { onChange(buttons.filter((_, idx) => idx !== i)); }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {buttons.length === 0 && (
+        <div style={{ padding: "10px 8px", textAlign: "center", color: "#888", fontSize: 11, background: "rgba(0,0,0,0.18)", borderRadius: 8, border: "1px dashed #2a2a4a" }}>
+          Aucun bouton
+        </div>
+      )}
+      {buttons.map((btn, i) => (
+        <SingleButtonRow key={btn.id} btn={btn} index={i} onChange={(p) => update(i, p)} onRemove={() => remove(i)} />
+      ))}
+      <button
+        onClick={add}
+        style={{ border: "1px dashed rgba(255,215,0,.4)", borderRadius: 8, background: "rgba(255,215,0,.06)", color: "#FFD700", padding: "8px 0", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 700 }}
+      >+ Ajouter un bouton</button>
+    </div>
+  );
+}
+
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 
 export default function AffiEditorPage() {
@@ -1202,8 +1489,7 @@ export default function AffiEditorPage() {
     [currentModel, cfg, goldenVariant]
   );
   const publishedUrlPreview = useMemo(() => {
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    return `${origin}/r/${publishedSlugPreview}`;
+    return `${PUBLIC_SITE}/r/${publishedSlugPreview}`;
   }, [publishedSlugPreview]);
   const draftPayload = useMemo(
     () => buildPublishedPayload(currentModel, cfg, goldenVariant),
@@ -1340,8 +1626,8 @@ export default function AffiEditorPage() {
       loadPublishedPageInEditor(page);
       setPageNotice(
         isUpdate
-          ? `Page mise a jour : ${window.location.origin}/r/${page.slug}`
-          : `Page creee : ${window.location.origin}/r/${page.slug}`
+          ? `Page mise a jour : ${PUBLIC_SITE}/r/${page.slug}`
+          : `Page creee : ${PUBLIC_SITE}/r/${page.slug}`
       );
     } catch (error: any) {
       setPageError(String(error?.message || "Impossible de publier cette page."));
@@ -1365,7 +1651,7 @@ export default function AffiEditorPage() {
       const page = response.item;
       await refreshPublishedPages(page.id);
       loadPublishedPageInEditor(page);
-      setPageNotice(`Variante creee : ${window.location.origin}/r/${page.slug}`);
+      setPageNotice(`Variante creee : ${PUBLIC_SITE}/r/${page.slug}`);
     } catch (error: any) {
       setPageError(String(error?.message || "Impossible de creer cette variante."));
     } finally {
@@ -1608,7 +1894,7 @@ export default function AffiEditorPage() {
                       <button
                         style={s.sidebarIconBtn}
                         title="Ouvrir"
-                        onClick={() => window.open(`${window.location.origin}/r/${page.slug}`, "_blank", "noopener,noreferrer")}
+                        onClick={() => window.open(`${PUBLIC_SITE}/r/${page.slug}`, "_blank", "noopener,noreferrer")}
                       >↗</button>
                       <button
                         style={{ ...s.sidebarIconBtn, color: "#ffb2b2" }}
@@ -1828,6 +2114,14 @@ export default function AffiEditorPage() {
                   </Section>
                 </>
               )}
+
+              {/* Boutons custom — disponibles sur tous les modèles */}
+              <Section title="Boutons custom" defaultOpen={false}>
+                <ButtonsEditor
+                  buttons={parseAffiButtons(cfg.customButtonsJson)}
+                  onChange={(next) => set("customButtonsJson")(stringifyAffiButtons(next))}
+                />
+              </Section>
             </div>
           )}
 

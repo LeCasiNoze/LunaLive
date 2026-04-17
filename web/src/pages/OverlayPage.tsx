@@ -692,64 +692,6 @@ function PromoZone({ promo }: { promo: OverlayConfig["promo"] }) {
   );
 }
 
-// ─── Button zone ──────────────────────────────────────────────────────────────
-
-function ButtonZone({ btn }: { btn: NonNullable<OverlayConfig["buttons"]>[number] }) {
-  if (!btn.enabled) return null;
-  const hasImage = !!btn.imageUrl;
-  const content = (
-    <>
-      {hasImage && (
-        <img
-          src={btn.imageUrl}
-          alt=""
-          style={{
-            position: "absolute", inset: 0,
-            width: "100%", height: "100%",
-            objectFit: btn.objectFit || "cover",
-            display: "block",
-          }}
-          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-        />
-      )}
-      {btn.label && (
-        <span style={{
-          position: "relative", zIndex: 1,
-          padding: "0 8px",
-          textShadow: hasImage ? "0 2px 6px rgba(0,0,0,.65)" : "none",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          maxWidth: "100%",
-        }}>{btn.label}</span>
-      )}
-    </>
-  );
-
-  const baseStyle: React.CSSProperties = {
-    ...rect(btn),
-    background: hasImage ? "transparent" : btn.bgColor,
-    color: btn.textColor,
-    borderRadius: btn.borderRadius,
-    display: "flex", alignItems: "center", justifyContent: "center",
-    fontWeight: 800,
-    fontSize: btn.fontSize,
-    overflow: "hidden",
-    boxShadow: hasImage ? "none" : "0 4px 14px rgba(0,0,0,.35)",
-    textDecoration: "none",
-    border: "1px solid rgba(255,255,255,.08)",
-  };
-
-  if (btn.link) {
-    return (
-      <a href={btn.link} target="_blank" rel="noopener noreferrer" style={baseStyle}>
-        {content}
-      </a>
-    );
-  }
-  return <div style={baseStyle}>{content}</div>;
-}
-
 // ─── Overlay renderer ─────────────────────────────────────────────────────────
 
 function OverlayRenderer({ config, camStreams }: { config: OverlayConfig; camStreams: Map<number, CamStreamEntry> }) {
@@ -771,9 +713,6 @@ function OverlayRenderer({ config, camStreams }: { config: OverlayConfig; camStr
         const entry = camStreams.get(i + 1);
         return <CamZone key={i} cam={cam} stream={entry?.stream} filters={entry?.filters ?? null} />;
       })}
-      {(config.buttons ?? []).map((btn) => (
-        <ButtonZone key={btn.id} btn={btn} />
-      ))}
     </div>
   );
 }
