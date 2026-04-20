@@ -282,6 +282,22 @@ function applyConfig(
   if (model === 5) {
     html = html.replace(/__VARIANT__/g, goldenVariant);
 
+    // Scaling uniforme — la page garde la mise en page de l'éditeur
+    // sur toutes tailles d'écran grâce à CSS zoom (+ fallback transform pour Firefox).
+    const SCALE_INJECTION = `<style data-affi-scale-lock>
+      @media (max-width: 389px) {
+        html { zoom: calc(100vw / 390); }
+        @supports not (zoom: 1) {
+          body {
+            width: 390px !important;
+            transform-origin: top left;
+            transform: scale(calc(100vw / 390));
+          }
+        }
+      }
+    </style>`;
+    html = html.replace(/<\/head>/, `${SCALE_INJECTION}\n</head>`);
+
     // Montants
     const deposit = String(cfg.goldenDepositAmount || "20").trim() || "20";
     const bonus = String(cfg.goldenBonusAmount || "20").trim() || "20";

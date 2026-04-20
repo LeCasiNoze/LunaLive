@@ -162,6 +162,37 @@ export function defaultAffiButton(): AffiButton {
   };
 }
 
+// Liste de polices prédéfinies pour le menu déroulant
+export const BUTTON_FONT_PRESETS: { label: string; value: string; weight?: number }[] = [
+  { label: "Par défaut (hérite de la page)", value: "" },
+  { label: "Bebas Neue (sticky-cta, large)", value: "'Bebas Neue', sans-serif", weight: 400 },
+  { label: "Cinzel (titre luxe)", value: "'Cinzel', serif", weight: 700 },
+  { label: "DM Sans (clean moderne)", value: "'DM Sans', sans-serif", weight: 700 },
+  { label: "Inter (UI moderne)", value: "'Inter', sans-serif", weight: 800 },
+  { label: "Montserrat (sans-serif élégant)", value: "'Montserrat', sans-serif", weight: 800 },
+  { label: "Poppins (bold arrondi)", value: "'Poppins', sans-serif", weight: 800 },
+  { label: "Oswald (bold étroit)", value: "'Oswald', sans-serif", weight: 700 },
+  { label: "Anton (impact moderne)", value: "'Anton', sans-serif", weight: 400 },
+  { label: "Roboto (neutre)", value: "'Roboto', sans-serif", weight: 700 },
+  { label: "Times (serif classique)", value: "'Times New Roman', serif", weight: 700 },
+  { label: "Courier (mono)", value: "'Courier New', monospace", weight: 700 },
+];
+
+// URL Google Fonts unique pour charger toutes les polices présentes dans l'iframe
+const BUTTON_FONT_GOOGLE_IMPORT =
+  "https://fonts.googleapis.com/css2?" +
+  [
+    "family=Bebas+Neue",
+    "family=Cinzel:wght@600;700",
+    "family=DM+Sans:wght@400;500;700",
+    "family=Inter:wght@400;600;800",
+    "family=Montserrat:wght@400;700;800",
+    "family=Poppins:wght@400;700;800",
+    "family=Oswald:wght@400;700",
+    "family=Anton",
+    "family=Roboto:wght@400;700",
+  ].join("&") + "&display=swap";
+
 // Couleurs d'accent par variant (extraites de model5.html)
 const VARIANT_ACCENTS: Record<string, { main: string; light: string; dark: string; contrast: string }> = {
   gold:     { main: "#d4a843", light: "#f0c84a", dark: "#856128", contrast: "#0a0910" },
@@ -506,6 +537,27 @@ function applyConfig(
 ): string {
   if (model === 5) {
     html = html.replace(/__VARIANT__/g, goldenVariant);
+
+    // ─── Scaling uniforme sur toutes tailles d'écran ─────────────────────────
+    // La page est conçue pour une largeur de référence (390px mobile).
+    // Sur un écran plus étroit, on scale DOWN uniformément via CSS `zoom`
+    // (supporté Chromium depuis toujours, Firefox 126+) → le layout reste
+    // identique à la preview, juste visuellement plus petit.
+    // Sur un écran plus large, la page garde son flow responsif natif.
+    const SCALE_INJECTION = `<style data-affi-scale-lock>
+      @media (max-width: 389px) {
+        html { zoom: calc(100vw / 390); }
+        /* Fallback Firefox <126 : transform:scale si zoom non supporté */
+        @supports not (zoom: 1) {
+          body {
+            width: 390px !important;
+            transform-origin: top left;
+            transform: scale(calc(100vw / 390));
+          }
+        }
+      }
+    </style>`;
+    html = html.replace(/<\/head>/, `${SCALE_INJECTION}\n</head>`);
 
     // ─── Montants du bonus ─────────────────────────────────────────────────
     const deposit = String(cfg.goldenDepositAmount || "20").trim() || "20";
@@ -1659,8 +1711,33 @@ function SingleButtonRow({ btn, index, onChange, onRemove, onDuplicate }: Single
                 </div>
               </div>
 
+              <div style={s.field}>
+                <label style={s.label}>Police</label>
+                <select
+                  style={s.input}
+                  value={
+                    BUTTON_FONT_PRESETS.find((p) => p.value === (btn.fontFamily || ""))?.value
+                      ?? "__custom__"
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "__custom__") return; // ne touche pas, l'input custom prend le relais
+                    const preset = BUTTON_FONT_PRESETS.find((p) => p.value === v);
+                    onChange({
+                      fontFamily: v,
+                      // Met à jour fontWeight si le preset en a un (sinon laisse inchangé)
+                      ...(preset?.weight ? { fontWeight: preset.weight } : {}),
+                    });
+                  }}
+                >
+                  {BUTTON_FONT_PRESETS.map((p) => (
+                    <option key={p.value || "inherit"} value={p.value}>{p.label}</option>
+                  ))}
+                  <option value="__custom__">── Personnalisé (tape ci-dessous) ──</option>
+                </select>
+              </div>
               <TextField
-                label="Police (CSS font-family)"
+                label="Police custom (CSS font-family)"
                 value={btn.fontFamily || ""}
                 onChange={(v) => onChange({ fontFamily: v })}
                 placeholder="'Bebas Neue', sans-serif"
@@ -1770,7 +1847,7 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
     (doc.head || doc.body).appendChild(styleTag);
   }
   styleTag.textContent = `
-    @import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap");
+    @import url("${BUTTON_FONT_GOOGLE_IMPORT}");
     @keyframes affi-btn-shine {
       0%   { transform: translateX(-120%) skewX(-20deg); }
       60%  { transform: translateX(260%)  skewX(-20deg); }
@@ -1867,14 +1944,18 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
 
     const fontWeight = typeof b.fontWeight === "number" && b.fontWeight > 0 ? b.fontWeight : 800;
 
-    // Attributs pour le CSS partagé (hover + shine)
+    // Attributs pour le CSS partagé (hover + shine) et repositionnement dynamique
     if (b.hoverEffect) el.setAttribute("data-affi-btn-hover", "1");
     if (b.shine) el.setAttribute("data-affi-btn-shine", "1");
+    // yPct stocké en dataset — recalculé en pixels relatifs à scrollHeight du document
+    // (pour que la position suive le contenu sur tout device, pas le viewport)
+    el.setAttribute("data-affi-btn-ypct", String(yPct));
 
     el.style.cssText = [
       "position:absolute!important",
       "pointer-events:auto!important",
       `left:${xPct}%!important`,
+      // top initial = calcul viewport-based, updateAllPositions() remplacera en px
       `top:${yPct}%!important`,
       `width:${widthPx}px!important`,
       `height:${heightPx}px!important`,
@@ -1928,6 +2009,55 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
   }
 
   doc.body.appendChild(wrap);
+
+  // ─── Repositionnement dynamique en fonction de la hauteur RÉELLE du document ──
+  // yPct = % de la hauteur totale du document (scrollHeight), pas du viewport.
+  // Ça garantit que le bouton reste à la même position relative au contenu, peu
+  // importe la taille d'écran. Recalcul sur resize + load d'image + mutation DOM.
+  const getDocHeight = () => Math.max(
+    doc.documentElement.scrollHeight,
+    doc.body.scrollHeight,
+    doc.documentElement.clientHeight,
+  );
+  const updateAllPositions = () => {
+    const h = getDocHeight();
+    doc.querySelectorAll<HTMLElement>("[data-affi-btn-ypct]").forEach((btn) => {
+      const y = parseFloat(btn.getAttribute("data-affi-btn-ypct") || "0");
+      const topPx = Math.max(0, (h * y) / 100);
+      btn.style.setProperty("top", `${topPx}px`, "important");
+    });
+  };
+
+  updateAllPositions();
+  // Recalcul après chargement des images (scrollHeight grandit quand les images chargent)
+  doc.querySelectorAll("img").forEach((img) => {
+    if (!(img as HTMLImageElement).complete) {
+      img.addEventListener("load", updateAllPositions, { once: true });
+      img.addEventListener("error", updateAllPositions, { once: true });
+    }
+  });
+  // Recalcul sur redimensionnement de la fenêtre de l'iframe
+  const win = iframe.contentWindow;
+  if (win) {
+    // Supprime un éventuel listener précédent avant de réinscrire
+    const prev = (win as any).__affiBtnResize;
+    if (prev) win.removeEventListener("resize", prev);
+    (win as any).__affiBtnResize = updateAllPositions;
+    win.addEventListener("resize", updateAllPositions);
+  }
+  // ResizeObserver sur body pour capter les reflow (chargement fonts, etc.)
+  try {
+    const RO = (win as any)?.ResizeObserver || (typeof ResizeObserver !== "undefined" ? ResizeObserver : null);
+    if (RO) {
+      const ro = new RO(updateAllPositions);
+      ro.observe(doc.body);
+    }
+  } catch {}
+  // Plusieurs recalculs décalés pour rattraper les layouts différés
+  setTimeout(updateAllPositions, 250);
+  setTimeout(updateAllPositions, 1000);
+  setTimeout(updateAllPositions, 2500);
+
   console.log(`[AffiEditor] Injected ${buttons.length} button(s) into iframe`);
 }
 
