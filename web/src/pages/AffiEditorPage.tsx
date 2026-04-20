@@ -105,17 +105,23 @@ export interface AffiButton {
   id: string;
   label: string;
   link: string;
-  imageUrl: string;      // URL d'image (optionnelle)
+  imageUrl: string;
   bgColor: string;
   textColor: string;
-  xPct: number;          // % de la largeur de page (0–100)
-  yPct: number;          // % de la hauteur de page (0–100)
-  widthPx: number;       // largeur en px
-  heightPx: number;      // hauteur en px
+  xPct: number;
+  yPct: number;
+  widthPx: number;
+  heightPx: number;
   borderRadius: number;
   fontSize: number;
   objectFit: "contain" | "cover" | "fill";
-  transparent?: boolean; // si true, ignore bgColor — image affichée sans aucun fond
+  transparent?: boolean;
+  // Style avancé (utilisé par le bouton "Dupliquer RÉCLAME" pour coller au sticky-cta)
+  gradientDark?: string;        // ex: "#856128" (extrémités du gradient)
+  gradientLight?: string;       // ex: "#f0c84a" (surbrillance au milieu)
+  glow?: boolean;               // ajoute le box-shadow glow + inset highlight
+  letterSpacingEm?: number;     // ex: 0.16
+  fontFamily?: string;          // ex: "'Bebas Neue', sans-serif"
 }
 
 function makeButtonId(): string {
@@ -125,6 +131,13 @@ function makeButtonId(): string {
 function clamp(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min;
   return Math.max(min, Math.min(max, n));
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || "");
+  if (!m) return `rgba(255,215,0,${alpha})`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 
 export function defaultAffiButton(): AffiButton {
@@ -146,25 +159,48 @@ export function defaultAffiButton(): AffiButton {
   };
 }
 
-/** Crée un bouton style "RÉCLAME TES XX€ OFFERTS" similaire au sticky-cta du template.
- *  Utilise le montant bonus configuré si disponible, sinon "20". */
-export function duplicateMainCtaButton(bonusAmount?: string, affiLink?: string): AffiButton {
+// Couleurs d'accent par variant (extraites de model5.html)
+const VARIANT_ACCENTS: Record<string, { main: string; light: string; dark: string; contrast: string }> = {
+  gold:     { main: "#d4a843", light: "#f0c84a", dark: "#856128", contrast: "#0a0910" },
+  ruby:     { main: "#bf6861", light: "#dc9388", dark: "#6f332c", contrast: "#130507" },
+  emerald:  { main: "#69b98d", light: "#8ad6a8", dark: "#2f694e", contrast: "#041008" },
+  sapphire: { main: "#6f96cf", light: "#96b7e8", dark: "#2d4b78", contrast: "#050a12" },
+  amethyst: { main: "#b06fd8", light: "#cc94f0", dark: "#5a2d7a", contrast: "#0d041a" },
+  obsidian: { main: "#c9aa60", light: "#e8cc7a", dark: "#7a6528", contrast: "#0f0b04" },
+  rose:     { main: "#e87aaa", light: "#f5a0c4", dark: "#8a3060", contrast: "#130a10" },
+  jade:     { main: "#5cb87a", light: "#7ed898", dark: "#2a6640", contrast: "#080f0c" },
+};
+
+function accentsForVariant(variant?: string) {
+  return VARIANT_ACCENTS[String(variant || "gold").toLowerCase()] || VARIANT_ACCENTS.gold;
+}
+
+/** Crée un bouton style "RÉCLAME TES XX€ OFFERTS" avec exactement la même palette
+ *  + effets (gradient 5-stops, glow, letter-spacing, Bebas Neue) que le sticky-cta
+ *  du variant actuel. Tous les champs restent éditables après création. */
+export function duplicateMainCtaButton(bonusAmount?: string, affiLink?: string, variant?: string): AffiButton {
   const amount = (bonusAmount || "20").trim() || "20";
+  const a = accentsForVariant(variant);
   return {
     id: makeButtonId(),
     label: `RÉCLAME TES ${amount}€ OFFERTS`,
     link: affiLink || "",
     imageUrl: "",
-    bgColor: "#FFD700",
-    textColor: "#0f0d14",
+    bgColor: a.main,
+    textColor: a.contrast,
     xPct: 10,
-    yPct: 78,
+    yPct: 80,
     widthPx: 360,
     heightPx: 60,
     borderRadius: 18,
-    fontSize: 18,
+    fontSize: 20,
     objectFit: "cover",
     transparent: false,
+    gradientDark: a.dark,
+    gradientLight: a.light,
+    glow: true,
+    letterSpacingEm: 0.16,
+    fontFamily: "'Bebas Neue', system-ui, sans-serif",
   };
 }
 
@@ -1545,6 +1581,58 @@ function SingleButtonRow({ btn, index, onChange, onRemove, onDuplicate }: Single
             <ColorField label="Texte" value={btn.textColor} onChange={(v) => onChange({ textColor: v })} />
           </div>
 
+          {/* ── Style avancé (gradient + glow comme sticky-cta) ── */}
+          <details style={{ borderTop: "1px dashed #2a2a4a", paddingTop: 8 }}>
+            <summary style={{ fontSize: 11, color: "#a5b4fc", cursor: "pointer", userSelect: "none", fontWeight: 700 }}>
+              ✨ Style avancé (gradient, glow, police…)
+            </summary>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#ddd", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={!!btn.gradientDark && !!btn.gradientLight}
+                  onChange={(e) => {
+                    if (e.target.checked) onChange({ gradientDark: "#856128", gradientLight: "#f0c84a" });
+                    else onChange({ gradientDark: undefined, gradientLight: undefined });
+                  }}
+                />
+                Gradient 3 couleurs
+              </label>
+              {!!btn.gradientDark && !!btn.gradientLight && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <ColorField label="Gradient sombre" value={btn.gradientDark || "#000000"} onChange={(v) => onChange({ gradientDark: v })} />
+                  <ColorField label="Gradient clair" value={btn.gradientLight || "#ffffff"} onChange={(v) => onChange({ gradientLight: v })} />
+                </div>
+              )}
+
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#ddd", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={!!btn.glow}
+                  onChange={(e) => onChange({ glow: e.target.checked })}
+                />
+                Glow (halo + reflets)
+              </label>
+
+              <div style={s.field}>
+                <label style={s.label}>Letter-spacing (em)</label>
+                <input
+                  type="number" min={0} max={1} step={0.02}
+                  value={btn.letterSpacingEm ?? 0}
+                  onChange={(e) => onChange({ letterSpacingEm: Number(e.target.value) || 0 })}
+                  style={s.input}
+                />
+              </div>
+
+              <TextField
+                label="Police (CSS font-family)"
+                value={btn.fontFamily || ""}
+                onChange={(v) => onChange({ fontFamily: v })}
+                placeholder="'Bebas Neue', system-ui, sans-serif"
+              />
+            </div>
+          </details>
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <div style={s.field}>
               <label style={s.label}>X (% largeur)</label>
@@ -1588,10 +1676,11 @@ interface ButtonsEditorProps {
   onChange: (next: AffiButton[]) => void;
   bonusAmount?: string;
   affiLink?: string;
+  variant?: string;
 }
-function ButtonsEditor({ buttons, onChange, bonusAmount, affiLink }: ButtonsEditorProps) {
+function ButtonsEditor({ buttons, onChange, bonusAmount, affiLink, variant }: ButtonsEditorProps) {
   function add() { onChange([...buttons, defaultAffiButton()]); }
-  function addMainCta() { onChange([...buttons, duplicateMainCtaButton(bonusAmount, affiLink)]); }
+  function addMainCta() { onChange([...buttons, duplicateMainCtaButton(bonusAmount, affiLink, variant)]); }
   function duplicate(i: number) {
     const src = buttons[i];
     if (!src) return;
@@ -1660,6 +1749,8 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
     const isTransparent = !!b.transparent;
     const bgColor = /^#[0-9a-fA-F]{6}$/.test(b.bgColor) ? b.bgColor : "#000000";
     const textColor = /^#[0-9a-fA-F]{6}$/.test(b.textColor) ? b.textColor : "#ffffff";
+    const hasGradient = !!b.gradientDark && !!b.gradientLight && !isTransparent && !hasImage;
+    const hasGlow = !!b.glow;
 
     const el = doc.createElement(b.link ? "a" : "div") as HTMLAnchorElement | HTMLDivElement;
     if (b.link && el.tagName === "A") {
@@ -1671,8 +1762,41 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
     const bgSize = b.objectFit === "cover" ? "cover" : b.objectFit === "fill" ? "100% 100%" : "contain";
     const bgParts: string[] = [];
     if (hasImage) bgParts.push(`url("${b.imageUrl.replace(/"/g, "%22")}") center center / ${bgSize} no-repeat`);
-    if (!isTransparent) bgParts.push(bgColor);
+    if (hasGradient) {
+      // Même recette que .sticky-cta dans landing-base.css
+      bgParts.push(`linear-gradient(180deg, ${b.gradientDark} 0%, ${bgColor} 38%, ${b.gradientLight} 52%, ${bgColor} 72%, ${b.gradientDark} 100%)`);
+    } else if (!isTransparent) {
+      bgParts.push(bgColor);
+    }
     const backgroundValue = bgParts.length > 0 ? bgParts.join(", ") : "transparent";
+
+    // Glow = inset highlight + outer accent-soft glow + drop shadow (comme sticky-cta)
+    let boxShadow: string;
+    if (hasGlow) {
+      const glowAccent = hasGradient ? (b.gradientDark || bgColor) : bgColor;
+      // Couleur de glow semi-transparente dérivée de l'accent
+      const glowSoft = hexToRgba(bgColor, 0.45);
+      boxShadow = `inset 0 1px 0 rgba(255,255,255,0.24), 0 0 30px ${glowSoft}, 0 14px 24px rgba(0,0,0,0.36)`;
+      void glowAccent; // variable conservée pour clarté
+    } else if (hasImage || isTransparent) {
+      boxShadow = "none";
+    } else {
+      boxShadow = "0 4px 14px rgba(0,0,0,.35)";
+    }
+
+    const border = hasGlow
+      ? `1px solid ${b.gradientDark || bgColor}`
+      : (hasImage || isTransparent)
+        ? "none"
+        : "1px solid rgba(255,255,255,.08)";
+
+    const letterSpacing = typeof b.letterSpacingEm === "number" && Number.isFinite(b.letterSpacingEm)
+      ? `${b.letterSpacingEm}em`
+      : "normal";
+
+    const fontFamily = b.fontFamily && b.fontFamily.trim()
+      ? b.fontFamily
+      : "inherit";
 
     el.style.cssText = [
       "position:absolute!important",
@@ -1686,14 +1810,16 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
       `border-radius:${borderRadius}px!important`,
       `font-size:${fontSize}px!important`,
       "font-weight:800!important",
+      `font-family:${fontFamily}!important`,
+      `letter-spacing:${letterSpacing}!important`,
       "display:flex!important",
       "align-items:center!important",
       "justify-content:center!important",
       "text-align:center!important",
       "text-decoration:none!important",
       "overflow:hidden!important",
-      (hasImage || isTransparent) ? "box-shadow:none!important" : "box-shadow:0 4px 14px rgba(0,0,0,.35)!important",
-      (hasImage || isTransparent) ? "border:none!important" : "border:1px solid rgba(255,255,255,.08)!important",
+      `box-shadow:${boxShadow}!important`,
+      `border:${border}!important`,
       "cursor:pointer!important",
       "box-sizing:border-box!important",
       "z-index:2147483647!important",
@@ -2417,6 +2543,7 @@ export default function AffiEditorPage() {
                   onChange={(next) => set("customButtonsJson")(stringifyAffiButtons(next))}
                   bonusAmount={cfg.goldenBonusAmount}
                   affiLink={cfg.affiLink}
+                  variant={goldenVariant}
                 />
               </Section>
             </div>
