@@ -117,11 +117,14 @@ export interface AffiButton {
   objectFit: "contain" | "cover" | "fill";
   transparent?: boolean;
   // Style avancé (utilisé par le bouton "Dupliquer RÉCLAME" pour coller au sticky-cta)
-  gradientDark?: string;        // ex: "#856128" (extrémités du gradient)
-  gradientLight?: string;       // ex: "#f0c84a" (surbrillance au milieu)
-  glow?: boolean;               // ajoute le box-shadow glow + inset highlight
-  letterSpacingEm?: number;     // ex: 0.16
-  fontFamily?: string;          // ex: "'Bebas Neue', sans-serif"
+  gradientDark?: string;
+  gradientLight?: string;
+  glow?: boolean;
+  letterSpacingEm?: number;
+  fontFamily?: string;
+  fontWeight?: number;          // ex: 400 pour Bebas Neue (ne supporte que 400)
+  hoverEffect?: boolean;        // zoom + brightness au survol
+  shine?: boolean;              // effet de lumière qui glisse
 }
 
 function makeButtonId(): string {
@@ -193,14 +196,17 @@ export function duplicateMainCtaButton(bonusAmount?: string, affiLink?: string, 
     widthPx: 360,
     heightPx: 60,
     borderRadius: 18,
-    fontSize: 20,
+    fontSize: 22,
     objectFit: "cover",
     transparent: false,
     gradientDark: a.dark,
     gradientLight: a.light,
     glow: true,
     letterSpacingEm: 0.16,
-    fontFamily: "'Bebas Neue', system-ui, sans-serif",
+    fontFamily: "'Bebas Neue', sans-serif",
+    fontWeight: 400,              // Bebas Neue ne supporte que 400 (pas de vrai gras)
+    hoverEffect: true,
+    shine: true,
   };
 }
 
@@ -1614,21 +1620,50 @@ function SingleButtonRow({ btn, index, onChange, onRemove, onDuplicate }: Single
                 Glow (halo + reflets)
               </label>
 
-              <div style={s.field}>
-                <label style={s.label}>Letter-spacing (em)</label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#ddd", cursor: "pointer" }}>
                 <input
-                  type="number" min={0} max={1} step={0.02}
-                  value={btn.letterSpacingEm ?? 0}
-                  onChange={(e) => onChange({ letterSpacingEm: Number(e.target.value) || 0 })}
-                  style={s.input}
+                  type="checkbox"
+                  checked={!!btn.shine}
+                  onChange={(e) => onChange({ shine: e.target.checked })}
                 />
+                ✨ Effet de lumière (shine qui glisse)
+              </label>
+
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#ddd", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={!!btn.hoverEffect}
+                  onChange={(e) => onChange({ hoverEffect: e.target.checked })}
+                />
+                🔍 Zoom au survol
+              </label>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div style={s.field}>
+                  <label style={s.label}>Letter-spacing (em)</label>
+                  <input
+                    type="number" min={0} max={1} step={0.02}
+                    value={btn.letterSpacingEm ?? 0}
+                    onChange={(e) => onChange({ letterSpacingEm: Number(e.target.value) || 0 })}
+                    style={s.input}
+                  />
+                </div>
+                <div style={s.field}>
+                  <label style={s.label}>Graisse (400 / 800…)</label>
+                  <input
+                    type="number" min={100} max={900} step={100}
+                    value={btn.fontWeight ?? 800}
+                    onChange={(e) => onChange({ fontWeight: Number(e.target.value) || 400 })}
+                    style={s.input}
+                  />
+                </div>
               </div>
 
               <TextField
                 label="Police (CSS font-family)"
                 value={btn.fontFamily || ""}
                 onChange={(v) => onChange({ fontFamily: v })}
-                placeholder="'Bebas Neue', system-ui, sans-serif"
+                placeholder="'Bebas Neue', sans-serif"
               />
             </div>
           </details>
@@ -1727,13 +1762,45 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
   const existing = doc.querySelector("[data-affi-buttons-wrap]");
   if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
 
+  // Injecte / met à jour le <style> partagé (shine keyframes + hover rules + Bebas Neue font)
+  let styleTag = doc.querySelector("style[data-affi-buttons-style]") as HTMLStyleElement | null;
+  if (!styleTag) {
+    styleTag = doc.createElement("style");
+    styleTag.setAttribute("data-affi-buttons-style", "");
+    (doc.head || doc.body).appendChild(styleTag);
+  }
+  styleTag.textContent = `
+    @import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap");
+    @keyframes affi-btn-shine {
+      0%   { transform: translateX(-120%) skewX(-20deg); }
+      60%  { transform: translateX(260%)  skewX(-20deg); }
+      100% { transform: translateX(260%)  skewX(-20deg); }
+    }
+    [data-affi-btn-hover="1"] {
+      transition: transform 160ms ease, filter 160ms ease !important;
+    }
+    [data-affi-btn-hover="1"]:hover {
+      transform: translateY(-2px) scale(1.03) !important;
+      filter: brightness(1.08) !important;
+    }
+    .affi-btn-shine-overlay {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 45% !important;
+      height: 100% !important;
+      background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,.55) 50%, transparent 100%) !important;
+      animation: affi-btn-shine 3.2s ease-in-out infinite !important;
+      pointer-events: none !important;
+      z-index: 1 !important;
+      mix-blend-mode: screen !important;
+    }
+  `;
+
   if (!buttons || buttons.length === 0) return;
 
   const wrap = doc.createElement("div");
   wrap.setAttribute("data-affi-buttons-wrap", "");
-  // display:contents → le wrapper ne génère pas de boîte, les enfants héritent du body
-  //  → les position:absolute des boutons se résolvent sur le document (initial containing block)
-  //  et scrollent avec la page.
   wrap.style.cssText = "display:contents!important;";
 
   for (const b of buttons) {
@@ -1798,6 +1865,12 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
       ? b.fontFamily
       : "inherit";
 
+    const fontWeight = typeof b.fontWeight === "number" && b.fontWeight > 0 ? b.fontWeight : 800;
+
+    // Attributs pour le CSS partagé (hover + shine)
+    if (b.hoverEffect) el.setAttribute("data-affi-btn-hover", "1");
+    if (b.shine) el.setAttribute("data-affi-btn-shine", "1");
+
     el.style.cssText = [
       "position:absolute!important",
       "pointer-events:auto!important",
@@ -1809,7 +1882,7 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
       `color:${textColor}!important`,
       `border-radius:${borderRadius}px!important`,
       `font-size:${fontSize}px!important`,
-      "font-weight:800!important",
+      `font-weight:${fontWeight}!important`,
       `font-family:${fontFamily}!important`,
       `letter-spacing:${letterSpacing}!important`,
       "display:flex!important",
@@ -1835,6 +1908,13 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
       img.alt = "";
       img.style.cssText = `position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:${b.objectFit}!important;display:block!important;pointer-events:none!important;opacity:1!important;visibility:visible!important;`;
       el.appendChild(img);
+    }
+
+    // Shine overlay — lumière qui glisse
+    if (b.shine) {
+      const shine = doc.createElement("div");
+      shine.className = "affi-btn-shine-overlay";
+      el.appendChild(shine);
     }
 
     if (b.label) {
