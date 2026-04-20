@@ -295,6 +295,59 @@ function applyConfig(
       );
     }
 
+    // Fix écrans courts (iPhone SE ~693 CSS height après viewport=390)
+    const SHORT_SCREEN_FIX = `<style data-affi-short-screen-fix>
+      @media (max-height: 760px) {
+        .hero-section {
+          min-height: auto !important;
+          padding: 14px 18px 24px !important;
+          display: block !important;
+        }
+        .hero-content {
+          min-height: auto !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: flex-start !important;
+          padding-top: 0 !important;
+        }
+        .hero-card {
+          transform: none !important;
+          margin-top: 10px !important;
+        }
+        .btn-jouer {
+          margin-top: 8px !important;
+          padding: 12px 16px !important;
+          font-size: 0.92rem !important;
+        }
+        .promo-image-container img { --chest-translate: 0px !important; }
+        .brand-logo-text .brand-logo-main {
+          font-size: clamp(1.6rem, 7.2vw, 2rem) !important;
+        }
+        .hero-title {
+          font-size: clamp(2rem, 10vw, 2.6rem) !important;
+          line-height: 0.92 !important;
+        }
+        .hero-subtitle {
+          margin-top: 8px !important;
+          font-size: 0.78rem !important;
+          line-height: 1.35 !important;
+        }
+        .live-count {
+          margin-top: 8px !important;
+          font-size: 0.62rem !important;
+        }
+        .brand-signature { margin-bottom: 10px !important; }
+        .offer-copy { margin-top: 4px !important; }
+        .promo-image-container {
+          width: min(72%, 260px) !important;
+          margin: 0 auto 8px !important;
+        }
+        .micro-proof { margin-top: 6px !important; font-size: 0.56rem !important; }
+        .cta-cluster { margin-top: 8px !important; }
+      }
+    </style>`;
+    html = html.replace(/<\/head>/, `${SHORT_SCREEN_FIX}\n</head>`);
+
     // Montants
     const deposit = String(cfg.goldenDepositAmount || "20").trim() || "20";
     const bonus = String(cfg.goldenBonusAmount || "20").trim() || "20";
