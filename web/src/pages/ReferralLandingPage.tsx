@@ -42,6 +42,10 @@ type Config = {
   goldenVisualMode: string;
   goldenBackgroundUrl: string;
   goldenCtaPosition: string;
+  // Montants
+  goldenDepositAmount: string;
+  goldenBonusAmount: string;
+  goldenTotalAmount: string;
   // Typography base
   t_brandFs: string;
   t_brandFf: string;
@@ -104,15 +108,18 @@ const DEFAULT_CONFIG: Config = {
   pageTitle: "Offre VIP | Jouer Maintenant",
   goldenBrandMain: "LeCasiNoze",
   goldenBrandSub: "",
-  goldenHeroTitleBefore: "DEPOSE 20EUR",
-  goldenHeroTitleSpan: "JOUE A 40EUR",
-  goldenHeroSubtitle: "+20EUR offerts des ton premier depot.",
+  goldenHeroTitleBefore: "",
+  goldenHeroTitleSpan: "",
+  goldenHeroSubtitle: "",
   goldenPageTitle: "Landing bonus",
   goldenChestUrl: "",
   goldenGameImageUrl: "",
   goldenVisualMode: "chest",
   goldenBackgroundUrl: "",
   goldenCtaPosition: "top",
+  goldenDepositAmount: "20",
+  goldenBonusAmount: "20",
+  goldenTotalAmount: "40",
   t_brandFs: "",
   t_brandFf: "",
   t_brandLs: "",
@@ -274,6 +281,30 @@ function applyConfig(
 ): string {
   if (model === 5) {
     html = html.replace(/__VARIANT__/g, goldenVariant);
+
+    // Montants
+    const deposit = String(cfg.goldenDepositAmount || "20").trim() || "20";
+    const bonus = String(cfg.goldenBonusAmount || "20").trim() || "20";
+    const total = String(cfg.goldenTotalAmount || "40").trim() || "40";
+    html = html.replace(/data-offer-deposit="[^"]*"/, `data-offer-deposit="${escAttr(deposit)}"`);
+    html = html.replace(/data-offer-bonus="[^"]*"/, `data-offer-bonus="${escAttr(bonus)}"`);
+    html = html.replace(/data-offer-total="[^"]*"/, `data-offer-total="${escAttr(total)}"`);
+    html = html.replace(
+      /<h1 class="hero-title">[^<]*<span>[^<]*<\/span><\/h1>/,
+      `<h1 class="hero-title">D&Eacute;POSE ${esc(deposit)}&euro; <span>JOUE A ${esc(total)}&euro;</span></h1>`
+    );
+    html = html.replace(
+      /<p class="hero-subtitle"><strong>\+[^<]*<\/strong>[^<]*<\/p>/,
+      `<p class="hero-subtitle"><strong>+${esc(bonus)}&euro; offerts</strong> d&egrave;s ton premier d&eacute;p&ocirc;t.</p>`
+    );
+    html = html.replace(
+      /<span class="step-deposit">[^<]*<\/span>/,
+      `<span class="step-deposit">DEPOSE ${esc(deposit)}EUR</span>`
+    );
+    html = html.replace(
+      /<span class="step-receive">[^<]*<\/span>/,
+      `<span class="step-receive">RECOIS ${esc(bonus)}EUR</span>`
+    );
 
     if (cfg.affiLink) {
       const safeAffiLink = escAttr(cfg.affiLink);

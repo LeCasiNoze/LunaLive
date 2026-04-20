@@ -58,6 +58,10 @@ interface Config {
   goldenVisualMode: string;
   goldenBackgroundUrl: string;
   goldenCtaPosition: string; // "top" | "bottom"
+  // Montants affichés (model 5)
+  goldenDepositAmount: string;  // ex: "20"
+  goldenBonusAmount: string;    // ex: "20"
+  goldenTotalAmount: string;    // ex: "40"
   // Typography — base (all breakpoints)
   t_brandFs: string;
   t_brandFf: string;
@@ -142,6 +146,28 @@ export function defaultAffiButton(): AffiButton {
   };
 }
 
+/** Crée un bouton style "RÉCLAME TES XX€ OFFERTS" similaire au sticky-cta du template.
+ *  Utilise le montant bonus configuré si disponible, sinon "20". */
+export function duplicateMainCtaButton(bonusAmount?: string, affiLink?: string): AffiButton {
+  const amount = (bonusAmount || "20").trim() || "20";
+  return {
+    id: makeButtonId(),
+    label: `RÉCLAME TES ${amount}€ OFFERTS`,
+    link: affiLink || "",
+    imageUrl: "",
+    bgColor: "#FFD700",
+    textColor: "#0f0d14",
+    xPct: 10,
+    yPct: 78,
+    widthPx: 360,
+    heightPx: 60,
+    borderRadius: 18,
+    fontSize: 18,
+    objectFit: "cover",
+    transparent: false,
+  };
+}
+
 function isValidHexColor(v: unknown): v is string {
   return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v);
 }
@@ -197,15 +223,21 @@ const DEFAULT_CONFIG: Config = {
   pageTitle: "Offre VIP | Jouer Maintenant",
   goldenBrandMain: "LeCasiNoze",
   goldenBrandSub: "",
-  goldenHeroTitleBefore: "DEPOSE 20EUR",
-  goldenHeroTitleSpan: "JOUE A 40EUR",
-  goldenHeroSubtitle: "+20EUR offerts dès ton premier dépôt.",
+  // Par défaut vides → applyConfig utilise les montants (goldenDepositAmount/Bonus/Total)
+  // Remplir uniquement pour surcharger avec un texte totalement custom.
+  goldenHeroTitleBefore: "",
+  goldenHeroTitleSpan: "",
+  goldenHeroSubtitle: "",
   goldenPageTitle: "LeCasiNoze - Dépose 20€, joue avec 40€",
   goldenChestUrl: "",
   goldenGameImageUrl: "",
   goldenVisualMode: "chest",
   goldenBackgroundUrl: "",
   goldenCtaPosition: "top",
+  // Montants
+  goldenDepositAmount: "20",
+  goldenBonusAmount: "20",
+  goldenTotalAmount: "40",
   // Typography base
   t_brandFs: "",
   t_brandFf: "",
@@ -432,6 +464,34 @@ function applyConfig(
 ): string {
   if (model === 5) {
     html = html.replace(/__VARIANT__/g, goldenVariant);
+
+    // ─── Montants du bonus ─────────────────────────────────────────────────
+    const deposit = String(cfg.goldenDepositAmount || "20").trim() || "20";
+    const bonus = String(cfg.goldenBonusAmount || "20").trim() || "20";
+    const total = String(cfg.goldenTotalAmount || "40").trim() || "40";
+
+    // Attributs data-offer-* → landing-base.js les propage vers [data-bind-offer-value]
+    html = html.replace(/data-offer-deposit="[^"]*"/, `data-offer-deposit="${escAttr(deposit)}"`);
+    html = html.replace(/data-offer-bonus="[^"]*"/, `data-offer-bonus="${escAttr(bonus)}"`);
+    html = html.replace(/data-offer-total="[^"]*"/, `data-offer-total="${escAttr(total)}"`);
+
+    // Textes hardcodés (le script ne les touche pas)
+    html = html.replace(
+      /<h1 class="hero-title">[^<]*<span>[^<]*<\/span><\/h1>/,
+      `<h1 class="hero-title">D&Eacute;POSE ${esc(deposit)}&euro; <span>JOUE A ${esc(total)}&euro;</span></h1>`
+    );
+    html = html.replace(
+      /<p class="hero-subtitle"><strong>\+[^<]*<\/strong>[^<]*<\/p>/,
+      `<p class="hero-subtitle"><strong>+${esc(bonus)}&euro; offerts</strong> d&egrave;s ton premier d&eacute;p&ocirc;t.</p>`
+    );
+    html = html.replace(
+      /<span class="step-deposit">[^<]*<\/span>/,
+      `<span class="step-deposit">DEPOSE ${esc(deposit)}EUR</span>`
+    );
+    html = html.replace(
+      /<span class="step-receive">[^<]*<\/span>/,
+      `<span class="step-receive">RECOIS ${esc(bonus)}EUR</span>`
+    );
 
     if (cfg.affiLink) {
       const safeAffiLink = escAttr(cfg.affiLink);
@@ -1383,8 +1443,9 @@ interface SingleButtonRowProps {
   index: number;
   onChange: (patch: Partial<AffiButton>) => void;
   onRemove: () => void;
+  onDuplicate?: () => void;
 }
-function SingleButtonRow({ btn, index, onChange, onRemove }: SingleButtonRowProps) {
+function SingleButtonRow({ btn, index, onChange, onRemove, onDuplicate }: SingleButtonRowProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -1426,6 +1487,13 @@ function SingleButtonRow({ btn, index, onChange, onRemove }: SingleButtonRowProp
           <span>{btn.label || "(sans label)"}</span>
           <span style={{ marginLeft: "auto", fontSize: 10, opacity: 0.5, transform: open ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</span>
         </button>
+        {onDuplicate && (
+          <button
+            onClick={onDuplicate}
+            title="Dupliquer ce bouton"
+            style={{ border: "1px solid rgba(99,102,241,.3)", borderRadius: 6, background: "rgba(99,102,241,.08)", color: "#a5b4fc", padding: "2px 8px", cursor: "pointer", font: "inherit", fontSize: 11 }}
+          >⎘</button>
+        )}
         <button
           onClick={onRemove}
           title="Supprimer"
@@ -1518,9 +1586,18 @@ function SingleButtonRow({ btn, index, onChange, onRemove }: SingleButtonRowProp
 interface ButtonsEditorProps {
   buttons: AffiButton[];
   onChange: (next: AffiButton[]) => void;
+  bonusAmount?: string;
+  affiLink?: string;
 }
-function ButtonsEditor({ buttons, onChange }: ButtonsEditorProps) {
+function ButtonsEditor({ buttons, onChange, bonusAmount, affiLink }: ButtonsEditorProps) {
   function add() { onChange([...buttons, defaultAffiButton()]); }
+  function addMainCta() { onChange([...buttons, duplicateMainCtaButton(bonusAmount, affiLink)]); }
+  function duplicate(i: number) {
+    const src = buttons[i];
+    if (!src) return;
+    const copy: AffiButton = { ...src, id: makeButtonId(), xPct: Math.min(90, src.xPct + 3), yPct: Math.min(90, src.yPct + 3) };
+    onChange([...buttons, copy]);
+  }
   function update(i: number, patch: Partial<AffiButton>) {
     onChange(buttons.map((b, idx) => idx === i ? { ...b, ...patch } : b));
   }
@@ -1534,12 +1611,19 @@ function ButtonsEditor({ buttons, onChange }: ButtonsEditorProps) {
         </div>
       )}
       {buttons.map((btn, i) => (
-        <SingleButtonRow key={btn.id} btn={btn} index={i} onChange={(p) => update(i, p)} onRemove={() => remove(i)} />
+        <SingleButtonRow key={btn.id} btn={btn} index={i} onChange={(p) => update(i, p)} onRemove={() => remove(i)} onDuplicate={() => duplicate(i)} />
       ))}
-      <button
-        onClick={add}
-        style={{ border: "1px dashed rgba(255,215,0,.4)", borderRadius: 8, background: "rgba(255,215,0,.06)", color: "#FFD700", padding: "8px 0", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 700 }}
-      >+ Ajouter un bouton</button>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+        <button
+          onClick={add}
+          style={{ border: "1px dashed rgba(255,215,0,.4)", borderRadius: 8, background: "rgba(255,215,0,.06)", color: "#FFD700", padding: "8px 0", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 700 }}
+        >+ Nouveau bouton</button>
+        <button
+          onClick={addMainCta}
+          title="Crée un bouton style 'RÉCLAME TES X€ OFFERTS' que tu peux repositionner et modifier"
+          style={{ border: "1px solid rgba(255,215,0,.5)", borderRadius: 8, background: "linear-gradient(135deg,#FFD700,#FFA500)", color: "#0f0d14", padding: "8px 0", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 800 }}
+        >⭐ Dupliquer "RÉCLAME"</button>
+      </div>
     </div>
   );
 }
@@ -2264,7 +2348,18 @@ export default function AffiEditorPage() {
                     <TextField label="Balise title" value={cfg.goldenPageTitle} onChange={set("goldenPageTitle")} />
                   </Section>
 
-                  <Section title="Hero">
+                  <Section title="💰 Montants du bonus">
+                    <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
+                      Ces valeurs remplacent automatiquement tous les montants affichés sur la page (hero, "ce que tu gagnes", boutons).
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                      <TextField label="Dépôt (€)" value={cfg.goldenDepositAmount} onChange={set("goldenDepositAmount")} placeholder="20" />
+                      <TextField label="Bonus (€)" value={cfg.goldenBonusAmount} onChange={set("goldenBonusAmount")} placeholder="20" />
+                      <TextField label="Total (€)" value={cfg.goldenTotalAmount} onChange={set("goldenTotalAmount")} placeholder="40" />
+                    </div>
+                  </Section>
+
+                  <Section title="Hero" defaultOpen={false}>
                     <TextField label="Pseudo / marque" value={cfg.goldenBrandMain} onChange={set("goldenBrandMain")} />
                     <TextField label="Sous-ligne logo" value={cfg.goldenBrandSub} onChange={set("goldenBrandSub")} />
                     <TextField label="Titre ligne 1" value={cfg.goldenHeroTitleBefore} onChange={set("goldenHeroTitleBefore")} />
@@ -2320,6 +2415,8 @@ export default function AffiEditorPage() {
                 <ButtonsEditor
                   buttons={parseAffiButtons(cfg.customButtonsJson)}
                   onChange={(next) => set("customButtonsJson")(stringifyAffiButtons(next))}
+                  bonusAmount={cfg.goldenBonusAmount}
+                  affiLink={cfg.affiLink}
                 />
               </Section>
             </div>
