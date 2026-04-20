@@ -282,57 +282,18 @@ function applyConfig(
   if (model === 5) {
     html = html.replace(/__VARIANT__/g, goldenVariant);
 
-    // Layout lock : rendu mobile consistant avec la preview éditeur
-    const SCALE_INJECTION = `<style data-affi-scale-lock>
-      @media (max-width: 720px) {
-        .hero-section {
-          min-height: auto !important;
-          padding: 24px 18px 32px !important;
-          display: block !important;
-          overflow: visible !important;
-        }
-        .hero-content {
-          min-height: auto !important;
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: flex-start !important;
-          padding-top: 0 !important;
-        }
-        .hero-card {
-          transform: none !important;
-          margin-top: 18px !important;
-        }
-        .btn-jouer {
-          margin-top: 14px !important;
-        }
-        .cta-cluster {
-          margin-top: 14px !important;
-        }
-        .promo-image-container {
-          margin-bottom: 14px !important;
-        }
-        .offer-copy {
-          margin-top: 8px !important;
-        }
-        .hero-subtitle {
-          margin-top: 12px !important;
-        }
-        .live-count {
-          margin-top: 12px !important;
-        }
-      }
-      @media (max-width: 389px) {
-        html { zoom: calc(100vw / 390); }
-        @supports not (zoom: 1) {
-          body {
-            width: 390px !important;
-            transform-origin: top left;
-            transform: scale(calc(100vw / 390));
-          }
-        }
-      }
-    </style>`;
-    html = html.replace(/<\/head>/, `${SCALE_INJECTION}\n</head>`);
+    // Layout lock RADICAL : viewport figé à 390px → pixel-perfect ratio
+    // sur tous mobiles (mêmes proportions que la preview éditeur 390px).
+    html = html.replace(
+      /<meta\s+name=["']viewport["'][^>]*>/i,
+      '<meta name="viewport" content="width=390, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">'
+    );
+    if (!/name=["']viewport["']/i.test(html)) {
+      html = html.replace(
+        /<head[^>]*>/i,
+        `$&\n  <meta name="viewport" content="width=390, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">`
+      );
+    }
 
     // Montants
     const deposit = String(cfg.goldenDepositAmount || "20").trim() || "20";

@@ -538,65 +538,24 @@ function applyConfig(
   if (model === 5) {
     html = html.replace(/__VARIANT__/g, goldenVariant);
 
-    // ─── Layout lock : rendu consistant mobile = preview éditeur ─────────────
-    // Stratégie :
-    // 1) Normalise TOUS les mobile (<= 720px) : pas de transform, pas de margin
-    //    négatif, pas de min-height: 100svh → le contenu flow naturellement.
-    //    Écarte la possibilité que le coffre chevauche les textes.
-    // 2) CSS `zoom` sur écrans < 390px pour qu'ils rendent comme si viewport=390
-    //    (correspond à la preview mobile de l'éditeur).
-    const SCALE_INJECTION = `<style data-affi-scale-lock>
-      /* Neutralise toutes les règles "cram" du template sur mobile */
-      @media (max-width: 720px) {
-        .hero-section {
-          min-height: auto !important;
-          padding: 24px 18px 32px !important;
-          display: block !important;
-          overflow: visible !important;
-        }
-        .hero-content {
-          min-height: auto !important;
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: flex-start !important;
-          padding-top: 0 !important;
-        }
-        .hero-card {
-          transform: none !important;
-          margin-top: 18px !important;
-        }
-        .btn-jouer {
-          margin-top: 14px !important;
-        }
-        .cta-cluster {
-          margin-top: 14px !important;
-        }
-        .promo-image-container {
-          margin-bottom: 14px !important;
-        }
-        .offer-copy {
-          margin-top: 8px !important;
-        }
-        .hero-subtitle {
-          margin-top: 12px !important;
-        }
-        .live-count {
-          margin-top: 12px !important;
-        }
-      }
-      /* Sur écrans < 390px, scale pour matcher la preview éditeur 390px */
-      @media (max-width: 389px) {
-        html { zoom: calc(100vw / 390); }
-        @supports not (zoom: 1) {
-          body {
-            width: 390px !important;
-            transform-origin: top left;
-            transform: scale(calc(100vw / 390));
-          }
-        }
-      }
-    </style>`;
-    html = html.replace(/<\/head>/, `${SCALE_INJECTION}\n</head>`);
+    // ─── Layout lock RADICAL : viewport figé à 390px ─────────────────────────
+    // On remplace le <meta viewport> du template pour forcer mobile browsers
+    // à calculer le layout comme si viewport = 390px (largeur de référence éditeur).
+    // Le browser scale ensuite automatiquement pour fit l'écran physique.
+    // → Résultat : PIXEL-PERFECT RATIO, tout mobile voit exactement la preview
+    //   éditeur (juste plus grand ou plus petit selon le device physique).
+    html = html.replace(
+      /<meta\s+name=["']viewport["'][^>]*>/i,
+      '<meta name="viewport" content="width=390, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">'
+    );
+
+    // Si aucun <meta viewport> n'existait, on en injecte un
+    if (!/name=["']viewport["']/i.test(html)) {
+      html = html.replace(
+        /<head[^>]*>/i,
+        `$&\n  <meta name="viewport" content="width=390, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">`
+      );
+    }
 
     // ─── Montants du bonus ─────────────────────────────────────────────────
     const deposit = String(cfg.goldenDepositAmount || "20").trim() || "20";
