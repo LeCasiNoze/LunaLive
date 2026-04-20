@@ -538,22 +538,40 @@ function applyConfig(
   if (model === 5) {
     html = html.replace(/__VARIANT__/g, goldenVariant);
 
-    // ─── Scaling uniforme sur toutes tailles d'écran ─────────────────────────
-    // La page est conçue pour une largeur de référence (390px mobile).
-    // Sur un écran plus étroit, on scale DOWN uniformément via CSS `zoom`
-    // (supporté Chromium depuis toujours, Firefox 126+) → le layout reste
-    // identique à la preview, juste visuellement plus petit.
-    // Sur un écran plus large, la page garde son flow responsif natif.
+    // ─── Layout lock : la page rend pareil sur tous écrans ───────────────────
+    // 1) `zoom` pour que les écrans étroits (<390px) rendent comme si viewport=390
+    //    → même mise en page qu'en preview éditeur mobile.
+    // 2) Neutralisation des règles aggressives du template qui remontent le
+    //    hero-card et btn-jouer quand la hauteur est faible (elles causent le
+    //    chevauchement du coffre sur le sous-titre).
     const SCALE_INJECTION = `<style data-affi-scale-lock>
       @media (max-width: 389px) {
         html { zoom: calc(100vw / 390); }
-        /* Fallback Firefox <126 : transform:scale si zoom non supporté */
         @supports not (zoom: 1) {
           body {
             width: 390px !important;
             transform-origin: top left;
             transform: scale(calc(100vw / 390));
           }
+        }
+      }
+      /* Annule les translations négatives qui font chevaucher le coffre sur le texte */
+      @media (max-width: 720px) and (max-height: 900px) {
+        .hero-card { transform: none !important; }
+        .btn-jouer { margin-top: 0 !important; }
+      }
+      @media (max-width: 430px) {
+        .hero-card { transform: none !important; }
+        .btn-jouer { margin-top: 0 !important; }
+      }
+      @media (max-width: 430px) and (max-height: 860px) {
+        .hero-card { transform: none !important; }
+        .btn-jouer { margin-top: 0 !important; }
+        .hero-content { min-height: 0 !important; }
+        .hero-section {
+          min-height: 0 !important;
+          padding-top: clamp(20px, 3vh, 32px) !important;
+          padding-bottom: 24px !important;
         }
       }
     </style>`;

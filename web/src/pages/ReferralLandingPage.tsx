@@ -282,8 +282,8 @@ function applyConfig(
   if (model === 5) {
     html = html.replace(/__VARIANT__/g, goldenVariant);
 
-    // Scaling uniforme — la page garde la mise en page de l'éditeur
-    // sur toutes tailles d'écran grâce à CSS zoom (+ fallback transform pour Firefox).
+    // Layout lock : scaling + neutralisation des translations négatives
+    // qui font chevaucher le coffre sur le texte sur petits écrans.
     const SCALE_INJECTION = `<style data-affi-scale-lock>
       @media (max-width: 389px) {
         html { zoom: calc(100vw / 390); }
@@ -293,6 +293,24 @@ function applyConfig(
             transform-origin: top left;
             transform: scale(calc(100vw / 390));
           }
+        }
+      }
+      @media (max-width: 720px) and (max-height: 900px) {
+        .hero-card { transform: none !important; }
+        .btn-jouer { margin-top: 0 !important; }
+      }
+      @media (max-width: 430px) {
+        .hero-card { transform: none !important; }
+        .btn-jouer { margin-top: 0 !important; }
+      }
+      @media (max-width: 430px) and (max-height: 860px) {
+        .hero-card { transform: none !important; }
+        .btn-jouer { margin-top: 0 !important; }
+        .hero-content { min-height: 0 !important; }
+        .hero-section {
+          min-height: 0 !important;
+          padding-top: clamp(20px, 3vh, 32px) !important;
+          padding-bottom: 24px !important;
         }
       }
     </style>`;
