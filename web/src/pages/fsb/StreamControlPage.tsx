@@ -12,8 +12,16 @@ const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
   ?? "https://lunalive-api.onrender.com";
 
 const FSB_ALLOWED_IDS = new Set([4, 15, 71]);
-const FSB_SLUGS = ["fabiozsis", "samyyzsis"];
+const FSB_SLUGS = ["fabiozsis", "samyyzsis", "lecasinoze"];
 const SLOT_LABELS = ["Cam 1", "Cam 2", "Cam 3"];
+
+// Exact mapping username→slug pour éviter les collisions WebRTC
+// (avant, le fallback FSB_SLUGS[0] faisait que LeCasiNoze s'enregistrait comme "fabiozsis")
+function slugFromUsername(username: string): string {
+  const u = String(username || "").trim().toLowerCase();
+  if (FSB_SLUGS.includes(u)) return u;
+  return u; // on préfère l'username réel plutôt que FSB_SLUGS[0] (qui causait des collisions)
+}
 
 const ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -641,16 +649,23 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   const streamInfo = useStreamInfo();
   const followers = useFollowers();
 
-  // My identity — derived from username, stable
-  const mySlug = React.useMemo(
-    () => FSB_SLUGS.find(s => s.toLowerCase().includes(user.username.toLowerCase())) ?? FSB_SLUGS[0],
-    [user.username],
-  );
+  // My identity — derived from username, stable (exact match, plus de fallback partagé)
+  const mySlug = React.useMemo(() => slugFromUsername(user.username), [user.username]);
   // Ref so useRemoteCams never re-runs when myCamActive changes
   const mySlugRef = React.useRef(mySlug);
   mySlugRef.current = mySlug;
 
-  const [mySlot, setMySlot] = React.useState(0);   // 0-based UI position
+  const CAM_STATE_KEY = `lunalive-streamcontrol-cam-${mySlug}`;
+  const [mySlot, setMySlot] = React.useState<number>(() => {
+    try {
+      const raw = localStorage.getItem(CAM_STATE_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (typeof s.slot === "number" && s.slot >= 0 && s.slot <= 2) return s.slot;
+      }
+    } catch {}
+    return 0;
+  });
   const [myCamActive, setMyCamActive] = React.useState(false);
   const [localStream, setLocalStream] = React.useState<MediaStream | null>(null);
   const [myFilters, setMyFilters] = React.useState<CamFilters>({ ...DEFAULT_FILTERS });
@@ -701,24 +716,55 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   // Cleanup stream on unmount
   React.useEffect(() => () => { localStream?.getTracks().forEach(t => t.stop()); }, [localStream]);
 
-  const activateCam = async () => {
+  const activateCam = React.useCallback(async () => {
     setCamError(null);
     console.log("[CamControl] activating cam for", mySlug, "slot", mySlot + 1);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: false });
       setLocalStream(stream);
       setMyCamActive(true);
+      try { localStorage.setItem(CAM_STATE_KEY, JSON.stringify({ active: true, slot: mySlot })); } catch {}
     } catch (e: any) {
       setCamError(e?.message ?? "Accès caméra refusé");
+      try { localStorage.removeItem(CAM_STATE_KEY); } catch {}
     }
-  };
+  }, [CAM_STATE_KEY, mySlot, mySlug]);
 
   const deactivateCam = () => {
     console.log("[CamControl] deactivating cam for", mySlug);
     localStream?.getTracks().forEach(t => t.stop());
     setLocalStream(null);
     setMyCamActive(false);
+    try { localStorage.setItem(CAM_STATE_KEY, JSON.stringify({ active: false, slot: mySlot })); } catch {}
   };
+
+  // Persiste le slot quand il change (même cam inactive)
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CAM_STATE_KEY);
+      const prev = raw ? JSON.parse(raw) : {};
+      localStorage.setItem(CAM_STATE_KEY, JSON.stringify({ ...prev, slot: mySlot }));
+    } catch {}
+  }, [CAM_STATE_KEY, mySlot]);
+
+  // Auto-réactivation au mount si la cam était active avant refresh/deploy
+  // (getUserMedia réutilise l'autorisation déjà accordée par le navigateur, sans popup)
+  const autoActivatedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoActivatedRef.current) return;
+    try {
+      const raw = localStorage.getItem(CAM_STATE_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (s?.active === true) {
+        autoActivatedRef.current = true;
+        console.log("[CamControl] auto-activating cam (persisted state)");
+        // petit délai pour laisser le socket se connecter avant cam:register
+        const t = setTimeout(() => { activateCam(); }, 500);
+        return () => clearTimeout(t);
+      }
+    } catch {}
+  }, [CAM_STATE_KEY, activateCam]);
 
   const handleFiltersChange = React.useCallback((slug: string, patch: Partial<CamFilters>) => {
     if (!slug) return;
