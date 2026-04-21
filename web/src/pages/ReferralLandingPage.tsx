@@ -295,7 +295,7 @@ function applyConfig(
       );
     }
 
-    // Fix écrans courts (iPhone SE 375×667) — pas de changement de taille
+    // Fix écrans courts (iPhone SE 375×667)
     const SHORT_SCREEN_FIX = `<style data-affi-short-screen-fix>
       @media (max-width: 430px) and (max-height: 860px) {
         .hero-card { transform: none !important; }
@@ -310,6 +310,88 @@ function applyConfig(
       }
     </style>`;
     html = html.replace(/<\/head>/, `${SHORT_SCREEN_FIX}\n</head>`);
+
+    // Polish Desktop (≥900px) — rendu pro & clean
+    const DESKTOP_POLISH = `<style data-affi-desktop-polish>
+      @media (min-width: 900px) {
+        .hero-content {
+          width: min(100%, 1080px) !important;
+          padding: clamp(28px, 4vh, 52px) clamp(36px, 4vw, 64px) !important;
+          grid-template-columns: 1.05fr 0.95fr !important;
+          gap: 0 clamp(36px, 3.5vw, 56px) !important;
+        }
+        .hero-section {
+          min-height: 100svh !important;
+          min-height: 100dvh !important;
+        }
+        .brand-signature { margin-bottom: 22px !important; }
+        .brand-logo-text .brand-logo-main {
+          font-size: clamp(2.2rem, 3.2vw, 3.4rem) !important;
+          letter-spacing: 0.2em !important;
+        }
+        .hero-title {
+          font-size: clamp(3rem, 4.2vw, 4.2rem) !important;
+          line-height: 0.95 !important;
+          letter-spacing: 0.035em !important;
+        }
+        .hero-subtitle {
+          max-width: 26rem !important;
+          margin-top: 16px !important;
+          font-size: clamp(0.95rem, 1.05vw, 1.05rem) !important;
+          line-height: 1.6 !important;
+          color: rgba(248, 244, 239, 0.92) !important;
+          font-weight: 500 !important;
+        }
+        .live-count {
+          margin-top: 14px !important;
+          font-size: 0.84rem !important;
+          color: var(--accent-light) !important;
+          font-weight: 600 !important;
+          letter-spacing: 0.02em !important;
+        }
+        .promo-image-container {
+          width: min(100%, 420px) !important;
+          margin: 0 auto !important;
+        }
+        .hero-card { padding: 8px 0 !important; }
+        .info-box {
+          margin-bottom: 14px !important;
+          padding: 12px 16px !important;
+          background: rgba(0, 0, 0, 0.18) !important;
+          backdrop-filter: blur(6px) !important;
+        }
+        .offer-title {
+          font-size: 1.5rem !important;
+          margin-bottom: 8px !important;
+        }
+        .cta-cluster {
+          width: min(100%, 380px) !important;
+          margin: 18px auto 0 !important;
+        }
+        .btn-jouer {
+          width: 100% !important;
+          padding: 18px 22px !important;
+          font-size: 1.15rem !important;
+          letter-spacing: 0.2em !important;
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.28),
+            0 0 38px var(--accent-soft),
+            0 14px 28px rgba(0, 0, 0, 0.38) !important;
+        }
+        .micro-proof {
+          margin-top: 14px !important;
+          font-size: 0.78rem !important;
+          color: var(--accent-light) !important;
+          font-weight: 600 !important;
+          letter-spacing: 0.03em !important;
+        }
+        .micro-proof-icon {
+          color: var(--accent-light) !important;
+          margin-right: 4px !important;
+        }
+      }
+    </style>`;
+    html = html.replace(/<\/head>/, `${DESKTOP_POLISH}\n</head>`);
 
     // Montants
     const deposit = String(cfg.goldenDepositAmount || "20").trim() || "20";
