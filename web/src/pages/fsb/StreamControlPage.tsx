@@ -757,6 +757,50 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   const [camError, setCamError] = React.useState<string | null>(null);
   const [msgCount, setMsgCount] = React.useState(0);
 
+  // ─── Camera device selection ───────────────────────────────────────────────
+  // Certains users ont OBS Virtual Camera en défaut → pas de frames
+  // + détection WebRTC bloqué (VPN killswitch, extension privacy)
+  const [videoDevices, setVideoDevices] = React.useState<MediaDeviceInfo[]>([]);
+  const CAM_DEVICE_KEY = `lunalive-streamcontrol-device-${mySlug}`;
+  const [selectedDeviceId, setSelectedDeviceId] = React.useState<string>(() => {
+    try { return localStorage.getItem(CAM_DEVICE_KEY) || ""; } catch { return ""; }
+  });
+  const [webrtcBlocked, setWebrtcBlocked] = React.useState<boolean>(false);
+
+  // Enumerate video devices (après première autorisation caméra, les labels deviennent visibles)
+  React.useEffect(() => {
+    const refresh = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        setVideoDevices(devices.filter(d => d.kind === "videoinput"));
+      } catch {}
+    };
+    refresh();
+    navigator.mediaDevices.addEventListener?.("devicechange", refresh);
+    return () => { navigator.mediaDevices.removeEventListener?.("devicechange", refresh); };
+  }, []);
+
+  // Détection WebRTC bloqué: à l'activation cam, on crée un PC de test vers STUN
+  // et on attend >= 1 candidat. 0 candidat après 5s = VPN/extension bloquant
+  React.useEffect(() => {
+    const testPc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    testPc.createDataChannel("probe");
+    let got = 0;
+    testPc.onicecandidate = (e) => { if (e.candidate) got++; };
+    testPc.createOffer().then(o => testPc.setLocalDescription(o)).catch(() => {});
+    const timer = setTimeout(() => {
+      if (got === 0) {
+        console.error("[WebRTC probe] 0 candidats ICE gathered → VPN ou extension bloque WebRTC");
+        setWebrtcBlocked(true);
+      } else {
+        console.log(`[WebRTC probe] ${got} candidats gathered → OK`);
+        setWebrtcBlocked(false);
+      }
+      try { testPc.close(); } catch {}
+    }, 5000);
+    return () => { clearTimeout(timer); try { testPc.close(); } catch {} };
+  }, []);
+
   // STABLE viewer — never tears down when myCamActive / mySlot changes
   const { entries: remoteEntries, updateFilters: updateRemoteFilters } = useRemoteCams(socket, mySlugRef);
 
@@ -821,17 +865,34 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
 
   const activateCam = React.useCallback(async () => {
     setCamError(null);
-    console.log("[CamControl] activating cam for", mySlug, "slot", mySlot + 1);
+    console.log("[CamControl] activating cam for", mySlug, "slot", mySlot + 1, "device:", selectedDeviceId || "default");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: false });
+      const videoConstraints: MediaTrackConstraints = {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      };
+      if (selectedDeviceId) {
+        videoConstraints.deviceId = { exact: selectedDeviceId };
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+      // Log track info (aide à détecter OBS Virtual Camera qui n'envoie rien)
+      stream.getVideoTracks().forEach(t => {
+        const settings = t.getSettings();
+        console.log("[CamControl] video track:", t.label, "active:", t.enabled, "muted:", t.muted, "settings:", settings);
+      });
       setLocalStream(stream);
       setMyCamActive(true);
       try { localStorage.setItem(CAM_STATE_KEY, JSON.stringify({ active: true, slot: mySlot })); } catch {}
+      // Refresh devices to get labels (now authorized)
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        setVideoDevices(devices.filter(d => d.kind === "videoinput"));
+      } catch {}
     } catch (e: any) {
       setCamError(e?.message ?? "Accès caméra refusé");
       try { localStorage.removeItem(CAM_STATE_KEY); } catch {}
     }
-  }, [CAM_STATE_KEY, mySlot, mySlug]);
+  }, [CAM_STATE_KEY, mySlot, mySlug, selectedDeviceId]);
 
   const deactivateCam = () => {
     console.log("[CamControl] deactivating cam for", mySlug);
@@ -927,6 +988,32 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {videoDevices.length > 0 && (
+            <select
+              value={selectedDeviceId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setSelectedDeviceId(id);
+                try { localStorage.setItem(CAM_DEVICE_KEY, id); } catch {}
+                // Si la cam est déjà active, re-démarrer avec le nouveau device
+                if (myCamActive) {
+                  localStream?.getTracks().forEach(t => t.stop());
+                  setLocalStream(null);
+                  setMyCamActive(false);
+                  setTimeout(() => activateCam(), 100);
+                }
+              }}
+              style={{ ...S.select, maxWidth: 180 }}
+              title="Caméra physique"
+            >
+              <option value="">Caméra (auto)</option>
+              {videoDevices.map((d) => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || `Caméra ${d.deviceId.slice(0, 6)}`}
+                </option>
+              ))}
+            </select>
+          )}
           <select value={mySlot} onChange={e => setMySlot(Number(e.target.value))} style={S.select} title="Mon slot cam">
             {SLOT_LABELS.map((l, i) => <option key={i} value={i}>{l}</option>)}
           </select>
@@ -940,6 +1027,31 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
           </Link>
         </div>
       </div>
+
+      {/* Bannière WebRTC bloqué (VPN, extension privacy, firewall) */}
+      {webrtcBlocked && (
+        <div style={{
+          background: "rgba(239,68,68,.12)",
+          border: "1px solid rgba(239,68,68,.4)",
+          borderRadius: 8,
+          padding: "10px 14px",
+          fontSize: 13,
+          color: "#fecaca",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}>
+          <span style={{ fontSize: 18 }}>⚠️</span>
+          <div>
+            <strong style={{ color: "#fca5a5" }}>WebRTC bloqué</strong> — aucun candidat ICE n'a pu être récupéré après 5s.
+            <br />
+            <span style={{ fontSize: 11, color: "#fda4af" }}>
+              Cause probable : <b>VPN actif</b> (NordVPN, Proton, Mullvad, CyberGhost…) ou extension anti-pistage (uBlock "WebRTC leak shield", Brave shields).
+              Désactive-les pour LunaLive ou ajoute le domaine en exception. Sans ça, les autres ne te verront jamais.
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ── Cams (en haut) ── */}
       <div style={S.camsRow}>
