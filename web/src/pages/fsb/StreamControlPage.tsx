@@ -204,6 +204,9 @@ function useBroadcaster(
   onInitialFilters?: (f: Partial<CamFilters>) => void,
 ) {
   const peersRef = React.useRef<Map<string, RTCPeerConnection>>(new Map());
+  // Queue des ICE candidates arrivés AVANT setRemoteDescription, pour flush après
+  // (fix race condition: "addIceCandidate failed: remote description was null")
+  const pendingIceRef = React.useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const onInitRef = React.useRef(onInitialFilters);
   onInitRef.current = onInitialFilters;
 
@@ -254,6 +257,7 @@ function useBroadcaster(
         console.log("[Broadcaster] connectionState →", pc.connectionState, "for", viewerId);
         if (pc.connectionState === "failed" || pc.connectionState === "closed") {
           pc.close(); peersRef.current.delete(viewerId);
+          pendingIceRef.current.delete(viewerId);
         }
       };
       const offer = await pc.createOffer({ offerToReceiveVideo: false, offerToReceiveAudio: false });
@@ -262,17 +266,33 @@ function useBroadcaster(
     };
     const handleAnswer = async ({ from, sdp }: { from: string; sdp: RTCSessionDescriptionInit }) => {
       const pc = peersRef.current.get(from);
-      if (pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      if (!pc) return;
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      // Flush les candidats ICE queuées pendant qu'on attendait la answer
+      const pending = pendingIceRef.current.get(from);
+      if (pending && pending.length > 0) {
+        console.log(`[Broadcaster] flushing ${pending.length} queued ICE for`, from);
+        for (const c of pending) {
+          try { await pc.addIceCandidate(new RTCIceCandidate(c)); }
+          catch (e) { console.warn("[Broadcaster] queued addIceCandidate failed:", e); }
+        }
+        pendingIceRef.current.delete(from);
+      }
     };
     const handleIce = async ({ from, candidate }: { from: string; candidate: RTCIceCandidateInit }) => {
       const pc = peersRef.current.get(from);
-      if (pc) {
-        const c = candidate as any;
-        console.log("[Broadcaster] ICE ←", from, c?.candidate?.split(" ")[7] ?? "?", c?.candidate?.match(/typ (\w+)/)?.[1] ?? "?");
-        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) {
-          console.warn("[Broadcaster] addIceCandidate failed:", e);
-        }
+      if (!pc) return;
+      const c = candidate as any;
+      console.log("[Broadcaster] ICE ←", from, c?.candidate?.match(/typ (\w+)/)?.[1] ?? "?");
+      // Si remoteDescription pas encore set => queue au lieu de jeter
+      if (!pc.remoteDescription) {
+        const q = pendingIceRef.current.get(from) ?? [];
+        q.push(candidate);
+        pendingIceRef.current.set(from, q);
+        return;
       }
+      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); }
+      catch (e) { console.warn("[Broadcaster] addIceCandidate failed:", e); }
     };
     socket.on("cam:request", handleRequest);
     socket.on("cam:answer", handleAnswer);
@@ -298,6 +318,8 @@ function useRemoteCams(
   const peersRef = React.useRef<Map<string, RTCPeerConnection>>(new Map());
   // Track des handlers par slug pour les off() proprement lors d'une reconnexion
   const handlersRef = React.useRef<Map<string, { offer: any; ice: any }>>(new Map());
+  // Queue des ICE candidates arrivés avant setRemoteDescription (fix race condition)
+  const pendingIceRef = React.useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
 
   const connect = React.useCallback((bc: { slug: string; slot: number; socketId: string; filters: any }) => {
     if (!socket) return;
@@ -313,6 +335,7 @@ function useRemoteCams(
       console.log("[RemoteCams] re-registration for", bc.slug, "→ closing stale PC");
       try { stale.close(); } catch {}
       peersRef.current.delete(bc.slug);
+      pendingIceRef.current.delete(bc.slug);
       const staleH = handlersRef.current.get(bc.slug);
       if (staleH) {
         socket.off("cam:offer", staleH.offer);
@@ -376,19 +399,33 @@ function useRemoteCams(
     const handleOffer = async ({ from: offerId, slug, sdp }: { from: string; slug: string; sdp: RTCSessionDescriptionInit }) => {
       if (slug !== bc.slug) return;
       await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      // Flush candidats ICE queuées avant qu'on ait la remote description
+      const pending = pendingIceRef.current.get(bc.slug);
+      if (pending && pending.length > 0) {
+        console.log(`[RemoteCams] flushing ${pending.length} queued ICE for`, bc.slug);
+        for (const c of pending) {
+          try { await pc.addIceCandidate(new RTCIceCandidate(c)); }
+          catch (e) { console.warn("[RemoteCams] queued addIceCandidate failed:", e); }
+        }
+        pendingIceRef.current.delete(bc.slug);
+      }
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       socket.emit("cam:answer", { to: offerId, sdp: answer });
     };
     const handleIce = async ({ candidate }: { from: string; candidate: RTCIceCandidateInit }) => {
       const myPc = peersRef.current.get(bc.slug);
-      if (myPc) {
-        const c = candidate as any;
-        console.log("[RemoteCams] ICE ←", bc.slug, c?.candidate?.match(/typ (\w+)/)?.[1] ?? "?");
-        try { await myPc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) {
-          console.warn("[RemoteCams] addIceCandidate failed:", e);
-        }
+      if (!myPc) return;
+      const c = candidate as any;
+      console.log("[RemoteCams] ICE ←", bc.slug, c?.candidate?.match(/typ (\w+)/)?.[1] ?? "?");
+      if (!myPc.remoteDescription) {
+        const q = pendingIceRef.current.get(bc.slug) ?? [];
+        q.push(candidate);
+        pendingIceRef.current.set(bc.slug, q);
+        return;
       }
+      try { await myPc.addIceCandidate(new RTCIceCandidate(candidate)); }
+      catch (e) { console.warn("[RemoteCams] addIceCandidate failed:", e); }
     };
     socket.on("cam:offer", handleOffer);
     socket.on("cam:ice", handleIce);
@@ -416,6 +453,7 @@ function useRemoteCams(
       console.log("[RemoteCams] cam:left", slug);
       peersRef.current.get(slug)?.close();
       peersRef.current.delete(slug);
+      pendingIceRef.current.delete(slug);
       const h = handlersRef.current.get(slug);
       if (h) {
         socket.off("cam:offer", h.offer);
@@ -450,6 +488,7 @@ function useRemoteCams(
       handlersRef.current.clear();
       peersRef.current.forEach(pc => pc.close());
       peersRef.current.clear();
+      pendingIceRef.current.clear();
       setEntries(new Map());
     };
   }, [socket, connect, mySlugRef]);
