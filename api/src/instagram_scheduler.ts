@@ -288,6 +288,7 @@ type PublishJob = {
   description: string | null;
   scheduled_at: Date;
   output_url: string;
+  collaboration_username: string | null;
 };
 
 async function processJob(job: PublishJob, accessToken: string, userId: string): Promise<void> {
@@ -315,7 +316,16 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
     [job.clip_id]
   );
   const streamerSlugRaw     = String(slugForCaption.rows[0]?.streamer_slug ?? "");
-  const instagramUsername   = String(slugForCaption.rows[0]?.instagram_username ?? "").trim();
+  // Source canonique : snapshot figé par lunaclip-local à la création du job.
+  // Fallback legacy : streamer_ig_config (jobs créés avant mig collaboration_username).
+  const snapshotUsername    = String(job.collaboration_username ?? "").trim();
+  const legacyUsername      = String(slugForCaption.rows[0]?.instagram_username ?? "").trim();
+  const instagramUsername   = snapshotUsername || legacyUsername;
+  if (snapshotUsername) {
+    console.log(`${LOG} [job #${job.id}] collab_username source=snapshot @${snapshotUsername}`);
+  } else if (legacyUsername) {
+    console.log(`${LOG} [job #${job.id}] collab_username source=legacy_config @${legacyUsername}`);
+  }
 
   // Logique de collaboration Instagram
   let caption = job.description ?? job.title ?? "";
@@ -501,7 +511,8 @@ async function tick(accessToken: string, userId: string): Promise<void> {
   // 1. Vérifier les timeouts de collaboration en attente
   const timeoutJobs = await pool.query(`
     SELECT pj.id, pj.clip_id, pj.edit_job_id, pj.title, pj.description, pj.scheduled_at,
-           ej.output_url
+           ej.output_url,
+           pj.collaboration_username
     FROM   publish_jobs pj
     JOIN   edit_jobs ej ON ej.id = pj.edit_job_id
     WHERE  pj.platform = 'instagram'
@@ -521,7 +532,8 @@ async function tick(accessToken: string, userId: string): Promise<void> {
   // 2. Traiter les jobs scheduled normaux
   const { rows } = await pool.query<PublishJob>(`
     SELECT pj.id, pj.clip_id, pj.edit_job_id, pj.title, pj.description, pj.scheduled_at,
-           ej.output_url
+           ej.output_url,
+           pj.collaboration_username
     FROM   publish_jobs pj
     JOIN   edit_jobs ej ON ej.id = pj.edit_job_id
     WHERE  pj.platform      = 'instagram'
