@@ -23,24 +23,28 @@ function slugFromUsername(username: string): string {
   return u; // on préfère l'username réel plutôt que FSB_SLUGS[0] (qui causait des collisions)
 }
 
-// STUN public + TURN relay public (OpenRelay / Metered) pour contourner
-// les NAT stricts (CGNAT 4G, corporate, etc.) où le P2P direct échoue.
-// Si TURN public rate-limité, configurer un TURN privé via VITE_TURN_URL.
+// STUN public Google + TURN privé configurable via env.
+// Sans TURN, les NAT stricts (CGNAT, symétriques) empêchent le P2P =>
+// stream arrive dans ontrack mais aucune frame ne transite.
+// TURN recommandé: Metered.ca free tier (50GB/mois, signup rapide).
 const CUSTOM_TURN_URL = import.meta.env.VITE_TURN_URL as string | undefined;
 const CUSTOM_TURN_USER = import.meta.env.VITE_TURN_USER as string | undefined;
 const CUSTOM_TURN_PASS = import.meta.env.VITE_TURN_PASS as string | undefined;
 
+// Support multi-URL (CSV dans VITE_TURN_URL)
+const turnUrls = CUSTOM_TURN_URL ? CUSTOM_TURN_URL.split(",").map(s => s.trim()).filter(Boolean) : [];
+
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
-  // TURN public OpenRelay (gratuit, rate-limité)
-  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
-  ...(CUSTOM_TURN_URL && CUSTOM_TURN_USER && CUSTOM_TURN_PASS
-    ? [{ urls: CUSTOM_TURN_URL, username: CUSTOM_TURN_USER, credential: CUSTOM_TURN_PASS }]
+  ...(turnUrls.length > 0 && CUSTOM_TURN_USER && CUSTOM_TURN_PASS
+    ? [{ urls: turnUrls, username: CUSTOM_TURN_USER, credential: CUSTOM_TURN_PASS }]
     : []),
 ];
+
+if (turnUrls.length === 0) {
+  console.warn("[WebRTC] Aucun TURN configuré (VITE_TURN_URL vide) — le P2P peut échouer sur NAT stricts. Configurer Metered.ca ou Cloudflare Calls.");
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -262,7 +266,13 @@ function useBroadcaster(
     };
     const handleIce = async ({ from, candidate }: { from: string; candidate: RTCIceCandidateInit }) => {
       const pc = peersRef.current.get(from);
-      if (pc) try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+      if (pc) {
+        const c = candidate as any;
+        console.log("[Broadcaster] ICE ←", from, c?.candidate?.split(" ")[7] ?? "?", c?.candidate?.match(/typ (\w+)/)?.[1] ?? "?");
+        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) {
+          console.warn("[Broadcaster] addIceCandidate failed:", e);
+        }
+      }
     };
     socket.on("cam:request", handleRequest);
     socket.on("cam:answer", handleAnswer);
@@ -372,7 +382,13 @@ function useRemoteCams(
     };
     const handleIce = async ({ candidate }: { from: string; candidate: RTCIceCandidateInit }) => {
       const myPc = peersRef.current.get(bc.slug);
-      if (myPc) try { await myPc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+      if (myPc) {
+        const c = candidate as any;
+        console.log("[RemoteCams] ICE ←", bc.slug, c?.candidate?.match(/typ (\w+)/)?.[1] ?? "?");
+        try { await myPc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) {
+          console.warn("[RemoteCams] addIceCandidate failed:", e);
+        }
+      }
     };
     socket.on("cam:offer", handleOffer);
     socket.on("cam:ice", handleIce);
