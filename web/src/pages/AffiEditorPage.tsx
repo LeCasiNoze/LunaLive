@@ -95,8 +95,9 @@ interface Config {
   p_offerY: string;
   p_ctaX: string;
   p_ctaY: string;
-  // Boutons custom (JSON-stringified array de AffiButton)
-  customButtonsJson: string;
+  // Boutons custom (JSON-stringified array de AffiButton) — par device
+  customButtonsJson: string;          // Mobile/Tablette (par défaut)
+  customButtonsJsonDesktop: string;   // Desktop
 }
 
 // ─── Custom buttons ───────────────────────────────────────────────────────────
@@ -345,6 +346,7 @@ const DEFAULT_CONFIG: Config = {
   p_ctaX: "",
   p_ctaY: "",
   customButtonsJson: "",
+  customButtonsJsonDesktop: "",
 };
 
 // ─── TYPOGRAPHY / CSS VARS ───────────────────────────────────────────────────
@@ -1932,9 +1934,17 @@ function ButtonsEditor({ buttons, onChange, bonusAmount, affiLink, variant }: Bu
 
 // ─── Iframe button injection (fallback fiable) ────────────────────────────────
 
-export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: AffiButton[]) {
+/** buttons = AffiButton[] → injecte en mobile uniquement (rétrocompat).
+ *  buttons = { mobile, desktop } → injecte les deux avec visibilité scoped par media query. */
+export function injectButtonsIntoIframe(
+  iframe: HTMLIFrameElement,
+  buttons: AffiButton[] | { mobile?: AffiButton[]; desktop?: AffiButton[] }
+) {
   const doc = iframe.contentDocument;
   if (!doc || !doc.body) return;
+
+  const mobileBtns = Array.isArray(buttons) ? buttons : (buttons.mobile || []);
+  const desktopBtns = Array.isArray(buttons) ? [] : (buttons.desktop || []);
 
   // Nettoie les éventuels boutons précédemment injectés
   const existing = doc.querySelector("[data-affi-buttons-wrap]");
@@ -1949,6 +1959,9 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
   }
   styleTag.textContent = `
     @import url("${BUTTON_FONT_GOOGLE_IMPORT}");
+    /* Visibilité boutons scoped par device */
+    @media (max-width: 899px) { [data-affi-btn-device="desktop"] { display: none !important; } }
+    @media (min-width: 900px) { [data-affi-btn-device="mobile"]  { display: none !important; } }
     @keyframes affi-btn-shine {
       0%   { transform: translateX(-120%) skewX(-20deg); }
       60%  { transform: translateX(260%)  skewX(-20deg); }
@@ -1975,13 +1988,19 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
     }
   `;
 
-  if (!buttons || buttons.length === 0) return;
+  if (mobileBtns.length === 0 && desktopBtns.length === 0) return;
 
   const wrap = doc.createElement("div");
   wrap.setAttribute("data-affi-buttons-wrap", "");
   wrap.style.cssText = "display:contents!important;";
 
-  for (const b of buttons) {
+  // Combine les deux listes avec tag de device
+  const all: Array<{ btn: AffiButton; device: "mobile" | "desktop" }> = [
+    ...mobileBtns.map((btn) => ({ btn, device: "mobile" as const })),
+    ...desktopBtns.map((btn) => ({ btn, device: "desktop" as const })),
+  ];
+
+  for (const { btn: b, device } of all) {
     const rawX = Number(b.xPct);
     const rawY = Number(b.yPct);
     const xPct = (!Number.isFinite(rawX) || rawX < 0 || rawX > 95) ? 35 : rawX;
@@ -2048,6 +2067,7 @@ export function injectButtonsIntoIframe(iframe: HTMLIFrameElement, buttons: Affi
     // Attributs pour le CSS partagé (hover + shine) et repositionnement dynamique
     if (b.hoverEffect) el.setAttribute("data-affi-btn-hover", "1");
     if (b.shine) el.setAttribute("data-affi-btn-shine", "1");
+    el.setAttribute("data-affi-btn-device", device);
     // yPct stocké en dataset — recalculé en pixels relatifs à scrollHeight du document
     // (pour que la position suive le contenu sur tout device, pas le viewport)
     el.setAttribute("data-affi-btn-ypct", String(yPct));
@@ -2407,11 +2427,11 @@ export default function AffiEditorPage() {
     blobUrlRef.current = URL.createObjectURL(blob);
 
     // Quand l'iframe finit de charger, on injecte les boutons depuis le parent
-    // (fallback fiable si le <script> inline ne s'exécute pas).
-    const buttons = parseAffiButtons(c.customButtonsJson);
+    const buttonsMobile = parseAffiButtons(c.customButtonsJson);
+    const buttonsDesktop = parseAffiButtons(c.customButtonsJsonDesktop);
     iframe.onload = () => {
       try {
-        injectButtonsIntoIframe(iframe, buttons);
+        injectButtonsIntoIframe(iframe, { mobile: buttonsMobile, desktop: buttonsDesktop });
       } catch (err) {
         console.error("[AffiEditor] inject buttons failed:", err);
       }
@@ -2847,15 +2867,35 @@ export default function AffiEditorPage() {
                 </>
               )}
 
-              {/* Boutons custom — disponibles sur tous les modèles */}
-              <Section title="Boutons custom" defaultOpen={false}>
-                <ButtonsEditor
-                  buttons={parseAffiButtons(cfg.customButtonsJson)}
-                  onChange={(next) => set("customButtonsJson")(stringifyAffiButtons(next))}
-                  bonusAmount={cfg.goldenBonusAmount}
-                  affiLink={cfg.affiLink}
-                  variant={goldenVariant}
-                />
+              {/* Boutons custom — par device (desktop ≠ mobile/tablette) */}
+              <Section
+                title={viewport === "desktop" ? "🖥️ Boutons custom (Desktop)" : "📱 Boutons custom (Mobile/Tablette)"}
+                defaultOpen={false}
+              >
+                <div style={{ fontSize: 11, color: "#888", marginBottom: 6, lineHeight: 1.4 }}>
+                  {viewport === "desktop"
+                    ? "Tu édites les boutons pour l'affichage desktop uniquement. Passe en mobile pour éditer les boutons mobile."
+                    : "Tu édites les boutons pour mobile/tablette. Passe en desktop pour éditer les boutons desktop."}
+                </div>
+                {viewport === "desktop" ? (
+                  <ButtonsEditor
+                    key="desktop"
+                    buttons={parseAffiButtons(cfg.customButtonsJsonDesktop)}
+                    onChange={(next) => set("customButtonsJsonDesktop")(stringifyAffiButtons(next))}
+                    bonusAmount={cfg.goldenBonusAmount}
+                    affiLink={cfg.affiLink}
+                    variant={goldenVariant}
+                  />
+                ) : (
+                  <ButtonsEditor
+                    key="mobile"
+                    buttons={parseAffiButtons(cfg.customButtonsJson)}
+                    onChange={(next) => set("customButtonsJson")(stringifyAffiButtons(next))}
+                    bonusAmount={cfg.goldenBonusAmount}
+                    affiLink={cfg.affiLink}
+                    variant={goldenVariant}
+                  />
+                )}
               </Section>
             </div>
           )}

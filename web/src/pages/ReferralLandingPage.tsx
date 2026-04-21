@@ -632,7 +632,7 @@ export default function ReferralLandingPage() {
   const [srcDoc, setSrcDoc] = React.useState("");
   const [status, setStatus] = React.useState<"loading" | "ready" | "error">("loading");
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
-  const buttonsRef = React.useRef<ReturnType<typeof parseAffiButtons>>([]);
+  const buttonsRef = React.useRef<{ mobile: ReturnType<typeof parseAffiButtons>; desktop: ReturnType<typeof parseAffiButtons> }>({ mobile: [], desktop: [] });
 
   React.useEffect(() => {
     let cancelled = false;
@@ -660,7 +660,10 @@ export default function ReferralLandingPage() {
         );
 
         if (cancelled) return;
-        buttonsRef.current = parseAffiButtons((cfg as any).customButtonsJson);
+        buttonsRef.current = {
+          mobile: parseAffiButtons((cfg as any).customButtonsJson),
+          desktop: parseAffiButtons((cfg as any).customButtonsJsonDesktop),
+        };
         setSrcDoc(html);
         setStatus("ready");
       } catch (error: any) {
