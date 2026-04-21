@@ -181,15 +181,27 @@ function useBroadcaster(
   stream: MediaStream | null,
   slug: string,
   slot: number,
-  filters: CamFilters,
+  _filters: CamFilters,
   active: boolean,
+  onInitialFilters?: (f: Partial<CamFilters>) => void,
 ) {
   const peersRef = React.useRef<Map<string, RTCPeerConnection>>(new Map());
+  const onInitRef = React.useRef(onInitialFilters);
+  onInitRef.current = onInitialFilters;
 
   React.useEffect(() => {
     if (!socket || !active || !slug) return;
     console.log("[Broadcaster] registering", slug, "at slot", slot);
-    socket.emit("cam:register", { slug, slot });
+    socket.emit(
+      "cam:register",
+      { slug, slot },
+      (ack: { ok?: boolean; filters?: Partial<CamFilters> | null }) => {
+        if (ack?.ok && ack.filters && onInitRef.current) {
+          console.log("[Broadcaster] received persisted filters for", slug);
+          onInitRef.current(ack.filters);
+        }
+      }
+    );
     return () => {
       console.log("[Broadcaster] leaving", slug);
       socket.emit("cam:leave");
@@ -198,10 +210,8 @@ function useBroadcaster(
     };
   }, [socket, active, slug, slot]);
 
-  React.useEffect(() => {
-    if (!socket || !active || !slug) return;
-    socket.emit("cam:filter-update", { slug, filters });
-  }, [socket, active, slug, filters]);
+  // Note: les filter-updates sont émis par handleFiltersChange côté parent
+  // (une seule source d'émission pour éviter les boucles de feedback).
 
   React.useEffect(() => {
     if (!socket || !active || !stream) return;
@@ -676,7 +686,25 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   const { entries: remoteEntries, updateFilters: updateRemoteFilters } = useRemoteCams(socket, mySlugRef);
 
   // Broadcaster — independent of viewer
-  useBroadcaster(socket, localStream, mySlug, mySlot + 1, myFilters, myCamActive);
+  // Sur register, si des filtres sont persistés en DB pour ce slug, on les applique
+  useBroadcaster(
+    socket, localStream, mySlug, mySlot + 1, myFilters, myCamActive,
+    React.useCallback((persisted: Partial<CamFilters>) => {
+      setMyFilters((prev) => ({ ...prev, ...persisted }));
+    }, []),
+  );
+
+  // Sync: si un autre user (ou un autre onglet) modifie MES filtres, applique localement
+  // sans ré-émettre (sinon boucle infinie, car handleFiltersChange émet déjà sur edit user).
+  React.useEffect(() => {
+    if (!socket || !mySlug) return;
+    const onOwnFilterUpdate = ({ slug, filters }: { slug: string; filters: Partial<CamFilters> }) => {
+      if (slug !== mySlug) return;
+      setMyFilters((prev) => ({ ...prev, ...filters }));
+    };
+    socket.on("cam:filter-update", onOwnFilterUpdate);
+    return () => { socket.off("cam:filter-update", onOwnFilterUpdate); };
+  }, [socket, mySlug]);
 
   // Deactivate when slot changes while active (1 cam per person)
   const prevMySlot = React.useRef(mySlot);

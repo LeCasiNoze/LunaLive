@@ -21,7 +21,7 @@ import {
 export let chatIo: Server | null = null;
 
 // Active cam broadcasters: slug → { socketId, slot, filters }
-const camBroadcasters = new Map<string, { socketId: string; slot: number; filters?: Record<string, number> }>();
+const camBroadcasters = new Map<string, { socketId: string; slot: number; filters?: Record<string, any> }>();
 
 type ChatMode = "public" | "popup";
 
@@ -485,7 +485,7 @@ export function attachChat(io: Server) {
 
     // Broadcaster registers their cam (stream-control page)
     // Enforces 1 cam per slug: if already registered under another socket, kick the old one
-    socket.on("cam:register", ({ slug, slot }: { slug: string; slot: number }, cb?: (ack: any) => void) => {
+    socket.on("cam:register", async ({ slug, slot }: { slug: string; slot: number }, cb?: (ack: any) => void) => {
       const s = String(slug || "").trim().toLowerCase();
       if (!s) return cb?.({ ok: false, error: "bad_slug" });
 
@@ -500,14 +500,28 @@ export function attachChat(io: Server) {
         }
       }
 
-      camBroadcasters.set(s, { socketId: socket.id, slot: Number(slot) || 1 });
+      // Load persisted filters from DB (fallback to any in-memory value)
+      let persistedFilters: Record<string, any> | undefined = existing?.filters;
+      try {
+        const r = await pool.query(
+          `SELECT filters FROM fsb_cam_filters WHERE slug = $1 LIMIT 1`,
+          [s]
+        );
+        if (r.rows?.[0]?.filters) persistedFilters = r.rows[0].filters;
+      } catch (e) {
+        console.error("[cam:register] failed to load filters:", e);
+      }
+
+      camBroadcasters.set(s, { socketId: socket.id, slot: Number(slot) || 1, filters: persistedFilters });
       socket.data.camSlug = s;
       socket.join("fsb-cam-bcasters");
       // Broadcaster also joins viewers room so they receive filter updates from others
       socket.join("fsb-cam-viewers");
-      // Notify all current viewers
-      io.to("fsb-cam-viewers").emit("cam:registered", { slug: s, slot: Number(slot) || 1, socketId: socket.id });
-      cb?.({ ok: true, slug: s });
+      // Notify all current viewers (include persisted filters so they show up immediately)
+      io.to("fsb-cam-viewers").emit("cam:registered", {
+        slug: s, slot: Number(slot) || 1, socketId: socket.id, filters: persistedFilters ?? null,
+      });
+      cb?.({ ok: true, slug: s, filters: persistedFilters ?? null });
     });
 
     // Broadcaster updates camera CSS filters
@@ -516,6 +530,14 @@ export function attachChat(io: Server) {
       const bc = camBroadcasters.get(s);
       if (bc) camBroadcasters.set(s, { ...bc, filters });
       io.to("fsb-cam-viewers").emit("cam:filter-update", { slug: s, filters });
+      // Persist to DB so filters survive broadcaster disconnect / server restart
+      pool.query(
+        `INSERT INTO fsb_cam_filters (slug, filters, updated_at)
+           VALUES ($1, $2, now())
+         ON CONFLICT (slug) DO UPDATE
+           SET filters = EXCLUDED.filters, updated_at = now()`,
+        [s, JSON.stringify(filters)]
+      ).catch((e) => console.error("[cam:filter-update] persist failed:", e));
     });
 
     // Broadcaster or viewer leaves cam
