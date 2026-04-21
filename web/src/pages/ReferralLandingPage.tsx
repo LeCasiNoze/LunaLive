@@ -46,6 +46,7 @@ type Config = {
   goldenDepositAmount: string;
   goldenBonusAmount: string;
   goldenTotalAmount: string;
+  goldenHeroCtaText: string;
   // Typography base
   t_brandFs: string;
   t_brandFf: string;
@@ -120,6 +121,7 @@ const DEFAULT_CONFIG: Config = {
   goldenDepositAmount: "20",
   goldenBonusAmount: "20",
   goldenTotalAmount: "40",
+  goldenHeroCtaText: "",
   t_brandFs: "",
   t_brandFf: "",
   t_brandLs: "",
@@ -510,6 +512,19 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     );
     html = html.replace(/<p class="hero-subtitle">[\s\S]*?<\/p>/, `<p class="hero-subtitle">${esc(cfg.goldenHeroSubtitle)}</p>`);
     html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(cfg.goldenPageTitle)}</title>`);
+
+    // Texte custom du bouton RÉCLAME (hero + sticky mobile)
+    if (cfg.goldenHeroCtaText && cfg.goldenHeroCtaText.trim()) {
+      const ctaText = esc(cfg.goldenHeroCtaText.trim());
+      html = html.replace(
+        /(<a[^>]*class="btn-jouer"[^>]*>)[\s\S]*?(<\/a>)/g,
+        `$1${ctaText}$2`
+      );
+      html = html.replace(
+        /(<a[^>]*class="sticky-cta"[^>]*>)[\s\S]*?(<\/a>)/g,
+        `$1${ctaText}$2`
+      );
+    }
 
     // Inject CSS custom vars before </style>
     const cssVars = buildCustomVarsCSS(cfg);

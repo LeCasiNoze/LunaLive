@@ -62,6 +62,9 @@ interface Config {
   goldenDepositAmount: string;  // ex: "20"
   goldenBonusAmount: string;    // ex: "20"
   goldenTotalAmount: string;    // ex: "40"
+  // Texte personnalisé du bouton RÉCLAME (hero btn-jouer). Si vide, on utilise
+  // le texte par défaut "RÉCLAME TES X€ OFFERTS" avec X = goldenBonusAmount.
+  goldenHeroCtaText: string;
   // Typography — base (all breakpoints)
   t_brandFs: string;
   t_brandFf: string;
@@ -312,6 +315,7 @@ const DEFAULT_CONFIG: Config = {
   goldenDepositAmount: "20",
   goldenBonusAmount: "20",
   goldenTotalAmount: "40",
+  goldenHeroCtaText: "",
   // Typography base
   t_brandFs: "",
   t_brandFf: "",
@@ -832,6 +836,20 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
       html = html.replace(
         /<title>[^<]*<\/title>/,
         `<title>${esc(cfg.goldenPageTitle)}</title>`
+      );
+    }
+
+    // Texte custom du bouton RÉCLAME — remplace tout le contenu de .btn-jouer
+    // Même texte pour btn-jouer (hero) et sticky-cta (bouton fixé en bas mobile).
+    if (cfg.goldenHeroCtaText && cfg.goldenHeroCtaText.trim()) {
+      const ctaText = esc(cfg.goldenHeroCtaText.trim());
+      html = html.replace(
+        /(<a[^>]*class="btn-jouer"[^>]*>)[\s\S]*?(<\/a>)/g,
+        `$1${ctaText}$2`
+      );
+      html = html.replace(
+        /(<a[^>]*class="sticky-cta"[^>]*>)[\s\S]*?(<\/a>)/g,
+        `$1${ctaText}$2`
       );
     }
 
@@ -2814,6 +2832,18 @@ export default function AffiEditorPage() {
                       <TextField label="Bonus (€)" value={cfg.goldenBonusAmount} onChange={set("goldenBonusAmount")} placeholder="20" />
                       <TextField label="Total (€)" value={cfg.goldenTotalAmount} onChange={set("goldenTotalAmount")} placeholder="40" />
                     </div>
+                  </Section>
+
+                  <Section title="🎯 Bouton RÉCLAME (hero + sticky mobile)">
+                    <div style={{ fontSize: 11, color: "#888", marginBottom: 4, lineHeight: 1.4 }}>
+                      Texte personnalisé du bouton principal (celui sous le coffre) ET du bouton sticky qui suit le scroll sur mobile. Laisse vide pour garder le texte auto "RÉCLAME TES {'{'}bonus{'}'}€ OFFERTS".
+                    </div>
+                    <TextField
+                      label="Texte du bouton"
+                      value={cfg.goldenHeroCtaText}
+                      onChange={set("goldenHeroCtaText")}
+                      placeholder={`RÉCLAME TES ${cfg.goldenBonusAmount || "20"}€ OFFERTS`}
+                    />
                   </Section>
 
                   <Section title="Hero" defaultOpen={false}>
