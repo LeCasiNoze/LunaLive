@@ -282,21 +282,11 @@ function applyConfig(
   if (model === 5) {
     html = html.replace(/__VARIANT__/g, goldenVariant);
 
-    // Layout lock RADICAL : viewport figé à 390px → pixel-perfect ratio
-    // sur tous mobiles (mêmes proportions que la preview éditeur 390px).
-    html = html.replace(
-      /<meta\s+name=["']viewport["'][^>]*>/i,
-      '<meta name="viewport" content="width=390, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">'
-    );
-    if (!/name=["']viewport["']/i.test(html)) {
-      html = html.replace(
-        /<head[^>]*>/i,
-        `$&\n  <meta name="viewport" content="width=390, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">`
-      );
-    }
-
-    // Fix écrans courts (iPhone SE 375×667)
+    // Fix mobile — zoom uniforme sur <390px + fix iPhone SE
     const SHORT_SCREEN_FIX = `<style data-affi-short-screen-fix>
+      @media (max-width: 389px) {
+        html { zoom: calc(100vw / 390); }
+      }
       @media (max-width: 430px) and (max-height: 860px) {
         .hero-card { transform: none !important; }
         .promo-image-container img { --chest-translate: 0 !important; }

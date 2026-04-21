@@ -538,27 +538,18 @@ function applyConfig(
   if (model === 5) {
     html = html.replace(/__VARIANT__/g, goldenVariant);
 
-    // ─── Layout lock RADICAL : viewport figé à 390px ─────────────────────────
-    // On remplace le <meta viewport> du template pour forcer mobile browsers
-    // à calculer le layout comme si viewport = 390px (largeur de référence éditeur).
-    // Le browser scale ensuite automatiquement pour fit l'écran physique.
-    // → Résultat : PIXEL-PERFECT RATIO, tout mobile voit exactement la preview
-    //   éditeur (juste plus grand ou plus petit selon le device physique).
-    html = html.replace(
-      /<meta\s+name=["']viewport["'][^>]*>/i,
-      '<meta name="viewport" content="width=390, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">'
-    );
+    // Note: on garde le <meta viewport width=device-width> du template
+    // → desktop rend normalement, mobile rend à sa largeur native.
+    // Le scaling mobile est géré par CSS `zoom` ci-dessous uniquement sur petits écrans.
 
-    // Si aucun <meta viewport> n'existait, on en injecte un
-    if (!/name=["']viewport["']/i.test(html)) {
-      html = html.replace(
-        /<head[^>]*>/i,
-        `$&\n  <meta name="viewport" content="width=390, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">`
-      );
-    }
-
-    // ─── Fix écrans courts (iPhone SE 375×667) ───────────────────────────────
+    // ─── Fix mobile — zoom uniforme + fix iPhone SE (écran court) ────────────
     const SHORT_SCREEN_FIX = `<style data-affi-short-screen-fix>
+      /* Zoom uniforme sur mobile étroit (<390px) pour rendre comme la preview 390 */
+      @media (max-width: 389px) {
+        html { zoom: calc(100vw / 390); }
+      }
+      /* Fix iPhone SE (écran court) — neutralise les translations qui font
+         chevaucher le coffre sur le sous-titre */
       @media (max-width: 430px) and (max-height: 860px) {
         .hero-card { transform: none !important; }
         .promo-image-container img { --chest-translate: 0 !important; }
