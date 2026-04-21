@@ -557,6 +557,27 @@ function applyConfig(
       );
     }
 
+    // ─── Fix écrans courts (iPhone SE 375×667) ───────────────────────────────
+    // 1) Neutralise les translations négatives qui font chevaucher le coffre
+    //    sur le sous-titre ("Double ton premier dépôt !").
+    // 2) Réduit l'espace vide en haut (le coffre monte naturellement).
+    // 3) Rapproche légèrement le bouton RÉCLAME du coffre.
+    // AUCUN changement de taille (textes/coffre gardent leurs proportions).
+    const SHORT_SCREEN_FIX = `<style data-affi-short-screen-fix>
+      @media (max-width: 430px) and (max-height: 860px) {
+        .hero-card { transform: none !important; }
+        .promo-image-container img { --chest-translate: 0 !important; }
+        .hero-section {
+          padding-top: 4px !important;
+          padding-bottom: 16px !important;
+        }
+        .hero-content { padding-top: 0 !important; }
+        .brand-signature { margin-bottom: 6px !important; }
+        .cta-cluster { margin-top: -4px !important; }
+      }
+    </style>`;
+    html = html.replace(/<\/head>/, `${SHORT_SCREEN_FIX}\n</head>`);
+
     // ─── Montants du bonus ─────────────────────────────────────────────────
     const deposit = String(cfg.goldenDepositAmount || "20").trim() || "20";
     const bonus = String(cfg.goldenBonusAmount || "20").trim() || "20";
