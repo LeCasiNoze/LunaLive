@@ -2197,7 +2197,7 @@ export function injectButtonsIntoIframe(
   setTimeout(updateAllPositions, 1000);
   setTimeout(updateAllPositions, 2500);
 
-  console.log(`[AffiEditor] Injected ${buttons.length} button(s) into iframe`);
+  console.log(`[AffiEditor] Injected ${mobileBtns.length} mobile + ${desktopBtns.length} desktop button(s)`);
 }
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
