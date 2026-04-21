@@ -261,6 +261,8 @@ function useRemoteCams(
 ) {
   const [entries, setEntries] = React.useState<Map<string, RemoteEntry>>(new Map());
   const peersRef = React.useRef<Map<string, RTCPeerConnection>>(new Map());
+  // Track des handlers par slug pour les off() proprement lors d'une reconnexion
+  const handlersRef = React.useRef<Map<string, { offer: any; ice: any }>>(new Map());
 
   const connect = React.useCallback((bc: { slug: string; slot: number; socketId: string; filters: any }) => {
     if (!socket) return;
@@ -268,9 +270,20 @@ function useRemoteCams(
       console.log("[RemoteCams] skip self:", bc.slug);
       return;
     }
-    if (peersRef.current.has(bc.slug)) {
-      console.log("[RemoteCams] already connected to:", bc.slug);
-      return;
+    // Si un ancien PC existe pour ce slug (re-registration broadcaster après
+    // refresh/kick), on le ferme et on reconnecte. Sinon on resterait bloqué
+    // sur une PC obsolète => écran noir.
+    const stale = peersRef.current.get(bc.slug);
+    if (stale) {
+      console.log("[RemoteCams] re-registration for", bc.slug, "→ closing stale PC");
+      try { stale.close(); } catch {}
+      peersRef.current.delete(bc.slug);
+      const staleH = handlersRef.current.get(bc.slug);
+      if (staleH) {
+        socket.off("cam:offer", staleH.offer);
+        socket.off("cam:ice", staleH.ice);
+        handlersRef.current.delete(bc.slug);
+      }
     }
     console.log("[RemoteCams] connecting to broadcaster:", bc.slug, "slot:", bc.slot, "socketId:", bc.socketId);
 
@@ -329,6 +342,7 @@ function useRemoteCams(
     };
     socket.on("cam:offer", handleOffer);
     socket.on("cam:ice", handleIce);
+    handlersRef.current.set(bc.slug, { offer: handleOffer, ice: handleIce });
 
     // Request stream from this broadcaster
     socket.emit("cam:request", { fromSlug: bc.slug });
@@ -352,6 +366,12 @@ function useRemoteCams(
       console.log("[RemoteCams] cam:left", slug);
       peersRef.current.get(slug)?.close();
       peersRef.current.delete(slug);
+      const h = handlersRef.current.get(slug);
+      if (h) {
+        socket.off("cam:offer", h.offer);
+        socket.off("cam:ice", h.ice);
+        handlersRef.current.delete(slug);
+      }
       setEntries(prev => { const next = new Map(prev); next.delete(slug); return next; });
     };
 
@@ -373,6 +393,11 @@ function useRemoteCams(
       socket.off("cam:registered", onRegistered);
       socket.off("cam:left", onLeft);
       socket.off("cam:filter-update", onFilterUpdate);
+      handlersRef.current.forEach((h) => {
+        socket.off("cam:offer", h.offer);
+        socket.off("cam:ice", h.ice);
+      });
+      handlersRef.current.clear();
       peersRef.current.forEach(pc => pc.close());
       peersRef.current.clear();
       setEntries(new Map());

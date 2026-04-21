@@ -498,6 +498,9 @@ export function attachChat(io: Server) {
           oldSocket.leave("fsb-cam-bcasters");
           oldSocket.data.camSlug = undefined;
         }
+        // Notifier les viewers pour qu'ils cleanup leurs PC stale avant qu'on
+        // ré-émette cam:registered juste après (sinon écran noir sur le viewer).
+        io.to("fsb-cam-viewers").emit("cam:left", { slug: s });
       }
 
       // Load persisted filters from DB (fallback to any in-memory value)
