@@ -23,9 +23,23 @@ function slugFromUsername(username: string): string {
   return u; // on préfère l'username réel plutôt que FSB_SLUGS[0] (qui causait des collisions)
 }
 
-const ICE_SERVERS = [
+// STUN public + TURN relay public (OpenRelay / Metered) pour contourner
+// les NAT stricts (CGNAT 4G, corporate, etc.) où le P2P direct échoue.
+// Si TURN public rate-limité, configurer un TURN privé via VITE_TURN_URL.
+const CUSTOM_TURN_URL = import.meta.env.VITE_TURN_URL as string | undefined;
+const CUSTOM_TURN_USER = import.meta.env.VITE_TURN_USER as string | undefined;
+const CUSTOM_TURN_PASS = import.meta.env.VITE_TURN_PASS as string | undefined;
+
+const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
+  // TURN public OpenRelay (gratuit, rate-limité)
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+  ...(CUSTOM_TURN_URL && CUSTOM_TURN_USER && CUSTOM_TURN_PASS
+    ? [{ urls: CUSTOM_TURN_URL, username: CUSTOM_TURN_USER, credential: CUSTOM_TURN_PASS }]
+    : []),
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -221,8 +235,19 @@ function useBroadcaster(
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
       peersRef.current.set(viewerId, pc);
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-      pc.onicecandidate = ({ candidate }) => { if (candidate) socket.emit("cam:ice", { to: viewerId, candidate }); };
+      pc.onicecandidate = ({ candidate }) => {
+        if (candidate) {
+          console.log("[Broadcaster] ICE →", viewerId, candidate.type, candidate.protocol, candidate.address);
+          socket.emit("cam:ice", { to: viewerId, candidate });
+        } else {
+          console.log("[Broadcaster] ICE gathering complete for", viewerId);
+        }
+      };
+      pc.oniceconnectionstatechange = () => {
+        console.log("[Broadcaster] iceConnectionState →", pc.iceConnectionState, "for", viewerId);
+      };
       pc.onconnectionstatechange = () => {
+        console.log("[Broadcaster] connectionState →", pc.connectionState, "for", viewerId);
         if (pc.connectionState === "failed" || pc.connectionState === "closed") {
           pc.close(); peersRef.current.delete(viewerId);
         }
@@ -314,10 +339,19 @@ function useRemoteCams(
     };
 
     pc.onicecandidate = ({ candidate }) => {
-      if (candidate) socket.emit("cam:ice", { to: bc.socketId, candidate });
+      if (candidate) {
+        console.log("[RemoteCams] ICE →", bc.slug, candidate.type, candidate.protocol, candidate.address);
+        socket.emit("cam:ice", { to: bc.socketId, candidate });
+      } else {
+        console.log("[RemoteCams] ICE gathering complete for", bc.slug);
+      }
+    };
+    pc.oniceconnectionstatechange = () => {
+      console.log("[RemoteCams] iceConnectionState →", pc.iceConnectionState, "for", bc.slug);
     };
 
     pc.onconnectionstatechange = () => {
+      console.log("[RemoteCams] connectionState →", pc.connectionState, "for", bc.slug);
       if (pc.connectionState === "failed" || pc.connectionState === "closed") {
         peersRef.current.delete(bc.slug);
         setEntries(prev => {
