@@ -264,15 +264,19 @@ function makeFaqId(): string {
   return `faq_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export const MAX_FAQ_ITEMS = 10;
+export const MAX_FAQ_ITEMS = 15;
 export const MAX_FAQ_QUESTION_LEN = 160;
 export const MAX_FAQ_ANSWER_LEN = 400;
 
+// Calqué sur model5.html — 7 questions par défaut (template d'origine)
 export const DEFAULT_FAQ_ITEMS: FaqItem[] = [
   { id: makeFaqId(), q: "Le bonus de 20€ est garanti ?", a: "Oui. Dès que ton premier dépôt de 20€ est validé, le bonus est ajouté automatiquement.", open: true },
   { id: makeFaqId(), q: "Le bonus s'applique-t-il à tous les dépôts ?", a: "Non. Il s'applique uniquement à ton tout premier dépôt validé." },
   { id: makeFaqId(), q: "Je peux retirer mes gains ?", a: "Oui. Retrait disponible quand tu veux. Délai habituel sous 24h." },
   { id: makeFaqId(), q: "C'est fiable et sécurisé ?", a: "Oui. Plateforme licenciée, transactions chiffrées SSL et compte protégé." },
+  { id: makeFaqId(), q: "Je peux jouer depuis mon téléphone ?", a: "Oui. Le site est entièrement optimisé mobile, tablette et PC. Aucune application à installer." },
+  { id: makeFaqId(), q: "Quels modes de paiement sont acceptés ?", a: "CB, virement bancaire et solutions e-wallet selon ta localisation. Toutes les options sont affichées à l'étape de dépôt." },
+  { id: makeFaqId(), q: "Y a-t-il des conditions de mise sur le bonus ?", a: "Oui, des conditions de mise s'appliquent. Consulte les CGU du casino pour connaître les exigences exactes avant de jouer." },
 ];
 
 export function parseFaqItems(json: string | undefined | null): FaqItem[] {
@@ -2061,7 +2065,7 @@ function FaqEditor({ items, onChange }: FaqEditorProps) {
     onChange(items.map((it, idx) => ({ ...it, open: idx === i })));
   }
   function resetDefaults() {
-    if (!confirm("Remettre les 4 questions par défaut ? Tes modifications actuelles seront perdues.")) return;
+    if (!confirm(`Remettre les ${DEFAULT_FAQ_ITEMS.length} questions par défaut ? Tes modifications actuelles seront perdues.`)) return;
     onChange(DEFAULT_FAQ_ITEMS.map(it => ({ ...it, id: makeFaqId() })));
   }
 
@@ -2092,11 +2096,11 @@ function FaqEditor({ items, onChange }: FaqEditorProps) {
                 Ouvert par défaut
               </label>
               <div style={{ flex: 1 }} />
-              <button onClick={() => move(i, -1)} disabled={i === 0} title="Monter"
+              <button type="button" onClick={() => move(i, -1)} disabled={i === 0} title="Monter"
                 style={{ ...iconBtnStyle, opacity: i === 0 ? 0.3 : 1, cursor: i === 0 ? "not-allowed" : "pointer" }}>↑</button>
-              <button onClick={() => move(i, 1)} disabled={i === items.length - 1} title="Descendre"
+              <button type="button" onClick={() => move(i, 1)} disabled={i === items.length - 1} title="Descendre"
                 style={{ ...iconBtnStyle, opacity: i === items.length - 1 ? 0.3 : 1, cursor: i === items.length - 1 ? "not-allowed" : "pointer" }}>↓</button>
-              <button onClick={() => remove(i)} title="Supprimer"
+              <button type="button" onClick={() => remove(i)} title="Supprimer"
                 style={{ ...iconBtnStyle, color: "#ff6b6b", borderColor: "rgba(255,107,107,.35)" }}>🗑</button>
             </div>
 
@@ -2135,6 +2139,7 @@ function FaqEditor({ items, onChange }: FaqEditorProps) {
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 6 }}>
         <button
+          type="button"
           onClick={add}
           disabled={items.length >= MAX_FAQ_ITEMS}
           style={{
@@ -2150,8 +2155,9 @@ function FaqEditor({ items, onChange }: FaqEditorProps) {
           + Ajouter une question {items.length > 0 && `(${items.length}/${MAX_FAQ_ITEMS})`}
         </button>
         <button
+          type="button"
           onClick={resetDefaults}
-          title="Remettre les 4 questions par défaut"
+          title="Remettre les questions par défaut (template d'origine)"
           style={{ border: "1px solid #2a2a4a", borderRadius: 8, background: "transparent", color: "#888", padding: "8px 0", cursor: "pointer", font: "inherit", fontSize: 11, fontWeight: 600 }}
         >↻ Défaut</button>
       </div>
