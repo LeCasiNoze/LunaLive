@@ -288,9 +288,11 @@ export function parseFaqItems(json: string | undefined | null): FaqItem[] {
     let openSeen = false;
     for (const item of arr) {
       if (!item || typeof item !== "object") continue;
+      // Ne PAS filtrer les items vides ici — sinon un "Ajouter" qui crée un
+      // item vierge serait silencieusement viré au prochain parse. On ne
+      // filtre qu'au moment de l'injection HTML (dans applyConfig).
       const q = typeof item.q === "string" ? item.q : "";
       const a = typeof item.a === "string" ? item.a : "";
-      if (!q.trim() && !a.trim()) continue;
       const id = typeof item.id === "string" && item.id ? item.id : makeFaqId();
       const open = !openSeen && item.open === true;
       if (open) openSeen = true;
