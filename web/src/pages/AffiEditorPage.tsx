@@ -101,6 +101,8 @@ interface Config {
   // Boutons custom (JSON-stringified array de AffiButton) — par device
   customButtonsJson: string;          // Mobile/Tablette (par défaut)
   customButtonsJsonDesktop: string;   // Desktop
+  // FAQ items (JSON-stringified array de FaqItem) — model 5 uniquement
+  faqItemsJson: string;
 }
 
 // ─── Custom buttons ───────────────────────────────────────────────────────────
@@ -249,6 +251,64 @@ function isValidHexColor(v: unknown): v is string {
   return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v);
 }
 
+// ─── FAQ items ────────────────────────────────────────────────────────────────
+
+export interface FaqItem {
+  id: string;
+  q: string;
+  a: string;
+  open?: boolean;
+}
+
+function makeFaqId(): string {
+  return `faq_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export const MAX_FAQ_ITEMS = 10;
+export const MAX_FAQ_QUESTION_LEN = 160;
+export const MAX_FAQ_ANSWER_LEN = 400;
+
+export const DEFAULT_FAQ_ITEMS: FaqItem[] = [
+  { id: makeFaqId(), q: "Le bonus de 20€ est garanti ?", a: "Oui. Dès que ton premier dépôt de 20€ est validé, le bonus est ajouté automatiquement.", open: true },
+  { id: makeFaqId(), q: "Le bonus s'applique-t-il à tous les dépôts ?", a: "Non. Il s'applique uniquement à ton tout premier dépôt validé." },
+  { id: makeFaqId(), q: "Je peux retirer mes gains ?", a: "Oui. Retrait disponible quand tu veux. Délai habituel sous 24h." },
+  { id: makeFaqId(), q: "C'est fiable et sécurisé ?", a: "Oui. Plateforme licenciée, transactions chiffrées SSL et compte protégé." },
+];
+
+export function parseFaqItems(json: string | undefined | null): FaqItem[] {
+  if (!json) return DEFAULT_FAQ_ITEMS.map(f => ({ ...f }));
+  try {
+    const arr = JSON.parse(json);
+    if (!Array.isArray(arr)) return DEFAULT_FAQ_ITEMS.map(f => ({ ...f }));
+    const cleaned: FaqItem[] = [];
+    let openSeen = false;
+    for (const item of arr) {
+      if (!item || typeof item !== "object") continue;
+      const q = typeof item.q === "string" ? item.q : "";
+      const a = typeof item.a === "string" ? item.a : "";
+      if (!q.trim() && !a.trim()) continue;
+      const id = typeof item.id === "string" && item.id ? item.id : makeFaqId();
+      const open = !openSeen && item.open === true;
+      if (open) openSeen = true;
+      cleaned.push({ id, q: q.slice(0, MAX_FAQ_QUESTION_LEN), a: a.slice(0, MAX_FAQ_ANSWER_LEN), open });
+      if (cleaned.length >= MAX_FAQ_ITEMS) break;
+    }
+    if (cleaned.length === 0) return DEFAULT_FAQ_ITEMS.map(f => ({ ...f }));
+    if (!openSeen) cleaned[0].open = true;
+    return cleaned;
+  } catch {
+    return DEFAULT_FAQ_ITEMS.map(f => ({ ...f }));
+  }
+}
+
+export function stringifyFaqItems(items: FaqItem[]): string {
+  return JSON.stringify(items);
+}
+
+export function defaultFaqItem(): FaqItem {
+  return { id: makeFaqId(), q: "", a: "" };
+}
+
 export function parseAffiButtons(json: string | undefined | null): AffiButton[] {
   if (!json) return [];
   try {
@@ -351,6 +411,7 @@ const DEFAULT_CONFIG: Config = {
   p_ctaY: "",
   customButtonsJson: "",
   customButtonsJsonDesktop: "",
+  faqItemsJson: "",
 };
 
 // ─── TYPOGRAPHY / CSS VARS ───────────────────────────────────────────────────
@@ -850,6 +911,24 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
       html = html.replace(
         /(<a[^>]*class="sticky-cta"[^>]*>)[\s\S]*?(<\/a>)/g,
         `$1${ctaText}$2`
+      );
+    }
+
+    // FAQ (Q/R) — remplace le contenu de .faq-list-modern par les items configurés
+    const faqItems = parseFaqItems(cfg.faqItemsJson);
+    const faqHtml = faqItems.map((it) => {
+      const q = esc(it.q.trim());
+      const a = esc(it.a.trim());
+      if (!q && !a) return "";
+      return `            <details class="faq-card-modern"${it.open ? " open" : ""}>
+              <summary><span class="faq-question-text">${q}</span></summary>
+              <div class="faq-answer-modern">${a}</div>
+            </details>`;
+    }).filter(Boolean).join("\n\n");
+    if (faqHtml) {
+      html = html.replace(
+        /(<div class="faq-list-modern">)[\s\S]*?(<\/div>\s*<\/div>\s*<\/section>)/,
+        `$1\n${faqHtml}\n          $2`
       );
     }
 
@@ -1950,6 +2029,142 @@ function ButtonsEditor({ buttons, onChange, bonusAmount, affiLink, variant }: Bu
   );
 }
 
+// ─── FAQ editor ───────────────────────────────────────────────────────────────
+
+interface FaqEditorProps {
+  items: FaqItem[];
+  onChange: (next: FaqItem[]) => void;
+}
+function FaqEditor({ items, onChange }: FaqEditorProps) {
+  function update(i: number, patch: Partial<FaqItem>) {
+    onChange(items.map((it, idx) => idx === i ? { ...it, ...patch } : it));
+  }
+  function remove(i: number) {
+    const next = items.filter((_, idx) => idx !== i);
+    // Si on supprime le "open", rouvre le premier
+    if (next.length > 0 && !next.some(n => n.open)) next[0] = { ...next[0], open: true };
+    onChange(next);
+  }
+  function add() {
+    if (items.length >= MAX_FAQ_ITEMS) return;
+    onChange([...items, defaultFaqItem()]);
+  }
+  function move(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= items.length) return;
+    const next = [...items];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  }
+  function setOpen(i: number) {
+    // Un seul ouvert à la fois (comportement du template)
+    onChange(items.map((it, idx) => ({ ...it, open: idx === i })));
+  }
+  function resetDefaults() {
+    if (!confirm("Remettre les 4 questions par défaut ? Tes modifications actuelles seront perdues.")) return;
+    onChange(DEFAULT_FAQ_ITEMS.map(it => ({ ...it, id: makeFaqId() })));
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 11, color: "#888", lineHeight: 1.4 }}>
+        Questions / réponses affichées dans la section "TES QUESTIONS" en bas de page.
+        Max {MAX_FAQ_ITEMS} items. L'item marqué <b>Ouvert</b> s'affiche déplié par défaut.
+      </div>
+
+      {items.length === 0 && (
+        <div style={{ padding: "10px 8px", textAlign: "center", color: "#888", fontSize: 11, background: "rgba(0,0,0,0.18)", borderRadius: 8, border: "1px dashed #2a2a4a" }}>
+          Aucune question
+        </div>
+      )}
+
+      {items.map((it, i) => {
+        const qCount = it.q.length;
+        const aCount = it.a.length;
+        const qOver = qCount > MAX_FAQ_QUESTION_LEN;
+        const aOver = aCount > MAX_FAQ_ANSWER_LEN;
+        return (
+          <div key={it.id} style={{ border: "1px solid #2a2a4a", borderRadius: 8, padding: "10px 10px 8px", background: "rgba(0,0,0,0.22)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <span style={{ fontSize: 11, color: "#aaa", fontWeight: 700 }}>#{i + 1}</span>
+              <label style={{ fontSize: 10, color: it.open ? "#FFD700" : "#888", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 6 }}>
+                <input type="radio" checked={!!it.open} onChange={() => setOpen(i)} style={{ accentColor: "#FFD700" }} />
+                Ouvert par défaut
+              </label>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => move(i, -1)} disabled={i === 0} title="Monter"
+                style={{ ...iconBtnStyle, opacity: i === 0 ? 0.3 : 1, cursor: i === 0 ? "not-allowed" : "pointer" }}>↑</button>
+              <button onClick={() => move(i, 1)} disabled={i === items.length - 1} title="Descendre"
+                style={{ ...iconBtnStyle, opacity: i === items.length - 1 ? 0.3 : 1, cursor: i === items.length - 1 ? "not-allowed" : "pointer" }}>↓</button>
+              <button onClick={() => remove(i)} title="Supprimer"
+                style={{ ...iconBtnStyle, color: "#ff6b6b", borderColor: "rgba(255,107,107,.35)" }}>🗑</button>
+            </div>
+
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 }}>
+                <label style={{ fontSize: 10, color: "#aaa", fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase" }}>Question</label>
+                <span style={{ fontSize: 10, color: qOver ? "#ff6b6b" : "#666", fontFamily: "monospace" }}>{qCount}/{MAX_FAQ_QUESTION_LEN}</span>
+              </div>
+              <input
+                type="text"
+                value={it.q}
+                maxLength={MAX_FAQ_QUESTION_LEN + 10}
+                onChange={(e) => update(i, { q: e.target.value.slice(0, MAX_FAQ_QUESTION_LEN) })}
+                placeholder="Ex: Le bonus est-il garanti ?"
+                style={{ width: "100%", padding: "7px 10px", fontSize: 12, borderRadius: 6, border: `1px solid ${qOver ? "#ff6b6b" : "#2a2a4a"}`, background: "#0f0d14", color: "#eee", font: "inherit", boxSizing: "border-box" }}
+              />
+            </div>
+
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 }}>
+                <label style={{ fontSize: 10, color: "#aaa", fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase" }}>Réponse</label>
+                <span style={{ fontSize: 10, color: aOver ? "#ff6b6b" : "#666", fontFamily: "monospace" }}>{aCount}/{MAX_FAQ_ANSWER_LEN}</span>
+              </div>
+              <textarea
+                value={it.a}
+                maxLength={MAX_FAQ_ANSWER_LEN + 50}
+                rows={3}
+                onChange={(e) => update(i, { a: e.target.value.slice(0, MAX_FAQ_ANSWER_LEN) })}
+                placeholder="Ex: Oui, dès validation du premier dépôt."
+                style={{ width: "100%", padding: "7px 10px", fontSize: 12, borderRadius: 6, border: `1px solid ${aOver ? "#ff6b6b" : "#2a2a4a"}`, background: "#0f0d14", color: "#eee", font: "inherit", boxSizing: "border-box", resize: "vertical" }}
+              />
+            </div>
+          </div>
+        );
+      })}
+
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 6 }}>
+        <button
+          onClick={add}
+          disabled={items.length >= MAX_FAQ_ITEMS}
+          style={{
+            border: "1px dashed rgba(255,215,0,.4)", borderRadius: 8,
+            background: items.length >= MAX_FAQ_ITEMS ? "rgba(100,100,100,.1)" : "rgba(255,215,0,.06)",
+            color: items.length >= MAX_FAQ_ITEMS ? "#666" : "#FFD700",
+            padding: "8px 0",
+            cursor: items.length >= MAX_FAQ_ITEMS ? "not-allowed" : "pointer",
+            font: "inherit", fontSize: 12, fontWeight: 700,
+          }}
+          title={items.length >= MAX_FAQ_ITEMS ? `Maximum ${MAX_FAQ_ITEMS} questions` : "Ajouter une question"}
+        >
+          + Ajouter une question {items.length > 0 && `(${items.length}/${MAX_FAQ_ITEMS})`}
+        </button>
+        <button
+          onClick={resetDefaults}
+          title="Remettre les 4 questions par défaut"
+          style={{ border: "1px solid #2a2a4a", borderRadius: 8, background: "transparent", color: "#888", padding: "8px 0", cursor: "pointer", font: "inherit", fontSize: 11, fontWeight: 600 }}
+        >↻ Défaut</button>
+      </div>
+    </div>
+  );
+}
+
+const iconBtnStyle: React.CSSProperties = {
+  border: "1px solid #2a2a4a", borderRadius: 6, background: "transparent",
+  color: "#bbb", padding: "3px 8px", cursor: "pointer", font: "inherit",
+  fontSize: 11, lineHeight: 1,
+};
+
 // ─── Iframe button injection (fallback fiable) ────────────────────────────────
 
 /** buttons = AffiButton[] → injecte en mobile uniquement (rétrocompat).
@@ -2893,6 +3108,12 @@ export default function AffiEditorPage() {
                         </div>
                       </div>
                     )}
+                  </Section>
+                  <Section title="❓ Questions / Réponses" defaultOpen={false}>
+                    <FaqEditor
+                      items={parseFaqItems(cfg.faqItemsJson)}
+                      onChange={(next) => set("faqItemsJson")(stringifyFaqItems(next))}
+                    />
                   </Section>
                 </>
               )}
