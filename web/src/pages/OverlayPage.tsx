@@ -1,9 +1,10 @@
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import { io } from "socket.io-client";
-import { decodeConfig, type OverlayConfig, type ZoneRect } from "./fsb/OverlayDesignerSection";
+import { decodeConfig, injectPremiumKeyframes, type OverlayConfig, type ZoneRect } from "./fsb/OverlayDesignerSection";
 import { OverlayBgAnimation } from "./fsb/OverlayBgAnimations";
 import { SponsorBanner, defaultSponsor } from "./fsb/SponsorBanner";
+import { useScreenViewer } from "./fsb/StreamControlPage";
 
 const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
   ?? "https://lunalive-api.onrender.com";
@@ -470,15 +471,67 @@ function CamZone({ cam, stream, filters }: {
 
 // ─── Slot zone ────────────────────────────────────────────────────────────────
 
-function SlotZone({ slot }: { slot: OverlayConfig["slot"] }) {
+function SlotZone({
+  slot, screenStream,
+}: {
+  slot: OverlayConfig["slot"];
+  screenStream?: MediaStream | null;
+}) {
+  React.useEffect(() => { injectPremiumKeyframes(); }, []);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  React.useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (screenStream) { v.srcObject = screenStream; v.play().catch(() => {}); }
+    else { v.srcObject = null; }
+  }, [screenStream]);
+
   if (!slot.enabled) return null;
+
+  const videoEl = screenStream ? (
+    <video
+      ref={videoRef}
+      muted
+      playsInline
+      autoPlay
+      style={{ width: "100%", height: "100%", objectFit: "contain", background: "transparent", display: "block" }}
+    />
+  ) : null;
+
+  // Bordure premium animée : gradient violet qui fait le tour du slot en boucle.
+  if (slot.showFrame && slot.animatedBorder) {
+    const pad = Math.max(1, slot.frameWidth || 2);
+    return (
+      <div style={{
+        ...rect(slot),
+        padding: pad,
+        background: "linear-gradient(120deg,#3b3473,#6d5ecc,#a855f7,#6d5ecc,#3b3473)",
+        backgroundSize: "300% 100%",
+        animation: "slotBorderSweep 6s linear infinite, slotBorderGlow 3.4s ease-in-out infinite",
+        borderRadius: slot.borderRadius + pad,
+      }}>
+        <div style={{
+          width: "100%", height: "100%",
+          borderRadius: slot.borderRadius,
+          background: "transparent",
+          overflow: "hidden",
+        }}>
+          {videoEl}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       ...rect(slot),
       border: slot.showFrame ? `${slot.frameWidth}px solid ${slot.frameColor}` : "none",
       borderRadius: slot.borderRadius,
       background: "transparent",
-    }} />
+      overflow: "hidden",
+    }}>
+      {videoEl}
+    </div>
   );
 }
 
@@ -694,7 +747,13 @@ function PromoZone({ promo }: { promo: OverlayConfig["promo"] }) {
 
 // ─── Overlay renderer ─────────────────────────────────────────────────────────
 
-function OverlayRenderer({ config, camStreams }: { config: OverlayConfig; camStreams: Map<number, CamStreamEntry> }) {
+function OverlayRenderer({
+  config, camStreams, screenStream,
+}: {
+  config: OverlayConfig;
+  camStreams: Map<number, CamStreamEntry>;
+  screenStream?: MediaStream | null;
+}) {
   return (
     <div style={{
       position: "relative",
@@ -704,7 +763,7 @@ function OverlayRenderer({ config, camStreams }: { config: OverlayConfig; camStr
       background: "transparent",
     }}>
       <BackgroundZone bg={config.background} />
-      <SlotZone slot={config.slot} />
+      <SlotZone slot={config.slot} screenStream={screenStream} />
       <StatsZone stats={config.stats} />
       <ChatZone chat={config.chat} />
       <PromoZone promo={config.promo} />
@@ -774,6 +833,9 @@ export default function OverlayPage() {
   const { config, lastUpdate, socket } = useOverlaySocket(baseConfig ?? {} as OverlayConfig);
   const effectiveConfig = baseConfig ? config : null;
   const camStreams = useCamStreams(socket);
+  // Overlay OBS est un viewer pur — il ne partage jamais lui-même.
+  // On passe un mySlug vide pour qu'il n'ignore aucun broadcaster.
+  const remoteScreen = useScreenViewer(socket, "");
 
   // Page-level styles: fullscreen, transparent background for OBS
   React.useEffect(() => {
@@ -827,7 +889,7 @@ export default function OverlayPage() {
         inset: 0,
         background: isPreview ? "#07101f" : "transparent",
       }}>
-        <OverlayRenderer config={effectiveConfig} camStreams={camStreams} />
+        <OverlayRenderer config={effectiveConfig} camStreams={camStreams} screenStream={remoteScreen?.stream ?? null} />
       </div>
 
       {/* Preview badge */}

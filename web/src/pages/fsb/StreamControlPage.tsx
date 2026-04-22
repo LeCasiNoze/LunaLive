@@ -336,6 +336,214 @@ function useBroadcaster(
   }, [socket, active, stream]);
 }
 
+// ─── Screen share broadcaster ─────────────────────────────────────────────────
+// Un seul partage d'écran actif en global (contrainte serveur). Start =
+// getDisplayMedia + screen:register. Si quelqu'un d'autre démarre, on reçoit
+// screen:kicked et on coupe localement. Stop manuel = screen:leave.
+function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
+  const [sharing, setSharing] = React.useState(false);
+  const [localStream, setLocalStream] = React.useState<MediaStream | null>(null);
+  const peersRef = React.useRef<Map<string, RTCPeerConnection>>(new Map());
+  const pendingIceRef = React.useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+
+  const start = React.useCallback(async () => {
+    if (!socket || sharing) return;
+    let stream: MediaStream;
+    try {
+      stream = await (navigator.mediaDevices as any).getDisplayMedia({
+        video: { frameRate: { ideal: 30, max: 30 } },
+        audio: false,
+      });
+    } catch (e) {
+      console.warn("[ScreenShare] getDisplayMedia rejected:", e);
+      return;
+    }
+    // L'utilisateur peut arrêter via la barre "Stop sharing" native du navigateur
+    stream.getVideoTracks()[0]?.addEventListener("ended", () => { stop(); });
+
+    setLocalStream(stream);
+    setSharing(true);
+    socket.emit("screen:register", { slug: mySlug }, (ack: any) => {
+      if (!ack?.ok) console.warn("[ScreenShare] register failed", ack);
+    });
+  }, [socket, sharing, mySlug]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stop = React.useCallback(() => {
+    localStream?.getTracks().forEach(t => t.stop());
+    setLocalStream(null);
+    setSharing(false);
+    peersRef.current.forEach(pc => pc.close());
+    peersRef.current.clear();
+    pendingIceRef.current.clear();
+    socket?.emit("screen:leave");
+  }, [socket, localStream]);
+
+  // Si on est kické par un autre user, on coupe proprement côté local.
+  React.useEffect(() => {
+    if (!socket) return;
+    const onKicked = () => {
+      console.log("[ScreenShare] kicked by another user");
+      localStream?.getTracks().forEach(t => t.stop());
+      setLocalStream(null);
+      setSharing(false);
+      peersRef.current.forEach(pc => pc.close());
+      peersRef.current.clear();
+      pendingIceRef.current.clear();
+    };
+    socket.on("screen:kicked", onKicked);
+    return () => { socket.off("screen:kicked", onKicked); };
+  }, [socket, localStream]);
+
+  // Gestion des viewers qui demandent le flux (identique à useBroadcaster).
+  React.useEffect(() => {
+    if (!socket || !sharing || !localStream) return;
+
+    const handleRequest = async ({ viewerId }: { viewerId: string }) => {
+      const iceServers = await ensureIceServers();
+      const pc = new RTCPeerConnection({ iceServers });
+      peersRef.current.set(viewerId, pc);
+      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+      pc.onicecandidate = ({ candidate }) => {
+        if (candidate) socket.emit("screen:ice", { to: viewerId, candidate });
+      };
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+          pc.close();
+          peersRef.current.delete(viewerId);
+          pendingIceRef.current.delete(viewerId);
+        }
+      };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.emit("screen:offer", { to: viewerId, sdp: offer });
+    };
+    const handleAnswer = async ({ from, sdp }: { from: string; sdp: RTCSessionDescriptionInit }) => {
+      const pc = peersRef.current.get(from);
+      if (!pc) return;
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      const pending = pendingIceRef.current.get(from);
+      if (pending?.length) {
+        for (const c of pending) { try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch {} }
+        pendingIceRef.current.delete(from);
+      }
+    };
+    const handleIce = async ({ from, candidate }: { from: string; candidate: RTCIceCandidateInit }) => {
+      const pc = peersRef.current.get(from);
+      if (!pc) return;
+      if (!pc.remoteDescription) {
+        const q = pendingIceRef.current.get(from) ?? [];
+        q.push(candidate); pendingIceRef.current.set(from, q);
+        return;
+      }
+      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+    };
+    socket.on("screen:request", handleRequest);
+    socket.on("screen:answer", handleAnswer);
+    socket.on("screen:ice", handleIce);
+    return () => {
+      socket.off("screen:request", handleRequest);
+      socket.off("screen:answer", handleAnswer);
+      socket.off("screen:ice", handleIce);
+    };
+  }, [socket, sharing, localStream]);
+
+  return { sharing, localStream, start, stop };
+}
+
+// ─── Screen share viewer ──────────────────────────────────────────────────────
+// Reçoit le flux écran actuellement partagé (max 1 à la fois). Utilisé côté
+// StreamControlPage pour aperçu, et côté OverlayPage (OBS) pour rendu dans le slot.
+export function useScreenViewer(socket: Socket | null, mySlug: string) {
+  const [entry, setEntry] = React.useState<{ slug: string; stream: MediaStream | null; socketId: string } | null>(null);
+  const pcRef = React.useRef<RTCPeerConnection | null>(null);
+  const pendingIceRef = React.useRef<RTCIceCandidateInit[]>([]);
+  const currentSlugRef = React.useRef<string | null>(null);
+
+  const cleanup = React.useCallback(() => {
+    pcRef.current?.close();
+    pcRef.current = null;
+    pendingIceRef.current = [];
+    currentSlugRef.current = null;
+    setEntry(null);
+  }, []);
+
+  const connect = React.useCallback(async (bc: { slug: string; socketId: string }) => {
+    if (!socket) return;
+    // Skip si c'est moi qui partage (je n'ai pas besoin de recevoir mon propre flux).
+    if (bc.slug === mySlug) return;
+    // Si déjà connecté à ce slug, ne rien faire
+    if (currentSlugRef.current === bc.slug && pcRef.current) return;
+
+    cleanup();
+    currentSlugRef.current = bc.slug;
+    setEntry({ slug: bc.slug, socketId: bc.socketId, stream: null });
+
+    const iceServers = await ensureIceServers();
+    const pc = new RTCPeerConnection({ iceServers });
+    pcRef.current = pc;
+
+    pc.ontrack = ({ streams: s }) => {
+      const stream = s[0] ?? null;
+      if (!stream) return;
+      setEntry(prev => prev && prev.slug === bc.slug ? { ...prev, stream } : prev);
+    };
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) socket.emit("screen:ice", { to: bc.socketId, candidate });
+    };
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === "failed" || pc.connectionState === "closed") cleanup();
+    };
+
+    const handleOffer = async ({ slug, sdp, from }: { slug: string; sdp: RTCSessionDescriptionInit; from: string }) => {
+      if (slug !== bc.slug || pcRef.current !== pc) return;
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      for (const c of pendingIceRef.current) { try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch {} }
+      pendingIceRef.current = [];
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit("screen:answer", { to: from, sdp: answer });
+    };
+    const handleIce = async ({ candidate }: { from: string; candidate: RTCIceCandidateInit }) => {
+      if (pcRef.current !== pc) return;
+      if (!pc.remoteDescription) { pendingIceRef.current.push(candidate); return; }
+      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+    };
+    socket.on("screen:offer", handleOffer);
+    socket.on("screen:ice", handleIce);
+
+    // On stocke ces handlers pour cleanup dans l'effet principal
+    (pc as any)._screenHandlers = { handleOffer, handleIce };
+
+    socket.emit("screen:request", { fromSlug: bc.slug });
+  }, [socket, mySlug, cleanup]);
+
+  React.useEffect(() => {
+    if (!socket) return;
+    socket.emit("screen:viewer-join", {}, (ack: { ok: boolean; active: Array<{ slug: string; socketId: string }> }) => {
+      const bc = ack?.active?.[0];
+      if (bc) connect(bc);
+    });
+    const onRegistered = (bc: { slug: string; socketId: string }) => connect(bc);
+    const onLeft = ({ slug }: { slug: string }) => {
+      if (currentSlugRef.current === slug) cleanup();
+    };
+    socket.on("screen:registered", onRegistered);
+    socket.on("screen:left", onLeft);
+    return () => {
+      socket.off("screen:registered", onRegistered);
+      socket.off("screen:left", onLeft);
+      const h = pcRef.current && (pcRef.current as any)._screenHandlers;
+      if (h) {
+        socket.off("screen:offer", h.handleOffer);
+        socket.off("screen:ice", h.handleIce);
+      }
+      cleanup();
+    };
+  }, [socket, connect, cleanup]);
+
+  return entry;
+}
+
 // ─── Stable WebRTC viewer ────────────────────────────────────────────────────
 // IMPORTANT: uses mySlugRef (a ref) instead of a reactive mySlug prop.
 // This means the effect NEVER re-runs when myCamActive changes — preventing
@@ -840,6 +1048,70 @@ function CamCard({
   );
 }
 
+// ─── Screen share preview (bandeau haut) ──────────────────────────────────────
+
+function ScreenSharePreview({
+  stream, sharerSlug, isMe,
+}: {
+  stream: MediaStream | null;
+  sharerSlug: string;
+  isMe: boolean;
+}) {
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  React.useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (stream) { v.srcObject = stream; v.play().catch(() => {}); }
+    else { v.srcObject = null; }
+  }, [stream]);
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "stretch", gap: 12,
+      background: "linear-gradient(180deg,rgba(19,26,52,.55),rgba(11,17,34,.55))",
+      border: "1px solid rgba(139,92,246,.35)",
+      borderRadius: 12,
+      overflow: "hidden",
+      padding: 10,
+      boxShadow: "0 4px 18px rgba(4,8,20,.35), inset 0 0 22px rgba(139,92,246,.06)",
+    }}>
+      <div style={{
+        flex: "0 0 280px", aspectRatio: "16/9", background: "#000",
+        borderRadius: 8, overflow: "hidden",
+        border: "1px solid rgba(139,92,246,.2)",
+      }}>
+        {stream ? (
+          <video ref={videoRef} muted playsInline autoPlay
+            style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+        ) : (
+          <div style={{
+            width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#94a3b8", fontSize: 11,
+          }}>Connexion au flux écran…</div>
+        )}
+      </div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: "#dde8ff" }}>
+            🖥️ {isMe ? "Tu partages ton écran" : `${sharerSlug} partage son écran`}
+          </span>
+          <span style={{
+            fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 999,
+            background: "rgba(139,92,246,.18)", color: "#c4b5fd",
+            border: "1px solid rgba(139,92,246,.3)",
+          }}>
+            Zone Slot — OBS
+          </span>
+        </div>
+        <span style={{ fontSize: 11, color: "rgba(148,178,232,.6)", lineHeight: 1.5 }}>
+          Ce flux est rendu automatiquement dans la <strong>zone Slot</strong> de l'overlay OBS.
+          Un seul partage actif à la fois : si quelqu'un démarre un partage, le précédent s'arrête.
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page guard ───────────────────────────────────────────────────────────────
 
 export default function StreamControlPage() {
@@ -932,6 +1204,18 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
 
   // STABLE viewer — never tears down when myCamActive / mySlot changes
   const { entries: remoteEntries, updateFilters: updateRemoteFilters } = useRemoteCams(socket, mySlugRef);
+
+  // Screen share : broadcaster (celui qui partage) + viewer (flux reçu de l'autre).
+  // Exclusif : un seul partage actif en global (garanti côté serveur).
+  const { sharing: myScreenSharing, localStream: myScreenStream, start: startScreenShare, stop: stopScreenShare } =
+    useScreenBroadcaster(socket, mySlug);
+  const remoteScreen = useScreenViewer(socket, mySlug);
+  // Flux écran effectif à afficher (priorité au mien si je partage, sinon celui du peer)
+  const activeScreen = myScreenSharing
+    ? { slug: mySlug, stream: myScreenStream, isMe: true }
+    : remoteScreen?.stream
+      ? { slug: remoteScreen.slug, stream: remoteScreen.stream, isMe: false }
+      : null;
 
   // Broadcaster — independent of viewer
   // Sur register, si des filtres sont persistés en DB pour ce slug, on les applique
@@ -1150,6 +1434,24 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
             ? <button onClick={activateCam} style={{ ...S.btn, background: "rgba(99,102,241,.8)", padding: "6px 14px" }}>● Activer ma cam</button>
             : <button onClick={deactivateCam} style={{ ...S.btn, background: "rgba(239,68,68,.7)", padding: "6px 14px" }}>■ Stop</button>
           }
+          {/* Screen share — 1 seul partage actif. Le bouton change selon l'état global. */}
+          {myScreenSharing ? (
+            <button onClick={stopScreenShare} style={{ ...S.btn, background: "rgba(239,68,68,.7)", padding: "6px 14px" }}>
+              ■ Arrêter partage
+            </button>
+          ) : remoteScreen ? (
+            <button
+              onClick={startScreenShare}
+              title={`${remoteScreen.slug} partage actuellement son écran — cliquer pour prendre la main`}
+              style={{ ...S.btn, background: "rgba(245,158,11,.7)", padding: "6px 14px" }}
+            >
+              🖥️ Prendre la main
+            </button>
+          ) : (
+            <button onClick={startScreenShare} style={{ ...S.btn, background: "rgba(139,92,246,.75)", padding: "6px 14px" }}>
+              🖥️ Partager écran
+            </button>
+          )}
           {camError && <span style={{ fontSize: 11, color: "#fc8181" }}>{camError}</span>}
           <Link to="/FSB_Board" style={{ ...S.btn, background: "transparent", border: "1px solid rgba(255,255,255,.08)", color: "#64748b", textDecoration: "none", padding: "6px 12px", fontSize: 12 }}>
             ← Board
@@ -1180,6 +1482,15 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
             </span>
           </div>
         </div>
+      )}
+
+      {/* ── Screen share preview (visible pour tout le monde quand quelqu'un partage) ── */}
+      {activeScreen && (
+        <ScreenSharePreview
+          stream={activeScreen.stream}
+          sharerSlug={activeScreen.slug}
+          isMe={activeScreen.isMe}
+        />
       )}
 
       {/* ── Cams (en haut) ── */}
@@ -1293,17 +1604,21 @@ const S: Record<string, React.CSSProperties> = {
     borderRadius: 10,
   },
   camCard: {
-    background: "rgba(255,255,255,.03)",
-    border: "1px solid rgba(255,255,255,.06)",
-    borderRadius: 10,
+    // Fond + bordure qui suivent la même famille de couleur que le fond (#07101f) :
+    // indigo profond à peine décollé → fusionne avec le dark premium tout en gardant
+    // une démarcation subtile grâce à l'accent violet de la bordure intérieure.
+    background: "linear-gradient(180deg,rgba(19,26,52,.55),rgba(11,17,34,.55))",
+    border: "1px solid rgba(99,102,241,.18)",
+    borderRadius: 12,
     overflow: "hidden",
+    boxShadow: "inset 0 0 0 1px rgba(255,255,255,.02), 0 4px 18px rgba(4,8,20,.35)",
   },
   camCardHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     padding: "8px 12px",
-    borderBottom: "1px solid rgba(255,255,255,.04)",
+    borderBottom: "1px solid rgba(99,102,241,.1)",
   },
   camControls: {
     padding: "10px 12px",

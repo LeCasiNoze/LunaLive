@@ -23,6 +23,10 @@ export let chatIo: Server | null = null;
 // Active cam broadcasters: slug → { socketId, slot, filters }
 const camBroadcasters = new Map<string, { socketId: string; slot: number; filters?: Record<string, any> }>();
 
+// Screen share exclusif : un seul partage d'écran actif à la fois,
+// peu importe qui est le "streamer principal". Un nouveau register kick l'ancien.
+let screenBroadcaster: { socketId: string; slug: string; at: number } | null = null;
+
 type ChatMode = "public" | "popup";
 
 type SocketData = {
@@ -591,6 +595,75 @@ export function attachChat(io: Server) {
       io.to(to).emit("cam:ice", { from: socket.id, candidate });
     });
 
+    // ─── Screen share signaling ─────────────────────────────────────────────────
+    // Exclusif : un seul partage d'écran actif, nouveau register kick l'ancien.
+    // Même shape que cam:* mais canal séparé, une seule room "fsb-screen-viewers".
+
+    socket.on("screen:register", ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
+      const s = String(slug || "").trim().toLowerCase();
+      if (!s) return cb?.({ ok: false, error: "bad_slug" });
+
+      // Kick le précédent partage si différent socket
+      if (screenBroadcaster && screenBroadcaster.socketId !== socket.id) {
+        io.to(screenBroadcaster.socketId).emit("screen:kicked", { reason: "replaced_by_another_user" });
+        const oldSocket = io.sockets.sockets.get(screenBroadcaster.socketId);
+        if (oldSocket) oldSocket.data.screenSlug = undefined;
+        io.to("fsb-screen-viewers").emit("screen:left", { slug: screenBroadcaster.slug });
+      }
+
+      screenBroadcaster = { socketId: socket.id, slug: s, at: Date.now() };
+      socket.data.screenSlug = s;
+      socket.join("fsb-screen-bcasters");
+      // Le broadcaster se rejoint aussi la room viewers pour recevoir d'éventuels
+      // signaux (cohérent avec cam:*).
+      socket.join("fsb-screen-viewers");
+      io.to("fsb-screen-viewers").emit("screen:registered", {
+        slug: s, socketId: socket.id,
+      });
+      cb?.({ ok: true, slug: s });
+    });
+
+    socket.on("screen:leave", () => {
+      const slug = socket.data.screenSlug as string | undefined;
+      if (slug && screenBroadcaster && screenBroadcaster.socketId === socket.id) {
+        screenBroadcaster = null;
+        socket.data.screenSlug = undefined;
+        io.to("fsb-screen-viewers").emit("screen:left", { slug });
+      }
+    });
+
+    socket.on("screen:viewer-join", (_: any, cb?: (ack: any) => void) => {
+      socket.join("fsb-screen-viewers");
+      cb?.({
+        ok: true,
+        active: screenBroadcaster
+          ? [{ slug: screenBroadcaster.slug, socketId: screenBroadcaster.socketId }]
+          : [],
+      });
+    });
+
+    socket.on("screen:request", ({ fromSlug }: { fromSlug: string }, cb?: (ack: any) => void) => {
+      const s = String(fromSlug || "").trim().toLowerCase();
+      if (!screenBroadcaster || screenBroadcaster.slug !== s) {
+        return cb?.({ ok: false, error: "broadcaster_not_found" });
+      }
+      io.to(screenBroadcaster.socketId).emit("screen:request", { viewerId: socket.id });
+      cb?.({ ok: true });
+    });
+
+    socket.on("screen:offer", ({ to, sdp }: { to: string; sdp: any }) => {
+      const slug = socket.data.screenSlug as string | undefined;
+      io.to(to).emit("screen:offer", { from: socket.id, slug: slug ?? "", sdp });
+    });
+
+    socket.on("screen:answer", ({ to, sdp }: { to: string; sdp: any }) => {
+      io.to(to).emit("screen:answer", { from: socket.id, sdp });
+    });
+
+    socket.on("screen:ice", ({ to, candidate }: { to: string; candidate: any }) => {
+      io.to(to).emit("screen:ice", { from: socket.id, candidate });
+    });
+
     socket.on(
       "chat:join",
       async (
@@ -939,6 +1012,12 @@ export function attachChat(io: Server) {
       if (camSlug && camBroadcasters.get(camSlug)?.socketId === socket.id) {
         camBroadcasters.delete(camSlug);
         io.to("fsb-cam-viewers").emit("cam:left", { slug: camSlug });
+      }
+      // Clean up screen broadcaster si ce socket partageait son écran
+      const screenSlug = socket.data.screenSlug as string | undefined;
+      if (screenSlug && screenBroadcaster && screenBroadcaster.socketId === socket.id) {
+        screenBroadcaster = null;
+        io.to("fsb-screen-viewers").emit("screen:left", { slug: screenSlug });
       }
     });
   });

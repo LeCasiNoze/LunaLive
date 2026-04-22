@@ -35,6 +35,8 @@ export type SlotZoneConfig = ZoneRect & {
   frameWidth: number;
   borderRadius: number;
   label: string;
+  /** Bordure premium animée (gradient violet qui pulse autour du slot). */
+  animatedBorder?: boolean;
 };
 
 export type StatsZoneConfig = ZoneRect & {
@@ -117,7 +119,9 @@ export type OverlayConfig = {
 function defaultCam(x: number, y: number, w: number, h: number, label: string): CamZoneConfig {
   return {
     enabled: true, greenscreen: false,
-    borderColor: "#6366f1", borderWidth: 3, borderRadius: 12,
+    // Thème dark premium : bordure qui suit le fond (indigo profond),
+    // accent violet subtil par-dessus pour la cohérence visuelle.
+    borderColor: "#1a2340", borderWidth: 2, borderRadius: 14,
     label, x, y, w, h,
   };
 }
@@ -411,6 +415,93 @@ function PreviewStatsBar({ stats, scale }: { stats: StatsZoneConfig; scale: numb
   );
 }
 
+/** Keyframes premium partagées (preview + OBS overlay). Injectées une seule fois. */
+export function injectPremiumKeyframes() {
+  const id = "lunalive-premium-keyframes";
+  if (typeof document === "undefined" || document.getElementById(id)) return;
+  const s = document.createElement("style");
+  s.id = id;
+  s.textContent = `
+    @keyframes slotBorderSweep {
+      0%   { background-position: 0%   50%; }
+      100% { background-position: 300% 50%; }
+    }
+    @keyframes slotBorderGlow {
+      0%, 100% { box-shadow: 0 0 0 rgba(139,92,246,0), inset 0 0 0 rgba(139,92,246,0); }
+      50%      { box-shadow: 0 0 22px rgba(139,92,246,.25), inset 0 0 14px rgba(139,92,246,.1); }
+    }
+  `;
+  document.head.appendChild(s);
+}
+
+/** Rendu du slot dans la preview avec support bordure premium animée. */
+function PreviewSlotZone({ slot }: { slot: SlotZoneConfig }) {
+  React.useEffect(() => { injectPremiumKeyframes(); }, []);
+  const { enabled, showFrame, animatedBorder, frameColor, frameWidth, borderRadius, label, x, y, w, h } = slot;
+
+  const basePos: React.CSSProperties = {
+    position: "absolute",
+    left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${h}%`,
+    boxSizing: "border-box",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    overflow: "hidden",
+  };
+
+  if (!enabled) {
+    return (
+      <div style={{
+        ...basePos,
+        background: ZONE_COLORS.slot.bg, border: `1.5px dashed ${ZONE_COLORS.slot.border}`,
+        borderRadius: 6, opacity: 0.4,
+      }}>
+        <span style={{ fontSize: "clamp(7px,1.6vw,11px)", fontWeight: 700, color: ZONE_COLORS.slot.label, background: "rgba(0,0,0,.45)", padding: "2px 5px", borderRadius: 4 }}>
+          {label || "Slot"}
+        </span>
+      </div>
+    );
+  }
+
+  // Bordure premium animée : gradient conique/linéaire qui sweep tout autour
+  if (showFrame && animatedBorder) {
+    const pad = Math.max(1, frameWidth || 2);
+    return (
+      <div style={{
+        ...basePos,
+        padding: pad,
+        background: "linear-gradient(120deg,#3b3473,#6d5ecc,#a855f7,#6d5ecc,#3b3473)",
+        backgroundSize: "300% 100%",
+        animation: "slotBorderSweep 6s linear infinite, slotBorderGlow 3.4s ease-in-out infinite",
+        borderRadius: borderRadius + pad,
+      }}>
+        <div style={{
+          width: "100%", height: "100%",
+          borderRadius: borderRadius,
+          background: ZONE_COLORS.slot.bg,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <span style={{ fontSize: "clamp(7px,1.6vw,11px)", fontWeight: 700, color: ZONE_COLORS.slot.label, background: "rgba(0,0,0,.45)", padding: "2px 5px", borderRadius: 4 }}>
+            {label || "Slot"}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Bordure classique
+  return (
+    <div style={{
+      ...basePos,
+      background: ZONE_COLORS.slot.bg,
+      border: showFrame ? `${frameWidth}px solid ${frameColor}` : `1.5px solid ${ZONE_COLORS.slot.border}`,
+      borderRadius: Math.max(6, borderRadius),
+    }}>
+      <span style={{ fontSize: "clamp(7px,1.6vw,11px)", fontWeight: 700, color: ZONE_COLORS.slot.label, background: "rgba(0,0,0,.45)", padding: "2px 5px", borderRadius: 4 }}>
+        {label || "Slot"}
+      </span>
+    </div>
+  );
+}
+
 function PreviewZone({
   rect, color, name, disabled,
 }: {
@@ -493,7 +584,7 @@ function PreviewCanvasContent({ config, scale, chatIframeRef }: {
         </div>
       )}
       {/* Slot */}
-      <PreviewZone rect={config.slot} color={ZONE_COLORS.slot} name={config.slot.label || "Slot"} disabled={!config.slot.enabled} />
+      <PreviewSlotZone slot={config.slot} />
       {/* Stats — rendu réel si activé */}
       {config.stats.enabled && scale > 0
         ? <PreviewStatsBar stats={config.stats} scale={scale} />
@@ -887,10 +978,17 @@ function SlotPanel({
       <hr style={S.sep} />
       <Toggle label="Afficher un cadre" checked={slot.showFrame} onChange={(v) => onChange({ showFrame: v })} />
       {slot.showFrame && (
-        <div style={S.row2}>
-          <ColorInput label="Couleur cadre" value={slot.frameColor} onChange={(v) => onChange({ frameColor: v })} />
-          <NumInput label="Epaisseur (px)" value={slot.frameWidth} onChange={(v) => onChange({ frameWidth: v })} min={0} max={20} step={1} />
-        </div>
+        <>
+          <Toggle
+            label="Bordure premium animée (gradient violet)"
+            checked={slot.animatedBorder ?? false}
+            onChange={(v) => onChange({ animatedBorder: v })}
+          />
+          <div style={S.row2}>
+            <ColorInput label="Couleur cadre" value={slot.frameColor} onChange={(v) => onChange({ frameColor: v })} />
+            <NumInput label="Epaisseur (px)" value={slot.frameWidth} onChange={(v) => onChange({ frameWidth: v })} min={0} max={20} step={1} />
+          </div>
+        </>
       )}
       <div style={S.row2}>
         <NumInput label="Border radius (px)" value={slot.borderRadius} onChange={(v) => onChange({ borderRadius: v })} min={0} max={40} step={1} />
@@ -1469,6 +1567,36 @@ const MODES: { value: OverlayMode; label: string; icon: string }[] = [
 ];
 
 const STORAGE_KEY = "lunalive-overlay-designer-v3"; // v3: align + msgBgOpacity + no grouping
+// v4: persistance par mode — chaque mode (solo/double/triple) garde ses propres réglages
+// indépendamment. Switch de mode ne réinitialise plus rien, juste recharge la config
+// du mode cible (ou preset par défaut au premier switch).
+const STORAGE_KEY_BY_MODE = "lunalive-overlay-designer-v4-by-mode";
+const STORAGE_KEY_ACTIVE_MODE = "lunalive-overlay-designer-v4-active-mode";
+
+type ConfigByMode = Partial<Record<OverlayMode, OverlayConfig>>;
+
+function loadByModeFromStorage(): ConfigByMode {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_BY_MODE);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return parsed as ConfigByMode;
+    }
+  } catch {}
+  return {};
+}
+
+function saveByModeToStorage(byMode: ConfigByMode) {
+  try { localStorage.setItem(STORAGE_KEY_BY_MODE, JSON.stringify(byMode)); } catch {}
+}
+
+function loadActiveModeFromStorage(): OverlayMode | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_ACTIVE_MODE);
+    if (raw === "solo" || raw === "double" || raw === "triple") return raw;
+  } catch {}
+  return null;
+}
 
 /** Push la config vers l'OBS overlay via le backend (socket) + persiste en DB */
 async function pushConfigToObs(config: OverlayConfig) {
@@ -1521,12 +1649,31 @@ function rebuildChatUrlIfLuna(chat: ChatZoneConfig): string {
 }
 
 export function OverlayDesignerSection() {
+  // byModeRef = source de vérité pour les configs de chaque mode (solo/double/triple).
+  // On garde un ref au lieu d'un state pour éviter les re-renders à chaque persist ;
+  // la synchro localStorage suffit, et setConfig déclenche déjà le re-render.
+  const byModeRef = React.useRef<ConfigByMode>(loadByModeFromStorage());
+
   const [config, setConfig] = React.useState<OverlayConfig>(() => {
+    // Priorité : byMode[activeMode] → legacy v3 storage → preset par défaut
+    const activeMode = loadActiveModeFromStorage() ?? "triple";
+    const byMode = byModeRef.current;
+    if (byMode[activeMode]) return byMode[activeMode]!;
+
+    // Migration depuis v3 (une seule OverlayConfig sans séparation par mode)
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return JSON.parse(saved) as OverlayConfig;
+      const legacy = localStorage.getItem(STORAGE_KEY);
+      if (legacy) {
+        const parsed = JSON.parse(legacy) as OverlayConfig;
+        if (parsed?.mode) {
+          byModeRef.current = { ...byMode, [parsed.mode]: parsed };
+          saveByModeToStorage(byModeRef.current);
+          return parsed;
+        }
+      }
     } catch {}
-    return defaultConfig("triple");
+
+    return defaultConfig(activeMode);
   });
   const [activePanel, setActivePanel] = React.useState<string | null>(null);
   const [copied, setCopied] = React.useState(false);
@@ -1555,6 +1702,9 @@ export function OverlayDesignerSection() {
           if (!merged.chat.bgOpacity) {
             merged.chat = { ...merged.chat, bgOpacity: 0 };
           }
+          // Hydrate le slot de mode correspondant pour que byModeRef reste source de vérité
+          byModeRef.current = { ...byModeRef.current, [merged.mode]: merged };
+          saveByModeToStorage(byModeRef.current);
           try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
           return merged;
         });
@@ -1590,8 +1740,11 @@ export function OverlayDesignerSection() {
 
   // Auto-save localStorage + push live vers OBS + persist DB à chaque modification
   React.useEffect(() => {
-    // Sauvegarde locale immédiate
+    // Sauvegarde locale immédiate — dans le slot par mode (v4) ET legacy v3 (compat)
+    byModeRef.current = { ...byModeRef.current, [config.mode]: config };
+    saveByModeToStorage(byModeRef.current);
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(config)); } catch {}
+    try { localStorage.setItem(STORAGE_KEY_ACTIVE_MODE, config.mode); } catch {}
     setSaved(true);
     const t = setTimeout(() => setSaved(false), 1200);
 
@@ -1628,7 +1781,16 @@ export function OverlayDesignerSection() {
   }, [config]);
 
   function changeMode(mode: OverlayMode) {
-    setConfig(defaultConfig(mode));
+    // 1. Sauvegarde la config actuelle dans son slot de mode avant de switch
+    setConfig((current) => {
+      byModeRef.current = { ...byModeRef.current, [current.mode]: current };
+      saveByModeToStorage(byModeRef.current);
+
+      // 2. Charge la config précédemment sauvée pour le mode cible, sinon preset par défaut
+      const saved = byModeRef.current[mode];
+      return saved ?? defaultConfig(mode);
+    });
+    try { localStorage.setItem(STORAGE_KEY_ACTIVE_MODE, mode); } catch {}
     setActivePanel(null);
   }
 

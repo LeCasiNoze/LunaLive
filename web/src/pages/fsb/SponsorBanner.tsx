@@ -16,7 +16,6 @@ export type SponsorAnimStyle =
   | "glide"         // bloc entier glisse depuis la droite
   | "zoom"          // zoom avant → taille normale
   | "fade_word"     // mot par mot en fondu
-  | "flicker"       // flicker néon
   | "random";       // style aléatoire à chaque message
 
 export type SponsorConfig = {
@@ -52,7 +51,6 @@ export const SPONSOR_ANIM_STYLES: Array<{ id: SponsorAnimStyle; label: string }>
   { id: "glide",      label: "Glide — bloc glisse depuis la droite" },
   { id: "zoom",       label: "Zoom burst — grossit puis se pose" },
   { id: "fade_word",  label: "Fade mot par mot" },
-  { id: "flicker",    label: "Flicker néon" },
 ];
 
 export function defaultSponsor(): SponsorConfig {
@@ -105,7 +103,7 @@ function ensureKeyframes() {
 // ─── Animation config per style ───────────────────────────────────────────────
 
 type RealAnimStyle = Exclude<SponsorAnimStyle, "random">;
-const REAL_ANIM_STYLES: RealAnimStyle[] = ["stagger_up", "cascade", "roll", "glide", "zoom", "fade_word", "flicker"];
+const REAL_ANIM_STYLES: RealAnimStyle[] = ["stagger_up", "cascade", "roll", "glide", "zoom", "fade_word"];
 
 function pickRandom(): RealAnimStyle {
   return REAL_ANIM_STYLES[Math.floor(Math.random() * REAL_ANIM_STYLES.length)];
@@ -118,7 +116,6 @@ const ENTER_ANIM: Record<RealAnimStyle, string> = {
   glide:      "sb-enter-glide",
   zoom:       "sb-enter-zoom",
   fade_word:  "sb-enter-fade",
-  flicker:    "sb-flicker",
 };
 const EXIT_ANIM: Record<RealAnimStyle, string> = {
   stagger_up: "sb-exit-up",
@@ -127,11 +124,10 @@ const EXIT_ANIM: Record<RealAnimStyle, string> = {
   glide:      "sb-exit-glide",
   zoom:       "sb-exit-zoom",
   fade_word:  "sb-exit-fade",
-  flicker:    "sb-exit-fade",
 };
 const ENTER_DUR: Record<RealAnimStyle, number> = {
   stagger_up: 520, cascade: 520, roll: 520,
-  glide: 480, zoom: 440, fade_word: 600, flicker: 700,
+  glide: 480, zoom: 440, fade_word: 600,
 };
 const EXIT_DUR = 320;
 
@@ -139,7 +135,15 @@ const EXIT_DUR = 320;
 
 type Phase = "enter" | "hold" | "exit";
 
-function useMessageCycle(messages: string[], intervalSecs: number, configStyle: SponsorAnimStyle) {
+// Coerce les configs stockées avec un style retiré (ex: "flicker" legacy) vers un fallback safe.
+function normalizeStyle(style: SponsorAnimStyle | string | undefined): SponsorAnimStyle {
+  if (style === "random") return "random";
+  if (REAL_ANIM_STYLES.includes(style as RealAnimStyle)) return style as RealAnimStyle;
+  return "stagger_up";
+}
+
+function useMessageCycle(messages: string[], intervalSecs: number, rawConfigStyle: SponsorAnimStyle) {
+  const configStyle = normalizeStyle(rawConfigStyle);
   const [idx, setIdx]     = React.useState(0);
   const [phase, setPhase] = React.useState<Phase>("enter");
   // resolved = style concret en cours (jamais "random")
