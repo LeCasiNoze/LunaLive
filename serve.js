@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // serve.js — zero-dependency static server for Render Web Service
-// Redirects *.onrender.com → https://lunalive.win (301)
-// Serves web/dist with pre-rendered HTML rewrites + SPA fallback
+// Sert directement depuis *.onrender.com (plus de redirect vers lunalive.win —
+// les liens publics pointent maintenant sur lunalive.onrender.com).
+// Serves web/dist with pre-rendered HTML rewrites + SPA fallback.
 import { createServer } from "node:http";
 import { createReadStream, existsSync } from "node:fs";
 import { join, extname } from "node:path";
 
 const DIST = join(process.cwd(), "web/dist");
 const PORT = parseInt(process.env.PORT || "10000", 10);
-const CANONICAL = "https://lunalive.win";
 
 const MIME = {
   ".html":        "text/html; charset=utf-8",
@@ -78,15 +78,6 @@ function serveFile(res, filePath, extraHeaders = {}) {
 }
 
 createServer((req, res) => {
-  const host = (req.headers.host || "").split(":")[0].toLowerCase();
-
-  // 1. Redirect any *.onrender.com access → canonical (301 permanent)
-  if (host.endsWith(".onrender.com")) {
-    res.writeHead(301, { "Location": CANONICAL + req.url });
-    res.end();
-    return;
-  }
-
   let pathname;
   try {
     pathname = new URL(req.url, "http://localhost").pathname;

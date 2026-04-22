@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getPublicAffiPage } from "../lib/api_affi_pages";
-import { parseAffiButtons, injectButtonsIntoIframe } from "./AffiEditorPage";
+import { parseAffiButtons, injectButtonsIntoIframe, parseFaqItems } from "./AffiEditorPage";
 
 const REF_KEY = "ref_slug";
 
@@ -523,6 +523,24 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
       html = html.replace(
         /(<a[^>]*class="sticky-cta"[^>]*>)[\s\S]*?(<\/a>)/g,
         `$1${ctaText}$2`
+      );
+    }
+
+    // FAQ — injection dans .faq-list-modern (cohérent avec AffiEditorPage.applyConfig)
+    const faqItems = parseFaqItems((cfg as any).faqItemsJson);
+    const faqHtml = faqItems.map((it) => {
+      const q = esc(it.q.trim());
+      const a = esc(it.a.trim());
+      if (!q && !a) return "";
+      return `            <details class="faq-card-modern"${it.open ? " open" : ""}>
+              <summary><span class="faq-question-text">${q}</span></summary>
+              <div class="faq-answer-modern">${a}</div>
+            </details>`;
+    }).filter(Boolean).join("\n\n");
+    if (faqHtml) {
+      html = html.replace(
+        /(<div class="faq-list-modern">)[\s\S]*?(<\/div>\s*<\/div>\s*<\/section>)/,
+        `$1\n${faqHtml}\n          $2`
       );
     }
 

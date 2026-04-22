@@ -14,8 +14,9 @@ import {
   updateFsbAffiPage,
 } from "../lib/api_affi_pages";
 
-// Base publique pour les URLs partageables (/r/...). Toujours lunalive.win.
-const PUBLIC_SITE = ((import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined) ?? "https://lunalive.win").replace(/\/$/, "");
+// Base publique pour les URLs partageables (/r/...). Par défaut Render (lunalive.onrender.com),
+// surchargeable via VITE_PUBLIC_SITE_URL si besoin de re-pointer ailleurs.
+const PUBLIC_SITE = ((import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined) ?? "https://lunalive.onrender.com").replace(/\/$/, "");
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -2875,15 +2876,15 @@ export default function AffiEditorPage() {
                     <div style={s.sidebarPageActions}>
                       <button
                         style={s.sidebarIconBtn}
-                        title="Ouvrir"
+                        title="Ouvrir la page publique"
                         onClick={() => window.open(`${PUBLIC_SITE}/r/${page.slug}`, "_blank", "noopener,noreferrer")}
-                      >↗</button>
+                      >↗ Ouvrir</button>
                       <button
-                        style={{ ...s.sidebarIconBtn, color: "#ffb2b2" }}
-                        title="Supprimer"
+                        style={{ ...s.sidebarIconBtn, color: "#ff6b6b", fontWeight: 600 }}
+                        title="Supprimer définitivement cette page"
                         onClick={() => void removePublishedPage(page)}
                         disabled={pageAction === "delete"}
-                      >✕</button>
+                      >🗑 Supprimer</button>
                     </div>
                   </div>
                 );
