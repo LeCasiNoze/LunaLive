@@ -488,49 +488,57 @@ function SlotZone({
 
   if (!slot.enabled) return null;
 
-  const videoEl = screenStream ? (
-    <video
-      ref={videoRef}
-      muted
-      playsInline
-      autoPlay
-      style={{ width: "100%", height: "100%", objectFit: "contain", background: "transparent", display: "block" }}
-    />
-  ) : null;
-
-  // Bordure premium animée : gradient violet qui fait le tour du slot en boucle.
-  if (slot.showFrame && slot.animatedBorder) {
-    const pad = Math.max(1, slot.frameWidth || 2);
-    return (
-      <div style={{
-        ...rect(slot),
-        padding: pad,
-        background: "linear-gradient(120deg,#3b3473,#6d5ecc,#a855f7,#6d5ecc,#3b3473)",
-        backgroundSize: "300% 100%",
-        animation: "slotBorderSweep 6s linear infinite, slotBorderGlow 3.4s ease-in-out infinite",
-        borderRadius: slot.borderRadius + pad,
-      }}>
-        <div style={{
-          width: "100%", height: "100%",
-          borderRadius: slot.borderRadius,
-          background: "transparent",
-          overflow: "hidden",
-        }}>
-          {videoEl}
-        </div>
-      </div>
-    );
-  }
+  // Structure stable : même conteneur dans tous les cas (bordure animée ou pas).
+  // Le toggle de bordure n'unmount plus le <video> → le flux reste branché.
+  // La bordure premium est rendue via une couche ::overlay en position absolute
+  // avec CSS mask pour n'afficher QUE le padding (vraie bordure, pas un fill).
+  const radius = Math.max(0, slot.borderRadius || 0);
+  const premium = !!(slot.showFrame && slot.animatedBorder);
+  const pad = premium ? Math.max(1, slot.frameWidth || 2) : 0;
+  const staticBorder = !premium && slot.showFrame
+    ? `${slot.frameWidth}px solid ${slot.frameColor}`
+    : "none";
 
   return (
     <div style={{
       ...rect(slot),
-      border: slot.showFrame ? `${slot.frameWidth}px solid ${slot.frameColor}` : "none",
-      borderRadius: slot.borderRadius,
+      border: staticBorder,
+      borderRadius: radius,
       background: "transparent",
       overflow: "hidden",
     }}>
-      {videoEl}
+      {screenStream && (
+        <video
+          ref={videoRef}
+          muted
+          playsInline
+          autoPlay
+          style={{
+            width: "100%", height: "100%",
+            objectFit: "contain",
+            background: "transparent",
+            display: "block",
+          }}
+        />
+      )}
+      {premium && (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            padding: pad,
+            borderRadius: radius,
+            background: "linear-gradient(120deg,#3b3473,#6d5ecc,#a855f7,#6d5ecc,#3b3473)",
+            backgroundSize: "300% 100%",
+            animation: "slotBorderSweep 6s linear infinite, slotBorderGlow 3.4s ease-in-out infinite",
+            pointerEvents: "none",
+            WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+            WebkitMaskComposite: "xor",
+            maskComposite: "exclude",
+          }}
+        />
+      )}
     </div>
   );
 }

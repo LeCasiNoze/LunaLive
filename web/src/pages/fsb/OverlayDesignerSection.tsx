@@ -461,43 +461,41 @@ function PreviewSlotZone({ slot }: { slot: SlotZoneConfig }) {
     );
   }
 
-  // Bordure premium animée : gradient conique/linéaire qui sweep tout autour
-  if (showFrame && animatedBorder) {
-    const pad = Math.max(1, frameWidth || 2);
-    return (
-      <div style={{
-        ...basePos,
-        padding: pad,
-        background: "linear-gradient(120deg,#3b3473,#6d5ecc,#a855f7,#6d5ecc,#3b3473)",
-        backgroundSize: "300% 100%",
-        animation: "slotBorderSweep 6s linear infinite, slotBorderGlow 3.4s ease-in-out infinite",
-        borderRadius: borderRadius + pad,
-      }}>
-        <div style={{
-          width: "100%", height: "100%",
-          borderRadius: borderRadius,
-          background: ZONE_COLORS.slot.bg,
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-          <span style={{ fontSize: "clamp(7px,1.6vw,11px)", fontWeight: 700, color: ZONE_COLORS.slot.label, background: "rgba(0,0,0,.45)", padding: "2px 5px", borderRadius: 4 }}>
-            {label || "Slot"}
-          </span>
-        </div>
-      </div>
-    );
-  }
+  const radius = Math.max(0, borderRadius || 0);
+  const premium = !!(showFrame && animatedBorder);
+  const pad = premium ? Math.max(1, frameWidth || 2) : 0;
+  const staticBorder = showFrame && !premium
+    ? `${frameWidth}px solid ${frameColor}`
+    : premium ? "none" : `1.5px solid ${ZONE_COLORS.slot.border}`;
 
-  // Bordure classique
   return (
     <div style={{
       ...basePos,
       background: ZONE_COLORS.slot.bg,
-      border: showFrame ? `${frameWidth}px solid ${frameColor}` : `1.5px solid ${ZONE_COLORS.slot.border}`,
-      borderRadius: Math.max(6, borderRadius),
+      border: staticBorder,
+      borderRadius: Math.max(6, radius),
     }}>
       <span style={{ fontSize: "clamp(7px,1.6vw,11px)", fontWeight: 700, color: ZONE_COLORS.slot.label, background: "rgba(0,0,0,.45)", padding: "2px 5px", borderRadius: 4 }}>
         {label || "Slot"}
       </span>
+      {premium && (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            padding: pad,
+            borderRadius: Math.max(6, radius),
+            background: "linear-gradient(120deg,#3b3473,#6d5ecc,#a855f7,#6d5ecc,#3b3473)",
+            backgroundSize: "300% 100%",
+            animation: "slotBorderSweep 6s linear infinite, slotBorderGlow 3.4s ease-in-out infinite",
+            pointerEvents: "none",
+            WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+            WebkitMaskComposite: "xor",
+            maskComposite: "exclude",
+          }}
+        />
+      )}
     </div>
   );
 }
