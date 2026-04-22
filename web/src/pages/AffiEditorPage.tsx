@@ -2865,12 +2865,14 @@ export default function AffiEditorPage() {
                     style={{ ...s.sidebarPageCard, ...(isActive ? s.sidebarPageCardActive : {}) }}
                   >
                     <button
+                      type="button"
                       style={s.sidebarPageBtn}
                       onClick={() => loadPublishedPageInEditor(page)}
+                      title={`/r/${page.slug}`}
                     >
-                      <div style={s.sidebarPageName}>{page.brandName || page.slug}</div>
+                      <div style={s.sidebarPageName}>{page.brandName || page.slug || "(sans nom)"}</div>
                       <div style={s.sidebarPageMeta}>
-                        M{page.model}{page.variant ? ` · ${page.variant}` : ""}
+                        M{page.model}{page.variant ? ` · ${page.variant}` : ""} · /r/{page.slug}
                       </div>
                     </button>
                     <div style={s.sidebarPageActions}>
@@ -3836,15 +3838,15 @@ const s: Record<string, React.CSSProperties> = {
   sidebarPageList: {
     display: "flex",
     flexDirection: "column" as const,
-    gap: 4,
+    gap: 6,
     padding: "0 6px",
     overflowY: "auto" as const,
-    maxHeight: 220,
+    maxHeight: 320,
   },
   sidebarPageEmpty: {
-    padding: "6px 4px",
-    color: "#666",
-    fontSize: "0.7rem",
+    padding: "10px 4px",
+    color: "#888",
+    fontSize: "0.75rem",
     textAlign: "center" as const,
   },
   sidebarPageCard: {
@@ -3852,32 +3854,40 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     background: "#17172c",
     overflow: "hidden",
+    display: "flex",
+    flexDirection: "column" as const,
+    minHeight: 64,
   },
   sidebarPageCardActive: {
     borderColor: "#FFD700",
-    background: "rgba(255,215,0,0.04)",
+    background: "rgba(255,215,0,0.07)",
   },
   sidebarPageBtn: {
     display: "block",
     width: "100%",
-    padding: "6px 8px",
+    padding: "10px 10px 8px",
     background: "none",
     border: "none",
     cursor: "pointer",
     textAlign: "left" as const,
   },
   sidebarPageName: {
-    fontSize: "0.72rem",
+    fontSize: "0.85rem",
     fontWeight: 700,
     color: "#f4f0df",
+    lineHeight: 1.25,
+    // Autorise 2 lignes puis ellipsis au lieu de couper brutalement sur la 1ère
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical" as const,
     overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap" as const,
+    wordBreak: "break-word" as const,
   },
   sidebarPageMeta: {
-    fontSize: "0.62rem",
-    color: "#8f8fb4",
-    marginTop: 2,
+    fontSize: "0.68rem",
+    color: "#9999bb",
+    marginTop: 4,
+    fontFamily: "monospace",
   },
   sidebarPageActions: {
     display: "flex",
@@ -3885,12 +3895,13 @@ const s: Record<string, React.CSSProperties> = {
   },
   sidebarIconBtn: {
     flex: 1,
-    padding: "4px 0",
+    padding: "7px 0",
     background: "none",
     border: "none",
     cursor: "pointer",
-    color: "#888",
-    fontSize: "0.8rem",
+    color: "#aaa",
+    fontSize: "0.72rem",
+    fontWeight: 600,
   },
   sidebarDivider: {
     height: 1,
