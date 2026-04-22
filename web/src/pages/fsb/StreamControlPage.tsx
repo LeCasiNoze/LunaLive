@@ -23,27 +23,52 @@ function slugFromUsername(username: string): string {
   return u; // on préfère l'username réel plutôt que FSB_SLUGS[0] (qui causait des collisions)
 }
 
-// STUN public Google + TURN privé configurable via env.
-// Sans TURN, les NAT stricts (CGNAT, symétriques) empêchent le P2P =>
-// stream arrive dans ontrack mais aucune frame ne transite.
-// TURN recommandé: Metered.ca free tier (50GB/mois, signup rapide).
-const CUSTOM_TURN_URL = import.meta.env.VITE_TURN_URL as string | undefined;
-const CUSTOM_TURN_USER = import.meta.env.VITE_TURN_USER as string | undefined;
-const CUSTOM_TURN_PASS = import.meta.env.VITE_TURN_PASS as string | undefined;
-
-// Support multi-URL (CSV dans VITE_TURN_URL)
-const turnUrls = CUSTOM_TURN_URL ? CUSTOM_TURN_URL.split(",").map(s => s.trim()).filter(Boolean) : [];
-
-const ICE_SERVERS: RTCIceServer[] = [
+// STUN + TURN : credentials short-lived fetchés au runtime depuis le backend
+// (GET /me/webrtc/ice-servers → Cloudflare Realtime TURN, 1 TB/mois free).
+// Sans TURN, les NAT stricts (CGNAT, VPN corporate, symétriques) empêchent
+// le P2P → stream arrive dans ontrack mais aucune frame ne transite.
+const FALLBACK_ICE: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
-  ...(turnUrls.length > 0 && CUSTOM_TURN_USER && CUSTOM_TURN_PASS
-    ? [{ urls: turnUrls, username: CUSTOM_TURN_USER, credential: CUSTOM_TURN_PASS }]
-    : []),
 ];
 
-if (turnUrls.length === 0) {
-  console.warn("[WebRTC] Aucun TURN configuré (VITE_TURN_URL vide) — le P2P peut échouer sur NAT stricts. Configurer Metered.ca ou Cloudflare Calls.");
+let iceServersCache: RTCIceServer[] = FALLBACK_ICE;
+let iceServersSource: "fallback" | "cloudflare" = "fallback";
+let iceServersFetchPromise: Promise<RTCIceServer[]> | null = null;
+let iceServersFetchedAt = 0;
+const ICE_CACHE_TTL_MS = 20 * 60 * 60 * 1000; // 20h — le backend mint à 24h TTL
+
+async function ensureIceServers(): Promise<RTCIceServer[]> {
+  const now = Date.now();
+  if (iceServersSource === "cloudflare" && now - iceServersFetchedAt < ICE_CACHE_TTL_MS) {
+    return iceServersCache;
+  }
+  if (iceServersFetchPromise) return iceServersFetchPromise;
+
+  iceServersFetchPromise = (async () => {
+    try {
+      const token = localStorage.getItem("lunalive_token_v1") || "";
+      const r = await fetch(`${LUNA_API_BASE}/me/webrtc/ice-servers`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const j = await r.json().catch(() => null);
+      if (j?.ok && Array.isArray(j.iceServers) && j.iceServers.length > 0) {
+        iceServersCache = j.iceServers;
+        iceServersSource = j.source === "cloudflare" ? "cloudflare" : "fallback";
+        iceServersFetchedAt = Date.now();
+        console.log(`[WebRTC] ICE servers loaded (source=${j.source}, count=${j.iceServers.length})`);
+      } else {
+        console.warn("[WebRTC] /me/webrtc/ice-servers returned no servers, using STUN fallback", j);
+      }
+    } catch (e) {
+      console.warn("[WebRTC] ICE fetch failed, using STUN fallback:", e);
+    } finally {
+      iceServersFetchPromise = null;
+    }
+    return iceServersCache;
+  })();
+
+  return iceServersFetchPromise;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -67,6 +92,9 @@ const DEFAULT_FILTERS: CamFilters = {
   chromaKey: false, chromaSimilarity: 80, chromaSpill: 30,
 };
 
+// Type of ICE candidate actually used by a negotiated PC (diagnostic badge)
+type CandidateType = "host" | "srflx" | "prflx" | "relay" | null;
+
 // Remote broadcaster entry
 type RemoteEntry = {
   slug: string;
@@ -74,6 +102,7 @@ type RemoteEntry = {
   stream: MediaStream | null;
   filters: CamFilters;
   socketId: string;
+  candidateType: CandidateType; // type du candidat local sur la paire ICE sélectionnée
 };
 
 // Slot card data for rendering — derived, not stored
@@ -83,6 +112,7 @@ type SlotCardData = {
   active: boolean;
   stream: MediaStream | null;
   filters: CamFilters;
+  candidateType?: CandidateType;
 };
 
 function filterCss(f: CamFilters): string {
@@ -239,7 +269,8 @@ function useBroadcaster(
 
     const handleRequest = async ({ viewerId }: { viewerId: string }) => {
       console.log("[Broadcaster] cam:request from viewer", viewerId, "→ creating offer");
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      const iceServers = await ensureIceServers();
+      const pc = new RTCPeerConnection({ iceServers });
       peersRef.current.set(viewerId, pc);
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
       pc.onicecandidate = ({ candidate }) => {
@@ -321,7 +352,7 @@ function useRemoteCams(
   // Queue des ICE candidates arrivés avant setRemoteDescription (fix race condition)
   const pendingIceRef = React.useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
 
-  const connect = React.useCallback((bc: { slug: string; slot: number; socketId: string; filters: any }) => {
+  const connect = React.useCallback(async (bc: { slug: string; slot: number; socketId: string; filters: any }) => {
     if (!socket) return;
     if (bc.slug === mySlugRef.current) {
       console.log("[RemoteCams] skip self:", bc.slug);
@@ -345,7 +376,8 @@ function useRemoteCams(
     }
     console.log("[RemoteCams] connecting to broadcaster:", bc.slug, "slot:", bc.slot, "socketId:", bc.socketId);
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const iceServers = await ensureIceServers();
+    const pc = new RTCPeerConnection({ iceServers });
     peersRef.current.set(bc.slug, pc);
 
     // Pre-register so filter updates work before video arrives
@@ -355,9 +387,41 @@ function useRemoteCams(
         slug: bc.slug, slot: bc.slot, stream: null,
         filters: { ...DEFAULT_FILTERS, ...(bc.filters ?? {}) },
         socketId: bc.socketId,
+        candidateType: null,
       });
       return next;
     });
+
+    // Poll stats toutes les 2s pour extraire le candidate-type de la paire ICE
+    // sélectionnée — diagnostic visuel "host / srflx / relay" dans le badge cam.
+    const statsInterval = setInterval(async () => {
+      if (pc.connectionState === "closed" || pc.connectionState === "failed") {
+        clearInterval(statsInterval);
+        return;
+      }
+      try {
+        const stats = await pc.getStats();
+        let selectedPairId: string | undefined;
+        const candidates = new Map<string, any>();
+        stats.forEach((r: any) => {
+          if (r.type === "candidate-pair" && (r.selected || r.nominated) && r.state === "succeeded") {
+            selectedPairId = r.localCandidateId;
+          }
+          if (r.type === "local-candidate") candidates.set(r.id, r);
+        });
+        const local = selectedPairId ? candidates.get(selectedPairId) : null;
+        const t = (local?.candidateType as CandidateType) ?? null;
+        if (t) {
+          setEntries(prev => {
+            const ex = prev.get(bc.slug);
+            if (!ex || ex.candidateType === t) return prev;
+            const next = new Map(prev);
+            next.set(bc.slug, { ...ex, candidateType: t });
+            return next;
+          });
+        }
+      } catch {}
+    }, 2000);
 
     pc.ontrack = ({ streams: s }) => {
       const stream = s[0] ?? null;
@@ -670,6 +734,32 @@ function CamCard({
             {data.slug ? `${data.active ? "●" : "○"} ${data.slug}` : "○ vide"}
           </span>
           {data.isMe && <span style={{ fontSize: 9, color: "#6366f1", fontWeight: 700 }}>MOI</span>}
+          {!data.isMe && data.active && data.candidateType && (
+            <span
+              title={
+                data.candidateType === "relay"
+                  ? "Connexion via TURN (relay Cloudflare) — traverse NAT/VPN strict"
+                  : data.candidateType === "srflx"
+                  ? "Connexion directe via STUN (NAT traversable)"
+                  : data.candidateType === "host"
+                  ? "Connexion locale directe (même LAN)"
+                  : "Peer-reflexive candidate"
+              }
+              style={{
+                fontSize: 9, padding: "1px 5px", borderRadius: 4, fontWeight: 700,
+                background:
+                  data.candidateType === "relay" ? "rgba(251,191,36,.15)" :
+                  data.candidateType === "host" ? "rgba(59,130,246,.15)" :
+                  "rgba(34,197,94,.15)",
+                color:
+                  data.candidateType === "relay" ? "#fbbf24" :
+                  data.candidateType === "host" ? "#60a5fa" :
+                  "#4ade80",
+              }}
+            >
+              {data.candidateType}
+            </span>
+          )}
         </div>
         <button onClick={() => setOpen(v => !v)} style={S.toggleBtn}>
           {open ? "▲ fermer" : "▼ régler"}
@@ -1004,7 +1094,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
     // Remote cam registered at this slot position?
     for (const [slug, entry] of remoteEntries) {
       if (entry.slot === slotNum) {
-        return { slug, isMe: false, active: true, stream: entry.stream, filters: entry.filters };
+        return { slug, isMe: false, active: true, stream: entry.stream, filters: entry.filters, candidateType: entry.candidateType };
       }
     }
 

@@ -92,6 +92,7 @@ import { expensesRouter } from "./routes/expenses.js";
 import { fsbDashboardRouter } from "./routes/fsb_dashboard.js";
 import { agencyRouter } from "./routes/agency.js";
 import { requireFsbAccess } from "./routes/fsb_guard.js";
+import { webrtcTurnRouter } from "./routes/webrtc_turn.js";
 
 // Discord routes
 import { meDiscordLinkRouter } from "./routes/bot/me_discord_link.js";
@@ -254,6 +255,7 @@ export function createApp() {
   app.use(streamerEmotesRouter);
 
   app.use("/me/overlay",        requireAuth, meOverlayRouter);
+  app.use(webrtcTurnRouter);
   app.use("/me/bot",            requireAuth, meBotRouter);
   app.use("/me/bot/bot_wheel",  requireAuth, botWheelRouter);
   app.use("/me/bot/bot_rain",   requireAuth, botRainRouter);
