@@ -2877,15 +2877,43 @@ export default function AffiEditorPage() {
                     </button>
                     <div style={s.sidebarPageActions}>
                       <button
-                        style={s.sidebarIconBtn}
-                        title="Ouvrir la page publique"
-                        onClick={() => window.open(`${PUBLIC_SITE}/r/${page.slug}`, "_blank", "noopener,noreferrer")}
+                        type="button"
+                        style={{
+                          flex: 1,
+                          padding: "8px 0",
+                          background: "rgba(99,102,241,.15)",
+                          border: "none",
+                          borderRight: "1px solid #2a2a46",
+                          color: "#a5b4fc",
+                          fontSize: "0.75rem",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                        title="Ouvrir la page publique dans un nouvel onglet"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`${PUBLIC_SITE}/r/${page.slug}`, "_blank", "noopener,noreferrer");
+                        }}
                       >↗ Ouvrir</button>
                       <button
-                        style={{ ...s.sidebarIconBtn, color: "#ff6b6b", fontWeight: 600 }}
-                        title="Supprimer définitivement cette page"
-                        onClick={() => void removePublishedPage(page)}
-                        disabled={pageAction === "delete"}
+                        type="button"
+                        style={{
+                          flex: 1,
+                          padding: "8px 0",
+                          background: "rgba(239,68,68,.15)",
+                          border: "none",
+                          color: "#fca5a5",
+                          fontSize: "0.75rem",
+                          fontWeight: 700,
+                          cursor: canManagePublishedPages ? "pointer" : "not-allowed",
+                          opacity: canManagePublishedPages ? 1 : 0.5,
+                        }}
+                        title={canManagePublishedPages ? "Supprimer définitivement cette page" : "Accès FSB requis pour supprimer"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void removePublishedPage(page);
+                        }}
+                        disabled={pageAction === "delete" || !canManagePublishedPages}
                       >🗑 Supprimer</button>
                     </div>
                   </div>
