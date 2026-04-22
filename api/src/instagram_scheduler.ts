@@ -18,34 +18,6 @@ import { FABIO_STREAMER_SLUG, FABIO_NOTIF_CHANNEL_ID, FABIO_ROLE_NOTIF_INSTA } f
 const LOG = "[INSTAGRAM SCHEDULER]";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
-// Résolution du user ID Instagram depuis un username (Business Discovery API)
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function resolveInstagramUserId(
-  username: string,
-  accessToken: string,
-  igAccountId: string,
-  jobId: number
-): Promise<string | null> {
-  try {
-    const data = await metaGet(`/${igAccountId}`, {
-      fields: "business_discovery.fields(id,username)",
-      username,
-      access_token: accessToken,
-    });
-    const resolvedId = data?.business_discovery?.id;
-    if (resolvedId) {
-      console.log(`${LOG} [job #${jobId}] resolved @${username} → ig_id=${resolvedId}`);
-      return String(resolvedId);
-    }
-    console.log(`${LOG} [job #${jobId}] @${username} not resolvable via Business Discovery (personal account?)`);
-    return null;
-  } catch (e: any) {
-    console.log(`${LOG} [job #${jobId}] Business Discovery @${username} failed: ${e?.message}`);
-    return null;
-  }
-}
 
 async function checkCollaborationTimeout(
   pool: Pool,
@@ -330,59 +302,48 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
   // Logique de collaboration Instagram
   let caption = job.description ?? job.title ?? "";
   // ── Collaboration Instagram ──────────────────────────────────────────────────
-  // Si le streamer a un pseudo Instagram configuré :
-  //   1. Résoudre son username → IG user ID via Business Discovery API
-  //   2. Créer le container Reel AVEC collaborators=[userId] → invitation envoyée
-  //   3. Si l'API échoue (compte perso, permissions manquantes, etc.) → fallback @mention
+  // Graph API v19 accepte des usernames bruts dans `collaborators` — pas besoin
+  // de resolve. On tente l'invite directement ; si Meta refuse (handle invalide,
+  // compte privé, non éligible), on retry sans collab + fallback @mention.
   // ─────────────────────────────────────────────────────────────────────────────
 
-  let collabIgUserId: string | null = null;
   const slugRegex = new RegExp(streamerSlugRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  let collabSucceeded = false;
 
   if (instagramUsername && streamerSlugRaw) {
-    collabIgUserId = await resolveInstagramUserId(instagramUsername, accessToken, userId, job.id);
-
     await pool.query(`
       UPDATE publish_jobs
       SET collaboration_attempted = TRUE,
           collaboration_username = $2,
           collaboration_started_at = NOW(),
-          collaboration_status = $3
+          collaboration_status = 'pending'
       WHERE id = $1
-    `, [job.id, instagramUsername, collabIgUserId ? "pending" : "failed"]);
+    `, [job.id, instagramUsername]);
 
     await pool.query(`
       INSERT INTO instagram_collaborations (publish_job_id, streamer_slug, instagram_username, status)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (publish_job_id) DO UPDATE SET status = $4, started_at = NOW()
-    `, [job.id, streamerSlugRaw, instagramUsername, collabIgUserId ? "pending" : "failed"]);
-
-    if (!collabIgUserId) {
-      // Impossible de résoudre → fallback @mention direct
-      console.log(`${LOG} [job #${job.id}] @${instagramUsername} unresolvable — using @mention fallback`);
-      caption = caption.replace(slugRegex, `@${instagramUsername}`);
-    }
+      VALUES ($1, $2, $3, 'pending')
+      ON CONFLICT (publish_job_id) DO UPDATE SET status = 'pending', started_at = NOW()
+    `, [job.id, streamerSlugRaw, instagramUsername]);
   }
 
   // ── Création du container ─────────────────────────────────────────────────
-  // Essai avec collaborators si on a l'ID, sinon container standard
   let containerData: any;
 
-  if (collabIgUserId) {
+  if (instagramUsername && streamerSlugRaw) {
     try {
       containerData = await metaPost(`/${userId}/media`, {
         video_url: job.output_url,
         media_type: "REELS",
         caption,
         share_to_feed: "true",
-        collaborators: JSON.stringify([collabIgUserId]),
+        collaborators: JSON.stringify([instagramUsername]),
         access_token: accessToken,
       });
-      console.log(`${LOG} [job #${job.id}] container created WITH collab @${instagramUsername} (ig_id=${collabIgUserId})`);
+      collabSucceeded = true;
+      console.log(`${LOG} [job #${job.id}] container created WITH collab @${instagramUsername}`);
     } catch (e: any) {
-      // L'API a refusé le collaborators (permissions, compte non éligible, etc.)
-      console.log(`${LOG} [job #${job.id}] collab container rejected: ${e?.message} — falling back to @mention`);
-      collabIgUserId = null;
+      console.warn(`${LOG} [job #${job.id}] collab @${instagramUsername} rejected: ${e?.message} — retry without collab + @mention`);
       caption = caption.replace(slugRegex, `@${instagramUsername}`);
 
       await pool.query(`
@@ -402,8 +363,10 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
       share_to_feed: "true",
       access_token: accessToken,
     });
-    if (!collabIgUserId && instagramUsername) {
+    if (instagramUsername) {
       console.log(`${LOG} [job #${job.id}] container created with @mention fallback`);
+    } else {
+      console.log(`${LOG} [job #${job.id}] container created without collab (no username)`);
     }
   }
 
@@ -456,7 +419,7 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
   );
 
   // Mettre à jour le statut de collaboration si invitation envoyée
-  if (collabIgUserId) {
+  if (collabSucceeded) {
     // L'invitation a été envoyée avec le container — statut "invited" (en attente d'acceptation)
     await pool.query(`
       UPDATE publish_jobs SET collaboration_status = 'invited', collaboration_media_id = $2 WHERE id = $1
