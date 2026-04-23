@@ -129,11 +129,11 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
       enableWorker: true,
       lowLatencyMode: false,   // Rumble n'utilise pas LL-HLS (pas de #EXT-X-PART)
       backBufferLength: 8,
-      // live-edge — viser proche du direct pour réduire la latence
-      liveSyncDurationCount: 2,
-      liveMaxLatencyDurationCount: 5,
+      // live-edge — viser au plus près du direct (1× targetDuration)
+      liveSyncDurationCount: 1,
+      liveMaxLatencyDurationCount: 4,
       liveDurationInfinity: true,
-      maxLiveSyncPlaybackRate: 1.3,
+      maxLiveSyncPlaybackRate: 1.4,
       // buffer
       maxBufferLength: 16,
       maxMaxBufferLength: 24,
@@ -200,14 +200,25 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
       } catch {}
 
       // DVR playlist : currentTime peut être à 0 (début du DVR, il y a des heures).
-      // On force le seek au live edge avant de jouer.
+      // On force le seek à la fin réelle de la playlist (dernier fragment),
+      // plus proche du direct que `liveSyncPosition` qui reste 1×targetDuration derrière.
       const seekToLiveEdge = () => {
         try {
+          const level = (hls as any).levels?.[(hls as any).currentLevel >= 0 ? (hls as any).currentLevel : 0];
+          const frags = level?.details?.fragments;
+          if (Array.isArray(frags) && frags.length > 0) {
+            const last = frags[frags.length - 1];
+            const edge = Number(last?.start ?? 0) + Number(last?.duration ?? 0);
+            if (Number.isFinite(edge) && edge > 0) {
+              video.currentTime = Math.max(0, edge - 1.5);
+              return;
+            }
+          }
           const livePos = (hls as any).liveSyncPosition;
           if (typeof livePos === "number" && Number.isFinite(livePos) && livePos > 0) {
             video.currentTime = livePos;
           } else if (video.duration && Number.isFinite(video.duration) && video.duration > 10) {
-            video.currentTime = video.duration - 4;
+            video.currentTime = video.duration - 2;
           }
         } catch {}
       };
@@ -274,16 +285,31 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
     }, 3000);
 
     // ── Live-edge resync ────────────────────────────────────────
-    const RESYNC_THRESHOLD_SEC = 10;
+    // Si on dérive de plus de 8s de la fin réelle de la playlist, on recolle.
+    const RESYNC_THRESHOLD_SEC = 8;
     const tLiveEdge = window.setInterval(() => {
       if (!video || video.paused || document.hidden) return;
-      if (typeof (hls as any).liveSyncPosition !== "number") return;
-      const livePos = Number((hls as any).liveSyncPosition);
-      const ct = Number(video.currentTime || 0);
-      if (Number.isFinite(livePos) && livePos - ct > RESYNC_THRESHOLD_SEC) {
-        try { video.currentTime = livePos; } catch {}
-      }
-    }, 7000);
+      try {
+        const level = (hls as any).levels?.[(hls as any).currentLevel >= 0 ? (hls as any).currentLevel : 0];
+        const frags = level?.details?.fragments;
+        let edge: number | null = null;
+        if (Array.isArray(frags) && frags.length > 0) {
+          const last = frags[frags.length - 1];
+          const e = Number(last?.start ?? 0) + Number(last?.duration ?? 0);
+          if (Number.isFinite(e) && e > 0) edge = e;
+        }
+        if (edge === null) {
+          const livePos = Number((hls as any).liveSyncPosition);
+          if (Number.isFinite(livePos)) edge = livePos;
+        }
+        if (edge === null) return;
+        const target = Math.max(0, edge - 1.5);
+        const ct = Number(video.currentTime || 0);
+        if (target - ct > RESYNC_THRESHOLD_SEC) {
+          video.currentTime = target;
+        }
+      } catch {}
+    }, 5000);
 
     return () => {
       window.clearInterval(tStall);
