@@ -1532,57 +1532,64 @@ function ModelThumb({ n }: { n: number }) {
       </svg>
     ),
     7: (
+      /* M7 Immersif : fullbleed mesh + overlay CTA */
       <svg viewBox="0 0 120 70" fill="none">
         <defs>
-          <linearGradient id="m7g" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#FF2EB3" />
-            <stop offset="0.5" stopColor="#B24CFF" />
-            <stop offset="1" stopColor="#00E7FF" />
-          </linearGradient>
+          <radialGradient id="m7r1" cx="0.2" cy="0.3" r="0.6">
+            <stop offset="0" stopColor="#FFD700" stopOpacity="0.7" />
+            <stop offset="1" stopColor="#FFD700" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="m7r2" cx="0.8" cy="0.7" r="0.6">
+            <stop offset="0" stopColor="#E0115F" stopOpacity="0.7" />
+            <stop offset="1" stopColor="#E0115F" stopOpacity="0" />
+          </radialGradient>
         </defs>
-        <rect width="120" height="70" rx="8" fill="#03010f" />
-        {/* grille perspective */}
-        <g opacity="0.45" stroke="#FF2EB3" strokeWidth="0.5">
-          <path d="M0 70 L30 30 M20 70 L42 30 M40 70 L54 30 M60 70 L60 30 M80 70 L66 30 M100 70 L78 30 M120 70 L90 30" />
-          <path d="M0 55 L120 55 M0 45 L120 45 M0 38 L120 38" />
-        </g>
-        {/* titre glow */}
-        <rect x="20" y="12" width="80" height="7" rx="1" fill="url(#m7g)" opacity="0.9" />
-        <rect x="28" y="22" width="64" height="3" rx="1" fill="#00E7FF" opacity="0.6" />
-        {/* cta cyberpunk avec clip */}
-        <path d="M20 48 L25 44 L100 44 L100 52 L95 56 L20 56 Z" fill="url(#m7g)" />
-        <rect x="24" y="48" width="72" height="3" rx="1" fill="#03010f" opacity="0.7" />
+        <rect width="120" height="70" rx="8" fill="#050510" />
+        <rect width="120" height="70" fill="url(#m7r1)" />
+        <rect width="120" height="70" fill="url(#m7r2)" />
+        {/* Glass nav */}
+        <rect x="8" y="6" width="104" height="8" rx="4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.1)" strokeWidth="0.3" />
+        <circle cx="15" cy="10" r="2.5" fill="#FFD700" />
+        {/* Hero text */}
+        <rect x="32" y="24" width="56" height="6" rx="1.5" fill="#FFD700" opacity="0.95" />
+        <rect x="40" y="34" width="40" height="3" rx="1" fill="#fff" opacity="0.8" />
+        {/* CTA */}
+        <rect x="28" y="44" width="64" height="9" rx="3" fill="#FFD700" />
+        <rect x="34" y="47" width="52" height="3" rx="1" fill="#050510" opacity="0.7" />
+        {/* Scroll hint */}
+        <circle cx="60" cy="63" r="0.8" fill="#fff" opacity="0.4" />
       </svg>
     ),
     8: (
+      /* M8 Ladder : 3 tiers côte à côte */
       <svg viewBox="0 0 120 70" fill="none">
         <defs>
-          <linearGradient id="m8g" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#F4D76C" />
-            <stop offset="0.5" stopColor="#D4AF37" />
-            <stop offset="1" stopColor="#8E6B15" />
+          <linearGradient id="m8acc" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#FFD700" />
+            <stop offset="1" stopColor="#E0115F" />
           </linearGradient>
-          <radialGradient id="m8bg" cx="0.5" cy="0" r="1">
-            <stop offset="0" stopColor="#3d0f1d" />
-            <stop offset="1" stopColor="#2a0a14" />
-          </radialGradient>
         </defs>
-        <rect width="120" height="70" rx="8" fill="url(#m8bg)" />
-        {/* ornements haut */}
-        <line x1="20" y1="10" x2="45" y2="10" stroke="#D4AF37" strokeWidth="0.6" opacity="0.8" />
-        <rect x="58" y="7" width="6" height="6" fill="#D4AF37" transform="rotate(45 61 10)" />
-        <line x1="77" y1="10" x2="100" y2="10" stroke="#D4AF37" strokeWidth="0.6" opacity="0.8" />
-        {/* titre serif */}
-        <rect x="24" y="18" width="72" height="6" rx="1" fill="url(#m8g)" />
-        <rect x="34" y="27" width="52" height="4" rx="0.5" fill="#f5ecd8" opacity="0.85" />
-        {/* cadre card */}
-        <rect x="18" y="36" width="84" height="20" rx="1" fill="#1a0812" stroke="url(#m8g)" strokeWidth="1" />
-        <rect x="26" y="41" width="68" height="4" rx="0.5" fill="#D4AF37" />
-        <rect x="34" y="48" width="52" height="4" rx="0.5" fill="#f5ecd8" opacity="0.7" />
-        {/* ornement bas */}
-        <line x1="30" y1="63" x2="55" y2="63" stroke="#D4AF37" strokeWidth="0.5" opacity="0.7" />
-        <circle cx="60" cy="63" r="1.5" fill="#D4AF37" />
-        <line x1="65" y1="63" x2="90" y2="63" stroke="#D4AF37" strokeWidth="0.5" opacity="0.7" />
+        <rect width="120" height="70" rx="8" fill="#08080f" />
+        {/* Hero compact */}
+        <rect x="40" y="6" width="40" height="4" rx="1.5" fill="#fff" opacity="0.9" />
+        <rect x="30" y="13" width="60" height="2.5" rx="1" fill="#fff" opacity="0.4" />
+        {/* 3 tiers */}
+        {/* Tier 1 (starter) */}
+        <rect x="6"  y="22" width="32" height="42" rx="3" fill="#101020" stroke="#1f1f33" />
+        <rect x="12" y="27" width="12" height="3" rx="1" fill="#9a9ab3" />
+        <rect x="12" y="36" width="20" height="6" rx="1.5" fill="#FFD700" />
+        <rect x="10" y="55" width="24" height="5" rx="1.5" fill="#101020" stroke="#FFD700" strokeWidth="0.5" />
+        {/* Tier 2 (featured) — highlighted */}
+        <rect x="42" y="20" width="36" height="46" rx="3" fill="#101020" stroke="#FFD700" strokeWidth="1" />
+        <rect x="55" y="16" width="18" height="3" rx="1" fill="url(#m8acc)" />
+        <rect x="50" y="26" width="14" height="3" rx="1" fill="#FFD700" />
+        <rect x="50" y="35" width="22" height="7" rx="1.5" fill="url(#m8acc)" />
+        <rect x="46" y="56" width="28" height="6" rx="1.5" fill="url(#m8acc)" />
+        {/* Tier 3 (top) */}
+        <rect x="82" y="22" width="32" height="42" rx="3" fill="#101020" stroke="#E0115F" strokeWidth="0.5" />
+        <rect x="88" y="27" width="14" height="3" rx="1" fill="#9a9ab3" />
+        <rect x="88" y="36" width="22" height="6" rx="1.5" fill="#E0115F" />
+        <rect x="86" y="55" width="24" height="5" rx="1.5" fill="url(#m8acc)" />
       </svg>
     ),
   };
@@ -2900,7 +2907,7 @@ export default function AffiEditorPage() {
     (async () => {
       const loaded: Record<number, string> = {};
       try {
-        for (const i of [1, 2, 3, 4, 5, 6]) {
+        for (const i of [1, 2, 3, 4, 5, 6, 7, 8]) {
           const r = await fetch(`/affi_templates/model${i}.html`);
           if (!r.ok) throw new Error(`model${i}.html HTTP ${r.status}`);
           loaded[i] = await r.text();
@@ -3699,7 +3706,7 @@ export default function AffiEditorPage() {
             <div style={s.sideScroll}>
               <div style={s.sideLabel}>Template</div>
               <div style={s.modelGrid}>
-                {([1, 2, 3, 4, 5, 6] as const).map((n) => (
+                {([1, 2, 3, 4, 5, 6, 7, 8] as const).map((n) => (
                   <button
                     key={n}
                     style={{ ...s.modelCardV2, ...(currentModel === n ? s.modelCardV2Active : {}) }}
@@ -3708,7 +3715,7 @@ export default function AffiEditorPage() {
                     <div style={s.modelThumbV2}><ModelThumb n={n} /></div>
                     <div style={s.modelCardV2Name}>M{n}</div>
                     <div style={s.modelCardV2Desc}>
-                      {n === 1 ? "Side" : n === 2 ? "Offre" : n === 3 ? "Streamer" : n === 4 ? "2 cartes" : n === 5 ? "Golden" : "Premium"}
+                      {n === 1 ? "Side" : n === 2 ? "Offre" : n === 3 ? "Streamer" : n === 4 ? "2 cartes" : n === 5 ? "Golden" : n === 6 ? "Premium" : n === 7 ? "Immersif" : "Ladder"}
                     </div>
                   </button>
                 ))}
