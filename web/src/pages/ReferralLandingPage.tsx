@@ -33,6 +33,8 @@ type Config = {
   pageTitle: string;
   goldenBrandMain: string;
   goldenBrandSub: string;
+  goldenHideName?: string;     // "1" = masquer le pseudo (+ lignes d'encadrement)
+  goldenLandingOnly?: string;  // "1" = masquer tout ce qui est sous le hero
   goldenHeroTitleBefore: string;
   goldenHeroTitleSpan: string;
   goldenHeroSubtitle: string;
@@ -506,6 +508,20 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
 
     html = html.replace(/(<span class="brand-logo-main">)([^<]*)(<\/span>)/, `$1${esc(cfg.goldenBrandMain)}$3`);
     html = html.replace(/(<span class="brand-logo-sub">)([^<]*)(<\/span>)/, `$1${esc(cfg.goldenBrandSub)}$3`);
+
+    // Options d'affichage (synchro avec AffiEditorPage.applyConfig)
+    const hideName = cfg.goldenHideName === "1" || !String(cfg.goldenBrandMain || "").trim();
+    const landingOnly = cfg.goldenLandingOnly === "1";
+    if (hideName || landingOnly) {
+      const rules: string[] = [];
+      if (hideName) rules.push(".brand-signature { display: none !important; }");
+      if (landingOnly) {
+        rules.push(".gold-panel-section { display: none !important; }");
+        rules.push(".section:not(.hero-section) { display: none !important; }");
+        rules.push("footer.page-footer, .page-footer { display: none !important; }");
+      }
+      html = html.replace(/<\/head>/, `<style data-affi-m5-display>${rules.join("\n")}</style>\n</head>`);
+    }
     html = html.replace(
       /<h1 class="hero-title">[\s\S]*?<\/h1>/,
       `<h1 class="hero-title">${esc(cfg.goldenHeroTitleBefore)} <span>${esc(cfg.goldenHeroTitleSpan)}</span></h1>`
