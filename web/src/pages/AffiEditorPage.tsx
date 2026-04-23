@@ -1297,25 +1297,64 @@ function ModelThumb({ n }: { n: number }) {
     ),
     2: (
       <svg viewBox="0 0 120 70" fill="none">
-        <rect width="120" height="70" fill="#0a0a18" />
-        <rect x="4" y="6" width="52" height="8" rx="2" fill="#1e1e3a" />
-        <rect x="4" y="17" width="52" height="3" rx="1" fill="#252545" />
-        <rect x="4" y="22" width="40" height="3" rx="1" fill="#252545" />
-        <rect x="64" y="4" width="52" height="28" rx="2" fill="#1e1e3a" />
-        <rect x="64" y="4" width="52" height="14" rx="2" fill="#E0115F25" />
-        <rect x="64" y="34" width="52" height="10" rx="2" fill="#FFD700" />
-        <rect x="4" y="52" width="112" height="12" rx="2" fill="#1e1e3a" />
+        <defs>
+          <linearGradient id="m2g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FFD700" />
+            <stop offset="1" stopColor="#FF3366" />
+          </linearGradient>
+        </defs>
+        <rect width="120" height="70" rx="8" fill="#0a0a14" />
+        {/* hero compact */}
+        <rect x="38" y="6" width="44" height="4" rx="2" fill="#FFD70088" />
+        <rect x="28" y="13" width="64" height="3" rx="1.5" fill="#ffffff55" />
+        {/* Games grid 3x2 (le coeur de M2) */}
+        <rect x="6"  y="22" width="32" height="18" rx="2" fill="#22223a" stroke="#444466" strokeWidth="0.5" />
+        <rect x="6"  y="22" width="32" height="12" rx="2" fill="url(#m2g)" opacity="0.55" />
+        <rect x="42" y="22" width="32" height="18" rx="2" fill="#22223a" stroke="#444466" strokeWidth="0.5" />
+        <rect x="42" y="22" width="32" height="12" rx="2" fill="#E0115F77" opacity="0.55" />
+        <rect x="78" y="22" width="32" height="18" rx="2" fill="#22223a" stroke="#444466" strokeWidth="0.5" />
+        <rect x="78" y="22" width="32" height="12" rx="2" fill="#FFD70077" opacity="0.55" />
+        <rect x="6"  y="44" width="32" height="18" rx="2" fill="#22223a" stroke="#444466" strokeWidth="0.5" />
+        <rect x="6"  y="44" width="32" height="12" rx="2" fill="#E0115F77" opacity="0.55" />
+        <rect x="42" y="44" width="32" height="18" rx="2" fill="#22223a" stroke="#444466" strokeWidth="0.5" />
+        <rect x="42" y="44" width="32" height="12" rx="2" fill="#FFD70077" opacity="0.55" />
+        <rect x="78" y="44" width="32" height="18" rx="2" fill="#22223a" stroke="#444466" strokeWidth="0.5" />
+        <rect x="78" y="44" width="32" height="12" rx="2" fill="url(#m2g)" opacity="0.55" />
+        {/* play badges */}
+        <circle cx="22" cy="58" r="1.2" fill="#FFD700" />
+        <circle cx="58" cy="58" r="1.2" fill="#FFD700" />
+        <circle cx="94" cy="58" r="1.2" fill="#FFD700" />
       </svg>
     ),
     3: (
       <svg viewBox="0 0 120 70" fill="none">
-        <rect width="120" height="70" fill="#0a0a18" />
-        <rect x="4" y="6" width="52" height="8" rx="2" fill="#1e1e3a" />
-        <rect x="4" y="17" width="52" height="3" rx="1" fill="#252545" />
-        <rect x="64" y="4" width="52" height="28" rx="2" fill="#1e1e3a" />
-        <rect x="64" y="4" width="52" height="14" rx="2" fill="#00E67625" />
-        <rect x="64" y="34" width="52" height="10" rx="2" fill="#FFD700" />
-        <rect x="4" y="52" width="112" height="12" rx="2" fill="#1e1e3a" />
+        <defs>
+          <linearGradient id="m3ring" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FF3B7A" />
+            <stop offset="1" stopColor="#8B5CF6" />
+          </linearGradient>
+        </defs>
+        <rect width="120" height="70" rx="8" fill="#0d0d16" />
+        {/* Halo */}
+        <ellipse cx="60" cy="16" rx="40" ry="14" fill="#FF3B7A" opacity="0.15" />
+        {/* Avatar ring (centré, dominant) */}
+        <circle cx="60" cy="18" r="11" fill="url(#m3ring)" />
+        <circle cx="60" cy="18" r="8.5" fill="#15151f" stroke="#0d0d16" strokeWidth="1.2" />
+        <circle cx="60" cy="17" r="3" fill="#9a9ab3" />
+        <path d="M54 22 c1.5 -2 4 -3 6 -3 s4.5 1 6 3" stroke="#9a9ab3" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+        {/* LIVE dot */}
+        <circle cx="60" cy="31" r="1.6" fill="#FF3B7A" />
+        {/* Pseudo line */}
+        <rect x="44" y="34" width="32" height="3.5" rx="1.5" fill="#ffffff" />
+        {/* Socials row (4 chips) */}
+        <rect x="18" y="42" width="18" height="6" rx="1.5" fill="#22223a" stroke="#353555" strokeWidth="0.3" />
+        <rect x="40" y="42" width="18" height="6" rx="1.5" fill="#22223a" stroke="#353555" strokeWidth="0.3" />
+        <rect x="62" y="42" width="18" height="6" rx="1.5" fill="#22223a" stroke="#353555" strokeWidth="0.3" />
+        <rect x="84" y="42" width="18" height="6" rx="1.5" fill="#22223a" stroke="#353555" strokeWidth="0.3" />
+        {/* Casino recommendation card */}
+        <rect x="10" y="52" width="100" height="14" rx="3" fill="#22223a" stroke="#FF3B7A" strokeWidth="0.7" />
+        <rect x="16" y="55" width="40" height="3" rx="1.5" fill="#FF3B7A" />
+        <rect x="72" y="55" width="32" height="8" rx="2" fill="#FF3B7A" />
       </svg>
     ),
     4: (
@@ -2640,7 +2679,7 @@ export default function AffiEditorPage() {
     (async () => {
       const loaded: Record<number, string> = {};
       try {
-        for (const i of [1, 4, 5, 6, 7, 8]) {
+        for (const i of [1, 2, 3, 4, 5, 6, 7, 8]) {
           const r = await fetch(`/affi_templates/model${i}.html`);
           if (!r.ok) throw new Error(`model${i}.html HTTP ${r.status}`);
           loaded[i] = await r.text();
@@ -3439,7 +3478,7 @@ export default function AffiEditorPage() {
             <div style={s.sideScroll}>
               <div style={s.sideLabel}>Template</div>
               <div style={s.modelGrid}>
-                {([1, 4, 5, 6, 7, 8] as const).map((n) => (
+                {([1, 2, 3, 4, 5, 6, 7, 8] as const).map((n) => (
                   <button
                     key={n}
                     style={{ ...s.modelCardV2, ...(currentModel === n ? s.modelCardV2Active : {}) }}
@@ -3448,7 +3487,7 @@ export default function AffiEditorPage() {
                     <div style={s.modelThumbV2}><ModelThumb n={n} /></div>
                     <div style={s.modelCardV2Name}>M{n}</div>
                     <div style={s.modelCardV2Desc}>
-                      {n === 1 ? "Side" : n === 4 ? "2 cartes" : n === 5 ? "Golden" : n === 6 ? "Premium" : n === 7 ? "Arcade" : "Salon"}
+                      {n === 1 ? "Side" : n === 2 ? "Galerie" : n === 3 ? "Streamer" : n === 4 ? "2 cartes" : n === 5 ? "Golden" : n === 6 ? "Premium" : n === 7 ? "Arcade" : "Salon"}
                     </div>
                   </button>
                 ))}
