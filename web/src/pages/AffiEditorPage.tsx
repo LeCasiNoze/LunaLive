@@ -104,6 +104,13 @@ interface Config {
   customButtonsJsonDesktop: string;   // Desktop
   // FAQ items (JSON-stringified array de FaqItem) — model 5 uniquement
   faqItemsJson: string;
+  // Image fit mode (M1/M4/M6/M7/M8) : comment l'image remplit son cadre
+  // "cover" = remplit le cadre (crop si besoin), "contain" = tout visible, "fill" = étire, "native" = adapte le cadre à l'image
+  imgFit: "cover" | "contain" | "fill" | "native";
+  // UTM tags appliqués à affiLink au moment de l'export/publish
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
 }
 
 // ─── Custom buttons ───────────────────────────────────────────────────────────
@@ -419,6 +426,31 @@ const DEFAULT_CONFIG: Config = {
   customButtonsJson: "",
   customButtonsJsonDesktop: "",
   faqItemsJson: "",
+  imgFit: "cover",
+  utmSource: "",
+  utmMedium: "",
+  utmCampaign: "",
+};
+
+// ─── DEVICE PRESETS ──────────────────────────────────────────────────────────
+// Dimensions CSS réelles (pas physiques) — viewport width/height en logical pixels.
+export type DeviceKey =
+  | "iphone-15-pro" | "iphone-14" | "iphone-se" | "pixel-8" | "galaxy-s24"
+  | "ipad-mini" | "ipad-pro"
+  | "desktop-1280" | "desktop-1440" | "desktop-1920" | "desktop-full";
+
+export const DEVICE_PRESETS: Record<DeviceKey, { label: string; group: "phone" | "tablet" | "desktop"; w: number; h: number; icon: string }> = {
+  "iphone-15-pro": { label: "iPhone 15 Pro", group: "phone",   w: 393, h: 852,  icon: "📱" },
+  "iphone-14":     { label: "iPhone 14",     group: "phone",   w: 390, h: 844,  icon: "📱" },
+  "iphone-se":     { label: "iPhone SE",     group: "phone",   w: 375, h: 667,  icon: "📱" },
+  "pixel-8":       { label: "Pixel 8",       group: "phone",   w: 412, h: 915,  icon: "📱" },
+  "galaxy-s24":    { label: "Galaxy S24",    group: "phone",   w: 360, h: 780,  icon: "📱" },
+  "ipad-mini":     { label: "iPad Mini",     group: "tablet",  w: 768, h: 1024, icon: "🖼" },
+  "ipad-pro":      { label: "iPad Pro 11″",  group: "tablet",  w: 834, h: 1194, icon: "🖼" },
+  "desktop-1280":  { label: "Laptop 1280",   group: "desktop", w: 1280, h: 800, icon: "🖥" },
+  "desktop-1440":  { label: "Desktop 1440",  group: "desktop", w: 1440, h: 900, icon: "🖥" },
+  "desktop-1920":  { label: "Full HD",       group: "desktop", w: 1920, h: 1080, icon: "🖥" },
+  "desktop-full":  { label: "Pleine largeur",group: "desktop", w: 0,    h: 0,   icon: "↔" },
 };
 
 // ─── TYPOGRAPHY / CSS VARS ───────────────────────────────────────────────────
@@ -1003,7 +1035,17 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
   }
 
   if (cfg.affiLink) {
-    const safeAffiLink = escAttr(cfg.affiLink);
+    // Applique les UTM tags si définis
+    let finalLink = cfg.affiLink;
+    const utmParts: string[] = [];
+    if (cfg.utmSource)   utmParts.push(`utm_source=${encodeURIComponent(cfg.utmSource)}`);
+    if (cfg.utmMedium)   utmParts.push(`utm_medium=${encodeURIComponent(cfg.utmMedium)}`);
+    if (cfg.utmCampaign) utmParts.push(`utm_campaign=${encodeURIComponent(cfg.utmCampaign)}`);
+    if (utmParts.length > 0) {
+      const sep = finalLink.includes("?") ? "&" : "?";
+      finalLink = finalLink + sep + utmParts.join("&");
+    }
+    const safeAffiLink = escAttr(finalLink);
     html = html.replace(
       /href="[^"]*" class="btn-jouer"/g,
       `href="${safeAffiLink}" class="btn-jouer"`
@@ -1012,6 +1054,15 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
       /href="[^"]*" class="sticky-cta"/g,
       `href="${safeAffiLink}" class="sticky-cta"`
     );
+  }
+
+  // Image fit mode (applique object-fit sur .promo-image-container img)
+  if (cfg.imgFit && cfg.imgFit !== "cover") {
+    const fitCss =
+      cfg.imgFit === "native"
+        ? `<style data-affi-img-fit>.promo-image-container { aspect-ratio: auto !important; } .promo-image-container img { object-fit: contain !important; width: 100% !important; height: auto !important; aspect-ratio: auto !important; }</style>`
+        : `<style data-affi-img-fit>.promo-image-container img { object-fit: ${cfg.imgFit} !important; }</style>`;
+    html = html.replace(/<\/head>/, `${fitCss}\n</head>`);
   }
 
   if (cfg.offerTitle) {
@@ -2514,6 +2565,11 @@ export default function AffiEditorPage() {
   const [templates, setTemplates] = useState<Record<number, string>>({});
   const [loadError, setLoadError] = useState(false);
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
+  const [device, setDevice] = useState<DeviceKey>("iphone-15-pro");
+  const [deviceRotated, setDeviceRotated] = useState(false);
+  const [previewZoom, setPreviewZoom] = useState<number>(100); // %
+  const [showDeviceMenu, setShowDeviceMenu] = useState(false);
+  const [showQR, setShowQR] = useState(false);
   const [rightTab, setRightTab] = useState<"content" | "style" | "layout">("content");
   const [styleDevice, setStyleDevice] = useState<"all" | "mobile" | "desktop">("all");
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -2861,8 +2917,91 @@ export default function AffiEditorPage() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  // ── Iframe width by viewport ───────────────────────────────────────────────
-  const iframeWidth = viewport === "desktop" ? "100%" : viewport === "tablet" ? "768px" : "390px";
+  // ── Iframe dimensions from device preset ──────────────────────────────────
+  const devicePreset = DEVICE_PRESETS[device];
+  const iframeBaseW = deviceRotated ? devicePreset.h : devicePreset.w;
+  const iframeBaseH = deviceRotated ? devicePreset.w : devicePreset.h;
+  const iframeWidth =
+    device === "desktop-full"
+      ? "100%"
+      : `${iframeBaseW}px`;
+  const iframeHeight =
+    device === "desktop-full"
+      ? "100%"
+      : `${iframeBaseH}px`;
+  // Zoom applies as CSS transform scale
+  const zoomScale = previewZoom / 100;
+
+  // ── History stack (undo/redo) ─────────────────────────────────────────────
+  const historyRef = useRef<Config[]>([cfg]);
+  const historyIndexRef = useRef(0);
+  const skipHistoryRef = useRef(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  // Push new state to history each time cfg changes (except when restoring via undo/redo)
+  useEffect(() => {
+    if (skipHistoryRef.current) {
+      skipHistoryRef.current = false;
+      return;
+    }
+    const tid = setTimeout(() => {
+      // Debounced push pour regrouper les frappes rapides
+      const idx = historyIndexRef.current;
+      historyRef.current = [...historyRef.current.slice(0, idx + 1), cfg].slice(-50);
+      historyIndexRef.current = historyRef.current.length - 1;
+      setCanUndo(historyIndexRef.current > 0);
+      setCanRedo(false);
+    }, 300);
+    return () => clearTimeout(tid);
+  }, [cfg]);
+
+  function undoCfg() {
+    const idx = historyIndexRef.current;
+    if (idx <= 0) return;
+    historyIndexRef.current = idx - 1;
+    skipHistoryRef.current = true;
+    setCfg(historyRef.current[idx - 1]);
+    setCanUndo(historyIndexRef.current > 0);
+    setCanRedo(true);
+  }
+  function redoCfg() {
+    const idx = historyIndexRef.current;
+    if (idx >= historyRef.current.length - 1) return;
+    historyIndexRef.current = idx + 1;
+    skipHistoryRef.current = true;
+    setCfg(historyRef.current[idx + 1]);
+    setCanUndo(true);
+    setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+  }
+
+  // ── Auto-save brouillon (localStorage) ─────────────────────────────────────
+  const DRAFT_KEY = "lunalive_affi_draft_v1";
+  // Restore au montage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.cfg && !selectedPageId) {
+        skipHistoryRef.current = true;
+        setCfg((prev) => ({ ...prev, ...parsed.cfg }));
+        if (typeof parsed.currentModel === "number") setCurrentModel(parsed.currentModel);
+        if (parsed.goldenVariant) setGoldenVariant(parsed.goldenVariant);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Persist on change (sauf quand une page est sélectionnée — on garde ça pour les brouillons purs)
+  useEffect(() => {
+    if (selectedPageId) return;
+    const tid = setTimeout(() => {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ cfg, currentModel, goldenVariant }));
+      } catch {}
+    }, 500);
+    return () => clearTimeout(tid);
+  }, [cfg, currentModel, goldenVariant, selectedPageId]);
 
   // ── Pages filtrées par recherche ───────────────────────────────────────────
   const filteredPages = useMemo(() => {
@@ -2952,28 +3091,76 @@ export default function AffiEditorPage() {
     }
   }
 
-  // ── Fermer le menu popup au clic extérieur ────────────────────────────────
+  // ── Fermer les menus popup au clic extérieur ──────────────────────────────
   useEffect(() => {
-    if (menuOpenForPageId === null) return;
-    const handler = () => setMenuOpenForPageId(null);
+    if (menuOpenForPageId === null && !showDeviceMenu) return;
+    const handler = () => {
+      setMenuOpenForPageId(null);
+      setShowDeviceMenu(false);
+    };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
-  }, [menuOpenForPageId]);
+  }, [menuOpenForPageId, showDeviceMenu]);
 
-  // ── Raccourci Ctrl/Cmd+S pour publier/enregistrer ─────────────────────────
+  // ── Raccourcis clavier ────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+      const cmd = e.ctrlKey || e.metaKey;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      const inInput = tag === "INPUT" || tag === "TEXTAREA";
+      // Ctrl/Cmd+S
+      if (cmd && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        if (canManagePublishedPages && pageAction === null) {
-          void publishCurrentPage();
-        }
+        if (canManagePublishedPages && pageAction === null) void publishCurrentPage();
+        return;
+      }
+      // Ctrl/Cmd+Z (undo)
+      if (cmd && !e.shiftKey && e.key.toLowerCase() === "z" && !inInput) {
+        e.preventDefault();
+        undoCfg();
+        return;
+      }
+      // Ctrl/Cmd+Shift+Z ou Ctrl+Y (redo)
+      if ((cmd && e.shiftKey && e.key.toLowerCase() === "z") || (cmd && e.key.toLowerCase() === "y" && !inInput)) {
+        e.preventDefault();
+        redoCfg();
+        return;
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canManagePublishedPages, pageAction, selectedPageId, draftPayload]);
+
+  // ── Dupliquer dans toutes les 8 variantes (M5+) ──────────────────────────
+  async function duplicateInAllVariants() {
+    if (!token || !canManagePublishedPages) {
+      setPageError("Connexion FSB requise.");
+      return;
+    }
+    if (currentModel < 5) {
+      setPageError("Disponible uniquement pour les modèles M5+.");
+      return;
+    }
+    const variants: GoldenChanceVariant[] = ["gold", "ruby", "emerald", "sapphire", "amethyst", "obsidian", "rose", "jade"];
+    setPageAction("create");
+    setPageError(null);
+    setPageNotice(null);
+    let lastId: number | null = null;
+    try {
+      for (const v of variants) {
+        const payload = buildPublishedPayload(currentModel, cfg, v);
+        const response = await createFsbAffiPage(token, payload);
+        lastId = response.item.id;
+      }
+      await refreshPublishedPages(lastId);
+      setPageNotice(`8 variantes créées pour M${currentModel}`);
+    } catch (e: any) {
+      setPageError(String(e?.message || "Impossible de créer toutes les variantes."));
+    } finally {
+      setPageAction(null);
+    }
+  }
 
   // ── Style tab helpers ─────────────────────────────────────────────────────
   // Returns the correct config key for a typography prop given the current device tab
@@ -3045,6 +3232,16 @@ export default function AffiEditorPage() {
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
           {urlCopied ? "Copié" : "URL"}
+        </button>
+        <button style={{ ...s.topBtnIcon, opacity: canUndo ? 1 : 0.35 }} onClick={undoCfg} disabled={!canUndo} title="Annuler (Ctrl+Z)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 7v6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </button>
+        <button style={{ ...s.topBtnIcon, opacity: canRedo ? 1 : 0.35 }} onClick={redoCfg} disabled={!canRedo} title="Rétablir (Ctrl+Shift+Z)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 7v6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </button>
+        <button style={s.topBtnGhost} onClick={() => setShowQR(!showQR)} title="QR Code pour scanner sur mobile">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2"/><rect x="14" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2"/><rect x="3" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2"/><path d="M14 14h2v2M20 14v3M14 17v2h2M14 21h2M18 19v2M20 19h1M20 21h1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+          QR
         </button>
         <button style={s.topBtnGhost} onClick={exportHtml} title="Exporter le HTML autonome">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M7 10l5 5 5-5M12 15V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -3260,8 +3457,19 @@ export default function AffiEditorPage() {
               {currentModel >= 5 && (
                 <>
                   <div style={{ ...s.sideLabel, marginTop: 12 }}>Thème couleur</div>
-                  <div style={{ padding: "0 12px 16px" }}>
+                  <div style={{ padding: "0 12px 12px" }}>
                     <VariantPicker value={goldenVariant} onChange={setGoldenVariant} />
+                  </div>
+                  <div style={{ padding: "0 12px 16px" }}>
+                    <button
+                      style={s.generateAllBtn}
+                      onClick={duplicateInAllVariants}
+                      disabled={!canManagePublishedPages || pageAction !== null}
+                      title="Crée 8 pages simultanément, une par couleur (gold, ruby, emerald…)"
+                    >
+                      <span style={{ fontSize: 15 }}>✨</span>
+                      <span>Générer les 8 variantes</span>
+                    </button>
                   </div>
                 </>
               )}
@@ -3290,34 +3498,104 @@ export default function AffiEditorPage() {
 
             <div style={{ flex: 1 }} />
 
-            <div style={s.viewportSwitch}>
-              {([
-                ["desktop", "🖥", "Desktop"],
-                ["tablet", "🖼", "Tablette"],
-                ["mobile", "📱", "Mobile"],
-              ] as const).map(([v, ico, lbl]) => (
-                <button
-                  key={v}
-                  style={{ ...s.viewportBtn, ...(viewport === v ? s.viewportBtnActive : {}) }}
-                  onClick={() => setViewport(v)}
-                  title={lbl}
-                >
-                  <span style={{ fontSize: 13 }}>{ico}</span>
-                  {viewport === v && <span>{lbl}</span>}
-                </button>
-              ))}
+            {/* Device picker dropdown */}
+            <div style={{ position: "relative" }}>
+              <button
+                style={s.deviceBtnTop}
+                onClick={(e) => { e.stopPropagation(); setShowDeviceMenu(!showDeviceMenu); }}
+                title="Choisir un appareil"
+              >
+                <span>{devicePreset.icon}</span>
+                <span style={{ fontWeight: 700 }}>{devicePreset.label}</span>
+                {device !== "desktop-full" && (
+                  <span style={s.deviceBtnDim}>
+                    · {iframeBaseW}×{iframeBaseH}
+                  </span>
+                )}
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+              {showDeviceMenu && (
+                <div style={s.deviceMenu} onClick={(e) => e.stopPropagation()}>
+                  {(["phone", "tablet", "desktop"] as const).map((group) => (
+                    <React.Fragment key={group}>
+                      <div style={s.deviceMenuGroup}>
+                        {group === "phone" ? "📱 Téléphones" : group === "tablet" ? "🖼 Tablettes" : "🖥 Desktop"}
+                      </div>
+                      {(Object.entries(DEVICE_PRESETS) as [DeviceKey, typeof DEVICE_PRESETS[DeviceKey]][])
+                        .filter(([, d]) => d.group === group)
+                        .map(([k, d]) => (
+                          <button
+                            key={k}
+                            style={{ ...s.deviceMenuItem, ...(device === k ? s.deviceMenuItemActive : {}) }}
+                            onClick={() => { setDevice(k); setShowDeviceMenu(false); }}
+                          >
+                            <span style={{ marginRight: 8 }}>{d.icon}</span>
+                            <span style={{ flex: 1, textAlign: "left" }}>{d.label}</span>
+                            {d.w > 0 && <span style={s.deviceMenuDim}>{d.w}×{d.h}</span>}
+                          </button>
+                        ))}
+                    </React.Fragment>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Rotation */}
+            {device !== "desktop-full" && (
+              <button
+                style={{ ...s.topBtnIcon, ...(deviceRotated ? { background: T.primarySoft, color: T.primaryHover, borderColor: T.primary } : {}) }}
+                onClick={() => setDeviceRotated(!deviceRotated)}
+                title={deviceRotated ? "Passer en portrait" : "Passer en paysage"}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ transform: deviceRotated ? "rotate(90deg)" : "none", transition: "transform 0.25s" }}><rect x="7" y="3" width="10" height="18" rx="2" stroke="currentColor" strokeWidth="2"/><circle cx="12" cy="18" r="1" fill="currentColor"/></svg>
+              </button>
+            )}
+
+            {/* Zoom */}
+            <div style={s.zoomWrap}>
+              <button style={s.zoomBtn} onClick={() => setPreviewZoom(Math.max(25, previewZoom - 25))} title="Dézoomer">−</button>
+              <button style={s.zoomLabel} onClick={() => setPreviewZoom(100)} title="Réinitialiser (100%)">{previewZoom}%</button>
+              <button style={s.zoomBtn} onClick={() => setPreviewZoom(Math.min(200, previewZoom + 25))} title="Zoomer">+</button>
             </div>
           </div>
 
+          {/* QR panel */}
+          {showQR && (
+            <div style={s.qrPanel}>
+              <div style={s.qrInner}>
+                <div style={s.qrTitle}>Scanner avec ton téléphone</div>
+                <div style={s.qrSub}>{selectedPage ? `${PUBLIC_SITE}/r/${selectedPage.slug}` : `Preview locale (publier pour URL définitive)`}</div>
+                <img
+                  alt="QR code"
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&color=f3f3f8&bgcolor=11111c&data=${encodeURIComponent(selectedPage ? `${PUBLIC_SITE}/r/${selectedPage.slug}` : publishedUrlPreview)}`}
+                  style={s.qrImg}
+                />
+                <button style={s.qrClose} onClick={() => setShowQR(false)}>Fermer ✕</button>
+              </div>
+            </div>
+          )}
+
           <div style={s.previewCanvas}>
             <div style={{
-              ...s.previewFrame,
-              width: iframeWidth,
-              maxWidth: "100%",
+              width: device === "desktop-full" ? "100%" : `${iframeBaseW * zoomScale}px`,
+              height: device === "desktop-full" ? "100%" : `${iframeBaseH * zoomScale}px`,
+              minHeight: 400,
+              flex: "none",
+              position: "relative",
+              transition: "width 0.25s, height 0.25s",
             }}>
               <iframe
                 ref={iframeRef}
-                style={s.iframe}
+                style={{
+                  ...s.iframe,
+                  width: iframeWidth,
+                  height: device === "desktop-full" ? "100%" : iframeHeight,
+                  transform: `scale(${zoomScale})`,
+                  transformOrigin: "top left",
+                  border: `1px solid ${T.bd}`,
+                  borderRadius: 14,
+                  boxShadow: T.shadowLg,
+                }}
                 title="preview"
               />
             </div>
@@ -3381,7 +3659,49 @@ export default function AffiEditorPage() {
                         <ImagePicker label="Image carte 2" value={cfg.imgUrl2} onChange={set("imgUrl2")} />
                       </>
                     )}
+                    <div style={s.field}>
+                      <label style={s.label}>Cadrage de l'image</label>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        {([
+                          ["cover",   "🖼 Remplir",    "Image recadrée pour remplir le cadre"],
+                          ["contain", "◱ Voir tout",   "Image entière visible (bandes possibles)"],
+                          ["fill",    "⤢ Étirer",      "Déforme l'image pour remplir"],
+                          ["native",  "📐 Adapter",    "Cadre adapté au ratio de l'image"],
+                        ] as const).map(([val, lbl, tip]) => (
+                          <button
+                            key={val}
+                            title={tip}
+                            style={{ ...s.variantBtn, ...(cfg.imgFit === val ? s.variantBtnActive : {}), padding: "8px 10px" }}
+                            onClick={() => set("imgFit")(val)}
+                          >
+                            <span style={{ fontSize: 12 }}>{lbl}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <TextField label="Lien d'affiliation" value={cfg.affiLink} onChange={set("affiLink")} placeholder="https://casino.com/ref/..." type="url" />
+                  </Section>
+
+                  <Section title="📊 Tracking UTM" defaultOpen={false}>
+                    <div style={{ fontSize: 11, color: T.txtMute, marginBottom: 8, lineHeight: 1.5 }}>
+                      Paramètres ajoutés automatiquement à ton lien d'affiliation pour tracker la source du clic.
+                    </div>
+                    <TextField label="utm_source" value={cfg.utmSource} onChange={set("utmSource")} placeholder="ex: instagram, telegram, twitter" />
+                    <TextField label="utm_medium" value={cfg.utmMedium} onChange={set("utmMedium")} placeholder="ex: story, post, bio" />
+                    <TextField label="utm_campaign" value={cfg.utmCampaign} onChange={set("utmCampaign")} placeholder="ex: bonus-noel-2026" />
+                    {(cfg.utmSource || cfg.utmMedium || cfg.utmCampaign) && (
+                      <div style={{ ...s.urlPreview, marginTop: 8 }}>
+                        <div style={{ fontSize: 10, color: T.txtMute, marginBottom: 4 }}>Aperçu du lien final :</div>
+                        {(() => {
+                          const u: string[] = [];
+                          if (cfg.utmSource)   u.push(`utm_source=${encodeURIComponent(cfg.utmSource)}`);
+                          if (cfg.utmMedium)   u.push(`utm_medium=${encodeURIComponent(cfg.utmMedium)}`);
+                          if (cfg.utmCampaign) u.push(`utm_campaign=${encodeURIComponent(cfg.utmCampaign)}`);
+                          const sep = (cfg.affiLink || "").includes("?") ? "&" : "?";
+                          return (cfg.affiLink || "https://…") + (u.length ? sep + u.join("&") : "");
+                        })()}
+                      </div>
+                    )}
                   </Section>
 
                   <Section title="Offre">
@@ -3859,6 +4179,14 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 12.5, fontWeight: 700,
     cursor: "pointer", whiteSpace: "nowrap",
   },
+  topBtnIcon: {
+    width: 30, height: 30, flexShrink: 0,
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    padding: 0,
+    background: "transparent",
+    border: `1px solid ${T.bd}`, borderRadius: 7,
+    color: T.txtDim, cursor: "pointer",
+  },
   topBtnPrimary: {
     display: "inline-flex", alignItems: "center", gap: 7,
     padding: "8px 16px", borderRadius: 7,
@@ -4120,6 +4448,16 @@ const s: Record<string, React.CSSProperties> = {
   },
   modelCardV2Name: { fontSize: 11.5, fontWeight: 800, color: T.txt, letterSpacing: "0.02em" },
   modelCardV2Desc: { fontSize: 10, color: T.txtMute, marginTop: 2 },
+  generateAllBtn: {
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+    width: "100%",
+    padding: "10px 14px",
+    background: `linear-gradient(135deg, ${T.primarySoft} 0%, rgba(217,70,239,0.12) 100%)`,
+    border: `1px dashed ${T.primary}`,
+    borderRadius: 8,
+    color: T.primaryHover,
+    fontSize: 12, fontWeight: 700, cursor: "pointer",
+  },
 
   // ══════ COLLAPSE BTN ══════
   collapseBtn: {
@@ -4188,6 +4526,95 @@ const s: Record<string, React.CSSProperties> = {
     color: T.txt,
     boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.04)",
   },
+  // Device picker in preview bar
+  deviceBtnTop: {
+    display: "inline-flex", alignItems: "center", gap: 7,
+    padding: "6px 12px",
+    background: T.bg2,
+    border: `1px solid ${T.bd}`, borderRadius: 8,
+    color: T.txt,
+    fontSize: 12.5, cursor: "pointer",
+    whiteSpace: "nowrap",
+    transition: "border-color 0.15s, background 0.15s",
+  },
+  deviceBtnDim: { color: T.txtMute, fontSize: 11, fontFamily: "'JetBrains Mono', monospace" },
+  deviceMenu: {
+    position: "absolute",
+    top: "calc(100% + 6px)", right: 0,
+    zIndex: 60,
+    minWidth: 240,
+    background: T.bg2,
+    border: `1px solid ${T.bd2}`,
+    borderRadius: 10,
+    boxShadow: T.shadowLg,
+    padding: 6,
+    display: "flex", flexDirection: "column", gap: 1,
+    maxHeight: 480,
+    overflowY: "auto",
+  },
+  deviceMenuGroup: {
+    padding: "9px 10px 5px",
+    fontSize: 10.5, fontWeight: 800, textTransform: "uppercase",
+    letterSpacing: ".1em", color: T.txtMute,
+  },
+  deviceMenuItem: {
+    display: "flex", alignItems: "center",
+    padding: "7px 10px",
+    background: "transparent",
+    border: 0, borderRadius: 6,
+    color: T.txt,
+    fontSize: 12.5,
+    cursor: "pointer",
+  },
+  deviceMenuItemActive: {
+    background: T.primarySoft,
+    color: T.primaryHover,
+  },
+  deviceMenuDim: { color: T.txtMute, fontSize: 11, fontFamily: "'JetBrains Mono', monospace" },
+
+  // Zoom
+  zoomWrap: {
+    display: "inline-flex", alignItems: "center",
+    background: T.bg2,
+    border: `1px solid ${T.bd}`,
+    borderRadius: 8, overflow: "hidden",
+  },
+  zoomBtn: {
+    width: 28, height: 28,
+    background: "transparent", border: 0,
+    color: T.txtDim, cursor: "pointer",
+    fontSize: 15, fontWeight: 700, lineHeight: 1,
+  },
+  zoomLabel: {
+    padding: "0 10px", minWidth: 46,
+    background: "transparent", border: 0,
+    color: T.txt,
+    fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+    fontFamily: "'JetBrains Mono', monospace",
+  },
+
+  // QR panel
+  qrPanel: {
+    position: "absolute",
+    top: 56, right: 14,
+    zIndex: 70,
+    background: T.bg1,
+    border: `1px solid ${T.bd2}`,
+    borderRadius: 14,
+    boxShadow: T.shadowLg,
+    padding: 20,
+  },
+  qrInner: { display: "flex", flexDirection: "column", alignItems: "center", gap: 10 },
+  qrTitle: { fontSize: 14, fontWeight: 700, color: T.txt },
+  qrSub: { fontSize: 11, color: T.txtMute, fontFamily: "'JetBrains Mono', monospace", maxWidth: 240, textAlign: "center", wordBreak: "break-all" },
+  qrImg: { width: 240, height: 240, borderRadius: 10, background: T.bg2 },
+  qrClose: {
+    marginTop: 4,
+    padding: "7px 14px",
+    background: T.bg3, border: `1px solid ${T.bd}`, borderRadius: 7,
+    color: T.txtDim, fontSize: 12, fontWeight: 600, cursor: "pointer",
+  },
+
   previewCanvas: {
     flex: 1,
     overflow: "auto",
@@ -4209,11 +4636,14 @@ const s: Record<string, React.CSSProperties> = {
     minHeight: 500,
   },
   iframe: {
-    border: "none",
+    border: `1px solid ${T.bd}`,
     background: "white",
-    width: "100%",
     height: "100%",
+    minHeight: 560,
     display: "block",
+    borderRadius: 12,
+    boxShadow: T.shadowLg,
+    transition: "width 0.2s, max-width 0.2s",
   },
 
   // ══════ RIGHT DOCK ══════
