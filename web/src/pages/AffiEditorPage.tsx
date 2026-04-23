@@ -609,8 +609,11 @@ function applyConfig(
   model: number,
   goldenVariant: GoldenChanceVariant
 ): string {
-  if (model === 5) {
+  // M5+ supportent le système de variants (theme swap via data-variant)
+  if (model >= 5) {
     html = html.replace(/__VARIANT__/g, goldenVariant);
+  }
+  if (model === 5) {
 
     // Note: on garde le <meta viewport width=device-width> du template
     // → desktop rend normalement, mobile rend à sa largeur native.
@@ -2968,7 +2971,7 @@ export default function AffiEditorPage() {
           </div>
 
           {/* Variant picker for model 5 */}
-          {currentModel === 5 && (
+          {currentModel >= 5 && (
             <>
               <div style={s.sidebarDivider} />
               <div style={s.sidebarSectionTitle}><span>Variante</span></div>
