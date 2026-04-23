@@ -111,6 +111,61 @@ interface Config {
   utmSource: string;
   utmMedium: string;
   utmCampaign: string;
+  // M3 — Streamer Profile (personal-first)
+  streamerPseudo: string;
+  streamerHandle: string;
+  streamerTagline: string;
+  streamerMessage: string;
+  streamerSign: string;
+  streamerStatFollowers: string;
+  streamerStatToday: string;
+  streamerStatRating: string;
+  streamerStatus: string;
+  // JSON-stringified array de SocialLink
+  streamerSocialsJson: string;
+}
+
+// ─── Streamer socials (M3) ───────────────────────────────────────────────────
+export type SocialPlatform = "twitch" | "kick" | "youtube" | "telegram" | "twitter" | "instagram" | "tiktok" | "discord";
+export interface SocialLink {
+  id: string;
+  platform: SocialPlatform;
+  label: string;  // ex: "Twitch"
+  url: string;
+  count: string;  // ex: "28K"
+}
+export const SOCIAL_META: Record<SocialPlatform, { label: string; brand: string; defaultLabel: string }> = {
+  twitch:    { label: "Twitch",    brand: "#9146ff", defaultLabel: "Twitch"    },
+  kick:      { label: "Kick",      brand: "#53fc18", defaultLabel: "Kick"      },
+  youtube:   { label: "YouTube",   brand: "#ff0000", defaultLabel: "YouTube"   },
+  telegram:  { label: "Telegram",  brand: "#2aabee", defaultLabel: "Telegram"  },
+  twitter:   { label: "Twitter/X", brand: "#000000", defaultLabel: "Twitter"   },
+  instagram: { label: "Instagram", brand: "#d946ef", defaultLabel: "Instagram" },
+  tiktok:    { label: "TikTok",    brand: "#ff0050", defaultLabel: "TikTok"    },
+  discord:   { label: "Discord",   brand: "#5865F2", defaultLabel: "Discord"   },
+};
+function makeSocialId(): string {
+  return `sc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+export function defaultSocialLink(platform: SocialPlatform = "twitch"): SocialLink {
+  return { id: makeSocialId(), platform, label: SOCIAL_META[platform].defaultLabel, url: "", count: "" };
+}
+export function parseSocialLinks(json: string | undefined | null): SocialLink[] {
+  if (!json) return [];
+  try {
+    const p = JSON.parse(json);
+    if (!Array.isArray(p)) return [];
+    return p.map((s: any) => ({
+      id: String(s?.id || makeSocialId()),
+      platform: (SOCIAL_META as any)[s?.platform] ? s.platform : "twitch",
+      label: String(s?.label || ""),
+      url: String(s?.url || ""),
+      count: String(s?.count || ""),
+    }));
+  } catch { return []; }
+}
+export function stringifySocialLinks(items: SocialLink[]): string {
+  return JSON.stringify(items);
 }
 
 // ─── Custom buttons ───────────────────────────────────────────────────────────
@@ -430,6 +485,21 @@ const DEFAULT_CONFIG: Config = {
   utmSource: "",
   utmMedium: "",
   utmCampaign: "",
+  streamerPseudo: "LeStreamer",
+  streamerHandle: "@lestreamer",
+  streamerTagline: "casino & entertainment",
+  streamerMessage: "Hey, j'ai testé pas mal de casinos cette année et je te recommande celui-ci sans hésiter. Paiements rapides, bonus respecté, support réactif. Mon code est dans le bouton.",
+  streamerSign: "— Le Streamer",
+  streamerStatFollowers: "28.4K",
+  streamerStatToday: "214",
+  streamerStatRating: "4.9",
+  streamerStatus: "En stream maintenant",
+  streamerSocialsJson: JSON.stringify([
+    { id: "sc_1", platform: "twitch",   label: "Twitch",   url: "https://twitch.tv/",   count: "28K" },
+    { id: "sc_2", platform: "kick",     label: "Kick",     url: "https://kick.com/",    count: "12K" },
+    { id: "sc_3", platform: "youtube",  label: "YouTube",  url: "https://youtube.com/", count: "52K" },
+    { id: "sc_4", platform: "telegram", label: "Telegram", url: "https://t.me/",        count: "9K"  },
+  ]),
 };
 
 // ─── DEVICE PRESETS ──────────────────────────────────────────────────────────
@@ -1054,6 +1124,64 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
       /href="[^"]*" class="sticky-cta"/g,
       `href="${safeAffiLink}" class="sticky-cta"`
     );
+  }
+
+  // ─── M3 : Streamer profile placeholders ─────────────────────────────────
+  if (model === 3) {
+    // Pseudo + handle + tagline
+    if (cfg.streamerPseudo) {
+      html = html.replace(/<div class="pseudo[^"]*">[^<]*<\/div>/, `<div class="pseudo reveal">${esc(cfg.streamerPseudo)}</div>`);
+    }
+    if (cfg.streamerHandle || cfg.streamerTagline) {
+      const handle = esc(cfg.streamerHandle || "@streamer");
+      const tag = esc(cfg.streamerTagline || "");
+      html = html.replace(
+        /<div class="handle reveal">[^<]*<b>[^<]*<\/b><\/div>/,
+        `<div class="handle reveal">${handle} · <b>${tag}</b></div>`
+      );
+    }
+    // Status tag
+    if (cfg.streamerStatus) {
+      html = html.replace(/<span class="tag live">[^<]*<\/span>/, `<span class="tag live">${esc(cfg.streamerStatus)}</span>`);
+    }
+    // Stats row
+    if (cfg.streamerStatFollowers) html = html.replace(/(<div class="stat-cell"><div class="stat-val">)[^<]*(<\/div><div class="stat-lbl">Abonnés<\/div>)/, `$1${esc(cfg.streamerStatFollowers)}$2`);
+    if (cfg.streamerStatToday)     html = html.replace(/(<div class="stat-cell"><div class="stat-val">)[^<]*(<\/div><div class="stat-lbl">Inscrits aujourd'hui<\/div>)/, `$1${esc(cfg.streamerStatToday)}$2`);
+    if (cfg.streamerStatRating)    html = html.replace(/(<div class="stat-cell"><div class="stat-val">)[^<]*(<\/div><div class="stat-lbl">Note Trustpilot<\/div>)/, `$1${esc(cfg.streamerStatRating)}$2`);
+
+    // Message + sign
+    if (cfg.streamerMessage) {
+      html = html.replace(/<p class="hero-subtitle">[^<]*<\/p>/, `<p class="hero-subtitle">${esc(cfg.streamerMessage)}</p>`);
+    }
+    if (cfg.streamerSign) {
+      html = html.replace(/<div class="note-sign">[^<]*<\/div>/, `<div class="note-sign">${esc(cfg.streamerSign)}</div>`);
+    }
+
+    // Socials block — rebuild entirely from JSON config
+    const socials = parseSocialLinks(cfg.streamerSocialsJson);
+    if (socials.length > 0) {
+      const ICONS: Record<SocialPlatform, string> = {
+        twitch:    `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M4 2l-2 5v13h5v3h4l3-3h4l5-5V2H4zm18 12l-4 4h-4l-3 3v-3H7V4h15v10z"/><path d="M11 8h2v5h-2zm5 0h2v5h-2z"/></svg>`,
+        kick:      `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h5v6h2V3h5v6l4 6-4 6H13v-6H8v6H3V3z"/></svg>`,
+        youtube:   `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M23 8s-.2-1.6-.8-2.3c-.8-.9-1.7-.9-2.1-1C17 4.5 12 4.5 12 4.5s-5 0-8.1.2c-.4.1-1.3.1-2.1 1C1.2 6.4 1 8 1 8s-.2 1.9-.2 3.8v1.8c0 1.9.2 3.8.2 3.8s.2 1.6.8 2.3c.8.9 1.8.9 2.3 1 1.7.2 7.9.2 7.9.2s5 0 8.1-.2c.4-.1 1.3-.1 2.1-1 .6-.7.8-2.3.8-2.3s.2-1.9.2-3.8v-1.8c0-1.9-.2-3.8-.2-3.8zM9.7 14.9V8.6l6.4 3.2-6.4 3.1z"/></svg>`,
+        telegram:  `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M9.8 15.6l-.4 5.4c.6 0 .8-.3 1.2-.6l2.7-2.6 5.7 4.1c1 .6 1.8.3 2-1l3.7-17.4c.3-1.5-.5-2.1-1.6-1.7L2 8.2C.5 8.8.5 9.7 1.7 10l5.6 1.7 13-8.2c.6-.4 1.2-.2.7.3L9.8 15.6z"/></svg>`,
+        twitter:   `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h3l-7.5 8.6L22 22h-6.8l-5.3-6.9L3.8 22H.8l8-9.1L0 2h7l4.8 6.3L18 2zm-1 18h1.7L6.2 4H4.3l12.7 16z"/></svg>`,
+        instagram: `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.2c3.2 0 3.6 0 4.8.1 1.2.1 1.8.3 2.2.4.6.2 1 .5 1.4.9.4.4.7.8.9 1.4.2.4.4 1 .4 2.2.1 1.2.1 1.6.1 4.8s0 3.6-.1 4.8c-.1 1.2-.3 1.8-.4 2.2-.2.6-.5 1-.9 1.4-.4.4-.8.7-1.4.9-.4.2-1 .4-2.2.4-1.2.1-1.6.1-4.8.1s-3.6 0-4.8-.1c-1.2-.1-1.8-.3-2.2-.4-.6-.2-1-.5-1.4-.9-.4-.4-.7-.8-.9-1.4-.2-.4-.4-1-.4-2.2-.1-1.2-.1-1.6-.1-4.8s0-3.6.1-4.8c.1-1.2.3-1.8.4-2.2.2-.6.5-1 .9-1.4.4-.4.8-.7 1.4-.9.4-.2 1-.4 2.2-.4 1.2-.1 1.6-.1 4.8-.1zm0 2.2c-3.1 0-3.5 0-4.7.1-1.1 0-1.7.2-2.1.4-.5.2-.9.4-1.3.8-.4.4-.6.8-.8 1.3-.2.4-.3 1-.4 2.1C2.6 8.5 2.6 8.9 2.6 12s0 3.5.1 4.7c0 1.1.2 1.7.4 2.1.2.5.4.9.8 1.3.4.4.8.6 1.3.8.4.2 1 .3 2.1.4 1.2.1 1.6.1 4.7.1s3.5 0 4.7-.1c1.1 0 1.7-.2 2.1-.4.5-.2.9-.4 1.3-.8.4-.4.6-.8.8-1.3.2-.4.3-1 .4-2.1.1-1.2.1-1.6.1-4.7s0-3.5-.1-4.7c0-1.1-.2-1.7-.4-2.1-.2-.5-.4-.9-.8-1.3-.4-.4-.8-.6-1.3-.8-.4-.2-1-.3-2.1-.4C15.5 4.4 15.1 4.4 12 4.4zm0 3.4a4.2 4.2 0 1 1 0 8.4 4.2 4.2 0 0 1 0-8.4zm0 6.9a2.7 2.7 0 1 0 0-5.4 2.7 2.7 0 0 0 0 5.4zm5.3-7.1a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>`,
+        tiktok:    `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19 7.5V11a7 7 0 0 1-4-1.3V16a6 6 0 1 1-6-6v3.5a2.5 2.5 0 1 0 2.5 2.5V2h3a4 4 0 0 0 4 4v1.5z"/></svg>`,
+        discord:   `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4.4c-1.5-.7-3.1-1.2-4.8-1.5l-.2.4c1.5.4 2.9 1 4.3 1.9-1.6-1-3.4-1.5-5.3-1.5s-3.7.5-5.3 1.5c1.4-.9 2.9-1.5 4.3-1.9l-.2-.4c-1.7.3-3.3.8-4.8 1.5C2 9.3 1.2 14 1.6 18.6c1.8 1.4 3.9 2.3 6.1 2.6l.6-.9c-1.1-.4-2.1-.9-3-1.6.3.2.5.3.8.5 2 .9 4.2 1.4 6.4 1.4s4.4-.5 6.4-1.4c.3-.1.5-.3.8-.5-.9.6-1.9 1.2-3 1.6l.6.9c2.2-.3 4.3-1.1 6.1-2.6.5-4.9-.5-9.6-3.4-14.2zM9 15.2c-1.1 0-2-1-2-2.2s.9-2.2 2-2.2 2 1 2 2.2-.9 2.2-2 2.2zm6 0c-1.1 0-2-1-2-2.2s.9-2.2 2-2.2 2 1 2 2.2-.9 2.2-2 2.2z"/></svg>`,
+      };
+      const rebuilt = `<div class="socials">\n` + socials.map((sc) => {
+        const url = escAttr(sc.url || "#");
+        const label = esc(sc.label || SOCIAL_META[sc.platform].defaultLabel);
+        const count = sc.count ? `<span class="social-count">${esc(sc.count)}</span>` : "";
+        const ico = ICONS[sc.platform] || "";
+        return `  <a href="${url}" class="social ${sc.platform}" target="_blank" rel="noopener noreferrer">\n    <div class="social-ico">${ico}</div>\n    ${label}${count ? " " + count : ""}\n  </a>`;
+      }).join("\n") + `\n</div>`;
+      html = html.replace(/<div class="socials">[\s\S]*?<\/div>\s*(?=<\/div>)/, rebuilt);
+    } else {
+      // Pas de socials = on retire la section
+      html = html.replace(/<div class="socials">[\s\S]*?<\/div>\s*(?=<\/div>)/, "");
+    }
   }
 
   // Image fit mode (applique object-fit sur .promo-image-container img)
@@ -2206,6 +2334,99 @@ function ButtonsEditor({ buttons, onChange, bonusAmount, affiLink, variant }: Bu
 
 // ─── FAQ editor ───────────────────────────────────────────────────────────────
 
+interface SocialsEditorProps {
+  items: SocialLink[];
+  onChange: (next: SocialLink[]) => void;
+}
+function SocialsEditor({ items, onChange }: SocialsEditorProps) {
+  function update(i: number, patch: Partial<SocialLink>) {
+    onChange(items.map((it, idx) => idx === i ? { ...it, ...patch } : it));
+  }
+  function remove(i: number) {
+    onChange(items.filter((_, idx) => idx !== i));
+  }
+  function add(platform: SocialPlatform = "twitch") {
+    onChange([...items, defaultSocialLink(platform)]);
+  }
+  function move(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= items.length) return;
+    const next = [...items];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  }
+  return (
+    <div>
+      {items.length === 0 && (
+        <div style={{ padding: "12px 14px", background: T.bg2, border: `1px dashed ${T.bd}`, borderRadius: 8, fontSize: 12, color: T.txtMute, textAlign: "center", marginBottom: 10 }}>
+          Aucun réseau. Ajoute-en un ci-dessous.
+        </div>
+      )}
+      {items.map((sc, i) => {
+        const meta = SOCIAL_META[sc.platform];
+        return (
+          <div key={sc.id} style={{
+            marginBottom: 8, padding: 10,
+            background: T.bg2, border: `1px solid ${T.bd}`, borderRadius: 8,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <span style={{
+                width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                background: meta.brand, border: `1px solid ${T.bd2}`,
+              }} />
+              <select
+                value={sc.platform}
+                onChange={(e) => update(i, { platform: e.target.value as SocialPlatform, label: sc.label || SOCIAL_META[e.target.value as SocialPlatform].defaultLabel })}
+                style={{ ...s.input, flex: 1, padding: "5px 8px", fontSize: 12 }}
+              >
+                {(Object.keys(SOCIAL_META) as SocialPlatform[]).map((p) => (
+                  <option key={p} value={p}>{SOCIAL_META[p].label}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => move(i, -1)} disabled={i === 0}
+                style={{ ...s.smallIconBtn, opacity: i === 0 ? 0.35 : 1 }} title="Monter"
+              >↑</button>
+              <button
+                onClick={() => move(i, 1)} disabled={i === items.length - 1}
+                style={{ ...s.smallIconBtn, opacity: i === items.length - 1 ? 0.35 : 1 }} title="Descendre"
+              >↓</button>
+              <button
+                onClick={() => remove(i)}
+                style={{ ...s.smallIconBtn, color: "#f87171" }} title="Supprimer"
+              >✕</button>
+            </div>
+            <input
+              type="text"
+              value={sc.label}
+              onChange={(e) => update(i, { label: e.target.value })}
+              placeholder="Label affiché (ex: Twitch)"
+              style={{ ...s.input, marginBottom: 6, fontSize: 12 }}
+            />
+            <input
+              type="url"
+              value={sc.url}
+              onChange={(e) => update(i, { url: e.target.value })}
+              placeholder="https://twitch.tv/moncompte"
+              style={{ ...s.input, marginBottom: 6, fontSize: 12 }}
+            />
+            <input
+              type="text"
+              value={sc.count}
+              onChange={(e) => update(i, { count: e.target.value })}
+              placeholder="Compteur affiché (ex: 28K, 1.2M, laisser vide pour masquer)"
+              style={{ ...s.input, fontSize: 12 }}
+            />
+          </div>
+        );
+      })}
+      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+        <button onClick={() => add("twitch")} style={{ ...s.addBtn }}>+ Ajouter un réseau</button>
+      </div>
+    </div>
+  );
+}
+
 interface FaqEditorProps {
   items: FaqItem[];
   onChange: (next: FaqItem[]) => void;
@@ -2679,7 +2900,7 @@ export default function AffiEditorPage() {
     (async () => {
       const loaded: Record<number, string> = {};
       try {
-        for (const i of [1, 2, 3, 4, 5, 6, 7, 8]) {
+        for (const i of [1, 2, 3, 4, 5, 6]) {
           const r = await fetch(`/affi_templates/model${i}.html`);
           if (!r.ok) throw new Error(`model${i}.html HTTP ${r.status}`);
           loaded[i] = await r.text();
@@ -3478,7 +3699,7 @@ export default function AffiEditorPage() {
             <div style={s.sideScroll}>
               <div style={s.sideLabel}>Template</div>
               <div style={s.modelGrid}>
-                {([1, 2, 3, 4, 5, 6, 7, 8] as const).map((n) => (
+                {([1, 2, 3, 4, 5, 6] as const).map((n) => (
                   <button
                     key={n}
                     style={{ ...s.modelCardV2, ...(currentModel === n ? s.modelCardV2Active : {}) }}
@@ -3487,7 +3708,7 @@ export default function AffiEditorPage() {
                     <div style={s.modelThumbV2}><ModelThumb n={n} /></div>
                     <div style={s.modelCardV2Name}>M{n}</div>
                     <div style={s.modelCardV2Desc}>
-                      {n === 1 ? "Side" : n === 2 ? "Galerie" : n === 3 ? "Streamer" : n === 4 ? "2 cartes" : n === 5 ? "Golden" : n === 6 ? "Premium" : n === 7 ? "Arcade" : "Salon"}
+                      {n === 1 ? "Side" : n === 2 ? "Offre" : n === 3 ? "Streamer" : n === 4 ? "2 cartes" : n === 5 ? "Golden" : "Premium"}
                     </div>
                   </button>
                 ))}
@@ -3678,7 +3899,62 @@ export default function AffiEditorPage() {
                 <div style={s.urlPreview}>{publishedUrlPreview}</div>
               </div>
 
-              {currentModel !== 5 && (
+              {/* ═══ M3 — Streamer Profile (sections dédiées) ═══ */}
+              {currentModel === 3 && (
+                <>
+                  <Section title="👤 Profil streamer">
+                    <TextField label="Pseudo" value={cfg.streamerPseudo} onChange={set("streamerPseudo")} placeholder="LeStreamer" />
+                    <TextField label="Handle" value={cfg.streamerHandle} onChange={set("streamerHandle")} placeholder="@lestreamer" />
+                    <TextField label="Tagline" value={cfg.streamerTagline} onChange={set("streamerTagline")} placeholder="casino & entertainment" />
+                    <TextField label="Statut (tag live)" value={cfg.streamerStatus} onChange={set("streamerStatus")} placeholder="En stream maintenant" />
+                    <ImagePicker label="Avatar" value={cfg.imgUrl} onChange={set("imgUrl")} />
+                  </Section>
+
+                  <Section title="📊 Statistiques affichées" defaultOpen={false}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                      <TextField label="Abonnés" value={cfg.streamerStatFollowers} onChange={set("streamerStatFollowers")} placeholder="28.4K" />
+                      <TextField label="Inscrits/jour" value={cfg.streamerStatToday} onChange={set("streamerStatToday")} placeholder="214" />
+                      <TextField label="Note" value={cfg.streamerStatRating} onChange={set("streamerStatRating")} placeholder="4.9" />
+                    </div>
+                    <div style={{ fontSize: 11, color: T.txtMute, marginTop: 4, lineHeight: 1.5 }}>
+                      Les stats créent de la confiance chez le viewer qui arrive depuis TikTok/IG.
+                    </div>
+                  </Section>
+
+                  <Section title="💬 Message perso">
+                    <TextField
+                      label="Message (affiché entre guillemets)"
+                      value={cfg.streamerMessage}
+                      onChange={set("streamerMessage")}
+                      placeholder="Hey, j'ai testé pas mal de casinos…"
+                      multiline
+                    />
+                    <TextField label="Signature" value={cfg.streamerSign} onChange={set("streamerSign")} placeholder="— Le Streamer" />
+                  </Section>
+
+                  <Section title="🔗 Réseaux sociaux">
+                    <div style={{ fontSize: 11, color: T.txtMute, marginBottom: 8, lineHeight: 1.5 }}>
+                      Ajoute tes comptes pour rassurer le viewer. Les liens ouvrent en nouvel onglet. Le compteur est optionnel.
+                    </div>
+                    <SocialsEditor
+                      items={parseSocialLinks(cfg.streamerSocialsJson)}
+                      onChange={(next) => set("streamerSocialsJson")(stringifySocialLinks(next))}
+                    />
+                  </Section>
+
+                  <Section title="🎰 Offre casino">
+                    <TextField label="Nom du casino" value={cfg.casinoName} onChange={set("casinoName")} placeholder="Celsius Games" />
+                    <TextField label="Titre de l'offre" value={cfg.offerTitle} onChange={set("offerTitle")} placeholder="Offre de Bienvenue Communauté" />
+                    <TextField label="Texte dépôt" value={cfg.depositText} onChange={set("depositText")} placeholder="Dépose 10€" />
+                    <TextField label="Texte bonus" value={cfg.receiveText} onChange={set("receiveText")} placeholder="Reçois 20€" />
+                    <TextField label="Lien d'affiliation" value={cfg.affiLink} onChange={set("affiLink")} placeholder="https://casino.com/ref/..." type="url" />
+                    <TextField label="Texte CTA" value={cfg.btnText} onChange={set("btnText")} placeholder="Activer via mon lien" />
+                    <TextField label="Balise title (SEO)" value={cfg.pageTitle} onChange={set("pageTitle")} />
+                  </Section>
+                </>
+              )}
+
+              {currentModel !== 5 && currentModel !== 3 && (
                 <>
                   <Section title="Couleurs">
                     <ColorField label="Fond page" value={cfg.bgPage} onChange={set("bgPage")} />
@@ -4487,6 +4763,21 @@ const s: Record<string, React.CSSProperties> = {
   },
   modelCardV2Name: { fontSize: 11.5, fontWeight: 800, color: T.txt, letterSpacing: "0.02em" },
   modelCardV2Desc: { fontSize: 10, color: T.txtMute, marginTop: 2 },
+  smallIconBtn: {
+    width: 26, height: 26, flexShrink: 0,
+    background: T.bg3, border: `1px solid ${T.bd}`, borderRadius: 5,
+    color: T.txtDim, cursor: "pointer",
+    fontSize: 12, fontWeight: 700,
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+  },
+  addBtn: {
+    flex: 1,
+    padding: "8px 12px",
+    background: T.primarySoft, border: `1px dashed ${T.primary}`,
+    borderRadius: 7,
+    color: T.primaryHover,
+    fontSize: 12, fontWeight: 700, cursor: "pointer",
+  },
   generateAllBtn: {
     display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
     width: "100%",
