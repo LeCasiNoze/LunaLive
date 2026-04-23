@@ -30,6 +30,7 @@ type Config = {
   btnText: string;
   stickyText: string;
   casinoName: string;
+  casinoLogoUrl?: string;
   pageTitle: string;
   goldenBrandMain: string;
   goldenBrandSub: string;
@@ -108,6 +109,7 @@ const DEFAULT_CONFIG: Config = {
   btnText: "JOUER",
   stickyText: "RECLAME TES OFFERTS",
   casinoName: "Celsius Games",
+  casinoLogoUrl: "",
   pageTitle: "Offre VIP | Jouer Maintenant",
   goldenBrandMain: "LeCasiNoze",
   goldenBrandSub: "",
@@ -654,6 +656,21 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
 
   if (cfg.casinoName && cfg.casinoName !== "Celsius Games") {
     html = html.replace(/Celsius Games/g, esc(cfg.casinoName));
+  }
+
+  if (cfg.casinoLogoUrl && String(cfg.casinoLogoUrl).trim()) {
+    const safeLogoUrl = escAttr(String(cfg.casinoLogoUrl).trim());
+    const logoCss = `<style data-casino-logo>
+      .nav-mark, .brand-mark, .hero-mark {
+        background-image: url("${safeLogoUrl}") !important;
+        background-size: cover !important;
+        background-position: center !important;
+        background-repeat: no-repeat !important;
+        background-color: transparent !important;
+      }
+      .nav-mark::after, .brand-mark::after, .hero-mark::after { display: none !important; }
+    </style>`;
+    html = html.replace(/<\/head>/, `${logoCss}\n</head>`);
   }
 
   if (cfg.pageTitle) {

@@ -47,6 +47,7 @@ interface Config {
   btnText: string;
   stickyText: string;
   casinoName: string;
+  casinoLogoUrl: string;  // logo du casino affiché dans le nav-mark / brand-mark / hero-mark
   pageTitle: string;
   goldenBrandMain: string;
   goldenBrandSub: string;
@@ -428,6 +429,7 @@ const DEFAULT_CONFIG: Config = {
   btnText: "JOUER",
   stickyText: "🎰 JOUER MAINTENANT",
   casinoName: "Celsius Games",
+  casinoLogoUrl: "",
   pageTitle: "Offre VIP | Jouer Maintenant",
   goldenBrandMain: "LeCasiNoze",
   goldenBrandSub: "",
@@ -1294,6 +1296,23 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
 
   if (cfg.pageTitle) {
     html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(cfg.pageTitle)}</title>`);
+  }
+
+  // ── Logo du casino (universel) : remplace nav-mark / brand-mark / hero-mark par l'image
+  if (cfg.casinoLogoUrl && String(cfg.casinoLogoUrl).trim()) {
+    const safeLogoUrl = escAttr(String(cfg.casinoLogoUrl).trim());
+    const logoCss = `<style data-casino-logo>
+      .nav-mark, .brand-mark, .hero-mark {
+        background-image: url("${safeLogoUrl}") !important;
+        background-size: cover !important;
+        background-position: center !important;
+        background-repeat: no-repeat !important;
+        background-color: transparent !important;
+        box-shadow: 0 0 12px rgba(255,255,255,0.12) !important;
+      }
+      .nav-mark::after, .brand-mark::after, .hero-mark::after { display: none !important; }
+    </style>`;
+    html = html.replace(/<\/head>/, `${logoCss}\n</head>`);
   }
 
   // ── Boutons custom ─────────────────────────────────────────────────────────
@@ -4079,6 +4098,7 @@ export default function AffiEditorPage() {
 
                   <Section title="🎰 Offre casino">
                     <TextField label="Nom du casino" value={cfg.casinoName} onChange={set("casinoName")} placeholder="Celsius Games" />
+                    <ImagePicker label="Logo du casino (optionnel)" value={cfg.casinoLogoUrl} onChange={set("casinoLogoUrl")} />
                     <TextField label="Titre de l'offre" value={cfg.offerTitle} onChange={set("offerTitle")} placeholder="Offre de Bienvenue Communauté" />
                     <TextField label="Texte dépôt" value={cfg.depositText} onChange={set("depositText")} placeholder="Dépose 10€" />
                     <TextField label="Texte bonus" value={cfg.receiveText} onChange={set("receiveText")} placeholder="Reçois 20€" />
@@ -4175,6 +4195,7 @@ export default function AffiEditorPage() {
                     <TextField label="Texte bouton" value={cfg.btnText} onChange={set("btnText")} />
                     <TextField label="Sticky CTA" value={cfg.stickyText} onChange={set("stickyText")} />
                     <TextField label="Nom du casino" value={cfg.casinoName} onChange={set("casinoName")} />
+                    <ImagePicker label="Logo du casino (optionnel)" value={cfg.casinoLogoUrl} onChange={set("casinoLogoUrl")} />
                     <TextField label="Balise title" value={cfg.pageTitle} onChange={set("pageTitle")} />
                   </Section>
                 </>
