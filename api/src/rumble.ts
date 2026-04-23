@@ -76,9 +76,11 @@ async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<string | nul
     const text = await r.text();
     if (!text.startsWith("#EXTM3U")) return null;
 
-    // Collecter toutes les chunklist URLs CDN avec leur bandwidth (pour prendre la meilleure qualité)
-    let bestUrl: string | null = null;
-    let bestBandwidth = -1;
+    // Collecter toutes les chunklist URLs CDN avec leur bandwidth.
+    // On préfère une variante NON-DVR (latence plus faible) à qualité égale.
+    // Fallback sur la meilleure DVR si aucune non-DVR n'est exposée.
+    let bestNonDvr: { url: string; bw: number } | null = null;
+    let bestDvr: { url: string; bw: number } | null = null;
     let lastBandwidth = -1;
     for (const line of text.split("\n")) {
       const s = line.trim();
@@ -92,21 +94,24 @@ async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<string | nul
       try {
         const u = new URL(s, finalUrl);
         if (!u.hostname.includes("rumble.com")) {
-          // URL CDN absolue (1a-1791.com) — utiliser la meilleure qualité
-          if (lastBandwidth > bestBandwidth) {
-            bestBandwidth = lastBandwidth;
-            bestUrl = u.toString();
-          } else if (bestUrl === null) {
-            bestUrl = u.toString();
+          const urlStr = u.toString();
+          const isDvr = /_DVR\.m3u8(\?|$)/i.test(urlStr);
+          const bw = lastBandwidth;
+          if (isDvr) {
+            if (!bestDvr || bw > bestDvr.bw) bestDvr = { url: urlStr, bw };
+          } else {
+            if (!bestNonDvr || bw > bestNonDvr.bw) bestNonDvr = { url: urlStr, bw };
           }
         }
       } catch {}
       lastBandwidth = -1;
     }
 
-    if (bestUrl) {
-      console.log(`[rumble][redirect] CDN chunklist (bw=${bestBandwidth}): ${bestUrl}`);
-      return bestUrl;
+    const chosen = bestNonDvr ?? bestDvr;
+    if (chosen) {
+      const kind = bestNonDvr ? "non-DVR" : "DVR";
+      console.log(`[rumble][redirect] CDN chunklist (${kind}, bw=${chosen.bw}): ${chosen.url}`);
+      return chosen.url;
     }
 
     return null;

@@ -129,11 +129,11 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
       enableWorker: true,
       lowLatencyMode: false,   // Rumble n'utilise pas LL-HLS (pas de #EXT-X-PART)
       backBufferLength: 8,
-      // live-edge — DVR playlist: on doit forcer le start au live edge
-      liveSyncDurationCount: 3,
-      liveMaxLatencyDurationCount: 8,
+      // live-edge — viser proche du direct pour réduire la latence
+      liveSyncDurationCount: 2,
+      liveMaxLatencyDurationCount: 5,
       liveDurationInfinity: true,
-      maxLiveSyncPlaybackRate: 1.05,
+      maxLiveSyncPlaybackRate: 1.3,
       // buffer
       maxBufferLength: 16,
       maxMaxBufferLength: 24,
@@ -226,8 +226,8 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
           const livePos = (hls as any).liveSyncPosition;
           if (typeof livePos === "number" && Number.isFinite(livePos) && livePos > 0) {
             const ct = video.currentTime;
-            // Si on est à plus de 30s du live edge, corriger
-            if (livePos - ct > 30) {
+            // Si on est à plus de 10s du live edge, corriger
+            if (livePos - ct > 10) {
               video.currentTime = livePos;
             }
           }
