@@ -1313,6 +1313,60 @@ function ModelThumb({ n }: { n: number }) {
         <rect x="4" y="60" width="112" height="8" rx="4" fill="url(#m6g)" opacity="0.85" />
       </svg>
     ),
+    7: (
+      <svg viewBox="0 0 120 70" fill="none">
+        <defs>
+          <linearGradient id="m7g" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#FF2EB3" />
+            <stop offset="0.5" stopColor="#B24CFF" />
+            <stop offset="1" stopColor="#00E7FF" />
+          </linearGradient>
+        </defs>
+        <rect width="120" height="70" rx="8" fill="#03010f" />
+        {/* grille perspective */}
+        <g opacity="0.45" stroke="#FF2EB3" strokeWidth="0.5">
+          <path d="M0 70 L30 30 M20 70 L42 30 M40 70 L54 30 M60 70 L60 30 M80 70 L66 30 M100 70 L78 30 M120 70 L90 30" />
+          <path d="M0 55 L120 55 M0 45 L120 45 M0 38 L120 38" />
+        </g>
+        {/* titre glow */}
+        <rect x="20" y="12" width="80" height="7" rx="1" fill="url(#m7g)" opacity="0.9" />
+        <rect x="28" y="22" width="64" height="3" rx="1" fill="#00E7FF" opacity="0.6" />
+        {/* cta cyberpunk avec clip */}
+        <path d="M20 48 L25 44 L100 44 L100 52 L95 56 L20 56 Z" fill="url(#m7g)" />
+        <rect x="24" y="48" width="72" height="3" rx="1" fill="#03010f" opacity="0.7" />
+      </svg>
+    ),
+    8: (
+      <svg viewBox="0 0 120 70" fill="none">
+        <defs>
+          <linearGradient id="m8g" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#F4D76C" />
+            <stop offset="0.5" stopColor="#D4AF37" />
+            <stop offset="1" stopColor="#8E6B15" />
+          </linearGradient>
+          <radialGradient id="m8bg" cx="0.5" cy="0" r="1">
+            <stop offset="0" stopColor="#3d0f1d" />
+            <stop offset="1" stopColor="#2a0a14" />
+          </radialGradient>
+        </defs>
+        <rect width="120" height="70" rx="8" fill="url(#m8bg)" />
+        {/* ornements haut */}
+        <line x1="20" y1="10" x2="45" y2="10" stroke="#D4AF37" strokeWidth="0.6" opacity="0.8" />
+        <rect x="58" y="7" width="6" height="6" fill="#D4AF37" transform="rotate(45 61 10)" />
+        <line x1="77" y1="10" x2="100" y2="10" stroke="#D4AF37" strokeWidth="0.6" opacity="0.8" />
+        {/* titre serif */}
+        <rect x="24" y="18" width="72" height="6" rx="1" fill="url(#m8g)" />
+        <rect x="34" y="27" width="52" height="4" rx="0.5" fill="#f5ecd8" opacity="0.85" />
+        {/* cadre card */}
+        <rect x="18" y="36" width="84" height="20" rx="1" fill="#1a0812" stroke="url(#m8g)" strokeWidth="1" />
+        <rect x="26" y="41" width="68" height="4" rx="0.5" fill="#D4AF37" />
+        <rect x="34" y="48" width="52" height="4" rx="0.5" fill="#f5ecd8" opacity="0.7" />
+        {/* ornement bas */}
+        <line x1="30" y1="63" x2="55" y2="63" stroke="#D4AF37" strokeWidth="0.5" opacity="0.7" />
+        <circle cx="60" cy="63" r="1.5" fill="#D4AF37" />
+        <line x1="65" y1="63" x2="90" y2="63" stroke="#D4AF37" strokeWidth="0.5" opacity="0.7" />
+      </svg>
+    ),
   };
   return <>{thumbs[n]}</>;
 }
@@ -2521,7 +2575,7 @@ export default function AffiEditorPage() {
     (async () => {
       const loaded: Record<number, string> = {};
       try {
-        for (const i of [1, 4, 5, 6]) {
+        for (const i of [1, 4, 5, 6, 7, 8]) {
           const r = await fetch(`/affi_templates/model${i}.html`);
           if (!r.ok) throw new Error(`model${i}.html HTTP ${r.status}`);
           loaded[i] = await r.text();
@@ -2953,7 +3007,7 @@ export default function AffiEditorPage() {
             <span>Modèle</span>
           </div>
           <div style={s.sidebarModelList}>
-            {([1, 4, 5, 6] as const).map((n) => (
+            {([1, 4, 5, 6, 7, 8] as const).map((n) => (
               <button
                 key={n}
                 style={{ ...s.modelCard, ...(currentModel === n ? s.modelCardActive : {}) }}
@@ -2964,7 +3018,7 @@ export default function AffiEditorPage() {
                 </div>
                 <div style={s.modelLabel}>M{n}</div>
                 <div style={s.modelDesc}>
-                  {n === 1 ? "Side" : n === 4 ? "2 cartes" : n === 5 ? "Golden" : "Premium"}
+                  {n === 1 ? "Side" : n === 4 ? "2 cartes" : n === 5 ? "Golden" : n === 6 ? "Premium" : n === 7 ? "Arcade" : "Salon"}
                 </div>
               </button>
             ))}
