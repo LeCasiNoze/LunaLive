@@ -2,7 +2,7 @@
 // Éditeur de templates d'affiliation — accessible sur /editorFSN
 // Aucun topbar ni footer : la page prend tout l'écran.
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, Fragment } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { canAccessFsbBoard } from "../lib/fsb_access";
@@ -2564,7 +2564,7 @@ export default function AffiEditorPage() {
   const [cfg, setCfg] = useState<Config>(DEFAULT_CONFIG);
   const [templates, setTemplates] = useState<Record<number, string>>({});
   const [loadError, setLoadError] = useState(false);
-  const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
+  const [viewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [device, setDevice] = useState<DeviceKey>("iphone-15-pro");
   const [deviceRotated, setDeviceRotated] = useState(false);
   const [previewZoom, setPreviewZoom] = useState<number>(100); // %
@@ -3517,7 +3517,7 @@ export default function AffiEditorPage() {
               {showDeviceMenu && (
                 <div style={s.deviceMenu} onClick={(e) => e.stopPropagation()}>
                   {(["phone", "tablet", "desktop"] as const).map((group) => (
-                    <React.Fragment key={group}>
+                    <Fragment key={group}>
                       <div style={s.deviceMenuGroup}>
                         {group === "phone" ? "📱 Téléphones" : group === "tablet" ? "🖼 Tablettes" : "🖥 Desktop"}
                       </div>
@@ -3534,7 +3534,7 @@ export default function AffiEditorPage() {
                             {d.w > 0 && <span style={s.deviceMenuDim}>{d.w}×{d.h}</span>}
                           </button>
                         ))}
-                    </React.Fragment>
+                    </Fragment>
                   ))}
                 </div>
               )}
@@ -5201,76 +5201,5 @@ const s: Record<string, React.CSSProperties> = {
     color: "#FFD700",
     borderBottomColor: "#FFD700",
     background: "rgba(255,215,0,0.03)",
-  },
-  tabContent: {
-    flex: 1,
-    overflowY: "auto" as const,
-    paddingBottom: 20,
-  },
-  deviceToggle: {
-    display: "flex",
-    gap: 4,
-    padding: "10px 14px 6px",
-  },
-  deviceBtn: {
-    flex: 1,
-    padding: "6px 6px",
-    fontSize: 11.5,
-    fontWeight: 600,
-    background: T.bg2,
-    border: `1px solid ${T.bd}`,
-    borderRadius: 6,
-    color: T.txtMute,
-    cursor: "pointer",
-    whiteSpace: "nowrap" as const,
-  },
-  deviceBtnActive: {
-    borderColor: T.primary,
-    color: T.primaryHover,
-    background: T.primarySoft,
-  },
-
-  // Preview
-  previewPanel: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
-    background: "#111",
-  },
-  previewToolbar: {
-    height: 36,
-    background: "#141428",
-    borderBottom: "1px solid #2a2a4a",
-    display: "flex",
-    alignItems: "center",
-    padding: "0 12px",
-    flexShrink: 0,
-  },
-  vpBtn: {
-    background: "#1c1c35",
-    border: "1px solid #2a2a4a",
-    color: "#888",
-    padding: "3px 10px",
-    borderRadius: 4,
-    fontSize: "0.72rem",
-    cursor: "pointer",
-  },
-  vpBtnActive: {
-    borderColor: "#FFD700",
-    color: "#FFD700",
-  },
-  previewWrap: {
-    flex: 1,
-    overflow: "auto",
-    display: "flex",
-    justifyContent: "center",
-    background: "#111",
-  },
-  iframe: {
-    border: "none",
-    background: "white",
-    height: "100%",
-    transition: "width 0.2s",
   },
 };
