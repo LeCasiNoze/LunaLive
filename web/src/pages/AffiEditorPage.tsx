@@ -2848,6 +2848,7 @@ export default function AffiEditorPage() {
   const [pageNotice, setPageNotice] = useState<string | null>(null);
   const [pageAction, setPageAction] = useState<"create" | "update" | "delete" | null>(null);
   // ── UI state (nouveau rework) ──
+  const [m6Style, setM6Style] = useState<"premium" | "arcade" | "salon">("premium");
   const [leftTab, setLeftTab] = useState<"pages" | "models">("pages");
   const [pageSearch, setPageSearch] = useState("");
   const [renamingPageId, setRenamingPageId] = useState<number | null>(null);
@@ -2907,11 +2908,20 @@ export default function AffiEditorPage() {
     (async () => {
       const loaded: Record<number, string> = {};
       try {
+        // Cache-bust avec le buildtime pour éviter d'anciens templates en cache navigateur
+        const bust = `?v=${Date.now()}`;
         for (const i of [1, 2, 3, 4, 5, 6, 7, 8]) {
-          const r = await fetch(`/affi_templates/model${i}.html`);
+          const r = await fetch(`/affi_templates/model${i}.html${bust}`);
           if (!r.ok) throw new Error(`model${i}.html HTTP ${r.status}`);
           loaded[i] = await r.text();
         }
+        // Variantes de style pour M6 (arcade + salon = anciens M7/M8)
+        try {
+          const rArc = await fetch(`/affi_templates/model6-arcade.html${bust}`);
+          if (rArc.ok) (loaded as any)["6-arcade"] = await rArc.text();
+          const rSal = await fetch(`/affi_templates/model6-salon.html${bust}`);
+          if (rSal.ok) (loaded as any)["6-salon"] = await rSal.text();
+        } catch {}
         setTemplates(loaded);
 
         // Init image/link defaults from template 1
@@ -3094,15 +3104,20 @@ export default function AffiEditorPage() {
 
   // Immédiat quand on change de modèle / variante / templates chargés
   useEffect(() => {
-    const tmpl = templates[currentModel];
+    // Pour M6 : sélectionne la variante de style (premium/arcade/salon)
+    const tmpl = (currentModel === 6 && m6Style !== "premium")
+      ? (templates as any)[`6-${m6Style}`] || templates[currentModel]
+      : templates[currentModel];
     if (!tmpl) return;
     pushPreview(tmpl, cfg, currentModel, goldenVariant);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentModel, goldenVariant, templates]);
+  }, [currentModel, goldenVariant, templates, m6Style]);
 
   // Debounced pour l'édition live des champs
   useEffect(() => {
-    const tmpl = templates[currentModel];
+    const tmpl = (currentModel === 6 && m6Style !== "premium")
+      ? (templates as any)[`6-${m6Style}`] || templates[currentModel]
+      : templates[currentModel];
     if (!tmpl) return;
     const tid = setTimeout(() => pushPreview(tmpl, cfg, currentModel, goldenVariant), 120);
     return () => clearTimeout(tid);
@@ -3720,6 +3735,23 @@ export default function AffiEditorPage() {
                   </button>
                 ))}
               </div>
+
+              {currentModel === 6 && (
+                <>
+                  <div style={{ ...s.sideLabel, marginTop: 12 }}>Style M6</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, padding: "0 12px 10px" }}>
+                    {(["premium", "arcade", "salon"] as const).map((st) => (
+                      <button
+                        key={st}
+                        style={{ ...s.variantBtn, ...(m6Style === st ? s.variantBtnActive : {}), padding: "8px 6px", justifyContent: "center", fontSize: 11 }}
+                        onClick={() => setM6Style(st)}
+                      >
+                        {st === "premium" ? "💎 Premium" : st === "arcade" ? "🎮 Arcade" : "🎭 Salon"}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
 
               {currentModel >= 5 && (
                 <>
