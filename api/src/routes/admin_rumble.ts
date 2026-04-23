@@ -3,21 +3,27 @@
 import { Router } from "express";
 import { pool } from "../db.js";
 import { requireAdminKey } from "../auth.js";
-import { fetchLeCasiNozeRumbleInfo } from "../rumble.js";
+import { fetchRumbleInfoForStreamerSlug } from "../rumble.js";
 
 export const adminRumbleRouter = Router();
 
+function pickSlug(req: any): string {
+  const raw = (req.query?.slug ?? req.body?.slug ?? "").toString().trim();
+  return raw || "lecasinoze";
+}
+
 /**
- * POST /admin/rumble/repoll
- * Force un re-poll immédiat de l'état Rumble de LeCasiNoze et met à jour la DB.
- * Utile quand la hls_url en cache est mauvaise (403) sans attendre les 30s.
+ * POST /admin/rumble/repoll?slug=xxx
+ * Force un re-poll immédiat de l'état Rumble d'un streamer et met à jour la DB.
  */
-adminRumbleRouter.post("/admin/rumble/repoll", requireAdminKey, async (_req, res) => {
+adminRumbleRouter.post("/admin/rumble/repoll", requireAdminKey, async (req, res) => {
   try {
-    const info = await fetchLeCasiNozeRumbleInfo();
+    const slug = pickSlug(req);
+    const info = await fetchRumbleInfoForStreamerSlug(slug);
 
     const streamerResult = await pool.query(
-      `SELECT id FROM streamers WHERE lower(slug) = lower('lecasinoze') LIMIT 1`
+      `SELECT id FROM streamers WHERE lower(slug) = lower($1) LIMIT 1`,
+      [slug]
     );
     const streamerId = streamerResult.rows[0]?.id;
     if (!streamerId) {
@@ -43,6 +49,7 @@ adminRumbleRouter.post("/admin/rumble/repoll", requireAdminKey, async (_req, res
 
     return res.json({
       ok: true,
+      slug,
       isLive: info.isLive,
       hlsUrl: info.hlsUrl,
       videoId: info.videoId,
@@ -54,23 +61,26 @@ adminRumbleRouter.post("/admin/rumble/repoll", requireAdminKey, async (_req, res
 });
 
 /**
- * GET /admin/rumble/status
- * Retourne le dernier état Rumble en DB + infos fraîches depuis l'API.
+ * GET /admin/rumble/status?slug=xxx
+ * Retourne le dernier état Rumble en DB pour un streamer.
  */
-adminRumbleRouter.get("/admin/rumble/status", requireAdminKey, async (_req, res) => {
+adminRumbleRouter.get("/admin/rumble/status", requireAdminKey, async (req, res) => {
   try {
+    const slug = pickSlug(req);
     const cached = await pool.query(
       `SELECT ri.is_live, ri.hls_url, ri.video_url, ri.title, ri.viewers_count, ri.updated_at,
               ra.username, ra.api_key IS NOT NULL AS has_api_key
        FROM streamer_rumble_info ri
        JOIN streamers s ON s.id = ri.streamer_id
        LEFT JOIN rumble_accounts ra ON ra.assigned_to_streamer_id = s.id
-       WHERE lower(s.slug) = 'lecasinoze'
-       LIMIT 1`
+       WHERE lower(s.slug) = lower($1)
+       LIMIT 1`,
+      [slug]
     );
 
     return res.json({
       ok: true,
+      slug,
       cached: cached.rows[0] ?? null,
     });
   } catch (e: any) {

@@ -1,30 +1,19 @@
 // api/src/rumble_poller.ts
-// Polling Rumble pour LeCasiNoze uniquement
+// Polling Rumble pour tous les streamers ayant un rumble_account assigné.
 
 import { pool } from "./db.js";
-import { fetchLeCasiNozeRumbleInfo } from "./rumble.js";
+import { fetchRumbleLiveInfo, listAssignedRumbleStreamers } from "./rumble.js";
 import type { Server as IOServer } from "socket.io";
 import { notifyFollowersGoLive } from "./notify_go_live.js";
 
 const INTERVAL_MS = Number(process.env.RUMBLE_POLL_INTERVAL_MS || 30_000);
 
-// Streamer cible : LeCasiNoze
-const LE_CASINOZE_SLUG = "lecasinoze"; // slug LunaLive de LeCasiNoze
-
-let lastLiveState = false;
-let lastTitle: string | null = null;
-
-async function getStreamerIdBySlug(slug: string): Promise<number | null> {
-  const r = await pool.query(
-    `SELECT id FROM streamers WHERE lower(slug)=lower($1) LIMIT 1`,
-    [slug]
-  );
-  const id = r.rows?.[0]?.id;
-  return id != null ? Number(id) : null;
-}
+type StreamerState = { isLive: boolean; title: string | null };
+const lastState = new Map<number, StreamerState>();
 
 async function updateRumbleInfo(
   streamerId: number,
+  slug: string,
   isLive: boolean,
   title: string | null,
   viewersCount: number | null,
@@ -36,17 +25,15 @@ async function updateRumbleInfo(
   liveCreatedAt?: string | null   // ISO string from Rumble API (created_on)
 ) {
   const now = new Date();
-  // Convertit created_on en ms pour le vod_linker (at_sec calculation)
   const liveStartedAtMs: number | null = liveCreatedAt
     ? (() => { try { const ms = new Date(liveCreatedAt).getTime(); return Number.isFinite(ms) ? ms : null; } catch { return null; } })()
     : null;
 
-  const slug = LE_CASINOZE_SLUG;
   const room = `stream:${slug.toLowerCase()}`;
-  const wasLive = lastLiveState;
+  const prev = lastState.get(streamerId) ?? { isLive: false, title: null };
+  const wasLive = prev.isLive;
 
   if (isLive) {
-    // Mettre à jour streamers
     await pool.query(
       `UPDATE streamers
        SET is_live = true,
@@ -58,7 +45,6 @@ async function updateRumbleInfo(
       [streamerId, now, title, viewersCount]
     );
 
-    // Stocker les infos Rumble
     await pool.query(
       `INSERT INTO streamer_rumble_info (
          streamer_id, is_live, title, viewers_count,
@@ -77,11 +63,9 @@ async function updateRumbleInfo(
       [streamerId, isLive, title, viewersCount, hlsUrl, videoUrl, thumbnailUrl, videoId, liveStartedAtMs]
     );
 
-    // ── Transition OFF → ON ──────────────────────────────────────────────────
     if (!wasLive) {
       console.log(`[rumble-poller] ${slug} went LIVE: "${title}"`);
 
-      // Ouvrir une live_session (comme DLive)
       await pool.query(
         `INSERT INTO live_sessions (streamer_id, started_at)
          VALUES ($1, NOW())
@@ -90,17 +74,14 @@ async function updateRumbleInfo(
         [streamerId]
       ).catch(() => {});
 
-      // Émettre sur le socket room (fait apparaître dans la liste Lives)
       io?.to(room).emit("stream:viewers", {
         slug,
         isLive: true,
         viewers: viewersCount ?? 0,
       });
 
-      // Notifier les followers (toast + push)
       await notifyFollowersGoLive(io, streamerId);
     } else {
-      // Juste update viewers
       io?.to(room).emit("stream:viewers", {
         slug,
         isLive: true,
@@ -108,7 +89,6 @@ async function updateRumbleInfo(
       });
     }
   } else {
-    // Mettre à jour streamers
     await pool.query(
       `UPDATE streamers
        SET is_live = false,
@@ -120,7 +100,7 @@ async function updateRumbleInfo(
       [streamerId]
     );
 
-    // Mettre à jour les infos Rumble — NE PAS écraser live_id (utile pour les VODs)
+    // NE PAS écraser live_id (utile pour les VODs)
     await pool.query(
       `INSERT INTO streamer_rumble_info (
          streamer_id, is_live, title, viewers_count,
@@ -137,18 +117,15 @@ async function updateRumbleInfo(
       [streamerId, isLive, null, null, null, null, null]
     );
 
-    // ── Transition ON → OFF ──────────────────────────────────────────────────
     if (wasLive) {
       console.log(`[rumble-poller] ${slug} went OFFLINE`);
 
-      // Fermer la live_session (comme DLive)
       await pool.query(
         `UPDATE live_sessions SET ended_at = NOW()
          WHERE streamer_id = $1 AND ended_at IS NULL`,
         [streamerId]
       ).catch(() => {});
 
-      // Fermer les viewer_sessions encore ouvertes
       await pool.query(
         `UPDATE viewer_sessions
          SET ended_at = COALESCE(last_heartbeat_at, NOW())
@@ -156,7 +133,6 @@ async function updateRumbleInfo(
         [streamerId]
       ).catch(() => {});
 
-      // Émettre offline sur le socket room
       io?.to(room).emit("stream:viewers", {
         slug,
         isLive: false,
@@ -165,22 +141,21 @@ async function updateRumbleInfo(
     }
   }
 
-  lastLiveState = isLive;
-  lastTitle = title;
+  lastState.set(streamerId, { isLive, title });
 }
 
-async function pollLeCasiNoze(io?: IOServer) {
-  const streamerId = await getStreamerIdBySlug(LE_CASINOZE_SLUG);
-  if (!streamerId) {
-    console.error(`[rumble-poller] Streamer ${LE_CASINOZE_SLUG} not found`);
-    return;
-  }
-
+async function pollOne(
+  streamerId: number,
+  slug: string,
+  username: string,
+  apiKey: string,
+  io?: IOServer
+) {
   try {
-    const info = await fetchLeCasiNozeRumbleInfo();
-    
+    const info = await fetchRumbleLiveInfo(username, apiKey);
     await updateRumbleInfo(
       streamerId,
+      slug,
       info.isLive,
       info.title,
       info.viewersCount,
@@ -192,9 +167,21 @@ async function pollLeCasiNoze(io?: IOServer) {
       info.createdAt
     );
   } catch (e) {
-    console.error(`[rumble-poller] Error polling ${LE_CASINOZE_SLUG}:`, e);
-    // Ne pas re-tenter des appels DB ici — si la DB est down, ça crasherait le process
+    console.error(`[rumble-poller] Error polling ${slug}:`, e);
   }
+}
+
+async function pollAll(io?: IOServer) {
+  const accounts = await listAssignedRumbleStreamers().catch((e) => {
+    console.error("[rumble-poller] listAssignedRumbleStreamers failed", e);
+    return [];
+  });
+
+  if (accounts.length === 0) return;
+
+  await Promise.all(
+    accounts.map((a) => pollOne(a.streamerId, a.slug, a.username, a.apiKey, io))
+  );
 }
 
 async function ensureRumbleInfoColumns() {
@@ -203,20 +190,17 @@ async function ensureRumbleInfoColumns() {
 }
 
 export function startRumblePoller(io?: IOServer) {
-  // Assure les colonnes supplémentaires au démarrage
   ensureRumbleInfoColumns().catch(e => console.error("[rumble-poller] ensureColumns failed", e));
 
-  console.log(`[rumble-poller] Starting polling for ${LE_CASINOZE_SLUG} every ${INTERVAL_MS}ms`);
-  
-  // Premier poll immédiat
-  pollLeCasiNoze(io).catch(e => console.error("[rumble-poller] first tick failed", e));
+  console.log(`[rumble-poller] Starting polling for all assigned Rumble accounts every ${INTERVAL_MS}ms`);
 
-  // Polling régulier
+  pollAll(io).catch(e => console.error("[rumble-poller] first tick failed", e));
+
   const interval = setInterval(
-    () => pollLeCasiNoze(io).catch(e => console.error("[rumble-poller] tick failed", e)),
+    () => pollAll(io).catch(e => console.error("[rumble-poller] tick failed", e)),
     INTERVAL_MS
   );
-  
+
   return () => {
     clearInterval(interval);
     console.log("[rumble-poller] Stopped");

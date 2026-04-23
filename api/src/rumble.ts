@@ -226,7 +226,7 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
 }
 
 // Récupère le compte Rumble d'un streamer
-async function getRumbleAccountForStreamer(streamerId: number): Promise<{ username: string | null; apiKey: string | null }> {
+export async function getRumbleAccountForStreamer(streamerId: number): Promise<{ username: string | null; apiKey: string | null }> {
   const { rows } = await pool.query(
     `SELECT username, api_key FROM rumble_accounts WHERE assigned_to_streamer_id = $1 LIMIT 1`,
     [streamerId]
@@ -236,29 +236,47 @@ async function getRumbleAccountForStreamer(streamerId: number): Promise<{ userna
   return { username: account.username, apiKey: account.api_key };
 }
 
-export async function fetchLeCasiNozeRumbleInfo(): Promise<RumbleLiveInfo> {
+function offlineInfo(username: string): RumbleLiveInfo {
+  return {
+    username, isLive: false, viewersCount: null, title: null,
+    thumbnailUrl: null, videoUrl: null, hlsUrl: null, videoId: null, createdAt: null,
+  };
+}
+
+/** Liste tous les streamers ayant un rumble_account assigné. */
+export async function listAssignedRumbleStreamers(): Promise<Array<{ streamerId: number; slug: string; username: string; apiKey: string }>> {
+  const { rows } = await pool.query(
+    `SELECT s.id AS streamer_id, s.slug, ra.username, ra.api_key
+     FROM rumble_accounts ra
+     JOIN streamers s ON s.id = ra.assigned_to_streamer_id
+     WHERE ra.api_key IS NOT NULL AND ra.username IS NOT NULL`
+  );
+  return rows.map((r: any) => ({
+    streamerId: Number(r.streamer_id),
+    slug: String(r.slug),
+    username: String(r.username),
+    apiKey: String(r.api_key),
+  }));
+}
+
+/** Récupère l'info Rumble pour un streamer donné (via son compte assigné). */
+export async function fetchRumbleInfoForStreamerSlug(slug: string): Promise<RumbleLiveInfo> {
   const streamerResult = await pool.query(
     `SELECT id FROM streamers WHERE lower(slug) = lower($1) LIMIT 1`,
-    ["lecasinoze"]
+    [slug]
   );
 
   if (!streamerResult.rows[0]) {
-    console.error("[rumble] Streamer LeCasiNoze not found");
-    return {
-      username: "LeCasiNoze", isLive: false, viewersCount: null, title: null,
-      thumbnailUrl: null, videoUrl: null, hlsUrl: null, videoId: null, createdAt: null,
-    };
+    console.error(`[rumble] Streamer ${slug} not found`);
+    return offlineInfo(slug);
   }
 
   const streamerId = streamerResult.rows[0].id;
   const { username, apiKey } = await getRumbleAccountForStreamer(streamerId);
 
   if (!apiKey || !username) {
-    console.error("[rumble] No Rumble account configured for LeCasiNoze");
-    return {
-      username: "LeCasiNoze", isLive: false, viewersCount: null, title: null,
-      thumbnailUrl: null, videoUrl: null, hlsUrl: null, videoId: null, createdAt: null,
-    };
+    console.error(`[rumble] No Rumble account configured for ${slug}`);
+    return offlineInfo(slug);
   }
 
   return await fetchRumbleLiveInfo(username, apiKey);
