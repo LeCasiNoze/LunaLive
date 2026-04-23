@@ -1585,6 +1585,77 @@ function ModelThumb({ n }: { n: number }) {
         <circle cx="60" cy="63" r="0.8" fill="#fff" opacity="0.4" />
       </svg>
     ),
+    9: (
+      /* M9 Urgency countdown : image + timer + progress */
+      <svg viewBox="0 0 120 70" fill="none">
+        <rect width="120" height="70" rx="8" fill="#0a0a14" />
+        {/* Image above-fold */}
+        <rect x="22" y="5" width="76" height="20" rx="3" fill="#FF3366" opacity="0.3" stroke="#FF3366" strokeWidth="0.8" />
+        <rect x="24" y="7" width="10" height="3.5" rx="1" fill="#FF3366" />
+        {/* Countdown 4 cells */}
+        <rect x="8"  y="30" width="24" height="16" rx="2" fill="#14141e" stroke="#FF3366" strokeWidth="0.4" />
+        <rect x="34" y="30" width="24" height="16" rx="2" fill="#14141e" stroke="#FF3366" strokeWidth="0.4" />
+        <rect x="60" y="30" width="24" height="16" rx="2" fill="#14141e" stroke="#FF3366" strokeWidth="0.4" />
+        <rect x="86" y="30" width="24" height="16" rx="2" fill="#14141e" stroke="#FF3366" strokeWidth="0.4" />
+        <rect x="12" y="35" width="14" height="7" rx="1" fill="#FF3366" />
+        <rect x="38" y="35" width="14" height="7" rx="1" fill="#FF3366" />
+        <rect x="64" y="35" width="14" height="7" rx="1" fill="#FF3366" />
+        <rect x="90" y="35" width="14" height="7" rx="1" fill="#FF3366" />
+        {/* Progress bar */}
+        <rect x="10" y="51" width="100" height="3" rx="1.5" fill="#14141e" />
+        <rect x="10" y="51" width="72" height="3" rx="1.5" fill="url(#m9g)" />
+        <defs>
+          <linearGradient id="m9g" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#c11546" />
+            <stop offset="1" stopColor="#FF3366" />
+          </linearGradient>
+        </defs>
+        {/* CTA */}
+        <rect x="22" y="59" width="76" height="7" rx="3" fill="#FF3366" />
+      </svg>
+    ),
+    10: (
+      /* M10 Proof wall : image + grid de cards témoignages */
+      <svg viewBox="0 0 120 70" fill="none">
+        <rect width="120" height="70" rx="8" fill="#0a0a14" />
+        {/* Image avec stars */}
+        <rect x="4" y="5" width="56" height="22" rx="2" fill="#14141e" stroke="#FFD700" strokeWidth="0.5" />
+        <rect x="6" y="22" width="20" height="3" rx="1" fill="#FFD700" opacity="0.9" />
+        {/* Rating block right */}
+        <rect x="64" y="5" width="52" height="10" rx="2" fill="#14141e" stroke="#FFD70066" strokeWidth="0.4" />
+        <rect x="66" y="8" width="20" height="4" rx="1" fill="#FFD700" />
+        <rect x="88" y="8" width="26" height="4" rx="1" fill="#FFD70066" />
+        {/* CTA */}
+        <rect x="64" y="18" width="52" height="8" rx="2" fill="#FFD700" />
+        {/* PROOF WALL 3 cols x 2 rows */}
+        <rect x="4"  y="31" width="36" height="16" rx="2" fill="#14141e" stroke="#1DA1F2" strokeWidth="0.4" />
+        <circle cx="10" cy="37" r="2" fill="#60A5FA" />
+        <rect x="14" y="34" width="16" height="2" rx="0.5" fill="#fff" opacity="0.7" />
+        <rect x="14" y="38" width="22" height="1.5" rx="0.5" fill="#fff" opacity="0.4" />
+        <rect x="14" y="41" width="18" height="1.5" rx="0.5" fill="#fff" opacity="0.4" />
+        <rect x="42" y="31" width="36" height="16" rx="2" fill="#14141e" stroke="#5865F2" strokeWidth="0.4" />
+        <circle cx="48" cy="37" r="2" fill="#F472B6" />
+        <rect x="52" y="34" width="16" height="2" rx="0.5" fill="#fff" opacity="0.7" />
+        <rect x="52" y="38" width="20" height="1.5" rx="0.5" fill="#fff" opacity="0.4" />
+        <rect x="52" y="41" width="22" height="1.5" rx="0.5" fill="#fff" opacity="0.4" />
+        <rect x="80" y="31" width="36" height="16" rx="2" fill="#14141e" stroke="#FFD70066" strokeWidth="0.4" />
+        <circle cx="86" cy="37" r="2" fill="#FFE552" />
+        <rect x="90" y="34" width="16" height="2" rx="0.5" fill="#fff" opacity="0.7" />
+        <rect x="90" y="38" width="20" height="1.5" rx="0.5" fill="#FFD700" opacity="0.6" />
+        <rect x="4"  y="51" width="36" height="16" rx="2" fill="#14141e" stroke="#FFD70066" strokeWidth="0.4" />
+        <circle cx="10" cy="57" r="2" fill="#34D399" />
+        <rect x="14" y="54" width="16" height="2" rx="0.5" fill="#fff" opacity="0.7" />
+        <rect x="14" y="58" width="22" height="1.5" rx="0.5" fill="#fff" opacity="0.4" />
+        <rect x="42" y="51" width="36" height="16" rx="2" fill="#14141e" stroke="#1DA1F2" strokeWidth="0.4" />
+        <circle cx="48" cy="57" r="2" fill="#FFE552" />
+        <rect x="52" y="54" width="16" height="2" rx="0.5" fill="#fff" opacity="0.7" />
+        <rect x="52" y="58" width="22" height="1.5" rx="0.5" fill="#fff" opacity="0.4" />
+        <rect x="80" y="51" width="36" height="16" rx="2" fill="#14141e" stroke="#5865F2" strokeWidth="0.4" />
+        <circle cx="86" cy="57" r="2" fill="#FF3366" />
+        <rect x="90" y="54" width="16" height="2" rx="0.5" fill="#fff" opacity="0.7" />
+        <rect x="90" y="58" width="22" height="1.5" rx="0.5" fill="#fff" opacity="0.4" />
+      </svg>
+    ),
     8: (
       /* M8 Ladder : 3 tiers côte à côte */
       <svg viewBox="0 0 120 70" fill="none">
@@ -2935,7 +3006,7 @@ export default function AffiEditorPage() {
       try {
         // Cache-bust avec le buildtime pour éviter d'anciens templates en cache navigateur
         const bust = `?v=${Date.now()}`;
-        for (const i of [1, 2, 3, 4, 5, 6, 7, 8]) {
+        for (const i of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
           const r = await fetch(`/affi_templates/model${i}.html${bust}`);
           if (!r.ok) throw new Error(`model${i}.html HTTP ${r.status}`);
           loaded[i] = await r.text();
@@ -3746,7 +3817,7 @@ export default function AffiEditorPage() {
             <div style={s.sideScroll}>
               <div style={s.sideLabel}>Template</div>
               <div style={s.modelGrid}>
-                {([1, 2, 3, 4, 5, 6, 7, 8] as const).map((n) => (
+                {([1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const).map((n) => (
                   <button
                     key={n}
                     style={{ ...s.modelCardV2, ...(currentModel === n ? s.modelCardV2Active : {}) }}
@@ -3755,7 +3826,7 @@ export default function AffiEditorPage() {
                     <div style={s.modelThumbV2}><ModelThumb n={n} /></div>
                     <div style={s.modelCardV2Name}>M{n}</div>
                     <div style={s.modelCardV2Desc}>
-                      {n === 1 ? "Side" : n === 2 ? "Offre" : n === 3 ? "Streamer" : n === 4 ? "2 cartes" : n === 5 ? "Golden" : n === 6 ? "Premium" : n === 7 ? "Immersif" : "Ladder"}
+                      {n === 1 ? "Side" : n === 2 ? "Monopage" : n === 3 ? "Streamer" : n === 4 ? "2 cartes" : n === 5 ? "Golden" : n === 6 ? "Premium" : n === 7 ? "Immersif" : n === 8 ? "Split" : n === 9 ? "Urgency" : "Avis"}
                     </div>
                   </button>
                 ))}

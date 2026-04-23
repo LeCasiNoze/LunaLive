@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="fr" data-variant="__VARIANT__">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="description" content="Offre limitée — bonus exclusif avant expiration." />
+<meta name="robots" content="noindex, nofollow" />
+<title>Celsius Games — Offre limitée</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700;800&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   M9 — URGENCY COUNTDOWN
+   Structure : image above-fold + compte à rebours dominant + progress bar "places"
+   L'urgence est le driver visuel (couleurs chaudes, timer qui pulse)
+   Même info que les autres (dépôt 10€ → bonus 20€ = 30€) mais framing "dernière chance"
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --bg-page:      #0a0a14;
+  --bg-card:      #14141e;
+  --border-color: #26263a;
+  --accent:       #FF3366;   /* ruby urgency par défaut */
+  --accent-light: #ff6688;
+  --accent-dark:  #c11546;
+  --accent-soft:  rgba(255,51,102,0.12);
+  --accent-glow:  rgba(255,51,102,0.48);
+  --duo:          #FFD700;
+  --duo-glow:     rgba(255,215,0,0.42);
+  --warn:         #FF3366;
+  --brand-gold:   #FFD700; --brand-ruby: #E0115F; --casino-green: #00E676;
+  --text-main:    #f5f5fa;
+  --text-muted:   #9a9ab3;
+  --radius:       14px; --radius-sm: 10px;
+  --safe-b:       env(safe-area-inset-bottom, 0px);
+}
+html[data-variant="gold"]     { --accent: #FFD700; --accent-light: #FFE552; --accent-dark: #d4a300; --accent-soft: rgba(255,215,0,0.1); --accent-glow: rgba(255,215,0,0.48); --duo: #E0115F; --duo-glow: rgba(224,17,95,0.42); }
+html[data-variant="emerald"]  { --accent: #00E676; --accent-light: #4aeaa0; --accent-dark: #00b359; --accent-glow: rgba(0,230,118,0.48); --accent-soft: rgba(0,230,118,0.1); --duo: #FFD700; --bg-page: #051412; --bg-card: #0d201a; }
+html[data-variant="sapphire"] { --accent: #4A9EFF; --accent-light: #7bbcff; --accent-dark: #1f7edf; --accent-glow: rgba(74,158,255,0.48); --accent-soft: rgba(74,158,255,0.1); --duo: #FFD700; --bg-page: #070c1c; --bg-card: #111a30; }
+html[data-variant="amethyst"] { --accent: #C084FC; --accent-light: #d8b4fe; --accent-dark: #9333ea; --accent-glow: rgba(192,132,252,0.48); --accent-soft: rgba(192,132,252,0.1); --duo: #F472B6; }
+html[data-variant="obsidian"] { --accent: #E8C879; --accent-light: #f2dda2; --accent-dark: #a8894d; --accent-glow: rgba(232,200,121,0.44); --accent-soft: rgba(232,200,121,0.08); --duo: #FF3366; --bg-page: #050505; --bg-card: #0d0d10; --border-color: #2a2a32; }
+html[data-variant="rose"]     { --accent: #F472B6; --accent-light: #f9a8d4; --accent-dark: #be185d; --duo: #FFD700; }
+html[data-variant="jade"]     { --accent: #2EE8B6; --accent-light: #6ff0c5; --accent-dark: #1fa97d; --accent-glow: rgba(46,232,182,0.48); --duo: #FFD700; --bg-page: #031816; --bg-card: #082823; }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg-page); color: var(--text-main); font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; font-size: 15px; line-height: 1.55; }
+body { overflow-x: hidden; min-height: 100vh; padding-bottom: calc(72px + var(--safe-b)); position: relative; }
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; }
+.shell { width: 100%; max-width: 560px; margin: 0 auto; padding: 0 18px; }
+
+.amb {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(55vw 45vw at 50% -10%, var(--accent-glow), transparent 55%),
+    radial-gradient(40vw 35vw at 100% 60%, var(--duo-glow), transparent 60%),
+    var(--bg-page);
+  opacity: .8;
+}
+.wrap { position: relative; z-index: 1; }
+
+@keyframes livePulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(1.6); } }
+@keyframes numPop {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 1; }
+  50%      { transform: translateY(-2px) scale(1.04); opacity: 0.92; }
+}
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes warnBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes barFill { from { transform: scaleX(0); } to { transform: scaleX(var(--bar-fill, 0.74)); } }
+.reveal { opacity: 0; transform: translateY(16px); transition: opacity .65s cubic-bezier(.2,.7,.2,1), transform .65s cubic-bezier(.2,.7,.2,1); }
+.reveal.active { opacity: 1; transform: none; }
+
+/* ═══ NAV compact ═══ */
+.nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  margin: 10px 10px 0;
+  background: rgba(20,20,30,0.75);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  backdrop-filter: blur(14px);
+}
+.nav-brand { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 13px; }
+.nav-mark {
+  width: 26px; height: 26px; border-radius: 7px;
+  background: linear-gradient(135deg, var(--accent), var(--duo));
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+.urgency-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 4px 10px;
+  background: var(--accent-soft); border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; color: var(--accent); letter-spacing: .08em; text-transform: uppercase;
+  animation: warnBlink 1.8s ease-in-out infinite;
+}
+.urgency-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: livePulse 1.2s ease-in-out infinite; }
+
+/* ═══ HERO — image above-fold + badge + titre court ═══ */
+.hero { padding: 18px 0 12px; text-align: center; }
+
+/* IMAGE ABOVE-FOLD (la contrainte clé) */
+.promo-image-container {
+  position: relative;
+  margin: 0 auto 18px;
+  max-width: 420px;
+  aspect-ratio: 16/10;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 2px solid var(--accent);
+  box-shadow:
+    0 20px 60px -20px rgba(0,0,0,0.7),
+    0 0 0 4px rgba(0,0,0,0.6),
+    0 0 50px -15px var(--accent-glow);
+  isolation: isolate;
+}
+.promo-image-container img {
+  width: 100%; height: 100%; object-fit: cover;
+  filter: saturate(1.08) contrast(1.06);
+}
+.promo-image-container::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 30%, rgba(10,10,20,0.75) 100%);
+  pointer-events: none;
+}
+/* Badge flottant SUR l'image (urgency) */
+.img-badge {
+  position: absolute;
+  top: 12px; left: 12px;
+  z-index: 2;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  box-shadow: 0 6px 18px -4px var(--accent-glow);
+  animation: livePulse 2s ease-in-out infinite;
+}
+.img-badge svg { width: 12px; height: 12px; }
+
+.badge-premium {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 13px;
+  background: var(--accent-soft); border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.badge-premium svg { width: 13px; height: 13px; }
+
+.hero-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(1.6rem, 6vw, 2.2rem);
+  font-weight: 800; line-height: 1.05; letter-spacing: -0.03em;
+  margin: 0 auto 8px; max-width: 20ch;
+}
+.hero-title span {
+  background: linear-gradient(120deg, var(--accent), var(--accent-light), var(--duo));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.hero-subtitle {
+  font-size: 14px; color: var(--text-muted);
+  max-width: 38ch; margin: 0 auto 20px;
+}
+
+/* ═══ COMPTE À REBOURS (dominant) ═══ */
+.countdown-wrap {
+  padding: 22px 18px;
+  margin: 0 auto 18px;
+  max-width: 460px;
+  background:
+    radial-gradient(380px 180px at 50% 0%, var(--accent-glow), transparent 60%),
+    linear-gradient(180deg, var(--bg-card) 0%, rgba(10,10,20,0.6) 100%);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 50px -20px rgba(0,0,0,0.6);
+}
+.countdown-label {
+  text-align: center;
+  font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.countdown {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+}
+.cd-cell {
+  padding: 14px 4px 10px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.cd-cell::before {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 40%);
+  pointer-events: none;
+}
+.cd-num {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(1.5rem, 6vw, 2rem);
+  font-weight: 800; letter-spacing: -0.03em; line-height: 1;
+  color: var(--accent);
+  text-shadow: 0 0 16px var(--accent-glow);
+  animation: numPop 1s ease-in-out infinite;
+  font-variant-numeric: tabular-nums;
+}
+.cd-unit {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-muted); margin-top: 4px;
+}
+
+/* ═══ PROGRESS "places restantes" ═══ */
+.places-wrap {
+  padding: 14px 18px;
+  margin: 0 auto 18px;
+  max-width: 460px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+.places-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.places-head .label { color: var(--text-muted); font-weight: 600; }
+.places-head .value { color: var(--accent); font-weight: 800; font-variant-numeric: tabular-nums; }
+.places-head .value b { font-size: 15px; }
+.progress {
+  position: relative;
+  height: 8px;
+  background: rgba(0,0,0,0.4);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-bar {
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, var(--accent-dark), var(--accent), var(--accent-light));
+  background-size: 200% 100%;
+  animation: shimmer 3s linear infinite;
+  transform-origin: left;
+  transform: scaleX(var(--bar-fill, 0.74));
+}
+
+/* ═══ OFFRE COMPACT + CTA ═══ */
+.offer-inline {
+  padding: 14px 18px;
+  margin: 0 auto 14px;
+  max-width: 460px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.offer-inline-text .label { font-size: 10.5px; color: var(--text-muted); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 2px; }
+.offer-inline-text .eq {
+  display: flex; align-items: baseline; gap: 6px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 18px; font-weight: 800; letter-spacing: -0.02em;
+}
+.offer-inline-text .step-deposit { color: #fff; }
+.offer-inline-text .step-receive {
+  background: linear-gradient(120deg, var(--accent), var(--duo));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.offer-inline-text .arrow { color: var(--accent); font-size: 14px; }
+.offer-title { position: absolute; left: -9999px; top: -9999px; } /* compat applyConfig, hidden */
+
+.cta-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 460px; margin: 0 auto; }
+.btn-jouer {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%;
+  padding: 16px 28px;
+  background: linear-gradient(135deg, var(--accent-light), var(--accent), var(--accent-dark));
+  color: #fff;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  border: 0; border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 12px 32px -8px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.2);
+  position: relative; overflow: hidden;
+  transition: transform .15s;
+}
+.btn-jouer::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.5) 50%, transparent 70%);
+  transform: translateX(-120%); transition: transform .7s;
+}
+.btn-jouer:hover { transform: translateY(-2px); }
+.btn-jouer:hover::after { transform: translateX(120%); }
+
+.micro-proof { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-muted); }
+.micro-proof svg { width: 13px; height: 13px; color: var(--casino-green); }
+
+/* ═══ FAQ mini (optionnel) ═══ */
+.section { padding: 28px 0 10px; }
+.section-title {
+  text-align: center;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.15rem; font-weight: 800; letter-spacing: -0.02em;
+  margin-bottom: 14px;
+  color: var(--text-muted);
+}
+.faq-item {
+  background: var(--bg-card); border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm); margin-bottom: 8px; overflow: hidden;
+}
+.faq-q { padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13.5px; font-weight: 700; color: var(--text-main); cursor: pointer; list-style: none; }
+.faq-q::-webkit-details-marker { display: none; }
+.faq-q::after { content: "+"; color: var(--accent); font-size: 18px; font-weight: 300; transition: transform .25s; }
+.faq-item[open] { border-color: var(--accent); }
+.faq-item[open] .faq-q::after { transform: rotate(45deg); }
+.faq-a { padding: 0 16px 14px; color: var(--text-muted); font-size: 12.5px; line-height: 1.55; }
+
+.sticky-cta {
+  position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 40;
+  padding: 14px 18px calc(14px + var(--safe-b));
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  color: #fff;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  border-radius: 14px;
+  box-shadow: 0 18px 40px -10px var(--accent-glow);
+}
+.sticky-cta svg { width: 15px; height: 15px; }
+
+footer { margin-top: 28px; padding: 20px 0 28px; border-top: 1px solid var(--border-color); text-align: center; font-size: 11px; color: #545475; }
+.disclaimer { max-width: 480px; margin: 0 auto 12px; padding: 12px 14px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 10px; font-size: 11px; color: var(--text-muted); line-height: 1.55; text-align: left; }
+
+@media (min-width: 640px) {
+  .shell { max-width: 600px; }
+  .promo-image-container { max-width: 480px; }
+}
+@media (min-width: 900px) {
+  body { padding-bottom: 40px; }
+  .sticky-cta { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .reveal { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+  <div class="amb" aria-hidden="true"></div>
+
+  <div class="wrap">
+    <!-- Nav -->
+    <nav class="nav reveal">
+      <div class="nav-brand"><div class="nav-mark"></div><span>Celsius Games</span></div>
+      <div class="urgency-pill">Offre limitée</div>
+    </nav>
+
+    <div class="shell">
+      <section class="hero">
+        <!-- IMAGE AU-DESSUS (visible dès le load) -->
+        <div class="promo-image-container reveal">
+          <img src="https://cdn.phototourl.com/member/2026-04-10-af97004c-818f-40d3-b081-404c3ad3dfa7.png" alt="" />
+          <div class="img-badge">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 6.4H21l-5.3 4 2 6.6L12 15l-5.7 4 2-6.6L3 8.4h6.6z" fill="currentColor"/></svg>
+            Bonus actif
+          </div>
+        </div>
+
+        <div class="reveal">
+          <div class="badge-premium">
+            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            Dernière chance — expire bientôt
+          </div>
+        </div>
+
+        <h1 class="hero-title reveal">Ton <span>bonus communauté</span> expire</h1>
+        <p class="hero-subtitle reveal">L'offre ferme dès que le compteur atteint zéro ou que les places sont prises.</p>
+
+        <!-- COMPTE À REBOURS dominant -->
+        <div class="countdown-wrap reveal">
+          <div class="countdown-label">Offre valable pendant</div>
+          <div class="countdown">
+            <div class="cd-cell"><div class="cd-num" data-cd-days>02</div><div class="cd-unit">Jours</div></div>
+            <div class="cd-cell"><div class="cd-num" data-cd-hours>14</div><div class="cd-unit">Heures</div></div>
+            <div class="cd-cell"><div class="cd-num" data-cd-mins>23</div><div class="cd-unit">Min</div></div>
+            <div class="cd-cell"><div class="cd-num" data-cd-secs>45</div><div class="cd-unit">Sec</div></div>
+          </div>
+        </div>
+
+        <!-- PLACES RESTANTES -->
+        <div class="places-wrap reveal">
+          <div class="places-head">
+            <span class="label">Places revendiquées</span>
+            <span class="value"><b data-places-now>37</b> / <span data-places-total>50</span></span>
+          </div>
+          <div class="progress"><div class="progress-bar" style="--bar-fill: 0.74;"></div></div>
+        </div>
+
+        <!-- OFFRE INLINE -->
+        <div class="offer-inline reveal">
+          <div class="offer-inline-text">
+            <div class="label">Ton bonus</div>
+            <div class="eq">
+              <span class="step-deposit">10€</span>
+              <span class="arrow">+</span>
+              <span class="step-receive">20€</span>
+              <span class="arrow">=</span>
+              <span style="color: var(--accent); font-weight: 800;" data-total>30€</span>
+            </div>
+          </div>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="color: var(--accent); flex-shrink: 0;"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+
+        <!-- CTA -->
+        <div class="cta-wrap reveal">
+          <a href="#" class="btn-jouer">
+            Claim avant expiration
+            <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          <div class="micro-proof">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Bonus crédité en moins de 30 secondes
+          </div>
+        </div>
+      </section>
+
+      <!-- FAQ mini (sous le fold) -->
+      <section class="section">
+        <h3 class="section-title reveal">Questions rapides</h3>
+        <details class="faq-item reveal"><summary class="faq-q">Que se passe-t-il à la fin du timer ?</summary><div class="faq-a">L'offre est désactivée automatiquement. Le bonus communauté ne sera plus disponible.</div></details>
+        <details class="faq-item reveal"><summary class="faq-q">Combien de temps pour retirer mes gains ?</summary><div class="faq-a">Crypto sous 5 minutes. SEPA sous 24h ouvrées après KYC.</div></details>
+        <details class="faq-item reveal"><summary class="faq-q">Le site est-il sécurisé ?</summary><div class="faq-a">Licence officielle UE, chiffrement SSL, 2FA disponible.</div></details>
+      </section>
+
+      <footer>
+        <div class="disclaimer">
+          <strong>Jeu responsable — 18+</strong><br/>
+          Les jeux d'argent comportent des risques : endettement, dépendance… Appelez le 09 74 75 13 13 (non surtaxé). Contenu promotionnel. L'heure d'expiration est indicative.
+        </div>
+        © Celsius Games
+      </footer>
+    </div>
+  </div>
+
+  <a href="#" class="sticky-cta">
+    Claim avant expiration
+    <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </a>
+
+  <!-- compat applyConfig : offer-title caché -->
+  <div class="offer-title">Offre de Bienvenue</div>
+
+  <script>
+    (function () {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e, i) { if (e.isIntersecting) { setTimeout(function () { e.target.classList.add('active'); }, Math.min(i*30, 220)); io.unobserve(e.target); } });
+      }, { threshold: 0.1, rootMargin: '0px 0px -20px 0px' });
+      document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+
+      // Countdown : 2j 14h 23min 45s initial, décrément toutes les secondes
+      var cdDays = document.querySelector('[data-cd-days]');
+      var cdHours = document.querySelector('[data-cd-hours]');
+      var cdMins = document.querySelector('[data-cd-mins]');
+      var cdSecs = document.querySelector('[data-cd-secs]');
+      var totalSec = 2*86400 + 14*3600 + 23*60 + 45;
+      function pad(n) { return String(n).padStart(2,'0'); }
+      function tick() {
+        if (totalSec <= 0) { totalSec = 0; return; }
+        totalSec--;
+        var d = Math.floor(totalSec / 86400);
+        var h = Math.floor((totalSec % 86400) / 3600);
+        var m = Math.floor((totalSec % 3600) / 60);
+        var s = totalSec % 60;
+        if (cdDays)  cdDays.textContent = pad(d);
+        if (cdHours) cdHours.textContent = pad(h);
+        if (cdMins)  cdMins.textContent = pad(m);
+        if (cdSecs)  cdSecs.textContent = pad(s);
+      }
+      tick(); setInterval(tick, 1000);
+
+      // Places (auto-increment aléatoire)
+      var placesNow = document.querySelector('[data-places-now]');
+      var total = parseInt(document.querySelector('[data-places-total]').textContent, 10) || 50;
+      var bar = document.querySelector('.progress-bar');
+      if (placesNow) {
+        var n = parseInt(placesNow.textContent, 10) || 37;
+        setInterval(function () {
+          if (Math.random() < 0.3 && n < total - 2) {
+            n++;
+            placesNow.textContent = n;
+            if (bar) bar.style.setProperty('--bar-fill', (n / total).toString());
+          }
+        }, 6000);
+      }
+
+      // Total auto (step-deposit + step-receive)
+      function num(s){if(!s)return 0;var m=String(s).replace(/\s/g,'').match(/(\d+(?:[.,]\d+)?)/);return m?parseFloat(m[1].replace(',','.')):0;}
+      function unit(s){if(!s)return '€';var m=String(s).match(/\d+(?:[.,]\d+)?\s*([^\d\s]+)/);return m?m[1]:'€';}
+      function sync() {
+        var d = document.querySelector('.step-deposit'); var r = document.querySelector('.step-receive'); var t = document.querySelector('[data-total]');
+        if (!d || !r || !t) return;
+        var u = unit(d.textContent) || unit(r.textContent) || '€';
+        t.textContent = (Math.round((num(d.textContent) + num(r.textContent)) * 100) / 100) + u;
+      }
+      sync(); setTimeout(sync, 100);
+    })();
+  </script>
+</body>
+</html>

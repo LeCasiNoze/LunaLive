@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="fr" data-variant="__VARIANT__">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="description" content="Avis communauté — ce que disent les joueurs." />
+<meta name="robots" content="noindex, nofollow" />
+<title>Celsius Games — Avis joueurs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700;800&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   M10 — PROOF WALL
+   Structure : image above-fold + mur de témoignages (Twitter/Discord/reviews)
+   La preuve sociale DOMINE — crédibilité maximale pour trafic TikTok/IG
+   Même info que les autres (dépôt 10€ → bonus 20€ = 30€)
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --bg-page:      #0a0a14;
+  --bg-card:      #14141e;
+  --border-color: #24243a;
+  --accent:       #FFD700;
+  --accent-light: #FFE552;
+  --accent-dark:  #d4a300;
+  --accent-soft:  rgba(255,215,0,0.1);
+  --accent-glow:  rgba(255,215,0,0.44);
+  --duo:          #60A5FA;   /* twitter blue as secondary */
+  --duo-glow:     rgba(96,165,250,0.36);
+  --brand-gold:   #FFD700; --brand-ruby: #E0115F; --casino-green: #00E676;
+  --text-main:    #f5f5fa;
+  --text-muted:   #9a9ab3;
+  --radius:       14px; --radius-sm: 10px;
+  --safe-b:       env(safe-area-inset-bottom, 0px);
+  --twitter:      #1DA1F2;
+  --discord:      #5865F2;
+}
+html[data-variant="ruby"]     { --accent: #FF3366; --accent-light: #ff6688; --accent-dark: #c11546; --accent-glow: rgba(255,51,102,0.44); --duo: #FFD700; }
+html[data-variant="emerald"]  { --accent: #00E676; --accent-light: #4aeaa0; --accent-dark: #00b359; --accent-glow: rgba(0,230,118,0.44); --duo: #FFD700; --bg-page: #051412; --bg-card: #0c201b; }
+html[data-variant="sapphire"] { --accent: #4A9EFF; --accent-light: #7bbcff; --accent-dark: #1f7edf; --accent-glow: rgba(74,158,255,0.44); --duo: #c084fc; --bg-page: #060d1c; --bg-card: #111a30; }
+html[data-variant="amethyst"] { --accent: #C084FC; --accent-light: #d8b4fe; --accent-dark: #9333ea; --accent-glow: rgba(192,132,252,0.44); --duo: #F472B6; }
+html[data-variant="obsidian"] { --accent: #E8C879; --accent-light: #f2dda2; --accent-dark: #a8894d; --accent-glow: rgba(232,200,121,0.4); --duo: #E0115F; --bg-page: #050505; --bg-card: #0d0d12; --border-color: #2a2a32; }
+html[data-variant="rose"]     { --accent: #F472B6; --accent-light: #f9a8d4; --accent-dark: #be185d; --duo: #FFD700; }
+html[data-variant="jade"]     { --accent: #2EE8B6; --accent-light: #6ff0c5; --accent-dark: #1fa97d; --accent-glow: rgba(46,232,182,0.44); --duo: #FFD700; --bg-page: #031816; --bg-card: #082823; }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg-page); color: var(--text-main); font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; font-size: 15px; line-height: 1.55; }
+body { overflow-x: hidden; min-height: 100vh; padding-bottom: calc(72px + var(--safe-b)); position: relative; }
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; }
+.shell { width: 100%; max-width: 1040px; margin: 0 auto; padding: 0 18px; }
+
+.amb {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(50vw 45vw at 20% 0%, var(--accent-glow), transparent 60%),
+    radial-gradient(40vw 40vw at 100% 70%, var(--duo-glow), transparent 60%),
+    var(--bg-page);
+  opacity: .75;
+}
+.wrap { position: relative; z-index: 1; }
+
+@keyframes livePulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(1.6); } }
+@keyframes floatA { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes floatB { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
+@keyframes counterPop {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.05); }
+}
+.reveal { opacity: 0; transform: translateY(16px); transition: opacity .6s cubic-bezier(.2,.7,.2,1), transform .6s cubic-bezier(.2,.7,.2,1); }
+.reveal.active { opacity: 1; transform: none; }
+
+/* NAV */
+.nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 18px;
+  margin: 10px 10px 0;
+  background: rgba(20,20,30,0.75);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  backdrop-filter: blur(14px);
+}
+.nav-brand { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 13px; }
+.nav-mark { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), var(--duo)); box-shadow: 0 0 12px var(--accent-glow); }
+.live-pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; background: rgba(0,230,118,0.08); border: 1px solid rgba(0,230,118,0.28); border-radius: 999px; font-size: 10.5px; font-weight: 700; color: var(--casino-green); letter-spacing: .05em; text-transform: uppercase; }
+.live-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--casino-green); box-shadow: 0 0 6px var(--casino-green); animation: livePulse 1.6s ease-in-out infinite; }
+
+/* ═══ HERO COMPACT + IMAGE + RATING ═══ */
+.hero {
+  display: grid; grid-template-columns: 1fr; gap: 18px;
+  padding: 22px 0 16px;
+  align-items: center;
+}
+.hero-left { display: flex; flex-direction: column; gap: 12px; order: 2; }
+.hero-right { order: 1; } /* image d'abord (above-fold) en mobile */
+
+/* IMAGE above-fold */
+.promo-image-container {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 20px 60px -20px rgba(0,0,0,0.7), 0 0 40px -15px var(--accent-glow);
+  isolation: isolate;
+  aspect-ratio: 16/10;
+}
+.promo-image-container img {
+  width: 100%; height: 100%; object-fit: cover;
+  filter: saturate(1.05);
+}
+.promo-image-container::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 50%, rgba(10,10,20,0.55) 100%);
+  pointer-events: none;
+}
+.img-stat {
+  position: absolute;
+  left: 12px; bottom: 12px;
+  z-index: 2;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 13px;
+  background: rgba(10,10,20,0.7);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 999px;
+  font-size: 12px; color: #fff; font-weight: 700;
+}
+.img-stat-stars { color: var(--accent); letter-spacing: 2px; font-size: 13px; }
+.img-stat b { font-weight: 800; }
+.img-stat span { color: var(--text-muted); font-weight: 500; }
+
+.badge-premium {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 13px;
+  background: var(--accent-soft); border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--accent);
+}
+.badge-premium svg { width: 13px; height: 13px; }
+
+.hero-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(1.7rem, 5.5vw, 2.4rem);
+  font-weight: 800; line-height: 1.05; letter-spacing: -0.03em;
+  margin: 0;
+}
+.hero-title span {
+  background: linear-gradient(120deg, var(--accent), var(--accent-light), var(--duo));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.hero-subtitle {
+  font-size: 14.5px; color: var(--text-muted); max-width: 46ch; margin: 0;
+}
+
+/* Rating big */
+.rating-big {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px;
+  background: var(--bg-card); border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+}
+.rating-score {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 2rem; font-weight: 800; line-height: 1;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+  animation: counterPop 2.6s ease-in-out infinite;
+}
+.rating-right { flex: 1; }
+.rating-stars { color: var(--accent); font-size: 14px; letter-spacing: 2px; }
+.rating-count { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.rating-count b { color: var(--text-main); font-weight: 700; }
+
+.offer-title { position: absolute; left: -9999px; top: -9999px; }
+
+.cta-wrap { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.btn-jouer {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 16px 28px;
+  background: linear-gradient(135deg, var(--accent-light), var(--accent), var(--accent-dark));
+  color: #0a0a14;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  border: 0; border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 12px 30px -8px var(--accent-glow);
+  position: relative; overflow: hidden;
+  transition: transform .15s;
+}
+.btn-jouer::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%); transform: translateX(-120%); transition: transform .7s; }
+.btn-jouer:hover { transform: translateY(-2px); }
+.btn-jouer:hover::after { transform: translateX(120%); }
+
+.micro-proof { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-muted); justify-content: center; }
+.micro-proof svg { width: 13px; height: 13px; color: var(--casino-green); }
+
+/* Bonus inline (dépôt/bonus/total) */
+.bonus-inline {
+  display: flex; align-items: baseline; justify-content: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--bg-card); border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 800; font-size: 16px; letter-spacing: -0.02em;
+}
+.bonus-inline .label { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); font-weight: 700; }
+.bonus-inline .step-deposit { color: var(--text-main); }
+.bonus-inline .arrow { color: var(--accent); font-size: 13px; }
+.bonus-inline .step-receive { background: linear-gradient(120deg, var(--accent), var(--duo)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.bonus-inline .total { color: var(--accent); }
+
+/* ═══ THE PROOF WALL (le cœur de M10) ═══ */
+.section { padding: 32px 0 10px; }
+.section-head { text-align: center; margin-bottom: 22px; padding: 0 10px; }
+.eyebrow {
+  display: inline-block;
+  padding: 4px 11px; margin-bottom: 10px;
+  background: var(--accent-soft); border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 10px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--accent);
+}
+.section-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(1.5rem, 4.5vw, 2rem);
+  font-weight: 800; letter-spacing: -0.025em; line-height: 1.12;
+  margin-bottom: 6px;
+}
+.section-title span { background: linear-gradient(120deg, var(--accent), var(--duo)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.section-sub { font-size: 13px; color: var(--text-muted); max-width: 40ch; margin: 0 auto; }
+
+.wall {
+  column-count: 1;
+  column-gap: 12px;
+}
+
+.proof {
+  break-inside: avoid;
+  display: inline-block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  transition: transform .2s, border-color .2s;
+}
+.proof:hover { transform: translateY(-2px); border-color: var(--accent); }
+
+/* Proof header common */
+.proof-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 10px;
+}
+.proof-avatar {
+  width: 38px; height: 38px; flex-shrink: 0;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-light), var(--accent-dark));
+  border: 1px solid var(--border-color);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 800; font-size: 15px; color: #0a0a14;
+}
+.proof-avatar.v1 { background: linear-gradient(135deg, #60A5FA, #8B5CF6); color: #fff; }
+.proof-avatar.v2 { background: linear-gradient(135deg, #34D399, #059669); color: #fff; }
+.proof-avatar.v3 { background: linear-gradient(135deg, #F472B6, #BE185D); color: #fff; }
+.proof-avatar.v4 { background: linear-gradient(135deg, #FFE552, #d4a300); color: #0a0a14; }
+.proof-avatar.v5 { background: linear-gradient(135deg, #FF3366, #be185d); color: #fff; }
+.proof-avatar.v6 { background: linear-gradient(135deg, #2EE8B6, #1fa97d); color: #0a0a14; }
+
+.proof-name { font-size: 13.5px; font-weight: 700; color: var(--text-main); line-height: 1.2; }
+.proof-handle { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+.proof-badge {
+  margin-left: auto;
+  padding: 2px 8px; border-radius: 4px;
+  font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em;
+  color: #fff;
+}
+.proof-badge.verified { background: rgba(0,230,118,0.15); color: var(--casino-green); border: 1px solid rgba(0,230,118,0.4); }
+.proof-badge.twitter  { background: var(--twitter); }
+.proof-badge.discord  { background: var(--discord); }
+
+.proof-text {
+  font-size: 13.5px; color: var(--text-main); line-height: 1.55;
+  margin-bottom: 10px;
+}
+.proof-text b { color: var(--accent); font-weight: 700; }
+.proof-text .mention { color: var(--twitter); font-weight: 600; }
+
+.proof-stars { color: var(--accent); letter-spacing: 2.5px; font-size: 13px; margin-bottom: 6px; }
+
+.proof-footer {
+  display: flex; align-items: center; gap: 16px;
+  font-size: 11.5px; color: var(--text-muted);
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+.proof-footer span { display: inline-flex; align-items: center; gap: 5px; }
+.proof-footer svg { width: 13px; height: 13px; }
+
+/* Discord-style variant */
+.proof.discord-style { background: linear-gradient(180deg, var(--bg-card) 0%, rgba(88,101,242,0.04) 100%); border-color: rgba(88,101,242,0.2); }
+.proof.discord-style .proof-text::before {
+  content: "💬"; margin-right: 6px;
+}
+
+/* Twitter-style variant */
+.proof.twitter-style { background: linear-gradient(180deg, var(--bg-card) 0%, rgba(29,161,242,0.04) 100%); border-color: rgba(29,161,242,0.2); }
+
+/* ═══ CTA SECTION BAS ═══ */
+.cta-section {
+  margin: 24px auto;
+  max-width: 620px;
+  padding: 28px 22px;
+  background:
+    radial-gradient(400px 180px at 50% 0%, var(--accent-glow), transparent 60%),
+    linear-gradient(180deg, var(--bg-card) 0%, rgba(0,0,0,0.4) 100%);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  text-align: center;
+}
+.cta-section h3 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(1.3rem, 4vw, 1.7rem); font-weight: 800; letter-spacing: -0.025em;
+  margin-bottom: 10px;
+}
+.cta-section h3 span { color: var(--accent); }
+.cta-section p { color: var(--text-muted); font-size: 13.5px; margin-bottom: 16px; max-width: 42ch; margin-left: auto; margin-right: auto; }
+
+.sticky-cta {
+  position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 40;
+  padding: 14px 18px calc(14px + var(--safe-b));
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  color: #0a0a14;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  border-radius: 14px;
+  box-shadow: 0 18px 40px -10px var(--accent-glow);
+}
+.sticky-cta svg { width: 15px; height: 15px; }
+
+footer { margin-top: 28px; padding: 20px 0 28px; border-top: 1px solid var(--border-color); text-align: center; font-size: 11px; color: #545475; }
+.disclaimer { max-width: 520px; margin: 0 auto 12px; padding: 12px 14px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 10px; font-size: 11px; color: var(--text-muted); line-height: 1.55; text-align: left; }
+
+@media (min-width: 640px) {
+  .wall { column-count: 2; }
+}
+@media (min-width: 820px) {
+  .hero {
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    padding: 40px 0 24px;
+    align-items: center;
+  }
+  .hero-left { order: 1; }
+  .hero-right { order: 2; }
+  .wall { column-count: 3; }
+}
+@media (min-width: 900px) {
+  body { padding-bottom: 40px; }
+  .sticky-cta { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .reveal { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+  <div class="amb" aria-hidden="true"></div>
+
+  <div class="wrap shell">
+    <!-- Nav -->
+    <nav class="nav reveal">
+      <div class="nav-brand"><div class="nav-mark"></div><span>Celsius Games</span></div>
+      <div class="live-pill">Live</div>
+    </nav>
+
+    <!-- HERO : image top + stats rating + CTA -->
+    <section class="hero">
+      <!-- RIGHT (mais ORDER 1 mobile, 2 desktop) : IMAGE ABOVE-FOLD -->
+      <div class="hero-right">
+        <div class="promo-image-container reveal">
+          <img src="https://cdn.phototourl.com/member/2026-04-10-af97004c-818f-40d3-b081-404c3ad3dfa7.png" alt="" />
+          <div class="img-stat">
+            <span class="img-stat-stars">★★★★★</span>
+            <span><b>4.9</b> <span>· 2 140 avis</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- LEFT (mais ORDER 2 mobile, 1 desktop) : CONTENU -->
+      <div class="hero-left">
+        <div class="reveal">
+          <div class="badge-premium">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 6.4H21l-5.3 4 2 6.6L12 15l-5.7 4 2-6.6L3 8.4h6.6z" fill="currentColor"/></svg>
+            Approuvé communauté
+          </div>
+        </div>
+
+        <h1 class="hero-title reveal">2 140 joueurs <span>le recommandent</span></h1>
+        <p class="hero-subtitle reveal">Note moyenne 4.9/5 · paiements instantanés · bonus respecté. La preuve ci-dessous.</p>
+
+        <!-- Rating big visuel -->
+        <div class="rating-big reveal">
+          <div class="rating-score">4.9</div>
+          <div class="rating-right">
+            <div class="rating-stars">★★★★★</div>
+            <div class="rating-count"><b>2 140</b> avis vérifiés · Trustpilot</div>
+          </div>
+        </div>
+
+        <!-- Bonus inline condensé -->
+        <div class="bonus-inline reveal">
+          <span class="step-deposit">Dépôt 10€</span>
+          <span class="arrow">+</span>
+          <span class="step-receive">Bonus 20€</span>
+          <span class="arrow">=</span>
+          <span class="total" data-total>30€</span>
+        </div>
+
+        <!-- CTA -->
+        <div class="cta-wrap reveal">
+          <a href="#" class="btn-jouer">
+            Activer mon bonus
+            <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          <div class="micro-proof">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Bonus crédité en moins de 30 secondes
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROOF WALL (le cœur de M10) -->
+    <section class="section">
+      <div class="section-head reveal">
+        <span class="eyebrow">Ce qu'ils en disent</span>
+        <h2 class="section-title">Les <span>vrais retours</span> de la communauté</h2>
+        <p class="section-sub">Sélection d'avis récents depuis Twitter, Discord et Trustpilot.</p>
+      </div>
+
+      <div class="wall">
+        <!-- 1 — Twitter-style -->
+        <div class="proof twitter-style reveal">
+          <div class="proof-head">
+            <div class="proof-avatar v1">M</div>
+            <div>
+              <div class="proof-name">Marc L.</div>
+              <div class="proof-handle">@marcgaming</div>
+            </div>
+            <span class="proof-badge twitter">Twitter</span>
+          </div>
+          <div class="proof-text">Franchement surpris, bonus crédité en <b>moins de 30 secondes</b>. Retrait SEPA reçu le lendemain. Je continue.</div>
+          <div class="proof-footer">
+            <span>
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 21s-7-4.5-9-10c-1-2.5 1-6 4-6 2 0 3.5 1 5 3 1.5-2 3-3 5-3 3 0 5 3.5 4 6-2 5.5-9 10-9 10z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+              187
+            </span>
+            <span>
+              <svg viewBox="0 0 24 24" fill="none"><path d="M7 4l4-4 4 4M11 0v14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              32
+            </span>
+            <span style="margin-left: auto;">il y a 2j</span>
+          </div>
+        </div>
+
+        <!-- 2 — Review stars -->
+        <div class="proof reveal">
+          <div class="proof-head">
+            <div class="proof-avatar v2">S</div>
+            <div>
+              <div class="proof-name">Sarah B.</div>
+              <div class="proof-handle">Trustpilot · Vérifié</div>
+            </div>
+            <span class="proof-badge verified">✓ Vérifié</span>
+          </div>
+          <div class="proof-stars">★★★★★</div>
+          <div class="proof-text">"Interface mobile parfaite. Les slots tournent <b>sans lag</b>. Le support répond en 2 min chrono. Je joue quotidiennement depuis 3 mois."</div>
+          <div class="proof-footer"><span style="margin-left: auto;">il y a 5j</span></div>
+        </div>
+
+        <!-- 3 — Discord-style -->
+        <div class="proof discord-style reveal">
+          <div class="proof-head">
+            <div class="proof-avatar v3">K</div>
+            <div>
+              <div class="proof-name">kevin_fr</div>
+              <div class="proof-handle">#général · Discord</div>
+            </div>
+            <span class="proof-badge discord">Discord</span>
+          </div>
+          <div class="proof-text">Salut @everyone, retrait crypto <b>reçu en 4 min</b> 💎 et le bonus clair sans condition piégée. Ça change des autres casinos franchement</div>
+          <div class="proof-footer"><span style="margin-left: auto;">il y a 3h</span></div>
+        </div>
+
+        <!-- 4 — Twitter -->
+        <div class="proof twitter-style reveal">
+          <div class="proof-head">
+            <div class="proof-avatar v4">J</div>
+            <div>
+              <div class="proof-name">Julia M.</div>
+              <div class="proof-handle">@julslots</div>
+            </div>
+            <span class="proof-badge twitter">Twitter</span>
+          </div>
+          <div class="proof-text">Le <b>bonus 10€→20€</b> est exactement comme annoncé, pas de piège. <span class="mention">@CelsiusGames</span> fait du bon boulot.</div>
+          <div class="proof-footer">
+            <span>
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 21s-7-4.5-9-10c-1-2.5 1-6 4-6 2 0 3.5 1 5 3 1.5-2 3-3 5-3 3 0 5 3.5 4 6-2 5.5-9 10-9 10z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+              94
+            </span>
+            <span style="margin-left: auto;">il y a 1j</span>
+          </div>
+        </div>
+
+        <!-- 5 — Review stars -->
+        <div class="proof reveal">
+          <div class="proof-head">
+            <div class="proof-avatar v5">T</div>
+            <div>
+              <div class="proof-name">Thomas R.</div>
+              <div class="proof-handle">Trustpilot · Vérifié</div>
+            </div>
+            <span class="proof-badge verified">✓ Vérifié</span>
+          </div>
+          <div class="proof-stars">★★★★★</div>
+          <div class="proof-text">"Licencé UE, paiements crypto express. J'ai déjà recommandé à tous mes potes, on joue tous via le lien communauté."</div>
+          <div class="proof-footer"><span style="margin-left: auto;">il y a 1 semaine</span></div>
+        </div>
+
+        <!-- 6 — Discord -->
+        <div class="proof discord-style reveal">
+          <div class="proof-head">
+            <div class="proof-avatar v6">N</div>
+            <div>
+              <div class="proof-name">NadiaPlay</div>
+              <div class="proof-handle">#avis · Discord</div>
+            </div>
+            <span class="proof-badge discord">Discord</span>
+          </div>
+          <div class="proof-text">support réactif, KYC en 10 min puis retraits instant 🔥 <b>recommandé</b></div>
+          <div class="proof-footer"><span style="margin-left: auto;">il y a 12h</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA final -->
+    <section class="section">
+      <div class="cta-section reveal">
+        <h3>Rejoins <span>les 2 140 joueurs</span> qui jouent avec bonus</h3>
+        <p>Activation automatique via ce lien. Aucun code, bonus crédité au premier dépôt.</p>
+        <a href="#" class="btn-jouer" style="width: 100%; max-width: 380px; display: inline-flex;">
+          Activer mon bonus
+          <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+    </section>
+
+    <footer>
+      <div class="disclaimer">
+        <strong>Jeu responsable — 18+</strong><br/>
+        Les jeux d'argent comportent des risques : endettement, dépendance… Appelez le 09 74 75 13 13 (non surtaxé). Contenu promotionnel. Avis représentatifs de la communauté.
+      </div>
+      © Celsius Games
+    </footer>
+  </div>
+
+  <a href="#" class="sticky-cta">
+    Activer mon bonus
+    <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </a>
+
+  <!-- compat applyConfig : offer-title caché -->
+  <div class="offer-title">Offre de Bienvenue</div>
+
+  <script>
+    (function () {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e, i) { if (e.isIntersecting) { setTimeout(function () { e.target.classList.add('active'); }, Math.min(i*30, 220)); io.unobserve(e.target); } });
+      }, { threshold: 0.1, rootMargin: '0px 0px -20px 0px' });
+      document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+
+      // Total auto
+      function num(s){if(!s)return 0;var m=String(s).replace(/\s/g,'').match(/(\d+(?:[.,]\d+)?)/);return m?parseFloat(m[1].replace(',','.')):0;}
+      function unit(s){if(!s)return '€';var m=String(s).match(/\d+(?:[.,]\d+)?\s*([^\d\s]+)/);return m?m[1]:'€';}
+      function sync() {
+        var d = document.querySelector('.step-deposit'); var r = document.querySelector('.step-receive'); var t = document.querySelector('[data-total]');
+        if (!d || !r || !t) return;
+        var u = unit(d.textContent) || unit(r.textContent) || '€';
+        t.textContent = (Math.round((num(d.textContent) + num(r.textContent)) * 100) / 100) + u;
+      }
+      sync(); setTimeout(sync, 100);
+    })();
+  </script>
+</body>
+</html>
