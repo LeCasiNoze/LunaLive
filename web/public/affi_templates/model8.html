@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="description" content="3 paliers de bonus — choisis ton niveau de jeu." />
+<meta name="description" content="Bonus exclusif streamer — paiements instantanés." />
 <meta name="robots" content="noindex, nofollow" />
-<title>Celsius Games — Paliers Bonus</title>
+<title>Celsius Games — Bonus Exclusif</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700;800&display=swap">
 <style>
 :root {
   --bg-page:      #08080f;
-  --bg-card:      #101020;
-  --border-color: #1f1f33;
+  --bg-card:      #10101e;
+  --border-color: #20203a;
   --accent:       #FFD700;
   --accent-light: #FFE552;
   --accent-dark:  #d4a300;
@@ -29,7 +29,7 @@
 }
 html[data-variant="ruby"]     { --accent: #FF3366; --accent-light: #ff6688; --accent-dark: #c11546; --accent-glow: rgba(255,51,102,0.44); --duo: #FFD700; }
 html[data-variant="emerald"]  { --accent: #34D399; --accent-light: #6ee7b7; --accent-dark: #059669; --accent-glow: rgba(52,211,153,0.44); --duo: #FFD700; --bg-page: #041414; --bg-card: #0a1f1b; }
-html[data-variant="sapphire"] { --accent: #60A5FA; --accent-light: #93c5fd; --accent-dark: #2563eb; --accent-glow: rgba(96,165,250,0.44); --duo: #c084fc; --bg-page: #070d1c; --bg-card: #101a33; }
+html[data-variant="sapphire"] { --accent: #60A5FA; --accent-light: #93c5fd; --accent-dark: #2563eb; --accent-glow: rgba(96,165,250,0.44); --duo: #c084fc; --bg-page: #060c1c; --bg-card: #101a33; }
 html[data-variant="amethyst"] { --accent: #C084FC; --accent-light: #d8b4fe; --accent-dark: #9333ea; --accent-glow: rgba(192,132,252,0.44); --duo: #F472B6; }
 html[data-variant="obsidian"] { --accent: #E8C879; --accent-light: #f2dda2; --accent-dark: #a8894d; --accent-glow: rgba(232,200,121,0.42); --duo: #E0115F; --bg-page: #050505; --bg-card: #0d0d12; --border-color: #2a2a32; }
 html[data-variant="rose"]     { --accent: #F472B6; --accent-light: #f9a8d4; --accent-dark: #be185d; --accent-glow: rgba(244,114,182,0.44); --duo: #FFD700; }
@@ -40,31 +40,34 @@ html, body { background: var(--bg-page); color: var(--text-main); font-family: '
 body { overflow-x: hidden; min-height: 100vh; padding-bottom: calc(72px + var(--safe-b)); position: relative; }
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; display: block; }
-.shell { width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 18px; }
 
 .amb {
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
-    radial-gradient(55vw 45vw at 50% 0%, var(--accent-glow), transparent 60%),
-    radial-gradient(45vw 35vw at 0% 60%, var(--duo-glow), transparent 60%),
+    radial-gradient(55vw 45vw at 0% 0%, var(--accent-glow), transparent 60%),
+    radial-gradient(45vw 40vw at 100% 50%, var(--duo-glow), transparent 60%),
     var(--bg-page);
-  opacity: .8;
+  opacity: .75;
 }
-.wrap { position: relative; z-index: 1; }
+.wrap { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 0 20px; }
 
 @keyframes livePulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(1.6); } }
 @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-@keyframes glowBreath { 0%, 100% { filter: drop-shadow(0 0 18px var(--accent-glow)); } 50% { filter: drop-shadow(0 0 32px var(--accent-glow)); } }
-@keyframes floatUp { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
-.reveal { opacity: 0; transform: translateY(18px); transition: opacity .65s cubic-bezier(.2,.7,.2,1), transform .65s cubic-bezier(.2,.7,.2,1); }
+@keyframes floatY { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes glowBreath { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow), 0 24px 50px -10px rgba(0,0,0,0.5); } 50% { box-shadow: 0 0 40px 0 var(--accent-glow), 0 24px 50px -10px rgba(0,0,0,0.5); } }
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1); }
 .reveal.active { opacity: 1; transform: none; }
+.reveal.from-left { transform: translateX(-24px); }
+.reveal.from-left.active { transform: none; }
+.reveal.from-right { transform: translateX(24px); }
+.reveal.from-right.active { transform: none; }
 
 /* NAV */
 .nav {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 18px;
-  margin: 10px 10px 0;
-  background: rgba(16,16,32,0.75);
+  padding: 14px 18px;
+  margin: 10px 0 0;
+  background: rgba(16,16,30,0.75);
   border: 1px solid var(--border-color);
   border-radius: 999px;
   backdrop-filter: blur(14px);
@@ -74,41 +77,189 @@ img { max-width: 100%; display: block; }
 .live-pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; background: rgba(0,230,118,0.08); border: 1px solid rgba(0,230,118,0.28); border-radius: 999px; font-size: 10.5px; font-weight: 700; color: var(--casino-green); letter-spacing: .05em; text-transform: uppercase; }
 .live-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--casino-green); box-shadow: 0 0 6px var(--casino-green); animation: livePulse 1.6s ease-in-out infinite; }
 
-/* ═══════════  HERO COMPACT  ═══════════ */
-.hero { padding: 32px 0 18px; text-align: center; }
-.badge-premium {
+/* ═══════════  SPLIT HERO 50/50 (structure centrale de M8)  ═══════════ */
+/* Desktop : 2 colonnes (visuel gauche · contenu droite)
+   Mobile  : stack vertical (visuel en haut, contenu dessous)
+   Différent de M6 (hero narratif vertical), M7 (fullbleed overlay), M8 version "split" horizontal */
+.split {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  padding: 28px 0 24px;
+  align-items: center;
+}
+
+/* === COLONNE VISUELLE (gauche desktop, haut mobile) === */
+.visual {
+  position: relative;
+  aspect-ratio: 4/3;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 30px 70px -18px rgba(0,0,0,0.7), 0 0 40px -20px var(--accent-glow);
+  isolation: isolate;
+}
+.promo-image-container {
+  position: absolute; inset: 0;
+}
+.promo-image-container img {
+  width: 100%; height: 100%; object-fit: cover;
+  filter: saturate(1.05) contrast(1.04);
+}
+.visual::before {
+  content: ""; position: absolute; inset: 0;
+  background:
+    linear-gradient(135deg, transparent 40%, rgba(0,0,0,0.6) 100%),
+    linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.7) 100%);
+  z-index: 1;
+  pointer-events: none;
+}
+/* Visual overlay : bonus badge flottant */
+.visual-badge {
+  position: absolute;
+  top: 16px; left: 16px;
+  z-index: 2;
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 7px 14px;
+  padding: 8px 14px;
+  background: rgba(10,10,20,0.72);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 999px;
+  font-size: 11px; font-weight: 700; color: #fff; letter-spacing: .06em; text-transform: uppercase;
+}
+.visual-badge::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 8px var(--accent-glow);
+  animation: livePulse 1.8s ease-in-out infinite;
+}
+/* Visual floating card : offre résumée */
+.visual-card {
+  position: absolute;
+  bottom: 16px; left: 16px; right: 16px;
+  z-index: 2;
+  padding: 14px 16px;
+  background: rgba(16,16,30,0.85);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  animation: floatY 4s ease-in-out infinite;
+}
+.visual-card-eq {
+  display: flex; align-items: baseline; gap: 6px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 800; font-size: 16px; letter-spacing: -0.02em;
+}
+.visual-card-eq .step-deposit { color: #fff; }
+.visual-card-eq .arrow { color: var(--accent); font-size: 13px; }
+.visual-card-eq .step-receive {
+  background: linear-gradient(120deg, var(--accent), var(--duo));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.visual-card-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 2px; }
+.visual-card-arrow {
+  width: 34px; height: 34px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--accent-light), var(--accent));
+  color: #0a0a14;
+  border-radius: 10px;
+  box-shadow: 0 8px 18px -4px var(--accent-glow);
+}
+
+/* === COLONNE CONTENU (droite desktop) === */
+.content { display: flex; flex-direction: column; gap: 16px; }
+.badge-premium {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 13px;
   background: var(--accent-soft); border: 1px solid var(--accent);
   border-radius: 999px;
-  font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
   color: var(--accent);
-  margin-bottom: 14px;
+  align-self: flex-start;
 }
 .badge-premium svg { width: 13px; height: 13px; }
 
 .hero-title {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: clamp(1.8rem, 6.5vw, 2.8rem);
-  font-weight: 800; line-height: 1.05; letter-spacing: -0.03em;
-  margin: 0 auto 10px;
-  max-width: 16ch;
+  font-size: clamp(2rem, 6vw, 3.2rem);
+  font-weight: 800; line-height: 1.02; letter-spacing: -0.035em;
+  margin: 0;
 }
 .hero-title span {
-  background: linear-gradient(120deg, var(--accent), var(--accent-light), var(--duo));
+  display: inline-block;
+  background: linear-gradient(120deg, var(--accent) 0%, var(--accent-light) 50%, var(--duo) 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 .hero-subtitle {
-  font-size: 15px; color: var(--text-muted);
-  max-width: 42ch; margin: 0 auto 6px;
+  font-size: clamp(14px, 2.4vw, 16px);
+  color: var(--text-muted); max-width: 52ch;
+  margin: 0;
 }
 
-/* hero image hide (we don't use it central in M8) */
-.promo-image-container { display: none; }
+/* Proof row (inline) */
+.proof-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+.proof-avatars { display: flex; flex-shrink: 0; }
+.proof-av {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid var(--bg-card);
+  background: linear-gradient(135deg, var(--accent-light), var(--accent-dark));
+}
+.proof-av + .proof-av { margin-left: -8px; }
+.proof-av:nth-child(2) { background: linear-gradient(135deg, #F472B6, #8B5CF6); }
+.proof-av:nth-child(3) { background: linear-gradient(135deg, #60A5FA, #10B981); }
+.proof-text { flex: 1; font-size: 12.5px; color: var(--text-muted); line-height: 1.4; }
+.proof-text b { color: var(--accent); font-weight: 800; font-variant-numeric: tabular-nums; }
 
-/* ═══════════  3 TIERS LADDER (structure centrale)  ═══════════ */
-.tiers-section { padding: 30px 0 8px; }
-.tiers-head { text-align: center; margin-bottom: 24px; }
+/* Trust row (3 checkmarks) */
+.trust-list {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 16px 18px;
+  background: var(--bg-card); border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+.trust-item { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--text-main); }
+.trust-item svg { flex-shrink: 0; width: 16px; height: 16px; color: var(--casino-green); }
+.trust-item b { color: var(--accent); font-weight: 700; }
+
+/* CTA */
+.cta-wrap { display: flex; flex-direction: column; gap: 8px; }
+.btn-jouer {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 16px 28px;
+  background: linear-gradient(135deg, var(--accent-light), var(--accent), var(--accent-dark));
+  color: #0a0a14;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 15px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  border: 0; border-radius: 14px;
+  cursor: pointer;
+  box-shadow: 0 14px 34px -10px var(--accent-glow);
+  position: relative; overflow: hidden;
+  transition: transform .15s;
+}
+.btn-jouer::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%);
+  transform: translateX(-120%); transition: transform .8s;
+}
+.btn-jouer:hover { transform: translateY(-2px); }
+.btn-jouer:hover::after { transform: translateX(120%); }
+
+.micro-proof {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--text-muted);
+  align-self: flex-start;
+}
+.micro-proof svg { width: 13px; height: 13px; color: var(--casino-green); }
+
+/* ═══════════  STEPS (en horizontal slider sur mobile, grid desktop)  ═══════════ */
+.section { padding: 36px 0 12px; }
+.section-head { text-align: center; margin-bottom: 20px; padding: 0 6px; }
 .eyebrow {
   display: inline-block;
   padding: 4px 11px; margin-bottom: 10px;
@@ -119,185 +270,22 @@ img { max-width: 100%; display: block; }
 }
 .section-title {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: clamp(1.5rem, 5vw, 2rem);
+  font-size: clamp(1.5rem, 4vw, 2rem);
   font-weight: 800; letter-spacing: -0.025em; line-height: 1.12;
   margin-bottom: 6px;
 }
 .section-title span { background: linear-gradient(120deg, var(--accent), var(--duo)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.section-sub { font-size: 13.5px; color: var(--text-muted); max-width: 42ch; margin: 0 auto; }
+.section-sub { font-size: 13.5px; color: var(--text-muted); }
 
-.tiers {
-  display: grid; grid-template-columns: 1fr; gap: 12px;
-  margin-bottom: 8px;
-}
-
-.tier {
-  position: relative;
-  padding: 26px 22px 22px;
-  background: linear-gradient(180deg, var(--bg-card) 0%, rgba(0,0,0,0.4) 100%);
-  border: 1.5px solid var(--border-color);
-  border-radius: var(--radius);
-  transition: transform .25s cubic-bezier(.2,.7,.2,1), border-color .25s;
-  isolation: isolate;
-  overflow: hidden;
-}
-.tier:hover { transform: translateY(-4px); border-color: var(--accent); }
-.tier::before {
-  content: ""; position: absolute; top: 0; left: 20px; right: 20px; height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-}
-
-.tier.featured {
-  border-color: var(--accent);
-  background:
-    radial-gradient(400px 200px at 50% 0%, var(--accent-soft), transparent 60%),
-    linear-gradient(180deg, var(--bg-card) 0%, rgba(0,0,0,0.5) 100%);
-  box-shadow: 0 24px 60px -18px var(--accent-glow), 0 0 0 1px var(--accent) inset;
-  animation: glowBreath 3s ease-in-out infinite;
-}
-.tier.featured::before { background: linear-gradient(90deg, transparent, var(--accent), transparent); height: 2px; }
-
-.tier-ribbon {
-  position: absolute; top: -1px; right: 20px;
-  padding: 4px 12px;
-  background: linear-gradient(135deg, var(--accent-light), var(--accent));
-  color: #0a0a14;
-  font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
-  border-radius: 0 0 8px 8px;
-}
-
-.tier-head {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
-  margin-bottom: 14px;
-}
-.tier-name {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 14px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--text-main);
-}
-.tier-name-sub {
-  font-size: 11.5px; color: var(--text-muted); font-weight: 500;
-  margin-top: 2px; letter-spacing: 0;
-  text-transform: none;
-}
-.tier-icon {
-  flex-shrink: 0;
-  width: 44px; height: 44px; border-radius: 12px;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--accent-soft); border: 1px solid var(--accent);
-  color: var(--accent);
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 800; font-size: 16px;
-}
-.tier.featured .tier-icon {
-  background: linear-gradient(135deg, var(--accent-light), var(--accent));
-  color: #0a0a14;
-  box-shadow: 0 6px 16px -4px var(--accent-glow);
-}
-.tier.top .tier-icon { background: linear-gradient(135deg, var(--duo), var(--accent)); color: #fff; }
-
-/* Bonus equation */
-.tier-eq {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 16px 0 14px;
-  margin-bottom: 14px;
-  border-top: 1px dashed var(--border-color);
-  border-bottom: 1px dashed var(--border-color);
-}
-.tier-eq .deposit {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 18px; font-weight: 700; color: var(--text-muted);
-}
-.tier-eq .plus-equals { color: var(--accent); font-size: 14px; font-weight: 700; }
-.tier-eq .total {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: clamp(1.8rem, 5vw, 2.4rem); font-weight: 800; letter-spacing: -0.02em;
-  color: var(--accent);
-}
-.tier.featured .tier-eq .total {
-  background: linear-gradient(120deg, var(--accent-light), var(--accent), var(--duo));
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-}
-.tier.top .tier-eq .total {
-  background: linear-gradient(120deg, var(--duo), var(--accent));
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-}
-
-/* Features list */
-.tier-feats { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
-.tier-feat {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 12.5px; color: var(--text-muted);
-}
-.tier-feat svg { flex-shrink: 0; width: 14px; height: 14px; color: var(--casino-green); }
-.tier-feat.disabled { color: #4a4a66; text-decoration: line-through; }
-.tier-feat.disabled svg { color: #4a4a66; }
-
-/* CTA per tier */
-.tier-cta {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  width: 100%;
-  padding: 12px 18px;
-  background: var(--bg-card);
-  border: 1px solid var(--accent);
-  border-radius: 10px;
-  color: var(--accent);
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
-  cursor: pointer;
-  transition: background .2s, color .2s, transform .15s;
-}
-.tier-cta:hover { background: var(--accent); color: #0a0a14; transform: translateY(-1px); }
-.tier.featured .tier-cta, .tier.top .tier-cta {
-  background: linear-gradient(135deg, var(--accent-light), var(--accent), var(--accent-dark));
-  border: 0; color: #0a0a14;
-  box-shadow: 0 10px 24px -8px var(--accent-glow);
-}
-.tier.top .tier-cta {
-  background: linear-gradient(135deg, var(--duo), var(--accent));
-  color: #fff;
-}
-
-/* Compat applyConfig : primary .btn-jouer sur tier featured */
-.tier-cta.btn-jouer { /* hérite des styles ci-dessus */ }
-
-/* ═══════════  PROOF STRIP (urgency sociale)  ═══════════ */
-.proof-strip {
-  display: flex; align-items: center; gap: 14px;
-  padding: 14px 18px;
-  margin: 22px auto 0;
-  max-width: 720px;
-  background: rgba(0,0,0,0.3);
-  border: 1px solid var(--border-color);
-  border-radius: 999px;
-}
-.proof-strip-avatars {
-  display: flex; position: relative; flex-shrink: 0;
-}
-.proof-strip-avatar {
-  width: 28px; height: 28px; border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-light), var(--accent-dark));
-  border: 2px solid var(--bg-card);
-}
-.proof-strip-avatar + .proof-strip-avatar { margin-left: -8px; }
-.proof-strip-avatar:nth-child(2) { background: linear-gradient(135deg, #F472B6, #8B5CF6); }
-.proof-strip-avatar:nth-child(3) { background: linear-gradient(135deg, #60A5FA, #10B981); }
-.proof-strip-avatar:nth-child(4) { background: linear-gradient(135deg, var(--duo), var(--accent)); }
-.proof-strip-text { flex: 1; font-size: 12.5px; color: var(--text-muted); line-height: 1.35; }
-.proof-strip-text b { color: var(--accent); font-weight: 800; font-variant-numeric: tabular-nums; }
-
-/* ═══════════  FAQ + STEPS (condensé)  ═══════════ */
-.section { padding: 36px 0 8px; }
-.section-head { text-align: center; margin-bottom: 22px; padding: 0 8px; }
-.steps { display: grid; grid-template-columns: 1fr; gap: 10px; max-width: 720px; margin: 0 auto; }
-.step-row {
-  display: flex; align-items: center; gap: 14px;
-  padding: 14px 16px;
+.steps { display: grid; grid-template-columns: 1fr; gap: 10px; max-width: 880px; margin: 0 auto; }
+.step {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 16px 18px;
   background: var(--bg-card); border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   transition: border-color .2s;
 }
-.step-row:hover { border-color: var(--accent); }
+.step:hover { border-color: var(--accent); }
 .step-num {
   flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px;
   display: flex; align-items: center; justify-content: center;
@@ -307,9 +295,10 @@ img { max-width: 100%; display: block; }
   font-size: 14px; font-weight: 800;
   box-shadow: 0 6px 14px -4px var(--accent-glow);
 }
-.step-row h4 { font-size: 14px; font-weight: 700; color: var(--text-main); margin-bottom: 2px; }
-.step-row p { font-size: 12.5px; color: var(--text-muted); line-height: 1.45; }
+.step h4 { font-size: 14px; font-weight: 700; color: var(--text-main); margin-bottom: 2px; }
+.step p { font-size: 12.5px; color: var(--text-muted); line-height: 1.45; }
 
+/* FAQ */
 .faq { max-width: 720px; margin: 0 auto; }
 .faq-item { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-sm); margin-bottom: 8px; overflow: hidden; }
 .faq-q { padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13.5px; font-weight: 700; color: var(--text-main); cursor: pointer; list-style: none; }
@@ -319,22 +308,7 @@ img { max-width: 100%; display: block; }
 .faq-item[open] .faq-q::after { transform: rotate(45deg); }
 .faq-a { padding: 0 16px 14px; color: var(--text-muted); font-size: 12.5px; line-height: 1.55; }
 
-/* Primary btn-jouer (global, quand pas ladder — pour compat applyConfig) */
-.btn-jouer {
-  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-  padding: 14px 26px;
-  background: linear-gradient(135deg, var(--accent-light), var(--accent), var(--accent-dark));
-  color: #0a0a14;
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 14px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
-  border: 0; border-radius: 12px;
-  cursor: pointer;
-  box-shadow: 0 12px 28px -8px var(--accent-glow);
-}
-
-.offer-title { /* masqué car redondant avec tier-name, mais présent pour compat applyConfig */
-  position: absolute; left: -9999px; top: -9999px;
-}
+.offer-title { position: absolute; left: -9999px; top: -9999px; } /* kept for applyConfig compat, hidden */
 
 .sticky-cta {
   position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 40;
@@ -350,11 +324,18 @@ img { max-width: 100%; display: block; }
 .sticky-cta svg { width: 15px; height: 15px; }
 
 footer { margin-top: 32px; padding: 20px 0 28px; border-top: 1px solid var(--border-color); text-align: center; font-size: 11px; color: #545475; }
-.disclaimer { max-width: 480px; margin: 0 auto 12px; padding: 12px 14px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 10px; font-size: 11px; color: var(--text-muted); line-height: 1.55; text-align: left; }
+.disclaimer { max-width: 520px; margin: 0 auto 12px; padding: 12px 14px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 10px; font-size: 11px; color: var(--text-muted); line-height: 1.55; text-align: left; }
 
-@media (min-width: 720px) {
-  .tiers { grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  .tier.featured { transform: scale(1.04); }
+@media (min-width: 820px) {
+  .split {
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 40px;
+    padding: 56px 0 40px;
+    min-height: 72vh;
+  }
+  .visual { aspect-ratio: auto; height: 100%; min-height: 460px; }
+  .content { gap: 20px; }
+  .steps { grid-template-columns: repeat(3, 1fr); }
 }
 @media (min-width: 900px) {
   body { padding-bottom: 40px; }
@@ -369,164 +350,93 @@ footer { margin-top: 32px; padding: 20px 0 28px; border-top: 1px solid var(--bor
 <body>
   <div class="amb" aria-hidden="true"></div>
 
-  <div class="wrap shell">
+  <div class="wrap">
     <nav class="nav reveal">
       <div class="nav-brand"><div class="nav-mark"></div><span>Celsius Games</span></div>
       <div class="live-pill">Live</div>
     </nav>
 
-    <section class="hero">
-      <div class="reveal">
-        <div class="badge-premium">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 6.4H21l-5.3 4 2 6.6L12 15l-5.7 4 2-6.6L3 8.4h6.6z" fill="currentColor"/></svg>
-          3 paliers exclusifs
+    <!-- ═══ SPLIT 50/50 HERO (structure centrale) ═══ -->
+    <section class="split">
+
+      <!-- Visual column (image left desktop, top mobile) -->
+      <div class="visual reveal from-left">
+        <div class="promo-image-container">
+          <img src="https://cdn.phototourl.com/member/2026-04-10-af97004c-818f-40d3-b081-404c3ad3dfa7.png" alt="" />
         </div>
-      </div>
-      <h1 class="hero-title reveal">Choisis ton <span>niveau de jeu</span></h1>
-      <p class="hero-subtitle reveal">Plus tu mises, plus ton bonus augmente. Trois offres pour trois profils de joueurs.</p>
-      <div class="promo-image-container"><img src="https://cdn.phototourl.com/member/2026-04-10-af97004c-818f-40d3-b081-404c3ad3dfa7.png" alt="" /></div>
-    </section>
-
-    <!-- ═══ 3 TIERS LADDER (structure centrale de M8) ═══ -->
-    <section class="tiers-section">
-      <div class="tiers-head reveal">
-        <span class="eyebrow">Les offres</span>
-        <h2 class="section-title">Trois <span>paliers</span>, un seul vainqueur : toi</h2>
-      </div>
-
-      <div class="tiers">
-        <!-- TIER 1 — STARTER -->
-        <div class="tier reveal">
-          <div class="tier-head">
-            <div>
-              <div class="tier-name">Starter</div>
-              <div class="tier-name-sub">Pour tester</div>
-            </div>
-            <div class="tier-icon">S</div>
-          </div>
-          <div class="tier-eq">
-            <span class="deposit"><span class="step-deposit">10€</span></span>
-            <span class="plus-equals">→</span>
-            <span class="total" data-total-1>30€</span>
-          </div>
-          <div class="tier-feats">
-            <div class="tier-feat">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-              Bonus x2 sur le dépôt
-            </div>
-            <div class="tier-feat">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-              Accès à +5700 jeux
-            </div>
-            <div class="tier-feat disabled">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-              Support VIP dédié
-            </div>
-            <div class="tier-feat disabled">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-              Cashback hebdomadaire
+        <div class="visual-badge">Bonus actif</div>
+        <div class="visual-card">
+          <div>
+            <div class="visual-card-label">Ton bonus</div>
+            <div class="visual-card-eq">
+              <span class="step-deposit">10€</span>
+              <span class="arrow">→</span>
+              <span class="step-receive">20€</span>
             </div>
           </div>
-          <a href="#" class="tier-cta">Activer Starter</a>
-        </div>
-
-        <!-- TIER 2 — PRO (featured) -->
-        <div class="tier featured reveal">
-          <div class="tier-ribbon">Recommandé</div>
-          <div class="tier-head">
-            <div>
-              <div class="tier-name">Pro</div>
-              <div class="tier-name-sub">Le meilleur rapport</div>
-            </div>
-            <div class="tier-icon">P</div>
+          <div class="visual-card-arrow">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </div>
-          <div class="tier-eq">
-            <span class="deposit"><span class="step-receive">20€</span></span>
-            <span class="plus-equals">→</span>
-            <span class="total" data-total-2>60€</span>
-          </div>
-          <div class="tier-feats">
-            <div class="tier-feat">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-              Bonus x3 sur le dépôt
-            </div>
-            <div class="tier-feat">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-              Accès à +5700 jeux
-            </div>
-            <div class="tier-feat">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-              Priorité sur les retraits
-            </div>
-            <div class="tier-feat disabled">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-              Cashback hebdomadaire
-            </div>
-          </div>
-          <a href="#" class="tier-cta btn-jouer">Activer Pro</a>
-        </div>
-
-        <!-- TIER 3 — HIGH-ROLLER -->
-        <div class="tier top reveal">
-          <div class="tier-head">
-            <div>
-              <div class="tier-name">High Roller</div>
-              <div class="tier-name-sub">Bankroll sérieuse</div>
-            </div>
-            <div class="tier-icon">👑</div>
-          </div>
-          <div class="tier-eq">
-            <span class="deposit">50€</span>
-            <span class="plus-equals">→</span>
-            <span class="total" data-total-3>200€</span>
-          </div>
-          <div class="tier-feats">
-            <div class="tier-feat">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-              Bonus x4 sur le dépôt
-            </div>
-            <div class="tier-feat">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-              Cashback hebdo 10%
-            </div>
-            <div class="tier-feat">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-              Support VIP dédié
-            </div>
-            <div class="tier-feat">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-              Manager personnel
-            </div>
-          </div>
-          <a href="#" class="tier-cta">Activer High Roller</a>
         </div>
       </div>
 
-      <div class="proof-strip reveal">
-        <div class="proof-strip-avatars">
-          <div class="proof-strip-avatar"></div>
-          <div class="proof-strip-avatar"></div>
-          <div class="proof-strip-avatar"></div>
-          <div class="proof-strip-avatar"></div>
+      <!-- Content column (right desktop, bottom mobile) -->
+      <div class="content">
+        <div class="reveal from-right">
+          <div class="badge-premium">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 6.4H21l-5.3 4 2 6.6L12 15l-5.7 4 2-6.6L3 8.4h6.6z" fill="currentColor"/></svg>
+            Bonus exclusif streamer
+          </div>
         </div>
-        <div class="proof-strip-text"><b data-live>214</b> joueurs ont activé leur bonus aujourd'hui. <b data-live-rate>+12</b> dans la dernière heure.</div>
-      </div>
 
-      <div style="display: none;">
-        <div class="offer-title">Offre de Bienvenue</div>
+        <h1 class="hero-title reveal from-right">Ton <span>premier dépôt</span> est doublé</h1>
+        <p class="hero-subtitle reveal from-right">Active ton bonus communauté en 2 minutes. Aucun code à saisir, bonus crédité automatiquement au dépôt.</p>
+
+        <div class="reveal from-right">
+          <div class="proof-row">
+            <div class="proof-avatars">
+              <div class="proof-av"></div>
+              <div class="proof-av"></div>
+              <div class="proof-av"></div>
+            </div>
+            <div class="proof-text"><b data-live>214</b> joueurs ont activé leur bonus aujourd'hui</div>
+          </div>
+        </div>
+
+        <div class="reveal from-right">
+          <div class="trust-list">
+            <div class="trust-item"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" strokeLinejoin="round"/></svg><span><b>Licence officielle</b> UE · fonds ségrégués</span></div>
+            <div class="trust-item"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" strokeLinejoin="round"/></svg><span><b>Paiements instantanés</b> · crypto &lt; 5 min</span></div>
+            <div class="trust-item"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" strokeLinejoin="round"/></svg><span><b>Support 24/7</b> FR · 5700+ jeux</span></div>
+          </div>
+        </div>
+
+        <div class="cta-wrap reveal from-right">
+          <a href="#" class="btn-jouer">
+            Activer mon bonus
+            <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          <div class="micro-proof">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Bonus crédité en moins de 30 secondes
+          </div>
+        </div>
       </div>
     </section>
 
-    <!-- Steps condensed -->
+    <!-- Offre-title gardé pour compat applyConfig (masqué visuellement) -->
+    <div class="offer-title">Offre de Bienvenue</div>
+
+    <!-- Steps condensés -->
     <section class="section">
       <div class="section-head reveal">
         <span class="eyebrow">Comment ça marche</span>
-        <h2 class="section-title">Active ton <span>palier</span> en 2 min</h2>
+        <h2 class="section-title">Activation en <span>2 minutes</span></h2>
       </div>
       <div class="steps">
-        <div class="step-row reveal"><div class="step-num">1</div><div><h4>Choisis ton palier</h4><p>Starter, Pro ou High Roller selon ta bankroll.</p></div></div>
-        <div class="step-row reveal"><div class="step-num">2</div><div><h4>Dépose le montant</h4><p>Le bonus est déclenché automatiquement.</p></div></div>
-        <div class="step-row reveal"><div class="step-num">3</div><div><h4>Joue</h4><p>Bonus crédité en moins de 30 secondes sur ton solde.</p></div></div>
+        <div class="step reveal"><div class="step-num">1</div><div><h4>Clique sur « Activer »</h4><p>Tu es redirigé vers la création de compte communauté.</p></div></div>
+        <div class="step reveal"><div class="step-num">2</div><div><h4>Premier dépôt</h4><p>Le montant minimum déclenche automatiquement le bonus.</p></div></div>
+        <div class="step reveal"><div class="step-num">3</div><div><h4>Joue avec ton bonus</h4><p>Crédité instantanément sur ton solde, prêt à être misé.</p></div></div>
       </div>
     </section>
 
@@ -537,9 +447,9 @@ footer { margin-top: 32px; padding: 20px 0 28px; border-top: 1px solid var(--bor
         <h2 class="section-title">Les <span>réponses</span> rapides</h2>
       </div>
       <div class="faq">
-        <details class="faq-item reveal"><summary class="faq-q">Puis-je changer de palier après le dépôt ?</summary><div class="faq-a">Le palier est déterminé par ton premier dépôt. Dépose plus pour accéder au palier supérieur directement.</div></details>
-        <details class="faq-item reveal"><summary class="faq-q">Les paliers sont-ils cumulables ?</summary><div class="faq-a">Non, chaque nouveau compte peut activer un palier unique (son premier dépôt détermine tout).</div></details>
-        <details class="faq-item reveal"><summary class="faq-q">Combien de temps pour retirer ?</summary><div class="faq-a">Crypto sous 5 minutes. SEPA sous 24h ouvrées après KYC initial.</div></details>
+        <details class="faq-item reveal"><summary class="faq-q">Le bonus est-il vraiment automatique ?</summary><div class="faq-a">Oui — aucun code à saisir. Il se déclenche au premier dépôt effectué depuis ce lien.</div></details>
+        <details class="faq-item reveal"><summary class="faq-q">Combien de temps pour retirer mes gains ?</summary><div class="faq-a">Crypto sous 5 minutes. SEPA sous 24h ouvrées après vérification KYC initiale.</div></details>
+        <details class="faq-item reveal"><summary class="faq-q">Le site est-il sécurisé ?</summary><div class="faq-a">Licence officielle UE, chiffrement SSL, authentification 2FA disponible, jeu responsable certifié.</div></details>
       </div>
     </section>
 
@@ -560,46 +470,12 @@ footer { margin-top: 32px; padding: 20px 0 28px; border-top: 1px solid var(--bor
   <script>
     (function () {
       var io = new IntersectionObserver(function (entries) {
-        entries.forEach(function (e, i) { if (e.isIntersecting) { setTimeout(function () { e.target.classList.add('active'); }, Math.min(i*35, 220)); io.unobserve(e.target); } });
+        entries.forEach(function (e, i) { if (e.isIntersecting) { setTimeout(function () { e.target.classList.add('active'); }, Math.min(i*35, 240)); io.unobserve(e.target); } });
       }, { threshold: 0.12, rootMargin: '0px 0px -30px 0px' });
       document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
 
-      // Live counter
-      var live = document.querySelector('[data-live]'); var rate = document.querySelector('[data-live-rate]');
+      var live = document.querySelector('[data-live]');
       if (live) { var n = parseInt(live.textContent, 10) || 200; setInterval(function () { if (Math.random() < 0.3) { n++; live.textContent = n; } }, 4000); }
-
-      // Mettre le même href sur tous les .tier-cta depuis le principal btn-jouer
-      document.addEventListener('DOMContentLoaded', function () {
-        var main = document.querySelector('.btn-jouer');
-        if (!main) return;
-        var href = main.getAttribute('href');
-        document.querySelectorAll('.tier-cta, .sticky-cta').forEach(function (a) {
-          if (a.classList.contains('btn-jouer')) return; // already the main
-          a.setAttribute('href', href);
-        });
-      });
-
-      // Totaux auto pour les 3 tiers : multiplicateurs x3, x4, x5
-      function num(s) { if (!s) return 0; var m = String(s).replace(/\s/g,'').match(/(\d+(?:[.,]\d+)?)/); return m ? parseFloat(m[1].replace(',','.')) : 0; }
-      function unit(s) { if (!s) return '€'; var m = String(s).match(/\d+(?:[.,]\d+)?\s*([^\d\s]+)/); return m ? m[1] : '€'; }
-      function syncTiers() {
-        var dep = document.querySelector('.step-deposit'); // tier 1 base
-        var rec = document.querySelector('.step-receive'); // tier 2 base
-        if (!dep || !rec) return;
-        var baseDep = num(dep.textContent);
-        var baseRec = num(rec.textContent);
-        var u = unit(dep.textContent) || unit(rec.textContent) || '€';
-        // Tier 1 = base + (base*2)  => total = base*3
-        var t1 = document.querySelector('[data-total-1]');
-        if (t1) t1.textContent = (Math.round(baseDep * 3 * 100) / 100) + u;
-        // Tier 2 = base + (base*2) de step-receive
-        var t2 = document.querySelector('[data-total-2]');
-        if (t2) t2.textContent = (Math.round(baseRec * 3 * 100) / 100) + u;
-        // Tier 3 : high roller fixe à 5x le dépôt x5 (ex 50 → 250). Si step-deposit=10, 50=10*5.
-        var t3 = document.querySelector('[data-total-3]');
-        if (t3) t3.textContent = (Math.round(baseDep * 5 * 4 * 100) / 100) + u; // 10€ base → 200€
-      }
-      syncTiers(); setTimeout(syncTiers, 100);
     })();
   </script>
 </body>
