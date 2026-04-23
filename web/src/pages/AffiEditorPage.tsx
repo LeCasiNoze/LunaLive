@@ -2524,6 +2524,15 @@ export default function AffiEditorPage() {
   const [pageError, setPageError] = useState<string | null>(null);
   const [pageNotice, setPageNotice] = useState<string | null>(null);
   const [pageAction, setPageAction] = useState<"create" | "update" | "delete" | null>(null);
+  // ── UI state (nouveau rework) ──
+  const [leftTab, setLeftTab] = useState<"pages" | "models">("pages");
+  const [pageSearch, setPageSearch] = useState("");
+  const [renamingPageId, setRenamingPageId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [menuOpenForPageId, setMenuOpenForPageId] = useState<number | null>(null);
+  const [urlCopied, setUrlCopied] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
   const returnTo = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return params.get("returnTo") || "/FSB_Board?section=tools";
@@ -2855,6 +2864,117 @@ export default function AffiEditorPage() {
   // ── Iframe width by viewport ───────────────────────────────────────────────
   const iframeWidth = viewport === "desktop" ? "100%" : viewport === "tablet" ? "768px" : "390px";
 
+  // ── Pages filtrées par recherche ───────────────────────────────────────────
+  const filteredPages = useMemo(() => {
+    const q = pageSearch.trim().toLowerCase();
+    if (!q) return savedPages;
+    return savedPages.filter((p) =>
+      (p.brandName || "").toLowerCase().includes(q) ||
+      (p.slug || "").toLowerCase().includes(q) ||
+      (p.title || "").toLowerCase().includes(q) ||
+      String(p.model || "").includes(q)
+    );
+  }, [savedPages, pageSearch]);
+
+  // ── Rename ────────────────────────────────────────────────────────────────
+  async function renamePage(page: FsbAffiPage, newName: string) {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === page.brandName) {
+      setRenamingPageId(null);
+      return;
+    }
+    if (!token || !canManagePublishedPages) {
+      setPageError("Connexion FSB requise pour renommer.");
+      setRenamingPageId(null);
+      return;
+    }
+    setPageAction("update");
+    setPageError(null);
+    try {
+      await updateFsbAffiPage(token, page.id, {
+        slug: page.slug,
+        model: page.model,
+        variant: page.variant,
+        brandName: trimmed,
+        title: page.title,
+        config: page.config,
+      });
+      await refreshPublishedPages(selectedPageId);
+      setPageNotice(`Renommé : ${trimmed}`);
+    } catch (e: any) {
+      setPageError(String(e?.message || "Impossible de renommer."));
+    } finally {
+      setPageAction(null);
+      setRenamingPageId(null);
+    }
+  }
+
+  // ── Duplicate depuis la card (sans charger en éditeur) ────────────────────
+  async function duplicatePageDirect(page: FsbAffiPage) {
+    if (!token || !canManagePublishedPages) {
+      setPageError("Connexion FSB requise pour dupliquer.");
+      return;
+    }
+    setPageAction("create");
+    setPageError(null);
+    try {
+      const response = await createFsbAffiPage(token, {
+        slug: page.slug,
+        model: page.model,
+        variant: page.variant,
+        brandName: `${page.brandName || "Copie"} (copie)`,
+        title: page.title,
+        config: page.config,
+      });
+      await refreshPublishedPages(response.item.id);
+      setPageNotice(`Dupliquée : ${response.item.brandName}`);
+    } catch (e: any) {
+      setPageError(String(e?.message || "Impossible de dupliquer."));
+    } finally {
+      setPageAction(null);
+    }
+  }
+
+  // ── Copy URL publique ─────────────────────────────────────────────────────
+  async function copyPublicUrl(slug: string) {
+    const url = `${PUBLIC_SITE}/r/${slug}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setUrlCopied(true);
+      setTimeout(() => setUrlCopied(false), 1500);
+    } catch {
+      // Fallback : select textarea trick
+      const ta = document.createElement("textarea");
+      ta.value = url; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); setUrlCopied(true); setTimeout(() => setUrlCopied(false), 1500); } catch {}
+      document.body.removeChild(ta);
+    }
+  }
+
+  // ── Fermer le menu popup au clic extérieur ────────────────────────────────
+  useEffect(() => {
+    if (menuOpenForPageId === null) return;
+    const handler = () => setMenuOpenForPageId(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [menuOpenForPageId]);
+
+  // ── Raccourci Ctrl/Cmd+S pour publier/enregistrer ─────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (canManagePublishedPages && pageAction === null) {
+          void publishCurrentPage();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManagePublishedPages, pageAction, selectedPageId, draftPayload]);
+
   // ── Style tab helpers ─────────────────────────────────────────────────────
   // Returns the correct config key for a typography prop given the current device tab
   function typoKey(base: keyof Config, mKey: keyof Config, dKey: keyof Config): keyof Config {
@@ -2871,221 +2991,363 @@ export default function AffiEditorPage() {
   return (
     <div style={s.root}>
 
-      {/* ── HEADER ──────────────────────────────────────────────────────────── */}
-      <div style={s.header}>
-        <div style={s.logo}>🎨 <span style={{ color: "#eee", fontWeight: 400 }}>Affi</span> Editor</div>
-        {selectedPage && (
-          <span style={{ fontSize: "0.74rem", color: "#9f9fc1", fontFamily: "monospace", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            /r/{selectedPage.slug}
+      {/* ═══════════════  TOP BAR  ═══════════════════════════════════════════ */}
+      <header style={s.topBar}>
+        <div style={s.brand}>
+          <div style={s.brandMark}>A</div>
+          <span style={s.brandText}>Affi<b>Studio</b></span>
+        </div>
+
+        <div style={s.topBarSep} />
+
+        <div style={s.crumb}>
+          <span style={s.crumbChip}>
+            M{currentModel}{currentModel >= 5 ? ` · ${goldenVariant}` : ""}
           </span>
-        )}
+          <span style={s.crumbSlash}>/</span>
+          <span style={s.crumbName}>
+            {selectedPage ? (selectedPage.brandName || "(sans nom)") : "Nouveau brouillon"}
+          </span>
+          {selectedPage && (
+            <span style={s.crumbSlug}>/r/{selectedPage.slug}</span>
+          )}
+        </div>
+
         <div style={{ flex: 1 }} />
-        <button style={{ ...s.btn, ...s.btnSecondary }} onClick={() => navigate(returnTo)}>
+
+        <div style={{
+          ...s.statusChip,
+          ...(hasUnsavedChanges ? s.statusChipWarn : selectedPage ? s.statusChipOk : s.statusChipDraft),
+        }}>
+          <span style={{
+            ...s.statusDot,
+            background: hasUnsavedChanges ? "#f59e0b" : selectedPage ? "#10b981" : "#64748b",
+          }} />
+          {pageAction === "create" || pageAction === "update" ? "Enregistrement…"
+            : hasUnsavedChanges ? "Non enregistré"
+            : selectedPage ? "Enregistré"
+            : "Brouillon"}
+        </div>
+
+        <div style={s.topBarSep} />
+
+        <button style={s.topBtnGhost} onClick={() => navigate(returnTo)} title="Retour au FSB Board">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
           Retour
         </button>
-        <button style={{ ...s.btn, ...s.btnSecondary }} onClick={resetDraft}>
-          Réinitialiser
+        <button style={s.topBtnGhost} onClick={resetDraft} title="Réinitialiser le brouillon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M3 3v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
+        <button
+          style={s.topBtnGhost}
+          onClick={() => copyPublicUrl(selectedPage?.slug || publishedSlugPreview)}
+          title={urlCopied ? "Copié !" : "Copier l'URL publique"}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+          {urlCopied ? "Copié" : "URL"}
+        </button>
+        <button style={s.topBtnGhost} onClick={exportHtml} title="Exporter le HTML autonome">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M7 10l5 5 5-5M12 15V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          Export
+        </button>
+
         {selectedPageId && hasUnsavedChanges && (
           <button
-            style={{ ...s.btn, ...s.btnVariant, opacity: canManagePublishedPages ? 1 : 0.55 }}
+            style={s.topBtnSecondary}
             onClick={saveCurrentPageAsVariant}
-            disabled={!canManagePublishedPages || pageAction === "create" || pageAction === "update"}
-            title="Creer une nouvelle page a partir de cette version modifiee"
+            disabled={!canManagePublishedPages || pageAction !== null}
+            title="Créer une nouvelle page à partir de cette version modifiée"
           >
             + Variante
           </button>
         )}
-        <button
-          style={{ ...s.btn, ...s.btnSuccess, opacity: canManagePublishedPages ? 1 : 0.55 }}
-          onClick={publishCurrentPage}
-          disabled={!canManagePublishedPages || pageAction === "create" || pageAction === "update"}
-          title={canManagePublishedPages ? publishedUrlPreview : "Acces FSB requis"}
-        >
-          {selectedPageId ? "Mettre à jour" : "Créer"}
-        </button>
-        <button style={{ ...s.btn, ...s.btnPrimary }} onClick={exportHtml}>
-          ⬇ Export
-        </button>
-      </div>
 
-      {/* ── BODY ────────────────────────────────────────────────────────────── */}
+        <button
+          style={{ ...s.topBtnPrimary, opacity: canManagePublishedPages && pageAction === null ? 1 : 0.55 }}
+          onClick={publishCurrentPage}
+          disabled={!canManagePublishedPages || pageAction !== null}
+          title={canManagePublishedPages ? `${selectedPageId ? "Enregistrer" : "Publier"} (Ctrl+S)` : "Accès FSB requis"}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h7l-1 8 10-12h-7z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>
+          {selectedPageId ? "Enregistrer" : "Publier"}
+        </button>
+      </header>
+
+      {/* ═══════════════  BODY  ══════════════════════════════════════════════ */}
       <div style={s.body}>
 
-        {/* ── LEFT SIDEBAR ──────────────────────────────────────────────────── */}
-        <div style={s.leftSidebar}>
-          {/* Pages list */}
-          <div style={s.sidebarSectionTitle}>
-            <span>Pages</span>
-            <button style={s.sidebarNewBtn} onClick={resetDraft} title="Nouveau brouillon">+</button>
+        {/* ═══  LEFT SIDEBAR  ═══════════════════════════════════════════════ */}
+        {!leftCollapsed && (
+        <aside style={s.sidebar}>
+
+          {/* Sidebar tabs */}
+          <div style={s.sideTabs}>
+            <button
+              style={{ ...s.sideTab, ...(leftTab === "pages" ? s.sideTabActive : {}) }}
+              onClick={() => setLeftTab("pages")}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              Pages
+              {savedPages.length > 0 && <span style={s.sideTabCount}>{savedPages.length}</span>}
+            </button>
+            <button
+              style={{ ...s.sideTab, ...(leftTab === "models" ? s.sideTabActive : {}) }}
+              onClick={() => setLeftTab("models")}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2"/></svg>
+              Templates
+            </button>
           </div>
 
-          {loadError && (
-            <div style={{ ...s.inlineError, margin: "8px 8px 0" }}>
-              Templates introuvables dans <code>/affi_templates/</code>.
+          {/* Alerts */}
+          {(pageError || pageNotice || loadError || !canManagePublishedPages) && (
+            <div style={{ padding: "8px 12px 0", display: "flex", flexDirection: "column", gap: 6 }}>
+              {loadError && <div style={s.alertError}>⚠ Templates introuvables dans /affi_templates/</div>}
+              {pageError && <div style={s.alertError}>{pageError}</div>}
+              {pageNotice && <div style={s.alertOk}>{pageNotice}</div>}
+              {!canManagePublishedPages && <div style={s.alertWarn}>Accès FSB requis pour publier</div>}
             </div>
           )}
 
-          {pageError && <div style={{ ...s.inlineError, margin: "8px 8px 0" }}>{pageError}</div>}
-          {pageNotice && <div style={{ ...s.inlineNotice, margin: "8px 8px 0" }}>{pageNotice}</div>}
-
-          <div style={s.sidebarPageList}>
-            {loadingPages ? (
-              <div style={s.sidebarPageEmpty}>Chargement...</div>
-            ) : savedPages.length === 0 ? (
-              <div style={s.sidebarPageEmpty}>Aucune page</div>
-            ) : (
-              savedPages.map((page) => {
-                const isActive = page.id === selectedPageId;
-                return (
-                  <div
-                    key={page.id}
-                    style={{ ...s.sidebarPageCard, ...(isActive ? s.sidebarPageCardActive : {}) }}
-                  >
-                    <button
-                      type="button"
-                      style={s.sidebarPageBtn}
-                      onClick={() => loadPublishedPageInEditor(page)}
-                      title={`/r/${page.slug}`}
-                    >
-                      <div style={s.sidebarPageName}>{page.brandName || page.slug || "(sans nom)"}</div>
-                      <div style={s.sidebarPageMeta}>
-                        M{page.model}{page.variant ? ` · ${page.variant}` : ""} · /r/{page.slug}
-                      </div>
-                    </button>
-                    <div style={s.sidebarPageActions}>
-                      <button
-                        type="button"
-                        style={{
-                          flex: 1,
-                          padding: "8px 0",
-                          background: "rgba(99,102,241,.15)",
-                          border: "none",
-                          borderRight: "1px solid #2a2a46",
-                          color: "#a5b4fc",
-                          fontSize: "0.75rem",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                        title="Ouvrir la page publique dans un nouvel onglet"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.open(`${PUBLIC_SITE}/r/${page.slug}`, "_blank", "noopener,noreferrer");
-                        }}
-                      >↗ Ouvrir</button>
-                      <button
-                        type="button"
-                        style={{
-                          flex: 1,
-                          padding: "8px 0",
-                          background: "rgba(239,68,68,.15)",
-                          border: "none",
-                          color: "#fca5a5",
-                          fontSize: "0.75rem",
-                          fontWeight: 700,
-                          cursor: canManagePublishedPages ? "pointer" : "not-allowed",
-                          opacity: canManagePublishedPages ? 1 : 0.5,
-                        }}
-                        title={canManagePublishedPages ? "Supprimer définitivement cette page" : "Accès FSB requis pour supprimer"}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void removePublishedPage(page);
-                        }}
-                        disabled={pageAction === "delete" || !canManagePublishedPages}
-                      >🗑 Supprimer</button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          <div style={s.sidebarDivider} />
-
-          {/* Model picker */}
-          <div style={s.sidebarSectionTitle}>
-            <span>Modèle</span>
-          </div>
-          <div style={s.sidebarModelList}>
-            {([1, 4, 5, 6, 7, 8] as const).map((n) => (
-              <button
-                key={n}
-                style={{ ...s.modelCard, ...(currentModel === n ? s.modelCardActive : {}) }}
-                onClick={() => setCurrentModel(n)}
-              >
-                <div style={s.modelThumb}>
-                  <ModelThumb n={n} />
+          {/* ═══ PAGES tab ═══ */}
+          {leftTab === "pages" && (
+            <div style={s.sideScroll}>
+              <div style={{ padding: "12px 12px 8px" }}>
+                <div style={s.searchBar}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={s.searchIcon}><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                  <input
+                    type="text"
+                    value={pageSearch}
+                    onChange={(e) => setPageSearch(e.target.value)}
+                    placeholder="Rechercher une page…"
+                    style={s.searchInput}
+                  />
+                  {pageSearch && (
+                    <button onClick={() => setPageSearch("")} style={s.searchClear} title="Effacer">✕</button>
+                  )}
                 </div>
-                <div style={s.modelLabel}>M{n}</div>
-                <div style={s.modelDesc}>
-                  {n === 1 ? "Side" : n === 4 ? "2 cartes" : n === 5 ? "Golden" : n === 6 ? "Premium" : n === 7 ? "Arcade" : "Salon"}
+              </div>
+
+              <button style={s.newPageCard} onClick={resetDraft}>
+                <span style={s.newPageCardPlus}>+</span>
+                <div>
+                  <div style={s.newPageCardTitle}>Nouvelle page</div>
+                  <div style={s.newPageCardSub}>Démarrer un brouillon vierge</div>
                 </div>
               </button>
-            ))}
-          </div>
 
-          {/* Variant picker for model 5 */}
-          {currentModel >= 5 && (
-            <>
-              <div style={s.sidebarDivider} />
-              <div style={s.sidebarSectionTitle}><span>Variante</span></div>
-              <div style={{ padding: "0 8px 8px" }}>
-                <VariantPicker value={goldenVariant} onChange={setGoldenVariant} />
+              <div style={s.pageList}>
+                {loadingPages ? (
+                  <div style={s.emptyState}>
+                    <div style={s.emptyIcon}>⏳</div>
+                    <div>Chargement…</div>
+                  </div>
+                ) : filteredPages.length === 0 ? (
+                  <div style={s.emptyState}>
+                    <div style={s.emptyIcon}>{pageSearch ? "🔍" : "📭"}</div>
+                    <div>{pageSearch ? `Aucun résultat pour "${pageSearch}"` : "Aucune page publiée"}</div>
+                    {!pageSearch && <div style={s.emptySub}>Clique sur « Nouvelle page » pour commencer</div>}
+                  </div>
+                ) : (
+                  filteredPages.map((page) => {
+                    const isActive = page.id === selectedPageId;
+                    const isRenaming = renamingPageId === page.id;
+                    const isMenuOpen = menuOpenForPageId === page.id;
+                    return (
+                      <div
+                        key={page.id}
+                        style={{ ...s.pageCard, ...(isActive ? s.pageCardActive : {}) }}
+                      >
+                        <div
+                          style={s.pageCardMain}
+                          onClick={() => { if (!isRenaming) loadPublishedPageInEditor(page); }}
+                        >
+                          <div style={s.pageCardThumb}><ModelThumb n={page.model || 1} /></div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {isRenaming ? (
+                              <input
+                                autoFocus
+                                value={renameValue}
+                                onChange={(e) => setRenameValue(e.target.value)}
+                                onBlur={() => renamePage(page, renameValue)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") { e.currentTarget.blur(); }
+                                  if (e.key === "Escape") { setRenamingPageId(null); }
+                                }}
+                                style={s.renameInput}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            ) : (
+                              <div style={s.pageCardName}>{page.brandName || "(sans nom)"}</div>
+                            )}
+                            <div style={s.pageCardRow}>
+                              <span style={s.pageCardBadge}>M{page.model}{page.variant ? `·${page.variant}` : ""}</span>
+                              <span style={s.pageCardSlug}>/r/{page.slug}</span>
+                            </div>
+                          </div>
+                          <button
+                            style={s.pageCardMenuBtn}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuOpenForPageId(isMenuOpen ? null : page.id);
+                            }}
+                            title="Plus d'actions"
+                          >⋯</button>
+                        </div>
+                        {isMenuOpen && (
+                          <div style={s.menu} onClick={(e) => e.stopPropagation()}>
+                            <button style={s.menuItem} onClick={() => {
+                              window.open(`${PUBLIC_SITE}/r/${page.slug}`, "_blank", "noopener,noreferrer");
+                              setMenuOpenForPageId(null);
+                            }}>
+                              <span style={s.menuIco}>↗</span>Ouvrir publique
+                            </button>
+                            <button style={s.menuItem} onClick={() => { copyPublicUrl(page.slug); setMenuOpenForPageId(null); }}>
+                              <span style={s.menuIco}>🔗</span>Copier l'URL
+                            </button>
+                            <button style={s.menuItem} onClick={() => {
+                              setRenamingPageId(page.id);
+                              setRenameValue(page.brandName || "");
+                              setMenuOpenForPageId(null);
+                            }}>
+                              <span style={s.menuIco}>✎</span>Renommer
+                            </button>
+                            <button
+                              style={s.menuItem}
+                              disabled={!canManagePublishedPages}
+                              onClick={() => { duplicatePageDirect(page); setMenuOpenForPageId(null); }}
+                            >
+                              <span style={s.menuIco}>⎘</span>Dupliquer
+                            </button>
+                            <div style={s.menuDivider} />
+                            <button
+                              style={{ ...s.menuItem, color: "#fca5a5" }}
+                              disabled={!canManagePublishedPages || pageAction === "delete"}
+                              onClick={() => { removePublishedPage(page); setMenuOpenForPageId(null); }}
+                            >
+                              <span style={s.menuIco}>🗑</span>Supprimer
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </div>
-            </>
-          )}
-
-          {selectedPage && hasUnsavedChanges && (
-            <div style={{ ...s.inlineWarn, margin: "8px 8px 0" }}>
-              Modifications non enregistrées
             </div>
           )}
-          {!canManagePublishedPages && (
-            <div style={{ ...s.inlineWarn, margin: "8px 8px 0" }}>
-              Accès FSB requis pour publier
+
+          {/* ═══ MODELS tab ═══ */}
+          {leftTab === "models" && (
+            <div style={s.sideScroll}>
+              <div style={s.sideLabel}>Template</div>
+              <div style={s.modelGrid}>
+                {([1, 4, 5, 6, 7, 8] as const).map((n) => (
+                  <button
+                    key={n}
+                    style={{ ...s.modelCardV2, ...(currentModel === n ? s.modelCardV2Active : {}) }}
+                    onClick={() => setCurrentModel(n)}
+                  >
+                    <div style={s.modelThumbV2}><ModelThumb n={n} /></div>
+                    <div style={s.modelCardV2Name}>M{n}</div>
+                    <div style={s.modelCardV2Desc}>
+                      {n === 1 ? "Side" : n === 4 ? "2 cartes" : n === 5 ? "Golden" : n === 6 ? "Premium" : n === 7 ? "Arcade" : "Salon"}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {currentModel >= 5 && (
+                <>
+                  <div style={{ ...s.sideLabel, marginTop: 12 }}>Thème couleur</div>
+                  <div style={{ padding: "0 12px 16px" }}>
+                    <VariantPicker value={goldenVariant} onChange={setGoldenVariant} />
+                  </div>
+                </>
+              )}
             </div>
           )}
-        </div>
+        </aside>
+        )}
 
-        {/* ── CENTER PREVIEW ────────────────────────────────────────────────── */}
-        <div style={s.previewPanel}>
-          <div style={s.previewToolbar}>
-            <span style={{ fontSize: 12, color: "#888" }}>
-              Modèle {currentModel}
-            </span>
-            <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
-              {(["desktop", "tablet", "mobile"] as const).map((v) => (
+        {/* Left rail collapse toggle */}
+        <button
+          style={{ ...s.collapseBtn, left: leftCollapsed ? 6 : 272 }}
+          onClick={() => setLeftCollapsed(!leftCollapsed)}
+          title={leftCollapsed ? "Ouvrir la barre latérale" : "Réduire la barre latérale"}
+        >
+          {leftCollapsed ? "›" : "‹"}
+        </button>
+
+        {/* ═══  CENTER PREVIEW  ═════════════════════════════════════════════ */}
+        <main style={s.preview}>
+          <div style={s.previewBar}>
+            <div style={s.previewCrumb}>
+              <span style={s.previewCrumbChip}>M{currentModel}</span>
+              {currentModel >= 5 && <span style={s.previewCrumbChip}>{goldenVariant}</span>}
+              {hasUnsavedChanges && <span style={s.previewDirty}>● modifié</span>}
+            </div>
+
+            <div style={{ flex: 1 }} />
+
+            <div style={s.viewportSwitch}>
+              {([
+                ["desktop", "🖥", "Desktop"],
+                ["tablet", "🖼", "Tablette"],
+                ["mobile", "📱", "Mobile"],
+              ] as const).map(([v, ico, lbl]) => (
                 <button
                   key={v}
-                  style={{ ...s.vpBtn, ...(viewport === v ? s.vpBtnActive : {}) }}
+                  style={{ ...s.viewportBtn, ...(viewport === v ? s.viewportBtnActive : {}) }}
                   onClick={() => setViewport(v)}
+                  title={lbl}
                 >
-                  {v === "desktop" ? "🖥" : v === "tablet" ? "📱" : "📱"}
-                  {" "}{v === "desktop" ? "Desktop" : v === "tablet" ? "Tablette" : "Mobile"}
+                  <span style={{ fontSize: 13 }}>{ico}</span>
+                  {viewport === v && <span>{lbl}</span>}
                 </button>
               ))}
             </div>
           </div>
-          <div style={s.previewWrap}>
-            <iframe
-              ref={iframeRef}
-              style={{ ...s.iframe, width: iframeWidth, maxWidth: iframeWidth }}
-              title="preview"
-            />
-          </div>
-        </div>
 
-        {/* ── RIGHT PANEL ───────────────────────────────────────────────────── */}
-        <div style={s.rightPanel}>
-          {/* Tab bar */}
-          <div style={s.tabBar}>
-            {(["content", "style", "layout"] as const).map((tab) => (
+          <div style={s.previewCanvas}>
+            <div style={{
+              ...s.previewFrame,
+              width: iframeWidth,
+              maxWidth: "100%",
+            }}>
+              <iframe
+                ref={iframeRef}
+                style={s.iframe}
+                title="preview"
+              />
+            </div>
+          </div>
+        </main>
+
+        {/* Right dock collapse toggle */}
+        <button
+          style={{ ...s.collapseBtn, right: rightCollapsed ? 6 : 372 }}
+          onClick={() => setRightCollapsed(!rightCollapsed)}
+          title={rightCollapsed ? "Ouvrir le panneau propriétés" : "Réduire le panneau propriétés"}
+        >
+          {rightCollapsed ? "‹" : "›"}
+        </button>
+
+        {/* ═══  RIGHT DOCK  ══════════════════════════════════════════════════ */}
+        {!rightCollapsed && (
+        <aside style={s.rightDock}>
+          <div style={s.rightTabs}>
+            {([
+              ["content", "Contenu"],
+              ["style", "Design"],
+              ["layout", "Layout"],
+            ] as const).map(([t, lbl]) => (
               <button
-                key={tab}
-                style={{ ...s.tabBtn, ...(rightTab === tab ? s.tabBtnActive : {}) }}
-                onClick={() => setRightTab(tab)}
+                key={t}
+                style={{ ...s.rightTab, ...(rightTab === t ? s.rightTabActive : {}) }}
+                onClick={() => setRightTab(t)}
               >
-                {tab === "content" ? "Contenu" : tab === "style" ? "Style" : "Disposition"}
+                {lbl}
               </button>
             ))}
           </div>
@@ -3462,7 +3724,8 @@ export default function AffiEditorPage() {
               )}
             </div>
           )}
-        </div>
+        </aside>
+        )}
 
       </div>{/* .body */}
     </div>
@@ -3470,70 +3733,526 @@ export default function AffiEditorPage() {
 }
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
+// Design tokens
+const T = {
+  bg0: "#0a0a12",        // app background
+  bg1: "#11111c",        // panels
+  bg2: "#181826",        // cards
+  bg3: "#1f1f30",        // hover
+  bd:  "#262638",        // borders
+  bd2: "#2f2f44",        // borders stronger
+  txt: "#f3f3f8",
+  txtDim: "#a8a8be",
+  txtMute: "#6b6b82",
+  primary: "#6366f1",    // indigo
+  primaryHover: "#818cf8",
+  primarySoft: "rgba(99,102,241,0.14)",
+  success: "#10b981",
+  warn: "#f59e0b",
+  danger: "#ef4444",
+  gold: "#f4c430",
+  shadowSm: "0 1px 2px rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.12)",
+  shadowMd: "0 4px 10px -2px rgba(0,0,0,0.35), 0 2px 4px -1px rgba(0,0,0,0.18)",
+  shadowLg: "0 20px 40px -10px rgba(0,0,0,0.5), 0 8px 16px -4px rgba(0,0,0,0.3)",
+};
 
 const s: Record<string, React.CSSProperties> = {
+  // ══════ SHELL ══════
   root: {
     display: "flex",
     flexDirection: "column",
     height: "100vh",
     width: "100vw",
     overflow: "hidden",
-    fontFamily: "'Segoe UI', system-ui, sans-serif",
-    background: "#0d0d1a",
-    color: "#e0e0f0",
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif",
+    background: T.bg0,
+    color: T.txt,
     position: "fixed",
-    top: 0,
-    left: 0,
+    top: 0, left: 0,
     zIndex: 9999,
-  },
-  header: {
-    height: 52,
-    background: "#141428",
-    borderBottom: "1px solid #2a2a4a",
-    display: "flex",
-    alignItems: "center",
-    padding: "0 16px",
-    gap: 10,
-    flexShrink: 0,
-  },
-  logo: {
-    fontSize: "1rem",
-    fontWeight: 700,
-    color: "#FFD700",
-    letterSpacing: "0.3px",
-    whiteSpace: "nowrap",
-  },
-  btn: {
-    padding: "6px 14px",
-    borderRadius: 6,
-    fontSize: "0.82rem",
-    fontWeight: 600,
-    cursor: "pointer",
-    border: "none",
-    whiteSpace: "nowrap",
-  },
-  btnPrimary: {
-    background: "#FFD700",
-    color: "#000",
-  },
-  btnSuccess: {
-    background: "#2ccf85",
-    color: "#07110c",
-  },
-  btnVariant: {
-    background: "#2a2348",
-    color: "#f2e7ff",
-    border: "1px solid rgba(194, 146, 255, 0.36)",
-  },
-  btnSecondary: {
-    background: "#1c1c35",
-    color: "#e0e0f0",
-    border: "1px solid #2a2a4a",
+    fontSize: 14,
   },
   body: {
     display: "flex",
     flex: 1,
     overflow: "hidden",
+    position: "relative",
+  },
+
+  // ══════ TOP BAR ══════
+  topBar: {
+    height: 56,
+    background: T.bg1,
+    borderBottom: `1px solid ${T.bd}`,
+    display: "flex",
+    alignItems: "center",
+    padding: "0 14px",
+    gap: 10,
+    flexShrink: 0,
+  },
+  brand: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    paddingRight: 4,
+  },
+  brandMark: {
+    width: 30, height: 30,
+    borderRadius: 8,
+    background: `linear-gradient(135deg, ${T.primary} 0%, #d946ef 100%)`,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    color: "#fff", fontWeight: 800, fontSize: 14,
+    boxShadow: `0 4px 12px -2px ${T.primarySoft}`,
+  },
+  brandText: {
+    fontSize: 14, fontWeight: 600, color: T.txt, letterSpacing: "-0.01em",
+  },
+  topBarSep: { width: 1, height: 22, background: T.bd, flexShrink: 0 },
+  crumb: {
+    display: "flex", alignItems: "center", gap: 8,
+    minWidth: 0, flex: "0 1 auto",
+    overflow: "hidden",
+  },
+  crumbChip: {
+    padding: "3px 8px", borderRadius: 5,
+    background: T.primarySoft, color: T.primaryHover,
+    fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
+    border: `1px solid ${T.primarySoft}`,
+  },
+  crumbSlash: { color: T.txtMute, fontSize: 14 },
+  crumbName: {
+    fontSize: 14, fontWeight: 600, color: T.txt,
+    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 240,
+  },
+  crumbSlug: {
+    fontSize: 11, color: T.txtMute, fontFamily: "'JetBrains Mono', monospace",
+    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+  },
+  statusChip: {
+    display: "inline-flex", alignItems: "center", gap: 7,
+    padding: "5px 12px", borderRadius: 999,
+    fontSize: 12, fontWeight: 600,
+    whiteSpace: "nowrap",
+    border: `1px solid ${T.bd}`,
+  },
+  statusChipOk:    { color: "#6ee7b7", background: "rgba(16,185,129,0.08)", borderColor: "rgba(16,185,129,0.22)" },
+  statusChipWarn:  { color: "#fcd34d", background: "rgba(245,158,11,0.09)", borderColor: "rgba(245,158,11,0.25)" },
+  statusChipDraft: { color: T.txtDim, background: T.bg2, borderColor: T.bd },
+  statusDot: { width: 7, height: 7, borderRadius: "50%", flexShrink: 0 },
+
+  topBtnGhost: {
+    display: "inline-flex", alignItems: "center", gap: 6,
+    padding: "7px 12px", borderRadius: 7,
+    background: "transparent",
+    border: `1px solid ${T.bd}`,
+    color: T.txtDim,
+    fontSize: 12.5, fontWeight: 600,
+    cursor: "pointer", whiteSpace: "nowrap",
+    transition: "background 0.15s, color 0.15s, border-color 0.15s",
+  },
+  topBtnSecondary: {
+    display: "inline-flex", alignItems: "center", gap: 6,
+    padding: "7px 14px", borderRadius: 7,
+    background: T.bg3,
+    border: `1px solid ${T.bd2}`,
+    color: T.txt,
+    fontSize: 12.5, fontWeight: 700,
+    cursor: "pointer", whiteSpace: "nowrap",
+  },
+  topBtnPrimary: {
+    display: "inline-flex", alignItems: "center", gap: 7,
+    padding: "8px 16px", borderRadius: 7,
+    background: `linear-gradient(135deg, ${T.primary} 0%, #d946ef 100%)`,
+    border: "1px solid transparent",
+    color: "#fff",
+    fontSize: 12.5, fontWeight: 700,
+    cursor: "pointer", whiteSpace: "nowrap",
+    boxShadow: `0 6px 18px -6px ${T.primary}`,
+  },
+
+  // legacy "btn" compat (if any remaining references)
+  btn: { padding: "6px 14px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", whiteSpace: "nowrap" },
+  btnPrimary: { background: T.primary, color: "#fff" },
+  btnSuccess: { background: T.success, color: "#041a0f" },
+  btnVariant: { background: "#2a2348", color: "#f2e7ff", border: "1px solid rgba(194, 146, 255, 0.36)" },
+  btnSecondary: { background: T.bg3, color: T.txt, border: `1px solid ${T.bd}` },
+
+  // ══════ SIDEBAR (left) ══════
+  sidebar: {
+    width: 272,
+    background: T.bg1,
+    borderRight: `1px solid ${T.bd}`,
+    display: "flex", flexDirection: "column",
+    flexShrink: 0,
+    overflow: "hidden",
+  },
+  sideTabs: {
+    display: "flex",
+    borderBottom: `1px solid ${T.bd}`,
+    padding: "10px 10px 0",
+    gap: 4,
+    flexShrink: 0,
+  },
+  sideTab: {
+    flex: 1,
+    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+    padding: "8px 10px",
+    background: "transparent",
+    border: "none",
+    borderBottom: "2px solid transparent",
+    color: T.txtMute,
+    fontSize: 12.5, fontWeight: 600,
+    cursor: "pointer",
+    marginBottom: -1,
+    transition: "color 0.15s, border-color 0.15s",
+  },
+  sideTabActive: {
+    color: T.txt,
+    borderBottomColor: T.primary,
+  },
+  sideTabCount: {
+    padding: "1px 6px",
+    borderRadius: 999,
+    fontSize: 10, fontWeight: 800,
+    background: T.primarySoft,
+    color: T.primaryHover,
+  },
+  sideScroll: {
+    flex: 1,
+    overflowY: "auto",
+    paddingBottom: 20,
+  },
+  sideLabel: {
+    padding: "14px 14px 6px",
+    fontSize: 10.5, fontWeight: 800, textTransform: "uppercase",
+    letterSpacing: ".12em",
+    color: T.txtMute,
+  },
+  searchBar: {
+    position: "relative",
+    display: "flex", alignItems: "center",
+    background: T.bg2,
+    border: `1px solid ${T.bd}`,
+    borderRadius: 8,
+    padding: "0 10px",
+    transition: "border-color 0.15s",
+  },
+  searchIcon: { color: T.txtMute, flexShrink: 0 },
+  searchInput: {
+    flex: 1,
+    background: "transparent",
+    border: 0, outline: "none",
+    color: T.txt,
+    padding: "9px 8px",
+    fontSize: 13,
+    fontFamily: "inherit",
+  },
+  searchClear: {
+    background: T.bg3, border: 0, color: T.txtDim,
+    width: 20, height: 20, borderRadius: 999,
+    cursor: "pointer", fontSize: 11, fontWeight: 700,
+    flexShrink: 0,
+  },
+  newPageCard: {
+    display: "flex", alignItems: "center", gap: 12,
+    width: "calc(100% - 24px)",
+    margin: "0 12px 10px",
+    padding: "12px 14px",
+    background: `linear-gradient(135deg, ${T.primarySoft} 0%, rgba(217,70,239,0.06) 100%)`,
+    border: `1px dashed ${T.primary}`,
+    borderRadius: 10,
+    color: T.txt,
+    cursor: "pointer",
+    textAlign: "left",
+    transition: "background 0.15s, border-color 0.15s",
+  },
+  newPageCardPlus: {
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    width: 32, height: 32, borderRadius: 8,
+    background: T.primary,
+    color: "#fff", fontSize: 18, fontWeight: 700,
+    flexShrink: 0,
+  },
+  newPageCardTitle: { fontSize: 13, fontWeight: 700, color: T.txt, lineHeight: 1.2 },
+  newPageCardSub: { fontSize: 11, color: T.txtDim, marginTop: 2 },
+
+  pageList: {
+    display: "flex", flexDirection: "column", gap: 6,
+    padding: "0 8px 8px",
+  },
+  pageCard: {
+    position: "relative",
+    background: T.bg2,
+    border: `1px solid ${T.bd}`,
+    borderRadius: 10,
+    overflow: "visible",
+    transition: "border-color 0.15s, background 0.15s",
+  },
+  pageCardActive: {
+    borderColor: T.primary,
+    background: T.primarySoft,
+    boxShadow: `inset 0 0 0 1px ${T.primary}`,
+  },
+  pageCardMain: {
+    display: "flex", alignItems: "center", gap: 10,
+    padding: 10,
+    cursor: "pointer",
+  },
+  pageCardThumb: {
+    width: 44, height: 28,
+    borderRadius: 5,
+    overflow: "hidden",
+    background: "#000",
+    flexShrink: 0,
+    display: "flex", alignItems: "center", justifyContent: "center",
+  },
+  pageCardName: {
+    fontSize: 13, fontWeight: 700, color: T.txt,
+    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+    lineHeight: 1.25,
+  },
+  pageCardRow: {
+    display: "flex", alignItems: "center", gap: 6, marginTop: 4,
+  },
+  pageCardBadge: {
+    padding: "1px 6px", borderRadius: 4,
+    background: T.bg3, color: T.txtDim,
+    fontSize: 10, fontWeight: 700, letterSpacing: "0.02em",
+    fontFamily: "'JetBrains Mono', monospace",
+    flexShrink: 0,
+  },
+  pageCardSlug: {
+    fontSize: 10.5, color: T.txtMute,
+    fontFamily: "'JetBrains Mono', monospace",
+    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1,
+  },
+  pageCardMenuBtn: {
+    width: 26, height: 26, flexShrink: 0,
+    background: "transparent",
+    border: 0, borderRadius: 6,
+    color: T.txtDim, cursor: "pointer",
+    fontSize: 17, fontWeight: 700, lineHeight: 1,
+    transition: "background 0.15s",
+  },
+  menu: {
+    position: "absolute",
+    right: 10, top: 44,
+    zIndex: 50,
+    minWidth: 180,
+    background: T.bg2,
+    border: `1px solid ${T.bd2}`,
+    borderRadius: 10,
+    boxShadow: T.shadowLg,
+    padding: 6,
+    display: "flex", flexDirection: "column", gap: 2,
+  },
+  menuItem: {
+    display: "flex", alignItems: "center", gap: 10,
+    width: "100%",
+    padding: "7px 10px",
+    background: "transparent",
+    border: 0, borderRadius: 6,
+    color: T.txt,
+    fontSize: 12.5, fontWeight: 500,
+    cursor: "pointer", textAlign: "left",
+    transition: "background 0.15s",
+  },
+  menuIco: { width: 14, textAlign: "center", fontSize: 12, color: T.txtDim },
+  menuDivider: { height: 1, background: T.bd, margin: "4px 0" },
+
+  renameInput: {
+    width: "100%",
+    background: T.bg3,
+    border: `1px solid ${T.primary}`,
+    borderRadius: 4,
+    color: T.txt,
+    padding: "4px 8px",
+    fontSize: 13, fontWeight: 700,
+    fontFamily: "inherit",
+    outline: "none",
+  },
+
+  emptyState: {
+    margin: "24px 16px",
+    padding: "28px 16px",
+    textAlign: "center",
+    border: `1px dashed ${T.bd}`,
+    borderRadius: 10,
+    background: T.bg2,
+    color: T.txtDim,
+    fontSize: 12.5,
+  },
+  emptyIcon: { fontSize: 28, marginBottom: 8, opacity: 0.8 },
+  emptySub: { fontSize: 11, color: T.txtMute, marginTop: 6 },
+
+  // Alert chips
+  alertError: { padding: "9px 11px", background: "rgba(239,68,68,0.09)", border: "1px solid rgba(239,68,68,0.32)", borderRadius: 8, color: "#fca5a5", fontSize: 12, lineHeight: 1.45 },
+  alertOk:    { padding: "9px 11px", background: "rgba(16,185,129,0.09)", border: "1px solid rgba(16,185,129,0.28)", borderRadius: 8, color: "#6ee7b7", fontSize: 12, lineHeight: 1.45 },
+  alertWarn:  { padding: "9px 11px", background: "rgba(245,158,11,0.09)", border: "1px solid rgba(245,158,11,0.28)", borderRadius: 8, color: "#fcd34d", fontSize: 12, lineHeight: 1.45 },
+
+  // Model grid (templates tab)
+  modelGrid: {
+    display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8,
+    padding: "0 12px 12px",
+  },
+  modelCardV2: {
+    background: T.bg2,
+    border: `1.5px solid ${T.bd}`,
+    borderRadius: 10,
+    padding: "8px 8px 10px",
+    cursor: "pointer",
+    textAlign: "center",
+    transition: "border-color 0.2s, background 0.2s",
+  },
+  modelCardV2Active: {
+    borderColor: T.primary,
+    background: T.primarySoft,
+    boxShadow: `0 0 0 1px ${T.primary}`,
+  },
+  modelThumbV2: {
+    width: "100%",
+    aspectRatio: "12/7",
+    borderRadius: 6,
+    marginBottom: 8,
+    overflow: "hidden",
+    background: "#000",
+    display: "flex", alignItems: "center", justifyContent: "center",
+  },
+  modelCardV2Name: { fontSize: 11.5, fontWeight: 800, color: T.txt, letterSpacing: "0.02em" },
+  modelCardV2Desc: { fontSize: 10, color: T.txtMute, marginTop: 2 },
+
+  // ══════ COLLAPSE BTN ══════
+  collapseBtn: {
+    position: "absolute",
+    top: 12,
+    width: 22, height: 48,
+    zIndex: 40,
+    background: T.bg2,
+    border: `1px solid ${T.bd}`,
+    color: T.txtDim,
+    cursor: "pointer",
+    borderRadius: 6,
+    fontSize: 16, fontWeight: 700, lineHeight: 1,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    transition: "left 0.25s, right 0.25s, background 0.15s",
+  },
+
+  // ══════ PREVIEW (center) ══════
+  preview: {
+    flex: 1,
+    display: "flex", flexDirection: "column",
+    overflow: "hidden",
+    background: T.bg0,
+    minWidth: 0,
+  },
+  previewBar: {
+    height: 44,
+    background: T.bg1,
+    borderBottom: `1px solid ${T.bd}`,
+    display: "flex", alignItems: "center",
+    padding: "0 14px",
+    gap: 10,
+    flexShrink: 0,
+  },
+  previewCrumb: { display: "flex", alignItems: "center", gap: 6 },
+  previewCrumbChip: {
+    padding: "3px 9px", borderRadius: 5,
+    background: T.bg3, color: T.txtDim,
+    fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 600,
+  },
+  previewDirty: {
+    padding: "3px 9px", borderRadius: 5,
+    background: "rgba(245,158,11,0.1)", color: "#fcd34d",
+    fontSize: 11, fontWeight: 600,
+    border: "1px solid rgba(245,158,11,0.28)",
+  },
+  viewportSwitch: {
+    display: "inline-flex", gap: 2,
+    background: T.bg2,
+    border: `1px solid ${T.bd}`,
+    borderRadius: 8,
+    padding: 3,
+  },
+  viewportBtn: {
+    padding: "5px 10px",
+    background: "transparent",
+    border: 0, borderRadius: 5,
+    color: T.txtDim,
+    fontSize: 12, fontWeight: 600,
+    cursor: "pointer",
+    display: "inline-flex", alignItems: "center", gap: 5,
+    transition: "background 0.15s, color 0.15s",
+  },
+  viewportBtnActive: {
+    background: T.bg3,
+    color: T.txt,
+    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.04)",
+  },
+  previewCanvas: {
+    flex: 1,
+    overflow: "auto",
+    display: "flex", justifyContent: "center", alignItems: "flex-start",
+    background: `
+      radial-gradient(1000px 500px at 50% 0%, rgba(99,102,241,0.05), transparent 60%),
+      ${T.bg0}
+    `,
+    padding: "18px 18px 28px",
+  },
+  previewFrame: {
+    background: "#fff",
+    borderRadius: 10,
+    overflow: "hidden",
+    boxShadow: T.shadowLg,
+    border: `1px solid ${T.bd}`,
+    transition: "width 0.25s, max-width 0.25s",
+    height: "100%",
+    minHeight: 500,
+  },
+  iframe: {
+    border: "none",
+    background: "white",
+    width: "100%",
+    height: "100%",
+    display: "block",
+  },
+
+  // ══════ RIGHT DOCK ══════
+  rightDock: {
+    width: 360,
+    background: T.bg1,
+    borderLeft: `1px solid ${T.bd}`,
+    display: "flex", flexDirection: "column",
+    flexShrink: 0,
+    overflow: "hidden",
+  },
+  rightTabs: {
+    display: "flex",
+    borderBottom: `1px solid ${T.bd}`,
+    padding: "10px 10px 0",
+    gap: 4,
+    flexShrink: 0,
+  },
+  rightTab: {
+    flex: 1,
+    padding: "8px 10px",
+    background: "transparent",
+    border: 0,
+    borderBottom: "2px solid transparent",
+    color: T.txtMute,
+    fontSize: 12.5, fontWeight: 600,
+    cursor: "pointer",
+    marginBottom: -1,
+  },
+  rightTabActive: {
+    color: T.txt,
+    borderBottomColor: T.primary,
+  },
+
+  // Legacy tab content (keeps existing Content/Style/Layout JSX alive)
+  tabContent: {
+    flex: 1,
+    overflowY: "auto",
+    paddingBottom: 24,
   },
 
   // Picker
@@ -3602,55 +4321,56 @@ const s: Record<string, React.CSSProperties> = {
     paddingBottom: 20,
   },
   section: {
-    borderBottom: "1px solid #1e1e38",
+    borderBottom: `1px solid ${T.bd}`,
     overflow: "hidden",
   },
   sectionHeader: {
     width: "100%",
-    padding: "11px 16px",
-    fontSize: "0.76rem",
+    padding: "13px 16px",
+    fontSize: 11.5,
     fontWeight: 700,
     textTransform: "uppercase",
-    letterSpacing: "0.7px",
-    color: "#888",
+    letterSpacing: ".08em",
+    color: T.txtDim,
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     background: "none",
     border: "none",
-    color2: "#e0e0f0",
   } as React.CSSProperties,
   sectionBody: {
-    padding: "2px 16px 14px",
+    padding: "2px 16px 16px",
   },
   field: {
-    marginBottom: 10,
+    marginBottom: 12,
   },
   label: {
     display: "block",
-    fontSize: "0.72rem",
-    color: "#888",
-    marginBottom: 4,
-    fontWeight: 500,
+    fontSize: 11,
+    color: T.txtDim,
+    marginBottom: 5,
+    fontWeight: 600,
+    letterSpacing: "0.01em",
   },
   input: {
     width: "100%",
-    background: "#1c1c35",
-    border: "1px solid #2a2a4a",
-    borderRadius: 5,
-    color: "#e0e0f0",
-    padding: "6px 9px",
-    fontSize: "0.8rem",
+    background: T.bg2,
+    border: `1px solid ${T.bd}`,
+    borderRadius: 7,
+    color: T.txt,
+    padding: "8px 11px",
+    fontSize: 12.5,
     fontFamily: "inherit",
     outline: "none",
     boxSizing: "border-box",
+    transition: "border-color 0.15s, background 0.15s",
   },
   colorPicker: {
     width: 34,
-    height: 28,
-    border: "1px solid #2a2a4a",
-    borderRadius: 4,
+    height: 30,
+    border: `1px solid ${T.bd}`,
+    borderRadius: 6,
     background: "none",
     cursor: "pointer",
     padding: 1,
@@ -3667,19 +4387,20 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 8,
     width: "100%",
-    padding: "10px 12px",
-    background: "#1c1c35",
-    border: "1px solid #2a2a4a",
+    padding: "9px 12px",
+    background: T.bg2,
+    border: `1px solid ${T.bd}`,
     borderRadius: 8,
-    color: "#e0e0f0",
+    color: T.txt,
     cursor: "pointer",
-    fontSize: "0.8rem",
+    fontSize: 12.5,
     fontWeight: 600,
     textAlign: "left",
+    transition: "border-color 0.15s, background 0.15s",
   },
   variantBtnActive: {
-    background: "rgba(255,255,255,0.04)",
-    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.04)",
+    borderColor: T.primary,
+    background: T.primarySoft,
   },
   variantSwatch: {
     width: 14,
@@ -3704,17 +4425,16 @@ const s: Record<string, React.CSSProperties> = {
     wordBreak: "break-word",
   },
   urlPreview: {
-    marginBottom: 10,
-    padding: "12px 13px",
-    background: "linear-gradient(180deg, #18182c 0%, #121225 100%)",
-    border: "1px solid rgba(255, 215, 0, 0.14)",
-    borderRadius: 10,
-    color: "#f7efc5",
-    fontSize: "0.74rem",
-    fontFamily: "monospace",
+    marginBottom: 12,
+    padding: "10px 12px",
+    background: T.bg2,
+    border: `1px solid ${T.bd}`,
+    borderRadius: 8,
+    color: T.primaryHover,
+    fontSize: 11.5,
+    fontFamily: "'JetBrains Mono', monospace",
     lineHeight: 1.5,
     wordBreak: "break-all",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
   },
   savedPageStats: {
     display: "grid",
@@ -4064,20 +4784,20 @@ const s: Record<string, React.CSSProperties> = {
   },
   deviceBtn: {
     flex: 1,
-    padding: "5px 4px",
-    fontSize: "0.68rem",
+    padding: "6px 6px",
+    fontSize: 11.5,
     fontWeight: 600,
-    background: "#1c1c35",
-    border: "1px solid #2a2a4a",
-    borderRadius: 5,
-    color: "#666",
+    background: T.bg2,
+    border: `1px solid ${T.bd}`,
+    borderRadius: 6,
+    color: T.txtMute,
     cursor: "pointer",
     whiteSpace: "nowrap" as const,
   },
   deviceBtnActive: {
-    borderColor: "#FFD700",
-    color: "#FFD700",
-    background: "rgba(255,215,0,0.05)",
+    borderColor: T.primary,
+    color: T.primaryHover,
+    background: T.primarySoft,
   },
 
   // Preview
