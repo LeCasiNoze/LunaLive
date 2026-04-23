@@ -36,9 +36,10 @@
 /cgu /cgu.html 200
 /contact /contact.html 200
 
-# Fallback for all other routes to SPA
 # Affi landing pages (/r/:slug) — stripped HTML (no OG/Twitter/schema/noscript)
 # Empêche Snap/IG/WhatsApp/Discord/FB d'afficher un preview LunaLive au partage
-/r/* /r-preview.html 200
+# Le flag "!" force la règle à s'appliquer même si un autre fallback est défini
+/r/*    /r-preview.html    200!
 
-/* /index.html 200
+# Fallback for all other routes to SPA
+/*      /index.html        200
