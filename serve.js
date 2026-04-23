@@ -4,11 +4,49 @@
 // les liens publics pointent maintenant sur lunalive.onrender.com).
 // Serves web/dist with pre-rendered HTML rewrites + SPA fallback.
 import { createServer } from "node:http";
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { join, extname } from "node:path";
 
 const DIST = join(process.cwd(), "web/dist");
 const PORT = parseInt(process.env.PORT || "10000", 10);
+
+// ─── Pré-rendu d'un index.html "stripped" pour les routes /r/:slug ──────────
+// But : quand un influenceur partage un lien /r/slug sur Snap/IG/WhatsApp,
+// le crawler ne doit PAS afficher un aperçu avec le branding LunaLive (titre,
+// description, image, schema.org). On sert un HTML avec OG vides + noindex
+// pour que la plateforme n'ait rien à afficher en carte preview.
+// L'app React fonctionne toujours normalement côté utilisateur.
+let R_INDEX_HTML = null;
+function buildStrippedIndex() {
+  const indexPath = join(DIST, "index.html");
+  if (!existsSync(indexPath)) return null;
+  let html = readFileSync(indexPath, "utf8");
+
+  // ── Regex robustes : les balises <meta> peuvent être multi-lignes avec attributs dans n'importe quel ordre ──
+
+  // Supprime TOUTES les <meta> contenant og: / twitter: / description / robots (dans n'importe quel attribut)
+  html = html.replace(
+    /<meta\b[^>]*?(?:name|property)\s*=\s*"(?:og:[^"]*|twitter:[^"]*|description|robots)"[^>]*?\/?>/gis,
+    ""
+  );
+
+  // Title neutre
+  html = html.replace(/<title>[\s\S]*?<\/title>/i, "<title> </title>");
+
+  // Supprime le canonical (multi-ligne aussi)
+  html = html.replace(/<link\b[^>]*?rel\s*=\s*"canonical"[^>]*?\/?>/gis, "");
+
+  // Supprime le JSON-LD schema.org (WebSite + Organization)
+  html = html.replace(/<script\b[^>]*type\s*=\s*"application\/ld\+json"[\s\S]*?<\/script>/gi, "");
+
+  // Supprime le bloc <noscript> qui contient du branding LunaLive
+  html = html.replace(/<noscript>[\s\S]*?<\/noscript>/gi, "");
+
+  // Injecte le noindex après <head> (seul meta de ce type à rester)
+  html = html.replace(/<head>/i, '<head>\n    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">');
+
+  return html;
+}
 
 const MIME = {
   ".html":        "text/html; charset=utf-8",
@@ -88,6 +126,22 @@ createServer((req, res) => {
   // Remove trailing slash (except root)
   if (pathname.length > 1 && pathname.endsWith("/")) {
     pathname = pathname.slice(0, -1);
+  }
+
+  // 1b. Intercept /r/:slug → serve stripped index.html (no OG / no preview for crawlers)
+  //     Les influenceurs TikTok/Snap/IG partagent ces liens et on veut empêcher
+  //     que la plateforme affiche un gros preview branding LunaLive.
+  if (pathname.startsWith("/r/") && pathname.length > 3) {
+    if (!R_INDEX_HTML) R_INDEX_HTML = buildStrippedIndex();
+    if (R_INDEX_HTML) {
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "X-Robots-Tag": "noindex, nofollow, noarchive, nosnippet",
+        ...SECURITY_HEADERS,
+      });
+      res.end(R_INDEX_HTML);
+      return;
+    }
   }
 
   // 2. Pre-rendered HTML rewrites
