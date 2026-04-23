@@ -1315,6 +1315,26 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     html = html.replace(/<\/head>/, `${logoCss}\n</head>`);
   }
 
+  // ── Strip universel des meta tags indexables / preview-générant ──────────
+  // Les landings affiliate ne doivent JAMAIS générer un preview branded quand
+  // un influenceur partage le lien sur Snap/IG/WhatsApp/Discord. On strippe
+  // toute meta description / OG / Twitter / canonical / schema avant de servir
+  // l'HTML (preview iframe, export HTML, page publiée).
+  html = html.replace(
+    /<meta\b[^>]*?(?:name|property)\s*=\s*"(?:og:[^"]*|twitter:[^"]*|description)"[^>]*?\/?>/gis,
+    ""
+  );
+  html = html.replace(/<link\b[^>]*?rel\s*=\s*"canonical"[^>]*?\/?>/gis, "");
+  html = html.replace(/<script\b[^>]*type\s*=\s*"application\/ld\+json"[\s\S]*?<\/script>/gi, "");
+  // Force noindex
+  html = html.replace(/<meta\b[^>]*?name\s*=\s*"robots"[^>]*?\/?>/gis, "");
+  html = html.replace(/<head>/i, '<head>\n  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">');
+  // Si pas de pageTitle / goldenPageTitle custom, vide le <title> par défaut (évite "LeCasiNoze - Dépose 20€…")
+  const customTitle = (model === 5 ? cfg.goldenPageTitle : cfg.pageTitle) || "";
+  if (!String(customTitle).trim()) {
+    html = html.replace(/<title>[^<]*<\/title>/, "<title> </title>");
+  }
+
   // ── Boutons custom ─────────────────────────────────────────────────────────
   const customButtons = parseAffiButtons(cfg.customButtonsJson);
   if (customButtons.length > 0) {

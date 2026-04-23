@@ -677,6 +677,20 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(cfg.pageTitle)}</title>`);
   }
 
+  // ── Strip universel des meta tags preview-générant (sync avec AffiEditorPage) ──
+  html = html.replace(
+    /<meta\b[^>]*?(?:name|property)\s*=\s*"(?:og:[^"]*|twitter:[^"]*|description)"[^>]*?\/?>/gis,
+    ""
+  );
+  html = html.replace(/<link\b[^>]*?rel\s*=\s*"canonical"[^>]*?\/?>/gis, "");
+  html = html.replace(/<script\b[^>]*type\s*=\s*"application\/ld\+json"[\s\S]*?<\/script>/gi, "");
+  html = html.replace(/<meta\b[^>]*?name\s*=\s*"robots"[^>]*?\/?>/gis, "");
+  html = html.replace(/<head>/i, '<head>\n  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">');
+  const customTitle = (model === 5 ? cfg.goldenPageTitle : cfg.pageTitle) || "";
+  if (!String(customTitle).trim()) {
+    html = html.replace(/<title>[^<]*<\/title>/, "<title> </title>");
+  }
+
   return html;
 }
 
