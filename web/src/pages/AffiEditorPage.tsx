@@ -50,6 +50,8 @@ interface Config {
   pageTitle: string;
   goldenBrandMain: string;
   goldenBrandSub: string;
+  goldenHideName: string;     // "1" = masquer le pseudo + les 2 lignes qui l'encadrent
+  goldenLandingOnly: string;  // "1" = masquer tout ce qui est sous le hero (gains/avis/faq/final)
   goldenHeroTitleBefore: string;
   goldenHeroTitleSpan: string;
   goldenHeroSubtitle: string;
@@ -429,6 +431,8 @@ const DEFAULT_CONFIG: Config = {
   pageTitle: "Offre VIP | Jouer Maintenant",
   goldenBrandMain: "LeCasiNoze",
   goldenBrandSub: "",
+  goldenHideName: "0",
+  goldenLandingOnly: "0",
   // Par défaut vides → applyConfig utilise les montants (goldenDepositAmount/Bonus/Total)
   // Remplir uniquement pour surcharger avec un texte totalement custom.
   goldenHeroTitleBefore: "",
@@ -989,6 +993,27 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
         /(<span class="brand-logo-sub">)([^<]*)(<\/span>)/,
         `$1${esc(cfg.goldenBrandSub)}$3`
       );
+    }
+
+    // ─── Options d'affichage M5 ─────────────────────────────────────────────
+    // "sans nom" : masque toute la .brand-signature (pseudo + les 2 lignes autour)
+    // "landing only" : masque tout ce qui vient après le hero (gains / avis / faq / final)
+    const hideName = cfg.goldenHideName === "1" || !String(cfg.goldenBrandMain || "").trim();
+    const landingOnly = cfg.goldenLandingOnly === "1";
+    if (hideName || landingOnly) {
+      const css: string[] = [];
+      if (hideName) {
+        css.push(".brand-signature { display: none !important; }");
+      }
+      if (landingOnly) {
+        // On cache tout ce qui suit le hero-section (gold-panel-*, reviews, faq, final)
+        // + on retire le padding-bottom du body pour éviter un trou sous le hero
+        css.push(".gold-panel-section { display: none !important; }");
+        css.push(".page-footer, footer.page-footer { display: none !important; }");
+        css.push(".section:not(.hero-section) { display: none !important; }");
+      }
+      const block = `<style data-affi-m5-display>${css.join("\n")}</style>`;
+      html = html.replace(/<\/head>/, `${block}\n</head>`);
     }
 
     if (cfg.goldenHeroTitleBefore || cfg.goldenHeroTitleSpan) {
@@ -4114,8 +4139,41 @@ export default function AffiEditorPage() {
                     />
                   </Section>
 
+                  <Section title="⚙️ Affichage">
+                    <div style={{ fontSize: 11, color: T.txtMute, marginBottom: 10, lineHeight: 1.5 }}>
+                      Contrôle les sections visibles de la landing. Utile si tu veux une page ultra-compacte pour TikTok/IG.
+                    </div>
+                    <label style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", background: T.bg2, border: `1px solid ${T.bd}`, borderRadius: 8, cursor: "pointer", marginBottom: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={cfg.goldenHideName === "1"}
+                        onChange={(e) => set("goldenHideName")(e.target.checked ? "1" : "0")}
+                        style={{ marginTop: 2, accentColor: T.primary }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: T.txt }}>Masquer le pseudo</div>
+                        <div style={{ fontSize: 11, color: T.txtMute, marginTop: 2, lineHeight: 1.4 }}>Enlève le nom et les 2 lignes qui l'encadrent en haut du hero.</div>
+                      </div>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", background: T.bg2, border: `1px solid ${T.bd}`, borderRadius: 8, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={cfg.goldenLandingOnly === "1"}
+                        onChange={(e) => set("goldenLandingOnly")(e.target.checked ? "1" : "0")}
+                        style={{ marginTop: 2, accentColor: T.primary }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: T.txt }}>Landing only (mode court)</div>
+                        <div style={{ fontSize: 11, color: T.txtMute, marginTop: 2, lineHeight: 1.4 }}>Masque tout ce qui est sous le hero (gains / avis / FAQ / footer). La page tient dans l'écran d'arrivée.</div>
+                      </div>
+                    </label>
+                  </Section>
+
                   <Section title="Hero" defaultOpen={false}>
                     <TextField label="Pseudo / marque" value={cfg.goldenBrandMain} onChange={set("goldenBrandMain")} />
+                    <div style={{ fontSize: 10.5, color: T.txtMute, marginTop: -4, marginBottom: 10 }}>
+                      💡 Laisser vide masque automatiquement le pseudo et les lignes qui l'encadrent.
+                    </div>
                     <TextField label="Sous-ligne logo" value={cfg.goldenBrandSub} onChange={set("goldenBrandSub")} />
                     <TextField label="Titre ligne 1" value={cfg.goldenHeroTitleBefore} onChange={set("goldenHeroTitleBefore")} />
                     <TextField label="Titre ligne 2" value={cfg.goldenHeroTitleSpan} onChange={set("goldenHeroTitleSpan")} />
