@@ -1289,6 +1289,27 @@ function ModelThumb({ n }: { n: number }) {
         <rect x="17" y="54" width="86" height="7" rx="3.5" fill="#4a4040" />
       </svg>
     ),
+    6: (
+      <svg viewBox="0 0 120 70" fill="none">
+        <defs>
+          <linearGradient id="m6g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FFD700" />
+            <stop offset="0.5" stopColor="#E0115F" />
+            <stop offset="1" stopColor="#8a2be2" />
+          </linearGradient>
+        </defs>
+        <rect width="120" height="70" rx="8" fill="#080212" />
+        <circle cx="20" cy="10" r="22" fill="#FFD700" opacity="0.12" />
+        <circle cx="110" cy="26" r="20" fill="#E0115F" opacity="0.15" />
+        <rect x="6" y="5" width="108" height="8" rx="4" fill="#150821" stroke="#331A47" />
+        <rect x="42" y="17" width="36" height="5" rx="2.5" fill="url(#m6g)" />
+        <rect x="34" y="25" width="52" height="4" rx="2" fill="#fff" />
+        <rect x="22" y="34" width="76" height="6" rx="3" fill="#150821" stroke="#FFD70055" />
+        <rect x="22" y="42" width="76" height="6" rx="3" fill="#150821" stroke="#FFD70055" />
+        <rect x="22" y="50" width="76" height="7" rx="3.5" fill="#FFD700" />
+        <rect x="4" y="60" width="112" height="8" rx="4" fill="url(#m6g)" opacity="0.85" />
+      </svg>
+    ),
   };
   return <>{thumbs[n]}</>;
 }
@@ -2497,7 +2518,7 @@ export default function AffiEditorPage() {
     (async () => {
       const loaded: Record<number, string> = {};
       try {
-        for (const i of [1, 4, 5]) {
+        for (const i of [1, 4, 5, 6]) {
           const r = await fetch(`/affi_templates/model${i}.html`);
           if (!r.ok) throw new Error(`model${i}.html HTTP ${r.status}`);
           loaded[i] = await r.text();
@@ -2929,7 +2950,7 @@ export default function AffiEditorPage() {
             <span>Modèle</span>
           </div>
           <div style={s.sidebarModelList}>
-            {([1, 4, 5] as const).map((n) => (
+            {([1, 4, 5, 6] as const).map((n) => (
               <button
                 key={n}
                 style={{ ...s.modelCard, ...(currentModel === n ? s.modelCardActive : {}) }}
@@ -2940,7 +2961,7 @@ export default function AffiEditorPage() {
                 </div>
                 <div style={s.modelLabel}>M{n}</div>
                 <div style={s.modelDesc}>
-                  {n === 1 ? "Side" : n === 4 ? "2 cartes" : "Golden"}
+                  {n === 1 ? "Side" : n === 4 ? "2 cartes" : n === 5 ? "Golden" : "Premium"}
                 </div>
               </button>
             ))}

@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="description" content="Bonus exclusif streamer — Celsius Games. Dépose, joue, gagne." />
+<meta name="robots" content="noindex, nofollow" />
+<title>Celsius Games — Bonus exclusif streamer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800;900&family=Poppins:wght@400;500;600;700;800&display=swap">
+<style>
+/* ────────  TOKENS (compatibles applyConfig)  ──────── */
+:root {
+  --bg-page:      #080212;
+  --bg-card:      #150821;
+  --brand-gold:   #FFD700;
+  --brand-ruby:   #E0115F;
+  --casino-green: #00E676;
+  --border-color: #331A47;
+
+  --gold-glow:   rgba(255,215,0,0.4);
+  --ruby-glow:   rgba(224,17,95,0.4);
+  --text-main:   #ffffff;
+  --text-muted:  #AAA4B0;
+  --radius:      14px;
+  --radius-lg:   22px;
+  --safe-b:      env(safe-area-inset-bottom, 0px);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg-page); color: var(--text-main); font-family: 'Poppins', system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body { overflow-x: hidden; line-height: 1.55; min-height: 100vh; padding-bottom: calc(76px + var(--safe-b)); }
+h1, h2, h3, .serif { font-family: 'Playfair Display', serif; letter-spacing: -0.01em; }
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; }
+
+.container { width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+.reveal { opacity: 0; transform: translateY(22px); transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
+.reveal.active { opacity: 1; transform: none; }
+
+/* ────────  AMBIENT BG  ──────── */
+.ambient {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background:
+    radial-gradient(60vw 60vw at 15% 0%,  rgba(255,215,0,0.10), transparent 60%),
+    radial-gradient(60vw 60vw at 100% 30%, rgba(224,17,95,0.10), transparent 60%),
+    radial-gradient(60vw 50vw at 50% 100%, rgba(138,43,226,0.12), transparent 65%),
+    var(--bg-page);
+}
+.ambient::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at 50% 25%, black 15%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 25%, black 15%, transparent 70%);
+  opacity: .6;
+}
+
+/* ────────  ANIMATIONS  ──────── */
+@keyframes pulseGold {
+  0%, 100% { box-shadow: 0 8px 24px -6px rgba(255,215,0,0.55), 0 0 0 0 rgba(255,215,0,0.45); }
+  50%      { box-shadow: 0 12px 34px -6px rgba(255,215,0,0.9),  0 0 0 8px rgba(255,215,0,0); }
+}
+@keyframes neonFlicker {
+  0%, 18%, 22%, 100% { opacity: 1; text-shadow: 0 0 8px var(--brand-gold); }
+  19% { opacity: .55; text-shadow: none; }
+  21% { opacity: 1;   text-shadow: 0 0 8px var(--brand-gold); }
+}
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+@keyframes livePulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(1.6); } }
+
+.wrap { position: relative; z-index: 1; }
+
+/* ────────  NAV  ──────── */
+.nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px;
+  margin: 12px 12px 0;
+  background: rgba(21, 8, 33, 0.75);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+}
+.brand-logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 14px; letter-spacing: .02em; }
+.brand-mark {
+  width: 30px; height: 30px; border-radius: 10px;
+  background: conic-gradient(from 210deg, var(--brand-gold), var(--brand-ruby), #8a2be2, var(--brand-gold));
+  box-shadow: 0 0 14px var(--gold-glow);
+  position: relative;
+}
+.brand-mark::after { content: ""; position: absolute; inset: 3px; border-radius: 7px; background: var(--bg-page); }
+.nav-status {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px; border-radius: 999px;
+  background: rgba(0,230,118,0.08); border: 1px solid rgba(0,230,118,0.3);
+  font-size: 11.5px; font-weight: 700; color: var(--casino-green); letter-spacing: .05em; text-transform: uppercase;
+}
+.nav-status::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--casino-green); box-shadow: 0 0 6px var(--casino-green);
+  animation: livePulse 1.6s ease-in-out infinite;
+}
+
+/* ────────  HERO  ──────── */
+.hero { padding: 44px 0 28px; text-align: center; }
+.badge-premium {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255,215,0,0.06);
+  border: 1px solid rgba(255,215,0,0.35);
+  border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--brand-gold);
+  margin-bottom: 22px;
+  animation: neonFlicker 4s linear infinite;
+}
+.badge-premium svg { width: 14px; height: 14px; }
+
+.hero-title {
+  font-size: clamp(2rem, 9vw, 4.2rem);
+  font-weight: 900; line-height: 1.02; letter-spacing: -0.02em;
+  margin: 0 auto 14px; max-width: 14ch;
+}
+.hero-title span {
+  display: inline-block;
+  background: linear-gradient(120deg, var(--brand-gold) 0%, #FFC200 30%, var(--brand-ruby) 60%, var(--brand-gold) 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: gradientShift 6s ease-in-out infinite;
+  text-shadow: 0 0 40px rgba(255,215,0,.25);
+}
+.hero-subtitle {
+  font-size: clamp(0.95rem, 3.4vw, 1.1rem);
+  color: var(--text-muted); max-width: 40ch; margin: 0 auto 18px;
+}
+.live-count {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 14px; border-radius: 999px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border-color);
+  font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+  margin-bottom: 28px;
+}
+.live-count::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--casino-green); box-shadow: 0 0 8px var(--casino-green);
+  animation: livePulse 1.5s ease-in-out infinite;
+}
+.live-count b { color: #fff; font-weight: 800; }
+
+/* ────────  BENEFIT STACK (dépôt + bonus = total)  ──────── */
+.benefit-stack {
+  display: grid; gap: 10px;
+  max-width: 380px; margin: 0 auto 24px;
+}
+.benefit-card {
+  background: linear-gradient(180deg, rgba(255,215,0,0.07) 0%, rgba(21,8,33,0.8) 100%);
+  border: 1px solid rgba(255,215,0,0.22);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  text-align: left;
+  backdrop-filter: blur(10px);
+}
+.benefit-card.total {
+  background: linear-gradient(180deg, rgba(224,17,95,0.12) 0%, rgba(255,215,0,0.1) 100%);
+  border-color: rgba(255,215,0,0.55);
+  box-shadow: 0 0 28px -8px rgba(255,215,0,0.4);
+}
+.benefit-label { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--text-muted); }
+.benefit-value { font-family: 'Playfair Display', serif; font-size: 1.6rem; font-weight: 900; color: #fff; }
+.benefit-card.total .benefit-value { color: var(--brand-gold); text-shadow: 0 0 14px var(--gold-glow); }
+.benefit-op { position: relative; height: 10px; margin: -4px 0; }
+.benefit-op::before {
+  content: attr(data-op); position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  background: var(--bg-page); padding: 0 12px;
+  font-weight: 800; color: var(--brand-gold); font-size: 1rem;
+}
+.benefit-op::after {
+  content: ""; position: absolute; inset: 50% 0 auto 0; height: 1px; background: var(--border-color);
+}
+
+/* ────────  CTA  ──────── */
+.cta-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-bottom: 36px; }
+.btn-jouer {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; max-width: 360px; min-height: 56px;
+  padding: 16px 28px;
+  background: linear-gradient(135deg, #FFE552 0%, var(--brand-gold) 40%, #FFC200 100%);
+  color: #1a0f00;
+  font-weight: 800; font-size: 1.02rem; letter-spacing: .04em; text-transform: uppercase;
+  border: 0; border-radius: 14px;
+  cursor: pointer; position: relative; overflow: hidden;
+  animation: pulseGold 2.8s ease-in-out infinite;
+  transition: transform .15s ease;
+}
+.btn-jouer::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,.55) 50%, transparent 65%);
+  transform: translateX(-120%); transition: transform .8s;
+}
+.btn-jouer:hover { transform: translateY(-1px) scale(1.01); }
+.btn-jouer:hover::after { transform: translateX(120%); }
+.btn-jouer:active { transform: translateY(1px) scale(.99); }
+
+.micro-proof {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12.5px; color: var(--text-muted);
+}
+.micro-proof svg { width: 14px; height: 14px; color: var(--casino-green); flex-shrink: 0; }
+
+/* ────────  TRUST ROW  ──────── */
+.trust-row {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; margin: 0 auto 36px; max-width: 560px;
+}
+.trust-badge {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  padding: 14px 6px; text-align: center;
+  background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius);
+}
+.trust-badge svg { width: 20px; height: 20px; color: var(--brand-gold); }
+.trust-badge span { font-size: 11.5px; font-weight: 600; color: var(--text-main); line-height: 1.25; }
+
+/* ────────  HERO IMAGE  ──────── */
+.promo-image-container {
+  position: relative; max-width: 480px; margin: 0 auto 8px;
+  border-radius: var(--radius-lg); overflow: hidden;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 30px 70px -15px rgba(0,0,0,0.8), 0 0 60px -20px var(--gold-glow);
+  animation: float 6s ease-in-out infinite;
+}
+.promo-image-container img { width: 100%; height: auto; aspect-ratio: 16/9; object-fit: cover; }
+
+/* ────────  SECTION HEADER  ──────── */
+.section { padding: 48px 0 16px; }
+.section-head { text-align: center; max-width: 580px; margin: 0 auto 30px; }
+.eyebrow {
+  display: inline-block;
+  padding: 5px 12px; margin-bottom: 12px;
+  background: rgba(255,215,0,0.08); border: 1px solid rgba(255,215,0,0.28);
+  border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--brand-gold);
+}
+.section-title {
+  font-size: clamp(1.7rem, 6.2vw, 2.6rem); font-weight: 900; line-height: 1.05;
+  color: #fff; margin: 0 0 10px;
+}
+.section-title span { color: var(--brand-gold); text-shadow: 0 0 14px var(--gold-glow); }
+.section-sub { color: var(--text-muted); font-size: .95rem; }
+
+/* ────────  OFFER CARD (one big main offer)  ──────── */
+.offer-card {
+  position: relative; max-width: 640px; margin: 0 auto;
+  padding: 28px 22px;
+  background: linear-gradient(180deg, var(--bg-card) 0%, rgba(21,8,33,0.9) 100%);
+  border: 1px solid var(--border-color); border-radius: var(--radius-lg);
+  box-shadow: 0 30px 60px rgba(0,0,0,0.6);
+  overflow: hidden;
+}
+.offer-card::before {
+  content: ""; position: absolute; inset: -1px;
+  background: linear-gradient(135deg, transparent 40%, rgba(255,215,0,0.4) 50%, transparent 60%);
+  border-radius: var(--radius-lg); opacity: 0; transition: opacity .5s;
+  pointer-events: none;
+}
+.offer-card:hover::before { opacity: .7; }
+.offer-title {
+  font-size: 1.05rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em;
+  color: #fff; text-align: center; margin-bottom: 18px;
+}
+.info-box {
+  padding: 16px;
+  background: rgba(0,0,0,0.35); border: 1px solid var(--border-color);
+  border-radius: var(--radius); margin-bottom: 18px;
+}
+.info-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 10px;
+}
+.info-title svg { width: 14px; height: 14px; color: var(--brand-gold); }
+.info-steps {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-weight: 800; font-size: 1.05rem;
+}
+.step-deposit { color: #fff; }
+.step-arrow { color: var(--brand-gold); font-size: 1.2rem; }
+.step-receive { color: var(--brand-gold); text-shadow: 0 0 10px var(--gold-glow); }
+
+/* ────────  FEATURES  ──────── */
+.features { display: grid; grid-template-columns: 1fr; gap: 14px; max-width: 920px; margin: 0 auto; }
+.feature {
+  padding: 22px 20px;
+  background: var(--bg-card); border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  display: flex; gap: 16px; align-items: flex-start;
+  transition: border-color .25s, transform .25s;
+}
+.feature:hover { border-color: var(--brand-gold); transform: translateY(-2px); }
+.feature-ico {
+  flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,215,0,0.1); border: 1px solid rgba(255,215,0,0.28);
+  color: var(--brand-gold);
+}
+.feature-ico svg { width: 20px; height: 20px; }
+.feature h3 { font-family: 'Poppins', sans-serif; font-size: .98rem; font-weight: 700; margin-bottom: 4px; color: #fff; letter-spacing: 0; }
+.feature p { font-size: .88rem; color: var(--text-muted); line-height: 1.55; }
+
+/* ────────  REVIEWS  ──────── */
+.reviews { display: grid; grid-template-columns: 1fr; gap: 12px; max-width: 920px; margin: 0 auto; }
+.review {
+  padding: 20px; background: var(--bg-card); border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+}
+.review-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 10px; }
+.reviewer { display: flex; align-items: center; gap: 10px; }
+.avatar {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,215,0,0.1); border: 1px solid rgba(255,215,0,0.3);
+  color: var(--brand-gold); font-weight: 800; font-size: .95rem;
+}
+.reviewer-name { font-weight: 700; font-size: .9rem; color: #fff; }
+.reviewer-meta { font-size: .72rem; color: var(--casino-green); display: flex; align-items: center; gap: 4px; }
+.stars { color: var(--brand-gold); font-size: .9rem; letter-spacing: 2px; }
+.review-text { font-size: .88rem; color: var(--text-muted); line-height: 1.55; }
+
+/* ────────  FAQ  ──────── */
+.faq { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  background: var(--bg-card); border: 1px solid var(--border-color);
+  border-radius: 10px; margin-bottom: 10px; overflow: hidden; transition: border-color .25s;
+}
+.faq-q {
+  padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  font-weight: 600; font-size: .95rem; color: #fff; cursor: pointer; list-style: none;
+}
+.faq-q::-webkit-details-marker { display: none; }
+.faq-q::after {
+  content: "+"; flex-shrink: 0; color: var(--brand-gold); font-size: 1.3rem; font-weight: 300;
+  transition: transform .25s;
+}
+.faq-item[open] { border-color: var(--brand-gold); background: rgba(255,215,0,0.02); }
+.faq-item[open] .faq-q::after { transform: rotate(45deg); }
+.faq-a { padding: 0 18px 16px; color: var(--text-muted); font-size: .88rem; line-height: 1.65; }
+
+/* ────────  BIG CTA  ──────── */
+.big-cta {
+  position: relative; margin: 0 auto; max-width: 720px;
+  padding: 36px 24px;
+  background:
+    radial-gradient(600px 200px at 50% 0%, rgba(255,215,0,0.18), transparent 60%),
+    linear-gradient(180deg, var(--bg-card) 0%, rgba(21,8,33,0.9) 100%);
+  border: 1px solid rgba(255,215,0,0.3); border-radius: var(--radius-lg);
+  text-align: center; overflow: hidden;
+}
+.big-cta h2 {
+  font-size: clamp(1.5rem, 5.5vw, 2.2rem); font-weight: 900; line-height: 1.1;
+  margin-bottom: 10px;
+}
+.big-cta h2 span { color: var(--brand-gold); text-shadow: 0 0 14px var(--gold-glow); }
+.big-cta p { color: var(--text-muted); font-size: .95rem; max-width: 42ch; margin: 0 auto 22px; }
+
+/* ────────  STICKY CTA (mobile)  ──────── */
+.sticky-cta {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 9999;
+  padding: 12px 16px calc(12px + var(--safe-b));
+  background: linear-gradient(135deg, #FFE552 0%, var(--brand-gold) 50%, #FFC200 100%);
+  color: #1a0f00; font-weight: 800; font-size: 1rem; text-align: center; letter-spacing: .04em; text-transform: uppercase;
+  box-shadow: 0 -6px 22px rgba(255,215,0,0.35);
+  animation: pulseGold 2.8s ease-in-out infinite;
+  display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 54px;
+}
+.sticky-cta svg { width: 16px; height: 16px; }
+
+/* ────────  FOOTER  ──────── */
+footer {
+  margin-top: 60px; padding: 28px 0 36px; border-top: 1px solid var(--border-color);
+  text-align: center; font-size: .75rem; color: #5a4a6a;
+}
+.disclaimer {
+  max-width: 720px; margin: 0 auto 18px; padding: 16px;
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 10px;
+  font-size: .72rem; color: var(--text-muted); text-align: left; line-height: 1.5;
+}
+.disclaimer strong { color: #888; text-transform: uppercase; letter-spacing: .1em; font-size: .68rem; }
+
+/* ────────  RESPONSIVE  ──────── */
+@media (min-width: 640px) {
+  .container { padding: 0 32px; }
+  .hero { padding-top: 60px; }
+  .features { grid-template-columns: repeat(3, 1fr); }
+  .reviews { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 900px) {
+  .hero { padding: 80px 0 40px; }
+  .hero-title { font-size: clamp(3rem, 5.5vw, 4.6rem); }
+  body { padding-bottom: 40px; }
+  .sticky-cta { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .reveal { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+
+  <div class="wrap">
+    <!-- NAV -->
+    <nav class="nav reveal">
+      <div class="brand-logo">
+        <div class="brand-mark"></div>
+        <span>Celsius Games</span>
+      </div>
+      <div class="nav-status">Live</div>
+    </nav>
+
+    <!-- HERO -->
+    <section class="hero container">
+      <div class="badge-premium reveal">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 6.4H21l-5.3 4 2 6.6L12 15l-5.7 4 2-6.6L3 8.4h6.6z" fill="currentColor"/></svg>
+        Bonus exclusif streamer
+      </div>
+
+      <h1 class="hero-title reveal">Celsius Games <span>Bonus Max</span></h1>
+      <p class="hero-subtitle reveal">
+        Le casino nouvelle génération — bonus boosté pour la communauté, paiements instantanés, +5700 jeux premium.
+      </p>
+
+      <div class="live-count reveal">
+        <span><b data-live-count>214</b> joueurs inscrits aujourd'hui</span>
+      </div>
+
+      <!-- Benefit stack (dépôt + bonus = total) -->
+      <div class="benefit-stack reveal" data-offer data-offer-deposit="10" data-offer-bonus="200" data-offer-total="210">
+        <div class="benefit-card">
+          <div class="benefit-label">Ton dépôt</div>
+          <div class="benefit-value" data-bind-offer-value="deposit">10€</div>
+        </div>
+        <div class="benefit-op" data-op="+"></div>
+        <div class="benefit-card">
+          <div class="benefit-label">Bonus offert</div>
+          <div class="benefit-value" data-bind-offer-value="bonus">200€</div>
+        </div>
+        <div class="benefit-op" data-op="="></div>
+        <div class="benefit-card total">
+          <div class="benefit-label">Pour jouer</div>
+          <div class="benefit-value" data-bind-offer-value="total">210€</div>
+        </div>
+      </div>
+
+      <!-- CTA -->
+      <div class="cta-wrap reveal">
+        <a href="#" class="btn-jouer">
+          Réclamer le bonus
+          <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <p class="micro-proof">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Bonus crédité en moins de 30 secondes
+        </p>
+      </div>
+
+      <!-- TRUST -->
+      <div class="trust-row reveal">
+        <div class="trust-badge">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v6c0 4-3 7-7 8-4-1-7-4-7-8V7l7-4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          <span>Licence officielle</span>
+        </div>
+        <div class="trust-badge">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h7l-1 8 10-12h-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          <span>Paiement instant</span>
+        </div>
+        <div class="trust-badge">
+          <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span>Support 24/7</span>
+        </div>
+      </div>
+
+      <div class="promo-image-container reveal">
+        <img src="https://cdn.phototourl.com/member/2026-04-10-af97004c-818f-40d3-b081-404c3ad3dfa7.png" alt="Aperçu jeu" />
+      </div>
+    </section>
+
+    <!-- OFFER CARD -->
+    <section class="section container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Offre signature</span>
+        <h2 class="section-title">Doublez votre <span>premier dépôt</span></h2>
+        <p class="section-sub">Offre communauté activée automatiquement via ce lien. Aucun code.</p>
+      </div>
+      <div class="offer-card reveal">
+        <div class="offer-title">Offre de Bienvenue</div>
+        <div class="info-box">
+          <div class="info-title">
+            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            Comment ça marche
+          </div>
+          <div class="info-steps">
+            <span class="step-deposit">DÉPOSE 10€</span>
+            <span class="step-arrow">→</span>
+            <span class="step-receive">REÇOIS 200€</span>
+          </div>
+        </div>
+        <a href="#" class="btn-jouer" style="width: 100%; max-width: none;">
+          Activer l'offre
+          <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section class="section container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Pourquoi nous</span>
+        <h2 class="section-title">Un casino <span>next-gen</span></h2>
+      </div>
+      <div class="features">
+        <div class="feature reveal">
+          <div class="feature-ico"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 6.4H21l-5.3 4 2 6.6L12 15l-5.7 4 2-6.6L3 8.4h6.6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></div>
+          <div>
+            <h3>Bonus boosté</h3>
+            <p>Offre de bienvenue exclusive à la communauté, instantanément créditée sur ton solde.</p>
+          </div>
+        </div>
+        <div class="feature reveal">
+          <div class="feature-ico"><svg viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h7l-1 8 10-12h-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></div>
+          <div>
+            <h3>Retraits éclair</h3>
+            <p>Crypto sous 5 min, virement SEPA sous 24h. Aucune friction après KYC initial.</p>
+          </div>
+        </div>
+        <div class="feature reveal">
+          <div class="feature-ico"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor" stroke-width="2"/><path d="M4 10h16" stroke="currentColor" stroke-width="2"/></svg></div>
+          <div>
+            <h3>+5700 jeux</h3>
+            <p>Slots, live casino, game shows et originaux — tous les meilleurs providers réunis.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- REVIEWS -->
+    <section class="section container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Avis joueurs</span>
+        <h2 class="section-title">Ce qu'ils <span>en disent</span></h2>
+      </div>
+      <div class="reviews">
+        <div class="review reveal">
+          <div class="review-top">
+            <div class="reviewer">
+              <div class="avatar">M</div>
+              <div>
+                <div class="reviewer-name">Marc L.</div>
+                <div class="reviewer-meta">✓ Vérifié</div>
+              </div>
+            </div>
+            <div class="stars">★★★★★</div>
+          </div>
+          <div class="review-text">"Bonus crédité en 10 secondes, retrait nickel. Je recommande les yeux fermés."</div>
+        </div>
+        <div class="review reveal">
+          <div class="review-top">
+            <div class="reviewer">
+              <div class="avatar">S</div>
+              <div>
+                <div class="reviewer-name">Sarah B.</div>
+                <div class="reviewer-meta">✓ Vérifié</div>
+              </div>
+            </div>
+            <div class="stars">★★★★★</div>
+          </div>
+          <div class="review-text">"Interface mobile parfaite, les slots tournent sans lag. Le support répond en 2 min chrono."</div>
+        </div>
+        <div class="review reveal">
+          <div class="review-top">
+            <div class="reviewer">
+              <div class="avatar">K</div>
+              <div>
+                <div class="reviewer-name">Kevin D.</div>
+                <div class="reviewer-meta">✓ Vérifié</div>
+              </div>
+            </div>
+            <div class="stars">★★★★★</div>
+          </div>
+          <div class="review-text">"Retrait crypto instantané, bonus clair sans conditions chelous. Ça change de mes autres casinos."</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section container">
+      <div class="section-head reveal">
+        <span class="eyebrow">FAQ</span>
+        <h2 class="section-title">Les <span>questions</span> fréquentes</h2>
+      </div>
+      <div class="faq">
+        <details class="faq-item reveal">
+          <summary class="faq-q">Comment activer mon bonus ?</summary>
+          <div class="faq-a">Clique sur "Réclamer le bonus", crée ton compte, fais ton premier dépôt : le bonus est automatiquement crédité. Aucun code à saisir.</div>
+        </details>
+        <details class="faq-item reveal">
+          <summary class="faq-q">Combien de temps pour retirer mes gains ?</summary>
+          <div class="faq-a">Crypto : sous 5 minutes. SEPA : sous 24h ouvrées après vérification KYC initiale.</div>
+        </details>
+        <details class="faq-item reveal">
+          <summary class="faq-q">Le bonus a-t-il des conditions ?</summary>
+          <div class="faq-a">Le bonus doit être misé un certain nombre de fois avant retrait — les conditions complètes sont détaillées sur la page d'inscription.</div>
+        </details>
+        <details class="faq-item reveal">
+          <summary class="faq-q">Le site est-il sécurisé ?</summary>
+          <div class="faq-a">Oui — licence officielle, chiffrement SSL, 2FA disponible, jeu responsable certifié.</div>
+        </details>
+      </div>
+    </section>
+
+    <!-- BIG CTA -->
+    <section class="section container">
+      <div class="big-cta reveal">
+        <h2>Prêt à <span>claim ton bonus</span> ?</h2>
+        <p>Lien direct, activation automatique. L'offre communauté est disponible uniquement via cette page.</p>
+        <a href="#" class="btn-jouer">
+          Jouer maintenant
+          <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="container">
+      <div class="disclaimer">
+        <strong>Jeu responsable — 18+ </strong><br/>
+        Les jeux d'argent comportent des risques : endettement, dépendance… Appelez le 09 74 75 13 13 (appel non surtaxé). Contenu promotionnel, l'offre peut évoluer.
+      </div>
+      © Celsius Games — Tous droits réservés
+    </footer>
+  </div>
+
+  <!-- Sticky mobile CTA -->
+  <a href="#" class="sticky-cta">
+    Réclamer le bonus
+    <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </a>
+
+  <!-- Animations (framer-motion style via Motion One, fallback IntersectionObserver) -->
+  <script type="module">
+    (async () => {
+      // Reveal via IntersectionObserver — simple, fiable, sans CDN bloquant
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((e, i) => {
+          if (e.isIntersecting) {
+            setTimeout(() => e.target.classList.add('active'), Math.min(i * 40, 200));
+            io.unobserve(e.target);
+          }
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+      document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+
+      // Live-count tick
+      const live = document.querySelector('[data-live-count]');
+      if (live) {
+        let n = parseInt(live.textContent, 10) || 200;
+        setInterval(() => {
+          if (Math.random() < 0.35) { n++; live.textContent = n; }
+        }, 4000);
+      }
+
+      // Offer auto-bind (inspiré M5) — recalcule total = deposit + bonus
+      document.querySelectorAll('[data-offer]').forEach((root) => {
+        const dep = Number(root.dataset.offerDeposit || 0);
+        const bon = Number(root.dataset.offerBonus || 0);
+        const tot = Number(root.dataset.offerTotal || dep + bon);
+        root.querySelectorAll('[data-bind-offer-value]').forEach((el) => {
+          const k = el.getAttribute('data-bind-offer-value');
+          const v = k === 'deposit' ? dep : k === 'bonus' ? bon : tot;
+          el.textContent = v + '€';
+        });
+      });
+
+      // Framer-motion-like spring animation via Motion One (optional, graceful fallback)
+      try {
+        const { animate, inView } = await import('https://cdn.jsdelivr.net/npm/motion@10.18.0/+esm');
+        document.querySelectorAll('.benefit-card').forEach((el, i) => {
+          inView(el, () => {
+            animate(el, { scale: [0.9, 1], opacity: [0, 1] }, { duration: 0.6, delay: i * 0.08, easing: [0.2, 0.7, 0.2, 1] });
+          }, { amount: 0.4 });
+        });
+      } catch {}
+    })();
+  </script>
+</body>
+</html>
