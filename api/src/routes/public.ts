@@ -381,12 +381,16 @@ publicRouter.get(
     delete row.providerChannelUsername;
 
     // ====================================================================
-    // DÉTECTION DE LIVE RUMBLE (pour LeCasiNoze)
+    // DÉTECTION DE LIVE RUMBLE (tous les streamers ayant un rumble_account)
     // ====================================================================
-    const isLeCasiNoze = String(row.slug || "").toLowerCase() === "lecasinoze";
-    
-    if (isLeCasiNoze && row.rumbleConnection?.username) {
-      // Récupérer les infos Rumble pour LeCasiNoze
+    const rumbleUsername: string | null = row.rumbleConnection?.username
+      ? String(row.rumbleConnection.username)
+      : null;
+
+    if (rumbleUsername) {
+      const slugLog = String(row.slug || "");
+      const staticUrl = `https://rumble.com/user/${encodeURIComponent(rumbleUsername)}/live`;
+
       const rumbleInfo = await pool.query(
         `SELECT is_live, title, viewers_count, hls_url, video_url, thumbnail_url, live_id
          FROM streamer_rumble_info
@@ -398,15 +402,12 @@ publicRouter.get(
 
       if (rumbleInfo.rows[0]) {
         const rumble = rumbleInfo.rows[0];
-        
-        // Forcer l'état live depuis Rumble
+
         row.isLive = !!rumble.is_live;
-        
-        // Toujours exposer l'URL statique Rumble (utile même hors ligne)
-        (row as any).rumbleStaticVideoUrl = "https://rumble.com/user/LeCasiNoze/live";
+
+        (row as any).rumbleStaticVideoUrl = staticUrl;
         (row as any).streamProvider = "rumble";
 
-        // Utiliser les infos Rumble si live
         if (rumble.is_live) {
           row.title = rumble.title || row.title;
           row.viewers = rumble.viewers_count || row.viewers;
@@ -416,14 +417,14 @@ publicRouter.get(
           (row as any).rumbleThumbnailUrl = rumble.thumbnail_url;
           (row as any).rumbleLiveId = rumble.live_id;
 
-          console.log(`[public] LeCasiNoze: Using Rumble live data - ${rumble.title}`);
+          console.log(`[public] ${slugLog}: Using Rumble live data - ${rumble.title}`);
         } else {
-          console.log(`[public] LeCasiNoze: Rumble offline (static URL still exposed)`);
+          console.log(`[public] ${slugLog}: Rumble offline (static URL still exposed)`);
         }
       } else {
-        (row as any).rumbleStaticVideoUrl = "https://rumble.com/user/LeCasiNoze/live";
+        (row as any).rumbleStaticVideoUrl = staticUrl;
         (row as any).streamProvider = "rumble";
-        console.log(`[public] LeCasiNoze: No Rumble data found (static URL exposed)`);
+        console.log(`[public] ${slugLog}: No Rumble data found (static URL exposed)`);
       }
     }
 
