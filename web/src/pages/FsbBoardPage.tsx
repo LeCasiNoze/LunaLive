@@ -30,6 +30,14 @@ const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   personnalise: "Personnalise",
 };
 
+const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
+  giveaway: "#a855f7",
+  offres: "#22d3ee",
+  parrainage: "#10b981",
+  abonnement: "#6366f1",
+  personnalise: "#f59e0b",
+};
+
 type BoardSection = "home" | "expenses" | "instagram" | "agency" | "tools";
 type SortBy = "date" | "amount";
 type SortDirection = "asc" | "desc";
@@ -225,6 +233,124 @@ const PAGE_CSS = `
 @media(max-width:1100px){.fsb-grid-3,.fsb-grid-2,.fsb-week{grid-template-columns:1fr}.fsb-calendar{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:860px){.fsb-grid{grid-template-columns:1fr}.fsb-calendar{grid-template-columns:1fr}.fsb-calendar-head{display:none}.fsb-shell{padding:16px}}
 @media(max-width:740px){.fsb-tablewrap{overflow:auto}.fsb-table{min-width:760px}}
+
+/* ─── Design System v3 — KPI, charts, filters, switches ───────────── */
+.fsb-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:18px}
+.fsb-kpi{position:relative;overflow:hidden;border:1px solid var(--bd-s);border-radius:22px;padding:22px 24px;background:linear-gradient(140deg,rgba(99,102,241,.12) 0%,rgba(34,211,238,.06) 40%,transparent 80%),var(--panel);box-shadow:0 8px 30px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.07)}
+.fsb-kpi::after{content:'';position:absolute;top:-40%;right:-20%;width:60%;height:180%;background:radial-gradient(ellipse at center,rgba(99,102,241,.18) 0%,transparent 60%);pointer-events:none}
+.fsb-kpi-neutral{background:linear-gradient(140deg,rgba(148,178,232,.06) 0%,transparent 60%),var(--panel)}
+.fsb-kpi-neutral::after{display:none}
+.fsb-kpi-good{background:linear-gradient(140deg,rgba(16,185,129,.14) 0%,rgba(34,211,238,.06) 50%,transparent 80%),var(--panel)}
+.fsb-kpi-good::after{background:radial-gradient(ellipse at center,rgba(16,185,129,.2) 0%,transparent 60%)}
+.fsb-kpi-warn{background:linear-gradient(140deg,rgba(245,158,11,.14) 0%,transparent 60%),var(--panel)}
+.fsb-kpi-warn::after{background:radial-gradient(ellipse at center,rgba(245,158,11,.2) 0%,transparent 60%)}
+.fsb-kpi-bad{background:linear-gradient(140deg,rgba(240,78,78,.14) 0%,transparent 60%),var(--panel)}
+.fsb-kpi-bad::after{background:radial-gradient(ellipse at center,rgba(240,78,78,.2) 0%,transparent 60%)}
+.fsb-kpi small{display:block;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-size:10.5px;font-weight:800}
+.fsb-kpi-val{display:block;margin-top:10px;font-size:38px;font-weight:800;letter-spacing:-.055em;line-height:1;font-variant-numeric:tabular-nums}
+.fsb-kpi-val-neg{color:#fca5a5}
+.fsb-kpi-val-pos{color:#6ee7b7}
+.fsb-kpi-sub{margin-top:8px;color:var(--muted);font-size:12px;line-height:1.5;position:relative;z-index:1}
+.fsb-kpi-row{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;position:relative;z-index:1}
+
+.fsb-progress{height:8px;border-radius:999px;background:rgba(255,255,255,.04);overflow:hidden;border:1px solid rgba(255,255,255,.05)}
+.fsb-progress-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--green),var(--cyan));transition:width .4s ease}
+.fsb-progress-fill-warn{background:linear-gradient(90deg,var(--amber),#fb923c)}
+
+.fsb-stackbar{display:flex;height:16px;border-radius:10px;overflow:hidden;border:1px solid var(--bd);background:rgba(255,255,255,.02)}
+.fsb-stackbar-seg{height:100%;transition:filter .15s}
+.fsb-stackbar-seg:hover{filter:brightness(1.15)}
+.fsb-legend{display:flex;flex-wrap:wrap;gap:12px 18px;margin-top:12px}
+.fsb-legend-item{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text)}
+.fsb-legend-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.fsb-legend-item small{color:var(--muted);font-size:11px;text-transform:none;letter-spacing:0;font-weight:600}
+
+.fsb-chips{display:flex;gap:6px;flex-wrap:wrap}
+.fsb-chip{padding:6px 12px;border-radius:999px;border:1px solid var(--bd);background:rgba(255,255,255,.03);color:var(--muted);font:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:all .14s;letter-spacing:.01em}
+.fsb-chip:hover{color:var(--text);background:rgba(255,255,255,.06)}
+.fsb-chip-active{background:var(--p-dim);border-color:rgba(99,102,241,.42);color:#c7d2fe}
+
+.fsb-seg{display:inline-flex;gap:2px;background:var(--surface);border:1px solid var(--bd);border-radius:11px;padding:3px}
+.fsb-seg-btn{padding:6px 14px;border-radius:8px;border:none;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:all .12s}
+.fsb-seg-btn:hover{color:var(--text)}
+.fsb-seg-btn-active{background:var(--panel);color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.25)}
+
+.fsb-search{position:relative;display:inline-flex;align-items:center;flex:0 0 auto}
+.fsb-search svg{position:absolute;left:12px;width:14px;height:14px;color:var(--muted);pointer-events:none}
+.fsb-search input{padding-left:34px}
+
+.fsb-switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.fsb-switch input{position:absolute;opacity:0;pointer-events:none}
+.fsb-switch-track{width:34px;height:20px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid var(--bd);position:relative;transition:background .16s,border-color .16s}
+.fsb-switch-track::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#dde8ff;transition:transform .18s,background .16s;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.fsb-switch input:checked + .fsb-switch-track{background:linear-gradient(90deg,var(--green),#34d399);border-color:rgba(16,185,129,.4)}
+.fsb-switch input:checked + .fsb-switch-track::after{transform:translateX(14px);background:#fff}
+
+.fsb-cat-stripe{display:inline-block;width:4px;align-self:stretch;border-radius:3px;margin-right:10px;vertical-align:middle}
+.fsb-cat-giveaway{background:linear-gradient(180deg,#a855f7,#7c3aed)}
+.fsb-cat-offres{background:linear-gradient(180deg,#22d3ee,#0891b2)}
+.fsb-cat-parrainage{background:linear-gradient(180deg,#10b981,#059669)}
+.fsb-cat-abonnement{background:linear-gradient(180deg,#6366f1,#4f46e5)}
+.fsb-cat-personnalise{background:linear-gradient(180deg,#f59e0b,#d97706)}
+
+.fsb-barlist{display:grid;gap:10px;margin-top:14px}
+.fsb-barlist-row{display:grid;grid-template-columns:minmax(120px,20%) 1fr auto;gap:14px;align-items:center;font-size:13px}
+.fsb-barlist-name{font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fsb-barlist-name small{display:block;color:var(--muted);font-size:11px;font-weight:500;margin-top:1px;letter-spacing:0;text-transform:none}
+.fsb-barlist-track{position:relative;height:22px;border-radius:8px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.05);overflow:hidden}
+.fsb-barlist-bar{height:100%;background:linear-gradient(90deg,var(--p),var(--cyan));border-radius:8px;transition:width .35s ease}
+.fsb-barlist-bar-soft{background:linear-gradient(90deg,rgba(99,102,241,.5),rgba(34,211,238,.5))}
+.fsb-barlist-val{font-weight:800;font-variant-numeric:tabular-nums;font-size:13px;text-align:right;min-width:80px}
+
+.fsb-ring-wrap{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.fsb-ring{position:relative;width:160px;height:160px;flex-shrink:0}
+.fsb-ring-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;pointer-events:none}
+.fsb-ring-center strong{font-size:26px;font-weight:800;letter-spacing:-.04em;line-height:1}
+.fsb-ring-center small{display:block;color:var(--muted);font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-top:6px}
+
+.fsb-panel-split{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:1200px){.fsb-panel-split{grid-template-columns:1fr}}
+
+.fsb-mini-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px}
+.fsb-mini-stat{padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.05);background:rgba(255,255,255,.02)}
+.fsb-mini-stat small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:800}
+.fsb-mini-stat strong{display:block;margin-top:6px;font-size:18px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+
+.fsb-ghost-btn{background:transparent;border:1px dashed rgba(255,255,255,.12);color:var(--muted);padding:14px;border-radius:14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;width:100%;transition:all .15s}
+.fsb-ghost-btn:hover{color:var(--text);border-color:var(--bd-s);background:rgba(255,255,255,.02)}
+
+.fsb-affi-card{border:1px solid var(--bd);border-radius:20px;overflow:hidden;background:linear-gradient(160deg,rgba(255,255,255,.025) 0%,transparent 60%),var(--panel);transition:border-color .18s,box-shadow .18s}
+.fsb-affi-card:hover{border-color:var(--bd-s);box-shadow:0 8px 26px rgba(0,0,0,.28)}
+.fsb-affi-head{padding:16px 20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.05);background:linear-gradient(180deg,rgba(99,102,241,.04),transparent)}
+.fsb-avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:17px;background:linear-gradient(135deg,rgba(99,102,241,.35),rgba(34,211,238,.25));border:1px solid rgba(99,102,241,.3);flex-shrink:0;color:#fff}
+.fsb-affi-name{font-weight:800;font-size:16px;letter-spacing:-.01em;line-height:1.2}
+.fsb-affi-meta{color:var(--muted);font-size:12px;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.fsb-dot-access{display:inline-block;width:7px;height:7px;border-radius:50%;background:#34d399;box-shadow:0 0 0 2px rgba(16,185,129,.18)}
+.fsb-dot-noaccess{display:inline-block;width:7px;height:7px;border-radius:50%;background:#fca5a5;box-shadow:0 0 0 2px rgba(240,78,78,.18)}
+
+.fsb-assignment{padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.04);display:grid;gap:10px}
+.fsb-assignment:last-child{border-bottom:none}
+.fsb-assignment-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between}
+.fsb-assignment-title{font-weight:700;font-size:14px}
+.fsb-assignment-title span{color:var(--muted);font-weight:500;font-size:13px;margin-left:6px}
+.fsb-chip-row{display:flex;gap:14px;flex-wrap:wrap;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.04)}
+.fsb-chipstat{display:inline-flex;flex-direction:column;gap:2px;min-width:68px}
+.fsb-chipstat small{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:800}
+.fsb-chipstat strong{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.fsb-chipstat-accent strong{color:#6ee7b7}
+.fsb-chipstat-warn strong{color:#fbbf24}
+
+.fsb-step-nav{display:flex;gap:6px;padding:4px;background:var(--surface);border:1px solid var(--bd);border-radius:12px;margin-bottom:14px;flex-wrap:wrap}
+.fsb-step{padding:9px 14px;border-radius:9px;border:none;background:transparent;color:var(--muted);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;transition:all .14s;display:inline-flex;align-items:center;gap:8px}
+.fsb-step-num{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid var(--bd);font-size:11px;font-weight:800}
+.fsb-step:hover{color:var(--text)}
+.fsb-step-active{background:var(--panel);color:var(--text);box-shadow:0 2px 10px rgba(0,0,0,.22)}
+.fsb-step-active .fsb-step-num{background:linear-gradient(135deg,var(--p),#8b5cf6);border-color:transparent;color:#fff}
+
+.fsb-inline-form{margin:0 20px 16px;background:linear-gradient(160deg,rgba(245,158,11,.04),transparent 60%),rgba(255,255,255,.02);border:1px solid rgba(245,158,11,.18);border-radius:16px;padding:18px}
+.fsb-inline-form h5{margin:0 0 12px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;gap:8px;align-items:center}
+.fsb-inline-form h5::before{content:'';width:4px;height:14px;border-radius:2px;background:var(--amber)}
+.fsb-preview-bar{display:flex;gap:14px;padding:10px 12px;margin:12px 0 4px;border-radius:10px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.18);flex-wrap:wrap}
 `;
 
 function normalizeSection(value: string | null): BoardSection {
@@ -595,6 +721,318 @@ function ExpenseModal({
         </form>
       </div>
     </div>
+  );
+}
+
+type ExpensesPanelProps = {
+  monthKeyValue: string;
+  setMonthKeyValue: React.Dispatch<React.SetStateAction<string>>;
+  expenseRows: ExpenseVisibleRow[];
+  sortedExpenseRows: ExpenseVisibleRow[];
+  expenseSummary: ExpenseListSummary;
+  expensesLoading: boolean;
+  expensesError: string | null;
+  sortBy: SortBy;
+  setSortBy: React.Dispatch<React.SetStateAction<SortBy>>;
+  sortDirection: SortDirection;
+  setSortDirection: React.Dispatch<React.SetStateAction<SortDirection>>;
+  reloadExpenses: () => Promise<void>;
+  openCreate: () => void;
+  openEdit: (expense: Expense) => void;
+  onTogglePaid: (row: ExpenseVisibleRow) => Promise<void>;
+  onDelete: (expense: Expense) => Promise<void>;
+};
+
+type CategoryFilter = "all" | ExpenseCategory;
+
+function ExpensesPanel({
+  monthKeyValue,
+  setMonthKeyValue,
+  expenseRows,
+  sortedExpenseRows,
+  expenseSummary,
+  expensesLoading,
+  expensesError,
+  sortBy,
+  setSortBy,
+  sortDirection,
+  setSortDirection,
+  reloadExpenses,
+  openCreate,
+  openEdit,
+  onTogglePaid,
+  onDelete,
+}: ExpensesPanelProps) {
+  const [search, setSearch] = React.useState("");
+  const [catFilter, setCatFilter] = React.useState<CategoryFilter>("all");
+
+  const paidRatio = expenseSummary.total > 0
+    ? Math.min(100, Math.max(0, (expenseSummary.paid / expenseSummary.total) * 100))
+    : 0;
+
+  const categoryBreakdown = React.useMemo(() => {
+    const map: Record<ExpenseCategory, number> = {
+      giveaway: 0, offres: 0, parrainage: 0, abonnement: 0, personnalise: 0,
+    };
+    for (const row of expenseRows) {
+      map[row.expense.category] = (map[row.expense.category] || 0) + Number(row.expense.amount || 0);
+    }
+    const total = Object.values(map).reduce((s, v) => s + v, 0);
+    const entries = (Object.keys(map) as ExpenseCategory[])
+      .map((cat) => ({ cat, amount: map[cat], pct: total > 0 ? (map[cat] / total) * 100 : 0 }))
+      .filter((e) => e.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
+    return { entries, total };
+  }, [expenseRows]);
+
+  const filteredRows = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return sortedExpenseRows.filter((row) => {
+      if (catFilter !== "all" && row.expense.category !== catFilter) return false;
+      if (!q) return true;
+      return (
+        row.expense.description.toLowerCase().includes(q) ||
+        (row.expense.notes || "").toLowerCase().includes(q)
+      );
+    });
+  }, [sortedExpenseRows, search, catFilter]);
+
+  const netTone: "good" | "bad" | "neutral" =
+    expenseSummary.agencyNet > 0 ? "good" : expenseSummary.agencyNet < 0 ? "bad" : "neutral";
+
+  return (
+    <>
+      {expensesError ? <div className="fsb-alert">{expensesError}</div> : null}
+
+      {/* ── Hero header ───────────────────────────────────────────────── */}
+      <section className="fsb-card">
+        <div className="fsb-row">
+          <div>
+            <h2 className="fsb-sectiontitle" style={{ textTransform: "capitalize" }}>
+              {monthLabel(monthKeyValue)}
+            </h2>
+            <div className="fsb-muted" style={{ marginTop: 6 }}>
+              Trésorerie agence : frais manuels + versements affiliés sur {monthLabel(monthKeyValue)}.
+            </div>
+          </div>
+          <div className="fsb-actions">
+            <button className="fsb-icon" title="Mois précédent" onClick={() => setMonthKeyValue((c) => addMonths(c, -1))}>‹</button>
+            <button className="fsb-btn" onClick={() => setMonthKeyValue(currentMonthKey())} disabled={monthKeyValue === currentMonthKey()}>
+              Ce mois-ci
+            </button>
+            <button className="fsb-icon" title="Mois suivant" onClick={() => setMonthKeyValue((c) => addMonths(c, 1))}>›</button>
+            <button className="fsb-icon" title="Rafraîchir" onClick={() => void reloadExpenses()}>↻</button>
+          </div>
+        </div>
+
+        {/* Hero KPIs : 2 grands cards */}
+        <div className="fsb-kpi-grid">
+          <div className={`fsb-kpi ${netTone === "good" ? "fsb-kpi-good" : netTone === "bad" ? "fsb-kpi-bad" : "fsb-kpi-neutral"}`}>
+            <small>Solde net agence</small>
+            <strong className={`fsb-kpi-val ${netTone === "bad" ? "fsb-kpi-val-neg" : netTone === "good" ? "fsb-kpi-val-pos" : ""}`}>
+              {eur(expenseSummary.agencyNet)}
+            </strong>
+            <div className="fsb-kpi-sub">
+              Revenu brut <strong style={{ color: "#dde8ff" }}>{eur(expenseSummary.agencyIncome)}</strong> – versements dus <strong style={{ color: "#dde8ff" }}>{eur(expenseSummary.agencyDue)}</strong>
+            </div>
+          </div>
+          <div className="fsb-kpi">
+            <small>Sortie de trésorerie</small>
+            <strong className="fsb-kpi-val">{eur(expenseSummary.total)}</strong>
+            <div className="fsb-kpi-sub">{expenseRows.length} ligne{expenseRows.length > 1 ? "s" : ""} sur {monthLabel(monthKeyValue)}</div>
+            <div className="fsb-kpi-row" style={{ marginTop: 14 }}>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div className="fsb-progress">
+                  <div
+                    className={`fsb-progress-fill ${paidRatio < 50 ? "fsb-progress-fill-warn" : ""}`}
+                    style={{ width: `${paidRatio}%` }}
+                  />
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)", marginTop: 6, fontWeight: 700 }}>
+                  <span>{eur(expenseSummary.paid)} payé</span>
+                  <span>{paidRatio.toFixed(0)}%</span>
+                  <span>{eur(expenseSummary.due)} dû</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Mini stats */}
+        <div className="fsb-mini-stats">
+          <div className="fsb-mini-stat"><small>Payé ce mois</small><strong style={{ color: "#34d399" }}>{eur(expenseSummary.paid)}</strong></div>
+          <div className="fsb-mini-stat"><small>Reste à régler</small><strong style={{ color: "#fbbf24" }}>{eur(expenseSummary.due)}</strong></div>
+          <div className="fsb-mini-stat"><small>Revenu agence brut</small><strong>{eur(expenseSummary.agencyIncome)}</strong></div>
+          <div className="fsb-mini-stat"><small>Versements dus (affiliés)</small><strong>{eur(expenseSummary.agencyDue)}</strong></div>
+        </div>
+
+        {/* Category breakdown — stacked bar */}
+        {categoryBreakdown.entries.length > 0 ? (
+          <div style={{ marginTop: 20 }}>
+            <div className="fsb-muted" style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 10 }}>
+              Répartition par catégorie
+            </div>
+            <div className="fsb-stackbar">
+              {categoryBreakdown.entries.map((e) => (
+                <div
+                  key={e.cat}
+                  className="fsb-stackbar-seg"
+                  style={{ width: `${e.pct}%`, background: CATEGORY_COLORS[e.cat] }}
+                  title={`${CATEGORY_LABELS[e.cat]} — ${eur(e.amount)} (${e.pct.toFixed(1)}%)`}
+                />
+              ))}
+            </div>
+            <div className="fsb-legend">
+              {categoryBreakdown.entries.map((e) => (
+                <span key={e.cat} className="fsb-legend-item">
+                  <span className="fsb-legend-dot" style={{ background: CATEGORY_COLORS[e.cat] }} />
+                  <strong>{CATEGORY_LABELS[e.cat]}</strong>
+                  <small>· {eur(e.amount)} ({e.pct.toFixed(0)}%)</small>
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      {/* ── Toolbar ─────────────────────────────────────────────────── */}
+      <section className="fsb-card fsb-toolbar">
+        <div className="fsb-row">
+          <div className="fsb-actions" style={{ flex: 1 }}>
+            <div className="fsb-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input
+                className="fsb-input"
+                style={{ width: 240 }}
+                placeholder="Rechercher un frais..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="fsb-chips">
+              <button type="button" className={`fsb-chip ${catFilter === "all" ? "fsb-chip-active" : ""}`} onClick={() => setCatFilter("all")}>
+                Toutes
+              </button>
+              {(Object.keys(CATEGORY_LABELS) as ExpenseCategory[]).map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  className={`fsb-chip ${catFilter === cat ? "fsb-chip-active" : ""}`}
+                  onClick={() => setCatFilter(cat)}
+                  style={catFilter === cat ? { borderColor: CATEGORY_COLORS[cat], color: CATEGORY_COLORS[cat], background: `${CATEGORY_COLORS[cat]}1a` } : undefined}
+                >
+                  <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: CATEGORY_COLORS[cat], marginRight: 6, verticalAlign: "middle" }} />
+                  {CATEGORY_LABELS[cat]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="fsb-actions">
+            <div className="fsb-seg">
+              <button className={`fsb-seg-btn ${sortBy === "date" ? "fsb-seg-btn-active" : ""}`} onClick={() => setSortBy("date")}>Date</button>
+              <button className={`fsb-seg-btn ${sortBy === "amount" ? "fsb-seg-btn-active" : ""}`} onClick={() => setSortBy("amount")}>Montant</button>
+            </div>
+            <button
+              className="fsb-icon"
+              title={sortDirection === "asc" ? "Croissant" : "Décroissant"}
+              onClick={() => setSortDirection((c) => (c === "asc" ? "desc" : "asc"))}
+            >
+              {sortDirection === "asc" ? "↑" : "↓"}
+            </button>
+            <button className="fsb-btn fsb-btn-primary" onClick={openCreate}>+ Nouveau frais</button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Table ───────────────────────────────────────────────────── */}
+      {filteredRows.length === 0 && !expensesLoading ? (
+        <section className="fsb-empty">
+          <h3 style={{ margin: 0 }}>{expenseRows.length === 0 ? "Aucun frais sur ce mois" : "Aucun résultat"}</h3>
+          <p className="fsb-copy" style={{ marginTop: 10 }}>
+            {expenseRows.length === 0
+              ? "Ajoute un frais manuel ou renseigne des stats agence avec une date de paiement."
+              : "Essaie de modifier la recherche ou le filtre de catégorie."}
+          </p>
+          {expenseRows.length === 0 ? (
+            <button className="fsb-btn fsb-btn-primary" style={{ marginTop: 12 }} onClick={openCreate}>+ Nouveau frais</button>
+          ) : (
+            <button className="fsb-btn" style={{ marginTop: 12 }} onClick={() => { setSearch(""); setCatFilter("all"); }}>Réinitialiser les filtres</button>
+          )}
+        </section>
+      ) : (
+        <section className="fsb-tablewrap">
+          <table className="fsb-table">
+            <thead>
+              <tr>
+                <th style={{ width: 140 }}>Date</th>
+                <th>Frais</th>
+                <th style={{ width: 180 }}>Catégorie</th>
+                <th style={{ width: 130 }}>Montant</th>
+                <th style={{ width: 100 }}>Statut</th>
+                <th style={{ width: 180 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map((row) => (
+                <tr key={row.key}>
+                  <td>
+                    <strong>{dateLabel(row.occurrenceDate)}</strong>
+                    <div className="fsb-sub">Source : {dateLabel(row.expense.date)}</div>
+                    {row.paidAt ? <div className="fsb-sub" style={{ color: "#34d399" }}>Payé le {dateLabel(row.paidAt.slice(0, 10))}</div> : null}
+                  </td>
+                  <td>
+                    <div style={{ display: "flex" }}>
+                      <span className={`fsb-cat-stripe fsb-cat-${row.expense.category}`} />
+                      <div style={{ minWidth: 0 }}>
+                        <strong>{row.expense.description}</strong>
+                        <div className="fsb-sub">{row.expense.notes || "—"}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="fsb-tags">
+                      <span className="fsb-tag" style={{ background: `${CATEGORY_COLORS[row.expense.category]}18`, borderColor: `${CATEGORY_COLORS[row.expense.category]}40`, color: CATEGORY_COLORS[row.expense.category] }}>
+                        {CATEGORY_LABELS[row.expense.category]}
+                      </span>
+                      {row.expense.sourceType === "agency_streamer_payout" ? (
+                        <span className="fsb-tag fsb-tag-rec">Agence</span>
+                      ) : null}
+                      {row.expense.isRecurring ? (
+                        <span className="fsb-tag fsb-tag-rec">
+                          {row.isProjected ? "Récurrent (proj.)" : "Récurrent"}
+                        </span>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td>
+                    <strong style={{ fontSize: 15, fontVariantNumeric: "tabular-nums" }}>{eur(row.expense.amount)}</strong>
+                  </td>
+                  <td>
+                    <label className="fsb-switch" title={row.paid ? "Marquer comme à payer" : "Marquer comme payé"}>
+                      <input type="checkbox" checked={row.paid} onChange={() => void onTogglePaid(row)} />
+                      <span className="fsb-switch-track" />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: row.paid ? "#34d399" : "#fbbf24" }}>
+                        {row.paid ? "Payé" : "Dû"}
+                      </span>
+                    </label>
+                  </td>
+                  <td>
+                    <div className="fsb-inline">
+                      {row.canEdit ? (
+                        <button type="button" onClick={() => openEdit(row.expense)}>Modifier</button>
+                      ) : null}
+                      {row.canDelete ? (
+                        <button type="button" style={{ color: "rgba(255,120,100,.85)" }} onClick={() => void onDelete(row.expense)}>Supp.</button>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+    </>
   );
 }
 
@@ -1123,174 +1561,24 @@ export default function FsbBoardPage() {
           </>
         ) : null}
         {section === "expenses" ? (
-          <>
-            {expensesError ? <div className="fsb-alert">{expensesError}</div> : null}
-
-            <section className="fsb-card">
-              <div className="fsb-row">
-                <div>
-                  <h2 className="fsb-sectiontitle" style={{ textTransform: "capitalize" }}>
-                    {monthLabel(monthKeyValue)}
-                  </h2>
-                  <div className="fsb-muted" style={{ marginTop: 6 }}>
-                    Frais manuels + paiements agence sur la date de paiement des assignations.
-                  </div>
-                </div>
-                <div className="fsb-actions">
-                  <button className="fsb-icon" onClick={() => setMonthKeyValue((current) => addMonths(current, -1))}>
-                    {"<"}
-                  </button>
-                  <button className="fsb-btn" onClick={() => setMonthKeyValue(currentMonthKey())}>
-                    Ce mois-ci
-                  </button>
-                  <button className="fsb-icon" onClick={() => setMonthKeyValue((current) => addMonths(current, 1))}>
-                    {">"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="fsb-stats">
-                <div className="fsb-stat">
-                  <small>Total du mois</small>
-                  <strong>{eur(expenseSummary.total)}</strong>
-                  <span>{expenseRows.length} ligne(s) visibles</span>
-                </div>
-                <div className="fsb-stat">
-                  <small>Deja paye</small>
-                  <strong>{eur(expenseSummary.paid)}</strong>
-                  <span>Marque manuellement comme paye</span>
-                </div>
-                <div className="fsb-stat">
-                  <small>A payer</small>
-                  <strong>{eur(expenseSummary.due)}</strong>
-                  <span>Reste a regler sur le mois</span>
-                </div>
-                <div className="fsb-stat">
-                  <small>Revenu agence brut</small>
-                  <strong>{eur(expenseSummary.agencyIncome)}</strong>
-                  <span>Genere par les affis sur {monthLabel(monthKeyValue)}</span>
-                </div>
-                <div className="fsb-stat">
-                  <small>Paiements dus ce mois</small>
-                  <strong>{eur(expenseSummary.agencyDue)}</strong>
-                  <span>Versements affis exigibles en {monthLabel(monthKeyValue)}</span>
-                </div>
-                <div className="fsb-stat">
-                  <small>Solde agence net</small>
-                  <strong style={{ color: expenseSummary.agencyNet >= 0 ? "inherit" : "#ff9090" }}>
-                    {eur(expenseSummary.agencyNet)}
-                  </strong>
-                  <span>Revenu brut moins versements dus</span>
-                </div>
-              </div>
-            </section>
-
-            <section className="fsb-card fsb-toolbar">
-              <div className="fsb-row">
-                <div className="fsb-actions">
-                  <button className="fsb-btn" onClick={() => void reloadExpenses()}>
-                    {expensesLoading ? "Actualisation..." : "Rafraichir"}
-                  </button>
-                  <button className="fsb-btn fsb-btn-primary" onClick={openCreate}>
-                    Nouveau frais
-                  </button>
-                </div>
-                <div className="fsb-actions">
-                  <button
-                    className={`fsb-btn ${sortBy === "date" ? "fsb-btn-primary" : ""}`}
-                    onClick={() => setSortBy("date")}
-                  >
-                    Trier par date
-                  </button>
-                  <button
-                    className={`fsb-btn ${sortBy === "amount" ? "fsb-btn-primary" : ""}`}
-                    onClick={() => setSortBy("amount")}
-                  >
-                    Trier par montant
-                  </button>
-                  <button
-                    className="fsb-btn"
-                    onClick={() => setSortDirection((current) => (current === "asc" ? "desc" : "asc"))}
-                  >
-                    Sens : {sortDirection === "asc" ? "Croissant" : "Decroissant"}
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            {sortedExpenseRows.length === 0 && !expensesLoading ? (
-              <section className="fsb-empty">
-                <h3 style={{ margin: 0 }}>Aucun frais sur ce mois</h3>
-                <p className="fsb-copy" style={{ marginTop: 10 }}>
-                  Ajoute un frais manuel ou renseigne des stats agence avec une date de paiement.
-                </p>
-              </section>
-            ) : (
-              <section className="fsb-tablewrap">
-                <table className="fsb-table">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Frais</th>
-                      <th>Categorie</th>
-                      <th>Montant</th>
-                      <th>Statut</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedExpenseRows.map((row) => (
-                      <tr key={row.key}>
-                        <td>
-                          <strong>{dateLabel(row.occurrenceDate)}</strong>
-                          <div className="fsb-sub">Source : {dateLabel(row.expense.date)}</div>
-                          {row.paidAt ? <div className="fsb-sub">Paye le {dateLabel(row.paidAt.slice(0, 10))}</div> : null}
-                        </td>
-                        <td>
-                          <strong>{row.expense.description}</strong>
-                          <div className="fsb-sub">{row.expense.notes || "Aucune note"}</div>
-                        </td>
-                        <td>
-                          <div className="fsb-tags">
-                            <span className="fsb-tag">{CATEGORY_LABELS[row.expense.category]}</span>
-                            {row.expense.sourceType === "agency_streamer_payout" ? (
-                              <span className="fsb-tag fsb-tag-rec">Genere agence</span>
-                            ) : null}
-                            {row.expense.isRecurring ? (
-                              <span className="fsb-tag fsb-tag-rec">
-                                {row.isProjected ? "Recurrent projete" : "Recurrent"}
-                              </span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td>
-                          <strong>{eur(row.expense.amount)}</strong>
-                        </td>
-                        <td>
-                          <span className={`fsb-tag ${row.paid ? "fsb-tag-paid" : "fsb-tag-due"}`}>
-                            {row.paid ? "Paye" : "A payer"}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="fsb-inline">
-                            <button type="button" onClick={() => void onTogglePaid(row)}>
-                              {row.paid ? "Remettre a payer" : "Marquer paye"}
-                            </button>
-                            {row.canEdit ? (
-                              <button type="button" onClick={() => openEdit(row.expense)}>Modifier</button>
-                            ) : null}
-                            {row.canDelete ? (
-                              <button type="button" onClick={() => void onDelete(row.expense)}>Supprimer</button>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
-            )}
-          </>
+          <ExpensesPanel
+            monthKeyValue={monthKeyValue}
+            setMonthKeyValue={setMonthKeyValue}
+            expenseRows={expenseRows}
+            sortedExpenseRows={sortedExpenseRows}
+            expenseSummary={expenseSummary}
+            expensesLoading={expensesLoading}
+            expensesError={expensesError}
+            sortBy={sortBy}
+            setSortBy={setSortBy}
+            sortDirection={sortDirection}
+            setSortDirection={setSortDirection}
+            reloadExpenses={reloadExpenses}
+            openCreate={openCreate}
+            openEdit={openEdit}
+            onTogglePaid={onTogglePaid}
+            onDelete={onDelete}
+          />
         ) : null}
         {section === "instagram" ? (
           <>

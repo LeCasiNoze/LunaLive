@@ -96,7 +96,7 @@ function normalizeText(value: string | null | undefined) {
 
 // ─── Form state types ────────────────────────────────────────────────────────
 
-type TabKey = "affilies" | "gestion" | "config";
+type TabKey = "overview" | "affilies" | "gestion" | "config";
 
 type CasinoFormState = {
   id: number | null;
@@ -164,7 +164,8 @@ export function FsbAgencySection() {
   const [saving, setSaving] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [generatedAccess, setGeneratedAccess] = React.useState<AgencyGeneratedAccess | null>(null);
-  const [activeTab, setActiveTab] = React.useState<TabKey>("affilies");
+  const [activeTab, setActiveTab] = React.useState<TabKey>("overview");
+  const [gestionStep, setGestionStep] = React.useState<"streamer" | "assignment">("streamer");
   const [expandedStatsId, setExpandedStatsId] = React.useState<number | null>(null);
 
   const [casinoForm, setCasinoForm] = React.useState<CasinoFormState>(EMPTY_CASINO_FORM);
@@ -236,6 +237,36 @@ export function FsbAgencySection() {
     });
     return items;
   }, [data?.deals, dealSort]);
+
+  const overviewMetrics = React.useMemo(() => {
+    const assignments = data?.assignments || [];
+    const active = assignments.filter((a) => a.activeDuringMonth);
+    const byStreamer = new Map<number, { name: string; agency: number; streamer: number; gross: number; ftd: number; signups: number }>();
+    for (const a of assignments) {
+      const key = a.agencyStreamerId;
+      const prev = byStreamer.get(key) || { name: a.streamerDisplayName || "—", agency: 0, streamer: 0, gross: 0, ftd: 0, signups: 0 };
+      prev.agency += Number(a.payouts.agencyTotal || 0);
+      prev.streamer += Number(a.payouts.streamerTotal || 0);
+      prev.gross += Number(a.payouts.grossTotal || 0);
+      prev.ftd += Number(a.stats.ftdCount || 0);
+      prev.signups += Number(a.stats.signups || 0);
+      byStreamer.set(key, prev);
+    }
+    const byCasino = new Map<number, { name: string; amount: number }>();
+    for (const a of assignments) {
+      const key = a.deal.casinoId;
+      const prev = byCasino.get(key) || { name: a.deal.casinoName, amount: 0 };
+      prev.amount += Number(a.payouts.grossTotal || 0);
+      byCasino.set(key, prev);
+    }
+    const topStreamers = [...byStreamer.values()].sort((l, r) => r.gross - l.gross).slice(0, 8);
+    const topCasinos = [...byCasino.values()].filter((c) => c.amount > 0).sort((l, r) => r.amount - l.amount).slice(0, 6);
+    const totalSignups = assignments.reduce((s, a) => s + Number(a.stats.signups || 0), 0);
+    const totalFtd = assignments.reduce((s, a) => s + Number(a.stats.ftdCount || 0), 0);
+    const totalDeposits = assignments.reduce((s, a) => s + Number(a.stats.totalDeposits || 0), 0);
+    const withStats = assignments.filter((a) => a.stats.signups != null || a.stats.ftdCount != null).length;
+    return { active, topStreamers, topCasinos, totalSignups, totalFtd, totalDeposits, withStats };
+  }, [data?.assignments]);
 
   const load = React.useCallback(async (targetMonth: string) => {
     setLoading(true);
@@ -338,6 +369,7 @@ export function FsbAgencySection() {
       initialPaymentDate: "", initialLinksText: "", initialAssignmentNotes: "",
     });
     setActiveTab("gestion");
+    setGestionStep("streamer");
   }
 
   function startEditAssignment(assignment: AgencyAssignment) {
@@ -353,6 +385,7 @@ export function FsbAgencySection() {
       notes: assignment.notes || "",
     });
     setActiveTab("gestion");
+    setGestionStep("assignment");
   }
 
   function toggleStatsPanel(id: number) {
@@ -617,30 +650,172 @@ export function FsbAgencySection() {
 
       {/* ── Tab navigation ────────────────────────────────────────────────── */}
       <div className="fsb-tabs" style={{ marginTop: 18 }}>
-        <button
-          type="button"
-          className={`fsb-tab ${activeTab === "affilies" ? "fsb-tab-active" : ""}`}
-          onClick={() => setActiveTab("affilies")}
-        >
+        <button type="button" className={`fsb-tab ${activeTab === "overview" ? "fsb-tab-active" : ""}`} onClick={() => setActiveTab("overview")}>
+          Vue d'ensemble
+        </button>
+        <button type="button" className={`fsb-tab ${activeTab === "affilies" ? "fsb-tab-active" : ""}`} onClick={() => setActiveTab("affilies")}>
           Affiliés{data ? ` (${data.summary.streamers})` : ""}
         </button>
-        <button
-          type="button"
-          className={`fsb-tab ${activeTab === "gestion" ? "fsb-tab-active" : ""}`}
-          onClick={() => setActiveTab("gestion")}
-        >
+        <button type="button" className={`fsb-tab ${activeTab === "gestion" ? "fsb-tab-active" : ""}`} onClick={() => setActiveTab("gestion")}>
           Gestion
         </button>
-        <button
-          type="button"
-          className={`fsb-tab ${activeTab === "config" ? "fsb-tab-active" : ""}`}
-          onClick={() => setActiveTab("config")}
-        >
+        <button type="button" className={`fsb-tab ${activeTab === "config" ? "fsb-tab-active" : ""}`} onClick={() => setActiveTab("config")}>
           Config
         </button>
       </div>
 
       <div className="fsb-tab-content">
+
+        {/* ════════════════════════════════════════════════════════════════
+            TAB: VUE D'ENSEMBLE — dashboard analytique
+        ════════════════════════════════════════════════════════════════ */}
+        {activeTab === "overview" ? (
+          <div style={{ display: "grid", gap: 14 }}>
+            {/* Hero KPIs */}
+            <div className="fsb-kpi-grid">
+              <div className="fsb-kpi fsb-kpi-good">
+                <small>Marge agence</small>
+                <strong className="fsb-kpi-val fsb-kpi-val-pos">{eur(data?.summary.agencyEarnings ?? 0)}</strong>
+                <div className="fsb-kpi-sub">
+                  Revenu interne sur {monthLabel(monthKey)} · {data?.summary.activeAssignments ?? 0} deal{(data?.summary.activeAssignments ?? 0) > 1 ? "s" : ""} actif{(data?.summary.activeAssignments ?? 0) > 1 ? "s" : ""}
+                </div>
+              </div>
+              <div className="fsb-kpi fsb-kpi-warn">
+                <small>À reverser aux affiliés</small>
+                <strong className="fsb-kpi-val">{eur(data?.summary.streamerEarnings ?? 0)}</strong>
+                <div className="fsb-kpi-sub">Net affiliés — basé sur les stats saisies ce mois</div>
+              </div>
+            </div>
+
+            {/* Mini stats operationnel */}
+            <section className="fsb-card">
+              <div className="fsb-muted" style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em" }}>
+                Activité mesurée sur {monthLabel(monthKey)}
+              </div>
+              <div className="fsb-mini-stats">
+                <div className="fsb-mini-stat"><small>Affiliés</small><strong>{data?.summary.streamers ?? 0}</strong></div>
+                <div className="fsb-mini-stat"><small>Deals actifs</small><strong>{data?.summary.activeAssignments ?? 0}</strong></div>
+                <div className="fsb-mini-stat"><small>Signups cumulés</small><strong>{num(overviewMetrics.totalSignups)}</strong></div>
+                <div className="fsb-mini-stat"><small>FTD cumulés</small><strong>{num(overviewMetrics.totalFtd)}</strong></div>
+                <div className="fsb-mini-stat"><small>Volume dépôts</small><strong>{eur(overviewMetrics.totalDeposits)}</strong></div>
+                <div className="fsb-mini-stat"><small>Stats saisies</small><strong>{overviewMetrics.withStats}<span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}> / {data?.assignments.length ?? 0}</span></strong></div>
+                <div className="fsb-mini-stat"><small>Casinos partenaires</small><strong>{data?.summary.casinos ?? 0}</strong></div>
+                <div className="fsb-mini-stat"><small>Deals configurés</small><strong>{data?.summary.deals ?? 0}</strong></div>
+              </div>
+            </section>
+
+            <div className="fsb-panel-split">
+              {/* Top performers */}
+              <section className="fsb-card">
+                <div className="fsb-sectionhead">
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 16 }}>Top affiliés — volume brut</h3>
+                    <div className="fsb-muted" style={{ fontSize: 12 }}>CPA brut + RS généré ce mois</div>
+                  </div>
+                </div>
+                {overviewMetrics.topStreamers.length === 0 ? (
+                  <div className="fsb-emptyblock" style={{ marginTop: 14 }}>Aucune donnée — saisir des stats depuis l'onglet Affiliés.</div>
+                ) : (
+                  <div className="fsb-barlist">
+                    {(() => {
+                      const max = overviewMetrics.topStreamers[0].gross || 1;
+                      return overviewMetrics.topStreamers.map((s, i) => (
+                        <div key={i} className="fsb-barlist-row">
+                          <div className="fsb-barlist-name">
+                            {s.name}
+                            <small>{num(s.ftd)} FTD · {num(s.signups)} signups</small>
+                          </div>
+                          <div className="fsb-barlist-track">
+                            <div className="fsb-barlist-bar" style={{ width: `${(s.gross / max) * 100}%` }} />
+                          </div>
+                          <div className="fsb-barlist-val">{eur(s.gross)}</div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                )}
+              </section>
+
+              {/* Répartition par casino */}
+              <section className="fsb-card">
+                <div className="fsb-sectionhead">
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 16 }}>Répartition par casino</h3>
+                    <div className="fsb-muted" style={{ fontSize: 12 }}>Volume brut par partenaire</div>
+                  </div>
+                </div>
+                {overviewMetrics.topCasinos.length === 0 ? (
+                  <div className="fsb-emptyblock" style={{ marginTop: 14 }}>Aucune donnée.</div>
+                ) : (
+                  <>
+                    {(() => {
+                      const total = overviewMetrics.topCasinos.reduce((s, c) => s + c.amount, 0);
+                      const palette = ["#6366f1", "#22d3ee", "#10b981", "#f59e0b", "#a855f7", "#f04e4e"];
+                      return (
+                        <>
+                          <div className="fsb-stackbar" style={{ marginTop: 14 }}>
+                            {overviewMetrics.topCasinos.map((c, i) => (
+                              <div
+                                key={i}
+                                className="fsb-stackbar-seg"
+                                style={{ width: `${total > 0 ? (c.amount / total) * 100 : 0}%`, background: palette[i % palette.length] }}
+                                title={`${c.name} — ${eur(c.amount)}`}
+                              />
+                            ))}
+                          </div>
+                          <div className="fsb-legend">
+                            {overviewMetrics.topCasinos.map((c, i) => (
+                              <span key={i} className="fsb-legend-item">
+                                <span className="fsb-legend-dot" style={{ background: palette[i % palette.length] }} />
+                                <strong>{c.name}</strong>
+                                <small>· {eur(c.amount)} ({total > 0 ? ((c.amount / total) * 100).toFixed(0) : 0}%)</small>
+                              </span>
+                            ))}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </>
+                )}
+              </section>
+            </div>
+
+            {/* Actifs vs inactifs */}
+            <section className="fsb-card">
+              <div className="fsb-sectionhead">
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16 }}>Actifs ce mois</h3>
+                  <div className="fsb-muted" style={{ fontSize: 12 }}>Deals dont la plage d'activité couvre {monthLabel(monthKey)}</div>
+                </div>
+                <button className="fsb-btn" type="button" onClick={() => setActiveTab("affilies")}>Voir les affiliés →</button>
+              </div>
+              {overviewMetrics.active.length === 0 ? (
+                <div className="fsb-emptyblock" style={{ marginTop: 14 }}>Aucun deal actif sur ce mois.</div>
+              ) : (
+                <div className="fsb-tablewrap" style={{ marginTop: 14 }}>
+                  <table className="fsb-table">
+                    <thead>
+                      <tr><th>Affilié</th><th>Deal</th><th>FTD</th><th>Net affilié</th><th>Marge agence</th><th>Màj stats</th></tr>
+                    </thead>
+                    <tbody>
+                      {overviewMetrics.active.map((a) => (
+                        <tr key={a.id}>
+                          <td><strong>{a.streamerDisplayName}</strong></td>
+                          <td><strong>{a.deal.casinoName}</strong><div className="fsb-sub">{a.deal.name}</div></td>
+                          <td><strong>{num(a.stats.ftdCount)}</strong></td>
+                          <td><strong style={{ color: "#6ee7b7" }}>{eur(a.payouts.streamerTotal)}</strong></td>
+                          <td><strong>{eur(a.payouts.agencyTotal)}</strong></td>
+                          <td><div className="fsb-sub">{dateTime(a.stats.updatedAt || a.updatedAt)}</div></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </div>
+        ) : null}
+
 
         {/* ════════════════════════════════════════════════════════════════
             TAB: AFFILIÉS — cartes streamers + stats inline
@@ -665,7 +840,7 @@ export function FsbAgencySection() {
                   <option value="assignments">Trier : nb deals</option>
                 </select>
               </div>
-              <button className="fsb-btn fsb-btn-primary" type="button" onClick={() => { resetStreamerForm(); setActiveTab("gestion"); }}>
+              <button className="fsb-btn fsb-btn-primary" type="button" onClick={() => { resetStreamerForm(); setActiveTab("gestion"); setGestionStep("streamer"); }}>
                 + Ajouter un affilié
               </button>
             </div>
@@ -733,7 +908,7 @@ export function FsbAgencySection() {
                     {/* Assignments list */}
                     {fullAssignments.length === 0 ? (
                       <div style={{ padding: "14px 18px" }}>
-                        <div className="fsb-muted" style={{ fontSize: 13 }}>Aucune assignation. <button className="fsb-jump" type="button" onClick={() => { resetAssignmentForm(); setAssignmentForm((p) => ({ ...p, agencyStreamerId: String(streamer.id) })); setActiveTab("gestion"); }}>Ajouter un deal →</button></div>
+                        <div className="fsb-muted" style={{ fontSize: 13 }}>Aucune assignation. <button className="fsb-jump" type="button" onClick={() => { resetAssignmentForm(); setAssignmentForm((p) => ({ ...p, agencyStreamerId: String(streamer.id) })); setActiveTab("gestion"); setGestionStep("assignment"); }}>Ajouter un deal →</button></div>
                       </div>
                     ) : (
                       fullAssignments.map((assignment) => {
@@ -887,6 +1062,7 @@ export function FsbAgencySection() {
                           resetAssignmentForm();
                           setAssignmentForm((p) => ({ ...p, agencyStreamerId: String(streamer.id) }));
                           setActiveTab("gestion");
+                          setGestionStep("assignment");
                         }}
                         style={{ fontSize: 12 }}
                       >
@@ -905,6 +1081,30 @@ export function FsbAgencySection() {
         ════════════════════════════════════════════════════════════════ */}
         {activeTab === "gestion" ? (
           <>
+            {/* Stepper */}
+            <div className="fsb-step-nav">
+              <button
+                type="button"
+                className={`fsb-step ${gestionStep === "streamer" ? "fsb-step-active" : ""}`}
+                onClick={() => setGestionStep("streamer")}
+              >
+                <span className="fsb-step-num">1</span>
+                {streamerForm.id ? "Modifier affilié" : "Profil affilié"}
+              </button>
+              <button
+                type="button"
+                className={`fsb-step ${gestionStep === "assignment" ? "fsb-step-active" : ""}`}
+                onClick={() => setGestionStep("assignment")}
+              >
+                <span className="fsb-step-num">2</span>
+                {assignmentForm.id ? "Modifier assignation" : "Assignation deal"}
+              </button>
+              <div style={{ flex: 1 }} />
+              <button className="fsb-btn" type="button" onClick={() => setActiveTab("affilies")}>← Retour aux affiliés</button>
+            </div>
+
+            {gestionStep === "streamer" ? (
+            <>
             {/* ─── Streamer form ─────────────────────────────────────── */}
             <section className="fsb-card">
               <div className="fsb-sectionhead">
@@ -993,8 +1193,13 @@ export function FsbAgencySection() {
               </form>
             </section>
 
+            </>
+            ) : null}
+
+            {gestionStep === "assignment" ? (
+            <>
             {/* ─── Assignment form ───────────────────────────────────── */}
-            <section className="fsb-card" style={{ marginTop: 14 }}>
+            <section className="fsb-card">
               <div className="fsb-sectionhead">
                 <div>
                   <h3 style={{ margin: 0 }}>
@@ -1077,7 +1282,10 @@ export function FsbAgencySection() {
               </form>
             </section>
 
-            {/* ─── Streamers list ────────────────────────────────────── */}
+            </>
+            ) : null}
+
+            {/* ─── Streamers list (always visible in gestion) ──────── */}
             <section className="fsb-card" style={{ marginTop: 14 }}>
               <div className="fsb-sectionhead">
                 <h3 style={{ margin: 0 }}>Tous les affiliés ({filteredStreamers.length})</h3>
@@ -1134,9 +1342,9 @@ export function FsbAgencySection() {
             TAB: CONFIG — casinos & deals
         ════════════════════════════════════════════════════════════════ */}
         {activeTab === "config" ? (
-          <>
+          <div className="fsb-panel-split">
             {/* ─── Casino form + table ───────────────────────────────── */}
-            <section className="fsb-card">
+            <section className="fsb-card" style={{ margin: 0 }}>
               <div className="fsb-sectionhead">
                 <div>
                   <h3 style={{ margin: 0 }}>{casinoForm.id ? `Modifier : ${casinoForm.name}` : "Ajouter un casino"}</h3>
@@ -1191,7 +1399,7 @@ export function FsbAgencySection() {
             </section>
 
             {/* ─── Deal form + table ─────────────────────────────────── */}
-            <section className="fsb-card" style={{ marginTop: 14 }}>
+            <section className="fsb-card" style={{ margin: 0 }}>
               <div className="fsb-sectionhead">
                 <div>
                   <h3 style={{ margin: 0 }}>{dealForm.id ? `Modifier : ${dealForm.name}` : "Ajouter un deal"}</h3>
@@ -1291,7 +1499,7 @@ export function FsbAgencySection() {
                 </table>
               </div>
             </section>
-          </>
+          </div>
         ) : null}
 
       </div>
