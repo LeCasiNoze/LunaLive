@@ -111,15 +111,29 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
 
     const status = Number(response?.status || 0);
     const respBody: any = response?.body;
+    const respKeys = response && typeof response === "object" ? Object.keys(response).join(",") : typeof response;
+
     if (status < 200 || status >= 300) {
-      const snippet = typeof respBody === "string" ? respBody.slice(0, 200) : JSON.stringify(respBody).slice(0, 200);
+      let snippet = "";
+      try {
+        snippet = typeof respBody === "string"
+          ? respBody.slice(0, 200)
+          : (respBody == null ? `(no-body keys=${respKeys})` : JSON.stringify(respBody).slice(0, 200));
+      } catch { snippet = "(unprintable)"; }
       console.warn(`[rumble_chat] send http=${status} body=${snippet}`);
       return null;
     }
 
-    const j = typeof respBody === "string" ? JSON.parse(respBody) : respBody;
+    let j: any = respBody;
+    if (typeof respBody === "string") {
+      try { j = JSON.parse(respBody); } catch { j = null; }
+    }
+    if (!j) {
+      console.warn(`[rumble_chat] send empty/invalid response (status=${status} keys=${respKeys})`);
+      return null;
+    }
     if (j?.errors?.length) {
-      console.warn(`[rumble_chat] send rejected by app: ${j.errors[0]?.message}`);
+      console.warn(`[rumble_chat] send rejected by app: ${JSON.stringify(j.errors).slice(0, 200)}`);
       return null;
     }
     const id = j?.data?.id ? String(j.data.id) : "";
