@@ -44,6 +44,7 @@ type Config = {
   goldenGameImageUrl: string;
   goldenVisualMode: string;
   goldenBackgroundUrl: string;
+  goldenProfileImageUrl?: string;
   goldenCtaPosition: string;
   // Montants
   goldenDepositAmount: string;
@@ -121,6 +122,7 @@ const DEFAULT_CONFIG: Config = {
   goldenGameImageUrl: "",
   goldenVisualMode: "chest",
   goldenBackgroundUrl: "",
+  goldenProfileImageUrl: "",
   goldenCtaPosition: "top",
   goldenDepositAmount: "20",
   goldenBonusAmount: "20",
@@ -510,6 +512,20 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
 
     html = html.replace(/(<span class="brand-logo-main">)([^<]*)(<\/span>)/, `$1${esc(cfg.goldenBrandMain)}$3`);
     html = html.replace(/(<span class="brand-logo-sub">)([^<]*)(<\/span>)/, `$1${esc(cfg.goldenBrandSub)}$3`);
+
+    // Photo de profil ronde (M5) — au-dessus du brand-signature
+    const avatarUrl = String(cfg.goldenProfileImageUrl || "").trim();
+    if (avatarUrl) {
+      const safeAvatarUrl = escAttr(avatarUrl);
+      const avatarBlock = `<div class="hero-avatar" data-affi-avatar><img src="${safeAvatarUrl}" alt="" loading="eager" decoding="async"></div>`;
+      const avatarCss = `<style data-affi-avatar-style>
+.hero-avatar{display:flex;justify-content:center;margin:0 auto 18px;width:clamp(96px,22vw,160px);aspect-ratio:1/1;border-radius:50%;overflow:hidden;position:relative;box-shadow:0 0 0 2px rgba(255,255,255,.12),0 0 0 4px var(--accent-soft,rgba(255,215,0,.18)),0 14px 36px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.06);background:rgba(0,0,0,.35)}
+.hero-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+@media (min-width:900px){.hero-avatar{width:clamp(120px,12vw,176px);margin-bottom:22px}}
+</style>`;
+      html = html.replace(/<\/head>/, `${avatarCss}\n</head>`);
+      html = html.replace(/<div class="brand-signature">/, `${avatarBlock}\n          <div class="brand-signature">`);
+    }
 
     // Options d'affichage (synchro avec AffiEditorPage.applyConfig)
     const hideName = cfg.goldenHideName === "1" || !String(cfg.goldenBrandMain || "").trim();

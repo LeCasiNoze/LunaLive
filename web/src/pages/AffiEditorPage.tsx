@@ -61,6 +61,7 @@ interface Config {
   goldenGameImageUrl: string;
   goldenVisualMode: string;
   goldenBackgroundUrl: string;
+  goldenProfileImageUrl: string;  // Photo de profil ronde au-dessus du brand-signature (M5)
   goldenCtaPosition: string; // "top" | "bottom"
   // Montants affichés (model 5)
   goldenDepositAmount: string;  // ex: "20"
@@ -445,6 +446,7 @@ const DEFAULT_CONFIG: Config = {
   goldenGameImageUrl: "",
   goldenVisualMode: "chest",
   goldenBackgroundUrl: "",
+  goldenProfileImageUrl: "",
   goldenCtaPosition: "top",
   // Montants
   goldenDepositAmount: "20",
@@ -990,6 +992,20 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
       );
     }
 
+    // ─── Photo de profil ronde (M5) — au-dessus du brand-signature ───────────
+    if (cfg.goldenProfileImageUrl && String(cfg.goldenProfileImageUrl).trim()) {
+      const safeAvatarUrl = escAttr(String(cfg.goldenProfileImageUrl).trim());
+      const avatarBlock = `<div class="hero-avatar" data-affi-avatar><img src="${safeAvatarUrl}" alt="" loading="eager" decoding="async"></div>`;
+      const avatarCss = `<style data-affi-avatar-style>
+.hero-avatar{display:flex;justify-content:center;margin:0 auto 18px;width:clamp(96px,22vw,160px);aspect-ratio:1/1;border-radius:50%;overflow:hidden;position:relative;box-shadow:0 0 0 2px rgba(255,255,255,.12),0 0 0 4px var(--accent-soft,rgba(255,215,0,.18)),0 14px 36px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.06);background:rgba(0,0,0,.35)}
+.hero-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+@media (min-width:900px){.hero-avatar{width:clamp(120px,12vw,176px);margin-bottom:22px}}
+</style>`;
+      // CSS dans <head>, et insertion du bloc avatar juste avant .brand-signature
+      html = html.replace(/<\/head>/, `${avatarCss}\n</head>`);
+      html = html.replace(/<div class="brand-signature">/, `${avatarBlock}\n          <div class="brand-signature">`);
+    }
+
     if (cfg.goldenBrandSub) {
       html = html.replace(
         /(<span class="brand-logo-sub">)([^<]*)(<\/span>)/,
@@ -1336,9 +1352,10 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
   }
 
   // ── Boutons custom ─────────────────────────────────────────────────────────
-  const customButtons = parseAffiButtons(cfg.customButtonsJson);
-  if (customButtons.length > 0) {
-    const btnHtml = renderAffiButtonsHtml(customButtons);
+  const customButtonsMobile = parseAffiButtons(cfg.customButtonsJson);
+  const customButtonsDesktop = parseAffiButtons(cfg.customButtonsJsonDesktop);
+  if (customButtonsMobile.length > 0 || customButtonsDesktop.length > 0) {
+    const btnHtml = renderAffiButtonsHtml(customButtonsMobile, customButtonsDesktop);
     if (html.includes("</body>")) {
       html = html.replace(/<\/body>/, `${btnHtml}\n</body>`);
     } else {
@@ -1349,115 +1366,231 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
   return html;
 }
 
-/** Rendu HTML des boutons custom.
- *  Injection via script JS après DOMContentLoaded → la création en JS permet d'éviter
- *  tous les problèmes potentiels de HTML injecté statique (parsing, transform ancêtre, etc.)
- *  et garantit que les boutons sont les derniers enfants du body. */
-function renderAffiButtonsHtml(btns: AffiButton[]): string {
-  // Sanitize + clamp de chaque bouton
-  const sanitized = btns.map((b) => {
+/** Rendu HTML des boutons custom (export standalone).
+ *  Iso-fonctionnel à `injectButtonsIntoIframe` (preview/published) :
+ *  - 2 devices (mobile + desktop) avec scoping CSS via @media
+ *  - tous les champs avancés (gradient, glow, shine, hover, fontFamily, letterSpacing, fontWeight)
+ *  - Google Fonts importée (Bebas Neue & co)
+ *  - repositionnement dynamique en fonction de la hauteur réelle du document */
+function renderAffiButtonsHtml(mobileBtns: AffiButton[], desktopBtns: AffiButton[] = []): string {
+  const sanitize = (b: AffiButton) => {
     const rawX = Number(b.xPct);
     const rawY = Number(b.yPct);
+    const bgColor = /^#[0-9a-fA-F]{6}$/.test(String(b.bgColor || "")) ? b.bgColor : "#000000";
+    const textColor = /^#[0-9a-fA-F]{6}$/.test(String(b.textColor || "")) ? b.textColor : "#ffffff";
     return {
       id: String(b.id || ""),
       label: String(b.label || ""),
       link: String(b.link || ""),
       imageUrl: String(b.imageUrl || ""),
-      bgColor: String(b.bgColor || "#000000"),
-      textColor: String(b.textColor || "#ffffff"),
+      bgColor,
+      textColor,
       xPct: (!Number.isFinite(rawX) || rawX < 0 || rawX > 95) ? 35 : rawX,
-      yPct: (!Number.isFinite(rawY) || rawY < 0 || rawY > 95) ? 5  : rawY,
+      yPct: (!Number.isFinite(rawY) || rawY < 0 || rawY > 95) ? 5 : rawY,
       widthPx: clamp(Number(b.widthPx), 20, 2000),
       heightPx: clamp(Number(b.heightPx), 20, 2000),
       borderRadius: clamp(Number(b.borderRadius), 0, 200),
       fontSize: clamp(Number(b.fontSize), 8, 200),
       objectFit: String(b.objectFit || "contain"),
       transparent: !!b.transparent,
+      gradientDark: typeof b.gradientDark === "string" && /^#[0-9a-fA-F]{6}$/.test(b.gradientDark) ? b.gradientDark : null,
+      gradientLight: typeof b.gradientLight === "string" && /^#[0-9a-fA-F]{6}$/.test(b.gradientLight) ? b.gradientLight : null,
+      glow: !!b.glow,
+      letterSpacingEm: typeof b.letterSpacingEm === "number" && Number.isFinite(b.letterSpacingEm) ? b.letterSpacingEm : null,
+      fontFamily: typeof b.fontFamily === "string" && b.fontFamily.trim() ? b.fontFamily.trim() : null,
+      fontWeight: typeof b.fontWeight === "number" && b.fontWeight > 0 ? b.fontWeight : null,
+      hoverEffect: !!b.hoverEffect,
+      shine: !!b.shine,
     };
-  });
+  };
 
-  // On encode les données en JSON pour les passer au script inline.
-  // escape(</script>) pour éviter qu'un champ malicieux casse le script.
-  const dataJson = JSON.stringify(sanitized).replace(/<\/script/gi, "<\\/script");
+  const payload = {
+    mobile: mobileBtns.map(sanitize),
+    desktop: desktopBtns.map(sanitize),
+  };
 
-  return `<script data-affi-custom-buttons>
+  // Encode pour passage en JSON inline dans le script (échappe </script>)
+  const dataJson = JSON.stringify(payload).replace(/<\/script/gi, "<\\/script");
+  const fontImport = BUTTON_FONT_GOOGLE_IMPORT;
+
+  return `<style data-affi-buttons-style>
+@import url("${fontImport}");
+@media (max-width: 899px) { [data-affi-btn-device="desktop"] { display: none !important; } }
+@media (min-width: 900px) { [data-affi-btn-device="mobile"]  { display: none !important; } }
+@keyframes affi-btn-shine {
+  0%   { transform: translateX(-120%) skewX(-20deg); }
+  60%  { transform: translateX(260%)  skewX(-20deg); }
+  100% { transform: translateX(260%)  skewX(-20deg); }
+}
+[data-affi-btn-hover="1"] { transition: transform 160ms ease, filter 160ms ease !important; }
+[data-affi-btn-hover="1"]:hover { transform: translateY(-2px) scale(1.03) !important; filter: brightness(1.08) !important; }
+.affi-btn-shine-overlay {
+  position: absolute !important; top: 0 !important; left: 0 !important;
+  width: 45% !important; height: 100% !important;
+  background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,.55) 50%, transparent 100%) !important;
+  animation: affi-btn-shine 3.2s ease-in-out infinite !important;
+  pointer-events: none !important; z-index: 1 !important; mix-blend-mode: screen !important;
+}
+</style>
+<script data-affi-custom-buttons>
 (function () {
-  var BTNS = ${dataJson};
-  if (!BTNS || !BTNS.length) return;
+  var DATA = ${dataJson};
+  var ALL = [];
+  (DATA.mobile  || []).forEach(function (b) { ALL.push({ btn: b, device: 'mobile'  }); });
+  (DATA.desktop || []).forEach(function (b) { ALL.push({ btn: b, device: 'desktop' }); });
+  if (!ALL.length) return;
+
+  function hexToRgba(hex, alpha) {
+    var h = String(hex || '').replace('#', '');
+    if (h.length !== 6) return 'rgba(0,0,0,' + alpha + ')';
+    var r = parseInt(h.slice(0, 2), 16);
+    var g = parseInt(h.slice(2, 4), 16);
+    var bl = parseInt(h.slice(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + bl + ',' + alpha + ')';
+  }
+
+  function buildButton(entry) {
+    var b = entry.btn;
+    var device = entry.device;
+    var hasImage = !!b.imageUrl;
+    var isTransparent = !!b.transparent;
+    var hasGradient = !!b.gradientDark && !!b.gradientLight && !isTransparent && !hasImage;
+    var hasGlow = !!b.glow;
+
+    var el = document.createElement(b.link ? 'a' : 'div');
+    if (b.link) { el.href = b.link; el.target = '_blank'; el.rel = 'noopener noreferrer'; }
+
+    var bgSize = b.objectFit === 'cover' ? 'cover' : b.objectFit === 'fill' ? '100% 100%' : 'contain';
+    var bgParts = [];
+    if (hasImage) bgParts.push('url("' + String(b.imageUrl).replace(/"/g, '%22') + '") center center / ' + bgSize + ' no-repeat');
+    if (hasGradient) {
+      bgParts.push('linear-gradient(180deg, ' + b.gradientDark + ' 0%, ' + b.bgColor + ' 38%, ' + b.gradientLight + ' 52%, ' + b.bgColor + ' 72%, ' + b.gradientDark + ' 100%)');
+    } else if (!isTransparent) {
+      bgParts.push(b.bgColor);
+    }
+    var bgValue = bgParts.length ? bgParts.join(', ') : 'transparent';
+
+    var boxShadow;
+    if (hasGlow) {
+      var glowSoft = hexToRgba(b.bgColor, 0.45);
+      boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.24), 0 0 30px ' + glowSoft + ', 0 14px 24px rgba(0,0,0,0.36)';
+    } else if (hasImage || isTransparent) {
+      boxShadow = 'none';
+    } else {
+      boxShadow = '0 4px 14px rgba(0,0,0,.35)';
+    }
+
+    var border = hasGlow
+      ? '1px solid ' + (b.gradientDark || b.bgColor)
+      : (hasImage || isTransparent) ? 'none' : '1px solid rgba(255,255,255,.08)';
+
+    var letterSpacing = (b.letterSpacingEm != null) ? (b.letterSpacingEm + 'em') : 'normal';
+    var fontFamily = b.fontFamily || 'inherit';
+    var fontWeight = b.fontWeight || 800;
+
+    if (b.hoverEffect) el.setAttribute('data-affi-btn-hover', '1');
+    el.setAttribute('data-affi-btn-device', device);
+    el.setAttribute('data-affi-btn-ypct', String(b.yPct));
+
+    el.style.cssText = [
+      'position:absolute !important',
+      'pointer-events:auto !important',
+      'left:' + b.xPct + '% !important',
+      'top:' + b.yPct + '% !important',
+      'width:' + b.widthPx + 'px !important',
+      'height:' + b.heightPx + 'px !important',
+      'background:' + bgValue + ' !important',
+      'color:' + b.textColor + ' !important',
+      'border-radius:' + b.borderRadius + 'px !important',
+      'font-size:' + b.fontSize + 'px !important',
+      'font-weight:' + fontWeight + ' !important',
+      'font-family:' + fontFamily + ' !important',
+      'letter-spacing:' + letterSpacing + ' !important',
+      'display:flex !important',
+      'align-items:center !important',
+      'justify-content:center !important',
+      'text-align:center !important',
+      'text-decoration:none !important',
+      'overflow:hidden !important',
+      'box-shadow:' + boxShadow + ' !important',
+      'border:' + border + ' !important',
+      'cursor:pointer !important',
+      'box-sizing:border-box !important',
+      'z-index:2147483647 !important',
+      'margin:0 !important',
+      'padding:0 !important',
+      'opacity:1 !important',
+      'visibility:visible !important',
+    ].join(';');
+
+    if (hasImage) {
+      var img = document.createElement('img');
+      img.src = b.imageUrl;
+      img.alt = '';
+      img.style.cssText = 'position:absolute !important;inset:0 !important;width:100% !important;height:100% !important;object-fit:' + b.objectFit + ' !important;display:block !important;pointer-events:none !important;';
+      el.appendChild(img);
+    }
+
+    if (b.shine) {
+      var shine = document.createElement('div');
+      shine.className = 'affi-btn-shine-overlay';
+      el.appendChild(shine);
+    }
+
+    if (b.label) {
+      var span = document.createElement('span');
+      span.textContent = b.label;
+      span.style.cssText = 'position:relative !important;z-index:2 !important;padding:0 8px !important;text-shadow:' + (hasImage ? '0 2px 6px rgba(0,0,0,.65)' : 'none') + ' !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;max-width:100% !important;';
+      el.appendChild(span);
+    }
+
+    return el;
+  }
 
   function render() {
-    // Nettoyer un éventuel wrapper précédent (rerender en dev)
     var prev = document.querySelector('[data-affi-buttons-wrap]');
-    if (prev) prev.parentNode.removeChild(prev);
+    if (prev && prev.parentNode) prev.parentNode.removeChild(prev);
 
     var wrap = document.createElement('div');
     wrap.setAttribute('data-affi-buttons-wrap', '');
     wrap.style.cssText = 'display:contents !important;';
-
-    BTNS.forEach(function (b) {
-      var hasImage = !!b.imageUrl;
-      var isTransparent = !!b.transparent;
-      var el = document.createElement(b.link ? 'a' : 'div');
-      if (b.link) {
-        el.href = b.link;
-        el.target = '_blank';
-        el.rel = 'noopener noreferrer';
-      }
-
-      var bgSize = b.objectFit === 'cover' ? 'cover' : b.objectFit === 'fill' ? '100% 100%' : 'contain';
-      var bgParts = [];
-      if (hasImage) bgParts.push('url("' + b.imageUrl.replace(/"/g, '%22') + '") center center / ' + bgSize + ' no-repeat');
-      if (!isTransparent) bgParts.push(b.bgColor);
-      var bgValue = bgParts.length ? bgParts.join(', ') : 'transparent';
-
-      el.style.cssText = [
-        'position:absolute !important',
-        'pointer-events:auto !important',
-        'left:' + b.xPct + '% !important',
-        'top:' + b.yPct + '% !important',
-        'width:' + b.widthPx + 'px !important',
-        'height:' + b.heightPx + 'px !important',
-        'background:' + bgValue + ' !important',
-        'color:' + b.textColor + ' !important',
-        'border-radius:' + b.borderRadius + 'px !important',
-        'font-size:' + b.fontSize + 'px !important',
-        'font-weight:800 !important',
-        'display:flex !important',
-        'align-items:center !important',
-        'justify-content:center !important',
-        'text-align:center !important',
-        'text-decoration:none !important',
-        'overflow:hidden !important',
-        (hasImage || isTransparent) ? 'box-shadow:none !important' : 'box-shadow:0 4px 14px rgba(0,0,0,.35) !important',
-        (hasImage || isTransparent) ? 'border:none !important' : 'border:1px solid rgba(255,255,255,.08) !important',
-        'cursor:pointer !important',
-        'box-sizing:border-box !important',
-        'z-index:2147483647 !important',
-        'margin:0 !important',
-        'padding:0 !important',
-      ].join(';');
-
-      // <img> tag — double garantie d'affichage
-      if (hasImage) {
-        var img = document.createElement('img');
-        img.src = b.imageUrl;
-        img.alt = '';
-        img.style.cssText = 'position:absolute !important;inset:0 !important;width:100% !important;height:100% !important;object-fit:' + b.objectFit + ' !important;display:block !important;pointer-events:none !important;';
-        el.appendChild(img);
-      }
-
-      // Label
-      if (b.label) {
-        var span = document.createElement('span');
-        span.textContent = b.label;
-        span.style.cssText = 'position:relative !important;z-index:2 !important;padding:0 8px !important;text-shadow:' + (hasImage ? '0 2px 6px rgba(0,0,0,.65)' : 'none') + ' !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;max-width:100% !important;';
-        el.appendChild(span);
-      }
-
-      wrap.appendChild(el);
-    });
-
+    ALL.forEach(function (entry) { wrap.appendChild(buildButton(entry)); });
     document.body.appendChild(wrap);
+
+    // Repositionnement basé sur la hauteur réelle du document
+    function getDocHeight() {
+      return Math.max(
+        document.documentElement.scrollHeight,
+        document.body.scrollHeight,
+        document.documentElement.clientHeight
+      );
+    }
+    function updateAllPositions() {
+      var h = getDocHeight();
+      var nodes = document.querySelectorAll('[data-affi-btn-ypct]');
+      for (var i = 0; i < nodes.length; i++) {
+        var y = parseFloat(nodes[i].getAttribute('data-affi-btn-ypct') || '0');
+        nodes[i].style.setProperty('top', Math.max(0, (h * y) / 100) + 'px', 'important');
+      }
+    }
+    updateAllPositions();
+    var imgs = document.querySelectorAll('img');
+    for (var j = 0; j < imgs.length; j++) {
+      if (!imgs[j].complete) {
+        imgs[j].addEventListener('load', updateAllPositions, { once: true });
+        imgs[j].addEventListener('error', updateAllPositions, { once: true });
+      }
+    }
+    window.addEventListener('resize', updateAllPositions);
+    try {
+      if (typeof ResizeObserver !== 'undefined') {
+        var ro = new ResizeObserver(updateAllPositions);
+        ro.observe(document.body);
+      }
+    } catch (e) {}
+    setTimeout(updateAllPositions, 250);
+    setTimeout(updateAllPositions, 1000);
+    setTimeout(updateAllPositions, 2500);
   }
 
   if (document.readyState === 'loading') {
@@ -2173,6 +2306,119 @@ function buildPageSignature(input: {
 
 function isGoldenVariant(value: string | null | undefined): value is GoldenChanceVariant {
   return ["gold","ruby","emerald","sapphire","amethyst","obsidian","rose","jade"].includes(value as string);
+}
+
+// ─── PROFILE IMAGE FIELD (URL + upload + preview rond) ──────────────────────
+function ProfileImageField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const token = (typeof window !== "undefined" ? localStorage.getItem("lunalive_token_v1") : "") || "";
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? "https://lunalive-api.onrender.com";
+      const res = await fetch(`${base}/me/overlay/bg/upload`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.url) setErr(json?.error || "Erreur upload");
+      else onChange(String(json.url));
+    } catch {
+      setErr("Erreur réseau");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <label style={{ fontSize: 11, fontWeight: 600, color: "#aaa" }}>{label}</label>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div
+          style={{
+            width: 56, height: 56, borderRadius: "50%",
+            border: "1px solid #2a2a4a", overflow: "hidden",
+            background: value ? "#000" : "rgba(255,215,0,.06)",
+            display: "grid", placeItems: "center", flexShrink: 0,
+            boxShadow: value ? "0 0 0 2px rgba(255,215,0,.18)" : "none",
+          }}
+        >
+          {value ? (
+            <img src={value} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          ) : (
+            <span style={{ fontSize: 20, opacity: 0.5 }}>👤</span>
+          )}
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+          <input
+            type="url"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="https://.../avatar.jpg"
+            style={{
+              width: "100%", boxSizing: "border-box",
+              padding: "6px 10px", fontSize: "0.82rem",
+              background: "#0d0d1a", color: "#eee",
+              border: "1px solid #2a2a4a", borderRadius: 6, outline: "none",
+            }}
+          />
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              style={{
+                flex: 1, padding: "5px 10px", fontSize: "0.78rem", fontWeight: 700,
+                border: "1px dashed rgba(255,215,0,.35)", borderRadius: 6,
+                background: "rgba(255,215,0,.06)", color: "#FFD700",
+                cursor: uploading ? "wait" : "pointer",
+              }}
+            >
+              {uploading ? "Upload…" : "📁 Upload image"}
+            </button>
+            {value && (
+              <button
+                type="button"
+                onClick={() => onChange("")}
+                style={{
+                  padding: "5px 10px", fontSize: "0.78rem", fontWeight: 700,
+                  border: "1px solid rgba(239,68,68,.3)", borderRadius: 6,
+                  background: "rgba(239,68,68,.08)", color: "#f87171",
+                  cursor: "pointer",
+                }}
+              >✕ Retirer</button>
+            )}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              style={{ display: "none" }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
+            />
+          </div>
+          {err && <div style={{ fontSize: 10, color: "#f87171" }}>✕ {err}</div>}
+        </div>
+      </div>
+      <div style={{ fontSize: 10, color: "#888", lineHeight: 1.4 }}>
+        Cercle au-dessus du pseudo. L'image est recadrée en cover (s'adapte au cercle quel que soit son ratio).
+      </div>
+    </div>
+  );
 }
 
 // ─── CUSTOM BUTTONS EDITOR ────────────────────────────────────────────────────
@@ -4318,6 +4564,11 @@ export default function AffiEditorPage() {
                     </div>
                     <TextField label="Image jeux (optionnelle)" value={cfg.goldenGameImageUrl} onChange={set("goldenGameImageUrl")} placeholder="https://.../jeux.png" type="url" />
                     <TextField label="Image de fond (optionnelle)" value={cfg.goldenBackgroundUrl} onChange={set("goldenBackgroundUrl")} placeholder="https://.../background.jpg" type="url" />
+                    <ProfileImageField
+                      label="Photo de profil (cercle au-dessus du pseudo)"
+                      value={cfg.goldenProfileImageUrl}
+                      onChange={set("goldenProfileImageUrl")}
+                    />
                     {getGoldenVisualMode(cfg) === "none" && (
                       <div style={s.field}>
                         <label style={s.label}>Position bouton (mode sans coffre)</label>
