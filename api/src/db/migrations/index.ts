@@ -88,6 +88,8 @@ import { mig078_ticket_inactivity } from "./mig078_ticket_inactivity.js";
 import { mig079_casino_offer_role } from "./mig079_casino_offer_role.js";
 import { mig080_giveaways } from "./mig080_giveaways.js";
 import { mig081_fsb_cam_filters } from "./mig081_fsb_cam_filters.js";
+import { mig082_clip_streamer_notifications } from "./mig082_clip_streamer_notifications.js";
+import { mig083_rumble_chat } from "./mig083_rumble_chat.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -195,6 +197,8 @@ export async function migrateAll(pool: Pool) {
   await mig079_casino_offer_role(pool);
   await mig080_giveaways(pool);
   await mig081_fsb_cam_filters(pool);
+  await mig082_clip_streamer_notifications(pool);
+  await mig083_rumble_chat(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

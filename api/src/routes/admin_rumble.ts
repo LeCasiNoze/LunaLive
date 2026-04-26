@@ -4,6 +4,8 @@ import { Router } from "express";
 import { pool } from "../db.js";
 import { requireAdminKey } from "../auth.js";
 import { fetchRumbleInfoForStreamerSlug } from "../rumble.js";
+import { getRumbleBotSession, setRumbleBotSession, hasRumbleBotSession } from "../rumble_chat_session.js";
+import { sendRumbleMessage } from "../rumble_chat_bridge.js";
 
 export const adminRumbleRouter = Router();
 
@@ -83,6 +85,81 @@ adminRumbleRouter.get("/admin/rumble/status", requireAdminKey, async (req, res) 
       slug,
       cached: cached.rows[0] ?? null,
     });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+  }
+});
+
+/**
+ * GET /admin/rumble/bot
+ * Inspecte la session bot Rumble (sans révéler le cookie).
+ */
+adminRumbleRouter.get("/admin/rumble/bot", requireAdminKey, async (_req, res) => {
+  try {
+    const s = await getRumbleBotSession(true);
+    return res.json({
+      ok: true,
+      username: s.username,
+      hasCookie: hasRumbleBotSession(s),
+      cookieLength: s.cookie?.length ?? 0,
+      userAgent: s.userAgent,
+    });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+  }
+});
+
+/**
+ * POST /admin/rumble/bot
+ * Body: { username?, cookie?, userAgent? }
+ * Met à jour la session du bot Rumble (singleton). Le cookie est l'entête `Cookie`
+ * complet capturé depuis les DevTools (Network → request headers d'une requête
+ * authentifiée sur rumble.com après login).
+ */
+adminRumbleRouter.post("/admin/rumble/bot", requireAdminKey, async (req, res) => {
+  try {
+    const { username, cookie, userAgent } = req.body ?? {};
+    if (
+      (username !== undefined && typeof username !== "string") ||
+      (cookie !== undefined && typeof cookie !== "string") ||
+      (userAgent !== undefined && typeof userAgent !== "string")
+    ) {
+      return res.status(400).json({ ok: false, error: "bad_payload" });
+    }
+    await setRumbleBotSession({
+      username: username ?? null,
+      cookie: cookie ?? null,
+      userAgent: userAgent ?? null,
+    });
+    const s = await getRumbleBotSession(true);
+    return res.json({
+      ok: true,
+      username: s.username,
+      hasCookie: hasRumbleBotSession(s),
+    });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+  }
+});
+
+/**
+ * POST /admin/rumble/send-test
+ * Body: { videoIdNumeric: string, text?: string }
+ * Envoie un message de test dans un chat Rumble via le bot. Utile pour valider
+ * le pipeline cycletls + cookies sans attendre qu'un live LunaLive démarre.
+ */
+adminRumbleRouter.post("/admin/rumble/send-test", requireAdminKey, async (req, res) => {
+  try {
+    const { videoIdNumeric, text } = req.body ?? {};
+    if (!videoIdNumeric || typeof videoIdNumeric !== "string") {
+      return res.status(400).json({ ok: false, error: "videoIdNumeric_required" });
+    }
+    const body = (typeof text === "string" && text.trim()) ? text : "test LunaLive_Bot";
+    const result = await sendRumbleMessage(String(videoIdNumeric), body);
+    if (!result) {
+      return res.status(502).json({ ok: false, error: "send_failed" });
+    }
+    return res.json({ ok: true, sentId: result.id, userId: result.userId });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
   }

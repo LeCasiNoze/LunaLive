@@ -8,6 +8,7 @@ import { normalizeAppearance, type Appearance } from "./appearance.js";
 import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 import { ensureDliveBridge } from "./dlive_chat_bridge.js";
+import { ensureRumbleBridge } from "./rumble_chat_bridge.js";
 
 import {
   getChatSettings,
@@ -402,6 +403,40 @@ async function safeInitDliveBridge(io: Server, streamerId: number, slug: string)
   }
 }
 
+async function safeInitRumbleBridge(io: Server, streamerId: number, slug: string, ownerUserId: number | null) {
+  try {
+    // On suit la même logique que DLive : on n'active le bridge que si l'admin
+    // a opté pour la sync public et/ou popup. Réutilise les flags existants
+    // (dliveSyncPublic/dliveSyncPopup) pour ne pas multiplier les colonnes —
+    // le bridge se choisit selon `streamers.platform` du streamer.
+    const st = await readSettings(streamerId);
+    if (!st?.dliveSyncPublic && !st?.dliveSyncPopup) return;
+
+    const r = await pool.query(
+      `SELECT s.platform, ri.live_video_id_numeric
+       FROM streamers s
+       LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+       WHERE s.id = $1`,
+      [streamerId]
+    );
+    const row = r.rows?.[0];
+    if (!row || String(row.platform || "").toLowerCase() !== "rumble") return;
+
+    ensureRumbleBridge({
+      io,
+      pool,
+      slug,
+      streamerId,
+      streamerOwnerUserId: ownerUserId,
+      videoIdNumeric: row.live_video_id_numeric || null,
+      publicOn: !!st.dliveSyncPublic,
+      popupOn: !!st.dliveSyncPopup,
+    });
+  } catch (e: any) {
+    console.warn("[chat_socket] rumble bridge init failed", e?.message || e);
+  }
+}
+
 export function attachChat(io: Server) {
   chatIo = io;
 
@@ -701,8 +736,9 @@ export function attachChat(io: Server) {
 
           if (data.user) trackSocket(meta.slug, data.user.id, socket.id);
 
-          // init dlive bridge if needed
+          // init platform bridges if needed
           void safeInitDliveBridge(io, meta.id, meta.slug);
+          void safeInitRumbleBridge(io, meta.id, meta.slug, meta.ownerUserId ?? null);
 
           cb?.({
             ok: true,

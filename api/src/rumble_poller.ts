@@ -21,6 +21,7 @@ async function updateRumbleInfo(
   videoUrl: string | null,
   thumbnailUrl: string | null,
   videoId: string | null,
+  videoIdNumeric: string | null,
   io?: IOServer,
   liveCreatedAt?: string | null   // ISO string from Rumble API (created_on)
 ) {
@@ -48,8 +49,8 @@ async function updateRumbleInfo(
     await pool.query(
       `INSERT INTO streamer_rumble_info (
          streamer_id, is_live, title, viewers_count,
-         hls_url, video_url, thumbnail_url, live_id, live_started_at, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+         hls_url, video_url, thumbnail_url, live_id, live_video_id_numeric, live_started_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
        ON CONFLICT (streamer_id) DO UPDATE SET
          is_live = EXCLUDED.is_live,
          title = EXCLUDED.title,
@@ -58,9 +59,10 @@ async function updateRumbleInfo(
          video_url = EXCLUDED.video_url,
          thumbnail_url = EXCLUDED.thumbnail_url,
          live_id = EXCLUDED.live_id,
+         live_video_id_numeric = EXCLUDED.live_video_id_numeric,
          live_started_at = EXCLUDED.live_started_at,
          updated_at = NOW()`,
-      [streamerId, isLive, title, viewersCount, hlsUrl, videoUrl, thumbnailUrl, videoId, liveStartedAtMs]
+      [streamerId, isLive, title, viewersCount, hlsUrl, videoUrl, thumbnailUrl, videoId, videoIdNumeric, liveStartedAtMs]
     );
 
     if (!wasLive) {
@@ -163,6 +165,7 @@ async function pollOne(
       info.videoUrl,
       info.thumbnailUrl,
       info.videoId,
+      info.videoIdNumeric,
       io,
       info.createdAt
     );
@@ -187,6 +190,7 @@ async function pollAll(io?: IOServer) {
 async function ensureRumbleInfoColumns() {
   await pool.query(`ALTER TABLE streamer_rumble_info ADD COLUMN IF NOT EXISTS live_id TEXT;`).catch(() => {});
   await pool.query(`ALTER TABLE streamer_rumble_info ADD COLUMN IF NOT EXISTS live_started_at BIGINT;`).catch(() => {});
+  await pool.query(`ALTER TABLE streamer_rumble_info ADD COLUMN IF NOT EXISTS live_video_id_numeric TEXT;`).catch(() => {});
 }
 
 export function startRumblePoller(io?: IOServer) {

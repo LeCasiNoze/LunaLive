@@ -102,8 +102,38 @@ async function sendBotChat(
     isBot: true, // ✅ utile pour le style côté front
   };
 
-  // ✅ IMPORTANT: broadcast sur les bonnes rooms
+  // ✅ broadcast Luna chat
   emitChatAll(io, opts.slug, "chat:message", msg);
+
+  // ✅ Mirror sur le chat Rumble du streamer si live actif
+  void mirrorBotMessageToRumble(pool, opts.streamerId, text);
+}
+
+/**
+ * Si le streamer est en live sur Rumble, relaie le message du bot Luna
+ * vers le chat Rumble via le compte LunaLive_Bot. Fire-and-forget.
+ */
+async function mirrorBotMessageToRumble(pool: Pool, streamerId: number, text: string) {
+  try {
+    const r = await pool.query(
+      `SELECT s.platform, ri.is_live, ri.live_video_id_numeric
+       FROM streamers s
+       LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+       WHERE s.id = $1`,
+      [streamerId]
+    );
+    const row = r.rows?.[0];
+    if (!row) return;
+    if (String(row.platform || "").toLowerCase() !== "rumble") return;
+    if (!row.is_live) return;
+    const vid = row.live_video_id_numeric ? String(row.live_video_id_numeric) : null;
+    if (!vid) return;
+
+    const { sendRumbleMessage } = await import("../rumble_chat_bridge.js");
+    await sendRumbleMessage(vid, text);
+  } catch (e: any) {
+    console.warn("[calls] mirrorBotMessageToRumble error", e?.message || e);
+  }
 }
 
 async function ensurePcallSchema(pool: Pool) {

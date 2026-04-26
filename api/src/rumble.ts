@@ -10,7 +10,8 @@ export interface RumbleLiveInfo {
   thumbnailUrl: string | null;
   videoUrl: string | null;
   hlsUrl: string | null;
-  videoId: string | null;
+  videoId: string | null;          // alphanumeric ex "v76pubk"
+  videoIdNumeric: string | null;   // numérique ex "434546624" — utilisé pour le chat
   createdAt: string | null;
 }
 
@@ -125,7 +126,7 @@ async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<string | nul
  * Fallback: appelle embedJS pour récupérer l'URL HLS si la construction directe échoue.
  * Nécessite le videoId avec préfixe "v".
  */
-async function resolveHlsFromEmbedJs(videoIdWithV: string): Promise<string | null> {
+async function resolveFromEmbedJs(videoIdWithV: string): Promise<{ hlsUrl: string | null; vidNumeric: string | null }> {
   const url = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${videoIdWithV}&ad_wt=0`;
   try {
     const r = await fetch(url, {
@@ -136,22 +137,22 @@ async function resolveHlsFromEmbedJs(videoIdWithV: string): Promise<string | nul
         origin: "https://rumble.com",
       },
     });
-    if (!r.ok) return null;
+    if (!r.ok) return { hlsUrl: null, vidNumeric: null };
     const d = await r.json();
 
-    // Log complet pour debug — on cherche une URL CDN (1a-1791.com) au lieu de live-hls-dvr
     const hlsU = d?.u?.hls?.url ?? null;
     const hlsAuto = d?.ua?.hls?.auto?.url ?? null;
+    const vidNumeric = d?.vid != null ? String(d.vid) : null;
     const allKeys = d ? Object.keys(d) : [];
-    console.log(`[rumble][embedJS] keys=${JSON.stringify(allKeys)}`);
+    console.log(`[rumble][embedJS] keys=${JSON.stringify(allKeys)} vid=${vidNumeric}`);
     if (d?.u) console.log(`[rumble][embedJS] u.keys=${JSON.stringify(Object.keys(d.u))}`);
     if (d?.ua) console.log(`[rumble][embedJS] ua.keys=${JSON.stringify(Object.keys(d.ua))}`);
     console.log(`[rumble][embedJS] u.hls.url=${hlsU} | ua.hls.auto.url=${hlsAuto}`);
 
-    return hlsU || hlsAuto || null;
+    return { hlsUrl: hlsU || hlsAuto || null, vidNumeric };
   } catch (e) {
     console.error(`[rumble][embedJS] error:`, e);
-    return null;
+    return { hlsUrl: null, vidNumeric: null };
   }
 }
 
@@ -165,6 +166,7 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
     videoUrl: null,
     hlsUrl: null,
     videoId: null,
+    videoIdNumeric: null,
     createdAt: null,
   };
 
@@ -191,12 +193,14 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
 
     let hlsUrl: string | null = null;
     let videoUrl: string | null = null;
+    let videoIdNumeric: string | null = null;
 
     if (isLive && rawId && videoId) {
       videoUrl = `https://rumble.com/user/${username}/live`;
 
-      // 1. embedJS → peut retourner une URL CDN ou live-hls-dvr
-      const embedHls = await resolveHlsFromEmbedJs(videoId);
+      // 1. embedJS → URL HLS + video_id numérique (utilisé pour le chat)
+      const { hlsUrl: embedHls, vidNumeric } = await resolveFromEmbedJs(videoId);
+      videoIdNumeric = vidNumeric;
       const rawHls = embedHls || buildRumbleHlsUrl(rawId);
 
       // 2. Si live-hls-dvr : suivre la redirection côté serveur (Render) pour obtenir l'URL CDN
@@ -208,7 +212,7 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
         hlsUrl = rawHls;
       }
 
-      console.log(`[rumble] ${username}: LIVE — videoId=${videoId}, hlsUrl=${hlsUrl}`);
+      console.log(`[rumble] ${username}: LIVE — videoId=${videoId}, vidNumeric=${videoIdNumeric}, hlsUrl=${hlsUrl}`);
     } else {
       console.log(`[rumble] ${username}: offline`);
     }
@@ -222,6 +226,7 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
       videoUrl,
       hlsUrl,
       videoId,
+      videoIdNumeric,
       createdAt,
     };
   } catch (e) {
@@ -244,7 +249,7 @@ export async function getRumbleAccountForStreamer(streamerId: number): Promise<{
 function offlineInfo(username: string): RumbleLiveInfo {
   return {
     username, isLive: false, viewersCount: null, title: null,
-    thumbnailUrl: null, videoUrl: null, hlsUrl: null, videoId: null, createdAt: null,
+    thumbnailUrl: null, videoUrl: null, hlsUrl: null, videoId: null, videoIdNumeric: null, createdAt: null,
   };
 }
 
