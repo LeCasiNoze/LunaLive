@@ -102,6 +102,11 @@ async function sendViaSmtp(to: string, subject: string, text: string, html: stri
   await t.sendMail({ from, to, subject, text, html });
 }
 
+export async function sendMail(to: string, subject: string, text: string, html: string) {
+  if (readBrevo()) return sendViaBrevo(to, subject, text, html);
+  return sendViaSmtp(to, subject, text, html);
+}
+
 export async function sendVerifyCode(to: string, code: string, minutes = 15) {
   const subject = "Votre code de vérification LunaLive";
   const text = `Code : ${code} (valable ${minutes} minutes)`;

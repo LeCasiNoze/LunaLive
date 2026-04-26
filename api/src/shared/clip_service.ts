@@ -1,6 +1,8 @@
 // api/src/shared/clip_service.ts
 // Service local pour la création de clips (API uniquement)
 
+import { notifyStreamerOfFirstAutoClip } from "../lunaclip/notify_streamer.js";
+
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
 
 const LATENCY_PAD_SEC  = 0;     // Pas de compensation latence (cible: 1m15 avant / 15s après la commande)
@@ -324,6 +326,9 @@ export async function createClipForStreamer(p: CreateClipParams): Promise<{ ok: 
       });
 
       if (!res.ok && res.reason === "duplicate") return { ok: false, reason: "duplicate" };
+      if (res.ok && (author || null) === "lunaclip") {
+        void notifyStreamerOfFirstAutoClip(pool, streamerId, res.id);
+      }
       return res;
     }
 
@@ -374,6 +379,10 @@ export async function createClipForStreamer(p: CreateClipParams): Promise<{ ok: 
 
     if (!res.ok && res.reason === "duplicate") {
       return { ok: false, reason: "duplicate" };
+    }
+
+    if (res.ok && (p.author || null) === "lunaclip") {
+      void notifyStreamerOfFirstAutoClip(pool, streamerId, res.id);
     }
 
     return res;
