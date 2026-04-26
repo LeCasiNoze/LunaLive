@@ -36,6 +36,34 @@ export async function mig083_rumble_chat(pool: Pool) {
       ADD COLUMN IF NOT EXISTS vod_resolve_attempts INT DEFAULT 0;
   `);
 
+  // Historique des VODs Rumble par streamer. Une ligne par live terminé.
+  // Alimenté à la transition LIVE→OFFLINE par le poller.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS rumble_vods (
+      id              BIGSERIAL PRIMARY KEY,
+      streamer_id     INTEGER NOT NULL REFERENCES streamers(id) ON DELETE CASCADE,
+      video_id        TEXT NOT NULL,
+      video_id_numeric TEXT,
+      title           TEXT,
+      thumbnail_url   TEXT,
+      started_at      TIMESTAMPTZ,
+      ended_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      duration_sec    INTEGER,
+      vod_mp4_url     TEXT,
+      vod_hls_url     TEXT,
+      vod_resolved_at TIMESTAMPTZ,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_rumble_vods_streamer_video
+      ON rumble_vods (streamer_id, video_id);
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_rumble_vods_streamer_ended
+      ON rumble_vods (streamer_id, ended_at DESC);
+  `);
+
   // Archivage des messages Rumble vus par le bridge.
   // On stocke un identifiant Rumble pour dédoublonner sur reconnexion,
   // et on garde le payload brut au cas où.

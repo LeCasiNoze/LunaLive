@@ -7,11 +7,21 @@ import type { Server as IOServer } from "socket.io";
 import { notifyFollowersGoLive } from "./notify_go_live.js";
 
 /**
- * Programme la résolution du VOD post-live. Rumble convertit le live en VOD
- * permanent en quelques minutes — on retry à 5min, 15min, 45min, 2h.
- * On stocke le résultat dans streamer_rumble_info.vod_mp4_url + vod_hls_url.
+ * Archive un live terminé dans rumble_vods + programme la résolution du VOD permanent.
+ * Rumble convertit le live en VOD permanent en quelques minutes — on retry à 5/15/45min puis 2h.
  */
-function scheduleVodResolve(streamerId: number, videoId: string) {
+async function archiveAndResolveVod(streamerId: number, videoId: string, videoIdNumeric: string | null, title: string | null, thumbnailUrl: string | null, startedAtMs: number | null) {
+  // Insert dans l'historique (ou no-op si déjà présent — un live unique par video_id)
+  const startedAtIso = startedAtMs && Number.isFinite(startedAtMs) ? new Date(startedAtMs).toISOString() : null;
+  const durationSec = startedAtMs ? Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)) : null;
+  await pool.query(
+    `INSERT INTO rumble_vods (streamer_id, video_id, video_id_numeric, title, thumbnail_url, started_at, ended_at, duration_sec)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
+     ON CONFLICT (streamer_id, video_id) DO NOTHING`,
+    [streamerId, videoId, videoIdNumeric, title, thumbnailUrl, startedAtIso, durationSec]
+  ).catch((e) => console.warn("[rumble-poller] archive VOD failed", e?.message || e));
+
+  // Schedule resolve
   const delays = [5 * 60_000, 15 * 60_000, 45 * 60_000, 2 * 60 * 60_000];
   let attempt = 0;
   const tryOne = async () => {
@@ -31,7 +41,13 @@ function scheduleVodResolve(streamerId: number, videoId: string) {
            WHERE streamer_id = $1`,
           [streamerId, mp4Url, hlsUrl]
         );
-        console.log(`[rumble-poller] VOD résolu streamerId=${streamerId} attempt=${attempt}`);
+        await pool.query(
+          `UPDATE rumble_vods
+           SET vod_mp4_url = $3, vod_hls_url = $4, vod_resolved_at = NOW()
+           WHERE streamer_id = $1 AND video_id = $2`,
+          [streamerId, videoId, mp4Url, hlsUrl]
+        ).catch(() => {});
+        console.log(`[rumble-poller] VOD résolu streamerId=${streamerId} videoId=${videoId} attempt=${attempt}`);
         return;
       }
     } catch (e: any) {
@@ -162,14 +178,25 @@ async function updateRumbleInfo(
     if (wasLive) {
       console.log(`[rumble-poller] ${slug} went OFFLINE`);
 
-      // Programmer la résolution du VOD permanent (5min, 15min, 45min, 2h)
-      // On lit le live_id stocké côté DB pour garder le bon videoId de la session qui vient de finir.
+      // Archive + programme la résolution du VOD permanent (5min, 15min, 45min, 2h)
+      // On lit l'état figé du live qui vient de finir avant qu'il soit overwrite par le tick offline.
       const r = await pool.query(
-        `SELECT live_id FROM streamer_rumble_info WHERE streamer_id = $1`,
+        `SELECT live_id, live_video_id_numeric, title, thumbnail_url, live_started_at
+         FROM streamer_rumble_info WHERE streamer_id = $1`,
         [streamerId]
       ).catch(() => null);
-      const lastVid = r?.rows?.[0]?.live_id ? String(r.rows[0].live_id) : null;
-      if (lastVid) scheduleVodResolve(streamerId, lastVid);
+      const row = r?.rows?.[0];
+      const lastVid = row?.live_id ? String(row.live_id) : null;
+      if (lastVid) {
+        await archiveAndResolveVod(
+          streamerId,
+          lastVid,
+          row.live_video_id_numeric ? String(row.live_video_id_numeric) : null,
+          row.title ? String(row.title) : null,
+          row.thumbnail_url ? String(row.thumbnail_url) : null,
+          row.live_started_at ? Number(row.live_started_at) : null
+        );
+      }
 
       await pool.query(
         `UPDATE live_sessions SET ended_at = NOW()

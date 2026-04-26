@@ -3,7 +3,7 @@
 import { Router } from "express";
 import { pool } from "../db.js";
 import { requireAdminKey } from "../auth.js";
-import { fetchRumbleInfoForStreamerSlug } from "../rumble.js";
+import { fetchRumbleInfoForStreamerSlug, resolveRumbleVodFromVid } from "../rumble.js";
 import { getRumbleBotSession, setRumbleBotSession, hasRumbleBotSession } from "../rumble_chat_session.js";
 import { sendRumbleMessage } from "../rumble_chat_bridge.js";
 
@@ -136,6 +136,108 @@ adminRumbleRouter.post("/admin/rumble/bot", requireAdminKey, async (req, res) =>
       ok: true,
       username: s.username,
       hasCookie: hasRumbleBotSession(s),
+    });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+  }
+});
+
+/**
+ * POST /admin/rumble/backfill-vods?slug=lecasinoze
+ * Scrape la page Rumble du compte assigné au streamer et insère les VODs
+ * trouvés dans rumble_vods. Résout l'URL MP4 permanente via embedJS pour chacun.
+ * Idempotent (UNIQUE INDEX (streamer_id, video_id) → ON CONFLICT DO NOTHING).
+ */
+adminRumbleRouter.post("/admin/rumble/backfill-vods", requireAdminKey, async (req, res) => {
+  try {
+    const slug = pickSlug(req);
+    const sm = await pool.query(
+      `SELECT s.id, ra.username
+       FROM streamers s
+       LEFT JOIN rumble_accounts ra ON ra.assigned_to_streamer_id = s.id
+       WHERE lower(s.slug) = lower($1) LIMIT 1`,
+      [slug]
+    );
+    const streamerRow = sm.rows[0];
+    if (!streamerRow) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    const streamerId = Number(streamerRow.id);
+    const username = streamerRow.username ? String(streamerRow.username) : null;
+    if (!username) return res.status(400).json({ ok: false, error: "no_rumble_username" });
+
+    const session = await getRumbleBotSession();
+    const headers: Record<string, string> = {
+      "user-agent": session.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+      "accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
+    };
+    if (session.cookie) headers["cookie"] = session.cookie;
+
+    // Tente /c/{username} puis /user/{username}
+    let html = "";
+    let used = "";
+    for (const path of [`/c/${encodeURIComponent(username)}`, `/user/${encodeURIComponent(username)}`]) {
+      const r = await fetch(`https://rumble.com${path}`, { headers });
+      if (r.ok) {
+        html = await r.text();
+        used = path;
+        break;
+      }
+    }
+    if (!html) return res.status(502).json({ ok: false, error: "scrape_failed" });
+
+    // Extraire les couples (slug, vid) depuis les liens VODs publics.
+    // Pattern HTML Rumble: <a class="videostream__link" href="/v76pubk-mon-titre.html">...</a>
+    const slugMatches = Array.from(html.matchAll(/href=["'](\/v[a-z0-9]{5,}-[^"']+\.html)["']/gi));
+    const titleMap = new Map<string, string>();
+    for (const m of slugMatches) {
+      const path = m[1];
+      const vidMatch = path.match(/^\/v([a-z0-9]{5,})-/i);
+      if (!vidMatch) continue;
+      const vid = `v${vidMatch[1].toLowerCase()}`;
+      if (!titleMap.has(vid)) {
+        // Décoder le titre approximatif depuis le slug
+        const titleSlug = path.replace(/^\/v[a-z0-9]+-/i, "").replace(/\.html$/i, "").replace(/-/g, " ");
+        titleMap.set(vid, titleSlug);
+      }
+    }
+
+    const found = Array.from(titleMap.entries());
+    let inserted = 0;
+    let resolved = 0;
+
+    // On limite à 30 pour pas exploser embedJS
+    const subset = found.slice(0, 30);
+
+    for (const [vid, titleApprox] of subset) {
+      // Vérifie si déjà en DB
+      const exists = await pool.query(
+        `SELECT 1 FROM rumble_vods WHERE streamer_id = $1 AND video_id = $2 LIMIT 1`,
+        [streamerId, vid]
+      );
+      if (exists.rows[0]) continue;
+
+      const { mp4Url, hlsUrl } = await resolveRumbleVodFromVid(vid).catch(() => ({ mp4Url: null, hlsUrl: null }));
+      if (mp4Url) resolved++;
+
+      await pool.query(
+        `INSERT INTO rumble_vods (streamer_id, video_id, title, vod_mp4_url, vod_hls_url, vod_resolved_at, ended_at)
+         VALUES ($1, $2, $3, $4, $5, ${mp4Url ? "NOW()" : "NULL"}, NOW())
+         ON CONFLICT (streamer_id, video_id) DO NOTHING`,
+        [streamerId, vid, titleApprox, mp4Url, hlsUrl]
+      ).catch((e) => console.warn("[backfill-vods] insert error", e?.message || e));
+
+      inserted++;
+      // petit délai pour pas spammer Rumble
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    return res.json({
+      ok: true,
+      slug,
+      sourcePath: used,
+      foundOnPage: found.length,
+      processed: subset.length,
+      inserted,
+      resolvedMp4: resolved,
     });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
