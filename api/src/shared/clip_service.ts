@@ -292,9 +292,13 @@ export async function createClipForStreamer(p: CreateClipParams): Promise<{ ok: 
     // ── Rumble path ────────────────────────────────────────────────────────────
     if (platform === "rumble") {
       const rumble = await getRumbleLiveInfoForClip(pool, streamerId);
-      if (!rumble?.isLive || !rumble.hlsUrl) {
-        return { ok: false, reason: "live_not_active" };
-      }
+      if (!rumble) return { ok: false, reason: "live_not_active" };
+
+      // Source VOD : pendant le live → hls_url (DVR live) ; après → vod_mp4_url permanent
+      const sourceUrl = rumble.isLive
+        ? rumble.hlsUrl
+        : (rumble.vodMp4Url || rumble.vodHlsUrl || rumble.hlsUrl);
+      if (!sourceUrl) return { ok: false, reason: rumble.isLive ? "live_not_active" : "vod_not_ready" };
 
       let offset: number;
       if (forcedOffsetSec !== undefined) {
@@ -322,7 +326,7 @@ export async function createClipForStreamer(p: CreateClipParams): Promise<{ ok: 
         liveStartTs: rumble.liveStartedAtMs || Date.now(),
         livePermlink: rumble.liveId || "",
         platform: "rumble",
-        vodUrl: rumble.hlsUrl,   // disponible immédiatement — pas besoin du vod_linker
+        vodUrl: sourceUrl, // HLS live pendant le stream, MP4 VOD après
       });
 
       if (!res.ok && res.reason === "duplicate") return { ok: false, reason: "duplicate" };
@@ -399,12 +403,14 @@ async function getStreamerPlatform(pool: Pool, streamerId: number): Promise<stri
 async function getRumbleLiveInfoForClip(pool: Pool, streamerId: number): Promise<{
   isLive: boolean;
   hlsUrl: string | null;
+  vodMp4Url: string | null;
+  vodHlsUrl: string | null;
   liveId: string | null;
   liveStartedAtMs: number | null;
   title: string | null;
 } | null> {
   const r = await pool.query(
-    `SELECT is_live, hls_url, live_id, live_started_at, title
+    `SELECT is_live, hls_url, vod_mp4_url, vod_hls_url, live_id, live_started_at, title
      FROM streamer_rumble_info WHERE streamer_id=$1 LIMIT 1`,
     [streamerId]
   );
@@ -412,10 +418,12 @@ async function getRumbleLiveInfoForClip(pool: Pool, streamerId: number): Promise
   if (!row) return null;
   return {
     isLive:         !!row.is_live,
-    hlsUrl:         row.hls_url  ? String(row.hls_url)  : null,
-    liveId:         row.live_id  ? String(row.live_id)  : null,
+    hlsUrl:         row.hls_url     ? String(row.hls_url)     : null,
+    vodMp4Url:      row.vod_mp4_url ? String(row.vod_mp4_url) : null,
+    vodHlsUrl:      row.vod_hls_url ? String(row.vod_hls_url) : null,
+    liveId:         row.live_id     ? String(row.live_id)     : null,
     liveStartedAtMs: row.live_started_at ? Number(row.live_started_at) : null,
-    title:          row.title    ? String(row.title)    : null,
+    title:          row.title       ? String(row.title)       : null,
   };
 }
 

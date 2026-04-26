@@ -269,6 +269,50 @@ export async function listAssignedRumbleStreamers(): Promise<Array<{ streamerId:
   }));
 }
 
+/**
+ * Post-live, Rumble convertit la diffusion en VOD permanent (généralement 2-5 min après
+ * la fin). On appelle embedJS qui retourne alors `u.mp4.url` (MP4 CDN permanent) et
+ * `u.hls.url` (HLS VOD non-DVR). Pendant le live, ces URLs pointent encore vers le live-hls-dvr.
+ * Renvoie les URLs si on a bien obtenu un MP4 permanent (host CDN ≠ rumble.com).
+ */
+export async function resolveRumbleVodFromVid(videoIdWithV: string): Promise<{ mp4Url: string | null; hlsUrl: string | null }> {
+  const url = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${videoIdWithV}&ad_wt=0`;
+  try {
+    const r = await fetch(url, {
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        accept: "application/json",
+        referer: "https://rumble.com/",
+        origin: "https://rumble.com",
+      },
+    });
+    if (!r.ok) return { mp4Url: null, hlsUrl: null };
+    const d: any = await r.json();
+
+    const mp4 = d?.ua?.mp4?.auto?.url
+      || d?.ua?.mp4?.["1080"]?.url
+      || d?.ua?.mp4?.["720"]?.url
+      || d?.ua?.mp4?.["480"]?.url
+      || d?.u?.mp4?.url
+      || null;
+    const hls = d?.u?.hls?.url || d?.ua?.hls?.auto?.url || null;
+
+    // Pendant le live, hls pointe vers `rumble.com/live-hls-dvr/...` — pas un VOD permanent.
+    // On considère qu'on a un VOD valide si on a un MP4 hors rumble.com (CDN 1a-1791.com).
+    const isMp4Permanent = !!(mp4 && !mp4.includes("rumble.com/live-hls-dvr"));
+    if (!isMp4Permanent) {
+      console.log(`[rumble][vod] ${videoIdWithV}: VOD pas encore prêt (mp4=${mp4 ? "live-hls" : "absent"})`);
+      return { mp4Url: null, hlsUrl: null };
+    }
+
+    console.log(`[rumble][vod] ${videoIdWithV}: VOD prêt mp4=${mp4}`);
+    return { mp4Url: mp4, hlsUrl: hls };
+  } catch (e) {
+    console.error(`[rumble][vod] resolveRumbleVodFromVid error`, e);
+    return { mp4Url: null, hlsUrl: null };
+  }
+}
+
 /** Récupère l'info Rumble pour un streamer donné (via son compte assigné). */
 export async function fetchRumbleInfoForStreamerSlug(slug: string): Promise<RumbleLiveInfo> {
   const streamerResult = await pool.query(

@@ -24,6 +24,18 @@ export async function mig083_rumble_chat(pool: Pool) {
       ADD COLUMN IF NOT EXISTS live_video_id_numeric TEXT;
   `);
 
+  // VOD post-live : Rumble convertit le live en VOD ~5 min après. On résout
+  // l'URL via embedJS et on la stocke pour permettre :
+  //  - Affichage replay sur la page streamer
+  //  - Création de clips post-live (URL HLS DVR meurt après quelques heures)
+  await pool.query(`
+    ALTER TABLE streamer_rumble_info
+      ADD COLUMN IF NOT EXISTS vod_mp4_url TEXT,
+      ADD COLUMN IF NOT EXISTS vod_hls_url TEXT,
+      ADD COLUMN IF NOT EXISTS vod_resolved_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS vod_resolve_attempts INT DEFAULT 0;
+  `);
+
   // Archivage des messages Rumble vus par le bridge.
   // On stocke un identifiant Rumble pour dédoublonner sur reconnexion,
   // et on garde le payload brut au cas où.

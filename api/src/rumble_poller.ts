@@ -2,9 +2,49 @@
 // Polling Rumble pour tous les streamers ayant un rumble_account assigné.
 
 import { pool } from "./db.js";
-import { fetchRumbleLiveInfo, listAssignedRumbleStreamers } from "./rumble.js";
+import { fetchRumbleLiveInfo, listAssignedRumbleStreamers, resolveRumbleVodFromVid } from "./rumble.js";
 import type { Server as IOServer } from "socket.io";
 import { notifyFollowersGoLive } from "./notify_go_live.js";
+
+/**
+ * Programme la résolution du VOD post-live. Rumble convertit le live en VOD
+ * permanent en quelques minutes — on retry à 5min, 15min, 45min, 2h.
+ * On stocke le résultat dans streamer_rumble_info.vod_mp4_url + vod_hls_url.
+ */
+function scheduleVodResolve(streamerId: number, videoId: string) {
+  const delays = [5 * 60_000, 15 * 60_000, 45 * 60_000, 2 * 60 * 60_000];
+  let attempt = 0;
+  const tryOne = async () => {
+    attempt++;
+    try {
+      const { mp4Url, hlsUrl } = await resolveRumbleVodFromVid(videoId);
+      await pool.query(
+        `UPDATE streamer_rumble_info
+         SET vod_resolve_attempts = COALESCE(vod_resolve_attempts, 0) + 1
+         WHERE streamer_id = $1`,
+        [streamerId]
+      ).catch(() => {});
+      if (mp4Url) {
+        await pool.query(
+          `UPDATE streamer_rumble_info
+           SET vod_mp4_url = $2, vod_hls_url = $3, vod_resolved_at = NOW()
+           WHERE streamer_id = $1`,
+          [streamerId, mp4Url, hlsUrl]
+        );
+        console.log(`[rumble-poller] VOD résolu streamerId=${streamerId} attempt=${attempt}`);
+        return;
+      }
+    } catch (e: any) {
+      console.warn(`[rumble-poller] VOD resolve attempt=${attempt} streamerId=${streamerId}`, e?.message || e);
+    }
+    if (attempt < delays.length) {
+      setTimeout(() => void tryOne(), delays[attempt]);
+    } else {
+      console.warn(`[rumble-poller] VOD resolve abandoned streamerId=${streamerId} videoId=${videoId}`);
+    }
+  };
+  setTimeout(() => void tryOne(), delays[0]);
+}
 
 const INTERVAL_MS = Number(process.env.RUMBLE_POLL_INTERVAL_MS || 30_000);
 
@@ -121,6 +161,15 @@ async function updateRumbleInfo(
 
     if (wasLive) {
       console.log(`[rumble-poller] ${slug} went OFFLINE`);
+
+      // Programmer la résolution du VOD permanent (5min, 15min, 45min, 2h)
+      // On lit le live_id stocké côté DB pour garder le bon videoId de la session qui vient de finir.
+      const r = await pool.query(
+        `SELECT live_id FROM streamer_rumble_info WHERE streamer_id = $1`,
+        [streamerId]
+      ).catch(() => null);
+      const lastVid = r?.rows?.[0]?.live_id ? String(r.rows[0].live_id) : null;
+      if (lastVid) scheduleVodResolve(streamerId, lastVid);
 
       await pool.query(
         `UPDATE live_sessions SET ended_at = NOW()
