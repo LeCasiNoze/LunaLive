@@ -7,6 +7,7 @@ import {
   deleteTikTokInfluencer,
   getActiveRun,
   getRun,
+  importTikTokBulk,
   listRuns,
   listTikTokInfluencers,
   listTikTokMessages,
@@ -311,6 +312,15 @@ export function FsbTikTokOutreachSection() {
   const [discError, setDiscError] = React.useState<string | null>(null);
   const [activeRun, setActiveRun] = React.useState<TikTokOutreachRun | null>(null);
   const [pastRuns, setPastRuns] = React.useState<TikTokOutreachRun[]>([]);
+  const [extensionVersion, setExtensionVersion] = React.useState<string | null>(null);
+  const [localScrape, setLocalScrape] = React.useState<{
+    running: boolean;
+    events: Array<{ kind: string; source?: string; found?: number; error?: string }>;
+    capturedHandles: number;
+    importedKept: number;
+    importedWithEmail: number;
+    importedScanned: number;
+  } | null>(null);
 
   const reload = React.useCallback(
     async (which: TikTokInfluencerStatus | "all" = filter) => {
@@ -428,6 +438,35 @@ export function FsbTikTokOutreachSection() {
     }
   };
 
+  // ─── Extension detection ──────────────────────────────────────────────
+  React.useEffect(() => {
+    const checkAttr = () => {
+      const v = document.documentElement.getAttribute("data-lunalive-tiktok-ext");
+      if (v) setExtensionVersion(v);
+    };
+    checkAttr();
+    const onMsg = (event: MessageEvent) => {
+      if (event.source !== window) return;
+      const data: any = event.data;
+      if (!data || data.source !== "lunalive-tiktok-ext") return;
+      if (data.type === "PRESENT" || data.type === "PONG") {
+        setExtensionVersion(data.version || "1.0.0");
+      }
+    };
+    window.addEventListener("message", onMsg);
+    // Ping in case the extension was loaded before this listener attached
+    window.postMessage(
+      { source: "lunalive-tiktok-page", type: "PING", requestId: "init" },
+      window.location.origin
+    );
+    const interval = setInterval(checkAttr, 1500);
+    setTimeout(() => clearInterval(interval), 6000);
+    return () => {
+      window.removeEventListener("message", onMsg);
+      clearInterval(interval);
+    };
+  }, []);
+
   // ─── Discovery effects ────────────────────────────────────────────────
   const reloadRuns = React.useCallback(async () => {
     try {
@@ -488,9 +527,131 @@ export function FsbTikTokOutreachSection() {
     );
   };
 
+  const launchDiscoveryViaExtension = async () => {
+    setLocalScrape({
+      running: true,
+      events: [],
+      capturedHandles: 0,
+      importedKept: 0,
+      importedWithEmail: 0,
+      importedScanned: 0,
+    });
+    setDiscError(null);
+
+    const requestId = `disc-${Date.now()}`;
+    const allHandles = new Set<string>();
+
+    const onProgress = (event: MessageEvent) => {
+      if (event.source !== window) return;
+      const data: any = event.data;
+      if (!data || data.source !== "lunalive-tiktok-ext") return;
+      if (data.type === "PROGRESS" && data.event) {
+        setLocalScrape((prev) =>
+          prev ? { ...prev, events: [...prev.events, data.event] } : prev
+        );
+        if (data.event.kind === "done" && typeof data.event.found === "number") {
+          setLocalScrape((prev) =>
+            prev ? { ...prev, capturedHandles: prev.capturedHandles + data.event.found } : prev
+          );
+        }
+      }
+    };
+    window.addEventListener("message", onProgress);
+
+    const result: { ok: boolean; handles: string[]; error?: string } = await new Promise((resolve) => {
+      const handler = (event: MessageEvent) => {
+        if (event.source !== window) return;
+        const data: any = event.data;
+        if (!data || data.source !== "lunalive-tiktok-ext") return;
+        if (data.type === "DISCOVER_RESULT" && data.requestId === requestId) {
+          window.removeEventListener("message", handler);
+          resolve({ ok: !!data.ok, handles: data.handles || [], error: data.error });
+        }
+      };
+      window.addEventListener("message", handler);
+      window.postMessage(
+        {
+          source: "lunalive-tiktok-page",
+          type: "DISCOVER",
+          requestId,
+          payload: {
+            hashtags: discHashtags,
+            queries: [],
+            limit: discMaxProfiles * 4,
+          },
+        },
+        window.location.origin
+      );
+      setTimeout(() => {
+        window.removeEventListener("message", handler);
+        resolve({ ok: false, handles: [], error: "extension_timeout" });
+      }, 240_000);
+    });
+
+    window.removeEventListener("message", onProgress);
+
+    if (!result.ok) {
+      setLocalScrape((prev) => (prev ? { ...prev, running: false } : prev));
+      setDiscError(`Extension: ${result.error || "no_response"}`);
+      return;
+    }
+
+    result.handles.forEach((h) => allHandles.add(h));
+    setLocalScrape((prev) => (prev ? { ...prev, capturedHandles: allHandles.size } : prev));
+
+    if (allHandles.size === 0) {
+      setLocalScrape((prev) => (prev ? { ...prev, running: false } : prev));
+      setDiscError("Aucun créateur capturé sur les pages scannées");
+      return;
+    }
+
+    // Send captured handles to backend in batches of 50 for profile scan + filtering
+    const handlesArray = Array.from(allHandles).slice(0, discMaxProfiles);
+    const chunks: string[][] = [];
+    for (let i = 0; i < handlesArray.length; i += 30) chunks.push(handlesArray.slice(i, i + 30));
+
+    let totalScanned = 0;
+    let totalWithEmail = 0;
+    let totalKept = 0;
+
+    for (const chunk of chunks) {
+      try {
+        const r = await importTikTokBulk(chunk, `extension:${discHashtags.join(",")}`);
+        totalScanned += r.scanned;
+        totalWithEmail += r.withEmail;
+        // "kept" = scanned that pass the user's filters
+        const keptInChunk = r.results.filter((res) => {
+          if (discRequireEmail && !res.email) return false;
+          return res.status === "new";
+        }).length;
+        totalKept += keptInChunk;
+        setLocalScrape((prev) =>
+          prev
+            ? {
+                ...prev,
+                importedScanned: totalScanned,
+                importedWithEmail: totalWithEmail,
+                importedKept: totalKept,
+              }
+            : prev
+        );
+      } catch (err: any) {
+        setDiscError(`Import: ${err?.message || err}`);
+      }
+    }
+
+    setLocalScrape((prev) => (prev ? { ...prev, running: false } : prev));
+    await reload(filter);
+  };
+
   const launchDiscovery = async () => {
     if (discHashtags.length === 0) {
       setDiscError("Ajoute au moins un hashtag");
+      return;
+    }
+    if (extensionVersion) {
+      // Local scraping via browser extension
+      await launchDiscoveryViaExtension();
       return;
     }
     setDiscError(null);
@@ -621,6 +782,45 @@ export function FsbTikTokOutreachSection() {
               les profils correspondants à la liste.
             </p>
           </div>
+          {extensionVersion ? (
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "6px 12px",
+                borderRadius: 999,
+                background: "rgba(16,185,129,.12)",
+                border: "1px solid rgba(16,185,129,.32)",
+                color: "#34d399",
+                fontSize: 12,
+                fontWeight: 800,
+                letterSpacing: ".02em",
+              }}
+              title={`Extension v${extensionVersion} active — la récolte tournera dans ton navigateur`}
+            >
+              🟢 Extension active (v{extensionVersion}) — scrape local
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "6px 12px",
+                borderRadius: 999,
+                background: "rgba(245,158,11,.1)",
+                border: "1px solid rgba(245,158,11,.28)",
+                color: "#fbbf24",
+                fontSize: 12,
+                fontWeight: 800,
+                letterSpacing: ".02em",
+              }}
+              title="Sans extension, le serveur scrape (souvent bloqué par TikTok)"
+            >
+              ⚠ Extension non installée — scrape serveur (instable)
+            </div>
+          )}
         </div>
 
         <div className="tk-disc-grid">
@@ -735,6 +935,94 @@ export function FsbTikTokOutreachSection() {
         </div>
 
         {discError ? <div className="fsb-alert" style={{ marginTop: 12 }}>{discError}</div> : null}
+
+        {!extensionVersion ? (
+          <details style={{ marginTop: 12 }}>
+            <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>
+              📦 Comment installer l'extension navigateur (recommandé)
+            </summary>
+            <div style={{ marginTop: 8, padding: 14, borderRadius: 12, background: "rgba(255,255,255,.025)", border: "1px solid var(--bd)", fontSize: 12.5, lineHeight: 1.6, color: "var(--muted)" }}>
+              <div style={{ color: "var(--text)", fontWeight: 700, marginBottom: 6 }}>
+                Pourquoi ? TikTok bloque le scraping serveur. Avec l'extension, c'est ton navigateur (IP résidentielle, session active) qui scrape — TikTok te sert le vrai contenu.
+              </div>
+              <ol style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                <li>Récupère le dossier <code>extension/tiktok-discoverer/</code> du repo LunaLive</li>
+                <li>Ouvre <code>chrome://extensions</code> dans Chrome / Edge / Brave</li>
+                <li>Active <strong>Mode développeur</strong> (toggle haut-droite)</li>
+                <li>Clique <strong>Charger l'extension non empaquetée</strong> et sélectionne le dossier</li>
+                <li>Recharge cette page — le badge passera à <strong>🟢 Extension active</strong></li>
+              </ol>
+            </div>
+          </details>
+        ) : null}
+
+        {localScrape ? (
+          <div className="tk-progress" style={{ marginTop: 12 }}>
+            <div className="tk-progress-head">
+              <div>
+                <span
+                  className={`tk-run-status ${localScrape.running ? "tk-run-running" : "tk-run-done"}`}
+                  style={{ marginRight: 8 }}
+                >
+                  {localScrape.running ? "Scrape navigateur en cours" : "Scrape navigateur terminé"}
+                </span>
+              </div>
+            </div>
+            <div className="tk-progress-stats">
+              <div className="tk-progress-stat">
+                <strong>{localScrape.capturedHandles}</strong>capturés
+              </div>
+              <div className="tk-progress-stat">
+                <strong>{localScrape.importedScanned}</strong>scannés
+              </div>
+              <div className="tk-progress-stat">
+                <strong style={{ color: "#34d399" }}>{localScrape.importedWithEmail}</strong>avec email
+              </div>
+              <div className="tk-progress-stat">
+                <strong style={{ color: "#34d399" }}>{localScrape.importedKept}</strong>ajoutés
+              </div>
+            </div>
+            {localScrape.events.length > 0 ? (
+              <details style={{ marginTop: 12 }}>
+                <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>
+                  📋 Détails par hashtag ({localScrape.events.length})
+                </summary>
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "10px 12px",
+                    background: "rgba(0,0,0,.25)",
+                    borderRadius: 10,
+                    fontFamily: "ui-monospace, Menlo, Consolas, monospace",
+                    fontSize: 11,
+                    lineHeight: 1.5,
+                    maxHeight: 220,
+                    overflow: "auto",
+                    border: "1px solid var(--bd)",
+                  }}
+                >
+                  {localScrape.events.map((event, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        color:
+                          event.kind === "error"
+                            ? "#fc8181"
+                            : event.kind === "done" && event.found
+                            ? "#34d399"
+                            : "var(--muted)",
+                      }}
+                    >
+                      {event.source} → {event.kind}
+                      {event.found != null ? ` · ${event.found} trouvés` : ""}
+                      {event.error ? ` · ${event.error}` : ""}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
 
         {activeRun ? (
           <div className="tk-progress">

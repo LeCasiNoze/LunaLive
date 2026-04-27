@@ -228,3 +228,26 @@ export function clearRuns() {
     method: "POST",
   });
 }
+
+export type TikTokImportResult = {
+  handle: string;
+  status: string;
+  email: string | null;
+};
+
+export type TikTokImportBulkResponse = {
+  ok: true;
+  received: number;
+  alreadyKnown: number;
+  scanned: number;
+  withEmail: number;
+  failed: number;
+  results: TikTokImportResult[];
+};
+
+export function importTikTokBulk(handles: string[], source?: string) {
+  return request<TikTokImportBulkResponse>(`/api/fsb/tiktok/import-bulk`, {
+    method: "POST",
+    body: JSON.stringify({ handles, source }),
+  });
+}

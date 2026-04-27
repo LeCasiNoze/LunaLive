@@ -1049,6 +1049,76 @@ tiktokOutreachRouter.get(
   })
 );
 
+// ─── Bulk import (used by browser bookmarklet) ────────────────────────────
+
+const importBulkSchema = z.object({
+  handles: z.array(z.string().trim().min(1).max(40)).min(1).max(100),
+  source: z.string().trim().max(300).optional(),
+});
+
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/import-bulk",
+  a(async (req, res) => {
+    const parsed = importBulkSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "invalid_input" });
+    }
+
+    const cleaned = Array.from(
+      new Set(
+        parsed.data.handles
+          .map((h) => normalizeHandle(h))
+          .filter((h): h is string => !!h)
+      )
+    );
+    if (cleaned.length === 0) {
+      return res.status(400).json({ ok: false, error: "no_valid_handles" });
+    }
+
+    const known = await pool.query(
+      `SELECT handle FROM tiktok_influencers WHERE handle = ANY($1::text[])`,
+      [cleaned]
+    );
+    const knownSet = new Set(known.rows.map((r: any) => String(r.handle)));
+    const fresh = cleaned.filter((h) => !knownSet.has(h));
+
+    let scanned = 0;
+    let withEmail = 0;
+    let failed = 0;
+    const results: Array<{ handle: string; status: string; email: string | null }> = [];
+
+    for (const handle of fresh) {
+      const profile = await scrapeTikTokProfile(handle);
+      scanned += 1;
+      if (!profile) {
+        failed += 1;
+        results.push({ handle, status: "unreachable", email: null });
+        continue;
+      }
+      const upserted = await upsertScrapedProfile(profile);
+      if (profile.email) withEmail += 1;
+      results.push({
+        handle,
+        status: profile.email ? "new" : "no_email",
+        email: profile.email,
+      });
+      void upserted;
+      // light throttle
+      await sleep(500);
+    }
+
+    return res.json({
+      ok: true,
+      received: cleaned.length,
+      alreadyKnown: knownSet.size,
+      scanned,
+      withEmail,
+      failed,
+      results,
+    });
+  })
+);
+
 tiktokOutreachRouter.delete(
   "/fsb/tiktok/runs/:id",
   a(async (req, res) => {

@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "LunaLive — TikTok Discoverer",
+  "version": "1.0.0",
+  "description": "Récolte automatique d'influenceurs TikTok depuis le FSB Board LunaLive (utilise ton navigateur connecté).",
+  "permissions": ["tabs", "storage", "scripting"],
+  "host_permissions": [
+    "https://www.tiktok.com/*",
+    "https://lunalive.win/*",
+    "https://*.lunalive.win/*",
+    "http://localhost:*/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.tiktok.com/tag/*",
+        "https://www.tiktok.com/search/user*",
+        "https://www.tiktok.com/search?*",
+        "https://www.tiktok.com/@*"
+      ],
+      "js": ["content_tiktok.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://lunalive.win/*",
+        "https://*.lunalive.win/*",
+        "http://localhost:*/*"
+      ],
+      "js": ["content_lunalive.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_title": "LunaLive TikTok Discoverer"
+  }
+}
