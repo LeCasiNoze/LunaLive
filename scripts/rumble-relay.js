@@ -268,6 +268,113 @@ async function tick() {
   }
 }
 
-// Premier tick immédiat puis intervalle régulier
+// ──────────────────────────────────────────────────────────────────
+// SEND QUEUE — exécute les messages bot mis en queue par Render.
+// Render IP est blacklist par Rumble pour les sends, on relay depuis IP perso.
+// ──────────────────────────────────────────────────────────────────
+
+import { pathToFileURL } from "url";
+import { resolve as pathResolve } from "path";
+import pgPkg from "pg";
+
+let cycleTlsClient = null;
+async function getCycleTLS() {
+  if (cycleTlsClient) return cycleTlsClient;
+  const cyclePath = pathToFileURL(pathResolve(root, "api/node_modules/cycletls/dist/index.js")).href;
+  const mod = await import(cyclePath).catch(() => import("cycletls"));
+  const initCycleTLS = mod.default || mod;
+  cycleTlsClient = await initCycleTLS();
+  return cycleTlsClient;
+}
+
+const CHROME_JA3 = "772,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0";
+
+// Cookies LunaLive_Bot lus depuis la DB (push via /admin/rumble/bot)
+let cachedCookie = null;
+let cookieFetchedAt = 0;
+async function getBotCookie() {
+  // Refresh toutes les 60s pour suivre les rotations
+  if (cachedCookie && Date.now() - cookieFetchedAt < 60_000) return cachedCookie;
+  try {
+    const { Pool } = pgPkg;
+    const dbPool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+    const r = await dbPool.query("SELECT cookie, user_agent FROM rumble_bot_session WHERE id=1");
+    await dbPool.end();
+    const row = r.rows?.[0];
+    if (row?.cookie) {
+      cachedCookie = { cookie: row.cookie, userAgent: row.user_agent || UA };
+      cookieFetchedAt = Date.now();
+      return cachedCookie;
+    }
+  } catch (e) {
+    console.warn("[relay-queue] cookie fetch failed", e?.message || e);
+  }
+  return null;
+}
+
+async function sendOneViaCycletls(vid, text) {
+  const session = await getBotCookie();
+  if (!session) return { ok: false, error: "no_cookie" };
+  const cycle = await getCycleTLS();
+  const reqId = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64").slice(0, 43);
+  const body = JSON.stringify({
+    data: { request_id: reqId, message: { text }, rant: null, channel_id: null },
+  });
+  try {
+    const r = await cycle(`https://web7.rumble.com/chat/api/chat/${encodeURIComponent(vid)}/message`, {
+      body, ja3: CHROME_JA3, userAgent: session.userAgent,
+      headers: {
+        cookie: session.cookie,
+        "content-type": "application/json",
+        accept: "*/*",
+        "accept-language": "fr-FR,fr;q=0.9",
+        origin: "https://rumble.com",
+        referer: "https://rumble.com/",
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-site",
+      },
+    }, "post");
+    const status = Number(r?.status || 0);
+    if (status >= 200 && status < 300) return { ok: true };
+    return { ok: false, error: `http_${status}` };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e).slice(0, 200) };
+  }
+}
+
+async function sendQueueTick() {
+  try {
+    const r = await fetch(`${API_BASE}/admin/rumble/send-queue?limit=10`, {
+      headers: { "x-admin-key": ADMIN_KEY },
+    });
+    if (!r.ok) return;
+    const j = await r.json();
+    const items = j.items || [];
+    if (items.length === 0) return;
+    console.log(`[relay-queue] ${items.length} message(s) à envoyer`);
+    for (const item of items) {
+      const result = await sendOneViaCycletls(item.video_id_numeric, item.text);
+      const label = result.ok ? "OK" : `ERR=${result.error}`;
+      console.log(`[relay-queue]   id=${item.id} vid=${item.video_id_numeric} → ${label}`);
+      await fetch(`${API_BASE}/admin/rumble/send-queue/${item.id}/result`, {
+        method: "POST",
+        headers: {
+          "x-admin-key": ADMIN_KEY,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ ok: result.ok, error: result.error }),
+      }).catch(() => {});
+    }
+  } catch (e) {
+    console.warn("[relay-queue] tick error", e?.message || e);
+  }
+}
+
+// Premier tick immédiat puis intervalle régulier (slug discovery)
 void tick();
 setInterval(() => void tick(), POLL_INTERVAL_MS);
+
+// Send queue: poll plus rapide (5s) pour latence faible des bot replies
+void sendQueueTick();
+setInterval(() => void sendQueueTick(), 5_000);

@@ -110,8 +110,10 @@ async function sendBotChat(
 }
 
 /**
- * Si le streamer est en live sur Rumble, relaie le message du bot Luna
- * vers le chat Rumble via le compte LunaLive_Bot. Fire-and-forget.
+ * Si le streamer est en live sur Rumble, queue le message pour envoi via le
+ * relay local (cycletls direct depuis Render = bloqué par CF/Rumble en 2026).
+ * Le relay polle la queue toutes les ~5s et envoie via cycletls depuis l'IP
+ * résidentielle (où les cookies cf_clearance sont valides).
  */
 async function mirrorBotMessageToRumble(pool: Pool, streamerId: number, text: string) {
   try {
@@ -129,8 +131,10 @@ async function mirrorBotMessageToRumble(pool: Pool, streamerId: number, text: st
     const vid = row.live_video_id_numeric ? String(row.live_video_id_numeric) : null;
     if (!vid) return;
 
-    const { sendRumbleMessage } = await import("../rumble_chat_bridge.js");
-    await sendRumbleMessage(vid, text);
+    await pool.query(
+      `INSERT INTO rumble_send_queue (video_id_numeric, text) VALUES ($1, $2)`,
+      [vid, String(text || "").slice(0, 200)]
+    );
   } catch (e: any) {
     console.warn("[calls] mirrorBotMessageToRumble error", e?.message || e);
   }

@@ -199,6 +199,7 @@ internalBotRouter.post(
 );
 
 async function mirrorBotMessageToRumble(streamerId: number, text: string) {
+  // Queue → relay local. Render IP est blacklist par Rumble pour les sends.
   try {
     const r = await pool.query(
       `SELECT s.platform, ri.is_live, ri.live_video_id_numeric
@@ -213,8 +214,10 @@ async function mirrorBotMessageToRumble(streamerId: number, text: string) {
     if (!row.is_live) return;
     const vid = row.live_video_id_numeric ? String(row.live_video_id_numeric) : null;
     if (!vid) return;
-    const { sendRumbleMessage } = await import("../rumble_chat_bridge.js");
-    await sendRumbleMessage(vid, text);
+    await pool.query(
+      `INSERT INTO rumble_send_queue (video_id_numeric, text) VALUES ($1, $2)`,
+      [vid, String(text || "").slice(0, 200)]
+    );
   } catch (e: any) {
     console.warn("[internal_bot] mirrorBotMessageToRumble error", e?.message || e);
   }

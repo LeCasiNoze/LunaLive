@@ -92,6 +92,63 @@ adminRumbleRouter.get("/admin/rumble/status", requireAdminKey, async (req, res) 
 });
 
 /**
+ * GET /admin/rumble/send-queue?limit=10
+ * Retourne les messages en attente d'envoi (pour le relay local qui les
+ * exécutera via cycletls depuis l'IP résidentielle où cookies sont valides).
+ */
+adminRumbleRouter.get("/admin/rumble/send-queue", requireAdminKey, async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(50, Number((req.query as any)?.limit) || 10));
+    const r = await pool.query(
+      `SELECT id, video_id_numeric, text, attempts, created_at
+       FROM rumble_send_queue
+       WHERE status = 'pending'
+       ORDER BY created_at ASC
+       LIMIT $1`,
+      [limit]
+    );
+    return res.json({ ok: true, items: r.rows });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+  }
+});
+
+/**
+ * POST /admin/rumble/send-queue/:id/result
+ * Body: { ok: boolean, error?: string }
+ * Marque un message comme done ou failed.
+ */
+adminRumbleRouter.post("/admin/rumble/send-queue/:id/result", requireAdminKey, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
+    const { ok, error } = req.body ?? {};
+    if (ok === true) {
+      await pool.query(
+        `UPDATE rumble_send_queue
+         SET status = 'done', attempted_at = NOW(), completed_at = NOW(), attempts = attempts + 1
+         WHERE id = $1`,
+        [id]
+      );
+    } else {
+      // Garde en pending si <3 attempts pour retry, sinon failed
+      await pool.query(
+        `UPDATE rumble_send_queue
+         SET attempts = attempts + 1,
+             attempted_at = NOW(),
+             last_error = $2,
+             status = CASE WHEN attempts >= 2 THEN 'failed' ELSE 'pending' END
+         WHERE id = $1`,
+        [id, String(error || "send_failed").slice(0, 500)]
+      );
+    }
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+  }
+});
+
+/**
  * GET /admin/rumble/bot
  * Inspecte la session bot Rumble (sans révéler le cookie).
  */
