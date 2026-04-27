@@ -52,6 +52,50 @@ type ScrapedProfile = {
   raw: any;
 };
 
+async function scrapeProfileViaWorker(handle: string): Promise<ScrapedProfile | null> {
+  const worker = getDiscoveryWorker();
+  if (!worker) return null;
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 40_000);
+  try {
+    const res = await fetch(`${worker.url}/profile`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "x-tiktok-discovery-token": worker.token,
+      },
+      body: JSON.stringify({ handle }),
+    });
+    if (!res.ok) return null;
+    const data: any = await res.json().catch(() => null);
+    const u = data?.profile?.user;
+    if (!u || !u.uniqueId) return null;
+    const s = data?.profile?.stats || {};
+    const bio = String(u.signature || "");
+    const bioEmail = extractEmailFromText(bio);
+    const directEmail = String(u.bioEmail || "").trim().toLowerCase();
+    return {
+      handle,
+      displayName: String(u.nickname || u.uniqueId || "") || null,
+      bio: bio || null,
+      email: bioEmail || directEmail || null,
+      followerCount: Number(s.followerCount ?? 0) || null,
+      followingCount: Number(s.followingCount ?? 0) || null,
+      heartCount: Number(s.heartCount ?? 0) || null,
+      videoCount: Number(s.videoCount ?? 0) || null,
+      verified: Boolean(u.verified),
+      country: String(u.region || "") || null,
+      avatarUrl: String(u.avatarLarger || "") || null,
+      raw: { source: "worker", user: u, stats: s },
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 async function scrapeTikTokProfile(handle: string): Promise<ScrapedProfile | null> {
   const url = `https://www.tiktok.com/@${handle}`;
   const controller = new AbortController();
@@ -104,7 +148,10 @@ async function scrapeTikTokProfile(handle: string): Promise<ScrapedProfile | nul
     }
 
     if (!userInfo?.user) {
-      // Fallback: regex an email anywhere in HTML (signature often appears)
+      // Fallback 1: try CF Worker (Browser Rendering) if configured
+      const viaWorker = await scrapeProfileViaWorker(handle);
+      if (viaWorker) return viaWorker;
+      // Fallback 2: regex an email anywhere in HTML (signature often appears)
       const fallbackEmail = extractEmailFromText(html);
       if (!fallbackEmail) return null;
       return {
@@ -147,7 +194,7 @@ async function scrapeTikTokProfile(handle: string): Promise<ScrapedProfile | nul
       raw: { user: u, stats: s },
     };
   } catch {
-    return null;
+    return await scrapeProfileViaWorker(handle);
   } finally {
     clearTimeout(t);
   }
@@ -483,6 +530,50 @@ type ScrapeDiag = {
   blocked: boolean;
 };
 
+function getDiscoveryWorker(): { url: string; token: string } | null {
+  const url = String(process.env.TIKTOK_DISCOVERY_WORKER_URL || "").trim().replace(/\/+$/, "");
+  const token = String(process.env.TIKTOK_DISCOVERY_WORKER_TOKEN || "").trim();
+  if (!url || !token) return null;
+  return { url, token };
+}
+
+async function callDiscoveryWorker(
+  path: "/hashtag" | "/search",
+  body: Record<string, unknown>
+): Promise<{ authors: string[]; diag: any }> {
+  const worker = getDiscoveryWorker();
+  if (!worker) return { authors: [], diag: { error: "worker_not_configured" } };
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 45_000);
+  try {
+    const res = await fetch(`${worker.url}${path}`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "x-tiktok-discovery-token": worker.token,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { authors: [], diag: { error: `worker_${res.status}`, detail: text.slice(0, 200) } };
+    }
+    const data: any = await res.json().catch(() => null);
+    if (!data || data.ok !== true) {
+      return { authors: [], diag: { error: "worker_invalid_response" } };
+    }
+    return {
+      authors: Array.isArray(data.authors) ? data.authors : [],
+      diag: data.diag || {},
+    };
+  } catch (err: any) {
+    return { authors: [], diag: { error: String(err?.message || err) } };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 async function fetchTikTokPage(url: string): Promise<{ status: number; html: string }> {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 15_000);
@@ -717,54 +808,86 @@ async function executeDiscoveryRun(runId: number, criteria: DiscoverCriteria): P
   let dropped = 0;
   let scanned = 0;
 
+  const worker = getDiscoveryWorker();
+  if (worker) {
+    log.push({ reason: `using_browser_worker:${worker.url}` });
+  } else {
+    log.push({ reason: "worker_not_configured_using_html_fallback" });
+  }
+
+  async function collectFromHashtag(tag: string) {
+    if (worker) {
+      const r = await callDiscoveryWorker("/hashtag", { hashtag: tag, limit: 50 });
+      const d = r.diag || {};
+      return {
+        authors: r.authors,
+        summary: `worker status=${d.status ?? "?"} selector=${d.selectorFound ? 1 : 0} found=${d.handlesFound ?? 0}${d.error ? ` err=${d.error}` : ""}`,
+      };
+    }
+    const r = await scrapeHashtagAuthors(tag, 60);
+    const diag = r.diag;
+    return {
+      authors: r.authors,
+      summary: `html status=${diag.status} html=${diag.htmlLength} udata=${diag.hasUniversalData ? 1 : 0} items=${diag.itemListCount} fallback=${diag.fallbackUsed ? 1 : 0} blocked=${diag.blocked ? 1 : 0}`,
+    };
+  }
+
+  async function collectFromSearch(query: string) {
+    if (worker) {
+      const r = await callDiscoveryWorker("/search", { query, limit: 30 });
+      const d = r.diag || {};
+      return {
+        authors: r.authors,
+        summary: `worker status=${d.status ?? "?"} found=${d.handlesFound ?? 0}${d.error ? ` err=${d.error}` : ""}`,
+      };
+    }
+    const r = await scrapeUserSearchAuthors(query, 30);
+    const diag = r.diag;
+    return {
+      authors: r.authors,
+      summary: `html status=${diag.status} html=${diag.htmlLength} blocked=${diag.blocked ? 1 : 0}`,
+    };
+  }
+
   // 1) Collect candidates from hashtags
   for (const tag of criteria.hashtags) {
-    const { authors, diag } = await scrapeHashtagAuthors(tag, 60);
-    const diagSummary = `status=${diag.status} html=${diag.htmlLength} udata=${diag.hasUniversalData ? 1 : 0} sigi=${diag.hasSigi ? 1 : 0} items=${diag.itemListCount} fallback=${diag.fallbackUsed ? 1 : 0} blocked=${diag.blocked ? 1 : 0} keys=[${(diag.scopeKeys || []).slice(0, 6).join(",")}]`;
-    if (authors.length === 0) {
-      log.push({
-        tag,
-        reason: diag.blocked
-          ? `hashtag_blocked (${diagSummary})`
-          : `hashtag_empty (${diagSummary})`,
-      });
-    } else {
-      log.push({ tag, reason: `hashtag_found_${authors.length} (${diagSummary})` });
-    }
+    const { authors, summary } = await collectFromHashtag(tag);
+    log.push({
+      tag,
+      reason: authors.length === 0 ? `hashtag_empty (${summary})` : `hashtag_found_${authors.length} (${summary})`,
+    });
     authors.forEach((h) => candidates.add(h));
     await pool.query(
       `UPDATE tiktok_outreach_runs SET candidates_count = $2, log = $3::jsonb, message = $4 WHERE id = $1`,
       [runId, candidates.size, JSON.stringify(log), `Collecte: hashtag #${tag}`]
     );
     if (candidates.size >= criteria.maxProfiles * 4) break;
-    await sleep(900);
+    await sleep(700);
   }
 
   for (const query of criteria.searchQueries || []) {
-    const { authors, diag } = await scrapeUserSearchAuthors(query, 30);
-    const diagSummary = `status=${diag.status} html=${diag.htmlLength} udata=${diag.hasUniversalData ? 1 : 0} blocked=${diag.blocked ? 1 : 0}`;
-    log.push({ query, reason: `search_found_${authors.length} (${diagSummary})` });
+    const { authors, summary } = await collectFromSearch(query);
+    log.push({ query, reason: `search_found_${authors.length} (${summary})` });
     authors.forEach((h) => candidates.add(h));
     await pool.query(
       `UPDATE tiktok_outreach_runs SET candidates_count = $2, log = $3::jsonb, message = $4 WHERE id = $1`,
       [runId, candidates.size, JSON.stringify(log), `Collecte: recherche "${query}"`]
     );
-    await sleep(900);
+    await sleep(700);
   }
 
   // 1b) Auto-fallback: if no candidates, try user search with each hashtag as query
   if (candidates.size === 0 && criteria.hashtags.length > 0) {
     log.push({ reason: "auto_fallback_to_user_search" });
     for (const tag of criteria.hashtags) {
-      const { authors, diag } = await scrapeUserSearchAuthors(tag, 20);
-      const diagSummary = `status=${diag.status} html=${diag.htmlLength} blocked=${diag.blocked ? 1 : 0}`;
-      log.push({ query: tag, reason: `fallback_search_${authors.length} (${diagSummary})` });
+      const { authors, summary } = await collectFromSearch(tag);
+      log.push({ query: tag, reason: `fallback_search_${authors.length} (${summary})` });
       authors.forEach((h) => candidates.add(h));
       await pool.query(
         `UPDATE tiktok_outreach_runs SET candidates_count = $2, log = $3::jsonb, message = $4 WHERE id = $1`,
         [runId, candidates.size, JSON.stringify(log), `Fallback search: ${tag}`]
       );
-      await sleep(900);
+      await sleep(700);
     }
   }
 
@@ -923,6 +1046,26 @@ tiktokOutreachRouter.get(
     const result = await pool.query(`SELECT * FROM tiktok_outreach_runs WHERE id = $1`, [id]);
     if (!result.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
     return res.json({ ok: true, run: mapRun(result.rows[0]) });
+  })
+);
+
+tiktokOutreachRouter.delete(
+  "/fsb/tiktok/runs/:id",
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    await pool.query(`DELETE FROM tiktok_outreach_runs WHERE id = $1 AND status != 'running'`, [id]);
+    return res.json({ ok: true, id: String(id) });
+  })
+);
+
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/runs/clear",
+  a(async (_req, res) => {
+    const result = await pool.query(`DELETE FROM tiktok_outreach_runs WHERE status != 'running'`);
+    return res.json({ ok: true, deleted: result.rowCount || 0 });
   })
 );
 

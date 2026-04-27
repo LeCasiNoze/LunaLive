@@ -216,3 +216,15 @@ export function cancelRun(id: string) {
     method: "POST",
   });
 }
+
+export function deleteRun(id: string) {
+  return request<{ ok: true; id: string }>(`/api/fsb/tiktok/runs/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+export function clearRuns() {
+  return request<{ ok: true; deleted: number }>(`/api/fsb/tiktok/runs/clear`, {
+    method: "POST",
+  });
+}

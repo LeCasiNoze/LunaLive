@@ -1,7 +1,9 @@
 import * as React from "react";
 import {
   cancelRun,
+  clearRuns,
   contactTikTokInfluencer,
+  deleteRun,
   deleteTikTokInfluencer,
   getActiveRun,
   getRun,
@@ -830,33 +832,71 @@ export function FsbTikTokOutreachSection() {
         ) : null}
 
         {pastRuns.length > 0 ? (
-          <div className="tk-runs">
-            {pastRuns
-              .filter((r) => !activeRun || r.id !== activeRun.id)
-              .slice(0, 6)
-              .map((run) => (
-                <div key={run.id} className="tk-run">
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>
-                      {(run.criteria?.hashtags || []).map((h) => `#${h}`).join(" · ") || "—"}
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, gap: 8 }}>
+              <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em" }}>
+                Historique des runs
+              </div>
+              <button
+                className="fsb-btn"
+                style={{ padding: "6px 12px", fontSize: 12 }}
+                onClick={async () => {
+                  if (!window.confirm("Effacer tout l'historique des runs ? (les runs en cours sont préservés)")) return;
+                  try {
+                    await clearRuns();
+                    await reloadRuns();
+                  } catch (err: any) {
+                    window.alert(`Erreur: ${err?.message || err}`);
+                  }
+                }}
+              >
+                🗑 Tout effacer
+              </button>
+            </div>
+            <div className="tk-runs">
+              {pastRuns
+                .filter((r) => !activeRun || r.id !== activeRun.id)
+                .map((run) => (
+                  <div key={run.id} className="tk-run">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>
+                        {(run.criteria?.hashtags || []).map((h) => `#${h}`).join(" · ") || "—"}
+                      </div>
+                      <div className="tk-run-meta">
+                        {fmtRelative(run.startedAt)} · {run.keptCount} gardé(s) /{" "}
+                        {run.scannedCount} scanné(s) · {run.candidatesCount} candidat(s)
+                      </div>
                     </div>
-                    <div className="tk-run-meta">
-                      {fmtRelative(run.startedAt)} · {run.keptCount} gardé(s) /
-                      {run.scannedCount} scanné(s)
-                    </div>
+                    <span className={`tk-run-status tk-run-${run.status}`}>
+                      {run.status === "done"
+                        ? "Terminé"
+                        : run.status === "running"
+                        ? "En cours"
+                        : run.status === "error"
+                        ? "Erreur"
+                        : "Annulé"}
+                    </span>
+                    {run.status !== "running" ? (
+                      <button
+                        className="fsb-btn"
+                        style={{ padding: "6px 10px", fontSize: 12 }}
+                        title="Supprimer ce run"
+                        onClick={async () => {
+                          try {
+                            await deleteRun(run.id);
+                            await reloadRuns();
+                          } catch (err: any) {
+                            window.alert(`Erreur: ${err?.message || err}`);
+                          }
+                        }}
+                      >
+                        🗑
+                      </button>
+                    ) : null}
                   </div>
-                  <span className={`tk-run-status tk-run-${run.status}`}>
-                    {run.status === "done"
-                      ? "Terminé"
-                      : run.status === "running"
-                      ? "En cours"
-                      : run.status === "error"
-                      ? "Erreur"
-                      : "Annulé"}
-                  </span>
-                </div>
-              ))}
-          </div>
+                ))}
+            </div>
+          </>
         ) : null}
       </div>
 
