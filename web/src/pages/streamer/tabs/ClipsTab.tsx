@@ -190,7 +190,19 @@ function ClipModal({ clip, token, isOwner, busy, onRequireLogin, onClose, onTogg
   }, [clipId, clipUrl, vodUrl, seekToStr]);
 
   return (
-    <div className="chatSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex:80 }}>
+    <div
+      className="chatSheetBackdrop"
+      onClick={onClose}
+      role="presentation"
+      // Désactive le backdrop-filter blur qui tue les perfs GPU quand un live
+      // joue derrière (le browser blur chaque frame du live à 60fps + le clip).
+      style={{
+        zIndex: 80,
+        backdropFilter: "none",
+        WebkitBackdropFilter: "none",
+        background: "rgba(0,0,0,.85)",
+      }}
+    >
       <div className="chatSheet" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth:980 }}>
         <div className="chatSheetTop" style={{ gap:10 }}>
           <div style={{ fontWeight:800, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontFamily:"'Syne',system-ui,sans-serif" }}>{clip.title || "Clip"}</div>
