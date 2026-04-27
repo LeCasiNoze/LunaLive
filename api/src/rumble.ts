@@ -467,10 +467,11 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
   }
 }
 
-/** Récupère l'info Rumble pour un streamer donné (via son compte assigné). */
+/** Récupère l'info Rumble pour un streamer donné. Essaie d'abord le path
+ *  api_key (rumble_accounts), puis le pseudo-only (streamers.rumble_username). */
 export async function fetchRumbleInfoForStreamerSlug(slug: string): Promise<RumbleLiveInfo> {
   const streamerResult = await pool.query(
-    `SELECT id FROM streamers WHERE lower(slug) = lower($1) LIMIT 1`,
+    `SELECT id, rumble_username FROM streamers WHERE lower(slug) = lower($1) LIMIT 1`,
     [slug]
   );
 
@@ -479,13 +480,20 @@ export async function fetchRumbleInfoForStreamerSlug(slug: string): Promise<Rumb
     return offlineInfo(slug);
   }
 
-  const streamerId = streamerResult.rows[0].id;
-  const { username, apiKey } = await getRumbleAccountForStreamer(streamerId);
+  const streamerId = Number(streamerResult.rows[0].id);
+  const pseudoUsername: string | null = streamerResult.rows[0].rumble_username || null;
 
-  if (!apiKey || !username) {
-    console.error(`[rumble] No Rumble account configured for ${slug}`);
-    return offlineInfo(slug);
+  // 1. api_key path
+  const { username, apiKey } = await getRumbleAccountForStreamer(streamerId);
+  if (apiKey && username) {
+    return await fetchRumbleLiveInfo(username, apiKey);
   }
 
-  return await fetchRumbleLiveInfo(username, apiKey);
+  // 2. pseudo-only path
+  if (pseudoUsername) {
+    return await fetchRumbleLiveInfoFromUsername(pseudoUsername, streamerId);
+  }
+
+  console.error(`[rumble] No Rumble account/pseudo configured for ${slug}`);
+  return offlineInfo(slug);
 }
