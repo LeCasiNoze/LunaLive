@@ -120,6 +120,82 @@ export default {
       });
     }
 
+    // ────────────────────────────────────────────────────────
+    // /rumble-live?user=X → resolve current live slug
+    // CF Worker → CF Rumble = pas de 403 anti-bot.
+    // Permet à Render de découvrir le slug du live courant sans relay local.
+    // ────────────────────────────────────────────────────────
+    if (url.pathname === "/rumble-live") {
+      const raw = (url.searchParams.get("user") || "").trim();
+      if (!raw || !/^[A-Za-z0-9_-]{1,64}$/.test(raw)) {
+        return new Response(JSON.stringify({ ok: false, error: "bad_user" }), {
+          status: 400,
+          headers: withCors(new Headers({ "content-type": "application/json" }))
+        });
+      }
+      const isChannelId = /^c-\d+$/i.test(raw);
+      const paths = isChannelId
+        ? [`/c/${encodeURIComponent(raw)}/live`, `/user/${encodeURIComponent(raw)}/live`]
+        : [`/user/${encodeURIComponent(raw)}/live`, `/c/${encodeURIComponent(raw)}/live`];
+
+      const browserUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+      const browserHeaders: Record<string, string> = {
+        "user-agent": browserUa,
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "accept-language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "accept-encoding": "gzip, deflate, br",
+        "sec-ch-ua": '"Chromium";v="124", "Not.A/Brand";v="24", "Google Chrome";v="124"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "none",
+        "sec-fetch-user": "?1",
+        "upgrade-insecure-requests": "1",
+        "cache-control": "no-cache",
+        "pragma": "no-cache",
+      };
+      let foundSlug: string | null = null;
+      let foundPath: string | null = null;
+      let lastStatus = 0;
+
+      for (const p of paths) {
+        try {
+          const r = await fetch(`https://rumble.com${p}`, {
+            method: "GET",
+            headers: browserHeaders,
+            redirect: "follow",
+          });
+          lastStatus = r.status;
+          if (!r.ok) continue;
+          const html = await r.text();
+          const m = html.match(/"video":\s*"(v[a-z0-9]{6})"/);
+          if (m?.[1]) {
+            foundSlug = m[1];
+            foundPath = p;
+            break;
+          }
+          foundPath = p;
+          break;
+        } catch { /* try next */ }
+      }
+
+      const body = JSON.stringify({
+        ok: true,
+        user: raw,
+        slug: foundSlug,
+        path: foundPath,
+        lastStatus,
+      });
+      return new Response(body, {
+        status: 200,
+        headers: withCors(new Headers({
+          "content-type": "application/json",
+          "cache-control": "public, max-age=10",
+        })),
+      });
+    }
+
     // We support: /hls?u=<encodedUrl>
     if (url.pathname !== "/hls") {
       return new Response("not_found", {
