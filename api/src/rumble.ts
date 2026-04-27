@@ -344,12 +344,34 @@ export async function resolveRumbleVodFromVid(videoIdWithV: string): Promise<{ m
  * Renvoie null si pas de live actif ou si CF bloque.
  */
 async function findCurrentLiveSlugFromLivePage(username: string): Promise<string | null> {
-  // Rumble a deux formats : /user/{name}/live (utilisateurs) et /c/{name}/live
-  // (channels créés par un user, parfois avec ID type c-1234567). On essaie les deux.
-  const headers = {
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
-    "accept-language": "fr-FR,fr;q=0.9",
+  // Rumble a deux formats : /user/{name}/live et /c/{name}/live.
+  // Cloudflare bloque les fetch standard depuis Render (datacenter IPs) → on
+  // passe par cycletls (TLS-impersonate Chrome) qui réplique l'empreinte du
+  // browser et passe le challenge CF naturellement.
+  const { cycleFetch } = await import("./rumble_http.js");
+
+  // Optionnel: on inclut les cookies du bot Rumble — si CF reconnait une
+  // session active, c'est encore plus permissif.
+  let cookieHeader: string | undefined;
+  let userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
+  try {
+    const { getRumbleBotSession } = await import("./rumble_chat_session.js");
+    const session = await getRumbleBotSession();
+    if (session.cookie) cookieHeader = session.cookie;
+    if (session.userAgent) userAgent = session.userAgent;
+  } catch { /* no session, on continue sans */ }
+
+  const browserHeaders: Record<string, string> = {
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "accept-language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "sec-ch-ua": '"Chromium";v="124", "Not.A/Brand";v="24", "Google Chrome";v="124"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "document",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-site": "none",
+    "sec-fetch-user": "?1",
+    "upgrade-insecure-requests": "1",
   };
 
   // Heuristique: si username commence par "c-" c'est un channel ID Rumble → priorité /c/
@@ -359,25 +381,23 @@ async function findCurrentLiveSlugFromLivePage(username: string): Promise<string
     : [`/user/${encodeURIComponent(username)}/live`, `/c/${encodeURIComponent(username)}/live`];
 
   for (const path of paths) {
-    try {
-      const r = await fetch(`https://rumble.com${path}`, { headers });
-      if (!r.ok) {
-        console.log(`[rumble][live-page] ${username}: ${path} http=${r.status}`);
-        continue;
-      }
-      const html = await r.text();
-      const m = html.match(/"video":\s*"(v[a-z0-9]{6})"/);
-      if (m?.[1]) {
-        console.log(`[rumble][live-page] ${username}: ${path} → slug=${m[1]}`);
-        return m[1];
-      }
-      // Page rendue mais pas de player init: pas de live actif
-      console.log(`[rumble][live-page] ${username}: ${path} no player init`);
-      // Si on a 200 sans live, pas la peine d'essayer l'autre format
-      return null;
-    } catch (e) {
-      console.warn(`[rumble][live-page] ${username}: ${path} fetch error`, e);
+    const r = await cycleFetch(`https://rumble.com${path}`, {
+      method: "get",
+      userAgent,
+      cookie: cookieHeader,
+      headers: browserHeaders,
+    });
+    if (r.status < 200 || r.status >= 300 || !r.body) {
+      console.log(`[rumble][live-page] ${username}: ${path} http=${r.status}`);
+      continue;
     }
+    const m = r.body.match(/"video":\s*"(v[a-z0-9]{6})"/);
+    if (m?.[1]) {
+      console.log(`[rumble][live-page] ${username}: ${path} → slug=${m[1]}`);
+      return m[1];
+    }
+    console.log(`[rumble][live-page] ${username}: ${path} no player init`);
+    return null;
   }
   return null;
 }
