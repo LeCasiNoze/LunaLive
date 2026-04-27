@@ -195,6 +195,42 @@ async function pushLiveVideo(slug, vSlug) {
   return true;
 }
 
+/**
+ * Fetch /user/{name}/live et extrait le slug du live courant depuis le player
+ * init JS (`Rumble("play", {..., "video":"vXXXXXX", ...})`). C'est l'unique
+ * source fiable : la page redirige/render directement le live actuel, et
+ * Rumble injecte le slug dans le JS d'initialisation du player.
+ */
+async function findCurrentLiveSlug(username) {
+  const headers = {
+    "user-agent": UA,
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "accept-language": "fr-FR,fr;q=0.9",
+  };
+  let html = null;
+  try {
+    const r = await fetch(`https://rumble.com/user/${encodeURIComponent(username)}/live`, { headers });
+    if (!r.ok) {
+      console.log(`[relay]   ${username}: /user/${username}/live → http=${r.status}`);
+      return null;
+    }
+    html = await r.text();
+  } catch (e) {
+    console.log(`[relay]   ${username}: fetch error`, e?.message || e);
+    return null;
+  }
+
+  // Extrait `"video":"vXXXXXX"` depuis le Rumble("play", {...}) init
+  const m = html.match(/"video":\s*"(v[a-z0-9]{6})"/);
+  if (m && m[1]) {
+    // Bonus: aussi le video_id numérique pour le chat
+    const numMatch = html.match(/video_id:\s*(\d+)/) || html.match(/"video_id":\s*(\d+)/);
+    const vidNumeric = numMatch ? numMatch[1] : null;
+    return { vSlug: m[1], vidNumeric };
+  }
+  return null;
+}
+
 async function tick() {
   let streamers = [];
   try {
@@ -216,32 +252,13 @@ async function tick() {
     if (!username) continue;
     console.log(`[relay] ${s.slug} (${username})`);
 
-    // Récupère la page (qu'on pourrait factoriser, mais on la refait pour findLiveSlug)
-    const headers = {
-      "user-agent": UA,
-      "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "accept-language": "fr-FR,fr;q=0.9",
-    };
-    let html = null;
-    for (const path of [`/c/${encodeURIComponent(username)}`, `/user/${encodeURIComponent(username)}`]) {
-      try {
-        const r = await fetch(`https://rumble.com${path}`, { headers });
-        if (r.ok) { html = await r.text(); break; }
-        console.log(`[relay]   ${username}: ${path} → http=${r.status}`);
-      } catch { /* continue */ }
-    }
-    if (!html) {
-      console.log(`[relay]   ${username}: scrape failed`);
-      continue;
-    }
-
-    const live = await findLiveSlug(username, html);
+    const live = await findCurrentLiveSlug(username);
     if (!live) {
-      // Log léger pour debug : combien de slugs on a vu
-      console.log(`[relay]   ${username}: pas en live (aucun slug en live=1)`);
+      console.log(`[relay]   ${username}: pas de live actif`);
       continue;
     }
 
+    console.log(`[relay]   ${username}: LIVE — slug=${live.vSlug} vid=${live.vidNumeric || "?"}`);
     const ok = await pushLiveVideo(s.slug, live.vSlug);
     if (ok) console.log(`[relay]   ${username}: pushed ${live.vSlug} ✓`);
   }
