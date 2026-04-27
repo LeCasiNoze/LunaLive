@@ -2,7 +2,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import type { ApiMyStreamer, ApiStreamConnection } from "../../../lib/api";
-import { DliveLinkPanel } from "./DliveLinkPanel";
+import { RumbleLinkPanel } from "./RumbleLinkPanel";
 
 function Badge({
   tone = "neutral",
@@ -136,7 +136,7 @@ export function OverviewSection({
         </div>
 
         <div style={{ marginTop: 12 }}>
-          <DliveLinkPanel />
+          <RumbleLinkPanel />
         </div>
       </div>
     </div>

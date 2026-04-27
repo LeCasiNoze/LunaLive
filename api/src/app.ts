@@ -54,6 +54,7 @@ import { casinoCommentImagesRouter } from "./routes/casino_comment_images.js";
 
 // Streamer / integrations
 import { streamerDliveLinkRouter } from "./routes/streamer_dlive_link.js";
+import { streamerRumbleLinkRouter } from "./routes/streamer_rumble_link.js";
 import { meProfileRouter } from "./routes/me_profile.js";
 import { meOverlayRouter } from "./routes/me_overlay.js";
 import { overlayApiRouter } from "./routes/overlay_api.js";
@@ -262,6 +263,7 @@ export function createApp() {
   app.use("/me/bot/clips",      botClipsRouter);
 
   app.use("/streamer/me/dlive-link", streamerDliveLinkRouter);
+  app.use("/streamer/me/rumble-link", streamerRumbleLinkRouter);
   app.use(meProfileRouter);
   app.use("/overlay/api", overlayApiRouter);
 

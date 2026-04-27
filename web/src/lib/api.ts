@@ -1229,6 +1229,44 @@ export async function dliveLinkUnlink(token: string) {
 }
 
 // ──────────────────────────────────────────
+// 🟢 Rumble link (api_key flow)
+// ──────────────────────────────────────────
+
+export type ApiRumbleLinkMe = {
+  ok: true;
+  linked: boolean;
+  streamer: { id: number; slug: string } | null;
+  account: { username: string; hasApiKey: boolean; assignedAt: string | null } | null;
+};
+
+export async function rumbleLinkMe(token: string) {
+  return j<ApiRumbleLinkMe>("/streamer/me/rumble-link", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function rumbleLinkSubmit(token: string, body: { username: string; apiKey: string }) {
+  return j<{
+    ok: boolean;
+    linked?: boolean;
+    error?: string;
+    message?: string;
+    account?: { username: string; rumbleUserId: string; channelName: string | null };
+  }>("/streamer/me/rumble-link", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function rumbleLinkUnlink(token: string) {
+  return j<{ ok: true; linked: false }>("/streamer/me/rumble-link", {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+// ──────────────────────────────────────────
 // 🤖 LunaBot (dashboard)
 // ──────────────────────────────────────────
 
