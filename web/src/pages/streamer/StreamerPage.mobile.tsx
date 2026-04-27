@@ -7,6 +7,7 @@ import * as React from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { watchHeartbeat, me, getLives } from "../../lib/api";
 import { DlivePlayer } from "../../components/DlivePlayer";
+import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
 import { ChatPanel } from "../../components/ChatPanel";
 import { LoginModal } from "../../components/LoginModal";
 import { SubModal } from "../../components/SubModal";
@@ -451,7 +452,16 @@ export default function StreamerPageMobile() {
   const initials = String(displayName || "S").replace(/^@/, "").trim().slice(0, 1).toUpperCase();
 
   const PlayerBlock = streamer.isLive ? (
-    <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
+    streamer.platform === "rumble" ? (
+      <RumbleStreamPlayer
+        hlsUrl={streamer.rumbleHlsUrl}
+        thumbnailUrl={streamer.rumbleThumbnailUrl || streamer.offlineBgUrl}
+        title={streamer.title}
+        isLive={streamer.isLive}
+      />
+    ) : (
+      <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
+    )
   ) : (
     <div className="mob-card" style={{ padding:0, aspectRatio:"16/9", background:streamer.offlineBgUrl ? `linear-gradient(to top,rgba(0,0,0,.70),rgba(0,0,0,.20)),url(${streamer.offlineBgUrl}) center/cover no-repeat` : "rgba(124,92,252,.08)", display:"flex", alignItems:"flex-end" }}>
       <div style={{ padding:16, background:"linear-gradient(to top,rgba(0,0,0,.55),transparent)" }}>
