@@ -55,32 +55,45 @@ async function renderTikTokPage(
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
     );
-    await page.setExtraHTTPHeaders({ "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8" });
+    await page.setExtraHTTPHeaders({
+      "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    });
 
-    const response = await page.goto(url, { waitUntil: "networkidle2", timeout: 25_000 });
+    // Stealth: hide headless markers
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+      Object.defineProperty(navigator, "languages", { get: () => ["fr-FR", "fr", "en"] });
+      Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
+      // @ts-ignore
+      window.chrome = { runtime: {} };
+    });
+
+    const response = await page.goto(url, { waitUntil: "networkidle0", timeout: 35_000 });
     diag.status = response?.status() ?? 0;
 
+    // Initial wait for SPA to render
+    await new Promise((r) => setTimeout(r, 5000));
+
     try {
-      await page.waitForSelector(waitSelector, { timeout: 8000 });
+      await page.waitForSelector(waitSelector, { timeout: 12_000 });
       diag.selectorFound = true;
     } catch {
       diag.selectorFound = false;
     }
 
-    // Scroll a bit to trigger lazy-loaded items
-    await page.evaluate(() => {
-      window.scrollBy(0, 1500);
-    });
-    await new Promise((r) => setTimeout(r, 1500));
-    await page.evaluate(() => {
-      window.scrollBy(0, 2000);
-    });
-    await new Promise((r) => setTimeout(r, 1500));
+    // Aggressive scroll to trigger lazy-loaded items
+    for (let i = 0; i < 5; i++) {
+      await page.evaluate(() => window.scrollBy(0, 1500));
+      await new Promise((r) => setTimeout(r, 1500));
+    }
 
-    const handles = await page.evaluate((max: number) => {
+    // Extract handles using multiple strategies in-page
+    const result = await page.evaluate((max: number) => {
       const set = new Set<string>();
       const re = /^[A-Za-z0-9._]{1,30}$/;
-      // Anchors to /@handle
+
+      // Strategy 1: anchor hrefs to /@handle
       const links = document.querySelectorAll<HTMLAnchorElement>('a[href*="/@"]');
       for (const link of Array.from(links)) {
         const href = link.getAttribute("href") || "";
@@ -90,11 +103,43 @@ async function renderTikTokPage(
           if (set.size >= max) break;
         }
       }
-      return Array.from(set);
+
+      // Strategy 2: regex over outerHTML for "uniqueId":"..."
+      if (set.size < max) {
+        const html = document.documentElement.outerHTML;
+        const r1 = /"uniqueId"\s*:\s*"([A-Za-z0-9._]{1,30})"/g;
+        let m: RegExpExecArray | null;
+        while ((m = r1.exec(html)) && set.size < max) set.add(m[1].toLowerCase());
+        const r2 = /"unique_id"\s*:\s*"([A-Za-z0-9._]{1,30})"/g;
+        while ((m = r2.exec(html)) && set.size < max) set.add(m[1].toLowerCase());
+      }
+
+      // Detect login wall / blocks
+      const titleText = document.title || "";
+      const bodyText = (document.body?.innerText || "").slice(0, 4000).toLowerCase();
+      const blocks = {
+        loginWall:
+          bodyText.includes("log in to tiktok") ||
+          bodyText.includes("connectez-vous") ||
+          bodyText.includes("connecte-toi"),
+        captcha: bodyText.includes("captcha") || bodyText.includes("verify"),
+        notFound:
+          bodyText.includes("couldn't find this account") ||
+          bodyText.includes("page not available"),
+        title: titleText.slice(0, 80),
+        bodyLen: document.body?.innerText?.length || 0,
+        bodySample: (document.body?.innerText || "").slice(0, 400),
+        anchorsCount: document.querySelectorAll('a[href*="/@"]').length,
+        scriptsCount: document.querySelectorAll("script").length,
+        htmlLen: document.documentElement.outerHTML.length,
+      };
+
+      return { handles: Array.from(set), blocks };
     }, limit);
 
-    diag.handlesFound = handles.length;
-    return { authors: handles as string[], diag };
+    diag.handlesFound = result.handles.length;
+    diag.blocks = result.blocks;
+    return { authors: result.handles as string[], diag };
   } finally {
     await page.close().catch(() => {});
   }
