@@ -344,25 +344,42 @@ export async function resolveRumbleVodFromVid(videoIdWithV: string): Promise<{ m
  * Renvoie null si pas de live actif ou si CF bloque.
  */
 async function findCurrentLiveSlugFromLivePage(username: string): Promise<string | null> {
-  try {
-    const r = await fetch(`https://rumble.com/user/${encodeURIComponent(username)}/live`, {
-      headers: {
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
-        "accept-language": "fr-FR,fr;q=0.9",
-      },
-    });
-    if (!r.ok) {
-      console.log(`[rumble][live-page] ${username}: http=${r.status}`);
+  // Rumble a deux formats : /user/{name}/live (utilisateurs) et /c/{name}/live
+  // (channels créés par un user, parfois avec ID type c-1234567). On essaie les deux.
+  const headers = {
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
+    "accept-language": "fr-FR,fr;q=0.9",
+  };
+
+  // Heuristique: si username commence par "c-" c'est un channel ID Rumble → priorité /c/
+  const isChannelId = /^c-\d+$/i.test(username);
+  const paths = isChannelId
+    ? [`/c/${encodeURIComponent(username)}/live`, `/user/${encodeURIComponent(username)}/live`]
+    : [`/user/${encodeURIComponent(username)}/live`, `/c/${encodeURIComponent(username)}/live`];
+
+  for (const path of paths) {
+    try {
+      const r = await fetch(`https://rumble.com${path}`, { headers });
+      if (!r.ok) {
+        console.log(`[rumble][live-page] ${username}: ${path} http=${r.status}`);
+        continue;
+      }
+      const html = await r.text();
+      const m = html.match(/"video":\s*"(v[a-z0-9]{6})"/);
+      if (m?.[1]) {
+        console.log(`[rumble][live-page] ${username}: ${path} → slug=${m[1]}`);
+        return m[1];
+      }
+      // Page rendue mais pas de player init: pas de live actif
+      console.log(`[rumble][live-page] ${username}: ${path} no player init`);
+      // Si on a 200 sans live, pas la peine d'essayer l'autre format
       return null;
+    } catch (e) {
+      console.warn(`[rumble][live-page] ${username}: ${path} fetch error`, e);
     }
-    const html = await r.text();
-    const m = html.match(/"video":\s*"(v[a-z0-9]{6})"/);
-    return m?.[1] ?? null;
-  } catch (e) {
-    console.warn(`[rumble][live-page] ${username}: fetch error`, e);
-    return null;
   }
+  return null;
 }
 
 /**
