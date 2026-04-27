@@ -359,12 +359,14 @@ async function canControlStreamer(opts: {
 
   try {
     const r = await pool.query(
-      `SELECT 1 FROM streamer_moderators WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`,
+      `SELECT 1 FROM streamer_mods
+        WHERE streamer_id=$1 AND user_id=$2 AND removed_at IS NULL
+        LIMIT 1`,
       [streamerId, actorUserId]
     );
     if ((r.rows?.length ?? 0) > 0) return true;
-  } catch {
-    // table absente => pas de crash
+  } catch (e) {
+    console.error("[canControlStreamer] streamer_mods lookup failed:", e);
   }
   return false;
 }
@@ -1222,7 +1224,7 @@ hunt2Router.get("/public/calls/:slug/queue", async (req: any, res) => {
     const streamer = stR.rows?.[0];
     if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
-    // Premiers items farm (bet null/<=0) triés par pos — head + next
+    // Items pas encore payés (= calls en cours), triés par pos — head + next
     const r = await pool.query(
       `SELECT
          q.id::text   AS id,
@@ -1235,7 +1237,7 @@ hunt2Router.get("/public/calls/:slug/queue", async (req: any, res) => {
        FROM calls_queue q
        LEFT JOIN slots_catalog sc ON sc.name_key = q.slot_key
        WHERE q.streamer_id=$1
-         AND (q.bet IS NULL OR q.bet <= 0)
+         AND q.pay IS NULL
        ORDER BY q.pos ASC
        LIMIT 2`,
       [streamer.id]
@@ -1248,7 +1250,7 @@ hunt2Router.get("/public/calls/:slug/queue", async (req: any, res) => {
       `SELECT COUNT(*)::text AS count
          FROM calls_queue
         WHERE streamer_id=$1
-          AND (bet IS NULL OR bet <= 0)`,
+          AND pay IS NULL`,
       [streamer.id]
     );
     const count = Number(cR.rows?.[0]?.count || 0);

@@ -59,12 +59,14 @@ async function canControlStreamer(
 
   try {
     const r = await pool.query(
-      `SELECT 1 FROM streamer_moderators WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`,
+      `SELECT 1 FROM streamer_mods
+        WHERE streamer_id=$1 AND user_id=$2 AND removed_at IS NULL
+        LIMIT 1`,
       [streamerId, actorUserId]
     );
     if ((r.rowCount ?? 0) > 0) return true;
-  } catch {
-    // table absente => pas de crash
+  } catch (e) {
+    console.error("[calls_hunt canMod] streamer_mods lookup failed:", e);
   }
 
   return false;
