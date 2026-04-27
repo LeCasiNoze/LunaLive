@@ -1409,10 +1409,12 @@ export function FsbTikTokOutreachSection() {
                 onClick={saveTemplate}
                 disabled={
                   templateSaving ||
-                  (template &&
-                    template.subject === templateDraft.subject &&
-                    template.body === templateDraft.body &&
-                    template.replyDomain === templateDraft.replyDomain)
+                  Boolean(
+                    template &&
+                      template.subject === templateDraft.subject &&
+                      template.body === templateDraft.body &&
+                      template.replyDomain === templateDraft.replyDomain
+                  )
                 }
               >
                 {templateSaving ? <span className="tk-spin" /> : "💾 Sauvegarder"}
