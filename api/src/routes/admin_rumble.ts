@@ -207,11 +207,7 @@ adminRumbleRouter.post("/admin/rumble/set-live", requireAdminKey, async (req, re
     const streamerId = sm.rows[0]?.id;
     if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
-    // Résout via embedJS (qui marche depuis Render — pas de CF block)
-    const { hlsUrl, vidNumeric } = await import("../rumble.js").then(m => (m as any).resolveFromEmbedJs?.(extracted))
-      .catch(() => ({ hlsUrl: null, vidNumeric: null }));
-    // Fallback : on stocke quand même le videoId, le poller fera le travail au prochain tick
-    void hlsUrl; void vidNumeric;
+    // On stocke le videoId — le poller fera la résolution embedJS au prochain tick.
 
     // Upsert dans streamer_rumble_info — le poller verra et complétera
     await pool.query(
