@@ -334,27 +334,58 @@ export async function resolveRumbleVodFromVid(videoIdWithV: string): Promise<{ m
 }
 
 /**
+ * Récupère le slug du live courant en fetchant `/user/{username}/live`
+ * et en extrayant `"video":"vXXXXXX"` du player init JS. Cette URL est
+ * spécifique au live courant (pas la liste de VODs qui est CF-bloquée).
+ * Renvoie null si pas de live actif ou si CF bloque.
+ */
+async function findCurrentLiveSlugFromLivePage(username: string): Promise<string | null> {
+  try {
+    const r = await fetch(`https://rumble.com/user/${encodeURIComponent(username)}/live`, {
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
+        "accept-language": "fr-FR,fr;q=0.9",
+      },
+    });
+    if (!r.ok) {
+      console.log(`[rumble][live-page] ${username}: http=${r.status}`);
+      return null;
+    }
+    const html = await r.text();
+    const m = html.match(/"video":\s*"(v[a-z0-9]{6})"/);
+    return m?.[1] ?? null;
+  } catch (e) {
+    console.warn(`[rumble][live-page] ${username}: fetch error`, e);
+    return null;
+  }
+}
+
+/**
  * Récupère le live actuel d'une chaine Rumble en mode pseudo-only.
  *
- * Cloudflare bloque les pages /c/ et /user/ depuis Render. Le scraping est
- * donc fait par un relay local (scripts/rumble-relay.js) qui tourne sur
- * une IP résidentielle et POST le videoId courant via /admin/rumble/set-live
- * (qui écrit dans streamer_rumble_info.live_id).
- *
- * Cette fonction lit ce live_id et appelle embedJS pour valider l'état du
- * live + récupérer HLS, titre, etc. — embedJS marche depuis Render sans CF.
+ * Stratégie :
+ *  1. Tente `/user/{username}/live` (URL canonique du live courant) depuis Render.
+ *     Si CF laisse passer → extrait le slug, appelle embedJS pour HLS/titre/etc.
+ *  2. Sinon, fallback sur `streamer_rumble_info.live_id` qu'un relay local aurait pushé.
+ *  3. Si rien des deux : offline.
  */
 export async function fetchRumbleLiveInfoFromUsername(username: string, streamerId?: number): Promise<RumbleLiveInfo> {
   const offline = offlineInfo(username);
   if (!username) return offline;
 
-  // Lit le live_id pushé par le relay local (s'il existe)
-  if (!streamerId) return offline;
-  const r = await pool.query(
-    `SELECT live_id FROM streamer_rumble_info WHERE streamer_id = $1 LIMIT 1`,
-    [streamerId]
-  ).catch(() => null);
-  const vSlug = r?.rows?.[0]?.live_id ? String(r.rows[0].live_id) : null;
+  // 1. Tentative directe via /user/{name}/live
+  let vSlug: string | null = await findCurrentLiveSlugFromLivePage(username);
+
+  // 2. Fallback : live_id pushé par le relay local
+  if (!vSlug && streamerId) {
+    const r = await pool.query(
+      `SELECT live_id FROM streamer_rumble_info WHERE streamer_id = $1 LIMIT 1`,
+      [streamerId]
+    ).catch(() => null);
+    vSlug = r?.rows?.[0]?.live_id ? String(r.rows[0].live_id) : null;
+  }
+
   if (!vSlug) {
     return offline;
   }
