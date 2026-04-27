@@ -394,18 +394,24 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
     if (!socket || sharing) return;
     let stream: MediaStream;
     try {
-      // Lock 720p 30 fps — résolution suffisante pour le rendu overlay OBS
-      // (consommé à ~1363×1026 px), réduit la charge encodeur d'un facteur 2.25
-      // (1080p a 2.25× plus de pixels que 720p) et garantit fluidité constante
-      // même sur un slot très animé. Chrome respecte ces contraintes nativement
-      // pour getDisplayMedia.
+      // Lock 720p 60 fps — beaucoup de slots tournent à 60 fps natif, cap à 30
+      // sync mal et fait jitter le rendu côté receveur (OBS). 720p suffit pour
+      // l'overlay (consommé à ~1363×1026), 60 fps double la fluidité. H264
+      // hardware encoder gère 720p60 sans problème (profile auto-selected).
+      // cursor:"always" rend le curseur, surfaceSwitching:"include" évite le
+      // throttling de Chrome quand la fenêtre capturée perd le focus.
       stream = await (navigator.mediaDevices as any).getDisplayMedia({
         video: {
           width:  { ideal: 1280, max: 1280 },
           height: { ideal: 720,  max: 720  },
-          frameRate: { ideal: 30, max: 30 },
+          frameRate: { ideal: 60, max: 60 },
+          cursor: "always",
         },
         audio: false,
+        // @ts-ignore — Chrome 107+
+        selfBrowserSurface: "include",
+        // @ts-ignore
+        surfaceSwitching: "include",
       });
     } catch (e) {
       console.warn("[ScreenShare] getDisplayMedia rejected:", e);
@@ -455,9 +461,9 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
       const iceServers = await ensureIceServers();
       const pc = new RTCPeerConnection({ iceServers });
       peersRef.current.set(viewerId, pc);
-      // Screen 720p30 H264 hardware = ~2 Mbps suffisent largement pour de la
-      // qualité streamable (cap 2.5 Mbps = marge safety pour les pics).
-      // contentHint "motion" + maintain-framerate = priorité à 30 fps stables.
+      // Screen 720p60 H264 hardware = ~3.5 Mbps pour rester très net même en
+      // animations 60 fps natives. priority:"high" indique au scheduler WebRTC
+      // de privilégier ce flux par rapport à la cam si congestion.
       localStream.getTracks().forEach(t => {
         if (t.kind === "video") { try { (t as any).contentHint = "motion"; } catch {} }
         const sender = pc.addTrack(t, localStream);
@@ -465,8 +471,9 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
           try {
             const params = sender.getParameters();
             if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-            params.encodings[0].maxBitrate = 2_500_000; // 2.5 Mbps (720p30)
-            params.encodings[0].maxFramerate = 30;
+            params.encodings[0].maxBitrate = 3_500_000; // 3.5 Mbps (720p60)
+            params.encodings[0].maxFramerate = 60;
+            (params.encodings[0] as any).priority = "high";
             params.degradationPreference = "maintain-framerate";
             sender.setParameters(params).catch(() => {});
           } catch {}
@@ -1173,6 +1180,8 @@ type RtcStreamStats = {
   packetsLostPct: number;         // moyenne %
   rttMs: number;                  // moyenne
   availableOutgoingKbps: number;  // moyenne
+  encoderImpl: string;            // "MediaFoundation H264", "OpenH264", "VideoToolbox", ...
+  codec: string;                  // "H264", "VP8", "VP9", ...
 };
 
 type RtcTickEntry = { t: number; stats: RtcStreamStats[] };
@@ -1213,6 +1222,10 @@ function useRtcBroadcastStats(
         let heightMax = 0;
         let worstLimitation: string = "none";
         let viewerCount = 0;
+        let encoderImpl = "";
+        let codec = "";
+        // Map des codecs par codecId pour résoudre via outbound-rtp.codecId
+        const codecMap = new Map<string, string>();
 
         for (const [peerId, pc] of peers.entries()) {
           if (pc.connectionState === "closed" || pc.connectionState === "failed") continue;
@@ -1220,8 +1233,19 @@ function useRtcBroadcastStats(
           let report: RTCStatsReport;
           try { report = await pc.getStats(); } catch { continue; }
 
+          // Première passe : map des codecs (codec.id → mimeType)
+          report.forEach((r: any) => {
+            if (r.type === "codec" && r.mimeType) {
+              codecMap.set(String(r.id), String(r.mimeType));
+            }
+          });
           report.forEach((r: any) => {
             if (r.type === "outbound-rtp" && r.kind === "video") {
+              if (r.encoderImplementation && !encoderImpl) encoderImpl = String(r.encoderImplementation);
+              if (r.codecId && !codec) {
+                const mime = codecMap.get(String(r.codecId)) || "";
+                codec = mime.replace(/^video\//i, "").toUpperCase();
+              }
               const key = `${entry.kind}:${peerId}:${r.ssrc ?? r.id}`;
               const prev = lastBytesRef.current.get(key);
               const bytes = Number(r.bytesSent || 0);
@@ -1278,6 +1302,8 @@ function useRtcBroadcastStats(
           packetsLostPct: lossSamples > 0 ? (totalFractionLost / lossSamples) * 100 : 0,
           rttMs: rttSamples > 0 ? totalRttMs / rttSamples : 0,
           availableOutgoingKbps: availSamples > 0 ? totalAvailableKbps / availSamples : 0,
+          encoderImpl: encoderImpl || "—",
+          codec: codec || "—",
         });
       }
 
@@ -1396,6 +1422,8 @@ function RtcStatsPanel({
                 lossPct: Math.round(s.packetsLostPct * 10) / 10,
                 rttMs: Math.round(s.rttMs),
                 availKbps: Math.round(s.availableOutgoingKbps),
+                codec: s.codec,
+                encoder: s.encoderImpl,
               })),
             }));
             const dump = JSON.stringify({ ua, codecsAvailable: codec, ticks: history }, null, 2);
@@ -1432,9 +1460,18 @@ function RtcStatsPanel({
             display: "flex", flexDirection: "column", gap: 8,
             paddingTop: 8, borderTop: "1px dashed rgba(255,255,255,.06)",
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: 14 }}>{s.kind === "cam" ? "🎥" : "🖥️"}</span>
               <span style={{ fontSize: 12, fontWeight: 800, color: "#dde8ff" }}>{s.label}</span>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 999,
+                background: /openh264|software|fallbackfromh264|libvpx|libaom/i.test(s.encoderImpl) ? "rgba(239,68,68,.15)" : "rgba(16,185,129,.15)",
+                color: /openh264|software|fallbackfromh264|libvpx|libaom/i.test(s.encoderImpl) ? "#fca5a5" : "#6ee7b7",
+                border: `1px solid ${/openh264|software|fallbackfromh264|libvpx|libaom/i.test(s.encoderImpl) ? "rgba(239,68,68,.32)" : "rgba(16,185,129,.32)"}`,
+                fontFamily: "monospace",
+              }}>
+                {s.codec} · {s.encoderImpl}
+              </span>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               <StatBadge label="Bitrate up" value={`${(s.bitrateUpKbps / 1000).toFixed(2)} Mbps`} tone="neutral" />
