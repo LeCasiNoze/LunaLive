@@ -72,7 +72,9 @@ const INTERVAL_MS = Number(process.env.RUMBLE_POLL_INTERVAL_MS || 30_000);
 
 type StreamerState = { isLive: boolean; title: string | null; offlineStreak: number };
 const lastState = new Map<number, StreamerState>();
-const OFFLINE_HYSTERESIS = 2; // Nombre de ticks offline consécutifs avant de réellement passer offline
+// Hystérésis désactivée (=1) : détection offline immédiate. Le check "no HLS"
+// dans fetchRumbleLiveInfoFromUsername est déjà fiable pour distinguer placeholder vs vraie fin.
+const OFFLINE_HYSTERESIS = 1;
 
 async function updateRumbleInfo(
   streamerId: number,
