@@ -252,28 +252,22 @@ export function RumbleLinkPanel() {
               <div className="rumble-step">
                 <div className="rumble-step-num">1</div>
                 <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                  Connecte-toi à ton compte sur{" "}
-                  <a href="https://rumble.com/account/streaming-api" target="_blank" rel="noreferrer" className="rumble-link-anchor">
-                    rumble.com/account/streaming-api
+                  Connecte-toi à ton compte Rumble et va sur{" "}
+                  <a href="https://rumble.com/account/livestream-api" target="_blank" rel="noreferrer" className="rumble-link-anchor">
+                    rumble.com/account/livestream-api
                   </a>
                 </div>
               </div>
               <div className="rumble-step">
                 <div className="rumble-step-num">2</div>
                 <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                  Dans le menu de gauche, va dans <b>Tableau de bord du créateur</b> → <b>Diffusion en direct</b> → <b>Diffusion (API) en direct</b>
+                  Clique sur <b>« Générer une clé API »</b> à côté de ton pseudo
                 </div>
               </div>
               <div className="rumble-step">
                 <div className="rumble-step-num">3</div>
                 <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                  Clique sur <b>« Générer une clé API »</b> à côté de ton pseudo
-                </div>
-              </div>
-              <div className="rumble-step">
-                <div className="rumble-step-num">4</div>
-                <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                  Une URL apparaît, du type <span style={{ fontFamily: "ui-monospace,monospace", fontSize: 12, opacity: 0.85 }}>rumble.com/-livestream-api/get-data?key=<b>XXXXXX</b></span> — copie-colle <b>uniquement la valeur après <code>key=</code></b>
+                  Copie l'URL complète qui apparaît (du type <code style={{ fontFamily: "ui-monospace,monospace", fontSize: 11, opacity: 0.85 }}>https://rumble.com/-livestream-api/get-data?key=...</code>) et colle-la dans le champ ci-dessus — on extrait la clé automatiquement.
                 </div>
               </div>
               <div style={{ marginTop: 10, fontSize: 12, opacity: 0.78, lineHeight: 1.5 }}>

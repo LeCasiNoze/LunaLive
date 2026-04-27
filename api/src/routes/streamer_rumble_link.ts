@@ -29,6 +29,20 @@ function isValidApiKey(s: string): boolean {
   return /^[A-Za-z0-9_-]{40,200}$/.test(s);
 }
 
+/**
+ * Accepte soit une clé brute, soit une URL complète Rumble (ex:
+ * https://rumble.com/-livestream-api/get-data?key=XXX). Renvoie la clé extraite
+ * ou la chaîne d'origine si pas d'URL détectée.
+ */
+function extractApiKey(input: string): string {
+  const s = String(input || "").trim();
+  if (!s) return "";
+  // URL complète : prendre la valeur du paramètre key
+  const m = s.match(/[?&]key=([A-Za-z0-9_-]+)/i);
+  if (m) return m[1];
+  return s;
+}
+
 async function getStreamerByUserId(userId: number) {
   const r = await pool.query(
     `SELECT id, slug FROM streamers WHERE user_id=$1 LIMIT 1`,
@@ -112,12 +126,13 @@ streamerRumbleLinkRouter.post("/", requireAuth, async (req: AuthedReq, res) => {
   if (!isValidRumbleUsername(username)) {
     return res.status(400).json({ ok: false, error: "invalid_username", message: "Pseudo Rumble invalide. Format attendu: lettres, chiffres, _ ou -" });
   }
-  if (!isValidApiKey(apiKeyRaw)) {
-    return res.status(400).json({ ok: false, error: "invalid_api_key", message: "Clé API invalide. Récupère-la depuis ton dashboard Rumble → Diffusion (API) en direct → Générer une clé API" });
+  const apiKey = extractApiKey(apiKeyRaw);
+  if (!isValidApiKey(apiKey)) {
+    return res.status(400).json({ ok: false, error: "invalid_api_key", message: "Clé API invalide. Colle l'URL complète ou la clé seule depuis ton dashboard Rumble → Diffusion (API) en direct" });
   }
 
   // Probe la clé
-  const probe = await probeApiKey(apiKeyRaw);
+  const probe = await probeApiKey(apiKey);
   if (!probe) {
     return res.status(400).json({ ok: false, error: "api_key_invalid_or_expired", message: "La clé API ne fonctionne pas. Vérifie qu'elle est correcte et active." });
   }
@@ -136,7 +151,7 @@ streamerRumbleLinkRouter.post("/", requireAuth, async (req: AuthedReq, res) => {
     `SELECT assigned_to_streamer_id FROM rumble_accounts
      WHERE api_key = $1 AND assigned_to_streamer_id IS NOT NULL AND assigned_to_streamer_id <> $2
      LIMIT 1`,
-    [apiKeyRaw, streamer.id]
+    [apiKey, streamer.id]
   );
   if (inUse.rows[0]) {
     return res.status(409).json({ ok: false, error: "api_key_already_linked", message: "Cette clé API est déjà utilisée par un autre streamer LunaLive." });
@@ -152,13 +167,13 @@ streamerRumbleLinkRouter.post("/", requireAuth, async (req: AuthedReq, res) => {
       `UPDATE rumble_accounts
        SET username = $2, api_key = $3, assigned_at = NOW(), updated_at = NOW()
        WHERE id = $1`,
-      [existing.rows[0].id, probe.username, apiKeyRaw]
+      [existing.rows[0].id, probe.username, apiKey]
     );
   } else {
     await pool.query(
       `INSERT INTO rumble_accounts (username, api_key, assigned_to_streamer_id, assigned_at)
        VALUES ($1, $2, $3, NOW())`,
-      [probe.username, apiKeyRaw, streamer.id]
+      [probe.username, apiKey, streamer.id]
     );
   }
 

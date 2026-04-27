@@ -144,6 +144,29 @@ adminRumbleRouter.post("/admin/rumble/bot", requireAdminKey, async (req, res) =>
 });
 
 /**
+ * GET /admin/rumble/list-pseudo-only
+ * Liste les streamers qui ont un rumble_username (sans api_key) pour
+ * que le relay local sache lesquels scraper.
+ */
+adminRumbleRouter.get("/admin/rumble/list-pseudo-only", requireAdminKey, async (_req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT s.id, s.slug, s.rumble_username AS username,
+              ri.live_id, ri.is_live, ri.updated_at
+       FROM streamers s
+       LEFT JOIN rumble_accounts ra ON ra.assigned_to_streamer_id = s.id
+       LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+       WHERE s.rumble_username IS NOT NULL
+         AND s.rumble_username <> ''
+         AND ra.id IS NULL`
+    );
+    return res.json({ ok: true, streamers: r.rows });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+  }
+});
+
+/**
  * POST /admin/rumble/set-live
  * Body: { slug: string, url?: string, videoId?: string }
  * Configure manuellement le videoId courant d'un streamer Rumble (pour les
