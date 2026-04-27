@@ -294,8 +294,12 @@ export function startDlivePoller(io?: IOServer) {
            ON pa.provider='dlive'
           AND pa.assigned_to_streamer_id = s.id
          WHERE
-           (s.dlive_use_linked = TRUE AND s.dlive_link_displayname IS NOT NULL)
-           OR (pa.id IS NOT NULL)`
+           -- Skip les streamers passés sur Rumble : leur is_live est géré par rumble_poller
+           (s.platform IS NULL OR lower(s.platform) <> 'rumble')
+           AND (
+             (s.dlive_use_linked = TRUE AND s.dlive_link_displayname IS NOT NULL)
+             OR (pa.id IS NOT NULL)
+           )`
       );
 
       await runWithConcurrency(
