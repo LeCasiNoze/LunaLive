@@ -2,7 +2,13 @@
 // Polling Rumble pour tous les streamers ayant un rumble_account assigné.
 
 import { pool } from "./db.js";
-import { fetchRumbleLiveInfo, listAssignedRumbleStreamers, resolveRumbleVodFromVid } from "./rumble.js";
+import {
+  fetchRumbleLiveInfo,
+  fetchRumbleLiveInfoFromUsername,
+  listAssignedRumbleStreamers,
+  listScrapedRumbleStreamers,
+  resolveRumbleVodFromVid,
+} from "./rumble.js";
 import type { Server as IOServer } from "socket.io";
 import { notifyFollowersGoLive } from "./notify_go_live.js";
 
@@ -250,17 +256,51 @@ async function pollOne(
   }
 }
 
+async function pollOneScraped(
+  streamerId: number,
+  slug: string,
+  username: string,
+  io?: IOServer
+) {
+  try {
+    const info = await fetchRumbleLiveInfoFromUsername(username);
+    await updateRumbleInfo(
+      streamerId,
+      slug,
+      info.isLive,
+      info.title,
+      info.viewersCount,
+      info.hlsUrl,
+      info.videoUrl,
+      info.thumbnailUrl,
+      info.videoId,
+      info.videoIdNumeric,
+      io,
+      info.createdAt
+    );
+  } catch (e) {
+    console.error(`[rumble-poller] Error scrape-polling ${slug}:`, e);
+  }
+}
+
 async function pollAll(io?: IOServer) {
-  const accounts = await listAssignedRumbleStreamers().catch((e) => {
-    console.error("[rumble-poller] listAssignedRumbleStreamers failed", e);
-    return [];
-  });
+  const [accounts, scraped] = await Promise.all([
+    listAssignedRumbleStreamers().catch((e) => {
+      console.error("[rumble-poller] listAssignedRumbleStreamers failed", e);
+      return [] as Array<{ streamerId: number; slug: string; username: string; apiKey: string }>;
+    }),
+    listScrapedRumbleStreamers().catch((e) => {
+      console.error("[rumble-poller] listScrapedRumbleStreamers failed", e);
+      return [] as Array<{ streamerId: number; slug: string; username: string }>;
+    }),
+  ]);
 
-  if (accounts.length === 0) return;
+  if (accounts.length === 0 && scraped.length === 0) return;
 
-  await Promise.all(
-    accounts.map((a) => pollOne(a.streamerId, a.slug, a.username, a.apiKey, io))
-  );
+  await Promise.all([
+    ...accounts.map((a) => pollOne(a.streamerId, a.slug, a.username, a.apiKey, io)),
+    ...scraped.map((s) => pollOneScraped(s.streamerId, s.slug, s.username, io)),
+  ]);
 }
 
 async function ensureRumbleInfoColumns() {
