@@ -233,6 +233,7 @@ publicRouter.get(
         s.user_id AS "ownerUserId",
         s.platform,
         s.rumble_embed_url AS "rumbleEmbedUrl",
+        s.rumble_username AS "rumbleUsernamePseudo",
 
         -- USER (source de vérité des subs)
         jsonb_build_object(
@@ -381,11 +382,16 @@ publicRouter.get(
     delete row.providerChannelUsername;
 
     // ====================================================================
-    // DÉTECTION DE LIVE RUMBLE (tous les streamers ayant un rumble_account)
+    // DÉTECTION DE LIVE RUMBLE
+    // Cible: streamers ayant SOIT un rumble_account (api_key flow), SOIT
+    // un rumble_username sur streamers (pseudo-only flow).
     // ====================================================================
     const rumbleUsername: string | null = row.rumbleConnection?.username
       ? String(row.rumbleConnection.username)
-      : null;
+      : (row.rumbleUsernamePseudo ? String(row.rumbleUsernamePseudo) : null);
+
+    // cleanup champ interne
+    delete row.rumbleUsernamePseudo;
 
     if (rumbleUsername) {
       const slugLog = String(row.slug || "");
