@@ -349,6 +349,9 @@ function useBroadcaster(
       socket.off("cam:ice", handleIce);
     };
   }, [socket, active, stream]);
+
+  // Expose peers pour le panneau de stats
+  return React.useMemo(() => ({ getPeers: () => peersRef.current }), []);
 }
 
 // ─── Screen share broadcaster ─────────────────────────────────────────────────
@@ -478,7 +481,11 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
     };
   }, [socket, sharing, localStream]);
 
-  return { sharing, localStream, start, stop };
+  // Expose un getter sur les peers pour le panneau de stats (pas un ref direct
+  // → évite de fuite de référence interne, et le getter renvoie toujours la
+  // Map à jour sans recréer le hook).
+  const getPeers = React.useCallback(() => peersRef.current, []);
+  return { sharing, localStream, start, stop, getPeers };
 }
 
 // ─── Screen share awareness (lightweight, no WebRTC) ─────────────────────────
@@ -1106,6 +1113,256 @@ function CamCard({
   );
 }
 
+// ─── WebRTC stats panel (diag) ────────────────────────────────────────────────
+//
+// Lit RTCPeerConnection.getStats() toutes les 1.5s pour chaque peer (cam +
+// screen broadcaster) et produit une vue agrégée :
+//  - bitrate up calculé via diff bytesSent (Mbps)
+//  - fps réel envoyé (framesPerSecond)
+//  - résolution réelle envoyée (frameWidth × frameHeight)
+//  - qualityLimitationReason : raison qui PRINCIPALEMENT cause la baisse de
+//      qualité ("cpu" | "bandwidth" | "other" | "none")
+//  - packets lost reçus du remote (fractionLost %)
+//  - RTT en ms
+//  - availableOutgoingBitrate (estimation congestion control)
+
+type RtcStreamStats = {
+  label: string;          // ex: "Cam → 3 viewer(s)" ou "Screen → 2 viewer(s)"
+  kind: "cam" | "screen";
+  viewers: number;
+  bitrateUpKbps: number;          // moyenne sur les viewers
+  fpsAvg: number;
+  width: number; height: number;
+  qualityLimitation: string;      // pire cas parmi les peers
+  packetsLostPct: number;         // moyenne %
+  rttMs: number;                  // moyenne
+  availableOutgoingKbps: number;  // moyenne
+};
+
+function useRtcBroadcastStats(
+  getPeersList: Array<{ kind: "cam" | "screen"; getPeers: () => Map<string, RTCPeerConnection> }>,
+  intervalMs = 1500,
+) {
+  const [stats, setStats] = React.useState<RtcStreamStats[]>([]);
+  // Mémoire pour calculer le delta de bytes
+  const lastBytesRef = React.useRef<Map<string, { bytes: number; t: number }>>(new Map());
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const tick = async () => {
+      const out: RtcStreamStats[] = [];
+      const now = performance.now();
+
+      for (const entry of getPeersList) {
+        const peers = entry.getPeers();
+        if (!peers || peers.size === 0) continue;
+
+        let totalBitrateKbps = 0;
+        let totalFps = 0;
+        let totalFractionLost = 0;
+        let totalRttMs = 0;
+        let totalAvailableKbps = 0;
+        let bitrateSamples = 0;
+        let fpsSamples = 0;
+        let lossSamples = 0;
+        let rttSamples = 0;
+        let availSamples = 0;
+        let widthMax = 0;
+        let heightMax = 0;
+        let worstLimitation: string = "none";
+        let viewerCount = 0;
+
+        for (const [peerId, pc] of peers.entries()) {
+          if (pc.connectionState === "closed" || pc.connectionState === "failed") continue;
+          viewerCount++;
+          let report: RTCStatsReport;
+          try { report = await pc.getStats(); } catch { continue; }
+
+          report.forEach((r: any) => {
+            if (r.type === "outbound-rtp" && r.kind === "video") {
+              const key = `${entry.kind}:${peerId}:${r.ssrc ?? r.id}`;
+              const prev = lastBytesRef.current.get(key);
+              const bytes = Number(r.bytesSent || 0);
+              if (prev) {
+                const dt = (now - prev.t) / 1000;
+                if (dt > 0) {
+                  const kbps = ((bytes - prev.bytes) * 8) / 1000 / dt;
+                  if (kbps >= 0 && kbps < 50_000) { totalBitrateKbps += kbps; bitrateSamples++; }
+                }
+              }
+              lastBytesRef.current.set(key, { bytes, t: now });
+              if (typeof r.framesPerSecond === "number") {
+                totalFps += r.framesPerSecond; fpsSamples++;
+              }
+              if (typeof r.frameWidth === "number" && r.frameWidth > widthMax) widthMax = r.frameWidth;
+              if (typeof r.frameHeight === "number" && r.frameHeight > heightMax) heightMax = r.frameHeight;
+              if (r.qualityLimitationReason && r.qualityLimitationReason !== "none") {
+                // priorité : bandwidth > cpu > other
+                const order = { bandwidth: 3, cpu: 2, other: 1, none: 0 } as Record<string, number>;
+                if ((order[r.qualityLimitationReason] ?? 0) > (order[worstLimitation] ?? 0)) {
+                  worstLimitation = r.qualityLimitationReason;
+                }
+              }
+            }
+            if (r.type === "remote-inbound-rtp" && r.kind === "video") {
+              if (typeof r.fractionLost === "number") {
+                totalFractionLost += r.fractionLost; lossSamples++;
+              }
+              if (typeof r.roundTripTime === "number") {
+                totalRttMs += r.roundTripTime * 1000; rttSamples++;
+              }
+            }
+            if (r.type === "candidate-pair" && (r.selected || r.nominated || r.state === "succeeded")) {
+              if (typeof r.availableOutgoingBitrate === "number") {
+                totalAvailableKbps += r.availableOutgoingBitrate / 1000; availSamples++;
+              }
+              if (typeof r.currentRoundTripTime === "number" && rttSamples === 0) {
+                totalRttMs += r.currentRoundTripTime * 1000; rttSamples++;
+              }
+            }
+          });
+        }
+
+        if (viewerCount === 0) continue;
+
+        out.push({
+          label: entry.kind === "cam" ? `Cam → ${viewerCount} viewer${viewerCount > 1 ? "s" : ""}` : `Screen → ${viewerCount} viewer${viewerCount > 1 ? "s" : ""}`,
+          kind: entry.kind,
+          viewers: viewerCount,
+          bitrateUpKbps: bitrateSamples > 0 ? totalBitrateKbps / bitrateSamples : 0,
+          fpsAvg: fpsSamples > 0 ? totalFps / fpsSamples : 0,
+          width: widthMax, height: heightMax,
+          qualityLimitation: worstLimitation,
+          packetsLostPct: lossSamples > 0 ? (totalFractionLost / lossSamples) * 100 : 0,
+          rttMs: rttSamples > 0 ? totalRttMs / rttSamples : 0,
+          availableOutgoingKbps: availSamples > 0 ? totalAvailableKbps / availSamples : 0,
+        });
+      }
+
+      if (!cancelled) setStats(out);
+    };
+
+    tick();
+    const id = setInterval(tick, intervalMs);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [getPeersList, intervalMs]);
+
+  return stats;
+}
+
+function StatBadge({ label, value, sub, tone }: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "ok" | "warn" | "bad" | "neutral";
+}) {
+  const colors: Record<string, { fg: string; bg: string; border: string }> = {
+    ok:      { fg: "#6ee7b7", bg: "rgba(16,185,129,.10)", border: "rgba(16,185,129,.28)" },
+    warn:    { fg: "#fbbf24", bg: "rgba(245,158,11,.10)", border: "rgba(245,158,11,.28)" },
+    bad:     { fg: "#fca5a5", bg: "rgba(239,68,68,.10)",  border: "rgba(239,68,68,.32)" },
+    neutral: { fg: "#dde8ff", bg: "rgba(255,255,255,.04)", border: "rgba(255,255,255,.08)" },
+  };
+  const c = colors[tone || "neutral"];
+  return (
+    <div style={{
+      padding: "6px 10px", borderRadius: 8,
+      background: c.bg, border: `1px solid ${c.border}`,
+      display: "flex", flexDirection: "column", gap: 1, minWidth: 86,
+    }}>
+      <span style={{ fontSize: 9, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".06em" }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: 800, color: c.fg, fontFamily: "monospace", lineHeight: 1.1 }}>{value}</span>
+      {sub ? <span style={{ fontSize: 10, color: "#64748b", lineHeight: 1.1 }}>{sub}</span> : null}
+    </div>
+  );
+}
+
+function RtcStatsPanel({
+  getCamPeers, getScreenPeers, isCamActive, isScreenActive,
+}: {
+  getCamPeers: () => Map<string, RTCPeerConnection>;
+  getScreenPeers: () => Map<string, RTCPeerConnection>;
+  isCamActive: boolean;
+  isScreenActive: boolean;
+}) {
+  const peerList = React.useMemo(() => {
+    const arr: Array<{ kind: "cam" | "screen"; getPeers: () => Map<string, RTCPeerConnection> }> = [];
+    if (isCamActive) arr.push({ kind: "cam", getPeers: getCamPeers });
+    if (isScreenActive) arr.push({ kind: "screen", getPeers: getScreenPeers });
+    return arr;
+  }, [isCamActive, isScreenActive, getCamPeers, getScreenPeers]);
+
+  const stats = useRtcBroadcastStats(peerList, 1500);
+
+  if (!isCamActive && !isScreenActive) {
+    return (
+      <div style={{
+        background: "rgba(255,255,255,.02)",
+        border: "1px solid rgba(255,255,255,.05)",
+        borderRadius: 10, padding: "10px 14px",
+        display: "flex", alignItems: "center", gap: 10,
+        color: "#64748b", fontSize: 12,
+      }}>
+        <span style={{ fontSize: 14 }}>📊</span>
+        <span>Stats WebRTC : active ta cam ou démarre un partage d'écran pour voir les diagnostics live.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      background: "linear-gradient(180deg,rgba(20,28,55,.6),rgba(11,17,34,.6))",
+      border: "1px solid rgba(99,102,241,.25)",
+      borderRadius: 12,
+      padding: 12,
+      display: "flex", flexDirection: "column", gap: 10,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13, fontWeight: 800, color: "#dde8ff" }}>📊 Diagnostic WebRTC live</span>
+        <span style={{ fontSize: 10, color: "#64748b", fontFamily: "monospace" }}>tick 1.5s · sources broadcast</span>
+      </div>
+      {stats.length === 0 ? (
+        <div style={{ fontSize: 11, color: "#64748b" }}>
+          Aucun viewer connecté pour le moment — les stats apparaîtront dès qu'OBS / un autre user reçoit le flux.
+        </div>
+      ) : null}
+      {stats.map((s) => {
+        const fpsTone: "ok" | "warn" | "bad" = s.fpsAvg >= 25 ? "ok" : s.fpsAvg >= 15 ? "warn" : "bad";
+        const lossTone: "ok" | "warn" | "bad" = s.packetsLostPct < 1 ? "ok" : s.packetsLostPct < 5 ? "warn" : "bad";
+        const rttTone: "ok" | "warn" | "bad" = s.rttMs < 80 ? "ok" : s.rttMs < 200 ? "warn" : "bad";
+        const limitTone: "ok" | "warn" | "bad" = s.qualityLimitation === "none" ? "ok"
+          : s.qualityLimitation === "bandwidth" ? "bad" : "warn";
+        const limitLabel = s.qualityLimitation === "none" ? "OK"
+          : s.qualityLimitation === "bandwidth" ? "Bande passante"
+          : s.qualityLimitation === "cpu" ? "CPU encodeur"
+          : s.qualityLimitation;
+        return (
+          <div key={s.kind} style={{
+            display: "flex", flexDirection: "column", gap: 8,
+            paddingTop: 8, borderTop: "1px dashed rgba(255,255,255,.06)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 14 }}>{s.kind === "cam" ? "🎥" : "🖥️"}</span>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "#dde8ff" }}>{s.label}</span>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              <StatBadge label="Bitrate up" value={`${(s.bitrateUpKbps / 1000).toFixed(2)} Mbps`} tone="neutral" />
+              <StatBadge label="FPS" value={s.fpsAvg.toFixed(0)} tone={fpsTone} />
+              <StatBadge label="Résolution" value={`${s.width}×${s.height}`} tone="neutral" />
+              <StatBadge label="Limitation" value={limitLabel} tone={limitTone} />
+              <StatBadge label="Perte paquets" value={`${s.packetsLostPct.toFixed(1)}%`} tone={lossTone} />
+              <StatBadge label="RTT" value={`${s.rttMs.toFixed(0)} ms`} tone={rttTone} />
+              <StatBadge label="BP dispo" value={s.availableOutgoingKbps > 0 ? `${(s.availableOutgoingKbps / 1000).toFixed(2)} Mbps` : "—"}
+                sub={s.availableOutgoingKbps > 0 && s.bitrateUpKbps > 0 ? `taux util. ${((s.bitrateUpKbps / s.availableOutgoingKbps) * 100).toFixed(0)}%` : undefined}
+                tone="neutral" />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Page guard ───────────────────────────────────────────────────────────────
 
 export default function StreamControlPage() {
@@ -1203,7 +1460,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   // seulement, pas de WebRTC) — pour afficher le bon label de bouton sans payer
   // le coût d'un PeerConnection + décodage GPU pour chaque viewer du stream-control.
   // Exclusif : un seul partage actif en global (garanti côté serveur).
-  const { sharing: myScreenSharing, start: startScreenShare, stop: stopScreenShare } =
+  const { sharing: myScreenSharing, start: startScreenShare, stop: stopScreenShare, getPeers: getScreenPeers } =
     useScreenBroadcaster(socket, mySlug);
   const remoteScreenAware = useScreenAwareness(socket);
   // Quelqu'un d'autre partage actuellement (utile pour le bouton "Prendre la main")
@@ -1213,7 +1470,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
 
   // Broadcaster — independent of viewer
   // Sur register, si des filtres sont persistés en DB pour ce slug, on les applique
-  useBroadcaster(
+  const camBcaster = useBroadcaster(
     socket, localStream, mySlug, mySlot + 1, myFilters, myCamActive,
     React.useCallback((persisted: Partial<CamFilters>) => {
       setMyFilters((prev) => ({ ...prev, ...persisted }));
@@ -1477,6 +1734,14 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
           </div>
         </div>
       )}
+
+      {/* ── Stats WebRTC live (diagnostic) ── */}
+      <RtcStatsPanel
+        getCamPeers={camBcaster.getPeers}
+        getScreenPeers={getScreenPeers}
+        isCamActive={myCamActive}
+        isScreenActive={myScreenSharing}
+      />
 
       {/* ── Cams (en haut) ── */}
       <div style={S.camsRow}>
