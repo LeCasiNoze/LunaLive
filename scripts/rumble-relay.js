@@ -111,19 +111,20 @@ async function findLiveSlug(username, html) {
   //   - /v76pubk.html       (sans titre)
   //   - /v76pubk            (bare, parfois en data-attr ou JSON)
   // + canonical og:url + open graph
+  // Vrais slugs Rumble = exactement "v" + 6 chars alphanumériques.
+  // On force ce format strict pour éviter de capturer des hash/ids parasites.
   const set = new Set();
   for (const re of [
-    /href="(\/v[a-z0-9]{5,})[-./?#"]/g,
-    /["'](\/v[a-z0-9]{5,})\.html["']/g,
-    /og:url[^>]*content="https?:\/\/rumble\.com(\/v[a-z0-9]{5,})/g,
-    /"video_url":"https?:\\?\/\\?\/rumble\.com(\\?\/v[a-z0-9]{5,})/g,
-    /data-permlink="(\/?v[a-z0-9]{5,})"/g,
+    /href="\/(v[a-z0-9]{6})[-./?#"]/g,
+    /href="\/(v[a-z0-9]{6})\.html"/g,
+    /og:url[^>]*content="https?:\/\/rumble\.com\/(v[a-z0-9]{6})[-./?#"]/g,
+    /"video_url":"https?:\\?\/\\?\/rumble\.com\\?\/(v[a-z0-9]{6})/g,
+    /data-permlink="\/?(v[a-z0-9]{6})"/g,
+    /https?:\/\/rumble\.com\/(v[a-z0-9]{6})[-./?#"]/g,
   ]) {
     for (const m of html.matchAll(re)) {
-      const raw = String(m[1]).replace(/\\\//g, "/");
-      const clean = raw.startsWith("/") ? raw.slice(1) : raw;
-      const onlySlug = clean.split(/[-./?#]/)[0];
-      if (/^v[a-z0-9]{5,}$/.test(onlySlug)) set.add(onlySlug);
+      const slug = String(m[1]).toLowerCase();
+      if (/^v[a-z0-9]{6}$/.test(slug)) set.add(slug);
     }
   }
   const slugs = [...set];
