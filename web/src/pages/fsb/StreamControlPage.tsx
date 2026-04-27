@@ -394,11 +394,12 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
     if (!socket || sharing) return;
     let stream: MediaStream;
     try {
-      // 24 fps suffisant pour du contenu casino/UI et économise ~20% CPU vs 30 fps.
-      // Pas de contrainte width/height — laisse Chrome utiliser la résolution écran
-      // native, l'encodeur H264 hardware (forcé via setCodecPreferences) gère.
+      // 30 fps pour un slot animé (spins, FX). Pas de contrainte width/height —
+      // laisse Chrome utiliser la résolution écran native, l'encodeur H264
+      // hardware (forcé via setCodecPreferences) + maintain-framerate gèrent
+      // l'auto-downscale si la BP n'est pas suffisante.
       stream = await (navigator.mediaDevices as any).getDisplayMedia({
-        video: { frameRate: { ideal: 24, max: 30 } },
+        video: { frameRate: { ideal: 30, max: 30 } },
         audio: false,
       });
     } catch (e) {
@@ -449,19 +450,22 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
       const iceServers = await ensureIceServers();
       const pc = new RTCPeerConnection({ iceServers });
       peersRef.current.set(viewerId, pc);
-      // Screen = "detail" (texte/UI net plus important que fluidité), cap 2.5 Mbps.
-      // degradation "maintain-resolution" = on laisse tomber des frames plutôt que
-      // que de blurrer le texte de l'OBS overlay.
+      // Screen = contentHint "motion" (slot animé, spins, FX > texte statique).
+      // maintain-framerate = on garde 30 fps coûte que coûte ; si la BP manque,
+      // l'encodeur downscale en résolution (du 1080p → 720p reste très lisible
+      // pour le rendu de l'overlay OBS qui consomme à ~1363×1026 px).
+      // Cap 4 Mbps : on a 5+ Mbps dispo (testé), 30 fps en 1080p H264 a besoin
+      // de ~3 Mbps pour rester net sur des animations.
       localStream.getTracks().forEach(t => {
-        if (t.kind === "video") { try { (t as any).contentHint = "detail"; } catch {} }
+        if (t.kind === "video") { try { (t as any).contentHint = "motion"; } catch {} }
         const sender = pc.addTrack(t, localStream);
         if (t.kind === "video") {
           try {
             const params = sender.getParameters();
             if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-            params.encodings[0].maxBitrate = 2_500_000; // 2.5 Mbps
-            params.encodings[0].maxFramerate = 24;
-            params.degradationPreference = "maintain-resolution";
+            params.encodings[0].maxBitrate = 4_000_000; // 4 Mbps
+            params.encodings[0].maxFramerate = 30;
+            params.degradationPreference = "maintain-framerate";
             sender.setParameters(params).catch(() => {});
           } catch {}
         }
@@ -1587,6 +1591,9 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
       const videoConstraints: MediaTrackConstraints = {
         width: { ideal: 1280 },
         height: { ideal: 720 },
+        // Force 30 fps. Sans ça, beaucoup de cams logitech/intégrées plafonnent
+        // à 15 fps en interne (mode économie / faible lumière).
+        frameRate: { ideal: 30, min: 24 },
       };
       if (selectedDeviceId) {
         videoConstraints.deviceId = { exact: selectedDeviceId };
