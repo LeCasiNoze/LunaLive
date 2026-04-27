@@ -334,118 +334,79 @@ export async function resolveRumbleVodFromVid(videoIdWithV: string): Promise<{ m
 }
 
 /**
- * Récupère le live actuel d'une chaine Rumble à partir de son pseudo,
- * sans api_key. Scrape la page channel/user (cookies bot pour passer CF
- * si nécessaire), liste les data-video-id, et confirme via embedJS lequel
- * est en live (`live: 1`).
+ * Récupère le live actuel d'une chaine Rumble en mode pseudo-only.
  *
- * Heuristique : on tente le plus grand id en premier (le plus récent), puis les
- * suivants. Première video qui retourne `live: 1` → c'est le live courant.
+ * Cloudflare bloque les pages /c/ et /user/ depuis Render. Le scraping est
+ * donc fait par un relay local (scripts/rumble-relay.js) qui tourne sur
+ * une IP résidentielle et POST le videoId courant via /admin/rumble/set-live
+ * (qui écrit dans streamer_rumble_info.live_id).
  *
- * Renvoie `null` si pas de live trouvé.
+ * Cette fonction lit ce live_id et appelle embedJS pour valider l'état du
+ * live + récupérer HLS, titre, etc. — embedJS marche depuis Render sans CF.
  */
-export async function fetchRumbleLiveInfoFromUsername(username: string): Promise<RumbleLiveInfo> {
+export async function fetchRumbleLiveInfoFromUsername(username: string, streamerId?: number): Promise<RumbleLiveInfo> {
   const offline = offlineInfo(username);
   if (!username) return offline;
 
-  // Cookies bot (optionnels) pour passer Cloudflare
-  let cookieHeader: string | undefined;
-  let userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+  // Lit le live_id pushé par le relay local (s'il existe)
+  if (!streamerId) return offline;
+  const r = await pool.query(
+    `SELECT live_id FROM streamer_rumble_info WHERE streamer_id = $1 LIMIT 1`,
+    [streamerId]
+  ).catch(() => null);
+  const vSlug = r?.rows?.[0]?.live_id ? String(r.rows[0].live_id) : null;
+  if (!vSlug) {
+    return offline;
+  }
+
+  // Valide via embedJS
+  const url = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${vSlug}&ad_wt=0`;
   try {
-    const { getRumbleBotSession } = await import("./rumble_chat_session.js");
-    const session = await getRumbleBotSession();
-    if (session.cookie) cookieHeader = session.cookie;
-    if (session.userAgent) userAgent = session.userAgent;
-  } catch { /* no session, on continue sans */ }
-
-  // Scrape via Puppeteer headless (Chromium) — CF bloque cycletls + fetch
-  // depuis Render mais laisse passer un vrai browser (résout le challenge JS).
-  const { fetchRumblePageViaBrowser } = await import("./rumble_browser.js");
-  let html: string | null = null;
-  for (const path of [`/c/${encodeURIComponent(username)}`, `/user/${encodeURIComponent(username)}`]) {
-    html = await fetchRumblePageViaBrowser(path);
-    if (html) {
-      console.log(`[rumble][scrape] ${username}: ${path} fetched via browser (${html.length} bytes)`);
-      break;
+    const r2 = await fetch(url, {
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        accept: "application/json",
+        referer: "https://rumble.com/",
+        origin: "https://rumble.com",
+      },
+    });
+    if (!r2.ok) return offline;
+    const d: any = await r2.json();
+    const isLive = d?.live === 1 || d?.live === true || d?.livestream_has_dvr === 1;
+    if (!isLive) {
+      console.log(`[rumble][pseudo-only] ${username}: ${vSlug} pas en live`);
+      return offline;
     }
-    console.log(`[rumble][scrape] ${username}: ${path} browser fetch failed`);
-  }
-  // Évite warning lint sur cookieHeader/userAgent encore importés mais non utilisés ici
-  void cookieHeader; void userAgent;
-  if (!html) {
-    console.warn(`[rumble][scrape] ${username}: browser scrape failed`);
+
+    const hlsCandidate = d?.u?.hls?.url || d?.ua?.hls?.auto?.url || null;
+    const vidNumeric = d?.vid != null ? String(d.vid) : null;
+
+    let finalHls: string | null = hlsCandidate;
+    if (finalHls && finalHls.includes("live-hls-dvr")) {
+      const cdnHls = await resolveRedirectToCdn(finalHls);
+      finalHls = cdnHls || finalHls;
+    }
+
+    const title = String(d?.title || `Live de ${username}`);
+    const createdOn = d?.pubDate || null;
+
+    console.log(`[rumble][pseudo-only] ${username}: LIVE — vid=${vSlug} (numeric=${vidNumeric}), hls=${finalHls}`);
+    return {
+      username,
+      isLive: true,
+      viewersCount: null,
+      title,
+      thumbnailUrl: null,
+      videoUrl: `https://rumble.com/user/${username}/live`,
+      hlsUrl: finalHls,
+      videoId: vSlug,
+      videoIdNumeric: vidNumeric,
+      createdAt: createdOn,
+    };
+  } catch (e) {
+    console.warn(`[rumble][pseudo-only] ${username}: embedJS error`, e);
     return offline;
   }
-
-  // Extraire les couples (slug court, vid numérique) — on associe les `/v76xxxx-titre.html`
-  // au `data-video-id="123456789"` qui les précèdent dans le HTML.
-  // Plus robuste que d'extraire séparément : on capture les slugs et les ids dans l'ordre HTML.
-  const videoIds = Array.from(html.matchAll(/data-video-id="(\d+)"/g)).map(m => m[1]);
-  const slugMatches = Array.from(html.matchAll(/href=["'](\/v[a-z0-9]{5,})-[^"']+\.html["']/gi)).map(m => m[1]);
-
-  if (videoIds.length === 0) {
-    console.log(`[rumble][scrape] ${username}: no video-id on page`);
-    return offline;
-  }
-
-  // On tente les 3 plus grands video-ids (les plus récents)
-  const sortedNumeric = [...new Set(videoIds)].sort((a, b) => Number(b) - Number(a)).slice(0, 3);
-
-  for (const vidNumeric of sortedNumeric) {
-    // On a besoin du slug court (vXXXX) pour appeler embedJS. On utilise les
-    // slugs trouvés sur la page dans l'ordre — heuristique : le slug le plus
-    // proche d'un data-video-id donné est généralement le bon.
-    // Plus simple : on tente chaque slug court extrait, premier qui retourne
-    // un embedJS avec vid numérique correspondant gagne.
-    for (const vSlug of slugMatches) {
-      const { hlsUrl, vidNumeric: gotNumeric } = await resolveFromEmbedJs(vSlug);
-      if (gotNumeric === vidNumeric && hlsUrl) {
-        // On a un match, vérifier si c'est en live
-        const url = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${vSlug}&ad_wt=0`;
-        try {
-          const r = await fetch(url, { headers: { "user-agent": userAgent, accept: "application/json", referer: "https://rumble.com/", origin: "https://rumble.com" } });
-          if (!r.ok) continue;
-          const d: any = await r.json();
-          const isLive = d?.live === 1 || d?.live === true || d?.livestream_has_dvr === 1;
-          if (!isLive) {
-            console.log(`[rumble][scrape] ${username}: ${vSlug} (vid=${vidNumeric}) pas en live`);
-            break; // ce vid n'est pas en live, essayer le suivant
-          }
-
-          // C'est le live. Résoudre HLS comme dans fetchRumbleLiveInfo
-          const rawHls = hlsUrl;
-          let finalHls = rawHls;
-          if (rawHls.includes("live-hls-dvr")) {
-            const cdnHls = await resolveRedirectToCdn(rawHls);
-            finalHls = cdnHls || rawHls;
-          }
-
-          const title = String(d?.title || `Live de ${username}`);
-          const createdOn = d?.pubDate || null;
-
-          console.log(`[rumble][scrape] ${username}: LIVE — vid=${vSlug} (numeric=${vidNumeric}), hls=${finalHls}`);
-          return {
-            username,
-            isLive: true,
-            viewersCount: null,
-            title,
-            thumbnailUrl: null,
-            videoUrl: `https://rumble.com/user/${username}/live`,
-            hlsUrl: finalHls,
-            videoId: vSlug,
-            videoIdNumeric: vidNumeric,
-            createdAt: createdOn,
-          };
-        } catch (e) {
-          console.warn(`[rumble][scrape] ${username}: embedJS error`, e);
-          continue;
-        }
-      }
-    }
-  }
-
-  console.log(`[rumble][scrape] ${username}: aucun live actif détecté`);
-  return offline;
 }
 
 /** Récupère l'info Rumble pour un streamer donné (via son compte assigné). */

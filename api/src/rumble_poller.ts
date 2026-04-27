@@ -263,7 +263,7 @@ async function pollOneScraped(
   io?: IOServer
 ) {
   try {
-    const info = await fetchRumbleLiveInfoFromUsername(username);
+    const info = await fetchRumbleLiveInfoFromUsername(username, streamerId);
     await updateRumbleInfo(
       streamerId,
       slug,
