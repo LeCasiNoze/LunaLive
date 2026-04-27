@@ -358,22 +358,28 @@ export async function fetchRumbleLiveInfoFromUsername(username: string): Promise
     if (session.userAgent) userAgent = session.userAgent;
   } catch { /* no session, on continue sans */ }
 
-  const headers: Record<string, string> = {
-    "user-agent": userAgent,
-    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
-  };
-  if (cookieHeader) headers["cookie"] = cookieHeader;
-
-  // Tente /c/{user} puis /user/{user}
+  // Scrape via cycletls (TLS-impersonate Chrome) pour passer Cloudflare.
+  // Tente /c/{user} puis /user/{user}.
+  const { cycleFetch } = await import("./rumble_http.js");
   let html = "";
   for (const path of [`/c/${encodeURIComponent(username)}`, `/user/${encodeURIComponent(username)}`]) {
-    try {
-      const r = await fetch(`https://rumble.com${path}`, { headers });
-      if (r.ok) {
-        html = await r.text();
-        break;
-      }
-    } catch { /* continue */ }
+    const r = await cycleFetch(`https://rumble.com${path}`, {
+      method: "get",
+      userAgent,
+      cookie: cookieHeader,
+      headers: {
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
+        "accept-language": "fr-FR,fr;q=0.9",
+        "referer": "https://rumble.com/",
+      },
+    });
+    if (r.status >= 200 && r.status < 300 && r.body) {
+      html = r.body;
+      console.log(`[rumble][scrape] ${username}: page ${path} fetched (${html.length} bytes)`);
+      break;
+    } else {
+      console.log(`[rumble][scrape] ${username}: ${path} → http=${r.status}`);
+    }
   }
   if (!html) {
     console.warn(`[rumble][scrape] ${username}: scrape failed (CF block ?)`);

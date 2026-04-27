@@ -6,6 +6,7 @@ import { requireAdminKey } from "../auth.js";
 import { fetchRumbleInfoForStreamerSlug, resolveRumbleVodFromVid } from "../rumble.js";
 import { getRumbleBotSession, setRumbleBotSession, hasRumbleBotSession } from "../rumble_chat_session.js";
 import { sendRumbleMessage } from "../rumble_chat_bridge.js";
+import { cycleFetch } from "../rumble_http.js";
 
 export const adminRumbleRouter = Router();
 
@@ -221,19 +222,23 @@ adminRumbleRouter.post("/admin/rumble/backfill-vods", requireAdminKey, async (re
     if (!username) return res.status(400).json({ ok: false, error: "no_rumble_username" });
 
     const session = await getRumbleBotSession();
-    const headers: Record<string, string> = {
-      "user-agent": session.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
-      "accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
-    };
-    if (session.cookie) headers["cookie"] = session.cookie;
 
-    // Tente /c/{username} puis /user/{username}
+    // Scrape via cycletls pour passer Cloudflare. Tente /c/{username} puis /user/{username}
     let html = "";
     let used = "";
     for (const path of [`/c/${encodeURIComponent(username)}`, `/user/${encodeURIComponent(username)}`]) {
-      const r = await fetch(`https://rumble.com${path}`, { headers });
-      if (r.ok) {
-        html = await r.text();
+      const r = await cycleFetch(`https://rumble.com${path}`, {
+        method: "get",
+        userAgent: session.userAgent || undefined,
+        cookie: session.cookie || undefined,
+        headers: {
+          "accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
+          "accept-language": "fr-FR,fr;q=0.9",
+          "referer": "https://rumble.com/",
+        },
+      });
+      if (r.status >= 200 && r.status < 300 && r.body) {
+        html = r.body;
         used = path;
         break;
       }
