@@ -93,6 +93,7 @@ import { mig083_rumble_chat } from "./mig083_rumble_chat.js";
 import { mig084_streamer_rumble_username } from "./mig084_streamer_rumble_username.js";
 import { mig085_chat_messages_external_source } from "./mig085_chat_messages_external_source.js";
 import { mig086_chat_messages_drop_fk } from "./mig086_chat_messages_drop_fk.js";
+import { mig087_tiktok_outreach } from "./mig087_tiktok_outreach.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -205,6 +206,7 @@ export async function migrateAll(pool: Pool) {
   await mig084_streamer_rumble_username(pool);
   await mig085_chat_messages_external_source(pool);
   await mig086_chat_messages_drop_fk(pool);
+  await mig087_tiktok_outreach(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);
