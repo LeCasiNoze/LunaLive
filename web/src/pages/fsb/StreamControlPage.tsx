@@ -222,6 +222,31 @@ function useFollowers() {
   return count;
 }
 
+// ─── WebRTC codec preference ──────────────────────────────────────────────────
+// Force H264 en premier sur tous les transceivers vidéo. H264 a quasi toujours
+// un encodeur hardware (Intel QSV, NVENC, AMF, Apple VT) tandis que VP8/VP9 par
+// défaut tournent en software → CPU bound → drops + low fps + Chromium reporte
+// faussement "bandwidth limitation". Ce changement seul élimine la majorité
+// des problèmes "perte de qualité" sur des PC modestes.
+function preferH264OnPc(pc: RTCPeerConnection): void {
+  try {
+    const caps = (RTCRtpSender as any).getCapabilities?.("video");
+    if (!caps?.codecs) return;
+    const codecs: Array<{ mimeType: string }> = caps.codecs;
+    const h264 = codecs.filter((c) => /h264/i.test(c.mimeType));
+    const others = codecs.filter((c) => !/h264/i.test(c.mimeType) && !/red|rtx|ulpfec/i.test(c.mimeType));
+    const fec = codecs.filter((c) => /red|rtx|ulpfec/i.test(c.mimeType));
+    if (h264.length === 0) return;
+    const ordered = [...h264, ...others, ...fec];
+    pc.getTransceivers().forEach((t) => {
+      const kind = t.sender?.track?.kind || (t as any).receiver?.track?.kind;
+      if (kind === "video" && typeof (t as any).setCodecPreferences === "function") {
+        try { (t as any).setCodecPreferences(ordered); } catch {}
+      }
+    });
+  } catch {}
+}
+
 // ─── WebRTC broadcaster ───────────────────────────────────────────────────────
 
 function useBroadcaster(
@@ -306,6 +331,7 @@ function useBroadcaster(
           pendingIceRef.current.delete(viewerId);
         }
       };
+      preferH264OnPc(pc);
       const offer = await pc.createOffer({ offerToReceiveVideo: false, offerToReceiveAudio: false });
       await pc.setLocalDescription(offer);
       socket.emit("cam:offer", { to: viewerId, sdp: offer });
@@ -368,8 +394,11 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
     if (!socket || sharing) return;
     let stream: MediaStream;
     try {
+      // 24 fps suffisant pour du contenu casino/UI et économise ~20% CPU vs 30 fps.
+      // Pas de contrainte width/height — laisse Chrome utiliser la résolution écran
+      // native, l'encodeur H264 hardware (forcé via setCodecPreferences) gère.
       stream = await (navigator.mediaDevices as any).getDisplayMedia({
-        video: { frameRate: { ideal: 30, max: 30 } },
+        video: { frameRate: { ideal: 24, max: 30 } },
         audio: false,
       });
     } catch (e) {
@@ -431,7 +460,7 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
             const params = sender.getParameters();
             if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
             params.encodings[0].maxBitrate = 2_500_000; // 2.5 Mbps
-            params.encodings[0].maxFramerate = 30;
+            params.encodings[0].maxFramerate = 24;
             params.degradationPreference = "maintain-resolution";
             sender.setParameters(params).catch(() => {});
           } catch {}
@@ -447,6 +476,7 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
           pendingIceRef.current.delete(viewerId);
         }
       };
+      preferH264OnPc(pc);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       socket.emit("screen:offer", { to: viewerId, sdp: offer });
@@ -1320,6 +1350,29 @@ function RtcStatsPanel({
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontSize: 13, fontWeight: 800, color: "#dde8ff" }}>📊 Diagnostic WebRTC live</span>
         <span style={{ fontSize: 10, color: "#64748b", fontFamily: "monospace" }}>tick 1.5s · sources broadcast</span>
+        <button
+          onClick={() => {
+            const codec = (() => {
+              try {
+                const caps = (RTCRtpSender as any).getCapabilities?.("video");
+                const list = (caps?.codecs || []).map((c: any) => c.mimeType).join(",");
+                return list || "n/a";
+              } catch { return "n/a"; }
+            })();
+            const ua = navigator.userAgent;
+            const dump = JSON.stringify({ ua, codecsAvailable: codec, stats }, null, 2);
+            navigator.clipboard.writeText(dump).catch(() => {});
+          }}
+          style={{
+            marginLeft: "auto",
+            background: "rgba(99,102,241,.15)", border: "1px solid rgba(99,102,241,.35)",
+            color: "#c7d2fe", padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+            cursor: "pointer", fontFamily: "inherit",
+          }}
+          title="Copie un dump JSON des stats actuelles dans le presse-papier"
+        >
+          📋 Copier stats
+        </button>
       </div>
       {stats.length === 0 ? (
         <div style={{ fontSize: 11, color: "#64748b" }}>
