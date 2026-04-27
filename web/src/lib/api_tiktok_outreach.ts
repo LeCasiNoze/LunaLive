@@ -245,9 +245,42 @@ export type TikTokImportBulkResponse = {
   results: TikTokImportResult[];
 };
 
-export function importTikTokBulk(handles: string[], source?: string) {
-  return request<TikTokImportBulkResponse>(`/api/fsb/tiktok/import-bulk`, {
+export type TikTokImportBulkPayload = {
+  handles: string[];
+  source?: string;
+  requireEmail?: boolean;
+  minFollowers?: number;
+  maxFollowers?: number;
+  countries?: string[];
+};
+
+export function importTikTokBulk(payload: TikTokImportBulkPayload) {
+  return request<
+    TikTokImportBulkResponse & {
+      kept: number;
+      droppedNoEmail: number;
+      droppedFollowers: number;
+      droppedCountry: number;
+    }
+  >(`/api/fsb/tiktok/import-bulk`, {
     method: "POST",
-    body: JSON.stringify({ handles, source }),
+    body: JSON.stringify(payload),
+  });
+}
+
+export type TikTokEmailTemplate = {
+  subject: string;
+  body: string;
+  replyDomain: string;
+};
+
+export function getTikTokTemplate() {
+  return request<{ ok: true; template: TikTokEmailTemplate }>(`/api/fsb/tiktok/template`);
+}
+
+export function saveTikTokTemplate(template: TikTokEmailTemplate) {
+  return request<{ ok: true; template: TikTokEmailTemplate }>(`/api/fsb/tiktok/template`, {
+    method: "PUT",
+    body: JSON.stringify(template),
   });
 }

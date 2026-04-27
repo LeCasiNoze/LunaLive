@@ -42,7 +42,11 @@ export function isMailReady(): boolean {
   return !!smtp;
 }
 
-async function sendViaBrevo(to: string, subject: string, text: string, html: string) {
+type SendOptions = {
+  replyTo?: string;
+};
+
+async function sendViaBrevo(to: string, subject: string, text: string, html: string, opts: SendOptions = {}) {
   const brevo = readBrevo();
   if (!brevo) throw new Error("BREVO_NOT_CONFIGURED");
 
@@ -53,19 +57,23 @@ async function sendViaBrevo(to: string, subject: string, text: string, html: str
   const t = setTimeout(() => controller.abort(), 12_000);
 
   try {
+    const payload: any = {
+      sender: { name: from.name, email: from.email },
+      to: [{ email: to }],
+      subject,
+      textContent: text,
+      htmlContent: html,
+    };
+    if (opts.replyTo) {
+      payload.replyTo = { email: opts.replyTo };
+    }
     const r = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "api-key": brevo.apiKey,
       },
-      body: JSON.stringify({
-        sender: { name: from.name, email: from.email },
-        to: [{ email: to }],
-        subject,
-        textContent: text,
-        htmlContent: html,
-      }),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
 
@@ -96,15 +104,23 @@ function getSmtpTransport() {
   return smtpTransporter;
 }
 
-async function sendViaSmtp(to: string, subject: string, text: string, html: string) {
+async function sendViaSmtp(to: string, subject: string, text: string, html: string, opts: SendOptions = {}) {
   const t = getSmtpTransport();
   const from = String(process.env.EMAIL_FROM || process.env.SMTP_USER || "").trim();
-  await t.sendMail({ from, to, subject, text, html });
+  const mailOptions: any = { from, to, subject, text, html };
+  if (opts.replyTo) mailOptions.replyTo = opts.replyTo;
+  await t.sendMail(mailOptions);
 }
 
-export async function sendMail(to: string, subject: string, text: string, html: string) {
-  if (readBrevo()) return sendViaBrevo(to, subject, text, html);
-  return sendViaSmtp(to, subject, text, html);
+export async function sendMail(
+  to: string,
+  subject: string,
+  text: string,
+  html: string,
+  opts: SendOptions = {}
+) {
+  if (readBrevo()) return sendViaBrevo(to, subject, text, html, opts);
+  return sendViaSmtp(to, subject, text, html, opts);
 }
 
 export async function sendVerifyCode(to: string, code: string, minutes = 15) {

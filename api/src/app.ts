@@ -92,7 +92,7 @@ import { adminContentRouter } from "./routes/admin_content.js";
 import { publicContentRouter } from "./routes/public_content.js";
 import { expensesRouter } from "./routes/expenses.js";
 import { fsbDashboardRouter } from "./routes/fsb_dashboard.js";
-import { tiktokOutreachRouter } from "./routes/tiktok_outreach.js";
+import { tiktokOutreachRouter, handleInboundReply } from "./routes/tiktok_outreach.js";
 import { agencyRouter } from "./routes/agency.js";
 import { requireFsbAccess } from "./routes/fsb_guard.js";
 import { webrtcTurnRouter } from "./routes/webrtc_turn.js";
@@ -196,6 +196,7 @@ export function createApp() {
   app.use("/api", expensesRouter);
   app.use("/api", fsbDashboardRouter);
   app.use("/api", tiktokOutreachRouter);
+  app.post("/api/inbound/tiktok-reply", handleInboundReply);
   app.use("/api", agencyRouter);
   app.use(igWebhookRouter);
 

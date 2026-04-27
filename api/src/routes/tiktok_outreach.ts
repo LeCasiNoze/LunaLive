@@ -353,22 +353,56 @@ const contactSchema = z.object({
   body: z.string().trim().min(1).max(8000).optional(),
 });
 
-const DEFAULT_SUBJECT = "Collab LunaLive — landing page casino";
-const DEFAULT_BODY = `Salut {{name}},
-
-Je découvre ton compte TikTok et j'aime beaucoup ce que tu fais.
-
-Je m'occupe de LunaLive, une plateforme française autour du streaming et des casinos en ligne. On cherche des créateurs comme toi pour collaborer sur une landing page dédiée (avec ton lien d'affiliation, tes conditions, et un suivi des perfs).
-
-Si l'idée t'intéresse, réponds simplement à ce mail, je t'envoie tous les détails du deal.
-
-À très vite,
-L'équipe LunaLive
-https://lunalive.win`;
-
 function renderTemplate(tpl: string, vars: Record<string, string>) {
   return tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => vars[key] ?? "");
 }
+
+async function loadTemplate(): Promise<{ subject: string; body: string; replyDomain: string }> {
+  const r = await pool.query(
+    `SELECT email_subject, email_body, reply_domain FROM tiktok_outreach_config WHERE id = 1`
+  );
+  const row = r.rows[0] || {};
+  return {
+    subject: String(row.email_subject || "Collab LunaLive"),
+    body: String(row.email_body || ""),
+    replyDomain: String(row.reply_domain || "lunalive.win"),
+  };
+}
+
+tiktokOutreachRouter.get(
+  "/fsb/tiktok/template",
+  a(async (_req, res) => {
+    const tpl = await loadTemplate();
+    return res.json({ ok: true, template: tpl });
+  })
+);
+
+const templateSchema = z.object({
+  subject: z.string().trim().min(1).max(200),
+  body: z.string().trim().min(1).max(8000),
+  replyDomain: z.string().trim().min(3).max(100).regex(/^[a-z0-9.-]+$/i).optional(),
+});
+
+tiktokOutreachRouter.put(
+  "/fsb/tiktok/template",
+  a(async (req, res) => {
+    const parsed = templateSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "invalid_input" });
+    }
+    await pool.query(
+      `UPDATE tiktok_outreach_config
+         SET email_subject = $1,
+             email_body = $2,
+             reply_domain = COALESCE($3, reply_domain),
+             updated_at = NOW()
+       WHERE id = 1`,
+      [parsed.data.subject, parsed.data.body, parsed.data.replyDomain ?? null]
+    );
+    const tpl = await loadTemplate();
+    return res.json({ ok: true, template: tpl });
+  })
+);
 
 tiktokOutreachRouter.post(
   "/fsb/tiktok/:id/contact",
@@ -391,19 +425,23 @@ tiktokOutreachRouter.post(
       return res.status(503).json({ ok: false, error: "mail_not_configured" });
     }
 
+    const tpl = await loadTemplate();
     const vars = {
       name: row.display_name || `@${row.handle}`,
       handle: row.handle,
     };
-    const subject = renderTemplate(parsed.data.subject || DEFAULT_SUBJECT, vars);
-    const body = renderTemplate(parsed.data.body || DEFAULT_BODY, vars);
+    const subject = renderTemplate(parsed.data.subject || tpl.subject, vars);
+    const body = renderTemplate(parsed.data.body || tpl.body, vars);
     const html = `<div style="font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;line-height:1.6;color:#0d1b2e">${body
       .split("\n")
       .map((line) => (line.trim() ? `<p>${line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>` : "<br/>"))
       .join("")}</div>`;
 
+    // Reply-To with embedded influencer ID for inbound matching
+    const replyTo = `replies+tk${id}@${tpl.replyDomain}`;
+
     try {
-      await sendMail(row.email, subject, body, html);
+      await sendMail(row.email, subject, body, html, { replyTo });
     } catch (err: any) {
       await pool.query(
         `INSERT INTO tiktok_outreach_messages (influencer_id, direction, subject, body, success, error_message)
@@ -1049,11 +1087,118 @@ tiktokOutreachRouter.get(
   })
 );
 
+// ─── Inbound reply webhook (Brevo Inbound Email Parsing) ─────────────────
+// This route is OUTSIDE the requireAuth/requireFsbAccess scope.
+// It needs to be mounted directly on the app, not on the router.
+// Exported as a separate handler.
+
+export async function handleInboundReply(req: any, res: any) {
+  const expectedSecret = String(process.env.INBOUND_WEBHOOK_SECRET || "").trim();
+  if (!expectedSecret) {
+    return res.status(503).json({ ok: false, error: "inbound_not_configured" });
+  }
+  const presentedSecret =
+    String(req.query?.secret || "").trim() ||
+    String(req.headers?.["x-inbound-secret"] || "").trim();
+  if (presentedSecret !== expectedSecret) {
+    return res.status(401).json({ ok: false, error: "unauthorized" });
+  }
+
+  const body = req.body || {};
+  // Brevo "items" array format (transactional inbound), or single email format.
+  const items: any[] = Array.isArray(body?.items) ? body.items : [body];
+
+  const processed: Array<{ ok: boolean; influencerId?: number; reason?: string }> = [];
+
+  for (const item of items) {
+    // Extract recipient address (replies+tk{id}@domain)
+    const toCandidates: string[] = [];
+    const addCand = (v: any) => {
+      if (!v) return;
+      if (Array.isArray(v)) v.forEach(addCand);
+      else if (typeof v === "string") toCandidates.push(v);
+      else if (typeof v === "object" && v?.Address) toCandidates.push(String(v.Address));
+      else if (typeof v === "object" && v?.address) toCandidates.push(String(v.address));
+      else if (typeof v === "object" && v?.email) toCandidates.push(String(v.email));
+    };
+    addCand(item?.To);
+    addCand(item?.to);
+    addCand(item?.Cc);
+    addCand(item?.cc);
+    addCand(item?.recipient);
+    addCand(item?.recipients);
+    addCand(item?.envelope?.to);
+
+    let influencerId: number | null = null;
+    for (const addr of toCandidates) {
+      const m = String(addr).match(/replies\+tk(\d+)@/i);
+      if (m) {
+        influencerId = Number(m[1]);
+        break;
+      }
+    }
+
+    if (!influencerId) {
+      processed.push({ ok: false, reason: "no_id_in_recipient" });
+      continue;
+    }
+
+    const fromAddr =
+      (typeof item?.From === "string" ? item.From : item?.From?.Address || item?.From?.email) ||
+      (typeof item?.from === "string" ? item.from : item?.from?.Address || item?.from?.email) ||
+      null;
+    const subject = String(item?.Subject || item?.subject || "").slice(0, 500);
+    const text = String(
+      item?.["RawTextBody"] ||
+        item?.["Text"] ||
+        item?.text ||
+        item?.["TextBody"] ||
+        item?.["plain"] ||
+        ""
+    ).slice(0, 8000);
+    const excerpt = (subject ? `[${subject}] ` : "") + text;
+
+    const found = await pool.query(`SELECT * FROM tiktok_influencers WHERE id = $1`, [influencerId]);
+    if (!found.rows[0]) {
+      processed.push({ ok: false, influencerId, reason: "influencer_not_found" });
+      continue;
+    }
+
+    await pool.query(
+      `INSERT INTO tiktok_outreach_messages (influencer_id, direction, subject, body, success)
+       VALUES ($1, 'in', $2, $3, TRUE)`,
+      [influencerId, subject || null, excerpt || `(reply from ${fromAddr || "unknown"})`]
+    );
+
+    // Promote status to 'replied' unless already in a stronger state
+    await pool.query(
+      `UPDATE tiktok_influencers
+         SET status = CASE
+               WHEN status IN ('interested','declined','blacklisted') THEN status
+               ELSE 'replied'
+             END,
+             reply_received_at = NOW(),
+             reply_excerpt = LEFT($2, 2000),
+             updated_at = NOW()
+       WHERE id = $1`,
+      [influencerId, excerpt]
+    );
+
+    processed.push({ ok: true, influencerId });
+  }
+
+  return res.json({ ok: true, processed });
+}
+
 // ─── Bulk import (used by browser bookmarklet) ────────────────────────────
 
 const importBulkSchema = z.object({
-  handles: z.array(z.string().trim().min(1).max(40)).min(1).max(100),
+  handles: z.array(z.string().trim().min(1).max(40)).min(1).max(200),
   source: z.string().trim().max(300).optional(),
+  requireEmail: z.boolean().optional().default(false),
+  minFollowers: z.coerce.number().int().min(0).max(100_000_000).optional().default(0),
+  maxFollowers: z.coerce.number().int().min(0).max(100_000_000).optional().default(0),
+  countries: z.array(z.string().trim().min(2).max(4)).max(10).optional().default([]),
 });
 
 tiktokOutreachRouter.post(
@@ -1085,7 +1230,13 @@ tiktokOutreachRouter.post(
     let scanned = 0;
     let withEmail = 0;
     let failed = 0;
+    let kept = 0;
+    let droppedNoEmail = 0;
+    let droppedFollowers = 0;
+    let droppedCountry = 0;
     const results: Array<{ handle: string; status: string; email: string | null }> = [];
+
+    const countriesUpper = (parsed.data.countries || []).map((c) => c.toUpperCase());
 
     for (const handle of fresh) {
       const profile = await scrapeTikTokProfile(handle);
@@ -1095,15 +1246,43 @@ tiktokOutreachRouter.post(
         results.push({ handle, status: "unreachable", email: null });
         continue;
       }
-      const upserted = await upsertScrapedProfile(profile);
+
+      // Apply server-side filters before upsert
+      const followers = profile.followerCount || 0;
+      const country = (profile.country || "").toUpperCase();
+      if (parsed.data.requireEmail && !profile.email) {
+        droppedNoEmail += 1;
+        results.push({ handle, status: "dropped_no_email", email: null });
+        await sleep(400);
+        continue;
+      }
+      if (parsed.data.minFollowers && followers < parsed.data.minFollowers) {
+        droppedFollowers += 1;
+        results.push({ handle, status: "dropped_min_followers", email: profile.email });
+        await sleep(400);
+        continue;
+      }
+      if (parsed.data.maxFollowers && followers > parsed.data.maxFollowers) {
+        droppedFollowers += 1;
+        results.push({ handle, status: "dropped_max_followers", email: profile.email });
+        await sleep(400);
+        continue;
+      }
+      if (countriesUpper.length && !countriesUpper.includes(country)) {
+        droppedCountry += 1;
+        results.push({ handle, status: "dropped_country", email: profile.email });
+        await sleep(400);
+        continue;
+      }
+
+      await upsertScrapedProfile(profile);
+      kept += 1;
       if (profile.email) withEmail += 1;
       results.push({
         handle,
         status: profile.email ? "new" : "no_email",
         email: profile.email,
       });
-      void upserted;
-      // light throttle
       await sleep(500);
     }
 
@@ -1113,6 +1292,10 @@ tiktokOutreachRouter.post(
       alreadyKnown: knownSet.size,
       scanned,
       withEmail,
+      kept,
+      droppedNoEmail,
+      droppedFollowers,
+      droppedCountry,
       failed,
       results,
     });

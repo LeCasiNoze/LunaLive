@@ -7,14 +7,17 @@ import {
   deleteTikTokInfluencer,
   getActiveRun,
   getRun,
+  getTikTokTemplate,
   importTikTokBulk,
   listRuns,
   listTikTokInfluencers,
   listTikTokMessages,
   logTikTokReply,
+  saveTikTokTemplate,
   scanTikTokProfile,
   setTikTokInfluencerStatus,
   startDiscoveryRun,
+  type TikTokEmailTemplate,
   type TikTokInfluencer,
   type TikTokInfluencerStatus,
   type TikTokOutreachMessage,
@@ -308,11 +311,15 @@ export function FsbTikTokOutreachSection() {
   const [discMaxFollowers, setDiscMaxFollowers] = React.useState(500000);
   const [discCountries, setDiscCountries] = React.useState<string[]>(["FR"]);
   const [discRequireEmail, setDiscRequireEmail] = React.useState(true);
-  const [discMaxProfiles, setDiscMaxProfiles] = React.useState(30);
+  const [discMaxProfiles, setDiscMaxProfiles] = React.useState(100);
   const [discError, setDiscError] = React.useState<string | null>(null);
   const [activeRun, setActiveRun] = React.useState<TikTokOutreachRun | null>(null);
   const [pastRuns, setPastRuns] = React.useState<TikTokOutreachRun[]>([]);
   const [extensionVersion, setExtensionVersion] = React.useState<string | null>(null);
+  const [template, setTemplate] = React.useState<TikTokEmailTemplate | null>(null);
+  const [templateDraft, setTemplateDraft] = React.useState<TikTokEmailTemplate | null>(null);
+  const [templateSaving, setTemplateSaving] = React.useState(false);
+  const [templateFlash, setTemplateFlash] = React.useState<string | null>(null);
   const [localScrape, setLocalScrape] = React.useState<{
     running: boolean;
     events: Array<{ kind: string; source?: string; found?: number; error?: string }>;
@@ -374,8 +381,8 @@ export function FsbTikTokOutreachSection() {
 
   const openContact = (inf: TikTokInfluencer) => {
     setContactTarget(inf);
-    setContactBody(DEFAULT_BODY);
-    setContactSubject("Collab LunaLive — landing page casino");
+    setContactBody(template?.body || DEFAULT_BODY);
+    setContactSubject(template?.subject || "Collab LunaLive — landing page casino");
     setContactError(null);
   };
 
@@ -435,6 +442,34 @@ export function FsbTikTokOutreachSection() {
       // silent
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  // ─── Template loading ─────────────────────────────────────────────────
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const r = await getTikTokTemplate();
+        setTemplate(r.template);
+        setTemplateDraft(r.template);
+      } catch {}
+    })();
+  }, []);
+
+  const saveTemplate = async () => {
+    if (!templateDraft) return;
+    setTemplateSaving(true);
+    setTemplateFlash(null);
+    try {
+      const r = await saveTikTokTemplate(templateDraft);
+      setTemplate(r.template);
+      setTemplateDraft(r.template);
+      setTemplateFlash("✅ Modèle sauvegardé");
+      setTimeout(() => setTemplateFlash(null), 3000);
+    } catch (err: any) {
+      setTemplateFlash(`❌ ${err?.message || err}`);
+    } finally {
+      setTemplateSaving(false);
     }
   };
 
@@ -616,15 +651,17 @@ export function FsbTikTokOutreachSection() {
 
     for (const chunk of chunks) {
       try {
-        const r = await importTikTokBulk(chunk, `extension:${discHashtags.join(",")}`);
+        const r = await importTikTokBulk({
+          handles: chunk,
+          source: `extension:${discHashtags.join(",")}`,
+          requireEmail: discRequireEmail,
+          minFollowers: discMinFollowers,
+          maxFollowers: discMaxFollowers,
+          countries: discCountries,
+        });
         totalScanned += r.scanned;
         totalWithEmail += r.withEmail;
-        // "kept" = scanned that pass the user's filters
-        const keptInChunk = r.results.filter((res) => {
-          if (discRequireEmail && !res.email) return false;
-          return res.status === "new";
-        }).length;
-        totalKept += keptInChunk;
+        totalKept += r.kept;
         setLocalScrape((prev) =>
           prev
             ? {
@@ -879,9 +916,11 @@ export function FsbTikTokOutreachSection() {
               className="tk-num-input"
               style={{ width: "100%" }}
               min={1}
-              max={60}
+              max={1000}
               value={discMaxProfiles}
-              onChange={(e) => setDiscMaxProfiles(Math.max(1, Math.min(60, Number(e.target.value) || 30)))}
+              onChange={(e) =>
+                setDiscMaxProfiles(Math.max(1, Math.min(1000, Number(e.target.value) || 100)))
+              }
             />
           </div>
 
@@ -954,15 +993,25 @@ export function FsbTikTokOutreachSection() {
             <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>
               <strong style={{ color: "var(--text)" }}>Installe l'extension</strong> pour que la récolte tourne dans ton navigateur (TikTok bloque le serveur).
             </div>
-            <a
-              href="/extension"
-              target="_blank"
-              rel="noreferrer"
-              className="fsb-btn fsb-btn-primary"
-              style={{ textDecoration: "none" }}
-            >
-              📥 Installer en 1 minute
-            </a>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <a
+                href="/lunalive-tiktok-discoverer.zip"
+                download
+                className="fsb-btn fsb-btn-primary"
+                style={{ textDecoration: "none" }}
+              >
+                ⬇️ Télécharger le .zip
+              </a>
+              <a
+                href="/extension"
+                target="_blank"
+                rel="noreferrer"
+                className="fsb-btn"
+                style={{ textDecoration: "none" }}
+              >
+                📖 Guide d'install
+              </a>
+            </div>
           </div>
         ) : (
           <div
@@ -981,19 +1030,29 @@ export function FsbTikTokOutreachSection() {
             }}
           >
             <span style={{ color: "var(--muted)" }}>
-              Tu peux partager l'extension à un coéquipier — il aura le même setup en quelques clics.
+              Partage l'extension à un coéquipier — il aura le même setup en 1 minute.
             </span>
-            <button
-              className="fsb-btn"
-              style={{ padding: "6px 12px", fontSize: 12 }}
-              onClick={() => {
-                const url = `${window.location.origin}/extension`;
-                navigator.clipboard?.writeText(url).catch(() => {});
-                window.alert(`Lien copié : ${url}`);
-              }}
-            >
-              🔗 Copier le lien d'install
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <a
+                href="/lunalive-tiktok-discoverer.zip"
+                download
+                className="fsb-btn"
+                style={{ padding: "6px 12px", fontSize: 12, textDecoration: "none" }}
+              >
+                ⬇️ .zip
+              </a>
+              <button
+                className="fsb-btn"
+                style={{ padding: "6px 12px", fontSize: 12 }}
+                onClick={() => {
+                  const url = `${window.location.origin}/extension`;
+                  navigator.clipboard?.writeText(url).catch(() => {});
+                  window.alert(`Lien copié : ${url}`);
+                }}
+              >
+                🔗 Copier le lien
+              </button>
+            </div>
           </div>
         )}
 
@@ -1228,6 +1287,136 @@ export function FsbTikTokOutreachSection() {
           </>
         ) : null}
       </div>
+
+      {templateDraft ? (
+        <details className="tk-discovery" style={{ padding: 0 }}>
+          <summary
+            style={{
+              cursor: "pointer",
+              padding: "18px 22px",
+              fontSize: 16,
+              fontWeight: 800,
+              letterSpacing: "-.02em",
+              color: "var(--text)",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              listStyle: "none",
+            }}
+          >
+            ✉️ Modèle de mail{" "}
+            <span style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13 }}>
+              — utilisé par défaut quand tu cliques "Contacter"
+            </span>
+          </summary>
+          <div style={{ padding: "0 22px 22px" }}>
+            <p style={{ margin: "0 0 12px", color: "var(--muted)", fontSize: 13, lineHeight: 1.6 }}>
+              Variables disponibles : <code style={{ color: "#fbbf24", background: "rgba(255,255,255,.06)", padding: "1px 6px", borderRadius: 5 }}>{"{{name}}"}</code>{" "}
+              (display name ou @handle) ·{" "}
+              <code style={{ color: "#fbbf24", background: "rgba(255,255,255,.06)", padding: "1px 6px", borderRadius: 5 }}>{"{{handle}}"}</code>
+            </p>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div>
+                <label
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: ".08em",
+                    textTransform: "uppercase",
+                    color: "var(--muted)",
+                    fontWeight: 800,
+                    display: "block",
+                    marginBottom: 6,
+                  }}
+                >
+                  Sujet
+                </label>
+                <input
+                  className="tk-input"
+                  value={templateDraft.subject}
+                  onChange={(e) =>
+                    setTemplateDraft({ ...templateDraft, subject: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: ".08em",
+                    textTransform: "uppercase",
+                    color: "var(--muted)",
+                    fontWeight: 800,
+                    display: "block",
+                    marginBottom: 6,
+                  }}
+                >
+                  Corps du mail
+                </label>
+                <textarea
+                  className="tk-textarea"
+                  style={{ minHeight: 220 }}
+                  value={templateDraft.body}
+                  onChange={(e) => setTemplateDraft({ ...templateDraft, body: e.target.value })}
+                />
+              </div>
+              <div>
+                <label
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: ".08em",
+                    textTransform: "uppercase",
+                    color: "var(--muted)",
+                    fontWeight: 800,
+                    display: "block",
+                    marginBottom: 6,
+                  }}
+                >
+                  Domaine pour les réponses (Reply-To)
+                </label>
+                <input
+                  className="tk-input"
+                  value={templateDraft.replyDomain}
+                  onChange={(e) =>
+                    setTemplateDraft({ ...templateDraft, replyDomain: e.target.value })
+                  }
+                />
+                <div style={{ marginTop: 6, color: "var(--muted)", fontSize: 11.5, lineHeight: 1.5 }}>
+                  Les mails sortants auront un Reply-To <code>replies+tk{"{id}"}@{templateDraft.replyDomain}</code>.
+                  Configure Brevo Inbound Parsing sur ce domaine pour capter les réponses
+                  automatiquement (webhook : <code>POST /api/inbound/tiktok-reply?secret=...</code>).
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                className="fsb-btn fsb-btn-primary"
+                onClick={saveTemplate}
+                disabled={
+                  templateSaving ||
+                  (template &&
+                    template.subject === templateDraft.subject &&
+                    template.body === templateDraft.body &&
+                    template.replyDomain === templateDraft.replyDomain)
+                }
+              >
+                {templateSaving ? <span className="tk-spin" /> : "💾 Sauvegarder"}
+              </button>
+              <button
+                className="fsb-btn"
+                onClick={() => template && setTemplateDraft(template)}
+                disabled={!template || templateSaving}
+              >
+                Annuler les modifs
+              </button>
+              {templateFlash ? (
+                <span style={{ fontSize: 12.5, color: templateFlash.startsWith("✅") ? "#34d399" : "#fc8181" }}>
+                  {templateFlash}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </details>
+      ) : null}
 
       <div className="tk-filterbar">
         {FILTERS.map((f) => (
