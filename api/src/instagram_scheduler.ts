@@ -228,18 +228,19 @@ async function waitForContainerFinished(
     await sleep(CONTAINER_POLL_DELAY_MS);
 
     const data = await metaGet(`/${creationId}`, {
-      fields: "status_code",
+      fields: "status_code,status",
       access_token: accessToken,
     });
 
-    const code = String(data.status_code ?? "");
+    const code   = String(data.status_code ?? "");
+    const detail = String(data.status ?? "").trim();
     console.log(
-      `${LOG} [job #${jobId}] container=${creationId} status=${code} (${attempt}/${CONTAINER_POLL_MAX})`
+      `${LOG} [job #${jobId}] container=${creationId} status_code=${code}${detail ? ` status="${detail}"` : ""} (${attempt}/${CONTAINER_POLL_MAX})`
     );
 
     if (code === "FINISHED") return;
-    if (code === "ERROR") throw new Error("Container processing failed (status=ERROR)");
-    if (code === "EXPIRED") throw new Error("Container expired before publishing");
+    if (code === "ERROR")   throw new Error(`Container processing failed (status=ERROR)${detail ? ` — ${detail}` : ""}`);
+    if (code === "EXPIRED") throw new Error(`Container expired before publishing${detail ? ` — ${detail}` : ""}`);
     // IN_PROGRESS → continue
   }
 

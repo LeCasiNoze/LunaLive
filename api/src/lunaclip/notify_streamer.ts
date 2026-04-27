@@ -20,7 +20,7 @@ type Pool = any;
 const LUNALIVE_RADIO_SLUGS = new Set(["lunalive", "lunalive-2424"]);
 
 const DISCORD_INVITE_URL  = "https://discord.gg/VSbCZQ4gyT";
-const INSTAGRAM_URL       = "https://instagram.com/lunalive";
+const INSTAGRAM_URL       = "https://www.instagram.com/lunalive_tv";
 const PLATFORM_NAME       = "LunaLive";
 
 type StreamerInfo = {
