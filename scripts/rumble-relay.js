@@ -130,6 +130,7 @@ async function findLiveSlug(username, html) {
   console.log(`[relay]   ${username}: ${slugs.length} slug(s) candidats: ${slugs.slice(0,8).join(",")}${slugs.length>8?"…":""}`);
 
   // On essaie chaque slug avec embedJS, premier qui retourne live=1 gagne
+  let probedCount = 0;
   for (const slug of slugs) {
     try {
       const url = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${slug}&ad_wt=0`;
@@ -144,11 +145,18 @@ async function findLiveSlug(username, html) {
       if (!r.ok) continue;
       const d = await r.json();
       const isLive = d?.live === 1 || d?.live === true || d?.livestream_has_dvr === 1;
+      // Log debug pour les 5 premiers candidats
+      if (probedCount < 5) {
+        console.log(`[relay]     probe ${slug} → live=${d?.live} dvr=${d?.livestream_has_dvr} title="${(d?.title||"").slice(0,40)}"`);
+      }
+      probedCount++;
       if (isLive) {
         console.log(`[relay]   ${username}: LIVE — slug=${slug} vid=${d?.vid}`);
         return { vSlug: slug, isLive: true };
       }
     } catch { /* try next slug */ }
+    // Limite à 8 probes pour éviter de spammer Rumble si le live n'est pas dans les premiers
+    if (probedCount >= 8) break;
   }
   return null;
 }
