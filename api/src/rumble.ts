@@ -424,13 +424,12 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
     });
     if (!r2.ok) return offline;
     const d: any = await r2.json();
-    // Rumble retourne `live: 1` ou `live: 2` selon le type, et
-    // `livestream_has_dvr` peut être boolean true ou number 1.
-    // Note: `loaded` vaut 1 pour les lives actifs ET ended (pas un signal fiable).
-    // Le délai de mise à offline est ~5min post-fin (Rumble flippe live=1→0).
-    // Pour réduire ce délai, /user/{name}/live retourne rapidement un slug
-    // placeholder (live=0) → on bascule offline correctement.
-    const isLive = !!d?.live || !!d?.livestream_has_dvr;
+    // Rumble retourne `live: 1/2` pour live actif. Live ended bascule à 0 après ~5min,
+    // mais entre temps embedJS peut renvoyer une URL `hls-vod/...` (VOD post-live)
+    // au lieu de `live-hls-dvr/...`. C'est un signal fort que la live est terminée.
+    const hlsCandidatePeek = d?.u?.hls?.url || d?.ua?.hls?.auto?.url || "";
+    const isVodUrl = typeof hlsCandidatePeek === "string" && hlsCandidatePeek.includes("/hls-vod/");
+    const isLive = (!!d?.live || !!d?.livestream_has_dvr) && !isVodUrl;
     if (!isLive) {
       console.log(`[rumble][pseudo-only] ${username}: ${vSlug} pas en live`);
       return offline;
