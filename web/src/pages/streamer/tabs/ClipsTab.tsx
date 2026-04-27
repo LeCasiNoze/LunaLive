@@ -147,20 +147,27 @@ function ClipModal({ clip, token, isOwner, busy, onRequireLogin, onClose, onTogg
 }) {
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
 
+  // IMPORTANT: ne dépendre QUE des champs qui définissent quelle vidéo charger.
+  // Avant on dépendait de `clip` (objet entier) → chaque re-render parent (like, etc.)
+  // changeait la référence → useEffect cleanup → video.src reset → reload + stutter.
+  const clipId = clip.id;
+  const clipUrl = String((clip as any).clipUrl || "").trim();
+  const vodUrl = clip.vodUrl || "";
+  const seekToStr = String(clip.startSec || 0);
+
   React.useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const clipUrl = String((clip as any).clipUrl || "").trim();
     if (clipUrl) {
       video.src = clipUrl;
       const onMeta = () => { video.play().catch(() => {}); };
       video.addEventListener("loadedmetadata", onMeta);
       return () => { video.removeEventListener("loadedmetadata", onMeta); video.pause(); video.removeAttribute("src"); video.load(); };
     }
-    const url = clip.vodUrl;
+    const url = vodUrl;
     if (!url) return;
     let hls: Hls | null = null;
-    const seekTo = Math.max(0, Math.floor(clip.startSec || 0));
+    const seekTo = Math.max(0, Math.floor(Number(seekToStr) || 0));
     const trySeek = () => { try { if (Number.isFinite(seekTo) && seekTo > 0) video.currentTime = seekTo; } catch {} };
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = url;
@@ -180,7 +187,7 @@ function ClipModal({ clip, token, isOwner, busy, onRequireLogin, onClose, onTogg
       return () => { video.removeEventListener("loadedmetadata", onMeta); };
     }
     return () => { try { hls?.destroy(); } catch {} if (video) { video.pause(); video.removeAttribute("src"); video.load(); } };
-  }, [clip]);
+  }, [clipId, clipUrl, vodUrl, seekToStr]);
 
   return (
     <div className="chatSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex:80 }}>
