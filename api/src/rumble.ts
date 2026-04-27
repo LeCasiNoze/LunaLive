@@ -415,12 +415,13 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
     });
     if (!r2.ok) return offline;
     const d: any = await r2.json();
-    // Rumble retourne `live: 1/2` pour live actif. Live ended bascule à 0 après ~5min,
-    // mais entre temps embedJS peut renvoyer une URL `hls-vod/...` (VOD post-live)
-    // au lieu de `live-hls-dvr/...`. C'est un signal fort que la live est terminée.
+    // `live: 1/2` = stream actuellement en cours.
+    // `live: 0` = stream fini (peut encore renvoyer URL DVR pour rewatch).
+    // `livestream_has_dvr` n'est PAS un indicateur d'état (juste un flag config).
+    // Si l'URL HLS est `hls-vod/...` c'est aussi un signal de fin.
     const hlsCandidatePeek = d?.u?.hls?.url || d?.ua?.hls?.auto?.url || "";
     const isVodUrl = typeof hlsCandidatePeek === "string" && hlsCandidatePeek.includes("/hls-vod/");
-    const isLive = (!!d?.live || !!d?.livestream_has_dvr) && !isVodUrl;
+    const isLive = !!d?.live && !isVodUrl;
     if (!isLive) {
       console.log(`[rumble][pseudo-only] ${username}: ${vSlug} pas en live`);
       return offline;

@@ -150,10 +150,11 @@ async function findLiveSlug(username, html) {
       });
       if (!r.ok) continue;
       const d = await r.json();
-      // hls-vod = URL VOD post-fin, signal de live termine
+      // `livestream_has_dvr` n'est PAS un indicateur d'etat (flag config).
+      // Seul `live` truthy = stream actif.
       const hlsPeek = d?.u?.hls?.url || d?.ua?.hls?.auto?.url || "";
       const isVod = typeof hlsPeek === "string" && hlsPeek.includes("/hls-vod/");
-      const isLive = (!!d?.live || !!d?.livestream_has_dvr) && !isVod;
+      const isLive = !!d?.live && !isVod;
       const dur = Number(d?.duration || 0);
       // Heuristique best-guess: durée nulle/très faible = potentiellement un live
       // (les VODs ont une durée connue, les lives en cours souvent 0)
