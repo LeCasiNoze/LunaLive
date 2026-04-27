@@ -162,18 +162,19 @@ meOverlayRouter.get(
     const slug = String(req.query.slug ?? "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
-    // ⚠️ IMPORTANT:
-    // Adapte cette requête si chez toi le provider username est dans une table de link.
-    // Ici je pars sur streamers.provider_channel_slug (souvent utilisé partout).
+    // Provider account assigné = source de followers (DLive uniquement pour l'instant)
     const q = await pool.query(
-      `SELECT provider_channel_slug
-         FROM streamers
-        WHERE slug = $1
+      `SELECT pa.channel_slug
+         FROM streamers s
+         LEFT JOIN provider_accounts pa
+           ON pa.assigned_to_streamer_id = s.id
+          AND pa.provider = 'dlive'
+        WHERE s.slug = $1
         LIMIT 1`,
       [slug]
     );
 
-    const providerUsername = String(q.rows?.[0]?.provider_channel_slug ?? "").trim();
+    const providerUsername = String(q.rows?.[0]?.channel_slug ?? "").trim();
     if (!providerUsername) {
       return res.status(404).json({ ok: false, error: "no_provider_link" });
     }
