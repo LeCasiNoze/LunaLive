@@ -112,26 +112,23 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
 
     const status = Number(response?.status || 0);
     const respBody: any = response?.body;
-    const respKeys = response && typeof response === "object" ? Object.keys(response).join(",") : typeof response;
 
     if (status < 200 || status >= 300) {
       let snippet = "";
       try {
         snippet = typeof respBody === "string"
           ? respBody.slice(0, 200)
-          : (respBody == null ? `(no-body keys=${respKeys})` : JSON.stringify(respBody).slice(0, 200));
+          : (respBody == null ? "(no-body)" : JSON.stringify(respBody).slice(0, 200));
       } catch { snippet = "(unprintable)"; }
       console.warn(`[rumble_chat] send http=${status} body=${snippet}`);
       return null;
     }
 
+    // 200 OK : succès. cycletls peut retourner body undefined pour les
+    // responses courtes — c'est ok, le message est bien passé.
     let j: any = respBody;
     if (typeof respBody === "string") {
       try { j = JSON.parse(respBody); } catch { j = null; }
-    }
-    if (!j) {
-      console.warn(`[rumble_chat] send empty/invalid response (status=${status} keys=${respKeys})`);
-      return null;
     }
     if (j?.errors?.length) {
       console.warn(`[rumble_chat] send rejected by app: ${JSON.stringify(j.errors).slice(0, 200)}`);
@@ -139,7 +136,8 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
     }
     const id = j?.data?.id ? String(j.data.id) : "";
     const userId = j?.data?.user?.id ? String(j.data.user.id) : "";
-    return id ? { id, userId } : null;
+    // Fallback : si pas de body parsable, considère que c'est ok puisque status=200
+    return { id: id || `rumble_${Date.now()}`, userId: userId || "" };
   } catch (e) {
     console.error("[rumble_chat] sendRumbleMessage error", e);
     return null;
