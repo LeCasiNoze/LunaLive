@@ -316,8 +316,14 @@ export function FsbTikTokOutreachSection() {
   const [activeRun, setActiveRun] = React.useState<TikTokOutreachRun | null>(null);
   const [pastRuns, setPastRuns] = React.useState<TikTokOutreachRun[]>([]);
   const [extensionVersion, setExtensionVersion] = React.useState<string | null>(null);
-  const [template, setTemplate] = React.useState<TikTokEmailTemplate | null>(null);
-  const [templateDraft, setTemplateDraft] = React.useState<TikTokEmailTemplate | null>(null);
+  const FALLBACK_TEMPLATE: TikTokEmailTemplate = {
+    subject: "Collab LunaLive — landing page casino",
+    body: DEFAULT_BODY,
+    replyDomain: "lunalive.win",
+  };
+  const [template, setTemplate] = React.useState<TikTokEmailTemplate | null>(FALLBACK_TEMPLATE);
+  const [templateDraft, setTemplateDraft] = React.useState<TikTokEmailTemplate | null>(FALLBACK_TEMPLATE);
+  const [templateApiReady, setTemplateApiReady] = React.useState(false);
   const [templateSaving, setTemplateSaving] = React.useState(false);
   const [templateFlash, setTemplateFlash] = React.useState<string | null>(null);
   const [localScrape, setLocalScrape] = React.useState<{
@@ -452,7 +458,11 @@ export function FsbTikTokOutreachSection() {
         const r = await getTikTokTemplate();
         setTemplate(r.template);
         setTemplateDraft(r.template);
-      } catch {}
+        setTemplateApiReady(true);
+      } catch {
+        // API endpoint not deployed yet — keep fallback so the editor is visible
+        setTemplateApiReady(false);
+      }
     })();
   }, []);
 
@@ -1289,27 +1299,33 @@ export function FsbTikTokOutreachSection() {
       </div>
 
       {templateDraft ? (
-        <details className="tk-discovery" style={{ padding: 0 }}>
-          <summary
-            style={{
-              cursor: "pointer",
-              padding: "18px 22px",
-              fontSize: 16,
-              fontWeight: 800,
-              letterSpacing: "-.02em",
-              color: "var(--text)",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              listStyle: "none",
-            }}
-          >
-            ✉️ Modèle de mail{" "}
-            <span style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13 }}>
+        <div className="tk-discovery">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, letterSpacing: "-.02em" }}>
+              ✉️ Modèle de mail
+            </h3>
+            <span style={{ color: "var(--muted)", fontSize: 13 }}>
               — utilisé par défaut quand tu cliques "Contacter"
             </span>
-          </summary>
-          <div style={{ padding: "0 22px 22px" }}>
+            {!templateApiReady ? (
+              <span
+                style={{
+                  marginLeft: "auto",
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  background: "rgba(245,158,11,.1)",
+                  border: "1px solid rgba(245,158,11,.28)",
+                  color: "#fbbf24",
+                  fontSize: 11,
+                  fontWeight: 800,
+                }}
+                title="L'API n'a pas encore redéployé — tu peux quand même éditer, sauvegarde dans 1-2 min"
+              >
+                ⏳ API en cours de déploiement
+              </span>
+            ) : null}
+          </div>
+          <div>
             <p style={{ margin: "0 0 12px", color: "var(--muted)", fontSize: 13, lineHeight: 1.6 }}>
               Variables disponibles : <code style={{ color: "#fbbf24", background: "rgba(255,255,255,.06)", padding: "1px 6px", borderRadius: 5 }}>{"{{name}}"}</code>{" "}
               (display name ou @handle) ·{" "}
@@ -1415,7 +1431,7 @@ export function FsbTikTokOutreachSection() {
               ) : null}
             </div>
           </div>
-        </details>
+        </div>
       ) : null}
 
       <div className="tk-filterbar">
