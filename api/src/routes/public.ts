@@ -65,11 +65,12 @@ WITH live_streamers AS (
     s.slug,
     s.display_name AS "displayName",
     s.title,
-    s.thumb_url AS "thumbUrlDb",
+    -- thumb_url Rumble en priorité (live actuel), fallback sur s.thumb_url
+    COALESCE(ri.thumbnail_url, s.thumb_url) AS "thumbUrlDb",
     s.live_started_at AS "liveStartedAt",
-    -- ✅ Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
     ('/avatars/u/' || s.user_id::text) AS "avatarUrl"
   FROM streamers s
+  LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
   WHERE s.is_live = TRUE
     AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
 ),
