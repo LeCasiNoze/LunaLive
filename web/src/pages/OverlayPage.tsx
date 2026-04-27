@@ -806,6 +806,7 @@ function useCallQueue(slug: string, socket: ReturnType<typeof io> | null, enable
 
 function CallCard({
   item, label, icon, accent, fontSize, isCurrent,
+  showProvider, showCaller,
 }: {
   item: CallItem | null;
   label: string;
@@ -813,6 +814,8 @@ function CallCard({
   accent: string;
   fontSize: number;
   isCurrent?: boolean;
+  showProvider: boolean;
+  showCaller: boolean;
 }) {
   const hasItem = !!item;
   return (
@@ -854,20 +857,22 @@ function CallCard({
       </div>
 
       {/* Caller @username */}
-      <div style={{
-        flexShrink: 0,
-        padding: `${fontSize * 0.35}px ${fontSize * 0.6}px ${fontSize * 0.18}px`,
-        textAlign: "center",
-        fontSize: fontSize * 0.78,
-        fontWeight: 800,
-        color: "#fef3c7",
-        letterSpacing: ".02em",
-        textShadow: "0 0 10px rgba(251,191,36,0.55), 0 1px 2px rgba(0,0,0,0.6)",
-        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-        lineHeight: 1.1,
-      }}>
-        {item?.username ? `${item.username}` : (hasItem ? "" : "—")}
-      </div>
+      {showCaller ? (
+        <div style={{
+          flexShrink: 0,
+          padding: `${fontSize * 0.35}px ${fontSize * 0.6}px ${fontSize * 0.18}px`,
+          textAlign: "center",
+          fontSize: fontSize * 0.78,
+          fontWeight: 800,
+          color: "#fef3c7",
+          letterSpacing: ".02em",
+          textShadow: "0 0 10px rgba(251,191,36,0.55), 0 1px 2px rgba(0,0,0,0.6)",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          lineHeight: 1.1,
+        }}>
+          {item?.username ? `${item.username}` : (hasItem ? "" : "—")}
+        </div>
+      ) : null}
 
       {/* Slot image */}
       <div style={{
@@ -885,8 +890,10 @@ function CallCard({
             src={item.imageUrl}
             alt=""
             style={{
-              width: "100%", height: "100%",
-              objectFit: "cover", display: "block",
+              maxWidth: "100%", maxHeight: "100%",
+              width: "auto", height: "auto",
+              objectFit: "contain", display: "block",
+              filter: `drop-shadow(0 4px 14px rgba(0,0,0,0.6)) drop-shadow(0 0 12px ${accent}55)`,
             }}
           />
         ) : (
@@ -921,20 +928,22 @@ function CallCard({
       </div>
 
       {/* Provider */}
-      <div style={{
-        flexShrink: 0,
-        padding: `0 ${fontSize * 0.5}px ${fontSize * 0.5}px`,
-        textAlign: "center",
-        fontSize: fontSize * 0.62,
-        fontWeight: 700,
-        color: "rgba(232,213,255,0.6)",
-        letterSpacing: ".14em",
-        textTransform: "uppercase",
-        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-        lineHeight: 1.1,
-      }}>
-        {item?.provider || (hasItem ? "" : "—")}
-      </div>
+      {showProvider ? (
+        <div style={{
+          flexShrink: 0,
+          padding: `0 ${fontSize * 0.5}px ${fontSize * 0.5}px`,
+          textAlign: "center",
+          fontSize: fontSize * 0.62,
+          fontWeight: 700,
+          color: "rgba(232,213,255,0.6)",
+          letterSpacing: ".14em",
+          textTransform: "uppercase",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          lineHeight: 1.1,
+        }}>
+          {item?.provider || (hasItem ? "" : "—")}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -965,6 +974,8 @@ function CallZone({ call, socket }: { call: CallZoneConfig | undefined; socket: 
         accent={accent}
         fontSize={fontSize}
         isCurrent
+        showProvider={call.showProvider !== false}
+        showCaller={call.showCaller !== false}
       />
       {showNext ? (
         <>
@@ -985,6 +996,8 @@ function CallZone({ call, socket }: { call: CallZoneConfig | undefined; socket: 
             icon="🎯"
             accent={accent}
             fontSize={fontSize}
+            showProvider={call.showProvider !== false}
+            showCaller={call.showCaller !== false}
           />
         </>
       ) : null}
