@@ -1,7 +1,10 @@
 // api/src/shared/clip_service.ts
 // Service local pour la création de clips (API uniquement)
 
-import { notifyStreamerOfFirstAutoClip } from "../lunaclip/notify_streamer.js";
+// Bot service: pas de module lunaclip → stub (la notification est gérée côté API).
+async function notifyStreamerOfFirstAutoClip(_pool: any, _streamerId: number, _clipId: number): Promise<void> {
+  // no-op côté bot
+}
 
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
 
