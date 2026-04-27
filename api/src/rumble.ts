@@ -358,49 +358,22 @@ export async function fetchRumbleLiveInfoFromUsername(username: string): Promise
     if (session.userAgent) userAgent = session.userAgent;
   } catch { /* no session, on continue sans */ }
 
-  // Scrape via cycletls (TLS-impersonate Chrome) pour passer Cloudflare.
-  // Headers browser-like complets. On essaie d'abord SANS cookies (cf_clearance
-  // du bot est IP-bound → invalide depuis Render). Si 403, on retry avec.
-  const { cycleFetch } = await import("./rumble_http.js");
-  const browserHeaders: Record<string, string> = {
-    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "accept-language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
-    "cache-control": "no-cache",
-    "pragma": "no-cache",
-    "sec-ch-ua": '"Chromium";v="124", "Not.A/Brand";v="24", "Google Chrome";v="124"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"Windows"',
-    "sec-fetch-dest": "document",
-    "sec-fetch-mode": "navigate",
-    "sec-fetch-site": "none",
-    "sec-fetch-user": "?1",
-    "upgrade-insecure-requests": "1",
-  };
-
-  let html = "";
-  const attempts: Array<{ cookie?: string; label: string }> = [
-    { label: "no-cookie" },
-    ...(cookieHeader ? [{ cookie: cookieHeader, label: "with-cookie" }] : []),
-  ];
-
-  outer: for (const path of [`/c/${encodeURIComponent(username)}`, `/user/${encodeURIComponent(username)}`]) {
-    for (const att of attempts) {
-      const r = await cycleFetch(`https://rumble.com${path}`, {
-        method: "get",
-        userAgent,
-        cookie: att.cookie,
-        headers: browserHeaders,
-      });
-      if (r.status >= 200 && r.status < 300 && r.body) {
-        html = r.body;
-        console.log(`[rumble][scrape] ${username}: ${path} ${att.label} OK (${html.length} bytes)`);
-        break outer;
-      }
-      console.log(`[rumble][scrape] ${username}: ${path} ${att.label} → http=${r.status}`);
+  // Scrape via Puppeteer headless (Chromium) — CF bloque cycletls + fetch
+  // depuis Render mais laisse passer un vrai browser (résout le challenge JS).
+  const { fetchRumblePageViaBrowser } = await import("./rumble_browser.js");
+  let html: string | null = null;
+  for (const path of [`/c/${encodeURIComponent(username)}`, `/user/${encodeURIComponent(username)}`]) {
+    html = await fetchRumblePageViaBrowser(path);
+    if (html) {
+      console.log(`[rumble][scrape] ${username}: ${path} fetched via browser (${html.length} bytes)`);
+      break;
     }
+    console.log(`[rumble][scrape] ${username}: ${path} browser fetch failed`);
   }
+  // Évite warning lint sur cookieHeader/userAgent encore importés mais non utilisés ici
+  void cookieHeader; void userAgent;
   if (!html) {
-    console.warn(`[rumble][scrape] ${username}: scrape failed (CF block ?)`);
+    console.warn(`[rumble][scrape] ${username}: browser scrape failed`);
     return offline;
   }
 
