@@ -937,24 +937,65 @@ export function FsbTikTokOutreachSection() {
         {discError ? <div className="fsb-alert" style={{ marginTop: 12 }}>{discError}</div> : null}
 
         {!extensionVersion ? (
-          <details style={{ marginTop: 12 }}>
-            <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>
-              📦 Comment installer l'extension navigateur (recommandé)
-            </summary>
-            <div style={{ marginTop: 8, padding: 14, borderRadius: 12, background: "rgba(255,255,255,.025)", border: "1px solid var(--bd)", fontSize: 12.5, lineHeight: 1.6, color: "var(--muted)" }}>
-              <div style={{ color: "var(--text)", fontWeight: 700, marginBottom: 6 }}>
-                Pourquoi ? TikTok bloque le scraping serveur. Avec l'extension, c'est ton navigateur (IP résidentielle, session active) qui scrape — TikTok te sert le vrai contenu.
-              </div>
-              <ol style={{ margin: "8px 0 0", paddingLeft: 18 }}>
-                <li>Récupère le dossier <code>extension/tiktok-discoverer/</code> du repo LunaLive</li>
-                <li>Ouvre <code>chrome://extensions</code> dans Chrome / Edge / Brave</li>
-                <li>Active <strong>Mode développeur</strong> (toggle haut-droite)</li>
-                <li>Clique <strong>Charger l'extension non empaquetée</strong> et sélectionne le dossier</li>
-                <li>Recharge cette page — le badge passera à <strong>🟢 Extension active</strong></li>
-              </ol>
+          <div
+            style={{
+              marginTop: 12,
+              padding: 14,
+              borderRadius: 12,
+              background: "rgba(255,255,255,.025)",
+              border: "1px solid var(--bd)",
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              flexWrap: "wrap",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>
+              <strong style={{ color: "var(--text)" }}>Installe l'extension</strong> pour que la récolte tourne dans ton navigateur (TikTok bloque le serveur).
             </div>
-          </details>
-        ) : null}
+            <a
+              href="/extension"
+              target="_blank"
+              rel="noreferrer"
+              className="fsb-btn fsb-btn-primary"
+              style={{ textDecoration: "none" }}
+            >
+              📥 Installer en 1 minute
+            </a>
+          </div>
+        ) : (
+          <div
+            style={{
+              marginTop: 12,
+              padding: "10px 14px",
+              borderRadius: 10,
+              background: "rgba(255,255,255,.02)",
+              border: "1px solid var(--bd)",
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              flexWrap: "wrap",
+              justifyContent: "space-between",
+              fontSize: 12,
+            }}
+          >
+            <span style={{ color: "var(--muted)" }}>
+              Tu peux partager l'extension à un coéquipier — il aura le même setup en quelques clics.
+            </span>
+            <button
+              className="fsb-btn"
+              style={{ padding: "6px 12px", fontSize: 12 }}
+              onClick={() => {
+                const url = `${window.location.origin}/extension`;
+                navigator.clipboard?.writeText(url).catch(() => {});
+                window.alert(`Lien copié : ${url}`);
+              }}
+            >
+              🔗 Copier le lien d'install
+            </button>
+          </div>
+        )}
 
         {localScrape ? (
           <div className="tk-progress" style={{ marginTop: 12 }}>

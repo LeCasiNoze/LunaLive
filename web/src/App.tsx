@@ -23,6 +23,7 @@ const EventPage = React.lazy(() => import("./pages/EventPage"));
 const AdminPage = React.lazy(() => import("./pages/AdminPage"));
 const DashboardPage = React.lazy(() => import("./pages/DashboardPage"));
 const FsbBoardPage = React.lazy(() => import("./pages/FsbBoardPage"));
+const ExtensionInstallPage = React.lazy(() => import("./pages/ExtensionInstallPage"));
 const AgencyPortalPage = React.lazy(() => import("./pages/AgencyPortalPage"));
 const AdminCasinoCommentsPage = React.lazy(() => import("./pages/admin/AdminCasinoCommentsPage"));
 const ImpersonatePage = React.lazy(() => import("./pages/ImpersonatePage"));
@@ -243,6 +244,14 @@ function AppInner() {
             element={
               <React.Suspense fallback={<LoadingFallback />}>
                 <FsbBoardPage />
+              </React.Suspense>
+            }
+          />
+          <Route
+            path="/extension"
+            element={
+              <React.Suspense fallback={<LoadingFallback />}>
+                <ExtensionInstallPage />
               </React.Suspense>
             }
           />
