@@ -70,8 +70,9 @@ async function archiveAndResolveVod(streamerId: number, videoId: string, videoId
 
 const INTERVAL_MS = Number(process.env.RUMBLE_POLL_INTERVAL_MS || 30_000);
 
-type StreamerState = { isLive: boolean; title: string | null };
+type StreamerState = { isLive: boolean; title: string | null; offlineStreak: number };
 const lastState = new Map<number, StreamerState>();
+const OFFLINE_HYSTERESIS = 2; // Nombre de ticks offline consécutifs avant de réellement passer offline
 
 async function updateRumbleInfo(
   streamerId: number,
@@ -93,10 +94,24 @@ async function updateRumbleInfo(
     : null;
 
   const room = `stream:${slug.toLowerCase()}`;
-  const prev = lastState.get(streamerId) ?? { isLive: false, title: null };
+  const prev = lastState.get(streamerId) ?? { isLive: false, title: null, offlineStreak: 0 };
   const wasLive = prev.isLive;
 
-  if (isLive) {
+  // Hystérésis : si on était live et qu'on reçoit un tick offline, on attend
+  // OFFLINE_HYSTERESIS ticks consécutifs avant de réellement basculer offline.
+  // Évite le clignotement quand Rumble glitche 1 tick.
+  let effectiveIsLive = isLive;
+  if (!isLive && wasLive) {
+    const newStreak = prev.offlineStreak + 1;
+    if (newStreak < OFFLINE_HYSTERESIS) {
+      console.log(`[rumble-poller] ${slug}: tick offline ${newStreak}/${OFFLINE_HYSTERESIS} — on reste live (hystérésis)`);
+      lastState.set(streamerId, { isLive: true, title: prev.title, offlineStreak: newStreak });
+      return; // pas d'update DB ce tick
+    }
+    // streak atteint → on bascule offline
+  }
+
+  if (effectiveIsLive) {
     await pool.query(
       `UPDATE streamers
        SET is_live = true,
@@ -225,7 +240,7 @@ async function updateRumbleInfo(
     }
   }
 
-  lastState.set(streamerId, { isLive, title });
+  lastState.set(streamerId, { isLive: effectiveIsLive, title, offlineStreak: effectiveIsLive ? 0 : (prev.offlineStreak + 1) });
 }
 
 async function pollOne(
