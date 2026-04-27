@@ -191,9 +191,34 @@ internalBotRouter.post(
     const io = req.app.locals.io;
     if (io) emitChatAll(io, slug, "chat:message", msg);
 
+    // Mirror sur le chat Rumble du streamer si live actif (cycletls + bot session).
+    void mirrorBotMessageToRumble(streamerId, messageText);
+
     return res.json({ ok: true, id: msg.id });
   }
 );
+
+async function mirrorBotMessageToRumble(streamerId: number, text: string) {
+  try {
+    const r = await pool.query(
+      `SELECT s.platform, ri.is_live, ri.live_video_id_numeric
+       FROM streamers s
+       LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+       WHERE s.id = $1`,
+      [streamerId]
+    );
+    const row = r.rows?.[0];
+    if (!row) return;
+    if (String(row.platform || "").toLowerCase() !== "rumble") return;
+    if (!row.is_live) return;
+    const vid = row.live_video_id_numeric ? String(row.live_video_id_numeric) : null;
+    if (!vid) return;
+    const { sendRumbleMessage } = await import("../rumble_chat_bridge.js");
+    await sendRumbleMessage(vid, text);
+  } catch (e: any) {
+    console.warn("[internal_bot] mirrorBotMessageToRumble error", e?.message || e);
+  }
+}
 
 // --------------------  
 // 3) ✅ Bot settings management
