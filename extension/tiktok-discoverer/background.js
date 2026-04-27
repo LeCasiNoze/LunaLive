@@ -128,10 +128,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  // Scrape full profile data (one tab per handle, throttled)
+  // Scrape full profile data (one tab per handle, throttled).
+  // Uses chrome.scripting.executeScript so it does NOT depend on the
+  // content_tiktok.js version cached by Chrome.
   if (message?.type === "LUNALIVE_TIKTOK_SCRAPE_PROFILES") {
     (async () => {
-      const { handles = [], visible = false } = message.payload || {};
+      const { handles = [], visible = false, timeoutMs = 35_000 } = message.payload || {};
       const dispatch = (event) => {
         try {
           chrome.tabs
@@ -140,35 +142,170 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         } catch {}
       };
 
+      async function scrapeProfile(handle) {
+        const cleaned = String(handle).trim().replace(/^@/, "").toLowerCase();
+        if (!cleaned) return null;
+        const url = `https://www.tiktok.com/@${encodeURIComponent(cleaned)}`;
+        return new Promise((resolve) => {
+          chrome.tabs.create({ url, active: visible }, async (tab) => {
+            if (chrome.runtime.lastError || !tab?.id) {
+              return resolve({
+                error: chrome.runtime.lastError?.message || "tab_create_failed",
+              });
+            }
+            let done = false;
+            const finish = (result) => {
+              if (done) return;
+              done = true;
+              try {
+                chrome.tabs.onUpdated.removeListener(onUpdated);
+              } catch {}
+              clearTimeout(timer);
+              chrome.tabs.remove(tab.id).catch(() => {});
+              resolve(result);
+            };
+            const timer = setTimeout(() => finish({ error: "tab_timeout" }), timeoutMs);
+
+            async function tryExtract() {
+              try {
+                const results = await chrome.scripting.executeScript({
+                  target: { tabId: tab.id },
+                  func: (handleArg) => {
+                    let userInfo = null;
+                    const script = document.getElementById(
+                      "__UNIVERSAL_DATA_FOR_REHYDRATION__"
+                    );
+                    if (script && script.textContent) {
+                      try {
+                        const json = JSON.parse(script.textContent);
+                        const scope = (json && json.__DEFAULT_SCOPE__) || {};
+                        const ud = scope["webapp.user-detail"];
+                        if (ud && ud.userInfo && ud.userInfo.user) {
+                          userInfo = ud.userInfo;
+                        }
+                      } catch {}
+                    }
+                    const titleText = document.title || "";
+                    const bodyLen = (document.body && document.body.innerText
+                      ? document.body.innerText.length
+                      : 0);
+                    if (!userInfo || !userInfo.user) {
+                      // Fallback: read DOM (limited but better than nothing)
+                      const bio =
+                        (document.querySelector('[data-e2e="user-bio"]') || {}).textContent ||
+                        "";
+                      const nickname =
+                        (document.querySelector('[data-e2e="user-subtitle"]') || {})
+                          .textContent ||
+                        (document.querySelector('h1[data-e2e="user-title"]') || {})
+                          .textContent ||
+                        "";
+                      const avatar =
+                        (document.querySelector('[data-e2e="user-avatar"] img') || {}).src ||
+                        "";
+                      if (!bio && !nickname && !avatar) {
+                        return {
+                          ready: false,
+                          diag: { titleText: titleText.slice(0, 80), bodyLen },
+                        };
+                      }
+                      return {
+                        ready: true,
+                        profile: {
+                          handle: handleArg,
+                          displayName: nickname || null,
+                          bio: bio || null,
+                          bioEmail: null,
+                          verified: false,
+                          region: null,
+                          avatarUrl: avatar || null,
+                          followerCount: null,
+                          followingCount: null,
+                          heartCount: null,
+                          videoCount: null,
+                          source: "dom-fallback",
+                        },
+                      };
+                    }
+                    const u = userInfo.user;
+                    const s = userInfo.stats || {};
+                    return {
+                      ready: true,
+                      profile: {
+                        handle: handleArg,
+                        displayName: u.nickname || u.uniqueId || null,
+                        bio: u.signature || null,
+                        bioEmail: u.bioEmail || null,
+                        verified: !!u.verified,
+                        region: u.region || null,
+                        avatarUrl:
+                          u.avatarLarger || u.avatarMedium || u.avatarThumb || null,
+                        followerCount:
+                          typeof s.followerCount === "number" ? s.followerCount : null,
+                        followingCount:
+                          typeof s.followingCount === "number" ? s.followingCount : null,
+                        heartCount:
+                          typeof s.heartCount === "number" ? s.heartCount : null,
+                        videoCount:
+                          typeof s.videoCount === "number" ? s.videoCount : null,
+                        source: "ssr",
+                      },
+                    };
+                  },
+                  args: [cleaned],
+                });
+                const out = results && results[0] && results[0].result;
+                return out || { ready: false, diag: { reason: "no_result" } };
+              } catch (err) {
+                return { ready: false, diag: { error: String(err?.message || err) } };
+              }
+            }
+
+            // Poll the page after load — SPA may take a few seconds to populate.
+            const onUpdated = async (tabId, info) => {
+              if (tabId !== tab.id) return;
+              if (info.status !== "complete") return;
+              chrome.tabs.onUpdated.removeListener(onUpdated);
+              // Try a few times with increasing delay
+              for (const delay of [1500, 1500, 2000, 2500, 3000]) {
+                if (done) return;
+                await new Promise((r) => setTimeout(r, delay));
+                const r = await tryExtract();
+                if (r && r.ready && r.profile) {
+                  return finish({ profile: r.profile });
+                }
+              }
+              return finish({ error: "no_data_after_poll" });
+            };
+            chrome.tabs.onUpdated.addListener(onUpdated);
+          });
+        });
+      }
+
       const profiles = [];
       let idx = 0;
       for (const handle of handles) {
         idx += 1;
         const cleaned = String(handle).trim().replace(/^@/, "").toLowerCase();
         if (!cleaned) continue;
-        const url = `https://www.tiktok.com/@${encodeURIComponent(cleaned)}`;
         dispatch({ kind: "profile_start", source: `@${cleaned}`, found: idx });
-        try {
-          const data = await openTabAndScrape(url, { visible, timeoutMs: 25_000 });
-          if (data?.profile) {
-            profiles.push(data.profile);
-            dispatch({
-              kind: "profile_done",
-              source: `@${cleaned}`,
-              found: data.profile.bioEmail ? 1 : 0,
-            });
-          } else {
-            dispatch({ kind: "profile_error", source: `@${cleaned}`, error: "no_profile" });
-          }
-        } catch (err) {
+        const result = await scrapeProfile(cleaned);
+        if (result?.profile) {
+          profiles.push(result.profile);
+          dispatch({
+            kind: "profile_done",
+            source: `@${cleaned}`,
+            found: result.profile.bioEmail ? 1 : 0,
+          });
+        } else {
           dispatch({
             kind: "profile_error",
             source: `@${cleaned}`,
-            error: String(err?.message || err),
+            error: result?.error || "unknown",
           });
         }
-        // Light throttle between tabs to avoid TikTok rate-limit
-        await new Promise((r) => setTimeout(r, 600));
+        // Light throttle between tabs
+        await new Promise((r) => setTimeout(r, 400));
       }
 
       sendResponse({ ok: true, profiles });

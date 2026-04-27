@@ -710,11 +710,11 @@ export function FsbTikTokOutreachSection() {
           },
           window.location.origin
         );
-        // Generous timeout: ~3s per profile + 30s buffer
+        // Generous timeout: ~15s per profile (5-try poll + load + throttle) + 90s buffer
         setTimeout(() => {
           window.removeEventListener("message", handler);
           resolve({ ok: false, profiles: [], error: "extension_timeout" });
-        }, freshHandles.length * 4000 + 60_000);
+        }, freshHandles.length * 15_000 + 90_000);
       }
     );
 
