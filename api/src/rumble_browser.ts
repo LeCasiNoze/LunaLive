@@ -3,10 +3,21 @@
 // CF bloque les fetch standard et même cycletls depuis les IPs Render.
 // Un Chromium réel (avec son JS engine) résout le challenge CF naturellement.
 
-// @ts-ignore - puppeteer-core types ok mais on garde simple
-import puppeteer from "puppeteer-core";
+// @ts-ignore - puppeteer-extra n'a pas de types officiels
+import puppeteerExtra from "puppeteer-extra";
+// @ts-ignore - stealth plugin sans types
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
+// @ts-ignore - puppeteer-core utilisé comme moteur sous-jacent
+import puppeteerCore from "puppeteer-core";
 // @ts-ignore - chromium serverless
 import chromium from "@sparticuz/chromium";
+
+// Branche puppeteer-extra sur puppeteer-core + stealth
+puppeteerExtra.use(StealthPlugin());
+
+// Utilise puppeteer-extra avec le moteur core
+const puppeteer = puppeteerExtra;
+puppeteer.use = puppeteerExtra.use;
 
 let browserInstance: any = null;
 let browserPromise: Promise<any> | null = null;
@@ -32,11 +43,15 @@ async function getBrowser() {
           "--disable-setuid-sandbox",
           "--disable-dev-shm-usage",
           "--disable-blink-features=AutomationControlled",
+          "--disable-features=IsolateOrigins,site-per-process",
         ],
-        defaultViewport: { width: 1280, height: 720 },
+        defaultViewport: { width: 1920, height: 1080 },
         executablePath,
         headless: true,
-      });
+        // Force le moteur puppeteer-core (puppeteer-extra le détecte automatiquement)
+        ignoreDefaultArgs: ["--enable-automation"],
+      } as any);
+      void puppeteerCore; // garde l'import pour le bundle Node
       browserInstance = browser;
       browser.on("disconnected", () => {
         console.warn("[rumble_browser] browser disconnected");
@@ -76,8 +91,34 @@ export async function fetchRumblePageViaBrowser(path: string): Promise<string | 
 
     const resp = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25_000 });
     const status = resp ? resp.status() : 0;
+
+    // Si CF challenge → attendre que le JS le résolve et que la vraie page apparaisse
+    let html = await page.content();
+    const isCfChallenge =
+      status === 403 ||
+      status === 503 ||
+      /Just a moment|cf-browser-verification|challenge-platform/i.test(html);
+
+    if (isCfChallenge) {
+      console.log(`[rumble_browser] ${path} CF challenge detected, waiting…`);
+      try {
+        // Attend que le DOM contienne un élément qu'on n'a pas pendant le challenge
+        await page.waitForFunction(
+          () => !!document.querySelector('[data-video-id], a[href*="/v"], main')
+            && !/Just a moment|challenge-platform/i.test(document.documentElement.innerHTML),
+          { timeout: 20_000 }
+        );
+        html = await page.content();
+        const newStatus = page.url().includes("rumble.com") ? 200 : 0;
+        console.log(`[rumble_browser] ${path} CF challenge resolved status≈${newStatus} bytes=${html.length}`);
+        return html;
+      } catch {
+        console.warn(`[rumble_browser] ${path} CF challenge unresolved after 20s`);
+        return null;
+      }
+    }
+
     if (status >= 200 && status < 300) {
-      const html = await page.content();
       console.log(`[rumble_browser] ${path} status=${status} bytes=${html.length}`);
       return html;
     }

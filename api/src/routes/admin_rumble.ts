@@ -144,6 +144,75 @@ adminRumbleRouter.post("/admin/rumble/bot", requireAdminKey, async (req, res) =>
 });
 
 /**
+ * POST /admin/rumble/set-live
+ * Body: { slug: string, url?: string, videoId?: string }
+ * Configure manuellement le videoId courant d'un streamer Rumble (pour les
+ * streamers en pseudo-only, quand le scrape auto échoue à cause de CF).
+ *
+ * Accepte:
+ *   - une URL complète https://rumble.com/v7923dm-titre.html
+ *   - juste le slug court v7923dm
+ *
+ * Le poller utilisera ce videoId à son prochain tick et appellera embedJS
+ * pour récupérer HLS, titre, viewers, etc. Quand embedJS retournera live=0
+ * (ou si tu paste un URL d'un live fini), le streamer passera en offline.
+ */
+adminRumbleRouter.post("/admin/rumble/set-live", requireAdminKey, async (req, res) => {
+  try {
+    const { slug, url, videoId } = req.body ?? {};
+    if (!slug || typeof slug !== "string") return res.status(400).json({ ok: false, error: "slug_required" });
+
+    // Extrait le videoId depuis url ou utilise videoId direct
+    let extracted: string | null = null;
+    if (typeof videoId === "string" && videoId.trim()) {
+      const v = videoId.trim();
+      const m = v.match(/^(v[a-z0-9]{5,})/i);
+      if (m) extracted = m[1].toLowerCase();
+    } else if (typeof url === "string" && url.trim()) {
+      const m = url.match(/rumble\.com\/(v[a-z0-9]{5,})/i);
+      if (m) extracted = m[1].toLowerCase();
+    }
+    if (!extracted) {
+      return res.status(400).json({ ok: false, error: "could_not_parse_video_id" });
+    }
+
+    // Récupère le streamer
+    const sm = await pool.query(
+      `SELECT id FROM streamers WHERE lower(slug) = lower($1) LIMIT 1`,
+      [slug]
+    );
+    const streamerId = sm.rows[0]?.id;
+    if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    // Résout via embedJS (qui marche depuis Render — pas de CF block)
+    const { hlsUrl, vidNumeric } = await import("../rumble.js").then(m => (m as any).resolveFromEmbedJs?.(extracted))
+      .catch(() => ({ hlsUrl: null, vidNumeric: null }));
+    // Fallback : on stocke quand même le videoId, le poller fera le travail au prochain tick
+    void hlsUrl; void vidNumeric;
+
+    // Upsert dans streamer_rumble_info — le poller verra et complétera
+    await pool.query(
+      `INSERT INTO streamer_rumble_info (streamer_id, is_live, live_id, updated_at)
+       VALUES ($1, true, $2, NOW())
+       ON CONFLICT (streamer_id) DO UPDATE SET
+         live_id = EXCLUDED.live_id,
+         updated_at = NOW()`,
+      [streamerId, extracted]
+    );
+
+    return res.json({
+      ok: true,
+      slug,
+      streamerId: Number(streamerId),
+      videoId: extracted,
+      message: "videoId stocké. Le poller va valider live status et récupérer HLS au prochain tick (~30s).",
+    });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+  }
+});
+
+/**
  * POST /admin/rumble/link
  * Body: { slug: string, rumbleUsername: string, setPlatformRumble?: boolean }
  * Lie un streamer Luna à un pseudo Rumble (sans api_key). Le poller
