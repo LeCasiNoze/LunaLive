@@ -272,7 +272,22 @@ function useBroadcaster(
       const iceServers = await ensureIceServers();
       const pc = new RTCPeerConnection({ iceServers });
       peersRef.current.set(viewerId, pc);
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      // Hint motion-heavy content + cap bitrate pour éviter pics qui laggent
+      // les viewers en connexion limitée. Cam 720p → 1.2 Mbps suffit largement.
+      stream.getTracks().forEach((t) => {
+        if (t.kind === "video") { try { (t as any).contentHint = "motion"; } catch {} }
+        const sender = pc.addTrack(t, stream);
+        if (t.kind === "video") {
+          try {
+            const params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+            params.encodings[0].maxBitrate = 1_200_000; // 1.2 Mbps
+            params.encodings[0].maxFramerate = 30;
+            params.degradationPreference = "maintain-framerate";
+            sender.setParameters(params).catch(() => {});
+          } catch {}
+        }
+      });
       pc.onicecandidate = ({ candidate }) => {
         if (candidate) {
           console.log("[Broadcaster] ICE →", viewerId, candidate.type, candidate.protocol, candidate.address);
@@ -402,7 +417,23 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
       const iceServers = await ensureIceServers();
       const pc = new RTCPeerConnection({ iceServers });
       peersRef.current.set(viewerId, pc);
-      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+      // Screen = "detail" (texte/UI net plus important que fluidité), cap 2.5 Mbps.
+      // degradation "maintain-resolution" = on laisse tomber des frames plutôt que
+      // que de blurrer le texte de l'OBS overlay.
+      localStream.getTracks().forEach(t => {
+        if (t.kind === "video") { try { (t as any).contentHint = "detail"; } catch {} }
+        const sender = pc.addTrack(t, localStream);
+        if (t.kind === "video") {
+          try {
+            const params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+            params.encodings[0].maxBitrate = 2_500_000; // 2.5 Mbps
+            params.encodings[0].maxFramerate = 30;
+            params.degradationPreference = "maintain-resolution";
+            sender.setParameters(params).catch(() => {});
+          } catch {}
+        }
+      });
       pc.onicecandidate = ({ candidate }) => {
         if (candidate) socket.emit("screen:ice", { to: viewerId, candidate });
       };
@@ -450,9 +481,36 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
   return { sharing, localStream, start, stop };
 }
 
-// ─── Screen share viewer ──────────────────────────────────────────────────────
-// Reçoit le flux écran actuellement partagé (max 1 à la fois). Utilisé côté
-// StreamControlPage pour aperçu, et côté OverlayPage (OBS) pour rendu dans le slot.
+// ─── Screen share awareness (lightweight, no WebRTC) ─────────────────────────
+// Pour StreamControlPage : on a juste besoin de SAVOIR qu'un partage est actif
+// (afficher le bouton "Prendre la main"), PAS de recevoir le flux vidéo.
+// Évite N PeerConnections + décodage GPU pour chaque viewer du stream-control.
+export function useScreenAwareness(socket: Socket | null) {
+  const [active, setActive] = React.useState<{ slug: string; socketId: string } | null>(null);
+  React.useEffect(() => {
+    if (!socket) return;
+    socket.emit("screen:viewer-join", {}, (ack: { ok: boolean; active: Array<{ slug: string; socketId: string }> }) => {
+      const bc = ack?.active?.[0];
+      if (bc) setActive(bc);
+    });
+    const onRegistered = (bc: { slug: string; socketId: string }) => setActive(bc);
+    const onLeft = ({ slug }: { slug: string }) => {
+      setActive((cur) => (cur?.slug === slug ? null : cur));
+    };
+    socket.on("screen:registered", onRegistered);
+    socket.on("screen:left", onLeft);
+    return () => {
+      socket.off("screen:registered", onRegistered);
+      socket.off("screen:left", onLeft);
+    };
+  }, [socket]);
+  return active;
+}
+
+// ─── Screen share viewer (full — WebRTC) ─────────────────────────────────────
+// Reçoit le flux écran actuellement partagé. Utilisé UNIQUEMENT par OverlayPage
+// (OBS) pour rendu dans la zone Slot. Le StreamControlPage ne consomme plus ce
+// flux pour économiser bande passante + décodage GPU.
 export function useScreenViewer(socket: Socket | null, mySlug: string) {
   const [entry, setEntry] = React.useState<{ slug: string; stream: MediaStream | null; socketId: string } | null>(null);
   const pcRef = React.useRef<RTCPeerConnection | null>(null);
@@ -1048,70 +1106,6 @@ function CamCard({
   );
 }
 
-// ─── Screen share preview (bandeau haut) ──────────────────────────────────────
-
-function ScreenSharePreview({
-  stream, sharerSlug, isMe,
-}: {
-  stream: MediaStream | null;
-  sharerSlug: string;
-  isMe: boolean;
-}) {
-  const videoRef = React.useRef<HTMLVideoElement>(null);
-  React.useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (stream) { v.srcObject = stream; v.play().catch(() => {}); }
-    else { v.srcObject = null; }
-  }, [stream]);
-
-  return (
-    <div style={{
-      display: "flex", alignItems: "stretch", gap: 12,
-      background: "linear-gradient(180deg,rgba(19,26,52,.55),rgba(11,17,34,.55))",
-      border: "1px solid rgba(139,92,246,.35)",
-      borderRadius: 12,
-      overflow: "hidden",
-      padding: 10,
-      boxShadow: "0 4px 18px rgba(4,8,20,.35), inset 0 0 22px rgba(139,92,246,.06)",
-    }}>
-      <div style={{
-        flex: "0 0 280px", aspectRatio: "16/9", background: "#000",
-        borderRadius: 8, overflow: "hidden",
-        border: "1px solid rgba(139,92,246,.2)",
-      }}>
-        {stream ? (
-          <video ref={videoRef} muted playsInline autoPlay
-            style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
-        ) : (
-          <div style={{
-            width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-            color: "#94a3b8", fontSize: 11,
-          }}>Connexion au flux écran…</div>
-        )}
-      </div>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 800, color: "#dde8ff" }}>
-            🖥️ {isMe ? "Tu partages ton écran" : `${sharerSlug} partage son écran`}
-          </span>
-          <span style={{
-            fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 999,
-            background: "rgba(139,92,246,.18)", color: "#c4b5fd",
-            border: "1px solid rgba(139,92,246,.3)",
-          }}>
-            Zone Slot — OBS
-          </span>
-        </div>
-        <span style={{ fontSize: 11, color: "rgba(148,178,232,.6)", lineHeight: 1.5 }}>
-          Ce flux est rendu automatiquement dans la <strong>zone Slot</strong> de l'overlay OBS.
-          Un seul partage actif à la fois : si quelqu'un démarre un partage, le précédent s'arrête.
-        </span>
-      </div>
-    </div>
-  );
-}
-
 // ─── Page guard ───────────────────────────────────────────────────────────────
 
 export default function StreamControlPage() {
@@ -1205,17 +1199,17 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   // STABLE viewer — never tears down when myCamActive / mySlot changes
   const { entries: remoteEntries, updateFilters: updateRemoteFilters } = useRemoteCams(socket, mySlugRef);
 
-  // Screen share : broadcaster (celui qui partage) + viewer (flux reçu de l'autre).
+  // Screen share : broadcaster (celui qui partage) + awareness lightweight (slug
+  // seulement, pas de WebRTC) — pour afficher le bon label de bouton sans payer
+  // le coût d'un PeerConnection + décodage GPU pour chaque viewer du stream-control.
   // Exclusif : un seul partage actif en global (garanti côté serveur).
-  const { sharing: myScreenSharing, localStream: myScreenStream, start: startScreenShare, stop: stopScreenShare } =
+  const { sharing: myScreenSharing, start: startScreenShare, stop: stopScreenShare } =
     useScreenBroadcaster(socket, mySlug);
-  const remoteScreen = useScreenViewer(socket, mySlug);
-  // Flux écran effectif à afficher (priorité au mien si je partage, sinon celui du peer)
-  const activeScreen = myScreenSharing
-    ? { slug: mySlug, stream: myScreenStream, isMe: true }
-    : remoteScreen?.stream
-      ? { slug: remoteScreen.slug, stream: remoteScreen.stream, isMe: false }
-      : null;
+  const remoteScreenAware = useScreenAwareness(socket);
+  // Quelqu'un d'autre partage actuellement (utile pour le bouton "Prendre la main")
+  const remoteScreen = !myScreenSharing && remoteScreenAware && remoteScreenAware.slug !== mySlug
+    ? remoteScreenAware
+    : null;
 
   // Broadcaster — independent of viewer
   // Sur register, si des filtres sont persistés en DB pour ce slug, on les applique
@@ -1482,15 +1476,6 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
             </span>
           </div>
         </div>
-      )}
-
-      {/* ── Screen share preview (visible pour tout le monde quand quelqu'un partage) ── */}
-      {activeScreen && (
-        <ScreenSharePreview
-          stream={activeScreen.stream}
-          sharerSlug={activeScreen.slug}
-          isMe={activeScreen.isMe}
-        />
       )}
 
       {/* ── Cams (en haut) ── */}
