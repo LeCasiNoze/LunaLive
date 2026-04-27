@@ -143,6 +143,62 @@ adminRumbleRouter.post("/admin/rumble/bot", requireAdminKey, async (req, res) =>
 });
 
 /**
+ * POST /admin/rumble/link
+ * Body: { slug: string, rumbleUsername: string, setPlatformRumble?: boolean }
+ * Lie un streamer Luna à un pseudo Rumble (sans api_key). Le poller
+ * commencera à scraper sa page pour détecter ses lives.
+ */
+adminRumbleRouter.post("/admin/rumble/link", requireAdminKey, async (req, res) => {
+  try {
+    const { slug, rumbleUsername, setPlatformRumble } = req.body ?? {};
+    if (!slug || typeof slug !== "string") return res.status(400).json({ ok: false, error: "slug_required" });
+    if (!rumbleUsername || typeof rumbleUsername !== "string") return res.status(400).json({ ok: false, error: "rumble_username_required" });
+    const cleanedUsername = rumbleUsername.trim();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(cleanedUsername)) {
+      return res.status(400).json({ ok: false, error: "invalid_username_format" });
+    }
+
+    const setPlatform = setPlatformRumble !== false; // défaut true
+    const r = await pool.query(
+      setPlatform
+        ? `UPDATE streamers SET rumble_username=$2, platform='rumble' WHERE lower(slug)=lower($1)
+           RETURNING id, slug, platform, rumble_username`
+        : `UPDATE streamers SET rumble_username=$2 WHERE lower(slug)=lower($1)
+           RETURNING id, slug, platform, rumble_username`,
+      [slug, cleanedUsername]
+    );
+    if (!r.rows[0]) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    return res.json({ ok: true, streamer: r.rows[0] });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+  }
+});
+
+/**
+ * POST /admin/rumble/unlink
+ * Body: { slug: string, revertToDlive?: boolean }
+ * Retire le rumble_username d'un streamer.
+ */
+adminRumbleRouter.post("/admin/rumble/unlink", requireAdminKey, async (req, res) => {
+  try {
+    const { slug, revertToDlive } = req.body ?? {};
+    if (!slug || typeof slug !== "string") return res.status(400).json({ ok: false, error: "slug_required" });
+    const r = await pool.query(
+      revertToDlive
+        ? `UPDATE streamers SET rumble_username=NULL, platform='dlive' WHERE lower(slug)=lower($1)
+           RETURNING id, slug, platform, rumble_username`
+        : `UPDATE streamers SET rumble_username=NULL WHERE lower(slug)=lower($1)
+           RETURNING id, slug, platform, rumble_username`,
+      [slug]
+    );
+    if (!r.rows[0]) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    return res.json({ ok: true, streamer: r.rows[0] });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+  }
+});
+
+/**
  * POST /admin/rumble/backfill-vods?slug=lecasinoze
  * Scrape la page Rumble du compte assigné au streamer et insère les VODs
  * trouvés dans rumble_vods. Résout l'URL MP4 permanente via embedJS pour chacun.
