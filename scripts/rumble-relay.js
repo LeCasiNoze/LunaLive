@@ -106,7 +106,29 @@ async function scrapeRumblePage(username) {
  * /vXXXX-titre.html, on peut aussi extraire les slugs en parallèle des ids.
  */
 async function findLiveSlug(username, html) {
-  const slugs = [...html.matchAll(/href="(\/v[a-z0-9]{5,})-[^"]+\.html"/g)].map(m => m[1].slice(1));
+  // Capture les slugs Rumble dans leurs différents formats:
+  //   - /v76pubk-titre.html (VODs avec titre)
+  //   - /v76pubk.html       (sans titre)
+  //   - /v76pubk            (bare, parfois en data-attr ou JSON)
+  // + canonical og:url + open graph
+  const set = new Set();
+  for (const re of [
+    /href="(\/v[a-z0-9]{5,})[-./?#"]/g,
+    /["'](\/v[a-z0-9]{5,})\.html["']/g,
+    /og:url[^>]*content="https?:\/\/rumble\.com(\/v[a-z0-9]{5,})/g,
+    /"video_url":"https?:\\?\/\\?\/rumble\.com(\\?\/v[a-z0-9]{5,})/g,
+    /data-permlink="(\/?v[a-z0-9]{5,})"/g,
+  ]) {
+    for (const m of html.matchAll(re)) {
+      const raw = String(m[1]).replace(/\\\//g, "/");
+      const clean = raw.startsWith("/") ? raw.slice(1) : raw;
+      const onlySlug = clean.split(/[-./?#]/)[0];
+      if (/^v[a-z0-9]{5,}$/.test(onlySlug)) set.add(onlySlug);
+    }
+  }
+  const slugs = [...set];
+  console.log(`[relay]   ${username}: ${slugs.length} slug(s) candidats: ${slugs.slice(0,8).join(",")}${slugs.length>8?"…":""}`);
+
   // On essaie chaque slug avec embedJS, premier qui retourne live=1 gagne
   for (const slug of slugs) {
     try {
@@ -191,7 +213,8 @@ async function tick() {
 
     const live = await findLiveSlug(username, html);
     if (!live) {
-      console.log(`[relay]   ${username}: pas en live`);
+      // Log léger pour debug : combien de slugs on a vu
+      console.log(`[relay]   ${username}: pas en live (aucun slug en live=1)`);
       continue;
     }
 
