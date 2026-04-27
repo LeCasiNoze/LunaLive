@@ -147,6 +147,26 @@ function ClipModal({ clip, token, isOwner, busy, onRequireLogin, onClose, onTogg
 }) {
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
 
+  // Pause les autres vidéos (live player, autres clips) pendant que la modal
+  // est ouverte. Évite la concurrence des décodeurs et libère le GPU pour
+  // une lecture fluide du clip.
+  React.useEffect(() => {
+    const allVideos = Array.from(document.querySelectorAll<HTMLVideoElement>("video"));
+    const pausedByUs: HTMLVideoElement[] = [];
+    for (const v of allVideos) {
+      if (v === videoRef.current) continue;
+      if (!v.paused) {
+        try { v.pause(); pausedByUs.push(v); } catch {}
+      }
+    }
+    return () => {
+      // À la fermeture, on relance ce qu'on a mis en pause
+      for (const v of pausedByUs) {
+        try { v.play().catch(() => {}); } catch {}
+      }
+    };
+  }, []);
+
   // IMPORTANT: ne dépendre QUE des champs qui définissent quelle vidéo charger.
   // Avant on dépendait de `clip` (objet entier) → chaque re-render parent (like, etc.)
   // changeait la référence → useEffect cleanup → video.src reset → reload + stutter.
