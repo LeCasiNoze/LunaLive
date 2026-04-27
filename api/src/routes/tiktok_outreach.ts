@@ -1190,16 +1190,83 @@ export async function handleInboundReply(req: any, res: any) {
   return res.json({ ok: true, processed });
 }
 
+// ─── Preflight: split fresh vs already-known handles ─────────────────────
+
+const preflightSchema = z.object({
+  handles: z.array(z.string().trim().min(1).max(40)).min(1).max(500),
+});
+
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/preflight",
+  a(async (req, res) => {
+    const parsed = preflightSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "invalid_input" });
+    const cleaned = Array.from(
+      new Set(
+        parsed.data.handles
+          .map((h) => normalizeHandle(h))
+          .filter((h): h is string => !!h)
+      )
+    );
+    if (cleaned.length === 0) return res.json({ ok: true, fresh: [], known: [] });
+    const known = await pool.query(
+      `SELECT handle FROM tiktok_influencers WHERE handle = ANY($1::text[])`,
+      [cleaned]
+    );
+    const knownSet = new Set(known.rows.map((r: any) => String(r.handle)));
+    return res.json({
+      ok: true,
+      fresh: cleaned.filter((h) => !knownSet.has(h)),
+      known: Array.from(knownSet),
+    });
+  })
+);
+
 // ─── Bulk import (used by browser bookmarklet) ────────────────────────────
 
+const importBulkProfileSchema = z.object({
+  handle: z.string().trim().min(1).max(40),
+  displayName: z.string().nullable().optional(),
+  bio: z.string().nullable().optional(),
+  bioEmail: z.string().nullable().optional(),
+  verified: z.boolean().optional(),
+  region: z.string().nullable().optional(),
+  avatarUrl: z.string().nullable().optional(),
+  followerCount: z.number().nullable().optional(),
+  followingCount: z.number().nullable().optional(),
+  heartCount: z.number().nullable().optional(),
+  videoCount: z.number().nullable().optional(),
+});
+
 const importBulkSchema = z.object({
-  handles: z.array(z.string().trim().min(1).max(40)).min(1).max(200),
+  handles: z.array(z.string().trim().min(1).max(40)).max(200).optional().default([]),
+  profiles: z.array(importBulkProfileSchema).max(200).optional().default([]),
   source: z.string().trim().max(300).optional(),
   requireEmail: z.boolean().optional().default(false),
   minFollowers: z.coerce.number().int().min(0).max(100_000_000).optional().default(0),
   maxFollowers: z.coerce.number().int().min(0).max(100_000_000).optional().default(0),
   countries: z.array(z.string().trim().min(2).max(4)).max(10).optional().default([]),
 });
+
+function profileFromExtensionPayload(p: z.infer<typeof importBulkProfileSchema>): ScrapedProfile {
+  const handle = String(p.handle || "").trim().toLowerCase();
+  const bio = String(p.bio || "");
+  const bioEmail = (p.bioEmail || "").trim().toLowerCase() || extractEmailFromText(bio);
+  return {
+    handle,
+    displayName: p.displayName || null,
+    bio: bio || null,
+    email: bioEmail || null,
+    followerCount: typeof p.followerCount === "number" ? p.followerCount : null,
+    followingCount: typeof p.followingCount === "number" ? p.followingCount : null,
+    heartCount: typeof p.heartCount === "number" ? p.heartCount : null,
+    videoCount: typeof p.videoCount === "number" ? p.videoCount : null,
+    verified: !!p.verified,
+    country: p.region || null,
+    avatarUrl: p.avatarUrl || null,
+    raw: { source: "extension", payload: p },
+  };
+}
 
 tiktokOutreachRouter.post(
   "/fsb/tiktok/import-bulk",
@@ -1209,23 +1276,29 @@ tiktokOutreachRouter.post(
       return res.status(400).json({ ok: false, error: "invalid_input" });
     }
 
-    const cleaned = Array.from(
+    // If profiles provided (extension scraping), convert. Otherwise use handles for server-side scrape.
+    const hasProfiles = (parsed.data.profiles || []).length > 0;
+    const cleanedHandles = Array.from(
       new Set(
-        parsed.data.handles
+        (parsed.data.handles || [])
           .map((h) => normalizeHandle(h))
           .filter((h): h is string => !!h)
       )
     );
-    if (cleaned.length === 0) {
+    const cleanedProfiles = (parsed.data.profiles || []).map(profileFromExtensionPayload);
+    const allHandles = hasProfiles
+      ? cleanedProfiles.map((p) => p.handle)
+      : cleanedHandles;
+    if (allHandles.length === 0) {
       return res.status(400).json({ ok: false, error: "no_valid_handles" });
     }
 
     const known = await pool.query(
       `SELECT handle FROM tiktok_influencers WHERE handle = ANY($1::text[])`,
-      [cleaned]
+      [allHandles]
     );
     const knownSet = new Set(known.rows.map((r: any) => String(r.handle)));
-    const fresh = cleaned.filter((h) => !knownSet.has(h));
+    const freshHandles = allHandles.filter((h) => !knownSet.has(h));
 
     let scanned = 0;
     let withEmail = 0;
@@ -1238,8 +1311,16 @@ tiktokOutreachRouter.post(
 
     const countriesUpper = (parsed.data.countries || []).map((c) => c.toUpperCase());
 
-    for (const handle of fresh) {
-      const profile = await scrapeTikTokProfile(handle);
+    // Build the iterable: either profiles (already scraped) or handles to scrape
+    const profileByHandle = new Map(cleanedProfiles.map((p) => [p.handle, p]));
+
+    for (const handle of freshHandles) {
+      let profile: ScrapedProfile | null;
+      if (hasProfiles) {
+        profile = profileByHandle.get(handle) || null;
+      } else {
+        profile = await scrapeTikTokProfile(handle);
+      }
       scanned += 1;
       if (!profile) {
         failed += 1;
@@ -1283,12 +1364,13 @@ tiktokOutreachRouter.post(
         status: profile.email ? "new" : "no_email",
         email: profile.email,
       });
-      await sleep(500);
+      // Throttle only if we actually called TikTok (server-side scrape)
+      if (!hasProfiles) await sleep(500);
     }
 
     return res.json({
       ok: true,
-      received: cleaned.length,
+      received: allHandles.length,
       alreadyKnown: knownSet.size,
       scanned,
       withEmail,

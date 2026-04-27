@@ -245,14 +245,39 @@ export type TikTokImportBulkResponse = {
   results: TikTokImportResult[];
 };
 
+export type TikTokExtensionProfile = {
+  handle: string;
+  displayName?: string | null;
+  bio?: string | null;
+  bioEmail?: string | null;
+  verified?: boolean;
+  region?: string | null;
+  avatarUrl?: string | null;
+  followerCount?: number | null;
+  followingCount?: number | null;
+  heartCount?: number | null;
+  videoCount?: number | null;
+};
+
 export type TikTokImportBulkPayload = {
-  handles: string[];
+  handles?: string[];
+  profiles?: TikTokExtensionProfile[];
   source?: string;
   requireEmail?: boolean;
   minFollowers?: number;
   maxFollowers?: number;
   countries?: string[];
 };
+
+export function preflightTikTokHandles(handles: string[]) {
+  return request<{ ok: true; fresh: string[]; known: string[] }>(
+    `/api/fsb/tiktok/preflight`,
+    {
+      method: "POST",
+      body: JSON.stringify({ handles }),
+    }
+  );
+}
 
 export function importTikTokBulk(payload: TikTokImportBulkPayload) {
   return request<

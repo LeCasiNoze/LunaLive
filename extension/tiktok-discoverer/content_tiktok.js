@@ -30,6 +30,68 @@
     return Array.from(set);
   }
 
+  function extractProfile() {
+    // Only meaningful on /@handle pages
+    const path = location.pathname;
+    const handleMatch = path.match(/^\/@([A-Za-z0-9._]{1,30})/);
+    if (!handleMatch) return null;
+    const handle = handleMatch[1].toLowerCase();
+
+    let userInfo = null;
+    const script = document.getElementById("__UNIVERSAL_DATA_FOR_REHYDRATION__");
+    if (script && script.textContent) {
+      try {
+        const json = JSON.parse(script.textContent);
+        const scope = (json && json.__DEFAULT_SCOPE__) || {};
+        const ud = scope["webapp.user-detail"];
+        if (ud && ud.userInfo && ud.userInfo.user) {
+          userInfo = ud.userInfo;
+        }
+      } catch {}
+    }
+
+    if (!userInfo || !userInfo.user) {
+      // Fallback: read DOM (limited but better than nothing)
+      const bio = (document.querySelector('[data-e2e="user-bio"]') || {}).textContent || "";
+      const nickname =
+        (document.querySelector('[data-e2e="user-subtitle"]') || {}).textContent ||
+        (document.querySelector('h1[data-e2e="user-title"]') || {}).textContent ||
+        "";
+      const avatar = (document.querySelector('[data-e2e="user-avatar"] img') || {}).src || "";
+      return {
+        handle,
+        displayName: nickname || null,
+        bio: bio || null,
+        bioEmail: null,
+        verified: false,
+        region: null,
+        avatarUrl: avatar || null,
+        followerCount: null,
+        followingCount: null,
+        heartCount: null,
+        videoCount: null,
+        source: "dom-fallback",
+      };
+    }
+
+    const u = userInfo.user;
+    const s = userInfo.stats || {};
+    return {
+      handle,
+      displayName: u.nickname || u.uniqueId || null,
+      bio: u.signature || null,
+      bioEmail: u.bioEmail || null,
+      verified: !!u.verified,
+      region: u.region || null,
+      avatarUrl: u.avatarLarger || u.avatarMedium || u.avatarThumb || null,
+      followerCount: typeof s.followerCount === "number" ? s.followerCount : null,
+      followingCount: typeof s.followingCount === "number" ? s.followingCount : null,
+      heartCount: typeof s.heartCount === "number" ? s.heartCount : null,
+      videoCount: typeof s.videoCount === "number" ? s.videoCount : null,
+      source: "ssr",
+    };
+  }
+
   function snapshot() {
     const titleText = document.title || "";
     const bodyText = (document.body?.innerText || "").slice(0, 4000).toLowerCase();
@@ -62,10 +124,21 @@
     // Wait for SPA to populate
     await waitMs(2500);
 
-    // First pass extraction
+    // If we're on a profile page, scrape profile data
+    if (/^\/@[A-Za-z0-9._]{1,30}/.test(location.pathname)) {
+      const profile = extractProfile();
+      chrome.runtime
+        .sendMessage({
+          type: "LUNALIVE_TIKTOK_PROFILE_RESULT",
+          payload: { profile, diag: snapshot() },
+        })
+        .catch(() => {});
+      return;
+    }
+
+    // Otherwise we're on a hashtag/search page → scrape handle list
     let handles = extractHandles();
 
-    // If nothing yet, wait + scroll
     if (handles.length < 5) {
       await waitMs(2000);
       handles = extractHandles();

@@ -13,6 +13,7 @@ import {
   listTikTokInfluencers,
   listTikTokMessages,
   logTikTokReply,
+  preflightTikTokHandles,
   saveTikTokTemplate,
   scanTikTokProfile,
   setTikTokInfluencerStatus,
@@ -330,6 +331,8 @@ export function FsbTikTokOutreachSection() {
     running: boolean;
     events: Array<{ kind: string; source?: string; found?: number; error?: string }>;
     capturedHandles: number;
+    alreadyKnown: number;
+    profilesScraped: number;
     importedKept: number;
     importedWithEmail: number;
     importedScanned: number;
@@ -577,6 +580,8 @@ export function FsbTikTokOutreachSection() {
       running: true,
       events: [],
       capturedHandles: 0,
+      alreadyKnown: 0,
+      profilesScraped: 0,
       importedKept: 0,
       importedWithEmail: 0,
       importedScanned: 0,
@@ -650,10 +655,81 @@ export function FsbTikTokOutreachSection() {
       return;
     }
 
-    // Send captured handles to backend in batches of 50 for profile scan + filtering
+    // Preflight: split fresh vs already-known to avoid wasted scraping
     const handlesArray = Array.from(allHandles).slice(0, discMaxProfiles);
-    const chunks: string[][] = [];
-    for (let i = 0; i < handlesArray.length; i += 30) chunks.push(handlesArray.slice(i, i + 30));
+    let freshHandles: string[] = handlesArray;
+    let knownCount = 0;
+    try {
+      const pre = await preflightTikTokHandles(handlesArray);
+      freshHandles = pre.fresh;
+      knownCount = pre.known.length;
+      setLocalScrape((prev) => (prev ? { ...prev, alreadyKnown: knownCount } : prev));
+    } catch {
+      // If preflight fails (API not deployed), continue with all handles
+    }
+
+    if (freshHandles.length === 0) {
+      setLocalScrape((prev) => (prev ? { ...prev, running: false } : prev));
+      return;
+    }
+
+    // Ask the extension to scrape full profiles in the user's browser
+    const profileRequestId = `prof-${Date.now()}`;
+    const profilesResult: { ok: boolean; profiles: any[]; error?: string } = await new Promise(
+      (resolve) => {
+        const handler = (event: MessageEvent) => {
+          if (event.source !== window) return;
+          const data: any = event.data;
+          if (!data || data.source !== "lunalive-tiktok-ext") return;
+          if (data.type === "SCRAPE_PROFILES_RESULT" && data.requestId === profileRequestId) {
+            window.removeEventListener("message", handler);
+            resolve({ ok: !!data.ok, profiles: data.profiles || [], error: data.error });
+          }
+          if (data.type === "PROGRESS" && data.event) {
+            setLocalScrape((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    events: [...prev.events, data.event],
+                    profilesScraped:
+                      data.event.kind === "profile_done"
+                        ? prev.profilesScraped + 1
+                        : prev.profilesScraped,
+                  }
+                : prev
+            );
+          }
+        };
+        window.addEventListener("message", handler);
+        window.postMessage(
+          {
+            source: "lunalive-tiktok-page",
+            type: "SCRAPE_PROFILES",
+            requestId: profileRequestId,
+            payload: { handles: freshHandles },
+          },
+          window.location.origin
+        );
+        // Generous timeout: ~3s per profile + 30s buffer
+        setTimeout(() => {
+          window.removeEventListener("message", handler);
+          resolve({ ok: false, profiles: [], error: "extension_timeout" });
+        }, freshHandles.length * 4000 + 60_000);
+      }
+    );
+
+    if (!profilesResult.ok || profilesResult.profiles.length === 0) {
+      setLocalScrape((prev) => (prev ? { ...prev, running: false } : prev));
+      if (!profilesResult.ok) {
+        setDiscError(`Extension scrape profils: ${profilesResult.error || "no_response"}`);
+      }
+      return;
+    }
+
+    // Send pre-scraped profiles to backend (it will filter + upsert without re-scraping)
+    const profiles = profilesResult.profiles;
+    const chunks: any[][] = [];
+    for (let i = 0; i < profiles.length; i += 50) chunks.push(profiles.slice(i, i + 50));
 
     let totalScanned = 0;
     let totalWithEmail = 0;
@@ -662,7 +738,7 @@ export function FsbTikTokOutreachSection() {
     for (const chunk of chunks) {
       try {
         const r = await importTikTokBulk({
-          handles: chunk,
+          profiles: chunk,
           source: `extension:${discHashtags.join(",")}`,
           requireEmail: discRequireEmail,
           minFollowers: discMinFollowers,
@@ -1078,12 +1154,18 @@ export function FsbTikTokOutreachSection() {
                 </span>
               </div>
             </div>
-            <div className="tk-progress-stats">
+            <div className="tk-progress-stats" style={{ gridTemplateColumns: "repeat(6, 1fr)" }}>
               <div className="tk-progress-stat">
                 <strong>{localScrape.capturedHandles}</strong>capturés
               </div>
               <div className="tk-progress-stat">
-                <strong>{localScrape.importedScanned}</strong>scannés
+                <strong style={{ color: "#94a3b8" }}>{localScrape.alreadyKnown}</strong>déjà connus
+              </div>
+              <div className="tk-progress-stat">
+                <strong>{localScrape.profilesScraped}</strong>profils scrapés
+              </div>
+              <div className="tk-progress-stat">
+                <strong>{localScrape.importedScanned}</strong>traités
               </div>
               <div className="tk-progress-stat">
                 <strong style={{ color: "#34d399" }}>{localScrape.importedWithEmail}</strong>avec email

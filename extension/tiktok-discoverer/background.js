@@ -36,8 +36,19 @@ function openTabAndScrape(url, options = {}) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // From content_tiktok.js after scraping a TikTok page
+  // From content_tiktok.js after scraping a TikTok hashtag/search page
   if (message?.type === "LUNALIVE_TIKTOK_RESULT" && sender.tab?.id) {
+    const pending = PENDING.get(sender.tab.id);
+    if (pending) {
+      PENDING.delete(sender.tab.id);
+      pending.resolve(message.payload);
+    }
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  // From content_tiktok.js after scraping a /@handle profile page
+  if (message?.type === "LUNALIVE_TIKTOK_PROFILE_RESULT" && sender.tab?.id) {
     const pending = PENDING.get(sender.tab.id);
     if (pending) {
       PENDING.delete(sender.tab.id);
@@ -115,6 +126,54 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "LUNALIVE_PING") {
     sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
     return false;
+  }
+
+  // Scrape full profile data (one tab per handle, throttled)
+  if (message?.type === "LUNALIVE_TIKTOK_SCRAPE_PROFILES") {
+    (async () => {
+      const { handles = [], visible = false } = message.payload || {};
+      const dispatch = (event) => {
+        try {
+          chrome.tabs
+            .sendMessage(sender.tab.id, { type: "LUNALIVE_TIKTOK_PROGRESS", event })
+            .catch(() => {});
+        } catch {}
+      };
+
+      const profiles = [];
+      let idx = 0;
+      for (const handle of handles) {
+        idx += 1;
+        const cleaned = String(handle).trim().replace(/^@/, "").toLowerCase();
+        if (!cleaned) continue;
+        const url = `https://www.tiktok.com/@${encodeURIComponent(cleaned)}`;
+        dispatch({ kind: "profile_start", source: `@${cleaned}`, found: idx });
+        try {
+          const data = await openTabAndScrape(url, { visible, timeoutMs: 25_000 });
+          if (data?.profile) {
+            profiles.push(data.profile);
+            dispatch({
+              kind: "profile_done",
+              source: `@${cleaned}`,
+              found: data.profile.bioEmail ? 1 : 0,
+            });
+          } else {
+            dispatch({ kind: "profile_error", source: `@${cleaned}`, error: "no_profile" });
+          }
+        } catch (err) {
+          dispatch({
+            kind: "profile_error",
+            source: `@${cleaned}`,
+            error: String(err?.message || err),
+          });
+        }
+        // Light throttle between tabs to avoid TikTok rate-limit
+        await new Promise((r) => setTimeout(r, 600));
+      }
+
+      sendResponse({ ok: true, profiles });
+    })();
+    return true;
   }
 
   return false;
