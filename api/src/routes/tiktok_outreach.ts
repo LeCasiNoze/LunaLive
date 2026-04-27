@@ -464,6 +464,384 @@ tiktokOutreachRouter.delete(
   })
 );
 
+// ─── Discovery ─────────────────────────────────────────────────────────────
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function scrapeHashtagAuthors(tag: string, limit = 60): Promise<string[]> {
+  const cleaned = String(tag || "").trim().replace(/^#+/, "").toLowerCase();
+  if (!cleaned || !/^[a-z0-9_]{1,40}$/i.test(cleaned)) return [];
+  const url = `https://www.tiktok.com/tag/${encodeURIComponent(cleaned)}`;
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+      },
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const match = html.match(
+      /<script[^>]+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/
+    );
+    if (!match) return [];
+    const json = JSON.parse(match[1]);
+    const scope = json?.__DEFAULT_SCOPE__ || {};
+    const detail = scope?.["webapp.challenge-detail"] || {};
+    const itemList: any[] =
+      (Array.isArray(detail?.itemList) && detail.itemList) ||
+      (Array.isArray(detail?.itemList?.list) && detail.itemList.list) ||
+      [];
+    const authors = new Set<string>();
+    for (const item of itemList) {
+      const uid =
+        item?.author?.uniqueId ||
+        item?.author?.unique_id ||
+        item?.author?.uniqueID ||
+        null;
+      if (uid && /^[A-Za-z0-9._]{1,30}$/.test(String(uid))) {
+        authors.add(String(uid).toLowerCase());
+        if (authors.size >= limit) break;
+      }
+    }
+    return Array.from(authors);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function scrapeUserSearchAuthors(query: string, limit = 30): Promise<string[]> {
+  const q = String(query || "").trim();
+  if (!q) return [];
+  const url = `https://www.tiktok.com/search/user?q=${encodeURIComponent(q)}`;
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+      },
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const match = html.match(
+      /<script[^>]+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/
+    );
+    if (!match) return [];
+    const json = JSON.parse(match[1]);
+    const scope = json?.__DEFAULT_SCOPE__ || {};
+    const search =
+      scope?.["webapp.user-search"] ||
+      scope?.["webapp.search-detail"] ||
+      {};
+    const list: any[] =
+      (Array.isArray(search?.userList) && search.userList) ||
+      (Array.isArray(search?.user_list) && search.user_list) ||
+      (Array.isArray(search?.data) && search.data) ||
+      [];
+    const authors = new Set<string>();
+    for (const entry of list) {
+      const uid =
+        entry?.user_info?.unique_id ||
+        entry?.user?.uniqueId ||
+        entry?.user_info?.uniqueId ||
+        null;
+      if (uid && /^[A-Za-z0-9._]{1,30}$/.test(String(uid))) {
+        authors.add(String(uid).toLowerCase());
+        if (authors.size >= limit) break;
+      }
+    }
+    return Array.from(authors);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+const discoverSchema = z.object({
+  hashtags: z.array(z.string().trim().min(1).max(40)).min(1).max(15),
+  searchQueries: z.array(z.string().trim().min(1).max(80)).max(8).optional().default([]),
+  minFollowers: z.coerce.number().int().min(0).max(10_000_000).optional().default(0),
+  maxFollowers: z.coerce.number().int().min(0).max(50_000_000).optional().default(0),
+  countries: z.array(z.string().trim().min(2).max(4)).max(10).optional().default([]),
+  requireEmail: z.boolean().optional().default(true),
+  maxProfiles: z.coerce.number().int().min(1).max(60).optional().default(30),
+});
+
+type DiscoverCriteria = z.infer<typeof discoverSchema>;
+
+async function upsertScrapedProfile(profile: ScrapedProfile): Promise<{ id: number; alreadyContacted: boolean }> {
+  const status = profile.email ? "new" : "no_email";
+  const profileUrl = `https://www.tiktok.com/@${profile.handle}`;
+  const result = await pool.query(
+    `
+    INSERT INTO tiktok_influencers
+      (handle, profile_url, display_name, bio, email, follower_count, following_count, heart_count, video_count, verified, country, avatar_url, status, raw)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+    ON CONFLICT (handle) DO UPDATE SET
+      display_name = COALESCE(EXCLUDED.display_name, tiktok_influencers.display_name),
+      bio = COALESCE(EXCLUDED.bio, tiktok_influencers.bio),
+      email = COALESCE(EXCLUDED.email, tiktok_influencers.email),
+      follower_count = COALESCE(EXCLUDED.follower_count, tiktok_influencers.follower_count),
+      following_count = COALESCE(EXCLUDED.following_count, tiktok_influencers.following_count),
+      heart_count = COALESCE(EXCLUDED.heart_count, tiktok_influencers.heart_count),
+      video_count = COALESCE(EXCLUDED.video_count, tiktok_influencers.video_count),
+      verified = EXCLUDED.verified,
+      country = COALESCE(EXCLUDED.country, tiktok_influencers.country),
+      avatar_url = COALESCE(EXCLUDED.avatar_url, tiktok_influencers.avatar_url),
+      raw = EXCLUDED.raw,
+      updated_at = NOW()
+    RETURNING id, status
+    `,
+    [
+      profile.handle,
+      profileUrl,
+      profile.displayName,
+      profile.bio,
+      profile.email,
+      profile.followerCount,
+      profile.followingCount,
+      profile.heartCount,
+      profile.videoCount,
+      profile.verified,
+      profile.country,
+      profile.avatarUrl,
+      status,
+      profile.raw,
+    ]
+  );
+  const row = result.rows[0];
+  return {
+    id: Number(row.id),
+    alreadyContacted: ["contacted", "replied", "interested", "declined", "blacklisted"].includes(
+      String(row.status)
+    ),
+  };
+}
+
+async function executeDiscoveryRun(runId: number, criteria: DiscoverCriteria): Promise<void> {
+  const log: Array<{ handle?: string; tag?: string; query?: string; reason: string; followers?: number | null; country?: string | null }> = [];
+  const candidates = new Set<string>();
+  let kept = 0;
+  let dropped = 0;
+  let scanned = 0;
+
+  // 1) Collect candidates from hashtags
+  for (const tag of criteria.hashtags) {
+    const authors = await scrapeHashtagAuthors(tag, 60);
+    if (authors.length === 0) {
+      log.push({ tag, reason: "hashtag_empty_or_blocked" });
+    } else {
+      log.push({ tag, reason: `hashtag_found_${authors.length}` });
+    }
+    authors.forEach((h) => candidates.add(h));
+    await pool.query(
+      `UPDATE tiktok_outreach_runs SET candidates_count = $2, log = $3::jsonb, message = $4 WHERE id = $1`,
+      [runId, candidates.size, JSON.stringify(log), `Collecte: hashtag #${tag}`]
+    );
+    if (candidates.size >= criteria.maxProfiles * 4) break;
+    await sleep(900);
+  }
+
+  for (const query of criteria.searchQueries || []) {
+    const authors = await scrapeUserSearchAuthors(query, 30);
+    log.push({ query, reason: `search_found_${authors.length}` });
+    authors.forEach((h) => candidates.add(h));
+    await pool.query(
+      `UPDATE tiktok_outreach_runs SET candidates_count = $2, log = $3::jsonb, message = $4 WHERE id = $1`,
+      [runId, candidates.size, JSON.stringify(log), `Collecte: recherche "${query}"`]
+    );
+    await sleep(900);
+  }
+
+  // 2) Filter out already-known handles to avoid wasted scrapes
+  const known = await pool.query(
+    `SELECT handle FROM tiktok_influencers WHERE handle = ANY($1::text[])`,
+    [Array.from(candidates)]
+  );
+  const knownSet = new Set(known.rows.map((r: any) => String(r.handle)));
+  const fresh = Array.from(candidates).filter((h) => !knownSet.has(h));
+
+  log.push({ reason: `candidates_total_${candidates.size}_fresh_${fresh.length}_known_${knownSet.size}` });
+
+  // 3) Scrape each candidate's profile, apply filters, upsert
+  const slice = fresh.slice(0, criteria.maxProfiles);
+  for (const handle of slice) {
+    scanned += 1;
+    const profile = await scrapeTikTokProfile(handle);
+    if (!profile) {
+      dropped += 1;
+      log.push({ handle, reason: "unreachable" });
+    } else {
+      const followers = profile.followerCount || 0;
+      const country = profile.country || "";
+      const passEmail = !criteria.requireEmail || !!profile.email;
+      const passMin = !criteria.minFollowers || followers >= criteria.minFollowers;
+      const passMax = !criteria.maxFollowers || followers <= criteria.maxFollowers;
+      const passCountry =
+        !criteria.countries.length ||
+        criteria.countries.map((c) => c.toUpperCase()).includes(country.toUpperCase());
+
+      if (!passEmail || !passMin || !passMax || !passCountry) {
+        dropped += 1;
+        const reasons: string[] = [];
+        if (!passEmail) reasons.push("no_email");
+        if (!passMin) reasons.push(`under_min_${followers}`);
+        if (!passMax) reasons.push(`over_max_${followers}`);
+        if (!passCountry) reasons.push(`country_${country || "?"}`);
+        log.push({ handle, reason: reasons.join(","), followers, country });
+        // Still upsert so we have a trace (status=no_email if applicable)
+        if (!criteria.requireEmail) {
+          await upsertScrapedProfile(profile);
+        }
+      } else {
+        await upsertScrapedProfile(profile);
+        kept += 1;
+        log.push({ handle, reason: "kept", followers, country });
+      }
+    }
+    await pool.query(
+      `UPDATE tiktok_outreach_runs
+         SET scanned_count = $2,
+             kept_count = $3,
+             dropped_count = $4,
+             log = $5::jsonb,
+             message = $6
+       WHERE id = $1`,
+      [runId, scanned, kept, dropped, JSON.stringify(log), `Scan ${scanned}/${slice.length}`]
+    );
+    await sleep(700);
+  }
+
+  await pool.query(
+    `UPDATE tiktok_outreach_runs
+       SET status = 'done',
+           finished_at = NOW(),
+           message = $2
+     WHERE id = $1 AND status = 'running'`,
+    [runId, `Terminé: ${kept} gardé(s), ${dropped} rejeté(s) sur ${scanned} scanné(s)`]
+  );
+}
+
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/discover",
+  a(async (req, res) => {
+    const parsed = discoverSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "invalid_input", detail: parsed.error.flatten() });
+    }
+
+    // Reject if a run is already in progress
+    const active = await pool.query(
+      `SELECT id FROM tiktok_outreach_runs WHERE status = 'running' ORDER BY started_at DESC LIMIT 1`
+    );
+    if (active.rows[0]) {
+      return res.status(409).json({ ok: false, error: "run_already_active", runId: String(active.rows[0].id) });
+    }
+
+    const inserted = await pool.query(
+      `INSERT INTO tiktok_outreach_runs (criteria, status) VALUES ($1::jsonb, 'running') RETURNING id`,
+      [JSON.stringify(parsed.data)]
+    );
+    const runId = Number(inserted.rows[0].id);
+
+    // Fire & forget
+    (async () => {
+      try {
+        await executeDiscoveryRun(runId, parsed.data);
+      } catch (err: any) {
+        await pool
+          .query(
+            `UPDATE tiktok_outreach_runs SET status = 'error', finished_at = NOW(), message = $2 WHERE id = $1`,
+            [runId, String(err?.message || err).slice(0, 500)]
+          )
+          .catch(() => {});
+      }
+    })();
+
+    return res.json({ ok: true, runId: String(runId) });
+  })
+);
+
+function mapRun(row: any) {
+  return {
+    id: String(row.id),
+    criteria: row.criteria || {},
+    status: String(row.status || "running"),
+    candidatesCount: Number(row.candidates_count || 0),
+    scannedCount: Number(row.scanned_count || 0),
+    keptCount: Number(row.kept_count || 0),
+    droppedCount: Number(row.dropped_count || 0),
+    message: row.message || null,
+    log: Array.isArray(row.log) ? row.log : [],
+    startedAt: row.started_at ? new Date(row.started_at).toISOString() : null,
+    finishedAt: row.finished_at ? new Date(row.finished_at).toISOString() : null,
+  };
+}
+
+tiktokOutreachRouter.get(
+  "/fsb/tiktok/runs",
+  a(async (_req, res) => {
+    const result = await pool.query(
+      `SELECT * FROM tiktok_outreach_runs ORDER BY started_at DESC LIMIT 30`
+    );
+    return res.json({ ok: true, runs: result.rows.map(mapRun) });
+  })
+);
+
+tiktokOutreachRouter.get(
+  "/fsb/tiktok/runs/active",
+  a(async (_req, res) => {
+    const result = await pool.query(
+      `SELECT * FROM tiktok_outreach_runs WHERE status = 'running' ORDER BY started_at DESC LIMIT 1`
+    );
+    return res.json({ ok: true, run: result.rows[0] ? mapRun(result.rows[0]) : null });
+  })
+);
+
+tiktokOutreachRouter.get(
+  "/fsb/tiktok/runs/:id",
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    const result = await pool.query(`SELECT * FROM tiktok_outreach_runs WHERE id = $1`, [id]);
+    if (!result.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+    return res.json({ ok: true, run: mapRun(result.rows[0]) });
+  })
+);
+
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/runs/:id/cancel",
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    await pool.query(
+      `UPDATE tiktok_outreach_runs SET status = 'canceled', finished_at = NOW() WHERE id = $1 AND status = 'running'`,
+      [id]
+    );
+    return res.json({ ok: true });
+  })
+);
+
 tiktokOutreachRouter.get(
   "/fsb/tiktok/:id/messages",
   a(async (req, res) => {

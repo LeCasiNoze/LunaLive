@@ -154,3 +154,65 @@ export function listTikTokMessages(id: string) {
     `/api/fsb/tiktok/${encodeURIComponent(id)}/messages`
   );
 }
+
+// ─── Discovery ─────────────────────────────────────────────────────────────
+
+export type TikTokDiscoverCriteria = {
+  hashtags: string[];
+  searchQueries?: string[];
+  minFollowers?: number;
+  maxFollowers?: number;
+  countries?: string[];
+  requireEmail?: boolean;
+  maxProfiles?: number;
+};
+
+export type TikTokRunLogEntry = {
+  handle?: string;
+  tag?: string;
+  query?: string;
+  reason: string;
+  followers?: number | null;
+  country?: string | null;
+};
+
+export type TikTokOutreachRun = {
+  id: string;
+  criteria: TikTokDiscoverCriteria;
+  status: "running" | "done" | "error" | "canceled";
+  candidatesCount: number;
+  scannedCount: number;
+  keptCount: number;
+  droppedCount: number;
+  message: string | null;
+  log: TikTokRunLogEntry[];
+  startedAt: string | null;
+  finishedAt: string | null;
+};
+
+export function startDiscoveryRun(criteria: TikTokDiscoverCriteria) {
+  return request<{ ok: true; runId: string }>(`/api/fsb/tiktok/discover`, {
+    method: "POST",
+    body: JSON.stringify(criteria),
+  });
+}
+
+export function getActiveRun() {
+  return request<{ ok: true; run: TikTokOutreachRun | null }>(`/api/fsb/tiktok/runs/active`);
+}
+
+export function getRun(id: string) {
+  return request<{ ok: true; run: TikTokOutreachRun }>(
+    `/api/fsb/tiktok/runs/${encodeURIComponent(id)}`
+  );
+}
+
+export function listRuns() {
+  return request<{ ok: true; runs: TikTokOutreachRun[] }>(`/api/fsb/tiktok/runs`);
+}
+
+export function cancelRun(id: string) {
+  return request<{ ok: true }>(`/api/fsb/tiktok/runs/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+  });
+}

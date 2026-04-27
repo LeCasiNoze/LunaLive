@@ -1,15 +1,21 @@
 import * as React from "react";
 import {
+  cancelRun,
   contactTikTokInfluencer,
   deleteTikTokInfluencer,
+  getActiveRun,
+  getRun,
+  listRuns,
   listTikTokInfluencers,
   listTikTokMessages,
   logTikTokReply,
   scanTikTokProfile,
   setTikTokInfluencerStatus,
+  startDiscoveryRun,
   type TikTokInfluencer,
   type TikTokInfluencerStatus,
   type TikTokOutreachMessage,
+  type TikTokOutreachRun,
   type TikTokOutreachStats,
 } from "../../lib/api_tiktok_outreach";
 
@@ -174,6 +180,65 @@ const SECTION_CSS = `
   border-top-color:#fff;border-radius:50%;animation:tk-spin .7s linear infinite;
 }
 @keyframes tk-spin{to{transform:rotate(360deg)}}
+
+.tk-discovery{
+  border:1px solid var(--bd);border-radius:20px;padding:22px;
+  background:
+    radial-gradient(ellipse 80% 60% at 100% 0%,rgba(168,85,247,.10),transparent 60%),
+    radial-gradient(ellipse 80% 60% at 0% 100%,rgba(34,211,238,.08),transparent 60%),
+    linear-gradient(160deg,rgba(255,255,255,.028) 0%,transparent 60%),var(--panel);
+  box-shadow:0 2px 18px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.05);
+}
+.tk-disc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:14px}
+.tk-disc-field{display:grid;gap:6px}
+.tk-disc-field label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:800}
+.tk-chips{display:flex;gap:6px;flex-wrap:wrap;padding:8px;border:1px solid var(--bd);background:var(--surface);border-radius:11px;min-height:42px;align-items:center}
+.tk-chips input{background:transparent;border:none;outline:none;color:var(--text);font:inherit;font-size:13px;flex:1;min-width:120px;padding:4px}
+.tk-chip{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
+  background:linear-gradient(135deg,rgba(255,0,80,.18),rgba(168,85,247,.18));
+  border:1px solid rgba(168,85,247,.32);font-size:12px;font-weight:700;color:#fff;
+}
+.tk-chip button{background:transparent;border:none;color:rgba(255,255,255,.7);cursor:pointer;padding:0;font-size:14px;line-height:1}
+.tk-chip button:hover{color:#fff}
+.tk-disc-actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;align-items:center}
+.tk-progress{
+  margin-top:14px;padding:14px 16px;border-radius:14px;border:1px solid rgba(168,85,247,.28);
+  background:rgba(168,85,247,.06);
+}
+.tk-progress-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;font-weight:700}
+.tk-progbar{
+  margin-top:10px;height:8px;border-radius:4px;background:rgba(255,255,255,.07);overflow:hidden;
+}
+.tk-progbar-fill{
+  height:100%;background:linear-gradient(90deg,#ff0050,#a855f7,#00f2ea);
+  transition:width .4s ease;border-radius:4px;
+}
+.tk-progress-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
+.tk-progress-stat{font-size:11px;color:var(--muted);text-align:center}
+.tk-progress-stat strong{display:block;color:var(--text);font-size:18px;font-weight:800;margin-bottom:2px}
+.tk-runs{display:grid;gap:8px;margin-top:14px}
+.tk-run{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:11px 14px;border-radius:12px;border:1px solid var(--bd);background:rgba(255,255,255,.02);
+}
+.tk-run-meta{font-size:12px;color:var(--muted)}
+.tk-run-status{
+  display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;
+  padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em;
+}
+.tk-run-status::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+.tk-run-done{background:rgba(16,185,129,.1);color:#34d399;border:1px solid rgba(16,185,129,.22)}
+.tk-run-running{background:rgba(99,102,241,.1);color:#a5b4fc;border:1px solid rgba(99,102,241,.22)}
+.tk-run-error{background:rgba(240,78,78,.1);color:#fc8181;border:1px solid rgba(240,78,78,.22)}
+.tk-run-canceled{background:rgba(148,163,184,.08);color:var(--muted);border:1px solid var(--bd)}
+.tk-num-input{
+  width:90px;border-radius:10px;border:1px solid var(--bd);background:var(--surface);
+  color:var(--text);font:inherit;font-size:13px;padding:8px 10px;outline:none;
+}
+.tk-num-input:focus{border-color:var(--p);box-shadow:0 0 0 3px rgba(99,102,241,.18)}
+.tk-disc-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.tk-disc-row label{font-size:13px;color:var(--text);font-weight:600;display:flex;gap:8px;align-items:center}
 `;
 
 function fmtCount(value: number | null): string {
@@ -197,6 +262,9 @@ function fmtRelative(iso: string | null): string {
   if (j < 30) return `il y a ${j}j`;
   return d.toLocaleDateString("fr-FR");
 }
+
+const DEFAULT_HASHTAGS = ["casinofr", "casinofrancais", "casinoenligne", "paris_sportifs", "joueurfrancais"];
+const COUNTRY_CHOICES = ["FR", "BE", "CH", "MC", "CA", "LU"];
 
 const DEFAULT_BODY = `Salut {{name}},
 
@@ -229,6 +297,18 @@ export function FsbTikTokOutreachSection() {
   const [detailMessages, setDetailMessages] = React.useState<TikTokOutreachMessage[]>([]);
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [replyText, setReplyText] = React.useState("");
+
+  // Discovery state
+  const [discHashtags, setDiscHashtags] = React.useState<string[]>(DEFAULT_HASHTAGS);
+  const [discHashtagInput, setDiscHashtagInput] = React.useState("");
+  const [discMinFollowers, setDiscMinFollowers] = React.useState(20000);
+  const [discMaxFollowers, setDiscMaxFollowers] = React.useState(500000);
+  const [discCountries, setDiscCountries] = React.useState<string[]>(["FR"]);
+  const [discRequireEmail, setDiscRequireEmail] = React.useState(true);
+  const [discMaxProfiles, setDiscMaxProfiles] = React.useState(30);
+  const [discError, setDiscError] = React.useState<string | null>(null);
+  const [activeRun, setActiveRun] = React.useState<TikTokOutreachRun | null>(null);
+  const [pastRuns, setPastRuns] = React.useState<TikTokOutreachRun[]>([]);
 
   const reload = React.useCallback(
     async (which: TikTokInfluencerStatus | "all" = filter) => {
@@ -346,6 +426,106 @@ export function FsbTikTokOutreachSection() {
     }
   };
 
+  // ─── Discovery effects ────────────────────────────────────────────────
+  const reloadRuns = React.useCallback(async () => {
+    try {
+      const res = await listRuns();
+      setPastRuns(res.runs);
+    } catch {}
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getActiveRun();
+        if (!cancelled) setActiveRun(res.run);
+      } catch {}
+      reloadRuns();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadRuns]);
+
+  React.useEffect(() => {
+    if (!activeRun || activeRun.status !== "running") return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await getRun(activeRun.id);
+        setActiveRun(res.run);
+        if (res.run.status !== "running") {
+          await reload(filter);
+          await reloadRuns();
+        }
+      } catch {}
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [activeRun, filter, reload, reloadRuns]);
+
+  const addHashtag = (raw: string) => {
+    const cleaned = raw.trim().replace(/^#+/, "").toLowerCase();
+    if (!cleaned || !/^[a-z0-9_]{1,40}$/i.test(cleaned)) return;
+    if (discHashtags.includes(cleaned)) return;
+    setDiscHashtags([...discHashtags, cleaned]);
+  };
+
+  const handleHashtagKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addHashtag(discHashtagInput);
+      setDiscHashtagInput("");
+    } else if (e.key === "Backspace" && !discHashtagInput && discHashtags.length) {
+      setDiscHashtags(discHashtags.slice(0, -1));
+    }
+  };
+
+  const toggleCountry = (code: string) => {
+    setDiscCountries((current) =>
+      current.includes(code) ? current.filter((c) => c !== code) : [...current, code]
+    );
+  };
+
+  const launchDiscovery = async () => {
+    if (discHashtags.length === 0) {
+      setDiscError("Ajoute au moins un hashtag");
+      return;
+    }
+    setDiscError(null);
+    try {
+      const res = await startDiscoveryRun({
+        hashtags: discHashtags,
+        minFollowers: discMinFollowers,
+        maxFollowers: discMaxFollowers,
+        countries: discCountries,
+        requireEmail: discRequireEmail,
+        maxProfiles: discMaxProfiles,
+      });
+      const run = await getRun(res.runId);
+      setActiveRun(run.run);
+      await reloadRuns();
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      setDiscError(
+        msg === "run_already_active"
+          ? "Une récolte est déjà en cours"
+          : msg
+      );
+    }
+  };
+
+  const stopDiscovery = async () => {
+    if (!activeRun) return;
+    try {
+      await cancelRun(activeRun.id);
+      const updated = await getRun(activeRun.id);
+      setActiveRun(updated.run);
+      await reloadRuns();
+    } catch (err: any) {
+      window.alert(`Annulation: ${err?.message || err}`);
+    }
+  };
+
   const submitReply = async (interested: boolean) => {
     if (!detailTarget || !replyText.trim()) return;
     try {
@@ -426,6 +606,225 @@ export function FsbTikTokOutreachSection() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="tk-discovery">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, letterSpacing: "-.02em" }}>
+              🤖 Récolte automatique
+            </h3>
+            <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>
+              Scanne des hashtags TikTok, filtre par critères (FR uniquement par défaut) et ajoute
+              les profils correspondants à la liste.
+            </p>
+          </div>
+        </div>
+
+        <div className="tk-disc-grid">
+          <div className="tk-disc-field" style={{ gridColumn: "1 / -1" }}>
+            <label>Hashtags TikTok (sans #)</label>
+            <div className="tk-chips">
+              {discHashtags.map((h) => (
+                <span key={h} className="tk-chip">
+                  #{h}
+                  <button onClick={() => setDiscHashtags(discHashtags.filter((x) => x !== h))}>
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                placeholder={discHashtags.length ? "Ajouter..." : "casinofr, casinoenligne..."}
+                value={discHashtagInput}
+                onChange={(e) => setDiscHashtagInput(e.target.value)}
+                onKeyDown={handleHashtagKey}
+                onBlur={() => {
+                  if (discHashtagInput.trim()) {
+                    addHashtag(discHashtagInput);
+                    setDiscHashtagInput("");
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="tk-disc-field">
+            <label>Followers min</label>
+            <input
+              type="number"
+              className="tk-num-input"
+              style={{ width: "100%" }}
+              value={discMinFollowers}
+              onChange={(e) => setDiscMinFollowers(Math.max(0, Number(e.target.value) || 0))}
+            />
+          </div>
+
+          <div className="tk-disc-field">
+            <label>Followers max</label>
+            <input
+              type="number"
+              className="tk-num-input"
+              style={{ width: "100%" }}
+              value={discMaxFollowers}
+              onChange={(e) => setDiscMaxFollowers(Math.max(0, Number(e.target.value) || 0))}
+            />
+          </div>
+
+          <div className="tk-disc-field">
+            <label>Profils max par run</label>
+            <input
+              type="number"
+              className="tk-num-input"
+              style={{ width: "100%" }}
+              min={1}
+              max={60}
+              value={discMaxProfiles}
+              onChange={(e) => setDiscMaxProfiles(Math.max(1, Math.min(60, Number(e.target.value) || 30)))}
+            />
+          </div>
+
+          <div className="tk-disc-field" style={{ gridColumn: "1 / -1" }}>
+            <label>Pays (TikTok region)</label>
+            <div className="tk-disc-row">
+              {COUNTRY_CHOICES.map((code) => (
+                <label key={code}>
+                  <input
+                    type="checkbox"
+                    checked={discCountries.includes(code)}
+                    onChange={() => toggleCountry(code)}
+                  />
+                  {code}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="tk-disc-field" style={{ gridColumn: "1 / -1" }}>
+            <label>Options</label>
+            <div className="tk-disc-row">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={discRequireEmail}
+                  onChange={(e) => setDiscRequireEmail(e.target.checked)}
+                />
+                Ne garder que les profils avec email
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="tk-disc-actions">
+          <button
+            className="fsb-btn fsb-btn-primary"
+            onClick={launchDiscovery}
+            disabled={!!activeRun && activeRun.status === "running"}
+          >
+            {activeRun?.status === "running" ? <span className="tk-spin" /> : "🚀 Lancer la récolte"}
+          </button>
+          {activeRun?.status === "running" ? (
+            <button className="fsb-btn" onClick={stopDiscovery}>
+              ⏹ Arrêter
+            </button>
+          ) : null}
+          <span style={{ color: "var(--muted)", fontSize: 12 }}>
+            ~{Math.ceil((discMaxProfiles * 0.7 + discHashtags.length * 0.9) / 6) * 10}s estimés
+          </span>
+        </div>
+
+        {discError ? <div className="fsb-alert" style={{ marginTop: 12 }}>{discError}</div> : null}
+
+        {activeRun ? (
+          <div className="tk-progress">
+            <div className="tk-progress-head">
+              <div>
+                <span
+                  className={`tk-run-status tk-run-${activeRun.status}`}
+                  style={{ marginRight: 8 }}
+                >
+                  {activeRun.status === "running"
+                    ? "En cours"
+                    : activeRun.status === "done"
+                    ? "Terminé"
+                    : activeRun.status === "error"
+                    ? "Erreur"
+                    : "Annulé"}
+                </span>
+                {activeRun.message || "—"}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                {fmtRelative(activeRun.startedAt)}
+              </div>
+            </div>
+            <div className="tk-progbar">
+              <div
+                className="tk-progbar-fill"
+                style={{
+                  width: `${
+                    activeRun.candidatesCount
+                      ? Math.min(
+                          100,
+                          (activeRun.scannedCount /
+                            Math.max(
+                              1,
+                              Math.min(
+                                activeRun.criteria?.maxProfiles || 30,
+                                activeRun.candidatesCount
+                              )
+                            )) *
+                            100
+                        )
+                      : 0
+                  }%`,
+                }}
+              />
+            </div>
+            <div className="tk-progress-stats">
+              <div className="tk-progress-stat">
+                <strong>{activeRun.candidatesCount}</strong>candidats
+              </div>
+              <div className="tk-progress-stat">
+                <strong>{activeRun.scannedCount}</strong>scannés
+              </div>
+              <div className="tk-progress-stat">
+                <strong style={{ color: "#34d399" }}>{activeRun.keptCount}</strong>gardés
+              </div>
+              <div className="tk-progress-stat">
+                <strong style={{ color: "#fc8181" }}>{activeRun.droppedCount}</strong>rejetés
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {pastRuns.length > 0 ? (
+          <div className="tk-runs">
+            {pastRuns
+              .filter((r) => !activeRun || r.id !== activeRun.id)
+              .slice(0, 6)
+              .map((run) => (
+                <div key={run.id} className="tk-run">
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>
+                      {(run.criteria?.hashtags || []).map((h) => `#${h}`).join(" · ") || "—"}
+                    </div>
+                    <div className="tk-run-meta">
+                      {fmtRelative(run.startedAt)} · {run.keptCount} gardé(s) /
+                      {run.scannedCount} scanné(s)
+                    </div>
+                  </div>
+                  <span className={`tk-run-status tk-run-${run.status}`}>
+                    {run.status === "done"
+                      ? "Terminé"
+                      : run.status === "running"
+                      ? "En cours"
+                      : run.status === "error"
+                      ? "Erreur"
+                      : "Annulé"}
+                  </span>
+                </div>
+              ))}
+          </div>
+        ) : null}
       </div>
 
       <div className="tk-filterbar">
