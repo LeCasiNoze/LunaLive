@@ -450,11 +450,12 @@ const CLIP_MODAL_CSS = `
 @keyframes cpm-slide-up { from{opacity:0;transform:translateY(18px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
 
 /* ── Backdrop ── */
+/* IMPORTANT: pas de backdrop-filter ici. Le blur cumulé sur le live qui joue
+   derrière saturait le GPU et faisait saccader la lecture du clip MP4. */
 .cpm-backdrop {
   position:fixed;inset:0;
   display:grid;place-items:center;padding:16px;
-  background:rgba(4,3,10,.80);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  background:rgba(4,3,10,.92);
   animation:cpm-fade-in 180ms ease;
 }
 
@@ -463,9 +464,8 @@ const CLIP_MODAL_CSS = `
   position:relative;width:100%;
   border-radius:22px;
   border:1px solid rgba(124,92,252,.22);
-  background:rgba(11,9,22,.96);
+  background:rgba(11,9,22,.98);
   box-shadow:0 40px 100px rgba(0,0,0,.72),0 0 0 1px rgba(167,139,250,.07) inset,0 0 60px rgba(124,92,252,.09);
-  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   overflow:hidden;
   animation:cpm-slide-up 260ms cubic-bezier(.22,1,.36,1);
   display:flex;flex-direction:column;
@@ -653,10 +653,35 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
   const canDownload = canModerate && !!mp4;
   const canDelete   = canModerate && !!token;
 
+  // Pause toutes les autres vidéos pendant l'ouverture (libère le décodeur GPU).
+  React.useEffect(() => {
+    const allVideos = Array.from(document.querySelectorAll<HTMLVideoElement>("video"));
+    const pausedByUs: HTMLVideoElement[] = [];
+    for (const v of allVideos) {
+      if (v === videoRef.current) continue;
+      if (!v.paused) {
+        try { v.pause(); pausedByUs.push(v); } catch {}
+      }
+    }
+    return () => {
+      for (const v of pausedByUs) {
+        try { v.play().catch(() => {}); } catch {}
+      }
+    };
+  }, []);
+
+  // Ne dépendre QUE des champs qui définissent quelle vidéo charger,
+  // pas de l'objet entier (qui change de ref à chaque like).
+  const _clipId = clip.id;
+  const _mp4Stable = String((clip as any).clipUrl || "").trim();
+  const _vodStable = clip.vodUrl || "";
+  const _startStable = String(clip.startSec || 0);
+  const _durStable = String(clip.durationSec || 0);
+
   React.useEffect(() => {
     const video = videoRef.current; if (!video) return;
-    const mp4Url = String((clip as any).clipUrl || "").trim() || null;
-    const hlsUrl = clip.vodUrl;
+    const mp4Url = _mp4Stable || null;
+    const hlsUrl = _vodStable || null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let hls: any = null;
     video.preload = "metadata";
@@ -673,8 +698,8 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
     }
 
     if (!hlsUrl) return;
-    const start = Math.max(0, Number(clip.startSec || 0));
-    const end   = Math.max(start + 1, start + Math.max(1, Number(clip.durationSec || 0)));
+    const start = Math.max(0, Number(_startStable) || 0);
+    const end   = Math.max(start + 1, start + Math.max(1, Number(_durStable) || 0));
     const EPS   = 0.25;
 
     const cleanup = () => {
@@ -718,7 +743,7 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
     });
 
     return () => { _destroyed = true; try { hls?.destroy(); } catch {} cleanup(); };
-  }, [clip]);
+  }, [_clipId, _mp4Stable, _vodStable, _startStable, _durStable]);
 
   async function doLike() {
     if (!token) { setStatus("Connecte-toi pour liker."); return; }
