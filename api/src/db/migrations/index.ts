@@ -91,6 +91,7 @@ import { mig081_fsb_cam_filters } from "./mig081_fsb_cam_filters.js";
 import { mig082_clip_streamer_notifications } from "./mig082_clip_streamer_notifications.js";
 import { mig083_rumble_chat } from "./mig083_rumble_chat.js";
 import { mig084_streamer_rumble_username } from "./mig084_streamer_rumble_username.js";
+import { mig085_chat_messages_external_source } from "./mig085_chat_messages_external_source.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -201,6 +202,7 @@ export async function migrateAll(pool: Pool) {
   await mig082_clip_streamer_notifications(pool);
   await mig083_rumble_chat(pool);
   await mig084_streamer_rumble_username(pool);
+  await mig085_chat_messages_external_source(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

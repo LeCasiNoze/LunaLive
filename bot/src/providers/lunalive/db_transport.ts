@@ -31,6 +31,7 @@ export class LunaLiveDbTransport {
             cm.username,
             cm.body,
             cm.created_at,
+            cm.external_source,
             u.role AS user_role
           FROM chat_messages cm
           LEFT JOIN users u
@@ -48,15 +49,16 @@ export class LunaLiveDbTransport {
           const userId = Number(row.user_id);
           const username = String(row.username);
           const body = String(row.body);
+          const externalSource = row.external_source ? String(row.external_source) : null;
 
-          // ✅ ignore system (souvent userId=0)
-          if (userId <= 0) {
+          // ✅ ignore system (userId=0 sans external_source = bot/system Luna)
+          //    Mais on garde les externes (Rumble bridge) pour dispatch des commandes.
+          if (userId <= 0 && !externalSource) {
             this.lastId = Math.max(this.lastId, Number(row.id));
             continue;
           }
 
           // ✅ ignore messages du bot (anti-boucle)
-          // Ajoute ces env côté bot si tu veux: BOT_LUNALIVE_USERNAME / BOT_LUNALIVE_USER_ID
           const botUid = Number((this.env as any).BOT_LUNALIVE_USER_ID || 0);
           const botName = String((this.env as any).BOT_LUNALIVE_USERNAME || "").trim().toLowerCase();
           if ((botUid > 0 && userId === botUid) || (botName && username.toLowerCase() === botName)) {

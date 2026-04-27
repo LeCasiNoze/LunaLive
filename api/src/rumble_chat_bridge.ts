@@ -325,11 +325,22 @@ export function ensureRumbleBridge(opts: {
 
   async function persistMessage(msgId: string, rumbleUserId: string, username: string, body: string, createdAt: Date) {
     try {
+      // 1. Archive dédiée Rumble (avec rumble_user_id pour cross-ref)
       await opts.pool.query(
         `INSERT INTO rumble_chat_messages (streamer_id, rumble_msg_id, rumble_user_id, username, body, created_at)
          VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (streamer_id, rumble_msg_id) WHERE rumble_msg_id IS NOT NULL DO NOTHING`,
         [opts.streamerId, msgId, rumbleUserId, username, body, createdAt]
+      );
+      // 2. Mirror dans chat_messages avec marqueur external_source='rumble'.
+      //    Permet au bot service de polller chat_messages comme source unique
+      //    et de dispatcher les commandes (!ping, !discord…) configurées dans
+      //    bot_commands pour les viewers Rumble exactement comme pour Luna.
+      await opts.pool.query(
+        `INSERT INTO chat_messages (streamer_id, user_id, username, body, created_at, external_source, external_msg_id)
+         VALUES ($1, 0, $2, $3, $4, 'rumble', $5)
+         ON CONFLICT (streamer_id, external_source, external_msg_id) WHERE external_source IS NOT NULL AND external_msg_id IS NOT NULL DO NOTHING`,
+        [opts.streamerId, username, body, createdAt, msgId]
       );
     } catch (e: any) {
       console.warn(`[rumble_chat] persist error`, opts.slug, e?.message || e);
