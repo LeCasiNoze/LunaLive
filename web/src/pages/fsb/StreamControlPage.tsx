@@ -394,12 +394,17 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
     if (!socket || sharing) return;
     let stream: MediaStream;
     try {
-      // 30 fps pour un slot animé (spins, FX). Pas de contrainte width/height —
-      // laisse Chrome utiliser la résolution écran native, l'encodeur H264
-      // hardware (forcé via setCodecPreferences) + maintain-framerate gèrent
-      // l'auto-downscale si la BP n'est pas suffisante.
+      // Lock 720p 30 fps — résolution suffisante pour le rendu overlay OBS
+      // (consommé à ~1363×1026 px), réduit la charge encodeur d'un facteur 2.25
+      // (1080p a 2.25× plus de pixels que 720p) et garantit fluidité constante
+      // même sur un slot très animé. Chrome respecte ces contraintes nativement
+      // pour getDisplayMedia.
       stream = await (navigator.mediaDevices as any).getDisplayMedia({
-        video: { frameRate: { ideal: 30, max: 30 } },
+        video: {
+          width:  { ideal: 1280, max: 1280 },
+          height: { ideal: 720,  max: 720  },
+          frameRate: { ideal: 30, max: 30 },
+        },
         audio: false,
       });
     } catch (e) {
@@ -450,12 +455,9 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
       const iceServers = await ensureIceServers();
       const pc = new RTCPeerConnection({ iceServers });
       peersRef.current.set(viewerId, pc);
-      // Screen = contentHint "motion" (slot animé, spins, FX > texte statique).
-      // maintain-framerate = on garde 30 fps coûte que coûte ; si la BP manque,
-      // l'encodeur downscale en résolution (du 1080p → 720p reste très lisible
-      // pour le rendu de l'overlay OBS qui consomme à ~1363×1026 px).
-      // Cap 4 Mbps : on a 5+ Mbps dispo (testé), 30 fps en 1080p H264 a besoin
-      // de ~3 Mbps pour rester net sur des animations.
+      // Screen 720p30 H264 hardware = ~2 Mbps suffisent largement pour de la
+      // qualité streamable (cap 2.5 Mbps = marge safety pour les pics).
+      // contentHint "motion" + maintain-framerate = priorité à 30 fps stables.
       localStream.getTracks().forEach(t => {
         if (t.kind === "video") { try { (t as any).contentHint = "motion"; } catch {} }
         const sender = pc.addTrack(t, localStream);
@@ -463,7 +465,7 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
           try {
             const params = sender.getParameters();
             if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-            params.encodings[0].maxBitrate = 4_000_000; // 4 Mbps
+            params.encodings[0].maxBitrate = 2_500_000; // 2.5 Mbps (720p30)
             params.encodings[0].maxFramerate = 30;
             params.degradationPreference = "maintain-framerate";
             sender.setParameters(params).catch(() => {});
@@ -1173,11 +1175,16 @@ type RtcStreamStats = {
   availableOutgoingKbps: number;  // moyenne
 };
 
+type RtcTickEntry = { t: number; stats: RtcStreamStats[] };
+
 function useRtcBroadcastStats(
   getPeersList: Array<{ kind: "cam" | "screen"; getPeers: () => Map<string, RTCPeerConnection> }>,
   intervalMs = 1500,
+  historySize = 30,
 ) {
   const [stats, setStats] = React.useState<RtcStreamStats[]>([]);
+  // Buffer circulaire des derniers ticks pour analyse d'évolution
+  const historyRef = React.useRef<RtcTickEntry[]>([]);
   // Mémoire pour calculer le delta de bytes
   const lastBytesRef = React.useRef<Map<string, { bytes: number; t: number }>>(new Map());
 
@@ -1274,15 +1281,26 @@ function useRtcBroadcastStats(
         });
       }
 
-      if (!cancelled) setStats(out);
+      if (!cancelled) {
+        setStats(out);
+        // Push dans l'historique (capped à historySize), seulement si on a au
+        // moins une stat valide — évite les gaps inutiles avant les viewers.
+        if (out.length > 0) {
+          const buf = historyRef.current;
+          buf.push({ t: Date.now(), stats: out });
+          if (buf.length > historySize) buf.splice(0, buf.length - historySize);
+        }
+      }
     };
 
     tick();
     const id = setInterval(tick, intervalMs);
     return () => { cancelled = true; clearInterval(id); };
-  }, [getPeersList, intervalMs]);
+  }, [getPeersList, intervalMs, historySize]);
 
-  return stats;
+  // Getter exposé : permet au panel de dumper l'historique au moment du clic
+  const getHistory = React.useCallback(() => historyRef.current.slice(), []);
+  return { stats, getHistory };
 }
 
 function StatBadge({ label, value, sub, tone }: {
@@ -1326,7 +1344,7 @@ function RtcStatsPanel({
     return arr;
   }, [isCamActive, isScreenActive, getCamPeers, getScreenPeers]);
 
-  const stats = useRtcBroadcastStats(peerList, 1500);
+  const { stats, getHistory } = useRtcBroadcastStats(peerList, 1500, 30);
 
   if (!isCamActive && !isScreenActive) {
     return (
@@ -1354,6 +1372,9 @@ function RtcStatsPanel({
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontSize: 13, fontWeight: 800, color: "#dde8ff" }}>📊 Diagnostic WebRTC live</span>
         <span style={{ fontSize: 10, color: "#64748b", fontFamily: "monospace" }}>tick 1.5s · sources broadcast</span>
+        <span style={{ fontSize: 10, color: "#64748b", fontFamily: "monospace", marginLeft: 6 }}>
+          historique : {getHistory().length} tick{getHistory().length > 1 ? "s" : ""}
+        </span>
         <button
           onClick={() => {
             const codec = (() => {
@@ -1364,7 +1385,20 @@ function RtcStatsPanel({
               } catch { return "n/a"; }
             })();
             const ua = navigator.userAgent;
-            const dump = JSON.stringify({ ua, codecsAvailable: codec, stats }, null, 2);
+            const history = getHistory().map((entry) => ({
+              t: new Date(entry.t).toISOString(),
+              stats: entry.stats.map((s) => ({
+                kind: s.kind, viewers: s.viewers,
+                bitrateUpKbps: Math.round(s.bitrateUpKbps),
+                fps: Math.round(s.fpsAvg * 10) / 10,
+                size: `${s.width}×${s.height}`,
+                limit: s.qualityLimitation,
+                lossPct: Math.round(s.packetsLostPct * 10) / 10,
+                rttMs: Math.round(s.rttMs),
+                availKbps: Math.round(s.availableOutgoingKbps),
+              })),
+            }));
+            const dump = JSON.stringify({ ua, codecsAvailable: codec, ticks: history }, null, 2);
             navigator.clipboard.writeText(dump).catch(() => {});
           }}
           style={{
@@ -1373,9 +1407,9 @@ function RtcStatsPanel({
             color: "#c7d2fe", padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700,
             cursor: "pointer", fontFamily: "inherit",
           }}
-          title="Copie un dump JSON des stats actuelles dans le presse-papier"
+          title={`Copie ${getHistory().length} ticks récents (≈${(getHistory().length * 1.5).toFixed(0)}s d'historique) en JSON`}
         >
-          📋 Copier stats
+          📋 Copier {getHistory().length} ticks
         </button>
       </div>
       {stats.length === 0 ? (
