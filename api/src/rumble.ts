@@ -403,7 +403,10 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
     });
     if (!r2.ok) return offline;
     const d: any = await r2.json();
-    const isLive = d?.live === 1 || d?.live === true || d?.livestream_has_dvr === 1;
+    // Rumble retourne `live: 1` ou `live: 2` selon le type de live, et
+    // `livestream_has_dvr` peut être boolean true ou number 1. On accepte tout
+    // ce qui est truthy.
+    const isLive = !!d?.live || !!d?.livestream_has_dvr;
     if (!isLive) {
       console.log(`[rumble][pseudo-only] ${username}: ${vSlug} pas en live`);
       return offline;
