@@ -357,6 +357,7 @@ export async function handleCallsCommand(opts: {
 
     await sendBotChat(pool, io, { streamerId, slug }, `🔓 Hunt OPEN par @${actorUsername}`);
 
+    io.to(`obsview:${slug}`).emit("calls:changed", { action: "sync" });
     io.to(`chat:${slug}`).emit("calls:changed", { action: "hunt_open" });
     io.to(`chat:${slug}`).emit("hunt:changed", { action: "open" });
 
@@ -398,6 +399,7 @@ export async function handleCallsCommand(opts: {
       `✅ Bet enregistrée: "${cur.slotName}"${cur.provider ? ` (${cur.provider})` : ""} — ${bet}€ (GG 🎉)`
     );
 
+    io.to(`obsview:${slug}`).emit("calls:changed", { action: "sync" });
     io.to(`chat:${slug}`).emit("calls:changed", { action: "bet" });
     io.to(`chat:${slug}`).emit("hunt:changed", { action: "bet" });
 
@@ -428,6 +430,7 @@ export async function handleCallsCommand(opts: {
 
     await sendBotChat(pool, io, { streamerId, slug }, `⏭️ Pass: "${cur.slotName}" — supprimé de la liste.`);
 
+    io.to(`obsview:${slug}`).emit("calls:changed", { action: "sync" });
     io.to(`chat:${slug}`).emit("calls:changed", { action: "pass" });
     io.to(`chat:${slug}`).emit("hunt:changed", { action: "pass" });
 
@@ -476,6 +479,7 @@ export async function handleCallsCommand(opts: {
       `💰 Pay: "${cur.slotName}"${cur.provider ? ` (${cur.provider})` : ""} — ${pay}€`
     );
 
+    io.to(`obsview:${slug}`).emit("calls:changed", { action: "sync" });
     io.to(`chat:${slug}`).emit("calls:changed", { action: "pay" });
     io.to(`chat:${slug}`).emit("hunt:changed", { action: "pay" });
 
@@ -495,6 +499,7 @@ export async function handleCallsCommand(opts: {
 
     await sendBotChat(pool, io, { streamerId, slug }, `🧹 Calls reset par @${actorUsername}`);
 
+    io.to(`obsview:${slug}`).emit("calls:changed", { action: "sync" });
     io.to(`chat:${slug}`).emit("calls:changed", { action: "reset" });
     io.to(`chat:${slug}`).emit("hunt:changed", { action: "reset" });
 
@@ -674,6 +679,7 @@ export async function handleCallsCommand(opts: {
     );
   }
 
+  io.to(`obsview:${slug}`).emit("calls:changed", { action: "add" });
   io.to(`chat:${slug}`).emit("calls:changed", { action: "add" });
 
   // si sync active => hunt UI est la même liste, donc on ping aussi hunt:changed

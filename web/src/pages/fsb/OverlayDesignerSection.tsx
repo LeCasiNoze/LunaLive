@@ -80,6 +80,21 @@ export type PromoZoneConfig = ZoneRect & {
   objectFit: "contain" | "cover" | "fill";
 };
 
+export type CallZoneConfig = ZoneRect & {
+  enabled: boolean;
+  /** Slug du streamer à observer (par défaut = slug courant de l'overlay). */
+  slug: string;
+  bgColor: string;
+  bgOpacity: number;       // 0–100
+  textColor: string;
+  accentColor: string;     // bord lumineux + flèche
+  borderRadius: number;
+  fontSize: number;        // px de base, scale auto le reste
+  showProvider: boolean;
+  showCaller: boolean;
+  showNext: boolean;       // afficher l'aperçu du prochain call
+};
+
 export type BackgroundConfig = {
   enabled: boolean;
   imageUrl: string;          // URL directe ou uploadée
@@ -99,6 +114,7 @@ export type OverlayConfig = {
   chat: ChatZoneConfig;
   promo: PromoZoneConfig;
   sponsor: SponsorConfig;
+  call: CallZoneConfig;
 };
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
@@ -140,6 +156,23 @@ function defaultStats(w = 100): StatsZoneConfig {
   };
 }
 
+function defaultCall(): CallZoneConfig {
+  return {
+    enabled: true,
+    slug: "fabiozsis",
+    x: 17, y: 60, w: 54, h: 35,
+    bgColor: "#0a1628",
+    bgOpacity: 0,
+    textColor: "#dde8ff",
+    accentColor: "#a855f7",
+    borderRadius: 18,
+    fontSize: 18,
+    showProvider: true,
+    showCaller: true,
+    showNext: true,
+  };
+}
+
 function defaultBackground(): BackgroundConfig {
   return {
     enabled: false,
@@ -162,6 +195,7 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     chat:  { enabled: true,  x: 71, y: 5,  w: 29, h: 95, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
     sponsor: defaultSponsor(),
+    call: defaultCall(),
   },
 
   double: {
@@ -175,6 +209,7 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 73, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
     sponsor: defaultSponsor(),
+    call: defaultCall(),
   },
 
   triple: {
@@ -189,6 +224,7 @@ const PRESETS: Record<OverlayMode, Omit<OverlayConfig, "mode">> = {
     chat:  { enabled: true,  x: 71, y: 27, w: 29, h: 37, chatUrl: "", fontSize: 14, maxMessages: 8, scale: 1, align: "center", msgBgOpacity: 0.92, compact: true, bgOpacity: 0, borderRadius: 0 },
     promo: { enabled: true,  x: 17, y: 78, w: 54, h: 22, imageUrl: "", borderRadius: 0, objectFit: "contain" },
     sponsor: defaultSponsor(),
+    call: defaultCall(),
   },
 };
 
@@ -222,7 +258,10 @@ export function encodeConfig(cfg: OverlayConfig): string {
 
 export function decodeConfig(raw: string): OverlayConfig | null {
   try {
-    return JSON.parse(decodeURIComponent(escape(atob(raw)))) as OverlayConfig;
+    const cfg = JSON.parse(decodeURIComponent(escape(atob(raw)))) as OverlayConfig;
+    // Migration douce : configs anciennes peuvent ne pas avoir la zone call
+    if (!cfg.call) cfg.call = defaultCall();
+    return cfg;
   } catch {
     return null;
   }
@@ -237,6 +276,7 @@ const ZONE_COLORS: Record<string, { bg: string; border: string; label: string }>
   stats: { bg: "rgba(245,158,11,.18)",  border: "#f59e0b", label: "#fbbf24" },
   chat:  { bg: "rgba(34,211,238,.18)",  border: "#22d3ee", label: "#67e8f9" },
   promo: { bg: "rgba(16,185,129,.18)",  border: "#10b981", label: "#34d399" },
+  call:  { bg: "rgba(168,85,247,.16)",  border: "#a855f7", label: "#d8b4fe" },
 };
 
 // ─── Preview canvas ───────────────────────────────────────────────────────────
@@ -614,6 +654,10 @@ function PreviewCanvasContent({ config, scale, chatIframeRef }: {
       }
       {/* Promo */}
       <PreviewZone rect={config.promo} color={ZONE_COLORS.promo} name={config.promo.imageUrl ? "Promo ✓" : "Promo"} disabled={!config.promo.enabled} />
+      {config.call?.enabled
+        ? <PreviewZone rect={config.call} color={ZONE_COLORS.call} name={`Call · @${config.call.slug}`} disabled={false} />
+        : null
+      }
       {/* Sponsor */}
       {config.sponsor?.enabled
         ? <SponsorBanner config={config.sponsor} />
@@ -1468,6 +1512,51 @@ function PromoPanel({
   );
 }
 
+// ─── Call Panel ──────────────────────────────────────────────────────────────
+
+function CallPanel({
+  call, onChange, activeId, setActiveId,
+}: {
+  call: CallZoneConfig;
+  onChange: (patch: Partial<CallZoneConfig>) => void;
+  activeId: string | null; setActiveId: (id: string | null) => void;
+}) {
+  return (
+    <Panel id="call" activeId={activeId} setActiveId={setActiveId}
+      title="📣 Zone Call"
+      badge={call.enabled ? `@${call.slug}` : "OFF"}
+      badgeColor={call.enabled ? "#a855f7" : undefined}
+    >
+      <Toggle label="Activer" checked={call.enabled} onChange={(v) => onChange({ enabled: v })} />
+      <TextInput
+        label="Slug streamer (source des calls)"
+        value={call.slug}
+        onChange={(v) => onChange({ slug: v.trim().toLowerCase() })}
+        placeholder="fabiozsis"
+      />
+      <hr style={S.sep} />
+      <Toggle label="Afficher provider" checked={call.showProvider} onChange={(v) => onChange({ showProvider: v })} />
+      <Toggle label="Afficher caller (@user)" checked={call.showCaller} onChange={(v) => onChange({ showCaller: v })} />
+      <Toggle label="Afficher prochain call (flèche)" checked={call.showNext} onChange={(v) => onChange({ showNext: v })} />
+      <hr style={S.sep} />
+      <div style={S.row2}>
+        <ColorInput label="Fond" value={call.bgColor} onChange={(v) => onChange({ bgColor: v })} />
+        <NumInput label="Opacité fond (%)" value={call.bgOpacity} onChange={(v) => onChange({ bgOpacity: v })} min={0} max={100} step={2} />
+      </div>
+      <div style={S.row2}>
+        <ColorInput label="Texte" value={call.textColor} onChange={(v) => onChange({ textColor: v })} />
+        <ColorInput label="Accent (flèche)" value={call.accentColor} onChange={(v) => onChange({ accentColor: v })} />
+      </div>
+      <div style={S.row2}>
+        <NumInput label="Taille police (px)" value={call.fontSize} onChange={(v) => onChange({ fontSize: v })} min={10} max={36} step={1} />
+        <NumInput label="Border radius (px)" value={call.borderRadius} onChange={(v) => onChange({ borderRadius: v })} min={0} max={40} step={1} />
+      </div>
+      <hr style={S.sep} />
+      <RectInputs value={call} onChange={onChange} />
+    </Panel>
+  );
+}
+
 // ─── Sponsor Panel ───────────────────────────────────────────────────────────
 
 function SponsorPanel({
@@ -1828,6 +1917,10 @@ export function OverlayDesignerSection() {
     setConfig((c) => ({ ...c, sponsor: { ...(c.sponsor ?? defaultSponsor()), ...patch } }));
   }
 
+  function updateCall(patch: Partial<CallZoneConfig>) {
+    setConfig((c) => ({ ...c, call: { ...(c.call ?? defaultCall()), ...patch } }));
+  }
+
   async function copyUrl() {
     try {
       await navigator.clipboard.writeText(obsUrl);
@@ -1915,6 +2008,7 @@ export function OverlayDesignerSection() {
           <StatsPanel stats={config.stats} onChange={updateStats} activeId={activePanel} setActiveId={setActivePanel} />
           <ChatPanel chat={config.chat} onChange={updateChat} activeId={activePanel} setActiveId={setActivePanel} />
           <PromoPanel promo={config.promo} onChange={updatePromo} activeId={activePanel} setActiveId={setActivePanel} />
+          <CallPanel call={config.call ?? defaultCall()} onChange={updateCall} activeId={activePanel} setActiveId={setActivePanel} />
           <SponsorPanel sponsor={config.sponsor ?? defaultSponsor()} onChange={updateSponsor} activeId={activePanel} setActiveId={setActivePanel} />
         </div>
 

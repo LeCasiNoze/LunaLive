@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import { io } from "socket.io-client";
-import { decodeConfig, injectPremiumKeyframes, type OverlayConfig, type ZoneRect } from "./fsb/OverlayDesignerSection";
+import { decodeConfig, injectPremiumKeyframes, type OverlayConfig, type ZoneRect, type CallZoneConfig } from "./fsb/OverlayDesignerSection";
 import { OverlayBgAnimation } from "./fsb/OverlayBgAnimations";
 import { SponsorBanner, defaultSponsor } from "./fsb/SponsorBanner";
 import { useScreenViewer } from "./fsb/StreamControlPage";
@@ -753,14 +753,254 @@ function PromoZone({ promo }: { promo: OverlayConfig["promo"] }) {
   );
 }
 
+// ─── Call zone ────────────────────────────────────────────────────────────────
+
+type CallItem = {
+  id: string;
+  slotName: string;
+  slotKey?: string | null;
+  provider?: string | null;
+  username?: string | null;
+  pos?: number;
+  imageUrl?: string | null;
+};
+
+function useCallQueue(slug: string, socket: ReturnType<typeof io> | null, enabled: boolean) {
+  const [head, setHead] = React.useState<CallItem | null>(null);
+  const [next, setNext] = React.useState<CallItem | null>(null);
+  const [count, setCount] = React.useState(0);
+
+  const fetchOnce = React.useCallback(async () => {
+    if (!enabled || !slug) return;
+    try {
+      const r = await fetch(`${LUNA_API_BASE}/public/calls/${encodeURIComponent(slug)}/queue`, { cache: "no-store" });
+      if (!r.ok) return;
+      const j = await r.json();
+      if (!j?.ok) return;
+      setHead(j.head ?? null);
+      setNext(j.next ?? null);
+      setCount(Number(j.count || 0));
+    } catch {}
+  }, [enabled, slug]);
+
+  // Initial + polling de sécurité (10s) au cas où le socket rate un event
+  React.useEffect(() => {
+    if (!enabled) return;
+    void fetchOnce();
+    const id = setInterval(() => { void fetchOnce(); }, 10000);
+    return () => clearInterval(id);
+  }, [enabled, fetchOnce]);
+
+  // Refetch sur événement socket calls:changed
+  React.useEffect(() => {
+    if (!enabled || !socket) return;
+    const handler = () => { void fetchOnce(); };
+    socket.on("calls:changed", handler);
+    // Joindre la room obs du slug-call (peut différer du slug overlay courant)
+    if (slug) socket.emit("obs:subscribe", { slug }, () => {});
+    return () => { socket.off("calls:changed", handler); };
+  }, [enabled, socket, slug, fetchOnce]);
+
+  return { head, next, count };
+}
+
+function CallCard({
+  item, label, icon, accent, fontSize, isCurrent,
+}: {
+  item: CallItem | null;
+  label: string;
+  icon: string;
+  accent: string;
+  fontSize: number;
+  isCurrent?: boolean;
+}) {
+  const hasItem = !!item;
+  return (
+    <div style={{
+      flex: 1, minWidth: 0,
+      display: "flex", flexDirection: "column",
+      borderRadius: 14,
+      background:
+        "linear-gradient(180deg, rgba(20,18,40,0.92) 0%, rgba(36,22,58,0.92) 50%, rgba(58,22,42,0.94) 100%)",
+      border: `1px solid ${isCurrent ? accent + "88" : "rgba(255,255,255,0.08)"}`,
+      boxShadow: isCurrent
+        ? `0 0 28px ${accent}55, 0 8px 22px rgba(0,0,0,0.45), inset 0 0 0 1px ${accent}33`
+        : "0 6px 18px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.04)",
+      overflow: "hidden",
+      position: "relative",
+    }}>
+      {/* Header banner */}
+      <div style={{
+        flexShrink: 0,
+        padding: `${Math.max(4, fontSize * 0.32)}px ${fontSize * 0.6}px`,
+        background:
+          isCurrent
+            ? `linear-gradient(90deg, rgba(40,15,28,0.95) 0%, rgba(80,18,42,0.95) 50%, rgba(40,15,28,0.95) 100%)`
+            : `linear-gradient(90deg, rgba(28,20,46,0.95) 0%, rgba(52,28,76,0.95) 50%, rgba(28,20,46,0.95) 100%)`,
+        borderBottom: `1px solid ${isCurrent ? "rgba(244,114,182,0.35)" : "rgba(168,85,247,0.32)"}`,
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        position: "relative",
+      }}>
+        <span style={{ fontSize: fontSize * 0.95, lineHeight: 1, filter: "drop-shadow(0 0 4px rgba(255,255,255,.4))" }}>{icon}</span>
+        <span style={{
+          fontSize: fontSize * 0.78,
+          fontWeight: 900,
+          letterSpacing: ".18em",
+          textTransform: "uppercase",
+          color: isCurrent ? "#fde2ec" : "#e9d5ff",
+          textShadow: `0 0 10px ${isCurrent ? "rgba(244,114,182,0.6)" : "rgba(168,85,247,0.6)"}`,
+          lineHeight: 1,
+        }}>{label}</span>
+      </div>
+
+      {/* Caller @username */}
+      <div style={{
+        flexShrink: 0,
+        padding: `${fontSize * 0.35}px ${fontSize * 0.6}px ${fontSize * 0.18}px`,
+        textAlign: "center",
+        fontSize: fontSize * 0.78,
+        fontWeight: 800,
+        color: "#fef3c7",
+        letterSpacing: ".02em",
+        textShadow: "0 0 10px rgba(251,191,36,0.55), 0 1px 2px rgba(0,0,0,0.6)",
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        lineHeight: 1.1,
+      }}>
+        {item?.username ? `${item.username}` : (hasItem ? "" : "—")}
+      </div>
+
+      {/* Slot image */}
+      <div style={{
+        flex: 1, minHeight: 0,
+        margin: `${fontSize * 0.2}px ${fontSize * 0.5}px`,
+        borderRadius: 10,
+        overflow: "hidden",
+        background: "rgba(0,0,0,0.55)",
+        display: "grid", placeItems: "center",
+        position: "relative",
+        boxShadow: hasItem ? `inset 0 0 0 1px ${accent}33, 0 4px 14px rgba(0,0,0,0.45)` : "inset 0 0 0 1px rgba(255,255,255,0.04)",
+      }}>
+        {item?.imageUrl ? (
+          <img
+            src={item.imageUrl}
+            alt=""
+            style={{
+              width: "100%", height: "100%",
+              objectFit: "cover", display: "block",
+            }}
+          />
+        ) : (
+          <div style={{ fontSize: fontSize * 2.2, opacity: 0.35 }}>🎰</div>
+        )}
+        {/* Glow overlay */}
+        {hasItem ? (
+          <div style={{
+            position: "absolute", inset: 0,
+            boxShadow: `inset 0 0 ${fontSize * 1.4}px ${accent}33`,
+            pointerEvents: "none",
+          }} />
+        ) : null}
+      </div>
+
+      {/* Slot name */}
+      <div style={{
+        flexShrink: 0,
+        padding: `${fontSize * 0.18}px ${fontSize * 0.5}px ${fontSize * 0.1}px`,
+        textAlign: "center",
+        fontSize: fontSize * 1.18,
+        fontWeight: 900,
+        letterSpacing: ".01em",
+        color: "#fbbf24",
+        textShadow: "0 0 14px rgba(251,191,36,0.55), 0 2px 4px rgba(0,0,0,0.7)",
+        textTransform: "uppercase",
+        lineHeight: 1.05,
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        fontFamily: "'Bebas Neue', 'Oswald', system-ui, sans-serif",
+      }}>
+        {item?.slotName || (hasItem ? "—" : "En attente")}
+      </div>
+
+      {/* Provider */}
+      <div style={{
+        flexShrink: 0,
+        padding: `0 ${fontSize * 0.5}px ${fontSize * 0.5}px`,
+        textAlign: "center",
+        fontSize: fontSize * 0.62,
+        fontWeight: 700,
+        color: "rgba(232,213,255,0.6)",
+        letterSpacing: ".14em",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        lineHeight: 1.1,
+      }}>
+        {item?.provider || (hasItem ? "" : "—")}
+      </div>
+    </div>
+  );
+}
+
+function CallZone({ call, socket }: { call: CallZoneConfig | undefined; socket: ReturnType<typeof io> | null }) {
+  const enabled = !!call?.enabled;
+  const slug = String(call?.slug || "").trim().toLowerCase();
+  const { head, next, count } = useCallQueue(slug, socket, enabled);
+  if (!call || !enabled) return null;
+
+  const fontSize = Math.max(10, Math.min(36, Number(call.fontSize) || 16));
+  const accent = call.accentColor || "#a855f7";
+  const showNext = call.showNext !== false;
+  const nextLabel = count > 2 ? `CALL SUIVANT · +${count - 1}` : "CALL SUIVANT";
+
+  return (
+    <div style={{
+      ...rect(call),
+      borderRadius: call.borderRadius,
+      display: "flex", alignItems: "stretch", gap: fontSize * 0.6,
+      overflow: "visible",
+      pointerEvents: "none",
+    }}>
+      <CallCard
+        item={head}
+        label="CALL EN COURS"
+        icon="👑"
+        accent={accent}
+        fontSize={fontSize}
+        isCurrent
+      />
+      {showNext ? (
+        <>
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: fontSize * 1.6, flexShrink: 0,
+            color: accent,
+            fontSize: fontSize * 1.8,
+            fontWeight: 900,
+            textShadow: `0 0 14px ${accent}aa, 0 2px 6px rgba(0,0,0,0.7)`,
+            filter: "drop-shadow(0 0 8px " + accent + "66)",
+          }}>
+            ›
+          </div>
+          <CallCard
+            item={next}
+            label={nextLabel}
+            icon="🎯"
+            accent={accent}
+            fontSize={fontSize}
+          />
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 // ─── Overlay renderer ─────────────────────────────────────────────────────────
 
 function OverlayRenderer({
-  config, camStreams, screenStream,
+  config, camStreams, screenStream, socket,
 }: {
   config: OverlayConfig;
   camStreams: Map<number, CamStreamEntry>;
   screenStream?: MediaStream | null;
+  socket: ReturnType<typeof io> | null;
 }) {
   return (
     <div style={{
@@ -775,6 +1015,7 @@ function OverlayRenderer({
       <StatsZone stats={config.stats} />
       <ChatZone chat={config.chat} />
       <PromoZone promo={config.promo} />
+      <CallZone call={config.call} socket={socket} />
       <SponsorBanner config={config.sponsor ?? defaultSponsor()} />
       {config.cams.map((cam, i) => {
         const entry = camStreams.get(i + 1);
@@ -897,7 +1138,7 @@ export default function OverlayPage() {
         inset: 0,
         background: isPreview ? "#07101f" : "transparent",
       }}>
-        <OverlayRenderer config={effectiveConfig} camStreams={camStreams} screenStream={remoteScreen?.stream ?? null} />
+        <OverlayRenderer config={effectiveConfig} camStreams={camStreams} screenStream={remoteScreen?.stream ?? null} socket={socket} />
       </div>
 
       {/* Preview badge */}
