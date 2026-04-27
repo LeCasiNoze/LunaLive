@@ -470,10 +470,20 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function scrapeHashtagAuthors(tag: string, limit = 60): Promise<string[]> {
-  const cleaned = String(tag || "").trim().replace(/^#+/, "").toLowerCase();
-  if (!cleaned || !/^[a-z0-9_]{1,40}$/i.test(cleaned)) return [];
-  const url = `https://www.tiktok.com/tag/${encodeURIComponent(cleaned)}`;
+type ScrapeDiag = {
+  source: string;
+  status: number;
+  htmlLength: number;
+  hasUniversalData: boolean;
+  hasSigi: boolean;
+  scopeKeys: string[];
+  itemListCount: number;
+  authorsFound: number;
+  fallbackUsed: boolean;
+  blocked: boolean;
+};
+
+async function fetchTikTokPage(url: string): Promise<{ status: number; html: string }> {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 15_000);
   try {
@@ -485,92 +495,158 @@ async function scrapeHashtagAuthors(tag: string, limit = 60): Promise<string[]> 
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
       },
     });
-    if (!res.ok) return [];
-    const html = await res.text();
-    const match = html.match(
-      /<script[^>]+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/
-    );
-    if (!match) return [];
-    const json = JSON.parse(match[1]);
-    const scope = json?.__DEFAULT_SCOPE__ || {};
-    const detail = scope?.["webapp.challenge-detail"] || {};
-    const itemList: any[] =
-      (Array.isArray(detail?.itemList) && detail.itemList) ||
-      (Array.isArray(detail?.itemList?.list) && detail.itemList.list) ||
-      [];
-    const authors = new Set<string>();
-    for (const item of itemList) {
-      const uid =
-        item?.author?.uniqueId ||
-        item?.author?.unique_id ||
-        item?.author?.uniqueID ||
-        null;
-      if (uid && /^[A-Za-z0-9._]{1,30}$/.test(String(uid))) {
-        authors.add(String(uid).toLowerCase());
-        if (authors.size >= limit) break;
-      }
-    }
-    return Array.from(authors);
+    const html = await res.text().catch(() => "");
+    return { status: res.status, html };
   } catch {
-    return [];
+    return { status: 0, html: "" };
   } finally {
     clearTimeout(t);
   }
 }
 
-async function scrapeUserSearchAuthors(query: string, limit = 30): Promise<string[]> {
-  const q = String(query || "").trim();
-  if (!q) return [];
-  const url = `https://www.tiktok.com/search/user?q=${encodeURIComponent(q)}`;
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
-      },
-    });
-    if (!res.ok) return [];
-    const html = await res.text();
-    const match = html.match(
-      /<script[^>]+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/
-    );
-    if (!match) return [];
-    const json = JSON.parse(match[1]);
-    const scope = json?.__DEFAULT_SCOPE__ || {};
-    const search =
-      scope?.["webapp.user-search"] ||
-      scope?.["webapp.search-detail"] ||
-      {};
-    const list: any[] =
-      (Array.isArray(search?.userList) && search.userList) ||
-      (Array.isArray(search?.user_list) && search.user_list) ||
-      (Array.isArray(search?.data) && search.data) ||
-      [];
-    const authors = new Set<string>();
-    for (const entry of list) {
-      const uid =
-        entry?.user_info?.unique_id ||
-        entry?.user?.uniqueId ||
-        entry?.user_info?.uniqueId ||
-        null;
-      if (uid && /^[A-Za-z0-9._]{1,30}$/.test(String(uid))) {
-        authors.add(String(uid).toLowerCase());
-        if (authors.size >= limit) break;
+function extractAuthorsFromHtml(html: string, limit: number, diag: ScrapeDiag) {
+  const authors = new Set<string>();
+
+  // Strategy 1: __UNIVERSAL_DATA_FOR_REHYDRATION__
+  const universal = html.match(
+    /<script[^>]+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/
+  );
+  diag.hasUniversalData = !!universal;
+  if (universal) {
+    try {
+      const json = JSON.parse(universal[1]);
+      const scope = json?.__DEFAULT_SCOPE__ || {};
+      diag.scopeKeys = Object.keys(scope).slice(0, 12);
+      const detail = scope?.["webapp.challenge-detail"] || scope?.["webapp.video-detail"] || {};
+      const candidates: any[] = [];
+      const list1 = detail?.itemList;
+      const list2 = detail?.itemList?.list;
+      const list3 = scope?.["webapp.video-detail"]?.itemList;
+      if (Array.isArray(list1)) candidates.push(...list1);
+      if (Array.isArray(list2)) candidates.push(...list2);
+      if (Array.isArray(list3)) candidates.push(...list3);
+      diag.itemListCount = candidates.length;
+      for (const item of candidates) {
+        const uid = item?.author?.uniqueId || item?.author?.unique_id || null;
+        if (uid && /^[A-Za-z0-9._]{1,30}$/.test(String(uid))) {
+          authors.add(String(uid).toLowerCase());
+          if (authors.size >= limit) break;
+        }
+      }
+    } catch {}
+  }
+
+  // Strategy 2: SIGI_STATE (older format)
+  if (authors.size === 0) {
+    const sigi = html.match(/<script[^>]+id="SIGI_STATE"[^>]*>([\s\S]*?)<\/script>/);
+    diag.hasSigi = !!sigi;
+    if (sigi) {
+      try {
+        const json = JSON.parse(sigi[1]);
+        const items = json?.ItemModule || {};
+        for (const key of Object.keys(items)) {
+          const uid = items[key]?.author;
+          if (typeof uid === "string" && /^[A-Za-z0-9._]{1,30}$/.test(uid)) {
+            authors.add(uid.toLowerCase());
+            if (authors.size >= limit) break;
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // Strategy 3: regex fallback over full HTML
+  if (authors.size === 0) {
+    diag.fallbackUsed = true;
+    const re = /"uniqueId"\s*:\s*"([A-Za-z0-9._]{1,30})"/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) && authors.size < limit) {
+      authors.add(m[1].toLowerCase());
+    }
+    if (authors.size === 0) {
+      const re2 = /"unique_id"\s*:\s*"([A-Za-z0-9._]{1,30})"/g;
+      while ((m = re2.exec(html)) && authors.size < limit) {
+        authors.add(m[1].toLowerCase());
       }
     }
-    return Array.from(authors);
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(t);
   }
+
+  diag.authorsFound = authors.size;
+
+  // Detect blocks
+  const lower = html.slice(0, 4000).toLowerCase();
+  diag.blocked =
+    lower.includes("captcha") ||
+    lower.includes("verify to continue") ||
+    lower.includes("cf-mitigated") ||
+    lower.includes("attention required") ||
+    (diag.htmlLength > 0 && diag.htmlLength < 3000 && authors.size === 0);
+
+  return Array.from(authors);
+}
+
+async function scrapeHashtagAuthors(
+  tag: string,
+  limit = 60
+): Promise<{ authors: string[]; diag: ScrapeDiag }> {
+  const cleaned = String(tag || "").trim().replace(/^#+/, "").toLowerCase();
+  const diag: ScrapeDiag = {
+    source: `tag:${cleaned}`,
+    status: 0,
+    htmlLength: 0,
+    hasUniversalData: false,
+    hasSigi: false,
+    scopeKeys: [],
+    itemListCount: 0,
+    authorsFound: 0,
+    fallbackUsed: false,
+    blocked: false,
+  };
+  if (!cleaned || !/^[a-z0-9_]{1,40}$/i.test(cleaned)) return { authors: [], diag };
+  const url = `https://www.tiktok.com/tag/${encodeURIComponent(cleaned)}`;
+  const fetched = await fetchTikTokPage(url);
+  diag.status = fetched.status;
+  diag.htmlLength = fetched.html.length;
+  if (fetched.status !== 200 || !fetched.html) return { authors: [], diag };
+  const authors = extractAuthorsFromHtml(fetched.html, limit, diag);
+  return { authors, diag };
+}
+
+async function scrapeUserSearchAuthors(
+  query: string,
+  limit = 30
+): Promise<{ authors: string[]; diag: ScrapeDiag }> {
+  const diag: ScrapeDiag = {
+    source: `search:${query}`,
+    status: 0,
+    htmlLength: 0,
+    hasUniversalData: false,
+    hasSigi: false,
+    scopeKeys: [],
+    itemListCount: 0,
+    authorsFound: 0,
+    fallbackUsed: false,
+    blocked: false,
+  };
+  const q = String(query || "").trim();
+  if (!q) return { authors: [], diag };
+  const url = `https://www.tiktok.com/search/user?q=${encodeURIComponent(q)}`;
+  const fetched = await fetchTikTokPage(url);
+  diag.status = fetched.status;
+  diag.htmlLength = fetched.html.length;
+  if (fetched.status !== 200 || !fetched.html) return { authors: [], diag };
+  const authors = extractAuthorsFromHtml(fetched.html, limit, diag);
+  return { authors, diag };
 }
 
 const discoverSchema = z.object({
@@ -643,11 +719,17 @@ async function executeDiscoveryRun(runId: number, criteria: DiscoverCriteria): P
 
   // 1) Collect candidates from hashtags
   for (const tag of criteria.hashtags) {
-    const authors = await scrapeHashtagAuthors(tag, 60);
+    const { authors, diag } = await scrapeHashtagAuthors(tag, 60);
+    const diagSummary = `status=${diag.status} html=${diag.htmlLength} udata=${diag.hasUniversalData ? 1 : 0} sigi=${diag.hasSigi ? 1 : 0} items=${diag.itemListCount} fallback=${diag.fallbackUsed ? 1 : 0} blocked=${diag.blocked ? 1 : 0} keys=[${(diag.scopeKeys || []).slice(0, 6).join(",")}]`;
     if (authors.length === 0) {
-      log.push({ tag, reason: "hashtag_empty_or_blocked" });
+      log.push({
+        tag,
+        reason: diag.blocked
+          ? `hashtag_blocked (${diagSummary})`
+          : `hashtag_empty (${diagSummary})`,
+      });
     } else {
-      log.push({ tag, reason: `hashtag_found_${authors.length}` });
+      log.push({ tag, reason: `hashtag_found_${authors.length} (${diagSummary})` });
     }
     authors.forEach((h) => candidates.add(h));
     await pool.query(
@@ -659,14 +741,31 @@ async function executeDiscoveryRun(runId: number, criteria: DiscoverCriteria): P
   }
 
   for (const query of criteria.searchQueries || []) {
-    const authors = await scrapeUserSearchAuthors(query, 30);
-    log.push({ query, reason: `search_found_${authors.length}` });
+    const { authors, diag } = await scrapeUserSearchAuthors(query, 30);
+    const diagSummary = `status=${diag.status} html=${diag.htmlLength} udata=${diag.hasUniversalData ? 1 : 0} blocked=${diag.blocked ? 1 : 0}`;
+    log.push({ query, reason: `search_found_${authors.length} (${diagSummary})` });
     authors.forEach((h) => candidates.add(h));
     await pool.query(
       `UPDATE tiktok_outreach_runs SET candidates_count = $2, log = $3::jsonb, message = $4 WHERE id = $1`,
       [runId, candidates.size, JSON.stringify(log), `Collecte: recherche "${query}"`]
     );
     await sleep(900);
+  }
+
+  // 1b) Auto-fallback: if no candidates, try user search with each hashtag as query
+  if (candidates.size === 0 && criteria.hashtags.length > 0) {
+    log.push({ reason: "auto_fallback_to_user_search" });
+    for (const tag of criteria.hashtags) {
+      const { authors, diag } = await scrapeUserSearchAuthors(tag, 20);
+      const diagSummary = `status=${diag.status} html=${diag.htmlLength} blocked=${diag.blocked ? 1 : 0}`;
+      log.push({ query: tag, reason: `fallback_search_${authors.length} (${diagSummary})` });
+      authors.forEach((h) => candidates.add(h));
+      await pool.query(
+        `UPDATE tiktok_outreach_runs SET candidates_count = $2, log = $3::jsonb, message = $4 WHERE id = $1`,
+        [runId, candidates.size, JSON.stringify(log), `Fallback search: ${tag}`]
+      );
+      await sleep(900);
+    }
   }
 
   // 2) Filter out already-known handles to avoid wasted scrapes

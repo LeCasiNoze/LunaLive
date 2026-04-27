@@ -793,6 +793,39 @@ export function FsbTikTokOutreachSection() {
                 <strong style={{ color: "#fc8181" }}>{activeRun.droppedCount}</strong>rejetés
               </div>
             </div>
+
+            {activeRun.log && activeRun.log.length > 0 ? (
+              <details style={{ marginTop: 12 }}>
+                <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>
+                  📋 Voir le log diagnostic ({activeRun.log.length})
+                </summary>
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "10px 12px",
+                    background: "rgba(0,0,0,.25)",
+                    borderRadius: 10,
+                    fontFamily: "ui-monospace, Menlo, Consolas, monospace",
+                    fontSize: 11,
+                    lineHeight: 1.5,
+                    maxHeight: 280,
+                    overflow: "auto",
+                    border: "1px solid var(--bd)",
+                  }}
+                >
+                  {activeRun.log.map((entry, i) => (
+                    <div key={i} style={{ color: entry.reason.includes("blocked") || entry.reason.includes("unreachable") ? "#fc8181" : entry.reason.includes("kept") ? "#34d399" : "var(--muted)" }}>
+                      {entry.tag ? `#${entry.tag} ` : ""}
+                      {entry.query ? `?${entry.query} ` : ""}
+                      {entry.handle ? `@${entry.handle} ` : ""}
+                      → {entry.reason}
+                      {entry.followers != null ? ` · ${entry.followers} followers` : ""}
+                      {entry.country ? ` · ${entry.country}` : ""}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : null}
           </div>
         ) : null}
 
