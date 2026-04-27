@@ -773,7 +773,7 @@ function useCallQueue(slug: string, socket: ReturnType<typeof io> | null, enable
   const fetchOnce = React.useCallback(async () => {
     if (!enabled || !slug) return;
     try {
-      const r = await fetch(`${LUNA_API_BASE}/public/calls/${encodeURIComponent(slug)}/queue`, { cache: "no-store" });
+      const r = await fetch(`${LUNA_API_BASE}/api/public/calls/${encodeURIComponent(slug)}/queue`, { cache: "no-store" });
       if (!r.ok) return;
       const j = await r.json();
       if (!j?.ok) return;

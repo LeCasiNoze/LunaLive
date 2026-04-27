@@ -74,6 +74,7 @@ import { callsRouter } from "./routes/calls.js";
 import { callsPcallRouter } from "./routes/calls_pcall.js";
 import { callsHuntRouter } from "./routes/calls_hunt.js";
 import { hunt2Router } from "./routes/hunt2.js";
+import { publicCallsRouter } from "./routes/public_calls.js";
 import { publicSlotsRouter } from "./routes/public-slots.js";
 
 // Billing / uploads / emotes / reports / admin content
@@ -137,6 +138,8 @@ export function createApp() {
   app.options("/hls", (_req, res) => res.sendStatus(204));
 
   app.use("/api/public/slots", publicSlotsRouter);
+  // Overlay public — calls queue (no auth) — monté tôt pour échapper aux routers d'auth
+  app.use(publicCallsRouter);
 
   app.use("/billing", billingRouter);
   app.use(streamerUploadsRouter);
