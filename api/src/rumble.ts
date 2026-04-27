@@ -126,7 +126,7 @@ async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<string | nul
  * Fallback: appelle embedJS pour récupérer l'URL HLS si la construction directe échoue.
  * Nécessite le videoId avec préfixe "v".
  */
-async function resolveFromEmbedJs(videoIdWithV: string): Promise<{ hlsUrl: string | null; vidNumeric: string | null }> {
+async function resolveFromEmbedJs(videoIdWithV: string): Promise<{ hlsUrl: string | null; vidNumeric: string | null; thumbnailUrl: string | null }> {
   const url = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${videoIdWithV}&ad_wt=0`;
   try {
     const r = await fetch(url, {
@@ -137,22 +137,24 @@ async function resolveFromEmbedJs(videoIdWithV: string): Promise<{ hlsUrl: strin
         origin: "https://rumble.com",
       },
     });
-    if (!r.ok) return { hlsUrl: null, vidNumeric: null };
+
+    if (!r.ok) return { hlsUrl: null, vidNumeric: null, thumbnailUrl: null };
     const d = await r.json();
 
     const hlsU = d?.u?.hls?.url ?? null;
     const hlsAuto = d?.ua?.hls?.auto?.url ?? null;
     const vidNumeric = d?.vid != null ? String(d.vid) : null;
+    const thumbnailUrl = d?.i ? String(d.i) : null;
     const allKeys = d ? Object.keys(d) : [];
     console.log(`[rumble][embedJS] keys=${JSON.stringify(allKeys)} vid=${vidNumeric}`);
     if (d?.u) console.log(`[rumble][embedJS] u.keys=${JSON.stringify(Object.keys(d.u))}`);
     if (d?.ua) console.log(`[rumble][embedJS] ua.keys=${JSON.stringify(Object.keys(d.ua))}`);
     console.log(`[rumble][embedJS] u.hls.url=${hlsU} | ua.hls.auto.url=${hlsAuto}`);
 
-    return { hlsUrl: hlsU || hlsAuto || null, vidNumeric };
+    return { hlsUrl: hlsU || hlsAuto || null, vidNumeric, thumbnailUrl };
   } catch (e) {
     console.error(`[rumble][embedJS] error:`, e);
-    return { hlsUrl: null, vidNumeric: null };
+    return { hlsUrl: null, vidNumeric: null, thumbnailUrl: null };
   }
 }
 
@@ -194,13 +196,15 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
     let hlsUrl: string | null = null;
     let videoUrl: string | null = null;
     let videoIdNumeric: string | null = null;
+    let thumbnailUrl: string | null = null;
 
     if (isLive && rawId && videoId) {
       videoUrl = `https://rumble.com/user/${username}/live`;
 
-      // 1. embedJS → URL HLS + video_id numérique (utilisé pour le chat)
-      const { hlsUrl: embedHls, vidNumeric } = await resolveFromEmbedJs(videoId);
+      // 1. embedJS → URL HLS + video_id numérique + thumbnail
+      const { hlsUrl: embedHls, vidNumeric, thumbnailUrl: thumb } = await resolveFromEmbedJs(videoId);
       videoIdNumeric = vidNumeric;
+      thumbnailUrl = thumb;
       const rawHls = embedHls || buildRumbleHlsUrl(rawId);
 
       // 2. Si live-hls-dvr : suivre la redirection côté serveur (Render) pour obtenir l'URL CDN
@@ -222,7 +226,7 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
       isLive,
       viewersCount,
       title,
-      thumbnailUrl: null,
+      thumbnailUrl,
       videoUrl,
       hlsUrl,
       videoId,
@@ -414,6 +418,7 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
 
     const hlsCandidate = d?.u?.hls?.url || d?.ua?.hls?.auto?.url || null;
     const vidNumeric = d?.vid != null ? String(d.vid) : null;
+    const thumbnailUrl = d?.i ? String(d.i) : null;
 
     let finalHls: string | null = hlsCandidate;
     if (finalHls && finalHls.includes("live-hls-dvr")) {
@@ -430,7 +435,7 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
       isLive: true,
       viewersCount: null,
       title,
-      thumbnailUrl: null,
+      thumbnailUrl,
       videoUrl: `https://rumble.com/user/${username}/live`,
       hlsUrl: finalHls,
       videoId: vSlug,

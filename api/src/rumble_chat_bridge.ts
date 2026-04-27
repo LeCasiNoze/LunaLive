@@ -8,6 +8,7 @@ import { randomBytes } from "crypto";
 import { chatStore } from "./chat_store.js";
 import { getRumbleBotSession, hasRumbleBotSession } from "./rumble_chat_session.js";
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
+import { createClipForStreamer } from "./shared/clip_service.js";
 // @ts-ignore - cycletls n'a pas de types TS officiels
 import initCycleTLS from "cycletls";
 
@@ -361,24 +362,47 @@ export function ensureRumbleBridge(opts: {
     if (publicOn) opts.io.to(`chat:${opts.slug}:public`).emit("chat:message", payload);
     if (popupOn) opts.io.to(`chat:${opts.slug}:popup`).emit("chat:message", payload);
 
-    // Bang commands (!call, !pcall, …) — même comportement que DLive
+    // Bang commands
     const bang = parseBangCommand(m.text);
     if (bang) {
-      handleCallsCommand({
-        pool: opts.pool,
-        io: opts.io,
-        slug: opts.slug,
-        streamerId: opts.streamerId,
-        streamerOwnerUserId: opts.streamerOwnerUserId,
-        actorUserId: 0,
-        actorUsername: m.username,
-        actorRole: "viewer",
-        canMod: false,
-        cmd: bang.cmd,
-        arg: bang.arg,
-      }).catch((e: any) =>
-        console.warn("[rumble_chat] handleCallsCommand error", opts.slug, e?.message || e)
-      );
+      // !clip: dispatché directement vers createClipForStreamer
+      // (pas géré par handleCallsCommand qui ne fait que call/pcall/etc.)
+      if (bang.cmd === "clip") {
+        const title = (bang.arg || "").trim() || null;
+        void createClipForStreamer({
+          pool: opts.pool,
+          streamerId: opts.streamerId,
+          title,
+          author: m.username || null,
+        }).then(async (res) => {
+          if (res.ok) {
+            await sendRumbleMessage(videoIdNumeric || "", `🎬 Clip enregistré${title ? ` : "${title}"` : ""}`);
+          } else if (res.reason === "duplicate") {
+            await sendRumbleMessage(videoIdNumeric || "", `🎬 Clip déjà noté (fenêtre proche)`);
+          } else if (res.reason === "live_not_active") {
+            await sendRumbleMessage(videoIdNumeric || "", `⏹️ Clip: pas de live détecté`);
+          } else {
+            await sendRumbleMessage(videoIdNumeric || "", `❌ Clip: ${res.reason}`);
+          }
+        }).catch((e: any) => console.warn("[rumble_chat] clip error", opts.slug, e?.message || e));
+      } else {
+        // Autres commandes (call, pcall, …) — même comportement que DLive
+        handleCallsCommand({
+          pool: opts.pool,
+          io: opts.io,
+          slug: opts.slug,
+          streamerId: opts.streamerId,
+          streamerOwnerUserId: opts.streamerOwnerUserId,
+          actorUserId: 0,
+          actorUsername: m.username,
+          actorRole: "viewer",
+          canMod: false,
+          cmd: bang.cmd,
+          arg: bang.arg,
+        }).catch((e: any) =>
+          console.warn("[rumble_chat] handleCallsCommand error", opts.slug, e?.message || e)
+        );
+      }
     }
   }
 
