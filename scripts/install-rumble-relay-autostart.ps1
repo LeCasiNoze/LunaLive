@@ -13,19 +13,14 @@ if (-not (Test-Path $vbs)) {
 
 $taskName = "LunaLive_RumbleRelay"
 
-# Drop ancienne tâche si existante
 if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
-  Write-Host "Suppression tâche existante..."
+  Write-Host "[install] Suppression tache existante..."
   Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
 }
 
-# Action : lance le .vbs (qui lance node sans fenêtre)
 $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$vbs`"" -WorkingDirectory $projectRoot
-
-# Trigger : à chaque logon de l'utilisateur courant
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 
-# Settings : redémarrage auto si crash, ne pas s'arrêter si batterie, ok pour PC en éveil/veille
 $settings = New-ScheduledTaskSettingsSet `
   -StartWhenAvailable `
   -RestartCount 999 `
@@ -34,7 +29,6 @@ $settings = New-ScheduledTaskSettingsSet `
   -AllowStartIfOnBatteries `
   -ExecutionTimeLimit (New-TimeSpan -Hours 0)
 
-# Principal : utilisateur courant, pas besoin d'admin
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 
 Register-ScheduledTask -TaskName $taskName `
@@ -42,20 +36,19 @@ Register-ScheduledTask -TaskName $taskName `
   -Trigger $trigger `
   -Settings $settings `
   -Principal $principal `
-  -Description "Relay LunaLive Rumble — push videoIds Rumble vers l'API Render" | Out-Null
+  -Description "Relay LunaLive Rumble - push videoIds Rumble vers l'API Render" | Out-Null
 
-Write-Host "✅ Tâche '$taskName' créée. Démarrera à chaque logon."
+Write-Host "[OK] Tache '$taskName' creee. Demarrera a chaque logon."
 Write-Host ""
 Write-Host "Commandes utiles :"
 Write-Host "  Lancer maintenant      : Start-ScheduledTask -TaskName $taskName"
-Write-Host "  Arrêter                : Stop-ScheduledTask  -TaskName $taskName"
-Write-Host "  État                   : Get-ScheduledTask   -TaskName $taskName | Get-ScheduledTaskInfo"
-Write-Host "  Désinstaller           : Unregister-ScheduledTask -TaskName $taskName -Confirm:`$false"
+Write-Host "  Arreter                : Stop-ScheduledTask  -TaskName $taskName"
+Write-Host "  Etat                   : Get-ScheduledTask   -TaskName $taskName | Get-ScheduledTaskInfo"
+Write-Host "  Desinstaller           : Unregister-ScheduledTask -TaskName $taskName -Confirm:`$false"
 Write-Host ""
-Write-Host "Lancer maintenant ?"
-$ans = Read-Host "(O/n)"
+$ans = Read-Host "Lancer maintenant ? (O/n)"
 if ($ans -ne "n" -and $ans -ne "N") {
   Start-ScheduledTask -TaskName $taskName
-  Write-Host "🚀 Relay démarré en arrière-plan."
-  Write-Host "Vérifie sur https://lunalive-api.onrender.com/admin/rumble/list-pseudo-only après quelques secondes."
+  Write-Host "[OK] Relay demarre en arriere-plan."
+  Write-Host "Verifier le statut : Get-Process node"
 }
