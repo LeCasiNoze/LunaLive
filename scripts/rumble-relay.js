@@ -150,8 +150,7 @@ async function findLiveSlug(username, html) {
       });
       if (!r.ok) continue;
       const d = await r.json();
-      // live=1/2 reste true post-fin (DVR), `loaded === 1` signe la fin.
-      const isLive = (!!d?.live || !!d?.livestream_has_dvr) && d?.loaded !== 1;
+      const isLive = !!d?.live || !!d?.livestream_has_dvr;
       const dur = Number(d?.duration || 0);
       // Heuristique best-guess: durée nulle/très faible = potentiellement un live
       // (les VODs ont une durée connue, les lives en cours souvent 0)

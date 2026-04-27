@@ -424,10 +424,13 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
     });
     if (!r2.ok) return offline;
     const d: any = await r2.json();
-    // Rumble retourne `live: 1/2` pendant ET après la fin du live (le DVR
-    // continue à être servi quelques minutes). Le signal fiable de fin de live
-    // est `loaded: 1` (recording finalisé). Tant qu'on broadcast, loaded=0.
-    const isLive = (!!d?.live || !!d?.livestream_has_dvr) && d?.loaded !== 1;
+    // Rumble retourne `live: 1` ou `live: 2` selon le type, et
+    // `livestream_has_dvr` peut être boolean true ou number 1.
+    // Note: `loaded` vaut 1 pour les lives actifs ET ended (pas un signal fiable).
+    // Le délai de mise à offline est ~5min post-fin (Rumble flippe live=1→0).
+    // Pour réduire ce délai, /user/{name}/live retourne rapidement un slug
+    // placeholder (live=0) → on bascule offline correctement.
+    const isLive = !!d?.live || !!d?.livestream_has_dvr;
     if (!isLive) {
       console.log(`[rumble][pseudo-only] ${username}: ${vSlug} pas en live`);
       return offline;
