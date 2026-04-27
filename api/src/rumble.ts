@@ -459,6 +459,12 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
     const vidNumeric = d?.vid != null ? String(d.vid) : null;
     const thumbnailUrl = d?.i ? String(d.i) : null;
 
+    // Pas de HLS = pas de live (probablement placeholder/recommended video)
+    if (!hlsCandidate) {
+      console.log(`[rumble][pseudo-only] ${username}: ${vSlug} no HLS (placeholder?)`);
+      return offline;
+    }
+
     let finalHls: string | null = hlsCandidate;
     if (finalHls && finalHls.includes("live-hls-dvr")) {
       const cdnHls = await resolveRedirectToCdn(finalHls);

@@ -357,21 +357,23 @@ export function startDlivePoller(io?: IOServer) {
     } finally {
       running = false;
     }
-      // ✅ LUNA24 / LunaLive streamer virtuel (V1)
+      // ✅ LUNA24 / LunaLive streamer virtuel (V1) — DLive only.
+      // Si la radio est passée sur platform='rumble', on skip ce bloc :
+      // c'est le rumble_poller qui gère son état via streamers.rumble_username.
       try {
         const lunaId = await getStreamerIdBySlug(LUNA24_TARGET_SLUG);
         if (lunaId) {
-          const pick = await pickLuna24TargetKeepingCurrent();
-
-          await setLuna24LinkedTarget(pick.displayname, pick.username);
-
-          // ✅ rename displayName selon la source
-          await setLuna24DisplayName(pick.displayname);
-
-          await applyLiveState(lunaId, LUNA24_TARGET_SLUG, pick.isLive, pick.viewers, io);
-
+          const platRow = await pool.query(`SELECT platform FROM streamers WHERE id=$1 LIMIT 1`, [lunaId]);
+          const lunaPlatform = String(platRow.rows?.[0]?.platform || "").toLowerCase();
+          if (lunaPlatform === "rumble") {
+            // skip: rumble_poller gère
+          } else {
+            const pick = await pickLuna24TargetKeepingCurrent();
+            await setLuna24LinkedTarget(pick.displayname, pick.username);
+            await setLuna24DisplayName(pick.displayname);
+            await applyLiveState(lunaId, LUNA24_TARGET_SLUG, pick.isLive, pick.viewers, io);
+          }
         } else {
-          // pas encore créé
           console.warn(`[dlive] LunaLive streamer '${LUNA24_TARGET_SLUG}' introuvable (crée le compte)`);
         }
       } catch (e) {
