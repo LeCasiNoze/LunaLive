@@ -1,0 +1,79 @@
+{
+  "nodes": [
+    {"id": "serve_static_server", "label": "LunaLive Static Server (serve.js)", "file_type": "code", "source_file": "serve.js", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "serve_stripped_index", "label": "Stripped Index for /r/:slug (no preview)", "file_type": "code", "source_file": "serve.js", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "serve_html_rewrites", "label": "HTML Pre-rendered Rewrites Map", "file_type": "code", "source_file": "serve.js", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "serve_security_headers", "label": "HTTP Security Headers", "file_type": "code", "source_file": "serve.js", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "slots_catalog_module", "label": "Slots Catalog (search/upsert/resolve)", "file_type": "code", "source_file": "slots-catalog.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "slots_normalize_module", "label": "Slots Text Normalization", "file_type": "code", "source_file": "slots-normalize.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "slots_provider_aliases", "label": "Slots Provider Aliases", "file_type": "code", "source_file": "slots-provider-aliases.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "slots_types", "label": "Slots Shared Types (SlotRow, CallItem, ResolvedSlot)", "file_type": "code", "source_file": "slots-types.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "test_collab_logic", "label": "Instagram Collaboration Logic Test", "file_type": "code", "source_file": "test_collaboration_logic.js", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "api_app", "label": "API Express App Bootstrap", "file_type": "code", "source_file": "api/src/app.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "chat_routes", "label": "Chat REST Routes", "file_type": "code", "source_file": "api/src/chat_routes.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "chat_socket", "label": "Chat Socket.IO Server", "file_type": "code", "source_file": "api/src/chat_socket.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "dlive_poller", "label": "DLive Live Poller (LunaLive radio)", "file_type": "code", "source_file": "api/src/dlive_poller.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "instagram_scheduler", "label": "Instagram Reels Scheduler", "file_type": "code", "source_file": "api/src/instagram_scheduler.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "notify_go_live", "label": "Go-Live Notification (Discord/Push)", "file_type": "code", "source_file": "api/src/notify_go_live.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "rumble_core", "label": "Rumble Live Info / HLS Resolver", "file_type": "code", "source_file": "api/src/rumble.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "rumble_chat_bridge", "label": "Rumble Chat SSE Bridge", "file_type": "code", "source_file": "api/src/rumble_chat_bridge.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "rumble_chat_session", "label": "Rumble Bot Session (cookie/UA cache)", "file_type": "code", "source_file": "api/src/rumble_chat_session.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "rumble_http", "label": "Rumble HTTP via cycleTLS", "file_type": "code", "source_file": "api/src/rumble_http.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "rumble_poller", "label": "Rumble Live Poller + VOD Archiver", "file_type": "code", "source_file": "api/src/rumble_poller.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "bot_clips_store", "label": "Bot Clips Store (DB schema/migrations)", "file_type": "code", "source_file": "api/src/bot_clips/store.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "calls_commands", "label": "Calls Bang Commands Handler", "file_type": "code", "source_file": "api/src/calls/commands.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "calls_queue", "label": "Calls Queue Storage / Settings", "file_type": "code", "source_file": "api/src/calls/queue.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "concept_chrome_ja3", "label": "Chrome JA3 TLS Fingerprint", "file_type": "code", "source_file": "api/src/rumble_http.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "concept_publish_jobs_table", "label": "publish_jobs DB Table (collab columns)", "file_type": "code", "source_file": "test_collaboration_logic.js", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "concept_streamer_rumble_info", "label": "streamer_rumble_info Table", "file_type": "code", "source_file": "api/src/rumble_poller.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null},
+    {"id": "concept_chat_messages_union", "label": "Union chat_messages + rumble_chat_messages", "file_type": "code", "source_file": "api/src/chat_routes.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null}
+  ],
+  "edges": [
+    {"source": "serve_static_server", "target": "serve_stripped_index", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "serve.js", "source_location": null, "weight": 1.0},
+    {"source": "serve_static_server", "target": "serve_html_rewrites", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "serve.js", "source_location": null, "weight": 1.0},
+    {"source": "serve_static_server", "target": "serve_security_headers", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "serve.js", "source_location": null, "weight": 1.0},
+
+    {"source": "slots_catalog_module", "target": "slots_normalize_module", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "slots-catalog.ts", "source_location": null, "weight": 1.0},
+    {"source": "slots_catalog_module", "target": "slots_types", "relation": "shares_data_with", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "slots-catalog.ts", "source_location": null, "weight": 1.0},
+    {"source": "calls_queue", "target": "slots_normalize_module", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/calls/queue.ts", "source_location": null, "weight": 1.0},
+    {"source": "calls_queue", "target": "slots_provider_aliases", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/calls/queue.ts", "source_location": null, "weight": 1.0},
+    {"source": "calls_commands", "target": "calls_queue", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/calls/commands.ts", "source_location": null, "weight": 1.0},
+    {"source": "calls_commands", "target": "slots_catalog_module", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/calls/commands.ts", "source_location": null, "weight": 1.0},
+    {"source": "calls_commands", "target": "rumble_chat_bridge", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/calls/commands.ts", "source_location": null, "weight": 1.0},
+    {"source": "calls_commands", "target": "slots_normalize_module", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/calls/commands.ts", "source_location": null, "weight": 1.0},
+
+    {"source": "chat_socket", "target": "calls_commands", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/chat_socket.ts", "source_location": null, "weight": 1.0},
+    {"source": "chat_socket", "target": "rumble_chat_bridge", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/chat_socket.ts", "source_location": null, "weight": 1.0},
+    {"source": "chat_routes", "target": "concept_chat_messages_union", "relation": "implements", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/chat_routes.ts", "source_location": null, "weight": 1.0},
+    {"source": "rumble_chat_bridge", "target": "concept_chat_messages_union", "relation": "shares_data_with", "confidence": "INFERRED", "confidence_score": 0.85, "source_file": "api/src/rumble_chat_bridge.ts", "source_location": null, "weight": 1.0},
+
+    {"source": "rumble_chat_bridge", "target": "rumble_chat_session", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/rumble_chat_bridge.ts", "source_location": null, "weight": 1.0},
+    {"source": "rumble_chat_bridge", "target": "concept_chrome_ja3", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/rumble_chat_bridge.ts", "source_location": null, "weight": 1.0},
+    {"source": "rumble_http", "target": "concept_chrome_ja3", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/rumble_http.ts", "source_location": null, "weight": 1.0},
+    {"source": "rumble_chat_bridge", "target": "rumble_http", "relation": "semantically_similar_to", "confidence": "INFERRED", "confidence_score": 0.85, "source_file": "api/src/rumble_chat_bridge.ts", "source_location": null, "weight": 1.0},
+
+    {"source": "rumble_poller", "target": "rumble_core", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/rumble_poller.ts", "source_location": null, "weight": 1.0},
+    {"source": "rumble_poller", "target": "notify_go_live", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/rumble_poller.ts", "source_location": null, "weight": 1.0},
+    {"source": "rumble_poller", "target": "concept_streamer_rumble_info", "relation": "shares_data_with", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/rumble_poller.ts", "source_location": null, "weight": 1.0},
+    {"source": "dlive_poller", "target": "notify_go_live", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/dlive_poller.ts", "source_location": null, "weight": 1.0},
+    {"source": "dlive_poller", "target": "rumble_poller", "relation": "semantically_similar_to", "confidence": "INFERRED", "confidence_score": 0.85, "source_file": "api/src/dlive_poller.ts", "source_location": null, "weight": 0.9},
+
+    {"source": "instagram_scheduler", "target": "concept_publish_jobs_table", "relation": "shares_data_with", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/instagram_scheduler.ts", "source_location": null, "weight": 1.0},
+    {"source": "test_collab_logic", "target": "concept_publish_jobs_table", "relation": "shares_data_with", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "test_collaboration_logic.js", "source_location": null, "weight": 1.0},
+    {"source": "test_collab_logic", "target": "instagram_scheduler", "relation": "references", "confidence": "INFERRED", "confidence_score": 0.8, "source_file": "test_collaboration_logic.js", "source_location": null, "weight": 1.0},
+
+    {"source": "api_app", "target": "chat_routes", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "api/src/app.ts", "source_location": null, "weight": 1.0},
+    {"source": "api_app", "target": "chat_socket", "relation": "references", "confidence": "INFERRED", "confidence_score": 0.7, "source_file": "api/src/app.ts", "source_location": null, "weight": 1.0},
+
+    {"source": "rumble_chat_bridge", "target": "bot_clips_store", "relation": "conceptually_related_to", "confidence": "INFERRED", "confidence_score": 0.6, "source_file": "api/src/rumble_chat_bridge.ts", "source_location": null, "weight": 0.7},
+    {"source": "calls_queue", "target": "slots_types", "relation": "shares_data_with", "confidence": "INFERRED", "confidence_score": 0.85, "source_file": "api/src/calls/queue.ts", "source_location": null, "weight": 1.0},
+    {"source": "rumble_core", "target": "rumble_http", "relation": "semantically_similar_to", "confidence": "INFERRED", "confidence_score": 0.7, "source_file": "api/src/rumble.ts", "source_location": null, "weight": 0.8}
+  ],
+  "hyperedges": [
+    {"id": "rumble_anti_cf_pipeline", "label": "Rumble Anti-Cloudflare Pipeline (TLS fingerprint + session)", "nodes": ["rumble_chat_bridge", "rumble_http", "rumble_chat_session", "concept_chrome_ja3"], "relation": "participate_in", "confidence": "EXTRACTED", "confidence_score": 0.9, "source_file": "api/src/rumble_chat_bridge.ts"},
+    {"id": "live_poller_notify_flow", "label": "Live Detection → Notify Flow", "nodes": ["dlive_poller", "rumble_poller", "notify_go_live", "rumble_core"], "relation": "participate_in", "confidence": "EXTRACTED", "confidence_score": 0.9, "source_file": "api/src/rumble_poller.ts"},
+    {"id": "calls_pipeline", "label": "Calls/Slots Pipeline (chat → command → catalog → queue)", "nodes": ["chat_socket", "calls_commands", "calls_queue", "slots_catalog_module", "slots_normalize_module"], "relation": "form", "confidence": "EXTRACTED", "confidence_score": 0.9, "source_file": "api/src/calls/commands.ts"}
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

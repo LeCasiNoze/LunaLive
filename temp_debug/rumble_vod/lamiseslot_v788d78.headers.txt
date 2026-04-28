@@ -1,0 +1,765 @@
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:21 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=6fj6zfHkdvapRdWhFAYQFJxUtLrZiJYxSkP5GWAzxmo-1777377200.8124883-1.0.1.1-Sr3zhA.Pa2hK186CL528uLYuLSLyS6nwtL5tBx_D7qxuyI72ywlnmhfJVHIQRKI_Ysiwg7q8.C1eaQTwP2LdOQNTdQ.fbfY5a4xrtKFfYI9Aui2SYCwEkCVMSuN3sc19; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:21 GMT
+CF-RAY: 9f35ddb11dccd0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:23 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=v1BlZPyMiFICqNZ1xkPfcVuA.IwRPdw8N8J1pctXJOw-1777377201.9818199-1.0.1.1-o5QOo6nqJ635.I.9juzdpA.dDujiVzhorDYBXPhbna3ruzoM2.LDUdki4DiaLkyXn1BI7QYJWS4E1.CulQB_waBpkMl95h6U7FxKpTQNLRF1saAfGAue6Mnq27j.P7.j; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:23 GMT
+CF-RAY: 9f35ddb86807d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:24 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=wg4pfLvx7Zk5HgQVxP2n5g0Q0K7WqY2sMDi6Y_3_JqY-1777377203.1473563-1.0.1.1-9OOxkJkDrJj2IesaFP9o9U9jQo0DP286SgFPqtcBgqpXGWU1Ag6BynIXSGQ4UDCvGHGxkS4WoiYUVn1LxIB_H4OqVBOxHo.yALKB4U_YzuFCM2l0UvJFI2Sp5hfgpKhX; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:24 GMT
+CF-RAY: 9f35ddbfab80d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:25 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=Lsqq4j4v0.sXsMuCHskSIyEy0gFxz78bQ6VxFMr4X1M-1777377204.3088567-1.0.1.1-6jiImsaE796RMMDkb0XLt2ZHMG23kLJK0yjMKrOgcjQilLh2RhrgTjIPyqy.OW9dU428qSWw.mgNgu5TuLzJJg7XVdu6SHsBfXt.QGsB6SKnSdm0n.sA7GR14RwsohBV; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:25 GMT
+CF-RAY: 9f35ddc6ee83d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:26 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=._26DzjTS8JRK6qNmVogTz767iNFs46emyUbp3l2kXY-1777377205.4723032-1.0.1.1-2DQ3.hha9E6Yas7wwmtTCWbzcpK8k7392pTzNZ5_8c6yfmjMVip6D084L1sdEDe66_n5_SaI5oQEHBtbBUsYMtCX9pLIcWMibDPPaaPtDirIEIQl1Dg1vgA9ngunHo3S; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:26 GMT
+CF-RAY: 9f35ddce394ad0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:27 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=anKEJVAeRoJIcDmHeANPPlAFkfxRBzu1crKrn474CeE-1777377206.6334836-1.0.1.1-DbEpeU9VgPZL5xzMGolV6OBwPXt6QWju5Fs2U7ywhZpBgkh8.z8ed.bpFFNzcqQB0okqMKKlPwbx1j9SFYdczuWl3Q33FAV39HLgEWD5nGtdsfG6ICWlUDy3B_jNCDxb; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:27 GMT
+CF-RAY: 9f35ddd57c5fd0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:28 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=jdPMbZj_PVsFVkEV58VjHNMrjNEbBsDh_vWIzdlKRjQ-1777377207.8051236-1.0.1.1-7XnvWl03jjEURCByNEiCr.kzAuSq.Wu5Z.uHcgQhY1KO7xAt9OJreq.k2mvboJLpEbgnnNYNS85DlPl7HpP_Y3ZhS.WCkw8yUICIlb3WAwnUcymggTemk8Bp9ubvV95C; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:28 GMT
+CF-RAY: 9f35dddcce4cd0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:30 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=Lmhi56SYtcOJLDT7VBT8adWl5VZa6fhXg_MGvN4ZKM0-1777377208.9586205-1.0.1.1-iV9MohIgocNEDFSy_uWzzsxCQicdXE3879_T4zMKas.gm96dt0P.c7OiKwFF5JRBbwKeHZELier.WWO9AEyIiwry8ABZeDo7tiF2AnC5zEFv1SUDtzEvHNlaoZxGeZ9c; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:30 GMT
+CF-RAY: 9f35dde3f82fd0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:31 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=O7Cewql2rS6zB5Espnjo21NY4avjoSdKUTR9pVTbAhU-1777377210.1225803-1.0.1.1-VUgRfwpv31AtqmlJaWM.O97uBTZCz9fXzOXd_JDIZqBqSZ3v6QwY4vryhKT2goroXlaJvTb3vFuZcyhhTwq4wZuw8kf2LBhLq4_TvnHPOMl_Hm0A1PS9rXsn49qahWRN; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:31 GMT
+CF-RAY: 9f35ddeb4a54d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:32 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=Q86Gtw1pC4bwgm8NlMN1.1OfILtyadbyk9AJZk55NWw-1777377211.2892582-1.0.1.1-Ap9ss8eYihHffaxWSXc9DtQ3CSM9WN2V5xV1JLU9kM7F9PGGX.TbzQZ3OSgMihPqbmKKc.mqRYgDomFByN__1QqaoRCcAL_8PivceHy8ayNTaZEK.wE4Nw45L4x3akr0; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:32 GMT
+CF-RAY: 9f35ddf28b38d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:33 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=U2.kvEzma7A3o4yaR2AI7An4Xuu4mGpg.VYhmiMTcw8-1777377212.4518166-1.0.1.1-8kcI.9GGJqVMbIK8GwxMDxAORqtYohnb3PTKkUNLUm8h619VHutAlg0hCFzKT5FR0j.OkR.9vPxsBamSdMAPj0STFgCwYWMLRrzn7XjLkHP94Psl69I1M23J6gzK.YWd; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:33 GMT
+CF-RAY: 9f35ddf9dce3d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:34 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=8k.5tutXzmwqs1kb_KSqhB_njkfxC_27uGdUwI5oqBA-1777377213.60989-1.0.1.1-Oe3UE5OC4UvbFFaZ5JzCaHWtT8IvY2aYk.XcARoV4eOdtePm.oeAHQoBvwUt4XP9pLdYTQO_c4Tnl4pA8kP1ghYDyzOcEx6CGgbWW53DDIeysH1n7nxKG3m9g9H4Tveq; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:34 GMT
+CF-RAY: 9f35de010e79d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:35 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=r2sScdStkZOZ_WOaiUUS7La6KOID.a97TEWHzSgK3tQ-1777377214.7741508-1.0.1.1-pVq0o28iF.zw02CMlNgxEO_AFqPIv2YKUMzah4JtxQcuRkWlHDtEy5zoMtWBHfXrFIkUr_ZKu2M9zJIL0rSFzYhSuaJ7ipWRUL6BX.wikB6ktcYL7xhYm.5wWqNwUzcS; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:35 GMT
+CF-RAY: 9f35de08591fd0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:37 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=rplu8RgFAuvbA9g4GzxtLdNcF1KLnPFxrfSbmRR.Ga0-1777377215.9425917-1.0.1.1-jLdnwyCzF2shc5HI4rGBwstAaYKcIgcqZdacGFg0cWVnW_JLTmseQvt.cngdvxmRaKwMw91D2.171ar7.CBbBLL7RMs9Vu1GhnQQzwOs3K0TJCIdiDQxOSM0UU3Jw44X; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:37 GMT
+CF-RAY: 9f35de0fac61d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:38 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=wZle53MjHzlBxIZzbiYAGERzuL.KykyLWetiNB3Fdlo-1777377217.1025517-1.0.1.1-EIDbVMrq4PN05injJbMa6UI4yNpzew8Ti0LpOOjsaY5VloXLYDJSepajU6SO8qbNjuJ4TLtWfO_3s_K.m0qIAJUrpj0hdLO6v5J4vdjoV8yufkpoVYbNctAzhw5aboLK; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:38 GMT
+CF-RAY: 9f35de16ee59d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:39 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=HDAAjivTmBEMlZq4SzRcfv61GI4jNG38ILJVxhCguCk-1777377218.3711538-1.0.1.1-07JBFOz2pfOFmiUoS.n_QP8_ODsyHKGm68j4DhGm__M1jzabfXjdkXnqJ7xW4kikqadmcoXLi0dm9aa0XJPDkouNvqJ_h9jH_iMbawfijaLL34N5_BCZWnuDgpxCHpNE; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:39 GMT
+CF-RAY: 9f35de1ed82fd0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:40 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=Gfpzg4X0zVZ9tWMxV.nrtzk72hW_xd.FbWx2Kdw9R70-1777377219.5402112-1.0.1.1-CWs805uKdLKFUYFpMlrs4SOBqpIdi2nX_Xe1F_Vn1zB1HsYDDaHVyPHgvS5wxXhGSNUHRSvCmR3EbpKgN6XkrGX9n0QHLSY1pKiYa78vdep7sV9tJgC8UfWJbFuQMFJ0; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:40 GMT
+CF-RAY: 9f35de261973d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:41 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=UlBUm5QUk6xI2Va5xrsapA_Uzw7DhlSFVNKudJVKRrs-1777377220.6932118-1.0.1.1-Mkx2N861g1.33zqZUwVX_9kZc_yrn7uFrdGb0X5aS3x1cjLzesExnK01zEZzSoYqbu1uWgprb3yO9yxr6A3O.5_0G532Wxl5oLmDuck2luqTkNjzql76_NdX.X6HpSg3; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:41 GMT
+CF-RAY: 9f35de2d5b6dd0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:43 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=dO1o1N72Qu9541tl0sL7aH7QiKom.eIZpipQEPBgCrg-1777377221.8631375-1.0.1.1-wg.vMnOsnYdD5WPjGufI5xPwBZQ3N2qa1VtIZ0cM5K4lQ63_uhsa4RmjOdJ60fylcLSfb5_WCdlrjbLPWBvx6jX3zUW_R4Q9AsMQmIynILWKrMfkEBV8QzT44syth1dC; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:43 GMT
+CF-RAY: 9f35de34add6d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:44 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=45B8Or8OjWbbbtOUGWQi8oiGxlr6uV.y1xzMbvrWSwc-1777377223.0171595-1.0.1.1-yWjJR_1xrgHkdlDf2n0sgyv0uigPqyF4HBFApeGvN7XzkEur44knVAvJejN4ZIS1FT6uglldSULJbv.mAvXJ6fDjXzPjPT.TXihb6q6nQI.H20jWDzyjK0yzb2HruOOd; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:44 GMT
+CF-RAY: 9f35de3bd8e7d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:45 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=iyP7b0GALCVzD3ACX2aWO3s3cpLKT90kQQcaZlisoH8-1777377224.1716168-1.0.1.1-40ZE7j_AJFy6DEfUOgHn7B3rwtQh.KOO8_3XDLeesWXEMVRzfNKvDMYKh_7npAfWjOM5CnTJ1lU13csPs.8pcekVC9WeCQFRapDwlt9yO1ugKGHliqC4vApqNAiIlE9L; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:45 GMT
+CF-RAY: 9f35de431cf1d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:46 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=jfe6qOq9YvFpQdDPSdZRch1p424_oRhcAl3OlLU4y9o-1777377225.3412797-1.0.1.1-jeXl6Xp7aAsy4aPZF4TDD9WXMR8fYY1LcTdz6MsOJNVbznXYnRo4pcPnE8PyeQAPLoCzJimYcyfpYkwG.jHj98CnCF8nAivJaWd6hRHgxvxMG.yQhBYvuOmWAoLrKHuY; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:46 GMT
+CF-RAY: 9f35de4a69bdd0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:47 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=UYteKPKVSoVbPFKmcoYUxFf05ItH5rfUVcUa4lAf5xQ-1777377226.505801-1.0.1.1-h7pBt6Tx4nPHfMlh74tUr0ZteYT_6dTMZlfwvIMImf02W_2SbeeCn_vvWj5OmZerNl0K47abXrSnyIcbJxELRdbnIj85_vVR3eJLh.IChXTf7k161odCK.zrCcesZdDa; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:47 GMT
+CF-RAY: 9f35de51ac32d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:48 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=qg71Vzlr5luuyfRxeo6e9q8J_.78XjndzmQ74yc589U-1777377227.6640592-1.0.1.1-hfZM9H_1fuICcRRLsCxWMd7v1.66tvse3LRA6l3_MjEAI6tCXALbSCEFn2LkCClxRmYBLHkT_fKBugoUCGLpL5UW8_NERLjzbdYMlb36tgUjM2CRMNNyHQNkSypPaFR8; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:48 GMT
+CF-RAY: 9f35de58ee9ed0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:49 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=Q7HkRXZh8gnCi5oXQLL.miXpnjoIBOxul54ocQTLbnE-1777377228.8134449-1.0.1.1-LkiLvC0vberXk_zoiKTeiFFSQdxMo7NHQAhEz_n6CNiTvl5vCXEUmG5dl5Z.RRcrpjlbm7Kv_mQwytomj58PeKD65HFVniSNcQX7ZbgjUZvoauKMIKTTBT06Z.DD2Ccw; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:49 GMT
+CF-RAY: 9f35de60197ed0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:51 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=plTAzhTuXv0T4PVnhATZTN.m7qWunoinrDv0X8SnEag-1777377229.977452-1.0.1.1-xxl5NaE9Bi3HLdrsr51C3.zWmjj6jYkawp0FMspwCvjc78hlu2yxxQ.8GtT5m8luvAJEU5fEziQrYx_ZyEoghf8ruP0w1OFiXTMxEmNFhO_9PE4FA1EHwCgcVG6uLOW8; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:51 GMT
+CF-RAY: 9f35de675c1cd0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:52 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=CYaZ2dHEpAglF8H.mfyCDWdWXlObYOpKTbPUnbnpE9s-1777377231.1287696-1.0.1.1-rLbgpPRBK2Mb1kb_cLGn7CeIZ9QjcgEGdzxNJLRix_qgWtksaw1MkrRTW5BLKhxacLL9lqYF_y4CDvM8IGrlyy1rVq1VZlrwg3FU88ywiskY.7Fue0BXH_.GS21yNiG4; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:52 GMT
+CF-RAY: 9f35de6e8e74d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:53 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=f04TIpG4bQK953vX0jnaWl82.z5hK1EgcJKdg4A9PeM-1777377232.293601-1.0.1.1-Ij4s.qHtd5WP6jbtDoC5mV2HLn0VceYLuIOKasnT00QjbAOjIOyiV0IRWOWi4yR3oKfnqecJEW68CQ6U1m2.NY0OtRtZQeCet.UiNHv0geomdDyW39BNClF24wSvv__n; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:53 GMT
+CF-RAY: 9f35de75d9f4d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:54 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=JMaoK37uZwv376ANrPn9uruKLWya.HNUL_EjdcqJTwU-1777377233.4541802-1.0.1.1-_fqEay6LwqE0bNqK43Z9GXzRpnEt2XthUTb17jBZnu5vSqdouKaM9jYJgA09HC7O1Wl7ZdnUpZ_sqYnQCMGtGUZqF8.f3W8OHkGomp38ZjLKU2qqo43J4FNde_gKMXzS; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:54 GMT
+CF-RAY: 9f35de7d1da6d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:55 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=GwNJytn9P7usXhRmpL8qyZ1NUpHi6V1v2TlKOAsjzUs-1777377234.6202464-1.0.1.1-boN2oJbaQx9JSii8cTrD.VNPaqXwPqkcdWcejHqZ_dQt88W.oGoZrhhZuynocI6v7Hklbkrzkwzvnm_bjQ_CiqE_1NAaDNLe14AmfvI0Zp.HyL7ztxK62VK1kd4Zwh4n; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:55 GMT
+CF-RAY: 9f35de845859d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:56 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=Ji5mA7xraPd1CFyBgc_G1NghqA3THotFoL6AGwgI8Ig-1777377235.7889879-1.0.1.1-UU0sMbV8FzhxEIOirEmkwFgR6.6EKvl09OZUfx4AZzaqrZ7BBCoNtjzf18oZgEV1NlTwgNfXmOVhYe0HQXUiTR2N3Ao3E83C2H3WzXXgzU4eSrzZV8Mb_7ycnazIGhdp; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:56 GMT
+CF-RAY: 9f35de8baa53d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:58 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=9C8VzEuh9iIvr6K4GB2eoez7sdgDHopP8es0pY6JFJo-1777377236.9485803-1.0.1.1-d1h6jPoPMzHU4.URCKXFOhM3CcUaxgDj3hl9IS18LBt_TtD6JepIGaAHzs84ygt74zXpvlQM2YZr.OYH4_IiCmDnKtGJZWs2bmVzzMtCy6LN.VdmjOgl00fbSurWkgty; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:58 GMT
+CF-RAY: 9f35de92ed73d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:53:59 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=FysU3F06KupxJX3MEnEwPVGvIJ0Lz8Be1hmMBIiRRnE-1777377238.1132905-1.0.1.1-yF9NPC1dPQZhbLN6VT36m1U2KWULx7yKuqpCevBNfPrraBr4iZzGiUAvUkZpHW0.nW5cUgiMbroHzZahKfZF7uesfnBKV8FZaK.pChf1H0dRYB7hBnisSvGrMhBxQN_a; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:23:59 GMT
+CF-RAY: 9f35de9a3897d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:00 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=.xgm9ZnK.dCHfKP3FsccG.YngsUNEZ2mHsHoXhg7zS8-1777377239.2783573-1.0.1.1-ofK4XkQQ0p2qKDws2Ou6kvZXVYSehLD8lU.YYBjTYx2oIkdBnPQV.mdYG3dK_R9b6b4P0rj89a3G4lE5_ZYlH6U1GdMxR5cLYNeC2FLgDcFJdM_5gjCV5lNTAbGgOcTK; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:00 GMT
+CF-RAY: 9f35dea17be4d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:01 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=Zdgl67T8Z5pO.cpLg3cjAv7EZNp3_sns9mswbvRNx00-1777377240.4431148-1.0.1.1-55JZB_eh6mcsrlTUXL4nP5STp_dtugUl7z_gZpUkzVvhQiDK3u5OEwz_T3OL.MBINodwOZcD.c4_sUWskMOscu9TW6DvRKvSOMI0fmvUZ4fWLrsaxQ9M2dKyW6HFxs5f; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:01 GMT
+CF-RAY: 9f35dea8cc81d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:02 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=nQiFPQ1HykLdlwZvn56prqPv8fR.c321nQ8eePitmWk-1777377241.6080382-1.0.1.1-vhCKVxAAZDvPC25Sh_B7_0Ide4kOEDkVnGQ5N48iih1vHXKT1Ma7pyk.2rEY_shwf6VAlf8kZZewAIqfydjOO2p9wYQ9sZbvG6_gWSk9U6hf3WOzw6ELUAdTCIUnEgpn; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:02 GMT
+CF-RAY: 9f35deb00f64d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:03 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=lKEig.14sT46Qks3qm.M32DRl_i4HEdZ4cODAjqUX.I-1777377242.8012216-1.0.1.1-i0Vb4UBBcRJqpqXgFexi9uAE4C7Q_iieobBF.Nih7uQ0ZzvebRmwhNl3w_fNRBfohqeCGvOQl3IkYzHJai4ItSdznS5JcWqD1MIQLNTjDSR9RmyM0AbDbb8JZbF.5oqb; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:03 GMT
+CF-RAY: 9f35deb78b65d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:05 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=GpxptJdxti45kcM8ON.2OhvFrInl1CET9Py7HiHxbNY-1777377243.9599123-1.0.1.1-49JAl7265MOBjrZZ4qzp_P_HHAFUjeAbclrXniBasgOgldSxJkugTtKwzMbGPHhnW5rWiFjOX1M_BkZhL7KrBKVBMo4.qIOwxWdaK55bXlCNIOj3zQHIa1imGcNYSjwd; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:05 GMT
+CF-RAY: 9f35debebf51d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:06 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=wnLqYWjyhdRuFs._Lt9yiDuPkoi6DOk_w4cz5iuBnjE-1777377245.11665-1.0.1.1-QGtplgjIMFhjWfXFRKfVu0nN_DS0gcvdrQB4yk5vKiUersBGh.7BVcANPdZmYDihfXuwZW4hBfOLsyVT5uz.TFartQ3o7PfYLul4Dk_GMQLRXid0Qx_L8OwgBAzerzPG; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:06 GMT
+CF-RAY: 9f35dec5fa20d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:07 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=.5uM._Bhr4CQHzEogHG9Ui.d.ptqSB_HwScfAfE6RfI-1777377246.2834036-1.0.1.1-DemI89zeH.UFiyieSZY9YvRIkRrCEgDOFdkvA0LPdL3k7DKVM0senYuzsc4w5L5RDXqq1vwWOEglXchauPdxWjh4DBUkP5z0CQXcbSNFAFw4CdSBYSGRw1eJMxInDiXT; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:07 GMT
+CF-RAY: 9f35decd4d4ed0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:08 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=5XwOWiEzKboMMtx47gQ4_zlzmkNt9RCcFVdOI_qTI7w-1777377247.441058-1.0.1.1-Du.rfGhVLqu1IKU8itC_lU48zwigfHbUvDGILc1oYIt3z_EKAtb1CWKDYq_foquBMw.WA35gYMaaEjhnswthj7xABUw_BI9FR339QQi5ftBLu0gukowBmW7_fAbJbDJ1; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:08 GMT
+CF-RAY: 9f35ded48835d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:09 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=WOeKbkeuANOrDFqAvVRdC_8ZKjwy5NaZI76JFJxZvh8-1777377248.6817484-1.0.1.1-cisvp5CEt3MVewIFQWXvmUisYIcjNYgbZIjc.I5g8_tyqeFBgrxFlYN0bo9G_v4CGjhaMUZ68ILPXBqKVzlgLvJu...ywKnS04607GGMKOxawVNwoRGF_9CdMSlIcc72; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:09 GMT
+CF-RAY: 9f35dedc4b0dd0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:10 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=W5pm23bGwVh9HQDHl12x3fw.zYfhnK2b.Fva5cjxyC4-1777377249.846227-1.0.1.1-RaUnnsNecQyxnt2WsLKt9tPMW1yAaBF4zQJ_19WSQR_gcfEXrED8fshP.Zkke8TC_TtOKvdvgg0G2aq67wTuIB2IZRB8f515k6WfqBXC77b.raS0uYZPSmH4fihIH9Cs; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:10 GMT
+CF-RAY: 9f35dee38c86d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:12 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=h04oNPrFin_vC2YDWWnujYVsngT9hUHvuAYvNhlyN1c-1777377251.003689-1.0.1.1-5SNn5CJgR_S3XWNQMZ88Oiac8RQvoYyeLxX61x5OlY.3Pfzg46N1qdnc9ED0MRYYQrp8k2VhfbMxLB3YaA.EMyHt8c3hkrgNyQYzFvBR73zw_9hUPkD.Ll1EhLqW89u.; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:12 GMT
+CF-RAY: 9f35deeacf32d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:13 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=vzK7s_61ewIMUpnJZt2k8xt7tJ_6XrRGmcQQY0baJ0o-1777377252.1722262-1.0.1.1-KSCEWP_HKrPejM5yw9L8r2qLAKrRQzRTVwh4cSDAyFUeoTcRgWxK7M_EVbIUpi8vmm4VxJeBaEWbQLvM1b5sZE.DFa8a70mdfdLSSd3heL1h8G1b6JeEhsFtStMe8.ap; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:13 GMT
+CF-RAY: 9f35def21a12d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:14 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=ifvn9dSlhQjWQpNjbdwiBA9QYBcfvGolm6gRinr4OPg-1777377253.3359945-1.0.1.1-CR7qiToDpTvej7Wcl5qKIvFl8w70KUjs577KHNK8cHgnAbsCNHn_jyRIHCcyx93BlzheYJ2J7heN29lOSVS.CQfgNzBGMkqwwxuVjsXNjaJMTdcYKGYAuZMhGWQItLco; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:14 GMT
+CF-RAY: 9f35def95e33d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:15 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=4m.titbBsDuP0BNCb.7_E8iBq6mpX114T2Odh3ANWT8-1777377254.4949749-1.0.1.1-zVfF5Pq255tPs1pOxDijsTxPyUvul0RjZVoyjnCt0SVJRqylTJqeQd0ECvviTYFR5kr2rtw3Uuben8mnUlmly1tUAFtOjubPYfoTkJpizAM2_AKoEMss2QJS.GaXlgnn; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:15 GMT
+CF-RAY: 9f35df009faad0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:16 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=sMs8KeLpdS5w96SJPZ0KbDw1BGcBSS_zmvW4.oh.fQc-1777377255.660732-1.0.1.1-yaY47q6wpGLtT5chh999oN0JlXt95Lo2Er0aNzmcskzGC1HvZXGq6EfA1NXGscRn7sP1YUNxyy5xlJcukAHqNOJO6DGu6Rwj3RhB1L5UzEmcNqgRAZKQuq9rEGJ4gv27; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:16 GMT
+CF-RAY: 9f35df07e979d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:17 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=hZqLbnStcpmp0UrKLYe1X0DzEpHWeLwSBwEOuYE9908-1777377256.8234327-1.0.1.1-jRwI9PS.ljjO9x07it2spgGHC26n1ruURYcikNv2BJMrWRjiKtF9h_1BGVTiVgkd3sDpg1wQ5ZbG66trJOyL2vKs0FOM2_ahUfgt87oVhloFzRLBmnKotBIgI6TemQbj; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:17 GMT
+CF-RAY: 9f35df0f2a17d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:19 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=r6wQvy6YjQT0fxPUybvyEua9Xjx4qPMmKohaU2vyQ3k-1777377257.9877906-1.0.1.1-KGnTpIzQ7JSe_31QOKmHr0Y6DqUxEh25L_Sy1ukSs.9q3Lx5Ql_JHEKbZDyBPviDejIu1vzYB4yxye46pcZ6BY09r6o04lINpVAhn.AMEr37cd0loV9YsOyskgVP6U9M; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:19 GMT
+CF-RAY: 9f35df166f00d0c0-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 307 Temporary Redirect
+Date: Tue, 28 Apr 2026 11:54:20 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html
+X-Content-Type-Options: nosniff
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+Set-Cookie: RNSC=176.150.49.60;max-age=3600;path=/;domain=rumble.com;secure;HttpOnly;SameSite=lax
+set-cookie: __cf_bm=Q.fGry9lrOxvQzW6dO5uu5BcqUFdKu5xc7heQuRanFM-1777377259.1524076-1.0.1.1-My_3jFiU2shgHX1YgbmO95PQIRbyqvNf3BfFF1SErfY.VVjv53QdvTwgN7.LHJkD6yNKZP0sEFAIBhkzwNxYkEi0A5QTMp51iIDTV8ki1fEzNINg6KR2T89W_7NxjVKG; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:24:20 GMT
+CF-RAY: 9f35df1dbbded0c0-CDG
+alt-svc: h3=":443"; ma=86400
+

@@ -181,3 +181,60 @@ Les infos stables (stream_key) ne changent jamais → à préférer aux infos dy
 - Problème : scraping bloqué par Cloudflare côté serveur
 - `hls_proxy.ts` : CORS proxy, actuellement limité aux hosts DLive uniquement
 - Seul LeCasiNoze a un compte Rumble lié pour l'instant
+## Rumble VODs - infos confirmees a ne pas redecouvrir
+- Les pages publiques utiles pour les VODs sont cote `https://rumble.com/user/{username}`.
+- Sur les comptes testes, `https://rumble.com/c/{username}` et `https://rumble.com/c/{username}/videos` renvoient `404`.
+- `https://rumble.com/user/{username}/videos` n'est PAS une source fiable de "liste complete". Sur les comptes testes, cette page contenait souvent moins d'items SSR que la page profil `/user/{username}`.
+- Aucun `?page=2` n'a ete trouve sur les pages publiques testees, et `?page=2` renvoyait `404`. Ne pas supposer une pagination serveur simple.
+- Pattern HTML public d'un item VOD:
+  - conteneur: `div.videostream.thumbnail__grid--item[role="listitem"][data-video-id]`
+  - lien principal: `a.videostream__link`
+  - titre: `h3.thumbnail__title`
+  - thumb: `img.thumbnail__image`
+- Le `data-video-id` numerique de la carte publique est utile.
+- `https://rumble.com/service.php?name=media.share&video_id={numericId}` permet de retrouver l'URL canonique publique `https://rumble.com/vXXXXXX-....html`.
+- Exemples confirmes:
+  - `433420236` -> `https://rumble.com/v788d78-omg-premier-5-scatter-bonushunt-slot-casino-scatterslots-bigwin-jeuresponsa.html`
+  - `434098152` -> `https://rumble.com/v78mwa8-on-accumule-les-bonus-et-a-explose-.html`
+  - `434267048` -> `https://rumble.com/v78qils-on-pensait-tout-perdre-bonus-hunt-live.html`
+
+## Rumble VODs - limites confirmees
+- `/-livestream-api/get-data?key=...` a ete teste avec de vraies `api_key` du projet. La reponse observait `livestreams`, mais aucun `videos[]` ni `recent_streams[]`.
+- Les slugs VOD publics testes avec `embedJS/u3/?ifr=0&dref=&request=video&ver=2&v={slug}&ad_wt=0` renvoyaient `false` dans l'environnement de test.
+- Donc l'idee "poller embedJS pour obtenir le MP4/HLS final de la VOD" reste la bonne, mais elle n'est pas prouvee de bout en bout sur les slugs VOD publics testes ici.
+
+## Rumble VODs - direction technique recommandee
+- Ne PAS essayer de reutiliser telle quelle la pipeline live pour les VODs.
+- La bonne approche est une pipeline VOD separee:
+  1. garder le `videoId` du live une fois detecte
+  2. lancer un job de polling post-live
+  3. appeler `resolveRumbleVodFromVid(videoIdWithV)`
+  4. attendre l'apparition d'un `u.mp4.url` ou d'un `hls-vod`
+  5. stocker `vod_mp4_url` / `vod_hls_url`
+- `api/src/rumble.ts` contient deja cette intention via `resolveFromEmbedJs(...)` et `resolveRumbleVodFromVid(...)`.
+- Le code note que la VOD devient en general prete `2-5 min` apres la fin du live.
+
+## Rumble player - implication frontend
+- `web/src/components/RumbleStreamPlayer.tsx` est un player live-only.
+- Il sort si `!isLive || !hlsUrl` et force ensuite du seek live-edge, du resync live, etc.
+- Pour une VOD Rumble, prevoir:
+  - soit un player VOD separe
+  - soit un mode `live | vod` explicite
+
+## Rumble auth / creator
+- Sans session, `https://rumble.com/account/content` et `https://rumble.com/account/videos` redirigent vers login/auth.
+- Avec la session bot stockee en DB, `rumble.com/account/*` est accessible.
+- `https://studio.rumble.com/` a redirige vers `auth.rumble.com` avec la session testee.
+- Le compte de la session testee etait `LunaLive_Bot`, mais `account/content` affichait `No videos found matching that criteria.`
+- Conclusion: aucune API creator de listing video n'a pu etre capturee sur un compte ayant reellement des VODs, faute de session sur un compte non vide.
+- La session utilise des cookies de type `u_s`, `u_c`, `a_s`, `RNSC`, `cf_clearance`, `__cf_bm`. Documenter seulement les noms, jamais les valeurs.
+
+## Rumble priorites pratiques
+- Pour un MVP catalogue VOD:
+  - scraper les cartes publiques sur `/user/{username}`
+  - utiliser `media.share&video_id=...` pour obtenir l'URL canonique
+  - ouvrir la page Rumble si on n'a pas encore de flux media direct fiable
+- Pour une vraie lecture in-app des VODs:
+  - brancher une pipeline VOD post-live
+  - ne pas supposer qu'un slug public VOD repondra toujours a `embedJS request=video`
+  - tester d'abord avec un compte du projet qui termine un vrai live Rumble puis repoll `resolveRumbleVodFromVid(...)`

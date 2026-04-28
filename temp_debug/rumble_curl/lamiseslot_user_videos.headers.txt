@@ -1,0 +1,36 @@
+HTTP/1.1 301 Moved Permanently
+Date: Tue, 28 Apr 2026 11:48:43 GMT
+Content-Type: text/html;charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: /user/LAMISESLOT/videos
+Cache-Control: private,max-age=0
+expires: Thu, 01 Jan 1970 00:00:01 GMT
+x-frame-options: SAMEORIGIN
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+set-cookie: __cf_bm=BAje9R0kWfGTqB5KsdUxL5xMBVcMa1jPya7unaVfp3w-1777376922.8250253-1.0.1.1-c4.fCZq4MB0iS1YxQl5_ReqVs4BN_zQjWhJfvZbGhEBHALJqPqvTZWoygcmiODGX.0lmQqnk5cO_Uw2BIn8DXeQmraaeLWyRqXnfB1eUSnLuEGsN0y7p3uluHX1dVM5t; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:18:43 GMT
+X-Content-Type-Options: nosniff
+CF-RAY: 9f35d6e77b522292-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 200 OK
+Date: Tue, 28 Apr 2026 11:48:43 GMT
+Content-Type: text/html;charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+vary: Accept-Encoding
+X-Content-Type-Options: nosniff
+Cache-Control: private,max-age=0
+expires: Thu, 01 Jan 1970 00:00:01 GMT
+x-frame-options: SAMEORIGIN
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+Set-Cookie: a_s=RfKlMLwh3EUuBYVI5MR3o; expires=Fri, 25 Apr 2036 11:48:43 GMT; Max-Age=315360000; path=/; domain=rumble.com; secure; HttpOnly; SameSite=lax
+set-cookie: __cf_bm=T.9IN8_9cW4elFbI_TKJKtacaeqOSqO_x2JnZft_ZVg-1777376923.2898867-1.0.1.1-BIGnbhzaa2tGlOFx94p2tAhXFWeIdSkSlBbuLgZCRHSY65vVS7HrvwD0G4qJliZbETUJb9X66RMg7VjokSpgQAUPp8gRjhqz8Tq4D.rcYG5t9XZqCV6pfA4pIGw.XN3I; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:18:43 GMT
+cf-cache-status: DYNAMIC
+Content-Encoding: gzip
+CF-RAY: 9f35d6ea8d092292-CDG
+alt-svc: h3=":443"; ma=86400
+

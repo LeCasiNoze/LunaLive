@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "postinstall": "node -e \"if(process.platform==='linux'&&process.arch==='x64'){const fs=require('fs'),p=require('path'),d=p.join('node_modules','cycletls','dist');['index-arm','index-arm64','index-freebsd','index-mac','index-mac-arm64','index.exe'].forEach(f=>{try{fs.unlinkSync(p.join(d,f))}catch{}});}\""
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.971.0",

@@ -1,0 +1,36 @@
+HTTP/1.1 301 Moved Permanently
+Date: Tue, 28 Apr 2026 11:48:34 GMT
+Content-Type: text/html;charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+location: /user/LeCasiNoze
+Cache-Control: private,max-age=0
+expires: Thu, 01 Jan 1970 00:00:01 GMT
+x-frame-options: SAMEORIGIN
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+set-cookie: __cf_bm=RL4oRQ2bedWxpv_dmi6VgTDc_YhuPqmRGHUrtrkZZzI-1777376914.3463721-1.0.1.1-gG2Je6TbCwWsTV7AS1SIKbjYugP5YR14TfN_Z7881S8HhLipLtjwvrKa7lY.iqZVN7hxs98bqZBhCAV6nKwBtApnwxE3I4AaEtIhHin4O5tZIIyxUF2N7pWbwgcZElsD; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:18:34 GMT
+X-Content-Type-Options: nosniff
+CF-RAY: 9f35d6b2aed06f36-CDG
+alt-svc: h3=":443"; ma=86400
+
+HTTP/1.1 200 OK
+Date: Tue, 28 Apr 2026 11:48:34 GMT
+Content-Type: text/html;charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: cloudflare
+vary: Accept-Encoding
+X-Content-Type-Options: nosniff
+Cache-Control: private,max-age=0
+expires: Thu, 01 Jan 1970 00:00:01 GMT
+x-frame-options: SAMEORIGIN
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+Set-Cookie: a_s=Pv0FXbr93EUuBYVI5MOie; expires=Fri, 25 Apr 2036 11:48:34 GMT; Max-Age=315360000; path=/; domain=rumble.com; secure; HttpOnly; SameSite=lax
+set-cookie: __cf_bm=4C2PZs.D7vjkKccxqPHepKH.m61jSJQr3AtkXdbeWZY-1777376914.5240052-1.0.1.1-LGw.pliZ4pPXgRui98rQt11gCXGhFX6vNxeH9kZTFDon7SU9XJwv1c5xxLhgsxbHbbhwjRVClto9OydKV.jgoDcw.2NauhkPA_3MiQ8PnOyjrhjyHj9VzdxZsMtJNCs0; HttpOnly; Secure; Path=/; Domain=rumble.com; Expires=Tue, 28 Apr 2026 12:18:34 GMT
+cf-cache-status: DYNAMIC
+Content-Encoding: gzip
+CF-RAY: 9f35d6b3cfa96f36-CDG
+alt-svc: h3=":443"; ma=86400
+
