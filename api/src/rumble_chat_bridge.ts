@@ -477,7 +477,11 @@ export function ensureRumbleBridge(opts: {
     if (publicOn) opts.io.to(`chat:${opts.slug}:public`).emit("chat:message", payload);
     if (popupOn) opts.io.to(`chat:${opts.slug}:popup`).emit("chat:message", payload);
 
-    // Bang commands
+    // Bang commands — désactivés sur la radio (slug=lunalive) car le chat
+    // est mirroré depuis n'importe quel streamer (rotation auto), et ses
+    // commandes !discord/!ping/etc. déclencheraient des actions Luna parasites.
+    if (opts.slug === "lunalive") return;
+
     const bang = parseBangCommand(m.text);
     if (bang) {
       // !clip: dispatché directement vers createClipForStreamer
