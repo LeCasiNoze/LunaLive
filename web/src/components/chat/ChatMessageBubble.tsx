@@ -24,6 +24,7 @@ export type ChatMsgLike = {
   cosmetics?: ChatCosmetics | null;
   dlive?: boolean;
   dliveRestreamFrom?: string | null;
+  rumble?: boolean;
 };
 
 /* ─── Helpers ────────────────────────────────────────────── */
@@ -195,6 +196,7 @@ export function ChatMessageBubble({
 }) {
   const isDlive = !!(msg as any)?.dlive;
   const dliveFrom = ((msg as any)?.dliveRestreamFrom ?? null) as string | null;
+  const isRumble = !!(msg as any)?.rumble;
   const isBot = !!(msg as any)?.isBot || msg.username === "LunaBot" ||
     msg.userId === Number((import.meta as any)?.env?.VITE_BOT_USER_ID || 0);
 
@@ -235,6 +237,8 @@ export function ChatMessageBubble({
     ? { borderRadius:16, outline:"1px solid rgba(239,68,68,.20)", background:"linear-gradient(135deg,rgba(239,68,68,.09),rgba(252,165,165,.04))" }
     : isDlive
     ? { borderRadius:14, outline:"1px solid rgba(255,255,255,.06)", background:"rgba(255,255,255,.025)" }
+    : isRumble
+    ? { borderRadius:14, outline:"1px solid rgba(133,224,80,.18)", background:"linear-gradient(135deg,rgba(133,224,80,.06),rgba(133,224,80,.02))" }
     : {};
 
   return (
@@ -244,6 +248,7 @@ export function ChatMessageBubble({
         frameClass(frame?.frameId),
         isPinged     ? "chatPinged"       : "",
         isDlive      ? "chatMsgRow--dlive" : "",
+        isRumble     ? "chatMsgRow--rumble" : "",
         isBot        ? "chatMsgRow--bot"   : "",
         isGrouped    ? "chatMsgRow--grouped" : "",
       ].filter(Boolean).join(" ")}
@@ -321,6 +326,24 @@ export function ChatMessageBubble({
                         opacity:.88, verticalAlign:"middle",
                       }} title="Retransmis depuis DLive">
                         {dliveFrom ? `DLive · ${dliveFrom}` : "DLive"}
+                      </span>
+                    ) : null}
+
+                    {/* Pill Rumble */}
+                    {isRumble ? (
+                      <span style={{
+                        display:"inline-flex", alignItems:"center", gap:3,
+                        marginLeft:7, padding:"1px 7px",
+                        borderRadius:999, fontSize:11, fontWeight:800,
+                        border:"1px solid rgba(133,224,80,.30)",
+                        background:"rgba(133,224,80,.10)",
+                        color:"rgba(180,236,140,.95)",
+                        verticalAlign:"middle",
+                      }} title="Message envoyé depuis le chat Rumble">
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <path d="M12 2 L22 12 L12 22 L2 12 Z"/>
+                        </svg>
+                        Rumble
                       </span>
                     ) : null}
                   </div>

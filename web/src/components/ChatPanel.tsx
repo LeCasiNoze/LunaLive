@@ -39,6 +39,7 @@ type ChatMsg = {
   deleted?: boolean;
   createdAt: string;
   cosmetics?: ChatCosmetics | null;
+  rumble?: boolean;
 };
 
 type JoinAck = {

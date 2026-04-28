@@ -181,15 +181,15 @@ async function findLiveSlug(username, html) {
   return null;
 }
 
-/** Push le videoId au backend. */
-async function pushLiveVideo(slug, vSlug) {
+/** Push le videoId au backend. Optionnel: viewer count. */
+async function pushLiveVideo(slug, vSlug, viewers) {
   const r = await fetch(`${API_BASE}/admin/rumble/set-live`, {
     method: "POST",
     headers: {
       "x-admin-key": ADMIN_KEY,
       "content-type": "application/json",
     },
-    body: JSON.stringify({ slug, videoId: vSlug }),
+    body: JSON.stringify({ slug, videoId: vSlug, viewers: typeof viewers === "number" ? viewers : null }),
   });
   const j = await r.json().catch(() => null);
   if (!r.ok) {
@@ -230,7 +230,19 @@ async function findCurrentLiveSlug(username) {
     // Bonus: aussi le video_id numérique pour le chat
     const numMatch = html.match(/video_id:\s*(\d+)/) || html.match(/"video_id":\s*(\d+)/);
     const vidNumeric = numMatch ? numMatch[1] : null;
-    return { vSlug: m[1], vidNumeric };
+    // Viewer count : essaie plusieurs patterns Rumble.
+    let viewers = null;
+    for (const re of [
+      /"watching_now"\s*:\s*(\d+)/,
+      /data-viewer-count="(\d+)"/,
+      /"viewer_count"\s*:\s*(\d+)/,
+      /class="[^"]*video-counter-watching[^"]*"[^>]*>\s*(\d+)/i,
+      /class="[^"]*media-watching-now[^"]*"[^>]*>\s*(\d+)/i,
+    ]) {
+      const vm = html.match(re);
+      if (vm && vm[1]) { viewers = Number(vm[1]); if (Number.isFinite(viewers)) break; }
+    }
+    return { vSlug: m[1], vidNumeric, viewers };
   }
   return null;
 }
@@ -262,8 +274,8 @@ async function tick() {
       continue;
     }
 
-    console.log(`[relay]   ${username}: LIVE — slug=${live.vSlug} vid=${live.vidNumeric || "?"}`);
-    const ok = await pushLiveVideo(s.slug, live.vSlug);
+    console.log(`[relay]   ${username}: LIVE — slug=${live.vSlug} vid=${live.vidNumeric || "?"} viewers=${live.viewers ?? "?"}`);
+    const ok = await pushLiveVideo(s.slug, live.vSlug, live.viewers);
     if (ok) console.log(`[relay]   ${username}: pushed ${live.vSlug} ✓`);
   }
 }

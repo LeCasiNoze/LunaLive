@@ -82,6 +82,7 @@ export function registerChatRoutes(app: Express) {
           body: String(m.body || ""),
           createdAt: new Date(m.createdAt).toISOString(),
           cosmetics: uid > 0 ? getCosmeticsFromMapLike(cosmeticsByUserId, uid) : null,
+          rumble: m.source === "rumble",
         };
       });
 

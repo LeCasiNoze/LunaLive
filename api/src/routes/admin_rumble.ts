@@ -239,7 +239,7 @@ adminRumbleRouter.get("/admin/rumble/list-pseudo-only", requireAdminKey, async (
  */
 adminRumbleRouter.post("/admin/rumble/set-live", requireAdminKey, async (req, res) => {
   try {
-    const { slug, url, videoId } = req.body ?? {};
+    const { slug, url, videoId, viewers } = req.body ?? {};
     if (!slug || typeof slug !== "string") return res.status(400).json({ ok: false, error: "slug_required" });
 
     // Extrait le videoId depuis url ou utilise videoId direct
@@ -267,14 +267,23 @@ adminRumbleRouter.post("/admin/rumble/set-live", requireAdminKey, async (req, re
     // On stocke le videoId — le poller fera la résolution embedJS au prochain tick.
 
     // Upsert dans streamer_rumble_info — le poller verra et complétera
+    const viewersNum = (typeof viewers === "number" && Number.isFinite(viewers) && viewers >= 0) ? Math.floor(viewers) : null;
     await pool.query(
-      `INSERT INTO streamer_rumble_info (streamer_id, is_live, live_id, updated_at)
-       VALUES ($1, true, $2, NOW())
+      `INSERT INTO streamer_rumble_info (streamer_id, is_live, live_id, viewers_count, updated_at)
+       VALUES ($1, true, $2, $3, NOW())
        ON CONFLICT (streamer_id) DO UPDATE SET
          live_id = EXCLUDED.live_id,
+         viewers_count = COALESCE(EXCLUDED.viewers_count, streamer_rumble_info.viewers_count),
          updated_at = NOW()`,
-      [streamerId, extracted]
+      [streamerId, extracted, viewersNum]
     );
+    if (viewersNum != null) {
+      // Aussi mettre à jour streamers.viewers (utilisé par /lives)
+      await pool.query(
+        `UPDATE streamers SET viewers = $1, updated_at = NOW() WHERE id = $2`,
+        [viewersNum, streamerId]
+      ).catch(() => {});
+    }
 
     return res.json({
       ok: true,
