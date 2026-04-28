@@ -101,6 +101,7 @@ import { mig091_rumble_send_queue } from "./mig091_rumble_send_queue.js";
 import { mig092_discord_notif_cooldown } from "./mig092_discord_notif_cooldown.js";
 import { mig094_streamers_radio_source } from "./mig094_streamers_radio_source.js";
 import { mig093_rumble_followers_count } from "./mig093_rumble_followers_count.js";
+import { mig095_streamers_radio_source_sync } from "./mig095_streamers_radio_source_sync.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -221,6 +222,7 @@ export async function migrateAll(pool: Pool) {
   await mig092_discord_notif_cooldown(pool);
   await mig093_rumble_followers_count(pool);
   await mig094_streamers_radio_source(pool);
+  await mig095_streamers_radio_source_sync(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

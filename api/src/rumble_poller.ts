@@ -356,25 +356,29 @@ async function rotateRadioTarget(io?: IOServer) {
   // de la précédente source qui n'est plus polled)
   if (radioIsLive && currentUsername) return;
 
-  // Cherche un autre streamer flagué radio_source actuellement live.
-  // La radio ne pioche QUE dans la liste curated (radio_source=true), pas
-  // dans tous les Rumble live (sinon on attrape des chaines individuelles
-  // comme lhasardcasin/lesbarjotsducasino qui n'ont rien à faire en radio).
+  // Cherche un autre streamer Rumble live qui N'A PAS de chaîne LunaLive
+  // dédiée (pas d'entrée dans rumble_accounts). Les streamers qui ont leur
+  // propre chaîne LunaLive (lecasinoze→LeCasiNoze, fabiozsis→fabiozsis...)
+  // n'ont rien à faire en radio — les viewers les suivent directement.
+  // La radio rotate uniquement parmi les streamers SANS chaîne LunaLive.
   const cand = await pool.query(
-    `SELECT s.id, s.slug, s.rumble_username, ra.username AS api_username,
-            ri.viewers_count
+    `SELECT s.id, s.slug, s.rumble_username, ri.viewers_count
      FROM streamers s
      LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
-     LEFT JOIN rumble_accounts ra ON ra.assigned_to_streamer_id = s.id
      WHERE s.id <> $1
-       AND s.radio_source = true
+       AND s.platform = 'rumble'
+       AND s.rumble_username IS NOT NULL
        AND ri.is_live = true
+       AND NOT EXISTS (
+         SELECT 1 FROM rumble_accounts ra
+         WHERE ra.assigned_to_streamer_id = s.id
+       )
      ORDER BY COALESCE(ri.viewers_count, 0) DESC, s.id ASC
      LIMIT 1`,
     [RADIO_STREAMER_ID]
   );
   const pick = cand.rows[0];
-  const newUsername = pick?.rumble_username || pick?.api_username || null;
+  const newUsername = pick?.rumble_username || null;
 
   if (!newUsername) {
     // Personne d'autre n'est live : on garde la source courante (peut revenir).
