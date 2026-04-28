@@ -4,6 +4,7 @@ import { pool } from "../db.js";
 import { createAutoClipForStreamer } from "../shared/clip_service.js";
 import normalizeAppearance from "../appearance.js";
 import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
+import { sendRumbleMessage } from "../rumble_chat_bridge.js";
 
 export const internalBotRouter = express.Router();
 
@@ -199,7 +200,7 @@ internalBotRouter.post(
 );
 
 async function mirrorBotMessageToRumble(streamerId: number, text: string) {
-  // Queue → relay local. Render IP est blacklist par Rumble pour les sends.
+  // Envoi direct depuis Render (compte LunaLive_Bot vérifié + cookies u_s frais).
   try {
     const r = await pool.query(
       `SELECT s.platform, ri.is_live, ri.live_video_id_numeric
@@ -214,10 +215,7 @@ async function mirrorBotMessageToRumble(streamerId: number, text: string) {
     if (!row.is_live) return;
     const vid = row.live_video_id_numeric ? String(row.live_video_id_numeric) : null;
     if (!vid) return;
-    await pool.query(
-      `INSERT INTO rumble_send_queue (video_id_numeric, text) VALUES ($1, $2)`,
-      [vid, String(text || "").slice(0, 200)]
-    );
+    await sendRumbleMessage(vid, String(text || "").slice(0, 200));
   } catch (e: any) {
     console.warn("[internal_bot] mirrorBotMessageToRumble error", e?.message || e);
   }

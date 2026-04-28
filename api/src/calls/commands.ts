@@ -22,6 +22,7 @@ import { normText } from "./normalize.js";
 
 // ✅ NEW: pour envoyer un vrai message bot (DB + broadcast)
 import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
+import { sendRumbleMessage } from "../rumble_chat_bridge.js";
 
 export function parseBangCommand(text: string): { cmd: string; arg: string } | null {
   const s = normText(text);
@@ -110,10 +111,9 @@ async function sendBotChat(
 }
 
 /**
- * Si le streamer est en live sur Rumble, queue le message pour envoi via le
- * relay local (cycletls direct depuis Render = bloqué par CF/Rumble en 2026).
- * Le relay polle la queue toutes les ~5s et envoie via cycletls depuis l'IP
- * résidentielle (où les cookies cf_clearance sont valides).
+ * Si le streamer est en live sur Rumble, envoie directement le message via
+ * sendRumbleMessage (Node fetch + fallback cycletls). Compte LunaLive_Bot
+ * vérifié → l'envoi direct depuis Render fonctionne (n'a plus besoin du relay).
  */
 async function mirrorBotMessageToRumble(pool: Pool, streamerId: number, text: string) {
   try {
@@ -131,10 +131,7 @@ async function mirrorBotMessageToRumble(pool: Pool, streamerId: number, text: st
     const vid = row.live_video_id_numeric ? String(row.live_video_id_numeric) : null;
     if (!vid) return;
 
-    await pool.query(
-      `INSERT INTO rumble_send_queue (video_id_numeric, text) VALUES ($1, $2)`,
-      [vid, String(text || "").slice(0, 200)]
-    );
+    await sendRumbleMessage(vid, String(text || "").slice(0, 200));
   } catch (e: any) {
     console.warn("[calls] mirrorBotMessageToRumble error", e?.message || e);
   }
