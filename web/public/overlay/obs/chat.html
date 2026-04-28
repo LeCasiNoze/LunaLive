@@ -33,6 +33,28 @@
       background-color: transparent !important;
       overflow:hidden;
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      /* ✅ Lissage de polices haute qualité — sans ça, après compression
+         Twitch/Rumble (H264 destructeur) le texte petit/scalé pixellise.
+         Combinaison qui marche partout (Chromium, Safari, Firefox). */
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: geometricPrecision;
+      font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+      font-kerning: normal;
+    }
+    /* ✅ Avatars / images en haute qualité — l'option "high-quality" force
+       un resampling Lanczos plutôt que l'upscale au plus proche pixel qui
+       crée des bords crénélés. */
+    img, .chatAvatarImg, .chatAvatarCircle img {
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: high-quality;
+    }
+    /* ✅ Le scale CSS sur .stack peut produire des sub-pixels. backface-
+       visibility:hidden + translateZ(0) force le compositor GPU à snap sur
+       pixel grid → texte plus net après scale. */
+    .stack {
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
     }
 
     body{
