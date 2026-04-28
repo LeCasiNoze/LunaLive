@@ -50,58 +50,150 @@ function safeName(s: string) {
 }
 
 /**
- * Récupère la durée totale (en secondes) couverte par une m3u8 HLS live DVR
- * en sommant les EXTINF des segments.
- *
- * Nécessaire pour les clips Rumble live : la playlist DVR est une fenêtre
- * glissante (les N dernières minutes seulement). Le `-ss` ffmpeg est relatif
- * au DÉBUT de cette fenêtre, pas au début du live → il faut convertir.
+ * Parse une m3u8 HLS et retourne ses segments avec durées et URIs absolus.
  */
-async function fetchHlsPlaylistDuration(m3u8Url: string, timeoutMs = 8_000): Promise<number | null> {
+type HlsSegment = { uri: string; duration: number };
+
+async function fetchHlsPlaylist(m3u8Url: string, timeoutMs = 8_000): Promise<{ segments: HlsSegment[]; targetDuration: number; rawText: string } | null> {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
     const r = await fetch(m3u8Url, { signal: ctrl.signal }).finally(() => clearTimeout(t));
     if (!r.ok) return null;
     const text = await r.text();
-    let total = 0;
-    // EXTINF lines: "#EXTINF:6.000,..." ou "#EXTINF:6,..."
-    const re = /#EXTINF:([\d.]+)/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-      const d = Number(m[1]);
-      if (Number.isFinite(d) && d > 0) total += d;
+
+    const segments: HlsSegment[] = [];
+    let pendingDuration: number | null = null;
+    let targetDuration = 8;
+
+    const lines = text.split(/\r?\n/);
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+      if (line.startsWith("#")) {
+        if (line.startsWith("#EXT-X-TARGETDURATION:")) {
+          const td = Number(line.slice("#EXT-X-TARGETDURATION:".length));
+          if (Number.isFinite(td) && td > 0) targetDuration = td;
+        } else if (line.startsWith("#EXTINF:")) {
+          const m = line.match(/#EXTINF:([\d.]+)/);
+          const d = m ? Number(m[1]) : NaN;
+          pendingDuration = Number.isFinite(d) && d > 0 ? d : null;
+        }
+        continue;
+      }
+      // ligne URI segment
+      if (pendingDuration != null) {
+        const absUri = new URL(line, m3u8Url).href;
+        segments.push({ uri: absUri, duration: pendingDuration });
+        pendingDuration = null;
+      }
     }
-    return total > 0 ? total : null;
+
+    if (segments.length === 0) return null;
+    return { segments, targetDuration, rawText: text };
   } catch {
     return null;
   }
 }
 
 /**
- * Pour un clip Rumble live (vod_url = HLS live DVR), calcule la position
- * `-ss` correcte en tenant compte de la fenêtre DVR courante.
+ * Pour un clip Rumble live, prépare une m3u8 VOD locale contenant uniquement
+ * les segments couvrant la fenêtre cible [target_start..target_end].
  *
- *   playlistDuration  = durée totale couverte par la m3u8 actuelle
- *   clipAgeSec        = secondes écoulées depuis le moment !clip
- *   pre               = secondes voulues AVANT le !clip (75 par défaut)
- *
- * Position du !clip dans la playlist (depuis le début) = playlistDuration - clipAgeSec
- * Position cible (75s avant)                            = playlistDuration - clipAgeSec - pre
- *
- * Si négatif (le pre-window n'est plus dans le DVR) → on démarre au début de
- * la playlist et on accepte un clip raccourci côté pre.
+ * Retourne le chemin du m3u8 local + l'offset (en secondes) à `-ss` pour
+ * trim précis, et la durée de clip à passer à `-t`.
  */
-function computeLiveHlsSeek(p: {
-  playlistDuration: number;
-  clipAgeSec: number;
+async function prepareRumbleClipPlaylist(p: {
+  m3u8Url: string;
+  clipMomentSec: number;     // âge en sec depuis live_start (= at_sec)
   pre: number;
-}): { startSec: number; durSec: number; truncatedPre: boolean } {
-  const idealStart = p.playlistDuration - p.clipAgeSec - p.pre;
-  const startSec = Math.max(0, Math.floor(idealStart));
-  const truncatedPre = idealStart < 0;
-  // durée demandée = pre + post, mais cappée par la fenêtre dispo (de startSec à fin)
-  return { startSec, durSec: 0, truncatedPre };
+  post: number;
+  liveStartTs: number;        // ms
+  clipId: number;
+}): Promise<{ localM3u8: string; trimStartSec: number; clipDurSec: number; truncatedPre: boolean } | null> {
+  const playlist = await fetchHlsPlaylist(p.m3u8Url);
+  if (!playlist) return null;
+
+  // Calcul du décalage entre la playlist et le live_start.
+  //   playlistDuration = somme des EXTINF de la m3u8
+  //   nowSec ≈ liveStartTs/1000 + clipMomentSec + clipAge
+  //   live_edge_in_playlist (s) = playlistDuration
+  //   live_edge_clock = live_start + (clip_moment + clip_age)
+  // Donc: playlist_offset_in_live = (live_edge_clock - playlistDuration) - live_start
+  //                               = clip_moment + clip_age - playlistDuration
+  const playlistDuration = playlist.segments.reduce((a, s) => a + s.duration, 0);
+  const nowSec = Date.now() / 1000;
+  const liveEdgeWallSec = nowSec; // approximation : live edge ≈ now (HLS latence ~5-10s ignorée)
+  const liveStartSec = p.liveStartTs / 1000;
+  const liveEdgeOffsetInLive = liveEdgeWallSec - liveStartSec;
+
+  // Position du début de la playlist sur la timeline du live
+  const playlistStartInLive = Math.max(0, liveEdgeOffsetInLive - playlistDuration);
+
+  // Fenêtre cible sur la timeline du live
+  const targetStartInLive = p.clipMomentSec - p.pre;
+  const targetEndInLive   = p.clipMomentSec + p.post;
+
+  // Conversion vers la timeline de la playlist (relative à playlistStartInLive)
+  const targetStartInPlaylist = Math.max(0, targetStartInLive - playlistStartInLive);
+  const targetEndInPlaylist   = Math.max(0, targetEndInLive   - playlistStartInLive);
+  const truncatedPre = (targetStartInLive - playlistStartInLive) < 0;
+
+  // Sélection des segments qui chevauchent [targetStartInPlaylist..targetEndInPlaylist]
+  let acc = 0;
+  let startIdx = -1;
+  let endIdx = -1;
+  let segStartTimeAtStartIdx = 0;
+
+  for (let i = 0; i < playlist.segments.length; i++) {
+    const segStart = acc;
+    const segEnd = acc + playlist.segments[i].duration;
+    if (startIdx === -1 && segEnd > targetStartInPlaylist) {
+      startIdx = i;
+      segStartTimeAtStartIdx = segStart;
+    }
+    if (segEnd >= targetEndInPlaylist) {
+      endIdx = i;
+      break;
+    }
+    acc = segEnd;
+  }
+
+  if (startIdx === -1) return null;
+  if (endIdx === -1) endIdx = playlist.segments.length - 1; // pas assez de post → prend tout ce qu'on a
+
+  // Trim précis dans le segment de début
+  const trimStartSec = Math.max(0, targetStartInPlaylist - segStartTimeAtStartIdx);
+
+  // Durée totale incluse dans les segments retenus
+  const includedDuration = playlist.segments
+    .slice(startIdx, endIdx + 1)
+    .reduce((a, s) => a + s.duration, 0);
+
+  // Durée demandée = pre + post (cappée par ce qui est réellement dispo après trim)
+  const requestedDur = p.pre + p.post;
+  const availableDur = includedDuration - trimStartSec;
+  const clipDurSec = Math.max(1, Math.min(requestedDur, availableDur));
+
+  // Génère la m3u8 VOD locale avec URIs absolus
+  const targetDuration = Math.max(playlist.targetDuration, ...playlist.segments.slice(startIdx, endIdx + 1).map(s => Math.ceil(s.duration)));
+  const out: string[] = [
+    "#EXTM3U",
+    "#EXT-X-VERSION:3",
+    "#EXT-X-PLAYLIST-TYPE:VOD",
+    `#EXT-X-TARGETDURATION:${targetDuration}`,
+    "#EXT-X-MEDIA-SEQUENCE:0",
+  ];
+  for (let i = startIdx; i <= endIdx; i++) {
+    out.push(`#EXTINF:${playlist.segments[i].duration.toFixed(3)},`);
+    out.push(playlist.segments[i].uri);
+  }
+  out.push("#EXT-X-ENDLIST");
+
+  const localM3u8 = path.join(os.tmpdir(), `clip-${p.clipId}-${nowMs()}.m3u8`);
+  fs.writeFileSync(localM3u8, out.join("\n"), "utf8");
+
+  return { localM3u8, trimStartSec, clipDurSec, truncatedPre };
 }
 
 function getFfmpegPath(): string {
@@ -155,40 +247,50 @@ async function renderAndUploadClip(clip: BotClipRow) {
   // Par défaut (DLive VOD, etc.) : timeline absolue → at = offset depuis début du stream.
   let startSec = Math.max(0, at - pre);
   let durSec = Math.max(1, pre + post);
+  let inputUrl = vodUrl;
+  let localM3u8ToCleanup: string | null = null;
 
-  // ✅ Correction Rumble live HLS DVR : la playlist est une fenêtre glissante.
-  // `-ss` est relatif au début de cette fenêtre, pas au début du live, donc
-  // on doit reconvertir à partir de la durée réelle de la m3u8 et de l'âge
-  // du clip (temps écoulé depuis !clip).
+  // ✅ Rumble live HLS DVR : on génère une m3u8 VOD locale avec uniquement
+  // les segments couvrant la fenêtre cible. Indispensable car ffmpeg ne seek
+  // PAS proprement dans une m3u8 live (sans EXT-X-ENDLIST/PLAYLIST-TYPE:VOD).
   const isRumbleLiveHls =
     String(clip.platform || "").toLowerCase() === "rumble" &&
     /\.m3u8(\?|$)/i.test(vodUrl);
 
   if (isRumbleLiveHls) {
-    const playlistDuration = await fetchHlsPlaylistDuration(vodUrl);
-    const clipMomentMs = Number(clip.live_start_ts || 0) + at * 1000;
-    const clipAgeSec = clipMomentMs > 0
-      ? Math.max(0, Math.floor((nowMs() - clipMomentMs) / 1000))
-      : 0;
-
-    if (playlistDuration && playlistDuration > 0) {
-      const r = computeLiveHlsSeek({ playlistDuration, clipAgeSec, pre });
-      // pre effectif = ce qu'il y a entre startSec et la position du !clip
-      const clipPosInPlaylist = Math.max(0, playlistDuration - clipAgeSec);
-      const effectivePre = Math.max(0, clipPosInPlaylist - r.startSec);
-      startSec = r.startSec;
-      durSec = Math.max(1, effectivePre + post);
-      console.log(
-        `[clips-mp4] rumble live HLS clip=${clip.id} ` +
-        `playlistDur=${playlistDuration.toFixed(1)}s clipAge=${clipAgeSec}s ` +
-        `→ -ss=${startSec}s -t=${durSec}s ` +
-        `${r.truncatedPre ? "(pre tronqué — DVR trop court)" : ""}`
-      );
-    } else {
-      console.warn(
-        `[clips-mp4] rumble live HLS clip=${clip.id} ` +
-        `m3u8 unreachable, fallback to naive -ss (clip likely shifted)`
-      );
+    const liveStartTs = Number(clip.live_start_ts || 0);
+    if (liveStartTs > 0) {
+      try {
+        const prepared = await prepareRumbleClipPlaylist({
+          m3u8Url: vodUrl,
+          clipMomentSec: at,
+          pre,
+          post,
+          liveStartTs,
+          clipId: Number(clip.id),
+        });
+        if (prepared) {
+          inputUrl = prepared.localM3u8;
+          startSec = prepared.trimStartSec;
+          durSec = prepared.clipDurSec;
+          localM3u8ToCleanup = prepared.localM3u8;
+          console.log(
+            `[clips-mp4] rumble live HLS clip=${clip.id} ` +
+            `→ local m3u8 trim=${startSec.toFixed(2)}s dur=${durSec.toFixed(2)}s ` +
+            `${prepared.truncatedPre ? "(pre tronqué — DVR trop court)" : ""}`
+          );
+        } else {
+          console.warn(
+            `[clips-mp4] rumble live HLS clip=${clip.id} ` +
+            `prepareRumbleClipPlaylist failed, fallback to direct -ss (clip likely shifted)`
+          );
+        }
+      } catch (e: any) {
+        console.warn(
+          `[clips-mp4] rumble live HLS clip=${clip.id} ` +
+          `prepareRumbleClipPlaylist error: ${e?.message || e}`
+        );
+      }
     }
   }
 
@@ -225,7 +327,7 @@ async function renderAndUploadClip(clip: BotClipRow) {
       "-ss",
       String(startSec),
       "-i",
-      vodUrl,
+      inputUrl,
       "-t",
       String(durSec),
       "-map",
@@ -304,6 +406,11 @@ async function renderAndUploadClip(clip: BotClipRow) {
     try {
       if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
     } catch {}
+    if (localM3u8ToCleanup) {
+      try {
+        if (fs.existsSync(localM3u8ToCleanup)) fs.unlinkSync(localM3u8ToCleanup);
+      } catch {}
+    }
   }
 }
 
