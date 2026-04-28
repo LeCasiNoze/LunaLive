@@ -57,9 +57,10 @@ if (!ADMIN_KEY) {
 
 console.log(`[relay] starting — API_BASE=${API_BASE} interval=${POLL_INTERVAL_MS}ms`);
 
-/** Récupère la liste des streamers à surveiller depuis Render. */
-async function fetchStreamersList() {
-  const r = await fetch(`${API_BASE}/admin/rumble/list-pseudo-only`, {
+/** Récupère la liste des streamers à surveiller depuis Render.
+ *  endpoint: 'pseudo-only' (slug discovery) ou 'all' (followers+VODs). */
+async function fetchStreamersList(endpoint = "list-pseudo-only") {
+  const r = await fetch(`${API_BASE}/admin/rumble/${endpoint}`, {
     headers: { "x-admin-key": ADMIN_KEY },
   });
   if (!r.ok) throw new Error(`list http=${r.status}`);
@@ -179,6 +180,92 @@ async function findLiveSlug(username, html) {
     return { vSlug: bestGuess.vSlug, isLive: true };
   }
   return null;
+}
+
+/**
+ * Scrape /user/{name} pour extraire les cartes VOD publiques (videostream).
+ * Pattern HTML Rumble (confirmé) :
+ *   <div class="videostream thumbnail__grid--item" role="listitem" data-video-id="N">
+ *     <a class="videostream__link" href="/vXXXXX-titre.html">
+ *       <img class="thumbnail__image" src="..." />
+ *       <h3 class="thumbnail__title">Titre</h3>
+ *     </a>
+ *     <span class="videostream__time">...</span>
+ *     <span class="videostream__data--item videostream__time">21:15:02</span>
+ *   </div>
+ * Retourne un array d'items { videoId, videoIdNumeric, title, thumbnailUrl, durationSec }.
+ */
+async function fetchVodCards(username) {
+  let html = "";
+  try {
+    const r = await fetch(`https://rumble.com/user/${encodeURIComponent(username)}`, {
+      headers: {
+        "user-agent": UA,
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-language": "fr-FR,fr;q=0.9",
+      },
+    });
+    if (!r.ok) return [];
+    html = await r.text();
+  } catch { return []; }
+
+  const items = [];
+  // Découpe le HTML par carte videostream (heuristique: chaque carte contient data-video-id)
+  const cardRe = /<div[^>]*class="[^"]*videostream[^"]*"[^>]*data-video-id="(\d+)"[^>]*>([\s\S]*?)(?=<div[^>]*class="[^"]*videostream[^"]*"[^>]*data-video-id="|<\/main|<footer)/gi;
+  let m;
+  while ((m = cardRe.exec(html)) !== null) {
+    const vidNumeric = m[1];
+    const block = m[2];
+
+    const hrefM = block.match(/href="\/(v[a-z0-9]{5,})-([^"]+)\.html"/i);
+    if (!hrefM) continue;
+    const vSlug = hrefM[1].toLowerCase();
+
+    const titleM = block.match(/class="[^"]*thumbnail__title[^"]*"[^>]*>([^<]+)</i);
+    const title = titleM ? titleM[1].trim().slice(0, 300) : null;
+
+    const thumbM = block.match(/class="[^"]*thumbnail__image[^"]*"[^>]*src="([^"]+)"/i)
+                || block.match(/<img[^>]*src="([^"]+)"[^>]*class="[^"]*thumbnail__image/i);
+    const thumbnailUrl = thumbM ? thumbM[1] : null;
+
+    // Durée : format HH:MM:SS ou MM:SS dans un .videostream__time
+    const durM = block.match(/class="[^"]*videostream__time[^"]*"[^>]*>\s*(\d+:\d+:\d+|\d+:\d+)\s*</i);
+    let durationSec = null;
+    if (durM) {
+      const parts = durM[1].split(":").map(Number);
+      if (parts.length === 3) durationSec = parts[0] * 3600 + parts[1] * 60 + parts[2];
+      else if (parts.length === 2) durationSec = parts[0] * 60 + parts[1];
+    }
+
+    items.push({ videoId: vSlug, videoIdNumeric: vidNumeric, title, thumbnailUrl, durationSec });
+    if (items.length >= 60) break;
+  }
+  return items;
+}
+
+/** Push la liste des VODs au backend (insert + résolution mp4). */
+async function pushVodCards(slug, items) {
+  if (!Array.isArray(items) || items.length === 0) return;
+  try {
+    const r = await fetch(`${API_BASE}/admin/rumble/ingest-vods`, {
+      method: "POST",
+      headers: {
+        "x-admin-key": ADMIN_KEY,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ slug, items }),
+    });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) {
+      console.warn(`[relay-vods]   push ${slug} failed http=${r.status}`, j?.error || "");
+      return;
+    }
+    if (j?.inserted > 0) {
+      console.log(`[relay-vods]   ${slug}: +${j.inserted} nouvelle(s) VOD(s) (resolveScheduled=${j.resolveScheduled})`);
+    }
+  } catch (e) {
+    console.warn(`[relay-vods]   ${slug} error`, e?.message || e);
+  }
 }
 
 /**
@@ -312,16 +399,19 @@ async function findCurrentLiveSlug(username) {
 }
 
 async function tick() {
+  // On utilise list-all : couvre tout le monde (pseudo-only + api_key).
+  // La slug discovery sera skip pour les api_key (le poller Render le fait
+  // déjà via api_key direct) — on les détecte via le champ `source`.
   let streamers = [];
   try {
-    streamers = await fetchStreamersList();
+    streamers = await fetchStreamersList("list-all");
   } catch (e) {
     console.warn("[relay] fetchStreamersList failed", e?.message || e);
     return;
   }
 
   if (streamers.length === 0) {
-    console.log("[relay] aucun streamer pseudo-only à scrap");
+    console.log("[relay] aucun streamer Rumble à scrap");
     return;
   }
 
@@ -330,23 +420,33 @@ async function tick() {
   for (const s of streamers) {
     const username = s.username;
     if (!username) continue;
-    console.log(`[relay] ${s.slug} (${username})`);
+    const isPseudo = s.source === "pseudo";
+    console.log(`[relay] ${s.slug} (${username}) [${s.source || "?"}]`);
 
-    const live = await findCurrentLiveSlug(username);
-    if (!live) {
-      console.log(`[relay]   ${username}: pas de live actif`);
-      continue;
+    // Slug discovery : uniquement pour pseudo-only (api_key fait son chemin)
+    if (isPseudo) {
+      const live = await findCurrentLiveSlug(username);
+      if (live) {
+        console.log(`[relay]   ${username}: LIVE — slug=${live.vSlug} vid=${live.vidNumeric || "?"} viewers=${live.viewers ?? "?"}`);
+        const ok = await pushLiveVideo(s.slug, live.vSlug, live.viewers);
+        if (ok) console.log(`[relay]   ${username}: pushed ${live.vSlug} ✓`);
+      } else {
+        console.log(`[relay]   ${username}: pas de live actif`);
+      }
     }
 
-    console.log(`[relay]   ${username}: LIVE — slug=${live.vSlug} vid=${live.vidNumeric || "?"} viewers=${live.viewers ?? "?"}`);
-    const ok = await pushLiveVideo(s.slug, live.vSlug, live.viewers);
-    if (ok) console.log(`[relay]   ${username}: pushed ${live.vSlug} ✓`);
-
-    // Followers count (delta detection + annonce "+N follow GG !" côté API)
+    // Followers count (delta detection + annonce "+N follow GG !") — pour tout le monde
     const followers = await fetchFollowersCount(username);
     if (typeof followers === "number") {
       console.log(`[relay]   ${username}: followers=${followers}`);
       await pushFollowersCount(s.slug, followers);
+    }
+
+    // VODs : scrape les cartes publiques /user/{name} et push pour ingestion (tout le monde)
+    const vods = await fetchVodCards(username);
+    if (vods.length > 0) {
+      console.log(`[relay]   ${username}: ${vods.length} VOD(s) trouvées`);
+      await pushVodCards(s.slug, vods);
     }
   }
 }

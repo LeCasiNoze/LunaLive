@@ -4,6 +4,16 @@ import { Router } from "express";
 import { pool } from "../db.js";
 import { requireAdminKey } from "../auth.js";
 import { fetchRumbleInfoForStreamerSlug, resolveRumbleVodFromVid } from "../rumble.js";
+
+// Schéma des items VOD pushés par le relay
+type RelayVodItem = {
+  videoId: string;          // slug avec préfixe v, ex: "v76pubk"
+  videoIdNumeric?: string;  // id numérique, ex: "433420236"
+  title?: string | null;
+  thumbnailUrl?: string | null;
+  startedAt?: string | null; // ISO date si dispo (ago time depuis HTML)
+  durationSec?: number | null;
+};
 import { getRumbleBotSession, setRumbleBotSession, hasRumbleBotSession } from "../rumble_chat_session.js";
 import { sendRumbleMessage } from "../rumble_chat_bridge.js";
 import { cycleFetch } from "../rumble_http.js";
@@ -216,6 +226,29 @@ adminRumbleRouter.get("/admin/rumble/list-pseudo-only", requireAdminKey, async (
        WHERE s.rumble_username IS NOT NULL
          AND s.rumble_username <> ''
          AND ra.id IS NULL`
+    );
+    return res.json({ ok: true, streamers: r.rows });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+  }
+});
+
+/**
+ * GET /admin/rumble/list-all
+ * Liste TOUS les streamers Rumble (pseudo-only + api_key), utilisé par le
+ * relay pour les tâches qui doivent tourner sur tout le monde (VOD discovery,
+ * follower count). Le username vient de rumble_username sinon rumble_accounts.username.
+ */
+adminRumbleRouter.get("/admin/rumble/list-all", requireAdminKey, async (_req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT s.id, s.slug,
+              COALESCE(s.rumble_username, ra.username) AS username,
+              CASE WHEN ra.id IS NOT NULL THEN 'api_key' ELSE 'pseudo' END AS source
+       FROM streamers s
+       LEFT JOIN rumble_accounts ra ON ra.assigned_to_streamer_id = s.id
+       WHERE (s.rumble_username IS NOT NULL AND s.rumble_username <> '')
+          OR ra.id IS NOT NULL`
     );
     return res.json({ ok: true, streamers: r.rows });
   } catch (e: any) {
@@ -465,6 +498,84 @@ adminRumbleRouter.post("/admin/rumble/backfill-vods", requireAdminKey, async (re
  * Envoie un message de test dans un chat Rumble via le bot. Utile pour valider
  * le pipeline cycletls + cookies sans attendre qu'un live LunaLive démarre.
  */
+/**
+ * POST /admin/rumble/ingest-vods
+ * Body: { slug: string, items: RelayVodItem[] }
+ * Le relay scrape /user/{name} et envoie la liste des cartes VODs publiques.
+ * On insère dans rumble_vods (ON CONFLICT DO NOTHING) et on lance la résolution
+ * MP4 en background (one-shot) pour les nouvelles entrées.
+ */
+adminRumbleRouter.post("/admin/rumble/ingest-vods", requireAdminKey, async (req, res) => {
+  try {
+    const slug = String(req.body?.slug || "").trim().toLowerCase();
+    const items: RelayVodItem[] = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!slug) return res.status(400).json({ ok: false, error: "slug_required" });
+
+    const sm = await pool.query(
+      `SELECT id FROM streamers WHERE lower(slug) = lower($1) LIMIT 1`,
+      [slug]
+    );
+    const streamerId = Number(sm.rows[0]?.id || 0);
+    if (!streamerId) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    let inserted = 0;
+    let resolveScheduled = 0;
+    for (const it of items.slice(0, 60)) {
+      const vid = String(it.videoId || "").trim().toLowerCase();
+      if (!/^v[a-z0-9]{5,}$/.test(vid)) continue;
+      const vidNumeric = it.videoIdNumeric ? String(it.videoIdNumeric) : null;
+      const title = it.title ? String(it.title).slice(0, 500) : null;
+      const thumb = it.thumbnailUrl ? String(it.thumbnailUrl).slice(0, 1000) : null;
+      const startedAt = it.startedAt ? String(it.startedAt) : null;
+      const durationSec = (typeof it.durationSec === "number" && Number.isFinite(it.durationSec) && it.durationSec >= 0)
+        ? Math.floor(it.durationSec) : null;
+
+      // Insert idempotent. Si nouveau, on récupère l'id pour scheduler la résolution.
+      const ins = await pool.query(
+        `INSERT INTO rumble_vods (streamer_id, video_id, video_id_numeric, title, thumbnail_url, started_at, ended_at, duration_sec)
+         VALUES ($1, $2, $3, $4, $5, $6, COALESCE($6, NOW()), $7)
+         ON CONFLICT (streamer_id, video_id) DO UPDATE
+           SET title = COALESCE(rumble_vods.title, EXCLUDED.title),
+               thumbnail_url = COALESCE(rumble_vods.thumbnail_url, EXCLUDED.thumbnail_url),
+               video_id_numeric = COALESCE(rumble_vods.video_id_numeric, EXCLUDED.video_id_numeric),
+               duration_sec = COALESCE(rumble_vods.duration_sec, EXCLUDED.duration_sec)
+         RETURNING (xmax = 0) AS is_new, vod_mp4_url`,
+        [streamerId, vid, vidNumeric, title, thumb, startedAt, durationSec]
+      ).catch((e: any) => {
+        console.warn("[ingest-vods] insert error", e?.message || e);
+        return { rows: [] };
+      });
+      const isNew = !!ins.rows[0]?.is_new;
+      const alreadyResolved = !!ins.rows[0]?.vod_mp4_url;
+      if (isNew) inserted++;
+
+      // Si pas encore résolu, tente une résolution one-shot en background
+      if (!alreadyResolved) {
+        resolveScheduled++;
+        (async () => {
+          try {
+            const { mp4Url, hlsUrl } = await resolveRumbleVodFromVid(vid);
+            if (mp4Url) {
+              await pool.query(
+                `UPDATE rumble_vods SET vod_mp4_url=$3, vod_hls_url=$4, vod_resolved_at=NOW()
+                 WHERE streamer_id=$1 AND video_id=$2`,
+                [streamerId, vid, mp4Url, hlsUrl]
+              );
+              console.log(`[ingest-vods] resolved ${slug}/${vid} → mp4`);
+            }
+          } catch (e: any) {
+            // VOD pas encore prête (live qui vient juste de se terminer) — sera retry au prochain ingest
+          }
+        })();
+      }
+    }
+
+    return res.json({ ok: true, slug, streamerId, totalReceived: items.length, inserted, resolveScheduled });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+  }
+});
+
 /**
  * POST /admin/rumble/announce-follows
  * Body: { slug: string, followers: number }
