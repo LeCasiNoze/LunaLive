@@ -356,48 +356,33 @@ async function rotateRadioTarget(io?: IOServer) {
   // de la précédente source qui n'est plus polled)
   if (radioIsLive && currentUsername) return;
 
-  // Cherche un autre streamer Rumble live qui N'A PAS de chaîne LunaLive
-  // dédiée (pas d'entrée dans rumble_accounts). Les streamers qui ont leur
-  // propre chaîne LunaLive (lecasinoze→LeCasiNoze, fabiozsis→fabiozsis...)
-  // n'ont rien à faire en radio — les viewers les suivent directement.
-  // La radio rotate uniquement parmi les streamers SANS chaîne LunaLive.
-  const cand = await pool.query(
-    `SELECT s.id, s.slug, s.rumble_username, ri.viewers_count
-     FROM streamers s
-     LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
-     WHERE s.id <> $1
-       AND s.platform = 'rumble'
-       AND s.rumble_username IS NOT NULL
-       AND ri.is_live = true
-       AND NOT EXISTS (
-         SELECT 1 FROM rumble_accounts ra
-         WHERE ra.assigned_to_streamer_id = s.id
-       )
-     ORDER BY COALESCE(ri.viewers_count, 0) DESC, s.id ASC
-     LIMIT 1`,
-    [RADIO_STREAMER_ID]
+  // La radio rotate parmi des créateurs Rumble externes curated (table
+  // rumble_radio_sources) — ekanos, vitapvpey, put4, etc. — qui ne sont PAS
+  // dans la table streamers. Stratégie : cycler à travers la liste à chaque
+  // tick où la source courante n'est pas live. Le poll suivant détermine si
+  // la nouvelle source est live ; sinon on rebascule encore une fois au tick
+  // d'après. Naturellement la radio finit sur quelqu'un de vraiment live.
+  void radioViewers;
+  const sources = await pool.query(
+    `SELECT username FROM rumble_radio_sources WHERE active = TRUE ORDER BY id ASC`
   );
-  const pick = cand.rows[0];
-  const newUsername = pick?.rumble_username || null;
+  if (sources.rows.length === 0) return;
+  const usernames: string[] = sources.rows.map((r: any) => String(r.username));
 
-  if (!newUsername) {
-    // Personne d'autre n'est live : on garde la source courante (peut revenir).
-    // Pas de log spammant à chaque tick.
-    return;
+  let nextIndex = 0;
+  if (currentUsername) {
+    const i = usernames.findIndex((u) => u.toLowerCase() === currentUsername.toLowerCase());
+    nextIndex = i >= 0 ? (i + 1) % usernames.length : 0;
   }
+  const newUsername = usernames[nextIndex];
+  if (!newUsername) return;
   if (newUsername.toLowerCase() === (currentUsername || "").toLowerCase()) return;
-
-  // Ne bascule que si le candidat a vraiment des viewers (>0) ou si la radio
-  // n'a aucune source. Évite les bascules vers un live "fantôme" (Rumble parfois
-  // retourne live=true quelques secondes après la fin réelle).
-  const candViewers = Number(pick?.viewers_count || 0);
-  if (currentUsername && candViewers === 0 && radioViewers === 0) return;
 
   await pool.query(
     `UPDATE streamers SET rumble_username = $1, updated_at = NOW() WHERE id = $2`,
     [newUsername, RADIO_STREAMER_ID]
   );
-  console.log(`[rumble-poller] radio rotation: ${currentUsername || "(aucun)"} → ${newUsername} (slug=${pick.slug}, viewers=${candViewers})`);
+  console.log(`[rumble-poller] radio rotation: ${currentUsername || "(aucun)"} → ${newUsername}`);
 
   void pollOneScraped(RADIO_STREAMER_ID, RADIO_SLUG, newUsername, io);
 }
