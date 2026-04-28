@@ -403,13 +403,13 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
     if (!socket || sharing) return;
     let stream: MediaStream;
     try {
-      // Lock 720p 60 fps. H264 NVENC sur GPU NVIDIA gère sans broncher.
-      // displaySurface "monitor" demande à Chrome de privilégier la capture
-      // d'écran complet plutôt qu'un tab (qui throttle souvent à 30 fps).
+      // Capture 60 fps native res (souvent 1080p). On ne contraint plus la
+      // taille — Chrome ignore les caps sur monitor capture en 147+ et NVENC
+      // gère 1080p60 sans souci. Le sender encoder downscale dynamiquement
+      // si la BP devient insuffisante (degradationPreference: maintain-framerate).
+      // displaySurface "monitor" suggère "écran complet" dans le picker.
       stream = await (navigator.mediaDevices as any).getDisplayMedia({
         video: {
-          width:  { ideal: 1280, max: 1280 },
-          height: { ideal: 720,  max: 720  },
           frameRate: { ideal: 60, max: 60 },
           cursor: "always",
           // @ts-ignore — Chrome 107+ : suggère "écran" plutôt que "fenêtre"/"onglet"
@@ -510,9 +510,13 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
       const iceServers = await ensureIceServers();
       const pc = new RTCPeerConnection({ iceServers });
       peersRef.current.set(viewerId, pc);
-      // Screen 720p60 H264 hardware = ~3.5 Mbps pour rester très net même en
-      // animations 60 fps natives. priority:"high" indique au scheduler WebRTC
-      // de privilégier ce flux par rapport à la cam si congestion.
+      // Screen 1080p60 H264 NVENC hardware = ~6 Mbps pour rester sharp en
+      // animations 60 fps natives + textes UI lisibles. Stats user montrent
+      // 9.7 Mbps dispo (mesure GCC Chrome) → 6 Mbps laisse 38% de marge.
+      // Cloudflare TURN free tier = 1 TB/mois → un stream 8h/jour à 6 Mbps =
+      // ~648 GB/mois, sous le seuil. Aucun coût à craindre.
+      // priority:"high" : le scheduler WebRTC favorise ce flux sur la cam si
+      // congestion → le screen est le contenu principal du stream.
       localStream.getTracks().forEach(t => {
         if (t.kind === "video") { try { (t as any).contentHint = "motion"; } catch {} }
         const sender = pc.addTrack(t, localStream);
@@ -520,7 +524,7 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
           try {
             const params = sender.getParameters();
             if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-            params.encodings[0].maxBitrate = 3_500_000; // 3.5 Mbps (720p60)
+            params.encodings[0].maxBitrate = 6_000_000; // 6 Mbps (1080p60)
             params.encodings[0].maxFramerate = 60;
             (params.encodings[0] as any).priority = "high";
             params.degradationPreference = "maintain-framerate";
