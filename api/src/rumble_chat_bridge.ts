@@ -69,13 +69,17 @@ function addOwnRequestId(id: string) {
  * Retourne le message renvoyé par Rumble (avec id, user, etc.) ou null.
  */
 export async function sendRumbleMessage(videoIdNumeric: string, text: string): Promise<{ id: string; userId: string } | null> {
+  console.log(`[rumble_chat] sendRumbleMessage start vid=${videoIdNumeric} textLen=${text?.length ?? 0}`);
   const session = await getRumbleBotSession();
   if (!hasRumbleBotSession(session)) {
     console.warn("[rumble_chat] sendRumbleMessage: no bot session");
     return null;
   }
   const trimmed = String(text || "").trim();
-  if (!trimmed) return null;
+  if (!trimmed) {
+    console.warn("[rumble_chat] sendRumbleMessage: empty text");
+    return null;
+  }
 
   // Rumble accepte ~200 caractères max (config.message_length_max=200 vu dans l'init SSE)
   const body = trimmed.slice(0, 200);
@@ -104,7 +108,9 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
     .join("; ");
 
   try {
+    console.log(`[rumble_chat] sendRumbleMessage getting cycletls...`);
     const cycle = await getCycleTLS();
+    console.log(`[rumble_chat] sendRumbleMessage got cycletls, posting to vid=${videoIdNumeric}`);
     const response = await cycle(`${RUMBLE_CHAT_HOST}/chat/api/chat/${encodeURIComponent(videoIdNumeric)}/message`, {
       body: payload,
       ja3: CHROME_JA3,
