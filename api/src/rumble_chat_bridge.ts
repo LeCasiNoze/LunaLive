@@ -79,7 +79,9 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
 
   // Rumble accepte ~200 caractères max (config.message_length_max=200 vu dans l'init SSE)
   const body = trimmed.slice(0, 200);
-  const requestId = randomBytes(24).toString("base64").slice(0, 43);
+  // request_id: base64 de 43 chars (format observe dans le browser working request).
+  // randomBytes(32) → 44 chars base64 (avec padding) → on slice à 43 + strip "=".
+  const requestId = randomBytes(32).toString("base64").replace(/=+$/, "").slice(0, 43);
   addOwnRequestId(requestId);
 
   const payload = JSON.stringify({
@@ -98,20 +100,29 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
       ja3: CHROME_JA3,
       userAgent: session.userAgent || "",
       headers: {
-        "cookie": session.cookie || "",
-        "content-type": "application/json",
         "accept": "*/*",
         "accept-language": "fr-FR,fr;q=0.9",
+        "cache-control": "no-cache",
+        "content-type": "application/json",
+        "cookie": session.cookie || "",
         "origin": "https://rumble.com",
+        "pragma": "no-cache",
         "referer": "https://rumble.com/",
+        "sec-ch-ua": '"Brave";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
         "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-site",
+        "sec-gpc": "1",
       },
     }, "post");
 
     const status = Number(response?.status || 0);
     const respBody: any = response?.body;
+    const respHeaders: any = response?.headers || {};
+    const serverHeader = String(respHeaders["Server"] || respHeaders["server"] || "");
+    const cfRay = String(respHeaders["Cf-Ray"] || respHeaders["cf-ray"] || "");
 
     if (status < 200 || status >= 300) {
       let snippet = "";
@@ -120,7 +131,7 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
           ? respBody.slice(0, 200)
           : (respBody == null ? "(no-body)" : JSON.stringify(respBody).slice(0, 200));
       } catch { snippet = "(unprintable)"; }
-      console.warn(`[rumble_chat] send http=${status} body=${snippet}`);
+      console.warn(`[rumble_chat] send http=${status} server=${serverHeader} cf-ray=${cfRay} content-length=${Buffer.byteLength(payload, "utf8")} body=${snippet}`);
       return null;
     }
 

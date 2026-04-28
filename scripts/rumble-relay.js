@@ -319,7 +319,8 @@ async function sendOneViaCycletls(vid, text) {
   const session = await getBotCookie();
   if (!session) return { ok: false, error: "no_cookie" };
   const cycle = await getCycleTLS();
-  const reqId = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64").slice(0, 43);
+  // request_id: base64 43 chars (format browser working request)
+  const reqId = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64").replace(/=+$/, "").slice(0, 43);
   const body = JSON.stringify({
     data: { request_id: reqId, message: { text }, rant: null, channel_id: null },
   });
@@ -327,31 +328,48 @@ async function sendOneViaCycletls(vid, text) {
     const r = await cycle(`https://web7.rumble.com/chat/api/chat/${encodeURIComponent(vid)}/message`, {
       body, ja3: CHROME_JA3, userAgent: session.userAgent,
       headers: {
-        cookie: session.cookie,
-        "content-type": "application/json",
-        accept: "*/*",
+        "accept": "*/*",
         "accept-language": "fr-FR,fr;q=0.9",
-        origin: "https://rumble.com",
-        referer: "https://rumble.com/",
+        "cache-control": "no-cache",
+        "content-type": "application/json",
+        "cookie": session.cookie,
+        "origin": "https://rumble.com",
+        "pragma": "no-cache",
+        "referer": "https://rumble.com/",
+        "sec-ch-ua": '"Brave";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
         "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-site",
+        "sec-gpc": "1",
       },
     }, "post");
     const status = Number(r?.status || 0);
+    const headers = r?.headers || {};
+    const serverHeader = String(headers.Server || headers.server || "");
+    const cfRay = String(headers["Cf-Ray"] || headers["cf-ray"] || "");
+    const respBody = typeof r?.body === "string" ? r.body.slice(0, 200) : "(no body)";
     if (status >= 200 && status < 300) return { ok: true };
-    return { ok: false, error: `http_${status}` };
+    console.log(`[relay-queue] send http=${status} server=${serverHeader} cf-ray=${cfRay} bodyLen=${Buffer.byteLength(body, "utf8")} resp=${respBody}`);
+    return { ok: false, error: `http_${status}_${serverHeader || "?"}` };
   } catch (e) {
     return { ok: false, error: String(e?.message || e).slice(0, 200) };
   }
 }
 
 // Cooldown 3s entre 2 messages sur la MÊME chaine (anti-spam Rumble).
-// Cocorum / RumchatActor utilisent le même intervalle.
 const lastSendByVid = new Map();
 const SEND_COOLDOWN_MS = 3_000;
 
+// Mutex : on ne lance qu'un seul sendQueueTick à la fois pour éviter
+// que 2 ticks parallèles tirent les mêmes items en attente et créent
+// des doublons côté Rumble (HTTP 409).
+let queueTickRunning = false;
+
 async function sendQueueTick() {
+  if (queueTickRunning) return;
+  queueTickRunning = true;
   try {
     const r = await fetch(`${API_BASE}/admin/rumble/send-queue?limit=10`, {
       headers: { "x-admin-key": ADMIN_KEY },
@@ -374,17 +392,24 @@ async function sendQueueTick() {
       lastSendByVid.set(vid, Date.now());
       const label = result.ok ? "OK" : `ERR=${result.error}`;
       console.log(`[relay-queue]   id=${item.id} vid=${vid} → ${label}`);
+      // 409 = duplicate côté Rumble : marque comme terminal (pas de retry inutile)
+      const isTerminal = result.ok || (result.error && result.error.startsWith("http_409"));
       await fetch(`${API_BASE}/admin/rumble/send-queue/${item.id}/result`, {
         method: "POST",
         headers: {
           "x-admin-key": ADMIN_KEY,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ ok: result.ok, error: result.error }),
+        body: JSON.stringify({
+          ok: result.ok || isTerminal,  // marque "done" même si 409 (Rumble a déjà reçu)
+          error: result.error,
+        }),
       }).catch(() => {});
     }
   } catch (e) {
     console.warn("[relay-queue] tick error", e?.message || e);
+  } finally {
+    queueTickRunning = false;
   }
 }
 
