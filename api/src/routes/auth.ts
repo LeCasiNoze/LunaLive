@@ -4,6 +4,8 @@ import { pool } from "../db.js";
 import { a } from "../utils/async.js";
 import { hashPassword, verifyPassword, signToken, requireAuth, getActiveSiteUserBan } from "../auth.js";
 import { sendVerifyCode } from "../utils/mailer.js";
+import { getClientIp } from "../utils/client_ip.js";
+import { verifyTurnstile } from "../utils/turnstile.js";
 
 export const authRouter = Router();
 
@@ -113,6 +115,12 @@ authRouter.post(
     if (!isValidEmail(email)) return res.status(400).json({ ok: false, error: "email_invalid" });
     if (password.length < 6) return res.status(400).json({ ok: false, error: "password_too_short" });
 
+    // Cloudflare Turnstile (anti-bot). No-op si TURNSTILE_SECRET_KEY n'est pas
+    // défini côté Render, donc safe à déployer avant configuration.
+    const turnstileToken = req.body.turnstileToken || req.body["cf-turnstile-response"];
+    const turnstileOk = await verifyTurnstile(req, turnstileToken);
+    if (!turnstileOk) return res.status(400).json({ ok: false, error: "turnstile_failed" });
+
     await pool.query(`DELETE FROM pending_registrations WHERE expires_at < NOW()`);
 
     const u1 = await pool.query(
@@ -138,7 +146,7 @@ authRouter.post(
       await pool.query(
         `INSERT INTO pending_registrations (username, email, password_hash, code_hash, expires_at, created_ip, ref_slug)
         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [username, email, passwordHash, codeHash, expiresAt, req.ip, refSlug]
+        [username, email, passwordHash, codeHash, expiresAt, getClientIp(req), refSlug]
       );
     } catch {
       return res.status(400).json({ ok: false, error: "already_pending" });
@@ -201,7 +209,7 @@ authRouter.post(
         `INSERT INTO users (username, email, email_verified, password_hash, role, rubis, created_ip, last_login_ip, last_login_at)
          VALUES ($1,$2,TRUE,$3,'viewer',0,$4,$4,NOW())
          RETURNING id`,
-        [p.username, p.email, p.password_hash, req.ip]
+        [p.username, p.email, p.password_hash, getClientIp(req)]
       );
     } catch {
       await pool.query(`DELETE FROM pending_registrations WHERE id=$1`, [p.id]);
@@ -311,7 +319,7 @@ authRouter.post(
     const ok = await verifyPassword(password, u.password_hash);
     if (!ok) return res.status(401).json({ ok: false, error: "bad_credentials" });
 
-    await pool.query(`UPDATE users SET last_login_at=NOW(), last_login_ip=$1 WHERE id=$2`, [req.ip, u.id]);
+    await pool.query(`UPDATE users SET last_login_at=NOW(), last_login_ip=$1 WHERE id=$2`, [getClientIp(req), u.id]);
 
     const ban = await getActiveSiteUserBan(Number(u.id));
     if (ban.banned) return res.status(403).json({ ok: false, error: "banned", until: ban.until });

@@ -398,7 +398,8 @@ export async function register(
   username: string,
   email: string,
   password: string,
-  ref?: string | null
+  ref?: string | null,
+  turnstileToken?: string | null
 ) {
   return j<{ ok: true; needsVerify: true }>("/auth/register", {
     method: "POST",
@@ -408,6 +409,7 @@ export async function register(
       email,
       password,
       ref: ref ? String(ref).trim() : null,
+      turnstileToken: turnstileToken || null,
     }),
   });
 }

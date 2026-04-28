@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { pool } from "./db.js";
 import { requireAuth } from "./auth.js";
+import { getClientIp } from "./utils/client_ip.js";
 
 const TZ = "Europe/Oslo";
 const HEARTBEAT_TTL_SECONDS = 45;
@@ -204,7 +205,7 @@ export function registerStatsRoutes(app: Express) {
     // viewer normal
     const viewerKey = user ? `u:${user.id}` : `a:${anonId}`;
     const ua = String(req.headers["user-agent"] || "").slice(0, 300) || null;
-    const ip = (req.ip || null) as any;
+    const ip = (getClientIp(req) || null) as any;
 
     // ✅ session active (TTL)
     await pool.query(

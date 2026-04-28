@@ -205,6 +205,9 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   const [err,      setErr]      = React.useState<string | null>(null);
   const [busy,     setBusy]     = React.useState(false);
   const [refSlug,  setRefSlug]  = React.useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = React.useState<string | null>(null);
+  const turnstileRef = React.useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
@@ -223,6 +226,58 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   React.useEffect(() => {
     if (!open || step !== "register_form") return;
     setRefSlug(readRefFromUrlAndPersist() || getPersistedRef());
+  }, [step, open]);
+
+  // Cloudflare Turnstile loader + widget render (only on register_form step)
+  React.useEffect(() => {
+    const siteKey = (import.meta as any).env?.VITE_TURNSTILE_SITE_KEY as string | undefined;
+    if (!siteKey) return; // Not configured → skip silently
+    if (!open || step !== "register_form") return;
+    let cancelled = false;
+
+    const ensureScript = () =>
+      new Promise<void>((resolve) => {
+        if ((window as any).turnstile) return resolve();
+        const existing = document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]');
+        if (existing) {
+          (existing as HTMLScriptElement).addEventListener("load", () => resolve());
+          return;
+        }
+        const s = document.createElement("script");
+        s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+        s.async = true;
+        s.defer = true;
+        s.onload = () => resolve();
+        document.head.appendChild(s);
+      });
+
+    (async () => {
+      await ensureScript();
+      if (cancelled) return;
+      const tw = (window as any).turnstile;
+      if (!tw || !turnstileRef.current) return;
+      // If a previous widget exists, reset it instead of re-rendering
+      if (turnstileWidgetIdRef.current) {
+        try {
+          tw.reset(turnstileWidgetIdRef.current);
+          return;
+        } catch {}
+      }
+      try {
+        turnstileWidgetIdRef.current = tw.render(turnstileRef.current, {
+          sitekey: siteKey,
+          callback: (token: string) => setTurnstileToken(token),
+          "error-callback": () => setTurnstileToken(null),
+          "expired-callback": () => setTurnstileToken(null),
+          theme: "dark",
+          size: "normal",
+        });
+      } catch {}
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [step, open]);
 
   // ✅ return null AVANT les hooks interdit — on le met après
@@ -253,7 +308,12 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       if (!isValidEmail(em)) throw new Error("Email invalide");
       if (password.length < 6) throw new Error("Mot de passe min 6 caractères");
       const ref = readRefFromUrlAndPersist() || refSlug || getPersistedRef();
-      const r = (await register(u, em, password, ref)) as unknown as RegisterResp;
+      // If Turnstile is configured but no token yet, ask user to wait/retry
+      const siteKey = (import.meta as any).env?.VITE_TURNSTILE_SITE_KEY as string | undefined;
+      if (siteKey && !turnstileToken) {
+        throw new Error("Vérification anti-bot en cours, réessaie dans 1 seconde");
+      }
+      const r = (await register(u, em, password, ref, turnstileToken)) as unknown as RegisterResp;
       if (r?.needsVerify) { setStep("register_code"); if (r.devCode) setCode(String(r.devCode)); return; }
       if (r?.ok === false && r.error) throw new Error(r.error);
       throw new Error("Réponse register invalide");
@@ -395,6 +455,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
               <input className="lm-input" type="password" value={password}
                 onChange={e => setPassword(e.target.value)} autoComplete="new-password" placeholder="min 6 caractères" />
             </LmField>
+            <div ref={turnstileRef} style={{ marginTop: 8, display: "flex", justifyContent: "center" }} />
             {err && <div className="lm-error">⚠️ {err}</div>}
             <div className="lm-footer">
               <button className="lm-btn-ghost" disabled={busy}

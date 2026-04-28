@@ -6,6 +6,7 @@ import { a } from "../utils/async.js";
 import { hashPassword, verifyPassword, requireAuth, signToken } from "../auth.js";
 import { sendVerifyCode } from "../utils/mailer.js";
 import { spendRubisTx } from "../wallet_engine.js";
+import { getClientIp } from "../utils/client_ip.js";
 
 export const accountActionsRouter = Router();
 
@@ -172,7 +173,7 @@ accountActionsRouter.post(
     await invalidatePreviousCodesByUser(userId, "rename");
 
     const code = genCode6();
-    await insertCode({ userId, email, kind: "rename", code, ip: req.ip, minutes: 15 });
+    await insertCode({ userId, email, kind: "rename", code, ip: getClientIp(req), minutes: 15 });
 
     const IS_DEV = (process.env.NODE_ENV || "development") !== "production";
     try {
@@ -313,7 +314,7 @@ accountActionsRouter.post(
     await invalidatePreviousCodesByUser(userId, "password");
 
     const code = genCode6();
-    await insertCode({ userId, email, kind: "password", code, ip: req.ip, minutes: 15 });
+    await insertCode({ userId, email, kind: "password", code, ip: getClientIp(req), minutes: 15 });
 
     const IS_DEV = (process.env.NODE_ENV || "development") !== "production";
     try {
@@ -386,7 +387,7 @@ accountActionsRouter.post(
     await invalidatePreviousCodesByEmail(email, "forgot");
 
     const code = genCode6();
-    await insertCode({ userId: Number(u.id), email: String(u.email), kind: "forgot", code, ip: req.ip, minutes: 15 });
+    await insertCode({ userId: Number(u.id), email: String(u.email), kind: "forgot", code, ip: getClientIp(req), minutes: 15 });
 
     try {
       await sendVerifyCode(String(u.email), code, 15);
