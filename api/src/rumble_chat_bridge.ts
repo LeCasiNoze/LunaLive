@@ -108,6 +108,40 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
     .join("; ");
 
   try {
+    // Node native fetch d'abord — capture body fiable, HTTP/2 supporté.
+    // Si Rumble bloque par TLS fingerprint, on retombera sur cycletls en fallback.
+    console.log(`[rumble_chat] sendRumbleMessage trying Node fetch first...`);
+    try {
+      const r = await fetch(`${RUMBLE_CHAT_HOST}/chat/api/chat/${encodeURIComponent(videoIdNumeric)}/message`, {
+        method: "POST",
+        headers: {
+          "accept": "*/*",
+          "accept-language": "fr-FR,fr;q=0.9",
+          "cache-control": "no-cache",
+          "content-type": "application/json",
+          "cookie": cleanCookie,
+          "origin": "https://rumble.com",
+          "pragma": "no-cache",
+          "referer": "https://rumble.com/",
+          "user-agent": session.userAgent || "",
+        },
+        body: payload,
+      });
+      const respText = await r.text();
+      console.log(`[rumble_chat] Node fetch http=${r.status} server=${r.headers.get("server")} cf-ray=${r.headers.get("cf-ray")} body=${respText.slice(0, 400)}`);
+      if (r.status >= 200 && r.status < 300) {
+        let j: any = null;
+        try { j = JSON.parse(respText); } catch {}
+        const id = j?.data?.id ? String(j.data.id) : "";
+        const userId = j?.data?.user?.id ? String(j.data.user.id) : "";
+        return { id: id || `rumble_${Date.now()}`, userId };
+      }
+      // Non-2xx via Node fetch — retomber sur cycletls
+      console.log(`[rumble_chat] Node fetch non-2xx, falling back to cycletls`);
+    } catch (e: any) {
+      console.warn(`[rumble_chat] Node fetch error, falling back to cycletls`, e?.message || e);
+    }
+
     console.log(`[rumble_chat] sendRumbleMessage getting cycletls...`);
     const cycle = await getCycleTLS();
     console.log(`[rumble_chat] sendRumbleMessage got cycletls, posting to vid=${videoIdNumeric}`);
