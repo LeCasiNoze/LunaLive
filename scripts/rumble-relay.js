@@ -275,7 +275,10 @@ async function tick() {
 
 import { pathToFileURL } from "url";
 import { resolve as pathResolve } from "path";
-import pgPkg from "pg";
+
+// pg est installé dans api/node_modules — on importe depuis là
+const pgPath = pathToFileURL(pathResolve(root, "api/node_modules/pg/lib/index.js")).href;
+const pgPkg = (await import(pgPath).catch(() => import("pg"))).default || (await import(pgPath));
 
 let cycleTlsClient = null;
 async function getCycleTLS() {
