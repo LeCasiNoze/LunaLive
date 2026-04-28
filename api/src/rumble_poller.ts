@@ -352,7 +352,9 @@ async function rotateRadioTarget(io?: IOServer) {
   const radioViewers = Number(radio.viewers_count || 0);
 
   // Sticky : la source actuelle est encore live → keep
-  if (radioIsLive) return;
+  // (sauf si rumble_username=null, car alors is_live est juste un état figé
+  // de la précédente source qui n'est plus polled)
+  if (radioIsLive && currentUsername) return;
 
   // Cherche un autre streamer flagué radio_source actuellement live.
   // La radio ne pioche QUE dans la liste curated (radio_source=true), pas
