@@ -403,15 +403,17 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
     if (!socket || sharing) return;
     let stream: MediaStream;
     try {
-      // Lock 720p 60 fps. H264 NVENC géré sans souci sur GPU NVIDIA.
-      // (les flags selfBrowserSurface/surfaceSwitching ont causé des
-      // déconnexions websocket + screen zombie en Chrome 147 → retirés)
+      // Lock 720p 60 fps. H264 NVENC sur GPU NVIDIA gère sans broncher.
+      // displaySurface "monitor" demande à Chrome de privilégier la capture
+      // d'écran complet plutôt qu'un tab (qui throttle souvent à 30 fps).
       stream = await (navigator.mediaDevices as any).getDisplayMedia({
         video: {
           width:  { ideal: 1280, max: 1280 },
           height: { ideal: 720,  max: 720  },
           frameRate: { ideal: 60, max: 60 },
           cursor: "always",
+          // @ts-ignore — Chrome 107+ : suggère "écran" plutôt que "fenêtre"/"onglet"
+          displaySurface: "monitor",
         },
         audio: false,
       });
@@ -419,8 +421,37 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
       console.warn("[ScreenShare] getDisplayMedia rejected:", e);
       return;
     }
-    // L'utilisateur peut arrêter via la barre "Stop sharing" native du navigateur
-    stream.getVideoTracks()[0]?.addEventListener("ended", () => { stop(); });
+    const track = stream.getVideoTracks()[0];
+
+    // ✅ Force le frameRate APRÈS getDisplayMedia. Certaines plateformes
+    // ignorent le frameRate dans les contraintes initiales mais respectent
+    // applyConstraints. Si la source est un tab Chrome (slot HTML5 throttled),
+    // ça ne change rien — mais sur écran complet, ça unlock souvent les 60 fps.
+    if (track) {
+      try {
+        await track.applyConstraints({ frameRate: { ideal: 60, max: 60 } });
+      } catch {}
+      // Diag : log le type de source choisi par l'user (monitor/window/browser)
+      // Si "browser" (tab), 30 fps natif quasi garanti — l'user devrait choisir
+      // "Écran complet" dans le picker pour 60 fps.
+      try {
+        const settings = track.getSettings() as any;
+        console.log("[ScreenShare] capture settings:", {
+          displaySurface: settings.displaySurface,
+          frameRate: settings.frameRate,
+          width: settings.width,
+          height: settings.height,
+        });
+        if (settings.displaySurface === "browser") {
+          console.warn(
+            "[ScreenShare] ⚠️ Tu partages un ONGLET — Chrome throttle à 30 fps. " +
+            "Pour du 60 fps : stop, refais 'Démarrer partage' et choisis 'Écran complet'."
+          );
+        }
+      } catch {}
+      // L'utilisateur peut arrêter via la barre "Stop sharing" native du navigateur
+      track.addEventListener("ended", () => { stop(); });
+    }
 
     setLocalStream(stream);
     setSharing(true);
@@ -546,7 +577,15 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
   // → évite de fuite de référence interne, et le getter renvoie toujours la
   // Map à jour sans recréer le hook).
   const getPeers = React.useCallback(() => peersRef.current, []);
-  return { sharing, localStream, start, stop, getPeers };
+  // Settings live du track capture (displaySurface, frameRate effectif…)
+  const getCaptureSettings = React.useCallback(() => {
+    try {
+      const t = localStream?.getVideoTracks()[0];
+      if (!t) return null;
+      return t.getSettings() as { displaySurface?: string; frameRate?: number; width?: number; height?: number };
+    } catch { return null; }
+  }, [localStream]);
+  return { sharing, localStream, start, stop, getPeers, getCaptureSettings };
 }
 
 // ─── Screen share awareness (lightweight, no WebRTC) ─────────────────────────
@@ -1380,12 +1419,13 @@ function StatBadge({ label, value, sub, tone }: {
 }
 
 function RtcStatsPanel({
-  getCamPeers, getScreenPeers, isCamActive, isScreenActive,
+  getCamPeers, getScreenPeers, isCamActive, isScreenActive, getScreenCaptureSettings,
 }: {
   getCamPeers: () => Map<string, RTCPeerConnection>;
   getScreenPeers: () => Map<string, RTCPeerConnection>;
   isCamActive: boolean;
   isScreenActive: boolean;
+  getScreenCaptureSettings?: () => { displaySurface?: string; frameRate?: number; width?: number; height?: number } | null;
 }) {
   const peerList = React.useMemo(() => {
     const arr: Array<{ kind: "cam" | "screen"; getPeers: () => Map<string, RTCPeerConnection> }> = [];
@@ -1470,6 +1510,14 @@ function RtcStatsPanel({
         </div>
       ) : null}
       {stats.map((s) => {
+        // Pour le screen : récupère les settings du track de capture pour
+        // afficher la source réelle (monitor/window/browser) et le frameRate
+        // effectif côté capture (vs côté encoder). Si capture FPS < encoder
+        // attendu, le bottleneck est en amont (Chrome throttle ou source
+        // HTML5 30 fps natif).
+        const captureSettings = s.kind === "screen" && getScreenCaptureSettings ? getScreenCaptureSettings() : null;
+        const surfaceKind = captureSettings?.displaySurface;
+        const captureFps = typeof captureSettings?.frameRate === "number" ? captureSettings.frameRate : null;
         const fpsTone: "ok" | "warn" | "bad" = s.fpsAvg >= 25 ? "ok" : s.fpsAvg >= 15 ? "warn" : "bad";
         const lossTone: "ok" | "warn" | "bad" = s.packetsLostPct < 1 ? "ok" : s.packetsLostPct < 5 ? "warn" : "bad";
         const rttTone: "ok" | "warn" | "bad" = s.rttMs < 80 ? "ok" : s.rttMs < 200 ? "warn" : "bad";
@@ -1507,7 +1555,30 @@ function RtcStatsPanel({
               <StatBadge label="BP dispo" value={s.availableOutgoingKbps > 0 ? `${(s.availableOutgoingKbps / 1000).toFixed(2)} Mbps` : "—"}
                 sub={s.availableOutgoingKbps > 0 && s.bitrateUpKbps > 0 ? `taux util. ${((s.bitrateUpKbps / s.availableOutgoingKbps) * 100).toFixed(0)}%` : undefined}
                 tone="neutral" />
+              {captureFps != null ? (
+                <StatBadge
+                  label="FPS capture"
+                  value={`${Math.round(captureFps)}`}
+                  sub={surfaceKind ? `source: ${surfaceKind}` : undefined}
+                  tone={captureFps >= 50 ? "ok" : captureFps >= 25 ? "warn" : "bad"}
+                />
+              ) : null}
             </div>
+            {s.kind === "screen" && surfaceKind === "browser" ? (
+              <div style={{
+                fontSize: 11, color: "#fbbf24",
+                background: "rgba(245,158,11,.08)",
+                border: "1px solid rgba(245,158,11,.25)",
+                borderRadius: 6, padding: "6px 10px",
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                <span>⚠️</span>
+                <span>
+                  Tu partages un <b>onglet</b> — Chrome throttle à ~30 fps.
+                  Pour 60 fps : stop, redémarre le partage et choisis <b>"Écran complet"</b> dans le picker.
+                </span>
+              </div>
+            ) : null}
           </div>
         );
       })}
@@ -1612,7 +1683,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   // seulement, pas de WebRTC) — pour afficher le bon label de bouton sans payer
   // le coût d'un PeerConnection + décodage GPU pour chaque viewer du stream-control.
   // Exclusif : un seul partage actif en global (garanti côté serveur).
-  const { sharing: myScreenSharing, start: startScreenShare, stop: stopScreenShare, getPeers: getScreenPeers } =
+  const { sharing: myScreenSharing, start: startScreenShare, stop: stopScreenShare, getPeers: getScreenPeers, getCaptureSettings: getScreenCaptureSettings } =
     useScreenBroadcaster(socket, mySlug);
   const remoteScreenAware = useScreenAwareness(socket);
   // Quelqu'un d'autre partage actuellement (utile pour le bouton "Prendre la main")
@@ -1896,6 +1967,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
         getScreenPeers={getScreenPeers}
         isCamActive={myCamActive}
         isScreenActive={myScreenSharing}
+        getScreenCaptureSettings={getScreenCaptureSettings}
       />
 
       {/* ── Cams (en haut) ── */}
