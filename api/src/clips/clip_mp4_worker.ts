@@ -54,18 +54,27 @@ function safeName(s: string) {
  */
 type HlsSegment = { uri: string; duration: number };
 
-async function fetchHlsPlaylist(m3u8Url: string, timeoutMs = 8_000): Promise<{
+async function fetchHlsPlaylist(m3u8Url: string, timeoutMs = 15_000): Promise<{
   segments: HlsSegment[];
   targetDuration: number;
   mediaSequence: number;
   hasEndList: boolean;
   rawText: string;
 } | null> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    const r = await fetch(m3u8Url, { signal: ctrl.signal }).finally(() => clearTimeout(t));
-    if (!r.ok) return null;
+    const r = await fetch(m3u8Url, {
+      signal: ctrl.signal,
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0 Safari/537.36",
+        "accept": "application/vnd.apple.mpegurl,application/x-mpegurl,*/*",
+      },
+    }).finally(() => clearTimeout(t));
+    if (!r.ok) {
+      console.warn(`[clips-mp4] fetchHlsPlaylist HTTP=${r.status} url=${m3u8Url}`);
+      return null;
+    }
     const text = await r.text();
 
     const segments: HlsSegment[] = [];
@@ -102,9 +111,13 @@ async function fetchHlsPlaylist(m3u8Url: string, timeoutMs = 8_000): Promise<{
       }
     }
 
-    if (segments.length === 0) return null;
+    if (segments.length === 0) {
+      console.warn(`[clips-mp4] fetchHlsPlaylist parsed 0 segments from ${m3u8Url}`);
+      return null;
+    }
     return { segments, targetDuration, mediaSequence, hasEndList, rawText: text };
-  } catch {
+  } catch (e: any) {
+    console.warn(`[clips-mp4] fetchHlsPlaylist error url=${m3u8Url} err=${e?.message || e}`);
     return null;
   }
 }
@@ -280,39 +293,32 @@ async function renderAndUploadClip(clip: BotClipRow) {
 
   if (isRumbleLiveHls) {
     const liveStartTs = Number(clip.live_start_ts || 0);
-    if (liveStartTs > 0) {
-      try {
-        const prepared = await prepareRumbleClipPlaylist({
-          m3u8Url: vodUrl,
-          clipMomentSec: at,
-          pre,
-          post,
-          liveStartTs,
-          clipId: Number(clip.id),
-        });
-        if (prepared) {
-          inputUrl = prepared.localM3u8;
-          startSec = prepared.trimStartSec;
-          durSec = prepared.clipDurSec;
-          localM3u8ToCleanup = prepared.localM3u8;
-          console.log(
-            `[clips-mp4] rumble live HLS clip=${clip.id} ` +
-            `→ local m3u8 trim=${startSec.toFixed(2)}s dur=${durSec.toFixed(2)}s ` +
-            `${prepared.truncatedPre ? "(pre tronqué — DVR trop court)" : ""}`
-          );
-        } else {
-          console.warn(
-            `[clips-mp4] rumble live HLS clip=${clip.id} ` +
-            `prepareRumbleClipPlaylist failed, fallback to direct -ss (clip likely shifted)`
-          );
-        }
-      } catch (e: any) {
-        console.warn(
-          `[clips-mp4] rumble live HLS clip=${clip.id} ` +
-          `prepareRumbleClipPlaylist error: ${e?.message || e}`
-        );
-      }
+    if (liveStartTs <= 0) {
+      throw new Error("rumble_live_hls_missing_live_start_ts");
     }
+    const prepared = await prepareRumbleClipPlaylist({
+      m3u8Url: vodUrl,
+      clipMomentSec: at,
+      pre,
+      post,
+      liveStartTs,
+      clipId: Number(clip.id),
+    });
+    if (!prepared) {
+      // Pas de fallback silencieux : sans la m3u8 locale, ffmpeg avec -ss
+      // sur la live HLS ignore le seek et produit un clip bidon (= démarre
+      // à segment 1 de la playlist). On préfère une erreur explicite.
+      throw new Error("rumble_live_hls_prepare_failed");
+    }
+    inputUrl = prepared.localM3u8;
+    startSec = prepared.trimStartSec;
+    durSec = prepared.clipDurSec;
+    localM3u8ToCleanup = prepared.localM3u8;
+    console.log(
+      `[clips-mp4] rumble live HLS clip=${clip.id} ` +
+      `→ local m3u8 trim=${startSec.toFixed(2)}s dur=${durSec.toFixed(2)}s ` +
+      `${prepared.truncatedPre ? "(pre tronqué — DVR trop court)" : ""}`
+    );
   }
 
   // marge large (HLS)
