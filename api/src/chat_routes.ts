@@ -40,25 +40,17 @@ export function registerChatRoutes(app: Express) {
         return res.status(404).json({ ok: false, error: "streamer_not_found" });
       }
 
-      // Union de chat_messages (Luna users + bot) et rumble_chat_messages
-      // (messages du chat Rumble bridgés). Pour Rumble on n'a pas de user_id
-      // Luna réel → on utilise 0 et on préfixe l'id avec un offset négatif
-      // pour éviter les collisions d'ID côté front.
+      // chat_messages contient les messages Luna ET les messages Rumble bridgés
+      // (mirror via rumble_chat_bridge avec external_source='rumble'). Une seule
+      // source de vérité — pas besoin d'unionner avec rumble_chat_messages
+      // (ce qui causait des doublons : même msg avec ID différent).
       const r = await pool.query(
-        `(SELECT id::bigint AS id, user_id AS "userId", username, body,
-                 created_at AS "createdAt", 'luna'::text AS source
-          FROM chat_messages
-          WHERE streamer_id=$1 AND deleted_at IS NULL
-          ORDER BY created_at DESC
-          LIMIT $2)
-         UNION ALL
-         (SELECT (-id)::bigint AS id, 0 AS "userId", username, body,
-                 created_at AS "createdAt", 'rumble'::text AS source
-          FROM rumble_chat_messages
-          WHERE streamer_id=$1
-          ORDER BY created_at DESC
-          LIMIT $2)
-         ORDER BY "createdAt" DESC
+        `SELECT id::bigint AS id, user_id AS "userId", username, body,
+                created_at AS "createdAt",
+                CASE WHEN external_source='rumble' THEN 'rumble' ELSE 'luna' END AS source
+         FROM chat_messages
+         WHERE streamer_id=$1 AND deleted_at IS NULL
+         ORDER BY created_at DESC
          LIMIT $2`,
         [streamerId, limit]
       );
