@@ -3,8 +3,34 @@ import { pool } from "./db.js";
 import webpush from "web-push";
 import { FABIO_STREAMER_ID, FABIO_NOTIF_CHANNEL_ID, FABIO_ROLE_NOTIF_STREAM } from "./discord/constants.js";
 
-// Cooldown anti-doublons Discord : évite le double-fire dlive_poller + rumble_poller
-const fabioDiscordNotifLastSent = new Map<number, number>();
+// Cooldown Discord persistant en DB (colonne streamers.discord_notif_last_sent_at).
+// Survit aux redeploys et bloque les fausses transitions offline→online des pollers.
+// Configurable via env DISCORD_NOTIF_COOLDOWN_MIN, default 120 min (2h).
+function getDiscordNotifCooldownMin(): number {
+  const raw = Number(process.env.DISCORD_NOTIF_COOLDOWN_MIN);
+  if (!Number.isFinite(raw) || raw <= 0) return 120;
+  return Math.max(1, Math.floor(raw));
+}
+
+/**
+ * Tente de "claim" le slot de notification pour un streamer de façon atomique.
+ * Renvoie true si la notif peut être envoyée (et marque le timestamp), false sinon.
+ */
+async function claimDiscordNotifSlot(streamerId: number): Promise<boolean> {
+  const cooldownMin = getDiscordNotifCooldownMin();
+  const r = await pool.query(
+    `UPDATE streamers
+     SET discord_notif_last_sent_at = NOW()
+     WHERE id = $1
+       AND (
+         discord_notif_last_sent_at IS NULL
+         OR discord_notif_last_sent_at < NOW() - ($2::int * INTERVAL '1 minute')
+       )
+     RETURNING 1`,
+    [streamerId, cooldownMin]
+  );
+  return (r.rowCount ?? 0) > 0;
+}
 
 let vapidReady = false;
 
@@ -79,13 +105,14 @@ export async function notifyFollowersGoLive(io: IOServer | undefined, streamerId
 
   // ─── Discord notif Fabiozsis (indépendant des followers LunaLive) ───────────
   if (streamerId === FABIO_STREAMER_ID) {
-    // Cooldown 3 min pour éviter le double-fire dlive_poller + rumble_poller
-    const now = Date.now();
-    const lastSent = fabioDiscordNotifLastSent.get(streamerId) ?? 0;
-    if (now - lastSent < 3 * 60 * 1000) {
-      console.log("[notify_go_live] Fabiozsis Discord notif skipped (cooldown)");
+    // Cooldown persistant en DB (UPDATE atomique). Si le slot n'est pas claim,
+    // une autre source (autre poller / instance / redeploy récent) a déjà notifié.
+    const claimed = await claimDiscordNotifSlot(streamerId);
+    if (!claimed) {
+      console.log(
+        `[notify_go_live] Fabiozsis Discord notif skipped (cooldown ${getDiscordNotifCooldownMin()}min)`
+      );
     } else {
-      fabioDiscordNotifLastSent.set(streamerId, now);
       const discordClient = (global as any).discordClient;
       if (discordClient) {
         try {
