@@ -354,7 +354,10 @@ async function rotateRadioTarget(io?: IOServer) {
   // Sticky : la source actuelle est encore live → keep
   if (radioIsLive) return;
 
-  // Cherche un autre streamer Rumble live (exclut la radio)
+  // Cherche un autre streamer flagué radio_source actuellement live.
+  // La radio ne pioche QUE dans la liste curated (radio_source=true), pas
+  // dans tous les Rumble live (sinon on attrape des chaines individuelles
+  // comme lhasardcasin/lesbarjotsducasino qui n'ont rien à faire en radio).
   const cand = await pool.query(
     `SELECT s.id, s.slug, s.rumble_username, ra.username AS api_username,
             ri.viewers_count
@@ -362,6 +365,7 @@ async function rotateRadioTarget(io?: IOServer) {
      LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
      LEFT JOIN rumble_accounts ra ON ra.assigned_to_streamer_id = s.id
      WHERE s.id <> $1
+       AND s.radio_source = true
        AND ri.is_live = true
      ORDER BY COALESCE(ri.viewers_count, 0) DESC, s.id ASC
      LIMIT 1`,

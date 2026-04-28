@@ -99,6 +99,7 @@ import { mig089_tiktok_outreach_config } from "./mig089_tiktok_outreach_config.j
 import { mig090_calls_drop_fk } from "./mig090_calls_drop_fk.js";
 import { mig091_rumble_send_queue } from "./mig091_rumble_send_queue.js";
 import { mig092_discord_notif_cooldown } from "./mig092_discord_notif_cooldown.js";
+import { mig094_streamers_radio_source } from "./mig094_streamers_radio_source.js";
 import { mig093_rumble_followers_count } from "./mig093_rumble_followers_count.js";
 
 // Rumble migrations
@@ -219,6 +220,7 @@ export async function migrateAll(pool: Pool) {
   await mig091_rumble_send_queue(pool);
   await mig092_discord_notif_cooldown(pool);
   await mig093_rumble_followers_count(pool);
+  await mig094_streamers_radio_source(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);
