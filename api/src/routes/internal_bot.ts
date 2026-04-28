@@ -8,6 +8,30 @@ import { sendRumbleMessage } from "../rumble_chat_bridge.js";
 
 export const internalBotRouter = express.Router();
 
+// ─── Dédoublonnage central des envois bot ────────────────────────────────────
+// Plusieurs sources peuvent appeler /internal/bot/chat/send pour le même
+// (streamerId, body) en quasi-simultané : multi-instance bot, redeploys qui
+// se chevauchent, etc. Sans cette garde, le bot écrit 2 fois la même phrase
+// dans chat_messages (et donc dans Luna chat + mirror Rumble) à chaque commande.
+const BOT_SEND_DEDUP_MS = 10_000;
+const recentBotSends = new Map<string, number>();
+function botSendDedupKey(streamerId: number, body: string): string {
+  return `${streamerId}|${body.trim().slice(0, 200)}`;
+}
+function shouldSkipBotSend(key: string): boolean {
+  const now = Date.now();
+  const last = recentBotSends.get(key) ?? 0;
+  if (now - last < BOT_SEND_DEDUP_MS) return true;
+  recentBotSends.set(key, now);
+  if (recentBotSends.size > 500) {
+    const cutoff = now - BOT_SEND_DEDUP_MS * 2;
+    for (const [k, ts] of recentBotSends) {
+      if (ts < cutoff) recentBotSends.delete(k);
+    }
+  }
+  return false;
+}
+
 // --------------------  
 // 1) ✅ Auto clip creation (force 75/15, ignore external durations)
 // --------------------  
@@ -133,6 +157,14 @@ internalBotRouter.post(
 
     if (!streamerId || !messageText) {
       return res.status(400).json({ ok: false, error: "streamerId and body required" });
+    }
+
+    // ✅ Dédoublonnage : bloque les envois identiques dans une fenêtre de 10s
+    // (couvre le double-fire des dispatch bot Luna + Rumble + multi-instances).
+    const dedupKey = botSendDedupKey(streamerId, messageText);
+    if (shouldSkipBotSend(dedupKey)) {
+      console.log(`[internal_bot] chat/send skipped (duplicate within ${BOT_SEND_DEDUP_MS}ms) streamerId=${streamerId} body=${messageText.slice(0, 60)}`);
+      return res.json({ ok: true, dedup: true });
     }
 
     // Récupérer le streamer

@@ -65,6 +65,32 @@ function addOwnRequestId(id: string) {
 }
 
 /**
+ * Dédoublonnage central des envois bot vers Rumble.
+ * Plusieurs sources peuvent appeler sendRumbleMessage simultanément (mirror
+ * depuis /internal/bot/chat/send + handleCallsCommand + bridge direct), et
+ * plusieurs instances de bot peuvent disposer du même message. Ici on bloque
+ * toute répétition d'un même (videoId, texte) dans une fenêtre courte.
+ */
+const RUMBLE_SEND_DEDUP_MS = 10_000;
+const recentRumbleSends = new Map<string, number>();
+function rumbleSendDedupKey(videoId: string, text: string): string {
+  return `${videoId}|${text.trim().slice(0, 200)}`;
+}
+function shouldSkipRumbleSend(key: string): boolean {
+  const now = Date.now();
+  const last = recentRumbleSends.get(key) ?? 0;
+  if (now - last < RUMBLE_SEND_DEDUP_MS) return true;
+  recentRumbleSends.set(key, now);
+  if (recentRumbleSends.size > 500) {
+    const cutoff = now - RUMBLE_SEND_DEDUP_MS * 2;
+    for (const [k, ts] of recentRumbleSends) {
+      if (ts < cutoff) recentRumbleSends.delete(k);
+    }
+  }
+  return false;
+}
+
+/**
  * Envoie un message dans le chat Rumble d'un live donné.
  * Retourne le message renvoyé par Rumble (avec id, user, etc.) ou null.
  */
@@ -83,6 +109,15 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
 
   // Rumble accepte ~200 caractères max (config.message_length_max=200 vu dans l'init SSE)
   const body = trimmed.slice(0, 200);
+
+  // ✅ Dédoublonnage : bloque les envois identiques dans une fenêtre de 10s
+  // pour neutraliser les chemins concurrents (mirror /internal/bot/chat/send +
+  // handleCallsCommand + multi-instances bot, etc.).
+  const dedupKey = rumbleSendDedupKey(videoIdNumeric, body);
+  if (shouldSkipRumbleSend(dedupKey)) {
+    console.log(`[rumble_chat] sendRumbleMessage skipped (duplicate within ${RUMBLE_SEND_DEDUP_MS}ms) vid=${videoIdNumeric} body=${body.slice(0, 60)}`);
+    return null;
+  }
   // request_id: base64 de 43 chars (format observe dans le browser working request).
   // randomBytes(32) → 44 chars base64 (avec padding) → on slice à 43 + strip "=".
   const requestId = randomBytes(32).toString("base64").replace(/=+$/, "").slice(0, 43);
