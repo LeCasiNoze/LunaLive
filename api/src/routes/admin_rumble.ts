@@ -466,6 +466,113 @@ adminRumbleRouter.post("/admin/rumble/backfill-vods", requireAdminKey, async (re
  * le pipeline cycletls + cookies sans attendre qu'un live LunaLive démarre.
  */
 /**
+ * POST /admin/rumble/announce-follows
+ * Body: { slug: string, followers: number }
+ * Le relay scrape la page Rumble du streamer et envoie son nombre de followers.
+ * On compare au stocké, calcule le delta, et si delta > 0 et stream live :
+ *  - envoie un message bot dans le chat Rumble ("+N follow GG !")
+ *  - injecte le même message dans le chat Luna (broadcast socket)
+ * Met à jour le compteur en DB pour le tick suivant.
+ */
+adminRumbleRouter.post("/admin/rumble/announce-follows", requireAdminKey, async (req, res) => {
+  try {
+    const slug = String(req.body?.slug || "").trim().toLowerCase();
+    const followers = Number(req.body?.followers);
+    if (!slug || !Number.isFinite(followers) || followers < 0) {
+      return res.status(400).json({ ok: false, error: "slug_and_followers_required" });
+    }
+
+    const sm = await pool.query(
+      `SELECT s.id AS streamer_id, s.slug, ri.followers_count, ri.is_live, ri.live_video_id_numeric
+       FROM streamers s
+       LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+       WHERE lower(s.slug) = lower($1) LIMIT 1`,
+      [slug]
+    );
+    const row = sm.rows[0];
+    if (!row) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+
+    const streamerId = Number(row.streamer_id);
+    const previous = row.followers_count != null ? Number(row.followers_count) : null;
+    const delta = previous != null ? followers - previous : 0;
+    const isLive = !!row.is_live;
+    const vid = row.live_video_id_numeric ? String(row.live_video_id_numeric) : null;
+
+    // Persiste le nouveau count
+    await pool.query(
+      `UPDATE streamer_rumble_info
+       SET followers_count = $1, followers_updated_at = NOW(), updated_at = NOW()
+       WHERE streamer_id = $2`,
+      [Math.floor(followers), streamerId]
+    );
+
+    // Annonce uniquement si delta > 0 et stream live (sinon spam offline)
+    let announced = false;
+    if (previous != null && delta > 0 && isLive) {
+      const text = delta === 1
+        ? `💚 +1 follow GG !`
+        : `💚 +${delta} follows GG !`;
+
+      // Envoi sur Rumble
+      if (vid) {
+        sendRumbleMessage(vid, text).catch((e: any) =>
+          console.warn("[announce-follows] sendRumble error", e?.message || e)
+        );
+      }
+
+      // Injection dans Luna chat (en tant que LunaBot)
+      try {
+        const botUsername = String(process.env.BOT_USERNAME || "LunaBot").trim();
+        const botUserRes = await pool.query(
+          `SELECT id FROM users WHERE lower(username) = lower($1) LIMIT 1`,
+          [botUsername]
+        );
+        const botUserId = Number(botUserRes.rows?.[0]?.id || 0);
+        if (botUserId) {
+          const ins = await pool.query(
+            `INSERT INTO chat_messages (streamer_id, user_id, username, body, created_at)
+             VALUES ($1, $2, $3, $4, NOW())
+             RETURNING id, created_at AS "createdAt"`,
+            [streamerId, botUserId, botUsername, text]
+          );
+          const msgRow = ins.rows?.[0];
+          const io = req.app.locals.io;
+          if (io && msgRow) {
+            const payload = {
+              id: Number(msgRow.id),
+              userId: botUserId,
+              username: botUsername,
+              body: text,
+              createdAt: new Date(msgRow.createdAt).toISOString(),
+              cosmetics: null,
+              isBot: true,
+            };
+            io.to(`chat:${row.slug}:public`).emit("chat:message", payload);
+            io.to(`chat:${row.slug}:popup`).emit("chat:message", payload);
+          }
+        }
+      } catch (e: any) {
+        console.warn("[announce-follows] inject Luna error", e?.message || e);
+      }
+      announced = true;
+    }
+
+    return res.json({
+      ok: true,
+      slug,
+      streamerId,
+      previous,
+      current: Math.floor(followers),
+      delta,
+      isLive,
+      announced,
+    });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+  }
+});
+
+/**
  * GET /admin/rumble/probe?vid=XXX&user=YYY
  * Sonde exhaustive depuis Render des endpoints Rumble pour découvrir
  * ce qui est accessible (slug discovery, viewer info, chat init...).

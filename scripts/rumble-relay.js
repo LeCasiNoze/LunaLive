@@ -181,6 +181,70 @@ async function findLiveSlug(username, html) {
   return null;
 }
 
+/**
+ * Extrait le nombre de followers depuis la page principale `/user/{name}` (HTML)
+ * ou la page `/c/{name}`. Patterns courants observés sur Rumble :
+ *   - data-followers="N"
+ *   - "follower_count":N
+ *   - <span class="...listing-header--followers...">N follower(s)</span>
+ *   - <div class="channel-header--followers">N Followers</div>
+ */
+async function fetchFollowersCount(username) {
+  for (const path of [`/user/${encodeURIComponent(username)}`, `/c/${encodeURIComponent(username)}`]) {
+    try {
+      const r = await fetch(`https://rumble.com${path}`, {
+        headers: {
+          "user-agent": UA,
+          "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "accept-language": "fr-FR,fr;q=0.9",
+        },
+      });
+      if (!r.ok) continue;
+      const html = await r.text();
+      for (const re of [
+        /data-followers="(\d+)"/,
+        /"follower_count"\s*:\s*(\d+)/,
+        /"followers_count"\s*:\s*(\d+)/,
+        /channel-header--followers[^>]*>\s*([\d,\s]+)\s*Follower/i,
+        /listing-header--followers[^>]*>\s*([\d,\s]+)\s*Follower/i,
+        /([\d,]+)\s+Followers/i,
+      ]) {
+        const m = html.match(re);
+        if (m && m[1]) {
+          const n = Number(String(m[1]).replace(/[^\d]/g, ""));
+          if (Number.isFinite(n) && n >= 0) return n;
+        }
+      }
+    } catch { /* try next path */ }
+  }
+  return null;
+}
+
+/** Push le followers count au backend (qui gère le delta + annonce chat). */
+async function pushFollowersCount(slug, followers) {
+  if (typeof followers !== "number" || !Number.isFinite(followers)) return;
+  try {
+    const r = await fetch(`${API_BASE}/admin/rumble/announce-follows`, {
+      method: "POST",
+      headers: {
+        "x-admin-key": ADMIN_KEY,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ slug, followers }),
+    });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) {
+      console.warn(`[relay-follows]   push ${slug} failed http=${r.status}`, j?.error || "");
+      return;
+    }
+    if (j?.delta && j.delta > 0 && j.announced) {
+      console.log(`[relay-follows]   ${slug}: +${j.delta} follow(s) annoncé`);
+    }
+  } catch (e) {
+    console.warn(`[relay-follows]   ${slug} error`, e?.message || e);
+  }
+}
+
 /** Push le videoId au backend. Optionnel: viewer count. */
 async function pushLiveVideo(slug, vSlug, viewers) {
   const r = await fetch(`${API_BASE}/admin/rumble/set-live`, {
@@ -277,6 +341,13 @@ async function tick() {
     console.log(`[relay]   ${username}: LIVE — slug=${live.vSlug} vid=${live.vidNumeric || "?"} viewers=${live.viewers ?? "?"}`);
     const ok = await pushLiveVideo(s.slug, live.vSlug, live.viewers);
     if (ok) console.log(`[relay]   ${username}: pushed ${live.vSlug} ✓`);
+
+    // Followers count (delta detection + annonce "+N follow GG !" côté API)
+    const followers = await fetchFollowersCount(username);
+    if (typeof followers === "number") {
+      console.log(`[relay]   ${username}: followers=${followers}`);
+      await pushFollowersCount(s.slug, followers);
+    }
   }
 }
 
