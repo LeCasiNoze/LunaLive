@@ -456,6 +456,84 @@ adminRumbleRouter.post("/admin/rumble/backfill-vods", requireAdminKey, async (re
  * Envoie un message de test dans un chat Rumble via le bot. Utile pour valider
  * le pipeline cycletls + cookies sans attendre qu'un live LunaLive démarre.
  */
+/**
+ * GET /admin/rumble/probe?vid=XXX&user=YYY
+ * Sonde exhaustive depuis Render des endpoints Rumble pour découvrir
+ * ce qui est accessible (slug discovery, viewer info, chat init...).
+ * Tente d'abord avec session bot, puis en anonyme.
+ */
+adminRumbleRouter.get("/admin/rumble/probe", requireAdminKey, async (req, res) => {
+  const VID = String(req.query.vid || "434889858");
+  const USER = String(req.query.user || "fabiozsis");
+  const session = await getRumbleBotSession();
+  const cookie = (() => {
+    if (!hasRumbleBotSession(session)) return "";
+    return String(session.cookie || "")
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => s && !/^cf_clearance=/i.test(s) && !/^__cf_bm=/i.test(s))
+      .join("; ");
+  })();
+  const ua = session?.userAgent ||
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+  type Result = { label: string; url: string; status: number; server: string; cf: string; bodyLen: number; snippet: string; err: string };
+  const results: Result[] = [];
+
+  async function probe(label: string, url: string, opts: any = {}) {
+    const headers: any = {
+      "user-agent": ua,
+      accept: opts.accept || "*/*",
+      "accept-language": "en-US,en;q=0.9",
+      referer: opts.referer || "https://rumble.com/",
+      ...(opts.headers || {}),
+    };
+    if (opts.auth !== false && cookie) headers.cookie = cookie;
+    let status = -1, server = "", cf = "", bodyLen = 0, snippet = "", err = "";
+    try {
+      const r = await fetch(url, { method: opts.method || "GET", headers, body: opts.body, redirect: "manual" });
+      status = r.status;
+      server = r.headers.get("server") || "";
+      cf = r.headers.get("cf-ray") || r.headers.get("cf-mitigated") || "";
+      const text = await r.text();
+      bodyLen = text.length;
+      snippet = text.slice(0, 400).replace(/\s+/g, " ").replace(/cf_clearance=[^;\s]+/g, "[cf]").replace(/u_s=[^;\s]+/g, "[us]");
+    } catch (e: any) { err = e?.message || String(e); }
+    results.push({ label, url, status, server, cf, bodyLen, snippet, err });
+  }
+
+  // A. Slug / live discovery alternatives
+  await probe("page:user/{name}/live", `https://rumble.com/user/${USER}/live`);
+  await probe("page:c/{name}/livestreams", `https://rumble.com/c/${USER}/livestreams`);
+  await probe("page:user/{name}", `https://rumble.com/user/${USER}`);
+  await probe("page:home", `https://rumble.com/`);
+  await probe("page:browse/live", `https://rumble.com/browse/live`);
+  await probe("page:search", `https://rumble.com/search/all?q=${USER}`);
+  // B. JSON / RPC
+  await probe("svc:user.is_live", `https://rumble.com/service.php?name=user.is_live&user=${USER}`, { headers: { accept: "application/json" } });
+  await probe("svc:user.subscribed", `https://rumble.com/service.php?name=user.subscribed`, { headers: { accept: "application/json" } });
+  await probe("embedJS:u3", `https://rumble.com/embedJS/u3/?v=${VID}`, { headers: { accept: "application/json" } });
+  // C. Chat init / viewer info
+  await probe("chat:init", `https://web7.rumble.com/chat/api/chat/${VID}/init`, { headers: { accept: "application/json" } });
+  await probe("chat:info", `https://web7.rumble.com/chat/api/chat/${VID}/info`, { headers: { accept: "application/json" } });
+  await probe("chat:users", `https://web7.rumble.com/chat/api/chat/${VID}/users`, { headers: { accept: "application/json" } });
+  await probe("chat:viewers", `https://web7.rumble.com/chat/api/chat/${VID}/viewers`, { headers: { accept: "application/json" } });
+  // D. Live state / viewer count
+  await probe("page:v{vid}.html", `https://rumble.com/v${VID}.html`);
+  await probe("api:Live.Watching", `https://rumble.com/api/Live.Watching?video_id=${VID}`, { headers: { accept: "application/json" } });
+  await probe("api:Live.Watching alt", `https://rumble.com/-/api/Live.Watching?video_id=${VID}`, { headers: { accept: "application/json" } });
+  // E. Account
+  await probe("page:account", `https://rumble.com/account`);
+  await probe("api:User.GetMe", `https://rumble.com/api/User.GetMe`, { headers: { accept: "application/json" } });
+  await probe("api:user/get-me", `https://rumble.com/account/api/user`, { headers: { accept: "application/json" } });
+  // F. Anonymous baselines
+  await probe("ANON:user/{name}/live", `https://rumble.com/user/${USER}/live`, { auth: false });
+  await probe("ANON:embedJS", `https://rumble.com/embedJS/u3/?v=${VID}`, { auth: false, headers: { accept: "application/json" } });
+  await probe("ANON:chat/init", `https://web7.rumble.com/chat/api/chat/${VID}/init`, { auth: false, headers: { accept: "application/json" } });
+
+  return res.json({ vid: VID, user: USER, hasCookie: !!cookie, cookieLen: cookie.length, results });
+});
+
 adminRumbleRouter.post("/admin/rumble/send-test", requireAdminKey, async (req, res) => {
   try {
     const { videoIdNumeric, text } = req.body ?? {};
