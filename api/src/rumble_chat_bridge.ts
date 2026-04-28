@@ -128,11 +128,19 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
       },
     }, "post");
 
-    const status = Number(response?.status || 0);
-    const respBody: any = response?.body;
-    const respHeaders: any = response?.headers || {};
-    const serverHeader = String(respHeaders["Server"] || respHeaders["server"] || "");
-    const cfRay = String(respHeaders["Cf-Ray"] || respHeaders["cf-ray"] || "");
+    let status = 0;
+    let respBody: any = null;
+    let serverHeader = "";
+    let cfRay = "";
+    try {
+      status = Number((response as any)?.status || 0);
+      respBody = (response as any)?.body;
+      const respHeaders: any = (response as any)?.headers || {};
+      serverHeader = String(respHeaders["Server"] || respHeaders["server"] || "");
+      cfRay = String(respHeaders["Cf-Ray"] || respHeaders["cf-ray"] || "");
+    } catch (parseErr: any) {
+      console.warn("[rumble_chat] response shape parse error", parseErr?.message || parseErr);
+    }
 
     if (status < 200 || status >= 300) {
       let snippet = "";
@@ -141,7 +149,9 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
           ? respBody.slice(0, 200)
           : (respBody == null ? "(no-body)" : JSON.stringify(respBody).slice(0, 200));
       } catch { snippet = "(unprintable)"; }
-      console.warn(`[rumble_chat] send http=${status} server=${serverHeader} cf-ray=${cfRay} content-length=${Buffer.byteLength(payload, "utf8")} body=${snippet}`);
+      const cleanCookieLen = cleanCookie.length;
+      const origCookieLen = (session.cookie || "").length;
+      console.warn(`[rumble_chat] send http=${status} server=${serverHeader} cf-ray=${cfRay} content-length=${Buffer.byteLength(payload, "utf8")} cookieLen=${cleanCookieLen}(orig=${origCookieLen}) body=${snippet}`);
       return null;
     }
 
