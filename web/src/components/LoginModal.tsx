@@ -231,8 +231,12 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   // Cloudflare Turnstile loader + widget render (only on register_form step)
   React.useEffect(() => {
     const siteKey = (import.meta as any).env?.VITE_TURNSTILE_SITE_KEY as string | undefined;
-    if (!siteKey) return; // Not configured → skip silently
     if (!open || step !== "register_form") return;
+    if (!siteKey) {
+      console.warn("[LoginModal] VITE_TURNSTILE_SITE_KEY missing — Turnstile widget disabled. Check Render env vars + redeploy web service.");
+      return;
+    }
+    console.info("[LoginModal] Turnstile site key detected, loading widget…", siteKey.slice(0, 12) + "...");
     let cancelled = false;
 
     const ensureScript = () =>
@@ -255,24 +259,42 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       await ensureScript();
       if (cancelled) return;
       const tw = (window as any).turnstile;
-      if (!tw || !turnstileRef.current) return;
+      if (!tw) {
+        console.warn("[LoginModal] window.turnstile not available after script load");
+        return;
+      }
+      if (!turnstileRef.current) {
+        console.warn("[LoginModal] turnstileRef.current is null");
+        return;
+      }
       // If a previous widget exists, reset it instead of re-rendering
       if (turnstileWidgetIdRef.current) {
         try {
           tw.reset(turnstileWidgetIdRef.current);
           return;
-        } catch {}
+        } catch (e) {
+          console.warn("[LoginModal] turnstile.reset failed", e);
+        }
       }
       try {
         turnstileWidgetIdRef.current = tw.render(turnstileRef.current, {
           sitekey: siteKey,
-          callback: (token: string) => setTurnstileToken(token),
-          "error-callback": () => setTurnstileToken(null),
+          callback: (token: string) => {
+            console.info("[LoginModal] Turnstile token received");
+            setTurnstileToken(token);
+          },
+          "error-callback": (err: any) => {
+            console.warn("[LoginModal] Turnstile error", err);
+            setTurnstileToken(null);
+          },
           "expired-callback": () => setTurnstileToken(null),
           theme: "dark",
           size: "normal",
         });
-      } catch {}
+        console.info("[LoginModal] Turnstile widget rendered, id=", turnstileWidgetIdRef.current);
+      } catch (e) {
+        console.error("[LoginModal] turnstile.render threw", e);
+      }
     })();
 
     return () => {
