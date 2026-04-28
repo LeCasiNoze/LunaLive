@@ -346,6 +346,11 @@ async function sendOneViaCycletls(vid, text) {
   }
 }
 
+// Cooldown 3s entre 2 messages sur la MÊME chaine (anti-spam Rumble).
+// Cocorum / RumchatActor utilisent le même intervalle.
+const lastSendByVid = new Map();
+const SEND_COOLDOWN_MS = 3_000;
+
 async function sendQueueTick() {
   try {
     const r = await fetch(`${API_BASE}/admin/rumble/send-queue?limit=10`, {
@@ -357,9 +362,18 @@ async function sendQueueTick() {
     if (items.length === 0) return;
     console.log(`[relay-queue] ${items.length} message(s) à envoyer`);
     for (const item of items) {
-      const result = await sendOneViaCycletls(item.video_id_numeric, item.text);
+      const vid = String(item.video_id_numeric);
+      const last = lastSendByVid.get(vid) || 0;
+      const since = Date.now() - last;
+      if (since < SEND_COOLDOWN_MS) {
+        const wait = SEND_COOLDOWN_MS - since;
+        console.log(`[relay-queue]   id=${item.id} vid=${vid} → cooldown ${wait}ms`);
+        await new Promise(r => setTimeout(r, wait));
+      }
+      const result = await sendOneViaCycletls(vid, item.text);
+      lastSendByVid.set(vid, Date.now());
       const label = result.ok ? "OK" : `ERR=${result.error}`;
-      console.log(`[relay-queue]   id=${item.id} vid=${item.video_id_numeric} → ${label}`);
+      console.log(`[relay-queue]   id=${item.id} vid=${vid} → ${label}`);
       await fetch(`${API_BASE}/admin/rumble/send-queue/${item.id}/result`, {
         method: "POST",
         headers: {
