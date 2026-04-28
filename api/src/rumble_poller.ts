@@ -318,6 +318,92 @@ async function pollAll(io?: IOServer) {
     ...accounts.map((a) => pollOne(a.streamerId, a.slug, a.username, a.apiKey, io)),
     ...scraped.map((s) => pollOneScraped(s.streamerId, s.slug, s.username, io)),
   ]);
+
+  // Rotation auto de la radio (id=32) : si le streamer actuellement assigné
+  // n'est plus en live, on bascule sur un autre Rumble live (sticky-then-pick).
+  await rotateRadioTarget(io).catch((e) => console.warn("[rumble-poller] rotateRadio failed", e?.message || e));
+}
+
+const RADIO_STREAMER_ID = 32;
+const RADIO_SLUG = "lunalive";
+
+/**
+ * Si la radio (id=32, slug=lunalive) est en mode platform=rumble,
+ * on garde son rumble_username actuel tant que ce streamer est encore live.
+ * Si offline, on bascule sur un autre streamer Rumble actuellement live
+ * (priorité : viewers DESC, puis ordre déterministe par streamer_id).
+ * Quand on bascule, le prochain tick poll le nouveau pseudo et résout HLS.
+ */
+async function rotateRadioTarget(io?: IOServer) {
+  // Vérifie que la radio est bien en mode rumble
+  const radioRow = await pool.query(
+    `SELECT platform, rumble_username FROM streamers WHERE id = $1 LIMIT 1`,
+    [RADIO_STREAMER_ID]
+  );
+  const radio = radioRow.rows[0];
+  if (!radio || String(radio.platform || "").toLowerCase() !== "rumble") return;
+  const currentUsername = radio.rumble_username ? String(radio.rumble_username) : null;
+
+  // L'état actuel du streamer-source courant : est-il toujours live ?
+  let currentStillLive = false;
+  if (currentUsername) {
+    const cur = await pool.query(
+      `SELECT ri.is_live FROM streamers s
+       JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+       WHERE s.id <> $1 AND lower(s.rumble_username) = lower($2)
+       LIMIT 1`,
+      [RADIO_STREAMER_ID, currentUsername]
+    );
+    currentStillLive = !!cur.rows[0]?.is_live;
+  }
+
+  if (currentStillLive) return; // sticky : on garde
+
+  // Cherche un nouveau candidat live (excluant la radio elle-même)
+  const cand = await pool.query(
+    `SELECT s.id, s.slug, s.rumble_username, ra.username AS api_username,
+            ri.is_live, ri.viewers_count
+     FROM streamers s
+     LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+     LEFT JOIN rumble_accounts ra ON ra.assigned_to_streamer_id = s.id
+     WHERE s.id <> $1
+       AND ri.is_live = true
+     ORDER BY COALESCE(ri.viewers_count, 0) DESC, s.id ASC
+     LIMIT 1`,
+    [RADIO_STREAMER_ID]
+  );
+  const pick = cand.rows[0];
+  const newUsername = pick?.rumble_username || pick?.api_username || null;
+
+  if (!newUsername) {
+    // Personne en live : on remet la radio offline
+    if (currentUsername !== null) {
+      await pool.query(
+        `UPDATE streamers SET rumble_username = NULL, updated_at = NOW() WHERE id = $1`,
+        [RADIO_STREAMER_ID]
+      );
+      // Force radio offline state
+      await pool.query(
+        `UPDATE streamer_rumble_info
+         SET is_live=false, hls_url=NULL, updated_at=NOW()
+         WHERE streamer_id=$1`,
+        [RADIO_STREAMER_ID]
+      ).catch(() => {});
+      console.log(`[rumble-poller] radio rotation: aucun streamer live → radio offline`);
+    }
+    return;
+  }
+
+  if (newUsername.toLowerCase() === (currentUsername || "").toLowerCase()) return;
+
+  await pool.query(
+    `UPDATE streamers SET rumble_username = $1, updated_at = NOW() WHERE id = $2`,
+    [newUsername, RADIO_STREAMER_ID]
+  );
+  console.log(`[rumble-poller] radio rotation: ${currentUsername || "(aucun)"} → ${newUsername} (slug=${pick.slug})`);
+
+  // Re-poll immédiat de la radio pour ne pas attendre 30s
+  void pollOneScraped(RADIO_STREAMER_ID, RADIO_SLUG, newUsername, io);
 }
 
 async function ensureRumbleInfoColumns() {
