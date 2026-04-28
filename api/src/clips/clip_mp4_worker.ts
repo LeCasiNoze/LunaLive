@@ -54,7 +54,13 @@ function safeName(s: string) {
  */
 type HlsSegment = { uri: string; duration: number };
 
-async function fetchHlsPlaylist(m3u8Url: string, timeoutMs = 8_000): Promise<{ segments: HlsSegment[]; targetDuration: number; rawText: string } | null> {
+async function fetchHlsPlaylist(m3u8Url: string, timeoutMs = 8_000): Promise<{
+  segments: HlsSegment[];
+  targetDuration: number;
+  mediaSequence: number;
+  hasEndList: boolean;
+  rawText: string;
+} | null> {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -65,6 +71,8 @@ async function fetchHlsPlaylist(m3u8Url: string, timeoutMs = 8_000): Promise<{ s
     const segments: HlsSegment[] = [];
     let pendingDuration: number | null = null;
     let targetDuration = 8;
+    let mediaSequence = 0;
+    let hasEndList = false;
 
     const lines = text.split(/\r?\n/);
     for (const raw of lines) {
@@ -74,6 +82,11 @@ async function fetchHlsPlaylist(m3u8Url: string, timeoutMs = 8_000): Promise<{ s
         if (line.startsWith("#EXT-X-TARGETDURATION:")) {
           const td = Number(line.slice("#EXT-X-TARGETDURATION:".length));
           if (Number.isFinite(td) && td > 0) targetDuration = td;
+        } else if (line.startsWith("#EXT-X-MEDIA-SEQUENCE:")) {
+          const ms = Number(line.slice("#EXT-X-MEDIA-SEQUENCE:".length));
+          if (Number.isFinite(ms) && ms >= 0) mediaSequence = ms;
+        } else if (line === "#EXT-X-ENDLIST") {
+          hasEndList = true;
         } else if (line.startsWith("#EXTINF:")) {
           const m = line.match(/#EXTINF:([\d.]+)/);
           const d = m ? Number(m[1]) : NaN;
@@ -90,7 +103,7 @@ async function fetchHlsPlaylist(m3u8Url: string, timeoutMs = 8_000): Promise<{ s
     }
 
     if (segments.length === 0) return null;
-    return { segments, targetDuration, rawText: text };
+    return { segments, targetDuration, mediaSequence, hasEndList, rawText: text };
   } catch {
     return null;
   }
@@ -114,21 +127,29 @@ async function prepareRumbleClipPlaylist(p: {
   const playlist = await fetchHlsPlaylist(p.m3u8Url);
   if (!playlist) return null;
 
-  // Calcul du décalage entre la playlist et le live_start.
-  //   playlistDuration = somme des EXTINF de la m3u8
-  //   nowSec ≈ liveStartTs/1000 + clipMomentSec + clipAge
-  //   live_edge_in_playlist (s) = playlistDuration
-  //   live_edge_clock = live_start + (clip_moment + clip_age)
-  // Donc: playlist_offset_in_live = (live_edge_clock - playlistDuration) - live_start
-  //                               = clip_moment + clip_age - playlistDuration
+  // Détermine le début de la playlist sur la timeline du live.
+  // Cas 1 — MEDIA-SEQUENCE ≤ 1 : playlist commence au début du live (Rumble fait ça).
+  //         playlistStartInLive = 0 → target_in_playlist = clip_moment - pre directement.
+  // Cas 2 — ENDLIST sans MEDIA-SEQUENCE = 1 : VOD freeze, on se base sur la durée
+  //         (live_duration ≈ playlistDuration → playlistStartInLive ≈ 0).
+  // Cas 3 — Live ongoing avec sliding window (MEDIA-SEQUENCE > 1) : on retombe sur
+  //         l'estimation live_edge ≈ now.
   const playlistDuration = playlist.segments.reduce((a, s) => a + s.duration, 0);
-  const nowSec = Date.now() / 1000;
-  const liveEdgeWallSec = nowSec; // approximation : live edge ≈ now (HLS latence ~5-10s ignorée)
-  const liveStartSec = p.liveStartTs / 1000;
-  const liveEdgeOffsetInLive = liveEdgeWallSec - liveStartSec;
 
-  // Position du début de la playlist sur la timeline du live
-  const playlistStartInLive = Math.max(0, liveEdgeOffsetInLive - playlistDuration);
+  let playlistStartInLive: number;
+  if (playlist.mediaSequence <= 1) {
+    // Cas 1 — la playlist contient depuis le segment 1 = depuis le début du live.
+    playlistStartInLive = 0;
+  } else if (playlist.hasEndList) {
+    // Cas 2 — VOD figé, on suppose qu'elle couvre l'intégralité du live.
+    playlistStartInLive = 0;
+  } else {
+    // Cas 3 — sliding window, estimation par l'horloge.
+    const nowSec = Date.now() / 1000;
+    const liveStartSec = p.liveStartTs / 1000;
+    const liveEdgeOffsetInLive = nowSec - liveStartSec;
+    playlistStartInLive = Math.max(0, liveEdgeOffsetInLive - playlistDuration);
+  }
 
   // Fenêtre cible sur la timeline du live
   const targetStartInLive = p.clipMomentSec - p.pre;
