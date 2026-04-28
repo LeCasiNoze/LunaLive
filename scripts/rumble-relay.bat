@@ -10,6 +10,12 @@ echo  Logs en temps reel ci-dessous.
 echo  Ferme la fenetre pour arreter.
 echo ========================================
 echo.
+
+REM Lit l'ADMIN_KEY depuis api\.env si dispo, sinon utilise la valeur Render.
+REM Le relay-script lit aussi api/.env — mais en cas de mismatch local/Render
+REM cette ligne garantit qu'on tape bien Render avec la bonne clef.
+set "ADMIN_KEY=lunalive_super_secret_2025_xxx"
+
 node scripts\rumble-relay.js
 echo.
 echo [relay] processus termine. Fenetre maintenue ouverte.
