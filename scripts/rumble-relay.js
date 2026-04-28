@@ -377,12 +377,45 @@ async function findCurrentLiveSlug(username) {
 
   // Extrait `"video":"vXXXXXX"` depuis le Rumble("play", {...}) init
   const m = html.match(/"video":\s*"(v[a-z0-9]{6})"/);
-  if (m && m[1]) {
-    // Bonus: aussi le video_id numérique pour le chat
-    const numMatch = html.match(/video_id:\s*(\d+)/) || html.match(/"video_id":\s*(\d+)/);
-    const vidNumeric = numMatch ? numMatch[1] : null;
-    // Viewer count : essaie plusieurs patterns Rumble.
-    let viewers = null;
+  if (!m || !m[1]) return null;
+
+  const vSlug = m[1];
+  const numMatch = html.match(/video_id:\s*(\d+)/) || html.match(/"video_id":\s*(\d+)/);
+  const vidNumeric = numMatch ? numMatch[1] : null;
+
+  // ⚠️ /user/{name}/live redirige vers la *dernière* vidéo (live OU DVR OU VOD).
+  // On valide via embedJS pour différencier : `live: 1/2` = en cours, `live: 0` = fini.
+  // L'URL HLS `hls-vod/` est aussi un signal de fin de stream.
+  let isLive = false;
+  let viewers = null;
+  try {
+    const embedUrl = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${vSlug}&ad_wt=0`;
+    const r2 = await fetch(embedUrl, {
+      headers: {
+        "user-agent": UA,
+        "accept": "application/json",
+        "referer": "https://rumble.com/",
+        "origin": "https://rumble.com",
+      },
+    });
+    if (r2.ok) {
+      const d = await r2.json();
+      const hlsPeek = d?.u?.hls?.url || d?.ua?.hls?.auto?.url || "";
+      const isVodUrl = typeof hlsPeek === "string" && hlsPeek.includes("/hls-vod/");
+      isLive = !!d?.live && !isVodUrl;
+      // viewer count direct depuis embedJS (plus fiable que le HTML)
+      if (typeof d?.watching_now === "number") viewers = d.watching_now;
+      else if (typeof d?.viewers === "number") viewers = d.viewers;
+    }
+  } catch { /* embedJS échec → considère pas live */ }
+
+  if (!isLive) {
+    console.log(`[relay]   ${username}: ${vSlug} pas en live (DVR/VOD)`);
+    return null;
+  }
+
+  // Fallback viewer count depuis HTML si embedJS n'a rien donné
+  if (viewers === null) {
     for (const re of [
       /"watching_now"\s*:\s*(\d+)/,
       /data-viewer-count="(\d+)"/,
@@ -393,9 +426,9 @@ async function findCurrentLiveSlug(username) {
       const vm = html.match(re);
       if (vm && vm[1]) { viewers = Number(vm[1]); if (Number.isFinite(viewers)) break; }
     }
-    return { vSlug: m[1], vidNumeric, viewers };
   }
-  return null;
+
+  return { vSlug, vidNumeric, viewers };
 }
 
 async function tick() {
