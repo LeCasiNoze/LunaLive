@@ -49,6 +49,61 @@ function safeName(s: string) {
   return String(s || "no-title").replace(/[^a-z0-9-_]+/gi, "_").slice(0, 80);
 }
 
+/**
+ * Récupère la durée totale (en secondes) couverte par une m3u8 HLS live DVR
+ * en sommant les EXTINF des segments.
+ *
+ * Nécessaire pour les clips Rumble live : la playlist DVR est une fenêtre
+ * glissante (les N dernières minutes seulement). Le `-ss` ffmpeg est relatif
+ * au DÉBUT de cette fenêtre, pas au début du live → il faut convertir.
+ */
+async function fetchHlsPlaylistDuration(m3u8Url: string, timeoutMs = 8_000): Promise<number | null> {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const r = await fetch(m3u8Url, { signal: ctrl.signal }).finally(() => clearTimeout(t));
+    if (!r.ok) return null;
+    const text = await r.text();
+    let total = 0;
+    // EXTINF lines: "#EXTINF:6.000,..." ou "#EXTINF:6,..."
+    const re = /#EXTINF:([\d.]+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const d = Number(m[1]);
+      if (Number.isFinite(d) && d > 0) total += d;
+    }
+    return total > 0 ? total : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pour un clip Rumble live (vod_url = HLS live DVR), calcule la position
+ * `-ss` correcte en tenant compte de la fenêtre DVR courante.
+ *
+ *   playlistDuration  = durée totale couverte par la m3u8 actuelle
+ *   clipAgeSec        = secondes écoulées depuis le moment !clip
+ *   pre               = secondes voulues AVANT le !clip (75 par défaut)
+ *
+ * Position du !clip dans la playlist (depuis le début) = playlistDuration - clipAgeSec
+ * Position cible (75s avant)                            = playlistDuration - clipAgeSec - pre
+ *
+ * Si négatif (le pre-window n'est plus dans le DVR) → on démarre au début de
+ * la playlist et on accepte un clip raccourci côté pre.
+ */
+function computeLiveHlsSeek(p: {
+  playlistDuration: number;
+  clipAgeSec: number;
+  pre: number;
+}): { startSec: number; durSec: number; truncatedPre: boolean } {
+  const idealStart = p.playlistDuration - p.clipAgeSec - p.pre;
+  const startSec = Math.max(0, Math.floor(idealStart));
+  const truncatedPre = idealStart < 0;
+  // durée demandée = pre + post, mais cappée par la fenêtre dispo (de startSec à fin)
+  return { startSec, durSec: 0, truncatedPre };
+}
+
 function getFfmpegPath(): string {
   const envPath = process.env.FFMPEG_PATH && String(process.env.FFMPEG_PATH).trim();
   return envPath ? envPath : "ffmpeg";
@@ -97,8 +152,45 @@ async function renderAndUploadClip(clip: BotClipRow) {
   const pre = Math.max(0, Math.floor(Number(clip.pre_sec || 105)));
   const post = Math.max(0, Math.floor(Number(clip.post_sec || 15)));
 
-  const startSec = Math.max(0, at - pre);
-  const durSec = Math.max(1, pre + post);
+  // Par défaut (DLive VOD, etc.) : timeline absolue → at = offset depuis début du stream.
+  let startSec = Math.max(0, at - pre);
+  let durSec = Math.max(1, pre + post);
+
+  // ✅ Correction Rumble live HLS DVR : la playlist est une fenêtre glissante.
+  // `-ss` est relatif au début de cette fenêtre, pas au début du live, donc
+  // on doit reconvertir à partir de la durée réelle de la m3u8 et de l'âge
+  // du clip (temps écoulé depuis !clip).
+  const isRumbleLiveHls =
+    String(clip.platform || "").toLowerCase() === "rumble" &&
+    /\.m3u8(\?|$)/i.test(vodUrl);
+
+  if (isRumbleLiveHls) {
+    const playlistDuration = await fetchHlsPlaylistDuration(vodUrl);
+    const clipMomentMs = Number(clip.live_start_ts || 0) + at * 1000;
+    const clipAgeSec = clipMomentMs > 0
+      ? Math.max(0, Math.floor((nowMs() - clipMomentMs) / 1000))
+      : 0;
+
+    if (playlistDuration && playlistDuration > 0) {
+      const r = computeLiveHlsSeek({ playlistDuration, clipAgeSec, pre });
+      // pre effectif = ce qu'il y a entre startSec et la position du !clip
+      const clipPosInPlaylist = Math.max(0, playlistDuration - clipAgeSec);
+      const effectivePre = Math.max(0, clipPosInPlaylist - r.startSec);
+      startSec = r.startSec;
+      durSec = Math.max(1, effectivePre + post);
+      console.log(
+        `[clips-mp4] rumble live HLS clip=${clip.id} ` +
+        `playlistDur=${playlistDuration.toFixed(1)}s clipAge=${clipAgeSec}s ` +
+        `→ -ss=${startSec}s -t=${durSec}s ` +
+        `${r.truncatedPre ? "(pre tronqué — DVR trop court)" : ""}`
+      );
+    } else {
+      console.warn(
+        `[clips-mp4] rumble live HLS clip=${clip.id} ` +
+        `m3u8 unreachable, fallback to naive -ss (clip likely shifted)`
+      );
+    }
+  }
 
   // marge large (HLS)
   const timeoutMs = Math.max(90_000, durSec * 3000);

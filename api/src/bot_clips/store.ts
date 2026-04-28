@@ -282,6 +282,7 @@ export async function claimOneClipToRenderMp4(opts: { minCreatedTs: number; maxA
     RETURNING
       b.id, b.streamer_id, b.title, b.author, b.at_sec, b.pre_sec, b.post_sec, b.created_ts,
       b.vod_url, b.vod_permlink, b.vod_created_ts,
+      b.live_start_ts, b.live_permlink, b.platform,
       b.hidden_by_streamer, b.deleted_ts,
       b.mp4_key, b.mp4_ready_ts, b.mp4_size, b.mp4_error, b.mp4_rendering
     `,
