@@ -1,7 +1,7 @@
 // api/src/routes/admin.ts
 import { Router } from "express";
 import { pool } from "../db.js";
-import { requireAdminKey } from "../auth.js";
+import { requireAdminKey, hashPassword } from "../auth.js";
 import { a } from "../utils/async.js";
 import { slugify } from "../slug.js";
 import { ensureAssignedDliveAccount, releaseAccountForStreamerId } from "../provider_accounts.js";
@@ -421,9 +421,14 @@ adminRouter.get(
     const r = await pool.query(
       `
       SELECT
-        u.id            AS "userId",
-        u.created_at    AS "createdAt",
-        u.last_login_at AS "lastLoginAt"
+        u.id              AS "userId",
+        u.username        AS "username",
+        u.email           AS "email",
+        u.email_verified  AS "emailVerified",
+        u.created_at      AS "createdAt",
+        u.last_login_at   AS "lastLoginAt",
+        u.created_ip      AS "createdIp",
+        u.last_login_ip   AS "lastLoginIp"
       FROM users u
       WHERE u.id = $1
       LIMIT 1
@@ -461,12 +466,81 @@ adminRouter.get(
     return res.json({
       ok: true,
       userId: r.rows[0].userId,
+      username: r.rows[0].username ?? null,
+      email: r.rows[0].email ?? null,
+      emailVerified: !!r.rows[0].emailVerified,
       createdAt: r.rows[0].createdAt ?? null,
       lastLoginAt: r.rows[0].lastLoginAt ?? null,
+      createdIp: r.rows[0].createdIp ?? null,
+      lastLoginIp: r.rows[0].lastLoginIp ?? null,
       messagesCount,
       rubisSpent,
       siteSpentEur: null,
     });
+  })
+);
+
+// ─── Admin update email ──────────────────────────────────────────────────────
+adminRouter.post(
+  "/admin/users/:id/email",
+  requireAdminKey,
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const rawEmail = String(req.body?.email ?? "").trim().toLowerCase();
+    const verified = req.body?.verified == null ? true : Boolean(req.body.verified);
+
+    if (!rawEmail) {
+      return res.status(400).json({ ok: false, error: "email_required" });
+    }
+    // Validation simple — rejette les évidemment cassés sans imposer un schéma trop strict
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRe.test(rawEmail) || rawEmail.length > 254) {
+      return res.status(400).json({ ok: false, error: "bad_email" });
+    }
+
+    // Unicité (sauf pour le user lui-même)
+    const dup = await pool.query(
+      `SELECT id FROM users WHERE LOWER(email)=LOWER($1) AND id<>$2 LIMIT 1`,
+      [rawEmail, id]
+    );
+    if (dup.rows[0]) {
+      return res.status(409).json({ ok: false, error: "email_taken" });
+    }
+
+    const upd = await pool.query(
+      `UPDATE users SET email=$1, email_verified=$2 WHERE id=$3
+       RETURNING id, email, email_verified AS "emailVerified"`,
+      [rawEmail, verified, id]
+    );
+    if (!upd.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+
+    return res.json({ ok: true, user: upd.rows[0] });
+  })
+);
+
+// ─── Admin set new password ──────────────────────────────────────────────────
+adminRouter.post(
+  "/admin/users/:id/password",
+  requireAdminKey,
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const password = String(req.body?.password ?? "");
+    if (password.length < 8 || password.length > 200) {
+      return res.status(400).json({ ok: false, error: "bad_password_length" });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const upd = await pool.query(
+      `UPDATE users SET password_hash=$1 WHERE id=$2 RETURNING id`,
+      [passwordHash, id]
+    );
+    if (!upd.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+
+    return res.json({ ok: true });
   })
 );
 

@@ -6,6 +6,8 @@ import {
   adminListUsers,
   adminSetUserRole,
   adminImpersonateUser,
+  adminUpdateUserEmail,
+  adminUpdateUserPassword,
   type AdminUserRow,
   type AdminUserDetails,
 } from "../../lib/api";
@@ -213,6 +215,15 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
   // (kept in UI but disabled until IP-ban is properly secured)
   const [banIpText, setBanIpText] = React.useState<string>("");
 
+  // Identifiants (email + password)
+  const [emailDraft, setEmailDraft] = React.useState<string>("");
+  const [emailBusy, setEmailBusy] = React.useState(false);
+  const [emailMsg, setEmailMsg] = React.useState<string | null>(null);
+  const [pwdDraft, setPwdDraft] = React.useState<string>("");
+  const [pwdBusy, setPwdBusy] = React.useState(false);
+  const [pwdMsg, setPwdMsg] = React.useState<string | null>(null);
+  const [showPwd, setShowPwd] = React.useState(false);
+
   async function load() {
     setBusy(true);
     setErr(null);
@@ -255,6 +266,13 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
         "";
 
       setBanIpText(String(ipGuess || ""));
+
+      // Reset identifiants editing state on each open
+      setEmailDraft(r.email ?? "");
+      setEmailMsg(null);
+      setPwdDraft("");
+      setPwdMsg(null);
+      setShowPwd(false);
     } catch (e: any) {
       setDetailErr(String(e?.message || e));
     } finally {
@@ -335,6 +353,46 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
       setDetailErr(String(e?.message || e));
     } finally {
       setBanBusy(false);
+    }
+  }
+
+  async function saveEmail() {
+    if (!openedUser) return;
+    const next = emailDraft.trim();
+    if (!next) {
+      setEmailMsg("Email vide.");
+      return;
+    }
+    setEmailBusy(true);
+    setEmailMsg(null);
+    try {
+      await adminUpdateUserEmail(adminKey, openedUser.id, next, true);
+      setEmailMsg("Email mis à jour.");
+      await openDetails(openedUser.id);
+    } catch (e: any) {
+      setEmailMsg(`Erreur : ${String(e?.message || e)}`);
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
+  async function savePassword() {
+    if (!openedUser) return;
+    const next = pwdDraft;
+    if (next.length < 8) {
+      setPwdMsg("Mot de passe trop court (min 8 caractères).");
+      return;
+    }
+    setPwdBusy(true);
+    setPwdMsg(null);
+    try {
+      await adminUpdateUserPassword(adminKey, openedUser.id, next);
+      setPwdMsg("Mot de passe mis à jour.");
+      setPwdDraft("");
+    } catch (e: any) {
+      setPwdMsg(`Erreur : ${String(e?.message || e)}`);
+    } finally {
+      setPwdBusy(false);
     }
   }
 
@@ -508,7 +566,9 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
               <br />
               Dépenses € (todo) : <b>{detail?.siteSpentEur ?? "—"}</b>
               <br />
-              IP (si dispo) : <b>{String((anyDetail?.lastIp || anyDetail?.lastLoginIp || anyDetail?.ip || "—") ?? "—")}</b>
+              IP de création : <b>{detail?.createdIp ?? "—"}</b>
+              <br />
+              Dernière IP : <b>{detail?.lastLoginIp ?? "—"}</b>
               <br />
               Ban compte :{" "}
               <b>
@@ -521,6 +581,83 @@ export function UsersAdminSection({ adminKey }: { adminKey: string }) {
               <br />
               Ban IP :{" "}
               <b>{bannedIpUntil ? `jusqu'au ${new Date(bannedIpUntil).toLocaleString()}` : anyDetail?.banIp === true ? "oui" : "—"}</b>
+            </div>
+          </div>
+
+          {/* IDENTIFIANTS CARD */}
+          <div
+            style={{
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(255,255,255,0.03)",
+              padding: 12,
+            }}
+          >
+            <div style={{ fontWeight: 950, marginBottom: 10 }}>
+              Identifiants
+              {detail?.email != null ? (
+                <span className="mutedSmall" style={{ marginLeft: 8, fontWeight: 400 }}>
+                  {detail.emailVerified ? "✅ vérifié" : "⚠️ non vérifié"}
+                </span>
+              ) : null}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "150px 1fr auto", gap: 10, alignItems: "center" }}>
+              <label className="mutedSmall" style={uiLabelStyle}>Email</label>
+              <input
+                style={uiInputStyle}
+                type="email"
+                placeholder="email@exemple.com"
+                value={emailDraft}
+                onChange={(e) => setEmailDraft(e.target.value)}
+                disabled={emailBusy || !detail}
+                autoComplete="off"
+              />
+              <button
+                className="btnPrimarySmall"
+                type="button"
+                disabled={emailBusy || !detail || emailDraft.trim() === (detail?.email ?? "")}
+                onClick={saveEmail}
+              >
+                {emailBusy ? "…" : "Sauver"}
+              </button>
+
+              <label className="mutedSmall" style={uiLabelStyle}>Nouveau mot de passe</label>
+              <input
+                style={uiInputStyle}
+                type={showPwd ? "text" : "password"}
+                placeholder="min 8 caractères"
+                value={pwdDraft}
+                onChange={(e) => setPwdDraft(e.target.value)}
+                disabled={pwdBusy || !detail}
+                autoComplete="new-password"
+              />
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  className="btnGhostSmall"
+                  type="button"
+                  onClick={() => setShowPwd((v) => !v)}
+                  title={showPwd ? "Masquer" : "Afficher"}
+                >
+                  {showPwd ? "🙈" : "👁️"}
+                </button>
+                <button
+                  className="btnPrimarySmall"
+                  type="button"
+                  disabled={pwdBusy || pwdDraft.length < 8}
+                  onClick={savePassword}
+                >
+                  {pwdBusy ? "…" : "Définir"}
+                </button>
+              </div>
+            </div>
+
+            {emailMsg ? <div className="mutedSmall" style={{ marginTop: 8 }}>{emailMsg}</div> : null}
+            {pwdMsg ? <div className="mutedSmall" style={{ marginTop: 4 }}>{pwdMsg}</div> : null}
+
+            <div className="mutedSmall" style={{ marginTop: 10, opacity: 0.7 }}>
+              Note : le mot de passe original n'est <b>pas récupérable</b> (il est haché en DB, c'est normal).
+              On peut uniquement en définir un nouveau.
             </div>
           </div>
 

@@ -23,8 +23,13 @@ export type AdminContentUpsertPayload = {
 export type AdminUserDetails = {
   ok: true;
   userId: number;
+  username: string | null;
+  email: string | null;
+  emailVerified: boolean;
   createdAt: string | null;
   lastLoginAt: string | null;
+  createdIp: string | null;
+  lastLoginIp: string | null;
   messagesCount: number | null;
   rubisSpent: number | null;
   siteSpentEur: number | null;
@@ -593,6 +598,34 @@ export async function adminSetUserRole(adminKey: string, id: number, role: Admin
     method: "PATCH",
     headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
     body: JSON.stringify({ role }),
+  });
+}
+
+export async function adminUpdateUserEmail(
+  adminKey: string,
+  userId: number,
+  email: string,
+  verified: boolean = true,
+) {
+  return j<{ ok: true; user: { id: number; email: string; emailVerified: boolean } }>(
+    `/admin/users/${encodeURIComponent(String(userId))}/email`,
+    {
+      method: "POST",
+      headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, verified }),
+    },
+  );
+}
+
+export async function adminUpdateUserPassword(
+  adminKey: string,
+  userId: number,
+  password: string,
+) {
+  return j<{ ok: true }>(`/admin/users/${encodeURIComponent(String(userId))}/password`, {
+    method: "POST",
+    headers: { "x-admin-key": adminKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
   });
 }
 
