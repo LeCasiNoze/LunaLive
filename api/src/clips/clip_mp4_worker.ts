@@ -340,7 +340,7 @@ async function renderAndUploadClip(clip: BotClipRow) {
       "error",
       "-nostdin",
       "-protocol_whitelist",
-      "file,http,https,tcp,tls",
+      "file,http,https,tcp,tls,crypto,data",
       "-headers",
       HLS_HEADERS,
       "-user_agent",
