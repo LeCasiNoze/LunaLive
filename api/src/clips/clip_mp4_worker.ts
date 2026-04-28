@@ -339,6 +339,14 @@ async function renderAndUploadClip(clip: BotClipRow) {
       "Referer: https://dlive.tv/\r\n" +
       "User-Agent: Mozilla/5.0\r\n";
 
+    // -headers / -user_agent ne sont valides qu'en mode HTTP. Avec une m3u8
+    // locale (file://) le hls demuxer rejette ces options ("Option headers
+    // not found"). On les omet quand l'input est un fichier.
+    const isHttpInput = /^https?:\/\//i.test(inputUrl);
+    const httpInputArgs = isHttpInput
+      ? ["-headers", HLS_HEADERS, "-user_agent", "Mozilla/5.0"]
+      : [];
+
     // 1) stream copy (rapide)
     const argsCopy = [
       "-hide_banner",
@@ -347,10 +355,7 @@ async function renderAndUploadClip(clip: BotClipRow) {
       "-nostdin",
       "-protocol_whitelist",
       "file,http,https,tcp,tls,crypto,data",
-      "-headers",
-      HLS_HEADERS,
-      "-user_agent",
-      "Mozilla/5.0",
+      ...httpInputArgs,
       "-ss",
       String(startSec),
       "-i",
@@ -384,10 +389,7 @@ async function renderAndUploadClip(clip: BotClipRow) {
         "-nostdin",
         "-protocol_whitelist",
         "file,http,https,tcp,tls,crypto,data",
-        "-headers",
-        HLS_HEADERS,
-        "-user_agent",
-        "Mozilla/5.0",
+        ...httpInputArgs,
         "-ss",
         String(startSec),
         "-i",
