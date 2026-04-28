@@ -267,19 +267,28 @@ function useBroadcaster(
 
   React.useEffect(() => {
     if (!socket || !active || !slug) return;
-    console.log("[Broadcaster] registering", slug, "at slot", slot);
-    socket.emit(
-      "cam:register",
-      { slug, slot },
-      (ack: { ok?: boolean; filters?: Partial<CamFilters> | null }) => {
-        if (ack?.ok && ack.filters && onInitRef.current) {
-          console.log("[Broadcaster] received persisted filters for", slug);
-          onInitRef.current(ack.filters);
+    const doRegister = (reason: string) => {
+      console.log(`[Broadcaster] registering (${reason})`, slug, "at slot", slot);
+      socket.emit(
+        "cam:register",
+        { slug, slot },
+        (ack: { ok?: boolean; filters?: Partial<CamFilters> | null }) => {
+          if (ack?.ok && ack.filters && onInitRef.current) {
+            console.log("[Broadcaster] received persisted filters for", slug);
+            onInitRef.current(ack.filters);
+          }
         }
-      }
-    );
+      );
+    };
+    doRegister("init");
+    // ✅ ré-emit cam:register à chaque reconnexion socket — sans ça, après un
+    // transient websocket error, le serveur oublie qu'on est broadcaster et
+    // les viewers ne reçoivent plus rien (broadcaster zombie côté local).
+    const onConnect = () => doRegister("reconnect");
+    socket.on("connect", onConnect);
     return () => {
       console.log("[Broadcaster] leaving", slug);
+      socket.off("connect", onConnect);
       socket.emit("cam:leave");
       peersRef.current.forEach((pc) => pc.close());
       peersRef.current.clear();
@@ -394,12 +403,9 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
     if (!socket || sharing) return;
     let stream: MediaStream;
     try {
-      // Lock 720p 60 fps — beaucoup de slots tournent à 60 fps natif, cap à 30
-      // sync mal et fait jitter le rendu côté receveur (OBS). 720p suffit pour
-      // l'overlay (consommé à ~1363×1026), 60 fps double la fluidité. H264
-      // hardware encoder gère 720p60 sans problème (profile auto-selected).
-      // cursor:"always" rend le curseur, surfaceSwitching:"include" évite le
-      // throttling de Chrome quand la fenêtre capturée perd le focus.
+      // Lock 720p 60 fps. H264 NVENC géré sans souci sur GPU NVIDIA.
+      // (les flags selfBrowserSurface/surfaceSwitching ont causé des
+      // déconnexions websocket + screen zombie en Chrome 147 → retirés)
       stream = await (navigator.mediaDevices as any).getDisplayMedia({
         video: {
           width:  { ideal: 1280, max: 1280 },
@@ -408,10 +414,6 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
           cursor: "always",
         },
         audio: false,
-        // @ts-ignore — Chrome 107+
-        selfBrowserSurface: "include",
-        // @ts-ignore
-        surfaceSwitching: "include",
       });
     } catch (e) {
       console.warn("[ScreenShare] getDisplayMedia rejected:", e);
@@ -436,6 +438,22 @@ function useScreenBroadcaster(socket: Socket | null, mySlug: string) {
     pendingIceRef.current.clear();
     socket?.emit("screen:leave");
   }, [socket, localStream]);
+
+  // ✅ Ré-emit screen:register à chaque reconnexion socket si on partage encore.
+  // Sans ça, après un transient websocket error, le serveur oublie qu'on est
+  // broadcaster screen → les viewers ne reçoivent plus rien (capture locale
+  // toujours active mais zombie côté serveur).
+  React.useEffect(() => {
+    if (!socket || !sharing) return;
+    const onConnect = () => {
+      console.log("[ScreenShare] re-registering after reconnect");
+      socket.emit("screen:register", { slug: mySlug }, (ack: any) => {
+        if (!ack?.ok) console.warn("[ScreenShare] re-register failed", ack);
+      });
+    };
+    socket.on("connect", onConnect);
+    return () => { socket.off("connect", onConnect); };
+  }, [socket, sharing, mySlug]);
 
   // Si on est kické par un autre user, on coupe proprement côté local.
   React.useEffect(() => {
@@ -539,17 +557,23 @@ export function useScreenAwareness(socket: Socket | null) {
   const [active, setActive] = React.useState<{ slug: string; socketId: string } | null>(null);
   React.useEffect(() => {
     if (!socket) return;
-    socket.emit("screen:viewer-join", {}, (ack: { ok: boolean; active: Array<{ slug: string; socketId: string }> }) => {
-      const bc = ack?.active?.[0];
-      if (bc) setActive(bc);
-    });
+    const join = () => {
+      socket.emit("screen:viewer-join", {}, (ack: { ok: boolean; active: Array<{ slug: string; socketId: string }> }) => {
+        const bc = ack?.active?.[0];
+        setActive(bc || null);
+      });
+    };
+    join();
+    const onConnect = () => join(); // ✅ re-sync à chaque reconnexion
     const onRegistered = (bc: { slug: string; socketId: string }) => setActive(bc);
     const onLeft = ({ slug }: { slug: string }) => {
       setActive((cur) => (cur?.slug === slug ? null : cur));
     };
+    socket.on("connect", onConnect);
     socket.on("screen:registered", onRegistered);
     socket.on("screen:left", onLeft);
     return () => {
+      socket.off("connect", onConnect);
       socket.off("screen:registered", onRegistered);
       socket.off("screen:left", onLeft);
     };
