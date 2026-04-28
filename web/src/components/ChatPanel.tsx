@@ -1888,6 +1888,9 @@ export function ChatPanel({
     socket.on("chat:message", (msg: ChatMsg) => {
       animatedMsgIdsRef.current.add(msg.id);
       setMessages((prev) => {
+        // Dédup par id : un même socket peut être dans plusieurs rooms (public+popup)
+        // après un changement de mode et recevoir le même chat:message 2x.
+        if (prev.some((p) => p.id === msg.id)) return prev;
         const next = [...prev, msg];
         if (next.length > 50) next.splice(0, next.length - 50);
         return next;

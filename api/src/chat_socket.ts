@@ -716,16 +716,29 @@ export function attachChat(io: Server) {
           data.streamerId = meta.id;
 
           const m: ChatMode = mode === "popup" ? "popup" : "public";
+          // Capture l'ancien mode AVANT de l'écraser, sinon on leave la room
+          // qu'on s'apprête à rejoindre (no-op) et l'ancienne reste joined →
+          // duplication des messages quand on switche de mode.
+          const previousMode = data.chatMode;
+          const previousSlug = data.slug;
           data.chatMode = m;
 
           data.appearance = normalizeAppearance(meta.appearance);
 
+          // Quitte toutes les rooms chat:* précédemment joined par ce socket
+          // (cas multi-mode + cas changement de slug)
           try {
-            if (data.slug && data.chatMode) {
-              socket.leave(`chat:${data.slug}:${data.chatMode}`);
+            for (const room of socket.rooms) {
+              if (typeof room === "string" && room.startsWith("chat:")) {
+                if (room !== `chat:${meta.slug}:${m}`) socket.leave(room);
+              }
+            }
+            // sécurité supplémentaire avec les valeurs précédentes
+            if (previousSlug && previousMode) {
+              socket.leave(`chat:${previousSlug}:${previousMode}`);
             }
           } catch {}
-          
+
           // ✅ IMPORTANT: join ONLY ONE chat room (no legacy room => no duplicates)
           socket.join(`chat:${meta.slug}:${m}`);
 
