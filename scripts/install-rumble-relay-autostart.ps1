@@ -4,10 +4,10 @@
 
 $ErrorActionPreference = "Stop"
 $projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
-$vbs = Join-Path $projectRoot "scripts\rumble-relay.vbs"
+$bat = Join-Path $projectRoot "scripts\rumble-relay.bat"
 
-if (-not (Test-Path $vbs)) {
-  Write-Error "Fichier VBS introuvable: $vbs"
+if (-not (Test-Path $bat)) {
+  Write-Error "Fichier BAT introuvable: $bat"
   exit 1
 }
 
@@ -18,7 +18,7 @@ if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
   Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
 }
 
-$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$vbs`"" -WorkingDirectory $projectRoot
+$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/k `"$bat`"" -WorkingDirectory $projectRoot
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 
 $settings = New-ScheduledTaskSettingsSet `
