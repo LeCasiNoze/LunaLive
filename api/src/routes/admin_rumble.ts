@@ -534,6 +534,120 @@ adminRumbleRouter.get("/admin/rumble/probe", requireAdminKey, async (req, res) =
   return res.json({ vid: VID, user: USER, hasCookie: !!cookie, cookieLen: cookie.length, results });
 });
 
+/**
+ * GET /admin/rumble/probe-sse?vid=XXX
+ * Capture le premier event "init" du SSE chat et retourne sa structure (clés top-level
+ * + tailles + échantillons) sans cookies. Permet de voir ce que Rumble expose
+ * (users, messages, config, viewers...) au moment de la connexion chat.
+ */
+adminRumbleRouter.get("/admin/rumble/probe-sse", requireAdminKey, async (req, res) => {
+  const VID = String(req.query.vid || "434889858");
+  const session = await getRumbleBotSession();
+  if (!hasRumbleBotSession(session)) {
+    return res.status(503).json({ ok: false, error: "no_bot_session" });
+  }
+  const cookie = String(session.cookie || "")
+    .split(";").map((s) => s.trim())
+    .filter((s) => s && !/^cf_clearance=/i.test(s) && !/^__cf_bm=/i.test(s))
+    .join("; ");
+
+  const ac = new AbortController();
+  const timeout = setTimeout(() => ac.abort(), 8000);
+
+  try {
+    const r = await fetch(`https://web7.rumble.com/chat/api/chat/${encodeURIComponent(VID)}/stream`, {
+      method: "GET",
+      signal: ac.signal,
+      headers: {
+        "user-agent": session.userAgent || "Mozilla/5.0",
+        "cookie": cookie,
+        "accept": "text/event-stream",
+        "accept-language": "en-US,en;q=0.9",
+        "referer": `https://rumble.com/v${VID}.html`,
+      },
+    });
+    if (!r.ok || !r.body) {
+      clearTimeout(timeout);
+      return res.json({ ok: false, status: r.status, server: r.headers.get("server") });
+    }
+
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    let initEvent: any = null;
+    const allEventTypes: string[] = [];
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < 7000) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      // Parse SSE: events séparés par \n\n
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) >= 0) {
+        const block = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        const dataLine = block.split("\n").find((l) => l.startsWith("data:"));
+        if (!dataLine) continue;
+        try {
+          const env = JSON.parse(dataLine.slice(5).trim());
+          if (env?.type) allEventTypes.push(env.type);
+          if (env?.type === "init" && !initEvent) {
+            initEvent = env;
+          }
+        } catch {}
+      }
+      if (initEvent) break;
+    }
+    ac.abort();
+    clearTimeout(timeout);
+
+    if (!initEvent) {
+      return res.json({ ok: false, error: "no_init_event", eventTypes: allEventTypes });
+    }
+
+    // Décrire la structure de data sans dump complet
+    function describe(obj: any, depth = 0): any {
+      if (obj === null || typeof obj !== "object") return typeof obj;
+      if (Array.isArray(obj)) {
+        return {
+          _array: true,
+          length: obj.length,
+          sample: obj.length > 0 ? describe(obj[0], depth + 1) : null,
+        };
+      }
+      if (depth > 3) return "(deep)";
+      const out: any = {};
+      for (const k of Object.keys(obj)) {
+        out[k] = describe(obj[k], depth + 1);
+      }
+      return out;
+    }
+
+    const data = initEvent.data || {};
+    return res.json({
+      ok: true,
+      requestId: initEvent.request_id || null,
+      topKeys: Object.keys(initEvent),
+      dataKeys: Object.keys(data),
+      structure: describe(data),
+      counts: {
+        users: Array.isArray(data.users) ? data.users.length : null,
+        messages: Array.isArray(data.messages) ? data.messages.length : null,
+        rants: Array.isArray(data.rants) ? data.rants.length : null,
+        channels: Array.isArray(data.channels) ? data.channels.length : null,
+      },
+      configSample: data.config ? Object.keys(data.config) : null,
+      sampleUser: Array.isArray(data.users) && data.users[0] ? Object.keys(data.users[0]) : null,
+      sampleMessage: Array.isArray(data.messages) && data.messages[0] ? Object.keys(data.messages[0]) : null,
+      eventTypesObserved: allEventTypes,
+    });
+  } catch (e: any) {
+    clearTimeout(timeout);
+    return res.json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
 adminRumbleRouter.post("/admin/rumble/send-test", requireAdminKey, async (req, res) => {
   try {
     const { videoIdNumeric, text } = req.body ?? {};
