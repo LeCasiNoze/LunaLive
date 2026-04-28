@@ -530,6 +530,21 @@ adminRumbleRouter.get("/admin/rumble/probe", requireAdminKey, async (req, res) =
   await probe("ANON:user/{name}/live", `https://rumble.com/user/${USER}/live`, { auth: false });
   await probe("ANON:embedJS", `https://rumble.com/embedJS/u3/?v=${VID}`, { auth: false, headers: { accept: "application/json" } });
   await probe("ANON:chat/init", `https://web7.rumble.com/chat/api/chat/${VID}/init`, { auth: false, headers: { accept: "application/json" } });
+  // G. Viewer count / live stats hunt
+  await probe("ws-init via web7", `https://web7.rumble.com/chat/api/chat/${VID}/livestreams`, { headers: { accept: "application/json" } });
+  await probe("ws-init via rumble", `https://rumble.com/-/livestream/${VID}/data`, { headers: { accept: "application/json" } });
+  await probe("api:livestream-status", `https://rumble.com/api/v0/livestream/${VID}`, { headers: { accept: "application/json" } });
+  await probe("api:Streamlist.Get", `https://rumble.com/-/api/Streamlist.Get?vid=${VID}`, { headers: { accept: "application/json" } });
+  await probe("embedJS:api", `https://rumble.com/embedJS/u3/api/?v=${VID}`, { headers: { accept: "application/json" } });
+  await probe("api:live.popout", `https://rumble.com/-/api/live/popout?id=${VID}`, { headers: { accept: "application/json" } });
+  await probe("watch.json", `https://rumble.com/watch/${VID}.json`, { headers: { accept: "application/json" } });
+  await probe("v{vid}.json", `https://rumble.com/v${VID}.json`, { headers: { accept: "application/json" } });
+  await probe("media-views", `https://rumble.com/-/api/media-views?id=${VID}`, { headers: { accept: "application/json" } });
+  // H. Mod actions enumeration (only HEAD/OPTIONS to avoid side-effects)
+  await probe("mod:delete OPTIONS", `https://web7.rumble.com/chat/api/chat/${VID}/delete`, { method: "OPTIONS" });
+  await probe("mod:moderate OPTIONS", `https://web7.rumble.com/chat/api/chat/${VID}/moderate`, { method: "OPTIONS" });
+  await probe("mod:mute OPTIONS", `https://web7.rumble.com/chat/api/chat/${VID}/mute`, { method: "OPTIONS" });
+  await probe("mod:ban OPTIONS", `https://web7.rumble.com/chat/api/chat/${VID}/ban`, { method: "OPTIONS" });
 
   return res.json({ vid: VID, user: USER, hasCookie: !!cookie, cookieLen: cookie.length, results });
 });
