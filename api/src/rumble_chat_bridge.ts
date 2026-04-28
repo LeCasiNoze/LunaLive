@@ -93,6 +93,16 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
     },
   });
 
+  // Strip les cookies Cloudflare (cf_clearance, __cf_bm) qui sont IP-bound :
+  // capturés depuis le browser de l'utilisateur, ils sont incohérents pour
+  // une requête venant de Render IP → Rumble retourne 409. On garde uniquement
+  // les cookies de session Rumble (u_s, a_s, PHPSESSID, etc.).
+  const cleanCookie = (session.cookie || "")
+    .split(";")
+    .map(c => c.trim())
+    .filter(c => c && !/^cf_clearance=/i.test(c) && !/^__cf_bm=/i.test(c))
+    .join("; ");
+
   try {
     const cycle = await getCycleTLS();
     const response = await cycle(`${RUMBLE_CHAT_HOST}/chat/api/chat/${encodeURIComponent(videoIdNumeric)}/message`, {
@@ -104,7 +114,7 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
         "accept-language": "fr-FR,fr;q=0.9",
         "cache-control": "no-cache",
         "content-type": "application/json",
-        "cookie": session.cookie || "",
+        "cookie": cleanCookie,
         "origin": "https://rumble.com",
         "pragma": "no-cache",
         "referer": "https://rumble.com/",
