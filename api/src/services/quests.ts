@@ -8,6 +8,7 @@
 import type { PoolClient } from "pg";
 import { pool } from "../db.js";
 import { earnRubisTx } from "../wallet_engine.js";
+import { awardXpTx, XP_SOURCES } from "../economy/xp.js";
 
 export type QuestType = "daily" | "weekly" | "monthly";
 
@@ -396,6 +397,18 @@ export async function claimQuest(
         ...(rewardMeta || {}),
       });
     }
+
+    // Crédit XP en plus (uncapped pour les quêtes — on veut récompenser)
+    const xpAmount =
+      type === "daily"
+        ? XP_SOURCES.quest_daily
+        : type === "weekly"
+        ? XP_SOURCES.quest_weekly
+        : XP_SOURCES.quest_monthly;
+    await awardXpTx(client, userId, xpAmount, `quest_${type}`, `quest:${questCode}`, {
+      questCode,
+      periodKey,
+    });
 
     // Reward méta (titre, cosmétique...) — pour `monthly_supporter` etc.
     if (rewardMeta?.title_code) {

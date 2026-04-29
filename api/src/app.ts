@@ -95,6 +95,7 @@ import { fsbDashboardRouter } from "./routes/fsb_dashboard.js";
 import { tiktokOutreachRouter, handleInboundReply } from "./routes/tiktok_outreach.js";
 import { questsRouter } from "./routes/quests.js";
 import { seedAllPeriodsIfNeeded } from "./services/quests.js";
+import { xpRouter } from "./routes/xp.js";
 import { agencyRouter } from "./routes/agency.js";
 import { requireFsbAccess } from "./routes/fsb_guard.js";
 import { webrtcTurnRouter } from "./routes/webrtc_turn.js";
@@ -200,6 +201,7 @@ export function createApp() {
   app.use("/api", tiktokOutreachRouter);
   app.post("/api/inbound/tiktok-reply", handleInboundReply);
   app.use("/api", questsRouter);
+  app.use("/api", xpRouter);
 
   // Quest seeder: au boot puis 1x/h. Idempotent (skip si déjà seedé).
   seedAllPeriodsIfNeeded().catch((e) => {

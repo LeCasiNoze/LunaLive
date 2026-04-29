@@ -324,7 +324,17 @@ export async function handleBlackjackCommand(pool: Pool, it: ChatInputCommandInt
   try {
     await client.query("BEGIN");
 
-    const cd = await bjCheckAndTouchCooldownTx(client, discordUserId, BJ_COOLDOWN_MS);
+    // Cooldown ajusté selon le level XP de l'user (de 12h à 6h selon level)
+    const lvlR = await client.query(
+      `SELECT xp::bigint AS xp FROM users WHERE id = $1 LIMIT 1`,
+      [lunaUser.userId]
+    );
+    const userXp = Number(lvlR.rows[0]?.xp || 0);
+    const { levelFromXp, getBlackjackCooldownMs } = await import("../economy/xp.js");
+    const userLevel = levelFromXp(userXp);
+    const cooldownMs = getBlackjackCooldownMs(userLevel);
+
+    const cd = await bjCheckAndTouchCooldownTx(client, discordUserId, cooldownMs);
     if (!cd.ok) {
       await client.query("ROLLBACK");
       const msg = cd.error === "cooldown"

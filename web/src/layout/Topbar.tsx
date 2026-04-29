@@ -10,6 +10,7 @@ import { publicGetContent } from "../lib/api";
 import { contentVersionFromItem, isUnread } from "../lib/unread_seen";
 import { QuestsModal } from "../components/QuestsModal";
 import { getQuests } from "../lib/api_quests";
+import { XpTopbarBadge } from "../components/XpTopbarBadge";
 
 type ActivePlans = { viewer: boolean; streamer: boolean };
 
@@ -647,6 +648,7 @@ export function Topbar({
 
           {user ? (
             <>
+              {!isMobile && <XpTopbarBadge />}
               <button
                 type="button"
                 className="pill llPill llPillQuests"

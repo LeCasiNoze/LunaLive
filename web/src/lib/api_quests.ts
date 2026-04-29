@@ -68,3 +68,34 @@ export function claimQuest(code: string) {
     { method: "POST" }
   );
 }
+
+// ─── XP ───────────────────────────────────────────────────────────────────
+export type XpPerk =
+  | { kind: "shop_grade"; grade: number; label: string }
+  | { kind: "perk"; code: string; label: string; description: string }
+  | { kind: "cosmetic"; code: string; label: string; description: string }
+  | { kind: "title_auto"; code: string; label: string };
+
+export type XpInfo = {
+  ok: true;
+  level: number;
+  xp: number;
+  xpAtLevel: number;
+  xpForNextLevel: number;
+  xpProgress: number;
+  xpToNext: number;
+  pctToNext: number;
+  isMax: boolean;
+  tier: number;
+  tierLabel: string;
+  romanInTier: string;
+  fullTitle: string;
+  maxLevel: number;
+  shopGrade: number;
+  unlockedPerks: XpPerk[];
+  upcomingPerks: Array<{ level: number; perks: XpPerk[] }>;
+};
+
+export function getMyXp() {
+  return request<XpInfo>(`/api/me/xp`);
+}
