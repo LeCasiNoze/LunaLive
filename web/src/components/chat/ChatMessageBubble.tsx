@@ -13,6 +13,7 @@ import {
   usernameEffectClass,
 } from "../../lib/cosmetics";
 import type { StreamerAppearance } from "../../lib/appearance";
+import { TitlePill, TitleSecondLine } from "./TitlePill";
 
 export type ChatMsgLike = {
   id: number | string;
@@ -201,6 +202,10 @@ export function ChatMessageBubble({
     msg.userId === Number((import.meta as any)?.env?.VITE_BOT_USER_ID || 0);
 
   const c = msg.cosmetics ?? null;
+  const multiTitles = (c as any)?.titles as
+    | { shop?: any; achievement?: any; level?: any }
+    | null
+    | undefined;
   const lvl = (streamerAppearance?.chat?.viewerSkinsLevel ?? 1) as 1 | 2 | 3;
 
   const avatar    = c?.avatar ?? {};
@@ -346,14 +351,24 @@ export function ChatMessageBubble({
                         Rumble
                       </span>
                     ) : null}
+
+                    {/* ✅ NEW: Titre Shop à côté du pseudo (Sprint 3.5) */}
+                    {multiTitles?.shop ? (
+                      <span style={{ marginLeft: 7, verticalAlign: "middle" }}>
+                        <TitlePill entry={multiTitles.shop} />
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
                 {/* Timestamp supprimé */}
               </div>
 
-              {/* Titre sous username */}
-              {titleInfo ? (
+              {/* ✅ NEW: 2e ligne — Achievement + Level (Sprint 3.5) */}
+              {multiTitles && (multiTitles.achievement || multiTitles.level) ? (
+                <TitleSecondLine titles={multiTitles as any} />
+              ) : titleInfo ? (
+                /* Fallback legacy: si pas de multi-slots, on affiche l'ancien titre */
                 <div
                   className={`chatTitle ${titleTierClass(titleInfo.tier as any)}`}
                   data-title-code={titleInfo.code}

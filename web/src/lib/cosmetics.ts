@@ -60,10 +60,27 @@ export type FrameCosmetic = {
   tier?: Tier; // généralement master/prestige
 };
 
+export type ChatTitleSlot = "shop" | "achievement" | "level";
+export type ChatTitleRarity = "common" | "uncommon" | "rare" | "epic" | "legendary" | "mythic";
+export type ChatTitleEntry = {
+  source: ChatTitleSlot;
+  code: string;
+  label: string;
+  rarity: ChatTitleRarity;
+};
+
 export type ChatCosmetics = {
   avatar?: AvatarCosmetic;
   badges?: ChatBadge[];
-  title?: TitleCosmetic | null;
+  title?: TitleCosmetic | null; // legacy
+
+  // ✅ Multi-slots titres (Sprint 3.5):
+  // shop = titre acheté · achievement = titre succès · level = titre auto palier
+  titles?: {
+    shop?: ChatTitleEntry | null;
+    achievement?: ChatTitleEntry | null;
+    level?: ChatTitleEntry | null;
+  } | null;
 
   username?: {
     color?: string | null; // override (optionnel)

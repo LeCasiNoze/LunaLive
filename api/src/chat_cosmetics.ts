@@ -2,6 +2,13 @@
 import { pool } from "./db.js";
 
 // Shape attendu par web/src/components/chat/ChatMessageBubble.tsx
+export type ChatTitleEntry = {
+  source: "shop" | "achievement" | "level";
+  code: string;
+  label: string;
+  rarity: "common" | "uncommon" | "rare" | "epic" | "legendary" | "mythic";
+};
+
 export type ChatCosmetics = {
   username?: { color?: string | null; effect?: string | null };
   frame?: { frameId?: string | null } | null;
@@ -24,7 +31,14 @@ export type ChatCosmetics = {
 
     meta?: any;
   }>;
-  title?: any; // ton ChatMessageBubble sait normaliser string/obj
+  title?: any; // legacy: string/obj. Conservé pour rétro-compat.
+  // ✅ NEW multi-slots titres (Sprint 3.5):
+  // shop = titre acheté en shop · achievement = titre succès · level = titre auto palier
+  titles?: {
+    shop?: ChatTitleEntry | null;
+    achievement?: ChatTitleEntry | null;
+    level?: ChatTitleEntry | null;
+  };
 };
 
 // BASE public pour construire l’URL avatar (upload)
@@ -174,17 +188,21 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
   const out = new Map<number, ChatCosmetics>();
   if (!ids.length) return out;
 
-  // ✅ join user_avatars pour cache-bust
+  // ✅ join user_avatars pour cache-bust + multi-slots titres + xp pour level title
   const r = await pool.query(
     `SELECT
       ids.user_id,
       ue.username_code,
       ue.badge_code,
       ue.title_code,
+      ue.title_shop_code,
+      ue.title_achievement_code,
+      ue.title_level_show,
       ue.frame_code,
       ue.hat_code,
       ua.updated_at AS avatar_updated_at,
-      u.avatar_path
+      u.avatar_path,
+      u.xp::bigint AS xp
     FROM unnest($1::int[]) AS ids(user_id)
     JOIN users u ON u.id = ids.user_id
     LEFT JOIN user_equipped_cosmetics ue ON ue.user_id = ids.user_id
@@ -320,10 +338,83 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
       }
     }
 
-    // title
+    // title (legacy)
     if (titleCode && titleCode !== "none") {
-      // ton ChatMessageBubble normalise aussi une string direct
       cosmetics.title = titleCode;
+    }
+
+    // ✅ NEW: multi-slots titres (résolution label + rareté)
+    {
+      // Lookup helpers (catalog import dynamique pour éviter top-level cycle)
+      const titles: NonNullable<ChatCosmetics["titles"]> = {};
+      const shopCode = row.title_shop_code ? String(row.title_shop_code) : null;
+      const achCode = row.title_achievement_code ? String(row.title_achievement_code) : null;
+      const showLevel = !!row.title_level_show;
+
+      // Lazy import du catalogue (évite import cyclique potentiel)
+      let catalog: any[] = [];
+      try {
+        const mod = await import("./cosmetics/catalog.js");
+        catalog = (mod as any).COSMETICS_CATALOG || [];
+      } catch {}
+
+      const lookupTitle = (code: string) => catalog.find((x: any) => x.kind === "title" && x.code === code);
+
+      if (shopCode) {
+        const it = lookupTitle(shopCode);
+        if (it) {
+          titles.shop = {
+            source: "shop",
+            code: shopCode,
+            label: String(it.name || shopCode),
+            rarity: (it.rarity as any) || "legendary",
+          };
+        }
+      }
+      if (achCode) {
+        const it = lookupTitle(achCode);
+        if (it) {
+          titles.achievement = {
+            source: "achievement",
+            code: achCode,
+            label: String(it.name || achCode),
+            rarity: (it.rarity as any) || "common",
+          };
+        } else {
+          // legacy hors catalogue
+          titles.achievement = {
+            source: "achievement",
+            code: achCode,
+            label: achCode.replace(/^title_/, "").replace(/_/g, " "),
+            rarity: "common",
+          };
+        }
+      }
+      if (showLevel) {
+        try {
+          const xp = Number(row.xp || 0);
+          const { getLevelInfo } = await import("./economy/xp.js");
+          const info = getLevelInfo(xp);
+          const tier = info.tier;
+          const rarity =
+            tier >= 9 ? "mythic"
+            : tier >= 8 ? "legendary"
+            : tier >= 6 ? "epic"
+            : tier >= 4 ? "rare"
+            : tier >= 2 ? "uncommon"
+            : "common";
+          titles.level = {
+            source: "level",
+            code: "level_auto",
+            label: info.fullTitle,
+            rarity,
+          };
+        } catch {}
+      }
+
+      if (titles.shop || titles.achievement || titles.level) {
+        cosmetics.titles = titles;
+      }
     }
 
     out.set(userId, cosmetics);

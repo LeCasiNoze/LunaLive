@@ -106,6 +106,7 @@ import { mig096_rumble_radio_sources } from "./mig096_rumble_radio_sources.js";
 import { mig097_users_signup_utm } from "./mig097_users_signup_utm.js";
 import { mig098_quests } from "./mig098_quests.js";
 import { mig099_xp } from "./mig099_xp.js";
+import { mig100_titles_multi_slots } from "./mig100_titles_multi_slots.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -231,6 +232,7 @@ export async function migrateAll(pool: Pool) {
   await mig097_users_signup_utm(pool);
   await mig098_quests(pool);
   await mig099_xp(pool);
+  await mig100_titles_multi_slots(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

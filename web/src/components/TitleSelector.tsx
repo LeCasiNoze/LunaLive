@@ -1,12 +1,16 @@
 // web/src/components/TitleSelector.tsx
 //
-// Sélecteur unifié de titre (3 sources: niveau, succès, shop) avec preview
-// stylé et bouton équiper. À placer dans la section Personnalisation.
+// Sélecteur multi-slots: l'user équipe simultanément 3 titres (1 par source):
+//   - Shop (👑) à côté du pseudo
+//   - Succès (🏆) en 2e ligne
+//   - Niveau (⭐) en 2e ligne (auto-évolutif palier)
 
 import * as React from "react";
 import { loadToken } from "../lib/storage";
+import { TitlePill } from "./chat/TitlePill";
+import type { ChatTitleEntry } from "../lib/cosmetics";
 
-type Source = "level" | "achievement" | "shop";
+type Source = "shop" | "achievement" | "level";
 type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary" | "mythic";
 
 type TitleEntry = {
@@ -18,11 +22,18 @@ type TitleEntry = {
   owned: boolean;
 };
 
+type Equipped = {
+  shop: string | null;
+  achievement: string | null;
+  level: boolean;
+};
+
 type TitlesResponse = {
   ok: true;
-  equipped: string | null;
+  equipped: Equipped;
   currentLevel: number;
   currentLevelTitle: string;
+  currentLevelTier: number;
   titles: TitleEntry[];
 };
 
@@ -45,85 +56,62 @@ async function fetchJson(path: string, init: RequestInit = {}): Promise<any> {
   return data;
 }
 
-const STYLE_ID = "ts-styles-v1";
+const STYLE_ID = "ts2-styles-v1";
 const CSS = `
-@keyframes ts-shimmer {
-  0%   { background-position: 0% 50%; }
-  100% { background-position: 200% 50%; }
-}
-.ts-wrap { display: flex; flex-direction: column; gap: 14px; }
-.ts-tabs { display: inline-flex; gap: 4px; background: rgba(255,255,255,0.04); border: 1px solid rgba(124,92,252,0.16); border-radius: 999px; padding: 3px; align-self: flex-start; }
-.ts-tab {
-  padding: 7px 14px; border-radius: 999px; border: none; background: transparent;
-  color: rgba(220,220,255,0.6); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
-  transition: color .15s, background .15s;
-}
-.ts-tab:hover { color: #fff; }
-.ts-tab-active { background: linear-gradient(135deg,#6366f1,#8b5cf6); color: #fff; box-shadow: 0 3px 10px rgba(124,92,252,0.4); }
-.ts-tab-count { font-weight: 600; opacity: .7; margin-left: 4px; font-size: 11px; }
-
-.ts-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-.ts-card {
-  position: relative;
+.ts2-wrap { display: flex; flex-direction: column; gap: 18px; }
+.ts2-section {
   border-radius: 14px;
   border: 1px solid rgba(124,92,252,0.16);
-  background: rgba(13,11,24,0.65);
-  padding: 12px 14px;
+  background: rgba(13,11,24,0.55);
+  padding: 14px 16px;
+}
+.ts2-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 10px; flex-wrap: wrap;
+}
+.ts2-section-title {
+  font-size: 12px; font-weight: 800; letter-spacing: 0.08em;
+  text-transform: uppercase; color: rgba(167,139,250,0.85);
+  display: flex; align-items: center; gap: 6px;
+}
+.ts2-equipped-now {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; color: rgba(220,220,255,0.75);
+}
+.ts2-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.ts2-card {
+  position: relative;
+  border-radius: 10px;
+  border: 1px solid rgba(124,92,252,0.14);
+  background: rgba(255,255,255,0.025);
+  padding: 9px 11px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  transition: border-color .18s, transform .18s;
+  transition: border-color .15s, transform .15s;
   cursor: pointer;
 }
-.ts-card:hover { border-color: rgba(124,92,252,0.42); transform: translateY(-1px); }
-.ts-card-locked { opacity: 0.55; cursor: not-allowed; }
-.ts-card-equipped { border-color: #34d399 !important; box-shadow: 0 0 0 1px #34d399 inset, 0 6px 20px rgba(16,185,129,0.25); }
-
-.ts-preview {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  background-size: 200% 100%;
-  animation: ts-shimmer 5s linear infinite;
-}
-.ts-rarity-common      { background: linear-gradient(135deg, #94a3b8, #cbd5e1, #94a3b8); color: #0f172a; }
-.ts-rarity-uncommon    { background: linear-gradient(135deg, #34d399, #6ee7b7, #34d399); color: #064e3b; }
-.ts-rarity-rare        { background: linear-gradient(135deg, #60a5fa, #93c5fd, #60a5fa); color: #1e3a8a; }
-.ts-rarity-epic        { background: linear-gradient(135deg, #c084fc, #d8b4fe, #c084fc); color: #4c1d95; }
-.ts-rarity-legendary   { background: linear-gradient(135deg, #fbbf24, #fde68a, #fbbf24); color: #78350f; }
-.ts-rarity-mythic      { background: linear-gradient(135deg, #f472b6, #fbbf24, #22d3ee, #f472b6); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
-
-.ts-source { font-size: 10.5px; color: rgba(167,139,250,0.85); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; }
-.ts-desc { font-size: 11.5px; color: rgba(220,220,255,0.55); line-height: 1.4; }
-.ts-actions { display: flex; gap: 6px; margin-top: 4px; }
-.ts-btn {
+.ts2-card:hover { border-color: rgba(124,92,252,0.4); transform: translateY(-1px); }
+.ts2-card-locked { opacity: 0.5; cursor: not-allowed; }
+.ts2-card-equipped { border-color: #34d399 !important; box-shadow: 0 0 0 1px #34d399 inset; }
+.ts2-desc { font-size: 11px; color: rgba(220,220,255,0.55); line-height: 1.35; }
+.ts2-actions { display: flex; gap: 6px; margin-top: 2px; }
+.ts2-btn {
   flex: 1;
-  padding: 6px 10px; border-radius: 8px;
+  padding: 5px 9px; border-radius: 7px;
   border: 1px solid rgba(124,92,252,0.32);
-  background: rgba(124,92,252,0.10);
-  color: #dde8ff; font: inherit; font-size: 11.5px; font-weight: 700;
+  background: rgba(124,92,252,0.08);
+  color: #dde8ff; font: inherit; font-size: 11px; font-weight: 700;
   cursor: pointer;
-  transition: background .15s, border-color .15s;
 }
-.ts-btn:hover { background: rgba(124,92,252,0.20); border-color: rgba(124,92,252,0.55); }
-.ts-btn-primary { background: linear-gradient(135deg,#10b981,#34d399); border-color: rgba(16,185,129,0.4); color: #fff; }
-.ts-btn-primary:hover { filter: brightness(1.1); }
-.ts-btn:disabled { opacity: .5; cursor: not-allowed; }
-
-.ts-equip-current {
-  border-radius: 14px;
-  border: 1px solid rgba(16,185,129,0.32);
-  background: linear-gradient(160deg, rgba(16,185,129,0.06), transparent 60%), rgba(13,11,24,0.65);
-  padding: 14px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.ts-equip-current-label { font-size: 11px; color: rgba(167,139,250,0.85); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; margin-bottom: 6px; }
+.ts2-btn:hover { background: rgba(124,92,252,0.20); }
+.ts2-btn-primary { background: linear-gradient(135deg,#10b981,#34d399); border-color: rgba(16,185,129,0.4); color: #fff; }
+.ts2-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ts2-empty { color: rgba(220,220,255,0.45); font-size: 12px; padding: 12px 4px; text-align: center; }
 `;
 
 function ensureCss() {
@@ -135,23 +123,18 @@ function ensureCss() {
   document.head.appendChild(tag);
 }
 
-export function renderTitlePreview(label: string, rarity: Rarity, key?: string) {
-  return (
-    <span key={key} className={`ts-preview ts-rarity-${rarity}`}>
-      {label}
-    </span>
-  );
+function toChatEntry(t: TitleEntry): ChatTitleEntry {
+  return { source: t.source, code: t.code, label: t.label, rarity: t.rarity };
 }
 
-const SOURCE_LABEL: Record<Source, string> = {
-  level: "Niveau",
-  achievement: "Succès",
-  shop: "Shop",
+const SECTION_LABEL: Record<Source, { icon: string; title: string; sub: string }> = {
+  shop: { icon: "👑", title: "Titre Shop", sub: "S'affiche à côté de ton pseudo" },
+  achievement: { icon: "🏆", title: "Titre Succès", sub: "S'affiche en 2e ligne" },
+  level: { icon: "⭐", title: "Titre Niveau (auto)", sub: "Suit ton palier en temps réel" },
 };
 
 export function TitleSelector() {
   const [data, setData] = React.useState<TitlesResponse | null>(null);
-  const [tab, setTab] = React.useState<Source | "all">("all");
   const [busy, setBusy] = React.useState<string | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
 
@@ -169,11 +152,14 @@ export function TitleSelector() {
     reload();
   }, [reload]);
 
-  const equip = async (code: string | null) => {
-    setBusy(code || "_unequip");
+  const equip = async (slot: Source, code: string | null) => {
+    setBusy(`${slot}:${code ?? "_unequip"}`);
     setErr(null);
     try {
-      await fetchJson(`/api/me/titles/equip`, { method: "POST", body: JSON.stringify({ code }) });
+      await fetchJson(`/api/me/titles/equip`, {
+        method: "POST",
+        body: JSON.stringify({ slot, code }),
+      });
       await reload();
     } catch (e: any) {
       setErr(String(e?.message || e));
@@ -184,95 +170,95 @@ export function TitleSelector() {
 
   if (!data) return <div style={{ color: "rgba(220,220,255,0.55)", fontSize: 13, padding: 12 }}>Chargement…</div>;
 
-  const equippedEntry = data.titles.find((t) => t.code === data.equipped) || null;
+  const renderSection = (slot: Source) => {
+    const items = data.titles.filter((t) => t.source === slot);
+    const isLevelSlot = slot === "level";
+    const equippedCode = isLevelSlot ? (data.equipped.level ? "level_auto" : null) : (data.equipped as any)[slot];
+    const equippedEntry = items.find((t) => t.code === equippedCode) || null;
 
-  const filtered = tab === "all" ? data.titles : data.titles.filter((t) => t.source === tab);
-  const counts = {
-    all: data.titles.filter((t) => t.owned).length,
-    level: data.titles.filter((t) => t.source === "level" && t.owned).length,
-    achievement: data.titles.filter((t) => t.source === "achievement" && t.owned).length,
-    shop: data.titles.filter((t) => t.source === "shop" && t.owned).length,
+    return (
+      <div key={slot} className="ts2-section">
+        <div className="ts2-section-head">
+          <div className="ts2-section-title">
+            <span aria-hidden>{SECTION_LABEL[slot].icon}</span>
+            {SECTION_LABEL[slot].title}
+            <span style={{ color: "rgba(220,220,255,0.45)", fontSize: 11, fontWeight: 600, textTransform: "none", letterSpacing: 0, marginLeft: 4 }}>
+              · {SECTION_LABEL[slot].sub}
+            </span>
+          </div>
+          <div className="ts2-equipped-now">
+            {equippedEntry ? (
+              <>
+                <span>Équipé :</span>
+                <TitlePill entry={toChatEntry(equippedEntry)} />
+                <button
+                  type="button"
+                  className="ts2-btn"
+                  style={{ flex: "0 0 auto", padding: "3px 9px" }}
+                  disabled={busy === `${slot}:_unequip`}
+                  onClick={() => equip(slot, null)}
+                >
+                  Retirer
+                </button>
+              </>
+            ) : (
+              <span style={{ fontStyle: "italic" }}>Aucun</span>
+            )}
+          </div>
+        </div>
+
+        {items.length === 0 ? (
+          <div className="ts2-empty">Aucun titre disponible dans cette catégorie pour l'instant.</div>
+        ) : (
+          <div className="ts2-list">
+            {items.map((t) => {
+              const isEquipped = equippedCode === t.code;
+              const cardCls = `ts2-card${!t.owned ? " ts2-card-locked" : ""}${isEquipped ? " ts2-card-equipped" : ""}`;
+              const busyKey = `${slot}:${t.code}`;
+              return (
+                <div key={t.code} className={cardCls}>
+                  <TitlePill entry={toChatEntry(t)} />
+                  {t.description && <div className="ts2-desc">{t.description}</div>}
+                  <div className="ts2-actions">
+                    {t.owned ? (
+                      isEquipped ? (
+                        <button className="ts2-btn" disabled>✓ Équipé</button>
+                      ) : (
+                        <button
+                          className="ts2-btn ts2-btn-primary"
+                          disabled={busy === busyKey}
+                          onClick={() => equip(slot, t.code)}
+                        >
+                          {busy === busyKey ? "…" : "Équiper"}
+                        </button>
+                      )
+                    ) : (
+                      <button className="ts2-btn" disabled>🔒 Verrouillé</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
-    <div className="ts-wrap">
-      {/* Bloc titre actuel */}
-      <div className="ts-equip-current">
-        <div>
-          <div className="ts-equip-current-label">Titre actuel</div>
-          {equippedEntry ? (
-            renderTitlePreview(equippedEntry.label, equippedEntry.rarity)
-          ) : (
-            <span style={{ color: "rgba(220,220,255,0.55)", fontSize: 13, fontStyle: "italic" }}>
-              Aucun titre équipé
-            </span>
-          )}
-        </div>
-        {data.equipped && (
-          <button
-            type="button"
-            className="ts-btn"
-            disabled={busy === "_unequip"}
-            onClick={() => equip(null)}
-          >
-            Retirer
-          </button>
-        )}
-      </div>
-
+    <div className="ts2-wrap">
       {err && (
-        <div style={{ padding: 8, borderRadius: 8, background: "rgba(240,78,78,0.1)", border: "1px solid rgba(240,78,78,0.28)", color: "#fc8181", fontSize: 12 }}>
+        <div style={{ padding: 10, borderRadius: 8, background: "rgba(240,78,78,0.1)", border: "1px solid rgba(240,78,78,0.28)", color: "#fc8181", fontSize: 12 }}>
           ⚠️ {err}
         </div>
       )}
-
-      {/* Tabs */}
-      <div className="ts-tabs">
-        <button className={`ts-tab ${tab === "all" ? "ts-tab-active" : ""}`} onClick={() => setTab("all")}>
-          Tous <span className="ts-tab-count">({counts.all})</span>
-        </button>
-        <button className={`ts-tab ${tab === "level" ? "ts-tab-active" : ""}`} onClick={() => setTab("level")}>
-          Niveau
-        </button>
-        <button className={`ts-tab ${tab === "achievement" ? "ts-tab-active" : ""}`} onClick={() => setTab("achievement")}>
-          Succès <span className="ts-tab-count">({counts.achievement})</span>
-        </button>
-        <button className={`ts-tab ${tab === "shop" ? "ts-tab-active" : ""}`} onClick={() => setTab("shop")}>
-          Shop <span className="ts-tab-count">({counts.shop})</span>
-        </button>
+      <div style={{ fontSize: 12.5, color: "rgba(220,220,255,0.65)", lineHeight: 1.5 }}>
+        Tu peux équiper un titre par source. Les 3 sont cumulables :
+        le <strong>👑 Shop</strong> apparaît à côté de ton pseudo, le <strong>🏆 Succès</strong> et le <strong>⭐ Niveau</strong> en seconde ligne.
       </div>
-
-      {/* Liste */}
-      <div className="ts-list">
-        {filtered.map((t) => {
-          const isEquipped = data.equipped === t.code;
-          const cardCls = `ts-card${!t.owned ? " ts-card-locked" : ""}${isEquipped ? " ts-card-equipped" : ""}`;
-          return (
-            <div key={t.code} className={cardCls}>
-              <span className="ts-source">{SOURCE_LABEL[t.source]}</span>
-              {renderTitlePreview(t.label, t.rarity)}
-              {t.description && <span className="ts-desc">{t.description}</span>}
-              <div className="ts-actions">
-                {t.owned ? (
-                  isEquipped ? (
-                    <button className="ts-btn" disabled>✓ Équipé</button>
-                  ) : (
-                    <button
-                      className="ts-btn ts-btn-primary"
-                      disabled={busy === t.code}
-                      onClick={() => equip(t.code)}
-                    >
-                      {busy === t.code ? "…" : "Équiper"}
-                    </button>
-                  )
-                ) : (
-                  <button className="ts-btn" disabled>🔒 Verrouillé</button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {renderSection("shop")}
+      {renderSection("achievement")}
+      {renderSection("level")}
     </div>
   );
 }
