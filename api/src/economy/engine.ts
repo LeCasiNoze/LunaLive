@@ -1,4 +1,9 @@
 // api/src/economy/engine.ts
+//
+// @deprecated Ce fichier (mintRubis / spendSink / spendSupport / cashoutRequest)
+// n'est plus appelé par aucune route business. Le flux actif passe par
+// `api/src/wallet_engine.ts` (earnRubisTx / spendRubisTx). Conservé pour
+// rétro-compat éventuelle. À supprimer dans une future version après audit.
 import type { PoolClient } from "pg";
 import { pool } from "../db.js";
 import { ORIGIN_WEIGHT_BP, type RubisOrigin, type SpendKind } from "./config.js";
