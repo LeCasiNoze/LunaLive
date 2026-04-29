@@ -75,20 +75,66 @@ casual fasse ~500 rubis/mois (= 1 sub) et qu'un hardcore fasse
 - Front : `QuestsModal` (desktop full + mobile sheet) + badge topbar
 - Tracking : lit les tables existantes (chat_messages, wheel_spins, etc.)
 
-## Sprint 3 — XP / Levels
+## Sprint 3 — XP / Levels (Phase A ✅ livrée)
 
-**Objectif** : progression long-terme, rewards cosmétiques exclusifs
-aux paliers, pas de rubis (pour préserver l'éco).
+**Objectif** : progression long-terme calibrée pour casu = 3 ans / Nico
+type = 1 an / ultra hardcore = 8 mois pour atteindre le level max (100).
 
-- Colonne `xp BIGINT NOT NULL DEFAULT 0` sur `users`
-- Sources d'XP : message chat (1), watch min (5), quête complétée (50),
-  succès débloqué (100), call envoyé (10)
-- Levels 1-100 courbe quadratique (level n = 100 * n² XP)
-- Récompenses paliers : title auto "Niveau X", cosmétique débloqué
-  tous les 10 levels
-- Badge level dans topbar + animation level-up
-- Pas de backfill (on démarre tout le monde à level 1, on accepte la
-  perte historique)
+Référence: Nico Carrasso = Lvl 71 sur Nozebet (326 840 XP, plusieurs années).
+
+- Courbe `xp(n) = 4 × n^1.4`, cumul L100 = ~145 000 XP
+- 10 paliers de 10 levels: Nouveau-Né → Légende LunaLive
+- Le titre du palier (ex 'Farm Hunter III') évolue automatiquement
+  avec le level — pas de title_auto séparé à débloquer
+- Perks gating shop (grade 0→5), bonus daily/claim/cooldown blackjack
+- Cosmétiques exclusifs aux levels 50/75/100
+
+### Phase B (à venir)
+- Hooks `awardXp` dans daily_bonus, achievement unlock, chat (cap 50/j),
+  watchtime (cap 100/j), calls (cap 50/j), sub send
+- Application effective des perks: daily bonus +%, /claim +%,
+  weekly tickets bonus
+
+### Phase C (à venir)
+- Page profil section "Progression" avec barre + perks débloqués/à venir
+- Section "Personnalisation" rework: 3 sources de titres, l'user
+  choisit lequel afficher
+- Level-up toast animation
+- Admin endpoints `/admin/xp/*`
+
+### Phase D (à venir)
+- Commande Discord `/blackjack_max` (débloquée au lvl 80, mises x10)
+
+## Sprint 3.5 — Système de titres unifié
+
+L'user a 3 sources de titres potentielles:
+1. **Titres shop** (LunaKing, etc.) — achetés
+2. **Titres succès** (Vrai Viewer, Ratus, etc.) — 1 par succès débloqué
+3. **Titre niveau** (palier auto-évolutif: Farm Hunter III → IV...)
+
+Section "Personnalisation" doit permettre:
+- Voir tous les titres possédés (groupés par source)
+- Choisir lequel afficher publiquement
+- Présentation stylée codifiée (couleur/icône/effet par tier)
+
+Préset visuel proposé:
+- Titres shop: gradient violet/bleu (premium)
+- Titres succès: gradient bronze/silver/gold/master selon palier
+- Titres niveau: gradient palier (early=cyan, mid=violet, top=gold)
+
+## Sprint 3.6 — Commandes globales (chat lunalive + Discord)
+
+Sur le chat de tout streamer LunaLive:
+- `!solde` → tes rubis actuels
+- `!succes` → 4 pills [bronze X/Y] [silver X/Y] [gold X/Y] [master X/Y]
+- `!watch` → temps cumulé sur ce streamer + temps depuis follow
+- `!profil` → carte stats (rubis, level, succès, watch, depuis follow)
+  inspirée du `/profil` Nozebot Discord
+
+Sur Discord (LunaLive bot):
+- `/solde` ou `!solde`
+- `/profil` (fiche stats détaillée)
+- `/succes` (vue détaillée par palier)
 
 ## Sprint 4 — Achievements rework
 

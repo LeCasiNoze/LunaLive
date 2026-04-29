@@ -3,22 +3,24 @@
 // Système XP / Levels — LunaLive.
 //
 // Courbe : 100 niveaux exponentiels.
-// xp_for_level(n) ≈ 14 × n^1.4 → progression rapide au début, lente à la fin.
-// Cumul cible (XP_TOTAL_FOR_LEVEL) :
-//   L1   ~14 XP
-//   L5   ~280 XP        (1 semaine casual)
-//   L10  ~1500 XP       (1 mois casual)
-//   L25  ~12000 XP      (~5 mois casual)
-//   L50  ~60000 XP      (~2 ans casual / 1 an hardcore)
-//   L75  ~150000 XP     (~5 ans casual)
-//   L100 ~250000 XP     (~10 ans casual / 4-5 ans hardcore)
+// xp_for_level(n) ≈ 4 × n^1.4 → progression rapide au début, longue à la fin.
+// Cumul cible (XP_TOTAL_FOR_LEVEL) — recalibré avec retour utilisateur:
+//   L1   ~4 XP
+//   L10  ~360 XP        (~3 jours casu)
+//   L25  ~3 200 XP      (~1 mois casu)
+//   L50  ~17 000 XP     (~5 mois casu / 2 mois hardcore)
+//   L75  ~50 000 XP     (~1.5 an casu / 6 mois hardcore)
+//   L100 ~145 000 XP    (~3 ans casu / 1 an Nico / 8 mois ultra hardcore)
 //
+// Référence: Nico Carrasso = Lvl 71 sur Nozebet (326k XP, plusieurs années).
 // 10 paliers (tiers) de 10 levels chacun. Titres romain I-X dans chaque palier.
+// Le titre du palier courant suit automatiquement le level (pas besoin de
+// "title_auto" séparés à débloquer — le titre niveau évolue tout seul).
 
 import type { PoolClient } from "pg";
 
 export const MAX_LEVEL = 100;
-const COEF = 14;
+const COEF = 4;
 const EXP = 1.4;
 
 /** Coût XP pour passer du level n-1 au level n. Level 0 = 0 XP. */
@@ -139,31 +141,24 @@ export type Perk =
 export const LEVEL_PERKS: Record<number, Perk[]> = {
   1:   [{ kind: "shop_grade", grade: 0, label: "Shop niveau 0 débloqué" }],
   5:   [{ kind: "perk", code: "wheel_ticket_weekly", label: "+1 ticket roue / semaine", description: "Reçois 1 ticket roue de plus chaque semaine." }],
-  10:  [{ kind: "shop_grade", grade: 1, label: "Shop niveau 1 (badges, hats simples)" },
-        { kind: "title_auto", code: "lvl_10", label: "Titre 'Niveau 10'" }],
+  10:  [{ kind: "shop_grade", grade: 1, label: "Shop niveau 1 (badges, hats simples)" }],
   15:  [{ kind: "perk", code: "daily_bonus_5pct", label: "+5% sur le daily bonus rubis", description: "Tous les daily bonus en rubis sont boostés de 5%." }],
-  20:  [{ kind: "title_auto", code: "lvl_20", label: "Titre 'Niveau 20'" },
-        { kind: "perk", code: "bj_cd_10pct", label: "−10% cooldown blackjack", description: "Le cooldown du /blackjack passe de 12h à ~10h48." }],
+  20:  [{ kind: "perk", code: "bj_cd_10pct", label: "−10% cooldown blackjack", description: "Le cooldown du /blackjack passe de 12h à ~10h48." }],
   25:  [{ kind: "shop_grade", grade: 2, label: "Shop niveau 2 (titres premium)" },
         { kind: "perk", code: "daily_bonus_10pct", label: "+10% sur le daily bonus rubis (remplace le +5%)", description: "Daily bonus rubis boosté à +10%." }],
-  30:  [{ kind: "title_auto", code: "lvl_30", label: "Titre 'Niveau 30'" }],
   40:  [{ kind: "perk", code: "wheel_ticket_weekly_2", label: "+2 tickets roue / semaine (remplace +1)", description: "Reçois 2 tickets roue de plus chaque semaine." },
         { kind: "perk", code: "bj_cd_20pct", label: "−20% cooldown blackjack (remplace −10%)", description: "Cooldown blackjack ramené à ~9h36." }],
   50:  [{ kind: "shop_grade", grade: 3, label: "Shop niveau 3 (cosmétiques premium)" },
-        { kind: "perk", code: "daily_wheel_x2", label: "Daily wheel : 2 spins gratuits / jour", description: "Au lieu d'1 spin gratuit, tu en as 2." },
-        { kind: "title_auto", code: "lvl_50", label: "Titre 'Mi-chemin'" },
         { kind: "cosmetic", code: "frame_silver_aura", label: "Frame chat 'Silver Aura'", description: "Cosmétique exclusif débloqué." }],
-  60:  [{ kind: "title_auto", code: "lvl_60", label: "Titre 'Saigneur'" },
-        { kind: "perk", code: "bj_cd_30pct", label: "−30% cooldown blackjack (remplace −20%)", description: "Cooldown blackjack ramené à ~8h24." }],
+  60:  [{ kind: "perk", code: "bj_cd_30pct", label: "−30% cooldown blackjack (remplace −20%)", description: "Cooldown blackjack ramené à ~8h24." }],
   70:  [{ kind: "perk", code: "claim_discord_bonus_10pct", label: "+10% sur les /claim Discord", description: "Tes /claim Discord sont boostés de 10%." }],
   75:  [{ kind: "shop_grade", grade: 4, label: "Shop niveau 4 (collections limitées)" },
         { kind: "cosmetic", code: "hat_eclipse_halo", label: "Hat 'Eclipse Halo'", description: "Cosmétique exclusif débloqué." }],
-  80:  [{ kind: "perk", code: "bj_cd_40pct", label: "−40% cooldown blackjack (remplace −30%)", description: "Cooldown blackjack ramené à ~7h12." }],
+  80:  [{ kind: "perk", code: "bj_cd_40pct", label: "−40% cooldown blackjack (remplace −30%)", description: "Cooldown blackjack ramené à ~7h12." },
+        { kind: "perk", code: "discord_blackjack_max", label: "Commande Discord /blackjack_max débloquée", description: "Joue avec mises ×10 sur tous les paris (main + side bets)." }],
   85:  [{ kind: "perk", code: "blackjack_natural_bonus", label: "+5% gain blackjack natural", description: "Les blackjack naturels paient légèrement plus." }],
-  90:  [{ kind: "title_auto", code: "lvl_90", label: "Titre 'Apôtre'" }],
   100: [{ kind: "shop_grade", grade: 5, label: "Shop niveau légendaire" },
         { kind: "cosmetic", code: "uanim_chroma_legendary", label: "Username Chroma Legendary", description: "Animation pseudo unique au level max." },
-        { kind: "title_auto", code: "lvl_100", label: "Titre 'Légende LunaLive'" },
         { kind: "perk", code: "bj_cd_50pct", label: "−50% cooldown blackjack (max)", description: "Cooldown blackjack ramené à 6h." },
         { kind: "perk", code: "all_in", label: "Tous les perks précédents cumulés", description: "Tu as débloqué tout ce qu'il y a à débloquer." }],
 };
@@ -203,10 +198,14 @@ export function getDiscordClaimMultiplier(level: number): number {
   return 1.0;
 }
 
-/** Daily wheel: nombre de spins gratuits par jour. */
-export function getDailyWheelFreeSpins(level: number): number {
-  if (level >= 50) return 2;
+/** Daily wheel: nombre de spins gratuits par jour. (Reste à 1 même au level max.) */
+export function getDailyWheelFreeSpins(_level: number): number {
   return 1;
+}
+
+/** L'user débloque-t-il /blackjack_max (mises x10) ? */
+export function hasBlackjackMaxUnlock(level: number): boolean {
+  return level >= 80;
 }
 
 /** Liste tous les perks débloqués pour un level donné (cumulatif). */
