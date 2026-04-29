@@ -916,6 +916,73 @@ export async function startDiscordBot(ctx: BotCtx) {
           }
         }
 
+        // ── /solde /profil /succes : commandes profil/stats ────────────
+        if (
+          interaction.commandName === "solde" ||
+          interaction.commandName === "profil" ||
+          interaction.commandName === "succes"
+        ) {
+          const linked = await getLinkedUser(String(interaction.user.id));
+          if (!linked) {
+            await interaction.reply({
+              ephemeral: true,
+              content: "❌ Compte Discord non lié à LunaLive. Utilise `/link` d'abord.",
+            });
+            return;
+          }
+          const userId = Number((linked as any).id);
+          const { getLevelInfo } = await import("../economy/xp.js");
+          const u = await pool.query(
+            `SELECT username, rubis, xp::bigint AS xp FROM users WHERE id = $1 LIMIT 1`,
+            [userId]
+          );
+          const row = u.rows[0];
+          if (!row) {
+            await interaction.reply({ ephemeral: true, content: "❌ Profil introuvable." });
+            return;
+          }
+          const xp = Number(row.xp || 0);
+          const info = getLevelInfo(xp);
+          let entitlements = 0;
+          try {
+            const e = await pool.query(
+              `SELECT COUNT(*)::int AS n FROM user_entitlements WHERE user_id = $1`,
+              [userId]
+            );
+            entitlements = Number(e.rows[0]?.n || 0);
+          } catch {}
+
+          if (interaction.commandName === "solde") {
+            await interaction.reply({
+              ephemeral: false,
+              content: `💎 **${row.username}** → **${Number(row.rubis).toLocaleString("fr-FR")}** rubis · Niveau **${info.level}** (${info.fullTitle})`,
+            });
+            return;
+          }
+          if (interaction.commandName === "succes") {
+            await interaction.reply({
+              ephemeral: false,
+              content: `🏆 **${row.username}** → **${entitlements}** récompense${entitlements > 1 ? "s" : ""} débloquée${entitlements > 1 ? "s" : ""}\nDétail : https://lunalive.win/profile`,
+            });
+            return;
+          }
+          // /profil — fiche complète embed
+          const { EmbedBuilder } = await import("discord.js");
+          const embed = new EmbedBuilder()
+            .setTitle(`Profil de ${row.username}`)
+            .setColor(0x8b5cf6)
+            .addFields(
+              { name: "⭐ Niveau", value: `${info.level} / 100\n*${info.fullTitle}*`, inline: true },
+              { name: "💎 Rubis", value: `${Number(row.rubis).toLocaleString("fr-FR")}`, inline: true },
+              { name: "📈 XP", value: `${xp.toLocaleString("fr-FR")}\n${info.isMax ? "⭐ MAX" : `${info.xpToNext.toLocaleString("fr-FR")} XP avant L${info.level + 1}`}`, inline: true },
+              { name: "🏆 Récompenses", value: `${entitlements}`, inline: true },
+              { name: "🔗 Profil", value: `[lunalive.win/profile](https://lunalive.win/profile)`, inline: true }
+            )
+            .setFooter({ text: "LunaLive" });
+          await interaction.reply({ embeds: [embed] });
+          return;
+        }
+
         if (interaction.commandName === "whoami") {
           const linked = await getLinkedUser(String(interaction.user.id));
           if (!linked) {

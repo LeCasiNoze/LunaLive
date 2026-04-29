@@ -145,4 +145,9 @@ export const SLASH_COMMANDS = [
   { name: "blackjack", description: "Jouer au blackjack (20 rubis, 1x / 12h)" },
   { name: "blackjack_plus", description: "Blackjack+ (side bets) (25 rubis, 1x / 12h)" },
 
+  // ✅ Profil & stats
+  { name: "solde", description: "Afficher tes rubis et ton niveau" },
+  { name: "profil", description: "Afficher ta fiche profil complète" },
+  { name: "succes", description: "Afficher tes récompenses débloquées" },
+
 ] as const;

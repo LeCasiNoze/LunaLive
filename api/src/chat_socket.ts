@@ -7,6 +7,7 @@ import type { AuthUser } from "./auth.js";
 import { normalizeAppearance, type Appearance } from "./appearance.js";
 import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
+import { handleGlobalCommand, isGlobalCommand } from "./services/global_commands.js";
 import { ensureDliveBridge } from "./dlive_chat_bridge.js";
 import { ensureRumbleBridge } from "./rumble_chat_bridge.js";
 
@@ -910,6 +911,21 @@ export function attachChat(io: Server) {
           });
 
           if (out.handled && !out.showOriginalInChat) return cb?.({ ok: true });
+
+          // Si la commande n'a pas été handled par calls/hunt, essayer les
+          // commandes globales (!solde, !profil, !watch, !succes)
+          if (!out.handled && isGlobalCommand(bang.cmd)) {
+            const g = await handleGlobalCommand({
+              pool,
+              io,
+              slug: meta.slug,
+              streamerId: meta.id,
+              actorUserId: u.id,
+              actorUsername: u.username,
+              cmd: bang.cmd,
+            });
+            if (g.handled) return cb?.({ ok: true });
+          }
         }
 
         const t = Date.now();

@@ -66,7 +66,7 @@ function emitChatAll(io: Server, slug: string, event: string, payload?: any) {
   io.to(`chat:${s}:popup`).emit(event as any, payload);
 }
 
-async function sendBotChat(
+export async function sendBotChat(
   pool: Pool,
   io: Server,
   opts: { streamerId: number; slug: string },
