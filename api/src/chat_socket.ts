@@ -857,7 +857,10 @@ export function attachChat(io: Server) {
       }
     );
 
-    socket.on("chat:send", async ({ slug, body }: { slug: string; body: string }, cb?: (ack: any) => void) => {
+    socket.on("chat:send", async (
+      { slug, body, streamControl }: { slug: string; body: string; streamControl?: boolean },
+      cb?: (ack: any) => void
+    ) => {
       try {
         const u = data.user;
         if (!u) return cb?.({ ok: false, error: "auth_required" });
@@ -910,7 +913,10 @@ export function attachChat(io: Server) {
             arg: bang.arg,
           });
 
-          if (out.handled && !out.showOriginalInChat) return cb?.({ ok: true });
+          // ✅ Stream-control : si ça vient du panneau FSB, on n'affiche JAMAIS
+          // la commande dans le chat (gagner de la place visuelle), peu importe
+          // showOriginalInChat. Le bot exécute toujours la commande.
+          if (out.handled && (streamControl || !out.showOriginalInChat)) return cb?.({ ok: true });
 
           // Si la commande n'a pas été handled par calls/hunt, essayer les
           // commandes globales (!solde, !profil, !watch, !succes)
@@ -926,6 +932,11 @@ export function attachChat(io: Server) {
             });
             if (g.handled) return cb?.({ ok: true });
           }
+
+          // ✅ Stream-control : si c'est un bang qui n'a pas été handled
+          // (commande inconnue type "!asdf"), on cache quand même côté chat.
+          // L'objectif est d'épurer la timeline du chat.
+          if (streamControl) return cb?.({ ok: true });
         }
 
         const t = Date.now();
@@ -939,6 +950,16 @@ export function attachChat(io: Server) {
           [meta.id, u.id, u.username, text]
         );
         const row = ins.rows?.[0];
+
+        // Premier chatter du live — ON CONFLICT DO NOTHING : seul le 1er par live est enregistré
+        pool.query(
+          `INSERT INTO stream_first_chatters (live_session_id, user_id)
+           SELECT id, $2 FROM live_sessions
+           WHERE streamer_id=$1 AND ended_at IS NULL
+           ORDER BY started_at DESC LIMIT 1
+           ON CONFLICT (live_session_id) DO NOTHING`,
+          [meta.id, u.id]
+        ).catch(() => {});
 
         const appearance = data.appearance ?? normalizeAppearance(meta.appearance);
         const style = {

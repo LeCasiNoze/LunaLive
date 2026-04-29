@@ -1331,6 +1331,10 @@ export function ChatPanel({
 
   // ✅ NEW
   botMenuDockWidth,
+  // ✅ NEW : si true, les commandes (texte commençant par "!") envoyées
+  // depuis ce panel sont exécutées par le bot mais N'APPARAISSENT PAS dans
+  // le chat (épure la timeline pour les FSB depuis stream-control).
+  streamControl = false,
 }: {
   slug: string;
   onRequireLogin: () => void;
@@ -1343,6 +1347,7 @@ export function ChatPanel({
 
   // ✅ NEW
   botMenuDockWidth?: number;
+  streamControl?: boolean;
 }) {
 
 
@@ -2003,7 +2008,7 @@ export function ChatPanel({
     setSending(true);
     try {
       await new Promise<void>((resolve) => {
-        sockRef.current?.emit("chat:send", { slug, body: text }, (ack: any) => {
+        sockRef.current?.emit("chat:send", { slug, body: text, streamControl }, (ack: any) => {
           if (!ack?.ok) {
             if (ack?.error === "auth_required") onRequireLogin();
             else if (ack?.error === "rate_limited") setError("Trop vite (slow mode 0.2s).");
@@ -2789,7 +2794,7 @@ function openChatPopup() {
         canMod={!!join?.perms?.canMod}
         onRequireLogin={onRequireLogin}
         sendBang={(text) => {
-          sockRef.current?.emit("chat:send", { slug, body: text }, () => {});
+          sockRef.current?.emit("chat:send", { slug, body: text, streamControl }, () => {});
         }}
         variant={botMenuVariant}
         dockWidth={isPopup ? (botMenuDockWidth ?? 420) : undefined} // ✅ NEW

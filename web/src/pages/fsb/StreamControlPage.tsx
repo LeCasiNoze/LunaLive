@@ -2037,6 +2037,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
             botMenuVariant="dock"
             botMenuDockWidth={420}
             onRequireLogin={() => {}}
+            streamControl
           />
         </div>
       </div>
