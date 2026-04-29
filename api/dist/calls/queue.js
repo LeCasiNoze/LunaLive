@@ -172,6 +172,18 @@ export async function countUserCalls(pool, streamerId, userId) {
     `, [streamerId, userId]);
     return Number(r.rows?.[0]?.n ?? 0);
 }
+export async function countUserCallsByUsername(pool, streamerId, username) {
+    await ensureCallsSchema(pool);
+    const r = await pool.query(`
+    SELECT COUNT(*)::int AS n
+    FROM calls_queue
+    WHERE streamer_id=$1
+      AND LOWER(username)=LOWER($2)
+      AND COALESCE(is_bonus,FALSE)=FALSE
+      AND (bet IS NULL OR bet <= 0)
+    `, [streamerId, username]);
+    return Number(r.rows?.[0]?.n ?? 0);
+}
 async function ensureProviderPolicyRow(pool, streamerId) {
     await pool.query(`
     INSERT INTO calls_provider_policy (streamer_id, mode)

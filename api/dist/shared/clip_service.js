@@ -1,5 +1,6 @@
 // api/src/shared/clip_service.ts
 // Service local pour la création de clips (API uniquement)
+import { notifyStreamerOfFirstAutoClip } from "../lunaclip/notify_streamer.js";
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
 const LATENCY_PAD_SEC = 0; // Pas de compensation latence (cible: 1m15 avant / 15s après la commande)
 const DEFAULT_PRE_SEC = 75; // 1m15 avant la commande/détection
@@ -201,9 +202,14 @@ export async function createClipForStreamer(p) {
         // ── Rumble path ────────────────────────────────────────────────────────────
         if (platform === "rumble") {
             const rumble = await getRumbleLiveInfoForClip(pool, streamerId);
-            if (!rumble?.isLive || !rumble.hlsUrl) {
+            if (!rumble)
                 return { ok: false, reason: "live_not_active" };
-            }
+            // Source VOD : pendant le live → hls_url (DVR live) ; après → vod_mp4_url permanent
+            const sourceUrl = rumble.isLive
+                ? rumble.hlsUrl
+                : (rumble.vodMp4Url || rumble.vodHlsUrl || rumble.hlsUrl);
+            if (!sourceUrl)
+                return { ok: false, reason: rumble.isLive ? "live_not_active" : "vod_not_ready" };
             let offset;
             if (forcedOffsetSec !== undefined) {
                 offset = Math.max(0, forcedOffsetSec);
@@ -230,10 +236,13 @@ export async function createClipForStreamer(p) {
                 liveStartTs: rumble.liveStartedAtMs || Date.now(),
                 livePermlink: rumble.liveId || "",
                 platform: "rumble",
-                vodUrl: rumble.hlsUrl, // disponible immédiatement — pas besoin du vod_linker
+                vodUrl: sourceUrl, // HLS live pendant le stream, MP4 VOD après
             });
             if (!res.ok && res.reason === "duplicate")
                 return { ok: false, reason: "duplicate" };
+            if (res.ok && (author || null) === "lunaclip") {
+                void notifyStreamerOfFirstAutoClip(pool, streamerId, res.id);
+            }
             return res;
         }
         // ── DLive path (existant) ──────────────────────────────────────────────────
@@ -280,6 +289,9 @@ export async function createClipForStreamer(p) {
         if (!res.ok && res.reason === "duplicate") {
             return { ok: false, reason: "duplicate" };
         }
+        if (res.ok && (p.author || null) === "lunaclip") {
+            void notifyStreamerOfFirstAutoClip(pool, streamerId, res.id);
+        }
         return res;
     }
     catch (e) {
@@ -291,7 +303,7 @@ async function getStreamerPlatform(pool, streamerId) {
     return r.rows?.[0]?.platform ? String(r.rows[0].platform) : null;
 }
 async function getRumbleLiveInfoForClip(pool, streamerId) {
-    const r = await pool.query(`SELECT is_live, hls_url, live_id, live_started_at, title
+    const r = await pool.query(`SELECT is_live, hls_url, vod_mp4_url, vod_hls_url, live_id, live_started_at, title
      FROM streamer_rumble_info WHERE streamer_id=$1 LIMIT 1`, [streamerId]);
     const row = r.rows?.[0];
     if (!row)
@@ -299,6 +311,8 @@ async function getRumbleLiveInfoForClip(pool, streamerId) {
     return {
         isLive: !!row.is_live,
         hlsUrl: row.hls_url ? String(row.hls_url) : null,
+        vodMp4Url: row.vod_mp4_url ? String(row.vod_mp4_url) : null,
+        vodHlsUrl: row.vod_hls_url ? String(row.vod_hls_url) : null,
         liveId: row.live_id ? String(row.live_id) : null,
         liveStartedAtMs: row.live_started_at ? Number(row.live_started_at) : null,
         title: row.title ? String(row.title) : null,

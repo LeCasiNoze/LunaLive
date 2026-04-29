@@ -174,6 +174,10 @@ export async function claimOneClipToRenderMp4(opts) {
     const minTs = Math.max(0, Number(opts.minCreatedTs || 0));
     const maxAge = Math.max(1, Number(opts.maxAgeMs || 30 * 24 * 3600 * 1000));
     const oldestAllowed = now - maxAge;
+    // Buffer pour laisser les segments HLS post-clip arriver dans la playlist DVR
+    // (sinon ffmpeg lit un playlist qui ne contient pas encore les segments T → T+post
+    // → échec ou attente indéfinie. On attend post_sec + 5s avant de claim.)
+    const POST_SEGMENT_BUFFER_SEC = 5;
     const r = await pool.query(`
     WITH picked AS (
       SELECT id
@@ -185,6 +189,7 @@ export async function claimOneClipToRenderMp4(opts) {
         AND mp4_rendering = false
         AND created_ts >= $1
         AND created_ts >= $2
+        AND (created_ts + (COALESCE(post_sec, 0) + $3) * 1000) <= $4
       ORDER BY created_ts DESC, id DESC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
@@ -197,9 +202,10 @@ export async function claimOneClipToRenderMp4(opts) {
     RETURNING
       b.id, b.streamer_id, b.title, b.author, b.at_sec, b.pre_sec, b.post_sec, b.created_ts,
       b.vod_url, b.vod_permlink, b.vod_created_ts,
+      b.live_start_ts, b.live_permlink, b.platform,
       b.hidden_by_streamer, b.deleted_ts,
       b.mp4_key, b.mp4_ready_ts, b.mp4_size, b.mp4_error, b.mp4_rendering
-    `, [minTs, oldestAllowed]);
+    `, [minTs, oldestAllowed, POST_SEGMENT_BUFFER_SEC, now]);
     return r.rows?.[0] ?? null;
 }
 export async function setClipMp4Success(clipId, info) {

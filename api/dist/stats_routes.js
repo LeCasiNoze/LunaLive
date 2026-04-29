@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { pool } from "./db.js";
 import { requireAuth } from "./auth.js";
+import { getClientIp } from "./utils/client_ip.js";
 const TZ = "Europe/Oslo";
 const HEARTBEAT_TTL_SECONDS = 45;
 function getJwtSecret() {
@@ -153,7 +154,7 @@ export function registerStatsRoutes(app) {
         // viewer normal
         const viewerKey = user ? `u:${user.id}` : `a:${anonId}`;
         const ua = String(req.headers["user-agent"] || "").slice(0, 300) || null;
-        const ip = (req.ip || null);
+        const ip = (getClientIp(req) || null);
         // ✅ session active (TTL)
         await pool.query(`INSERT INTO viewer_sessions
         (live_session_id, streamer_id, viewer_key, user_id, anon_id, started_at, last_heartbeat_at, ended_at, user_agent, ip)

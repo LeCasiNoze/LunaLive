@@ -173,14 +173,16 @@ function isOccurrenceValid(expense, occurrenceDate) {
 }
 function computeAgencyPayouts(input) {
     const ftdCount = Number(input.ftdCount || 0);
+    const ftdFullBenef = Math.min(Number(input.ftdFullBenef || 0), ftdCount);
+    const billableFtd = Math.max(ftdCount - ftdFullBenef, 0);
     const totalDeposits = Number(input.totalDeposits || 0);
     const enteredRs = Number(input.rsValue || 0);
     const cpaAmount = Number(input.cpaAmount || 0);
     const cpaAgencyCut = Number(input.cpaAgencyCut || 0);
     const ersAgencyPercent = Number(input.ersAgencyPercent || 0);
     const grossCpa = roundMoney(ftdCount * cpaAmount) || 0;
-    const streamerCpa = roundMoney(ftdCount * Math.max(cpaAmount - cpaAgencyCut, 0)) || 0;
-    const agencyCpa = roundMoney(ftdCount * cpaAgencyCut) || 0;
+    const streamerCpa = roundMoney(billableFtd * Math.max(cpaAmount - cpaAgencyCut, 0)) || 0;
+    const agencyCpa = roundMoney(billableFtd * cpaAgencyCut + ftdFullBenef * cpaAmount) || 0;
     const streamerErs = roundMoney(enteredRs) || 0;
     const payableStreamerErs = roundMoney(Math.max(streamerErs, 0)) || 0;
     const agencyErs = roundMoney((totalDeposits * ersAgencyPercent) / 100) || 0;
@@ -226,6 +228,7 @@ async function syncAgencyExpensesForMonth(monthKey) {
         d.ers_agency_percent,
         c.name AS casino_name,
         st.ftd,
+        st.ftd_full_benef,
         st.total_deposits,
         st.rs_value
       FROM agency_streamer_assignments asa
@@ -247,6 +250,7 @@ async function syncAgencyExpensesForMonth(monthKey) {
         for (const row of result.rows) {
             const payouts = computeAgencyPayouts({
                 ftdCount: row.ftd == null ? null : Number(row.ftd),
+                ftdFullBenef: row.ftd_full_benef == null ? null : Number(row.ftd_full_benef),
                 totalDeposits: row.total_deposits == null ? null : Number(row.total_deposits),
                 rsValue: row.rs_value == null ? null : Number(row.rs_value),
                 cpaAmount: row.cpa_amount == null ? null : Number(row.cpa_amount),

@@ -46,6 +46,7 @@ import { adminCasinoCommentsRouter } from "./routes/admin_casino_comments.js";
 import { casinoCommentImagesRouter } from "./routes/casino_comment_images.js";
 // Streamer / integrations
 import { streamerDliveLinkRouter } from "./routes/streamer_dlive_link.js";
+import { streamerRumbleLinkRouter } from "./routes/streamer_rumble_link.js";
 import { meProfileRouter } from "./routes/me_profile.js";
 import { meOverlayRouter } from "./routes/me_overlay.js";
 import { overlayApiRouter } from "./routes/overlay_api.js";
@@ -63,6 +64,7 @@ import { callsRouter } from "./routes/calls.js";
 import { callsPcallRouter } from "./routes/calls_pcall.js";
 import { callsHuntRouter } from "./routes/calls_hunt.js";
 import { hunt2Router } from "./routes/hunt2.js";
+import { publicCallsRouter } from "./routes/public_calls.js";
 import { publicSlotsRouter } from "./routes/public-slots.js";
 // Billing / uploads / emotes / reports / admin content
 import { billingRouter } from "./routes/billing.js";
@@ -79,8 +81,15 @@ import { adminContentRouter } from "./routes/admin_content.js";
 import { publicContentRouter } from "./routes/public_content.js";
 import { expensesRouter } from "./routes/expenses.js";
 import { fsbDashboardRouter } from "./routes/fsb_dashboard.js";
+import { tiktokOutreachRouter, handleInboundReply } from "./routes/tiktok_outreach.js";
+import { questsRouter } from "./routes/quests.js";
+import { seedAllPeriodsIfNeeded } from "./services/quests.js";
+import { xpRouter } from "./routes/xp.js";
+import { adminXpRouter } from "./routes/admin_xp.js";
+import { titlesRouter } from "./routes/titles.js";
 import { agencyRouter } from "./routes/agency.js";
 import { requireFsbAccess } from "./routes/fsb_guard.js";
+import { webrtcTurnRouter } from "./routes/webrtc_turn.js";
 // Discord routes
 import { meDiscordLinkRouter } from "./routes/bot/me_discord_link.js";
 import { discordLinkConsumeRouter } from "./routes/bot/discord_link_consume.js";
@@ -116,6 +125,8 @@ export function createApp() {
     registerHlsProxy(app);
     app.options("/hls", (_req, res) => res.sendStatus(204));
     app.use("/api/public/slots", publicSlotsRouter);
+    // Overlay public — calls queue (no auth) — monté tôt pour échapper aux routers d'auth
+    app.use(publicCallsRouter);
     app.use("/billing", billingRouter);
     app.use(streamerUploadsRouter);
     app.use(avatarRouter);
@@ -163,6 +174,21 @@ export function createApp() {
     app.use("/api", requireAuth, requireFsbAccess, fsbAffiPagesRouter);
     app.use("/api", expensesRouter);
     app.use("/api", fsbDashboardRouter);
+    app.use("/api", tiktokOutreachRouter);
+    app.post("/api/inbound/tiktok-reply", handleInboundReply);
+    app.use("/api", questsRouter);
+    app.use("/api", xpRouter);
+    app.use(adminXpRouter);
+    app.use("/api", titlesRouter);
+    // Quest seeder: au boot puis 1x/h. Idempotent (skip si déjà seedé).
+    seedAllPeriodsIfNeeded().catch((e) => {
+        console.warn("[quests] initial seed failed:", e?.message || e);
+    });
+    setInterval(() => {
+        seedAllPeriodsIfNeeded().catch((e) => {
+            console.warn("[quests] periodic seed failed:", e?.message || e);
+        });
+    }, 60 * 60 * 1000);
     app.use("/api", agencyRouter);
     app.use(igWebhookRouter);
     app.use("/api/debug", trovoDebugRouter);
@@ -210,11 +236,13 @@ export function createApp() {
     app.use("/emotes", emotesRouter);
     app.use(streamerEmotesRouter);
     app.use("/me/overlay", requireAuth, meOverlayRouter);
+    app.use(webrtcTurnRouter);
     app.use("/me/bot", requireAuth, meBotRouter);
     app.use("/me/bot/bot_wheel", requireAuth, botWheelRouter);
     app.use("/me/bot/bot_rain", requireAuth, botRainRouter);
     app.use("/me/bot/clips", botClipsRouter);
     app.use("/streamer/me/dlive-link", streamerDliveLinkRouter);
+    app.use("/streamer/me/rumble-link", streamerRumbleLinkRouter);
     app.use(meProfileRouter);
     app.use("/overlay/api", overlayApiRouter);
     app.use("/slots", slotsRouter);

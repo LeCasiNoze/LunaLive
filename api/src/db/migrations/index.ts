@@ -107,6 +107,8 @@ import { mig097_users_signup_utm } from "./mig097_users_signup_utm.js";
 import { mig098_quests } from "./mig098_quests.js";
 import { mig099_xp } from "./mig099_xp.js";
 import { mig100_titles_multi_slots } from "./mig100_titles_multi_slots.js";
+import { mig101_user_achievements_unlocks } from "./mig101_user_achievements_unlocks.js";
+import { mig102_blackjack_hands } from "./mig102_blackjack_hands.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -233,6 +235,8 @@ export async function migrateAll(pool: Pool) {
   await mig098_quests(pool);
   await mig099_xp(pool);
   await mig100_titles_multi_slots(pool);
+  await mig101_user_achievements_unlocks(pool);
+  await mig102_blackjack_hands(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

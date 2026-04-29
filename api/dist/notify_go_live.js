@@ -1,5 +1,31 @@
 import { pool } from "./db.js";
 import webpush from "web-push";
+import { FABIO_STREAMER_ID, FABIO_NOTIF_CHANNEL_ID, FABIO_ROLE_NOTIF_STREAM } from "./discord/constants.js";
+// Cooldown Discord persistant en DB (colonne streamers.discord_notif_last_sent_at).
+// Survit aux redeploys et bloque les fausses transitions offline→online des pollers.
+// Configurable via env DISCORD_NOTIF_COOLDOWN_MIN, default 120 min (2h).
+function getDiscordNotifCooldownMin() {
+    const raw = Number(process.env.DISCORD_NOTIF_COOLDOWN_MIN);
+    if (!Number.isFinite(raw) || raw <= 0)
+        return 120;
+    return Math.max(1, Math.floor(raw));
+}
+/**
+ * Tente de "claim" le slot de notification pour un streamer de façon atomique.
+ * Renvoie true si la notif peut être envoyée (et marque le timestamp), false sinon.
+ */
+async function claimDiscordNotifSlot(streamerId) {
+    const cooldownMin = getDiscordNotifCooldownMin();
+    const r = await pool.query(`UPDATE streamers
+     SET discord_notif_last_sent_at = NOW()
+     WHERE id = $1
+       AND (
+         discord_notif_last_sent_at IS NULL
+         OR discord_notif_last_sent_at < NOW() - ($2::int * INTERVAL '1 minute')
+       )
+     RETURNING 1`, [streamerId, cooldownMin]);
+    return (r.rowCount ?? 0) > 0;
+}
 let vapidReady = false;
 function ensureVapid() {
     if (vapidReady)
@@ -44,6 +70,46 @@ export async function notifyFollowersGoLive(io, streamerId) {
     const f = await pool.query(`SELECT user_id
      FROM streamer_follows
      WHERE streamer_id=$1 AND notify_enabled=TRUE`, [streamerId]);
+    // ─── Discord notif Fabiozsis (indépendant des followers LunaLive) ───────────
+    if (streamerId === FABIO_STREAMER_ID) {
+        // Cooldown persistant en DB (UPDATE atomique). Si le slot n'est pas claim,
+        // une autre source (autre poller / instance / redeploy récent) a déjà notifié.
+        const claimed = await claimDiscordNotifSlot(streamerId);
+        if (!claimed) {
+            console.log(`[notify_go_live] Fabiozsis Discord notif skipped (cooldown ${getDiscordNotifCooldownMin()}min)`);
+        }
+        else {
+            const discordClient = global.discordClient;
+            if (discordClient) {
+                try {
+                    const rumbleRow = await pool.query(`SELECT thumbnail_url FROM streamer_rumble_info WHERE streamer_id = $1 LIMIT 1`, [streamerId]);
+                    const thumbnailUrl = rumbleRow.rows[0]?.thumbnail_url ?? null;
+                    const ch = await discordClient.channels.fetch(FABIO_NOTIF_CHANNEL_ID).catch(() => null);
+                    if (ch?.isTextBased?.()) {
+                        const webBase = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.win").replace(/\/$/, "");
+                        await ch.send({
+                            content: `@everyone <@&${FABIO_ROLE_NOTIF_STREAM}>`,
+                            embeds: [{
+                                    title: `🔴 ${displayName} est en live !`,
+                                    description: (title ? `**${title}**\n\n` : "") +
+                                        `Viens nous rejoindre en stream, c'est parti ! 🎰\n\n` +
+                                        `🌐 [Regarder sur LunaLive](${webBase}/s/${encodeURIComponent(slug)})\n` +
+                                        `📺 [Regarder sur DLive](https://dlive.tv/Fabiozsis)`,
+                                    color: 0xFF0000,
+                                    ...(thumbnailUrl ? { image: { url: thumbnailUrl } } : {}),
+                                    footer: { text: "Fabiozsis • Live Casino" },
+                                    timestamp: new Date().toISOString(),
+                                }],
+                            allowedMentions: { parse: ["everyone", "roles"] },
+                        });
+                    }
+                }
+                catch (e) {
+                    console.warn("[notify_go_live] Fabiozsis Discord notif failed:", e?.message);
+                }
+            }
+        }
+    }
     const userIds = f.rows.map((r) => Number(r.user_id)).filter((n) => Number.isFinite(n) && n > 0);
     if (!userIds.length)
         return;

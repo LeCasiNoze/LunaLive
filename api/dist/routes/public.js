@@ -49,11 +49,12 @@ WITH live_streamers AS (
     s.slug,
     s.display_name AS "displayName",
     s.title,
-    s.thumb_url AS "thumbUrlDb",
+    -- thumb_url Rumble en priorité (live actuel), fallback sur s.thumb_url
+    COALESCE(ri.thumbnail_url, s.thumb_url) AS "thumbUrlDb",
     s.live_started_at AS "liveStartedAt",
-    -- ✅ Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
     ('/avatars/u/' || s.user_id::text) AS "avatarUrl"
   FROM streamers s
+  LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
   WHERE s.is_live = TRUE
     AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
 ),
@@ -188,6 +189,7 @@ publicRouter.get("/streamers/:slug", a(async (req, res) => {
         s.user_id AS "ownerUserId",
         s.platform,
         s.rumble_embed_url AS "rumbleEmbedUrl",
+        s.rumble_username AS "rumbleUsernamePseudo",
 
         -- USER (source de vérité des subs)
         jsonb_build_object(
@@ -317,11 +319,18 @@ publicRouter.get("/streamers/:slug", a(async (req, res) => {
     delete row.providerChannelSlug;
     delete row.providerChannelUsername;
     // ====================================================================
-    // DÉTECTION DE LIVE RUMBLE (pour LeCasiNoze)
+    // DÉTECTION DE LIVE RUMBLE
+    // Cible: streamers ayant SOIT un rumble_account (api_key flow), SOIT
+    // un rumble_username sur streamers (pseudo-only flow).
     // ====================================================================
-    const isLeCasiNoze = String(row.slug || "").toLowerCase() === "lecasinoze";
-    if (isLeCasiNoze && row.rumbleConnection?.username) {
-        // Récupérer les infos Rumble pour LeCasiNoze
+    const rumbleUsername = row.rumbleConnection?.username
+        ? String(row.rumbleConnection.username)
+        : (row.rumbleUsernamePseudo ? String(row.rumbleUsernamePseudo) : null);
+    // cleanup champ interne
+    delete row.rumbleUsernamePseudo;
+    if (rumbleUsername) {
+        const slugLog = String(row.slug || "");
+        const staticUrl = `https://rumble.com/user/${encodeURIComponent(rumbleUsername)}/live`;
         const rumbleInfo = await pool.query(`SELECT is_live, title, viewers_count, hls_url, video_url, thumbnail_url, live_id
          FROM streamer_rumble_info
          WHERE streamer_id = $1
@@ -329,29 +338,26 @@ publicRouter.get("/streamers/:slug", a(async (req, res) => {
          LIMIT 1`, [Number(row.id)]);
         if (rumbleInfo.rows[0]) {
             const rumble = rumbleInfo.rows[0];
-            // Forcer l'état live depuis Rumble
             row.isLive = !!rumble.is_live;
-            // Utiliser les infos Rumble si live
+            row.rumbleStaticVideoUrl = staticUrl;
+            row.streamProvider = "rumble";
             if (rumble.is_live) {
                 row.title = rumble.title || row.title;
                 row.viewers = rumble.viewers_count || row.viewers;
-                // Ajouter les infos Rumble spécifiques
                 row.rumbleHlsUrl = rumble.hls_url;
                 row.rumbleVideoUrl = rumble.video_url;
                 row.rumbleThumbnailUrl = rumble.thumbnail_url;
                 row.rumbleLiveId = rumble.live_id;
-                row.rumbleStaticVideoUrl = "https://rumble.com/user/LeCasiNoze/live";
-                row.streamProvider = "rumble";
-                console.log(`[public] LeCasiNoze: Using Rumble live data - ${rumble.title}`);
+                console.log(`[public] ${slugLog}: Using Rumble live data - ${rumble.title}`);
             }
             else {
-                row.streamProvider = "rumble";
-                console.log(`[public] LeCasiNoze: Rumble offline`);
+                console.log(`[public] ${slugLog}: Rumble offline (static URL still exposed)`);
             }
         }
         else {
+            row.rumbleStaticVideoUrl = staticUrl;
             row.streamProvider = "rumble";
-            console.log(`[public] LeCasiNoze: No Rumble data found`);
+            console.log(`[public] ${slugLog}: No Rumble data found (static URL exposed)`);
         }
     }
     const c = await pool.query(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id = $1`, [

@@ -184,6 +184,14 @@ async function finishGameTx(pool, state, it, reason) {
                     await walletCreditTx(client, state.lunaUserId, BJ_21P3_BET * (r.ratio + 1), "discord_blackjack_21p3");
             }
         }
+        // XP par partie de blackjack jouée (capé 20/jour côté xp.ts)
+        {
+            const { awardXpTx, XP_SOURCES } = await import("../economy/xp.js");
+            await awardXpTx(client, state.lunaUserId, XP_SOURCES.blackjack_played, "blackjack_played", "discord_blackjack", {
+                plusMode: state.plusMode,
+                natural: res.isNaturalBlackjack,
+            });
+        }
         await client.query("COMMIT");
     }
     catch (e) {
@@ -236,7 +244,13 @@ export async function handleBlackjackCommand(pool, it, plusMode, lunaUser) {
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
-        const cd = await bjCheckAndTouchCooldownTx(client, discordUserId, BJ_COOLDOWN_MS);
+        // Cooldown ajusté selon le level XP de l'user (de 12h à 6h selon level)
+        const lvlR = await client.query(`SELECT xp::bigint AS xp FROM users WHERE id = $1 LIMIT 1`, [lunaUser.userId]);
+        const userXp = Number(lvlR.rows[0]?.xp || 0);
+        const { levelFromXp, getBlackjackCooldownMs } = await import("../economy/xp.js");
+        const userLevel = levelFromXp(userXp);
+        const cooldownMs = getBlackjackCooldownMs(userLevel);
+        const cd = await bjCheckAndTouchCooldownTx(client, discordUserId, cooldownMs);
         if (!cd.ok) {
             await client.query("ROLLBACK");
             const msg = cd.error === "cooldown"

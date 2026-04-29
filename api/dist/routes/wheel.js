@@ -8,6 +8,7 @@ import express from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
 import { earnRubisTx } from "../wallet_engine.js";
+import { awardXpTx, XP_SOURCES } from "../economy/xp.js";
 export const wheelRouter = express.Router();
 // 🔐 PROTECTION GLOBALE DU ROUTER
 wheelRouter.use("/wheel", requireAuth);
@@ -236,6 +237,8 @@ wheelRouter.post("/wheel/spin", async (req, res) => {
             usedTicket,
             ticketsLeft,
         });
+        // XP par spin (capé à 10/jour côté xp.ts)
+        await awardXpTx(client, userId, XP_SOURCES.wheel_spin, "wheel_spin", "spin", { segmentIndex, finalReward });
         // ✅ On n'enregistre un "daily spin" que si c'est le spin gratuit du jour (pas via ticket)
         if (!god && !usedTicket) {
             await client.query(`INSERT INTO daily_wheel_spins (user_id, day, segment_index, reward_rubis)

@@ -158,6 +158,7 @@ const statsInputSchema = z.object({
     signups: intOrNull.optional().default(null),
     depositCount: intOrNull.optional().default(null),
     ftdCount: intOrNull.optional().default(null),
+    ftdFullBenef: intOrNull.optional().default(null),
     totalDeposits: moneyOrNull.optional().default(null),
     rsValue: signedMoneyOrNull.optional().default(null),
     showCpaToStreamer: boolInput.optional().default(true),
@@ -226,6 +227,8 @@ function roundMoney(value) {
 }
 function computeAgencyPayouts(input) {
     const ftdCount = Number(input.ftdCount || 0);
+    const ftdFullBenef = Math.min(Number(input.ftdFullBenef || 0), ftdCount);
+    const billableFtd = Math.max(ftdCount - ftdFullBenef, 0); // FTDs partagés avec l'affilié
     const totalDeposits = Number(input.totalDeposits || 0);
     const enteredRs = Number(input.rsValue || 0);
     const cpaAmount = Number(input.cpaAmount || 0);
@@ -235,8 +238,9 @@ function computeAgencyPayouts(input) {
     const streamerCpaUnit = input.cpaAmount == null ? null : roundMoney(Math.max(cpaAmount - cpaAgencyCut, 0));
     const agencyCpaUnit = input.cpaAgencyCut == null ? null : roundMoney(cpaAgencyCut);
     const grossCpa = roundMoney(ftdCount * cpaAmount) || 0;
-    const streamerCpa = roundMoney(ftdCount * Math.max(cpaAmount - cpaAgencyCut, 0)) || 0;
-    const agencyCpa = roundMoney(ftdCount * cpaAgencyCut) || 0;
+    // Sur les FTDs full bénef, l'agence touche le CPA brut entier (pas de part affilié)
+    const streamerCpa = roundMoney(billableFtd * Math.max(cpaAmount - cpaAgencyCut, 0)) || 0;
+    const agencyCpa = roundMoney(billableFtd * cpaAgencyCut + ftdFullBenef * cpaAmount) || 0;
     const streamerErs = roundMoney(enteredRs) || 0;
     const payableStreamerErs = roundMoney(Math.max(streamerErs, 0)) || 0;
     const streamerErsRate = totalDeposits > 0 ? roundMoney((streamerErs / totalDeposits) * 100) : null;
@@ -381,6 +385,7 @@ function buildDashboardQuery(monthKey, extraWhereSql = "", extraParams = []) {
         st.signups,
         st.deposit_count,
         st.ftd,
+        st.ftd_full_benef,
         st.total_deposits,
         st.cpa_value,
         st.rs_value,
@@ -447,6 +452,7 @@ function mapDashboardRows(rows, monthKey) {
                     })()
                 : Number(row.ftd),
             totalDeposits: row.total_deposits == null ? null : Number(row.total_deposits),
+            ftdFullBenef: row.ftd_full_benef == null ? null : Number(row.ftd_full_benef),
             rsValue: row.rs_value == null ? null : Number(row.rs_value),
             showCpaToStreamer: Boolean(row.show_cpa_to_streamer),
             showRsToStreamer: Boolean(row.show_rs_to_streamer),
@@ -482,6 +488,7 @@ function mapDashboardRows(rows, monthKey) {
             payouts: computeAgencyPayouts({
                 depositCount: stats.depositCount,
                 ftdCount: stats.ftdCount,
+                ftdFullBenef: stats.ftdFullBenef,
                 totalDeposits: stats.totalDeposits,
                 rsValue: stats.rsValue,
                 cpaAmount: deal.cpaAmount,
@@ -726,7 +733,14 @@ function serializeAgencyPortalPayload(agency) {
                 cpaPerFtd: assignment.payouts.streamerCpaUnit,
                 rsPercent: assignment.payouts.streamerErsRate,
             },
-            stats: assignment.stats,
+            stats: {
+                ...assignment.stats,
+                // L'affilié voit uniquement les FTDs sur lesquels il est rémunéré (hors full bénef)
+                ftdCount: assignment.stats.ftdCount == null
+                    ? null
+                    : Math.max(assignment.stats.ftdCount - (assignment.stats.ftdFullBenef || 0), 0),
+                ftdFullBenef: undefined, // ne pas exposer à l'affilié
+            },
             earnings: {
                 grossCpa: assignment.payouts.grossCpa,
                 cpa: assignment.payouts.streamerCpa,
@@ -1246,9 +1260,13 @@ agencyRouter.put("/fsb/agency/assignments/:id/stats", a(async (req, res) => {
         return res.status(404).json({ ok: false, error: "not_found" });
     const cpaAmount = assignmentRow.cpa_amount == null ? null : Number(assignmentRow.cpa_amount);
     const cpaAgencyCut = assignmentRow.cpa_agency_cut == null ? null : Number(assignmentRow.cpa_agency_cut);
-    const computedCpaValue = parsed.data.ftdCount == null
+    // cpa_value reflète le gain net affilié → basé sur les FTDs billables (hors full bénef)
+    const billableFtd = parsed.data.ftdCount == null
         ? null
-        : roundMoney(parsed.data.ftdCount * Math.max(Number(cpaAmount || 0) - Number(cpaAgencyCut || 0), 0));
+        : Math.max(parsed.data.ftdCount - (parsed.data.ftdFullBenef || 0), 0);
+    const computedCpaValue = billableFtd == null
+        ? null
+        : roundMoney(billableFtd * Math.max(Number(cpaAmount || 0) - Number(cpaAgencyCut || 0), 0));
     if (!isNotNullStats(parsed.data)) {
         await pool.query(`
         DELETE FROM agency_streamer_assignment_stats
@@ -1264,18 +1282,20 @@ agencyRouter.put("/fsb/agency/assignments/:id/stats", a(async (req, res) => {
           signups,
           deposit_count,
           ftd,
+          ftd_full_benef,
           total_deposits,
           cpa_value,
           rs_value,
           show_cpa_to_streamer,
           show_rs_to_streamer
         )
-        VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8, $9, $10)
+        VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (assignment_id, month_key)
         DO UPDATE SET
           signups = EXCLUDED.signups,
           deposit_count = EXCLUDED.deposit_count,
           ftd = EXCLUDED.ftd,
+          ftd_full_benef = EXCLUDED.ftd_full_benef,
           total_deposits = EXCLUDED.total_deposits,
           cpa_value = EXCLUDED.cpa_value,
           rs_value = EXCLUDED.rs_value,
@@ -1288,6 +1308,7 @@ agencyRouter.put("/fsb/agency/assignments/:id/stats", a(async (req, res) => {
             parsed.data.signups,
             parsed.data.depositCount,
             parsed.data.ftdCount,
+            parsed.data.ftdFullBenef ?? null,
             parsed.data.totalDeposits == null ? null : roundMoney(parsed.data.totalDeposits),
             computedCpaValue,
             parsed.data.rsValue == null ? null : roundMoney(parsed.data.rsValue),

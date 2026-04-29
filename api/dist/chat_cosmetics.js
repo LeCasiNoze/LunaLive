@@ -129,16 +129,20 @@ export async function getChatCosmeticsForUsers(userIds) {
     const out = new Map();
     if (!ids.length)
         return out;
-    // ✅ join user_avatars pour cache-bust
+    // ✅ join user_avatars pour cache-bust + multi-slots titres + xp pour level title
     const r = await pool.query(`SELECT
       ids.user_id,
       ue.username_code,
       ue.badge_code,
       ue.title_code,
+      ue.title_shop_code,
+      ue.title_achievement_code,
+      ue.title_level_show,
       ue.frame_code,
       ue.hat_code,
       ua.updated_at AS avatar_updated_at,
-      u.avatar_path
+      u.avatar_path,
+      u.xp::bigint AS xp
     FROM unnest($1::int[]) AS ids(user_id)
     JOIN users u ON u.id = ids.user_id
     LEFT JOIN user_equipped_cosmetics ue ON ue.user_id = ids.user_id
@@ -259,10 +263,66 @@ export async function getChatCosmeticsForUsers(userIds) {
                 ];
             }
         }
-        // title
+        // title (legacy)
         if (titleCode && titleCode !== "none") {
-            // ton ChatMessageBubble normalise aussi une string direct
             cosmetics.title = titleCode;
+        }
+        // ✅ Multi-slots titres (Sprint 3.5b — shop retiré, juste 2 slots)
+        {
+            const titles = {};
+            const achCode = row.title_achievement_code ? String(row.title_achievement_code) : null;
+            const showLevel = !!row.title_level_show;
+            let catalog = [];
+            try {
+                const mod = await import("./cosmetics/catalog.js");
+                catalog = mod.COSMETICS_CATALOG || [];
+            }
+            catch { }
+            const lookupTitle = (code) => catalog.find((x) => x.kind === "title" && x.code === code);
+            if (achCode) {
+                const it = lookupTitle(achCode);
+                if (it) {
+                    titles.achievement = {
+                        source: "achievement",
+                        code: achCode,
+                        label: String(it.name || achCode),
+                        rarity: it.rarity || "common",
+                    };
+                }
+                else {
+                    // legacy hors catalogue
+                    titles.achievement = {
+                        source: "achievement",
+                        code: achCode,
+                        label: achCode.replace(/^title_/, "").replace(/_/g, " "),
+                        rarity: "common",
+                    };
+                }
+            }
+            if (showLevel) {
+                try {
+                    const xp = Number(row.xp || 0);
+                    const { getLevelInfo } = await import("./economy/xp.js");
+                    const info = getLevelInfo(xp);
+                    const tier = info.tier;
+                    const rarity = tier >= 9 ? "mythic"
+                        : tier >= 8 ? "legendary"
+                            : tier >= 6 ? "epic"
+                                : tier >= 4 ? "rare"
+                                    : tier >= 2 ? "uncommon"
+                                        : "common";
+                    titles.level = {
+                        source: "level",
+                        code: "level_auto",
+                        label: info.fullTitle,
+                        rarity,
+                    };
+                }
+                catch { }
+            }
+            if (titles.achievement || titles.level) {
+                cosmetics.titles = titles;
+            }
         }
         out.set(userId, cosmetics);
     }

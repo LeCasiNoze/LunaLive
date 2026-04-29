@@ -46,14 +46,16 @@ async function canModOnStreamer(user, meta) {
         return true;
     if (meta.ownerUserId != null && Number(meta.ownerUserId) === uid)
         return true;
-    // modérateur de la chaîne (si table existe)
+    // modérateur actif de la chaîne
     try {
-        const r = await pool.query(`SELECT 1 FROM streamer_moderators WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`, [meta.id, uid]);
+        const r = await pool.query(`SELECT 1 FROM streamer_mods
+        WHERE streamer_id=$1 AND user_id=$2 AND removed_at IS NULL
+        LIMIT 1`, [meta.id, uid]);
         if ((r.rowCount ?? 0) > 0)
             return true;
     }
-    catch {
-        // table absente => pas de crash
+    catch (e) {
+        console.error("[canModOnStreamer] streamer_mods lookup failed:", e);
     }
     return false;
 }

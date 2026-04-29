@@ -4,9 +4,16 @@ import { chatStore } from "./chat_store.js";
 import { normalizeAppearance } from "./appearance.js";
 import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
+import { handleGlobalCommand, isGlobalCommand } from "./services/global_commands.js";
 import { ensureDliveBridge } from "./dlive_chat_bridge.js";
+import { ensureRumbleBridge } from "./rumble_chat_bridge.js";
 import { getChatSettings, patchChatSettings, containsLink, formatSettingsChangeMessage, } from "./chat/chat_settings.js";
 export let chatIo = null;
+// Active cam broadcasters: slug → { socketId, slot, filters }
+const camBroadcasters = new Map();
+// Screen share exclusif : un seul partage d'écran actif à la fois,
+// peu importe qui est le "streamer principal". Un nouveau register kick l'ancien.
+let screenBroadcaster = null;
 function getJwtSecret() {
     const secret = process.env.JWT_SECRET;
     if (!secret)
@@ -284,6 +291,37 @@ async function safeInitDliveBridge(io, streamerId, slug) {
         console.warn("[chat_socket] dlive bridge init failed", e?.message || e);
     }
 }
+async function safeInitRumbleBridge(io, streamerId, slug, ownerUserId) {
+    try {
+        // On suit la même logique que DLive : on n'active le bridge que si l'admin
+        // a opté pour la sync public et/ou popup. Réutilise les flags existants
+        // (dliveSyncPublic/dliveSyncPopup) pour ne pas multiplier les colonnes —
+        // le bridge se choisit selon `streamers.platform` du streamer.
+        const st = await readSettings(streamerId);
+        if (!st?.dliveSyncPublic && !st?.dliveSyncPopup)
+            return;
+        const r = await pool.query(`SELECT s.platform, ri.live_video_id_numeric
+       FROM streamers s
+       LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+       WHERE s.id = $1`, [streamerId]);
+        const row = r.rows?.[0];
+        if (!row || String(row.platform || "").toLowerCase() !== "rumble")
+            return;
+        ensureRumbleBridge({
+            io,
+            pool,
+            slug,
+            streamerId,
+            streamerOwnerUserId: ownerUserId,
+            videoIdNumeric: row.live_video_id_numeric || null,
+            publicOn: !!st.dliveSyncPublic,
+            popupOn: !!st.dliveSyncPopup,
+        });
+    }
+    catch (e) {
+        console.warn("[chat_socket] rumble bridge init failed", e?.message || e);
+    }
+}
 export function attachChat(io) {
     chatIo = io;
     io.use((socket, next) => {
@@ -340,6 +378,209 @@ export function attachChat(io) {
                 cb?.({ ok: false, error: String(e?.message || "join_failed") });
             }
         });
+        // ✅ fsb:designer-join — join shared FSB designer room for real-time config sync
+        socket.on("fsb:designer-join", (_, cb) => {
+            socket.join("fsb:designer");
+            cb?.({ ok: true });
+        });
+        // ✅ obs:subscribe — join public overlay room (no auth)
+        // Utilisé par l'OverlayPage pour recevoir obs:config sans token.
+        // Pousse aussi IMMÉDIATEMENT la config persistée en DB → fix du bug
+        // "au refresh OBS, certains éléments reviennent à leur position par
+        // défaut" : avant, l'overlay rendait la config base64 figée dans l'URL
+        // ?cfg= (souvent obsolète) et n'était mis à jour que quand le designer
+        // pushait un changement. Maintenant : à chaque subscribe (= à chaque
+        // refresh OBS), l'overlay reçoit la dernière config persistée.
+        socket.on("obs:subscribe", async ({ slug }, cb) => {
+            const s = String(slug || "").trim().toLowerCase();
+            if (!s)
+                return cb?.({ ok: false, error: "bad_slug" });
+            socket.join(`obsview:${s}`);
+            cb?.({ ok: true, slug: s });
+            try {
+                // Pousse la config DB du slug demandé en priorité, fallback sur fabiozsis
+                // (config FSB partagée) si rien n'est trouvé pour ce slug.
+                const r = await pool.query(`SELECT overlay_config FROM streamers
+            WHERE lower(slug) = lower($1) AND overlay_config IS NOT NULL
+            LIMIT 1`, [s]);
+                let blob = r.rows?.[0]?.overlay_config ?? null;
+                if (!blob) {
+                    const r2 = await pool.query(`SELECT overlay_config FROM streamers
+              WHERE lower(slug) = 'fabiozsis' AND overlay_config IS NOT NULL
+              LIMIT 1`);
+                    blob = r2.rows?.[0]?.overlay_config ?? null;
+                }
+                if (blob) {
+                    // Wrapper v2 = { _wrapper:"v2", active, byMode } pour l'auto-switch.
+                    // Format legacy = OverlayConfig direct.
+                    const isV2 = blob && typeof blob === "object" && blob._wrapper === "v2";
+                    const config = isV2 ? blob.active : blob;
+                    const byMode = isV2 ? blob.byMode : null;
+                    socket.emit("obs:config", { config, byMode });
+                }
+            }
+            catch (e) {
+                console.warn("[obs:subscribe] config push failed:", e?.message || e);
+            }
+        });
+        // ─── WebRTC cam signaling ───────────────────────────────────────────────────
+        // Broadcaster registers their cam (stream-control page)
+        // Enforces 1 cam per slug: if already registered under another socket, kick the old one
+        socket.on("cam:register", async ({ slug, slot }, cb) => {
+            const s = String(slug || "").trim().toLowerCase();
+            if (!s)
+                return cb?.({ ok: false, error: "bad_slug" });
+            // Kick any existing broadcaster for this slug (different socket = different PC/tab)
+            const existing = camBroadcasters.get(s);
+            if (existing && existing.socketId !== socket.id) {
+                io.to(existing.socketId).emit("cam:kicked", { reason: "another_device_registered" });
+                const oldSocket = io.sockets.sockets.get(existing.socketId);
+                if (oldSocket) {
+                    oldSocket.leave("fsb-cam-bcasters");
+                    oldSocket.data.camSlug = undefined;
+                }
+                // Notifier les viewers pour qu'ils cleanup leurs PC stale avant qu'on
+                // ré-émette cam:registered juste après (sinon écran noir sur le viewer).
+                io.to("fsb-cam-viewers").emit("cam:left", { slug: s });
+            }
+            // Load persisted filters from DB (fallback to any in-memory value)
+            let persistedFilters = existing?.filters;
+            try {
+                const r = await pool.query(`SELECT filters FROM fsb_cam_filters WHERE slug = $1 LIMIT 1`, [s]);
+                if (r.rows?.[0]?.filters)
+                    persistedFilters = r.rows[0].filters;
+            }
+            catch (e) {
+                console.error("[cam:register] failed to load filters:", e);
+            }
+            camBroadcasters.set(s, { socketId: socket.id, slot: Number(slot) || 1, filters: persistedFilters });
+            socket.data.camSlug = s;
+            socket.join("fsb-cam-bcasters");
+            // Broadcaster also joins viewers room so they receive filter updates from others
+            socket.join("fsb-cam-viewers");
+            // Notify all current viewers (include persisted filters so they show up immediately)
+            io.to("fsb-cam-viewers").emit("cam:registered", {
+                slug: s, slot: Number(slot) || 1, socketId: socket.id, filters: persistedFilters ?? null,
+            });
+            cb?.({ ok: true, slug: s, filters: persistedFilters ?? null });
+        });
+        // Broadcaster updates camera CSS filters
+        socket.on("cam:filter-update", ({ slug, filters }) => {
+            const s = String(slug || "").trim().toLowerCase();
+            const bc = camBroadcasters.get(s);
+            if (bc)
+                camBroadcasters.set(s, { ...bc, filters });
+            io.to("fsb-cam-viewers").emit("cam:filter-update", { slug: s, filters });
+            // Persist to DB so filters survive broadcaster disconnect / server restart
+            pool.query(`INSERT INTO fsb_cam_filters (slug, filters, updated_at)
+           VALUES ($1, $2, now())
+         ON CONFLICT (slug) DO UPDATE
+           SET filters = EXCLUDED.filters, updated_at = now()`, [s, JSON.stringify(filters)]).catch((e) => console.error("[cam:filter-update] persist failed:", e));
+        });
+        // Broadcaster or viewer leaves cam
+        socket.on("cam:leave", () => {
+            const slug = socket.data.camSlug;
+            if (slug) {
+                camBroadcasters.delete(slug);
+                socket.data.camSlug = undefined;
+                io.to("fsb-cam-viewers").emit("cam:left", { slug });
+            }
+        });
+        // Viewer (overlay / stream-control) subscribes to cam events + gets current list
+        socket.on("cam:viewer-join", (_, cb) => {
+            socket.join("fsb-cam-viewers");
+            const active = Array.from(camBroadcasters.entries()).map(([slug, bc]) => ({
+                slug,
+                slot: bc.slot,
+                socketId: bc.socketId,
+                filters: bc.filters ?? null,
+            }));
+            cb?.({ ok: true, active });
+        });
+        // Viewer requests stream from a broadcaster
+        socket.on("cam:request", ({ fromSlug }, cb) => {
+            const s = String(fromSlug || "").trim().toLowerCase();
+            const bc = camBroadcasters.get(s);
+            if (!bc)
+                return cb?.({ ok: false, error: "broadcaster_not_found" });
+            // Forward request to broadcaster with viewer's socket id
+            io.to(bc.socketId).emit("cam:request", { viewerId: socket.id });
+            cb?.({ ok: true });
+        });
+        // WebRTC offer (broadcaster → viewer)
+        socket.on("cam:offer", ({ to, sdp }) => {
+            const slug = socket.data.camSlug;
+            io.to(to).emit("cam:offer", { from: socket.id, slug: slug ?? "", sdp });
+        });
+        // WebRTC answer (viewer → broadcaster)
+        socket.on("cam:answer", ({ to, sdp }) => {
+            io.to(to).emit("cam:answer", { from: socket.id, sdp });
+        });
+        // ICE candidates (bidirectionnel)
+        socket.on("cam:ice", ({ to, candidate }) => {
+            io.to(to).emit("cam:ice", { from: socket.id, candidate });
+        });
+        // ─── Screen share signaling ─────────────────────────────────────────────────
+        // Exclusif : un seul partage d'écran actif, nouveau register kick l'ancien.
+        // Même shape que cam:* mais canal séparé, une seule room "fsb-screen-viewers".
+        socket.on("screen:register", ({ slug }, cb) => {
+            const s = String(slug || "").trim().toLowerCase();
+            if (!s)
+                return cb?.({ ok: false, error: "bad_slug" });
+            // Kick le précédent partage si différent socket
+            if (screenBroadcaster && screenBroadcaster.socketId !== socket.id) {
+                io.to(screenBroadcaster.socketId).emit("screen:kicked", { reason: "replaced_by_another_user" });
+                const oldSocket = io.sockets.sockets.get(screenBroadcaster.socketId);
+                if (oldSocket)
+                    oldSocket.data.screenSlug = undefined;
+                io.to("fsb-screen-viewers").emit("screen:left", { slug: screenBroadcaster.slug });
+            }
+            screenBroadcaster = { socketId: socket.id, slug: s, at: Date.now() };
+            socket.data.screenSlug = s;
+            socket.join("fsb-screen-bcasters");
+            // Le broadcaster se rejoint aussi la room viewers pour recevoir d'éventuels
+            // signaux (cohérent avec cam:*).
+            socket.join("fsb-screen-viewers");
+            io.to("fsb-screen-viewers").emit("screen:registered", {
+                slug: s, socketId: socket.id,
+            });
+            cb?.({ ok: true, slug: s });
+        });
+        socket.on("screen:leave", () => {
+            const slug = socket.data.screenSlug;
+            if (slug && screenBroadcaster && screenBroadcaster.socketId === socket.id) {
+                screenBroadcaster = null;
+                socket.data.screenSlug = undefined;
+                io.to("fsb-screen-viewers").emit("screen:left", { slug });
+            }
+        });
+        socket.on("screen:viewer-join", (_, cb) => {
+            socket.join("fsb-screen-viewers");
+            cb?.({
+                ok: true,
+                active: screenBroadcaster
+                    ? [{ slug: screenBroadcaster.slug, socketId: screenBroadcaster.socketId }]
+                    : [],
+            });
+        });
+        socket.on("screen:request", ({ fromSlug }, cb) => {
+            const s = String(fromSlug || "").trim().toLowerCase();
+            if (!screenBroadcaster || screenBroadcaster.slug !== s) {
+                return cb?.({ ok: false, error: "broadcaster_not_found" });
+            }
+            io.to(screenBroadcaster.socketId).emit("screen:request", { viewerId: socket.id });
+            cb?.({ ok: true });
+        });
+        socket.on("screen:offer", ({ to, sdp }) => {
+            const slug = socket.data.screenSlug;
+            io.to(to).emit("screen:offer", { from: socket.id, slug: slug ?? "", sdp });
+        });
+        socket.on("screen:answer", ({ to, sdp }) => {
+            io.to(to).emit("screen:answer", { from: socket.id, sdp });
+        });
+        socket.on("screen:ice", ({ to, candidate }) => {
+            io.to(to).emit("screen:ice", { from: socket.id, candidate });
+        });
         socket.on("chat:join", async ({ slug, mode }, cb) => {
             try {
                 const s = String(slug || "").trim();
@@ -351,11 +592,25 @@ export function attachChat(io) {
                 data.slug = meta.slug;
                 data.streamerId = meta.id;
                 const m = mode === "popup" ? "popup" : "public";
+                // Capture l'ancien mode AVANT de l'écraser, sinon on leave la room
+                // qu'on s'apprête à rejoindre (no-op) et l'ancienne reste joined →
+                // duplication des messages quand on switche de mode.
+                const previousMode = data.chatMode;
+                const previousSlug = data.slug;
                 data.chatMode = m;
                 data.appearance = normalizeAppearance(meta.appearance);
+                // Quitte toutes les rooms chat:* précédemment joined par ce socket
+                // (cas multi-mode + cas changement de slug)
                 try {
-                    if (data.slug && data.chatMode) {
-                        socket.leave(`chat:${data.slug}:${data.chatMode}`);
+                    for (const room of socket.rooms) {
+                        if (typeof room === "string" && room.startsWith("chat:")) {
+                            if (room !== `chat:${meta.slug}:${m}`)
+                                socket.leave(room);
+                        }
+                    }
+                    // sécurité supplémentaire avec les valeurs précédentes
+                    if (previousSlug && previousMode) {
+                        socket.leave(`chat:${previousSlug}:${previousMode}`);
                     }
                 }
                 catch { }
@@ -367,8 +622,9 @@ export function attachChat(io) {
                 data.state = rp.state;
                 if (data.user)
                     trackSocket(meta.slug, data.user.id, socket.id);
-                // init dlive bridge if needed
+                // init platform bridges if needed
                 void safeInitDliveBridge(io, meta.id, meta.slug);
+                void safeInitRumbleBridge(io, meta.id, meta.slug, meta.ownerUserId ?? null);
                 cb?.({
                     ok: true,
                     role: rp.role,
@@ -469,7 +725,7 @@ export function attachChat(io) {
                 cb?.({ ok: false, error: String(e?.message || "settings_set_failed") });
             }
         });
-        socket.on("chat:send", async ({ slug, body }, cb) => {
+        socket.on("chat:send", async ({ slug, body, streamControl }, cb) => {
             try {
                 const u = data.user;
                 if (!u)
@@ -520,7 +776,30 @@ export function attachChat(io) {
                         cmd: bang.cmd,
                         arg: bang.arg,
                     });
-                    if (out.handled && !out.showOriginalInChat)
+                    // ✅ Stream-control : si ça vient du panneau FSB, on n'affiche JAMAIS
+                    // la commande dans le chat (gagner de la place visuelle), peu importe
+                    // showOriginalInChat. Le bot exécute toujours la commande.
+                    if (out.handled && (streamControl || !out.showOriginalInChat))
+                        return cb?.({ ok: true });
+                    // Si la commande n'a pas été handled par calls/hunt, essayer les
+                    // commandes globales (!solde, !profil, !watch, !succes)
+                    if (!out.handled && isGlobalCommand(bang.cmd)) {
+                        const g = await handleGlobalCommand({
+                            pool,
+                            io,
+                            slug: meta.slug,
+                            streamerId: meta.id,
+                            actorUserId: u.id,
+                            actorUsername: u.username,
+                            cmd: bang.cmd,
+                        });
+                        if (g.handled)
+                            return cb?.({ ok: true });
+                    }
+                    // ✅ Stream-control : si c'est un bang qui n'a pas été handled
+                    // (commande inconnue type "!asdf"), on cache quand même côté chat.
+                    // L'objectif est d'épurer la timeline du chat.
+                    if (streamControl)
                         return cb?.({ ok: true });
                 }
                 const t = Date.now();
@@ -531,6 +810,12 @@ export function attachChat(io) {
            VALUES ($1,$2,$3,$4)
            RETURNING id, created_at AS "createdAt"`, [meta.id, u.id, u.username, text]);
                 const row = ins.rows?.[0];
+                // Premier chatter du live — ON CONFLICT DO NOTHING : seul le 1er par live est enregistré
+                pool.query(`INSERT INTO stream_first_chatters (live_session_id, user_id)
+           SELECT id, $2 FROM live_sessions
+           WHERE streamer_id=$1 AND ended_at IS NULL
+           ORDER BY started_at DESC LIMIT 1
+           ON CONFLICT (live_session_id) DO NOTHING`, [meta.id, u.id]).catch(() => { });
                 const appearance = data.appearance ?? normalizeAppearance(meta.appearance);
                 const style = {
                     nameColor: appearance.chat.usernameColor,
@@ -648,6 +933,18 @@ export function attachChat(io) {
                     untrackSocket(data.slug, data.user.id, socket.id);
             }
             catch { }
+            // Clean up cam broadcaster if this socket was broadcasting
+            const camSlug = socket.data.camSlug;
+            if (camSlug && camBroadcasters.get(camSlug)?.socketId === socket.id) {
+                camBroadcasters.delete(camSlug);
+                io.to("fsb-cam-viewers").emit("cam:left", { slug: camSlug });
+            }
+            // Clean up screen broadcaster si ce socket partageait son écran
+            const screenSlug = socket.data.screenSlug;
+            if (screenSlug && screenBroadcaster && screenBroadcaster.socketId === socket.id) {
+                screenBroadcaster = null;
+                io.to("fsb-screen-viewers").emit("screen:left", { slug: screenSlug });
+            }
         });
     });
 }

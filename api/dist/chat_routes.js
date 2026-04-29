@@ -32,16 +32,16 @@ export function registerChatRoutes(app) {
             if (!streamerId) {
                 return res.status(404).json({ ok: false, error: "streamer_not_found" });
             }
-            const r = await pool.query(`SELECT
-           id,
-           user_id AS "userId",
-           username,
-           body,
-           created_at AS "createdAt"
+            // chat_messages contient les messages Luna ET les messages Rumble bridgés
+            // (mirror via rumble_chat_bridge avec external_source='rumble'). Une seule
+            // source de vérité — pas besoin d'unionner avec rumble_chat_messages
+            // (ce qui causait des doublons : même msg avec ID différent).
+            const r = await pool.query(`SELECT id::bigint AS id, user_id AS "userId", username, body,
+                created_at AS "createdAt",
+                CASE WHEN external_source='rumble' THEN 'rumble' ELSE 'luna' END AS source
          FROM chat_messages
-         WHERE streamer_id=$1
-           AND deleted_at IS NULL
-         ORDER BY id DESC
+         WHERE streamer_id=$1 AND deleted_at IS NULL
+         ORDER BY created_at DESC
          LIMIT $2`, [streamerId, limit]);
             // chronologique (ancien -> récent)
             const rows = (r.rows || []).reverse();
@@ -57,6 +57,7 @@ export function registerChatRoutes(app) {
                     body: String(m.body || ""),
                     createdAt: new Date(m.createdAt).toISOString(),
                     cosmetics: uid > 0 ? getCosmeticsFromMapLike(cosmeticsByUserId, uid) : null,
+                    rumble: m.source === "rumble",
                 };
             });
             return res.json({ ok: true, messages });

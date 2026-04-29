@@ -5,6 +5,7 @@ import { a } from "../utils/async.js";
 import { hashPassword, verifyPassword, requireAuth, signToken } from "../auth.js";
 import { sendVerifyCode } from "../utils/mailer.js";
 import { spendRubisTx } from "../wallet_engine.js";
+import { getClientIp } from "../utils/client_ip.js";
 export const accountActionsRouter = Router();
 function genCode6() {
     return String(Math.floor(100000 + Math.random() * 900000));
@@ -120,7 +121,7 @@ accountActionsRouter.post("/me/rename/request-code", requireAuth, a(async (req, 
         return res.status(400).json({ ok: false, error: "email_not_verified" });
     await invalidatePreviousCodesByUser(userId, "rename");
     const code = genCode6();
-    await insertCode({ userId, email, kind: "rename", code, ip: req.ip, minutes: 15 });
+    await insertCode({ userId, email, kind: "rename", code, ip: getClientIp(req), minutes: 15 });
     const IS_DEV = (process.env.NODE_ENV || "development") !== "production";
     try {
         await sendVerifyCode(email, code, 15);
@@ -235,7 +236,7 @@ accountActionsRouter.post("/me/password/request-code", requireAuth, a(async (req
         return res.status(400).json({ ok: false, error: "email_not_verified" });
     await invalidatePreviousCodesByUser(userId, "password");
     const code = genCode6();
-    await insertCode({ userId, email, kind: "password", code, ip: req.ip, minutes: 15 });
+    await insertCode({ userId, email, kind: "password", code, ip: getClientIp(req), minutes: 15 });
     const IS_DEV = (process.env.NODE_ENV || "development") !== "production";
     try {
         await sendVerifyCode(email, code, 15);
@@ -296,7 +297,7 @@ accountActionsRouter.post("/auth/forgot/request-code", a(async (req, res) => {
         return neutralOk();
     await invalidatePreviousCodesByEmail(email, "forgot");
     const code = genCode6();
-    await insertCode({ userId: Number(u.id), email: String(u.email), kind: "forgot", code, ip: req.ip, minutes: 15 });
+    await insertCode({ userId: Number(u.id), email: String(u.email), kind: "forgot", code, ip: getClientIp(req), minutes: 15 });
     try {
         await sendVerifyCode(String(u.email), code, 15);
     }

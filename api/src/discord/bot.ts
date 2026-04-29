@@ -434,6 +434,18 @@ export async function startDiscordBot(ctx: BotCtx) {
     }
   });
 
+  // Tracking commandes Discord pour succès achievements
+  async function trackDiscordCommand(lunaUserId: number, command: string) {
+    try {
+      await pool.query(
+        `INSERT INTO discord_command_uses (user_id, command) VALUES ($1, $2)`,
+        [lunaUserId, command]
+      );
+    } catch {
+      // table absente ou erreur non critique — ignoré silencieusement
+    }
+  }
+
   client.on("interactionCreate", async (interaction: Interaction) => {
     try {
       // ── Fabiozsis — notif rôles (toggle) ──────────────────────────────────
@@ -687,6 +699,7 @@ export async function startDiscordBot(ctx: BotCtx) {
             await awardXpTx(clientPg, userId, 5, "discord_claim", "claim", { countThisMonth });
 
             await clientPg.query("COMMIT");
+            void trackDiscordCommand(userId, "claim");
 
             const isMilestone = bonus > 0;
             const title =
@@ -777,6 +790,7 @@ export async function startDiscordBot(ctx: BotCtx) {
           };
 
           await handleBlackjackCommand(pool, interaction, plusMode, lunaUser);
+          void trackDiscordCommand(lunaUser.userId, plusMode ? "blackjack_plus" : "blackjack");
 
           return;
         }
@@ -859,6 +873,7 @@ export async function startDiscordBot(ctx: BotCtx) {
             // Pour l’instant on répond juste visuellement pour confirmer que ça marche
             // (sinon on bloque sur la signature de wallet_engine).
             await pg.query("COMMIT");
+            void trackDiscordCommand(Number((linked as any).id), "slot");
 
             const frames = buildSpinFrames(out.art);
 

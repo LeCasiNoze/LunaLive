@@ -4,7 +4,33 @@ import { pool } from "../db.js";
 import { createAutoClipForStreamer } from "../shared/clip_service.js";
 import normalizeAppearance from "../appearance.js";
 import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
+import { sendRumbleMessage } from "../rumble_chat_bridge.js";
 export const internalBotRouter = express.Router();
+// ─── Dédoublonnage central des envois bot ────────────────────────────────────
+// Plusieurs sources peuvent appeler /internal/bot/chat/send pour le même
+// (streamerId, body) en quasi-simultané : multi-instance bot, redeploys qui
+// se chevauchent, etc. Sans cette garde, le bot écrit 2 fois la même phrase
+// dans chat_messages (et donc dans Luna chat + mirror Rumble) à chaque commande.
+const BOT_SEND_DEDUP_MS = 10_000;
+const recentBotSends = new Map();
+function botSendDedupKey(streamerId, body) {
+    return `${streamerId}|${body.trim().slice(0, 200)}`;
+}
+function shouldSkipBotSend(key) {
+    const now = Date.now();
+    const last = recentBotSends.get(key) ?? 0;
+    if (now - last < BOT_SEND_DEDUP_MS)
+        return true;
+    recentBotSends.set(key, now);
+    if (recentBotSends.size > 500) {
+        const cutoff = now - BOT_SEND_DEDUP_MS * 2;
+        for (const [k, ts] of recentBotSends) {
+            if (ts < cutoff)
+                recentBotSends.delete(k);
+        }
+    }
+    return false;
+}
 // --------------------  
 // 1) ✅ Auto clip creation (force 75/15, ignore external durations)
 // --------------------  
@@ -99,6 +125,13 @@ internalBotRouter.post("/internal/bot/chat/send", express.json(), async (req, re
     if (!streamerId || !messageText) {
         return res.status(400).json({ ok: false, error: "streamerId and body required" });
     }
+    // ✅ Dédoublonnage : bloque les envois identiques dans une fenêtre de 10s
+    // (couvre le double-fire des dispatch bot Luna + Rumble + multi-instances).
+    const dedupKey = botSendDedupKey(streamerId, messageText);
+    if (shouldSkipBotSend(dedupKey)) {
+        console.log(`[internal_bot] chat/send skipped (duplicate within ${BOT_SEND_DEDUP_MS}ms) streamerId=${streamerId} body=${messageText.slice(0, 60)}`);
+        return res.json({ ok: true, dedup: true });
+    }
     // Récupérer le streamer
     const streamerRes = await pool.query(`SELECT slug, display_name FROM streamers WHERE id=$1 LIMIT 1`, [streamerId]);
     if (!streamerRes.rows?.[0]?.slug) {
@@ -140,8 +173,33 @@ internalBotRouter.post("/internal/bot/chat/send", express.json(), async (req, re
     const io = req.app.locals.io;
     if (io)
         emitChatAll(io, slug, "chat:message", msg);
+    // Mirror sur le chat Rumble du streamer si live actif (cycletls + bot session).
+    void mirrorBotMessageToRumble(streamerId, messageText);
     return res.json({ ok: true, id: msg.id });
 });
+async function mirrorBotMessageToRumble(streamerId, text) {
+    // Envoi direct depuis Render (compte LunaLive_Bot vérifié + cookies u_s frais).
+    try {
+        const r = await pool.query(`SELECT s.platform, ri.is_live, ri.live_video_id_numeric
+       FROM streamers s
+       LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+       WHERE s.id = $1`, [streamerId]);
+        const row = r.rows?.[0];
+        if (!row)
+            return;
+        if (String(row.platform || "").toLowerCase() !== "rumble")
+            return;
+        if (!row.is_live)
+            return;
+        const vid = row.live_video_id_numeric ? String(row.live_video_id_numeric) : null;
+        if (!vid)
+            return;
+        await sendRumbleMessage(vid, String(text || "").slice(0, 200));
+    }
+    catch (e) {
+        console.warn("[internal_bot] mirrorBotMessageToRumble error", e?.message || e);
+    }
+}
 // --------------------  
 // 3) ✅ Bot settings management
 // --------------------  

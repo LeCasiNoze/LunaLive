@@ -1,9 +1,10 @@
 import { emitUserToast } from "./toast.js";
 import { resolveSlot } from "./catalog.js";
-import { addCall, countUserCalls, effectiveLimit, getCallsSettings, listCalls, resetCalls, isUserBannedFromCalls, deleteCallById, findCurrentForBet, findCurrentForPay, setCallBet, setCallPay, } from "./queue.js";
+import { addCall, countUserCalls, countUserCallsByUsername, effectiveLimit, getCallsSettings, listCalls, resetCalls, isUserBannedFromCalls, deleteCallById, findCurrentForBet, findCurrentForPay, setCallBet, setCallPay, } from "./queue.js";
 import { normText } from "./normalize.js";
 // ✅ NEW: pour envoyer un vrai message bot (DB + broadcast)
 import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
+import { sendRumbleMessage } from "../rumble_chat_bridge.js";
 export function parseBangCommand(text) {
     const s = normText(text);
     if (!s.startsWith("!"))
@@ -44,7 +45,7 @@ function emitChatAll(io, slug, event, payload) {
     io.to(`chat:${s}:public`).emit(event, payload);
     io.to(`chat:${s}:popup`).emit(event, payload);
 }
-async function sendBotChat(pool, io, opts, body) {
+export async function sendBotChat(pool, io, opts, body) {
     const botUserId = Number(process.env.BOT_USER_ID || 0);
     const botUsername = String(process.env.BOT_USERNAME || "LunaBot");
     if (!botUserId) {
@@ -69,8 +70,37 @@ async function sendBotChat(pool, io, opts, body) {
         cosmetics,
         isBot: true, // ✅ utile pour le style côté front
     };
-    // ✅ IMPORTANT: broadcast sur les bonnes rooms
+    // ✅ broadcast Luna chat
     emitChatAll(io, opts.slug, "chat:message", msg);
+    // ✅ Mirror sur le chat Rumble du streamer si live actif
+    void mirrorBotMessageToRumble(pool, opts.streamerId, text);
+}
+/**
+ * Si le streamer est en live sur Rumble, envoie directement le message via
+ * sendRumbleMessage (Node fetch + fallback cycletls). Compte LunaLive_Bot
+ * vérifié → l'envoi direct depuis Render fonctionne (n'a plus besoin du relay).
+ */
+async function mirrorBotMessageToRumble(pool, streamerId, text) {
+    try {
+        const r = await pool.query(`SELECT s.platform, ri.is_live, ri.live_video_id_numeric
+       FROM streamers s
+       LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+       WHERE s.id = $1`, [streamerId]);
+        const row = r.rows?.[0];
+        if (!row)
+            return;
+        if (String(row.platform || "").toLowerCase() !== "rumble")
+            return;
+        if (!row.is_live)
+            return;
+        const vid = row.live_video_id_numeric ? String(row.live_video_id_numeric) : null;
+        if (!vid)
+            return;
+        await sendRumbleMessage(vid, String(text || "").slice(0, 200));
+    }
+    catch (e) {
+        console.warn("[calls] mirrorBotMessageToRumble error", e?.message || e);
+    }
 }
 async function ensurePcallSchema(pool) {
     await pool.query(`
@@ -233,6 +263,7 @@ export async function handleCallsCommand(opts) {
         }
         await setHuntPhase(pool, ownerUserId, "open");
         await sendBotChat(pool, io, { streamerId, slug }, `🔓 Hunt OPEN par @${actorUsername}`);
+        io.to(`obsview:${slug}`).emit("calls:changed", { action: "sync" });
         io.to(`chat:${slug}`).emit("calls:changed", { action: "hunt_open" });
         io.to(`chat:${slug}`).emit("hunt:changed", { action: "open" });
         return { handled: true, showOriginalInChat };
@@ -262,6 +293,7 @@ export async function handleCallsCommand(opts) {
         }
         await setCallBet(pool, streamerId, cur.id, bet);
         await sendBotChat(pool, io, { streamerId, slug }, `✅ Bet enregistrée: "${cur.slotName}"${cur.provider ? ` (${cur.provider})` : ""} — ${bet}€ (GG 🎉)`);
+        io.to(`obsview:${slug}`).emit("calls:changed", { action: "sync" });
         io.to(`chat:${slug}`).emit("calls:changed", { action: "bet" });
         io.to(`chat:${slug}`).emit("hunt:changed", { action: "bet" });
         return { handled: true, showOriginalInChat };
@@ -286,6 +318,7 @@ export async function handleCallsCommand(opts) {
         }
         await deleteCallById(pool, streamerId, cur.id);
         await sendBotChat(pool, io, { streamerId, slug }, `⏭️ Pass: "${cur.slotName}" — supprimé de la liste.`);
+        io.to(`obsview:${slug}`).emit("calls:changed", { action: "sync" });
         io.to(`chat:${slug}`).emit("calls:changed", { action: "pass" });
         io.to(`chat:${slug}`).emit("hunt:changed", { action: "pass" });
         return { handled: true, showOriginalInChat };
@@ -321,6 +354,7 @@ export async function handleCallsCommand(opts) {
         }
         await setCallPay(pool, streamerId, cur.id, pay);
         await sendBotChat(pool, io, { streamerId, slug }, `💰 Pay: "${cur.slotName}"${cur.provider ? ` (${cur.provider})` : ""} — ${pay}€`);
+        io.to(`obsview:${slug}`).emit("calls:changed", { action: "sync" });
         io.to(`chat:${slug}`).emit("calls:changed", { action: "pay" });
         io.to(`chat:${slug}`).emit("hunt:changed", { action: "pay" });
         return { handled: true, showOriginalInChat };
@@ -335,6 +369,7 @@ export async function handleCallsCommand(opts) {
         }
         await resetCalls(pool, streamerId);
         await sendBotChat(pool, io, { streamerId, slug }, `🧹 Calls reset par @${actorUsername}`);
+        io.to(`obsview:${slug}`).emit("calls:changed", { action: "sync" });
         io.to(`chat:${slug}`).emit("calls:changed", { action: "reset" });
         io.to(`chat:${slug}`).emit("hunt:changed", { action: "reset" });
         return { handled: true, showOriginalInChat };
@@ -373,15 +408,26 @@ export async function handleCallsCommand(opts) {
         return { handled: true, showOriginalInChat };
     }
     // limit (mods/streamer/admin => pas de limite)
-    const bypassLimit = canMod || actorRole === "admin" || actorRole === "streamer";
+    // viewers DLive (actorUserId=0) => bypassLimit dans addCall car on fait le check ici par username
+    const isDliveViewer = actorUserId === 0;
+    const bypassLimit = canMod || actorRole === "admin" || actorRole === "streamer" || isDliveViewer;
     let lim = effectiveLimit(settings.perUserLimit);
     // talent_calls_limit => ajoute des slots par rapport à la limite streamer
-    if (!bypassLimit && lim > 0) {
+    // (pas applicable aux viewers DLive sans compte Luna)
+    if (!isDliveViewer && !bypassLimit && lim > 0) {
         const level = await getUserTalentLevel(pool, actorUserId, CALLS_TALENT_CODE);
         const bonus = callsLimitBonusFromLevel(level);
         lim = lim + bonus;
     }
-    if (!bypassLimit && lim > 0) {
+    // Pour les viewers DLive, on vérifie la limite par username (pas par userId=0 partagé)
+    if (isDliveViewer && lim > 0 && actorUsername) {
+        const n = await countUserCallsByUsername(pool, streamerId, actorUsername);
+        if (n >= lim) {
+            await sendBotChat(pool, io, { streamerId, slug }, `❌ @${actorUsername} : tu as déjà ${n}/${lim} calls en file.`);
+            return { handled: true, showOriginalInChat };
+        }
+    }
+    else if (!bypassLimit && lim > 0) {
         const n = await countUserCalls(pool, streamerId, actorUserId);
         if (n >= lim) {
             emitUserToast(io, actorUserId, {
@@ -471,6 +517,7 @@ export async function handleCallsCommand(opts) {
     if (settings.showAcceptPublic) {
         await sendBotChat(pool, io, { streamerId, slug }, `🎰 Call ajouté : "${add.item.slotName}"${add.item.provider ? ` (${add.item.provider})` : ""} — @${actorUsername}`);
     }
+    io.to(`obsview:${slug}`).emit("calls:changed", { action: "add" });
     io.to(`chat:${slug}`).emit("calls:changed", { action: "add" });
     // si sync active => hunt UI est la même liste, donc on ping aussi hunt:changed
     if (await isSyncActive()) {

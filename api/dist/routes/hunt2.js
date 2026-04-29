@@ -263,12 +263,14 @@ async function canControlStreamer(opts) {
     if (actorUserId === ownerUserId)
         return true;
     try {
-        const r = await pool.query(`SELECT 1 FROM streamer_moderators WHERE streamer_id=$1 AND user_id=$2 LIMIT 1`, [streamerId, actorUserId]);
+        const r = await pool.query(`SELECT 1 FROM streamer_mods
+        WHERE streamer_id=$1 AND user_id=$2 AND removed_at IS NULL
+        LIMIT 1`, [streamerId, actorUserId]);
         if ((r.rows?.length ?? 0) > 0)
             return true;
     }
-    catch {
-        // table absente => pas de crash
+    catch (e) {
+        console.error("[canControlStreamer] streamer_mods lookup failed:", e);
     }
     return false;
 }

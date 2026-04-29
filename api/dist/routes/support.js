@@ -4,6 +4,7 @@ import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
 import { SUB_PRICE_RUBIS } from "../economy.js";
 import { spendRubisTx } from "../wallet_engine.js";
+import { awardXpTx, XP_SOURCES } from "../economy/xp.js";
 // ✅ NEW
 import { emitSystemChat, formatSubSystemMessage } from "../chat_events.js";
 export const supportRouter = express.Router();
@@ -35,6 +36,11 @@ supportRouter.post("/support/sub", requireAuth, async (req, res) => {
             spendType: "sub",
             streamerId,
             meta: { slug, qty },
+        });
+        // XP par sub envoyé (× qty pour multi-mois)
+        await awardXpTx(client, userId, XP_SOURCES.sub_send * qty, "sub_send", `sub:${slug}`, {
+            streamerId,
+            qty,
         });
         const sub = await client.query(`INSERT INTO streamer_subscriptions (streamer_id, user_id, started_at, expires_at)
        VALUES ($1,$2,NOW(), NOW() + ($3::int * INTERVAL '30 days'))

@@ -145,14 +145,15 @@ meOverlayRouter.get("/followers", a(async (req, res) => {
     const slug = String(req.query.slug ?? "").trim();
     if (!slug)
         return res.status(400).json({ ok: false, error: "missing_slug" });
-    // ⚠️ IMPORTANT:
-    // Adapte cette requête si chez toi le provider username est dans une table de link.
-    // Ici je pars sur streamers.provider_channel_slug (souvent utilisé partout).
-    const q = await pool.query(`SELECT provider_channel_slug
-         FROM streamers
-        WHERE slug = $1
+    // Provider account assigné = source de followers (DLive uniquement pour l'instant)
+    const q = await pool.query(`SELECT pa.channel_slug
+         FROM streamers s
+         LEFT JOIN provider_accounts pa
+           ON pa.assigned_to_streamer_id = s.id
+          AND pa.provider = 'dlive'
+        WHERE s.slug = $1
         LIMIT 1`, [slug]);
-    const providerUsername = String(q.rows?.[0]?.provider_channel_slug ?? "").trim();
+    const providerUsername = String(q.rows?.[0]?.channel_slug ?? "").trim();
     if (!providerUsername) {
         return res.status(404).json({ ok: false, error: "no_provider_link" });
     }
@@ -255,5 +256,133 @@ meOverlayRouter.post("/alerts/upload", upload.single("file"), a(async (req, res)
     const prev = byUser.get(uid) ?? { chat: {}, goal: {}, viewers: {}, alerts: {} };
     const next = deepMerge(prev, { alerts: { [key]: url } });
     byUser.set(uid, next);
+    return res.json({ ok: true, url });
+}));
+// ─── FSB Overlay — IDs autorisés (partagé entre les 3 streameurs + SamyyZsis) ─
+const FSB_OVERLAY_ALLOWED_IDS = new Set([4, 15, 71]);
+const FSB_OVERLAY_SLUG = "fabiozsis"; // chaîne commune
+function canAccessFsbOverlay(uid) {
+    return FSB_OVERLAY_ALLOWED_IDS.has(uid);
+}
+/** =========================
+ *  ✅ GET /me/overlay/fsb-config
+ *  Charge la config overlay partagée (fabiozsis)
+ *  ========================= */
+meOverlayRouter.get("/fsb-config", a(async (req, res) => {
+    const uid = getUserId(req);
+    if (!uid || !canAccessFsbOverlay(uid)) {
+        return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+    const r = await pool.query(`SELECT overlay_config FROM streamers WHERE lower(slug) = lower($1) LIMIT 1`, [FSB_OVERLAY_SLUG]);
+    const blob = r.rows?.[0]?.overlay_config ?? null;
+    // Désencapsule le wrapper v2 si présent → renvoie une OverlayConfig flat.
+    const isV2 = blob && typeof blob === "object" && blob._wrapper === "v2";
+    const config = isV2 ? blob.active : blob;
+    const byMode = isV2 ? blob.byMode : null;
+    return res.json({ ok: true, config, byMode });
+}));
+/** =========================
+ *  ✅ PUT /me/overlay/fsb-config
+ *  Sauvegarde la config overlay partagée (fabiozsis)
+ *  body: { config: OverlayConfig }
+ *  ========================= */
+meOverlayRouter.put("/fsb-config", a(async (req, res) => {
+    const uid = getUserId(req);
+    if (!uid || !canAccessFsbOverlay(uid)) {
+        return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+    const config = req.body?.config;
+    if (!config || typeof config !== "object") {
+        return res.status(400).json({ ok: false, error: "missing_config" });
+    }
+    await pool.query(`UPDATE streamers SET overlay_config = $1 WHERE lower(slug) = lower($2)`, [JSON.stringify(config), FSB_OVERLAY_SLUG]);
+    return res.json({ ok: true });
+}));
+/** Extrait le slug depuis la chatUrl de la config (ex: ?slug=lecasinoze) */
+function slugFromConfigChatUrl(config) {
+    try {
+        const chatUrl = String(config?.chat?.chatUrl || "");
+        if (!chatUrl)
+            return "";
+        const u = new URL(chatUrl);
+        return u.searchParams.get("slug") ?? "";
+    }
+    catch {
+        return "";
+    }
+}
+/** =========================
+ *  ✅ Live config push (designer → OBS overlay via socket) + persistance DB
+ *  POST /me/overlay/push-config
+ *  body: { config: OverlayConfig, slug?: string }
+ *
+ *  Pour les users FSB : persist sous fabiozsis en DB
+ *  + push socket sur le slug de la chatUrl (là où l'overlay écoute réellement)
+ *  ========================= */
+meOverlayRouter.post("/push-config", a(async (req, res) => {
+    const uid = getUserId(req);
+    if (!uid)
+        return res.status(401).json({ ok: false, error: "unauthorized" });
+    const config = req.body?.config;
+    if (!config || typeof config !== "object") {
+        return res.status(400).json({ ok: false, error: "missing_config" });
+    }
+    // byMode = { solo?, double?, triple? } — layouts customisés pour l'auto-switch
+    // overlay (rendu adapté au nombre de cams actives en temps réel).
+    const byMode = req.body?.byMode && typeof req.body.byMode === "object" ? req.body.byMode : null;
+    const io = (req.app?.get?.("io") || req.app?.locals?.io);
+    if (!io)
+        return res.status(500).json({ ok: false, error: "io_missing" });
+    // On stocke config + byMode dans le même JSON (overlay_config) sous une
+    // structure enveloppe { active, byMode } — rétro-compat : les anciens reads
+    // qui s'attendent à une OverlayConfig flat reçoivent toujours `active` (non
+    // wrappé) côté OverlayPage qui sait gérer les deux formats.
+    const persistedBlob = byMode ? { _wrapper: "v2", active: config, byMode } : config;
+    if (canAccessFsbOverlay(uid)) {
+        // Persist en DB sous fabiozsis
+        await pool.query(`UPDATE streamers SET overlay_config = $1 WHERE lower(slug) = lower($2)`, [JSON.stringify(persistedBlob), FSB_OVERLAY_SLUG]);
+        // Slugs sur lesquels émettre : slug du chat (overlay écoute là) + fabiozsis
+        const chatSlug = slugFromConfigChatUrl(config) || FSB_OVERLAY_SLUG;
+        const slugsToNotify = [...new Set([chatSlug.toLowerCase(), FSB_OVERLAY_SLUG.toLowerCase()])];
+        const broadcast = { config, byMode };
+        for (const s of slugsToNotify) {
+            // Room authentifiée (stream:join avec token owner/admin)
+            io.to(`stream:${s}`).emit("obs:config", broadcast);
+            // Room publique (obs:subscribe sans auth) — pour l'OverlayPage dans OBS
+            io.to(`obsview:${s}`).emit("obs:config", broadcast);
+        }
+        // Room partagée designer FSB — sync en temps réel entre tous les users FSB ouverts
+        io.to("fsb:designer").emit("obs:config", broadcast);
+        return res.json({ ok: true, slug: chatSlug });
+    }
+    // Utilisateur normal (non-FSB)
+    const slug = String(req.body?.slug || "").trim() || (await getOwnedStreamerSlugByUserId(uid)) || "";
+    if (!slug)
+        return res.status(404).json({ ok: false, error: "no_streamer" });
+    io.to(`stream:${slug.toLowerCase()}`).emit("obs:config", { config, byMode });
+    io.to(`obsview:${slug.toLowerCase()}`).emit("obs:config", { config, byMode });
+    return res.json({ ok: true, slug });
+}));
+/** =========================
+ *  ✅ Upload fond d'overlay
+ *  POST /me/overlay/bg/upload (multipart)
+ *  field: file (image)
+ *  ========================= */
+meOverlayRouter.post("/bg/upload", upload.single("file"), a(async (req, res) => {
+    const uid = getUserId(req);
+    if (!uid)
+        return res.status(401).json({ ok: false, error: "unauthorized" });
+    const f = req.file;
+    if (!f || !f.buffer)
+        return res.status(400).json({ ok: false, error: "missing_file" });
+    const ext = safeExtFromMime("image", f.mimetype);
+    if (!ext)
+        return res.status(400).json({ ok: false, error: "bad_mime" });
+    const dir = path.join(process.cwd(), "uploads", "overlay-bg", `u${uid}`);
+    fs.mkdirSync(dir, { recursive: true });
+    const fname = `bg-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+    const abs = path.join(dir, fname);
+    fs.writeFileSync(abs, f.buffer);
+    const url = `${publicBase(req)}/uploads/overlay-bg/u${uid}/${fname}`;
     return res.json({ ok: true, url });
 }));
