@@ -5,6 +5,7 @@ import { getMyAchievements, myStreamerRequest, type ApiAchievement } from "../li
 import { useAuth } from "../auth/AuthProvider";
 import { AchievementsModal } from "../components/AchievementsModal";
 import { XpProgressionCard } from "../components/XpProgressionCard";
+import { TitleSelector } from "../components/TitleSelector";
 import { PersonalisationSection } from "../components/profile/PersonalisationSection";
 import {
   myFollowing,
@@ -881,6 +882,15 @@ function ProfilePageDesktop() {
             <div>
               <h2 style={{ fontFamily: FONT, fontSize: 20, fontWeight: 700, color: TXT, margin: "0 0 4px" }}>Personnalisation</h2>
               <p style={{ fontFamily: FONT, fontSize: 13, color: TXT2, margin: "0 0 24px" }}>Avatar, badges, titres et apparence de ton profil.</p>
+
+              <Card style={{ padding: 20, marginBottom: 16 }}>
+                <h3 style={{ fontFamily: FONT, fontSize: 16, fontWeight: 700, color: TXT, margin: "0 0 4px" }}>🎖️ Titre affiché</h3>
+                <p style={{ fontFamily: FONT, fontSize: 12.5, color: TXT2, margin: "0 0 14px" }}>
+                  Choisis le titre qui s'affiche à côté de ton pseudo. Trois sources : ton niveau (auto-évolutif), tes succès, et le shop.
+                </p>
+                <TitleSelector />
+              </Card>
+
               <Card style={{ padding: 24 }}>
                 <PersonalisationSection username={user.username} />
               </Card>
