@@ -14,6 +14,7 @@ import {
   importTikTokBulk,
   importTikTokNetworkHandle,
   listRuns,
+  listTikTokAffilSlugs,
   listTikTokInfluencers,
   listTikTokMessages,
   listTikTokNetworkCandidates,
@@ -29,6 +30,7 @@ import {
   type TikTokInfluencer,
   type TikTokInfluencerStatus,
   type TikTokNetworkCandidate,
+  type TikTokNetworkSignalType,
   type TikTokOutreachMessage,
   type TikTokOutreachRun,
   type TikTokOutreachStats,
@@ -374,16 +376,24 @@ export function FsbTikTokOutreachSection() {
   const [templateSaving, setTemplateSaving] = React.useState(false);
   const [templateFlash, setTemplateFlash] = React.useState<string | null>(null);
   // Réseau (seeds) state
+  const [seedsCollapsed, setSeedsCollapsed] = React.useState(false);
   const [seeds, setSeeds] = React.useState<TikTokSeed[]>([]);
   const [seedsLoading, setSeedsLoading] = React.useState(false);
   const [seedInput, setSeedInput] = React.useState("");
   const [seedAdding, setSeedAdding] = React.useState(false);
   const [seedError, setSeedError] = React.useState<string | null>(null);
   const [refreshingSeedId, setRefreshingSeedId] = React.useState<string | null>(null);
+  const [scanQueue, setScanQueue] = React.useState<string[]>([]); // seed ids
   const [candidates, setCandidates] = React.useState<TikTokNetworkCandidate[]>([]);
   const [candidatesLoading, setCandidatesLoading] = React.useState(false);
   const [hideImportedCandidates, setHideImportedCandidates] = React.useState(true);
+  const [affilOnlyCandidates, setAffilOnlyCandidates] = React.useState(false);
+  const [candidatesDisplayLimit, setCandidatesDisplayLimit] = React.useState(50);
   const [importingCandidate, setImportingCandidate] = React.useState<string | null>(null);
+  // Scan settings
+  const [scanVideoLimit, setScanVideoLimit] = React.useState(5);
+  const [scanCommentsPerVideo, setScanCommentsPerVideo] = React.useState(30);
+  const [affilSlugs, setAffilSlugs] = React.useState<string[]>([]);
 
   const reloadSeeds = React.useCallback(async () => {
     setSeedsLoading(true);
@@ -401,8 +411,9 @@ export function FsbTikTokOutreachSection() {
     setCandidatesLoading(true);
     try {
       const res = await listTikTokNetworkCandidates({
-        limit: 200,
+        limit: 500,
         excludeImported: hideImportedCandidates,
+        affilOnly: affilOnlyCandidates,
       });
       setCandidates(res.candidates);
     } catch {
@@ -410,11 +421,14 @@ export function FsbTikTokOutreachSection() {
     } finally {
       setCandidatesLoading(false);
     }
-  }, [hideImportedCandidates]);
+  }, [hideImportedCandidates, affilOnlyCandidates]);
 
   React.useEffect(() => {
     reloadSeeds();
     reloadCandidates();
+    listTikTokAffilSlugs()
+      .then((r) => setAffilSlugs(r.slugs))
+      .catch(() => setAffilSlugs([]));
   }, [reloadSeeds, reloadCandidates]);
 
   const handleAddSeed = async (e: React.FormEvent) => {
@@ -453,22 +467,27 @@ export function FsbTikTokOutreachSection() {
     }
   };
 
-  const handleRefreshSeedViaExtension = async (seed: TikTokSeed) => {
-    if (refreshingSeedId) return;
+  // Scan via extension — retourne un résumé pour la queue (sans alert si silent=true)
+  const runSeedExtensionScan = async (
+    seed: TikTokSeed,
+    opts?: { silent?: boolean }
+  ): Promise<{ ok: boolean; added?: number; received?: number; error?: string }> => {
     if (!extensionVersion) {
-      window.alert(
-        "L'extension LunaLive TikTok Discoverer n'est pas détectée.\nInstalle/active-la et rafraîchis la page."
-      );
-      return;
+      if (!opts?.silent) {
+        window.alert(
+          "L'extension LunaLive TikTok Discoverer n'est pas détectée.\nInstalle/active-la et rafraîchis la page."
+        );
+      }
+      return { ok: false, error: "extension_missing" };
     }
-    setRefreshingSeedId(seed.id);
 
     const requestId = `seedNet-${seed.id}-${Date.now()}`;
     try {
       const result: {
         ok: boolean;
-        signals: Array<{ handle: string; type: "comment" | "mention" | "duet" }>;
+        signals: Array<{ handle: string; type: TikTokNetworkSignalType }>;
         videosScraped: number;
+        affilVideosCount?: number;
         error?: string;
         diag?: any;
       } = await new Promise((resolve) => {
@@ -482,6 +501,7 @@ export function FsbTikTokOutreachSection() {
               ok: !!data.ok,
               signals: data.signals || [],
               videosScraped: data.videosScraped || 0,
+              affilVideosCount: data.affilVideosCount || 0,
               error: data.error,
               diag: data.diag,
             });
@@ -495,45 +515,106 @@ export function FsbTikTokOutreachSection() {
             requestId,
             payload: {
               seedHandle: seed.handle,
-              videoLimit: 5,
-              commentsPerVideo: 30,
+              videoLimit: scanVideoLimit,
+              commentsPerVideo: scanCommentsPerVideo,
+              affilSlugs,
             },
           },
           window.location.origin
         );
         setTimeout(() => {
           window.removeEventListener("message", handler);
-          resolve({ ok: false, signals: [], videosScraped: 0, error: "extension_timeout" });
-        }, 5 * 60_000);
+          resolve({
+            ok: false,
+            signals: [],
+            videosScraped: 0,
+            error: "extension_timeout",
+          });
+        }, 8 * 60_000);
       });
 
       if (!result.ok) {
-        window.alert(
-          `Extension: ${result.error || "no_response"}\n` +
-            (result.diag ? JSON.stringify(result.diag, null, 2) : "")
-        );
-        return;
+        if (!opts?.silent) {
+          window.alert(
+            `Extension @${seed.handle}: ${result.error || "no_response"}\n` +
+              (result.diag ? JSON.stringify(result.diag, null, 2) : "")
+          );
+        }
+        return { ok: false, error: result.error };
       }
 
       if (!result.signals.length) {
-        window.alert(
-          `Aucun signal capturé sur les ${result.videosScraped} vidéos scrapées de @${seed.handle}.\nProbablement aucun commentaire visible.`
-        );
-        return;
+        if (!opts?.silent) {
+          window.alert(
+            `Aucun signal capturé sur les ${result.videosScraped} vidéos scrapées de @${seed.handle}.`
+          );
+        }
+        // On marque quand même comme "fetched"
+        try {
+          await importSeedNetworkSignals(seed.id, []);
+        } catch {}
+        return { ok: true, added: 0, received: 0 };
       }
 
-      // Push captured signals to API
       const imp = await importSeedNetworkSignals(seed.id, result.signals);
-      window.alert(
-        `✅ @${seed.handle}: ${imp.added} nouveaux signaux importés (${imp.received} reçus, ${result.videosScraped} vidéos scannées)`
-      );
+      if (!opts?.silent) {
+        window.alert(
+          `✅ @${seed.handle}: ${imp.added} signaux importés ` +
+            `(${imp.received} reçus, ${result.videosScraped} vidéos, ` +
+            `${result.affilVideosCount || 0} avec lien d'affil)`
+        );
+      }
+      return { ok: true, added: imp.added, received: imp.received };
+    } catch (err: any) {
+      if (!opts?.silent) window.alert(`Refresh extension: ${err?.message || err}`);
+      return { ok: false, error: String(err?.message || err) };
+    }
+  };
+
+  const handleRefreshSeedViaExtension = async (seed: TikTokSeed) => {
+    if (refreshingSeedId) {
+      // Si un scan tourne déjà : on ajoute en file
+      setScanQueue((q) => (q.includes(seed.id) ? q : [...q, seed.id]));
+      return;
+    }
+    setRefreshingSeedId(seed.id);
+    try {
+      await runSeedExtensionScan(seed);
       await reloadSeeds();
       await reloadCandidates();
-    } catch (err: any) {
-      window.alert(`Refresh extension: ${err?.message || err}`);
     } finally {
       setRefreshingSeedId(null);
     }
+  };
+
+  // Queue runner : démarre dès qu'un slot est libre
+  React.useEffect(() => {
+    if (refreshingSeedId) return;
+    if (scanQueue.length === 0) return;
+    const [nextId, ...rest] = scanQueue;
+    const seed = seeds.find((s) => s.id === nextId);
+    if (!seed) {
+      setScanQueue(rest);
+      return;
+    }
+    setScanQueue(rest);
+    setRefreshingSeedId(nextId);
+    (async () => {
+      await runSeedExtensionScan(seed, { silent: true });
+      await reloadSeeds();
+      await reloadCandidates();
+      setRefreshingSeedId(null);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanQueue, refreshingSeedId, seeds]);
+
+  const enqueueAllSeeds = () => {
+    if (!extensionVersion) {
+      window.alert("Extension non détectée.");
+      return;
+    }
+    const ids = seeds.map((s) => s.id).filter((id) => id !== refreshingSeedId);
+    setScanQueue((q) => Array.from(new Set([...q, ...ids])));
   };
 
   const handleDeleteSeed = async (seed: TikTokSeed) => {
@@ -1129,18 +1210,127 @@ export function FsbTikTokOutreachSection() {
       </div>
 
       <div className="tk-discovery">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
+            flexWrap: "wrap",
+            cursor: "pointer",
+          }}
+          onClick={() => setSeedsCollapsed((v) => !v)}
+        >
           <div>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, letterSpacing: "-.02em" }}>
-              🕸️ Réseau d'influenceurs
+              {seedsCollapsed ? "▶" : "▼"} 🕸️ Réseau d'influenceurs{" "}
+              <span style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600 }}>
+                ({seeds.length} seed{seeds.length > 1 ? "s" : ""}, {candidates.length} candidat
+                {candidates.length > 1 ? "s" : ""})
+              </span>
             </h3>
-            <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>
-              Ajoute des comptes TikTok d'influenceurs avec qui on travaille déjà. On scanne leur
-              activité publique (commentaires + @mentions sur leurs vidéos) et on en déduit les
-              comptes susceptibles d'être intéressés. Plus un candidat apparaît dans le réseau de
-              plusieurs seeds, plus son score est élevé.
-            </p>
+            {!seedsCollapsed ? (
+              <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>
+                Ajoute des comptes TikTok d'influenceurs avec qui on travaille déjà. On scanne leur
+                activité publique (commentaires + @mentions sur leurs vidéos) et on en déduit les
+                comptes susceptibles d'être intéressés. Les vidéos contenant un lien
+                d'affiliation LunaLive comptent×10 dans le score.
+              </p>
+            ) : null}
           </div>
+          {scanQueue.length > 0 || refreshingSeedId ? (
+            <div
+              style={{
+                fontSize: 12,
+                color: "#a5b4fc",
+                background: "rgba(99,102,241,.1)",
+                border: "1px solid rgba(99,102,241,.22)",
+                padding: "6px 12px",
+                borderRadius: 999,
+                fontWeight: 700,
+              }}
+            >
+              {refreshingSeedId ? "Scan en cours" : "En attente"}
+              {scanQueue.length > 0 ? ` · file: ${scanQueue.length}` : ""}
+            </div>
+          ) : null}
+        </div>
+
+        {seedsCollapsed ? null : (
+        <>
+        {/* Réglages scan */}
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            border: "1px solid var(--bd)",
+            borderRadius: 12,
+            background: "rgba(255,255,255,.02)",
+            display: "flex",
+            gap: 16,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <label style={{ fontSize: 12, color: "var(--muted)", display: "flex", gap: 8, alignItems: "center" }}>
+            Vidéos / seed
+            <input
+              type="number"
+              className="tk-num-input"
+              min={1}
+              max={20}
+              value={scanVideoLimit}
+              onChange={(e) =>
+                setScanVideoLimit(Math.max(1, Math.min(20, Number(e.target.value) || 5)))
+              }
+              style={{ width: 70 }}
+            />
+          </label>
+          <label style={{ fontSize: 12, color: "var(--muted)", display: "flex", gap: 8, alignItems: "center" }}>
+            Commentaires / vidéo
+            <input
+              type="number"
+              className="tk-num-input"
+              min={5}
+              max={150}
+              value={scanCommentsPerVideo}
+              onChange={(e) =>
+                setScanCommentsPerVideo(Math.max(5, Math.min(150, Number(e.target.value) || 30)))
+              }
+              style={{ width: 70 }}
+            />
+          </label>
+          <label style={{ fontSize: 12, color: "var(--muted)", display: "flex", gap: 8, alignItems: "center" }}>
+            Affichage
+            <input
+              type="number"
+              className="tk-num-input"
+              min={10}
+              max={500}
+              step={10}
+              value={candidatesDisplayLimit}
+              onChange={(e) =>
+                setCandidatesDisplayLimit(
+                  Math.max(10, Math.min(500, Number(e.target.value) || 50))
+                )
+              }
+              style={{ width: 70 }}
+            />
+          </label>
+          <span style={{ fontSize: 11, color: "var(--muted)" }}>
+            {affilSlugs.length} slug{affilSlugs.length > 1 ? "s" : ""} d'affil reconnus
+          </span>
+          {seeds.length > 1 ? (
+            <button
+              type="button"
+              className="fsb-btn"
+              onClick={enqueueAllSeeds}
+              disabled={!extensionVersion}
+              title="Ajoute tous les seeds dans la file de scan"
+            >
+              ▶ Tout scanner
+            </button>
+          ) : null}
         </div>
 
         <form className="tk-form" onSubmit={handleAddSeed} style={{ marginTop: 14 }}>
@@ -1179,7 +1369,32 @@ export function FsbTikTokOutreachSection() {
                     <div className="tk-seed-avatar" />
                   )}
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div className="tk-seed-handle">@{seed.handle}</div>
+                    <div className="tk-seed-handle">
+                      @{seed.handle}
+                      {refreshingSeedId === seed.id ? (
+                        <span
+                          style={{
+                            marginLeft: 6,
+                            fontSize: 10,
+                            color: "#a5b4fc",
+                            fontWeight: 700,
+                          }}
+                        >
+                          ▶ scan…
+                        </span>
+                      ) : scanQueue.includes(seed.id) ? (
+                        <span
+                          style={{
+                            marginLeft: 6,
+                            fontSize: 10,
+                            color: "var(--muted)",
+                            fontWeight: 700,
+                          }}
+                        >
+                          📋 #{scanQueue.indexOf(seed.id) + 1}
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="tk-seed-meta">
                       {seed.linksCount} signal{seed.linksCount > 1 ? "s" : ""}
                       {seed.lastNetworkFetchAt
@@ -1193,15 +1408,21 @@ export function FsbTikTokOutreachSection() {
                     type="button"
                     className="fsb-btn fsb-btn-primary"
                     onClick={() => handleRefreshSeedViaExtension(seed)}
-                    disabled={refreshingSeedId === seed.id}
+                    disabled={refreshingSeedId === seed.id || scanQueue.includes(seed.id)}
                     title={
                       extensionVersion
-                        ? "Scrape via extension (session loggée TikTok)"
+                        ? refreshingSeedId
+                          ? "Un scan tourne déjà — clic = ajouter en file"
+                          : "Scrape via extension (session loggée TikTok)"
                         : "Installe l'extension pour activer cette option"
                     }
                   >
                     {refreshingSeedId === seed.id ? (
                       <span className="tk-spin" />
+                    ) : scanQueue.includes(seed.id) ? (
+                      "📋 en file"
+                    ) : refreshingSeedId ? (
+                      "➕ Mettre en file"
                     ) : (
                       "🧩 Scan via ext."
                     )}
@@ -1253,22 +1474,41 @@ export function FsbTikTokOutreachSection() {
               ({candidates.length})
             </span>
           </h3>
-          <label
-            style={{
-              display: "inline-flex",
-              gap: 6,
-              alignItems: "center",
-              fontSize: 12,
-              color: "var(--muted)",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={hideImportedCandidates}
-              onChange={(e) => setHideImportedCandidates(e.target.checked)}
-            />
-            Masquer ceux déjà importés
-          </label>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            <label
+              style={{
+                display: "inline-flex",
+                gap: 6,
+                alignItems: "center",
+                fontSize: 12,
+                color: "var(--muted)",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={hideImportedCandidates}
+                onChange={(e) => setHideImportedCandidates(e.target.checked)}
+              />
+              Masquer ceux déjà importés
+            </label>
+            <label
+              style={{
+                display: "inline-flex",
+                gap: 6,
+                alignItems: "center",
+                fontSize: 12,
+                color: "#fbbf24",
+                fontWeight: 700,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={affilOnlyCandidates}
+                onChange={(e) => setAffilOnlyCandidates(e.target.checked)}
+              />
+              💎 Affil uniquement
+            </label>
+          </div>
         </div>
 
         {candidatesLoading && !candidates.length ? (
@@ -1290,10 +1530,46 @@ export function FsbTikTokOutreachSection() {
                 </tr>
               </thead>
               <tbody>
-                {candidates.slice(0, 100).map((c) => (
-                  <tr key={c.handle}>
+                {candidates.slice(0, candidatesDisplayLimit).map((c) => (
+                  <tr
+                    key={c.handle}
+                    style={
+                      c.hasAffil
+                        ? {
+                            background:
+                              "linear-gradient(90deg,rgba(251,191,36,.06),transparent)",
+                          }
+                        : undefined
+                    }
+                  >
                     <td>
-                      <span className="tk-cand-score">{c.score}</span>
+                      <span
+                        className="tk-cand-score"
+                        style={
+                          c.hasAffil
+                            ? {
+                                background:
+                                  "linear-gradient(135deg,rgba(251,191,36,.32),rgba(245,158,11,.32))",
+                                borderColor: "rgba(251,191,36,.5)",
+                              }
+                            : undefined
+                        }
+                      >
+                        {c.score}
+                      </span>
+                      {c.hasAffil ? (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 10,
+                            fontWeight: 800,
+                            color: "#fbbf24",
+                            letterSpacing: ".04em",
+                          }}
+                        >
+                          💎 AFFIL
+                        </div>
+                      ) : null}
                     </td>
                     <td>
                       <div className="tk-cand-handle">@{c.handle}</div>
@@ -1314,11 +1590,32 @@ export function FsbTikTokOutreachSection() {
                     </td>
                     <td>
                       <div className="tk-cand-types">
-                        {c.signalTypes.map((t) => (
-                          <span key={t} className="tk-cand-type">
-                            {t}
-                          </span>
-                        ))}
+                        {c.signalTypes.map((t) => {
+                          const isAffil = t.startsWith("affil_");
+                          const label =
+                            t === "affil_comment"
+                              ? "💎 affil-comm"
+                              : t === "affil_mention"
+                              ? "💎 affil-ment"
+                              : t;
+                          return (
+                            <span
+                              key={t}
+                              className="tk-cand-type"
+                              style={
+                                isAffil
+                                  ? {
+                                      background: "rgba(251,191,36,.15)",
+                                      borderColor: "rgba(251,191,36,.45)",
+                                      color: "#fbbf24",
+                                    }
+                                  : undefined
+                              }
+                            >
+                              {label}
+                            </span>
+                          );
+                        })}
                       </div>
                       <div className="tk-cand-seeds" style={{ marginTop: 2 }}>
                         {c.signalSum} apparition{c.signalSum > 1 ? "s" : ""}
@@ -1354,6 +1651,8 @@ export function FsbTikTokOutreachSection() {
               </tbody>
             </table>
           </div>
+        )}
+        </>
         )}
       </div>
 

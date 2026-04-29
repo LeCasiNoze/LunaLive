@@ -133,7 +133,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         commentsPerVideo = 30,
         visible = false,
         timeoutMs = 60_000,
+        affilSlugs = [],
       } = message.payload || {};
+
+      // Build a regex that matches any /r/<slug> or lunalive.win/r/<slug> in a description
+      const affilSet = new Set(
+        (Array.isArray(affilSlugs) ? affilSlugs : [])
+          .map((s) => String(s || "").toLowerCase())
+          .filter(Boolean)
+      );
+      function descHasAffil(desc) {
+        if (!desc) return false;
+        const lower = String(desc).toLowerCase();
+        if (lower.includes("lunalive.win/r/") || lower.includes("lunalive.onrender.com/r/")) {
+          return true;
+        }
+        // Match any known slug appearing after /r/
+        for (const slug of affilSet) {
+          if (lower.includes(`/r/${slug}`)) return true;
+        }
+        return false;
+      }
 
       const cleaned = String(seedHandle).trim().replace(/^@/, "").toLowerCase();
       if (!cleaned) {
@@ -413,6 +433,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const seenSignals = new Set();
       const signals = [];
 
+      let affilVideosCount = 0;
       for (const videoUrl of seedRes.videos.slice(0, videoLimit)) {
         const r = await scrapeVideo(videoUrl);
         if (r?.error) {
@@ -423,27 +444,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
           continue;
         }
+        const isAffilVideo = descHasAffil(r.desc || "");
+        if (isAffilVideo) affilVideosCount++;
+        const commentType = isAffilVideo ? "affil_comment" : "comment";
+        const mentionType = isAffilVideo ? "affil_mention" : "mention";
+
         for (const h of r.commenters || []) {
           if (!HRE.test(h) || h === cleaned) continue;
-          const k = `comment:${h}`;
+          // affil_comment > comment : on garde la version la plus forte
+          const k = `${commentType}:${h}`;
           if (seenSignals.has(k)) continue;
+          // si on a déjà ajouté un 'comment' pour ce handle et qu'on trouve un 'affil_comment',
+          // on l'ajoute en plus (le score additionne par seed/type)
           seenSignals.add(k);
-          signals.push({ handle: h, type: "comment" });
+          signals.push({ handle: h, type: commentType });
         }
         const re = /@([A-Za-z0-9._]{1,30})/g;
         let m;
         while ((m = re.exec(r.desc || ""))) {
           const h = m[1].toLowerCase();
           if (!HRE.test(h) || h === cleaned) continue;
-          const k = `mention:${h}`;
+          const k = `${mentionType}:${h}`;
           if (seenSignals.has(k)) continue;
           seenSignals.add(k);
-          signals.push({ handle: h, type: "mention" });
+          signals.push({ handle: h, type: mentionType });
         }
         dispatch({
           kind: "video_done",
           source: videoUrl,
           found: (r.commenters || []).length,
+          isAffil: isAffilVideo,
         });
         // Light throttle
         await new Promise((r) => setTimeout(r, 600));
@@ -453,8 +483,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         kind: "seed_done",
         source: `@${cleaned}`,
         found: signals.length,
+        affilVideos: affilVideosCount,
       });
-      sendResponse({ ok: true, signals, videosScraped: seedRes.videos.length });
+      sendResponse({
+        ok: true,
+        signals,
+        videosScraped: seedRes.videos.length,
+        affilVideosCount,
+      });
     })();
     return true; // async response
   }

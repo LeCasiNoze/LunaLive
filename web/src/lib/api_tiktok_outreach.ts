@@ -326,13 +326,21 @@ export type TikTokSeed = {
   createdAt: string | null;
 };
 
+export type TikTokNetworkSignalType =
+  | "comment"
+  | "mention"
+  | "duet"
+  | "affil_comment"
+  | "affil_mention";
+
 export type TikTokNetworkCandidate = {
   handle: string;
   seedCount: number;
   signalSum: number;
   weightedSignal: number;
+  hasAffil: boolean;
   score: number;
-  signalTypes: Array<"comment" | "mention" | "duet">;
+  signalTypes: TikTokNetworkSignalType[];
   seedHandles: string[];
   lastSeenAt: string | null;
   influencer: {
@@ -369,19 +377,29 @@ export function refreshTikTokSeed(id: string) {
   );
 }
 
-export function listTikTokNetworkCandidates(opts?: { limit?: number; excludeImported?: boolean }) {
+export function listTikTokNetworkCandidates(opts?: {
+  limit?: number;
+  excludeImported?: boolean;
+  affilOnly?: boolean;
+}) {
   const params = new URLSearchParams();
   if (opts?.limit) params.set("limit", String(opts.limit));
   if (opts?.excludeImported) params.set("excludeImported", "1");
+  if (opts?.affilOnly) params.set("affilOnly", "1");
   const qs = params.toString() ? `?${params.toString()}` : "";
   return request<{ ok: true; candidates: TikTokNetworkCandidate[] }>(
     `/api/fsb/tiktok/network/candidates${qs}`
   );
 }
 
+export function listTikTokAffilSlugs() {
+  return request<{ ok: true; slugs: string[] }>(`/api/fsb/tiktok/affil-slugs`);
+}
+
+
 export function importSeedNetworkSignals(
   seedId: string,
-  signals: Array<{ handle: string; type: "comment" | "mention" | "duet" }>
+  signals: Array<{ handle: string; type: TikTokNetworkSignalType }>
 ) {
   return request<{ ok: true; added: number; received: number }>(
     `/api/fsb/tiktok/seeds/${encodeURIComponent(seedId)}/import-signals`,

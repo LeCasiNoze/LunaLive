@@ -1648,17 +1648,19 @@ tiktokOutreachRouter.post(
 
 // CANDIDATES — agrégation, score, trié
 //
-// Score simple :
+// Score :
 //   seedCount   = nb de seeds distincts qui ont signalé ce candidat
 //   signalSum   = somme des "count" sur tous les signaux
-//   typeWeight  = mention=3, duet=2, comment=1 (les @mentions sont un meilleur signal)
-//   score       = seedCount * 10 + min(signalSum, 50) + sum(weights)
+//   weights     = affil_mention=20, affil_comment=10, mention=3, duet=2, comment=1
+//   score       = seedCount * 10 + min(signalSum, 50) + weighted_signal
+//                 + (50 si au moins un signal vient d'une vidéo avec lien d'affil)
 // Les candidats déjà dans tiktok_influencers (déjà importés) sont marqués "imported".
 tiktokOutreachRouter.get(
   "/fsb/tiktok/network/candidates",
   a(async (req, res) => {
     const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));
     const excludeImported = String(req.query.excludeImported ?? "0") === "1";
+    const affilOnly = String(req.query.affilOnly ?? "0") === "1";
 
     const rows = await pool.query(
       `
@@ -1668,10 +1670,13 @@ tiktokOutreachRouter.get(
           COUNT(DISTINCT l.seed_id)::int AS seed_count,
           SUM(l.count)::int              AS signal_sum,
           SUM(CASE l.signal_type
-                WHEN 'mention' THEN l.count * 3
-                WHEN 'duet'    THEN l.count * 2
+                WHEN 'affil_mention' THEN l.count * 20
+                WHEN 'affil_comment' THEN l.count * 10
+                WHEN 'mention'       THEN l.count * 3
+                WHEN 'duet'          THEN l.count * 2
                 ELSE l.count
               END)::int                  AS weighted_signal,
+          BOOL_OR(l.signal_type IN ('affil_comment','affil_mention')) AS has_affil,
           ARRAY_AGG(DISTINCT l.signal_type) AS types,
           ARRAY_AGG(DISTINCT s.handle)      AS seed_handles,
           MAX(l.last_seen_at)             AS last_seen_at
@@ -1689,8 +1694,15 @@ tiktokOutreachRouter.get(
         i.avatar_url
       FROM agg
       LEFT JOIN tiktok_influencers i ON LOWER(i.handle) = agg.candidate_handle
-      ${excludeImported ? "WHERE i.id IS NULL" : ""}
-      ORDER BY (agg.seed_count * 10 + LEAST(agg.signal_sum, 50) + agg.weighted_signal) DESC,
+      WHERE 1=1
+        ${excludeImported ? "AND i.id IS NULL" : ""}
+        ${affilOnly ? "AND agg.has_affil = TRUE" : ""}
+      ORDER BY (
+                agg.seed_count * 10
+                + LEAST(agg.signal_sum, 50)
+                + agg.weighted_signal
+                + CASE WHEN agg.has_affil THEN 50 ELSE 0 END
+              ) DESC,
                agg.last_seen_at DESC
       LIMIT $1
       `,
@@ -1701,12 +1713,15 @@ tiktokOutreachRouter.get(
       const seedCount = Number(r.seed_count || 0);
       const signalSum = Number(r.signal_sum || 0);
       const weighted = Number(r.weighted_signal || 0);
-      const score = seedCount * 10 + Math.min(signalSum, 50) + weighted;
+      const hasAffil = Boolean(r.has_affil);
+      const score =
+        seedCount * 10 + Math.min(signalSum, 50) + weighted + (hasAffil ? 50 : 0);
       return {
         handle: r.candidate_handle,
         seedCount,
         signalSum,
         weightedSignal: weighted,
+        hasAffil,
         score,
         signalTypes: Array.isArray(r.types) ? r.types : [],
         seedHandles: Array.isArray(r.seed_handles) ? r.seed_handles : [],
@@ -1728,12 +1743,35 @@ tiktokOutreachRouter.get(
   })
 );
 
+// Liste des slugs d'affiliation actifs (pour que l'extension les détecte
+// dans les descriptions de vidéos TikTok)
+tiktokOutreachRouter.get(
+  "/fsb/tiktok/affil-slugs",
+  a(async (_req, res) => {
+    const result = await pool.query(
+      `SELECT slug FROM affi_landing_pages WHERE slug IS NOT NULL AND slug <> '' ORDER BY slug`
+    );
+    return res.json({
+      ok: true,
+      slugs: result.rows.map((r) => String(r.slug).toLowerCase()),
+    });
+  })
+);
+
 // IMPORT signals from extension (logged TikTok session bypasses anti-bot)
+const SIGNAL_TYPES = [
+  "comment",
+  "mention",
+  "duet",
+  "affil_comment",
+  "affil_mention",
+] as const;
+
 const importSignalsSchema = z.object({
   signals: z.array(
     z.object({
       handle: z.string().min(1),
-      type: z.enum(["comment", "mention", "duet"]),
+      type: z.enum(SIGNAL_TYPES),
     })
   ),
 });
@@ -1763,6 +1801,7 @@ tiktokOutreachRouter.post(
       const h = String(sig.handle || "").toLowerCase();
       if (!HANDLE_RE.test(h)) continue;
       if (h === seedHandle) continue;
+      if (!(SIGNAL_TYPES as readonly string[]).includes(sig.type)) continue;
       const k = `${sig.type}:${h}`;
       if (seen.has(k)) continue;
       seen.add(k);
