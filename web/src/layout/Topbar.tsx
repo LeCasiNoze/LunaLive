@@ -499,29 +499,31 @@ export function Topbar({
           width: 40px;
           padding: 0;
           border-radius: 999px;
-          border: 1px solid rgba(124,92,252,0.14);
-          background: rgba(13, 11, 24, 0.58);
+          border: 1px solid rgba(240,78,78,0.34);
+          background: linear-gradient(135deg, rgba(240,78,78,0.16), rgba(220,38,38,0.10));
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
           cursor:pointer;
           font-weight: 1100;
-          transition: transform 140ms cubic-bezier(.22,1,.36,1), background 160ms ease, border-color 160ms ease, filter 160ms ease;
-          box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+          transition: transform 140ms cubic-bezier(.22,1,.36,1), background 160ms ease, border-color 160ms ease, filter 160ms ease, box-shadow 160ms ease;
+          box-shadow: 0 4px 14px rgba(240,78,78,0.18), 0 0 0 1px rgba(240,78,78,0.10) inset;
         }
         .llReportBtn:hover{
-          border-color: rgba(124,92,252,0.32);
-          background: rgba(124,92,252,0.10);
+          border-color: rgba(240,78,78,0.62);
+          background: linear-gradient(135deg, rgba(240,78,78,0.28), rgba(220,38,38,0.18));
           transform: translateY(-1px);
-          filter: brightness(1.06);
+          filter: brightness(1.10);
+          box-shadow: 0 6px 22px rgba(240,78,78,0.32);
         }
         .llReportBtn:active{ transform: translateY(0px); filter: brightness(0.98); }
 
         .llReportFlag{
-          font-size: 16px;
+          font-size: 18px;
           line-height: 1;
-          opacity: .95;
-          filter: drop-shadow(0 6px 14px rgba(0,0,0,0.65));
-          text-shadow: 0 0 14px rgba(255,255,255,0.10);
+          opacity: 1;
+          color: #ffb4b4;
+          filter: drop-shadow(0 2px 6px rgba(240,78,78,0.55));
+          text-shadow: 0 0 10px rgba(240,78,78,0.45);
         }
 
         .llAvatarWrap{ position: relative; }
