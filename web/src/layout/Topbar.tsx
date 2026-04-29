@@ -235,11 +235,16 @@ export function Topbar({
           width: 100%;
           padding: 10px 16px;
           display: grid;
-          grid-template-columns: auto 1fr auto;
+          /* 1fr auto 1fr → nav reste centré dans la viewport, indépendamment
+             de la largeur du brand (gauche) et des controls (droite). Évite
+             que l'ajout d'un badge à droite ne décale le nav. */
+          grid-template-columns: 1fr auto 1fr;
           align-items: center;
           gap: 14px;
           z-index: 1;
         }
+        .llTopbarInner > :first-child { justify-self: start; }
+        .llTopbarInner > :last-child  { justify-self: end; }
 
         /* ─────────────────────────────────────────
            Brand (match LivesPage/DailyWheel)
