@@ -1,19 +1,25 @@
 import * as React from "react";
 import {
+  addTikTokSeed,
   cancelRun,
   clearRuns,
   contactTikTokInfluencer,
   deleteRun,
   deleteTikTokInfluencer,
+  deleteTikTokSeed,
   getActiveRun,
   getRun,
   getTikTokTemplate,
   importTikTokBulk,
+  importTikTokNetworkHandle,
   listRuns,
   listTikTokInfluencers,
   listTikTokMessages,
+  listTikTokNetworkCandidates,
+  listTikTokSeeds,
   logTikTokReply,
   preflightTikTokHandles,
+  refreshTikTokSeed,
   saveTikTokTemplate,
   scanTikTokProfile,
   setTikTokInfluencerStatus,
@@ -21,9 +27,11 @@ import {
   type TikTokEmailTemplate,
   type TikTokInfluencer,
   type TikTokInfluencerStatus,
+  type TikTokNetworkCandidate,
   type TikTokOutreachMessage,
   type TikTokOutreachRun,
   type TikTokOutreachStats,
+  type TikTokSeed,
 } from "../../lib/api_tiktok_outreach";
 
 const STATUS_LABEL: Record<TikTokInfluencerStatus, string> = {
@@ -246,6 +254,43 @@ const SECTION_CSS = `
 .tk-num-input:focus{border-color:var(--p);box-shadow:0 0 0 3px rgba(99,102,241,.18)}
 .tk-disc-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .tk-disc-row label{font-size:13px;color:var(--text);font-weight:600;display:flex;gap:8px;align-items:center}
+
+.tk-net-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:14px}
+.tk-seed-card{
+  display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:14px;
+  border:1px solid var(--bd);background:rgba(255,255,255,.025);
+}
+.tk-seed-card-head{display:flex;gap:10px;align-items:center}
+.tk-seed-avatar{
+  width:38px;height:38px;border-radius:50%;background:rgba(168,85,247,.12);
+  border:1px solid var(--bd);object-fit:cover;flex-shrink:0;
+}
+.tk-seed-handle{font-weight:800;font-size:14px;color:var(--text);line-height:1.2}
+.tk-seed-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.tk-seed-actions{display:flex;gap:6px;margin-top:auto}
+.tk-seed-actions button{font-size:12px;padding:6px 10px}
+.tk-cand-table{width:100%;border-collapse:separate;border-spacing:0;margin-top:14px;font-size:13px}
+.tk-cand-table th{
+  text-align:left;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--bd);
+}
+.tk-cand-table td{padding:10px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
+.tk-cand-handle{font-weight:700}
+.tk-cand-score{
+  display:inline-flex;align-items:center;justify-content:center;min-width:36px;padding:3px 8px;
+  border-radius:8px;font-weight:800;font-size:13px;
+  background:linear-gradient(135deg,rgba(255,0,80,.18),rgba(168,85,247,.18));
+  border:1px solid rgba(168,85,247,.32);color:#fff;
+}
+.tk-cand-seeds{font-size:11px;color:var(--muted)}
+.tk-cand-types{display:inline-flex;gap:4px;flex-wrap:wrap}
+.tk-cand-type{
+  font-size:10px;padding:2px 7px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  background:rgba(34,211,238,.10);color:#67e8f9;border:1px solid rgba(34,211,238,.22);
+}
+.tk-cand-imported{font-size:10px;padding:2px 7px;border-radius:999px;font-weight:800;
+  background:rgba(16,185,129,.1);color:#34d399;border:1px solid rgba(16,185,129,.22);
+}
 `;
 
 function fmtCount(value: number | null): string {
@@ -327,6 +372,111 @@ export function FsbTikTokOutreachSection() {
   const [templateApiReady, setTemplateApiReady] = React.useState(false);
   const [templateSaving, setTemplateSaving] = React.useState(false);
   const [templateFlash, setTemplateFlash] = React.useState<string | null>(null);
+  // Réseau (seeds) state
+  const [seeds, setSeeds] = React.useState<TikTokSeed[]>([]);
+  const [seedsLoading, setSeedsLoading] = React.useState(false);
+  const [seedInput, setSeedInput] = React.useState("");
+  const [seedAdding, setSeedAdding] = React.useState(false);
+  const [seedError, setSeedError] = React.useState<string | null>(null);
+  const [refreshingSeedId, setRefreshingSeedId] = React.useState<string | null>(null);
+  const [candidates, setCandidates] = React.useState<TikTokNetworkCandidate[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = React.useState(false);
+  const [hideImportedCandidates, setHideImportedCandidates] = React.useState(true);
+  const [importingCandidate, setImportingCandidate] = React.useState<string | null>(null);
+
+  const reloadSeeds = React.useCallback(async () => {
+    setSeedsLoading(true);
+    try {
+      const res = await listTikTokSeeds();
+      setSeeds(res.seeds);
+    } catch (err: any) {
+      setSeedError(`Chargement seeds: ${err?.message || err}`);
+    } finally {
+      setSeedsLoading(false);
+    }
+  }, []);
+
+  const reloadCandidates = React.useCallback(async () => {
+    setCandidatesLoading(true);
+    try {
+      const res = await listTikTokNetworkCandidates({
+        limit: 200,
+        excludeImported: hideImportedCandidates,
+      });
+      setCandidates(res.candidates);
+    } catch {
+      // silencieux : pas critique
+    } finally {
+      setCandidatesLoading(false);
+    }
+  }, [hideImportedCandidates]);
+
+  React.useEffect(() => {
+    reloadSeeds();
+    reloadCandidates();
+  }, [reloadSeeds, reloadCandidates]);
+
+  const handleAddSeed = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!seedInput.trim() || seedAdding) return;
+    setSeedAdding(true);
+    setSeedError(null);
+    try {
+      await addTikTokSeed(seedInput.trim());
+      setSeedInput("");
+      await reloadSeeds();
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      setSeedError(msg === "invalid_handle" ? "Handle/URL invalide" : msg);
+    } finally {
+      setSeedAdding(false);
+    }
+  };
+
+  const handleRefreshSeed = async (seed: TikTokSeed) => {
+    if (refreshingSeedId) return;
+    setRefreshingSeedId(seed.id);
+    try {
+      const res = await refreshTikTokSeed(seed.id);
+      await reloadSeeds();
+      await reloadCandidates();
+      if (!res.added) {
+        window.alert(
+          `Aucun signal récupéré pour @${seed.handle}.\nTikTok bloque peut-être le scraping. Réessaie ou vérifie le worker.`
+        );
+      }
+    } catch (err: any) {
+      window.alert(`Refresh: ${err?.message || err}`);
+    } finally {
+      setRefreshingSeedId(null);
+    }
+  };
+
+  const handleDeleteSeed = async (seed: TikTokSeed) => {
+    if (!window.confirm(`Supprimer @${seed.handle} et son réseau ?`)) return;
+    try {
+      await deleteTikTokSeed(seed.id);
+      await reloadSeeds();
+      await reloadCandidates();
+    } catch (err: any) {
+      window.alert(`Suppression: ${err?.message || err}`);
+    }
+  };
+
+  const handleImportCandidate = async (handle: string) => {
+    if (importingCandidate) return;
+    setImportingCandidate(handle);
+    try {
+      await importTikTokNetworkHandle(handle);
+      await reloadCandidates();
+      await reload(filter);
+    } catch (err: any) {
+      window.alert(`Import @${handle}: ${err?.message || err}`);
+    } finally {
+      setImportingCandidate(null);
+    }
+  };
+
   const [localScrape, setLocalScrape] = React.useState<{
     running: boolean;
     events: Array<{ kind: string; source?: string; found?: number; error?: string }>;
@@ -892,6 +1042,217 @@ export function FsbTikTokOutreachSection() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="tk-discovery">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, letterSpacing: "-.02em" }}>
+              🕸️ Réseau d'influenceurs
+            </h3>
+            <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>
+              Ajoute des comptes TikTok d'influenceurs avec qui on travaille déjà. On scanne leur
+              activité publique (commentaires + @mentions sur leurs vidéos) et on en déduit les
+              comptes susceptibles d'être intéressés. Plus un candidat apparaît dans le réseau de
+              plusieurs seeds, plus son score est élevé.
+            </p>
+          </div>
+        </div>
+
+        <form className="tk-form" onSubmit={handleAddSeed} style={{ marginTop: 14 }}>
+          <input
+            className="tk-input"
+            placeholder="@influenceur   ou   https://www.tiktok.com/@influenceur"
+            value={seedInput}
+            onChange={(e) => setSeedInput(e.target.value)}
+            disabled={seedAdding}
+          />
+          <button
+            type="submit"
+            className="fsb-btn fsb-btn-primary"
+            disabled={seedAdding || !seedInput.trim()}
+          >
+            {seedAdding ? <span className="tk-spin" /> : "➕ Ajouter seed"}
+          </button>
+        </form>
+        {seedError ? <div className="fsb-alert" style={{ marginTop: 10 }}>{seedError}</div> : null}
+
+        {seedsLoading && !seeds.length ? (
+          <p style={{ marginTop: 12, color: "var(--muted)", fontSize: 13 }}>Chargement…</p>
+        ) : seeds.length === 0 ? (
+          <p style={{ marginTop: 12, color: "var(--muted)", fontSize: 13 }}>
+            Aucun seed pour l'instant. Ajoute au moins 2-3 influenceurs pour commencer à voir
+            apparaître des candidats avec un score pertinent.
+          </p>
+        ) : (
+          <div className="tk-net-grid">
+            {seeds.map((seed) => (
+              <div key={seed.id} className="tk-seed-card">
+                <div className="tk-seed-card-head">
+                  {seed.avatarUrl ? (
+                    <img className="tk-seed-avatar" src={seed.avatarUrl} alt="" />
+                  ) : (
+                    <div className="tk-seed-avatar" />
+                  )}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="tk-seed-handle">@{seed.handle}</div>
+                    <div className="tk-seed-meta">
+                      {seed.linksCount} signal{seed.linksCount > 1 ? "s" : ""}
+                      {seed.lastNetworkFetchAt
+                        ? ` · refresh ${fmtRelative(seed.lastNetworkFetchAt)}`
+                        : " · jamais scanné"}
+                    </div>
+                  </div>
+                </div>
+                <div className="tk-seed-actions">
+                  <button
+                    type="button"
+                    className="fsb-btn fsb-btn-primary"
+                    onClick={() => handleRefreshSeed(seed)}
+                    disabled={refreshingSeedId === seed.id}
+                  >
+                    {refreshingSeedId === seed.id ? <span className="tk-spin" /> : "🔄 Refresh"}
+                  </button>
+                  <a
+                    className="fsb-btn"
+                    href={`https://www.tiktok.com/@${seed.handle}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    ↗
+                  </a>
+                  <button
+                    type="button"
+                    className="fsb-btn"
+                    onClick={() => handleDeleteSeed(seed)}
+                    style={{ color: "#fc8181" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div
+          style={{
+            marginTop: 22,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>
+            🎯 Candidats détectés{" "}
+            <span style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600 }}>
+              ({candidates.length})
+            </span>
+          </h3>
+          <label
+            style={{
+              display: "inline-flex",
+              gap: 6,
+              alignItems: "center",
+              fontSize: 12,
+              color: "var(--muted)",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={hideImportedCandidates}
+              onChange={(e) => setHideImportedCandidates(e.target.checked)}
+            />
+            Masquer ceux déjà importés
+          </label>
+        </div>
+
+        {candidatesLoading && !candidates.length ? (
+          <p style={{ marginTop: 8, color: "var(--muted)", fontSize: 13 }}>Chargement…</p>
+        ) : candidates.length === 0 ? (
+          <p style={{ marginTop: 8, color: "var(--muted)", fontSize: 13 }}>
+            Aucun candidat encore. Lance un "Refresh" sur un ou plusieurs seeds pour commencer.
+          </p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="tk-cand-table">
+              <thead>
+                <tr>
+                  <th>Score</th>
+                  <th>Handle</th>
+                  <th>Seeds</th>
+                  <th>Signaux</th>
+                  <th style={{ textAlign: "right" }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {candidates.slice(0, 100).map((c) => (
+                  <tr key={c.handle}>
+                    <td>
+                      <span className="tk-cand-score">{c.score}</span>
+                    </td>
+                    <td>
+                      <div className="tk-cand-handle">@{c.handle}</div>
+                      {c.influencer ? (
+                        <span className="tk-cand-imported" style={{ marginTop: 2 }}>
+                          déjà DSB · {c.influencer.status}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td>
+                      <div>
+                        <strong>{c.seedCount}</strong>
+                      </div>
+                      <div className="tk-cand-seeds">
+                        {c.seedHandles.slice(0, 3).map((h) => `@${h}`).join(", ")}
+                        {c.seedHandles.length > 3 ? "…" : ""}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="tk-cand-types">
+                        {c.signalTypes.map((t) => (
+                          <span key={t} className="tk-cand-type">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="tk-cand-seeds" style={{ marginTop: 2 }}>
+                        {c.signalSum} apparition{c.signalSum > 1 ? "s" : ""}
+                      </div>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <a
+                        className="fsb-btn"
+                        href={`https://www.tiktok.com/@${c.handle}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ marginRight: 6 }}
+                      >
+                        ↗
+                      </a>
+                      {c.influencer ? null : (
+                        <button
+                          type="button"
+                          className="fsb-btn fsb-btn-primary"
+                          onClick={() => handleImportCandidate(c.handle)}
+                          disabled={importingCandidate === c.handle}
+                        >
+                          {importingCandidate === c.handle ? (
+                            <span className="tk-spin" />
+                          ) : (
+                            "📥 Importer"
+                          )}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="tk-discovery">

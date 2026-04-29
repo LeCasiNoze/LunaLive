@@ -309,3 +309,85 @@ export function saveTikTokTemplate(template: TikTokEmailTemplate) {
     body: JSON.stringify(template),
   });
 }
+
+// ─── Réseau / seeds ────────────────────────────────────────────────────────
+
+export type TikTokSeed = {
+  id: string;
+  handle: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  notes: string | null;
+  isActive: boolean;
+  lastNetworkFetchAt: string | null;
+  lastNetworkStatus: string | null;
+  lastNetworkError: string | null;
+  linksCount: number;
+  createdAt: string | null;
+};
+
+export type TikTokNetworkCandidate = {
+  handle: string;
+  seedCount: number;
+  signalSum: number;
+  weightedSignal: number;
+  score: number;
+  signalTypes: Array<"comment" | "mention" | "duet">;
+  seedHandles: string[];
+  lastSeenAt: string | null;
+  influencer: {
+    id: string;
+    status: TikTokInfluencerStatus;
+    email: string | null;
+    followerCount: number | null;
+    displayName: string | null;
+    avatarUrl: string | null;
+  } | null;
+};
+
+export function listTikTokSeeds() {
+  return request<{ ok: true; seeds: TikTokSeed[] }>(`/api/fsb/tiktok/seeds`);
+}
+
+export function addTikTokSeed(handle: string, notes?: string) {
+  return request<{ ok: true; seed: TikTokSeed }>(`/api/fsb/tiktok/seeds`, {
+    method: "POST",
+    body: JSON.stringify({ handle, notes }),
+  });
+}
+
+export function deleteTikTokSeed(id: string) {
+  return request<{ ok: true }>(`/api/fsb/tiktok/seeds/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+export function refreshTikTokSeed(id: string) {
+  return request<{ ok: true; added: number; signals?: number; diag?: any }>(
+    `/api/fsb/tiktok/seeds/${encodeURIComponent(id)}/refresh`,
+    { method: "POST" }
+  );
+}
+
+export function listTikTokNetworkCandidates(opts?: { limit?: number; excludeImported?: boolean }) {
+  const params = new URLSearchParams();
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  if (opts?.excludeImported) params.set("excludeImported", "1");
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return request<{ ok: true; candidates: TikTokNetworkCandidate[] }>(
+    `/api/fsb/tiktok/network/candidates${qs}`
+  );
+}
+
+export function importTikTokNetworkHandle(handle: string) {
+  return request<{
+    ok: true;
+    id: string;
+    handle: string;
+    hasEmail: boolean;
+    alreadyContacted: boolean;
+  }>(`/api/fsb/tiktok/network/import`, {
+    method: "POST",
+    body: JSON.stringify({ handle }),
+  });
+}
