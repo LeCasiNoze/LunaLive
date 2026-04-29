@@ -10,6 +10,7 @@ import {
   getActiveRun,
   getRun,
   getTikTokTemplate,
+  importSeedNetworkSignals,
   importTikTokBulk,
   importTikTokNetworkHandle,
   listRuns,
@@ -447,6 +448,89 @@ export function FsbTikTokOutreachSection() {
       }
     } catch (err: any) {
       window.alert(`Refresh: ${err?.message || err}`);
+    } finally {
+      setRefreshingSeedId(null);
+    }
+  };
+
+  const handleRefreshSeedViaExtension = async (seed: TikTokSeed) => {
+    if (refreshingSeedId) return;
+    if (!extensionVersion) {
+      window.alert(
+        "L'extension LunaLive TikTok Discoverer n'est pas détectée.\nInstalle/active-la et rafraîchis la page."
+      );
+      return;
+    }
+    setRefreshingSeedId(seed.id);
+
+    const requestId = `seedNet-${seed.id}-${Date.now()}`;
+    try {
+      const result: {
+        ok: boolean;
+        signals: Array<{ handle: string; type: "comment" | "mention" | "duet" }>;
+        videosScraped: number;
+        error?: string;
+        diag?: any;
+      } = await new Promise((resolve) => {
+        const handler = (event: MessageEvent) => {
+          if (event.source !== window) return;
+          const data: any = event.data;
+          if (!data || data.source !== "lunalive-tiktok-ext") return;
+          if (data.type === "SEED_NETWORK_RESULT" && data.requestId === requestId) {
+            window.removeEventListener("message", handler);
+            resolve({
+              ok: !!data.ok,
+              signals: data.signals || [],
+              videosScraped: data.videosScraped || 0,
+              error: data.error,
+              diag: data.diag,
+            });
+          }
+        };
+        window.addEventListener("message", handler);
+        window.postMessage(
+          {
+            source: "lunalive-tiktok-page",
+            type: "SEED_NETWORK",
+            requestId,
+            payload: {
+              seedHandle: seed.handle,
+              videoLimit: 5,
+              commentsPerVideo: 30,
+            },
+          },
+          window.location.origin
+        );
+        setTimeout(() => {
+          window.removeEventListener("message", handler);
+          resolve({ ok: false, signals: [], videosScraped: 0, error: "extension_timeout" });
+        }, 5 * 60_000);
+      });
+
+      if (!result.ok) {
+        window.alert(
+          `Extension: ${result.error || "no_response"}\n` +
+            (result.diag ? JSON.stringify(result.diag, null, 2) : "")
+        );
+        return;
+      }
+
+      if (!result.signals.length) {
+        window.alert(
+          `Aucun signal capturé sur les ${result.videosScraped} vidéos scrapées de @${seed.handle}.\nProbablement aucun commentaire visible.`
+        );
+        return;
+      }
+
+      // Push captured signals to API
+      const imp = await importSeedNetworkSignals(seed.id, result.signals);
+      window.alert(
+        `✅ @${seed.handle}: ${imp.added} nouveaux signaux importés (${imp.received} reçus, ${result.videosScraped} vidéos scannées)`
+      );
+      await reloadSeeds();
+      await reloadCandidates();
+    } catch (err: any) {
+      window.alert(`Refresh extension: ${err?.message || err}`);
     } finally {
       setRefreshingSeedId(null);
     }
@@ -1108,10 +1192,28 @@ export function FsbTikTokOutreachSection() {
                   <button
                     type="button"
                     className="fsb-btn fsb-btn-primary"
+                    onClick={() => handleRefreshSeedViaExtension(seed)}
+                    disabled={refreshingSeedId === seed.id}
+                    title={
+                      extensionVersion
+                        ? "Scrape via extension (session loggée TikTok)"
+                        : "Installe l'extension pour activer cette option"
+                    }
+                  >
+                    {refreshingSeedId === seed.id ? (
+                      <span className="tk-spin" />
+                    ) : (
+                      "🧩 Scan via ext."
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="fsb-btn"
                     onClick={() => handleRefreshSeed(seed)}
                     disabled={refreshingSeedId === seed.id}
+                    title="Tente le scraping serveur (souvent bloqué par TikTok sans session)"
                   >
-                    {refreshingSeedId === seed.id ? <span className="tk-spin" /> : "🔄 Refresh"}
+                    🌐
                   </button>
                   <a
                     className="fsb-btn"

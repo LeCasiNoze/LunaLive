@@ -61,6 +61,29 @@
       return;
     }
 
+    if (data.type === "SEED_NETWORK") {
+      const requestId = data.requestId;
+      chrome.runtime.sendMessage(
+        { type: "LUNALIVE_TIKTOK_SEED_NETWORK", payload: data.payload || {} },
+        (resp) => {
+          window.postMessage(
+            {
+              source: "lunalive-tiktok-ext",
+              type: "SEED_NETWORK_RESULT",
+              requestId,
+              ok: !!resp?.ok,
+              signals: resp?.signals || [],
+              videosScraped: resp?.videosScraped || 0,
+              error: resp?.error || (resp ? null : chrome.runtime.lastError?.message || "no_response"),
+              diag: resp?.diag || null,
+            },
+            window.location.origin
+          );
+        }
+      );
+      return;
+    }
+
     if (data.type === "DISCOVER") {
       const requestId = data.requestId;
       chrome.runtime.sendMessage(

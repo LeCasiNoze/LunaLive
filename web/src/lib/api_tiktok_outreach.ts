@@ -379,6 +379,19 @@ export function listTikTokNetworkCandidates(opts?: { limit?: number; excludeImpo
   );
 }
 
+export function importSeedNetworkSignals(
+  seedId: string,
+  signals: Array<{ handle: string; type: "comment" | "mention" | "duet" }>
+) {
+  return request<{ ok: true; added: number; received: number }>(
+    `/api/fsb/tiktok/seeds/${encodeURIComponent(seedId)}/import-signals`,
+    {
+      method: "POST",
+      body: JSON.stringify({ signals }),
+    }
+  );
+}
+
 export function importTikTokNetworkHandle(handle: string) {
   return request<{
     ok: true;

@@ -1728,6 +1728,69 @@ tiktokOutreachRouter.get(
   })
 );
 
+// IMPORT signals from extension (logged TikTok session bypasses anti-bot)
+const importSignalsSchema = z.object({
+  signals: z.array(
+    z.object({
+      handle: z.string().min(1),
+      type: z.enum(["comment", "mention", "duet"]),
+    })
+  ),
+});
+
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/seeds/:id/import-signals",
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    const seedRes = await pool.query(
+      `SELECT id, handle FROM tiktok_seed_accounts WHERE id = $1`,
+      [id]
+    );
+    if (!seedRes.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+    const seedHandle = String(seedRes.rows[0].handle).toLowerCase();
+
+    const parsed = importSignalsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "invalid_input" });
+    }
+
+    let upserts = 0;
+    const seen = new Set<string>();
+    for (const sig of parsed.data.signals) {
+      const h = String(sig.handle || "").toLowerCase();
+      if (!HANDLE_RE.test(h)) continue;
+      if (h === seedHandle) continue;
+      const k = `${sig.type}:${h}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      await pool.query(
+        `INSERT INTO tiktok_network_links (seed_id, candidate_handle, signal_type, count, first_seen_at, last_seen_at)
+         VALUES ($1, $2, $3, 1, NOW(), NOW())
+         ON CONFLICT (seed_id, candidate_handle, signal_type) DO UPDATE SET
+           count = tiktok_network_links.count + 1,
+           last_seen_at = NOW()`,
+        [id, h, sig.type]
+      );
+      upserts++;
+    }
+
+    await pool.query(
+      `UPDATE tiktok_seed_accounts
+          SET last_network_fetch_at = NOW(),
+              last_network_status   = $2,
+              last_network_error    = NULL,
+              updated_at            = NOW()
+        WHERE id = $1`,
+      [id, upserts > 0 ? "ok" : "empty"]
+    );
+
+    return res.json({ ok: true, added: upserts, received: parsed.data.signals.length });
+  })
+);
+
 // IMPORT a candidate handle into the DSB (scrape its profile + insert into tiktok_influencers)
 tiktokOutreachRouter.post(
   "/fsb/tiktok/network/import",

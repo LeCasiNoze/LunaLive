@@ -172,25 +172,131 @@ async function scrapeSeedNetwork(
     });
 
     const profileUrl = `https://www.tiktok.com/@${seedHandle}`;
-    const resp = await page.goto(profileUrl, { waitUntil: "networkidle2", timeout: 30_000 });
+    const resp = await page.goto(profileUrl, { waitUntil: "networkidle0", timeout: 35_000 });
     diag.profileStatus = resp?.status() ?? 0;
-    await new Promise((r) => setTimeout(r, 4000));
+    await new Promise((r) => setTimeout(r, 6000));
 
-    // Extract last N video URLs from the seed profile
-    const videoLinks = await page.evaluate((max: number) => {
+    // Wait for the video grid to render (multiple known selectors)
+    try {
+      await page.waitForSelector(
+        '[data-e2e="user-post-item"], [data-e2e="user-post-item-list"] a, div[data-e2e="user-post-item-desc"], a[href*="/video/"]',
+        { timeout: 10_000 }
+      );
+      diag.videoGridFound = true;
+    } catch {
+      diag.videoGridFound = false;
+    }
+
+    // Trigger lazy load
+    for (let i = 0; i < 4; i++) {
+      await page.evaluate(() => window.scrollBy(0, 1800));
+      await new Promise((rr) => setTimeout(rr, 1200));
+    }
+
+    // Extract video links — multi-strategy
+    const extraction = await page.evaluate((max: number) => {
       const set = new Set<string>();
-      const anchors = document.querySelectorAll<HTMLAnchorElement>('a[href*="/video/"]');
-      for (const a of Array.from(anchors)) {
-        const href = a.getAttribute("href") || "";
-        if (/\/@[^/]+\/video\/\d+/.test(href)) {
-          const abs = href.startsWith("http") ? href : `https://www.tiktok.com${href}`;
-          set.add(abs);
-          if (set.size >= max) break;
+      const stats = {
+        anchorsTotal: 0,
+        anchorsAt: 0,
+        anchorsVideo: 0,
+        userPostItems: 0,
+        loginWall: false,
+        captchaWall: false,
+        hasUniversalData: false,
+        title: "",
+      };
+
+      // Strategy 1: user-post-item containers
+      const items = document.querySelectorAll('[data-e2e="user-post-item"]');
+      stats.userPostItems = items.length;
+      for (const item of Array.from(items)) {
+        const a = item.querySelector('a[href*="/video/"]') as HTMLAnchorElement | null;
+        if (a) {
+          const href = a.getAttribute("href") || "";
+          const m = href.match(/\/@([A-Za-z0-9._]{1,30})\/video\/(\d+)/);
+          if (m) {
+            const abs = href.startsWith("http") ? href : `https://www.tiktok.com${href}`;
+            set.add(abs);
+            if (set.size >= max) break;
+          }
         }
       }
-      return Array.from(set);
+
+      // Strategy 2: any /@user/video/123 anchor
+      if (set.size < max) {
+        const anchors = document.querySelectorAll<HTMLAnchorElement>('a[href]');
+        stats.anchorsTotal = anchors.length;
+        for (const a of Array.from(anchors)) {
+          const href = a.getAttribute("href") || "";
+          if (href.includes("/@")) stats.anchorsAt++;
+          if (href.includes("/video/")) stats.anchorsVideo++;
+          const m = href.match(/\/@[A-Za-z0-9._]{1,30}\/video\/\d+/);
+          if (m) {
+            const abs = href.startsWith("http") ? href : `https://www.tiktok.com${href}`;
+            set.add(abs);
+            if (set.size >= max) break;
+          }
+        }
+      }
+
+      // Strategy 3: parse __UNIVERSAL_DATA_FOR_REHYDRATION__ for SSR videos
+      if (set.size < max) {
+        const script = document.getElementById(
+          "__UNIVERSAL_DATA_FOR_REHYDRATION__"
+        ) as HTMLScriptElement | null;
+        if (script?.textContent) {
+          stats.hasUniversalData = true;
+          try {
+            const parsed = JSON.parse(script.textContent);
+            const scope = parsed?.__DEFAULT_SCOPE__ || {};
+            const candidates = [
+              scope["webapp.user-post"]?.itemList,
+              scope["webapp.video-detail"]?.itemList,
+              scope["webapp.video-list"]?.itemList,
+              scope["webapp.user-detail"]?.itemList,
+            ];
+            for (const list of candidates) {
+              if (Array.isArray(list)) {
+                for (const v of list) {
+                  const id = v?.id;
+                  const author = v?.author?.uniqueId;
+                  if (id && author) {
+                    set.add(`https://www.tiktok.com/@${author}/video/${id}`);
+                    if (set.size >= max) break;
+                  }
+                }
+              }
+              if (set.size >= max) break;
+            }
+          } catch {}
+        }
+      }
+
+      // Strategy 4: regex over outerHTML (last-resort)
+      if (set.size < max) {
+        const html = document.documentElement.outerHTML;
+        const re = /\/@([A-Za-z0-9._]{1,30})\/video\/(\d{15,25})/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(html)) && set.size < max) {
+          set.add(`https://www.tiktok.com/@${m[1]}/video/${m[2]}`);
+        }
+      }
+
+      const titleText = document.title || "";
+      stats.title = titleText.slice(0, 80);
+      const bodyText = (document.body?.innerText || "").slice(0, 4000).toLowerCase();
+      stats.loginWall =
+        bodyText.includes("log in to tiktok") ||
+        bodyText.includes("connectez-vous") ||
+        bodyText.includes("connecte-toi");
+      stats.captchaWall = bodyText.includes("captcha") || bodyText.includes("verify");
+
+      return { videos: Array.from(set), stats };
     }, videoLimit);
 
+    const videoLinks = extraction.videos;
+    diag.videoStats = extraction.stats;
     diag.videosFound = videoLinks.length;
     const seedLower = seedHandle.toLowerCase();
     const HRE = /^[A-Za-z0-9._]{1,30}$/;
