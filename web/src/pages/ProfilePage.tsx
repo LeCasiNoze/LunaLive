@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { getMyAchievements, myStreamerRequest, type ApiAchievement } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
 import { AchievementsModal } from "../components/AchievementsModal";
+import { XpProgressionCard } from "../components/XpProgressionCard";
 import { PersonalisationSection } from "../components/profile/PersonalisationSection";
 import {
   myFollowing,
@@ -957,6 +958,10 @@ function ProfilePageDesktop() {
                 }}>🔄 Rafraîchir</button>
               </div>
               <p style={{ fontFamily: FONT, fontSize: 13, color: TXT2, margin: "0 0 20px" }}>Watchtime, messages, rubis, wheel et plus.</p>
+
+              <div style={{ marginBottom: 22 }}>
+                <XpProgressionCard />
+              </div>
 
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 20 }}>
                 {s.accountAgeDays != null && <Badge tone="gray">📅 {fmt(s.accountAgeDays)} jours</Badge>}
