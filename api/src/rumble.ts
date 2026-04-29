@@ -47,6 +47,34 @@ function buildRumbleHlsUrl(rawId: string): string {
  * Le Worker Cloudflare est bloqué par Rumble's Cloudflare WAF avant la redirection.
  * Render (AWS IPs) n'est pas bloqué → peut suivre le redirect et stocker l'URL CDN publique.
  */
+/**
+ * Check définitif "stream encore live ou terminé (DVR replay) ?" :
+ * fetch la chunklist HLS et regarde la présence de #EXT-X-ENDLIST.
+ * - Présent → stream finalisé, plus de nouveaux segments ajoutés → DVR/VOD
+ * - Absent → stream encore actif (segments ajoutés en live)
+ *
+ * Plus fiable qu'embedJS qui peut continuer à reporter `live: 1` plusieurs
+ * minutes après la fin réelle quand DVR est activé.
+ */
+async function isChunklistEnded(chunklistUrl: string): Promise<boolean> {
+  if (!chunklistUrl) return false;
+  try {
+    const r = await fetch(chunklistUrl, {
+      method: "GET",
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "accept": "application/vnd.apple.mpegurl, application/x-mpegurl, */*",
+      },
+    });
+    if (!r.ok) return false;
+    const text = await r.text();
+    if (!text.startsWith("#EXTM3U")) return false;
+    return text.includes("#EXT-X-ENDLIST");
+  } catch {
+    return false;
+  }
+}
+
 async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<string | null> {
   try {
     const r = await fetch(liveHlsDvrUrl, {
@@ -198,6 +226,7 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
     let videoIdNumeric: string | null = null;
     let thumbnailUrl: string | null = null;
 
+    let isLiveFinal = isLive;
     if (isLive && rawId && videoId) {
       videoUrl = `https://rumble.com/user/${username}/live`;
 
@@ -216,14 +245,31 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
         hlsUrl = rawHls;
       }
 
-      console.log(`[rumble] ${username}: LIVE — videoId=${videoId}, vidNumeric=${videoIdNumeric}, hlsUrl=${hlsUrl}`);
+      // 3. Check définitif via la chunklist : si #EXT-X-ENDLIST → stream
+      //    finalisé (DVR replay), considérer offline. Rumble met parfois 5-10
+      //    minutes à passer `live: 1` → `live: 0` côté API, mais la chunklist
+      //    réagit immédiatement.
+      if (hlsUrl && hlsUrl.includes("1a-1791.com")) {
+        const ended = await isChunklistEnded(hlsUrl);
+        if (ended) {
+          console.log(`[rumble] ${username}: ENDLIST détecté → stream terminé (DVR)`);
+          isLiveFinal = false;
+          hlsUrl = null;
+        }
+      }
+
+      if (isLiveFinal) {
+        console.log(`[rumble] ${username}: LIVE — videoId=${videoId}, vidNumeric=${videoIdNumeric}, hlsUrl=${hlsUrl}`);
+      } else {
+        console.log(`[rumble] ${username}: offline (chunklist ENDLIST)`);
+      }
     } else {
       console.log(`[rumble] ${username}: offline`);
     }
 
     return {
       username,
-      isLive,
+      isLive: isLiveFinal,
       viewersCount,
       title,
       thumbnailUrl,
@@ -441,6 +487,15 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
     if (finalHls && finalHls.includes("live-hls-dvr")) {
       const cdnHls = await resolveRedirectToCdn(finalHls);
       finalHls = cdnHls || finalHls;
+    }
+
+    // Check définitif via la chunklist : ENDLIST → stream finalisé (DVR replay)
+    if (finalHls && finalHls.includes("1a-1791.com")) {
+      const ended = await isChunklistEnded(finalHls);
+      if (ended) {
+        console.log(`[rumble][pseudo-only] ${username}: ${vSlug} ENDLIST → stream terminé (DVR)`);
+        return offline;
+      }
     }
 
     const title = String(d?.title || `Live de ${username}`);
