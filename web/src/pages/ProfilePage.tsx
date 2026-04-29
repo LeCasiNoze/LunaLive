@@ -881,17 +881,35 @@ function ProfilePageDesktop() {
           {tab === "personalisation" && (
             <div>
               <h2 style={{ fontFamily: FONT, fontSize: 20, fontWeight: 700, color: TXT, margin: "0 0 4px" }}>Personnalisation</h2>
-              <p style={{ fontFamily: FONT, fontSize: 13, color: TXT2, margin: "0 0 24px" }}>Avatar, badges, titres et apparence de ton profil.</p>
+              <p style={{ fontFamily: FONT, fontSize: 13, color: TXT2, margin: "0 0 24px" }}>
+                Configure ton apparence : titres, avatar, badges, pseudo et cadrans.
+              </p>
 
-              <Card style={{ padding: 20, marginBottom: 16 }}>
-                <h3 style={{ fontFamily: FONT, fontSize: 16, fontWeight: 700, color: TXT, margin: "0 0 4px" }}>🎖️ Titre affiché</h3>
-                <p style={{ fontFamily: FONT, fontSize: 12.5, color: TXT2, margin: "0 0 14px" }}>
-                  Choisis le titre qui s'affiche à côté de ton pseudo. Trois sources : ton niveau (auto-évolutif), tes succès, et le shop.
+              {/* ─── Section Titres (système multi-slots Sprint 3.5b) ─── */}
+              <Card style={{ padding: 22, marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                  <span style={{ fontSize: 22, lineHeight: 1 }}>🎖️</span>
+                  <h3 style={{ fontFamily: FONT, fontSize: 16, fontWeight: 700, color: TXT, margin: 0 }}>
+                    Titres affichés
+                  </h3>
+                </div>
+                <p style={{ fontFamily: FONT, fontSize: 12.5, color: TXT2, margin: "0 0 16px" }}>
+                  Le titre <strong>Niveau</strong> évolue automatiquement selon ton palier. Le titre <strong>Succès</strong> se débloque en accomplissant des achievements.
                 </p>
                 <TitleSelector />
               </Card>
 
+              {/* ─── Section Avatar / Pseudo / Badges / Frame / Hat ─── */}
               <Card style={{ padding: 24 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                  <span style={{ fontSize: 22, lineHeight: 1 }}>✨</span>
+                  <h3 style={{ fontFamily: FONT, fontSize: 16, fontWeight: 700, color: TXT, margin: 0 }}>
+                    Apparence
+                  </h3>
+                </div>
+                <p style={{ fontFamily: FONT, fontSize: 12.5, color: TXT2, margin: "0 0 16px" }}>
+                  Pseudo, badges, chapeaux et cadrans de message.
+                </p>
                 <PersonalisationSection username={user.username} />
               </Card>
             </div>

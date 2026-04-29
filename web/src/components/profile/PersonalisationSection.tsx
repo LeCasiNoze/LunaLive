@@ -41,12 +41,16 @@ type UiItem = {
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
+// Note: la catégorie "title" est désormais gérée séparément par
+// <TitleSelector /> (Sprint 3.5b — système multi-slots succès+niveau).
+// On garde la logique title dans ce composant pour rétrocompat (équipement
+// legacy via patch /me/cosmetics/equip { kind: 'title' }) mais l'onglet
+// n'est plus exposé dans la barre de catégories.
 const CATS: Array<{ id: Kind; label: string; emoji: string }> = [
   { id: "username", label: "Pseudo",    emoji: "✨" },
   { id: "badge",    label: "Badges",    emoji: "🏷️" },
   { id: "hat",      label: "Chapeaux",  emoji: "🧢" },
   { id: "frame",    label: "Cadrans",   emoji: "💬" },
-  { id: "title",    label: "Titres",    emoji: "🏆" },
 ];
 
 // ─── Design tokens (matching ProfilePage) ────────────────────────────────────

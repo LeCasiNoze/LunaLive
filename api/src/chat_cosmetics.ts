@@ -32,10 +32,9 @@ export type ChatCosmetics = {
     meta?: any;
   }>;
   title?: any; // legacy: string/obj. Conservé pour rétro-compat.
-  // ✅ NEW multi-slots titres (Sprint 3.5):
-  // shop = titre acheté en shop · achievement = titre succès · level = titre auto palier
+  // ✅ Multi-slots titres (Sprint 3.5b — shop retiré):
+  // achievement = titre succès · level = titre auto palier
   titles?: {
-    shop?: ChatTitleEntry | null;
     achievement?: ChatTitleEntry | null;
     level?: ChatTitleEntry | null;
   };
@@ -343,15 +342,12 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
       cosmetics.title = titleCode;
     }
 
-    // ✅ NEW: multi-slots titres (résolution label + rareté)
+    // ✅ Multi-slots titres (Sprint 3.5b — shop retiré, juste 2 slots)
     {
-      // Lookup helpers (catalog import dynamique pour éviter top-level cycle)
       const titles: NonNullable<ChatCosmetics["titles"]> = {};
-      const shopCode = row.title_shop_code ? String(row.title_shop_code) : null;
       const achCode = row.title_achievement_code ? String(row.title_achievement_code) : null;
       const showLevel = !!row.title_level_show;
 
-      // Lazy import du catalogue (évite import cyclique potentiel)
       let catalog: any[] = [];
       try {
         const mod = await import("./cosmetics/catalog.js");
@@ -360,17 +356,6 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
 
       const lookupTitle = (code: string) => catalog.find((x: any) => x.kind === "title" && x.code === code);
 
-      if (shopCode) {
-        const it = lookupTitle(shopCode);
-        if (it) {
-          titles.shop = {
-            source: "shop",
-            code: shopCode,
-            label: String(it.name || shopCode),
-            rarity: (it.rarity as any) || "legendary",
-          };
-        }
-      }
       if (achCode) {
         const it = lookupTitle(achCode);
         if (it) {
@@ -412,7 +397,7 @@ export async function getChatCosmeticsForUsers(userIds: number[]) {
         } catch {}
       }
 
-      if (titles.shop || titles.achievement || titles.level) {
+      if (titles.achievement || titles.level) {
         cosmetics.titles = titles;
       }
     }

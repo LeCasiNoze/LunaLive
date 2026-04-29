@@ -13,7 +13,7 @@ import {
   usernameEffectClass,
 } from "../../lib/cosmetics";
 import type { StreamerAppearance } from "../../lib/appearance";
-import { TitlePill, TitleSecondLine } from "./TitlePill";
+import { TitleSecondLine } from "./TitlePill";
 
 export type ChatMsgLike = {
   id: number | string;
@@ -352,12 +352,6 @@ export function ChatMessageBubble({
                       </span>
                     ) : null}
 
-                    {/* ✅ NEW: Titre Shop à côté du pseudo (Sprint 3.5) */}
-                    {multiTitles?.shop ? (
-                      <span style={{ marginLeft: 7, verticalAlign: "middle" }}>
-                        <TitlePill entry={multiTitles.shop} />
-                      </span>
-                    ) : null}
                   </div>
                 </div>
 

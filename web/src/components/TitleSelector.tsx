@@ -10,7 +10,7 @@ import { loadToken } from "../lib/storage";
 import { TitlePill } from "./chat/TitlePill";
 import type { ChatTitleEntry } from "../lib/cosmetics";
 
-type Source = "shop" | "achievement" | "level";
+type Source = "achievement" | "level";
 type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary" | "mythic";
 
 type TitleEntry = {
@@ -23,7 +23,6 @@ type TitleEntry = {
 };
 
 type Equipped = {
-  shop: string | null;
   achievement: string | null;
   level: boolean;
 };
@@ -128,9 +127,8 @@ function toChatEntry(t: TitleEntry): ChatTitleEntry {
 }
 
 const SECTION_LABEL: Record<Source, { icon: string; title: string; sub: string }> = {
-  shop: { icon: "👑", title: "Titre Shop", sub: "S'affiche à côté de ton pseudo" },
-  achievement: { icon: "🏆", title: "Titre Succès", sub: "S'affiche en 2e ligne" },
-  level: { icon: "⭐", title: "Titre Niveau (auto)", sub: "Suit ton palier en temps réel" },
+  achievement: { icon: "🏆", title: "Titre Succès", sub: "Débloqué via les achievements" },
+  level: { icon: "⭐", title: "Titre Niveau (auto)", sub: "Suit ton palier — évolue avec ton XP" },
 };
 
 export function TitleSelector() {
@@ -253,10 +251,9 @@ export function TitleSelector() {
         </div>
       )}
       <div style={{ fontSize: 12.5, color: "rgba(220,220,255,0.65)", lineHeight: 1.5 }}>
-        Tu peux équiper un titre par source. Les 3 sont cumulables :
-        le <strong>👑 Shop</strong> apparaît à côté de ton pseudo, le <strong>🏆 Succès</strong> et le <strong>⭐ Niveau</strong> en seconde ligne.
+        Tu peux équiper un titre <strong>🏆 Succès</strong> et activer ton titre <strong>⭐ Niveau</strong> (palier auto-évolutif).
+        Les deux s'affichent côte-à-côte sous ton pseudo dans le chat.
       </div>
-      {renderSection("shop")}
       {renderSection("achievement")}
       {renderSection("level")}
     </div>

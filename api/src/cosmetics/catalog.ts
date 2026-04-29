@@ -137,22 +137,17 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
     active: true,
   },
   // ─────────────────────────────────────────────
-  // TITLES
-  // Prix shop (rubis): 1000 rubis
-  // Exception: LunaKing => prestige (1)
+  // TITLES (Sprint 3.5b — uniquement débloqués via succès)
+  // Tous les titres deviennent achievement-only. Les anciens titres shop
+  // (BigMoula, LunaKing, All-in Man) sont conservés mais en source achievement
+  // pour compatibilité — les users qui les ont déjà gardent leur entitlement.
   // ─────────────────────────────────────────────
   { kind: "title", code: "title_ratus", name: "Ratus", rarity: "uncommon", unlock: "achievement", priceRubis: null, active: true },
   { kind: "title", code: "title_ca_tourne", name: "Ça tourne !", rarity: "rare", unlock: "achievement", priceRubis: null, active: true },
   { kind: "title", code: "title_vrai_viewer", name: "Vrai Viewer", rarity: "rare", unlock: "achievement", priceRubis: null, active: true },
   { kind: "title", code: "title_no_life", name: "No Life", rarity: "epic", unlock: "achievement", priceRubis: null, active: true },
   { kind: "title", code: "title_batman", name: "Batman", rarity: "epic", unlock: "achievement", priceRubis: null, active: true },
-
-  // Shop rubis
-  { kind: "title", code: "title_bigmoula", name: "BigMoula", rarity: "legendary", unlock: "shop", priceRubis: 1000, active: true },
-
-  // Shop prestige (exception)
-  { kind: "title", code: "title_lunaking", name: "LunaKing", rarity: "mythic", unlock: "shop", priceRubis: null, pricePrestige: 1, active: true, meta: { currency: "prestige" } },
-
-  // Shop rubis (reste des titres)
-  { kind: "title", code: "title_allin_man", name: "All-in Man", rarity: "mythic", unlock: "shop", priceRubis: 1000, active: true },
+  { kind: "title", code: "title_bigmoula", name: "BigMoula", rarity: "legendary", unlock: "achievement", priceRubis: null, active: true },
+  { kind: "title", code: "title_lunaking", name: "LunaKing", rarity: "mythic", unlock: "achievement", priceRubis: null, active: true },
+  { kind: "title", code: "title_allin_man", name: "All-in Man", rarity: "mythic", unlock: "achievement", priceRubis: null, active: true },
 ];

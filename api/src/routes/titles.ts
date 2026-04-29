@@ -1,14 +1,13 @@
 // api/src/routes/titles.ts
 //
-// Système de titres unifié multi-slots (Sprint 3.5):
-// L'user équipe indépendamment 1 titre par source (3 slots cumulables):
-//   - shop_code         : titre acheté en shop (LunaKing, BigMoula, etc.)
-//   - achievement_code  : titre obtenu via succès (Vrai Viewer, Ratus, etc.)
+// Système de titres unifié (Sprint 3.5b):
+// 2 slots seulement — succès et niveau (le shop a été retiré).
+//   - achievement_code  : titre obtenu via succès (Vrai Viewer, Ratus, LunaKing, etc.)
 //   - level_show        : afficher (oui/non) le titre auto-évolutif du palier
 //
-// Affichage chat:
-//   [badge] Username [👑 Shop]
-//           [🏆 Achievement]  -  [Niveau Palier IV]
+// Affichage chat compact:
+//   [badge] Username
+//           [🏆 Vrai Viewer]  —  [⭐ Apprenti Spinner II]
 //           message
 
 import { Router } from "express";
@@ -21,7 +20,7 @@ import { COSMETICS_CATALOG } from "../cosmetics/catalog.js";
 export const titlesRouter = Router();
 titlesRouter.use("/me/titles", requireAuth);
 
-type TitleSlot = "shop" | "achievement" | "level";
+type TitleSlot = "achievement" | "level";
 type TitleRarity = "common" | "uncommon" | "rare" | "epic" | "legendary" | "mythic";
 
 type TitleEntry = {
@@ -44,12 +43,6 @@ function labelFromCatalog(code: string): string {
   return (item as any)?.name || code.replace(/^title_/, "").replace(/_/g, " ");
 }
 
-function sourceFromCatalog(code: string): TitleSlot {
-  const item = COSMETICS_CATALOG.find((x: any) => x.kind === "title" && x.code === code);
-  if (!item) return "achievement";
-  return (item as any).unlock === "shop" ? "shop" : "achievement";
-}
-
 function levelTierToRarity(tier: number): TitleRarity {
   if (tier >= 9) return "mythic";
   if (tier >= 8) return "legendary";
@@ -59,7 +52,7 @@ function levelTierToRarity(tier: number): TitleRarity {
   return "common";
 }
 
-/** GET /me/titles — tous les titres possibles + équipement actuel des 3 slots */
+/** GET /me/titles — tous les titres possibles + équipement actuel des 2 slots */
 titlesRouter.get(
   "/me/titles",
   a(async (req, res) => {
@@ -79,14 +72,13 @@ titlesRouter.get(
     const ownedCodes = new Set<string>(ownedTitles.rows.map((r: any) => String(r.code)));
 
     const eq = await pool.query(
-      `SELECT title_shop_code, title_achievement_code, title_level_show
+      `SELECT title_achievement_code, title_level_show
          FROM user_equipped_cosmetics WHERE user_id = $1 LIMIT 1`,
       [userId]
     );
     const row = eq.rows[0] || {};
 
     const equipped = {
-      shop: (row.title_shop_code as string | null) || null,
       achievement: (row.title_achievement_code as string | null) || null,
       level: !!row.title_level_show,
     };
@@ -103,13 +95,13 @@ titlesRouter.get(
       owned: true,
     });
 
-    // 2) Tous les titres du catalogue
+    // 2) Tous les titres du catalogue (tous achievement désormais)
     for (const item of COSMETICS_CATALOG as any[]) {
       if (item.kind !== "title" || !item.active) continue;
       const code = String(item.code);
       titles.push({
         code,
-        source: sourceFromCatalog(code),
+        source: "achievement",
         label: labelFromCatalog(code),
         description: item.description || undefined,
         rarity: rarityFromCatalog(code),
@@ -141,9 +133,8 @@ titlesRouter.get(
 );
 
 /**
- * POST /me/titles/equip { slot: "shop"|"achievement"|"level", code: string|null }
- * Équipe un titre dans son slot. Pour 'level', code = "level_auto" pour activer
- * l'affichage du titre niveau, code = null pour le désactiver.
+ * POST /me/titles/equip { slot: "achievement"|"level", code: string|null }
+ * Pour 'level', code = "level_auto" pour activer, null pour désactiver.
  */
 titlesRouter.post(
   "/me/titles/equip",
@@ -157,12 +148,11 @@ titlesRouter.post(
     const codeRaw = req.body?.code;
     const code = codeRaw === null ? null : String(codeRaw || "").trim() || null;
 
-    if (!["shop", "achievement", "level"].includes(slot)) {
+    if (!["achievement", "level"].includes(slot)) {
       return res.status(400).json({ ok: false, error: "invalid_slot" });
     }
 
     if (slot === "level") {
-      // level: code = "level_auto" pour activer, null pour désactiver
       const show = code === "level_auto";
       await pool.query(
         `INSERT INTO user_equipped_cosmetics (user_id, title_level_show, updated_at)
@@ -172,7 +162,6 @@ titlesRouter.post(
         [userId, show]
       );
     } else {
-      // shop ou achievement: vérifie ownership si code non null
       if (code) {
         const r = await pool.query(
           `SELECT 1 FROM user_entitlements WHERE user_id = $1 AND kind = 'title' AND code = $2 LIMIT 1`,
@@ -181,25 +170,18 @@ titlesRouter.post(
         if (!r.rows[0]) {
           return res.status(403).json({ ok: false, error: "not_owned" });
         }
-        // Vérifie aussi que le slot match la source (shop ne peut pas équiper achievement et vice versa)
-        const expectedSlot = sourceFromCatalog(code);
-        if (expectedSlot !== slot) {
-          return res.status(400).json({ ok: false, error: "slot_mismatch" });
-        }
       }
-      const col = slot === "shop" ? "title_shop_code" : "title_achievement_code";
       await pool.query(
-        `INSERT INTO user_equipped_cosmetics (user_id, ${col}, updated_at)
+        `INSERT INTO user_equipped_cosmetics (user_id, title_achievement_code, updated_at)
          VALUES ($1, $2, NOW())
          ON CONFLICT (user_id) DO UPDATE
-           SET ${col} = $2, updated_at = NOW()`,
+           SET title_achievement_code = $2, updated_at = NOW()`,
         [userId, code]
       );
     }
 
-    // Re-charge état complet
     const eq = await pool.query(
-      `SELECT title_shop_code, title_achievement_code, title_level_show
+      `SELECT title_achievement_code, title_level_show
          FROM user_equipped_cosmetics WHERE user_id = $1 LIMIT 1`,
       [userId]
     );
@@ -207,7 +189,6 @@ titlesRouter.post(
     return res.json({
       ok: true,
       equipped: {
-        shop: row.title_shop_code || null,
         achievement: row.title_achievement_code || null,
         level: !!row.title_level_show,
       },
