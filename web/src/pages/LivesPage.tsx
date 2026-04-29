@@ -12,6 +12,7 @@ import { setSeo } from "../lib/seo";
 
 import { DailyWheelCard } from "../components/DailyWheelCard";
 import { DailyBonusAccessCard } from "../components/DailyBonusAccessCard";
+import { QuestsHomeCard } from "../components/QuestsHomeCard";
 import { useAuth } from "../auth/AuthProvider";
 import { useIsMobile } from "../hooks/useIsMobile";
 import LivesPageMobile from "./LivesPage.mobile";
@@ -1178,6 +1179,7 @@ export default function LivesPage() {
           <aside className="livesSidebar">
             <DailyWheelCard />
             <DailyBonusAccessCard />
+            <QuestsHomeCard />
 
             <div className="sidebarDivider" />
 
