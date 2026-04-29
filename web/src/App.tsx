@@ -67,6 +67,7 @@ const LoadingFallback = () => (
 );
 import { BgEffect } from "./components/Bgeffects";
 import { captureUtmFromUrl } from "./lib/utm";
+import { LevelUpToast } from "./components/LevelUpToast";
 
 function AppInner() {
   const location = useLocation();
@@ -353,6 +354,7 @@ function AppInner() {
               }}
             />
             <AchievementsModal open={achievementsOpen} onClose={() => setAchievementsOpen(false)} />
+            <LevelUpToast />
           </>
         )}
       </div>

@@ -660,9 +660,16 @@ export async function startDiscordBot(ctx: BotCtx) {
             }
 
             const userId = Number((linked as any).id);
-            const amount = Number(cr.amount);
+            const baseAmount = Number(cr.amount);
             const countThisMonth = Number(cr.countThisMonth);
             const bonus = Number(cr.bonus);
+
+            // Bonus level lvl 70+ : +10% sur le rubis du /claim
+            const lvlR = await clientPg.query(`SELECT xp::bigint AS xp FROM users WHERE id=$1`, [userId]);
+            const { levelFromXp, getDiscordClaimMultiplier, awardXpTx, XP_SOURCES } = await import("../economy/xp.js");
+            const userLevel = levelFromXp(Number(lvlR.rows[0]?.xp || 0));
+            const claimMult = getDiscordClaimMultiplier(userLevel);
+            const amount = Math.round(baseAmount * claimMult);
 
             // 2) crédit rubis avec poids 0.2 => origin "discord_claim"
             await earnRubisTx(clientPg, userId, "discord_claim", amount, {
@@ -671,9 +678,13 @@ export async function startDiscordBot(ctx: BotCtx) {
               monthKey: (cr as any).monthKey ?? monthKeyParis(new Date()),
               countThisMonth,
               bonus,
+              level_bonus_pct: claimMult > 1 ? Math.round((claimMult - 1) * 100) : undefined,
               discordUserId: String(interaction.user.id),
               discordGuildId: String(guild.id),
             });
+
+            // XP pour le claim Discord
+            await awardXpTx(clientPg, userId, 5, "discord_claim", "claim", { countThisMonth });
 
             await clientPg.query("COMMIT");
 

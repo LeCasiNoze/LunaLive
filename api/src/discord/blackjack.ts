@@ -262,6 +262,15 @@ async function finishGameTx(pool: Pool, state: GameState, it?: ButtonInteraction
       }
     }
 
+    // XP par partie de blackjack jouée (capé 20/jour côté xp.ts)
+    {
+      const { awardXpTx, XP_SOURCES } = await import("../economy/xp.js");
+      await awardXpTx(client, state.lunaUserId, XP_SOURCES.blackjack_played, "blackjack_played", "discord_blackjack", {
+        plusMode: state.plusMode,
+        natural: res.isNaturalBlackjack,
+      });
+    }
+
     await client.query("COMMIT");
   } catch (e) {
     await client.query("ROLLBACK");

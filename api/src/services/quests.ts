@@ -330,7 +330,10 @@ export async function getActiveQuestsForUser(
 export async function claimQuest(
   userId: number,
   questCode: string
-): Promise<{ ok: true; rewardRubis: number; rewardMeta: any } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; rewardRubis: number; rewardMeta: any; xpDelta: number; leveledUp: boolean; newLevel: number }
+  | { ok: false; error: string }
+> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -405,7 +408,7 @@ export async function claimQuest(
         : type === "weekly"
         ? XP_SOURCES.quest_weekly
         : XP_SOURCES.quest_monthly;
-    await awardXpTx(client, userId, xpAmount, `quest_${type}`, `quest:${questCode}`, {
+    const xpResult = await awardXpTx(client, userId, xpAmount, `quest_${type}`, `quest:${questCode}`, {
       questCode,
       periodKey,
     });
@@ -430,7 +433,14 @@ export async function claimQuest(
     );
 
     await client.query("COMMIT");
-    return { ok: true, rewardRubis, rewardMeta };
+    return {
+      ok: true as const,
+      rewardRubis,
+      rewardMeta,
+      xpDelta: xpResult.delta,
+      leveledUp: xpResult.leveledUp,
+      newLevel: xpResult.newLevel,
+    };
   } catch (e) {
     try {
       await client.query("ROLLBACK");

@@ -63,10 +63,14 @@ export function getQuests() {
 }
 
 export function claimQuest(code: string) {
-  return request<{ ok: true; rewardRubis: number; rewardMeta: any }>(
-    `/api/me/quests/${encodeURIComponent(code)}/claim`,
-    { method: "POST" }
-  );
+  return request<{
+    ok: true;
+    rewardRubis: number;
+    rewardMeta: any;
+    xpDelta: number;
+    leveledUp: boolean;
+    newLevel: number;
+  }>(`/api/me/quests/${encodeURIComponent(code)}/claim`, { method: "POST" });
 }
 
 // ─── XP ───────────────────────────────────────────────────────────────────

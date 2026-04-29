@@ -2,6 +2,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { claimQuest, getQuests, type Quest, type QuestType } from "../lib/api_quests";
+import { fireLevelUpToast } from "./LevelUpToast";
 
 const TYPE_LABEL: Record<QuestType, string> = {
   daily: "Quotidien",
@@ -166,7 +167,10 @@ export function QuestsModal({ open, onClose, onClaimed }: Props) {
     setClaimingCode(code);
     setErr(null);
     try {
-      await claimQuest(code);
+      const r = await claimQuest(code);
+      if (r?.leveledUp) {
+        fireLevelUpToast({ newLevel: r.newLevel });
+      }
       await reload();
       onClaimed?.();
     } catch (e: any) {

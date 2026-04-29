@@ -4,6 +4,7 @@
 
 import type { Pool, PoolClient } from "pg";
 import { earnRubisTx } from "../wallet_engine.js";
+import { awardXpTx, getDailyBonusMultiplier, levelFromXp, XP_SOURCES } from "../economy/xp.js";
 
 type WeekDayReward =
   | { type: "rubis"; amount: number; origin: string; weight_bp: number }
@@ -306,20 +307,32 @@ export async function claimDailyBonusToday(pool: Pool, userId: number) {
       const base = rewardByIsoDow(isodow);
       const rw = doubleRewardIfPremium(base, premiumViewer);
 
+      // Lecture du level pour appliquer le bonus daily +5%/+10%
+      const lvlR = await client.query(`SELECT xp::bigint AS xp FROM users WHERE id=$1`, [userId]);
+      const userLevel = levelFromXp(Number(lvlR.rows[0]?.xp || 0));
+      const dailyMult = getDailyBonusMultiplier(userLevel);
+
       if (rw.type === "rubis") {
-        await earnRubisTx(client, userId, rw.origin, rw.amount, {
+        // Applique le multiplicateur level (1.0 / 1.05 / 1.10) sur le montant rubis
+        const finalAmount = Math.round(rw.amount * dailyMult);
+        await earnRubisTx(client, userId, rw.origin, finalAmount, {
           weight_bp: rw.weight_bp,
           source: "daily_bonus",
           premium_viewer_x2: premiumViewer ? true : undefined,
+          level_bonus_pct: dailyMult > 1 ? Math.round((dailyMult - 1) * 100) : undefined,
         });
+        // Crédit XP pour le claim daily
+        await awardXpTx(client, userId, XP_SOURCES.daily_bonus, "daily_bonus", "claim_daily", { day });
         granted.push({
           type: "rubis",
-          amount: rw.amount,
+          amount: finalAmount,
           origin: rw.origin,
           weight_bp: rw.weight_bp,
         });
       } else {
         await addToken(client, userId, rw.token, rw.amount);
+        // Award XP même quand le reward est un ticket roue (claim quoti)
+        await awardXpTx(client, userId, XP_SOURCES.daily_bonus, "daily_bonus", "claim_daily_token", { day, token: rw.token });
         granted.push({ type: "token", token: rw.token, amount: rw.amount });
       }
     }
