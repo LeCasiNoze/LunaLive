@@ -8,6 +8,8 @@ import { ReportModal } from "../components/ReportModal";
 import { UnreadBadge } from "../components/UnreadBadge";
 import { publicGetContent } from "../lib/api";
 import { contentVersionFromItem, isUnread } from "../lib/unread_seen";
+import { QuestsModal } from "../components/QuestsModal";
+import { getQuests } from "../lib/api_quests";
 
 type ActivePlans = { viewer: boolean; streamer: boolean };
 
@@ -121,6 +123,28 @@ export function Topbar({
 
   const userAny = authAny?.user ?? null;
   const user = userAny as { rubis: number; username?: string } | null;
+
+  // Quests modal + claimable badge
+  const [questsOpen, setQuestsOpen] = React.useState(false);
+  const [questsClaimable, setQuestsClaimable] = React.useState(0);
+  React.useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const r = await getQuests();
+        if (!cancelled) setQuestsClaimable(r.claimableCount || 0);
+      } catch {
+        // silent
+      }
+    };
+    refresh();
+    const id = setInterval(refresh, 90_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [user]);
 
   const plans = React.useMemo(() => {
     let p: ActivePlans = { viewer: false, streamer: false };
@@ -621,6 +645,46 @@ export function Topbar({
 
           {user ? (
             <>
+              <button
+                type="button"
+                className="pill llPill llPillQuests"
+                onClick={() => setQuestsOpen(true)}
+                title="Mes quêtes"
+                aria-label="Mes quêtes"
+                style={{
+                  border: "1px solid rgba(99,102,241,.32)",
+                  background: "rgba(99,102,241,.12)",
+                  color: "#dde8ff",
+                  cursor: "pointer",
+                  position: "relative",
+                  fontWeight: 700,
+                }}
+              >
+                🎯 {!isMobile && <span style={{ marginLeft: 4 }}>Quêtes</span>}
+                {questsClaimable > 0 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: -4,
+                      right: -4,
+                      minWidth: 18,
+                      height: 18,
+                      padding: "0 5px",
+                      borderRadius: 9,
+                      background: "linear-gradient(135deg,#10b981,#34d399)",
+                      color: "#fff",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      display: "grid",
+                      placeItems: "center",
+                      boxShadow: "0 2px 6px rgba(16,185,129,.5)",
+                    }}
+                  >
+                    {questsClaimable}
+                  </span>
+                )}
+              </button>
+
               <div className="pill llPill llPillRuby" title="Rubis">
                 💎 <strong>{Number(user.rubis || 0).toLocaleString("fr-FR")}</strong>
               </div>
@@ -672,6 +736,16 @@ export function Topbar({
       </div>
 
       <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} preset={null} />
+      <QuestsModal
+        open={questsOpen}
+        onClose={() => setQuestsOpen(false)}
+        onClaimed={async () => {
+          try {
+            const r = await getQuests();
+            setQuestsClaimable(r.claimableCount || 0);
+          } catch {}
+        }}
+      />
     </header>
   );
 }

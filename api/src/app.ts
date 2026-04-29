@@ -93,6 +93,8 @@ import { publicContentRouter } from "./routes/public_content.js";
 import { expensesRouter } from "./routes/expenses.js";
 import { fsbDashboardRouter } from "./routes/fsb_dashboard.js";
 import { tiktokOutreachRouter, handleInboundReply } from "./routes/tiktok_outreach.js";
+import { questsRouter } from "./routes/quests.js";
+import { seedAllPeriodsIfNeeded } from "./services/quests.js";
 import { agencyRouter } from "./routes/agency.js";
 import { requireFsbAccess } from "./routes/fsb_guard.js";
 import { webrtcTurnRouter } from "./routes/webrtc_turn.js";
@@ -197,6 +199,17 @@ export function createApp() {
   app.use("/api", fsbDashboardRouter);
   app.use("/api", tiktokOutreachRouter);
   app.post("/api/inbound/tiktok-reply", handleInboundReply);
+  app.use("/api", questsRouter);
+
+  // Quest seeder: au boot puis 1x/h. Idempotent (skip si déjà seedé).
+  seedAllPeriodsIfNeeded().catch((e) => {
+    console.warn("[quests] initial seed failed:", e?.message || e);
+  });
+  setInterval(() => {
+    seedAllPeriodsIfNeeded().catch((e) => {
+      console.warn("[quests] periodic seed failed:", e?.message || e);
+    });
+  }, 60 * 60 * 1000);
   app.use("/api", agencyRouter);
   app.use(igWebhookRouter);
 
