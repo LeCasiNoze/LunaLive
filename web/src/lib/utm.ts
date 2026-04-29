@@ -19,9 +19,28 @@ export type UtmData = {
   capturedAt?: string;
 };
 
+function isExternalReferrer(ref: string): boolean {
+  if (!ref) return false;
+  try {
+    const u = new URL(ref);
+    const host = u.hostname.toLowerCase();
+    const myHost = window.location.hostname.toLowerCase();
+    if (host === myHost) return false;
+    // Skip Render preview domain too (internal)
+    if (host.endsWith(".onrender.com") && myHost.endsWith(".onrender.com")) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * À appeler une fois au montage de l'app. Si l'URL contient des utm_*, on les
- * capture (last-touch attribution). Sinon on ne fait rien.
+ * Capture l'origine de la visite si:
+ *  - L'URL contient des utm_* (ad taguée)
+ *  - OU le document.referrer pointe sur un domaine externe (TikTok, Insta, Discord, Google, etc.)
+ *
+ * Last-touch attribution: chaque nouvelle origine externe écrase la précédente.
+ * Les navigations internes (pas de referrer ou referrer = lunalive.win) sont ignorées.
  */
 export function captureUtmFromUrl(): UtmData | null {
   if (typeof window === "undefined") return null;
@@ -37,9 +56,14 @@ export function captureUtmFromUrl(): UtmData | null {
         hasUtm = true;
       }
     }
-    if (!hasUtm) return null;
+    const referrer = document.referrer || "";
+    const externalRef = isExternalReferrer(referrer);
+
+    // Skip si pas d'UTM ni de referrer externe (= nav interne)
+    if (!hasUtm && !externalRef) return null;
+
     data.landingPath = url.pathname.slice(0, 500);
-    data.referrer = (document.referrer || "").slice(0, 500);
+    data.referrer = referrer.slice(0, 500);
     data.capturedAt = new Date().toISOString();
     localStorage.setItem(UTM_KEY, JSON.stringify(data));
     return data;
