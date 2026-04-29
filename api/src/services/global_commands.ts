@@ -13,6 +13,7 @@ import type { Pool } from "pg";
 import type { Server } from "socket.io";
 import { sendBotChat } from "../calls/commands.js";
 import { getLevelInfo } from "../economy/xp.js";
+import { computeAchievementsSummary } from "../routes/achievements.js";
 
 const GLOBAL_CMDS = new Set(["solde", "profil", "watch", "succes", "succès"]);
 
@@ -154,13 +155,29 @@ export async function handleGlobalCommand(
   }
 
   if (cmd === "succes" || cmd === "succès") {
-    // V1: stub — détail par tier après rework Sprint 4 (achievements persistés)
-    await sendBotChat(
-      ctx.pool,
-      ctx.io,
-      optsBot,
-      `🏆 ${u} → ${stats.entitlementsCount} récompense${stats.entitlementsCount > 1 ? "s" : ""} débloquée${stats.entitlementsCount > 1 ? "s" : ""} · Détail complet sur lunalive.win/profile`
-    );
+    // Pills par tier (bronze/silver/gold/master)
+    let summary;
+    try {
+      summary = await computeAchievementsSummary(ctx.actorUserId);
+    } catch {
+      summary = null;
+    }
+    if (summary) {
+      const t = summary.byTier;
+      await sendBotChat(
+        ctx.pool,
+        ctx.io,
+        optsBot,
+        `🏆 ${u} — 🥉 ${t.bronze.unlocked}/${t.bronze.total} · 🥈 ${t.silver.unlocked}/${t.silver.total} · 🥇 ${t.gold.unlocked}/${t.gold.total} · 👑 ${t.master.unlocked}/${t.master.total} (${summary.totalUnlocked}/${summary.totalAll})`
+      );
+    } else {
+      await sendBotChat(
+        ctx.pool,
+        ctx.io,
+        optsBot,
+        `🏆 ${u} → ${stats.entitlementsCount} récompenses · lunalive.win/profile`
+      );
+    }
     return { handled: true };
   }
 

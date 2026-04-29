@@ -931,55 +931,125 @@ export async function startDiscordBot(ctx: BotCtx) {
             return;
           }
           const userId = Number((linked as any).id);
-          const { getLevelInfo } = await import("../economy/xp.js");
-          const u = await pool.query(
-            `SELECT username, rubis, xp::bigint AS xp FROM users WHERE id = $1 LIMIT 1`,
-            [userId]
-          );
-          const row = u.rows[0];
-          if (!row) {
+          const { getProfileStats, fmtDuration, fmtInt, progressBar, fmtTitlePills } = await import("../services/profile_stats.js");
+          const { EmbedBuilder } = await import("discord.js");
+
+          const s = await getProfileStats(userId);
+          if (!s) {
             await interaction.reply({ ephemeral: true, content: "❌ Profil introuvable." });
             return;
           }
-          const xp = Number(row.xp || 0);
-          const info = getLevelInfo(xp);
-          let entitlements = 0;
-          try {
-            const e = await pool.query(
-              `SELECT COUNT(*)::int AS n FROM user_entitlements WHERE user_id = $1`,
-              [userId]
-            );
-            entitlements = Number(e.rows[0]?.n || 0);
-          } catch {}
 
+          const avatarUrl = interaction.user.displayAvatarURL({ size: 128, extension: "png" });
+
+          // ── /solde — embed compact ────────────────────────────────
           if (interaction.commandName === "solde") {
-            await interaction.reply({
-              ephemeral: false,
-              content: `💎 **${row.username}** → **${Number(row.rubis).toLocaleString("fr-FR")}** rubis · Niveau **${info.level}** (${info.fullTitle})`,
-            });
+            const embed = new EmbedBuilder()
+              .setColor(0x8b5cf6)
+              .setAuthor({ name: s.username, iconURL: avatarUrl })
+              .setTitle("💎 Solde")
+              .setDescription(
+                `**${fmtInt(s.rubis)}** rubis\n` +
+                `Niveau **${s.level}** · *${s.levelTitle}*`
+              )
+              .addFields(
+                { name: "📈 XP", value: `${fmtInt(s.xp)}`, inline: true },
+                {
+                  name: "🎯 Prochain niveau",
+                  value: s.isMaxLevel ? "⭐ MAX" : `${fmtInt(s.xpToNext)} XP`,
+                  inline: true,
+                }
+              )
+              .setFooter({ text: "LunaLive · /profil pour la fiche complète" });
+            await interaction.reply({ embeds: [embed] });
             return;
           }
+
+          // ── /succes — pills par tier + total + progress bar ──────
           if (interaction.commandName === "succes") {
-            await interaction.reply({
-              ephemeral: false,
-              content: `🏆 **${row.username}** → **${entitlements}** récompense${entitlements > 1 ? "s" : ""} débloquée${entitlements > 1 ? "s" : ""}\nDétail : https://lunalive.win/profile`,
-            });
+            const t = s.achievementsByTier;
+            const totalPct = s.achievementsTotalAll > 0
+              ? Math.round((s.achievementsTotalUnlocked / s.achievementsTotalAll) * 100)
+              : 0;
+
+            const tierLine = (emoji: string, label: string, x: { unlocked: number; total: number }) => {
+              const pct = x.total > 0 ? Math.round((x.unlocked / x.total) * 100) : 0;
+              const bar = progressBar(pct, 10);
+              return `${emoji} **${label}** — \`${x.unlocked}/${x.total}\`\n${bar}`;
+            };
+
+            const embed = new EmbedBuilder()
+              .setColor(0xfbbf24)
+              .setAuthor({ name: s.username, iconURL: avatarUrl })
+              .setTitle("🏆 Succès")
+              .setDescription(
+                `**${s.achievementsTotalUnlocked} / ${s.achievementsTotalAll}** débloqués · ${totalPct}%\n` +
+                progressBar(totalPct)
+              )
+              .addFields(
+                { name: "Bronze", value: tierLine("🥉", "Bronze", t.bronze), inline: true },
+                { name: "Silver", value: tierLine("🥈", "Silver", t.silver), inline: true },
+                { name: "Gold", value: tierLine("🥇", "Gold", t.gold), inline: true },
+                { name: "Master", value: tierLine("👑", "Master", t.master), inline: true }
+              )
+              .setFooter({ text: "Détail complet : lunalive.win/profile" });
+            await interaction.reply({ embeds: [embed] });
             return;
           }
-          // /profil — fiche complète embed
-          const { EmbedBuilder } = await import("discord.js");
-          const embed = new EmbedBuilder()
-            .setTitle(`Profil de ${row.username}`)
+
+          // ── /profil — fiche complète riche ───────────────────────
+          const headerBits = [
+            `**Niveau ${s.level}** / 100`,
+            `*${s.levelTitle}*`,
+            s.isMaxLevel ? "⭐ MAX" : `${fmtInt(s.xpToNext)} XP avant L${s.level + 1}`,
+          ];
+
+          const econ =
+            `💎 Rubis : **${fmtInt(s.rubis)}**\n` +
+            `📈 XP : **${fmtInt(s.xp)}**\n` +
+            `📤 Gagnés (total) : ${fmtInt(s.rubisEarnedTotal)}\n` +
+            `📥 Dépensés (total) : ${fmtInt(s.rubisSpentTotal)}`;
+
+          const engagement =
+            `👁️ Watchtime : **${fmtDuration(s.watchSecondsTotal)}**\n` +
+            `💬 Messages : ${fmtInt(s.chatMessagesTotal)}\n` +
+            `📞 Calls : ${fmtInt(s.callsTotal)}\n` +
+            `🎯 Predictions : ${fmtInt(s.predictionsTotal)} (${fmtInt(s.predictionWinsTotal)} 🏆)`;
+
+          const recompenses =
+            `🏆 Succès : **${s.achievementsTotalUnlocked} / ${s.achievementsTotalAll}**\n` +
+            fmtTitlePills(s.achievementsByTier) + `\n` +
+            `🎁 Cosmétiques : ${fmtInt(s.entitlementsTotal)}\n` +
+            `✅ Quêtes : ${fmtInt(s.questsCompletedTotal)}`;
+
+          const compte =
+            `🎡 Spins roue : ${fmtInt(s.wheelSpinsTotal)}\n` +
+            `🗓️ Daily bonus : ${fmtInt(s.dailyBonusClaimsTotal)} claims\n` +
+            `❤️ Streamers suivis : ${fmtInt(s.followsCount)}\n` +
+            `📅 Inscrit : ${s.createdAt ? `<t:${Math.floor(new Date(s.createdAt).getTime()/1000)}:R>` : "—"}`;
+
+          const xpBar = progressBar(s.pctToNext);
+
+          const profileEmbed = new EmbedBuilder()
             .setColor(0x8b5cf6)
-            .addFields(
-              { name: "⭐ Niveau", value: `${info.level} / 100\n*${info.fullTitle}*`, inline: true },
-              { name: "💎 Rubis", value: `${Number(row.rubis).toLocaleString("fr-FR")}`, inline: true },
-              { name: "📈 XP", value: `${xp.toLocaleString("fr-FR")}\n${info.isMax ? "⭐ MAX" : `${info.xpToNext.toLocaleString("fr-FR")} XP avant L${info.level + 1}`}`, inline: true },
-              { name: "🏆 Récompenses", value: `${entitlements}`, inline: true },
-              { name: "🔗 Profil", value: `[lunalive.win/profile](https://lunalive.win/profile)`, inline: true }
+            .setAuthor({ name: `🌙 LunaLive`, iconURL: "https://lunalive.win/lunalive_logo_sphere_512.png" })
+            .setTitle(`Profil de ${s.username}`)
+            .setDescription(
+              headerBits.join(" · ") + "\n" +
+              `${xpBar}`
             )
-            .setFooter({ text: "LunaLive" });
-          await interaction.reply({ embeds: [embed] });
+            .setThumbnail(avatarUrl)
+            .addFields(
+              { name: "💼 Économie", value: econ, inline: true },
+              { name: "🎮 Engagement", value: engagement, inline: true },
+              { name: "🏆 Récompenses", value: recompenses, inline: false },
+              { name: "📊 Activités", value: compte, inline: false },
+              { name: "🔗 Profil complet", value: `https://lunalive.win/profile`, inline: false }
+            )
+            .setFooter({ text: "LunaLive · stats temps réel" })
+            .setTimestamp(new Date());
+
+          await interaction.reply({ embeds: [profileEmbed] });
           return;
         }
 

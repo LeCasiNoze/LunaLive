@@ -1293,3 +1293,60 @@ achievementsRouter.get("/", async (req, res) => {
     grantedEntitlements: granted, // debug (front peut ignorer)
   });
 });
+
+/**
+ * Helper exportable pour résumer les succès d'un user par tier.
+ * Utilisé par les commandes Discord/chat (!succes, /profil) sans passer
+ * par la route HTTP.
+ */
+export async function computeAchievementsSummary(userId: number): Promise<{
+  byTier: Record<"bronze" | "silver" | "gold" | "master", { unlocked: number; total: number }>;
+  totalUnlocked: number;
+  totalAll: number;
+}> {
+  const m = await getMetrics(userId);
+  const derivedIds = new Set(["master_polyvalent", "master_collection_par_categorie"]);
+  const baseDefs = defs.filter((d) => !derivedIds.has(d.id) && d.id !== "master_collectionneur");
+  const baseResults = baseDefs.map((d) => ({ def: d, result: d.eval(m, 0) }));
+
+  const bronzeTotal = baseDefs.filter((d) => d.tier === "bronze").length;
+  const silverTotal = baseDefs.filter((d) => d.tier === "silver").length;
+  const bronzeUnlockedCount = baseResults.filter((x) => x.def.tier === "bronze" && x.result.unlocked).length;
+  const silverUnlockedCount = baseResults.filter((x) => x.def.tier === "silver" && x.result.unlocked).length;
+  const unlockedGoldCategories = new Set(
+    baseResults.filter((x) => x.def.tier === "gold" && x.result.unlocked).map((x) => x.def.category)
+  );
+
+  const derivedResults: Record<string, { unlocked: boolean }> = {
+    master_polyvalent: { unlocked: unlockedGoldCategories.size >= 3 },
+    master_collection_par_categorie: {
+      unlocked: bronzeUnlockedCount >= bronzeTotal && silverUnlockedCount >= silverTotal,
+    },
+  };
+
+  const unlockedCountExceptCollector =
+    baseResults.filter((x) => x.result.unlocked).length +
+    Object.values(derivedResults).filter((x) => x.unlocked).length;
+
+  const collectorResult = defs.find((d) => d.id === "master_collectionneur")?.eval(m, unlockedCountExceptCollector) ?? {
+    unlocked: false,
+  };
+
+  const summary = { bronze: { unlocked: 0, total: 0 }, silver: { unlocked: 0, total: 0 }, gold: { unlocked: 0, total: 0 }, master: { unlocked: 0, total: 0 } };
+
+  for (const d of defs) {
+    const tier = d.tier as keyof typeof summary;
+    if (!summary[tier]) continue;
+    summary[tier].total += 1;
+    let unlocked = false;
+    if (d.id === "master_collectionneur") unlocked = !!collectorResult.unlocked;
+    else if (derivedResults[d.id]) unlocked = derivedResults[d.id].unlocked;
+    else unlocked = !!d.eval(m, unlockedCountExceptCollector).unlocked;
+    if (unlocked) summary[tier].unlocked += 1;
+  }
+
+  const totalUnlocked = summary.bronze.unlocked + summary.silver.unlocked + summary.gold.unlocked + summary.master.unlocked;
+  const totalAll = summary.bronze.total + summary.silver.total + summary.gold.total + summary.master.total;
+
+  return { byTier: summary, totalUnlocked, totalAll };
+}
