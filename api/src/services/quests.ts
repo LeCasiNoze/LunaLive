@@ -149,12 +149,11 @@ export async function computeMetricProgress(
     }
 
     case "watch_min": {
-      // stream_viewer_minutes a typiquement (user_id, streamer_id, day, minutes)
+      // stream_viewer_minutes: 1 row par bucket_ts (1 min de présence)
       const r = await client.query(
-        `SELECT COALESCE(SUM(minutes), 0)::int AS m
+        `SELECT COUNT(DISTINCT bucket_ts)::int AS m
            FROM stream_viewer_minutes
-          WHERE user_id = $1
-            AND day >= ($2::timestamptz)::date`,
+          WHERE user_id = $1 AND bucket_ts >= $2::timestamptz`,
         [userId, periodStart]
       );
       return Number(r.rows[0]?.m || 0);
@@ -173,7 +172,7 @@ export async function computeMetricProgress(
       const r = await client.query(
         `SELECT COUNT(DISTINCT streamer_id)::int AS n
            FROM stream_viewer_minutes
-          WHERE user_id = $1 AND day >= ($2::timestamptz)::date`,
+          WHERE user_id = $1 AND bucket_ts >= $2::timestamptz`,
         [userId, periodStart]
       );
       return Number(r.rows[0]?.n || 0);
@@ -226,7 +225,7 @@ export async function computeMetricProgress(
     case "prediction_bet": {
       const r = await client.query(
         `SELECT COUNT(*)::int AS n FROM prediction_bets
-          WHERE user_id = $1 AND placed_at >= $2::timestamptz`,
+          WHERE user_id = $1 AND created_at >= $2::timestamptz`,
         [userId, periodStart]
       );
       return Number(r.rows[0]?.n || 0);
