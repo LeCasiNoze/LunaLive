@@ -331,8 +331,12 @@ meOverlayRouter.get(
       `SELECT overlay_config FROM streamers WHERE lower(slug) = lower($1) LIMIT 1`,
       [FSB_OVERLAY_SLUG]
     );
-    const config = r.rows?.[0]?.overlay_config ?? null;
-    return res.json({ ok: true, config });
+    const blob = r.rows?.[0]?.overlay_config ?? null;
+    // Désencapsule le wrapper v2 si présent → renvoie une OverlayConfig flat.
+    const isV2 = blob && typeof blob === "object" && blob._wrapper === "v2";
+    const config = isV2 ? blob.active : blob;
+    const byMode = isV2 ? blob.byMode : null;
+    return res.json({ ok: true, config, byMode });
   })
 );
 
@@ -393,29 +397,39 @@ meOverlayRouter.post(
     if (!config || typeof config !== "object") {
       return res.status(400).json({ ok: false, error: "missing_config" });
     }
+    // byMode = { solo?, double?, triple? } — layouts customisés pour l'auto-switch
+    // overlay (rendu adapté au nombre de cams actives en temps réel).
+    const byMode = req.body?.byMode && typeof req.body.byMode === "object" ? req.body.byMode : null;
 
     const io = (req.app?.get?.("io") || req.app?.locals?.io) as Server | undefined;
     if (!io) return res.status(500).json({ ok: false, error: "io_missing" });
+
+    // On stocke config + byMode dans le même JSON (overlay_config) sous une
+    // structure enveloppe { active, byMode } — rétro-compat : les anciens reads
+    // qui s'attendent à une OverlayConfig flat reçoivent toujours `active` (non
+    // wrappé) côté OverlayPage qui sait gérer les deux formats.
+    const persistedBlob = byMode ? { _wrapper: "v2" as const, active: config, byMode } : config;
 
     if (canAccessFsbOverlay(uid)) {
       // Persist en DB sous fabiozsis
       await pool.query(
         `UPDATE streamers SET overlay_config = $1 WHERE lower(slug) = lower($2)`,
-        [JSON.stringify(config), FSB_OVERLAY_SLUG]
+        [JSON.stringify(persistedBlob), FSB_OVERLAY_SLUG]
       );
 
       // Slugs sur lesquels émettre : slug du chat (overlay écoute là) + fabiozsis
       const chatSlug = slugFromConfigChatUrl(config) || FSB_OVERLAY_SLUG;
       const slugsToNotify = [...new Set([chatSlug.toLowerCase(), FSB_OVERLAY_SLUG.toLowerCase()])];
 
+      const broadcast = { config, byMode };
       for (const s of slugsToNotify) {
         // Room authentifiée (stream:join avec token owner/admin)
-        io.to(`stream:${s}`).emit("obs:config", { config });
+        io.to(`stream:${s}`).emit("obs:config", broadcast);
         // Room publique (obs:subscribe sans auth) — pour l'OverlayPage dans OBS
-        io.to(`obsview:${s}`).emit("obs:config", { config });
+        io.to(`obsview:${s}`).emit("obs:config", broadcast);
       }
       // Room partagée designer FSB — sync en temps réel entre tous les users FSB ouverts
-      io.to("fsb:designer").emit("obs:config", { config });
+      io.to("fsb:designer").emit("obs:config", broadcast);
 
       return res.json({ ok: true, slug: chatSlug });
     }
@@ -424,8 +438,8 @@ meOverlayRouter.post(
     const slug = String(req.body?.slug || "").trim() || (await getOwnedStreamerSlugByUserId(uid)) || "";
     if (!slug) return res.status(404).json({ ok: false, error: "no_streamer" });
 
-    io.to(`stream:${slug.toLowerCase()}`).emit("obs:config", { config });
-    io.to(`obsview:${slug.toLowerCase()}`).emit("obs:config", { config });
+    io.to(`stream:${slug.toLowerCase()}`).emit("obs:config", { config, byMode });
+    io.to(`obsview:${slug.toLowerCase()}`).emit("obs:config", { config, byMode });
     return res.json({ ok: true, slug });
   })
 );

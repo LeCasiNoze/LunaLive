@@ -1685,15 +1685,17 @@ function loadActiveModeFromStorage(): OverlayMode | null {
   return null;
 }
 
-/** Push la config vers l'OBS overlay via le backend (socket) + persiste en DB */
-async function pushConfigToObs(config: OverlayConfig) {
+/** Push la config vers l'OBS overlay via le backend (socket) + persiste en DB.
+ *  Push aussi byMode (les 3 layouts customisés solo/double/triple) pour
+ *  permettre à l'overlay l'auto-switch en fonction du nombre de cams actives. */
+async function pushConfigToObs(config: OverlayConfig, byMode?: ConfigByMode) {
   const token = localStorage.getItem("lunalive_token_v1") || "";
   if (!token) return;
   try {
     await fetch(`${LUNA_API_BASE}/me/overlay/push-config`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ config }),
+      body: JSON.stringify({ config, byMode: byMode ?? null }),
     });
   } catch {
     // silencieux — pas critique
@@ -1847,10 +1849,14 @@ export function OverlayDesignerSection() {
       return () => clearTimeout(t);
     }
 
-    // Push debounced vers OBS + DB (600ms après la dernière modif)
+    // Push debounced vers OBS + DB (600ms après la dernière modif).
+    // Push aussi byMode (3 layouts) pour que l'overlay puisse auto-switcher
+    // selon le nombre de cams actives.
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
     pushTimerRef.current = setTimeout(() => {
-      pushConfigToObs(config).then(() => {
+      // S'assure que le mode actuel est bien à jour dans byMode avant de push
+      const byModeNow: ConfigByMode = { ...byModeRef.current, [config.mode]: config };
+      pushConfigToObs(config, byModeNow).then(() => {
         setPushed(true);
         setTimeout(() => setPushed(false), 1500);
       });

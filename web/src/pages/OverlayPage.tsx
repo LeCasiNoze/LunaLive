@@ -57,6 +57,9 @@ function filterCss(f: CamFilters | null): string {
 /** Crée et gère le socket partagé pour obs:config + WebRTC cam */
 function useOverlaySocket(baseConfig: OverlayConfig) {
   const [liveConfig, setLiveConfig] = React.useState<OverlayConfig | null>(null);
+  // byMode = { solo, double, triple } — layouts customisés permettant à
+  // l'overlay de switcher automatiquement selon le nombre de cams actives.
+  const [liveByMode, setLiveByMode] = React.useState<Partial<Record<string, OverlayConfig>> | null>(null);
   const [lastUpdate, setLastUpdate] = React.useState(0);
   const [socket, setSocket] = React.useState<ReturnType<typeof io> | null>(null);
   const [searchParams] = useSearchParams();
@@ -85,6 +88,11 @@ function useOverlaySocket(baseConfig: OverlayConfig) {
         setLiveConfig(data.config as OverlayConfig);
         setLastUpdate(Date.now());
       }
+      if (data?.byMode && typeof data.byMode === "object") {
+        setLiveByMode(data.byMode);
+      } else if (data?.byMode === null) {
+        setLiveByMode(null);
+      }
     });
 
     s.on("connect_error", (err: any) => {
@@ -95,7 +103,7 @@ function useOverlaySocket(baseConfig: OverlayConfig) {
     return () => { s.disconnect(); setSocket(null); };
   }, [slug, socketBase]);
 
-  return { config: liveConfig ?? baseConfig, lastUpdate, socket };
+  return { config: liveConfig ?? baseConfig, byMode: liveByMode, lastUpdate, socket };
 }
 
 /** Reçoit les flux WebRTC des cams depuis les broadcasters FSB */
@@ -1092,9 +1100,22 @@ export default function OverlayPage() {
     return decodeConfig(raw);
   }, [raw]);
 
-  const { config, lastUpdate, socket } = useOverlaySocket(baseConfig ?? {} as OverlayConfig);
-  const effectiveConfig = baseConfig ? config : null;
+  const { config, byMode, lastUpdate, socket } = useOverlaySocket(baseConfig ?? {} as OverlayConfig);
   const camStreams = useCamStreams(socket);
+
+  // ✅ Auto-switch layout selon le NOMBRE de cams effectivement broadcast.
+  // Si le designer a customisé byMode (3 layouts solo/double/triple), on
+  // sélectionne celui qui matche le nb de cams actives. Sinon fallback config
+  // courante. La règle : 1 cam → solo, 2 cams → double, ≥3 → triple, 0 cam
+  // → on garde le layout courant (pas de reflow inutile).
+  const effectiveConfig = React.useMemo(() => {
+    if (!baseConfig) return null;
+    const active = camStreams.size;
+    if (active === 0) return config;
+    const desiredMode: "solo" | "double" | "triple" = active === 1 ? "solo" : active === 2 ? "double" : "triple";
+    if (byMode && byMode[desiredMode]) return byMode[desiredMode] as OverlayConfig;
+    return config;
+  }, [baseConfig, config, byMode, camStreams.size]);
   // Overlay OBS est un viewer pur — il ne partage jamais lui-même.
   // On passe un mySlug vide pour qu'il n'ignore aucun broadcaster.
   const remoteScreen = useScreenViewer(socket, "");

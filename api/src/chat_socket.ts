@@ -513,12 +513,47 @@ export function attachChat(io: Server) {
     });
 
     // ✅ obs:subscribe — join public overlay room (no auth)
-    // Utilisé par l'OverlayPage pour recevoir obs:config sans token
-    socket.on("obs:subscribe", ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
+    // Utilisé par l'OverlayPage pour recevoir obs:config sans token.
+    // Pousse aussi IMMÉDIATEMENT la config persistée en DB → fix du bug
+    // "au refresh OBS, certains éléments reviennent à leur position par
+    // défaut" : avant, l'overlay rendait la config base64 figée dans l'URL
+    // ?cfg= (souvent obsolète) et n'était mis à jour que quand le designer
+    // pushait un changement. Maintenant : à chaque subscribe (= à chaque
+    // refresh OBS), l'overlay reçoit la dernière config persistée.
+    socket.on("obs:subscribe", async ({ slug }: { slug: string }, cb?: (ack: any) => void) => {
       const s = String(slug || "").trim().toLowerCase();
       if (!s) return cb?.({ ok: false, error: "bad_slug" });
       socket.join(`obsview:${s}`);
       cb?.({ ok: true, slug: s });
+      try {
+        // Pousse la config DB du slug demandé en priorité, fallback sur fabiozsis
+        // (config FSB partagée) si rien n'est trouvé pour ce slug.
+        const r = await pool.query(
+          `SELECT overlay_config FROM streamers
+            WHERE lower(slug) = lower($1) AND overlay_config IS NOT NULL
+            LIMIT 1`,
+          [s]
+        );
+        let blob = r.rows?.[0]?.overlay_config ?? null;
+        if (!blob) {
+          const r2 = await pool.query(
+            `SELECT overlay_config FROM streamers
+              WHERE lower(slug) = 'fabiozsis' AND overlay_config IS NOT NULL
+              LIMIT 1`
+          );
+          blob = r2.rows?.[0]?.overlay_config ?? null;
+        }
+        if (blob) {
+          // Wrapper v2 = { _wrapper:"v2", active, byMode } pour l'auto-switch.
+          // Format legacy = OverlayConfig direct.
+          const isV2 = blob && typeof blob === "object" && blob._wrapper === "v2";
+          const config = isV2 ? blob.active : blob;
+          const byMode = isV2 ? blob.byMode : null;
+          socket.emit("obs:config", { config, byMode });
+        }
+      } catch (e) {
+        console.warn("[obs:subscribe] config push failed:", (e as any)?.message || e);
+      }
     });
 
     // ─── WebRTC cam signaling ───────────────────────────────────────────────────
