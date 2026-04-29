@@ -142,11 +142,26 @@ authRouter.post(
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
     const refSlug = String(req.body.ref || "").trim() || null;
 
+    // Sanitize UTM payload from front (only string fields, max 200 chars each)
+    let utmJson: string | null = null;
+    try {
+      const raw = req.body.utm;
+      if (raw && typeof raw === "object") {
+        const allowed = ["source", "medium", "campaign", "term", "content", "landingPath", "referrer", "capturedAt"];
+        const cleaned: Record<string, string> = {};
+        for (const k of allowed) {
+          const v = (raw as any)[k];
+          if (typeof v === "string" && v.trim()) cleaned[k] = v.trim().slice(0, 500);
+        }
+        if (Object.keys(cleaned).length) utmJson = JSON.stringify(cleaned);
+      }
+    } catch {}
+
     try {
       await pool.query(
-        `INSERT INTO pending_registrations (username, email, password_hash, code_hash, expires_at, created_ip, ref_slug)
-        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [username, email, passwordHash, codeHash, expiresAt, getClientIp(req), refSlug]
+        `INSERT INTO pending_registrations (username, email, password_hash, code_hash, expires_at, created_ip, ref_slug, signup_utm)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
+        [username, email, passwordHash, codeHash, expiresAt, getClientIp(req), refSlug, utmJson]
       );
     } catch {
       return res.status(400).json({ ok: false, error: "already_pending" });
@@ -185,7 +200,7 @@ authRouter.post(
     if (code.length < 4) return res.status(400).json({ ok: false, error: "code_required" });
 
     const { rows } = await pool.query(
-      `SELECT id, username, email, password_hash, code_hash, expires_at, ref_slug
+      `SELECT id, username, email, password_hash, code_hash, expires_at, ref_slug, signup_utm
        FROM pending_registrations
        WHERE lower(username)=lower($1)
        LIMIT 1`,
@@ -206,10 +221,10 @@ authRouter.post(
     let created;
     try {
       created = await pool.query(
-        `INSERT INTO users (username, email, email_verified, password_hash, role, rubis, created_ip, last_login_ip, last_login_at)
-         VALUES ($1,$2,TRUE,$3,'viewer',0,$4,$4,NOW())
+        `INSERT INTO users (username, email, email_verified, password_hash, role, rubis, created_ip, last_login_ip, last_login_at, signup_utm)
+         VALUES ($1,$2,TRUE,$3,'viewer',0,$4,$4,NOW(),$5)
          RETURNING id`,
-        [p.username, p.email, p.password_hash, getClientIp(req)]
+        [p.username, p.email, p.password_hash, getClientIp(req), p.signup_utm || null]
       );
     } catch {
       await pool.query(`DELETE FROM pending_registrations WHERE id=$1`, [p.id]);

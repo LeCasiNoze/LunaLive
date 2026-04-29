@@ -6,6 +6,7 @@ import {
   login, register, registerVerify, registerResend,
   forgotPasswordRequestCode, forgotPasswordConfirm,
 } from "../lib/api";
+import { getStoredUtm } from "../lib/utm";
 import { useAuth } from "../auth/AuthProvider";
 
 /* ─── Types ──────────────────────────────────────────────────────── */
@@ -335,7 +336,8 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       if (siteKey && !turnstileToken) {
         throw new Error("Vérification anti-bot en cours, réessaie dans 1 seconde");
       }
-      const r = (await register(u, em, password, ref, turnstileToken)) as unknown as RegisterResp;
+      const utm = getStoredUtm();
+      const r = (await register(u, em, password, ref, turnstileToken, utm as any)) as unknown as RegisterResp;
       if (r?.needsVerify) { setStep("register_code"); if (r.devCode) setCode(String(r.devCode)); return; }
       if (r?.ok === false && r.error) throw new Error(r.error);
       throw new Error("Réponse register invalide");

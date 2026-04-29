@@ -399,7 +399,8 @@ export async function register(
   email: string,
   password: string,
   ref?: string | null,
-  turnstileToken?: string | null
+  turnstileToken?: string | null,
+  utm?: Record<string, string | undefined> | null
 ) {
   return j<{ ok: true; needsVerify: true }>("/auth/register", {
     method: "POST",
@@ -410,6 +411,7 @@ export async function register(
       password,
       ref: ref ? String(ref).trim() : null,
       turnstileToken: turnstileToken || null,
+      utm: utm || null,
     }),
   });
 }

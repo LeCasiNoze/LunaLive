@@ -66,11 +66,18 @@ const LoadingFallback = () => (
   </div>
 );
 import { BgEffect } from "./components/Bgeffects";
+import { captureUtmFromUrl } from "./lib/utm";
 
 function AppInner() {
   const location = useLocation();
   const isMobile = useIsMobile();
   const { logout, token } = useAuth();
+
+  // Capture UTM params on every route change (in case user navigates from
+  // an ad-tagged URL into the app). No-op if no utm_* params present.
+  React.useEffect(() => {
+    captureUtmFromUrl();
+  }, [location.pathname, location.search]);
   const isStandaloneReferral = location.pathname.startsWith("/r/");
   const isOverlayRoute =
     location.pathname.startsWith("/overlay") ||
