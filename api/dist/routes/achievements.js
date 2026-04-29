@@ -413,10 +413,13 @@ async function getMetrics(userId) {
         ? await safeSum(`SELECT COALESCE(SUM(net_gain),0)::numeric AS s FROM blackjack_hands WHERE user_id=$1`, [userId])
         : 0;
     // ── Économie ──────────────────────────────────────────────────────────────
-    const uRow = await q(`SELECT rubis, xp, discord_id FROM users WHERE id=$1 LIMIT 1`, [userId]);
+    const uRow = await q(`SELECT rubis, xp FROM users WHERE id=$1 LIMIT 1`, [userId]);
     const userRubisBalance = Number(uRow.rows?.[0]?.rubis ?? 0);
     const userXp = Number(uRow.rows?.[0]?.xp ?? 0);
-    const discordLinked = !!(uRow.rows?.[0]?.discord_id);
+    const hasDiscordLinks = await tableExists("discord_links");
+    const discordLinked = hasDiscordLinks
+        ? (await safeCount(`SELECT COUNT(*)::int AS n FROM discord_links WHERE user_id=$1`, [userId])) > 0
+        : false;
     // Lifetime rubis gagnés = SUM des mints (to_user_id=user, kind='mint', status='succeeded')
     const lifetimeRubisEarned = hasRubisTx
         ? await safeSum(`SELECT COALESCE(SUM(amount),0)::int AS s

@@ -6,6 +6,7 @@
 //   POST /hashtag   { hashtag: "casinofr", limit?: 30 } -> { authors: string[], diag }
 //   POST /search    { query: "casino fr",   limit?: 30 } -> { authors: string[], diag }
 //   POST /profile   { handle: "kasinoze" }              -> { profile, diag }
+//   POST /seed-network { handle, videoLimit?, commentsPerVideo? } -> { signals, diag }
 //
 // Auth: require header `x-tiktok-discovery-token` matching env DISCOVERY_TOKEN.
 
@@ -145,6 +146,125 @@ async function renderTikTokPage(
   }
 }
 
+type NetworkSignal = { handle: string; type: "comment" | "mention" | "duet" };
+
+async function scrapeSeedNetwork(
+  browser: Browser,
+  seedHandle: string,
+  videoLimit: number,
+  commentsPerVideo: number
+) {
+  const page = await browser.newPage();
+  const diag: Record<string, unknown> = { seedHandle, videoLimit, commentsPerVideo };
+  const signals: NetworkSignal[] = [];
+  try {
+    await page.setViewport({ width: 1280, height: 1800 });
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    );
+    await page.setExtraHTTPHeaders({ "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8" });
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+      Object.defineProperty(navigator, "languages", { get: () => ["fr-FR", "fr", "en"] });
+      Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
+      // @ts-ignore
+      window.chrome = { runtime: {} };
+    });
+
+    const profileUrl = `https://www.tiktok.com/@${seedHandle}`;
+    const resp = await page.goto(profileUrl, { waitUntil: "networkidle2", timeout: 30_000 });
+    diag.profileStatus = resp?.status() ?? 0;
+    await new Promise((r) => setTimeout(r, 4000));
+
+    // Extract last N video URLs from the seed profile
+    const videoLinks = await page.evaluate((max: number) => {
+      const set = new Set<string>();
+      const anchors = document.querySelectorAll<HTMLAnchorElement>('a[href*="/video/"]');
+      for (const a of Array.from(anchors)) {
+        const href = a.getAttribute("href") || "";
+        if (/\/@[^/]+\/video\/\d+/.test(href)) {
+          const abs = href.startsWith("http") ? href : `https://www.tiktok.com${href}`;
+          set.add(abs);
+          if (set.size >= max) break;
+        }
+      }
+      return Array.from(set);
+    }, videoLimit);
+
+    diag.videosFound = videoLinks.length;
+    const seedLower = seedHandle.toLowerCase();
+    const HRE = /^[A-Za-z0-9._]{1,30}$/;
+    const seenSignals = new Set<string>();
+
+    for (const videoUrl of videoLinks) {
+      try {
+        const r = await page.goto(videoUrl, { waitUntil: "networkidle2", timeout: 25_000 });
+        if (!r || r.status() >= 400) continue;
+        await new Promise((rr) => setTimeout(rr, 3000));
+
+        // Scroll the comments panel to load more
+        for (let i = 0; i < 6; i++) {
+          await page.evaluate(() => {
+            const panel = document.querySelector(
+              '[data-e2e="comment-list"], [data-e2e*="comment"]'
+            ) as HTMLElement | null;
+            if (panel) panel.scrollBy(0, 1500);
+            else window.scrollBy(0, 1200);
+          });
+          await new Promise((rr) => setTimeout(rr, 1200));
+        }
+
+        const extracted = await page.evaluate(
+          (max: number) => {
+            const out = { commenters: [] as string[], mentions: [] as string[], desc: "" };
+            const commentNodes = document.querySelectorAll<HTMLAnchorElement>(
+              '[data-e2e="comment-username-1"], [data-e2e="comment-username"], a[href^="/@"]'
+            );
+            for (const n of Array.from(commentNodes)) {
+              const href = n.getAttribute("href") || "";
+              const m = href.match(/^\/@([A-Za-z0-9._]{1,30})/);
+              if (m) out.commenters.push(m[1].toLowerCase());
+              if (out.commenters.length >= max) break;
+            }
+            const descEl = document.querySelector(
+              '[data-e2e="browse-video-desc"], [data-e2e="video-desc"]'
+            );
+            if (descEl) out.desc = (descEl as HTMLElement).innerText || "";
+            return out;
+          },
+          commentsPerVideo
+        );
+
+        for (const h of extracted.commenters) {
+          if (!HRE.test(h) || h === seedLower) continue;
+          const k = `comment:${h}`;
+          if (seenSignals.has(k)) continue;
+          seenSignals.add(k);
+          signals.push({ handle: h, type: "comment" });
+        }
+
+        const mentionRe = /@([A-Za-z0-9._]{1,30})/g;
+        let mm: RegExpExecArray | null;
+        while ((mm = mentionRe.exec(extracted.desc))) {
+          const h = mm[1].toLowerCase();
+          if (!HRE.test(h) || h === seedLower) continue;
+          const k = `mention:${h}`;
+          if (seenSignals.has(k)) continue;
+          seenSignals.add(k);
+          signals.push({ handle: h, type: "mention" });
+        }
+      } catch {
+        // skip this video, continue
+      }
+    }
+
+    diag.signalsFound = signals.length;
+    return { signals, diag };
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
 async function scrapeProfile(browser: Browser, handle: string) {
   const page = await browser.newPage();
   const diag: Record<string, unknown> = { handle };
@@ -261,6 +381,20 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         limit
       )
     ).catch((err) => ({ authors: [] as string[], diag: { error: String(err?.message || err) } }));
+    return json({ ok: true, ...result });
+  }
+
+  if (path === "/seed-network") {
+    const handle = String(body?.handle || "").trim().toLowerCase();
+    const videoLimit = Math.max(1, Math.min(15, Number(body?.videoLimit) || 6));
+    const commentsPerVideo = Math.max(5, Math.min(80, Number(body?.commentsPerVideo) || 30));
+    if (!handle || !HANDLE_RE.test(handle)) return bad("invalid_handle");
+    const result = await withBrowser(env, (b) =>
+      scrapeSeedNetwork(b, handle, videoLimit, commentsPerVideo)
+    ).catch((err) => ({
+      signals: [] as NetworkSignal[],
+      diag: { error: String(err?.message || err) },
+    }));
     return json({ ok: true, ...result });
   }
 

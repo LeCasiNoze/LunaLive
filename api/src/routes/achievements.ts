@@ -661,13 +661,17 @@ async function getMetrics(userId: number): Promise<Metrics> {
     : 0;
 
   // ── Économie ──────────────────────────────────────────────────────────────
-  const uRow = await q<{ rubis: number; xp: number; discord_id: string | null }>(
-    `SELECT rubis, xp, discord_id FROM users WHERE id=$1 LIMIT 1`,
+  const uRow = await q<{ rubis: number; xp: number }>(
+    `SELECT rubis, xp FROM users WHERE id=$1 LIMIT 1`,
     [userId]
   );
   const userRubisBalance = Number(uRow.rows?.[0]?.rubis ?? 0);
   const userXp = Number(uRow.rows?.[0]?.xp ?? 0);
-  const discordLinked = !!(uRow.rows?.[0]?.discord_id);
+
+  const hasDiscordLinks = await tableExists("discord_links");
+  const discordLinked = hasDiscordLinks
+    ? (await safeCount(`SELECT COUNT(*)::int AS n FROM discord_links WHERE user_id=$1`, [userId])) > 0
+    : false;
 
   // Lifetime rubis gagnés = SUM des mints (to_user_id=user, kind='mint', status='succeeded')
   const lifetimeRubisEarned = hasRubisTx
