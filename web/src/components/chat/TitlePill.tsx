@@ -15,22 +15,25 @@ const CSS = `
 .tp {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 0px 6px;
+  gap: 2px;
+  padding: 0px 5px;
   border-radius: 999px;
-  font-size: 0.72em;
+  font-size: 0.65em;
   font-weight: 700;
-  line-height: 1.35;
-  letter-spacing: 0.01em;
+  line-height: 1.4;
+  letter-spacing: 0;
   white-space: nowrap;
   background-size: 200% 100%;
   animation: tp-shimmer 6s linear infinite;
   vertical-align: middle;
   user-select: none;
   border: 1px solid rgba(255,255,255,0.08);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.tp-icon { font-size: 0.85em; opacity: 0.95; }
-.tp-label { line-height: 1.2; }
+.tp-icon { font-size: 0.85em; opacity: 0.95; flex-shrink: 0; }
+.tp-label { line-height: 1.25; overflow: hidden; text-overflow: ellipsis; }
 
 /* Rareté → gradient (commun à toutes sources) */
 .tp-rarity-common      { background: linear-gradient(135deg, #94a3b8, #cbd5e1, #94a3b8); color: #0f172a; }
@@ -98,9 +101,23 @@ export function TitleSecondLine({ titles }: { titles: Titles | null | undefined 
   const { achievement, level } = titles;
   if (!achievement && !level) return null;
   return (
-    <div style={{ marginTop: 1, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", lineHeight: 1.2 }}>
+    <div
+      style={{
+        marginTop: 1,
+        display: "flex",
+        alignItems: "center",
+        gap: 3,
+        // pas de wrap : on tient sur 1 ligne avec ellipsis si trop long
+        flexWrap: "nowrap",
+        overflow: "hidden",
+        lineHeight: 1.2,
+        minWidth: 0,
+      }}
+    >
       {achievement ? <TitlePill entry={achievement} /> : null}
-      {achievement && level ? <span style={{ opacity: 0.4, fontSize: "0.7em" }}>·</span> : null}
+      {achievement && level ? (
+        <span style={{ opacity: 0.4, fontSize: "0.65em", flexShrink: 0 }}>·</span>
+      ) : null}
       {level ? <TitlePill entry={level} /> : null}
     </div>
   );

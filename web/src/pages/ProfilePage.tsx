@@ -885,18 +885,35 @@ function ProfilePageDesktop() {
                 Configure ton apparence : titres, avatar, badges, pseudo et cadrans.
               </p>
 
-              {/* ─── Section Titres (système multi-slots Sprint 3.5b) ─── */}
-              <Card style={{ padding: 22, marginBottom: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                  <span style={{ fontSize: 22, lineHeight: 1 }}>🎖️</span>
-                  <h3 style={{ fontFamily: FONT, fontSize: 16, fontWeight: 700, color: TXT, margin: 0 }}>
-                    Titres affichés
-                  </h3>
-                </div>
-                <p style={{ fontFamily: FONT, fontSize: 12.5, color: TXT2, margin: "0 0 16px" }}>
-                  Le titre <strong>Niveau</strong> évolue automatiquement selon ton palier. Le titre <strong>Succès</strong> se débloque en accomplissant des achievements.
-                </p>
-                <TitleSelector />
+              {/* ─── Section Titres (collapsible) ─── */}
+              <Card style={{ padding: 0, marginBottom: 16, overflow: "hidden" }}>
+                <details>
+                  <summary
+                    style={{
+                      cursor: "pointer",
+                      padding: "16px 22px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      listStyle: "none",
+                      userSelect: "none",
+                    }}
+                  >
+                    <span style={{ fontSize: 22, lineHeight: 1 }}>🎖️</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h3 style={{ fontFamily: FONT, fontSize: 16, fontWeight: 700, color: TXT, margin: 0 }}>
+                        Titres affichés
+                      </h3>
+                      <p style={{ fontFamily: FONT, fontSize: 12, color: TXT2, margin: "2px 0 0" }}>
+                        Niveau auto-évolutif + titres débloqués via succès. Clique pour gérer.
+                      </p>
+                    </div>
+                    <span aria-hidden style={{ color: TXT2, fontSize: 13 }}>▾</span>
+                  </summary>
+                  <div style={{ padding: "0 22px 22px" }}>
+                    <TitleSelector />
+                  </div>
+                </details>
               </Card>
 
               {/* ─── Section Avatar / Pseudo / Badges / Frame / Hat ─── */}

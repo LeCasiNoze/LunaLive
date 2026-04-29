@@ -122,7 +122,9 @@ export function getLevelInfo(xp: number): LevelInfo {
     tier,
     tierLabel,
     romanInTier,
-    fullTitle: isMax ? `${tierLabel} (MAX)` : `${tierLabel} ${romanInTier}`,
+    // À MAX on retire le suffixe romain pour gagner de la place dans le chat;
+    // l'icône ⭐ et la rareté chroma signalent déjà visuellement le palier max.
+    fullTitle: isMax ? tierLabel : `${tierLabel} ${romanInTier}`,
   };
 }
 
