@@ -997,53 +997,59 @@ export async function startDiscordBot(ctx: BotCtx) {
             return;
           }
 
-          // ── /profil — fiche complète riche ───────────────────────
-          const headerBits = [
-            `**Niveau ${s.level}** / 100`,
-            `*${s.levelTitle}*`,
-            s.isMaxLevel ? "⭐ MAX" : `${fmtInt(s.xpToNext)} XP avant L${s.level + 1}`,
-          ];
+          // ── /profil — fiche complète riche, groupée ───────────────
+          const xpBar = progressBar(s.pctToNext);
+          const inscritRel = s.createdAt
+            ? `<t:${Math.floor(new Date(s.createdAt).getTime() / 1000)}:R>`
+            : "—";
 
+          // Row 1: Économie (compact) | Récompenses (compact)
           const econ =
-            `💎 Rubis : **${fmtInt(s.rubis)}**\n` +
-            `📈 XP : **${fmtInt(s.xp)}**\n` +
-            `📤 Gagnés (total) : ${fmtInt(s.rubisEarnedTotal)}\n` +
-            `📥 Dépensés (total) : ${fmtInt(s.rubisSpentTotal)}`;
-
-          const engagement =
-            `👁️ Watchtime : **${fmtDuration(s.watchSecondsTotal)}**\n` +
-            `💬 Messages : ${fmtInt(s.chatMessagesTotal)}\n` +
-            `📞 Calls : ${fmtInt(s.callsTotal)}\n` +
-            `🎯 Predictions : ${fmtInt(s.predictionsTotal)} (${fmtInt(s.predictionWinsTotal)} 🏆)`;
+            `💎 **${fmtInt(s.rubis)}** rubis\n` +
+            `📤 ${fmtInt(s.rubisEarnedTotal)} gagnés\n` +
+            `📥 ${fmtInt(s.rubisSpentTotal)} dépensés`;
 
           const recompenses =
             `🏆 Succès : **${s.achievementsTotalUnlocked} / ${s.achievementsTotalAll}**\n` +
             fmtTitlePills(s.achievementsByTier) + `\n` +
-            `🎁 Cosmétiques : ${fmtInt(s.entitlementsTotal)}\n` +
-            `✅ Quêtes : ${fmtInt(s.questsCompletedTotal)}`;
+            `🎁 Cosmétiques : **${fmtInt(s.entitlementsTotal)}**`;
 
-          const compte =
-            `🎡 Spins roue : ${fmtInt(s.wheelSpinsTotal)}\n` +
-            `🗓️ Daily bonus : ${fmtInt(s.dailyBonusClaimsTotal)} claims\n` +
-            `❤️ Streamers suivis : ${fmtInt(s.followsCount)}\n` +
-            `📅 Inscrit : ${s.createdAt ? `<t:${Math.floor(new Date(s.createdAt).getTime()/1000)}:R>` : "—"}`;
+          // Row 2: Activité streaming | Engagement quotidien
+          const activite =
+            `👁️ ${fmtDuration(s.watchSecondsTotal)} de watch\n` +
+            `💬 ${fmtInt(s.chatMessagesTotal)} messages\n` +
+            `📞 ${fmtInt(s.callsTotal)} calls\n` +
+            `🎯 ${fmtInt(s.predictionsTotal)} predictions (${fmtInt(s.predictionWinsTotal)} 🏆)`;
 
-          const xpBar = progressBar(s.pctToNext);
+          const engagement =
+            `🎡 ${fmtInt(s.wheelSpinsTotal)} spins roue\n` +
+            `🗓️ ${fmtInt(s.dailyBonusClaimsTotal)} daily bonus\n` +
+            `✅ ${fmtInt(s.questsCompletedTotal)} quêtes complétées`;
+
+          // Footer info: compte
+          const compte = `❤️ ${fmtInt(s.followsCount)} streamer${s.followsCount > 1 ? "s" : ""} suivi${s.followsCount > 1 ? "s" : ""} · 📅 Inscrit ${inscritRel}`;
 
           const profileEmbed = new EmbedBuilder()
             .setColor(0x8b5cf6)
             .setAuthor({ name: `🌙 LunaLive`, iconURL: "https://lunalive.win/lunalive_logo_sphere_512.png" })
             .setTitle(`Profil de ${s.username}`)
             .setDescription(
-              headerBits.join(" · ") + "\n" +
-              `${xpBar}`
+              `**Niveau ${s.level}** / 100 · *${s.levelTitle}*\n` +
+              (s.isMaxLevel
+                ? `${xpBar} ⭐ MAX`
+                : `${xpBar} · ${fmtInt(s.xpToNext)} XP avant L${s.level + 1}`)
             )
             .setThumbnail(avatarUrl)
             .addFields(
-              { name: "💼 Économie", value: econ, inline: true },
-              { name: "🎮 Engagement", value: engagement, inline: true },
-              { name: "🏆 Récompenses", value: recompenses, inline: false },
-              { name: "📊 Activités", value: compte, inline: false },
+              { name: "💎 Économie", value: econ, inline: true },
+              { name: "🏆 Récompenses", value: recompenses, inline: true },
+              { name: "​", value: "​", inline: true }, // spacer pour layout 2-col propre
+
+              { name: "🎮 Activité", value: activite, inline: true },
+              { name: "🎰 Engagement", value: engagement, inline: true },
+              { name: "​", value: "​", inline: true }, // spacer
+
+              { name: "📊 Compte", value: compte, inline: false },
               { name: "🔗 Profil complet", value: `https://lunalive.win/profile`, inline: false }
             )
             .setFooter({ text: "LunaLive · stats temps réel" })
