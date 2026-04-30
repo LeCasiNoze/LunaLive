@@ -133,24 +133,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         commentsPerVideo = 30,
         visible = false,
         timeoutMs = 60_000,
-        affilSlugs = [],
+        affilPatterns = [],
       } = message.payload || {};
 
-      // Build a regex that matches any /r/<slug> or lunalive.win/r/<slug> in a description
-      const affilSet = new Set(
-        (Array.isArray(affilSlugs) ? affilSlugs : [])
-          .map((s) => String(s || "").toLowerCase())
-          .filter(Boolean)
-      );
+      // Patterns à matcher en substring case-insensitive dans les descriptions
+      // (ex: "taap.it/abc123", "lunalive.win/r/golden-chest", etc.)
+      const patterns = (Array.isArray(affilPatterns) ? affilPatterns : [])
+        .map((p) => String(p || "").trim().toLowerCase().replace(/^https?:\/\//, ""))
+        .filter((p) => p.length >= 2);
+
       function descHasAffil(desc) {
         if (!desc) return false;
         const lower = String(desc).toLowerCase();
-        if (lower.includes("lunalive.win/r/") || lower.includes("lunalive.onrender.com/r/")) {
-          return true;
-        }
-        // Match any known slug appearing after /r/
-        for (const slug of affilSet) {
-          if (lower.includes(`/r/${slug}`)) return true;
+        for (const p of patterns) {
+          if (lower.includes(p)) return true;
         }
         return false;
       }

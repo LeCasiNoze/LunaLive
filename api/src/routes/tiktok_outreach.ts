@@ -1743,18 +1743,71 @@ tiktokOutreachRouter.get(
   })
 );
 
-// Liste des slugs d'affiliation actifs (pour que l'extension les détecte
-// dans les descriptions de vidéos TikTok)
+// Patterns d'affil libres (taap.it/..., lunalive.win/r/..., autres)
+// L'extension matche ces patterns en substring case-insensitive dans les
+// descriptions TikTok pour tagger les vidéos comme "affil".
+function mapAffilPattern(row: any) {
+  return {
+    id: String(row.id),
+    pattern: row.pattern,
+    label: row.label || null,
+    landingId: row.landing_id ? String(row.landing_id) : null,
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+  };
+}
+
 tiktokOutreachRouter.get(
-  "/fsb/tiktok/affil-slugs",
+  "/fsb/tiktok/affil-patterns",
   a(async (_req, res) => {
     const result = await pool.query(
-      `SELECT slug FROM affi_landing_pages WHERE slug IS NOT NULL AND slug <> '' ORDER BY slug`
+      `SELECT id, pattern, label, landing_id, created_at
+         FROM tiktok_affil_patterns
+        ORDER BY created_at DESC`
     );
     return res.json({
       ok: true,
-      slugs: result.rows.map((r) => String(r.slug).toLowerCase()),
+      patterns: result.rows.map(mapAffilPattern),
     });
+  })
+);
+
+const affilPatternCreateSchema = z.object({
+  pattern: z.string().min(2).max(300),
+  label: z.string().max(200).optional(),
+});
+
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/affil-patterns",
+  a(async (req, res) => {
+    const parsed = affilPatternCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "invalid_input" });
+    }
+    let pattern = String(parsed.data.pattern || "").trim();
+    if (!pattern) return res.status(400).json({ ok: false, error: "empty_pattern" });
+    // Normalise : strip protocol pour matcher plus large (ex: "https://taap.it/abc" -> "taap.it/abc")
+    pattern = pattern.replace(/^https?:\/\//i, "").replace(/^\/+/, "");
+    const result = await pool.query(
+      `INSERT INTO tiktok_affil_patterns (pattern, label)
+       VALUES ($1, $2)
+       ON CONFLICT (LOWER(pattern)) DO UPDATE SET
+         label = COALESCE(EXCLUDED.label, tiktok_affil_patterns.label)
+       RETURNING id, pattern, label, landing_id, created_at`,
+      [pattern, parsed.data.label || null]
+    );
+    return res.json({ ok: true, pattern: mapAffilPattern(result.rows[0]) });
+  })
+);
+
+tiktokOutreachRouter.delete(
+  "/fsb/tiktok/affil-patterns/:id",
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    await pool.query(`DELETE FROM tiktok_affil_patterns WHERE id = $1`, [id]);
+    return res.json({ ok: true });
   })
 );
 

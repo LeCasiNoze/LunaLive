@@ -111,6 +111,7 @@ import { mig101_user_achievements_unlocks } from "./mig101_user_achievements_unl
 import { mig102_blackjack_hands } from "./mig102_blackjack_hands.js";
 import { mig103_tiktok_seed_network } from "./mig103_tiktok_seed_network.js";
 import { mig104_tiktok_network_affil_signals } from "./mig104_tiktok_network_affil_signals.js";
+import { mig105_tiktok_affil_patterns } from "./mig105_tiktok_affil_patterns.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -241,6 +242,7 @@ export async function migrateAll(pool: Pool) {
   await mig102_blackjack_hands(pool);
   await mig103_tiktok_seed_network(pool);
   await mig104_tiktok_network_affil_signals(pool);
+  await mig105_tiktok_affil_patterns(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

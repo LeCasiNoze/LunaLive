@@ -10,11 +10,13 @@ import {
   getActiveRun,
   getRun,
   getTikTokTemplate,
+  addTikTokAffilPattern,
+  deleteTikTokAffilPattern,
   importSeedNetworkSignals,
   importTikTokBulk,
   importTikTokNetworkHandle,
   listRuns,
-  listTikTokAffilSlugs,
+  listTikTokAffilPatterns,
   listTikTokInfluencers,
   listTikTokMessages,
   listTikTokNetworkCandidates,
@@ -27,6 +29,7 @@ import {
   setTikTokInfluencerStatus,
   startDiscoveryRun,
   type TikTokEmailTemplate,
+  type TikTokAffilPattern,
   type TikTokInfluencer,
   type TikTokInfluencerStatus,
   type TikTokNetworkCandidate,
@@ -393,7 +396,10 @@ export function FsbTikTokOutreachSection() {
   // Scan settings
   const [scanVideoLimit, setScanVideoLimit] = React.useState(5);
   const [scanCommentsPerVideo, setScanCommentsPerVideo] = React.useState(30);
-  const [affilSlugs, setAffilSlugs] = React.useState<string[]>([]);
+  const [affilPatterns, setAffilPatterns] = React.useState<TikTokAffilPattern[]>([]);
+  const [newPatternInput, setNewPatternInput] = React.useState("");
+  const [newPatternLabel, setNewPatternLabel] = React.useState("");
+  const [addingPattern, setAddingPattern] = React.useState(false);
 
   const reloadSeeds = React.useCallback(async () => {
     setSeedsLoading(true);
@@ -423,13 +429,46 @@ export function FsbTikTokOutreachSection() {
     }
   }, [hideImportedCandidates, affilOnlyCandidates]);
 
+  const reloadAffilPatterns = React.useCallback(async () => {
+    try {
+      const r = await listTikTokAffilPatterns();
+      setAffilPatterns(r.patterns);
+    } catch {
+      setAffilPatterns([]);
+    }
+  }, []);
+
   React.useEffect(() => {
     reloadSeeds();
     reloadCandidates();
-    listTikTokAffilSlugs()
-      .then((r) => setAffilSlugs(r.slugs))
-      .catch(() => setAffilSlugs([]));
-  }, [reloadSeeds, reloadCandidates]);
+    reloadAffilPatterns();
+  }, [reloadSeeds, reloadCandidates, reloadAffilPatterns]);
+
+  const handleAddPattern = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const p = newPatternInput.trim();
+    if (!p || addingPattern) return;
+    setAddingPattern(true);
+    try {
+      await addTikTokAffilPattern(p, newPatternLabel.trim() || undefined);
+      setNewPatternInput("");
+      setNewPatternLabel("");
+      await reloadAffilPatterns();
+    } catch (err: any) {
+      window.alert(`Pattern: ${err?.message || err}`);
+    } finally {
+      setAddingPattern(false);
+    }
+  };
+
+  const handleDeletePattern = async (id: string) => {
+    try {
+      await deleteTikTokAffilPattern(id);
+      await reloadAffilPatterns();
+    } catch (err: any) {
+      window.alert(`Suppression: ${err?.message || err}`);
+    }
+  };
 
   const handleAddSeed = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -517,7 +556,7 @@ export function FsbTikTokOutreachSection() {
               seedHandle: seed.handle,
               videoLimit: scanVideoLimit,
               commentsPerVideo: scanCommentsPerVideo,
-              affilSlugs,
+              affilPatterns: affilPatterns.map((p) => p.pattern),
             },
           },
           window.location.origin
@@ -1318,7 +1357,7 @@ export function FsbTikTokOutreachSection() {
             />
           </label>
           <span style={{ fontSize: 11, color: "var(--muted)" }}>
-            {affilSlugs.length} slug{affilSlugs.length > 1 ? "s" : ""} d'affil reconnus
+            {affilPatterns.length} pattern{affilPatterns.length > 1 ? "s" : ""} d'affil
           </span>
           {seeds.length > 1 ? (
             <button
@@ -1331,6 +1370,111 @@ export function FsbTikTokOutreachSection() {
               ▶ Tout scanner
             </button>
           ) : null}
+        </div>
+
+        {/* Patterns d'affiliation */}
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            border: "1px solid rgba(251,191,36,.22)",
+            borderRadius: 12,
+            background: "rgba(251,191,36,.04)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#fbbf24",
+              letterSpacing: ".04em",
+              textTransform: "uppercase",
+              marginBottom: 8,
+            }}
+          >
+            💎 Patterns d'affiliation à détecter
+          </div>
+          <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 10px", lineHeight: 1.5 }}>
+            Colle ici tes liens taap.it (ex: <code>taap.it/abc123</code>) ou tout autre fragment
+            d'URL à matcher dans les descriptions TikTok. Quand un seed poste une vidéo qui contient
+            l'un de ces patterns, ses commentateurs sont taggés <code>affil</code> et leur score
+            est boosté ×10.
+          </p>
+          <form
+            onSubmit={handleAddPattern}
+            style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}
+          >
+            <input
+              className="tk-input"
+              placeholder="taap.it/xxxxx ou lunalive.win/r/slug"
+              value={newPatternInput}
+              onChange={(e) => setNewPatternInput(e.target.value)}
+              disabled={addingPattern}
+              style={{ flex: "2 1 240px" }}
+            />
+            <input
+              className="tk-input"
+              placeholder="Label (optionnel) — ex: Stake / pertu"
+              value={newPatternLabel}
+              onChange={(e) => setNewPatternLabel(e.target.value)}
+              disabled={addingPattern}
+              style={{ flex: "1 1 160px" }}
+            />
+            <button
+              type="submit"
+              className="fsb-btn fsb-btn-primary"
+              disabled={addingPattern || !newPatternInput.trim()}
+            >
+              {addingPattern ? <span className="tk-spin" /> : "➕"}
+            </button>
+          </form>
+          {affilPatterns.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>
+              Aucun pattern. Sans pattern, le scan ne taggera aucune vidéo comme "affil".
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {affilPatterns.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    background: "rgba(251,191,36,.10)",
+                    border: "1px solid rgba(251,191,36,.32)",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#fbbf24",
+                  }}
+                  title={p.label || ""}
+                >
+                  <span style={{ color: "#fff" }}>{p.pattern}</span>
+                  {p.label ? (
+                    <span style={{ opacity: 0.7, fontWeight: 500 }}>· {p.label}</span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePattern(p.id)}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "rgba(255,255,255,.6)",
+                      cursor: "pointer",
+                      padding: 0,
+                      fontSize: 14,
+                      lineHeight: 1,
+                    }}
+                    title="Supprimer"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <form className="tk-form" onSubmit={handleAddSeed} style={{ marginTop: 14 }}>

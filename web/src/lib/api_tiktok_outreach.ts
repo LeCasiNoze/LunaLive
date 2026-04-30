@@ -392,8 +392,34 @@ export function listTikTokNetworkCandidates(opts?: {
   );
 }
 
-export function listTikTokAffilSlugs() {
-  return request<{ ok: true; slugs: string[] }>(`/api/fsb/tiktok/affil-slugs`);
+export type TikTokAffilPattern = {
+  id: string;
+  pattern: string;
+  label: string | null;
+  landingId: string | null;
+  createdAt: string | null;
+};
+
+export function listTikTokAffilPatterns() {
+  return request<{ ok: true; patterns: TikTokAffilPattern[] }>(
+    `/api/fsb/tiktok/affil-patterns`
+  );
+}
+
+export function addTikTokAffilPattern(pattern: string, label?: string) {
+  return request<{ ok: true; pattern: TikTokAffilPattern }>(
+    `/api/fsb/tiktok/affil-patterns`,
+    {
+      method: "POST",
+      body: JSON.stringify({ pattern, label }),
+    }
+  );
+}
+
+export function deleteTikTokAffilPattern(id: string) {
+  return request<{ ok: true }>(`/api/fsb/tiktok/affil-patterns/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 
