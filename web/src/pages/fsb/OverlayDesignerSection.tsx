@@ -37,6 +37,11 @@ export type SlotZoneConfig = ZoneRect & {
   label: string;
   /** Bordure premium animée (gradient violet qui pulse autour du slot). */
   animatedBorder?: boolean;
+  /** Si true, l'overlay rend la zone slot 100% transparente et perce un trou
+   *  dans le fond animé à cet emplacement. Le streamer place une "Capture
+   *  de fenêtre" OBS pile sous le browser source pour avoir le slot natif
+   *  1080p60 lossless. Tout le reste (cams, chat, stats) reste piloté ici. */
+  useObsCapture?: boolean;
 };
 
 export type StatsZoneConfig = ZoneRect & {
@@ -1017,6 +1022,25 @@ function SlotPanel({
       badgeColor={slot.enabled ? "#a855f7" : undefined}
     >
       <Toggle label="Activer" checked={slot.enabled} onChange={(v) => onChange({ enabled: v })} />
+      <hr style={S.sep} />
+      <Toggle
+        label="🎯 Slot via capture OBS (recommandé)"
+        checked={slot.useObsCapture ?? false}
+        onChange={(v) => onChange({ useObsCapture: v })}
+      />
+      {slot.useObsCapture ? (
+        <div style={{
+          fontSize: 11, lineHeight: 1.5, color: "#a5b4fc",
+          background: "rgba(99,102,241,.08)", border: "1px solid rgba(99,102,241,.25)",
+          borderRadius: 8, padding: "8px 10px", marginTop: 4,
+        }}>
+          ✨ La zone slot devient un <b>trou transparent</b> dans l'overlay (et dans
+          le fond animé). Dans OBS : ajoute une <b>Capture de fenêtre</b> du tab du
+          slot, place-la <b>en dessous du browser source</b>, dimensionne-la pile sur
+          la zone slot. Tu auras du <b>1080p60 lossless</b>, et les cams + chat +
+          stats restent overlayés au-dessus depuis l'overlay LunaLive.
+        </div>
+      ) : null}
       <hr style={S.sep} />
       <Toggle label="Afficher un cadre" checked={slot.showFrame} onChange={(v) => onChange({ showFrame: v })} />
       {slot.showFrame && (

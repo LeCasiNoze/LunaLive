@@ -308,7 +308,7 @@ function rect(z: ZoneRect): React.CSSProperties {
 
 // ─── Background zone ──────────────────────────────────────────────────────────
 
-function BackgroundZone({ bg }: { bg: OverlayConfig["background"] }) {
+function BackgroundZone({ bg, slotHole }: { bg: OverlayConfig["background"]; slotHole?: { x: number; y: number; w: number; h: number } | null }) {
   React.useEffect(() => { injectBgAnimations(); }, []);
 
   const hasAnim = !!(bg.animPreset && bg.animPreset !== "none");
@@ -320,11 +320,28 @@ function BackgroundZone({ bg }: { bg: OverlayConfig["background"] }) {
       : "bgBreathe"
     : "none";
 
+  // Découpe un trou dans le fond animé à l'emplacement de la zone slot quand
+  // l'utilisateur a activé "Slot via capture OBS". CSS clip-path en doughnut
+  // (rectangle extérieur tracé dans le sens horaire, rectangle intérieur dans
+  // le sens anti-horaire = soustraction). Compatible Chromium / CEF (OBS).
+  const clipPath = slotHole
+    ? `polygon(
+        0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%,
+        ${slotHole.x}% ${slotHole.y}%,
+        ${slotHole.x}% ${slotHole.y + slotHole.h}%,
+        ${slotHole.x + slotHole.w}% ${slotHole.y + slotHole.h}%,
+        ${slotHole.x + slotHole.w}% ${slotHole.y}%,
+        ${slotHole.x}% ${slotHole.y}%
+      )`
+    : undefined;
+
   return (
     <div style={{
       position: "absolute", inset: 0,
       overflow: "hidden",
       zIndex: 0,
+      clipPath,
+      WebkitClipPath: clipPath,
     }}>
       {hasAnim && (
         <OverlayBgAnimation preset={bg.animPreset!} opacity={bg.opacity} />
@@ -495,6 +512,11 @@ function SlotZone({
   }, [screenStream]);
 
   if (!slot.enabled) return null;
+  // Mode "Slot via capture OBS" : on ne rend STRICTEMENT RIEN dans la zone slot.
+  // L'utilisateur a configuré une Capture de fenêtre dans OBS qui s'affiche par
+  // transparence à travers le trou découpé dans le fond animé. Garde la position
+  // libre pour les cams greenscreen qui restent dans le browser source au-dessus.
+  if ((slot as any).useObsCapture) return null;
 
   // Structure stable : même conteneur dans tous les cas (bordure animée ou pas).
   // Le toggle de bordure n'unmount plus le <video> → le flux reste branché.
@@ -1031,7 +1053,14 @@ function OverlayRenderer({
       overflow: "hidden",
       background: "transparent",
     }}>
-      <BackgroundZone bg={config.background} />
+      <BackgroundZone
+        bg={config.background}
+        slotHole={
+          config.slot.enabled && (config.slot as any).useObsCapture
+            ? { x: config.slot.x, y: config.slot.y, w: config.slot.w, h: config.slot.h }
+            : null
+        }
+      />
       <SlotZone slot={config.slot} screenStream={screenStream} />
       <StatsZone stats={config.stats} />
       <ChatZone chat={config.chat} />
