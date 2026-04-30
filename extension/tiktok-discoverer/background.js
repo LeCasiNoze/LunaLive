@@ -454,23 +454,97 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
               await new Promise((r) => setTimeout(r, 2500));
 
-              // Scroll inside the modal a bunch of times to load handles.
+              // Scroll inside the modal — find the actual scrollable container.
+              // TikTok's class names are obfuscated, so we detect any element
+              // inside [role="dialog"] that has overflow-y:auto/scroll AND
+              // scrollHeight > clientHeight, and scroll the deepest one.
               try {
                 await chrome.scripting.executeScript({
                   target: { tabId: tab.id },
                   func: () =>
                     new Promise((resolve) => {
+                      function findScrollables() {
+                        const dialog =
+                          document.querySelector('[role="dialog"]') ||
+                          document.querySelector('div[aria-modal="true"]');
+                        const root = dialog || document.body;
+                        const out = [];
+                        const all = root.querySelectorAll("*");
+                        for (const el of Array.from(all)) {
+                          try {
+                            const cs = getComputedStyle(el);
+                            if (
+                              (cs.overflowY === "auto" || cs.overflowY === "scroll") &&
+                              el.scrollHeight - el.clientHeight > 50
+                            ) {
+                              out.push(el);
+                            }
+                          } catch {}
+                        }
+                        // Also include the dialog itself if scrollable
+                        if (
+                          dialog &&
+                          dialog.scrollHeight - dialog.clientHeight > 50 &&
+                          !out.includes(dialog)
+                        ) {
+                          out.push(dialog);
+                        }
+                        return out;
+                      }
+
                       let i = 0;
+                      let lastCount = -1;
+                      let stableTicks = 0;
                       const tick = () => {
-                        const list = document.querySelector(
-                          '[data-e2e="user-list"], [data-e2e*="following"][data-e2e*="list"], [data-e2e="user-list-container"]'
-                        );
-                        const sc = list || document.scrollingElement || document.body;
-                        if (sc && typeof sc.scrollBy === "function") sc.scrollBy(0, 1500);
-                        else if (sc) sc.scrollTop = (sc.scrollTop || 0) + 1500;
+                        const targets = findScrollables();
+                        if (targets.length === 0) {
+                          // fallback: dispatch wheel on dialog
+                          const d =
+                            document.querySelector('[role="dialog"]') ||
+                            document.querySelector('div[aria-modal="true"]');
+                          if (d) {
+                            d.dispatchEvent(
+                              new WheelEvent("wheel", {
+                                deltaY: 1500,
+                                bubbles: true,
+                                cancelable: true,
+                              })
+                            );
+                          }
+                        } else {
+                          for (const el of targets) {
+                            try {
+                              el.scrollBy({ top: 1500 });
+                              if (el.scrollTop === 0) {
+                                el.scrollTop += 1500;
+                              }
+                            } catch {}
+                          }
+                        }
+
+                        // Count current loaded handles to detect when we plateau
+                        const dialogEl =
+                          document.querySelector('[role="dialog"]') ||
+                          document.querySelector('div[aria-modal="true"]') ||
+                          document.body;
+                        const currCount = dialogEl
+                          ? dialogEl.querySelectorAll('a[href^="/@"]').length
+                          : 0;
+                        if (currCount === lastCount) stableTicks++;
+                        else {
+                          stableTicks = 0;
+                          lastCount = currCount;
+                        }
+
                         i++;
-                        if (i < 14) setTimeout(tick, 700);
-                        else resolve(true);
+                        // stop after 25 ticks OR after 4 stable ticks (no new handles)
+                        if (i < 25 && stableTicks < 4) setTimeout(tick, 800);
+                        else
+                          resolve({
+                            ticks: i,
+                            finalCount: currCount,
+                            scrollableCount: targets.length,
+                          });
                       };
                       tick();
                     }),
@@ -484,30 +558,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   func: (max) => {
                     const HRE = /^[A-Za-z0-9._]{1,30}$/;
                     const set = new Set();
-                    // Try multiple selector strategies
-                    const sel = [
-                      '[data-e2e="user-list"] a[href^="/@"]',
-                      '[data-e2e*="following"] a[href^="/@"]',
-                      '[data-e2e="user-list-container"] a[href^="/@"]',
-                      'div[role="dialog"] a[href^="/@"]',
-                      'a[href^="/@"]',
-                    ];
-                    for (const s of sel) {
-                      const links = document.querySelectorAll(s);
-                      for (const a of Array.from(links)) {
-                        const href = a.getAttribute("href") || "";
-                        const m = href.match(/^\/@([A-Za-z0-9._]{1,30})/);
-                        if (m && HRE.test(m[1])) {
-                          set.add(m[1].toLowerCase());
-                          if (set.size >= max) break;
-                        }
+                    // Important: ONLY look inside the modal/dialog so we don't
+                    // capture handles from videos rendered in the background.
+                    const dialog =
+                      document.querySelector('[role="dialog"]') ||
+                      document.querySelector('div[aria-modal="true"]');
+                    const scope = dialog || document;
+
+                    const links = scope.querySelectorAll('a[href^="/@"]');
+                    for (const a of Array.from(links)) {
+                      const href = a.getAttribute("href") || "";
+                      const m = href.match(/^\/@([A-Za-z0-9._]{1,30})/);
+                      if (m && HRE.test(m[1])) {
+                        set.add(m[1].toLowerCase());
+                        if (set.size >= max) break;
                       }
-                      if (set.size >= max) break;
                     }
                     return {
                       handles: Array.from(set),
                       diag: {
-                        anchorsCount: document.querySelectorAll('a[href^="/@"]').length,
+                        modalFound: !!dialog,
+                        anchorsInScope: links.length,
+                        anchorsTotalPage:
+                          document.querySelectorAll('a[href^="/@"]').length,
                       },
                     };
                   },
