@@ -117,9 +117,6 @@ export function usernameEffectClass(effect: any) {
   if (e === "uanim_ember" || e === "ember") return "username--ember";
   if (e === "uanim_pulse_red" || e === "pulse_red") return "username--pulseRed";
   if (e === "uanim_pulse_blue" || e === "pulse_blue") return "username--pulseBlue";
-  if (e === "uanim_typewriter" || e === "typewriter") return "username--typewriter";
-  if (e === "uanim_shadow" || e === "shadow") return "username--shadow";
-  if (e === "uanim_outline" || e === "outline") return "username--outline";
   if (e === "uanim_glitch" || e === "glitch") return "username--glitch";
   if (e === "uanim_fire" || e === "fire") return "username--fire";
   if (e === "uanim_ice" || e === "ice") return "username--ice";

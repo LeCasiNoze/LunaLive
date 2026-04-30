@@ -218,10 +218,11 @@
 }
 
 /* ── CHROMA ───────────────────────────────────────────────── */
-/* Shimmer qui repart exactement là où il était → pas de saut */
+/* Pendulum : retour à la position de départ → boucle parfaite */
 @keyframes chromaLoop {
   0%   { background-position: 0% 50%, -100% 50%; }
-  100% { background-position: 160% 50%, 160% 50%; }
+  50%  { background-position: 160% 50%, 160% 50%; }
+  100% { background-position: 0% 50%, -100% 50%; }
 }
 .username--chroma {
   color: transparent;
@@ -243,14 +244,16 @@
   background-blend-mode: screen;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: chromaLoop 3.6s ease-in-out infinite;
+  will-change: background-position;
+  animation: chromaLoop 4.5s ease-in-out infinite;
 }
 
 /* ── GOLD ─────────────────────────────────────────────────── */
-/* Glint traverse doucement, position de départ = fin → pas de saut */
+/* Pendulum : retour à la position de départ → boucle parfaite */
 @keyframes goldGlintLoop {
-  0%    { background-position: 0% 50%, -80% 50%; }
-  100%  { background-position: 120% 50%, 180% 50%; }
+  0%   { background-position: 0% 50%, -80% 50%; }
+  50%  { background-position: 120% 50%, 180% 50%; }
+  100% { background-position: 0% 50%, -80% 50%; }
 }
 .username--gold {
   color: transparent;
@@ -277,7 +280,8 @@
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-stroke: 0.25px rgba(255, 226, 160, 0.18);
-  animation: goldGlintLoop 4.2s ease-in-out infinite;
+  will-change: background-position;
+  animation: goldGlintLoop 5.0s ease-in-out infinite;
 }
 
 /* ── NEON ─────────────────────────────────────────────────── */
@@ -299,16 +303,18 @@
 .username--neon {
   color: #e4d9ff;
   -webkit-text-stroke: 0.4px rgba(168, 85, 247, 0.80);
+  will-change: filter;
   animation: neonPulse 3.8s ease-in-out infinite;
 }
 
 
 /* ── NOUVEAU : FROST (bleu glacé, shimmer froid) ─────────── */
 /* Identité : froid, premium, "gamer esport".
-   Blanc-bleu qui traverse lentement. */
+   Pendulum : position revient à 0% → boucle parfaite. */
 @keyframes frostShimmer {
   0%   { background-position: 0% 50%, -90% 50%; }
-  100% { background-position: 140% 50%, 160% 50%; }
+  50%  { background-position: 140% 50%, 160% 50%; }
+  100% { background-position: 0% 50%, -90% 50%; }
 }
 .username--frost {
   color: transparent;
@@ -331,7 +337,8 @@
   background-blend-mode: normal, screen;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: frostShimmer 5.0s ease-in-out infinite;
+  will-change: background-position;
+  animation: frostShimmer 6.0s ease-in-out infinite;
 }
 
 
@@ -374,9 +381,13 @@
    + ::after pour l'ambient glow interne
    + reflet haut (::before) pour le highlight signature Purple Velvet */
 
-/* ── Helper — reflet haut (::before sur tous les cadrans) ─── */
+/* ── Helper — isolation DOM : le frame ne déborde jamais sur l'avatar ─── */
+/* Les classes chatFrame--* sont appliquées sur .chatMsgContent uniquement.
+   Pas d'overflow:hidden : le ::before de grouped (left:-8px) doit rester visible. */
 [class*="chatFrame--"] {
   position: relative;
+  border-radius: 10px;
+  padding: 6px 8px;
 }
 [class*="chatFrame--"]::before {
   content: "";
@@ -400,11 +411,12 @@
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 14px;
+  border-radius: 10px;
   pointer-events: none;
   z-index: 1;
   background: var(--frame-ambient, none);
   opacity: 0.85;
+  will-change: opacity, filter;
 }
 
 
@@ -536,6 +548,7 @@
   background:
     linear-gradient(rgba(10,4,14,0.95), rgba(10,4,14,0.95)) padding-box,
     linear-gradient(135deg, rgba(255,0,128,0.55), rgba(160,0,80,0.35)) border-box;
+  will-change: box-shadow;
   animation: neonPinkPulse 3.5s ease-in-out infinite;
 }
 
@@ -553,6 +566,7 @@
   background:
     linear-gradient(rgba(4,12,16,0.95), rgba(4,12,16,0.95)) padding-box,
     linear-gradient(135deg, rgba(0,220,255,0.50), rgba(0,100,160,0.30)) border-box;
+  will-change: box-shadow;
   animation: neonCyanPulse 3.5s ease-in-out infinite;
 }
 
@@ -589,6 +603,7 @@
   background:
     linear-gradient(rgba(10,2,2,0.96), rgba(10,2,2,0.96)) padding-box,
     linear-gradient(135deg, rgba(200,0,0,0.55), rgba(100,0,0,0.40)) border-box;
+  will-change: box-shadow;
   animation: bloodPulse 4s ease-in-out infinite;
 }
 
@@ -636,6 +651,7 @@
     linear-gradient(rgba(6,6,14,0.96), rgba(6,6,14,0.96)) padding-box,
     linear-gradient(135deg, rgba(0,255,200,0.45), rgba(255,0,200,0.45)) border-box;
   box-shadow: 0 0 0 1px rgba(0,255,200,0.10), 0 18px 50px rgba(0,0,0,0.40);
+  will-change: transform, filter;
   animation: glitchShift 7s ease-in-out infinite;
 }
 
@@ -727,6 +743,7 @@
     linear-gradient(rgba(10,8,2,0.96), rgba(10,8,2,0.96)) padding-box,
     linear-gradient(135deg, rgba(255,220,0,0.55), rgba(180,100,255,0.40)) border-box;
   box-shadow: 0 0 0 1px rgba(255,220,0,0.10), 0 18px 50px rgba(0,0,0,0.38);
+  will-change: opacity, filter;
   animation: eclairFlash 4.5s ease-in-out infinite;
 }
 
@@ -745,6 +762,7 @@
     linear-gradient(rgba(8,6,14,0.95), rgba(8,6,14,0.95)) padding-box,
     linear-gradient(135deg, #ff0080, #ff8000, #ffff00, #00ff80, #0080ff, #8000ff, #ff0080) border-box;
   box-shadow: 0 0 0 1px rgba(200,0,255,0.12), 0 18px 50px rgba(0,0,0,0.40);
+  will-change: filter;
   animation: neonRainbowBorder 3s linear infinite;
 }
 
@@ -790,6 +808,7 @@
 }
 .username--pulseRed {
   color: #ff6060;
+  will-change: filter;
   animation: pulseRedAnim 2.8s ease-in-out infinite;
 }
 
@@ -800,31 +819,8 @@
 }
 .username--pulseBlue {
   color: #80aaff;
+  will-change: filter;
   animation: pulseBlueAnim 2.8s ease-in-out infinite;
-}
-
-/* ── typewriter ──────────────────────────────────────────────── */
-@keyframes cursorBlink {
-  0%, 100% { border-right-color: rgba(196,181,253,0.90); }
-  50%       { border-right-color: transparent; }
-}
-.username--typewriter {
-  color: #e4d9ff;
-  border-right: 2px solid rgba(196,181,253,0.90);
-  padding-right: 2px;
-  animation: cursorBlink 1.0s step-end infinite;
-}
-
-/* ── shadow ──────────────────────────────────────────────────── */
-.username--shadow {
-  color: #dde8ff;
-  text-shadow: 2px 2px 6px rgba(0,0,0,0.80), -1px -1px 4px rgba(0,0,0,0.60);
-}
-
-/* ── outline ─────────────────────────────────────────────────── */
-.username--outline {
-  color: transparent;
-  -webkit-text-stroke: 1.2px rgba(255,255,255,0.85);
 }
 
 /* ── glitch username ─────────────────────────────────────────── */
@@ -836,6 +832,7 @@
 }
 .username--glitch {
   color: #e4d9ff;
+  will-change: transform, filter;
   animation: unameGlitch 6s ease-in-out infinite;
 }
 
@@ -847,6 +844,7 @@
   100% { color: #ff6030; text-shadow: 0 -2px 6px rgba(255,100,0,0.80), 0 -4px 12px rgba(255,50,0,0.50); }
 }
 .username--fire {
+  will-change: color, filter;
   animation: fireFlicker 1.8s ease-in-out infinite;
 }
 
@@ -857,13 +855,15 @@
 }
 .username--ice {
   color: #c8f0ff;
+  will-change: filter;
   animation: iceGlow 3.5s ease-in-out infinite;
 }
 
 /* ── silverToggle ────────────────────────────────────────────── */
 @keyframes silverGlint {
   0%   { background-position: 0% 50%, -80% 50%; }
-  100% { background-position: 140% 50%, 180% 50%; }
+  50%  { background-position: 140% 50%, 180% 50%; }
+  100% { background-position: 0% 50%, -80% 50%; }
 }
 .username--silver {
   color: transparent;
@@ -874,13 +874,15 @@
   background-blend-mode: normal, screen;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: silverGlint 4.0s ease-in-out infinite;
+  will-change: background-position;
+  animation: silverGlint 5.0s ease-in-out infinite;
 }
 
 /* ── purpleToggle ────────────────────────────────────────────── */
 @keyframes purpleShimmer {
   0%   { background-position: 0% 50%, -80% 50%; }
-  100% { background-position: 140% 50%, 180% 50%; }
+  50%  { background-position: 140% 50%, 180% 50%; }
+  100% { background-position: 0% 50%, -80% 50%; }
 }
 .username--purple {
   color: transparent;
@@ -891,7 +893,8 @@
   background-blend-mode: normal, screen;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: purpleShimmer 4.0s ease-in-out infinite;
+  will-change: background-position;
+  animation: purpleShimmer 5.0s ease-in-out infinite;
 }
 
 /* ── gradientSunset ──────────────────────────────────────────── */

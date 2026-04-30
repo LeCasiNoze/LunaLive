@@ -250,7 +250,6 @@ export function ChatMessageBubble({
     <div
       className={[
         "chatMsgRow",
-        frameClass(frame?.frameId),
         isPinged     ? "chatPinged"       : "",
         isDlive      ? "chatMsgRow--dlive" : "",
         isRumble     ? "chatMsgRow--rumble" : "",
@@ -275,7 +274,7 @@ export function ChatMessageBubble({
         </div>
 
         {/* ── Contenu ── */}
-        <div className="chatMsgContent" style={{ minWidth:0 }}>
+        <div className={["chatMsgContent", frameClass(frame?.frameId)].filter(Boolean).join(" ")} style={{ minWidth:0 }}>
 
           {/* Header : caché pour les messages groupés */}
           {!isGrouped ? (

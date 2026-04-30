@@ -80,9 +80,6 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
   // ── Username nouveaux ────────────────────────────────────────
   { kind: "username", code: "uanim_pulse_red", name: "Pulse Rouge", rarity: "rare", unlock: "shop", priceRubis: 2000, active: true },
   { kind: "username", code: "uanim_pulse_blue", name: "Pulse Bleu", rarity: "rare", unlock: "shop", priceRubis: 2000, active: true },
-  { kind: "username", code: "uanim_typewriter", name: "Machine à écrire", rarity: "epic", unlock: "shop", priceRubis: 2000, active: true },
-  { kind: "username", code: "uanim_shadow", name: "Ombre portée", rarity: "uncommon", unlock: "shop", priceRubis: 2000, active: true },
-  { kind: "username", code: "uanim_outline", name: "Outline blanc", rarity: "uncommon", unlock: "shop", priceRubis: 2000, active: true },
   { kind: "username", code: "uanim_glitch", name: "Glitch", rarity: "legendary", unlock: "achievement", priceRubis: null, active: true },
   { kind: "username", code: "uanim_fire", name: "Feu", rarity: "epic", unlock: "achievement", priceRubis: null, active: true },
   { kind: "username", code: "uanim_ice", name: "Glace", rarity: "epic", unlock: "shop", priceRubis: 2000, active: true },
