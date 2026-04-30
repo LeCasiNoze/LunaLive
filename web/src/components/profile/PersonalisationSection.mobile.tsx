@@ -115,13 +115,31 @@ function applyPreview(kind: Kind, code: string | null, c: any, opts?: { titleNam
     c.badges = [{ id: txt, code: txt, text: txt, label: txt }]; (c as any).badgeText = txt; return;
   }
   if (kind === "hat") {
-    const map: Record<string, string> = { hat_luna_cap:"luna_cap", hat_carton_crown:"carton_crown", hat_demon_horn:"demon_horn", hat_eclipse_halo:"eclipse_halo", hat_astral_helmet:"astral_helmet", hat_lotus_aureole:"lotus_aureole" };
+    const map: Record<string, string> = {
+      hat_luna_cap:"luna_cap", hat_carton_crown:"carton_crown", hat_demon_horn:"demon_horn",
+      hat_eclipse_halo:"eclipse_halo", hat_astral_helmet:"astral_helmet", hat_lotus_aureole:"lotus_aureole",
+      hat_top_hat:"top_hat", hat_santa:"santa", hat_witch:"witch",
+      hat_pirate:"pirate", hat_viking:"viking", hat_propeller:"propeller",
+    };
     const hatId = map[code] ?? code; c.avatar.hatId = hatId;
-    const EMOJI: Record<string, string> = { luna_cap:"🧢", carton_crown:"👑", demon_horn:"😈", eclipse_halo:"⭕", astral_helmet:"🪖", lotus_aureole:"🪷" };
+    const EMOJI: Record<string, string> = {
+      luna_cap:"🧢", carton_crown:"👑", demon_horn:"😈", eclipse_halo:"⭕", astral_helmet:"🪖", lotus_aureole:"🪷",
+      top_hat:"🎩", santa:"🎅", witch:"🧙", pirate:"🏴‍☠️", viking:"⚔️", propeller:"🌀",
+    };
     c.avatar.hatEmoji = EMOJI[hatId] ?? "🧢"; return;
   }
   if (kind === "username") {
-    const map: Record<string, string> = { uanim_chroma_toggle:"chroma", uanim_gold_toggle:"gold", uanim_rainbow_scroll:"rainbow_scroll", uanim_neon_underline:"neon_underline" };
+    const map: Record<string, string> = {
+      uanim_chroma_toggle:"chroma", uanim_gold_toggle:"gold",
+      uanim_rainbow_scroll:"rainbow_scroll", uanim_neon_underline:"neon_underline",
+      uanim_frost:"uanim_frost", uanim_ember:"uanim_ember",
+      uanim_pulse_red:"uanim_pulse_red", uanim_pulse_blue:"uanim_pulse_blue",
+      uanim_typewriter:"uanim_typewriter", uanim_shadow:"uanim_shadow",
+      uanim_outline:"uanim_outline", uanim_glitch:"uanim_glitch",
+      uanim_fire:"uanim_fire", uanim_ice:"uanim_ice",
+      uanim_silver_toggle:"uanim_silver_toggle", uanim_purple_toggle:"uanim_purple_toggle",
+      uanim_gradient_sunset:"uanim_gradient_sunset", uanim_galaxy:"uanim_galaxy",
+    };
     const effect = map[code] ?? code; c.username.effect = effect; c.username.animId = effect; c.username.anim = effect; return;
   }
   if (kind === "frame") { c.frame = { frameId: frameIdFromCode(code) }; return; }

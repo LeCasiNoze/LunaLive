@@ -5,6 +5,51 @@ import { createPortal } from "react-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { getMyAchievements, type ApiAchievement } from "../lib/api";
 
+// ── Récompenses cosmétiques par achievement (non-title uniquement + titres notables)
+type RewardItem = { kind: "username" | "badge" | "title" | "frame" | "hat"; code: string; name: string; rarity: string };
+
+const ACH_REWARDS_FRONTEND: Record<string, RewardItem[]> = {
+  master_collectionneur: [{ kind: "username", code: "uanim_rainbow_scroll", name: "Arc-en-ciel", rarity: "rare" }, { kind: "title", code: "title_ultime", name: "Ultime", rarity: "legendary" }],
+  master_parfait:        [{ kind: "username", code: "uanim_chroma_toggle",  name: "Chroma",      rarity: "legendary" }, { kind: "title", code: "title_parfait", name: "Parfait", rarity: "legendary" }],
+  master_pretre_roue:    [{ kind: "hat",      code: "hat_demon_horn",       name: "Demon Horn",  rarity: "epic" }, { kind: "title", code: "title_pretre_de_la_roue", name: "Prêtre de la roue", rarity: "legendary" }],
+  master_roulette:       [{ kind: "hat",      code: "hat_demon_horn",       name: "Demon Horn",  rarity: "epic" }, { kind: "title", code: "title_pretre_de_la_roue", name: "Prêtre de la roue", rarity: "legendary" }],
+  gold_marathon:         [{ kind: "hat",      code: "hat_carton_crown",     name: "Carton Crown", rarity: "epic" }, { kind: "title", code: "title_marathon", name: "Marathon", rarity: "epic" }],
+  master_pilier:         [{ kind: "hat",      code: "hat_eclipse_halo",     name: "Eclipse Halo", rarity: "legendary" }, { kind: "title", code: "title_pilier", name: "Pilier", rarity: "legendary" }],
+  master_archiviste:     [{ kind: "frame",    code: "mframe_lotus_crown",   name: "Lotus Crown",  rarity: "mythic" }, { kind: "title", code: "title_archiviste", name: "Archiviste", rarity: "legendary" }],
+  master_sous_la_lune:   [{ kind: "frame",    code: "mframe_eclipse",       name: "Eclipse",      rarity: "mythic" }, { kind: "title", code: "title_sous_la_lune", name: "Sous la lune", rarity: "legendary" }],
+};
+
+const RARITY_PILL_COLOR: Record<string, { bg: string; bd: string; c: string }> = {
+  common:    { bg: "rgba(255,255,255,0.04)", bd: "rgba(255,255,255,0.10)", c: "rgba(220,220,255,0.60)" },
+  uncommon:  { bg: "rgba(110,231,183,0.08)", bd: "rgba(110,231,183,0.20)", c: "#6ee7b7" },
+  rare:      { bg: "rgba(96,165,250,0.08)",  bd: "rgba(96,165,250,0.22)",  c: "#60a5fa" },
+  epic:      { bg: "rgba(167,139,250,0.10)", bd: "rgba(167,139,250,0.24)", c: "#a78bfa" },
+  legendary: { bg: "rgba(245,158,11,0.10)",  bd: "rgba(245,158,11,0.24)",  c: "#f59e0b" },
+  mythic:    { bg: "rgba(232,121,249,0.10)", bd: "rgba(232,121,249,0.24)", c: "#e879f9" },
+};
+
+const KIND_ICON: Record<string, string> = {
+  username: "✨", badge: "🏷️", title: "📛", frame: "💬", hat: "🧢",
+};
+
+function RewardPill({ item, unlocked }: { item: RewardItem; unlocked: boolean }) {
+  const pal = RARITY_PILL_COLOR[item.rarity] ?? RARITY_PILL_COLOR.common;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "2px 8px", borderRadius: 999,
+      background: unlocked ? pal.bg : "rgba(255,255,255,0.03)",
+      border: `1px solid ${unlocked ? pal.bd : "rgba(255,255,255,0.08)"}`,
+      color: unlocked ? pal.c : "rgba(220,220,255,0.35)",
+      fontSize: 11, fontWeight: 600,
+      filter: unlocked ? "none" : "grayscale(1)",
+    }}>
+      <span aria-hidden>{KIND_ICON[item.kind] ?? "🎁"}</span>
+      {item.name}
+    </span>
+  );
+}
+
 const TIER_ORDER: Array<ApiAchievement["tier"]> = ["bronze", "silver", "gold", "master"];
 
 function tierTitle(t: ApiAchievement["tier"]) {
@@ -205,9 +250,20 @@ export function AchievementsModal({ open, onClose }: { open: boolean; onClose: (
                             {ach.hint ? (
                               <div className="mutedSmall" style={{ opacity:.82, marginTop:4, lineHeight:1.35 }}>{ach.hint}</div>
                             ) : null}
-                            {ach.rewardPreview ? (
-                              <div className="mutedSmall" style={{ opacity:.85, marginTop:4 }}>🎁 {ach.rewardPreview}</div>
-                            ) : null}
+                            {(() => {
+                              const rewards = ACH_REWARDS_FRONTEND[ach.id];
+                              if (rewards?.length) {
+                                return (
+                                  <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:6 }}>
+                                    {rewards.map(r => <RewardPill key={`${r.kind}:${r.code}`} item={r} unlocked={ach.unlocked} />)}
+                                  </div>
+                                );
+                              }
+                              if (ach.rewardPreview) {
+                                return <div className="mutedSmall" style={{ opacity:.85, marginTop:4 }}>🎁 {ach.rewardPreview}</div>;
+                              }
+                              return null;
+                            })()}
                             {ach.progress ? (
                               <ProgressBar current={ach.progress.current} target={ach.progress.target} tier={t} />
                             ) : null}

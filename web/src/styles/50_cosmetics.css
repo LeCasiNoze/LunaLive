@@ -522,6 +522,409 @@
 }
 
 
+/* ── NOUVEAU : neonPink ──────────────────────────────────────── */
+@keyframes neonPinkPulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255,0,128,0.08), 0 18px 50px rgba(0,0,0,0.35); }
+  50%       { box-shadow: 0 0 0 1px rgba(255,0,128,0.20), 0 0 18px rgba(255,0,128,0.18), 0 18px 50px rgba(0,0,0,0.35); }
+}
+.chatFrame--neonPink {
+  --frame-reflet: rgba(255, 80, 160, 0.38);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(255,0,128,0.14), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(200,0,100,0.10), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(10,4,14,0.95), rgba(10,4,14,0.95)) padding-box,
+    linear-gradient(135deg, rgba(255,0,128,0.55), rgba(160,0,80,0.35)) border-box;
+  animation: neonPinkPulse 3.5s ease-in-out infinite;
+}
+
+/* ── NOUVEAU : neonCyan ──────────────────────────────────────── */
+@keyframes neonCyanPulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(0,220,255,0.08), 0 18px 50px rgba(0,0,0,0.35); }
+  50%       { box-shadow: 0 0 0 1px rgba(0,220,255,0.20), 0 0 18px rgba(0,220,255,0.18), 0 18px 50px rgba(0,0,0,0.35); }
+}
+.chatFrame--neonCyan {
+  --frame-reflet: rgba(0, 220, 255, 0.36);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(0,220,255,0.14), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(0,160,200,0.10), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(4,12,16,0.95), rgba(4,12,16,0.95)) padding-box,
+    linear-gradient(135deg, rgba(0,220,255,0.50), rgba(0,100,160,0.30)) border-box;
+  animation: neonCyanPulse 3.5s ease-in-out infinite;
+}
+
+/* ── NOUVEAU : galaxy ────────────────────────────────────────── */
+@keyframes galaxyShift {
+  0%   { opacity: 0.72; filter: hue-rotate(0deg); }
+  50%  { opacity: 0.90; filter: hue-rotate(30deg); }
+  100% { opacity: 0.72; filter: hue-rotate(0deg); }
+}
+.chatFrame--galaxy {
+  --frame-reflet: rgba(180, 100, 255, 0.38);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(120,0,220,0.18), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(60,80,240,0.14), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(6,4,14,0.95), rgba(6,4,14,0.95)) padding-box,
+    linear-gradient(135deg, rgba(140,0,255,0.52), rgba(60,80,240,0.44), rgba(0,180,255,0.30)) border-box;
+  box-shadow: 0 0 0 1px rgba(120,0,220,0.09), 0 18px 50px rgba(0,0,0,0.38);
+}
+.chatFrame--galaxy::after { animation: galaxyShift 8s ease-in-out infinite; }
+
+/* ── NOUVEAU : blood ─────────────────────────────────────────── */
+@keyframes bloodPulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(180,0,0,0.10), 0 18px 50px rgba(0,0,0,0.38); }
+  50%       { box-shadow: 0 0 0 1px rgba(220,0,0,0.22), 0 0 20px rgba(200,0,0,0.16), 0 18px 50px rgba(0,0,0,0.38); }
+}
+.chatFrame--blood {
+  --frame-reflet: rgba(220, 40, 40, 0.32);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(200,0,0,0.16), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(140,0,0,0.12), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(10,2,2,0.96), rgba(10,2,2,0.96)) padding-box,
+    linear-gradient(135deg, rgba(200,0,0,0.55), rgba(100,0,0,0.40)) border-box;
+  animation: bloodPulse 4s ease-in-out infinite;
+}
+
+/* ── NOUVEAU : emerald ───────────────────────────────────────── */
+.chatFrame--emerald {
+  --frame-reflet: rgba(52, 211, 100, 0.32);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(16,185,80,0.14), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(0,120,60,0.10), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(4,12,6,0.95), rgba(4,12,6,0.95)) padding-box,
+    linear-gradient(135deg, rgba(16,185,80,0.52), rgba(0,120,60,0.34)) border-box;
+  box-shadow: 0 0 0 1px rgba(16,185,80,0.08), 0 18px 50px rgba(0,0,0,0.35);
+}
+
+/* ── NOUVEAU : royal ─────────────────────────────────────────── */
+.chatFrame--royal {
+  --frame-reflet: rgba(255, 200, 60, 0.36);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(251,191,36,0.12), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(120,60,200,0.12), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(10,6,16,0.95), rgba(10,6,16,0.95)) padding-box,
+    linear-gradient(135deg, rgba(251,191,36,0.50), rgba(120,60,200,0.42)) border-box;
+  box-shadow: 0 0 0 1px rgba(180,130,0,0.09), 0 18px 50px rgba(0,0,0,0.35);
+}
+
+/* ── NOUVEAU : glitch (legendary) ───────────────────────────── */
+@keyframes glitchShift {
+  0%, 90%, 100% { filter: none; transform: none; }
+  92%  { filter: hue-rotate(90deg) saturate(2); transform: translateX(1px); }
+  94%  { filter: hue-rotate(-60deg) saturate(3); transform: translateX(-2px); }
+  96%  { filter: hue-rotate(120deg) saturate(2); transform: translateX(1px); }
+  98%  { filter: none; transform: none; }
+}
+.chatFrame--glitch {
+  --frame-reflet: rgba(255, 0, 200, 0.30);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(0,255,200,0.12), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(255,0,200,0.10), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(6,6,14,0.96), rgba(6,6,14,0.96)) padding-box,
+    linear-gradient(135deg, rgba(0,255,200,0.45), rgba(255,0,200,0.45)) border-box;
+  box-shadow: 0 0 0 1px rgba(0,255,200,0.10), 0 18px 50px rgba(0,0,0,0.40);
+  animation: glitchShift 7s ease-in-out infinite;
+}
+
+/* ── NOUVEAU : diamond (legendary) ──────────────────────────── */
+@keyframes diamondSpin {
+  0%   { filter: brightness(1) hue-rotate(0deg); }
+  50%  { filter: brightness(1.15) hue-rotate(20deg); }
+  100% { filter: brightness(1) hue-rotate(0deg); }
+}
+.chatFrame--diamond {
+  --frame-reflet: rgba(200, 240, 255, 0.44);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(180,230,255,0.16), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(100,200,255,0.12), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(6,10,16,0.95), rgba(6,10,16,0.95)) padding-box,
+    linear-gradient(135deg, rgba(180,230,255,0.55), rgba(255,255,255,0.28), rgba(100,180,255,0.50)) border-box;
+  box-shadow: 0 0 0 1px rgba(180,230,255,0.12), 0 18px 50px rgba(0,0,0,0.38);
+}
+.chatFrame--diamond::after { animation: diamondSpin 6s ease-in-out infinite; }
+
+/* ── NOUVEAU : phoenix (legendary) ──────────────────────────── */
+@keyframes phoenixFlare {
+  0%   { opacity: 0.68; filter: hue-rotate(0deg); }
+  40%  { opacity: 0.92; filter: hue-rotate(-15deg); }
+  80%  { opacity: 0.78; filter: hue-rotate(10deg); }
+  100% { opacity: 0.68; filter: hue-rotate(0deg); }
+}
+.chatFrame--phoenix {
+  --frame-reflet: rgba(255, 160, 40, 0.42);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(255,140,0,0.18), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(255,60,0,0.14), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(12,4,2,0.96), rgba(12,4,2,0.96)) padding-box,
+    linear-gradient(135deg, rgba(255,140,0,0.58), rgba(255,60,0,0.50), rgba(255,220,0,0.35)) border-box;
+  box-shadow: 0 0 0 1px rgba(255,140,0,0.10), 0 18px 50px rgba(0,0,0,0.38);
+}
+.chatFrame--phoenix::after { animation: phoenixFlare 5s ease-in-out infinite; }
+
+/* ── NOUVEAU : ice (epic) ────────────────────────────────────── */
+@keyframes iceShimmer {
+  0%   { opacity: 0.72; filter: brightness(1); }
+  50%  { opacity: 0.90; filter: brightness(1.12); }
+  100% { opacity: 0.72; filter: brightness(1); }
+}
+.chatFrame--ice {
+  --frame-reflet: rgba(200, 240, 255, 0.44);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(150,220,255,0.16), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(200,240,255,0.12), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(4,10,16,0.95), rgba(4,10,16,0.95)) padding-box,
+    linear-gradient(135deg, rgba(150,220,255,0.52), rgba(200,240,255,0.30), rgba(100,180,240,0.44)) border-box;
+  box-shadow: 0 0 0 1px rgba(150,220,255,0.10), 0 18px 50px rgba(0,0,0,0.35);
+}
+.chatFrame--ice::after { animation: iceShimmer 6s ease-in-out infinite; }
+
+/* ── NOUVEAU : sakura (rare) ─────────────────────────────────── */
+.chatFrame--sakura {
+  --frame-reflet: rgba(255, 180, 200, 0.32);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(255,150,180,0.12), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(255,200,220,0.10), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(14,6,10,0.95), rgba(14,6,10,0.95)) padding-box,
+    linear-gradient(135deg, rgba(255,150,180,0.48), rgba(255,200,220,0.32)) border-box;
+  box-shadow: 0 0 0 1px rgba(255,150,180,0.08), 0 18px 50px rgba(0,0,0,0.35);
+}
+
+/* ── NOUVEAU : festEclair (epic) ─────────────────────────────── */
+@keyframes eclairFlash {
+  0%, 88%, 100% { opacity: 0.78; filter: none; }
+  90%  { opacity: 1.00; filter: brightness(1.3) saturate(1.5); }
+  92%  { opacity: 0.82; filter: none; }
+  94%  { opacity: 1.00; filter: brightness(1.2); }
+}
+.chatFrame--festEclair {
+  --frame-reflet: rgba(255, 240, 60, 0.40);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(255,220,0,0.16), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(180,100,255,0.12), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(10,8,2,0.96), rgba(10,8,2,0.96)) padding-box,
+    linear-gradient(135deg, rgba(255,220,0,0.55), rgba(180,100,255,0.40)) border-box;
+  box-shadow: 0 0 0 1px rgba(255,220,0,0.10), 0 18px 50px rgba(0,0,0,0.38);
+  animation: eclairFlash 4.5s ease-in-out infinite;
+}
+
+/* ── NOUVEAU : neonRainbow (mythic) ──────────────────────────── */
+@keyframes neonRainbowBorder {
+  0%   { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
+}
+.chatFrame--neonRainbow {
+  --frame-reflet: rgba(255, 255, 255, 0.30);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(255,0,128,0.14), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(0,200,255,0.12), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(8,6,14,0.95), rgba(8,6,14,0.95)) padding-box,
+    linear-gradient(135deg, #ff0080, #ff8000, #ffff00, #00ff80, #0080ff, #8000ff, #ff0080) border-box;
+  box-shadow: 0 0 0 1px rgba(200,0,255,0.12), 0 18px 50px rgba(0,0,0,0.40);
+  animation: neonRainbowBorder 3s linear infinite;
+}
+
+/* ── NOUVEAU : carbon (rare) ─────────────────────────────────── */
+.chatFrame--carbon {
+  --frame-reflet: rgba(180, 180, 180, 0.22);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(80,80,80,0.12), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(50,50,50,0.10), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(8,8,8,0.97), rgba(8,8,8,0.97)) padding-box,
+    repeating-linear-gradient(
+      45deg,
+      rgba(60,60,60,0.55) 0px,
+      rgba(60,60,60,0.55) 2px,
+      rgba(90,90,90,0.35) 2px,
+      rgba(90,90,90,0.35) 4px
+    ) border-box;
+  box-shadow: 0 0 0 1px rgba(100,100,100,0.10), 0 18px 50px rgba(0,0,0,0.40);
+}
+
+/* ── NOUVEAU : paper (common) ────────────────────────────────── */
+.chatFrame--paper {
+  --frame-reflet: rgba(240, 230, 210, 0.20);
+  --frame-ambient:
+    radial-gradient(260px 140px at 10% 0%,  rgba(200,190,170,0.08), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%,  rgba(180,170,150,0.06), transparent 60%);
+  border: 1px solid rgba(200, 190, 160, 0.22);
+  background: rgba(14, 12, 10, 0.95);
+  box-shadow: 0 0 0 1px rgba(200,190,160,0.06), 0 18px 50px rgba(0,0,0,0.30);
+}
+
+
+/* ============================================================
+   3b. USERNAME EFFECTS — nouveaux
+   ============================================================ */
+
+/* ── pulseRed ────────────────────────────────────────────────── */
+@keyframes pulseRedAnim {
+  0%, 100% { text-shadow: 0 0 4px rgba(220,50,50,0.70), 0 0 10px rgba(180,0,0,0.50); }
+  50%       { text-shadow: 0 0 7px rgba(255,80,80,0.90), 0 0 18px rgba(220,0,0,0.65); }
+}
+.username--pulseRed {
+  color: #ff6060;
+  animation: pulseRedAnim 2.8s ease-in-out infinite;
+}
+
+/* ── pulseBlue ───────────────────────────────────────────────── */
+@keyframes pulseBlueAnim {
+  0%, 100% { text-shadow: 0 0 4px rgba(60,100,255,0.70), 0 0 10px rgba(30,80,240,0.50); }
+  50%       { text-shadow: 0 0 7px rgba(80,140,255,0.90), 0 0 18px rgba(60,120,255,0.65); }
+}
+.username--pulseBlue {
+  color: #80aaff;
+  animation: pulseBlueAnim 2.8s ease-in-out infinite;
+}
+
+/* ── typewriter ──────────────────────────────────────────────── */
+@keyframes cursorBlink {
+  0%, 100% { border-right-color: rgba(196,181,253,0.90); }
+  50%       { border-right-color: transparent; }
+}
+.username--typewriter {
+  color: #e4d9ff;
+  border-right: 2px solid rgba(196,181,253,0.90);
+  padding-right: 2px;
+  animation: cursorBlink 1.0s step-end infinite;
+}
+
+/* ── shadow ──────────────────────────────────────────────────── */
+.username--shadow {
+  color: #dde8ff;
+  text-shadow: 2px 2px 6px rgba(0,0,0,0.80), -1px -1px 4px rgba(0,0,0,0.60);
+}
+
+/* ── outline ─────────────────────────────────────────────────── */
+.username--outline {
+  color: transparent;
+  -webkit-text-stroke: 1.2px rgba(255,255,255,0.85);
+}
+
+/* ── glitch username ─────────────────────────────────────────── */
+@keyframes unameGlitch {
+  0%, 86%, 100% { text-shadow: none; transform: none; }
+  88%  { text-shadow: -2px 0 rgba(255,0,200,0.7), 2px 0 rgba(0,255,200,0.7); transform: translateX(1px); }
+  90%  { text-shadow: 2px 0 rgba(255,0,200,0.7), -2px 0 rgba(0,255,200,0.7); transform: translateX(-2px); }
+  92%  { text-shadow: none; transform: none; }
+}
+.username--glitch {
+  color: #e4d9ff;
+  animation: unameGlitch 6s ease-in-out infinite;
+}
+
+/* ── fire ────────────────────────────────────────────────────── */
+@keyframes fireFlicker {
+  0%   { color: #ff6030; text-shadow: 0 -2px 6px rgba(255,100,0,0.80), 0 -4px 12px rgba(255,50,0,0.50); }
+  33%  { color: #ff8040; text-shadow: 0 -3px 8px rgba(255,140,0,0.90), 0 -6px 16px rgba(255,80,0,0.55); }
+  66%  { color: #ff5020; text-shadow: 0 -2px 5px rgba(255,80,0,0.75), 0 -5px 14px rgba(255,40,0,0.45); }
+  100% { color: #ff6030; text-shadow: 0 -2px 6px rgba(255,100,0,0.80), 0 -4px 12px rgba(255,50,0,0.50); }
+}
+.username--fire {
+  animation: fireFlicker 1.8s ease-in-out infinite;
+}
+
+/* ── ice username ────────────────────────────────────────────── */
+@keyframes iceGlow {
+  0%, 100% { text-shadow: 0 0 4px rgba(150,220,255,0.65), 0 0 8px rgba(100,200,255,0.40); }
+  50%       { text-shadow: 0 0 6px rgba(200,240,255,0.80), 0 0 14px rgba(150,220,255,0.55); }
+}
+.username--ice {
+  color: #c8f0ff;
+  animation: iceGlow 3.5s ease-in-out infinite;
+}
+
+/* ── silverToggle ────────────────────────────────────────────── */
+@keyframes silverGlint {
+  0%   { background-position: 0% 50%, -80% 50%; }
+  100% { background-position: 140% 50%, 180% 50%; }
+}
+.username--silver {
+  color: transparent;
+  background-image:
+    linear-gradient(90deg, #6a7080 0%, #a0aabc 20%, #d4d8e4 44%, #ffffff 52%, #d4d8e4 60%, #a0aabc 78%, #6a7080 100%),
+    linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.55) 46%, rgba(255,255,255,0) 58%);
+  background-size: 160% 100%, 60% 100%;
+  background-blend-mode: normal, screen;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: silverGlint 4.0s ease-in-out infinite;
+}
+
+/* ── purpleToggle ────────────────────────────────────────────── */
+@keyframes purpleShimmer {
+  0%   { background-position: 0% 50%, -80% 50%; }
+  100% { background-position: 140% 50%, 180% 50%; }
+}
+.username--purple {
+  color: transparent;
+  background-image:
+    linear-gradient(90deg, #3d1a7a 0%, #7c3aed 22%, #c084fc 48%, #e9d5ff 56%, #c084fc 66%, #7c3aed 82%, #3d1a7a 100%),
+    linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.45) 46%, rgba(255,255,255,0) 60%);
+  background-size: 160% 100%, 60% 100%;
+  background-blend-mode: normal, screen;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: purpleShimmer 4.0s ease-in-out infinite;
+}
+
+/* ── gradientSunset ──────────────────────────────────────────── */
+@keyframes sunsetFlow {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.username--sunset {
+  color: transparent;
+  background-image: linear-gradient(90deg, #ff6b35 0%, #f7c59f 30%, #ff6b9d 55%, #f7c59f 80%, #ff6b35 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: sunsetFlow 4.5s ease-in-out infinite;
+}
+
+/* ── galaxyUsername ──────────────────────────────────────────── */
+@keyframes galaxyUsernameFlow {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.username--galaxy {
+  color: transparent;
+  background-image: linear-gradient(90deg, #1a0050 0%, #7c3aed 22%, #06b6d4 50%, #7c3aed 78%, #1a0050 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: galaxyUsernameFlow 5s ease-in-out infinite;
+}
+
+
 /* ============================================================
    4.  SHOP PREVIEW UTILITIES (inchangé, juste nettoyé)
    ============================================================ */

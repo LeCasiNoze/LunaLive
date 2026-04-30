@@ -40,6 +40,16 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
     meta: { shape: "rect", text: "777" },
   },
 
+  // ── Badges nouveaux ──────────────────────────────────────────
+  { kind: "badge", code: "badge_streamer", name: "Badge STREAM", rarity: "rare", unlock: "achievement", priceRubis: null, active: true, meta: { shape: "rect", text: "STREAM" } },
+  { kind: "badge", code: "badge_og", name: "Badge OG", rarity: "legendary", unlock: "achievement", priceRubis: null, active: true, meta: { shape: "rect", text: "OG" } },
+  { kind: "badge", code: "badge_rich", name: "Badge $$", rarity: "epic", unlock: "achievement", priceRubis: null, active: true, meta: { shape: "rect", text: "$$" } },
+  { kind: "badge", code: "badge_chef", name: "Badge Chef", rarity: "rare", unlock: "shop", priceRubis: 250, active: true, meta: { shape: "rect", text: "CHEF" } },
+  { kind: "badge", code: "badge_skull", name: "Badge Skull", rarity: "epic", unlock: "shop", priceRubis: 250, active: true, meta: { shape: "rect", text: "💀" } },
+  { kind: "badge", code: "badge_heart", name: "Badge Cœur", rarity: "uncommon", unlock: "shop", priceRubis: 250, active: true, meta: { shape: "rect", text: "❤️" } },
+  { kind: "badge", code: "badge_star", name: "Badge Étoile", rarity: "uncommon", unlock: "shop", priceRubis: 250, active: true, meta: { shape: "rect", text: "⭐" } },
+  { kind: "badge", code: "badge_lightning", name: "Badge Éclair", rarity: "rare", unlock: "shop", priceRubis: 250, active: true, meta: { shape: "rect", text: "⚡" } },
+
   // ─────────────────────────────────────────────
   // HATS
   // Prix shop: 500 rubis
@@ -54,11 +64,33 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
   { kind: "hat", code: "hat_astral_helmet", name: "Astral Helmet", rarity: "legendary", unlock: "shop", priceRubis: 500, active: true },
   { kind: "hat", code: "hat_lotus_aureole", name: "Lotus Aureole", rarity: "mythic", unlock: "shop", priceRubis: 500, active: true },
 
+  // ── Hats nouveaux ────────────────────────────────────────────
+  { kind: "hat", code: "hat_top_hat", name: "Top Hat", rarity: "epic", unlock: "shop", priceRubis: 500, active: true, meta: { emoji: "🎩" } },
+  { kind: "hat", code: "hat_santa", name: "Bonnet de Noël", rarity: "rare", unlock: "shop", priceRubis: 500, active: true, meta: { emoji: "🎅" } },
+  { kind: "hat", code: "hat_witch", name: "Chapeau Sorcière", rarity: "rare", unlock: "shop", priceRubis: 500, active: true, meta: { emoji: "🧙" } },
+  { kind: "hat", code: "hat_pirate", name: "Bandeau Pirate", rarity: "epic", unlock: "achievement", priceRubis: null, active: true, meta: { emoji: "🏴‍☠️" } },
+  { kind: "hat", code: "hat_viking", name: "Casque Viking", rarity: "legendary", unlock: "achievement", priceRubis: null, active: true, meta: { emoji: "⚔️" } },
+  { kind: "hat", code: "hat_propeller", name: "Beanie Hélice", rarity: "uncommon", unlock: "shop", priceRubis: 500, active: true, meta: { emoji: "🌀" } },
+
   // ─────────────────────────────────────────────
   // USERNAME
   // Prix shop: 2000 rubis
   // Achievement/system: pas achetable rubis (null)
   // ─────────────────────────────────────────────
+  // ── Username nouveaux ────────────────────────────────────────
+  { kind: "username", code: "uanim_pulse_red", name: "Pulse Rouge", rarity: "rare", unlock: "shop", priceRubis: 2000, active: true },
+  { kind: "username", code: "uanim_pulse_blue", name: "Pulse Bleu", rarity: "rare", unlock: "shop", priceRubis: 2000, active: true },
+  { kind: "username", code: "uanim_typewriter", name: "Machine à écrire", rarity: "epic", unlock: "shop", priceRubis: 2000, active: true },
+  { kind: "username", code: "uanim_shadow", name: "Ombre portée", rarity: "uncommon", unlock: "shop", priceRubis: 2000, active: true },
+  { kind: "username", code: "uanim_outline", name: "Outline blanc", rarity: "uncommon", unlock: "shop", priceRubis: 2000, active: true },
+  { kind: "username", code: "uanim_glitch", name: "Glitch", rarity: "legendary", unlock: "achievement", priceRubis: null, active: true },
+  { kind: "username", code: "uanim_fire", name: "Feu", rarity: "epic", unlock: "achievement", priceRubis: null, active: true },
+  { kind: "username", code: "uanim_ice", name: "Glace", rarity: "epic", unlock: "shop", priceRubis: 2000, active: true },
+  { kind: "username", code: "uanim_silver_toggle", name: "Argenté", rarity: "rare", unlock: "shop", priceRubis: 2000, active: true },
+  { kind: "username", code: "uanim_purple_toggle", name: "Pourpre royal", rarity: "rare", unlock: "shop", priceRubis: 2000, active: true },
+  { kind: "username", code: "uanim_gradient_sunset", name: "Sunset gradient", rarity: "epic", unlock: "shop", priceRubis: 2000, active: true },
+  { kind: "username", code: "uanim_galaxy", name: "Galaxy", rarity: "legendary", unlock: "achievement", priceRubis: null, active: true },
+
   { kind: "username", code: "uanim_rainbow_scroll", name: "Arc-en-ciel défilant", rarity: "rare", unlock: "achievement", priceRubis: null, active: true },
 
   {
@@ -116,6 +148,23 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
   { kind: "frame", code: "mframe_gold", name: "Cadran Gold", rarity: "mythic", unlock: "shop", priceRubis: 3000, active: true },
   { kind: "frame", code: "mframe_lotus_crown", name: "Cadran Lotus Crown", rarity: "mythic", unlock: "achievement", priceRubis: null, active: true },
   { kind: "frame", code: "mframe_eclipse", name: "Cadran Eclipse", rarity: "mythic", unlock: "achievement", priceRubis: null, active: true },
+
+  // ── Frames nouveaux ──────────────────────────────────────────
+  { kind: "frame", code: "mframe_neon_pink", name: "Cadran Néon Rose", rarity: "rare", unlock: "shop", priceRubis: 3000, active: true },
+  { kind: "frame", code: "mframe_neon_cyan", name: "Cadran Néon Cyan", rarity: "rare", unlock: "shop", priceRubis: 3000, active: true },
+  { kind: "frame", code: "mframe_galaxy", name: "Cadran Galaxy", rarity: "epic", unlock: "shop", priceRubis: 3000, active: true },
+  { kind: "frame", code: "mframe_blood", name: "Cadran Blood", rarity: "epic", unlock: "achievement", priceRubis: null, active: true },
+  { kind: "frame", code: "mframe_emerald", name: "Cadran Émeraude", rarity: "rare", unlock: "shop", priceRubis: 3000, active: true },
+  { kind: "frame", code: "mframe_royal", name: "Cadran Royal", rarity: "epic", unlock: "shop", priceRubis: 3000, active: true },
+  { kind: "frame", code: "mframe_glitch", name: "Cadran Glitch", rarity: "legendary", unlock: "achievement", priceRubis: null, active: true },
+  { kind: "frame", code: "mframe_diamond", name: "Cadran Diamant", rarity: "legendary", unlock: "shop", priceRubis: 3000, active: true },
+  { kind: "frame", code: "mframe_phoenix", name: "Cadran Phénix", rarity: "legendary", unlock: "achievement", priceRubis: null, active: true },
+  { kind: "frame", code: "mframe_ice", name: "Cadran Glace", rarity: "epic", unlock: "shop", priceRubis: 3000, active: true },
+  { kind: "frame", code: "mframe_sakura", name: "Cadran Sakura", rarity: "rare", unlock: "shop", priceRubis: 3000, active: true },
+  { kind: "frame", code: "mframe_fest_eclair", name: "Cadran Éclair", rarity: "epic", unlock: "achievement", priceRubis: null, active: true },
+  { kind: "frame", code: "mframe_neon_rainbow", name: "Cadran Néon Rainbow", rarity: "mythic", unlock: "shop", priceRubis: 3000, active: true },
+  { kind: "frame", code: "mframe_carbon", name: "Cadran Carbone", rarity: "rare", unlock: "shop", priceRubis: 3000, active: true },
+  { kind: "frame", code: "mframe_paper", name: "Cadran Papier", rarity: "common", unlock: "shop", priceRubis: 3000, active: true },
   {
     kind: "frame",
     code: "mframe_void",

@@ -156,10 +156,15 @@ function applyPreview(
     const map: Record<string, string> = {
       hat_luna_cap: "luna_cap", hat_carton_crown: "carton_crown", hat_demon_horn: "demon_horn",
       hat_eclipse_halo: "eclipse_halo", hat_astral_helmet: "astral_helmet", hat_lotus_aureole: "lotus_aureole",
+      hat_top_hat: "top_hat", hat_santa: "santa", hat_witch: "witch",
+      hat_pirate: "pirate", hat_viking: "viking", hat_propeller: "propeller",
     };
     const hatId = map[code] ?? code;
     c.avatar.hatId = hatId;
-    const EMOJI: Record<string, string> = { luna_cap:"🧢", carton_crown:"👑", demon_horn:"😈", eclipse_halo:"⭕", astral_helmet:"🪖", lotus_aureole:"🪷" };
+    const EMOJI: Record<string, string> = {
+      luna_cap:"🧢", carton_crown:"👑", demon_horn:"😈", eclipse_halo:"⭕", astral_helmet:"🪖", lotus_aureole:"🪷",
+      top_hat:"🎩", santa:"🎅", witch:"🧙", pirate:"🏴‍☠️", viking:"⚔️", propeller:"🌀",
+    };
     c.avatar.hatEmoji = EMOJI[hatId] ?? "🧢";
     return;
   }
@@ -167,6 +172,13 @@ function applyPreview(
     const map: Record<string, string> = {
       uanim_chroma_toggle: "chroma", uanim_gold_toggle: "gold",
       uanim_rainbow_scroll: "rainbow_scroll", uanim_neon_underline: "neon_underline",
+      uanim_frost: "uanim_frost", uanim_ember: "uanim_ember",
+      uanim_pulse_red: "uanim_pulse_red", uanim_pulse_blue: "uanim_pulse_blue",
+      uanim_typewriter: "uanim_typewriter", uanim_shadow: "uanim_shadow",
+      uanim_outline: "uanim_outline", uanim_glitch: "uanim_glitch",
+      uanim_fire: "uanim_fire", uanim_ice: "uanim_ice",
+      uanim_silver_toggle: "uanim_silver_toggle", uanim_purple_toggle: "uanim_purple_toggle",
+      uanim_gradient_sunset: "uanim_gradient_sunset", uanim_galaxy: "uanim_galaxy",
     };
     const effect = map[code] ?? code;
     c.username.effect = effect; c.username.animId = effect; c.username.anim = effect;
@@ -195,13 +207,6 @@ function buildCosmeticsPreview(
   applyPreview("frame",    equipped?.frame ?? null,    c, opts);
   applyPreview("hat",      equipped?.hat ?? null,      c, opts);
   return c as ChatCosmetics;
-}
-
-function byOwnedFirst(ownedSet: Set<string>, a: UiItem, b: UiItem) {
-  const ao = a.free || (a.code != null && ownedSet.has(a.code));
-  const bo = b.free || (b.code != null && ownedSet.has(b.code));
-  if (ao !== bo) return ao ? -1 : 1;
-  return a.name.localeCompare(b.name);
 }
 
 // ─── UI primitives ────────────────────────────────────────────────────────────
@@ -286,6 +291,8 @@ export function PersonalisationSection({
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving]   = React.useState(false);
   const [err, setErr]         = React.useState<string | null>(null);
+  const [filterMode, setFilterMode] = React.useState<"all" | "owned" | "locked">("all");
+  const [searchQ, setSearchQ]       = React.useState("");
 
   const [catalog, setCatalog] = React.useState<ApiCatalogItem[]>([]);
   const [owned, setOwned]     = React.useState<Record<string, string[]>>({});
@@ -342,11 +349,21 @@ export function PersonalisationSection({
 
   const ownedSet = new Set<string>([...(owned?.[tab] || []), ...(free?.[tab] || [])]);
 
-  const items: UiItem[] = [
+  const RARITY_ORDER_PS = ["mythic", "legendary", "epic", "rare", "uncommon", "common", ""] as const;
+  const RARITY_LABEL_PS: Record<string, string> = {
+    mythic: "Mythique", legendary: "Légendaire", epic: "Épique",
+    rare: "Rare", uncommon: "Peu commun", common: "Commun", "": "Autre",
+  };
+  const RARITY_COLOR_PS: Record<string, string> = {
+    mythic: "#e879f9", legendary: "#f59e0b", epic: "#a78bfa",
+    rare: "#60a5fa", uncommon: "#6ee7b7", common: "rgba(220,220,255,0.55)", "": TXT2,
+  };
+
+  const allItems: UiItem[] = [
     {
       kind: tab, code: null,
       name: tab === "username" ? "Par défaut" : "Aucun",
-      free: true, desc: "Retirer l'élément actif.",
+      free: true, desc: "Retirer l'élément actif.", rarity: "common",
     },
     ...catalog.filter(x => x.kind === tab).map(x => {
       const pricePrestige = Number((x as any).pricePrestige ?? 0) || null;
@@ -356,7 +373,27 @@ export function PersonalisationSection({
         : `${niceUnlock(x.unlock)}${x.rarity ? ` — ${x.rarity}` : ""}`;
       return { kind: x.kind, code: x.code, name: x.name, desc, priceRubis: x.priceRubis, pricePrestige, rarity: x.rarity, unlock: x.unlock };
     }),
-  ].sort((a, b) => byOwnedFirst(ownedSet, a, b));
+  ];
+
+  const q = searchQ.toLowerCase().trim();
+  const filteredItems = allItems.filter(it => {
+    if (q && !it.name.toLowerCase().includes(q)) return false;
+    const isOwned = !!it.free || (it.code != null && ownedSet.has(it.code));
+    if (filterMode === "owned") return isOwned;
+    if (filterMode === "locked") return !isOwned && !it.free;
+    return true;
+  });
+
+  // group by rarity
+  const byRarityPS: Record<string, UiItem[]> = {};
+  for (const r of RARITY_ORDER_PS) byRarityPS[r] = [];
+  for (const it of filteredItems) {
+    const r = it.rarity ?? "";
+    if (byRarityPS[r] != null) byRarityPS[r].push(it);
+    else byRarityPS[""].push(it);
+  }
+
+  const totalOwned = allItems.filter(it => !!it.free || (it.code != null && ownedSet.has(it.code))).length;
 
   const effectiveAvatar = avatarUrl;
   function withAvatar<C extends ChatCosmetics | null>(c: C): C {
@@ -488,10 +525,10 @@ export function PersonalisationSection({
       )}
 
       {/* Category tabs + reload */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {CATS.map(c => (
           <CatTab key={c.id} active={tab === c.id} emoji={c.emoji} label={c.label}
-            onClick={() => setTab(c.id)} disabled={loading || saving} />
+            onClick={() => { setTab(c.id); setSearchQ(""); setFilterMode("all"); }} disabled={loading || saving} />
         ))}
         <div style={{ marginLeft: "auto" }}>
           <button className="btnGhost" onClick={load} disabled={!token || loading || saving} style={{ fontSize: 13 }}>
@@ -500,74 +537,143 @@ export function PersonalisationSection({
         </div>
       </div>
 
-      {/* Items grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
-        {items.map(it => {
-          const isEquipped = (equipped as any)?.[tab] === it.code;
-          const isOwned    = !!it.free || (it.code != null && ownedSet.has(it.code));
-          const locked     = !isOwned;
-          const cardPreview = previewForItem(it);
-
-          return (
-            <button
-              key={`${it.kind}:${String(it.code)}`}
-              onClick={() => isOwned ? doEquip(it.kind, it.code) : undefined}
-              disabled={!token || loading || saving || !isOwned}
-              title={!isOwned ? "Non possédé" : isEquipped ? "Cliquer pour retirer" : "Cliquer pour équiper"}
-              style={{
-                textAlign: "left", borderRadius: 11, padding: 14, cursor: !isOwned ? "not-allowed" : "pointer",
-                border: `1px solid ${isEquipped ? "rgba(124,92,252,0.35)" : BOR}`,
-                background: isEquipped ? ACC_D : (locked ? "rgba(255,255,255,0.02)" : SURF2),
-                opacity: locked ? 0.50 : 1,
-                transform: isEquipped ? "translateY(-1px)" : "none",
-                boxShadow: isEquipped ? "0 4px 20px rgba(124,92,252,0.15)" : "none",
-                transition: "transform 130ms, box-shadow 130ms, border-color 130ms",
-              }}
-            >
-              {/* Header row */}
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                <div style={{ fontFamily: FONT, fontWeight: 600, fontSize: 14, color: TXT, minWidth: 0 }}>
-                  {renderItemName(it)}
-                </div>
-                <div style={{ flexShrink: 0 }}>
-                  {isEquipped ? (
-                    <StatusBadge color="green">✅ Équipé</StatusBadge>
-                  ) : it.free ? (
-                    <StatusBadge color="purple">🎁 Gratuit</StatusBadge>
-                  ) : isOwned ? (
-                    <StatusBadge color="gray">🧾 Possédé</StatusBadge>
-                  ) : (
-                    <StatusBadge color="red">🔒 Verrouillé</StatusBadge>
-                  )}
-                </div>
-              </div>
-
-              {/* Preview bubble */}
-              <div style={{ pointerEvents: "none", opacity: locked ? 0.65 : 1, marginBottom: 8,
-                ...(({ ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor, ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor }) as any) }}>
-                <ChatMessageBubble
-                  streamerAppearance={streamerAppearance}
-                  msg={{ id: `cp:${it.kind}:${String(it.code)}`, userId: myUserId || 0, username, body: "…", createdAt: new Date().toISOString(), cosmetics: cardPreview }}
-                />
-              </div>
-
-              {/* Footer: description */}
-              {it.desc && (
-                <div style={{ fontFamily: FONT, fontSize: 11, color: TXT2 }}>
-                  {it.unlock === "shop" ? "Shop — " : ""}{it.desc}
-                </div>
-              )}
-
-              {/* Equip CTA hint */}
-              {isOwned && (
-                <div style={{ marginTop: 8, fontFamily: FONT, fontSize: 11, color: isEquipped ? "#c4b5fd" : TXT2, fontWeight: 600 }}>
-                  {isEquipped ? "Cliquer pour retirer" : "Cliquer pour équiper →"}
-                </div>
-              )}
-            </button>
-          );
-        })}
+      {/* Filter toolbar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        <input
+          type="text"
+          placeholder="Rechercher…"
+          value={searchQ}
+          onChange={e => setSearchQ(e.target.value)}
+          style={{
+            flex: "1 1 120px", maxWidth: 200, padding: "5px 10px", borderRadius: 8,
+            border: `1px solid rgba(124,92,252,0.22)`, background: "rgba(255,255,255,0.04)",
+            color: "#dde8ff", font: "inherit", fontSize: 12, outline: "none",
+          }}
+        />
+        {(["all", "owned", "locked"] as const).map(f => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFilterMode(f)}
+            style={{
+              padding: "4px 10px", borderRadius: 7,
+              border: `1px solid ${filterMode === f ? "rgba(124,92,252,0.45)" : "rgba(124,92,252,0.22)"}`,
+              background: filterMode === f ? "rgba(124,92,252,0.14)" : "rgba(255,255,255,0.04)",
+              color: filterMode === f ? "#c4b5fd" : "rgba(220,220,255,0.65)",
+              fontFamily: FONT, fontSize: 11, fontWeight: 700, cursor: "pointer",
+            }}
+          >
+            {f === "all" ? "Tous" : f === "owned" ? "Débloqués" : "Verrouillés"}
+          </button>
+        ))}
+        <span style={{ marginLeft: "auto", fontFamily: FONT, fontSize: 11, color: TXT2 }}>
+          {totalOwned}/{allItems.length} débloqués
+        </span>
       </div>
+
+      {/* Items grouped by rarity */}
+      {filteredItems.length === 0 ? (
+        <div style={{ fontFamily: FONT, fontSize: 13, color: TXT2, textAlign: "center", padding: "20px 0" }}>
+          Aucun élément.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {RARITY_ORDER_PS.map(rarity => {
+            const groupItems = byRarityPS[rarity];
+            if (!groupItems?.length) return null;
+            const ownedInGroup = groupItems.filter(it => !!it.free || (it.code != null && ownedSet.has(it.code))).length;
+            return (
+              <details key={rarity} open style={{ borderRadius: 10, border: `1px solid rgba(124,92,252,0.10)`, background: "rgba(255,255,255,0.015)", padding: "8px 12px" }}>
+                <summary style={{
+                  display: "flex", alignItems: "center", gap: 8, cursor: "pointer", listStyle: "none",
+                  fontFamily: FONT, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em",
+                  textTransform: "uppercase", color: RARITY_COLOR_PS[rarity] ?? TXT2,
+                  userSelect: "none", marginBottom: 2,
+                }}>
+                  <span style={{ fontSize: 10, color: "rgba(220,220,255,0.55)", fontWeight: 600, textTransform: "none", letterSpacing: 0, marginLeft: 6 }}>
+                    {RARITY_LABEL_PS[rarity] ?? rarity} ({ownedInGroup}/{groupItems.length})
+                  </span>
+                  <div style={{ flex: 1, height: 1, background: "currentColor", opacity: 0.15 }} />
+                </summary>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10, marginTop: 8 }}>
+                  {groupItems.map(it => {
+                    const isEquipped = (equipped as any)?.[tab] === it.code;
+                    const isOwned    = !!it.free || (it.code != null && ownedSet.has(it.code));
+                    const locked     = !isOwned;
+                    const cardPreview = previewForItem(it);
+
+                    return (
+                      <button
+                        key={`${it.kind}:${String(it.code)}`}
+                        onClick={() => isOwned ? doEquip(it.kind, it.code) : undefined}
+                        disabled={!token || loading || saving || !isOwned}
+                        title={!isOwned ? `Non possédé — source : ${niceUnlock(it.unlock)}` : isEquipped ? "Cliquer pour retirer" : "Cliquer pour équiper"}
+                        style={{
+                          textAlign: "left", borderRadius: 11, padding: 14, cursor: !isOwned ? "not-allowed" : "pointer",
+                          border: `1px solid ${isEquipped ? "rgba(124,92,252,0.35)" : BOR}`,
+                          background: isEquipped ? ACC_D : (locked ? "rgba(255,255,255,0.02)" : SURF2),
+                          opacity: locked ? 0.48 : 1,
+                          transform: isEquipped ? "translateY(-1px)" : "none",
+                          boxShadow: isEquipped ? "0 4px 20px rgba(124,92,252,0.15)" : "none",
+                          transition: "transform 130ms, box-shadow 130ms, border-color 130ms",
+                        }}
+                      >
+                        {/* Header row */}
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                          <div style={{ fontFamily: FONT, fontWeight: 600, fontSize: 14, color: TXT, minWidth: 0 }}>
+                            {renderItemName(it)}
+                          </div>
+                          <div style={{ flexShrink: 0 }}>
+                            {isEquipped ? (
+                              <StatusBadge color="green">✅ Équipé</StatusBadge>
+                            ) : it.free ? (
+                              <StatusBadge color="purple">🎁 Gratuit</StatusBadge>
+                            ) : isOwned ? (
+                              <StatusBadge color="gray">🧾 Possédé</StatusBadge>
+                            ) : (
+                              <StatusBadge color="red">🔒</StatusBadge>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Lock hint */}
+                        {locked && it.unlock && (
+                          <div style={{ fontFamily: FONT, fontSize: 10, color: TXT2, fontStyle: "italic", marginBottom: 6 }}>
+                            🔒 Source : {niceUnlock(it.unlock)}
+                          </div>
+                        )}
+
+                        {/* Preview bubble */}
+                        <div style={{ pointerEvents: "none", opacity: locked ? 0.65 : 1, marginBottom: 8,
+                          ...(({ ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor, ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor }) as any) }}>
+                          <ChatMessageBubble
+                            streamerAppearance={streamerAppearance}
+                            msg={{ id: `cp:${it.kind}:${String(it.code)}`, userId: myUserId || 0, username, body: "…", createdAt: new Date().toISOString(), cosmetics: cardPreview }}
+                          />
+                        </div>
+
+                        {/* Footer: description */}
+                        {it.desc && (
+                          <div style={{ fontFamily: FONT, fontSize: 11, color: TXT2 }}>
+                            {it.unlock === "shop" ? "Shop — " : ""}{it.desc}
+                          </div>
+                        )}
+
+                        {/* Equip CTA hint */}
+                        {isOwned && (
+                          <div style={{ marginTop: 8, fontFamily: FONT, fontSize: 11, color: isEquipped ? "#c4b5fd" : TXT2, fontWeight: 600 }}>
+                            {isEquipped ? "Cliquer pour retirer" : "Cliquer pour équiper →"}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </details>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

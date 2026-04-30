@@ -113,6 +113,20 @@ export function usernameEffectClass(effect: any) {
   if (e === "neon_underline" || e === "uanim_neon_underline") return "username--neon";
   if (e === "chroma" || e === "uanim_chroma_toggle") return "username--chroma";
   if (e === "gold" || e === "uanim_gold_toggle") return "username--gold";
+  if (e === "uanim_frost" || e === "frost") return "username--frost";
+  if (e === "uanim_ember" || e === "ember") return "username--ember";
+  if (e === "uanim_pulse_red" || e === "pulse_red") return "username--pulseRed";
+  if (e === "uanim_pulse_blue" || e === "pulse_blue") return "username--pulseBlue";
+  if (e === "uanim_typewriter" || e === "typewriter") return "username--typewriter";
+  if (e === "uanim_shadow" || e === "shadow") return "username--shadow";
+  if (e === "uanim_outline" || e === "outline") return "username--outline";
+  if (e === "uanim_glitch" || e === "glitch") return "username--glitch";
+  if (e === "uanim_fire" || e === "fire") return "username--fire";
+  if (e === "uanim_ice" || e === "ice") return "username--ice";
+  if (e === "uanim_silver_toggle" || e === "silver") return "username--silver";
+  if (e === "uanim_purple_toggle" || e === "purple") return "username--purple";
+  if (e === "uanim_gradient_sunset" || e === "sunset") return "username--sunset";
+  if (e === "uanim_galaxy" || e === "galaxy") return "username--galaxy";
 
   return "";
 }
@@ -131,13 +145,32 @@ export function frameClass(frameId: any) {
   const raw = String(frameId || "").trim();
   if (!raw || raw === "none") return "";
 
-  // support "frame_xxx"
-  const k = raw.startsWith("frame_") ? raw.slice(6) : raw;
+  // normalize: strip mframe_ or frame_ prefix
+  let k = raw;
+  if (k.startsWith("mframe_")) k = k.slice(7);
+  else if (k.startsWith("frame_")) k = k.slice(6);
 
   if (k === "luna_petals") return "chatFrame--lunaPetals";
   if (k === "gold" || k === "gold_shop") return "chatFrame--gold";
   if (k === "eclipse" || k === "eclipse_master") return "chatFrame--eclipse";
   if (k === "lotus_crown" || k === "lotus_event") return "chatFrame--lotusCrown";
+  if (k === "void") return "chatFrame--void";
+  if (k === "aurora") return "chatFrame--aurora";
+  if (k === "neon_pink") return "chatFrame--neonPink";
+  if (k === "neon_cyan") return "chatFrame--neonCyan";
+  if (k === "galaxy") return "chatFrame--galaxy";
+  if (k === "blood") return "chatFrame--blood";
+  if (k === "emerald") return "chatFrame--emerald";
+  if (k === "royal") return "chatFrame--royal";
+  if (k === "glitch") return "chatFrame--glitch";
+  if (k === "diamond") return "chatFrame--diamond";
+  if (k === "phoenix") return "chatFrame--phoenix";
+  if (k === "ice") return "chatFrame--ice";
+  if (k === "sakura") return "chatFrame--sakura";
+  if (k === "fest_eclair") return "chatFrame--festEclair";
+  if (k === "neon_rainbow") return "chatFrame--neonRainbow";
+  if (k === "carbon") return "chatFrame--carbon";
+  if (k === "paper") return "chatFrame--paper";
 
   return "";
 }
