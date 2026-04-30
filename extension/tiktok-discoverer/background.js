@@ -136,7 +136,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         affilPatterns = [],
         scrapeFollowing = true,
         followingLimit = 200,
+        excludeVideoUrls = [],
       } = message.payload || {};
+
+      const excludeSet = new Set(
+        (Array.isArray(excludeVideoUrls) ? excludeVideoUrls : []).map((u) => String(u))
+      );
 
       // Patterns à matcher en substring case-insensitive dans les descriptions
       // (ex: "taap.it/abc123", "lunalive.win/r/golden-chest", etc.)
@@ -168,6 +173,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       };
 
       // STEP 1 — open seed profile, extract recent video URLs
+      // We grab a bigger pool than videoLimit so we can skip already-scraped
+      // ones and still have enough fresh ones to scrape.
+      const videoPoolSize = Math.max(videoLimit * 4, videoLimit + excludeSet.size + 5);
       async function getSeedVideos() {
         const url = `https://www.tiktok.com/@${encodeURIComponent(cleaned)}`;
         return new Promise((resolve) => {
@@ -286,7 +294,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                       return { videos: Array.from(set), stats };
                     },
-                    args: [videoLimit],
+                    args: [videoPoolSize],
                   });
                   const out = results && results[0] && results[0].result;
                   if (out && out.videos && out.videos.length > 0) {
@@ -626,8 +634,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const seenSignals = new Set();
       const signals = [];
 
+      // Filter out already-scraped videos from the pool, then take videoLimit fresh ones
+      const freshVideos = seedRes.videos.filter((u) => !excludeSet.has(u));
+      const skippedCount = seedRes.videos.length - freshVideos.length;
+      const videosToScrape = freshVideos.slice(0, videoLimit);
+      const scannedVideoUrls = []; // ce qu'on a effectivement scrapé avec succès
+      dispatch({
+        kind: "videos_filtered",
+        source: `@${cleaned}`,
+        found: videosToScrape.length,
+        skipped: skippedCount,
+      });
+
       let affilVideosCount = 0;
-      for (const videoUrl of seedRes.videos.slice(0, videoLimit)) {
+      for (const videoUrl of videosToScrape) {
         const r = await scrapeVideo(videoUrl);
         if (r?.error) {
           dispatch({
@@ -637,6 +657,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
           continue;
         }
+        scannedVideoUrls.push(videoUrl);
         const isAffilVideo = descHasAffil(r.desc || "");
         if (isAffilVideo) affilVideosCount++;
         const commentType = isAffilVideo ? "affil_comment" : "comment";
@@ -706,7 +727,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({
         ok: true,
         signals,
-        videosScraped: seedRes.videos.length,
+        videosScraped: scannedVideoUrls.length,
+        videosSkipped: skippedCount,
+        scannedVideoUrls,
         affilVideosCount,
         followingCount,
       });

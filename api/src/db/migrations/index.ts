@@ -113,6 +113,7 @@ import { mig103_tiktok_seed_network } from "./mig103_tiktok_seed_network.js";
 import { mig104_tiktok_network_affil_signals } from "./mig104_tiktok_network_affil_signals.js";
 import { mig105_tiktok_affil_patterns } from "./mig105_tiktok_affil_patterns.js";
 import { mig106_tiktok_network_following_enrich } from "./mig106_tiktok_network_following_enrich.js";
+import { mig107_tiktok_seed_scanned_videos } from "./mig107_tiktok_seed_scanned_videos.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -245,6 +246,7 @@ export async function migrateAll(pool: Pool) {
   await mig104_tiktok_network_affil_signals(pool);
   await mig105_tiktok_affil_patterns(pool);
   await mig106_tiktok_network_following_enrich(pool);
+  await mig107_tiktok_seed_scanned_videos(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

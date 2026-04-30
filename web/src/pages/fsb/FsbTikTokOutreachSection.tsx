@@ -17,6 +17,7 @@ import {
   importTikTokBulk,
   importTikTokNetworkHandle,
   listRuns,
+  listSeedScannedVideos,
   listTikTokAffilPatterns,
   listTikTokInfluencers,
   listTikTokMessages,
@@ -539,11 +540,27 @@ export function FsbTikTokOutreachSection() {
     }
 
     const requestId = `seedNet-${seed.id}-${Date.now()}`;
+
+    // Fetch already-scraped video URLs to skip them
+    let excludeVideoUrls: string[] = [];
+    try {
+      const sv = await listSeedScannedVideos(seed.id);
+      excludeVideoUrls = sv.videos.map((v) => v.url);
+    } catch {
+      // pas grave, on scrape sans skip
+    }
+
     try {
       const result: {
         ok: boolean;
-        signals: Array<{ handle: string; type: TikTokNetworkSignalType }>;
+        signals: Array<{
+          handle: string;
+          type: TikTokNetworkSignalType;
+          sourceVideoUrl?: string | null;
+        }>;
         videosScraped: number;
+        videosSkipped?: number;
+        scannedVideoUrls?: string[];
         affilVideosCount?: number;
         error?: string;
         diag?: any;
@@ -558,6 +575,8 @@ export function FsbTikTokOutreachSection() {
               ok: !!data.ok,
               signals: data.signals || [],
               videosScraped: data.videosScraped || 0,
+              videosSkipped: data.videosSkipped || 0,
+              scannedVideoUrls: data.scannedVideoUrls || [],
               affilVideosCount: data.affilVideosCount || 0,
               error: data.error,
               diag: data.diag,
@@ -575,6 +594,7 @@ export function FsbTikTokOutreachSection() {
               videoLimit: scanVideoLimit,
               commentsPerVideo: scanCommentsPerVideo,
               affilPatterns: affilPatterns.map((p) => p.pattern),
+              excludeVideoUrls,
             },
           },
           window.location.origin
@@ -603,21 +623,29 @@ export function FsbTikTokOutreachSection() {
       if (!result.signals.length) {
         if (!opts?.silent) {
           window.alert(
-            `Aucun signal capturé sur les ${result.videosScraped} vidéos scrapées de @${seed.handle}.`
+            `Aucun signal capturé sur ${result.videosScraped} vidéos scrapées de @${seed.handle}` +
+              (result.videosSkipped
+                ? ` (${result.videosSkipped} déjà scannées et skippées)`
+                : "") +
+              "."
           );
         }
-        // On marque quand même comme "fetched"
         try {
-          await importSeedNetworkSignals(seed.id, []);
+          await importSeedNetworkSignals(seed.id, [], result.scannedVideoUrls);
         } catch {}
         return { ok: true, added: 0, received: 0 };
       }
 
-      const imp = await importSeedNetworkSignals(seed.id, result.signals);
+      const imp = await importSeedNetworkSignals(
+        seed.id,
+        result.signals,
+        result.scannedVideoUrls
+      );
       if (!opts?.silent) {
         window.alert(
           `✅ @${seed.handle}: ${imp.added} signaux importés ` +
-            `(${imp.received} reçus, ${result.videosScraped} vidéos, ` +
+            `(${imp.received} reçus, ${result.videosScraped} vidéos scrapées, ` +
+            `${result.videosSkipped || 0} skippées, ` +
             `${result.affilVideosCount || 0} avec lien d'affil)`
         );
       }

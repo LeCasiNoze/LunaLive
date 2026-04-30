@@ -1907,7 +1907,33 @@ const importSignalsSchema = z.object({
       sourceVideoUrl: z.string().url().optional().nullable(),
     })
   ),
+  // URLs des vidéos qui ont été scrapées avec succès lors de ce scan
+  // (ce qu'il faut skipper aux prochains scans).
+  scannedVideoUrls: z.array(z.string().url()).optional(),
 });
+
+// Liste des URLs vidéos déjà scrapées pour un seed → l'extension les skip.
+tiktokOutreachRouter.get(
+  "/fsb/tiktok/seeds/:id/scanned-videos",
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    const result = await pool.query(
+      `SELECT video_url, scraped_at FROM tiktok_seed_scanned_videos
+        WHERE seed_id = $1 ORDER BY scraped_at DESC`,
+      [id]
+    );
+    return res.json({
+      ok: true,
+      videos: result.rows.map((r) => ({
+        url: r.video_url,
+        scrapedAt: r.scraped_at ? new Date(r.scraped_at).toISOString() : null,
+      })),
+    });
+  })
+);
 
 tiktokOutreachRouter.post(
   "/fsb/tiktok/seeds/:id/import-signals",
@@ -1955,6 +1981,25 @@ tiktokOutreachRouter.post(
       upserts++;
     }
 
+    // Enregistre les vidéos qu'on vient de scraper avec succès → on skip au scan suivant
+    const scannedUrls = Array.isArray(parsed.data.scannedVideoUrls)
+      ? parsed.data.scannedVideoUrls
+      : [];
+    let scannedRecorded = 0;
+    for (const u of scannedUrls) {
+      const url = String(u || "").trim();
+      if (!url) continue;
+      try {
+        await pool.query(
+          `INSERT INTO tiktok_seed_scanned_videos (seed_id, video_url, signals_found)
+           VALUES ($1, $2, 0)
+           ON CONFLICT (seed_id, video_url) DO UPDATE SET scraped_at = NOW()`,
+          [id, url]
+        );
+        scannedRecorded++;
+      } catch {}
+    }
+
     await pool.query(
       `UPDATE tiktok_seed_accounts
           SET last_network_fetch_at = NOW(),
@@ -1965,7 +2010,12 @@ tiktokOutreachRouter.post(
       [id, upserts > 0 ? "ok" : "empty"]
     );
 
-    return res.json({ ok: true, added: upserts, received: parsed.data.signals.length });
+    return res.json({
+      ok: true,
+      added: upserts,
+      received: parsed.data.signals.length,
+      scannedRecorded,
+    });
   })
 );
 

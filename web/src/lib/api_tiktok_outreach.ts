@@ -444,14 +444,30 @@ export function deleteTikTokAffilPattern(id: string) {
 
 export function importSeedNetworkSignals(
   seedId: string,
-  signals: Array<{ handle: string; type: TikTokNetworkSignalType }>
+  signals: Array<{
+    handle: string;
+    type: TikTokNetworkSignalType;
+    sourceVideoUrl?: string | null;
+  }>,
+  scannedVideoUrls?: string[]
 ) {
-  return request<{ ok: true; added: number; received: number }>(
-    `/api/fsb/tiktok/seeds/${encodeURIComponent(seedId)}/import-signals`,
-    {
-      method: "POST",
-      body: JSON.stringify({ signals }),
-    }
+  return request<{
+    ok: true;
+    added: number;
+    received: number;
+    scannedRecorded?: number;
+  }>(`/api/fsb/tiktok/seeds/${encodeURIComponent(seedId)}/import-signals`, {
+    method: "POST",
+    body: JSON.stringify({
+      signals,
+      scannedVideoUrls: scannedVideoUrls || [],
+    }),
+  });
+}
+
+export function listSeedScannedVideos(seedId: string) {
+  return request<{ ok: true; videos: Array<{ url: string; scrapedAt: string | null }> }>(
+    `/api/fsb/tiktok/seeds/${encodeURIComponent(seedId)}/scanned-videos`
   );
 }
 
