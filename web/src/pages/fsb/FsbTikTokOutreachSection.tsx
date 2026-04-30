@@ -12,6 +12,7 @@ import {
   getTikTokTemplate,
   addTikTokAffilPattern,
   deleteTikTokAffilPattern,
+  enrichTikTokTopCandidates,
   importSeedNetworkSignals,
   importTikTokBulk,
   importTikTokNetworkHandle,
@@ -400,6 +401,23 @@ export function FsbTikTokOutreachSection() {
   const [newPatternInput, setNewPatternInput] = React.useState("");
   const [newPatternLabel, setNewPatternLabel] = React.useState("");
   const [addingPattern, setAddingPattern] = React.useState(false);
+  const [enriching, setEnriching] = React.useState(false);
+
+  const handleEnrichTop = async () => {
+    if (enriching) return;
+    setEnriching(true);
+    try {
+      const r = await enrichTikTokTopCandidates(20);
+      window.alert(
+        `Enrichissement: ${r.enriched}/${r.total} OK (${r.failed} échecs)`
+      );
+      await reloadCandidates();
+    } catch (err: any) {
+      window.alert(`Enrich: ${err?.message || err}`);
+    } finally {
+      setEnriching(false);
+    }
+  };
 
   const reloadSeeds = React.useCallback(async () => {
     setSeedsLoading(true);
@@ -1370,6 +1388,15 @@ export function FsbTikTokOutreachSection() {
               ▶ Tout scanner
             </button>
           ) : null}
+          <button
+            type="button"
+            className="fsb-btn"
+            onClick={handleEnrichTop}
+            disabled={enriching || candidates.length === 0}
+            title="Scrape les profils des 20 meilleurs candidats (followers, bio, vérifié)"
+          >
+            {enriching ? <span className="tk-spin" /> : "🔍 Enrichir top 20"}
+          </button>
         </div>
 
         {/* Patterns d'affiliation */}
@@ -1715,11 +1742,60 @@ export function FsbTikTokOutreachSection() {
                         </div>
                       ) : null}
                     </td>
-                    <td>
-                      <div className="tk-cand-handle">@{c.handle}</div>
+                    <td style={{ minWidth: 200 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        {c.profile.avatarUrl ? (
+                          <img
+                            src={c.profile.avatarUrl}
+                            alt=""
+                            style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: 14,
+                              border: "1px solid var(--bd)",
+                              objectFit: "cover",
+                            }}
+                          />
+                        ) : null}
+                        <div>
+                          <div className="tk-cand-handle">
+                            @{c.handle}
+                            {c.profile.verified ? (
+                              <span style={{ color: "#22d3ee", marginLeft: 4 }}>✓</span>
+                            ) : null}
+                          </div>
+                          {c.profile.followerCount != null ? (
+                            <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                              {fmtCount(c.profile.followerCount)} followers
+                              {c.profile.videoCount != null
+                                ? ` · ${fmtCount(c.profile.videoCount)} vidéos`
+                                : ""}
+                              {c.profile.bioEmail ? " · 📧" : ""}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
                       {c.influencer ? (
-                        <span className="tk-cand-imported" style={{ marginTop: 2 }}>
+                        <span className="tk-cand-imported" style={{ marginTop: 4, display: "inline-block" }}>
                           déjà DSB · {c.influencer.status}
+                        </span>
+                      ) : null}
+                      {c.antiFanFactor < 1 ? (
+                        <span
+                          style={{
+                            marginTop: 4,
+                            display: "inline-block",
+                            fontSize: 10,
+                            padding: "2px 7px",
+                            borderRadius: 999,
+                            background: "rgba(148,163,184,.1)",
+                            color: "var(--muted)",
+                            border: "1px solid var(--bd)",
+                            fontWeight: 700,
+                          }}
+                          title="Heuristique : tous les signaux viennent d'un seul seed avec >3 occurrences. Score divisé par 2.5."
+                        >
+                          🥱 fan probable
                         </span>
                       ) : null}
                     </td>
@@ -1736,11 +1812,14 @@ export function FsbTikTokOutreachSection() {
                       <div className="tk-cand-types">
                         {c.signalTypes.map((t) => {
                           const isAffil = t.startsWith("affil_");
+                          const isFollow = t === "following";
                           const label =
                             t === "affil_comment"
                               ? "💎 affil-comm"
                               : t === "affil_mention"
                               ? "💎 affil-ment"
+                              : t === "following"
+                              ? "🔗 follow"
                               : t;
                           return (
                             <span
@@ -1753,6 +1832,12 @@ export function FsbTikTokOutreachSection() {
                                       borderColor: "rgba(251,191,36,.45)",
                                       color: "#fbbf24",
                                     }
+                                  : isFollow
+                                  ? {
+                                      background: "rgba(99,102,241,.18)",
+                                      borderColor: "rgba(99,102,241,.45)",
+                                      color: "#a5b4fc",
+                                    }
                                   : undefined
                               }
                             >
@@ -1761,8 +1846,21 @@ export function FsbTikTokOutreachSection() {
                           );
                         })}
                       </div>
-                      <div className="tk-cand-seeds" style={{ marginTop: 2 }}>
+                      <div
+                        className="tk-cand-seeds"
+                        style={{ marginTop: 2 }}
+                        title={
+                          c.sourceVideos.length > 0
+                            ? `Vidéos sources :\n${c.sourceVideos.slice(0, 5).join("\n")}`
+                            : undefined
+                        }
+                      >
                         {c.signalSum} apparition{c.signalSum > 1 ? "s" : ""}
+                        {c.sourceVideos.length > 0
+                          ? ` · ${c.sourceVideos.length} vidéo${
+                              c.sourceVideos.length > 1 ? "s" : ""
+                            } 🎬`
+                          : ""}
                       </div>
                     </td>
                     <td style={{ textAlign: "right" }}>

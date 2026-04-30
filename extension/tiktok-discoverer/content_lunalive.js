@@ -75,6 +75,7 @@
               signals: resp?.signals || [],
               videosScraped: resp?.videosScraped || 0,
               affilVideosCount: resp?.affilVideosCount || 0,
+              followingCount: resp?.followingCount || 0,
               error: resp?.error || (resp ? null : chrome.runtime.lastError?.message || "no_response"),
               diag: resp?.diag || null,
             },

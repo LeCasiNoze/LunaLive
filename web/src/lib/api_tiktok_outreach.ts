@@ -331,7 +331,21 @@ export type TikTokNetworkSignalType =
   | "mention"
   | "duet"
   | "affil_comment"
-  | "affil_mention";
+  | "affil_mention"
+  | "following";
+
+export type TikTokCandidateProfile = {
+  displayName: string | null;
+  avatarUrl: string | null;
+  followerCount: number | null;
+  videoCount: number | null;
+  heartCount: number | null;
+  verified: boolean;
+  region: string | null;
+  bio: string | null;
+  bioEmail: string | null;
+  enrichedAt: string | null;
+};
 
 export type TikTokNetworkCandidate = {
   handle: string;
@@ -339,10 +353,15 @@ export type TikTokNetworkCandidate = {
   signalSum: number;
   weightedSignal: number;
   hasAffil: boolean;
+  hasFollowing: boolean;
+  decay: number;
+  antiFanFactor: number;
   score: number;
   signalTypes: TikTokNetworkSignalType[];
   seedHandles: string[];
+  sourceVideos: string[];
   lastSeenAt: string | null;
+  profile: TikTokCandidateProfile;
   influencer: {
     id: string;
     status: TikTokInfluencerStatus;
@@ -432,6 +451,16 @@ export function importSeedNetworkSignals(
     {
       method: "POST",
       body: JSON.stringify({ signals }),
+    }
+  );
+}
+
+export function enrichTikTokTopCandidates(limit: number, force = false) {
+  return request<{ ok: true; enriched: number; failed: number; total: number }>(
+    `/api/fsb/tiktok/network/enrich`,
+    {
+      method: "POST",
+      body: JSON.stringify({ limit, force }),
     }
   );
 }

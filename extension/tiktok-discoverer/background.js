@@ -134,6 +134,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         visible = false,
         timeoutMs = 60_000,
         affilPatterns = [],
+        scrapeFollowing = true,
+        followingLimit = 200,
       } = message.payload || {};
 
       // Patterns à matcher en substring case-insensitive dans les descriptions
@@ -402,6 +404,128 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
       }
 
+      // STEP 3 — scrape /following list (logged session required)
+      async function scrapeFollowingList() {
+        const url = `https://www.tiktok.com/@${encodeURIComponent(cleaned)}`;
+        return new Promise((resolve) => {
+          chrome.tabs.create({ url, active: visible }, async (tab) => {
+            if (chrome.runtime.lastError || !tab?.id) {
+              return resolve({
+                error: chrome.runtime.lastError?.message || "tab_create_failed",
+              });
+            }
+            let done = false;
+            const finish = (result) => {
+              if (done) return;
+              done = true;
+              clearTimeout(timer);
+              chrome.tabs.remove(tab.id).catch(() => {});
+              resolve(result);
+            };
+            const timer = setTimeout(
+              () => finish({ error: "following_tab_timeout" }),
+              90_000
+            );
+
+            const onUpdated = async (tabId, info) => {
+              if (tabId !== tab.id || info.status !== "complete") return;
+              chrome.tabs.onUpdated.removeListener(onUpdated);
+              await new Promise((r) => setTimeout(r, 3500));
+
+              // Click on the "Following" / "Abonnements" stat to open the modal.
+              try {
+                await chrome.scripting.executeScript({
+                  target: { tabId: tab.id },
+                  func: () => {
+                    const btn = document.querySelector(
+                      '[data-e2e="following-count"], [data-e2e="following"]'
+                    );
+                    if (btn) {
+                      const clickable =
+                        btn.closest("button,a,[role='button']") || btn.parentElement || btn;
+                      if (clickable && typeof clickable.click === "function") {
+                        clickable.click();
+                      }
+                    }
+                  },
+                  args: [],
+                });
+              } catch {}
+
+              await new Promise((r) => setTimeout(r, 2500));
+
+              // Scroll inside the modal a bunch of times to load handles.
+              try {
+                await chrome.scripting.executeScript({
+                  target: { tabId: tab.id },
+                  func: () =>
+                    new Promise((resolve) => {
+                      let i = 0;
+                      const tick = () => {
+                        const list = document.querySelector(
+                          '[data-e2e="user-list"], [data-e2e*="following"][data-e2e*="list"], [data-e2e="user-list-container"]'
+                        );
+                        const sc = list || document.scrollingElement || document.body;
+                        if (sc && typeof sc.scrollBy === "function") sc.scrollBy(0, 1500);
+                        else if (sc) sc.scrollTop = (sc.scrollTop || 0) + 1500;
+                        i++;
+                        if (i < 14) setTimeout(tick, 700);
+                        else resolve(true);
+                      };
+                      tick();
+                    }),
+                  args: [],
+                });
+              } catch {}
+
+              try {
+                const results = await chrome.scripting.executeScript({
+                  target: { tabId: tab.id },
+                  func: (max) => {
+                    const HRE = /^[A-Za-z0-9._]{1,30}$/;
+                    const set = new Set();
+                    // Try multiple selector strategies
+                    const sel = [
+                      '[data-e2e="user-list"] a[href^="/@"]',
+                      '[data-e2e*="following"] a[href^="/@"]',
+                      '[data-e2e="user-list-container"] a[href^="/@"]',
+                      'div[role="dialog"] a[href^="/@"]',
+                      'a[href^="/@"]',
+                    ];
+                    for (const s of sel) {
+                      const links = document.querySelectorAll(s);
+                      for (const a of Array.from(links)) {
+                        const href = a.getAttribute("href") || "";
+                        const m = href.match(/^\/@([A-Za-z0-9._]{1,30})/);
+                        if (m && HRE.test(m[1])) {
+                          set.add(m[1].toLowerCase());
+                          if (set.size >= max) break;
+                        }
+                      }
+                      if (set.size >= max) break;
+                    }
+                    return {
+                      handles: Array.from(set),
+                      diag: {
+                        anchorsCount: document.querySelectorAll('a[href^="/@"]').length,
+                      },
+                    };
+                  },
+                  args: [followingLimit],
+                });
+                const out = results && results[0] && results[0].result;
+                return finish(
+                  out || { handles: [], diag: { reason: "no_result" } }
+                );
+              } catch (err) {
+                return finish({ error: String(err?.message || err) });
+              }
+            };
+            chrome.tabs.onUpdated.addListener(onUpdated);
+          });
+        });
+      }
+
       // RUN
       dispatch({ kind: "seed_start", source: `@${cleaned}` });
       const seedRes = await getSeedVideos();
@@ -447,13 +571,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         for (const h of r.commenters || []) {
           if (!HRE.test(h) || h === cleaned) continue;
-          // affil_comment > comment : on garde la version la plus forte
           const k = `${commentType}:${h}`;
           if (seenSignals.has(k)) continue;
-          // si on a déjà ajouté un 'comment' pour ce handle et qu'on trouve un 'affil_comment',
-          // on l'ajoute en plus (le score additionne par seed/type)
           seenSignals.add(k);
-          signals.push({ handle: h, type: commentType });
+          signals.push({ handle: h, type: commentType, sourceVideoUrl: videoUrl });
         }
         const re = /@([A-Za-z0-9._]{1,30})/g;
         let m;
@@ -463,7 +584,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const k = `${mentionType}:${h}`;
           if (seenSignals.has(k)) continue;
           seenSignals.add(k);
-          signals.push({ handle: h, type: mentionType });
+          signals.push({ handle: h, type: mentionType, sourceVideoUrl: videoUrl });
         }
         dispatch({
           kind: "video_done",
@@ -471,8 +592,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           found: (r.commenters || []).length,
           isAffil: isAffilVideo,
         });
-        // Light throttle
         await new Promise((r) => setTimeout(r, 600));
+      }
+
+      // Following list (logged session)
+      let followingCount = 0;
+      if (scrapeFollowing) {
+        dispatch({ kind: "following_start", source: `@${cleaned}` });
+        const f = await scrapeFollowingList();
+        if (f?.error) {
+          dispatch({
+            kind: "following_error",
+            source: `@${cleaned}`,
+            error: f.error,
+          });
+        } else if (Array.isArray(f.handles)) {
+          for (const h of f.handles) {
+            if (!HRE.test(h) || h === cleaned) continue;
+            const k = `following:${h}`;
+            if (seenSignals.has(k)) continue;
+            seenSignals.add(k);
+            signals.push({ handle: h, type: "following" });
+            followingCount++;
+          }
+          dispatch({
+            kind: "following_done",
+            source: `@${cleaned}`,
+            found: followingCount,
+          });
+        }
       }
 
       dispatch({
@@ -480,12 +628,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         source: `@${cleaned}`,
         found: signals.length,
         affilVideos: affilVideosCount,
+        following: followingCount,
       });
       sendResponse({
         ok: true,
         signals,
         videosScraped: seedRes.videos.length,
         affilVideosCount,
+        followingCount,
       });
     })();
     return true; // async response

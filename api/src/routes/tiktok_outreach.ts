@@ -1648,13 +1648,21 @@ tiktokOutreachRouter.post(
 
 // CANDIDATES — agrégation, score, trié
 //
-// Score :
-//   seedCount   = nb de seeds distincts qui ont signalé ce candidat
-//   signalSum   = somme des "count" sur tous les signaux
-//   weights     = affil_mention=20, affil_comment=10, mention=3, duet=2, comment=1
-//   score       = seedCount * 10 + min(signalSum, 50) + weighted_signal
-//                 + (50 si au moins un signal vient d'une vidéo avec lien d'affil)
-// Les candidats déjà dans tiktok_influencers (déjà importés) sont marqués "imported".
+// Score (calculé côté Postgres pour pouvoir trier) :
+//   seedTier      = 1 seed=10, 2=25, 3=50, 4+=100  (cross-seed exponentiel)
+//   weights       = following=15, affil_mention=20, affil_comment=10,
+//                   mention=3, duet=2, comment=1
+//   weighted      = SUM(count * weight)
+//   decay         = GREATEST(0.3, 1 - daysSinceLastSeen / 60)   (linéaire 60j)
+//   antiFanFactor = si seed_count==1 ET signal_sum>3 ET pas d'affil/following → 0.4
+//   bonusAffil    = +50 si has_affil
+//   bonusFollowing= +30 si has_following
+//   score         = round((seedTier + min(signal_sum,50) + weighted + bonusAffil + bonusFollowing) * decay * antiFanFactor)
+//
+// Exclusions automatiques :
+//   - candidats déjà déclinés / blacklistés en DSB sont retirés systématiquement
+//   - excludeImported (option) retire tous ceux déjà importés
+//   - affilOnly (option) ne garde que ceux avec au moins 1 signal affil_*
 tiktokOutreachRouter.get(
   "/fsb/tiktok/network/candidates",
   a(async (req, res) => {
@@ -1670,6 +1678,7 @@ tiktokOutreachRouter.get(
           COUNT(DISTINCT l.seed_id)::int AS seed_count,
           SUM(l.count)::int              AS signal_sum,
           SUM(CASE l.signal_type
+                WHEN 'following'     THEN l.count * 15
                 WHEN 'affil_mention' THEN l.count * 20
                 WHEN 'affil_comment' THEN l.count * 10
                 WHEN 'mention'       THEN l.count * 3
@@ -1677,33 +1686,71 @@ tiktokOutreachRouter.get(
                 ELSE l.count
               END)::int                  AS weighted_signal,
           BOOL_OR(l.signal_type IN ('affil_comment','affil_mention')) AS has_affil,
+          BOOL_OR(l.signal_type = 'following')                         AS has_following,
           ARRAY_AGG(DISTINCT l.signal_type) AS types,
           ARRAY_AGG(DISTINCT s.handle)      AS seed_handles,
-          MAX(l.last_seen_at)             AS last_seen_at
+          MAX(l.last_seen_at)             AS last_seen_at,
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT l.source_video_url), NULL) AS source_videos
         FROM tiktok_network_links l
         JOIN tiktok_seed_accounts s ON s.id = l.seed_id
         GROUP BY l.candidate_handle
+      ),
+      scored AS (
+        SELECT
+          agg.*,
+          CASE
+            WHEN agg.seed_count >= 4 THEN 100
+            WHEN agg.seed_count = 3  THEN 50
+            WHEN agg.seed_count = 2  THEN 25
+            ELSE 10
+          END AS seed_tier,
+          GREATEST(
+            0.3,
+            1 - EXTRACT(EPOCH FROM (NOW() - agg.last_seen_at)) / (60 * 86400.0)
+          )::numeric(6,3) AS decay,
+          CASE
+            WHEN agg.seed_count = 1
+                 AND agg.signal_sum > 3
+                 AND NOT agg.has_affil
+                 AND NOT agg.has_following
+              THEN 0.4
+            ELSE 1.0
+          END::numeric(4,2) AS anti_fan_factor
+        FROM agg
       )
       SELECT
-        agg.*,
-        i.id           AS influencer_id,
-        i.status       AS influencer_status,
-        i.email        AS influencer_email,
-        i.follower_count,
-        i.display_name,
-        i.avatar_url
-      FROM agg
-      LEFT JOIN tiktok_influencers i ON LOWER(i.handle) = agg.candidate_handle
-      WHERE 1=1
+        s2.*,
+        ROUND(
+          (s2.seed_tier
+            + LEAST(s2.signal_sum, 50)
+            + s2.weighted_signal
+            + CASE WHEN s2.has_affil THEN 50 ELSE 0 END
+            + CASE WHEN s2.has_following THEN 30 ELSE 0 END
+          ) * s2.decay * s2.anti_fan_factor
+        )::int AS score,
+        i.id            AS influencer_id,
+        i.status        AS influencer_status,
+        i.email         AS influencer_email,
+        i.follower_count AS influencer_follower_count,
+        i.display_name  AS influencer_display_name,
+        i.avatar_url    AS influencer_avatar_url,
+        cp.follower_count AS cand_follower_count,
+        cp.video_count    AS cand_video_count,
+        cp.heart_count    AS cand_heart_count,
+        cp.bio            AS cand_bio,
+        cp.bio_email      AS cand_bio_email,
+        cp.verified       AS cand_verified,
+        cp.region         AS cand_region,
+        cp.avatar_url     AS cand_avatar_url,
+        cp.display_name   AS cand_display_name,
+        cp.last_enriched_at AS cand_enriched_at
+      FROM scored s2
+      LEFT JOIN tiktok_influencers i ON LOWER(i.handle) = s2.candidate_handle
+      LEFT JOIN tiktok_candidate_profiles cp ON cp.handle = s2.candidate_handle
+      WHERE COALESCE(i.status, '') NOT IN ('declined','blacklisted')
         ${excludeImported ? "AND i.id IS NULL" : ""}
-        ${affilOnly ? "AND agg.has_affil = TRUE" : ""}
-      ORDER BY (
-                agg.seed_count * 10
-                + LEAST(agg.signal_sum, 50)
-                + agg.weighted_signal
-                + CASE WHEN agg.has_affil THEN 50 ELSE 0 END
-              ) DESC,
-               agg.last_seen_at DESC
+        ${affilOnly ? "AND s2.has_affil = TRUE" : ""}
+      ORDER BY score DESC, s2.last_seen_at DESC
       LIMIT $1
       `,
       [limit]
@@ -1714,26 +1761,57 @@ tiktokOutreachRouter.get(
       const signalSum = Number(r.signal_sum || 0);
       const weighted = Number(r.weighted_signal || 0);
       const hasAffil = Boolean(r.has_affil);
-      const score =
-        seedCount * 10 + Math.min(signalSum, 50) + weighted + (hasAffil ? 50 : 0);
+      const hasFollowing = Boolean(r.has_following);
+      const score = Number(r.score || 0);
+      const decay = r.decay != null ? Number(r.decay) : 1;
+      const antiFanFactor = r.anti_fan_factor != null ? Number(r.anti_fan_factor) : 1;
+
+      // Profile (cache enrichi en priorité, sinon données du DSB si déjà importé)
+      const enrichedAvatar = r.cand_avatar_url || r.influencer_avatar_url || null;
+      const enrichedFollowers =
+        r.cand_follower_count != null
+          ? Number(r.cand_follower_count)
+          : r.influencer_follower_count != null
+          ? Number(r.influencer_follower_count)
+          : null;
+
       return {
         handle: r.candidate_handle,
         seedCount,
         signalSum,
         weightedSignal: weighted,
         hasAffil,
+        hasFollowing,
+        decay,
+        antiFanFactor,
         score,
         signalTypes: Array.isArray(r.types) ? r.types : [],
         seedHandles: Array.isArray(r.seed_handles) ? r.seed_handles : [],
+        sourceVideos: Array.isArray(r.source_videos) ? r.source_videos : [],
         lastSeenAt: r.last_seen_at ? new Date(r.last_seen_at).toISOString() : null,
+        profile: {
+          displayName: r.cand_display_name || r.influencer_display_name || null,
+          avatarUrl: enrichedAvatar,
+          followerCount: enrichedFollowers,
+          videoCount: r.cand_video_count != null ? Number(r.cand_video_count) : null,
+          heartCount: r.cand_heart_count != null ? Number(r.cand_heart_count) : null,
+          verified: Boolean(r.cand_verified),
+          region: r.cand_region || null,
+          bio: r.cand_bio || null,
+          bioEmail: r.cand_bio_email || null,
+          enrichedAt: r.cand_enriched_at ? new Date(r.cand_enriched_at).toISOString() : null,
+        },
         influencer: r.influencer_id
           ? {
               id: String(r.influencer_id),
               status: r.influencer_status,
               email: r.influencer_email || null,
-              followerCount: r.follower_count != null ? Number(r.follower_count) : null,
-              displayName: r.display_name || null,
-              avatarUrl: r.avatar_url || null,
+              followerCount:
+                r.influencer_follower_count != null
+                  ? Number(r.influencer_follower_count)
+                  : null,
+              displayName: r.influencer_display_name || null,
+              avatarUrl: r.influencer_avatar_url || null,
             }
           : null,
       };
@@ -1818,6 +1896,7 @@ const SIGNAL_TYPES = [
   "duet",
   "affil_comment",
   "affil_mention",
+  "following",
 ] as const;
 
 const importSignalsSchema = z.object({
@@ -1825,6 +1904,7 @@ const importSignalsSchema = z.object({
     z.object({
       handle: z.string().min(1),
       type: z.enum(SIGNAL_TYPES),
+      sourceVideoUrl: z.string().url().optional().nullable(),
     })
   ),
 });
@@ -1858,13 +1938,19 @@ tiktokOutreachRouter.post(
       const k = `${sig.type}:${h}`;
       if (seen.has(k)) continue;
       seen.add(k);
+      const srcUrl =
+        typeof sig.sourceVideoUrl === "string" && sig.sourceVideoUrl.length > 0
+          ? sig.sourceVideoUrl
+          : null;
       await pool.query(
-        `INSERT INTO tiktok_network_links (seed_id, candidate_handle, signal_type, count, first_seen_at, last_seen_at)
-         VALUES ($1, $2, $3, 1, NOW(), NOW())
+        `INSERT INTO tiktok_network_links
+           (seed_id, candidate_handle, signal_type, count, first_seen_at, last_seen_at, source_video_url)
+         VALUES ($1, $2, $3, 1, NOW(), NOW(), $4)
          ON CONFLICT (seed_id, candidate_handle, signal_type) DO UPDATE SET
            count = tiktok_network_links.count + 1,
-           last_seen_at = NOW()`,
-        [id, h, sig.type]
+           last_seen_at = NOW(),
+           source_video_url = COALESCE(EXCLUDED.source_video_url, tiktok_network_links.source_video_url)`,
+        [id, h, sig.type, srcUrl]
       );
       upserts++;
     }
@@ -1880,6 +1966,109 @@ tiktokOutreachRouter.post(
     );
 
     return res.json({ ok: true, added: upserts, received: parsed.data.signals.length });
+  })
+);
+
+// ENRICH — scrape les profils des top N candidats non encore enrichis et stocke
+// dans tiktok_candidate_profiles (cache, n'ajoute PAS au DSB).
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/network/enrich",
+  a(async (req, res) => {
+    const limit = Math.max(1, Math.min(50, Number(req.body?.limit) || 10));
+    const force = String(req.body?.force ?? "0") === "1" || req.body?.force === true;
+
+    // Récupère le top N par score sur la même formule que l'endpoint candidates.
+    const topRes = await pool.query(
+      `
+      WITH agg AS (
+        SELECT
+          l.candidate_handle,
+          COUNT(DISTINCT l.seed_id)::int AS seed_count,
+          SUM(l.count)::int AS signal_sum,
+          SUM(CASE l.signal_type
+                WHEN 'following'     THEN l.count * 15
+                WHEN 'affil_mention' THEN l.count * 20
+                WHEN 'affil_comment' THEN l.count * 10
+                WHEN 'mention'       THEN l.count * 3
+                WHEN 'duet'          THEN l.count * 2
+                ELSE l.count
+              END)::int AS weighted_signal,
+          BOOL_OR(l.signal_type IN ('affil_comment','affil_mention')) AS has_affil,
+          BOOL_OR(l.signal_type = 'following')                         AS has_following,
+          MAX(l.last_seen_at) AS last_seen_at
+        FROM tiktok_network_links l
+        GROUP BY l.candidate_handle
+      )
+      SELECT a.candidate_handle
+      FROM agg a
+      LEFT JOIN tiktok_candidate_profiles cp ON cp.handle = a.candidate_handle
+      LEFT JOIN tiktok_influencers i ON LOWER(i.handle) = a.candidate_handle
+      WHERE COALESCE(i.status, '') NOT IN ('declined','blacklisted')
+        ${force ? "" : "AND cp.handle IS NULL"}
+      ORDER BY (
+        CASE
+          WHEN a.seed_count >= 4 THEN 100
+          WHEN a.seed_count = 3  THEN 50
+          WHEN a.seed_count = 2  THEN 25
+          ELSE 10
+        END
+        + LEAST(a.signal_sum, 50)
+        + a.weighted_signal
+        + CASE WHEN a.has_affil THEN 50 ELSE 0 END
+        + CASE WHEN a.has_following THEN 30 ELSE 0 END
+      ) DESC
+      LIMIT $1
+      `,
+      [limit]
+    );
+
+    const handles = topRes.rows.map((r) => String(r.candidate_handle));
+    let enriched = 0;
+    let failed = 0;
+    for (const h of handles) {
+      const profile =
+        (await scrapeProfileViaWorker(h).catch(() => null)) ||
+        (await scrapeTikTokProfile(h).catch(() => null));
+      if (!profile) {
+        failed++;
+        continue;
+      }
+      await pool.query(
+        `INSERT INTO tiktok_candidate_profiles
+           (handle, display_name, bio, bio_email, avatar_url, follower_count, following_count,
+            heart_count, video_count, verified, region, raw, last_enriched_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, NOW())
+         ON CONFLICT (handle) DO UPDATE SET
+           display_name = EXCLUDED.display_name,
+           bio = EXCLUDED.bio,
+           bio_email = EXCLUDED.bio_email,
+           avatar_url = EXCLUDED.avatar_url,
+           follower_count = EXCLUDED.follower_count,
+           following_count = EXCLUDED.following_count,
+           heart_count = EXCLUDED.heart_count,
+           video_count = EXCLUDED.video_count,
+           verified = EXCLUDED.verified,
+           region = EXCLUDED.region,
+           raw = EXCLUDED.raw,
+           last_enriched_at = NOW()`,
+        [
+          profile.handle,
+          profile.displayName,
+          profile.bio,
+          profile.email,
+          profile.avatarUrl,
+          profile.followerCount,
+          profile.followingCount,
+          profile.heartCount,
+          profile.videoCount,
+          profile.verified,
+          profile.country,
+          profile.raw,
+        ]
+      );
+      enriched++;
+    }
+    return res.json({ ok: true, enriched, failed, total: handles.length });
   })
 );
 
