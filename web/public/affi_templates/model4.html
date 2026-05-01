@@ -91,7 +91,7 @@
 
         /* HERO */
         .hero-section {
-            padding: 70px 0 50px;
+            padding: 32px 0 20px;
             text-align: center;
             position: relative;
         }
@@ -103,23 +103,23 @@
             background: rgba(255, 214, 0, 0.05);
             border: 1px solid rgba(255, 214, 0, 0.3);
             color: var(--brand-gold);
-            padding: 8px 20px;
+            padding: 6px 16px;
             border-radius: 50px;
             font-weight: 600;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             letter-spacing: 1px;
             text-transform: uppercase;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             animation: neonFlicker 4s linear infinite;
         }
 
         .hero-title {
-            font-size: clamp(2.2rem, 4.5vw, 3.8rem);
+            font-size: clamp(1.8rem, 4vw, 3.2rem);
             font-weight: 900;
             line-height: 1.1;
             letter-spacing: -1px;
             color: #fff;
-            margin-bottom: 16px;
+            margin-bottom: 10px;
         }
 
         .hero-title span {
@@ -128,32 +128,10 @@
         }
 
         .hero-subtitle {
-            font-size: 1.1rem;
+            font-size: 1rem;
             color: var(--text-muted);
             max-width: 600px;
-            margin: 0 auto 40px;
-        }
-
-        .trust-badges {
-            display: flex;
-            justify-content: center;
-            gap: 30px;
-            margin-bottom: 50px;
-        }
-        
-        .trust-badge {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.9rem;
-            color: #fff;
-            font-weight: 500;
-        }
-        .trust-badge svg { 
-            color: var(--brand-gold); 
-            width: 18px;
-            height: 18px;
-            flex-shrink: 0;
+            margin: 0 auto 18px;
         }
 
         /* CARDS GRID */
@@ -570,14 +548,21 @@
             }
 
             .hero-section {
-                padding: 50px 0 30px;
+                padding: 18px 0 14px;
             }
 
-            .trust-badges {
-                flex-direction: column;
-                align-items: center;
-                gap: 12px;
-            }
+            /* Sur mobile : compacte le 1er cadran pour que le bouton "Jouer"
+               soit visible above-the-fold dès l'arrivée sur la page. */
+            .hero-subtitle { margin-bottom: 12px; font-size: .92rem; }
+            .promo-body { padding: 14px; }
+            .offer-header { margin-bottom: 6px; gap: 10px; }
+            .offer-subtitle { margin-bottom: 12px; font-size: .85rem; }
+            .info-box { padding: 12px; margin-bottom: 12px; }
+            .info-title { margin-bottom: 6px; font-size: .72rem; }
+            .info-steps { font-size: .92rem; }
+            .btn-jouer { padding: 13px 0; font-size: 1rem; }
+            .promo-image-container { aspect-ratio: 21 / 9; }
+            .games-grid { gap: 16px; }
 
             .section-header h2 {
                 font-size: 2rem;
@@ -601,16 +586,6 @@
                 <h1 class="hero-title">Accès VIP : Doublez votre capital <span>immédiatement.</span></h1>
                 <p class="hero-subtitle">Rejoignez un cercle de jeu exclusif et régulé. Votre premier dépôt est doublé automatiquement sur votre solde en toute discrétion et sécurité.</p>
                 
-                <div class="trust-badges">
-                    <div class="trust-badge">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                        Fonds Sécurisés
-                    </div>
-                    <div class="trust-badge">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 2 13 9 20 9"></polyline><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path></svg>
-                        Encaissement Garanti
-                    </div>
-                </div>
             </div>
 
             <!-- TWO GAME CARDS SIDE BY SIDE -->
