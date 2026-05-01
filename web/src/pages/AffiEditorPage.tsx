@@ -41,6 +41,9 @@ interface Config {
   receiveText2: string;
   // Texts
   badgeText: string;
+  // M4 : décalage du H1 (et subtitle) — accepte px / em / % (ex: "10px", "-2em")
+  m4HeroOffsetX?: string;
+  m4HeroOffsetY?: string;
   heroTitleBefore: string;
   heroTitleSpan: string;
   heroSubtitle: string;
@@ -423,6 +426,8 @@ const DEFAULT_CONFIG: Config = {
   depositText2: "Déposez 20€",
   receiveText2: "Recevez 40€",
   badgeText: "Club VIP Certifié",
+  m4HeroOffsetX: "",
+  m4HeroOffsetY: "",
   heroTitleBefore: "Accès VIP : Doublez votre capital",
   heroTitleSpan: "immédiatement.",
   heroSubtitle:
@@ -1279,7 +1284,12 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
       );
   }
 
-  if (cfg.badgeText) {
+  // Badge VIP : si l'user a EXPLICITEMENT vidé le champ → cache le badge.
+  // Sinon (texte custom OU défaut) → remplace le texte.
+  if (typeof cfg.badgeText === "string" && cfg.badgeText.trim() === "") {
+    const css = `<style data-affi-no-badge>.badge-premium{display:none !important;}</style>`;
+    html = html.replace(/<\/head>/, `${css}\n</head>`);
+  } else if (cfg.badgeText) {
     html = html.replace(
       /(class="badge-premium">[^<]*<\/svg>\s*)([^<]*?)(\s*<\/div>)/,
       (_, before, _old, after) => `${before}${esc(cfg.badgeText)}${after}`
@@ -1291,6 +1301,15 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
       /<h1 class="hero-title">[\s\S]*?<\/h1>/,
       `<h1 class="hero-title">${esc(cfg.heroTitleBefore)} <span>${esc(cfg.heroTitleSpan)}</span></h1>`
     );
+  }
+
+  // M4 : décalage du H1 (translate sur .hero-title) — permet de bouger le
+  // titre+sous-titre sans toucher au reste du hero. Valeurs en px/em/% acceptées.
+  if (model === 4 && (cfg.m4HeroOffsetX || cfg.m4HeroOffsetY)) {
+    const tx = cfg.m4HeroOffsetX || "0px";
+    const ty = cfg.m4HeroOffsetY || "0px";
+    const css = `<style data-affi-m4-hero-offset>.hero-title{transform:translate(${tx}, ${ty}) !important;}.hero-subtitle{transform:translate(${tx}, ${ty}) !important;}</style>`;
+    html = html.replace(/<\/head>/, `${css}\n</head>`);
   }
 
   if (cfg.heroSubtitle) {
@@ -4466,8 +4485,29 @@ export default function AffiEditorPage() {
 
                   <Section title="Textes" defaultOpen={false}>
                     <TextField label="Badge VIP" value={cfg.badgeText} onChange={set("badgeText")} />
+                    <div style={{ fontSize: 10.5, color: T.txtMute, marginTop: -4, marginBottom: 10 }}>
+                      💡 Vide ce champ → le badge disparaît complètement.
+                    </div>
                     <TextField label="H1 — texte principal" value={cfg.heroTitleBefore} onChange={set("heroTitleBefore")} />
                     <TextField label="H1 — texte en or" value={cfg.heroTitleSpan} onChange={set("heroTitleSpan")} />
+                    {currentModel === 4 && (
+                      <div style={{
+                        marginTop: 8, padding: "10px 12px", borderRadius: 8,
+                        border: "1px solid rgba(255,215,0,.18)",
+                        background: "rgba(255,215,0,.03)",
+                      }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "#FFD700", marginBottom: 8, letterSpacing: ".06em", textTransform: "uppercase" }}>
+                          ✨ Position du H1 (titre + sous-titre)
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                          <OffsetControl label="Décalage X" value={cfg.m4HeroOffsetX || ""} onChange={set("m4HeroOffsetX")} />
+                          <OffsetControl label="Décalage Y" value={cfg.m4HeroOffsetY || ""} onChange={set("m4HeroOffsetY")} />
+                        </div>
+                        <div style={{ fontSize: 10, color: T.txtMute, marginTop: 6, lineHeight: 1.4 }}>
+                          Accepte px / em / %. Ex: <code style={{ color: "#FFD700" }}>10px</code>, <code style={{ color: "#FFD700" }}>-2em</code>.
+                        </div>
+                      </div>
+                    )}
                     <TextField label="Sous-titre" value={cfg.heroSubtitle} onChange={set("heroSubtitle")} multiline />
                     <TextField label="Texte bouton" value={cfg.btnText} onChange={set("btnText")} />
                     <TextField label="Sticky CTA" value={cfg.stickyText} onChange={set("stickyText")} />

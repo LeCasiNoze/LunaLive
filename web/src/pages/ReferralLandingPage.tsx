@@ -25,6 +25,8 @@ type Config = {
   depositText2: string;
   receiveText2: string;
   badgeText: string;
+  m4HeroOffsetX?: string;
+  m4HeroOffsetY?: string;
   heroTitleBefore: string;
   heroTitleSpan: string;
   heroSubtitle: string;
@@ -105,6 +107,8 @@ const DEFAULT_CONFIG: Config = {
   depositText2: "Deposez 20EUR",
   receiveText2: "Recevez 40EUR",
   badgeText: "Club VIP Certifie",
+  m4HeroOffsetX: "",
+  m4HeroOffsetY: "",
   heroTitleBefore: "Acces VIP : Doublez votre capital",
   heroTitleSpan: "immediatement.",
   heroSubtitle:
@@ -676,10 +680,25 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     html = html.replace(/<span class="step-receive">[^<]*<\/span>/, `<span class="step-receive">${esc(cfg.receiveText)}</span>`);
   }
 
-  html = html.replace(
-    /(class="badge-premium">[^<]*<\/svg>\s*)([^<]*?)(\s*<\/div>)/,
-    (_, before, _old, after) => `${before}${esc(cfg.badgeText)}${after}`
-  );
+  // Badge VIP : champ vide → cache, sinon → remplace texte
+  if (typeof cfg.badgeText === "string" && cfg.badgeText.trim() === "") {
+    const css = `<style data-affi-no-badge>.badge-premium{display:none !important;}</style>`;
+    html = html.replace(/<\/head>/, `${css}\n</head>`);
+  } else {
+    html = html.replace(
+      /(class="badge-premium">[^<]*<\/svg>\s*)([^<]*?)(\s*<\/div>)/,
+      (_, before, _old, after) => `${before}${esc(cfg.badgeText)}${after}`
+    );
+  }
+
+  // M4 : décalage du H1 (titre + sous-titre) via translate
+  if (model === 4 && (cfg.m4HeroOffsetX || cfg.m4HeroOffsetY)) {
+    const tx = cfg.m4HeroOffsetX || "0px";
+    const ty = cfg.m4HeroOffsetY || "0px";
+    const css = `<style data-affi-m4-hero-offset>.hero-title{transform:translate(${tx}, ${ty}) !important;}.hero-subtitle{transform:translate(${tx}, ${ty}) !important;}</style>`;
+    html = html.replace(/<\/head>/, `${css}\n</head>`);
+  }
+
   html = html.replace(
     /<h1 class="hero-title">[\s\S]*?<\/h1>/,
     `<h1 class="hero-title">${esc(cfg.heroTitleBefore)} <span>${esc(cfg.heroTitleSpan)}</span></h1>`
