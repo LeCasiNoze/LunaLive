@@ -46,6 +46,15 @@ interface Config {
   m4TitleSpanGold?: string;  // texte en or (heroTitleSpan / span) — défaut "1"
   // M4 : "1" = span sur une nouvelle ligne (empilé), "" = inline (défaut)
   m4TitleStacked?: string;
+  // Couleurs individuelles par texte (M4) — vide = défaut du template
+  colorBadge?: string;
+  colorTitleMain?: string;
+  colorTitleSpan?: string;
+  colorSubtitle?: string;
+  colorBtn?: string;
+  colorSticky?: string;
+  // Couleur globale du texte des avis (section reviews-section)
+  colorReviewText?: string;
   heroTitleBefore: string;
   heroTitleSpan: string;
   heroSubtitle: string;
@@ -431,6 +440,13 @@ const DEFAULT_CONFIG: Config = {
   m4TitleMainGold: "",  // par défaut : titre principal blanc
   m4TitleSpanGold: "1", // par défaut : span en or (comportement existant)
   m4TitleStacked: "",   // par défaut : inline (côte-à-côte si la place)
+  colorBadge: "",
+  colorTitleMain: "",
+  colorTitleSpan: "",
+  colorSubtitle: "",
+  colorBtn: "",
+  colorSticky: "",
+  colorReviewText: "",
   heroTitleBefore: "Accès VIP : Doublez votre capital",
   heroTitleSpan: "immédiatement.",
   heroSubtitle:
@@ -1326,6 +1342,19 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     if (cfg.m4TitleStacked === "1") {
       rules.push(".hero-title span{display:block !important;margin-top:.18em !important;}");
     }
+
+    // Couleurs custom individuelles — écrasent les toggles m4TitleMainGold/Span
+    // car appliquées APRÈS dans le bloc CSS (poids "spécifique" identique →
+    // dernière règle gagne en cas d'égalité). Reset text-shadow aussi sinon
+    // le glow doré du toggle reste visible sur une couleur custom.
+    if (cfg.colorBadge)      rules.push(`.badge-premium{color:${cfg.colorBadge} !important;}`);
+    if (cfg.colorTitleMain)  rules.push(`.hero-title{color:${cfg.colorTitleMain} !important;text-shadow:none !important;}`);
+    if (cfg.colorTitleSpan)  rules.push(`.hero-title span{color:${cfg.colorTitleSpan} !important;text-shadow:none !important;}`);
+    if (cfg.colorSubtitle)   rules.push(`.hero-subtitle{color:${cfg.colorSubtitle} !important;}`);
+    if (cfg.colorBtn)        rules.push(`.btn-jouer{color:${cfg.colorBtn} !important;}`);
+    if (cfg.colorSticky)     rules.push(`.sticky-cta{color:${cfg.colorSticky} !important;}`);
+    if (cfg.colorReviewText) rules.push(`.review-text{color:${cfg.colorReviewText} !important;}`);
+
     if (rules.length) {
       const css = `<style data-affi-m4-h1-color>${rules.join("")}</style>`;
       html = html.replace(/<\/head>/, `${css}\n</head>`);
@@ -1909,6 +1938,61 @@ function ModelThumb({ n }: { n: number }) {
     ),
   };
   return <>{thumbs[n]}</>;
+}
+
+/** Pastille couleur compacte 26×26 pour s'aligner à côté d'un TextField.
+ *  Si value est vide, affiche un placeholder (case avec ✕). Au clic, ouvre
+ *  le color picker natif. Petit ✕ apparaît en hover quand une couleur est
+ *  définie pour la reset à vide ("hérite la couleur par défaut du template"). */
+function InlineColorChip({ value, onChange, title }: { value: string; onChange: (v: string) => void; title?: string }) {
+  const has = !!value && /^#[0-9a-fA-F]{6}$/.test(value);
+  return (
+    <div style={{ position: "relative", display: "inline-flex" }} title={title || (has ? `Couleur: ${value}` : "Cliquer pour ajouter une couleur")}>
+      <input
+        type="color"
+        value={has ? value : "#ffffff"}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          width: 26, height: 26, padding: 0, border: "1px solid #2a2a4a",
+          borderRadius: 5, background: has ? value : "transparent", cursor: "pointer",
+          opacity: has ? 1 : 0.55,
+        }}
+      />
+      {has ? (
+        <button
+          type="button"
+          onClick={(e) => { e.preventDefault(); onChange(""); }}
+          title="Retirer (revenir au défaut)"
+          style={{
+            position: "absolute", top: -6, right: -6, width: 14, height: 14,
+            borderRadius: "50%", background: "#1a1a30", border: "1px solid #f87171",
+            color: "#f87171", fontSize: 9, lineHeight: "12px", cursor: "pointer", padding: 0,
+          }}
+        >✕</button>
+      ) : null}
+    </div>
+  );
+}
+
+/** TextField + InlineColorChip alignés sur la même ligne. La couleur est
+ *  optionnelle ; si vide, le rendu utilise la couleur par défaut du template. */
+function TextFieldWithColor({
+  label, value, onChange, color, onColorChange, placeholder, multiline,
+}: {
+  label: string; value: string; onChange: (v: string) => void;
+  color: string; onColorChange: (v: string) => void;
+  placeholder?: string; multiline?: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <TextField label={label} value={value} onChange={onChange} placeholder={placeholder} multiline={multiline} />
+      </div>
+      <div style={{ paddingBottom: 6 }}>
+        <InlineColorChip value={color} onChange={onColorChange} title={`Couleur "${label}"`} />
+      </div>
+    </div>
+  );
 }
 
 interface ColorFieldProps {
@@ -4434,6 +4518,13 @@ export default function AffiEditorPage() {
                     <ColorField label="Ruby" value={cfg.brandRuby} onChange={set("brandRuby")} />
                     <ColorField label="Vert" value={cfg.casinoGreen} onChange={set("casinoGreen")} />
                     <ColorField label="Bordure" value={cfg.borderColor} onChange={set("borderColor")} />
+                    {currentModel === 4 && (
+                      <ColorField
+                        label="Texte avis (section reviews)"
+                        value={cfg.colorReviewText || "#9aa1b1"}
+                        onChange={set("colorReviewText")}
+                      />
+                    )}
                   </Section>
 
                   <Section title="Image & Lien">
@@ -4504,12 +4595,30 @@ export default function AffiEditorPage() {
                   </Section>
 
                   <Section title="Textes" defaultOpen={false}>
-                    <TextField label="Badge VIP" value={cfg.badgeText} onChange={set("badgeText")} />
+                    <TextFieldWithColor
+                      label="Badge VIP"
+                      value={cfg.badgeText}
+                      onChange={set("badgeText")}
+                      color={cfg.colorBadge || ""}
+                      onColorChange={set("colorBadge")}
+                    />
                     <div style={{ fontSize: 10.5, color: T.txtMute, marginTop: -4, marginBottom: 10 }}>
                       💡 Vide ce champ → le badge disparaît complètement.
                     </div>
-                    <TextField label="H1 — texte principal" value={cfg.heroTitleBefore} onChange={set("heroTitleBefore")} />
-                    <TextField label="H1 — texte en or" value={cfg.heroTitleSpan} onChange={set("heroTitleSpan")} />
+                    <TextFieldWithColor
+                      label="H1 — texte principal"
+                      value={cfg.heroTitleBefore}
+                      onChange={set("heroTitleBefore")}
+                      color={cfg.colorTitleMain || ""}
+                      onColorChange={set("colorTitleMain")}
+                    />
+                    <TextFieldWithColor
+                      label="H1 — texte en or"
+                      value={cfg.heroTitleSpan}
+                      onChange={set("heroTitleSpan")}
+                      color={cfg.colorTitleSpan || ""}
+                      onColorChange={set("colorTitleSpan")}
+                    />
                     {currentModel === 4 && (
                       <div style={{
                         marginTop: 8, padding: "10px 12px", borderRadius: 8,
@@ -4549,9 +4658,28 @@ export default function AffiEditorPage() {
                         </div>
                       </div>
                     )}
-                    <TextField label="Sous-titre" value={cfg.heroSubtitle} onChange={set("heroSubtitle")} multiline />
-                    <TextField label="Texte bouton" value={cfg.btnText} onChange={set("btnText")} />
-                    <TextField label="Sticky CTA" value={cfg.stickyText} onChange={set("stickyText")} />
+                    <TextFieldWithColor
+                      label="Sous-titre"
+                      value={cfg.heroSubtitle}
+                      onChange={set("heroSubtitle")}
+                      color={cfg.colorSubtitle || ""}
+                      onColorChange={set("colorSubtitle")}
+                      multiline
+                    />
+                    <TextFieldWithColor
+                      label="Texte bouton"
+                      value={cfg.btnText}
+                      onChange={set("btnText")}
+                      color={cfg.colorBtn || ""}
+                      onColorChange={set("colorBtn")}
+                    />
+                    <TextFieldWithColor
+                      label="Sticky CTA"
+                      value={cfg.stickyText}
+                      onChange={set("stickyText")}
+                      color={cfg.colorSticky || ""}
+                      onColorChange={set("colorSticky")}
+                    />
                     <TextField label="Nom du casino" value={cfg.casinoName} onChange={set("casinoName")} />
                     <ImagePicker label="Logo du casino (optionnel)" value={cfg.casinoLogoUrl} onChange={set("casinoLogoUrl")} />
                     <TextField label="Balise title" value={cfg.pageTitle} onChange={set("pageTitle")} />

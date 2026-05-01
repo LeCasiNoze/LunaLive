@@ -28,6 +28,13 @@ type Config = {
   m4TitleMainGold?: string;
   m4TitleSpanGold?: string;
   m4TitleStacked?: string;
+  colorBadge?: string;
+  colorTitleMain?: string;
+  colorTitleSpan?: string;
+  colorSubtitle?: string;
+  colorBtn?: string;
+  colorSticky?: string;
+  colorReviewText?: string;
   heroTitleBefore: string;
   heroTitleSpan: string;
   heroSubtitle: string;
@@ -111,6 +118,13 @@ const DEFAULT_CONFIG: Config = {
   m4TitleMainGold: "",
   m4TitleSpanGold: "1",
   m4TitleStacked: "",
+  colorBadge: "",
+  colorTitleMain: "",
+  colorTitleSpan: "",
+  colorSubtitle: "",
+  colorBtn: "",
+  colorSticky: "",
+  colorReviewText: "",
   heroTitleBefore: "Acces VIP : Doublez votre capital",
   heroTitleSpan: "immediatement.",
   heroSubtitle:
@@ -706,6 +720,14 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     if (cfg.m4TitleStacked === "1") {
       rules.push(".hero-title span{display:block !important;margin-top:.18em !important;}");
     }
+    // Couleurs custom individuelles (synchro avec AffiEditorPage)
+    if (cfg.colorBadge)      rules.push(`.badge-premium{color:${cfg.colorBadge} !important;}`);
+    if (cfg.colorTitleMain)  rules.push(`.hero-title{color:${cfg.colorTitleMain} !important;text-shadow:none !important;}`);
+    if (cfg.colorTitleSpan)  rules.push(`.hero-title span{color:${cfg.colorTitleSpan} !important;text-shadow:none !important;}`);
+    if (cfg.colorSubtitle)   rules.push(`.hero-subtitle{color:${cfg.colorSubtitle} !important;}`);
+    if (cfg.colorBtn)        rules.push(`.btn-jouer{color:${cfg.colorBtn} !important;}`);
+    if (cfg.colorSticky)     rules.push(`.sticky-cta{color:${cfg.colorSticky} !important;}`);
+    if (cfg.colorReviewText) rules.push(`.review-text{color:${cfg.colorReviewText} !important;}`);
     if (rules.length) {
       const css = `<style data-affi-m4-h1-color>${rules.join("")}</style>`;
       html = html.replace(/<\/head>/, `${css}\n</head>`);
