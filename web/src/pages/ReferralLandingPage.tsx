@@ -27,6 +27,7 @@ type Config = {
   badgeText: string;
   m4TitleMainGold?: string;
   m4TitleSpanGold?: string;
+  m4TitleStacked?: string;
   heroTitleBefore: string;
   heroTitleSpan: string;
   heroSubtitle: string;
@@ -109,6 +110,7 @@ const DEFAULT_CONFIG: Config = {
   badgeText: "Club VIP Certifie",
   m4TitleMainGold: "",
   m4TitleSpanGold: "1",
+  m4TitleStacked: "",
   heroTitleBefore: "Acces VIP : Doublez votre capital",
   heroTitleSpan: "immediatement.",
   heroSubtitle:
@@ -700,6 +702,9 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     }
     if (cfg.m4TitleSpanGold === "" || cfg.m4TitleSpanGold === "0") {
       rules.push(".hero-title span{color:inherit !important;text-shadow:none !important;}");
+    }
+    if (cfg.m4TitleStacked === "1") {
+      rules.push(".hero-title span{display:block !important;margin-top:.18em !important;}");
     }
     if (rules.length) {
       const css = `<style data-affi-m4-h1-color>${rules.join("")}</style>`;

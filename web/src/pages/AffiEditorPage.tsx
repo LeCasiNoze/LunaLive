@@ -44,6 +44,8 @@ interface Config {
   // M4 : couleur du titre H1 — "1" = doré, "" / non-défini = blanc (défaut)
   m4TitleMainGold?: string;  // texte principal (heroTitleBefore)
   m4TitleSpanGold?: string;  // texte en or (heroTitleSpan / span) — défaut "1"
+  // M4 : "1" = span sur une nouvelle ligne (empilé), "" = inline (défaut)
+  m4TitleStacked?: string;
   heroTitleBefore: string;
   heroTitleSpan: string;
   heroSubtitle: string;
@@ -428,6 +430,7 @@ const DEFAULT_CONFIG: Config = {
   badgeText: "Club VIP Certifié",
   m4TitleMainGold: "",  // par défaut : titre principal blanc
   m4TitleSpanGold: "1", // par défaut : span en or (comportement existant)
+  m4TitleStacked: "",   // par défaut : inline (côte-à-côte si la place)
   heroTitleBefore: "Accès VIP : Doublez votre capital",
   heroTitleSpan: "immédiatement.",
   heroSubtitle:
@@ -1317,6 +1320,11 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     // sur le span (retour à inherit / blanc).
     if (cfg.m4TitleSpanGold === "" || cfg.m4TitleSpanGold === "0") {
       rules.push(".hero-title span{color:inherit !important;text-shadow:none !important;}");
+    }
+    // Empilement : span passe en display:block → forcé sur une nouvelle ligne.
+    // margin-top petit pour respirer entre les 2 textes.
+    if (cfg.m4TitleStacked === "1") {
+      rules.push(".hero-title span{display:block !important;margin-top:.18em !important;}");
     }
     if (rules.length) {
       const css = `<style data-affi-m4-h1-color>${rules.join("")}</style>`;
@@ -4509,7 +4517,7 @@ export default function AffiEditorPage() {
                         background: "rgba(255,215,0,.03)",
                       }}>
                         <div style={{ fontSize: 11, fontWeight: 800, color: "#FFD700", marginBottom: 8, letterSpacing: ".06em", textTransform: "uppercase" }}>
-                          ✨ Couleur du H1
+                          ✨ Style du H1
                         </div>
                         <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", cursor: "pointer", fontSize: "0.82rem", color: "#ddd" }}>
                           <input
@@ -4527,8 +4535,17 @@ export default function AffiEditorPage() {
                           />
                           <span>Texte en or (span) en doré</span>
                         </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", cursor: "pointer", fontSize: "0.82rem", color: "#ddd" }}>
+                          <input
+                            type="checkbox"
+                            checked={cfg.m4TitleStacked === "1"}
+                            onChange={(e) => set("m4TitleStacked")(e.target.checked ? "1" : "")}
+                          />
+                          <span>Empiler les 2 lignes (l'une sous l'autre)</span>
+                        </label>
                         <div style={{ fontSize: 10, color: T.txtMute, marginTop: 4, lineHeight: 1.4 }}>
-                          Décoche les deux pour avoir un H1 entièrement blanc.
+                          Par défaut le span suit le texte principal sur la même ligne s'il y a la place.
+                          Coche "Empiler" pour forcer le passage à la ligne (texte principal / span).
                         </div>
                       </div>
                     )}
