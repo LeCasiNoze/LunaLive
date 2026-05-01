@@ -17,6 +17,7 @@ type Config = {
   imgUrl: string;
   imgUrl1: string;
   imgUrl2: string;
+  imgFit?: "cover" | "contain" | "fill" | "native";
   affiLink: string;
   offerTitle: string;
   depositText: string;
@@ -96,6 +97,7 @@ const DEFAULT_CONFIG: Config = {
   imgUrl: "",
   imgUrl1: "",
   imgUrl2: "",
+  imgFit: "cover",
   affiLink: "",
   offerTitle: "Offre de Bienvenue",
   depositText: "Deposez 10EUR",
@@ -629,6 +631,17 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     const safeAffiLink = escAttr(cfg.affiLink);
     html = html.replace(/href="[^"]*" class="btn-jouer"/g, `href="${safeAffiLink}" class="btn-jouer"`);
     html = html.replace(/href="[^"]*" class="sticky-cta"/g, `href="${safeAffiLink}" class="sticky-cta"`);
+  }
+
+  // Image fit mode (applique object-fit sur .promo-image-container img)
+  // — synchro avec AffiEditorPage.applyConfig. Sans ça, le rendu publié
+  // ignorait le choix "Remplir/Étirer/Adapter" fait dans l'éditeur.
+  if (cfg.imgFit && cfg.imgFit !== "cover") {
+    const fitCss =
+      cfg.imgFit === "native"
+        ? `<style data-affi-img-fit>.promo-image-container { aspect-ratio: auto !important; } .promo-image-container img { object-fit: contain !important; width: 100% !important; height: auto !important; aspect-ratio: auto !important; }</style>`
+        : `<style data-affi-img-fit>.promo-image-container img { object-fit: ${cfg.imgFit} !important; }</style>`;
+    html = html.replace(/<\/head>/, `${fitCss}\n</head>`);
   }
 
   if (cfg.offerTitle) {
