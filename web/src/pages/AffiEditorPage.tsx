@@ -3407,15 +3407,27 @@ export default function AffiEditorPage() {
     });
   }, [selectedPage]);
   const draftSignature = useMemo(
-    () =>
-      buildPageSignature({
+    () => {
+      // ✅ Si la page actuelle a un brandName custom (rename manuel), on
+      // l'utilise dans la signature au lieu du brandName auto-généré.
+      // Évite que le badge "modifs non enregistrées" reste allumé en
+      // permanence après un rename.
+      let effBrand = draftPayload.brandName;
+      if (selectedPage && selectedPage.brandName) {
+        const autoBrand = buildPublishedBrandName(currentModel, cfg);
+        if (selectedPage.brandName.trim() !== autoBrand.trim()) {
+          effBrand = selectedPage.brandName;
+        }
+      }
+      return buildPageSignature({
         model: draftPayload.model,
         variant: draftPayload.variant,
-        brandName: draftPayload.brandName,
+        brandName: effBrand,
         title: draftPayload.title,
         config: draftPayload.config,
-      }),
-    [draftPayload]
+      });
+    },
+    [draftPayload, selectedPage, currentModel, cfg]
   );
   const hasUnsavedChanges = Boolean(selectedPage && draftSignature !== selectedPageSignature);
   // ── Load templates ─────────────────────────────────────────────────────────
@@ -3516,7 +3528,18 @@ export default function AffiEditorPage() {
       return;
     }
 
-    const payload = draftPayload;
+    // ✅ Préserve le rename manuel : si l'user a renommé la page (brandName
+    // en DB différent de ce que buildPublishedBrandName retournerait depuis
+    // cfg), on garde son nom custom au lieu de le regénérer à chaque save.
+    // Idem pour le slug — il est dérivé du brandName, donc on le préserve.
+    const payload = { ...draftPayload };
+    if (selectedPage && selectedPage.brandName) {
+      const autoBrand = buildPublishedBrandName(currentModel, cfg);
+      if (selectedPage.brandName.trim() !== autoBrand.trim()) {
+        payload.brandName = selectedPage.brandName;
+        if (selectedPage.slug) payload.slug = selectedPage.slug;
+      }
+    }
 
     const isUpdate = Boolean(selectedPageId);
     setPageAction(isUpdate ? "update" : "create");
