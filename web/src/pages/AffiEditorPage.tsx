@@ -2260,9 +2260,12 @@ function buildPublishedPageSlug(model: number, cfg: Config, variant: GoldenChanc
       ? cfg.goldenBrandMain || cfg.goldenPageTitle || "landing"
       : cfg.casinoName || cfg.pageTitle || `modele-${model}`;
   const brandPart = slugifyLandingSegment(brandSource) || "landing";
+  // Format URL : <brand>-M<N> (ex: celsius-games-M4) au lieu de l'ancien
+  // <brand>-model<N>. Plus court, plus lisible. M5 garde son format Golden
+  // Chance dédié avec la variante de couleur.
   return model === 5
     ? `${brandPart}-golden-chest-${variant}`
-    : `${brandPart}-model${model}`;
+    : `${brandPart}-M${model}`;
 }
 
 function buildPublishedBrandName(model: number, cfg: Config) {
