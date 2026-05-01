@@ -1013,6 +1013,14 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
       );
     }
 
+    // Safety : si une vieille version ou un drag&drop avait injecté un badge
+    // "Club VIP certifié" en haut du hero, on le force masqué. M5 ne le rend
+    // pas dans son template courant mais le CSS shared définit encore la règle.
+    {
+      const css = `<style data-affi-m5-no-vip-badge>.badge-premium{display:none !important;}</style>`;
+      html = html.replace(/<\/head>/, `${css}\n</head>`);
+    }
+
     // ─── Options d'affichage M5 ─────────────────────────────────────────────
     // "sans nom" : masque toute la .brand-signature (pseudo + les 2 lignes autour)
     // "landing only" : masque tout ce qui vient après le hero (gains / avis / faq / final)
@@ -4539,6 +4547,52 @@ export default function AffiEditorPage() {
                     <TextField label="Titre ligne 1" value={cfg.goldenHeroTitleBefore} onChange={set("goldenHeroTitleBefore")} />
                     <TextField label="Titre ligne 2" value={cfg.goldenHeroTitleSpan} onChange={set("goldenHeroTitleSpan")} />
                     <TextField label="Sous-titre" value={cfg.goldenHeroSubtitle} onChange={set("goldenHeroSubtitle")} multiline />
+
+                    {/* Customisation rapide du H1 (taille / police / couleur / position).
+                        Pour réglages avancés mobile/desktop séparés, voir l'onglet "Style". */}
+                    <div style={{
+                      marginTop: 10, padding: "10px 12px", borderRadius: 8,
+                      border: "1px solid rgba(255,215,0,.18)",
+                      background: "rgba(255,215,0,.03)",
+                    }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "#FFD700", marginBottom: 8, letterSpacing: ".06em", textTransform: "uppercase" }}>
+                        ✨ Style du titre H1
+                      </div>
+                      <StyleControl
+                        label="Taille de police"
+                        value={cfg.t_titleFs}
+                        onChange={set("t_titleFs")}
+                        type="text"
+                        placeholder="ex: 4rem"
+                      />
+                      <StyleControl
+                        label="Police"
+                        value={cfg.t_titleFf}
+                        onChange={set("t_titleFf")}
+                        type="select"
+                        options={FONT_NAMES}
+                      />
+                      <StyleControl
+                        label="Couleur"
+                        value={cfg.t_titleColor}
+                        onChange={set("t_titleColor")}
+                        type="color"
+                      />
+                      <StyleControl
+                        label="Letter spacing"
+                        value={cfg.t_titleLs}
+                        onChange={set("t_titleLs")}
+                        type="text"
+                        placeholder="ex: 0.04em"
+                      />
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+                        <OffsetControl label="Position X (titre + sous-titre)" value={cfg.p_offerX} onChange={set("p_offerX")} />
+                        <OffsetControl label="Position Y (titre + sous-titre)" value={cfg.p_offerY} onChange={set("p_offerY")} />
+                      </div>
+                      <div style={{ fontSize: 10, color: T.txtMute, marginTop: 6, lineHeight: 1.4 }}>
+                        Pour des overrides mobile/desktop séparés, ouvre l'onglet <b>Style</b> à droite.
+                      </div>
+                    </div>
                   </Section>
 
                   <Section title="Visuel">
@@ -4556,17 +4610,9 @@ export default function AffiEditorPage() {
                         </button>
                       </div>
                     </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Image du coffre (optionnelle)</label>
-                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        <input type="url" value={cfg.goldenChestUrl} onChange={(e) => set("goldenChestUrl")(e.target.value)} placeholder="https://.../chest.png" style={{ ...s.input, flex: 1, marginTop: 0 }} />
-                        {cfg.goldenChestUrl && (
-                          <button style={{ ...s.btn, ...s.btnSecondary, padding: "5px 10px", fontSize: "0.78rem" }} onClick={() => set("goldenChestUrl")("")}>✕</button>
-                        )}
-                      </div>
-                    </div>
-                    <TextField label="Image jeux (optionnelle)" value={cfg.goldenGameImageUrl} onChange={set("goldenGameImageUrl")} placeholder="https://.../jeux.png" type="url" />
-                    <TextField label="Image de fond (optionnelle)" value={cfg.goldenBackgroundUrl} onChange={set("goldenBackgroundUrl")} placeholder="https://.../background.jpg" type="url" />
+                    <ImagePicker label="Image du coffre (optionnelle)" value={cfg.goldenChestUrl} onChange={set("goldenChestUrl")} />
+                    <ImagePicker label="Image jeux (optionnelle)" value={cfg.goldenGameImageUrl} onChange={set("goldenGameImageUrl")} />
+                    <ImagePicker label="Image de fond (optionnelle)" value={cfg.goldenBackgroundUrl} onChange={set("goldenBackgroundUrl")} />
                     <ProfileImageField
                       label="Photo de profil (cercle au-dessus du pseudo)"
                       value={cfg.goldenProfileImageUrl}

@@ -529,6 +529,14 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
       html = html.replace(/<div class="brand-signature">/, `${avatarBlock}\n          <div class="brand-signature">`);
     }
 
+    // Safety : masque le badge "Club VIP Certifié" — pas dans le template
+    // courant mais le CSS shared définit la règle, donc on force display:none
+    // pour garantir qu'aucune injection résiduelle ne le fasse apparaître.
+    {
+      const noVip = `<style data-affi-m5-no-vip-badge>.badge-premium{display:none !important;}</style>`;
+      html = html.replace(/<\/head>/, `${noVip}\n</head>`);
+    }
+
     // Options d'affichage (synchro avec AffiEditorPage.applyConfig)
     const hideName = cfg.goldenHideName === "1" || !String(cfg.goldenBrandMain || "").trim();
     const landingOnly = cfg.goldenLandingOnly === "1";
