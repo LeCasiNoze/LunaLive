@@ -41,9 +41,9 @@ interface Config {
   receiveText2: string;
   // Texts
   badgeText: string;
-  // M4 : décalage du H1 (et subtitle) — accepte px / em / % (ex: "10px", "-2em")
-  m4HeroOffsetX?: string;
-  m4HeroOffsetY?: string;
+  // M4 : couleur du titre H1 — "1" = doré, "" / non-défini = blanc (défaut)
+  m4TitleMainGold?: string;  // texte principal (heroTitleBefore)
+  m4TitleSpanGold?: string;  // texte en or (heroTitleSpan / span) — défaut "1"
   heroTitleBefore: string;
   heroTitleSpan: string;
   heroSubtitle: string;
@@ -426,8 +426,8 @@ const DEFAULT_CONFIG: Config = {
   depositText2: "Déposez 20€",
   receiveText2: "Recevez 40€",
   badgeText: "Club VIP Certifié",
-  m4HeroOffsetX: "",
-  m4HeroOffsetY: "",
+  m4TitleMainGold: "",  // par défaut : titre principal blanc
+  m4TitleSpanGold: "1", // par défaut : span en or (comportement existant)
   heroTitleBefore: "Accès VIP : Doublez votre capital",
   heroTitleSpan: "immédiatement.",
   heroSubtitle:
@@ -1303,13 +1303,25 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     );
   }
 
-  // M4 : décalage du H1 (translate sur .hero-title) — permet de bouger le
-  // titre+sous-titre sans toucher au reste du hero. Valeurs en px/em/% acceptées.
-  if (model === 4 && (cfg.m4HeroOffsetX || cfg.m4HeroOffsetY)) {
-    const tx = cfg.m4HeroOffsetX || "0px";
-    const ty = cfg.m4HeroOffsetY || "0px";
-    const css = `<style data-affi-m4-hero-offset>.hero-title{transform:translate(${tx}, ${ty}) !important;}.hero-subtitle{transform:translate(${tx}, ${ty}) !important;}</style>`;
-    html = html.replace(/<\/head>/, `${css}\n</head>`);
+  // M4 : couleur du H1 — toggles indépendants pour le texte principal et
+  // le span "en or". Permet 4 combinaisons : tout blanc, principal doré
+  // seul, span doré seul (défaut), tout doré.
+  if (model === 4) {
+    const rules: string[] = [];
+    if (cfg.m4TitleMainGold === "1") {
+      // Le titre principal en or — applique la même recette que le span :
+      // couleur or + text-shadow glow. !important pour battre le CSS template.
+      rules.push(".hero-title{color:var(--brand-gold) !important;text-shadow:0 0 15px var(--brand-gold) !important;}");
+    }
+    // m4TitleSpanGold === "1" est le défaut. Si "" / "0" → on retire le doré
+    // sur le span (retour à inherit / blanc).
+    if (cfg.m4TitleSpanGold === "" || cfg.m4TitleSpanGold === "0") {
+      rules.push(".hero-title span{color:inherit !important;text-shadow:none !important;}");
+    }
+    if (rules.length) {
+      const css = `<style data-affi-m4-h1-color>${rules.join("")}</style>`;
+      html = html.replace(/<\/head>/, `${css}\n</head>`);
+    }
   }
 
   if (cfg.heroSubtitle) {
@@ -4497,14 +4509,26 @@ export default function AffiEditorPage() {
                         background: "rgba(255,215,0,.03)",
                       }}>
                         <div style={{ fontSize: 11, fontWeight: 800, color: "#FFD700", marginBottom: 8, letterSpacing: ".06em", textTransform: "uppercase" }}>
-                          ✨ Position du H1 (titre + sous-titre)
+                          ✨ Couleur du H1
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                          <OffsetControl label="Décalage X" value={cfg.m4HeroOffsetX || ""} onChange={set("m4HeroOffsetX")} />
-                          <OffsetControl label="Décalage Y" value={cfg.m4HeroOffsetY || ""} onChange={set("m4HeroOffsetY")} />
-                        </div>
-                        <div style={{ fontSize: 10, color: T.txtMute, marginTop: 6, lineHeight: 1.4 }}>
-                          Accepte px / em / %. Ex: <code style={{ color: "#FFD700" }}>10px</code>, <code style={{ color: "#FFD700" }}>-2em</code>.
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", cursor: "pointer", fontSize: "0.82rem", color: "#ddd" }}>
+                          <input
+                            type="checkbox"
+                            checked={cfg.m4TitleMainGold === "1"}
+                            onChange={(e) => set("m4TitleMainGold")(e.target.checked ? "1" : "")}
+                          />
+                          <span>Texte principal en doré</span>
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", cursor: "pointer", fontSize: "0.82rem", color: "#ddd" }}>
+                          <input
+                            type="checkbox"
+                            checked={cfg.m4TitleSpanGold !== "" && cfg.m4TitleSpanGold !== "0"}
+                            onChange={(e) => set("m4TitleSpanGold")(e.target.checked ? "1" : "")}
+                          />
+                          <span>Texte en or (span) en doré</span>
+                        </label>
+                        <div style={{ fontSize: 10, color: T.txtMute, marginTop: 4, lineHeight: 1.4 }}>
+                          Décoche les deux pour avoir un H1 entièrement blanc.
                         </div>
                       </div>
                     )}

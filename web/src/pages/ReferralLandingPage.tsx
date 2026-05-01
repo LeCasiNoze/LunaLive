@@ -25,8 +25,8 @@ type Config = {
   depositText2: string;
   receiveText2: string;
   badgeText: string;
-  m4HeroOffsetX?: string;
-  m4HeroOffsetY?: string;
+  m4TitleMainGold?: string;
+  m4TitleSpanGold?: string;
   heroTitleBefore: string;
   heroTitleSpan: string;
   heroSubtitle: string;
@@ -107,8 +107,8 @@ const DEFAULT_CONFIG: Config = {
   depositText2: "Deposez 20EUR",
   receiveText2: "Recevez 40EUR",
   badgeText: "Club VIP Certifie",
-  m4HeroOffsetX: "",
-  m4HeroOffsetY: "",
+  m4TitleMainGold: "",
+  m4TitleSpanGold: "1",
   heroTitleBefore: "Acces VIP : Doublez votre capital",
   heroTitleSpan: "immediatement.",
   heroSubtitle:
@@ -691,12 +691,20 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     );
   }
 
-  // M4 : décalage du H1 (titre + sous-titre) via translate
-  if (model === 4 && (cfg.m4HeroOffsetX || cfg.m4HeroOffsetY)) {
-    const tx = cfg.m4HeroOffsetX || "0px";
-    const ty = cfg.m4HeroOffsetY || "0px";
-    const css = `<style data-affi-m4-hero-offset>.hero-title{transform:translate(${tx}, ${ty}) !important;}.hero-subtitle{transform:translate(${tx}, ${ty}) !important;}</style>`;
-    html = html.replace(/<\/head>/, `${css}\n</head>`);
+  // M4 : couleur du H1 — toggles indépendants pour le texte principal et
+  // le span "en or" (synchro avec AffiEditorPage.applyConfig).
+  if (model === 4) {
+    const rules: string[] = [];
+    if (cfg.m4TitleMainGold === "1") {
+      rules.push(".hero-title{color:var(--brand-gold) !important;text-shadow:0 0 15px var(--brand-gold) !important;}");
+    }
+    if (cfg.m4TitleSpanGold === "" || cfg.m4TitleSpanGold === "0") {
+      rules.push(".hero-title span{color:inherit !important;text-shadow:none !important;}");
+    }
+    if (rules.length) {
+      const css = `<style data-affi-m4-h1-color>${rules.join("")}</style>`;
+      html = html.replace(/<\/head>/, `${css}\n</head>`);
+    }
   }
 
   html = html.replace(
