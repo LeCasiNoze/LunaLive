@@ -5,13 +5,41 @@
 //  Palette : #7c5cfc / #a78bfa / #5b8ef8 / #c4b5fd  (alignée sur LivesPage.css)
 // ─────────────────────────────────────────────────────────────────────────────
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { formatViewers } from "../lib/format";
 import { svgThumb }       from "../lib/thumb";
 import { DailyWheelCard }      from "../components/DailyWheelCard";
 import { DailyBonusAccessCard } from "../components/DailyBonusAccessCard";
+import { QuestsHomeCard }      from "../components/QuestsHomeCard";
+import { LoginModal }          from "../components/LoginModal";
+import { useAuth }             from "../auth/AuthProvider";
+import { getMyXp, type XpInfo } from "../lib/api_quests";
+import { getStreamers, type ApiStreamer } from "../lib/api";
 import type { LiveCardVM, ClipVM } from "./LivesPage";
+
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+
+function _abs(url: string | null): string | null {
+  if (!url) return null;
+  const u = String(url);
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  if (u.startsWith("/")) return `${API_BASE}${u}`;
+  return u;
+}
+function pickAva(user: any): string | null {
+  if (!user) return null;
+  const direct = user.avatarUrl || user.avatar_url || user.avatar || user.photoUrl || user.photo_url || null;
+  if (direct) return _abs(String(direct));
+  const uid = user.id != null ? Number(user.id) : null;
+  return uid ? _abs(`/avatars/u/${uid}?v=${Math.floor(Date.now() / 60000)}`) : null;
+}
+function _initials(name: string) {
+  const s = (name || "?").trim(); if (!s) return "?";
+  const parts = s.split(/[\s._-]+/g).filter(Boolean);
+  const a = parts[0]?.[0] ?? s[0]; const b = parts.length > 1 ? parts[parts.length - 1]?.[0] : s[1];
+  return (a + (b ?? "")).toUpperCase();
+}
 
 /* ─── CSS injecté une seule fois ─────────────────────────────────────── */
 const MOBILE_CSS = `
@@ -42,12 +70,12 @@ const MOBILE_CSS = `
 
 /* ══ Page shell ══════════════════════════════════════════════════════════ */
 .lm-page {
-  min-height: 100vh;
-  padding: 0 0 calc(80px + var(--lm-safe-bottom));
+  min-height: 100dvh;
   color: var(--lm-text-1);
   font-family: 'Syne', system-ui, sans-serif;
   position: relative;
   overflow-x: hidden;
+  padding: 0 0 calc(80px + var(--lm-safe-bottom));
 }
 
 /* Aurora fixe */
@@ -70,11 +98,11 @@ const MOBILE_CSS = `
   background-size: 180px 180px;
 }
 
-/* ══ Scroll content ══════════════════════════════════════════════════════ */
-.lm-scroll {
+/* ══ Hero header zone (fixe, en haut, hors viewport scroll-snap) ════════ */
+.lm-top {
   position: relative; z-index: 1;
-  padding: 12px 12px 0;
-  display: flex; flex-direction: column; gap: 10px;
+  flex-shrink: 0;
+  padding: 12px 12px 8px;
 }
 
 /* ══ Header hero ════════════════════════════════════════════════════════ */
@@ -496,45 +524,243 @@ const MOBILE_CSS = `
   display:grid; gap:10px;
 }
 
-/* ══ Bottom navigation ══════════════════════════════════════════════════ */
-.lm-nav {
-  position: fixed; bottom:0; left:0; right:0; z-index:70;
-  padding-bottom: var(--lm-safe-bottom);
-  background: rgba(8,7,18,.90);
-  border-top: 1px solid rgba(124,92,252,.16);
-  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-  display: flex;
+/* ══ Search streamer (Lives pane) ═══════════════════════════════════════ */
+.lm-search { position: relative; }
+.lm-search-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 14px;
+  border: 1px solid rgba(124,92,252,.22);
+  background: #14102a;
+  box-shadow: 0 6px 18px rgba(0,0,0,.30), 0 0 0 1px rgba(167,139,250,.05) inset;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
 }
-.lm-nav::before {
-  content:""; position:absolute; top:0; left:5%; right:5%; height:1px;
-  background: linear-gradient(90deg, transparent, rgba(167,139,250,.32) 40%, rgba(91,142,248,.24) 65%, transparent);
+.lm-search-row:focus-within {
+  border-color: rgba(167,139,250,.55);
+  box-shadow: 0 8px 22px rgba(124,92,252,.20), 0 0 0 3px rgba(124,92,252,.10);
+}
+.lm-search-icon { font-size: 15px; color: rgba(196,181,253,.70); flex-shrink: 0; }
+.lm-search-input {
+  flex: 1; min-width: 0;
+  border: 0; outline: none; background: transparent;
+  color: rgba(235,232,255,.96);
+  font-family:'Syne',system-ui,sans-serif; font-size: 14px; font-weight: 600; letter-spacing:-.1px;
+}
+.lm-search-input::placeholder { color: rgba(167,155,220,.55); font-weight: 500; }
+.lm-search-clear {
+  background: rgba(255,255,255,.06); border: 0;
+  border-radius: 999px; color: rgba(235,232,255,.70);
+  width: 22px; height: 22px; padding: 0; cursor: pointer;
+  font-size: 11px; display: grid; place-items: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.lm-search-clear:hover { background: rgba(255,255,255,.12); }
+
+.lm-suggest {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+  z-index: 60;
+  border-radius: 14px;
+  border: 1px solid rgba(124,92,252,.28);
+  background: #14102a;
+  box-shadow: 0 18px 50px rgba(0,0,0,.55), 0 0 0 1px rgba(167,139,250,.06) inset;
+  overflow: hidden;
+  max-height: min(60vh, 460px); overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: rgba(124,92,252,.30) transparent;
+  animation: lm-suggest-in 160ms cubic-bezier(.22,1,.36,1);
+}
+@keyframes lm-suggest-in { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+.lm-suggest::-webkit-scrollbar { width: 4px; }
+.lm-suggest::-webkit-scrollbar-thumb { background: rgba(124,92,252,.30); border-radius: 4px; }
+
+.lm-suggest-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; cursor: pointer; text-decoration: none;
+  color: rgba(235,232,255,.92); border: 0; background: transparent; width: 100%; text-align: left;
+  font-family:'Syne',system-ui,sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  border-bottom: 1px solid rgba(124,92,252,.06);
+  transition: background 120ms ease;
+}
+.lm-suggest-item:last-child { border-bottom: 0; }
+.lm-suggest-item:hover, .lm-suggest-item.is-focus { background: rgba(124,92,252,.10); }
+.lm-suggest-ava {
+  width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; overflow: hidden;
+  border: 1px solid rgba(255,255,255,.10); background: rgba(0,0,0,.35);
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 700; color: rgba(196,181,253,.80);
+}
+.lm-suggest-ava img { width:100%; height:100%; object-fit:cover; display:block; }
+.lm-suggest-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.lm-suggest-name {
+  font-weight: 700; font-size: 13px; letter-spacing: -.15px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lm-suggest-sub {
+  font-size: 10.5px; font-weight: 500; color: rgba(167,155,220,.60);
+  display: flex; align-items: center; gap: 6px;
+}
+.lm-suggest-live {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 7px; border-radius: 999px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: .04em;
+  background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.30); color: #fca5a5;
+}
+.lm-suggest-empty {
+  padding: 14px; text-align: center;
+  font-size: 12px; color: rgba(167,155,220,.55);
+}
+
+/* ══ Pane content (rendu dans le scroll vertical normal de la page) ════ */
+.lm-pane {
+  padding: 12px 12px 0;
+  display: flex; flex-direction: column; gap: 10px;
+  animation: lm-pane-in 220ms cubic-bezier(.22,1,.36,1);
+}
+@keyframes lm-pane-in {
+  from { opacity: 0; transform: translateX(var(--lm-pane-from, 12px)); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ══ Menu pane (page interne complète : compte, navigation, signaler) ════ */
+.lm-menu-card {
+  position: relative; overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(124,92,252,.18);
+  background: rgba(11,9,22,.86);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 14px 40px rgba(0,0,0,.40);
+}
+.lm-menu-card::before {
+  content:""; position:absolute; top:0; left:8%; right:8%; height:1px;
+  background: linear-gradient(90deg,transparent,rgba(167,139,250,.40) 40%,rgba(91,142,248,.30) 65%,transparent);
   pointer-events:none;
 }
-.lm-nav-btn {
-  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:4px; padding: 10px 4px;
-  background:transparent; border:0; color:var(--lm-text-3); cursor:pointer;
-  -webkit-tap-highlight-color:transparent;
-  transition: color 160ms ease;
-  min-height:56px;
+
+/* CTA login (déconnecté) */
+.lm-login-cta {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; border-radius: 18px;
+  border: 1px solid rgba(124,92,252,.34);
+  background: linear-gradient(135deg,rgba(124,92,252,.20),rgba(91,142,248,.16));
+  color: rgba(235,232,255,.96);
+  font-family:'Syne',system-ui,sans-serif; font-weight: 800; font-size: 14px;
+  width: 100%; text-align: left; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: filter 150ms ease, transform 120ms var(--lm-ease);
+  position: relative; overflow: hidden;
+  box-shadow: 0 8px 28px rgba(124,92,252,.22), 0 0 0 1px rgba(167,139,250,.08) inset;
 }
-.lm-nav-btn.is-active { color: rgba(196,181,253,.95); }
-.lm-nav-icon { font-size:18px; line-height:1; }
-.lm-nav-label {
-  font-family:'Syne',system-ui,sans-serif; font-size:10px; font-weight:700;
-  letter-spacing:.02em; text-transform:uppercase;
+.lm-login-cta::before {
+  content:""; position:absolute; top:0; left:10%; right:10%; height:1px;
+  background: linear-gradient(90deg,transparent,rgba(167,139,250,.55) 40%,rgba(91,142,248,.40) 60%,transparent);
+  pointer-events:none;
 }
-/* Indicateur actif */
-.lm-nav-btn.is-active .lm-nav-icon {
-  filter: drop-shadow(0 0 6px rgba(167,139,250,.55));
+.lm-login-cta:active { transform: scale(.98); }
+.lm-login-cta-icon {
+  width: 44px; height: 44px; border-radius: 13px;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+  display:grid; place-items:center; font-size: 22px; flex-shrink: 0;
 }
-/* Dot actif sous l'icône */
-.lm-nav-dot {
-  width:3px; height:3px; border-radius:999px;
-  background: rgba(167,139,250,.0);
-  transition: background 160ms ease, width 160ms ease;
+.lm-login-cta-body { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
+.lm-login-cta-title { font-size: 14px; font-weight: 800; letter-spacing:-.2px; color: rgba(235,232,255,.98); }
+.lm-login-cta-sub   { font-size: 11px; font-weight: 500; color: rgba(196,181,253,.78); }
+.lm-login-cta-arrow { font-size: 18px; color: rgba(196,181,253,.85); flex-shrink: 0; }
+
+/* Profile card (connecté) */
+.lm-prof {
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+  text-decoration: none; color: inherit;
+  border-radius: 18px;
+  border: 1px solid rgba(124,92,252,.22);
+  background: #14102a;
+  box-shadow: 0 8px 24px rgba(0,0,0,.40), 0 0 0 1px rgba(167,139,250,.05) inset;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 160ms ease, border-color 160ms ease, transform 120ms var(--lm-ease);
 }
-.lm-nav-btn.is-active .lm-nav-dot { background: rgba(167,139,250,.72); width:16px; }
+.lm-prof:active { transform: scale(.99); }
+.lm-prof-ava {
+  width: 52px; height: 52px; border-radius: 16px; flex-shrink: 0; overflow: hidden;
+  border: 2px solid rgba(124,92,252,.30);
+  background: rgba(0,0,0,.35);
+  display:grid; place-items:center;
+  font-family:'Syne',system-ui,sans-serif; font-size: 16px; font-weight: 800;
+  color: rgba(196,181,253,.88);
+}
+.lm-prof-ava img { width:100%; height:100%; object-fit:cover; display:block; }
+.lm-prof-meta { display:flex; flex-direction:column; gap: 5px; min-width: 0; flex: 1; }
+.lm-prof-line1 { display:flex; align-items:center; gap:8px; min-width:0; }
+.lm-prof-name {
+  font-family:'Syne',system-ui,sans-serif; font-weight: 800; font-size: 15px; letter-spacing:-.2px;
+  background: linear-gradient(90deg,#c4b5fd,#a78bfa);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;
+}
+.lm-prof-lvl {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:2px 8px; border-radius:999px;
+  border:1px solid rgba(124,92,252,.32);
+  background:linear-gradient(135deg,rgba(167,139,250,.18),rgba(91,142,248,.14));
+  font-family:'Syne',system-ui,sans-serif; font-weight: 800; font-size: 10px; letter-spacing:.02em;
+  color:#c4b5fd; flex-shrink: 0;
+}
+.lm-prof-xpbar {
+  position: relative; height: 6px; border-radius: 999px; overflow: hidden;
+  background: rgba(255,255,255,.07);
+}
+.lm-prof-xpfill {
+  position:absolute; inset:0 auto 0 0; height:100%;
+  background: linear-gradient(90deg,#a78bfa,#5b8ef8,#a78bfa); background-size: 200% 100%;
+  animation: lm-xp-shimmer 4s linear infinite; border-radius:999px;
+  transition: width 350ms ease;
+}
+.lm-prof-xpfill.is-max { background: linear-gradient(90deg,#fbbf24,#f59e0b,#fbbf24); background-size: 200% 100%; }
+@keyframes lm-xp-shimmer { 0%{background-position:0% 50%;} 100%{background-position:200% 50%;} }
+.lm-prof-xptext {
+  font-family:'Syne',system-ui,sans-serif; font-size: 10px; font-weight: 600;
+  color: rgba(167,155,220,.62); letter-spacing:.02em;
+}
+.lm-prof-arrow { font-size: 16px; color: rgba(196,181,253,.55); flex-shrink: 0; }
+
+/* Section header dans menu */
+.lm-menu-section {
+  font-family:'Syne',sans-serif;
+  font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--lm-text-3); padding: 4px 4px 6px;
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 4px;
+}
+.lm-menu-section::before {
+  content:""; width:3px; height:10px; border-radius:2px; flex-shrink:0;
+  background: linear-gradient(180deg,#a78bfa,#5b8ef8);
+}
+
+/* Items de menu (liens / actions) */
+.lm-menu-list { display: grid; gap: 8px; }
+.lm-menu-item {
+  display:flex; align-items:center; justify-content:space-between; gap: 12px;
+  padding: 13px 14px; border-radius: 14px;
+  border: 1px solid rgba(124,92,252,.18);
+  background: #14102a;
+  box-shadow: 0 6px 18px rgba(0,0,0,.34), 0 0 0 1px rgba(167,139,250,.04) inset;
+  color: rgba(235,232,255,.92); text-decoration: none; cursor: pointer;
+  font-family:'Syne',system-ui,sans-serif;
+  font-size: 13px; font-weight: 700; letter-spacing:-.15px;
+  text-align: left; width: 100%;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 140ms ease, border-color 140ms ease, transform 120ms var(--lm-ease);
+}
+.lm-menu-item:hover { background: #1a1535; border-color: rgba(124,92,252,.30); }
+.lm-menu-item:active { transform: translateX(2px); }
+.lm-menu-item-left { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.lm-menu-item-icon { font-size: 17px; flex-shrink: 0; }
+.lm-menu-item-arrow { font-size: 12px; color: rgba(124,92,252,.55); flex-shrink: 0; }
+.lm-menu-item-danger {
+  border-color: rgba(239,68,68,.26);
+  background: #2a1014;
+  color: rgba(252,165,165,.92);
+  box-shadow: 0 6px 18px rgba(0,0,0,.34), 0 0 0 1px rgba(239,68,68,.06) inset;
+}
+.lm-menu-item-danger:hover { background: #361319; border-color: rgba(239,68,68,.40); }
+.lm-menu-item-danger .lm-menu-item-arrow { color: rgba(239,68,68,.55); }
 
 /* ══ Loader / empty ═════════════════════════════════════════════════════ */
 .lm-loading {
@@ -706,7 +932,10 @@ function ClipTile({ clip, apiBase, idx, onClick }: {
 }
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
-type NavTab = "lives" | "clips" | "rewards";
+type NavTab = "lives" | "clips" | "bonus" | "menu";
+// Ordre des panes dans le viewport scroll-snap, aligné avec la barre globale.
+const TAB_ORDER: NavTab[] = ["menu", "lives", "bonus", "clips"];
+const TAB_INDEX: Record<NavTab, number> = { menu: 0, lives: 1, bonus: 2, clips: 3 };
 
 type Props = {
   apiBase: string;
@@ -739,13 +968,59 @@ export default function LivesPageMobile(props: Props) {
     onOpenMonthList, onOpenClip,
   } = props;
 
-  const [tab, setTab] = React.useState<NavTab>("lives");
+  // Onglet piloté par l'URL (?tab=clips|bonus|menu). Default = lives.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlTabRaw = searchParams.get("tab");
+  const tab: NavTab = (urlTabRaw === "clips" || urlTabRaw === "bonus" || urlTabRaw === "menu")
+    ? urlTabRaw : "lives";
+  const setTab = React.useCallback((next: NavTab) => {
+    setSearchParams(prev => {
+      const sp = new URLSearchParams(prev);
+      if (next === "lives") sp.delete("tab");
+      else sp.set("tab", next);
+      return sp;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   // Scroll to top quand on change d'onglet
-  const scrollRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
-    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
   }, [tab]);
+
+  // ── Swipe entre onglets (gesture-based, sans interférer avec les liens) ─
+  const swipeRef = React.useRef({ x0: 0, y0: 0, t0: 0, active: false, locked: null as null | "x" | "y" });
+  const [paneDir, setPaneDir] = React.useState<-1 | 1>(1); // 1 = next (slide-in from right), -1 = prev
+  function onSwipeStart(e: React.TouchEvent) {
+    const t = e.touches?.[0]; if (!t) return;
+    if (t.clientX < 14 || t.clientX > window.innerWidth - 14) return; // évite back-gestures iOS
+    swipeRef.current = { x0: t.clientX, y0: t.clientY, t0: Date.now(), active: true, locked: null };
+  }
+  function onSwipeMove(e: React.TouchEvent) {
+    const s = swipeRef.current; if (!s.active) return;
+    const t = e.touches?.[0]; if (!t) return;
+    const dx = t.clientX - s.x0;
+    const dy = t.clientY - s.y0;
+    if (s.locked == null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      s.locked = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+    }
+    if (s.locked === "y") s.active = false; // on laisse le scroll vertical
+  }
+  function onSwipeEnd(e: React.TouchEvent) {
+    const s = swipeRef.current;
+    if (!s.active || s.locked !== "x") { s.active = false; return; }
+    const t = e.changedTouches?.[0]; if (!t) return;
+    const dx = t.clientX - s.x0;
+    const dt = Date.now() - s.t0;
+    s.active = false;
+    // Seuil : 50px OU vélocité > 0.4 px/ms
+    if (Math.abs(dx) < 50 && (Math.abs(dx) / Math.max(1, dt)) < 0.4) return;
+    const idx = TAB_INDEX[tab];
+    if (dx < 0 && idx < TAB_ORDER.length - 1) {
+      setPaneDir(1); setTab(TAB_ORDER[idx + 1]);
+    } else if (dx > 0 && idx > 0) {
+      setPaneDir(-1); setTab(TAB_ORDER[idx - 1]);
+    }
+  }
 
   const canShowGrid = !(loading && lives.length === 0);
 
@@ -760,6 +1035,8 @@ export default function LivesPageMobile(props: Props) {
   ═══════════════════════════════════════ */
   const TabLives = (
     <>
+      <StreamerSearch apiBase={apiBase} />
+
       {/* Featured */}
       {featuredLives.length > 0 && (
         <div>
@@ -846,27 +1123,34 @@ export default function LivesPageMobile(props: Props) {
   );
 
   const TabRewards = (
-    <div className="lm-rewards-section">
-      <div className="lm-rewards-header">
-        <div className="lm-rewards-icon" aria-hidden>🎁</div>
-        <span className="lm-rewards-label">Récompenses quotidiennes</span>
+    <>
+      <div className="lm-section-head">
+        <h2 className="lm-section-title">🎡 Roue quotidienne</h2>
       </div>
-      <div className="lm-rewards-body">
-        <DailyWheelCard />
-        <DailyBonusAccessCard />
+      <DailyWheelCard />
+
+      <div className="lm-section-head">
+        <h2 className="lm-section-title">📅 Agenda & bonus</h2>
       </div>
-    </div>
+      <DailyBonusAccessCard />
+
+      <div className="lm-section-head">
+        <h2 className="lm-section-title">⚔️ Quêtes</h2>
+      </div>
+      <QuestsHomeCard />
+    </>
   );
+
+  /* ── Menu pane (compte, navigation, signaler) ─────────────────────── */
+  const TabMenu = <MenuPane />;
 
   /* ═══════════════════════════════════════
      RENDER
   ═══════════════════════════════════════ */
   return (
     <main className="lm-page">
-      {/* Contenu scrollable */}
-      <div ref={scrollRef} className="lm-scroll">
-
-        {/* ── Hero header (toujours visible) ── */}
+      {/* ── Hero header (fixe, hors viewport scroll-snap) ── */}
+      <div className="lm-top">
         <div className="lm-hero">
           <div className="lm-hero-left">
             <h1 className="lm-logo">LunaLive</h1>
@@ -885,45 +1169,361 @@ export default function LivesPageMobile(props: Props) {
             </Pill>
           </div>
         </div>
-
-        {/* ── Erreur ── */}
-        {err && <div className="lm-err">⚠️ {err}</div>}
-
-        {/* ── Contenu selon onglet ── */}
-        {tab === "lives"   && TabLives}
-        {tab === "clips"   && TabClips}
-        {tab === "rewards" && TabRewards}
-
+        {err && <div className="lm-err" style={{ marginTop: 8 }}>⚠️ {err}</div>}
       </div>
 
-      {/* ── Bottom navigation fixe ── */}
-      <nav className="lm-nav" aria-label="Navigation principale">
-
-        {/* Lives */}
-        <button type="button" className={`lm-nav-btn${tab === "lives" ? " is-active" : ""}`}
-          onClick={() => setTab("lives")} aria-label="Lives" aria-current={tab === "lives" ? "page" : undefined}>
-          <span className="lm-nav-icon">📡</span>
-          <span className="lm-nav-label">Lives</span>
-          <span className="lm-nav-dot" aria-hidden />
-        </button>
-
-        {/* Clips */}
-        <button type="button" className={`lm-nav-btn${tab === "clips" ? " is-active" : ""}`}
-          onClick={() => setTab("clips")} aria-label="Clips du mois" aria-current={tab === "clips" ? "page" : undefined}>
-          <span className="lm-nav-icon">🎬</span>
-          <span className="lm-nav-label">Clips</span>
-          <span className="lm-nav-dot" aria-hidden />
-        </button>
-
-        {/* Récompenses */}
-        <button type="button" className={`lm-nav-btn${tab === "rewards" ? " is-active" : ""}`}
-          onClick={() => setTab("rewards")} aria-label="Récompenses" aria-current={tab === "rewards" ? "page" : undefined}>
-          <span className="lm-nav-icon">🎁</span>
-          <span className="lm-nav-label">Bonus</span>
-          <span className="lm-nav-dot" aria-hidden />
-        </button>
-
-      </nav>
+      {/* ── Pane actif (page scroll vertical normal, swipe horizontal pour changer) ── */}
+      <section
+        key={tab}
+        className="lm-pane"
+        style={{ ["--lm-pane-from" as any]: paneDir === 1 ? "16px" : "-16px" }}
+        onTouchStart={onSwipeStart}
+        onTouchMove={onSwipeMove}
+        onTouchEnd={onSwipeEnd}
+      >
+        {tab === "menu"  && TabMenu}
+        {tab === "lives" && TabLives}
+        {tab === "bonus" && TabRewards}
+        {tab === "clips" && TabClips}
+      </section>
     </main>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MenuPane — page interne complète : compte/login, profil, navigation, signaler
+═══════════════════════════════════════════════════════════════════════ */
+function MenuPane() {
+  const navigate = useNavigate();
+  const auth = useAuth() as any;
+  const user = auth?.user ?? null;
+  const token = auth?.token ?? null;
+  const isLoggedIn = !!token && !!user;
+
+  const [loginOpen, setLoginOpen] = React.useState(false);
+  const [xp, setXp] = React.useState<XpInfo | null>(null);
+  const [avatarOk, setAvatarOk] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!isLoggedIn) { setXp(null); return; }
+    let cancelled = false;
+    const refresh = async () => {
+      try { const r = await getMyXp(); if (!cancelled) setXp(r); } catch {}
+    };
+    refresh();
+    const id = window.setInterval(refresh, 60_000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [isLoggedIn]);
+
+  const username = String(user?.username || "");
+  const avatarSrc = pickAva(user);
+  React.useEffect(() => setAvatarOk(true), [avatarSrc]);
+
+  function openReport() {
+    window.dispatchEvent(new Event("ui:report_open"));
+  }
+
+  return (
+    <>
+      {isLoggedIn ? (
+        <Link to="/profile" className="lm-prof" aria-label="Mon compte">
+          <div className="lm-prof-ava" aria-hidden>
+            {avatarSrc && avatarOk
+              ? <img src={String(avatarSrc)} alt="" onError={() => setAvatarOk(false)} />
+              : <span>{_initials(username)}</span>}
+          </div>
+          <div className="lm-prof-meta">
+            <div className="lm-prof-line1">
+              <span className="lm-prof-name">{username || "Mon compte"}</span>
+              {xp ? <span className="lm-prof-lvl" title={xp.fullTitle}>Lv {xp.level}</span> : null}
+            </div>
+            {xp ? (
+              <>
+                <div className="lm-prof-xpbar" aria-hidden>
+                  <div
+                    className={`lm-prof-xpfill${xp.isMax ? " is-max" : ""}`}
+                    style={{ width: `${Math.max(2, Math.min(100, xp.pctToNext))}%` }}
+                  />
+                </div>
+                <div className="lm-prof-xptext">
+                  {xp.isMax
+                    ? "⭐ Niveau MAX"
+                    : `${xp.xp.toLocaleString("fr-FR")} XP · ${xp.xpToNext.toLocaleString("fr-FR")} pour Lv ${xp.level + 1}`}
+                </div>
+              </>
+            ) : (
+              <div className="lm-prof-xptext">Profil · Stats · Paramètres</div>
+            )}
+          </div>
+          <span className="lm-prof-arrow" aria-hidden>›</span>
+        </Link>
+      ) : (
+        <button type="button" className="lm-login-cta" onClick={() => setLoginOpen(true)} aria-label="Se connecter">
+          <div className="lm-login-cta-icon" aria-hidden>👤</div>
+          <div className="lm-login-cta-body">
+            <div className="lm-login-cta-title">Connecte-toi</div>
+            <div className="lm-login-cta-sub">Profil, XP, récompenses et chat</div>
+          </div>
+          <span className="lm-login-cta-arrow" aria-hidden>›</span>
+        </button>
+      )}
+
+      <div className="lm-menu-section">Découvrir</div>
+      <div className="lm-menu-list">
+        <button type="button" className="lm-menu-item" onClick={() => navigate("/casinos")}>
+          <span className="lm-menu-item-left">
+            <span className="lm-menu-item-icon" aria-hidden>🎰</span>
+            <span>CheckTaSlot</span>
+          </span>
+          <span className="lm-menu-item-arrow" aria-hidden>›</span>
+        </button>
+        <button type="button" className="lm-menu-item" onClick={() => navigate("/hunt")}>
+          <span className="lm-menu-item-left">
+            <span className="lm-menu-item-icon" aria-hidden>🧿</span>
+            <span>Hunt</span>
+          </span>
+          <span className="lm-menu-item-arrow" aria-hidden>›</span>
+        </button>
+        <button type="button" className="lm-menu-item" onClick={() => navigate("/shop")}>
+          <span className="lm-menu-item-left">
+            <span className="lm-menu-item-icon" aria-hidden>🛍️</span>
+            <span>Shop</span>
+          </span>
+          <span className="lm-menu-item-arrow" aria-hidden>›</span>
+        </button>
+        <button type="button" className="lm-menu-item" onClick={() => navigate("/event")}>
+          <span className="lm-menu-item-left">
+            <span className="lm-menu-item-icon" aria-hidden>🎉</span>
+            <span>Événements</span>
+          </span>
+          <span className="lm-menu-item-arrow" aria-hidden>›</span>
+        </button>
+      </div>
+
+      {isLoggedIn ? (
+        <>
+          <div className="lm-menu-section">Mon compte</div>
+          <div className="lm-menu-list">
+            <button type="button" className="lm-menu-item" onClick={() => navigate("/profile")}>
+              <span className="lm-menu-item-left">
+                <span className="lm-menu-item-icon" aria-hidden>👤</span>
+                <span>Profil</span>
+              </span>
+              <span className="lm-menu-item-arrow" aria-hidden>›</span>
+            </button>
+            {(user?.role === "streamer" || user?.role === "admin") ? (
+              <button type="button" className="lm-menu-item" onClick={() => navigate("/dashboard")}>
+                <span className="lm-menu-item-left">
+                  <span className="lm-menu-item-icon" aria-hidden>🚀</span>
+                  <span>Dashboard streamer</span>
+                </span>
+                <span className="lm-menu-item-arrow" aria-hidden>›</span>
+              </button>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
+      <div className="lm-menu-section">Aide</div>
+      <div className="lm-menu-list">
+        <button type="button" className="lm-menu-item lm-menu-item-danger" onClick={openReport}>
+          <span className="lm-menu-item-left">
+            <span className="lm-menu-item-icon" aria-hidden>🚩</span>
+            <span>Signaler un problème</span>
+          </span>
+          <span className="lm-menu-item-arrow" aria-hidden>›</span>
+        </button>
+      </div>
+
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   StreamerSearch — barre de recherche dynamique en haut du pane Lives.
+   Cache la liste complète des streamers, filtre client-side, suggestions
+   au clavier (↑/↓/Enter/Escape) + clic.
+═══════════════════════════════════════════════════════════════════════ */
+let _streamersCache: { ts: number; data: ApiStreamer[] } | null = null;
+const STREAMERS_TTL_MS = 60_000;
+
+function StreamerSearch({ apiBase }: { apiBase: string }) {
+  const navigate = useNavigate();
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const wrapRef  = React.useRef<HTMLDivElement>(null);
+  const [streamers, setStreamers] = React.useState<ApiStreamer[]>(() =>
+    _streamersCache ? _streamersCache.data : []
+  );
+  const [q, setQ] = React.useState("");
+  const [open, setOpen] = React.useState(false);
+  const [focusIdx, setFocusIdx] = React.useState(0);
+
+  // Charge la liste (cache 60s)
+  React.useEffect(() => {
+    const fresh = _streamersCache && Date.now() - _streamersCache.ts < STREAMERS_TTL_MS;
+    if (fresh) { setStreamers(_streamersCache!.data); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await getStreamers();
+        if (cancelled) return;
+        const data = Array.isArray(r) ? r : [];
+        _streamersCache = { ts: Date.now(), data };
+        setStreamers(data);
+      } catch { /* silent */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Click outside → close
+  React.useEffect(() => {
+    if (!open) return;
+    const onDocDown = (e: PointerEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDocDown);
+    return () => document.removeEventListener("pointerdown", onDocDown);
+  }, [open]);
+
+  const matches = React.useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) {
+      // Suggestions par défaut : lives en direct triés par viewers
+      return streamers
+        .filter(s => s.isLive)
+        .sort((a, b) => Number(b.viewers || 0) - Number(a.viewers || 0))
+        .slice(0, 8);
+    }
+    const score = (s: ApiStreamer) => {
+      const dn = String(s.displayName || "").toLowerCase();
+      const sl = String(s.slug || "").toLowerCase();
+      if (dn === needle || sl === needle) return 100;
+      if (dn.startsWith(needle) || sl.startsWith(needle)) return 70;
+      if (dn.includes(needle) || sl.includes(needle)) return 40;
+      return 0;
+    };
+    return streamers
+      .map(s => [s, score(s)] as const)
+      .filter(([, sc]) => sc > 0)
+      .sort((a, b) => {
+        const ds = b[1] - a[1];
+        if (ds !== 0) return ds;
+        const liveDiff = Number(b[0].isLive) - Number(a[0].isLive);
+        if (liveDiff !== 0) return liveDiff;
+        return Number(b[0].viewers || 0) - Number(a[0].viewers || 0);
+      })
+      .slice(0, 12)
+      .map(([s]) => s);
+  }, [q, streamers]);
+
+  React.useEffect(() => { setFocusIdx(0); }, [q]);
+
+  function go(s: ApiStreamer) {
+    setOpen(false);
+    setQ("");
+    inputRef.current?.blur();
+    navigate(`/s/${encodeURIComponent(String(s.slug))}`);
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setOpen(true);
+      setFocusIdx(i => Math.min(matches.length - 1, i + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setFocusIdx(i => Math.max(0, i - 1));
+    } else if (e.key === "Enter") {
+      const m = matches[focusIdx];
+      if (m) { e.preventDefault(); go(m); }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      inputRef.current?.blur();
+    }
+  }
+
+  function ava(s: ApiStreamer) {
+    const raw = (s as any).avatarUrl ?? (s as any).avatar_url ?? null;
+    const u = raw ? (String(raw).startsWith("http") || String(raw).startsWith("//") ? String(raw)
+      : String(raw).startsWith("/") ? `${apiBase}${raw}` : String(raw)) : null;
+    return u;
+  }
+  function inits(s: ApiStreamer) {
+    const n = String(s.displayName || s.slug || "?").trim();
+    return (n[0] || "?").toUpperCase();
+  }
+
+  return (
+    <div className="lm-search" ref={wrapRef}>
+      <div className="lm-search-row">
+        <span className="lm-search-icon" aria-hidden>🔍</span>
+        <input
+          ref={inputRef}
+          className="lm-search-input"
+          type="search"
+          inputMode="search"
+          autoComplete="off"
+          spellCheck={false}
+          enterKeyHint="search"
+          placeholder="Chercher un streamer…"
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          aria-label="Chercher un streamer"
+          aria-expanded={open}
+          aria-controls="lm-suggest-list"
+        />
+        {q ? (
+          <button
+            type="button"
+            className="lm-search-clear"
+            onClick={() => { setQ(""); inputRef.current?.focus(); }}
+            aria-label="Effacer"
+          >✕</button>
+        ) : null}
+      </div>
+
+      {open && matches.length > 0 ? (
+        <div className="lm-suggest" id="lm-suggest-list" role="listbox">
+          {matches.map((s, i) => {
+            const av = ava(s);
+            return (
+              <button
+                key={String(s.id || s.slug)}
+                type="button"
+                role="option"
+                aria-selected={i === focusIdx}
+                className={`lm-suggest-item${i === focusIdx ? " is-focus" : ""}`}
+                onMouseEnter={() => setFocusIdx(i)}
+                onClick={() => go(s)}
+              >
+                <div className="lm-suggest-ava" aria-hidden>
+                  {av ? <img src={av} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} /> : <span>{inits(s)}</span>}
+                </div>
+                <div className="lm-suggest-meta">
+                  <div className="lm-suggest-name">{s.displayName || s.slug}</div>
+                  <div className="lm-suggest-sub">
+                    <span>@{s.slug}</span>
+                    {s.isLive ? (
+                      <>
+                        <span style={{ opacity: .4 }}>·</span>
+                        <span>👁 {Number(s.viewers || 0).toLocaleString("fr-FR")}</span>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+                {s.isLive ? <span className="lm-suggest-live">● LIVE</span> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : open && q.trim().length > 0 ? (
+        <div className="lm-suggest" id="lm-suggest-list" role="listbox">
+          <div className="lm-suggest-empty">Aucun streamer trouvé pour « {q} »</div>
+        </div>
+      ) : null}
+    </div>
   );
 }

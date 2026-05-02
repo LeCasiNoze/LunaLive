@@ -5,6 +5,8 @@ import { Link } from "react-router-dom";
 import { listCasinos, type CasinoListItem, type CasinoListResp } from "../lib/api_casinos";
 import { PartnerPlansModal } from "../components/PartnerPlansModal";
 import { setSeo } from "../lib/seo";
+import { useIsMobile } from "../hooks/useIsMobile";
+import CasinosPageMobile from "./CasinosPage.mobile";
 
 /* ─────────────────────────────────────────────
    Utils (identiques à l'original)
@@ -515,6 +517,12 @@ function PodiumCard({ rank, c }: { rank: 1 | 2 | 3; c: CasinoListItem }) {
 type SortMode = "luna" | "community" | "newest";
 
 export default function CasinosPage() {
+  const isMobile = useIsMobile();
+  if (isMobile) return <CasinosPageMobile />;
+  return <CasinosPageDesktop />;
+}
+
+function CasinosPageDesktop() {
   const [loading, setLoading] = React.useState(true);
   const [err, setErr]         = React.useState<string | null>(null);
   const [data, setData]       = React.useState<CasinoListResp | null>(null);

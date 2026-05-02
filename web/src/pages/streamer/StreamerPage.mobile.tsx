@@ -520,72 +520,100 @@ export default function StreamerPageMobile() {
       {/* Player */}
       <div className="mob-card" style={{ padding:0, borderRadius:18, overflow:"hidden" }}>{PlayerBlock}</div>
 
-      {/* Banner profile */}
-      <div className="mob-banner">
-        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <div className="mob-avatar">
-            {avatarUrl ? <img src={String(avatarUrl)} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <span style={{ fontWeight:800, fontSize:18 }}>{initials}</span>}
-          </div>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div className="mob-name" style={{ marginBottom:6 }}>{displayName}</div>
-            {typeof followsCount === "number" ? (
-              <div style={{ fontSize:11, color:"rgba(196,181,253,.60)", fontWeight:700 }}>{fmt(followsCount)} abonnés</div>
-            ) : null}
-          </div>
-          <div style={{ display:"flex", gap:8, flexShrink:0 }}>
-            <button type="button" className={isFollowing ? "btnGhostSmall" : "btnPrimarySmall"} disabled={followLoading} onClick={toggleFollow} style={{ fontWeight:700 }}>
-              {followLoading ? "…" : isFollowing ? "✓" : "Suivre"}
-            </button>
-            <button type="button" className="btnPrimarySmall" onClick={() => { if (!token) return setLoginOpen(true); setSubError(null); setGiftError(null); setSubOpen(true); }} style={{ fontWeight:700 }}>SUB</button>
-            <button type="button" className="btnGhostSmall" onClick={() => setActionsOpen(true)} style={{ fontSize:16, lineHeight:1, padding:"8px 10px" }}>⋯</button>
-          </div>
-        </div>
-        <div style={{ marginTop:12, display:"flex", gap:8, flexWrap:"wrap" }}>
-          {streamer.isLive ? (
-            <>
-              <span className="mob-badge mob-badge-live">🔴 LIVE</span>
-              <span className="mob-badge">👁️ {fmt(viewers)}</span>
-              <span className="mob-badge">⏱️ <LiveDurationText isLive={streamer.isLive} startedAtMs={streamer.liveStartedAtMs} /></span>
-            </>
-          ) : (
-            <span className="mob-badge" style={{ borderColor:"rgba(124,92,252,.10)", background:"rgba(124,92,252,.04)", color:"rgba(196,181,253,.42)" }}>OFFLINE</span>
-          )}
-          {giftStatus?.myClaimed ? <span className="mob-badge mob-badge-green">✅ Sub offert</span> : null}
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="mob-card">
-        <div className="mob-tabs-row">
-          {[["chat","Chat"],["about","À propos"],["vod","VOD"],["clips","Clips"],["agenda","Agenda"]].map(([k,l]) => (
-            <button key={k} type="button" className={`mob-tab${tab===k?" active":""}`} onClick={() => setTab(k as MobileTabKey)}>{l}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd} style={{ touchAction:"pan-y" }}>
-        <div className="mob-card" key={tabView}>
-          {tabView === "chat" ? (
-            <div style={{ padding:0, height:"min(52vh,520px)", minHeight:330, display:"flex", flexDirection:"column" }}>
-              <div style={{ padding:"12px 14px", borderBottom:"1px solid rgba(124,92,252,.10)", background:"rgba(124,92,252,.03)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                <div style={{ fontWeight:800, fontSize:14 }}>Chat</div>
-                <button type="button" className="btnGhostSmall" onClick={enterCinema} style={{ fontSize:14 }}>⛶</button>
+      {/* When live: prioritize Player → Chat/Content → Banner → Tabs.
+          Otherwise keep classic order: Player → Banner → Tabs → Content. */}
+      {(() => {
+        const Banner = (
+          <div className="mob-banner">
+            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+              <div className="mob-avatar">
+                {avatarUrl ? <img src={String(avatarUrl)} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <span style={{ fontWeight:800, fontSize:18 }}>{initials}</span>}
               </div>
-              <div style={{ flex:1, minHeight:0 }}>
-                <ChatPanel slug={String(slug||"")} onRequireLogin={() => setLoginOpen(true)} compact autoFocus={false} onFollowsCount={handleFollowsCount} />
+              <div style={{ flex:1, minWidth:0 }}>
+                <div className="mob-name" style={{ marginBottom:6 }}>{displayName}</div>
+                {typeof followsCount === "number" ? (
+                  <div style={{ fontSize:11, color:"rgba(196,181,253,.60)", fontWeight:700 }}>{fmt(followsCount)} abonnés</div>
+                ) : null}
+              </div>
+              <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+                <button type="button" className={isFollowing ? "btnGhostSmall" : "btnPrimarySmall"} disabled={followLoading} onClick={toggleFollow} style={{ fontWeight:700 }}>
+                  {followLoading ? "…" : isFollowing ? "✓" : "Suivre"}
+                </button>
+                <button type="button" className="btnPrimarySmall" onClick={() => { if (!token) return setLoginOpen(true); setSubError(null); setGiftError(null); setSubOpen(true); }} style={{ fontWeight:700 }}>SUB</button>
+                <button type="button" className="btnGhostSmall" onClick={() => setActionsOpen(true)} style={{ fontSize:16, lineHeight:1, padding:"8px 10px" }}>⋯</button>
               </div>
             </div>
-          ) : (
-            <div className="mob-content">
-              {tabView === "about" && slug ? <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
-              {tabView === "clips" && slug ? <ClipsTab slug={String(slug)} token={token} isOwner={isOwner} onRequireLogin={() => setLoginOpen(true)} /> : null}
-              {tabView === "vod" && slug ? <VodTab slug={String(slug)} /> : null}
-              {tabView === "agenda" && slug ? <AgendaTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
+            <div style={{ marginTop:12, display:"flex", gap:8, flexWrap:"wrap" }}>
+              {streamer.isLive ? (
+                <>
+                  <span className="mob-badge mob-badge-live">🔴 LIVE</span>
+                  <span className="mob-badge">👁️ {fmt(viewers)}</span>
+                  <span className="mob-badge">⏱️ <LiveDurationText isLive={streamer.isLive} startedAtMs={streamer.liveStartedAtMs} /></span>
+                </>
+              ) : (
+                <span className="mob-badge" style={{ borderColor:"rgba(124,92,252,.10)", background:"rgba(124,92,252,.04)", color:"rgba(196,181,253,.42)" }}>OFFLINE</span>
+              )}
+              {giftStatus?.myClaimed ? <span className="mob-badge mob-badge-green">✅ Sub offert</span> : null}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        );
+
+        const Tabs = (
+          <div className="mob-card">
+            <div className="mob-tabs-row">
+              {[["chat","Chat"],["about","À propos"],["vod","VOD"],["clips","Clips"],["agenda","Agenda"]].map(([k,l]) => (
+                <button key={k} type="button" className={`mob-tab${tab===k?" active":""}`} onClick={() => setTab(k as MobileTabKey)}>{l}</button>
+              ))}
+            </div>
+          </div>
+        );
+
+        // Chat panel : taille adaptative — quand live + chat actif on remplit
+        // ce qu'il reste de l'écran sous le player pour que stream+chat+input
+        // soient visibles sans scroll. ~280px = player (16/9) + paddings.
+        const chatHeightStyle: React.CSSProperties = streamer.isLive
+          ? { padding:0, height:"calc(100dvh - 290px)", minHeight:360, maxHeight:640, display:"flex", flexDirection:"column" }
+          : { padding:0, height:"min(52vh,520px)", minHeight:330, display:"flex", flexDirection:"column" };
+
+        const Content = (
+          <div onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd} style={{ touchAction:"pan-y" }}>
+            <div className="mob-card" key={tabView}>
+              {tabView === "chat" ? (
+                <div style={chatHeightStyle}>
+                  <div style={{ padding:"12px 14px", borderBottom:"1px solid rgba(124,92,252,.10)", background:"rgba(124,92,252,.03)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <div style={{ fontWeight:800, fontSize:14 }}>Chat</div>
+                    <button type="button" className="btnGhostSmall" onClick={enterCinema} style={{ fontSize:14 }}>⛶</button>
+                  </div>
+                  <div style={{ flex:1, minHeight:0 }}>
+                    <ChatPanel slug={String(slug||"")} onRequireLogin={() => setLoginOpen(true)} compact autoFocus={false} onFollowsCount={handleFollowsCount} />
+                  </div>
+                </div>
+              ) : (
+                <div className="mob-content">
+                  {tabView === "about" && slug ? <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
+                  {tabView === "clips" && slug ? <ClipsTab slug={String(slug)} token={token} isOwner={isOwner} onRequireLogin={() => setLoginOpen(true)} /> : null}
+                  {tabView === "vod" && slug ? <VodTab slug={String(slug)} /> : null}
+                  {tabView === "agenda" && slug ? <AgendaTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+        return streamer.isLive ? (
+          <>
+            {Content}
+            {Banner}
+            {Tabs}
+          </>
+        ) : (
+          <>
+            {Banner}
+            {Tabs}
+            {Content}
+          </>
+        );
+      })()}
 
       {/* Actions sheet */}
       {actionsOpen ? (

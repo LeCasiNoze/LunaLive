@@ -1,8 +1,9 @@
 // web/src/pages/ProfilePage.mobile.tsx — Rework v3
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { applyStreamer, myStreamerRequest } from "../lib/api";
 import { myFollowing, myProfileStats, type ApiFollowing, type ApiProfileStats } from "../lib/api_profile";
+import { getMyXp, type XpInfo } from "../lib/api_quests";
 import { useAuth } from "../auth/AuthProvider";
 import { AchievementsModal } from "../components/AchievementsModal";
 import { PersonalisationSection } from "../components/profile/PersonalisationSection";
@@ -436,6 +437,7 @@ const TAB_LABELS: Record<MobileTabKey, { icon: string; label: string }> = {
 
 export default function ProfilePageMobile() {
   const { user, token, refreshMe } = useAuth() as any;
+  const navigate = useNavigate();
   const [tab, setTab]     = React.useState<MobileTabKey>("style");
   const [tabView, setTabView] = React.useState<MobileTabKey>("style");
   const [tabAnim, setTabAnim] = React.useState<{ stage: "idle" | "leaving" | "entering"; dir: -1 | 1 }>({ stage: "idle", dir: 1 });
@@ -458,6 +460,18 @@ export default function ProfilePageMobile() {
   const avatarUrl               = user ? pickUserAvatarUrl(user) : null;
   const [avatarOk, setAvatarOk] = React.useState(true);
   React.useEffect(() => setAvatarOk(true), [avatarUrl]);
+
+  const [xp, setXp] = React.useState<XpInfo | null>(null);
+  React.useEffect(() => {
+    if (!token) { setXp(null); return; }
+    let cancelled = false;
+    const refresh = async () => {
+      try { const r = await getMyXp(); if (!cancelled) setXp(r); } catch {}
+    };
+    refresh();
+    const id = window.setInterval(refresh, 60_000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [token]);
 
   React.useEffect(() => {
     (async () => {
@@ -557,16 +571,41 @@ export default function ProfilePageMobile() {
     return { ...base, transition: `transform ${ENTER_MS}ms ease,opacity ${ENTER_MS}ms ease`, transform: "translateX(0px)", opacity: 1 };
   }, [tabAnim.stage, tabAnim.dir]);
 
+  const BackHeader = (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10,
+      padding: "10px 12px 0",
+    }}>
+      <button
+        type="button"
+        onClick={() => navigate("/")}
+        aria-label="Retour à l'accueil"
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "8px 12px", borderRadius: 10,
+          border: `1px solid ${BOR}`, background: SURF,
+          color: TXT, cursor: "pointer",
+          fontFamily: FONT, fontWeight: 700, fontSize: 13,
+          WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        <span aria-hidden style={{ fontSize: 16, lineHeight: 1 }}>‹</span>
+        <span>Accueil</span>
+      </button>
+      <div style={{ flex: 1 }} />
+    </div>
+  );
+
   if (!user) return (
-    <main style={{ background: BG, minHeight: "100vh", paddingBottom: "calc(72px + env(safe-area-inset-bottom))" }}>
+    <main style={{ background: BG, minHeight: "100vh", paddingBottom: "calc(80px + env(safe-area-inset-bottom))" }}>
+      {BackHeader}
       <div style={{ padding: 20, fontFamily: FONT, color: TXT2 }}>Connecte-toi pour accéder à ton profil.</div>
     </main>
   );
 
-  const TAB_HEIGHT = "calc(64px + env(safe-area-inset-bottom))";
-
   return (
-    <main style={{ background: BG, minHeight: "100vh", paddingBottom: `calc(68px + env(safe-area-inset-bottom))` }}>
+    <main style={{ background: BG, minHeight: "100vh", paddingBottom: `calc(80px + env(safe-area-inset-bottom))` }}>
+      {BackHeader}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         .pfm3-fl { display:flex; justify-content:space-between; align-items:center; gap:10; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02); }
@@ -579,17 +618,30 @@ export default function ProfilePageMobile() {
       <div style={{ padding: "16px 16px 0" }}>
         <div style={{ padding: 14, borderRadius: 12, background: SURF, border: `1px solid ${BOR}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0,
+            <div style={{ width: 56, height: 56, borderRadius: 14, flexShrink: 0,
               border: `2px solid ${BOR_A}`, background: ACC_D,
               display: "grid", placeItems: "center", overflow: "hidden" }}>
               {avatarUrl && avatarOk
                 ? <img src={String(avatarUrl)} alt={user.username} onError={() => setAvatarOk(false)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                : <span style={{ fontFamily: FONT, fontWeight: 700, fontSize: 15, color: "#c4b5fd" }}>{initials(user.username)}</span>}
+                : <span style={{ fontFamily: FONT, fontWeight: 700, fontSize: 17, color: "#c4b5fd" }}>{initials(user.username)}</span>}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontFamily: FONT, fontWeight: 700, fontSize: 15, color: TXT,
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {user.username}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <div style={{ fontFamily: FONT, fontWeight: 700, fontSize: 15, color: TXT,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                  {user.username}
+                </div>
+                {xp ? (
+                  <span title={xp.fullTitle} style={{
+                    flexShrink: 0,
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                    padding: "2px 8px", borderRadius: 999,
+                    border: "1px solid rgba(124,92,252,0.32)",
+                    background: "linear-gradient(135deg,rgba(167,139,250,0.18),rgba(91,142,248,0.14))",
+                    fontFamily: FONT, fontWeight: 800, fontSize: 10, letterSpacing: ".02em",
+                    color: "#c4b5fd",
+                  }}>Lv {xp.level}</span>
+                ) : null}
               </div>
               <div style={{ marginTop: 5, display: "flex", gap: 5, flexWrap: "wrap" }}>
                 <Badge tone="purple">{user.role}</Badge>
@@ -598,6 +650,31 @@ export default function ProfilePageMobile() {
             </div>
             <button className="btnGhost" onClick={() => setAchOpen(true)} title="Succès" style={{ flexShrink: 0, fontSize: 15, padding: "6px 10px" }}>🏆</button>
           </div>
+
+          {xp ? (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ position: "relative", height: 8, borderRadius: 999, overflow: "hidden",
+                background: "rgba(255,255,255,0.06)", border: `1px solid ${BOR}` }}>
+                <div style={{
+                  position: "absolute", inset: "0 auto 0 0", height: "100%",
+                  width: `${Math.max(2, Math.min(100, xp.pctToNext))}%`,
+                  background: xp.isMax
+                    ? "linear-gradient(90deg,#fbbf24,#f59e0b,#fbbf24)"
+                    : "linear-gradient(90deg,#a78bfa,#5b8ef8,#a78bfa)",
+                  backgroundSize: "200% 100%",
+                  borderRadius: 999,
+                  transition: "width 350ms ease",
+                }} />
+              </div>
+              <div style={{ marginTop: 6, display: "flex", justifyContent: "space-between", gap: 8,
+                fontFamily: FONT, fontSize: 11, fontWeight: 600, color: TXT2 }}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{xp.fullTitle}</span>
+                <span style={{ flexShrink: 0, color: "#c4b5fd" }}>
+                  {xp.isMax ? "⭐ MAX" : `${xp.xp.toLocaleString("fr-FR")} XP · ${xp.pctToNext}%`}
+                </span>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -689,16 +766,12 @@ export default function ProfilePageMobile() {
                 {s.mostActiveChatHour != null && <Badge tone="gray">⏰ {hourLabel(s.mostActiveChatHour)}</Badge>}
                 {s.mostActiveChatDow  != null && <Badge tone="gray">🗓️ {dowLabel(s.mostActiveChatDow)}</Badge>}
               </div>
-              <SCard style={{ padding: 14, marginBottom: 10 }}>
+              {/* Activité */}
+              <SLabel>Activité</SLabel>
+              <SCard style={{ padding: 14, marginBottom: 12 }}>
                 {[
-                  ["⏱️ Watchtime",    statsLoading ? "…" : humanDuration(s.watchSecondsTotal)],
-                  ["💬 Messages",     statsLoading ? "…" : s.chatMessagesTotal != null ? fmt(s.chatMessagesTotal) : "—"],
-                  ["💎 Rubis gagnés", statsLoading ? "…" : fmtN(s.rubisEarnedTotal)],
-                  ["🔥 Rubis dépensés", statsLoading ? "…" : fmtN(s.rubisSpentTotal)],
-                  ["🧮 Net rubis",    statsLoading ? "…" : netRubis == null ? "—" : fmt(netRubis)],
-                  ["🎡 Wheel spins",  statsLoading ? "…" : s.dailyWheelSpinsTotal != null ? fmt(s.dailyWheelSpinsTotal) : "—"],
-                  ["🗓️ Bonus claims", statsLoading ? "…" : s.dailyBonusClaimsTotal != null ? fmt(s.dailyBonusClaimsTotal) : "—"],
-                  ["🎁 Collectibles", statsLoading ? "…" : s.entitlementsTotal != null ? fmt(s.entitlementsTotal) : "—"],
+                  ["⏱️ Watchtime",       statsLoading ? "…" : humanDuration(s.watchSecondsTotal)],
+                  ["💬 Messages chat",   statsLoading ? "…" : s.chatMessagesTotal != null ? fmt(s.chatMessagesTotal) : "—"],
                 ].map(([label, val]) => (
                   <div key={String(label)} className="pfm3-stat">
                     <div style={{ fontWeight: 600, color: TXT }}>{label}</div>
@@ -706,6 +779,118 @@ export default function ProfilePageMobile() {
                   </div>
                 ))}
               </SCard>
+
+              {/* Économie */}
+              <SLabel>Économie 💎</SLabel>
+              <SCard style={{ padding: 14, marginBottom: 12 }}>
+                {[
+                  ["💎 Rubis gagnés",     statsLoading ? "…" : fmtN(s.rubisEarnedTotal)],
+                  ["🔥 Rubis dépensés",   statsLoading ? "…" : fmtN(s.rubisSpentTotal)],
+                  ["🤝 Soutien streamers", statsLoading ? "…" : fmtN(s.rubisSupportTotal)],
+                  ["♨️ Rubis brûlés",     statsLoading ? "…" : fmtN(s.rubisBurnTotal)],
+                  ["🧮 Net rubis",        statsLoading ? "…" : netRubis == null ? "—" : fmt(netRubis)],
+                ].map(([label, val]) => (
+                  <div key={String(label)} className="pfm3-stat">
+                    <div style={{ fontWeight: 600, color: TXT }}>{label}</div>
+                    <div style={{ fontWeight: 700, color: TXT }}>{val}</div>
+                  </div>
+                ))}
+              </SCard>
+
+              {/* Récompenses & succès */}
+              <SLabel>Récompenses & succès</SLabel>
+              <SCard style={{ padding: 14, marginBottom: 12 }}>
+                {[
+                  ["🎡 Wheel spins",       statsLoading ? "…" : s.dailyWheelSpinsTotal != null ? fmt(s.dailyWheelSpinsTotal) : "—"],
+                  ["💰 Rubis via wheel",   statsLoading ? "…" : s.dailyWheelRubisTotal != null ? fmt(s.dailyWheelRubisTotal) : "—"],
+                  ["🗓️ Bonus claims",     statsLoading ? "…" : s.dailyBonusClaimsTotal != null ? fmt(s.dailyBonusClaimsTotal) : "—"],
+                  ["🎁 Coffre rubis",      statsLoading ? "…" : s.chestRubisWonTotal != null ? fmt(s.chestRubisWonTotal) : "—"],
+                  ["🏆 Succès débloqués",  statsLoading ? "…" : s.achievementsUnlockedTotal != null ? fmt(s.achievementsUnlockedTotal) : "—"],
+                  ["🎟️ Subs offerts reçus", statsLoading ? "…" : s.subGiftsClaimedTotal != null ? fmt(s.subGiftsClaimedTotal) : "—"],
+                  ["🧸 Collectibles",      statsLoading ? "…" : s.entitlementsTotal != null ? fmt(s.entitlementsTotal) : "—"],
+                ].map(([label, val]) => (
+                  <div key={String(label)} className="pfm3-stat">
+                    <div style={{ fontWeight: 600, color: TXT }}>{label}</div>
+                    <div style={{ fontWeight: 700, color: TXT }}>{val}</div>
+                  </div>
+                ))}
+              </SCard>
+
+              {/* Top streamers — par messages */}
+              {Array.isArray(s.topStreamersByMessages) && s.topStreamersByMessages.length > 0 ? (
+                <>
+                  <SLabel>🥇 Top streamers — par messages</SLabel>
+                  <SCard style={{ padding: 8, marginBottom: 12 }}>
+                    {s.topStreamersByMessages.slice(0, 5).map((row: any, i: number) => (
+                      <Link key={`m-${row.slug}`} to={`/s/${row.slug}`}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                          padding: "10px 12px", borderRadius: 10,
+                          textDecoration: "none", color: TXT,
+                          background: i === 0 ? "rgba(251,191,36,0.06)" : "transparent",
+                          borderBottom: i < Math.min(4, s.topStreamersByMessages.length - 1) ? `1px solid ${BOR}` : "none",
+                        }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                          <span style={{
+                            width: 22, height: 22, borderRadius: 999, flexShrink: 0,
+                            display: "grid", placeItems: "center",
+                            background: i === 0 ? "rgba(251,191,36,0.18)" : i === 1 ? "rgba(196,181,253,0.18)" : i === 2 ? "rgba(91,142,248,0.18)" : "rgba(255,255,255,0.05)",
+                            color: i === 0 ? "#fde68a" : i === 1 ? "#c4b5fd" : i === 2 ? "#93c5fd" : TXT2,
+                            fontFamily: FONT, fontWeight: 800, fontSize: 11,
+                          }}>{i + 1}</span>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontFamily: FONT, fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {row.displayName ?? row.slug}
+                            </div>
+                            <div style={{ fontFamily: FONT, fontSize: 11, color: TXT2 }}>@{row.slug}</div>
+                          </div>
+                        </div>
+                        <div style={{ flexShrink: 0, fontFamily: FONT, fontWeight: 800, fontSize: 13, color: TXT }}>
+                          💬 {fmt(row.messages)}
+                        </div>
+                      </Link>
+                    ))}
+                  </SCard>
+                </>
+              ) : null}
+
+              {/* Top streamers — par watchtime */}
+              {Array.isArray(s.topStreamersByWatch) && s.topStreamersByWatch.length > 0 ? (
+                <>
+                  <SLabel>⏱️ Top streamers — par watchtime</SLabel>
+                  <SCard style={{ padding: 8, marginBottom: 12 }}>
+                    {s.topStreamersByWatch.slice(0, 5).map((row: any, i: number) => (
+                      <Link key={`w-${row.slug}`} to={`/s/${row.slug}`}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                          padding: "10px 12px", borderRadius: 10,
+                          textDecoration: "none", color: TXT,
+                          background: i === 0 ? "rgba(251,191,36,0.06)" : "transparent",
+                          borderBottom: i < Math.min(4, s.topStreamersByWatch.length - 1) ? `1px solid ${BOR}` : "none",
+                        }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                          <span style={{
+                            width: 22, height: 22, borderRadius: 999, flexShrink: 0,
+                            display: "grid", placeItems: "center",
+                            background: i === 0 ? "rgba(251,191,36,0.18)" : i === 1 ? "rgba(196,181,253,0.18)" : i === 2 ? "rgba(91,142,248,0.18)" : "rgba(255,255,255,0.05)",
+                            color: i === 0 ? "#fde68a" : i === 1 ? "#c4b5fd" : i === 2 ? "#93c5fd" : TXT2,
+                            fontFamily: FONT, fontWeight: 800, fontSize: 11,
+                          }}>{i + 1}</span>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontFamily: FONT, fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {row.displayName ?? row.slug}
+                            </div>
+                            <div style={{ fontFamily: FONT, fontSize: 11, color: TXT2 }}>@{row.slug}</div>
+                          </div>
+                        </div>
+                        <div style={{ flexShrink: 0, fontFamily: FONT, fontWeight: 800, fontSize: 13, color: TXT }}>
+                          {humanDuration(row.seconds)}
+                        </div>
+                      </Link>
+                    ))}
+                  </SCard>
+                </>
+              ) : null}
             </div>
           )}
 
@@ -751,13 +936,16 @@ export default function ProfilePageMobile() {
         </div>
       </div>
 
-      {/* Fixed bottom tab bar */}
+      {/* Fixed bottom tab bar — la BottomTabs globale est masquée sur /profile,
+          on prend toute la place en bas. */}
       <nav style={{
-        position: "fixed", bottom: 0, left: 0, right: 0,
+        position: "fixed",
+        bottom: 0, left: 0, right: 0,
         background: SURF, borderTop: `1px solid ${BOR}`,
         display: "flex", alignItems: "stretch",
-        height: TAB_HEIGHT, zIndex: 100,
+        height: "calc(64px + env(safe-area-inset-bottom))",
         paddingBottom: "env(safe-area-inset-bottom)",
+        zIndex: 80,
       }}>
         {TAB_ORDER.map(key => {
           const { icon, label } = TAB_LABELS[key];

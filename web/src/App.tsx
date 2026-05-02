@@ -341,7 +341,7 @@ function AppInner() {
 
         {!hideChrome && <Footer />}
 
-        {isMobile && !hideChrome && <BottomTabs />}
+        {isMobile && !hideChrome && location.pathname !== "/profile" && <BottomTabs />}
 
         {!isStandaloneReferral && (
           <>

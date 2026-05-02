@@ -1,4 +1,13 @@
-// web/src/components/profile/PersonalisationSection.mobile.tsx — Rework v2
+// web/src/components/profile/PersonalisationSection.mobile.tsx — Rework v3
+// ─────────────────────────────────────────────────────────────────────────────
+//  Personnalisation mobile — Purple Velvet polish
+//  Tout ce que la version PC propose, repensé pour le tactile :
+//   - Header sticky : avatar + preview chat live + actions (upload/save/delete)
+//   - Onglets catégories avec compteur "possédés/total" + état actif net
+//   - Search + filter chips (Tous / Débloqués / Verrouillés)
+//   - Groupement par rareté (sections repliables, teintes de rareté)
+//   - Cartes items grosses, lisibles, état "équipé" visible immédiatement
+// ─────────────────────────────────────────────────────────────────────────────
 import * as React from "react";
 import { useAuth } from "../../auth/AuthProvider";
 import { cosmeticsCatalog, equipCosmetic, myCosmetics } from "../../lib/api";
@@ -15,9 +24,9 @@ type Kind = "username" | "badge" | "title" | "frame" | "hat";
 
 type ApiCatalogItem = {
   kind: Kind; code: string; name: string; rarity: string;
-  unlock: string; priceRubis: number | null; pricePrestige?: number | null; active: boolean; meta?: any;
+  unlock: string; priceRubis: number | null; pricePrestige?: number | null;
+  active: boolean; meta?: any;
 };
-
 type UiItem = {
   kind: Kind; code: string | null; name: string; desc?: string; free?: boolean;
   priceRubis?: number | null; pricePrestige?: number | null; rarity?: string; unlock?: string;
@@ -25,27 +34,26 @@ type UiItem = {
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
+// On expose les mêmes 4 catégories que PC (la 5e "title" est gérée
+// séparément par <TitleSelector />, mais on garde l'option ici si besoin).
 const CATS: Array<{ id: Kind; label: string; emoji: string }> = [
   { id: "username", label: "Pseudo",   emoji: "✨" },
   { id: "badge",    label: "Badges",   emoji: "🏷️" },
   { id: "hat",      label: "Chapeaux", emoji: "🧢" },
   { id: "frame",    label: "Cadrans",  emoji: "💬" },
-  { id: "title",    label: "Titres",   emoji: "🏆" },
 ];
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
+const RARITY_ORDER: ReadonlyArray<string> = ["mythic", "legendary", "epic", "rare", "uncommon", "common", ""] as const;
+const RARITY_LABEL: Record<string, string> = {
+  mythic: "Mythique", legendary: "Légendaire", epic: "Épique",
+  rare: "Rare", uncommon: "Peu commun", common: "Commun", "": "Autre",
+};
+const RARITY_COLOR: Record<string, string> = {
+  mythic: "#e879f9", legendary: "#f59e0b", epic: "#a78bfa",
+  rare: "#60a5fa", uncommon: "#6ee7b7", common: "rgba(220,220,255,0.55)", "": "rgba(238,238,245,0.45)",
+};
 
-const SURF  = "#0d1018";
-const SURF2 = "#111624";
-const BOR   = "rgba(255,255,255,0.06)";
-const ACC   = "#7c5cfc";
-const ACC_D = "rgba(124,92,252,0.12)";
-const TXT   = "#eeeef5";
-const TXT2  = "rgba(238,238,245,0.45)";
-const FONT  = "'Inter', system-ui, -apple-system, sans-serif";
-
-// ─── Pure logic helpers ───────────────────────────────────────────────────────
-
+// ─── Pure helpers (logique identique au PC) ──────────────────────────────────
 function niceUnlock(u?: string) {
   if (!u) return "";
   if (u === "shop") return "Shop";
@@ -55,20 +63,15 @@ function niceUnlock(u?: string) {
   if (u === "system") return "Système";
   return u;
 }
-
 function parseJwt(token: string): any | null {
-  try {
-    const p = token.split(".")[1];
-    return JSON.parse(atob(p.replace(/-/g, "+").replace(/_/g, "/")));
-  } catch { return null; }
+  try { return JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))); }
+  catch { return null; }
 }
-
 async function blobToBase64(blob: Blob): Promise<string> {
   const ab = await blob.arrayBuffer(); const bytes = new Uint8Array(ab);
   let bin = ""; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
   return btoa(bin);
 }
-
 async function makeSquareAvatar(file: File, size = 160): Promise<{ mime: string; b64: string; previewUrl: string }> {
   const url = URL.createObjectURL(file);
   const img = new Image(); img.src = url;
@@ -82,7 +85,6 @@ async function makeSquareAvatar(file: File, size = 160): Promise<{ mime: string;
   URL.revokeObjectURL(url);
   return { mime: finalBlob.type || "image/webp", b64: await blobToBase64(finalBlob), previewUrl: URL.createObjectURL(finalBlob) };
 }
-
 function rarityToTier(rarity: string) {
   const s = String(rarity || "").toLowerCase();
   if (s.includes("bronze")) return "bronze";
@@ -103,16 +105,20 @@ function titleLabelFallback(code: string) {
 function frameIdFromCode(code: string) {
   return code.replace(/^m?frame_/, "").replace(/_(shop|event|master)$/, "");
 }
-
-function applyPreview(kind: Kind, code: string | null, c: any, opts?: { titleNames?: Record<string, string> }) {
+function applyPreview(
+  kind: Kind, code: string | null, c: any,
+  opts?: { titleNames?: Record<string, string>; badgeNames?: Record<string, string> }
+) {
   if (!code) return;
   if (!c.avatar) c.avatar = {};
   if (!c.username) c.username = {};
   if (!Array.isArray(c.badges)) c.badges = [];
   if (c.title === undefined) c.title = null;
   if (kind === "badge") {
-    const txt = badgeTextFromCode(code);
-    c.badges = [{ id: txt, code: txt, text: txt, label: txt }]; (c as any).badgeText = txt; return;
+    const label = (code && opts?.badgeNames?.[code]) || badgeTextFromCode(code);
+    c.badges = [{ id: label, code: label, text: label, label }];
+    (c as any).badge = label; (c as any).badgeText = label; (c as any).badgeLabel = label;
+    return;
   }
   if (kind === "hat") {
     const map: Record<string, string> = {
@@ -139,18 +145,19 @@ function applyPreview(kind: Kind, code: string | null, c: any, opts?: { titleNam
       uanim_silver_toggle:"uanim_silver_toggle", uanim_purple_toggle:"uanim_purple_toggle",
       uanim_gradient_sunset:"uanim_gradient_sunset", uanim_galaxy:"uanim_galaxy",
     };
-    const effect = map[code] ?? code; c.username.effect = effect; c.username.animId = effect; c.username.anim = effect; return;
+    const effect = map[code] ?? code;
+    c.username.effect = effect; c.username.animId = effect; c.username.anim = effect; return;
   }
   if (kind === "frame") { c.frame = { frameId: frameIdFromCode(code) }; return; }
   if (kind === "title") {
     const label = opts?.titleNames?.[code] ?? titleLabelFallback(code);
-    c.title = { text: label, label }; (c as any).titleText = label; return;
+    c.title = { text: label, label }; (c as any).titleText = label; (c as any).titleLabel = label; (c as any).titleCode = code;
+    return;
   }
 }
-
 function buildCosmeticsPreview(
   equipped: { username: string | null; badge: string | null; title: string | null; frame: string | null; hat: string | null },
-  opts?: { titleNames?: Record<string, string> }
+  opts?: { titleNames?: Record<string, string>; badgeNames?: Record<string, string> }
 ): ChatCosmetics | null {
   const c: any = { badges: [], title: null, frame: null, avatar: { hatId: null }, username: {} };
   applyPreview("username", equipped?.username ?? null, c, opts);
@@ -161,38 +168,325 @@ function buildCosmeticsPreview(
   return c as ChatCosmetics;
 }
 
-function byOwnedFirst(ownedSet: Set<string>, a: UiItem, b: UiItem) {
-  const ao = a.free || (a.code != null && ownedSet.has(a.code));
-  const bo = b.free || (b.code != null && ownedSet.has(b.code));
-  if (ao !== bo) return ao ? -1 : 1;
-  return a.name.localeCompare(b.name);
+// ─── Styles scoped (Purple Velvet polish) ────────────────────────────────────
+const CSS = `
+.psm {
+  --psm-text-1: #eeeef5;
+  --psm-text-2: rgba(238,238,245,0.55);
+  --psm-text-3: rgba(238,238,245,0.36);
+  --psm-border: rgba(124,92,252,0.18);
+  --psm-surf:   #14102a;
+  --psm-surf-2: #1a1535;
+  --psm-acc:    #7c5cfc;
+  --psm-acc-2:  #a78bfa;
+  --psm-grad:   linear-gradient(135deg, rgba(167,139,250,.20), rgba(91,142,248,.14));
+  --psm-ease:   cubic-bezier(.22,1,.36,1);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--psm-text-1);
 }
 
-// ─── UI primitives ────────────────────────────────────────────────────────────
+/* ── Top : avatar + preview chat ─────────────────────────────────────── */
+.psm-top {
+  border-radius: 16px;
+  border: 1px solid var(--psm-border);
+  background: var(--psm-surf);
+  padding: 14px;
+  position: relative; overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0,0,0,.32);
+}
+.psm-top::before {
+  content:""; position:absolute; top:0; left:8%; right:8%; height:1px;
+  background: linear-gradient(90deg,transparent,rgba(167,139,250,.50) 40%,rgba(91,142,248,.32) 60%,transparent);
+}
 
-function StatusBadge({ children, color }: { children: React.ReactNode; color: "green" | "purple" | "gray" | "red" }) {
-  const map = {
-    green:  { bg: "rgba(16,185,129,0.12)",  bd: "rgba(16,185,129,0.22)",  c: "#34d399" },
-    purple: { bg: "rgba(124,92,252,0.14)",  bd: "rgba(124,92,252,0.24)",  c: "#c4b5fd" },
-    gray:   { bg: "rgba(255,255,255,0.05)", bd: "rgba(255,255,255,0.10)", c: TXT2 },
-    red:    { bg: "rgba(239,68,68,0.10)",   bd: "rgba(239,68,68,0.20)",   c: "#f87171" },
-  };
-  const s = map[color];
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px",
-      borderRadius: 99, background: s.bg, border: `1px solid ${s.bd}`, color: s.c,
-      fontFamily: FONT, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>
-      {children}
-    </span>
-  );
+.psm-top-row {
+  display: flex; align-items: flex-start; gap: 12px;
+}
+.psm-ava {
+  width: 72px; height: 72px; border-radius: 16px; flex-shrink: 0;
+  border: 2px solid rgba(124,92,252,.30); background: rgba(124,92,252,.10);
+  overflow: hidden; display: grid; place-items: center;
+  box-shadow: 0 6px 18px rgba(124,92,252,.20);
+}
+.psm-ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.psm-ava-init { font-weight: 800; font-size: 22px; color: #c4b5fd; }
+
+.psm-ava-actions {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.psm-ava-title { font-weight: 700; font-size: 13px; }
+.psm-ava-sub   { font-size: 11px; color: var(--psm-text-2); }
+.psm-ava-row   { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+
+.psm-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 12px; border-radius: 10px;
+  border: 1px solid var(--psm-border); background: var(--psm-surf-2);
+  color: var(--psm-text-1); cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 140ms ease, border-color 140ms ease, transform 120ms var(--psm-ease);
+  min-height: 36px; flex: 1;
+}
+.psm-btn:active { transform: scale(.97); }
+.psm-btn:disabled { opacity: .45; cursor: not-allowed; }
+.psm-btn-primary {
+  background: var(--psm-grad);
+  border-color: rgba(167,139,250,.36);
+  box-shadow: 0 4px 14px rgba(124,92,252,.20);
+}
+.psm-btn-primary:active { background: linear-gradient(135deg,rgba(167,139,250,.28),rgba(91,142,248,.20)); }
+.psm-btn-danger {
+  background: rgba(239,68,68,.10);
+  border-color: rgba(239,68,68,.28);
+  color: #fca5a5;
+}
+
+.psm-preview-block {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(124,92,252,.12);
+  background: #0e0a1c;
+}
+.psm-preview-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 8px;
+}
+.psm-preview-title {
+  font-weight: 700; font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--psm-text-2);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.psm-preview-status {
+  font-size: 11px; color: var(--psm-text-2);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.psm-pulse {
+  width: 6px; height: 6px; border-radius: 999px;
+  background: rgba(167,139,250,.85);
+  animation: psm-pulse 1s ease-in-out infinite;
+}
+@keyframes psm-pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* ── Erreur ──────────────────────────────────────────────────────────── */
+.psm-err {
+  margin-top: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.24);
+  font-size: 12px; color: #fca5a5;
+}
+
+/* ── Catégories (pills horizontaux) ──────────────────────────────────── */
+.psm-cats {
+  margin-top: 14px;
+  display: flex; gap: 6px; overflow-x: auto;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  padding-bottom: 4px;
+}
+.psm-cats::-webkit-scrollbar { display: none; }
+.psm-cat {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 14px; border-radius: 12px;
+  border: 1px solid var(--psm-border);
+  background: var(--psm-surf);
+  color: var(--psm-text-2);
+  font-family: inherit; font-size: 12px; font-weight: 700;
+  white-space: nowrap; flex-shrink: 0; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease, transform 120ms var(--psm-ease);
+}
+.psm-cat:active { transform: scale(.97); }
+.psm-cat.active {
+  background: var(--psm-grad);
+  border-color: rgba(167,139,250,.40);
+  color: var(--psm-text-1);
+  box-shadow: 0 4px 14px rgba(124,92,252,.20);
+}
+.psm-cat-emoji { font-size: 14px; }
+.psm-cat-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 18px; padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.30); color: var(--psm-text-2);
+  font-size: 10px; font-weight: 800;
+}
+.psm-cat.active .psm-cat-count { background: rgba(255,255,255,.10); color: var(--psm-text-1); }
+
+/* ── Toolbar : search + filter chips ─────────────────────────────────── */
+.psm-tools {
+  margin-top: 10px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.psm-search {
+  flex: 1 1 140px; min-width: 0;
+  display: flex; align-items: center; gap: 6px;
+  padding: 9px 12px; border-radius: 11px;
+  border: 1px solid var(--psm-border); background: var(--psm-surf);
+}
+.psm-search:focus-within {
+  border-color: rgba(167,139,250,.55);
+  box-shadow: 0 0 0 3px rgba(124,92,252,.12);
+}
+.psm-search-icon { font-size: 13px; color: var(--psm-text-2); }
+.psm-search-input {
+  flex: 1; min-width: 0;
+  border: 0; outline: none; background: transparent;
+  color: var(--psm-text-1); font: inherit; font-size: 13px;
+}
+.psm-search-input::placeholder { color: var(--psm-text-3); }
+.psm-search-clear {
+  background: transparent; border: 0; padding: 0;
+  color: var(--psm-text-2); cursor: pointer;
+  font-size: 12px; width: 18px; height: 18px;
+  display: grid; place-items: center; border-radius: 999px;
+}
+.psm-chip {
+  padding: 7px 11px; border-radius: 999px;
+  border: 1px solid var(--psm-border); background: var(--psm-surf);
+  color: var(--psm-text-2);
+  font-family: inherit; font-size: 11px; font-weight: 700;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.psm-chip.active {
+  background: rgba(124,92,252,.18); border-color: rgba(167,139,250,.40); color: var(--psm-text-1);
+}
+
+.psm-counter {
+  margin-left: auto;
+  font-size: 11px; color: var(--psm-text-2); font-weight: 600;
+}
+
+/* ── Sections par rareté ─────────────────────────────────────────────── */
+.psm-rarity {
+  margin-top: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--psm-border);
+  background: rgba(13,11,24,.55);
+  overflow: hidden;
+}
+.psm-rarity-head {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 11px 14px;
+  background: transparent; border: 0; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  font-family: inherit;
+}
+.psm-rarity-dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
+.psm-rarity-name {
+  font-weight: 800; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+}
+.psm-rarity-count { font-size: 11px; color: var(--psm-text-2); font-weight: 600; }
+.psm-rarity-line { flex: 1; height: 1px; background: rgba(255,255,255,.06); }
+.psm-rarity-chev {
+  font-size: 12px; color: var(--psm-text-2);
+  transition: transform 200ms var(--psm-ease);
+}
+.psm-rarity[open] .psm-rarity-chev { transform: rotate(90deg); }
+.psm-rarity-body { padding: 0 10px 10px; display: grid; gap: 8px; }
+
+/* ── Item card ───────────────────────────────────────────────────────── */
+.psm-item {
+  display: block; width: 100%; text-align: left;
+  border-radius: 12px; padding: 12px;
+  border: 1px solid var(--psm-border);
+  background: var(--psm-surf);
+  color: inherit; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 130ms var(--psm-ease), border-color 140ms ease, box-shadow 140ms ease;
+}
+.psm-item:active { transform: scale(.99); }
+.psm-item:disabled { cursor: not-allowed; }
+.psm-item.is-equipped {
+  border-color: rgba(167,139,250,.50);
+  background: linear-gradient(135deg, rgba(124,92,252,.18), rgba(91,142,248,.10));
+  box-shadow: 0 8px 22px rgba(124,92,252,.20);
+}
+.psm-item.is-locked {
+  background: rgba(13,11,24,.55);
+  opacity: .60;
+}
+
+.psm-item-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 8px;
+}
+.psm-item-name {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-weight: 700; font-size: 13.5px; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.psm-status {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; white-space: nowrap;
+  flex-shrink: 0;
+}
+.psm-status.s-equipped { background: rgba(16,185,129,.14); border: 1px solid rgba(16,185,129,.28); color: #34d399; }
+.psm-status.s-free     { background: rgba(124,92,252,.14); border: 1px solid rgba(124,92,252,.28); color: #c4b5fd; }
+.psm-status.s-owned    { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.10); color: var(--psm-text-2); }
+.psm-status.s-locked   { background: rgba(239,68,68,.10); border: 1px solid rgba(239,68,68,.22); color: #f87171; }
+
+.psm-item-preview {
+  margin: 4px 0 6px; pointer-events: none;
+}
+
+.psm-item-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 8px;
+  font-size: 11px; color: var(--psm-text-2);
+}
+.psm-item-cta {
+  font-weight: 700; font-size: 11.5px;
+  color: rgba(196,181,253,.95);
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.psm-item.is-equipped .psm-item-cta { color: #34d399; }
+
+/* ── Empty / loading states ──────────────────────────────────────────── */
+.psm-empty {
+  margin-top: 12px;
+  padding: 26px 14px; text-align: center;
+  border-radius: 12px;
+  border: 1px dashed var(--psm-border); background: rgba(13,11,24,.40);
+  color: var(--psm-text-2); font-size: 13px;
+}
+.psm-skel {
+  height: 96px; border-radius: 12px;
+  background: linear-gradient(90deg, rgba(255,255,255,.04) 0%, rgba(255,255,255,.08) 50%, rgba(255,255,255,.04) 100%);
+  background-size: 200% 100%; animation: psm-skel 1.6s ease-in-out infinite;
+}
+@keyframes psm-skel { 0% { background-position: 100% 50%; } 100% { background-position: -100% 50%; } }
+`;
+
+let _cssInjected = false;
+function useStyles() {
+  React.useEffect(() => {
+    if (_cssInjected) return;
+    const el = document.createElement("style");
+    el.id = "psm-css"; el.textContent = CSS;
+    document.head.appendChild(el);
+    _cssInjected = true;
+  }, []);
+}
+
+function StatusBadge({ kind }: { kind: "equipped" | "free" | "owned" | "locked" }) {
+  if (kind === "equipped") return <span className="psm-status s-equipped">✅ Équipé</span>;
+  if (kind === "free")     return <span className="psm-status s-free">🎁 Gratuit</span>;
+  if (kind === "owned")    return <span className="psm-status s-owned">🧾 Possédé</span>;
+  return <span className="psm-status s-locked">🔒</span>;
 }
 
 function renderItemName(it: UiItem) {
   if (it.kind === "badge" && it.code) {
     const tier = rarityToTier(it.rarity || "");
-    return <span className={`chatBadge badge--${tier}`}>{badgeTextFromCode(it.code)}</span>;
+    const label = it.name || badgeTextFromCode(it.code);
+    return <span className={`chatBadge badge--${tier}`}>{label}</span>;
   }
-  return <span style={{ fontFamily: FONT, fontWeight: 600, color: TXT }}>{it.name}</span>;
+  return <span>{it.name}</span>;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -204,21 +498,25 @@ export function PersonalisationSectionMobile({
   username: string;
   streamerAppearance?: StreamerAppearance;
 }) {
+  useStyles();
   const { token } = useAuth();
-
   const me = React.useMemo(() => (token ? parseJwt(token) : null), [token]);
   const myUserId = Number(me?.id || 0);
 
+  // Avatar state
   const fileRef = React.useRef<HTMLInputElement | null>(null);
   const [avatarUrl, setAvatarUrl]         = React.useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null);
   const [avatarPayload, setAvatarPayload] = React.useState<{ mime: string; b64: string } | null>(null);
   const [avatarBusy, setAvatarBusy]       = React.useState(false);
 
+  // Tabs / data
   const [tab, setTab]         = React.useState<Kind>("username");
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving]   = React.useState(false);
   const [err, setErr]         = React.useState<string | null>(null);
+  const [filterMode, setFilterMode] = React.useState<"all" | "owned" | "locked">("all");
+  const [searchQ, setSearchQ]       = React.useState("");
 
   const [catalog, setCatalog] = React.useState<ApiCatalogItem[]>([]);
   const [owned, setOwned]     = React.useState<Record<string, string[]>>({});
@@ -266,294 +564,364 @@ export function PersonalisationSectionMobile({
     for (const it of catalog) if (it?.kind === "title" && it.code && it.name) m[it.code] = it.name;
     return m;
   }, [catalog]);
+  const badgeNames = React.useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const it of catalog) if (it?.kind === "badge" && it.code && it.name) m[it.code] = it.name;
+    return m;
+  }, [catalog]);
 
-  const ownedSet = new Set<string>([...(owned?.[tab] || []), ...(free?.[tab] || [])]);
+  // Compteur owned/total par catégorie (affiché dans les pills)
+  const catCounts = React.useMemo(() => {
+    const out: Record<Kind, { owned: number; total: number }> = {
+      username: { owned: 0, total: 0 }, badge: { owned: 0, total: 0 },
+      hat: { owned: 0, total: 0 }, frame: { owned: 0, total: 0 }, title: { owned: 0, total: 0 },
+    };
+    for (const c of CATS) {
+      const k = c.id;
+      const o = new Set<string>([...(owned?.[k] || []), ...(free?.[k] || [])]);
+      const total = catalog.filter(x => x.kind === k).length + 1; // +1 pour "Aucun/Par défaut"
+      const ownedCount = catalog.filter(x => x.kind === k && o.has(x.code)).length + 1;
+      out[k] = { owned: ownedCount, total };
+    }
+    return out;
+  }, [catalog, owned, free]);
 
-  const items: UiItem[] = [
-    { kind: tab, code: null, name: tab === "username" ? "Par défaut" : "Aucun", free: true, desc: "Retirer l'élément actif." },
-    ...catalog.filter(x => x.kind === tab).map(x => {
-      const pricePrestige = Number((x as any).pricePrestige ?? 0) || null;
-      const desc = x.unlock === "shop"
-        ? x.priceRubis ? `${Number(x.priceRubis).toLocaleString("fr-FR")} rubis`
-          : pricePrestige ? `${Number(pricePrestige).toLocaleString("fr-FR")} prestige` : "Shop"
-        : `${niceUnlock(x.unlock)}${x.rarity ? ` — ${x.rarity}` : ""}`;
-      return { kind: x.kind, code: x.code, name: x.name, desc, priceRubis: x.priceRubis, pricePrestige, rarity: x.rarity, unlock: x.unlock };
-    }),
-  ].sort((a, b) => byOwnedFirst(ownedSet, a, b));
+  const ownedSet = React.useMemo(
+    () => new Set<string>([...(owned?.[tab] || []), ...(free?.[tab] || [])]),
+    [owned, free, tab]
+  );
 
-  const effectiveAvatar = avatarUrl;
+  const allItems: UiItem[] = React.useMemo(() => {
+    return [
+      {
+        kind: tab, code: null,
+        name: tab === "username" ? "Par défaut" : "Aucun",
+        free: true, desc: "Retirer l'élément actif.", rarity: "common",
+      },
+      ...catalog.filter(x => x.kind === tab).map(x => {
+        const pricePrestige = Number((x as any).pricePrestige ?? 0) || null;
+        const desc = x.unlock === "shop"
+          ? x.priceRubis ? `${Number(x.priceRubis).toLocaleString("fr-FR")} rubis`
+            : pricePrestige ? `${Number(pricePrestige).toLocaleString("fr-FR")} prestige` : "Shop"
+          : `${niceUnlock(x.unlock)}${x.rarity ? ` — ${x.rarity}` : ""}`;
+        return { kind: x.kind, code: x.code, name: x.name, desc, priceRubis: x.priceRubis, pricePrestige, rarity: x.rarity, unlock: x.unlock };
+      }),
+    ];
+  }, [catalog, tab]);
+
+  const q = searchQ.toLowerCase().trim();
+  const filteredItems = React.useMemo(() => allItems.filter(it => {
+    if (q && !it.name.toLowerCase().includes(q)) return false;
+    const isOwned = !!it.free || (it.code != null && ownedSet.has(it.code));
+    if (filterMode === "owned") return isOwned;
+    if (filterMode === "locked") return !isOwned && !it.free;
+    return true;
+  }), [allItems, q, filterMode, ownedSet]);
+
+  // Group by rarity
+  const byRarity = React.useMemo(() => {
+    const out: Record<string, UiItem[]> = {};
+    for (const r of RARITY_ORDER) out[r] = [];
+    for (const it of filteredItems) {
+      const r = it.rarity ?? "";
+      if (out[r] != null) out[r].push(it);
+      else out[""].push(it);
+    }
+    return out;
+  }, [filteredItems]);
+
+  const totalOwnedCurrentTab = allItems.filter(it => !!it.free || (it.code != null && ownedSet.has(it.code))).length;
+
   function withAvatar<C extends ChatCosmetics | null>(c: C): C {
     if (!c) return c;
-    return { ...(c as any), avatar: { ...((c as any).avatar || {}), url: effectiveAvatar || undefined } } as any as C;
+    return { ...(c as any), avatar: { ...((c as any).avatar || {}), url: avatarUrl || undefined } } as any as C;
   }
-
-  const previewCosmetics = withAvatar(buildCosmeticsPreview(equipped, { titleNames }));
+  const previewCosmetics = withAvatar(buildCosmeticsPreview(equipped, { titleNames, badgeNames }));
   function previewForItem(it: UiItem): ChatCosmetics | null {
     const simulated = {
-      username: it.kind === "username" ? it.code : equipped.username,
-      badge:    it.kind === "badge"    ? it.code : equipped.badge,
-      title:    it.kind === "title"    ? it.code : equipped.title,
-      frame:    it.kind === "frame"    ? it.code : equipped.frame,
-      hat:      it.kind === "hat"      ? it.code : equipped.hat,
+      username: tab === "username" ? it.code : equipped.username,
+      badge:    tab === "badge"    ? it.code : equipped.badge,
+      title:    tab === "title"    ? it.code : equipped.title,
+      frame:    tab === "frame"    ? it.code : equipped.frame,
+      hat:      tab === "hat"      ? it.code : equipped.hat,
     };
-    return withAvatar(buildCosmeticsPreview(simulated, { titleNames }));
+    return withAvatar(buildCosmeticsPreview(simulated, { titleNames, badgeNames }));
   }
 
-  const curLabel = CATS.find(x => x.id === tab)?.label ?? tab;
-  const curEmoji = CATS.find(x => x.id === tab)?.emoji ?? "🎨";
-
-  // ─── Swipe to change category (blocks parent swipe) ──────────────────────
-  const catsOrder = React.useMemo(() => CATS.map(c => c.id), []);
-  const swipeRef = React.useRef({ active: false, decided: false, horizontal: false, x0: 0, y0: 0, dx: 0, dy: 0, pointerId: -1 });
-
-  function catIndex(id: Kind) { const i = catsOrder.indexOf(id); return i >= 0 ? i : 0; }
-  function setCatByIndex(i: number) { const n = catsOrder.length; setTab(catsOrder[Math.max(0, Math.min(n - 1, i))] as Kind); }
-
-  function onPointerDownCapture(e: React.PointerEvent) {
-    if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
-    swipeRef.current = { active: true, decided: false, horizontal: false, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, pointerId: e.pointerId };
-    try { (e.currentTarget as any).setPointerCapture?.(e.pointerId); } catch {}
+  // Avatar handlers
+  async function uploadAvatar() {
+    if (!token || !avatarPayload) return;
+    setAvatarBusy(true); setErr(null);
+    try {
+      const r = await fetch(`${API_BASE}/me/avatar`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ mime: avatarPayload.mime, data: avatarPayload.b64 }),
+      });
+      const j = await r.json();
+      if (!j?.ok) throw new Error(j?.error || "upload_failed");
+      setAvatarUrl(String(j?.avatarUrl || `${API_BASE}/avatars/u/${myUserId}?v=${Date.now()}`));
+      void trackFeatureEvent(token, { kind: "profile_style_action", subject: "avatar_upload" });
+      setAvatarPayload(null);
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+      setAvatarPreview(null);
+    } catch (e: any) { setErr(String(e?.message || "Erreur")); }
+    finally { setAvatarBusy(false); }
   }
-  function onPointerMoveCapture(e: React.PointerEvent) {
-    if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
-    if (!swipeRef.current.active) return;
-    const dx = e.clientX - swipeRef.current.x0; const dy = e.clientY - swipeRef.current.y0;
-    swipeRef.current.dx = dx; swipeRef.current.dy = dy;
-    if (!swipeRef.current.decided && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
-      swipeRef.current.decided = true;
-      swipeRef.current.horizontal = Math.abs(dx) > Math.abs(dy) * 1.1;
-    }
-    if (swipeRef.current.decided && swipeRef.current.horizontal) {
-      if (e.cancelable) e.preventDefault();
-      e.stopPropagation();
-    }
+  async function deleteAvatar() {
+    if (!token) return;
+    setAvatarBusy(true); setErr(null);
+    try {
+      const r = await fetch(`${API_BASE}/me/avatar`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      const j = await r.json().catch(() => ({}));
+      if (j?.ok !== true) throw new Error(j?.error || "delete_failed");
+      setAvatarUrl(null);
+    } catch (e: any) { setErr(String(e?.message || "Erreur")); }
+    finally { setAvatarBusy(false); }
   }
-  function onPointerUpCapture(e: React.PointerEvent) {
-    if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
-    const { decided, horizontal, dx, dy } = swipeRef.current;
-    swipeRef.current.active = false;
-    if (!(decided && horizontal)) { try { (e.currentTarget as any).releasePointerCapture?.(e.pointerId); } catch {} return; }
-    e.stopPropagation();
-    if (Math.abs(dx) >= 45 && Math.abs(dx) >= Math.abs(dy) * 1.2) {
-      if (dx < 0) setCatByIndex(catIndex(tab) + 1); else setCatByIndex(catIndex(tab) - 1);
-    }
-    try { (e.currentTarget as any).releasePointerCapture?.(e.pointerId); } catch {}
-  }
-  function onPointerCancelCapture(e: React.PointerEvent) {
-    if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
-    swipeRef.current.active = false;
-    try { (e.currentTarget as any).releasePointerCapture?.(e.pointerId); } catch {}
+  function cancelAvatarPick() {
+    setAvatarPayload(null);
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    setAvatarPreview(null);
   }
 
   return (
-    <div
-      data-noswipe-profiletabs="1"
-      onPointerDownCapture={onPointerDownCapture}
-      onPointerMoveCapture={onPointerMoveCapture}
-      onPointerUpCapture={onPointerUpCapture}
-      onPointerCancelCapture={onPointerCancelCapture}
-      style={{ fontFamily: FONT, touchAction: "pan-y", overscrollBehaviorX: "contain" }}
-    >
-
-      {/* Error */}
-      {err && (
-        <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 8,
-          background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)",
-          fontFamily: FONT, fontSize: 12, color: "#f87171" }}>
-          ⚠️ {err}
-        </div>
-      )}
-
-      {/* Avatar + Preview row */}
-      <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
-
-        {/* Avatar */}
-        <div style={{ borderRadius: 10, border: `1px solid ${BOR}`, background: SURF, padding: 12 }}>
-          <div style={{ fontFamily: FONT, fontWeight: 700, fontSize: 13, color: TXT, marginBottom: 10 }}>
-            🖼️ Avatar
-            <span style={{ marginLeft: 6, fontWeight: 400, fontSize: 11, color: TXT2 }}>carré — auto-crop</span>
+    <div className="psm" data-no-swipe="1">
+      {/* ═══════════════════════════════════════════════
+          HEADER : Avatar + actions + Live preview
+      ═══════════════════════════════════════════════ */}
+      <div className="psm-top">
+        <div className="psm-top-row">
+          <div className="psm-ava" aria-hidden>
+            {(avatarPreview || avatarUrl) ? (
+              <img
+                src={avatarPreview || `${avatarUrl}`}
+                alt=""
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+              />
+            ) : (
+              <span className="psm-ava-init">{getInitials(username)}</span>
+            )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "60px 1fr", gap: 12, alignItems: "center" }}>
-            <div style={{ width: 58, height: 58, borderRadius: 10, border: `1px solid rgba(124,92,252,0.25)`,
-              background: ACC_D, overflow: "hidden", display: "grid", placeItems: "center" }}>
-              {(avatarPreview || avatarUrl) ? (
-                <img src={avatarPreview || `${avatarUrl}`} alt="" onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-              ) : (
-                <span style={{ fontFamily: FONT, fontWeight: 700, fontSize: 16, color: "#c4b5fd" }}>{getInitials(username)}</span>
-              )}
-            </div>
-            <div style={{ display: "grid", gap: 7 }}>
-              <button className="btnGhostSmall" disabled={!token || avatarBusy} onClick={() => fileRef.current?.click()} style={{ fontSize: 12 }}>
+          <div className="psm-ava-actions">
+            <div className="psm-ava-title">🖼️ Avatar</div>
+            <div className="psm-ava-sub">Carré 1:1 — auto-recadrage</div>
+            <div className="psm-ava-row">
+              <button
+                type="button"
+                className="psm-btn"
+                disabled={!token || avatarBusy}
+                onClick={() => fileRef.current?.click()}
+              >
                 {avatarPayload ? "🪄 Changer" : "⬆️ Uploader"}
               </button>
               {avatarPayload ? (
-                <div style={{ display: "flex", gap: 7 }}>
-                  <button className="btnPrimarySmall" disabled={!token || avatarBusy} style={{ flex: 1, fontSize: 12 }}
-                    onClick={async () => {
-                      if (!token || !avatarPayload) return;
-                      setAvatarBusy(true); setErr(null);
-                      try {
-                        const r = await fetch(`${API_BASE}/me/avatar`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ mime: avatarPayload.mime, data: avatarPayload.b64 }) });
-                        const j = await r.json();
-                        if (!j?.ok) throw new Error(j?.error || "upload_failed");
-                        setAvatarUrl(String(j?.avatarUrl || `${API_BASE}/avatars/u/${myUserId}?v=${Date.now()}`));
-                        void trackFeatureEvent(token, { kind: "profile_style_action", subject: "avatar_upload" });
-                        setAvatarPayload(null); if (avatarPreview) URL.revokeObjectURL(avatarPreview); setAvatarPreview(null);
-                      } catch (e: any) { setErr(String(e?.message || "Erreur")); }
-                      finally { setAvatarBusy(false); }
-                    }}>
-                    {avatarBusy ? "…" : "✅"}
+                <>
+                  <button type="button" className="psm-btn psm-btn-primary" disabled={!token || avatarBusy} onClick={uploadAvatar}>
+                    {avatarBusy ? "…" : "✅ Valider"}
                   </button>
-                  <button className="btnGhostSmall" disabled={avatarBusy} style={{ fontSize: 12 }}
-                    onClick={() => { setAvatarPayload(null); if (avatarPreview) URL.revokeObjectURL(avatarPreview); setAvatarPreview(null); }}>
+                  <button type="button" className="psm-btn" disabled={avatarBusy} onClick={cancelAvatarPick} aria-label="Annuler">
                     ✕
                   </button>
-                </div>
+                </>
               ) : (
-                <button className="btnGhostSmall" disabled={!token || avatarBusy} style={{ fontSize: 12 }}
-                  onClick={async () => {
-                    if (!token) return; setAvatarBusy(true); setErr(null);
-                    try {
-                      const r = await fetch(`${API_BASE}/me/avatar`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
-                      const j = await r.json().catch(() => ({}));
-                      if (j?.ok !== true) throw new Error(j?.error || "delete_failed");
-                      setAvatarUrl(null);
-                    } catch (e: any) { setErr(String(e?.message || "Erreur")); }
-                    finally { setAvatarBusy(false); }
-                  }}>
-                  🗑️ Supprimer
-                </button>
+                avatarUrl ? (
+                  <button type="button" className="psm-btn psm-btn-danger" disabled={!token || avatarBusy} onClick={deleteAvatar}>
+                    🗑️ Supprimer
+                  </button>
+                ) : null
               )}
             </div>
           </div>
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
-            onChange={async e => {
-              const f = e.target.files?.[0]; if (!f) return;
-              setErr(null); setAvatarBusy(true);
-              try {
-                const { mime, b64, previewUrl } = await makeSquareAvatar(f, 160);
-                setAvatarPayload({ mime, b64 }); if (avatarPreview) URL.revokeObjectURL(avatarPreview); setAvatarPreview(previewUrl);
-              } catch (err: any) { setErr(String(err?.message || "avatar_prepare_failed")); }
-              finally { setAvatarBusy(false); }
-            }} />
         </div>
 
-        {/* Live preview */}
-        <div style={{ borderRadius: 10, border: `1px solid ${BOR}`, background: SURF, padding: 12,
-          ...(({ ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor, ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor }) as any) }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <span style={{ fontFamily: FONT, fontWeight: 700, fontSize: 13, color: TXT }}>✨ Aperçu</span>
-            <span style={{ fontFamily: FONT, fontSize: 11, color: TXT2 }}>
+        <input
+          ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
+          onChange={async (e) => {
+            const f = e.target.files?.[0]; if (!f) return;
+            setErr(null); setAvatarBusy(true);
+            try {
+              const { mime, b64, previewUrl } = await makeSquareAvatar(f, 160);
+              setAvatarPayload({ mime, b64 });
+              if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+              setAvatarPreview(previewUrl);
+            } catch (err: any) { setErr(String(err?.message || "avatar_prepare_failed")); }
+            finally { setAvatarBusy(false); }
+          }}
+        />
+
+        {/* Live preview chat bubble */}
+        <div
+          className="psm-preview-block"
+          style={(({ ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor, ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor }) as any)}
+        >
+          <div className="psm-preview-head">
+            <span className="psm-preview-title">✨ Aperçu live</span>
+            <span className="psm-preview-status">
+              {(saving || loading) ? <span className="psm-pulse" aria-hidden /> : null}
               {saving ? "Enregistrement…" : loading ? "Chargement…" : "Rendu en temps réel"}
             </span>
           </div>
           <ChatMessageBubble
             streamerAppearance={streamerAppearance}
-            msg={{ id: "preview", userId: myUserId || 0, username, body: "Exemple — comment ça rend ?", createdAt: new Date().toISOString(), cosmetics: previewCosmetics }}
+            msg={{
+              id: "preview", userId: myUserId || 0, username,
+              body: "Exemple — comment ça rend ?",
+              createdAt: new Date().toISOString(), cosmetics: previewCosmetics,
+            }}
           />
         </div>
+
+        {err && <div className="psm-err">⚠️ {err}</div>}
       </div>
 
-      {/* Category tabs (swipeable) */}
-      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6, marginBottom: 12, WebkitOverflowScrolling: "touch" }}>
-        {CATS.map(c => (
-          <button key={c.id} onClick={() => setTab(c.id)} disabled={loading || saving} style={{
-            display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px",
-            borderRadius: 8, border: `1px solid ${tab === c.id ? "rgba(124,92,252,0.30)" : BOR}`,
-            background: tab === c.id ? ACC_D : "transparent",
-            color: tab === c.id ? "#c4b5fd" : TXT2,
-            fontFamily: FONT, fontWeight: 600, fontSize: 12,
-            whiteSpace: "nowrap", flexShrink: 0,
-            borderLeft: `3px solid ${tab === c.id ? ACC : "transparent"}`,
-            cursor: loading || saving ? "not-allowed" : "pointer",
-            opacity: loading || saving ? 0.5 : 1,
-          }}>
-            <span style={{ fontSize: 13 }}>{c.emoji}</span>
-            <span>{c.label}</span>
+      {/* ═══════════════════════════════════════════════
+          ONGLETS CATÉGORIES + compteurs
+      ═══════════════════════════════════════════════ */}
+      <div className="psm-cats" role="tablist" aria-label="Catégorie">
+        {CATS.map((c) => {
+          const active = tab === c.id;
+          const cc = catCounts[c.id];
+          return (
+            <button
+              key={c.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className={`psm-cat${active ? " active" : ""}`}
+              onClick={() => { setTab(c.id); setSearchQ(""); setFilterMode("all"); }}
+              disabled={loading || saving}
+            >
+              <span className="psm-cat-emoji" aria-hidden>{c.emoji}</span>
+              <span>{c.label}</span>
+              <span className="psm-cat-count" aria-hidden>{cc.owned}/{cc.total}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ═══════════════════════════════════════════════
+          TOOLBAR : recherche + filtres
+      ═══════════════════════════════════════════════ */}
+      <div className="psm-tools">
+        <div className="psm-search">
+          <span className="psm-search-icon" aria-hidden>🔍</span>
+          <input
+            type="search" inputMode="search" autoComplete="off" spellCheck={false}
+            className="psm-search-input"
+            placeholder="Rechercher un élément…"
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            aria-label="Rechercher"
+          />
+          {searchQ ? (
+            <button type="button" className="psm-search-clear" onClick={() => setSearchQ("")} aria-label="Effacer">✕</button>
+          ) : null}
+        </div>
+        {(["all", "owned", "locked"] as const).map(f => (
+          <button
+            key={f} type="button"
+            className={`psm-chip${filterMode === f ? " active" : ""}`}
+            onClick={() => setFilterMode(f)}
+          >
+            {f === "all" ? "Tous" : f === "owned" ? "Débloqués" : "Verrouillés"}
           </button>
         ))}
-        <div style={{ marginLeft: "auto", flexShrink: 0 }}>
-          <button className="btnGhostSmall" onClick={load} disabled={!token || loading || saving} style={{ fontSize: 11 }}>
-            {loading ? "…" : "🔄"}
-          </button>
+        <div className="psm-counter" aria-live="polite">
+          {totalOwnedCurrentTab}/{allItems.length} débloqués
         </div>
       </div>
 
-      {/* Items list */}
-      <div style={{ borderRadius: 10, border: `1px solid ${BOR}`, background: SURF, padding: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <span style={{ fontFamily: FONT, fontWeight: 700, fontSize: 13, color: TXT }}>{curEmoji} {curLabel}</span>
-          <span style={{ fontFamily: FONT, fontSize: 11, color: TXT2 }}>
-            {saving ? "Enregistrement…" : loading ? "Chargement…" : `${items.length} items`}
-          </span>
+      {/* ═══════════════════════════════════════════════
+          LISTE GROUPÉE PAR RARETÉ (sections repliables)
+      ═══════════════════════════════════════════════ */}
+      {loading && allItems.length <= 1 ? (
+        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          {[0,1,2].map(i => <div key={i} className="psm-skel" style={{ animationDelay: `${i * 100}ms` }} />)}
         </div>
+      ) : filteredItems.length === 0 ? (
+        <div className="psm-empty">
+          {searchQ.trim() ? `Aucun résultat pour « ${searchQ} »` : "Aucun élément dans cette vue."}
+        </div>
+      ) : (
+        RARITY_ORDER.map((rarity) => {
+          const group = byRarity[rarity];
+          if (!group || group.length === 0) return null;
+          const ownedInGroup = group.filter(it => !!it.free || (it.code != null && ownedSet.has(it.code))).length;
+          const color = RARITY_COLOR[rarity] ?? "rgba(238,238,245,0.45)";
 
-        <div style={{ display: "grid", gap: 8 }}>
-          {items.map(it => {
-            const isEquipped = (equipped as any)?.[tab] === it.code;
-            const isOwned    = !!it.free || (it.code != null && ownedSet.has(it.code));
-            const locked     = !isOwned;
-            const cardPreview = previewForItem(it);
-
-            return (
-              <button
-                key={`${it.kind}:${String(it.code)}`}
-                onClick={() => isOwned ? doEquip(it.kind, it.code) : undefined}
-                disabled={!token || loading || saving || !isOwned}
-                title={!isOwned ? "Non possédé" : isEquipped ? "Retirer" : "Équiper"}
-                style={{
-                  textAlign: "left", borderRadius: 10, padding: 11, cursor: !isOwned ? "not-allowed" : "pointer",
-                  border: `1px solid ${isEquipped ? "rgba(124,92,252,0.35)" : BOR}`,
-                  background: isEquipped ? ACC_D : (locked ? "rgba(255,255,255,0.02)" : SURF2),
-                  opacity: locked ? 0.48 : 1,
-                  transform: isEquipped ? "translateY(-1px)" : "none",
-                  boxShadow: isEquipped ? "0 4px 16px rgba(124,92,252,0.12)" : "none",
-                  transition: "transform 120ms, box-shadow 120ms",
-                }}
+          return (
+            <details key={rarity} open className="psm-rarity">
+              <summary
+                className="psm-rarity-head"
+                style={{ color }}
+                // <details> uses summary natively; we just style it
               >
-                {/* Header */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                  <div style={{ minWidth: 0 }}>{renderItemName(it)}</div>
-                  <div style={{ flexShrink: 0 }}>
-                    {isEquipped ? (
-                      <StatusBadge color="green">✅ Équipé</StatusBadge>
-                    ) : it.free ? (
-                      <StatusBadge color="purple">🎁 Gratuit</StatusBadge>
-                    ) : isOwned ? (
-                      <StatusBadge color="gray">🧾 Possédé</StatusBadge>
-                    ) : (
-                      <StatusBadge color="red">🔒 Verrouillé</StatusBadge>
-                    )}
-                  </div>
-                </div>
+                <span className="psm-rarity-dot" style={{ background: color }} aria-hidden />
+                <span className="psm-rarity-name">{RARITY_LABEL[rarity] ?? rarity}</span>
+                <span className="psm-rarity-count">{ownedInGroup}/{group.length}</span>
+                <span className="psm-rarity-line" aria-hidden />
+                <span className="psm-rarity-chev" aria-hidden>›</span>
+              </summary>
+              <div className="psm-rarity-body">
+                {group.map(it => {
+                  const isEquipped = (equipped as any)?.[tab] === it.code;
+                  const isOwned    = !!it.free || (it.code != null && ownedSet.has(it.code));
+                  const locked     = !isOwned;
+                  const cardPreview = previewForItem(it);
+                  const statusKind = isEquipped ? "equipped" : it.free ? "free" : isOwned ? "owned" : "locked";
 
-                {/* Preview */}
-                <div style={{ pointerEvents: "none", opacity: locked ? 0.60 : 1,
-                  ...(({ ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor, ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor }) as any) }}>
-                  <ChatMessageBubble
-                    streamerAppearance={streamerAppearance}
-                    msg={{ id: `cp:${it.kind}:${String(it.code)}`, userId: myUserId || 0, username, body: "…", createdAt: new Date().toISOString(), cosmetics: cardPreview }}
-                  />
-                </div>
+                  return (
+                    <button
+                      key={`${it.kind}:${String(it.code)}`}
+                      type="button"
+                      className={`psm-item${isEquipped ? " is-equipped" : ""}${locked ? " is-locked" : ""}`}
+                      onClick={() => isOwned ? doEquip(it.kind, it.code) : undefined}
+                      disabled={!token || loading || saving || !isOwned}
+                      title={!isOwned ? `Non possédé — source : ${niceUnlock(it.unlock)}` : isEquipped ? "Toucher pour retirer" : "Toucher pour équiper"}
+                    >
+                      <div className="psm-item-head">
+                        <span className="psm-item-name">{renderItemName(it)}</span>
+                        <StatusBadge kind={statusKind as any} />
+                      </div>
 
-                {/* Footer */}
-                {it.desc && (
-                  <div style={{ marginTop: 7, fontFamily: FONT, fontSize: 11, color: TXT2 }}>
-                    {it.unlock === "shop" ? "Shop — " : ""}{it.desc}
-                  </div>
-                )}
-                {isOwned && (
-                  <div style={{ marginTop: 5, fontFamily: FONT, fontSize: 11,
-                    color: isEquipped ? "#c4b5fd" : TXT2, fontWeight: 600 }}>
-                    {isEquipped ? "Toucher pour retirer" : "Toucher pour équiper →"}
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+                      <div
+                        className="psm-item-preview"
+                        style={(({ ["--chat-name-color" as any]: streamerAppearance.chat.usernameColor, ["--chat-msg-color" as any]: streamerAppearance.chat.messageColor }) as any)}
+                      >
+                        <ChatMessageBubble
+                          streamerAppearance={streamerAppearance}
+                          msg={{
+                            id: `cp:${it.kind}:${String(it.code)}`,
+                            userId: myUserId || 0, username,
+                            body: "…", createdAt: new Date().toISOString(),
+                            cosmetics: cardPreview,
+                          }}
+                        />
+                      </div>
+
+                      <div className="psm-item-foot">
+                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {it.unlock === "shop" ? "🛍️ " : ""}{it.desc || ""}
+                        </span>
+                        {isOwned ? (
+                          <span className="psm-item-cta">
+                            {isEquipped ? "Retirer" : "Équiper →"}
+                          </span>
+                        ) : (
+                          <span className="psm-item-cta" style={{ color: "rgba(248,113,113,.85)" }}>
+                            🔒 {niceUnlock(it.unlock) || "Verrouillé"}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </details>
+          );
+        })
+      )}
     </div>
   );
 }
