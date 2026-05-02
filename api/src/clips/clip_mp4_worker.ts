@@ -168,45 +168,55 @@ async function prepareRumbleClipPlaylist(p: {
 
   // Détermine la position du moment !clip dans la playlist.
   //
-  // Stratégie ❶ — at_sec snapshot (clips créés via le nouveau code) :
-  //   at_sec capture playlistDuration à l'instant du !clip → position
-  //   exacte, indépendante de live_started_at, indépendante du timing
-  //   du render. C'est le cas idéal.
+  // PRIORITÉ : wall-clock chaque fois que possible. C'est la SEULE valeur
+  // qui ne dépend pas de live_started_at en DB (potentiellement décalé de
+  // plusieurs minutes par le poller) et qui survit au snapshot foiré.
   //
-  // Stratégie ❷ — wall-clock (live encore ongoing au render) :
-  //   Si la live n'est pas finie, live_edge ≈ now donc on peut déduire
-  //   la position du !clip via clipCreatedTs.
+  // Formule wall-clock :
+  //   playlist edge en wall-clock ≈ now (pour live ongoing, ou récent ENDLIST)
+  //   position du !clip = playlistDuration - (now - clipCreatedTs)
   //
-  // Stratégie ❸ — at_sec brut (full DVR avec MEDIA-SEQUENCE:1) :
-  //   Pour les vieux clips dont at_sec = (now-liveStart) au !clip time.
-  //   Possiblement biaisé de quelques minutes (live_started_at retardé)
-  //   mais reste cohérent pour Rumble full DVR.
-  //
-  // Stratégie ❹ — sliding window estimation (rare).
+  // at_sec n'est utilisé QUE si wall-clock impossible (live ENDED depuis
+  // longtemps + clip rendu en retard).
   let clipMomentInPlaylist: number;
-  if (p.clipMomentSec > 0 && p.clipMomentSec <= playlistDuration) {
-    // ❶ at_sec déjà valide pour cette playlist → on l'utilise.
-    clipMomentInPlaylist = p.clipMomentSec;
-  } else if (!playlist.hasEndList) {
-    // ❷ Live ongoing → wall-clock fiable.
+  let strategyUsed: string;
+
+  if (!playlist.hasEndList) {
+    // Live ongoing — wall-clock direct, le plus fiable.
     clipMomentInPlaylist = Math.max(0, wallClockEstimate);
+    strategyUsed = "wall-clock(live-ongoing)";
+  } else if (wallClockEstimate >= 0 && wallClockEstimate <= playlistDuration && clipAgeSec < 600) {
+    // Live ENDED mais render rapide (< 10 min après !clip) → wall-clock fiable.
+    clipMomentInPlaylist = wallClockEstimate;
+    strategyUsed = "wall-clock(live-just-ended)";
+  } else if (p.clipMomentSec > 0 && p.clipMomentSec <= playlistDuration) {
+    // Live ENDED depuis longtemps, at_sec fiable (snapshot a fonctionné au !clip)
+    clipMomentInPlaylist = p.clipMomentSec;
+    strategyUsed = "at_sec(snapshot)";
   } else if (playlist.mediaSequence <= 1) {
-    // ❸ Full DVR : at_sec brut comme fallback.
+    // Last resort : at_sec brut, full DVR.
     clipMomentInPlaylist = Math.min(p.clipMomentSec, playlistDuration);
+    strategyUsed = "at_sec(raw)";
   } else {
-    // ❹ Sliding window finalisé.
     const liveEdgeOffsetInLive = (nowMsLocal - p.liveStartTs) / 1000;
     const playlistStartInLive = Math.max(0, liveEdgeOffsetInLive - playlistDuration);
     clipMomentInPlaylist = Math.max(0, p.clipMomentSec - playlistStartInLive);
+    strategyUsed = "sliding-window-estimate";
   }
 
   // Compensation du retard HLS live edge :
-  // la m3u8 publie les segments avec ~10-15s de retard (encoder + CDN). Donc la
-  // valeur "playlistDuration au !clip time" = position d'il y a ~15s, pas du
-  // moment exact du !clip. On compense pour aligner correctement le moment !clip
-  // au mark `pre` (1m15) dans le clip final.
+  // la m3u8 publie les segments avec ~10-15s de retard (encoder + CDN).
+  // Le wall-clock estime la position de "maintenant en capture" → 15s avant
+  // ce que l'utilisateur a perçu/clippé. On compense.
   const HLS_LIVE_EDGE_LAG_SEC = 15;
   const adjustedClipMoment = clipMomentInPlaylist + HLS_LIVE_EDGE_LAG_SEC;
+
+  console.log(
+    `[clips-mp4] rumble seek strategy=${strategyUsed} ` +
+    `playlistDur=${playlistDuration.toFixed(1)}s clipAge=${clipAgeSec.toFixed(0)}s ` +
+    `at_sec=${p.clipMomentSec} wallClock=${wallClockEstimate.toFixed(0)} ` +
+    `→ clipMoment=${clipMomentInPlaylist.toFixed(0)} adjusted=${adjustedClipMoment.toFixed(0)}`
+  );
 
   // Fenêtre cible (en position dans la playlist)
   const targetStartInPlaylist = Math.max(0, adjustedClipMoment - p.pre);

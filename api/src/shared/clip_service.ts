@@ -10,31 +10,44 @@ import { notifyStreamerOfFirstAutoClip } from "../lunaclip/notify_streamer.js";
  * C'est la valeur la plus fiable pour at_sec : elle ne dépend pas de
  * live_started_at qui peut être décalé de plusieurs minutes.
  */
-async function snapshotHlsPlaylistDuration(m3u8Url: string, timeoutMs = 5_000): Promise<number | null> {
+async function snapshotHlsPlaylistDuration(m3u8Url: string): Promise<number | null> {
   if (!/^https?:\/\//i.test(m3u8Url) || !/\.m3u8(\?|$)/i.test(m3u8Url)) return null;
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const r = await fetch(m3u8Url, {
-      signal: ctrl.signal,
-      headers: {
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0 Safari/537.36",
-        "accept": "application/vnd.apple.mpegurl,application/x-mpegurl,*/*",
-      },
-    }).finally(() => clearTimeout(t));
-    if (!r.ok) return null;
-    const text = await r.text();
-    let total = 0;
-    const re = /#EXTINF:([\d.]+)/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-      const d = Number(m[1]);
-      if (Number.isFinite(d) && d > 0) total += d;
+  // 3 tentatives avec timeout progressif (10s, 12s, 15s)
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const timeoutMs = 8_000 + attempt * 2_000;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const r = await fetch(m3u8Url, {
+        signal: ctrl.signal,
+        headers: {
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0 Safari/537.36",
+          "accept": "application/vnd.apple.mpegurl,application/x-mpegurl,*/*",
+        },
+      }).finally(() => clearTimeout(t));
+      if (!r.ok) {
+        console.warn(`[clip] snapshotHls attempt ${attempt}/3 HTTP=${r.status} url=${m3u8Url.slice(0, 80)}`);
+        continue;
+      }
+      const text = await r.text();
+      let total = 0;
+      const re = /#EXTINF:([\d.]+)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(text)) !== null) {
+        const d = Number(m[1]);
+        if (Number.isFinite(d) && d > 0) total += d;
+      }
+      if (total > 0) {
+        console.log(`[clip] snapshotHls OK attempt=${attempt} dur=${Math.floor(total)}s`);
+        return Math.floor(total);
+      }
+      console.warn(`[clip] snapshotHls attempt ${attempt}/3 parsed 0 segments`);
+    } catch (e: any) {
+      console.warn(`[clip] snapshotHls attempt ${attempt}/3 error: ${e?.message || e}`);
     }
-    return total > 0 ? Math.floor(total) : null;
-  } catch {
-    return null;
   }
+  console.warn(`[clip] snapshotHls FAILED après 3 tentatives — fallback vers (now - liveStartedAt)`);
+  return null;
 }
 
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
