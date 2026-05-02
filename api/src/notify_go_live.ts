@@ -132,7 +132,7 @@ export async function notifyFollowersGoLive(io: IOServer | undefined, streamerId
                   (title ? `**${title}**\n\n` : "") +
                   `Viens nous rejoindre en stream, c'est parti ! 🎰\n\n` +
                   `🌐 [Regarder sur LunaLive](${webBase}/s/${encodeURIComponent(slug)})\n` +
-                  `📺 [Regarder sur DLive](https://dlive.tv/Fabiozsis)`,
+                  `📺 [Regarder sur Rumble](https://rumble.com/user/FabiozsisTV/live)`,
                 color: 0xFF0000,
                 ...(thumbnailUrl ? { image: { url: thumbnailUrl } } : {}),
                 footer: { text: "Fabiozsis • Live Casino" },
