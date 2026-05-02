@@ -166,20 +166,35 @@ async function prepareRumbleClipPlaylist(p: {
   const clipAgeSec = Math.max(0, (nowMsLocal - p.clipCreatedTs) / 1000);
   const wallClockEstimate = playlistDuration - clipAgeSec;
 
+  // Détermine la position du moment !clip dans la playlist.
+  //
+  // Stratégie ❶ — at_sec snapshot (clips créés via le nouveau code) :
+  //   at_sec capture playlistDuration à l'instant du !clip → position
+  //   exacte, indépendante de live_started_at, indépendante du timing
+  //   du render. C'est le cas idéal.
+  //
+  // Stratégie ❷ — wall-clock (live encore ongoing au render) :
+  //   Si la live n'est pas finie, live_edge ≈ now donc on peut déduire
+  //   la position du !clip via clipCreatedTs.
+  //
+  // Stratégie ❸ — at_sec brut (full DVR avec MEDIA-SEQUENCE:1) :
+  //   Pour les vieux clips dont at_sec = (now-liveStart) au !clip time.
+  //   Possiblement biaisé de quelques minutes (live_started_at retardé)
+  //   mais reste cohérent pour Rumble full DVR.
+  //
+  // Stratégie ❹ — sliding window estimation (rare).
   let clipMomentInPlaylist: number;
-  if (!playlist.hasEndList) {
-    // Live ongoing — la live edge ≈ now, donc wall-clock est fiable.
-    clipMomentInPlaylist = Math.max(0, wallClockEstimate);
-  } else if (wallClockEstimate >= 0 && wallClockEstimate <= playlistDuration) {
-    // Live terminé récemment — wall-clock encore dans la playlist.
-    // Plus fiable que at_sec (qui dépend de live_started_at en DB,
-    // potentiellement décalé de plusieurs minutes par le poller).
-    clipMomentInPlaylist = wallClockEstimate;
-  } else if (playlist.mediaSequence <= 1) {
-    // Vieux clip re-rendered, full DVR (Rumble) — fallback at_sec.
+  if (p.clipMomentSec > 0 && p.clipMomentSec <= playlistDuration) {
+    // ❶ at_sec déjà valide pour cette playlist → on l'utilise.
     clipMomentInPlaylist = p.clipMomentSec;
+  } else if (!playlist.hasEndList) {
+    // ❷ Live ongoing → wall-clock fiable.
+    clipMomentInPlaylist = Math.max(0, wallClockEstimate);
+  } else if (playlist.mediaSequence <= 1) {
+    // ❸ Full DVR : at_sec brut comme fallback.
+    clipMomentInPlaylist = Math.min(p.clipMomentSec, playlistDuration);
   } else {
-    // Sliding window finalisé — fallback estimation.
+    // ❹ Sliding window finalisé.
     const liveEdgeOffsetInLive = (nowMsLocal - p.liveStartTs) / 1000;
     const playlistStartInLive = Math.max(0, liveEdgeOffsetInLive - playlistDuration);
     clipMomentInPlaylist = Math.max(0, p.clipMomentSec - playlistStartInLive);
