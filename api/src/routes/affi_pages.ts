@@ -2,9 +2,12 @@ import { Router } from "express";
 import { z } from "zod";
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
+import { requireAuth } from "../auth.js";
+import { requireFsbAccess } from "./fsb_guard.js";
 
 export const publicAffiPagesRouter = Router();
 export const fsbAffiPagesRouter = Router();
+fsbAffiPagesRouter.use(requireAuth, requireFsbAccess);
 
 const optionalTrimmedString = (max: number) =>
   z.preprocess((value) => {

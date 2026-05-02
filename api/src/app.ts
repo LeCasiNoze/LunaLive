@@ -99,7 +99,6 @@ import { xpRouter } from "./routes/xp.js";
 import { adminXpRouter } from "./routes/admin_xp.js";
 import { titlesRouter } from "./routes/titles.js";
 import { agencyRouter } from "./routes/agency.js";
-import { requireFsbAccess } from "./routes/fsb_guard.js";
 import { webrtcTurnRouter } from "./routes/webrtc_turn.js";
 
 // Discord routes
@@ -197,7 +196,7 @@ export function createApp() {
   app.use("/api", igConfigRouter);
   app.use("/api", igCollaborationsRouter);
   app.use("/api", publicAffiPagesRouter);
-  app.use("/api", requireAuth, requireFsbAccess, fsbAffiPagesRouter);
+  app.use("/api", fsbAffiPagesRouter);
   app.use("/api", expensesRouter);
   app.use("/api", fsbDashboardRouter);
   app.use("/api", tiktokOutreachRouter);
