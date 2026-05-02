@@ -252,10 +252,12 @@ export async function claimOneClipToRenderMp4(opts: { minCreatedTs: number; maxA
   const minTs = Math.max(0, Number(opts.minCreatedTs || 0));
   const maxAge = Math.max(1, Number(opts.maxAgeMs || 30 * 24 * 3600 * 1000));
   const oldestAllowed = now - maxAge;
-  // Buffer pour laisser les segments HLS post-clip arriver dans la playlist DVR
-  // (sinon ffmpeg lit un playlist qui ne contient pas encore les segments T → T+post
-  // → échec ou attente indéfinie. On attend post_sec + 5s avant de claim.)
-  const POST_SEGMENT_BUFFER_SEC = 5;
+  // Buffer pour laisser les segments HLS post-clip arriver dans la playlist DVR.
+  // On doit couvrir : post_sec (+15s par défaut) + HLS live edge lag (~15s, encoder+CDN)
+  // + marge sécurité. Sinon target_end est past la live edge actuelle de la playlist
+  // → segments manquants → clip tronqué côté post. 30s est un compromis raisonnable
+  // (pas trop de wait pour l'utilisateur, mais largement assez pour HLS).
+  const POST_SEGMENT_BUFFER_SEC = 30;
 
   const r = await pool.query(
     `

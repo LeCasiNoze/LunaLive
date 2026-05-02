@@ -200,10 +200,18 @@ async function prepareRumbleClipPlaylist(p: {
     clipMomentInPlaylist = Math.max(0, p.clipMomentSec - playlistStartInLive);
   }
 
+  // Compensation du retard HLS live edge :
+  // la m3u8 publie les segments avec ~10-15s de retard (encoder + CDN). Donc la
+  // valeur "playlistDuration au !clip time" = position d'il y a ~15s, pas du
+  // moment exact du !clip. On compense pour aligner correctement le moment !clip
+  // au mark `pre` (1m15) dans le clip final.
+  const HLS_LIVE_EDGE_LAG_SEC = 15;
+  const adjustedClipMoment = clipMomentInPlaylist + HLS_LIVE_EDGE_LAG_SEC;
+
   // Fenêtre cible (en position dans la playlist)
-  const targetStartInPlaylist = Math.max(0, clipMomentInPlaylist - p.pre);
-  const targetEndInPlaylist   = Math.max(0, clipMomentInPlaylist + p.post);
-  const truncatedPre = (clipMomentInPlaylist - p.pre) < 0;
+  const targetStartInPlaylist = Math.max(0, adjustedClipMoment - p.pre);
+  const targetEndInPlaylist   = Math.max(0, adjustedClipMoment + p.post);
+  const truncatedPre = (adjustedClipMoment - p.pre) < 0;
 
   // Sélection des segments qui chevauchent [targetStartInPlaylist..targetEndInPlaylist]
   let acc = 0;
