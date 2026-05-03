@@ -339,7 +339,8 @@ const RADIO_SLUG = "lunalive";
  */
 async function rotateRadioTarget(io?: IOServer) {
   const radioRow = await pool.query(
-    `SELECT s.platform, s.rumble_username, ri.is_live, ri.viewers_count
+    `SELECT s.platform, s.rumble_username, s.updated_at AS rotated_at,
+            ri.is_live, ri.live_id, ri.viewers_count
      FROM streamers s
      LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
      WHERE s.id = $1 LIMIT 1`,
@@ -355,6 +356,15 @@ async function rotateRadioTarget(io?: IOServer) {
   // (sauf si rumble_username=null, car alors is_live est juste un état figé
   // de la précédente source qui n'est plus polled)
   if (radioIsLive && currentUsername) return;
+
+  // Grace period : si la radio a été rotated il y a moins de 90s ET qu'on n'a
+  // pas encore de live_id, on attend que le relay push le slug. Sans ça, on
+  // rotate trop vite et on saute la source actuelle avant que le relay ait
+  // eu le temps (relay tick = 60s) de découvrir son slug live.
+  const rotatedAt = radio.rotated_at ? new Date(radio.rotated_at).getTime() : 0;
+  const sinceRotationMs = Date.now() - rotatedAt;
+  const hasLiveId = !!radio.live_id;
+  if (currentUsername && !hasLiveId && sinceRotationMs < 90_000) return;
 
   // La radio rotate parmi des créateurs Rumble externes curated (table
   // rumble_radio_sources) — ekanos, vitapvpey, put4, etc. — qui ne sont PAS
@@ -382,6 +392,16 @@ async function rotateRadioTarget(io?: IOServer) {
     `UPDATE streamers SET rumble_username = $1, updated_at = NOW() WHERE id = $2`,
     [newUsername, RADIO_STREAMER_ID]
   );
+  // Clear stale live_id/HLS de la précédente source — sinon le fallback
+  // dans fetchRumbleLiveInfoFromUsername testerait l'ancien slug qui n'a
+  // rien à voir avec la nouvelle source, et ramènerait offline en boucle.
+  await pool.query(
+    `UPDATE streamer_rumble_info
+     SET live_id = NULL, live_video_id_numeric = NULL, hls_url = NULL,
+         is_live = false, updated_at = NOW()
+     WHERE streamer_id = $1`,
+    [RADIO_STREAMER_ID]
+  ).catch(() => {});
   console.log(`[rumble-poller] radio rotation: ${currentUsername || "(aucun)"} → ${newUsername}`);
 
   void pollOneScraped(RADIO_STREAMER_ID, RADIO_SLUG, newUsername, io);
