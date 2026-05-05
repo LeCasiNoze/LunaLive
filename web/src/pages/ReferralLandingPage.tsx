@@ -742,13 +742,19 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     }
   }
 
-  const afterPart = cfg.heroTitleAfter && cfg.heroTitleAfter.trim()
-    ? `<span class="hero-title-after">${esc(cfg.heroTitleAfter)}</span>`
-    : "";
-  html = html.replace(
-    /<h1 class="hero-title">[\s\S]*?<\/h1>/,
-    `<h1 class="hero-title">${esc(cfg.heroTitleBefore)} <span>${esc(cfg.heroTitleSpan)}</span>${afterPart}</h1>`
-  );
+  // ✅ Ne réécrit le H1 que si au moins un champ texte est défini —
+  // évite d'écraser le H1 par défaut du template par un H1 vide quand
+  // l'user n'a customisé aucune ligne (cas notable : pages M5 anciennes
+  // qui utilisent goldenHeroTitleBefore/Span dans une autre branche).
+  if (cfg.heroTitleBefore || cfg.heroTitleSpan || cfg.heroTitleAfter) {
+    const afterPart = cfg.heroTitleAfter && cfg.heroTitleAfter.trim()
+      ? `<span class="hero-title-after">${esc(cfg.heroTitleAfter)}</span>`
+      : "";
+    html = html.replace(
+      /<h1 class="hero-title">[\s\S]*?<\/h1>/,
+      `<h1 class="hero-title">${esc(cfg.heroTitleBefore)} <span>${esc(cfg.heroTitleSpan)}</span>${afterPart}</h1>`
+    );
+  }
   html = html.replace(/<p class="hero-subtitle">[^<]*<\/p>/, `<p class="hero-subtitle">${esc(cfg.heroSubtitle)}</p>`);
   html = html.replace(
     /(href="[^"]*" class="btn-jouer">\s*)([^<]*)(\s*<\/a>)/g,
@@ -808,11 +814,20 @@ function redirectToLegacyReferral(slug: string, navigate: ReturnType<typeof useN
   navigate(`/s/${encodeURIComponent(safeSlug)}`, { replace: true });
 }
 
+// Lazy-loaded V2 renderer pour ne pas charger le code V2 inutilement
+// quand on consulte une page V1.
+const RenderV2Page = React.lazy(() =>
+  import("../lib/editor_v2_render").then((m) => ({ default: m.RenderV2Page }))
+);
+
 export default function ReferralLandingPage() {
   const navigate = useNavigate();
   const { slug } = useParams();
   const [srcDoc, setSrcDoc] = React.useState("");
   const [status, setStatus] = React.useState<"loading" | "ready" | "error">("loading");
+  // V2 : si la page est éditée en V2, on stocke son objet V2Page et le
+  // rendu est délégué à RenderV2Page (pas d'iframe + template HTML).
+  const [v2Page, setV2Page] = React.useState<any | null>(null);
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
   const buttonsRef = React.useRef<{ mobile: ReturnType<typeof parseAffiButtons>; desktop: ReturnType<typeof parseAffiButtons> }>({ mobile: [], desktop: [] });
 
@@ -828,6 +843,18 @@ export default function ReferralLandingPage() {
 
       try {
         const { page } = await getPublicAffiPage(safeSlug);
+        // V2 : aucun template HTML — on rend directement l'arbre de blocs
+        // via RenderV2Page. Le iframe reste utile pour isoler le style mais
+        // on injecte le JSX V2 dedans (via portal-like approach : srcDoc
+        // minimal puis ReactDOM render dans le contentDocument). Plus simple :
+        // on ne passe pas par l'iframe pour V2, on rend en SPA direct.
+        if ((page as any).editorVersion === 2 && page.config && (page.config as any).zones) {
+          if (cancelled) return;
+          setV2Page(page.config);
+          setStatus("ready");
+          return;
+        }
+
         const model = Number(page.model || 5);
         const variant = (page.variant || "gold") as GoldenChanceVariant;
         const cfg = { ...DEFAULT_CONFIG, ...(page.config || {}) } as Config;
@@ -883,6 +910,18 @@ export default function ReferralLandingPage() {
           <div style={styles.stateTitle}>Chargement de l&apos;offre</div>
           <div style={styles.stateText}>Preparation de la landing publiee...</div>
         </div>
+      </div>
+    );
+  }
+
+  // V2 render path — pas d'iframe, rendu SPA direct
+  if (v2Page) {
+    const isMobile = typeof window !== "undefined" && window.innerWidth < 720;
+    return (
+      <div style={{ ...styles.root, overflowY: "auto" }}>
+        <React.Suspense fallback={<div style={styles.stateWrap}><div style={styles.stateCard}><div style={styles.stateText}>Chargement…</div></div></div>}>
+          <RenderV2Page page={v2Page} isMobile={isMobile} />
+        </React.Suspense>
       </div>
     );
   }

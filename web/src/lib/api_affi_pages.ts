@@ -7,7 +7,11 @@ export type FsbAffiPage = {
   variant: string | null;
   brandName: string;
   title: string;
-  config: Record<string, string>;
+  // V1 = Record<string,string> | V2 = arbre V2Page (objets imbriqués).
+  // On garde le typage permissif côté API ; le consumer cast selon
+  // editorVersion.
+  config: Record<string, any>;
+  editorVersion?: number;
   ownerUserId: number;
   createdAt: string | null;
   updatedAt: string | null;
@@ -19,7 +23,8 @@ export type UpsertAffiPagePayload = {
   variant?: string | null;
   brandName: string;
   title: string;
-  config: Record<string, string>;
+  config: Record<string, any>;
+  editorVersion?: number;
 };
 
 async function request<T>(path: string, init: RequestInit = {}) {
