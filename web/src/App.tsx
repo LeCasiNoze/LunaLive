@@ -42,6 +42,8 @@ const RumbleDebugPage = React.lazy(() => import("./pages/debug/RumbleDebugPage")
 
 // Affi Editor â€” outil interne accessible sur /editorFSN
 const AffiEditorPage = React.lazy(() => import("./pages/AffiEditorPage"));
+// Affi Editor V2 â€” /editorFSNV2 (totalement isolÃ© du V1, ne touche Ã  rien)
+const EditorV2Page = React.lazy(() => import("./pages/EditorV2Page"));
 
 // Overlay OBS — renderer transparent pour /overlay
 const OverlayPage = React.lazy(() => import("./pages/OverlayPage"));
@@ -85,6 +87,7 @@ function AppInner() {
     location.pathname.startsWith("/stream-control");
   const hideChrome =
     location.pathname === "/editorFSN" ||
+    location.pathname === "/editorFSNV2" ||
     isOverlayRoute ||
     location.pathname.startsWith("/agency") ||
     isStandaloneReferral;
@@ -199,6 +202,15 @@ function AppInner() {
             element={
               <React.Suspense fallback={<LoadingFallback />}>
                 <AffiEditorPage />
+              </React.Suspense>
+            }
+          />
+          {/* Affi Editor V2 â€” nouvelle gÃ©nÃ©ration (M4V2 / M5V2) */}
+          <Route
+            path="/editorFSNV2"
+            element={
+              <React.Suspense fallback={<LoadingFallback />}>
+                <EditorV2Page />
               </React.Suspense>
             }
           />
