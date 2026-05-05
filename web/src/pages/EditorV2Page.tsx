@@ -27,7 +27,6 @@ import {
   type V2ButtonBlock,
   type V2ContainerBlock,
   type V2SpacerBlock,
-  type V2DividerBlock,
   type V2TextStyle,
   V2_ZONE_LABELS,
   v2ZonesForModel,
