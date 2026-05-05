@@ -312,6 +312,74 @@ function Btn({ children, onClick, variant = "default", title, disabled }: { chil
   );
 }
 
+// ─── Image picker (URL + upload + preview) ──────────────────────────────────
+
+function ImagePickerV2({ value, onChange, label }: { value: string; onChange: (v: string) => void; label?: string }) {
+  const fileRef = React.useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+  const token = (typeof window !== "undefined" ? localStorage.getItem("lunalive_token_v1") : "") || "";
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? "https://lunalive-api.onrender.com";
+      const res = await fetch(`${base}/me/overlay/bg/upload`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.url) setErr(json?.error || "Erreur upload");
+      else onChange(String(json.url));
+    } catch {
+      setErr("Erreur réseau");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {label ? <label style={{ fontSize: 11, color: T.textMute, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</label> : null}
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <div style={{
+          width: 50, height: 50, borderRadius: 8, border: `1px solid ${T.border}`,
+          background: value ? "#000" : T.bgInput, overflow: "hidden", flexShrink: 0,
+          display: "grid", placeItems: "center",
+        }}>
+          {value ? (
+            <img src={value} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          ) : <span style={{ fontSize: 18, opacity: 0.4 }}>🖼</span>}
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+          <input type="url" value={value} onChange={(e) => onChange(e.target.value)} placeholder="URL ou upload"
+            style={{ background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 6, padding: "5px 8px", color: T.text, fontSize: 12 }} />
+          <div style={{ display: "flex", gap: 4 }}>
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} style={{
+              flex: 1, background: "rgba(99,102,241,.16)", border: `1px dashed ${T.primary}`, color: T.primaryHi,
+              padding: "4px 8px", borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: uploading ? "wait" : "pointer", fontFamily: "inherit",
+            }}>{uploading ? "Upload…" : "📁 Upload"}</button>
+            {value ? (
+              <button type="button" onClick={() => onChange("")} style={{
+                background: "transparent", border: `1px solid ${T.danger}`, color: T.danger,
+                padding: "4px 8px", borderRadius: 5, fontSize: 11, cursor: "pointer", fontFamily: "inherit",
+              }}>✕</button>
+            ) : null}
+          </div>
+          {err && <div style={{ fontSize: 10, color: T.danger }}>{err}</div>}
+          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif"
+            style={{ display: "none" }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Add-block menu ──────────────────────────────────────────────────────────
 
 function AddBlockMenu({ onAdd }: { onAdd: (type: V2BlockType) => void }) {
@@ -472,7 +540,7 @@ function PropPanel({ block, onChange }: { block: V2Block; onChange: (next: V2Blo
 
       {block.type === "image" && (
         <>
-          <Field label="URL de l'image"><Input value={block.src} onChange={(v) => update({ src: v } as any)} placeholder="https://..." /></Field>
+          <ImagePickerV2 label="Image" value={block.src} onChange={(v) => update({ src: v } as any)} />
           <Field label="Texte alternatif"><Input value={block.alt || ""} onChange={(v) => update({ alt: v } as any)} /></Field>
           <Field label="Lien (optionnel)"><Input value={block.href || ""} onChange={(v) => update({ href: v } as any)} placeholder="https://..." /></Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
@@ -687,6 +755,39 @@ export default function EditorV2Page() {
   const [notice, setNotice] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Track dirty state — true dès qu'un changement diverge de la DB
+  const [dirty, setDirty] = React.useState(false);
+  const lastSavedRef = React.useRef<string>(JSON.stringify(page));
+  React.useEffect(() => {
+    setDirty(JSON.stringify(page) !== lastSavedRef.current);
+  }, [page]);
+
+  // Warning beforeunload si modifs non sauvegardées
+  React.useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (dirty) {
+        e.preventDefault();
+        e.returnValue = "";
+        return "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
+
+  // Raccourci Ctrl+S → save
+  const handleSaveRef = React.useRef<() => void>(() => {});
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        handleSaveRef.current();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   // Auto-extract code → suggest slug
   React.useEffect(() => {
     if (!page.affiLink) return;
@@ -755,7 +856,10 @@ export default function EditorV2Page() {
         ? await updateFsbAffiPage(token, currentPageId, payload)
         : await createFsbAffiPage(token, payload);
       setCurrentPageId(result.item.id);
-      setPage((prev) => ({ ...prev, slug: result.item.slug }));
+      const updatedPage = { ...page, slug: result.item.slug };
+      setPage(updatedPage);
+      lastSavedRef.current = JSON.stringify(updatedPage);
+      setDirty(false);
       setNotice(`Sauvegardé : /r/${result.item.slug}`);
       setTimeout(() => setNotice(null), 3000);
       void refreshList();
@@ -765,13 +869,17 @@ export default function EditorV2Page() {
       setSaving(false);
     }
   };
+  handleSaveRef.current = handleSave;
 
   const loadPage = (p: FsbAffiPage) => {
     if (p.editorVersion !== 2 || !p.config || !(p.config as any).zones) {
       setError("Cette page n'est pas une V2 valide.");
       return;
     }
-    setPage(p.config as unknown as V2Page);
+    const v2 = p.config as unknown as V2Page;
+    setPage(v2);
+    lastSavedRef.current = JSON.stringify(v2);
+    setDirty(false);
     setCurrentPageId(p.id);
     setSelectedPath(null);
     setSlugLocked(true);
@@ -838,6 +946,7 @@ export default function EditorV2Page() {
         {currentPageId && (
           <span style={{ fontSize: 11, color: T.textMute, fontFamily: "monospace" }}>
             ID #{currentPageId} · /r/<span style={{ color: T.gold }}>{page.slug}</span>
+            {dirty && <span style={{ marginLeft: 6, color: T.danger, fontWeight: 800 }}>● modifs non sauvegardées</span>}
           </span>
         )}
 
