@@ -239,12 +239,15 @@ function RenderContainer({ b, isMobile }: { b: V2ContainerBlock; isMobile: boole
     gridTemplateColumns: b.layout === "grid" ? `repeat(${b.columns || 2}, minmax(0, 1fr))` : undefined,
     gap: b.gap,
     maxWidth: b.maxWidth,
-    width: "100%",
-    margin: "0 auto",
+    width: b.width || "100%",
+    height: b.height,
+    flexShrink: b.flexShrink,
+    margin: b.width ? undefined : "0 auto",  // si width fixe : ne pas auto-centrer
     justifyContent: b.justify ? justifyMap[b.justify] : undefined,
     alignItems: b.itemsAlign ? itemsMap[b.itemsAlign] : undefined,
     animation: b.animation && b.animation !== "none" ? animationCss[b.animation] : undefined,
     animationDelay: b.animationDelay,
+    boxSizing: "border-box",
   };
   return (
     <div className="v2-block v2-container" style={style} data-hover-scale={b.hoverScale ? "1" : undefined}>

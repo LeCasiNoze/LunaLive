@@ -16,7 +16,7 @@ import {
   newBlockOfType, buildV2DefaultSlug, extractAffiCode, makeV2BlockId,
 } from "../lib/editor_v2_types";
 import { RenderV2Page } from "../lib/editor_v2_render";
-import { getStarterTemplateV2 } from "../lib/editor_v2_starters";
+import { getStarterTemplateV2, M4_DEFAULT_IMAGES } from "../lib/editor_v2_starters";
 import {
   listFsbAffiPages, createFsbAffiPage, updateFsbAffiPage, deleteFsbAffiPage,
   type FsbAffiPage,
@@ -217,6 +217,7 @@ function ImagePickerV2({ value, onChange, label }: { value: string; onChange: (v
   const fileRef = React.useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
+  const [galleryOpen, setGalleryOpen] = React.useState(false);
   const token = (typeof window !== "undefined" ? localStorage.getItem("lunalive_token_v1") : "") || "";
 
   async function handleFile(file: File) {
@@ -242,6 +243,10 @@ function ImagePickerV2({ value, onChange, label }: { value: string; onChange: (v
           <input type="url" value={value} onChange={(e) => onChange(e.target.value)} placeholder="URL ou upload"
             style={{ background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 6, padding: "6px 9px", color: T.text, fontSize: 11.5 }} />
           <div style={{ display: "flex", gap: 4 }}>
+            <button type="button" onClick={() => setGalleryOpen(!galleryOpen)} style={{
+              flex: 1, background: T.goldSoft, border: `1px dashed ${T.gold}`, color: T.gold,
+              padding: "5px 8px", borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+            }}>🖼 Galerie</button>
             <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} style={{
               flex: 1, background: T.primarySoft, border: `1px dashed ${T.primary}`, color: T.primaryHi,
               padding: "5px 8px", borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: uploading ? "wait" : "pointer", fontFamily: "inherit",
@@ -258,6 +263,24 @@ function ImagePickerV2({ value, onChange, label }: { value: string; onChange: (v
             style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
         </div>
       </div>
+      {galleryOpen ? (
+        <div style={{
+          marginTop: 8, padding: 8, background: T.bgInput, border: `1px solid ${T.border}`,
+          borderRadius: 8, display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6,
+        }}>
+          {M4_DEFAULT_IMAGES.map((img) => (
+            <button key={img.url} type="button"
+              onClick={() => { onChange(img.url); setGalleryOpen(false); }}
+              style={{
+                background: "#000", border: `1px solid ${value === img.url ? T.gold : T.border}`, borderRadius: 6,
+                padding: 0, cursor: "pointer", overflow: "hidden", display: "flex", flexDirection: "column",
+              }}>
+              <img src={img.url} alt={img.name} style={{ width: "100%", height: 60, objectFit: "cover", display: "block" }} />
+              <div style={{ fontSize: 9.5, color: T.textMute, padding: "4px 6px", textAlign: "center" }}>{img.name}</div>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </Field>
   );
 }
@@ -458,6 +481,10 @@ function PropPanel({ block, onChange }: { block: V2Block; onChange: (next: V2Blo
           )}
           <Field label="Espacement enfants" dense><Input value={block.gap || ""} onChange={(v) => update({ gap: v } as any)} placeholder="12px" /></Field>
           <Field label="Largeur max" dense><Input value={block.maxWidth || ""} onChange={(v) => update({ maxWidth: v } as any)} placeholder="720px" /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <Field label="Largeur fixe" dense><Input value={block.width || ""} onChange={(v) => update({ width: v } as any)} placeholder="36px" /></Field>
+            <Field label="Hauteur fixe" dense><Input value={block.height || ""} onChange={(v) => update({ height: v } as any)} placeholder="36px" /></Field>
+          </div>
           <Field label="Justifier (horizontal)" dense>
             <Select value={block.justify || ""} onChange={(v) => update({ justify: v as any } as any)}
               options={[{value:"",label:"Hérité"},{value:"start",label:"Début"},{value:"center",label:"Centre"},{value:"end",label:"Fin"},{value:"between",label:"Espacé entre"},{value:"around",label:"Espacé autour"}]} />

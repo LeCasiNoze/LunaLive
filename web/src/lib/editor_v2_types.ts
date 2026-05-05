@@ -129,6 +129,12 @@ export interface V2ContainerBlock extends V2BaseBlock, V2CommonStyle, V2Effects 
   children: V2Block[];
   /** Largeur max du conteneur. */
   maxWidth?: string;
+  /** Largeur fixe (utile pour cercles parfaits ex: "36px"). */
+  width?: string;
+  /** Hauteur fixe (utile pour cercles parfaits). */
+  height?: string;
+  /** Empêche le shrink dans un parent flex (utile pour avatars/icônes). */
+  flexShrink?: number;
   /** Justification horizontale des enfants (flex justify-content). */
   justify?: "start" | "center" | "end" | "between" | "around";
   /** Alignement vertical des enfants (flex align-items). */

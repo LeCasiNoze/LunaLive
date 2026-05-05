@@ -45,9 +45,15 @@ function ct(layout: V2ContainerBlock["layout"], children: V2Block[], override: P
 
 // ─── M4 V2 — clone fidèle du rendu V1 ────────────────────────────────────────
 
-// Images par défaut reprises du M4 V1 (modifiables ensuite par l'user)
-const M4_DEFAULT_IMG_1 = "https://cdn.phototourl.com/member/2026-04-09-240bb1e8-d188-4130-81ae-8e3f88143efc.png";
-const M4_DEFAULT_IMG_2 = "https://cdn.phototourl.com/free/2026-04-09-c5dee0f7-cdad-427c-bd2e-bcbb6f4b24a6.png";
+// Catalogue d'images par défaut M4 (gallerie sélectionnable dans l'éditeur)
+export const M4_DEFAULT_IMAGES: Array<{ name: string; url: string }> = [
+  { name: "Penalty Duel",       url: "https://cdn.phototourl.com/member/2026-04-09-240bb1e8-d188-4130-81ae-8e3f88143efc.png" },
+  { name: "Jeu des Mines",      url: "https://cdn.phototourl.com/free/2026-04-09-c5dee0f7-cdad-427c-bd2e-bcbb6f4b24a6.png" },
+  { name: "Sweet Bonanza",      url: "https://cdn.phototourl.com/member/2026-04-10-af97004c-818f-40d3-b081-404c3ad3dfa7.png" },
+];
+
+const M4_DEFAULT_IMG_1 = M4_DEFAULT_IMAGES[0].url;
+const M4_DEFAULT_IMG_2 = M4_DEFAULT_IMAGES[1].url;
 
 function buildM4Card(label: string, bonusPct: string, defaultImg: string): V2ContainerBlock {
   return ct("stack", [
@@ -61,20 +67,24 @@ function buildM4Card(label: string, bonusPct: string, defaultImg: string): V2Con
     }),
     // body
     ct("stack", [
-      // offer-header (icône cercle gold + "OFFRE DE BIENVENUE") — centré
+      // offer-header (icône cercle gold parfait + "OFFRE DE BIENVENUE") — centré
       ct("row", [
+        // Cercle parfait 36x36 avec emoji centré
         ct("stack", [
           txt("🎁", {
             tag: "span",
             align: "center",
-            style: { fontSize: "18px" },
+            style: { fontSize: "16px", lineHeight: "1" },
           }),
         ], {
+          width: "36px",
+          height: "36px",
+          flexShrink: 0,
           bg: "rgba(255, 214, 0, 0.1)",
           borderRadius: "50%",
-          border: "1px solid rgba(255,214,0,0.2)",
-          paddingTop: "8px", paddingBottom: "8px",
-          paddingX: "8px",
+          border: "1px solid rgba(255,214,0,0.25)",
+          justify: "center",
+          itemsAlign: "center",
         }),
         txt("OFFRE DE BIENVENUE", {
           tag: "span",
@@ -167,16 +177,22 @@ function buildM4ReviewCard(name: string, gain: string, text: string): V2Containe
   return ct("stack", [
     // top : avatar + nom + verified + gain — centré
     ct("row", [
+      // Avatar cercle parfait 44x44
       ct("stack", [
         txt("👤", {
           tag: "span",
           align: "center",
-          style: { fontSize: "20px" },
+          style: { fontSize: "20px", lineHeight: "1" },
         }),
       ], {
+        width: "44px",
+        height: "44px",
+        flexShrink: 0,
         bg: "rgba(255,214,0,.12)",
+        border: "1px solid rgba(255,214,0,.25)",
         borderRadius: "50%",
-        paddingTop: "8px", paddingBottom: "8px", paddingX: "10px",
+        justify: "center",
+        itemsAlign: "center",
       }),
       ct("stack", [
         ct("row", [
