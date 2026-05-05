@@ -49,7 +49,7 @@ function ct(layout: V2ContainerBlock["layout"], children: V2Block[], override: P
 const M4_DEFAULT_IMG_1 = "https://cdn.phototourl.com/member/2026-04-09-240bb1e8-d188-4130-81ae-8e3f88143efc.png";
 const M4_DEFAULT_IMG_2 = "https://cdn.phototourl.com/free/2026-04-09-c5dee0f7-cdad-427c-bd2e-bcbb6f4b24a6.png";
 
-function buildM4Card(_label: string, bonusPct: string, defaultImg: string): V2ContainerBlock {
+function buildM4Card(label: string, bonusPct: string, defaultImg: string): V2ContainerBlock {
   return ct("stack", [
     // image promo en haut, ratio 16/9 — reprise du M4 V1 par défaut
     img(defaultImg, {
