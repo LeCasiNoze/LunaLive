@@ -235,30 +235,53 @@ function buildM4FaqItem(q: string, a: string): V2ContainerBlock {
 export function buildM4V2Starter(): V2Page {
   const page = newV2Page("M4V2");
 
-  // HERO ZONE (aboveCards) — sans badge VIP, tous textes centrés
+  // HERO ZONE (aboveCards) — 3 lignes : pseudo (vide), "Déposer X", "Jouer avec Y"
+  // Pseudo vide par défaut → le bloc est masqué automatiquement (RenderText
+  // retourne null si content vide). L'user remplit s'il veut, et c'est centré.
   page.zones.aboveCards.push(
-    txt("Doublez votre dépôt", {
+    // 1) Pseudo — vide par défaut
+    txt("", {
+      tag: "h2",
+      align: "center",
+      style: {
+        fontFamily: "Inter",
+        fontSize: "1.5rem",
+        fontWeight: 800,
+        color: M4.brandGold,
+        letterSpacing: ".01em",
+        textShadow: `0 0 18px ${M4.brandGold}55`,
+      },
+      marginTop: "32px",
+      marginBottom: "8px",
+    }),
+    // 2) "Déposer 10€"
+    txt("Déposer 10€", {
       tag: "h1",
       align: "center",
       style: {
         fontFamily: "Inter",
-        fontSize: "clamp(1.8rem, 4vw, 3.2rem)",
-        fontSizeMobile: "1.8rem",
+        fontSize: "clamp(1.6rem, 4vw, 2.4rem)",
+        fontSizeMobile: "1.6rem",
         fontWeight: 900,
         color: "#ffffff",
-        letterSpacing: "-1px",
+        letterSpacing: "-0.5px",
         lineHeight: "1.1",
       },
-      marginTop: "32px",
-      marginBottom: "10px",
+      marginBottom: "4px",
     }),
-    txt("Profitez d'une offre exclusive sur votre premier dépôt", {
-      tag: "p",
+    // 3) "Jouer avec 20€" — en doré pour faire écho au gain
+    txt("Jouer avec 20€", {
+      tag: "h1",
       align: "center",
       style: {
-        fontSize: "1rem",
-        color: M4.textMuted,
-        lineHeight: "1.5",
+        fontFamily: "Inter",
+        fontSize: "clamp(1.6rem, 4vw, 2.4rem)",
+        fontSizeMobile: "1.6rem",
+        fontWeight: 900,
+        color: M4.brandGold,
+        letterSpacing: "-0.5px",
+        lineHeight: "1.1",
+        textShadow: `0 0 16px ${M4.brandGold}66`,
       },
       marginBottom: "20px",
     }),

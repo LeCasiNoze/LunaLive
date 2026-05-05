@@ -88,6 +88,10 @@ export function V2Keyframes() {
 // ─── Block renderers ─────────────────────────────────────────────────────────
 
 function RenderText({ b, isMobile }: { b: V2TextBlock; isMobile: boolean }) {
+  // Bloc texte vide (trim) → ne rien rendre (pas de hauteur résiduelle, pas de
+  // marge). Pratique pour les champs optionnels (pseudo, etc.) qui ne doivent
+  // prendre aucune place tant qu'ils ne sont pas remplis.
+  if (!b.content || !b.content.trim()) return null;
   const Tag = (b.tag || "p") as keyof React.JSX.IntrinsicElements;
   const lines = b.content.split("\n");
   const baseStyle: React.CSSProperties = {
