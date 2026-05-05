@@ -28,6 +28,8 @@ type Config = {
   m4TitleMainGold?: string;
   m4TitleSpanGold?: string;
   m4TitleStacked?: string;
+  heroTitleAfter?: string;
+  colorTitleAfter?: string;
   colorBadge?: string;
   colorTitleMain?: string;
   colorTitleSpan?: string;
@@ -118,6 +120,8 @@ const DEFAULT_CONFIG: Config = {
   m4TitleMainGold: "",
   m4TitleSpanGold: "1",
   m4TitleStacked: "",
+  heroTitleAfter: "",
+  colorTitleAfter: "",
   colorBadge: "",
   colorTitleMain: "",
   colorTitleSpan: "",
@@ -728,15 +732,22 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     if (cfg.colorBtn)        rules.push(`.btn-jouer{color:${cfg.colorBtn} !important;}`);
     if (cfg.colorSticky)     rules.push(`.sticky-cta{color:${cfg.colorSticky} !important;}`);
     if (cfg.colorReviewText) rules.push(`.review-text{color:${cfg.colorReviewText} !important;}`);
+    if (cfg.heroTitleAfter && cfg.heroTitleAfter.trim()) {
+      const c = cfg.colorTitleAfter && /^#[0-9a-fA-F]{6}$/.test(cfg.colorTitleAfter) ? cfg.colorTitleAfter : "#ffffff";
+      rules.push(`.hero-title-after{display:block !important;color:${c} !important;text-shadow:none !important;margin-top:.18em !important;}`);
+    }
     if (rules.length) {
       const css = `<style data-affi-m4-h1-color>${rules.join("")}</style>`;
       html = html.replace(/<\/head>/, `${css}\n</head>`);
     }
   }
 
+  const afterPart = cfg.heroTitleAfter && cfg.heroTitleAfter.trim()
+    ? `<span class="hero-title-after">${esc(cfg.heroTitleAfter)}</span>`
+    : "";
   html = html.replace(
     /<h1 class="hero-title">[\s\S]*?<\/h1>/,
-    `<h1 class="hero-title">${esc(cfg.heroTitleBefore)} <span>${esc(cfg.heroTitleSpan)}</span></h1>`
+    `<h1 class="hero-title">${esc(cfg.heroTitleBefore)} <span>${esc(cfg.heroTitleSpan)}</span>${afterPart}</h1>`
   );
   html = html.replace(/<p class="hero-subtitle">[^<]*<\/p>/, `<p class="hero-subtitle">${esc(cfg.heroSubtitle)}</p>`);
   html = html.replace(

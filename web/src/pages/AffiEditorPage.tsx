@@ -46,6 +46,9 @@ interface Config {
   m4TitleSpanGold?: string;  // texte en or (heroTitleSpan / span) — défaut "1"
   // M4 : "1" = span sur une nouvelle ligne (empilé), "" = inline (défaut)
   m4TitleStacked?: string;
+  // M4 : 3e ligne du H1, ajoutée SOUS le span (en blanc par défaut). Vide = pas de 3e ligne.
+  heroTitleAfter?: string;
+  colorTitleAfter?: string;
   // Couleurs individuelles par texte (M4) — vide = défaut du template
   colorBadge?: string;
   colorTitleMain?: string;
@@ -436,10 +439,14 @@ const DEFAULT_CONFIG: Config = {
   receiveText: "Recevez 20€",
   depositText2: "Déposez 20€",
   receiveText2: "Recevez 40€",
-  badgeText: "Club VIP Certifié",
+  // Default vide = pas de badge sur les nouvelles pages. Les anciennes
+  // pages ont leur badgeText sauvegardé en DB et restent intactes.
+  badgeText: "",
   m4TitleMainGold: "",  // par défaut : titre principal blanc
   m4TitleSpanGold: "1", // par défaut : span en or (comportement existant)
   m4TitleStacked: "",   // par défaut : inline (côte-à-côte si la place)
+  heroTitleAfter: "",
+  colorTitleAfter: "",
   colorBadge: "",
   colorTitleMain: "",
   colorTitleSpan: "",
@@ -1315,10 +1322,15 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     );
   }
 
-  if (cfg.heroTitleBefore || cfg.heroTitleSpan) {
+  if (cfg.heroTitleBefore || cfg.heroTitleSpan || cfg.heroTitleAfter) {
+    // Optionnelle 3e ligne : <span class="hero-title-after"> placé après le span
+    // doré. Si vide, pas inséré → comportement legacy intact.
+    const afterPart = cfg.heroTitleAfter && cfg.heroTitleAfter.trim()
+      ? `<span class="hero-title-after">${esc(cfg.heroTitleAfter)}</span>`
+      : "";
     html = html.replace(
       /<h1 class="hero-title">[\s\S]*?<\/h1>/,
-      `<h1 class="hero-title">${esc(cfg.heroTitleBefore)} <span>${esc(cfg.heroTitleSpan)}</span></h1>`
+      `<h1 class="hero-title">${esc(cfg.heroTitleBefore)} <span>${esc(cfg.heroTitleSpan)}</span>${afterPart}</h1>`
     );
   }
 
@@ -1354,6 +1366,13 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
     if (cfg.colorBtn)        rules.push(`.btn-jouer{color:${cfg.colorBtn} !important;}`);
     if (cfg.colorSticky)     rules.push(`.sticky-cta{color:${cfg.colorSticky} !important;}`);
     if (cfg.colorReviewText) rules.push(`.review-text{color:${cfg.colorReviewText} !important;}`);
+
+    // 3e ligne H1 (heroTitleAfter) : toujours en block (sous le span), couleur
+    // par défaut blanc, customisable via colorTitleAfter.
+    if (cfg.heroTitleAfter && cfg.heroTitleAfter.trim()) {
+      const c = cfg.colorTitleAfter && /^#[0-9a-fA-F]{6}$/.test(cfg.colorTitleAfter) ? cfg.colorTitleAfter : "#ffffff";
+      rules.push(`.hero-title-after{display:block !important;color:${c} !important;text-shadow:none !important;margin-top:.18em !important;}`);
+    }
 
     if (rules.length) {
       const css = `<style data-affi-m4-h1-color>${rules.join("")}</style>`;
@@ -4642,6 +4661,15 @@ export default function AffiEditorPage() {
                       color={cfg.colorTitleSpan || ""}
                       onColorChange={set("colorTitleSpan")}
                     />
+                    {currentModel === 4 && (
+                      <TextFieldWithColor
+                        label="H1 — 3e ligne (sous le texte en or)"
+                        value={cfg.heroTitleAfter || ""}
+                        onChange={set("heroTitleAfter")}
+                        color={cfg.colorTitleAfter || ""}
+                        onColorChange={set("colorTitleAfter")}
+                      />
+                    )}
                     {currentModel === 4 && (
                       <div style={{
                         marginTop: 8, padding: "10px 12px", borderRadius: 8,
