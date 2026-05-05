@@ -225,6 +225,8 @@ function RenderButton({ b, isMobile }: { b: V2ButtonBlock; isMobile: boolean }) 
 }
 
 function RenderContainer({ b, isMobile }: { b: V2ContainerBlock; isMobile: boolean }) {
+  const justifyMap: Record<string, string> = { start: "flex-start", center: "center", end: "flex-end", between: "space-between", around: "space-around" };
+  const itemsMap: Record<string, string> = { start: "flex-start", center: "center", end: "flex-end", stretch: "stretch" };
   const style: React.CSSProperties = {
     ...commonToStyle(b, isMobile),
     ...effectsToStyle(b),
@@ -235,6 +237,8 @@ function RenderContainer({ b, isMobile }: { b: V2ContainerBlock; isMobile: boole
     maxWidth: b.maxWidth,
     width: "100%",
     margin: "0 auto",
+    justifyContent: b.justify ? justifyMap[b.justify] : undefined,
+    alignItems: b.itemsAlign ? itemsMap[b.itemsAlign] : undefined,
     animation: b.animation && b.animation !== "none" ? animationCss[b.animation] : undefined,
     animationDelay: b.animationDelay,
   };

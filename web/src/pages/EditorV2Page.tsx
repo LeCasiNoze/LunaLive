@@ -458,6 +458,14 @@ function PropPanel({ block, onChange }: { block: V2Block; onChange: (next: V2Blo
           )}
           <Field label="Espacement enfants" dense><Input value={block.gap || ""} onChange={(v) => update({ gap: v } as any)} placeholder="12px" /></Field>
           <Field label="Largeur max" dense><Input value={block.maxWidth || ""} onChange={(v) => update({ maxWidth: v } as any)} placeholder="720px" /></Field>
+          <Field label="Justifier (horizontal)" dense>
+            <Select value={block.justify || ""} onChange={(v) => update({ justify: v as any } as any)}
+              options={[{value:"",label:"Hérité"},{value:"start",label:"Début"},{value:"center",label:"Centre"},{value:"end",label:"Fin"},{value:"between",label:"Espacé entre"},{value:"around",label:"Espacé autour"}]} />
+          </Field>
+          <Field label="Aligner items (vertical)" dense>
+            <Select value={block.itemsAlign || ""} onChange={(v) => update({ itemsAlign: v as any } as any)}
+              options={[{value:"",label:"Hérité"},{value:"start",label:"Haut"},{value:"center",label:"Centre"},{value:"end",label:"Bas"},{value:"stretch",label:"Étiré"}]} />
+          </Field>
         </>
       )}
 

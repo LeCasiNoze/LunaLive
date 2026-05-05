@@ -129,6 +129,10 @@ export interface V2ContainerBlock extends V2BaseBlock, V2CommonStyle, V2Effects 
   children: V2Block[];
   /** Largeur max du conteneur. */
   maxWidth?: string;
+  /** Justification horizontale des enfants (flex justify-content). */
+  justify?: "start" | "center" | "end" | "between" | "around";
+  /** Alignement vertical des enfants (flex align-items). */
+  itemsAlign?: "start" | "center" | "end" | "stretch";
 }
 
 // ─── Spacer ──────────────────────────────────────────────────────────────────

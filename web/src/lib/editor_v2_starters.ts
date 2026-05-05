@@ -45,10 +45,14 @@ function ct(layout: V2ContainerBlock["layout"], children: V2Block[], override: P
 
 // ─── M4 V2 — clone fidèle du rendu V1 ────────────────────────────────────────
 
-function buildM4Card(label: string, bonusPct: string): V2ContainerBlock {
+// Images par défaut reprises du M4 V1 (modifiables ensuite par l'user)
+const M4_DEFAULT_IMG_1 = "https://cdn.phototourl.com/member/2026-04-09-240bb1e8-d188-4130-81ae-8e3f88143efc.png";
+const M4_DEFAULT_IMG_2 = "https://cdn.phototourl.com/free/2026-04-09-c5dee0f7-cdad-427c-bd2e-bcbb6f4b24a6.png";
+
+function buildM4Card(_label: string, bonusPct: string, defaultImg: string): V2ContainerBlock {
   return ct("stack", [
-    // image promo en haut, ratio 16/9
-    img("", {
+    // image promo en haut, ratio 16/9 — reprise du M4 V1 par défaut
+    img(defaultImg, {
       width: "100%",
       height: "auto",
       objectFit: "cover",
@@ -57,7 +61,7 @@ function buildM4Card(label: string, bonusPct: string): V2ContainerBlock {
     }),
     // body
     ct("stack", [
-      // offer-header (icône cercle gold + "OFFRE DE BIENVENUE")
+      // offer-header (icône cercle gold + "OFFRE DE BIENVENUE") — centré
       ct("row", [
         ct("stack", [
           txt("🎁", {
@@ -83,19 +87,21 @@ function buildM4Card(label: string, bonusPct: string): V2ContainerBlock {
             letterSpacing: "1px",
           },
         }),
-      ], { gap: "12px", align: "center", marginBottom: "8px" }),
+      ], { gap: "12px", justify: "center", itemsAlign: "center", marginBottom: "8px" }),
 
-      // offer-subtitle (✓ + "Bonus 100% AUTOMATIQUE")
+      // offer-subtitle (✓ + "Bonus 100% AUTOMATIQUE") — centré
       txt(`✓ Bonus ${bonusPct} AUTOMATIQUE`, {
         tag: "p",
+        align: "center",
         style: { fontSize: "0.9rem", color: "#ffffff", fontWeight: 500 },
         marginBottom: "20px",
       }),
 
-      // info-box (C'EST SIMPLE / Déposez X / → / Recevez Y)
+      // info-box (C'EST SIMPLE / Déposez X / → / Recevez Y) — centrée
       ct("stack", [
         txt("⊙ C'EST SIMPLE", {
           tag: "p",
+          align: "center",
           style: {
             fontSize: "0.8rem",
             fontWeight: 700,
@@ -122,7 +128,7 @@ function buildM4Card(label: string, bonusPct: string): V2ContainerBlock {
               textShadow: `0 0 10px ${M4.brandGold}`,
             },
           }),
-        ], { gap: "8px", align: "center" }),
+        ], { gap: "8px", justify: "center", itemsAlign: "center" }),
       ], {
         bg: "rgba(0,0,0,0.5)",
         borderRadius: "8px",
@@ -159,7 +165,7 @@ function buildM4Card(label: string, bonusPct: string): V2ContainerBlock {
 
 function buildM4ReviewCard(name: string, gain: string, text: string): V2ContainerBlock {
   return ct("stack", [
-    // top : avatar + nom + verified + gain
+    // top : avatar + nom + verified + gain — centré
     ct("row", [
       ct("stack", [
         txt("👤", {
@@ -176,17 +182,19 @@ function buildM4ReviewCard(name: string, gain: string, text: string): V2Containe
         ct("row", [
           txt(name, { tag: "span", style: { fontSize: "0.95rem", fontWeight: 700, color: "#ffffff" } }),
           txt("✓", { tag: "span", style: { fontSize: "0.75rem", color: M4.casinoGreen, fontWeight: 800 } }),
-        ], { gap: "6px", align: "center" }),
+        ], { gap: "6px", justify: "center", itemsAlign: "center" }),
         txt(`Gain Encaissé · ${gain}`, {
           tag: "span",
+          align: "center",
           style: { fontSize: "0.78rem", color: M4.textMuted, fontWeight: 500 },
         }),
       ], { gap: "2px" }),
-    ], { gap: "10px", align: "center", marginBottom: "12px" }),
+    ], { gap: "10px", justify: "center", itemsAlign: "center", marginBottom: "12px" }),
 
-    // texte du témoignage
+    // texte du témoignage — centré
     txt(text, {
       tag: "p",
+      align: "center",
       style: { fontSize: "0.95rem", lineHeight: "1.7", color: M4.textMuted },
     }),
   ], {
@@ -204,11 +212,13 @@ function buildM4FaqItem(q: string, a: string): V2ContainerBlock {
   return ct("stack", [
     txt(`▸ ${q}`, {
       tag: "p",
+      align: "center",
       style: { fontSize: "1rem", fontWeight: 700, color: "#ffffff" },
       marginBottom: "8px",
     }),
     txt(a, {
       tag: "p",
+      align: "center",
       style: { fontSize: "0.9rem", lineHeight: "1.6", color: M4.textMuted },
     }),
   ], {
@@ -225,28 +235,8 @@ function buildM4FaqItem(q: string, a: string): V2ContainerBlock {
 export function buildM4V2Starter(): V2Page {
   const page = newV2Page("M4V2");
 
-  // HERO ZONE (aboveCards)
+  // HERO ZONE (aboveCards) — sans badge VIP, tous textes centrés
   page.zones.aboveCards.push(
-    txt("✓ CLUB VIP CERTIFIÉ", {
-      tag: "p",
-      align: "center",
-      style: {
-        fontFamily: "Inter",
-        fontSize: "0.75rem",
-        fontWeight: 600,
-        color: M4.brandGold,
-        letterSpacing: "1px",
-        textTransform: "uppercase",
-      },
-      bg: "rgba(255,214,0,0.05)",
-      border: "1px solid rgba(255,214,0,0.3)",
-      borderRadius: "999px",
-      paddingX: "16px",
-      paddingTop: "6px",
-      paddingBottom: "6px",
-      marginTop: "32px",
-      marginBottom: "12px",
-    }),
     txt("Doublez votre dépôt", {
       tag: "h1",
       align: "center",
@@ -259,6 +249,7 @@ export function buildM4V2Starter(): V2Page {
         letterSpacing: "-1px",
         lineHeight: "1.1",
       },
+      marginTop: "32px",
       marginBottom: "10px",
     }),
     txt("Profitez d'une offre exclusive sur votre premier dépôt", {
@@ -273,15 +264,18 @@ export function buildM4V2Starter(): V2Page {
     }),
   );
 
-  // CARDS ZONE
+  // CARDS ZONE — empilées (1 colonne au lieu de grid 2)
   page.zones.cards.push(
-    ct("grid",
-      [buildM4Card("Card 1", "100%"), buildM4Card("Card 2", "100%")],
+    ct("stack",
+      [
+        buildM4Card("Card 1", "100%", M4_DEFAULT_IMG_1),
+        buildM4Card("Card 2", "100%", M4_DEFAULT_IMG_2),
+      ],
       {
-        columns: 2,
         gap: "28px",
-        maxWidth: "820px",
+        maxWidth: "440px",
         marginBottom: "60px",
+        align: "center",
       }),
   );
 
@@ -307,7 +301,7 @@ export function buildM4V2Starter(): V2Page {
       style: { fontSize: "1rem", color: M4.textMuted },
       marginBottom: "32px",
     }),
-    ct("grid", [
+    ct("stack", [
       buildM4ReviewCard("Pierre L.", "400€",
         "Offre VIP validée. Le bonus s'est activé en 1 minute après mon dépôt. Cashout de 400€ reçu par virement SEPA. Rapide et discret."),
       buildM4ReviewCard("Sophie M.", "180€",
@@ -315,10 +309,10 @@ export function buildM4V2Starter(): V2Page {
       buildM4ReviewCard("Karim B.", "100€",
         "Inscription et vérification ultra-rapide. Dépôt sécurisé, j'ai posé 50€, j'ai eu 100€ de capital. Service client très réactif."),
     ], {
-      columns: 3,
-      gap: "20px",
-      maxWidth: "1080px",
+      gap: "16px",
+      maxWidth: "440px",
       marginBottom: "40px",
+      align: "center",
     }),
   );
 
@@ -351,7 +345,7 @@ export function buildM4V2Starter(): V2Page {
         "Oui. Dès que ton premier dépôt est validé, le bonus est crédité automatiquement. Aucune condition cachée."
       ),
     ], {
-      maxWidth: "800px",
+      maxWidth: "440px",
     }),
   );
 
