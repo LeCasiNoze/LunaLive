@@ -250,6 +250,9 @@ export function ChatMessageBubble({
     <div
       className={[
         "chatMsgRow",
+        // Frame cosmétique appliquée sur la row entière (avatar inclus)
+        // pour ne pas créer un encadrement interne uniquement autour du texte.
+        !isGrouped ? frameClass(frame?.frameId) : "",
         isPinged     ? "chatPinged"       : "",
         isDlive      ? "chatMsgRow--dlive" : "",
         isRumble     ? "chatMsgRow--rumble" : "",
@@ -274,7 +277,7 @@ export function ChatMessageBubble({
         </div>
 
         {/* ── Contenu ── */}
-        <div className={["chatMsgContent", frameClass(frame?.frameId)].filter(Boolean).join(" ")} style={{ minWidth:0 }}>
+        <div className="chatMsgContent" style={{ minWidth:0 }}>
 
           {/* Header : caché pour les messages groupés */}
           {!isGrouped ? (

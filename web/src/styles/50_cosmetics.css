@@ -381,11 +381,19 @@
    + ::after pour l'ambient glow interne
    + reflet haut (::before) pour le highlight signature Purple Velvet */
 
-/* ── Helper — isolation DOM : le frame ne déborde jamais sur l'avatar ─── */
-/* Les classes chatFrame--* sont appliquées sur .chatMsgContent uniquement.
-   Pas d'overflow:hidden : le ::before de grouped (left:-8px) doit rester visible. */
+/* ── Helper — frame cosmétique ─────────────────────────────
+   Les classes chatFrame--* sont désormais appliquées sur .chatMsgRow
+   (= toute la ligne avatar inclus). On hérite donc du border-radius
+   et du padding de .chatMsgRow plutôt que d'imposer 10px / 6px 8px.
+   Pas d'overflow:hidden : le ::before de grouped (left:-8px) doit
+   rester visible. */
 [class*="chatFrame--"] {
   position: relative;
+}
+/* Sur les previews shop ou autres usages legacy où le frame est encore
+   sur un wrapper inline, on garde un padding/radius par défaut. */
+.chatMsgContent[class*="chatFrame--"],
+.cosPreview [class*="chatFrame--"]:not(.chatMsgRow) {
   border-radius: 10px;
   padding: 6px 8px;
 }
@@ -411,12 +419,17 @@
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 10px;
+  border-radius: inherit;
   pointer-events: none;
   z-index: 1;
   background: var(--frame-ambient, none);
   opacity: 0.85;
   will-change: opacity, filter;
+}
+/* Le contenu de la row doit passer au-dessus du ::after ambient. */
+.chatMsgRow[class*="chatFrame--"] > .chatMsgInner {
+  position: relative;
+  z-index: 2;
 }
 
 
