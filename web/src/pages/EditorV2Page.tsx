@@ -55,11 +55,13 @@ const T = {
 const BLOCK_ICONS: Record<V2BlockType, string> = {
   text: "🅣", image: "🖼", button: "▣", container: "▦", spacer: "↕", divider: "─",
   fsnCardM4: "★",
+  m4V1LowerSections: "▤",
 };
 const BLOCK_LABELS: Record<V2BlockType, string> = {
   text: "Texte", image: "Image", button: "Bouton", container: "Conteneur",
   spacer: "Espacement", divider: "Séparateur",
   fsnCardM4: "Card M4 (preset V1)",
+  m4V1LowerSections: "Sections bas M4 V1 (preset)",
 };
 const M5_VARIANTS: Record<string, { name: string; emoji: string; gold: string; bgPage: string }> = {
   gold:     { name: "Gold",     emoji: "🟨", gold: "#FFD700", bgPage: "#0a0712" },
