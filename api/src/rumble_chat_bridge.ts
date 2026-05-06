@@ -9,8 +9,9 @@ import { chatStore } from "./chat_store.js";
 import { getRumbleBotSession, hasRumbleBotSession } from "./rumble_chat_session.js";
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 import { createClipForStreamer } from "./shared/clip_service.js";
-// @ts-ignore - cycletls n'a pas de types TS officiels
-import initCycleTLS from "cycletls";
+// cycletls retiré : il consommait ~30-50 MB par instance Go en sous-processus
+// (OOM Render sous rafale), et son fallback aboutissait au même 403 que Node
+// fetch quand u_s est périmé. Le SEUL fix utile est de rafraîchir la session.
 
 type Bridge = {
   stop: () => void;
@@ -22,23 +23,6 @@ const bridges = new Map<string, Bridge>();
 function norm(s: any) { return String(s || "").trim(); }
 
 const RUMBLE_CHAT_HOST = "https://web7.rumble.com";
-
-// JA3 fingerprint Chrome 120+ — Rumble/Cloudflare bloque les clients sans
-// fingerprint browser. cycletls réplique le handshake TLS de Chrome.
-const CHROME_JA3 = "772,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0";
-
-let cycleTlsClient: any = null;
-let cycleTlsInitPromise: Promise<any> | null = null;
-async function getCycleTLS() {
-  if (cycleTlsClient) return cycleTlsClient;
-  if (!cycleTlsInitPromise) {
-    cycleTlsInitPromise = initCycleTLS().then((c: any) => {
-      cycleTlsClient = c;
-      return c;
-    });
-  }
-  return cycleTlsInitPromise;
-}
 
 type RumbleSseUser = {
   id: string;
@@ -143,47 +127,12 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
     .join("; ");
 
   try {
-    // Node native fetch d'abord — capture body fiable, HTTP/2 supporté.
-    // Si Rumble bloque par TLS fingerprint, on retombera sur cycletls en fallback.
-    console.log(`[rumble_chat] sendRumbleMessage trying Node fetch first...`);
-    try {
-      const r = await fetch(`${RUMBLE_CHAT_HOST}/chat/api/chat/${encodeURIComponent(videoIdNumeric)}/message`, {
-        method: "POST",
-        headers: {
-          "accept": "*/*",
-          "accept-language": "fr-FR,fr;q=0.9",
-          "cache-control": "no-cache",
-          "content-type": "application/json",
-          "cookie": cleanCookie,
-          "origin": "https://rumble.com",
-          "pragma": "no-cache",
-          "referer": "https://rumble.com/",
-          "user-agent": session.userAgent || "",
-        },
-        body: payload,
-      });
-      const respText = await r.text();
-      console.log(`[rumble_chat] Node fetch http=${r.status} server=${r.headers.get("server")} cf-ray=${r.headers.get("cf-ray")} body=${respText.slice(0, 400)}`);
-      if (r.status >= 200 && r.status < 300) {
-        let j: any = null;
-        try { j = JSON.parse(respText); } catch {}
-        const id = j?.data?.id ? String(j.data.id) : "";
-        const userId = j?.data?.user?.id ? String(j.data.user.id) : "";
-        return { id: id || `rumble_${Date.now()}`, userId };
-      }
-      // Non-2xx via Node fetch — retomber sur cycletls
-      console.log(`[rumble_chat] Node fetch non-2xx, falling back to cycletls`);
-    } catch (e: any) {
-      console.warn(`[rumble_chat] Node fetch error, falling back to cycletls`, e?.message || e);
-    }
-
-    console.log(`[rumble_chat] sendRumbleMessage getting cycletls...`);
-    const cycle = await getCycleTLS();
-    console.log(`[rumble_chat] sendRumbleMessage got cycletls, posting to vid=${videoIdNumeric}`);
-    const response = await cycle(`${RUMBLE_CHAT_HOST}/chat/api/chat/${encodeURIComponent(videoIdNumeric)}/message`, {
-      body: payload,
-      ja3: CHROME_JA3,
-      userAgent: session.userAgent || "",
+    // Node native fetch uniquement. cycletls retiré : il fallback-ait sur le
+    // même 403 "logged_in: false" (problème = session u_s périmée, pas TLS
+    // fingerprint), mais coûtait ~30-50 MB par instance Go → OOM Render
+    // sous rafale (clip + msg bot + duplicates).
+    const r = await fetch(`${RUMBLE_CHAT_HOST}/chat/api/chat/${encodeURIComponent(videoIdNumeric)}/message`, {
+      method: "POST",
       headers: {
         "accept": "*/*",
         "accept-language": "fr-FR,fr;q=0.9",
@@ -193,59 +142,28 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
         "origin": "https://rumble.com",
         "pragma": "no-cache",
         "referer": "https://rumble.com/",
-        "sec-ch-ua": '"Brave";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-site",
-        "sec-gpc": "1",
+        "user-agent": session.userAgent || "",
       },
-    }, "post");
-
-    let status = 0;
-    let respBody: any = null;
-    let serverHeader = "";
-    let cfRay = "";
-    try {
-      status = Number((response as any)?.status || 0);
-      respBody = (response as any)?.body;
-      const respHeaders: any = (response as any)?.headers || {};
-      serverHeader = String(respHeaders["Server"] || respHeaders["server"] || "");
-      cfRay = String(respHeaders["Cf-Ray"] || respHeaders["cf-ray"] || "");
-    } catch (parseErr: any) {
-      console.warn("[rumble_chat] response shape parse error", parseErr?.message || parseErr);
+      body: payload,
+    });
+    const respText = await r.text();
+    if (r.status >= 200 && r.status < 300) {
+      let j: any = null;
+      try { j = JSON.parse(respText); } catch {}
+      if (j?.errors?.length) {
+        console.warn(`[rumble_chat] send rejected by app: ${JSON.stringify(j.errors).slice(0, 200)}`);
+        return null;
+      }
+      const id = j?.data?.id ? String(j.data.id) : "";
+      const userId = j?.data?.user?.id ? String(j.data.user.id) : "";
+      return { id: id || `rumble_${Date.now()}`, userId };
     }
-
-    if (status < 200 || status >= 300) {
-      let snippet = "";
-      try {
-        snippet = typeof respBody === "string"
-          ? respBody.slice(0, 200)
-          : (respBody == null ? "(no-body)" : JSON.stringify(respBody).slice(0, 200));
-      } catch { snippet = "(unprintable)"; }
-      const cleanCookieLen = cleanCookie.length;
-      const origCookieLen = (session.cookie || "").length;
-      console.warn(`[rumble_chat] send http=${status} server=${serverHeader} cf-ray=${cfRay} content-length=${Buffer.byteLength(payload, "utf8")} cookieLen=${cleanCookieLen}(orig=${origCookieLen}) body=${snippet}`);
-      return null;
-    }
-
-    // 200 OK : succès. cycletls peut retourner body undefined pour les
-    // responses courtes — c'est ok, le message est bien passé.
-    let j: any = respBody;
-    if (typeof respBody === "string") {
-      try { j = JSON.parse(respBody); } catch { j = null; }
-    }
-    if (j?.errors?.length) {
-      console.warn(`[rumble_chat] send rejected by app: ${JSON.stringify(j.errors).slice(0, 200)}`);
-      return null;
-    }
-    const id = j?.data?.id ? String(j.data.id) : "";
-    const userId = j?.data?.user?.id ? String(j.data.user.id) : "";
-    // Fallback : si pas de body parsable, considère que c'est ok puisque status=200
-    return { id: id || `rumble_${Date.now()}`, userId: userId || "" };
-  } catch (e) {
-    console.error("[rumble_chat] sendRumbleMessage error", e);
+    // Non-2xx : log compact (1 ligne) et abandon, pas de fallback cycletls.
+    const snippet = respText.replace(/\s+/g, " ").slice(0, 200);
+    console.warn(`[rumble_chat] send http=${r.status} server=${r.headers.get("server")} cookieLen=${cleanCookie.length} body=${snippet}`);
+    return null;
+  } catch (e: any) {
+    console.warn(`[rumble_chat] sendRumbleMessage error`, e?.message || e);
     return null;
   }
 }

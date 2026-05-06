@@ -517,30 +517,33 @@ export function startClipsMp4Renderer() {
   const tick = async () => {
     if (running >= RENDER_CONCURRENCY) return;
 
-    const clip = await claimOneClipToRenderMp4({ minCreatedTs, maxAgeMs }).catch(() => null);
-    if (!clip) return;
-
+    // ✅ Réserve un slot AVANT le claim async pour éviter le TOCTOU :
+    // sans ça, plusieurs ticks pouvaient passer le check `running < N`
+    // pendant que claimOneClipToRenderMp4 était en attente DB → on lançait
+    // 4-5 ffmpeg en parallèle au lieu de 1 → OOM.
     running++;
+    let claimed = false;
+    try {
+      const clip = await claimOneClipToRenderMp4({ minCreatedTs, maxAgeMs }).catch(() => null);
+      if (!clip) return;
+      claimed = true;
 
-    (async () => {
       try {
         if (!clip.vod_url) {
           await setClipMp4Error(Number(clip.id), "vod_missing").catch(() => {});
           return;
         }
-
         await renderAndUploadClip(clip);
         console.log(`[clips-mp4] rendered clip=${clip.id} ok`);
       } catch (e: any) {
         const msg = String(e?.message || e || "render_failed").slice(0, 500);
         console.warn(`[clips-mp4] rendered clip=${clip?.id} error`, msg);
         await setClipMp4Error(Number(clip?.id || 0), msg).catch(() => {});
-      } finally {
-        running--;
       }
-    })().catch(() => {
+    } finally {
       running--;
-    });
+      void claimed;
+    }
   };
 
   ensureBotClips()
