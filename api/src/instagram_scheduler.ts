@@ -14,6 +14,7 @@
 import { pool } from "./db.js";
 import type { Pool } from "pg";
 import { FABIO_STREAMER_SLUG, FABIO_NOTIF_CHANNEL_ID, FABIO_ROLE_NOTIF_INSTA } from "./discord/constants.js";
+import { notifyStreamerOfIgPublish } from "./lunaclip/notify_streamer_ig_publish.js";
 
 const LOG = "[INSTAGRAM SCHEDULER]";
 
@@ -455,11 +456,27 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
     console.log(`${LOG} [job #${job.id}] comment tracking registered — slug=${streamerSlug} media=${mediaId}`);
   }
 
-  // STEP 7 — Notification Discord
+  // STEP 7 — Notification Discord (canal public LunaLive)
   await sendReelPublishedNotification({
     permalink,
     caption,
     streamerSlug: streamerSlug || streamerSlugRaw,
+    thumbnailUrl,
+    jobId: job.id,
+  });
+
+  // STEP 7b — DM Discord au streamer (tant qu'il n'a pas lié son IG)
+  // Récupère le titre original du clip pour l'embed
+  const clipMetaRow = await pool.query(
+    `SELECT title FROM clip_inbox WHERE clip_id = $1 LIMIT 1`,
+    [job.clip_id]
+  );
+  const clipTitle = String(clipMetaRow.rows[0]?.title || job.title || "");
+  await notifyStreamerOfIgPublish({
+    pool,
+    streamerSlug: streamerSlug || streamerSlugRaw,
+    clipTitle,
+    reelUrl: permalink,
     thumbnailUrl,
     jobId: job.id,
   });
