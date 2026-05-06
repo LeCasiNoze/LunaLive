@@ -204,11 +204,11 @@ async function prepareRumbleClipPlaylist(p: {
     strategyUsed = "sliding-window-estimate";
   }
 
-  // Compensation du retard HLS live edge :
-  // la m3u8 publie les segments avec ~10-15s de retard (encoder + CDN).
-  // Le wall-clock estime la position de "maintenant en capture" → 15s avant
-  // ce que l'utilisateur a perçu/clippé. On compense.
-  const HLS_LIVE_EDGE_LAG_SEC = 15;
+  // Pas de compensation HLS live edge : avec +15s, la commande chat apparaissait
+  // à 1m dans le clip rendu (pre=75 - 15 = 60s) au lieu de ~1m15. Maintenant
+  // la commande est à pre_sec dans le clip (≈ 1m15 pour pre=75 + ~5s de réaction
+  // = ressentie comme "1m20" côté utilisateur).
+  const HLS_LIVE_EDGE_LAG_SEC = 0;
   const adjustedClipMoment = clipMomentInPlaylist + HLS_LIVE_EDGE_LAG_SEC;
 
   console.log(
