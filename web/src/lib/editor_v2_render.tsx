@@ -14,12 +14,14 @@ import type {
   V2ContainerBlock,
   V2SpacerBlock,
   V2DividerBlock,
+  V2FsnCardM4Block,
   V2CommonStyle,
   V2Effects,
   V2TextStyle,
   V2Page,
   V2ZoneKey,
 } from "./editor_v2_types";
+import { M4V1Card } from "../components/M4V1Card";
 
 // ─── Edit mode context — propage onBlockClick + selection ─────────────────────
 //
@@ -94,6 +96,19 @@ const animationCss: Record<string, string> = {
 };
 
 export function V2Keyframes() {
+  // useEffect : on garantit que la fonte Poppins (utilisée par M4V1Card et toute
+  // page V2 qui veut matcher V1) est chargée même quand index.html ne la déclare
+  // pas (ex: éditeur, page publiée, preview). Idempotent — un seul <link> est
+  // posé en tête de document, peu importe le nombre de pages V2 montées.
+  React.useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (document.getElementById("v2-poppins-link")) return;
+    const link = document.createElement("link");
+    link.id = "v2-poppins-link";
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap";
+    document.head.appendChild(link);
+  }, []);
   return (
     <style data-v2-keyframes>{`
       @keyframes v2-fade-in   { from { opacity:0; } to { opacity:1; } }
@@ -297,6 +312,27 @@ function RenderSpacer({ b, isMobile }: { b: V2SpacerBlock; isMobile: boolean }) 
   return <div className="v2-block v2-spacer" style={{ height: (isMobile && b.heightMobile) || b.height || "20px", flexShrink: 0 }} />;
 }
 
+function RenderFsnCardM4({ b, isMobile }: { b: V2FsnCardM4Block; isMobile: boolean }) {
+  // Bloc preset : on délègue 100% du rendu au composant partagé pour garantir
+  // que le visuel reste pixel-identique à la card V1. On n'applique que les
+  // marges externes ; AUCUNE altération du style interne.
+  const wrapperStyle: React.CSSProperties = commonToStyle(b, isMobile);
+  return (
+    <div className="v2-block v2-fsn-card-m4" style={wrapperStyle}>
+      <M4V1Card
+        imgSrc={b.imgSrc}
+        imgAlt={b.imgAlt}
+        depositAmount={b.depositAmount}
+        bonusAmount={b.bonusAmount}
+        bonusPct={b.bonusPct}
+        href={b.href}
+        animationDelay={b.animationDelay}
+        isMobile={isMobile}
+      />
+    </div>
+  );
+}
+
 function RenderDivider({ b, isMobile }: { b: V2DividerBlock; isMobile: boolean }) {
   return (
     <hr className="v2-block v2-divider" style={{
@@ -320,6 +356,7 @@ export function RenderBlock({ b, isMobile, zone, indices }: { b: V2Block; isMobi
     case "container": inner = <RenderContainer b={b} isMobile={isMobile} zone={zone} indices={indices} />; break;
     case "spacer":    inner = <RenderSpacer b={b} isMobile={isMobile} />; break;
     case "divider":   inner = <RenderDivider b={b} isMobile={isMobile} />; break;
+    case "fsnCardM4": inner = <RenderFsnCardM4 b={b} isMobile={isMobile} />; break;
   }
   // Mode preview publique : aucun overlay, comportement standard
   if (!ctx || !zone || !indices) return <>{inner}</>;

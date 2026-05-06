@@ -54,10 +54,12 @@ const T = {
 
 const BLOCK_ICONS: Record<V2BlockType, string> = {
   text: "🅣", image: "🖼", button: "▣", container: "▦", spacer: "↕", divider: "─",
+  fsnCardM4: "★",
 };
 const BLOCK_LABELS: Record<V2BlockType, string> = {
   text: "Texte", image: "Image", button: "Bouton", container: "Conteneur",
   spacer: "Espacement", divider: "Séparateur",
+  fsnCardM4: "Card M4 (preset V1)",
 };
 const M5_VARIANTS: Record<string, { name: string; emoji: string; gold: string; bgPage: string }> = {
   gold:     { name: "Gold",     emoji: "🟨", gold: "#FFD700", bgPage: "#0a0712" },
@@ -333,7 +335,9 @@ function BlockListItem({
                 block.type === "image" ? `${(block as V2ImageBlock).src ? "•" : "—"} Image` :
                 block.type === "button" ? `"${(block as V2ButtonBlock).label || "Bouton"}"` :
                 block.type === "container" ? `${(block as V2ContainerBlock).layout} (${(block as V2ContainerBlock).children.length})` :
-                block.type === "spacer" ? `${(block as V2SpacerBlock).height || "20px"}` : `Séparateur`;
+                block.type === "spacer" ? `${(block as V2SpacerBlock).height || "20px"}` :
+                block.type === "fsnCardM4" ? `Card M4 V1 · ${(block as any).depositAmount || "?"} → ${(block as any).bonusAmount || "?"}` :
+                `Séparateur`;
   const label = block.name ? block.name : auto;
   return (
     <div
@@ -508,6 +512,26 @@ function PropPanel({ block, onChange }: { block: V2Block; onChange: (next: V2Blo
         </>
       )}
 
+      {block.type === "fsnCardM4" && (
+        <>
+          <div style={{ fontSize: 11, color: T.textDim, lineHeight: 1.5, padding: "6px 8px", background: T.goldSoft, border: `1px solid rgba(255,209,102,.22)`, borderRadius: 6, marginBottom: 8 }}>
+            Card preset M4 V1 — rendu visuel figé (duplication exacte de la
+            card V1). Seules les données ci-dessous sont éditables.
+          </div>
+          <ImagePickerV2 value={block.imgSrc} onChange={(v) => update({ imgSrc: v } as any)} />
+          <Field label="Alt image" dense><Input value={block.imgAlt || ""} onChange={(v) => update({ imgAlt: v } as any)} /></Field>
+          <Field label="Lien (CTA Jouer)" dense><Input value={block.href} onChange={(v) => update({ href: v } as any)} placeholder="https://..." /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <Field label="Dépôt" dense><Input value={block.depositAmount} onChange={(v) => update({ depositAmount: v } as any)} placeholder="10€" /></Field>
+            <Field label="Bonus reçu" dense><Input value={block.bonusAmount} onChange={(v) => update({ bonusAmount: v } as any)} placeholder="20€" /></Field>
+          </div>
+          <Field label="% bonus" dense><Input value={block.bonusPct || ""} onChange={(v) => update({ bonusPct: v } as any)} placeholder="100%" /></Field>
+          <Field label="Délai animation float" dense hint="0s pour la 1ère card, -3s pour la 2e (rythme V1)">
+            <Input value={block.animationDelay || ""} onChange={(v) => update({ animationDelay: v } as any)} placeholder="0s" />
+          </Field>
+        </>
+      )}
+
       {block.type === "divider" && (
         <>
           <Field label="Couleur" dense><ColorPicker value={block.color} onChange={(v) => update({ color: v } as any)} /></Field>
@@ -520,8 +544,8 @@ function PropPanel({ block, onChange }: { block: V2Block; onChange: (next: V2Blo
         </>
       )}
 
-      {/* Common visual props */}
-      {block.type !== "spacer" && (
+      {/* Common visual props — exclus pour fsnCardM4 (preset visuel figé V1) */}
+      {block.type !== "spacer" && block.type !== "fsnCardM4" && (
         <>
           <SectionTitle>Apparence</SectionTitle>
           <Field label="Background" dense><ColorPicker value={(block as any).bg} onChange={(v) => update({ bg: v } as any)} /></Field>

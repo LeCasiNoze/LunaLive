@@ -13,6 +13,7 @@ import {
   type V2ImageBlock,
   type V2ButtonBlock,
   type V2ContainerBlock,
+  type V2FsnCardM4Block,
   newV2Page,
   makeV2BlockId,
 } from "./editor_v2_types";
@@ -56,8 +57,9 @@ export const M4_DEFAULT_IMAGES: Array<{ name: string; url: string }> = [
 const M4_DEFAULT_IMG_1 = M4_DEFAULT_IMAGES[0].url;
 const M4_DEFAULT_IMG_2 = M4_DEFAULT_IMAGES[1].url;
 
-// Copie 1:1 du M4 V1 (web/public/affi_templates/model4.html lignes 595-640).
-// Chaque div / span / styling V1 devient un V2Block primitif modifiable.
+// Card M4 V2 — duplication visuelle pixel-exact de la card V1.
+// Le rendu est délégué au composant <M4V1Card /> (cf. components/M4V1Card.tsx)
+// qui copie 1:1 le HTML/CSS de model4.html. Aucun bloc primitif ici.
 function buildM4Card(
   label: string,
   bonusPct: string,
@@ -65,199 +67,21 @@ function buildM4Card(
   depositAmount: string,
   bonusAmount: string,
   animationDelay: string = "0s",
-): V2ContainerBlock {
-  return ct("stack", [
-    // .promo-image-container V1 : aspect-ratio 16/9, bg #000, object-fit:contain,
-    // border-bottom 2px (rendu via le divider sibling).
-    img(defaultImg, {
-      name: "Image promo",
-      width: "100%",
-      aspectRatio: "16/9",
-      objectFit: "contain",
-      align: "stretch",
-      bg: "#000",
-    }),
-    // séparateur 2px = .promo-image-container { border-bottom: 2px solid border-color } V1
-    {
-      id: makeV2BlockId("divider"),
-      type: "divider",
-      name: "Séparateur image/body",
-      thickness: "2px",
-      color: M4.borderColor,
-      width: "100%",
-      marginTop: "0",
-      marginBottom: "0",
-    } as V2Block,
-    // .promo-body — padding 22px, alignement gauche (V1 fidèle)
-    ct("stack", [
-      // .offer-header — left aligned, gap 12px
-      ct("row", [
-        // .icon-circle 36×36 cercle parfait + SVG gift V1 (18×18, gold)
-        ct("stack", [
-          txt("", {
-            tag: "span",
-            htmlContent: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${M4.brandGold}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><rect x="3" y="8" width="18" height="4" rx="1"></rect><path d="M12 8v13"></path><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"></path><path d="M7.5 8a2.5 2.5 0 0 1 0-5C9.5 3 12 5 12 8c0-3 2.5-5 4.5-5a2.5 2.5 0 0 1 0 5"></path></svg>`,
-            style: { lineHeight: "1" },
-          }),
-        ], {
-          name: "Icon circle",
-          width: "36px",
-          height: "36px",
-          flexShrink: 0,
-          bg: "rgba(255, 214, 0, 0.1)",
-          borderRadius: "50%",
-          border: "1px solid rgba(255,214,0,0.2)",
-          justify: "center",
-          itemsAlign: "center",
-        }),
-        // .offer-title
-        txt("Offre de Bienvenue", {
-          name: "Titre offre",
-          tag: "span",
-          style: {
-            fontFamily: "Poppins",
-            fontSize: "1rem",
-            fontWeight: 800,
-            color: "#ffffff",
-            textTransform: "uppercase",
-            letterSpacing: "1px",
-          },
-        }),
-      ], {
-        name: "Header offre",
-        gap: "12px",
-        justify: "start",
-        itemsAlign: "center",
-        marginBottom: "8px",
-      }),
-
-      // .offer-subtitle : SVG trending-up vert + "BONUS 100% AUTOMATIQUE"
-      // 100% en strong (plus gras) — V1 fidèle (model4.html ligne 612-618)
-      ct("row", [
-        txt("", {
-          name: "Icône bonus",
-          tag: "span",
-          htmlContent: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${M4.casinoGreen}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>`,
-          style: { lineHeight: "1" },
-        }),
-        // V1 : ".offer-subtitle" font-size 0.9rem, gap 8px ; "BONUS … AUTOMATIQUE"
-        // est du texte normal (font-weight hérité 400), seul "<strong>100%</strong>"
-        // est en gras (700). Police Poppins, couleur #fff.
-        txt("BONUS", {
-          name: "Texte BONUS",
-          tag: "span",
-          style: { fontFamily: "Poppins", fontSize: "0.9rem", fontWeight: 400, color: "#ffffff" },
-        }),
-        txt(bonusPct, {
-          name: "Pct bonus",
-          tag: "span",
-          style: { fontFamily: "Poppins", fontSize: "0.9rem", fontWeight: 700, color: "#ffffff" },
-        }),
-        txt("AUTOMATIQUE", {
-          name: "Texte AUTOMATIQUE",
-          tag: "span",
-          style: { fontFamily: "Poppins", fontSize: "0.9rem", fontWeight: 400, color: "#ffffff" },
-        }),
-      ], {
-        name: "Sous-titre offre",
-        gap: "8px",
-        justify: "start",
-        itemsAlign: "center",
-        marginBottom: "20px",
-      }),
-
-      // .info-box — bg noir, padding 16px, radius 8px
-      ct("stack", [
-        // .info-title — SVG info-circle gold + "C'est simple" — left aligned
-        ct("row", [
-          txt("", {
-            name: "Icône info",
-            tag: "span",
-            htmlContent: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${M4.brandGold}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`,
-            style: { lineHeight: "1" },
-          }),
-          txt("C'est simple", {
-            name: "Label info",
-            tag: "span",
-            style: {
-              fontFamily: "Poppins",
-              fontSize: "0.8rem",
-              fontWeight: 700,
-              color: M4.textMuted,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            },
-          }),
-        ], { gap: "8px", justify: "start", itemsAlign: "center", marginBottom: "10px" }),
-
-        // .info-steps — JUSTIFY SPACE-BETWEEN (V1)
-        ct("row", [
-          txt(`Déposez ${depositAmount}`, {
-            name: "Step déposez",
-            tag: "span",
-            style: { fontFamily: "Poppins", fontSize: "1rem", fontWeight: 800, color: "#ffffff" },
-          }),
-          txt("→", {
-            tag: "span",
-            style: { fontFamily: "Poppins", fontSize: "1.1rem", color: "#ffffff", fontWeight: 800 },
-          }),
-          txt(`Recevez ${bonusAmount}`, {
-            name: "Step recevez",
-            tag: "span",
-            style: {
-              fontFamily: "Poppins",
-              fontSize: "1rem", fontWeight: 800,
-              color: M4.brandGold,
-              textShadow: `0 0 10px ${M4.brandGold}`,
-            },
-          }),
-        ], { gap: "8px", justify: "between", itemsAlign: "center" }),
-      ], {
-        name: "Box C'est simple",
-        bg: "rgba(0,0,0,0.5)",
-        borderRadius: "8px",
-        paddingTop: "16px", paddingBottom: "16px", paddingX: "16px",
-        border: `1px solid ${M4.borderColor}`,
-        marginBottom: "20px",
-      }),
-
-      // .btn-jouer V1 — gradient gold 135deg #FFD700→#FFC200, padding 16px 0,
-      // radius 8px, font 1.1rem/800/uppercase Poppins, shadow gold, pulseGold.
-      btn("JOUER", {
-        name: "Bouton JOUER",
-        variant: "primary",
-        fullWidth: true,
-        borderRadius: "8px",
-        paddingX: "0",
-        paddingTop: "16px",
-        paddingBottom: "16px",
-        fontFamily: "Poppins",
-        fontSize: "1.1rem",
-        fontWeight: 800,
-        textTransform: "uppercase",
-        animation: "pulse",
-        shadow: "0 8px 15px rgba(255, 214, 0, 0.4)",
-      }),
-    ], {
-      name: "Body card",
-      paddingX: "22px",
-      paddingTop: "22px",
-      paddingBottom: "22px",
-    }),
-  ], {
+): V2FsnCardM4Block {
+  return {
+    id: makeV2BlockId("fsnCardM4"),
+    type: "fsnCardM4",
     name: label,
-    bg: M4.bgCard,
-    // V1: .promo-card { border-radius: var(--radius=12px); border: 2px solid var(--border-color);
-    //                   overflow: hidden; box-shadow: 0 30px 60px rgba(0,0,0,.9);
-    //                   animation: float 6s ease-in-out infinite; }
-    borderRadius: "12px",
-    border: `2px solid ${M4.borderColor}`,
-    shadow: "0 30px 60px rgba(0, 0, 0, 0.9)",
-    overflow: "hidden",
-    animation: "float",
+    imgSrc: defaultImg,
+    imgAlt: label,
+    depositAmount,
+    bonusAmount,
+    bonusPct,
+    href: "",
     animationDelay,
-  });
+  };
 }
+
 
 function buildM4ReviewCard(name: string, gain: string, text: string, when: string): V2ContainerBlock {
   return ct("stack", [

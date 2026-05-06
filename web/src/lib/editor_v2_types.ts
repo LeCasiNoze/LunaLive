@@ -13,7 +13,8 @@ export type V2BlockType =
   | "button"
   | "container"
   | "spacer"
-  | "divider";
+  | "divider"
+  | "fsnCardM4";
 
 export interface V2BaseBlock {
   id: string;
@@ -171,6 +172,23 @@ export interface V2DividerBlock extends V2BaseBlock, V2CommonStyle {
   style?: "solid" | "dashed" | "dotted";
 }
 
+// ─── M4 V1 Card (duplication visuelle figée du model4.html) ──────────────────
+//
+// Bloc "presets" qui rend EXACTEMENT la card .promo-card V1 via le composant
+// partagé <M4V1Card />. N'est pas composable bloc-par-bloc — c'est volontaire :
+// le rendu doit être pixel-identique à la V1, donc seuls les champs data sont
+// éditables (image, montants, lien). Aucun override de style possible.
+export interface V2FsnCardM4Block extends V2BaseBlock, V2CommonStyle {
+  type: "fsnCardM4";
+  imgSrc: string;
+  imgAlt?: string;
+  depositAmount: string;     // "10€"
+  bonusAmount: string;       // "20€"
+  bonusPct?: string;         // "100%"
+  href: string;              // lien d'affiliation
+  animationDelay?: string;   // "0s" / "-3s" pour la 2e card V1
+}
+
 // ─── Union ───────────────────────────────────────────────────────────────────
 
 export type V2Block =
@@ -179,7 +197,8 @@ export type V2Block =
   | V2ButtonBlock
   | V2ContainerBlock
   | V2SpacerBlock
-  | V2DividerBlock;
+  | V2DividerBlock
+  | V2FsnCardM4Block;
 
 // ─── Page complète ───────────────────────────────────────────────────────────
 
@@ -288,6 +307,19 @@ export function newSpacerBlock(): V2SpacerBlock {
 export function newDividerBlock(): V2DividerBlock {
   return { id: makeV2BlockId("divider"), type: "divider", thickness: "1px", color: "#444", width: "60%" };
 }
+export function newFsnCardM4Block(): V2FsnCardM4Block {
+  return {
+    id: makeV2BlockId("fsnCardM4"),
+    type: "fsnCardM4",
+    imgSrc: "",
+    imgAlt: "",
+    depositAmount: "10€",
+    bonusAmount: "20€",
+    bonusPct: "100%",
+    href: "",
+    animationDelay: "0s",
+  };
+}
 
 export function newBlockOfType(type: V2BlockType): V2Block {
   switch (type) {
@@ -297,5 +329,6 @@ export function newBlockOfType(type: V2BlockType): V2Block {
     case "container": return newContainerBlock();
     case "spacer":    return newSpacerBlock();
     case "divider":   return newDividerBlock();
+    case "fsnCardM4": return newFsnCardM4Block();
   }
 }
