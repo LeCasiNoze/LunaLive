@@ -1,7 +1,7 @@
 // bot/src/modules/clips/clip.ts
 import type { Pool } from "pg";
 import type { ChatMsg, StreamerRow } from "../../core/types.js";
-import { createClipForStreamer, formatClipTime, normalizeClipTitle } from "../../shared/clip_service.js";
+import { createClipForStreamer, normalizeClipTitle } from "../../shared/clip_service.js";
 
 export async function tryHandleClipCommand(p: {
   pool: Pool;
@@ -43,10 +43,9 @@ export async function tryHandleClipCommand(p: {
       return true;
     }
 
-    // Calculer l'offset pour l'affichage
-    const nowSec = Math.floor(Date.now() / 1000);
-    const offset = nowSec - Math.floor((Date.now() - 30 * 1000) / 1000); // Approximation pour l'affichage
-    await p.send(`— 🎬 Clip enregistré${title ? ` : "${title}"` : ""} • ${formatClipTime(offset)}`);
+    // L'ancien calcul d'offset était cassé (toujours 30s = "00:30"). Suppression :
+    // on s'aligne sur le format du bridge Rumble qui affiche juste le titre.
+    await p.send(`— 🎬 Clip enregistré${title ? ` : "${title}"` : ""}`);
     return true;
   } catch (e: any) {
     await p.send(`— ❌ Clip: erreur (${e?.message || "inconnue"})`);
