@@ -18,6 +18,9 @@ export type V2BlockType =
 export interface V2BaseBlock {
   id: string;
   type: V2BlockType;
+  /** Nom custom affiché dans la sidebar/PropPanel (ex: "Pseudo", "Image card 1").
+   *  Si absent, on utilise le label par défaut du type. */
+  name?: string;
 }
 
 /** Style commun à tous les blocs visuels — overrides par device disponibles
@@ -49,6 +52,7 @@ export interface V2Effects {
   hoverScale?: number;          // ex 1.03 pour zoom au hover
   animation?: "none" | "fadeIn" | "slideUp" | "pulse" | "float";
   animationDelay?: string;      // ex "0.2s"
+  overflow?: "visible" | "hidden" | "auto";  // utile pour clipper enfants à un borderRadius
 }
 
 // ─── Text ────────────────────────────────────────────────────────────────────
@@ -77,6 +81,11 @@ export interface V2TextBlock extends V2BaseBlock, V2CommonStyle, V2Effects {
   /** Style spécifique appliqué à une ligne précise (index 0-based). Permet
    *  d'avoir "Jimmy" doré ligne 1 et "Double ton dépôt" blanc ligne 2 par ex. */
   lineStyles?: Record<number, V2TextStyle>;
+  /** Échappatoire HTML/SVG : si fourni, le contenu est rendu via
+   *  dangerouslySetInnerHTML au lieu de `content`. Utilisé pour injecter des
+   *  icônes SVG inline (gift, trending-up, info...) qui ne peuvent pas être
+   *  représentées en texte/emoji de façon fidèle. `content` est ignoré. */
+  htmlContent?: string;
 }
 
 // ─── Image ───────────────────────────────────────────────────────────────────
@@ -87,6 +96,9 @@ export interface V2ImageBlock extends V2BaseBlock, V2CommonStyle, V2Effects {
   alt?: string;
   width?: string;               // ex "100%", "300px"
   height?: string;
+  /** Ratio CSS (ex "16/9", "1/1") — appliqué sur le wrapper de l'image. Permet
+   *  de reproduire fidèlement les containers d'image responsives V1. */
+  aspectRatio?: string;
   objectFit?: "cover" | "contain" | "fill" | "none";
   /** Texte superposé en overlay (ex pour bannière). */
   overlayText?: string;

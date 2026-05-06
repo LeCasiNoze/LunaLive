@@ -25,7 +25,8 @@ const M4 = {
   brandRuby: "#E0115F",
   casinoGreen: "#00E676",
   borderColor: "#331A47",
-  textMuted: "rgba(255,255,255,.66)",
+  textMuted: "#AAA4B0", // V1: --text-muted exact
+  fontPrimary: "Poppins", // V1: body font
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -55,41 +56,66 @@ export const M4_DEFAULT_IMAGES: Array<{ name: string; url: string }> = [
 const M4_DEFAULT_IMG_1 = M4_DEFAULT_IMAGES[0].url;
 const M4_DEFAULT_IMG_2 = M4_DEFAULT_IMAGES[1].url;
 
-function buildM4Card(label: string, bonusPct: string, defaultImg: string): V2ContainerBlock {
+// Copie 1:1 du M4 V1 (web/public/affi_templates/model4.html lignes 595-640).
+// Chaque div / span / styling V1 devient un V2Block primitif modifiable.
+function buildM4Card(
+  label: string,
+  bonusPct: string,
+  defaultImg: string,
+  depositAmount: string,
+  bonusAmount: string,
+  animationDelay: string = "0s",
+): V2ContainerBlock {
   return ct("stack", [
-    // image promo en haut, ratio 16/9 — reprise du M4 V1 par défaut
+    // .promo-image-container V1 : aspect-ratio 16/9, bg #000, object-fit:contain,
+    // border-bottom 2px (rendu via le divider sibling).
     img(defaultImg, {
+      name: "Image promo",
       width: "100%",
-      height: "auto",
-      objectFit: "cover",
-      borderRadius: "0",
+      aspectRatio: "16/9",
+      objectFit: "contain",
       align: "stretch",
+      bg: "#000",
     }),
-    // body
+    // séparateur 2px = .promo-image-container { border-bottom: 2px solid border-color } V1
+    {
+      id: makeV2BlockId("divider"),
+      type: "divider",
+      name: "Séparateur image/body",
+      thickness: "2px",
+      color: M4.borderColor,
+      width: "100%",
+      marginTop: "0",
+      marginBottom: "0",
+    } as V2Block,
+    // .promo-body — padding 22px, alignement gauche (V1 fidèle)
     ct("stack", [
-      // offer-header (icône cercle gold parfait + "OFFRE DE BIENVENUE") — centré
+      // .offer-header — left aligned, gap 12px
       ct("row", [
-        // Cercle parfait 36x36 avec emoji centré
+        // .icon-circle 36×36 cercle parfait + SVG gift V1 (18×18, gold)
         ct("stack", [
-          txt("🎁", {
+          txt("", {
             tag: "span",
-            align: "center",
-            style: { fontSize: "16px", lineHeight: "1" },
+            htmlContent: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${M4.brandGold}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><rect x="3" y="8" width="18" height="4" rx="1"></rect><path d="M12 8v13"></path><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"></path><path d="M7.5 8a2.5 2.5 0 0 1 0-5C9.5 3 12 5 12 8c0-3 2.5-5 4.5-5a2.5 2.5 0 0 1 0 5"></path></svg>`,
+            style: { lineHeight: "1" },
           }),
         ], {
+          name: "Icon circle",
           width: "36px",
           height: "36px",
           flexShrink: 0,
           bg: "rgba(255, 214, 0, 0.1)",
           borderRadius: "50%",
-          border: "1px solid rgba(255,214,0,0.25)",
+          border: "1px solid rgba(255,214,0,0.2)",
           justify: "center",
           itemsAlign: "center",
         }),
-        txt("OFFRE DE BIENVENUE", {
+        // .offer-title
+        txt("Offre de Bienvenue", {
+          name: "Titre offre",
           tag: "span",
           style: {
-            fontFamily: "Inter",
+            fontFamily: "Poppins",
             fontSize: "1rem",
             fontWeight: 800,
             color: "#ffffff",
@@ -97,49 +123,97 @@ function buildM4Card(label: string, bonusPct: string, defaultImg: string): V2Con
             letterSpacing: "1px",
           },
         }),
-      ], { gap: "12px", justify: "center", itemsAlign: "center", marginBottom: "8px" }),
+      ], {
+        name: "Header offre",
+        gap: "12px",
+        justify: "start",
+        itemsAlign: "center",
+        marginBottom: "8px",
+      }),
 
-      // offer-subtitle (✓ + "Bonus 100% AUTOMATIQUE") — centré
-      txt(`✓ Bonus ${bonusPct} AUTOMATIQUE`, {
-        tag: "p",
-        align: "center",
-        style: { fontSize: "0.9rem", color: "#ffffff", fontWeight: 500 },
+      // .offer-subtitle : SVG trending-up vert + "BONUS 100% AUTOMATIQUE"
+      // 100% en strong (plus gras) — V1 fidèle (model4.html ligne 612-618)
+      ct("row", [
+        txt("", {
+          name: "Icône bonus",
+          tag: "span",
+          htmlContent: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${M4.casinoGreen}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>`,
+          style: { lineHeight: "1" },
+        }),
+        // V1 : ".offer-subtitle" font-size 0.9rem, gap 8px ; "BONUS … AUTOMATIQUE"
+        // est du texte normal (font-weight hérité 400), seul "<strong>100%</strong>"
+        // est en gras (700). Police Poppins, couleur #fff.
+        txt("BONUS", {
+          name: "Texte BONUS",
+          tag: "span",
+          style: { fontFamily: "Poppins", fontSize: "0.9rem", fontWeight: 400, color: "#ffffff" },
+        }),
+        txt(bonusPct, {
+          name: "Pct bonus",
+          tag: "span",
+          style: { fontFamily: "Poppins", fontSize: "0.9rem", fontWeight: 700, color: "#ffffff" },
+        }),
+        txt("AUTOMATIQUE", {
+          name: "Texte AUTOMATIQUE",
+          tag: "span",
+          style: { fontFamily: "Poppins", fontSize: "0.9rem", fontWeight: 400, color: "#ffffff" },
+        }),
+      ], {
+        name: "Sous-titre offre",
+        gap: "8px",
+        justify: "start",
+        itemsAlign: "center",
         marginBottom: "20px",
       }),
 
-      // info-box (C'EST SIMPLE / Déposez X / → / Recevez Y) — centrée
+      // .info-box — bg noir, padding 16px, radius 8px
       ct("stack", [
-        txt("⊙ C'EST SIMPLE", {
-          tag: "p",
-          align: "center",
-          style: {
-            fontSize: "0.8rem",
-            fontWeight: 700,
-            color: M4.textMuted,
-            textTransform: "uppercase",
-            letterSpacing: "0.5px",
-          },
-          marginBottom: "10px",
-        }),
+        // .info-title — SVG info-circle gold + "C'est simple" — left aligned
         ct("row", [
-          txt("Déposez 10€", {
+          txt("", {
+            name: "Icône info",
             tag: "span",
-            style: { fontSize: "1rem", fontWeight: 800, color: "#ffffff" },
+            htmlContent: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${M4.brandGold}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`,
+            style: { lineHeight: "1" },
+          }),
+          txt("C'est simple", {
+            name: "Label info",
+            tag: "span",
+            style: {
+              fontFamily: "Poppins",
+              fontSize: "0.8rem",
+              fontWeight: 700,
+              color: M4.textMuted,
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+            },
+          }),
+        ], { gap: "8px", justify: "start", itemsAlign: "center", marginBottom: "10px" }),
+
+        // .info-steps — JUSTIFY SPACE-BETWEEN (V1)
+        ct("row", [
+          txt(`Déposez ${depositAmount}`, {
+            name: "Step déposez",
+            tag: "span",
+            style: { fontFamily: "Poppins", fontSize: "1rem", fontWeight: 800, color: "#ffffff" },
           }),
           txt("→", {
             tag: "span",
-            style: { fontSize: "1.1rem", color: "#ffffff", fontWeight: 800 },
+            style: { fontFamily: "Poppins", fontSize: "1.1rem", color: "#ffffff", fontWeight: 800 },
           }),
-          txt("Recevez 20€", {
+          txt(`Recevez ${bonusAmount}`, {
+            name: "Step recevez",
             tag: "span",
             style: {
+              fontFamily: "Poppins",
               fontSize: "1rem", fontWeight: 800,
               color: M4.brandGold,
               textShadow: `0 0 10px ${M4.brandGold}`,
             },
           }),
-        ], { gap: "8px", justify: "center", itemsAlign: "center" }),
+        ], { gap: "8px", justify: "between", itemsAlign: "center" }),
       ], {
+        name: "Box C'est simple",
         bg: "rgba(0,0,0,0.5)",
         borderRadius: "8px",
         paddingTop: "16px", paddingBottom: "16px", paddingX: "16px",
@@ -147,33 +221,45 @@ function buildM4Card(label: string, bonusPct: string, defaultImg: string): V2Con
         marginBottom: "20px",
       }),
 
-      // bouton "JOUER"
+      // .btn-jouer V1 — gradient gold 135deg #FFD700→#FFC200, padding 16px 0,
+      // radius 8px, font 1.1rem/800/uppercase Poppins, shadow gold, pulseGold.
       btn("JOUER", {
+        name: "Bouton JOUER",
         variant: "primary",
         fullWidth: true,
         borderRadius: "8px",
         paddingX: "0",
+        paddingTop: "16px",
+        paddingBottom: "16px",
+        fontFamily: "Poppins",
         fontSize: "1.1rem",
         fontWeight: 800,
         textTransform: "uppercase",
         animation: "pulse",
+        shadow: "0 8px 15px rgba(255, 214, 0, 0.4)",
       }),
     ], {
+      name: "Body card",
       paddingX: "22px",
       paddingTop: "22px",
       paddingBottom: "22px",
     }),
   ], {
+    name: label,
     bg: M4.bgCard,
-    borderRadius: "16px",
+    // V1: .promo-card { border-radius: var(--radius=12px); border: 2px solid var(--border-color);
+    //                   overflow: hidden; box-shadow: 0 30px 60px rgba(0,0,0,.9);
+    //                   animation: float 6s ease-in-out infinite; }
+    borderRadius: "12px",
     border: `2px solid ${M4.borderColor}`,
     shadow: "0 30px 60px rgba(0, 0, 0, 0.9)",
+    overflow: "hidden",
     animation: "float",
-    animationDelay: label === "Card 1" ? "0s" : "-3s",
+    animationDelay,
   });
 }
 
-function buildM4ReviewCard(name: string, gain: string, text: string): V2ContainerBlock {
+function buildM4ReviewCard(name: string, gain: string, text: string, when: string): V2ContainerBlock {
   return ct("stack", [
     // top : avatar + nom + verified + gain — centré
     ct("row", [
@@ -197,21 +283,47 @@ function buildM4ReviewCard(name: string, gain: string, text: string): V2Containe
       ct("stack", [
         ct("row", [
           txt(name, { tag: "span", style: { fontSize: "0.95rem", fontWeight: 700, color: "#ffffff" } }),
-          txt("✓", { tag: "span", style: { fontSize: "0.75rem", color: M4.casinoGreen, fontWeight: 800 } }),
-        ], { gap: "6px", justify: "center", itemsAlign: "center" }),
-        txt(`Gain Encaissé · ${gain}`, {
+          // badge "vérifié" pastille verte
+          ct("row", [
+            txt("✓", { tag: "span", style: { fontSize: "0.7rem", color: "#0a0", fontWeight: 900 } }),
+            txt("Vérifié", { tag: "span", style: { fontSize: "0.7rem", color: M4.casinoGreen, fontWeight: 700 } }),
+          ], {
+            gap: "3px",
+            justify: "center",
+            itemsAlign: "center",
+            bg: "rgba(0,230,118,.12)",
+            border: "1px solid rgba(0,230,118,.3)",
+            borderRadius: "999px",
+            paddingX: "8px",
+            paddingTop: "2px",
+            paddingBottom: "2px",
+          }),
+        ], { gap: "8px", justify: "center", itemsAlign: "center" }),
+        txt(`Gain encaissé · ${gain}`, {
           tag: "span",
           align: "center",
           style: { fontSize: "0.78rem", color: M4.textMuted, fontWeight: 500 },
         }),
       ], { gap: "2px" }),
-    ], { gap: "10px", justify: "center", itemsAlign: "center", marginBottom: "12px" }),
+    ], { gap: "10px", justify: "center", itemsAlign: "center", marginBottom: "10px" }),
+
+    // étoiles 5/5 + date
+    ct("row", [
+      txt("★★★★★", {
+        tag: "span",
+        style: { fontSize: "0.95rem", color: M4.brandGold, letterSpacing: "1px" },
+      }),
+      txt(`· ${when}`, {
+        tag: "span",
+        style: { fontSize: "0.75rem", color: M4.textMuted, fontWeight: 500 },
+      }),
+    ], { gap: "8px", justify: "center", itemsAlign: "center", marginBottom: "12px" }),
 
     // texte du témoignage — centré
     txt(text, {
       tag: "p",
       align: "center",
-      style: { fontSize: "0.95rem", lineHeight: "1.7", color: M4.textMuted },
+      style: { fontSize: "0.95rem", lineHeight: "1.7", color: "rgba(255,255,255,.82)" },
     }),
   ], {
     bg: M4.bgCard,
@@ -226,25 +338,43 @@ function buildM4ReviewCard(name: string, gain: string, text: string): V2Containe
 
 function buildM4FaqItem(q: string, a: string): V2ContainerBlock {
   return ct("stack", [
-    txt(`▸ ${q}`, {
-      tag: "p",
-      align: "center",
-      style: { fontSize: "1rem", fontWeight: 700, color: "#ffffff" },
-      marginBottom: "8px",
-    }),
+    // question — icône Q dorée + texte
+    ct("row", [
+      ct("stack", [
+        txt("?", {
+          tag: "span",
+          align: "center",
+          style: { fontSize: "14px", fontWeight: 900, color: M4.brandGold, lineHeight: "1" },
+        }),
+      ], {
+        width: "28px",
+        height: "28px",
+        flexShrink: 0,
+        bg: "rgba(255,214,0,.12)",
+        border: "1px solid rgba(255,214,0,.3)",
+        borderRadius: "50%",
+        justify: "center",
+        itemsAlign: "center",
+      }),
+      txt(q, {
+        tag: "p",
+        style: { fontSize: "1rem", fontWeight: 700, color: "#ffffff", lineHeight: "1.4" },
+      }),
+    ], { gap: "12px", justify: "center", itemsAlign: "center", marginBottom: "10px" }),
+    // réponse
     txt(a, {
       tag: "p",
       align: "center",
-      style: { fontSize: "0.9rem", lineHeight: "1.6", color: M4.textMuted },
+      style: { fontSize: "0.9rem", lineHeight: "1.65", color: M4.textMuted },
     }),
   ], {
     bg: M4.bgCard,
-    borderRadius: "10px",
+    borderRadius: "12px",
     border: `1px solid ${M4.borderColor}`,
     paddingX: "20px",
-    paddingTop: "16px",
-    paddingBottom: "16px",
-    marginBottom: "12px",
+    paddingTop: "18px",
+    paddingBottom: "18px",
+    marginBottom: "14px",
   });
 }
 
@@ -257,6 +387,7 @@ export function buildM4V2Starter(): V2Page {
   page.zones.aboveCards.push(
     // 1) Pseudo — vide par défaut
     txt("", {
+      name: "Pseudo",
       tag: "h2",
       align: "center",
       style: {
@@ -272,6 +403,7 @@ export function buildM4V2Starter(): V2Page {
     }),
     // 2) "Déposer 10€"
     txt("Déposer 10€", {
+      name: "Hero — Déposer X",
       tag: "h1",
       align: "center",
       style: {
@@ -287,6 +419,7 @@ export function buildM4V2Starter(): V2Page {
     }),
     // 3) "Jouer avec 20€" — en doré pour faire écho au gain
     txt("Jouer avec 20€", {
+      name: "Hero — Jouer avec Y",
       tag: "h1",
       align: "center",
       style: {
@@ -307,8 +440,8 @@ export function buildM4V2Starter(): V2Page {
   page.zones.cards.push(
     ct("stack",
       [
-        buildM4Card("Card 1", "100%", M4_DEFAULT_IMG_1),
-        buildM4Card("Card 2", "100%", M4_DEFAULT_IMG_2),
+        buildM4Card("Card 1", "100%", M4_DEFAULT_IMG_1, "10€", "20€", "0s"),
+        buildM4Card("Card 2", "100%", M4_DEFAULT_IMG_2, "10€", "20€", "-3s"),
       ],
       {
         gap: "28px",
@@ -342,11 +475,14 @@ export function buildM4V2Starter(): V2Page {
     }),
     ct("stack", [
       buildM4ReviewCard("Pierre L.", "400€",
-        "Offre VIP validée. Le bonus s'est activé en 1 minute après mon dépôt. Cashout de 400€ reçu par virement SEPA. Rapide et discret."),
+        "Offre VIP validée. Le bonus s'est activé en 1 minute après mon dépôt. Cashout de 400€ reçu par virement SEPA. Rapide et discret.",
+        "il y a 2 jours"),
       buildM4ReviewCard("Sophie M.", "180€",
-        "Interface haute qualité sur téléphone, on se croirait dans un casino VIP. Pas de bugs sur les mini-jeux. Le bonus est un vrai plus."),
+        "Interface haute qualité sur téléphone, on se croirait dans un casino VIP. Pas de bugs sur les mini-jeux. Le bonus est un vrai plus.",
+        "il y a 5 jours"),
       buildM4ReviewCard("Karim B.", "100€",
-        "Inscription et vérification ultra-rapide. Dépôt sécurisé, j'ai posé 50€, j'ai eu 100€ de capital. Service client très réactif."),
+        "Inscription et vérification ultra-rapide. Dépôt sécurisé, j'ai posé 50€, j'ai eu 100€ de capital. Service client très réactif.",
+        "il y a 1 semaine"),
     ], {
       gap: "16px",
       maxWidth: "440px",
@@ -409,7 +545,7 @@ export function buildM4V2Starter(): V2Page {
     brandRuby: M4.brandRuby,
     casinoGreen: M4.casinoGreen,
     borderColor: M4.borderColor,
-    fontPrimary: "Inter",
+    fontPrimary: M4.fontPrimary,
   };
 
   return page;

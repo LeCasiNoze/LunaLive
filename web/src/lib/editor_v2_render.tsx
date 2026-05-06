@@ -21,6 +21,25 @@ import type {
   V2ZoneKey,
 } from "./editor_v2_types";
 
+// ─── Edit mode context — propage onBlockClick + selection ─────────────────────
+//
+// En preview publique : pas de context, les blocs sont rendus sans interactivité.
+// En éditeur : on fournit un onSelect qui reçoit { zone, indices } pour ouvrir
+// le PropPanel correspondant + on highlight le bloc sélectionné.
+
+export type V2EditCtx = {
+  onSelect: (zone: V2ZoneKey, indices: number[]) => void;
+  selected: { zone: V2ZoneKey; indices: number[] } | null;
+};
+const EditCtx = React.createContext<V2EditCtx | null>(null);
+
+function isPathSelected(ctx: V2EditCtx | null, zone: V2ZoneKey, indices: number[]): boolean {
+  if (!ctx?.selected) return false;
+  if (ctx.selected.zone !== zone) return false;
+  if (ctx.selected.indices.length !== indices.length) return false;
+  return ctx.selected.indices.every((v, i) => v === indices[i]);
+}
+
 // ─── Style helpers ───────────────────────────────────────────────────────────
 
 function commonToStyle(c: V2CommonStyle, isMobile: boolean): React.CSSProperties {
@@ -47,6 +66,7 @@ function effectsToStyle(e: V2Effects): React.CSSProperties {
       ? `${e.bg ? e.bg + ", " : ""}url("${e.bgImage}") center/cover no-repeat`
       : e.bg,
     opacity: e.bgOpacity,
+    overflow: e.overflow,
     transition: e.hoverScale ? "transform 200ms ease, filter 200ms ease" : undefined,
   };
 }
@@ -88,12 +108,7 @@ export function V2Keyframes() {
 // ─── Block renderers ─────────────────────────────────────────────────────────
 
 function RenderText({ b, isMobile }: { b: V2TextBlock; isMobile: boolean }) {
-  // Bloc texte vide (trim) → ne rien rendre (pas de hauteur résiduelle, pas de
-  // marge). Pratique pour les champs optionnels (pseudo, etc.) qui ne doivent
-  // prendre aucune place tant qu'ils ne sont pas remplis.
-  if (!b.content || !b.content.trim()) return null;
   const Tag = (b.tag || "p") as keyof React.JSX.IntrinsicElements;
-  const lines = b.content.split("\n");
   const baseStyle: React.CSSProperties = {
     ...commonToStyle(b, isMobile),
     ...effectsToStyle(b),
@@ -102,6 +117,19 @@ function RenderText({ b, isMobile }: { b: V2TextBlock; isMobile: boolean }) {
     animation: b.animation && b.animation !== "none" ? animationCss[b.animation] : undefined,
     animationDelay: b.animationDelay,
   };
+  // Échappatoire HTML/SVG — si fourni, on bypass le rendu texte ligne-par-ligne
+  if (b.htmlContent) {
+    return React.createElement(Tag, {
+      className: "v2-block v2-text",
+      style: baseStyle,
+      dangerouslySetInnerHTML: { __html: b.htmlContent },
+    });
+  }
+  // Bloc texte vide (trim) → ne rien rendre (pas de hauteur résiduelle, pas de
+  // marge). Pratique pour les champs optionnels (pseudo, etc.) qui ne doivent
+  // prendre aucune place tant qu'ils ne sont pas remplis.
+  if (!b.content || !b.content.trim()) return null;
+  const lines = b.content.split("\n");
   return React.createElement(
     Tag,
     {
@@ -134,6 +162,7 @@ function RenderImage({ b, isMobile }: { b: V2ImageBlock; isMobile: boolean }) {
     position: "relative",
     width: b.width,
     height: b.height,
+    aspectRatio: b.aspectRatio,
     overflow: "hidden",
     display: "block",
     animation: b.animation && b.animation !== "none" ? animationCss[b.animation] : undefined,
@@ -228,7 +257,7 @@ function RenderButton({ b, isMobile }: { b: V2ButtonBlock; isMobile: boolean }) 
   );
 }
 
-function RenderContainer({ b, isMobile }: { b: V2ContainerBlock; isMobile: boolean }) {
+function RenderContainer({ b, isMobile, zone, indices }: { b: V2ContainerBlock; isMobile: boolean; zone?: V2ZoneKey; indices?: number[] }) {
   const justifyMap: Record<string, string> = { start: "flex-start", center: "center", end: "flex-end", between: "space-between", around: "space-around" };
   const itemsMap: Record<string, string> = { start: "flex-start", center: "center", end: "flex-end", stretch: "stretch" };
   const style: React.CSSProperties = {
@@ -251,7 +280,15 @@ function RenderContainer({ b, isMobile }: { b: V2ContainerBlock; isMobile: boole
   };
   return (
     <div className="v2-block v2-container" style={style} data-hover-scale={b.hoverScale ? "1" : undefined}>
-      {b.children.map((child, i) => <RenderBlock key={child.id || i} b={child} isMobile={isMobile} />)}
+      {b.children.map((child, i) => (
+        <RenderBlock
+          key={child.id || i}
+          b={child}
+          isMobile={isMobile}
+          zone={zone}
+          indices={indices ? [...indices, i] : undefined}
+        />
+      ))}
     </div>
   );
 }
@@ -272,20 +309,42 @@ function RenderDivider({ b, isMobile }: { b: V2DividerBlock; isMobile: boolean }
   );
 }
 
-export function RenderBlock({ b, isMobile }: { b: V2Block; isMobile: boolean }) {
+export function RenderBlock({ b, isMobile, zone, indices }: { b: V2Block; isMobile: boolean; zone?: V2ZoneKey; indices?: number[] }) {
+  const ctx = React.useContext(EditCtx);
+  const sel = !!ctx && zone && indices && isPathSelected(ctx, zone, indices);
+  let inner: React.ReactNode = null;
   switch (b.type) {
-    case "text":      return <RenderText b={b} isMobile={isMobile} />;
-    case "image":     return <RenderImage b={b} isMobile={isMobile} />;
-    case "button":    return <RenderButton b={b} isMobile={isMobile} />;
-    case "container": return <RenderContainer b={b} isMobile={isMobile} />;
-    case "spacer":    return <RenderSpacer b={b} isMobile={isMobile} />;
-    case "divider":   return <RenderDivider b={b} isMobile={isMobile} />;
+    case "text":      inner = <RenderText b={b} isMobile={isMobile} />; break;
+    case "image":     inner = <RenderImage b={b} isMobile={isMobile} />; break;
+    case "button":    inner = <RenderButton b={b} isMobile={isMobile} />; break;
+    case "container": inner = <RenderContainer b={b} isMobile={isMobile} zone={zone} indices={indices} />; break;
+    case "spacer":    inner = <RenderSpacer b={b} isMobile={isMobile} />; break;
+    case "divider":   inner = <RenderDivider b={b} isMobile={isMobile} />; break;
   }
+  // Mode preview publique : aucun overlay, comportement standard
+  if (!ctx || !zone || !indices) return <>{inner}</>;
+  // Mode éditeur : wrap avec un span clickable + highlight si sélectionné
+  return (
+    <div
+      onClick={(e) => { e.stopPropagation(); ctx.onSelect(zone, indices); }}
+      style={{
+        position: "relative",
+        outline: sel ? "2px solid #7c5cff" : "1px dashed transparent",
+        outlineOffset: sel ? "2px" : "0",
+        transition: "outline-color 120ms",
+        cursor: "pointer",
+      }}
+      onMouseEnter={(e) => { if (!sel) (e.currentTarget as HTMLElement).style.outline = "1px dashed rgba(124,92,255,.5)"; }}
+      onMouseLeave={(e) => { if (!sel) (e.currentTarget as HTMLElement).style.outline = "1px dashed transparent"; }}
+    >
+      {inner}
+    </div>
+  );
 }
 
 // ─── Page renderer ───────────────────────────────────────────────────────────
 
-export function RenderV2Page({ page, isMobile }: { page: V2Page; isMobile: boolean }) {
+export function RenderV2Page({ page, isMobile, editCtx }: { page: V2Page; isMobile: boolean; editCtx?: V2EditCtx }) {
   const g = page.globals || {};
   const pageStyle: React.CSSProperties = {
     background: g.bgPage || "#080212",
@@ -295,14 +354,23 @@ export function RenderV2Page({ page, isMobile }: { page: V2Page; isMobile: boole
     width: "100%",
   };
   const zones = (Object.keys(page.zones) as V2ZoneKey[]).filter((z) => page.zones[z].length > 0);
-  return (
+  const tree = (
     <div className="v2-page" style={pageStyle}>
       <V2Keyframes />
       {zones.map((zk) => (
         <section key={zk} data-zone={zk} style={{ padding: "16px 12px" }}>
-          {page.zones[zk].map((b, i) => <RenderBlock key={b.id || i} b={b} isMobile={isMobile} />)}
+          {page.zones[zk].map((b, i) => (
+            <RenderBlock
+              key={b.id || i}
+              b={b}
+              isMobile={isMobile}
+              zone={editCtx ? zk : undefined}
+              indices={editCtx ? [i] : undefined}
+            />
+          ))}
         </section>
       ))}
     </div>
   );
+  return editCtx ? <EditCtx.Provider value={editCtx}>{tree}</EditCtx.Provider> : tree;
 }

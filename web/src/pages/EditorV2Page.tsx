@@ -329,11 +329,12 @@ function BlockListItem({
   onSelect: () => void; onDelete: () => void; onDuplicate: () => void;
   onDragStart: () => void; onDragOver: (e: React.DragEvent) => void; onDrop: () => void;
 }) {
-  const label = block.type === "text" ? `"${(block as V2TextBlock).content.slice(0, 28).replace(/\n/g, " │ ") || "Texte"}"` :
+  const auto = block.type === "text" ? `"${(block as V2TextBlock).content.slice(0, 28).replace(/\n/g, " │ ") || "Texte"}"` :
                 block.type === "image" ? `${(block as V2ImageBlock).src ? "•" : "—"} Image` :
                 block.type === "button" ? `"${(block as V2ButtonBlock).label || "Bouton"}"` :
                 block.type === "container" ? `${(block as V2ContainerBlock).layout} (${(block as V2ContainerBlock).children.length})` :
                 block.type === "spacer" ? `${(block as V2SpacerBlock).height || "20px"}` : `Séparateur`;
+  const label = block.name ? block.name : auto;
   return (
     <div
       draggable onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop}
@@ -388,8 +389,12 @@ function PropPanel({ block, onChange }: { block: V2Block; onChange: (next: V2Blo
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: T.primarySoft, border: `1px solid ${T.primary}40`, borderRadius: 8, marginBottom: 4 }}>
         <span style={{ fontSize: 14, color: T.primaryHi }}>{BLOCK_ICONS[block.type]}</span>
-        <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{BLOCK_LABELS[block.type]}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{block.name || BLOCK_LABELS[block.type]}</span>
+        <span style={{ fontSize: 10, fontWeight: 500, color: T.textDim, marginLeft: "auto" }}>{BLOCK_LABELS[block.type]}</span>
       </div>
+      <Field label="Nom du bloc" dense hint="Affiché dans la liste à gauche (ex: Pseudo, Bouton CTA)">
+        <Input value={block.name || ""} onChange={(v) => update({ name: v || undefined } as any)} placeholder={BLOCK_LABELS[block.type]} />
+      </Field>
 
       {block.type === "text" && (
         <>
@@ -904,7 +909,14 @@ function EditorView({
             transform: device === "desktop" ? "scale(0.55)" : "none",
             transformOrigin: "top center",
           }}>
-            <RenderV2Page page={page} isMobile={device === "mobile"} />
+            <RenderV2Page
+              page={page}
+              isMobile={device === "mobile"}
+              editCtx={{
+                selected: selectedPath,
+                onSelect: (zone, indices) => setSelectedPath({ zone, indices }),
+              }}
+            />
           </div>
           <div style={{ marginTop: 14, fontSize: 11, color: T.textDim, fontWeight: 600 }}>
             {device === "mobile" ? "📱 iPhone SE (375 × 667)" : "🖥 Desktop 1280 — preview à 55%"}
