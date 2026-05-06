@@ -468,15 +468,31 @@ function WizardQuickView({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
             <div>
               <label style={labelStyle}>Déposez X (€)</label>
-              <input type="number" min={1} value={inputs.depositAmount}
-                onChange={(e) => update({ depositAmount: Math.max(1, Number(e.target.value) || 1) })}
+              <input
+                type="number"
+                value={inputs.depositAmount ?? ""}
+                placeholder="vide = caché"
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === "") return update({ depositAmount: null });
+                  const n = Number(raw);
+                  update({ depositAmount: Number.isFinite(n) ? n : null });
+                }}
                 style={inputStyle}
               />
             </div>
             <div>
               <label style={labelStyle}>Jouer à Y (€)</label>
-              <input type="number" min={1} value={inputs.bonusAmount}
-                onChange={(e) => update({ bonusAmount: Math.max(1, Number(e.target.value) || 1) })}
+              <input
+                type="number"
+                value={inputs.bonusAmount ?? ""}
+                placeholder="vide = caché"
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === "") return update({ bonusAmount: null });
+                  const n = Number(raw);
+                  update({ bonusAmount: Number.isFinite(n) ? n : null });
+                }}
                 style={inputStyle}
               />
             </div>

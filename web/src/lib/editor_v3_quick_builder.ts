@@ -111,8 +111,10 @@ export interface V3QuickInputs {
   modelKind: "M1";
   pseudo?: string;                 // optionnel
   affiLink: string;                // requis
-  depositAmount: number;           // X (en €)
-  bonusAmount: number;             // Y (en €)
+  /** X (en €) — null = champ vidé : on cache la ligne « Déposez X€ ». */
+  depositAmount: number | null;
+  /** Y (en €) — null = champ vidé : on cache la ligne « Jouer à Y€ ». */
+  bonusAmount: number | null;
   profileImageUrl?: string;        // ronde + bordure si fournie
   /** 2 images parmi penalty/mines/tower/chicken/custom URL. */
   card1Image: { kind: V3GameKey | "custom"; url: string };
@@ -239,32 +241,43 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
     aboveCards.push(pseudoBox);
   }
 
-  // 2c) "Déposez X€"
-  aboveCards.push({
-    id: makeV2BlockId("text"),
-    type: "text",
-    name: "Ligne — Déposez X€",
-    tag: "h1",
-    content: `Déposez ${inputs.depositAmount}€`,
-    align: "center",
-    style: lineStyleToV2(inputs.depositLineStyle, "#ffffff"),
-    marginBottom: "4px",
-  });
+  // 2c) "Déposez X€" — caché si X null
+  if (inputs.depositAmount != null) {
+    aboveCards.push({
+      id: makeV2BlockId("text"),
+      type: "text",
+      name: "Ligne — Déposez X€",
+      tag: "h1",
+      content: `Déposez ${inputs.depositAmount}€`,
+      align: "center",
+      style: lineStyleToV2(inputs.depositLineStyle, "#ffffff"),
+      marginBottom: "4px",
+    });
+  }
 
-  // 2d) "Jouer à Y€"
-  // marginBottom = même valeur que la marginBottom du pseudo box pour que le
-  // bloc "Déposez/Jouer" soit équidistant du pseudo (au-dessus) et des cartes
-  // (en-dessous).
-  aboveCards.push({
-    id: makeV2BlockId("text"),
-    type: "text",
-    name: "Ligne — Jouer à Y€",
-    tag: "h1",
-    content: `Jouer à ${inputs.bonusAmount}€`,
-    align: "center",
-    style: lineStyleToV2(inputs.bonusLineStyle, "#FFD700"),
-    marginBottom: "40px",
-  });
+  // 2d) "Jouer à Y€" — caché si Y null
+  // marginBottom = 8px : compense les 32px de padding (16 bottom de
+  // aboveCards + 16 top de cards) pour que le total visible (8 + 32 = 40)
+  // = la marginBottom du pseudo box (40). → équidistance pseudo↔cards.
+  if (inputs.bonusAmount != null) {
+    aboveCards.push({
+      id: makeV2BlockId("text"),
+      type: "text",
+      name: "Ligne — Jouer à Y€",
+      tag: "h1",
+      content: `Jouer à ${inputs.bonusAmount}€`,
+      align: "center",
+      style: lineStyleToV2(inputs.bonusLineStyle, "#FFD700"),
+      marginBottom: "8px",
+    });
+  }
+
+  // Le DERNIER bloc visible du hero impose la distance avant les cartes.
+  // On force sa marginBottom à 8px : 8 (margin) + 16 (aboveCards section
+  // padding-bottom) + 16 (cards section padding-top) = 40px visible. Cette
+  // valeur correspond au pseudo.marginBottom (40) → bloc offre équidistant.
+  const last = aboveCards[aboveCards.length - 1] as any;
+  if (last) last.marginBottom = "8px";
 
   page.zones.aboveCards = aboveCards;
 
@@ -286,8 +299,9 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
   const cardsContainer = page.zones.cards[0] as V2ContainerBlock | undefined;
   if (cardsContainer && cardsContainer.type === "container") {
     const [c1, c2] = cardsContainer.children as V2FsnCardM4Block[];
-    const dep = `${inputs.depositAmount}€`;
-    const bon = `${inputs.bonusAmount}€`;
+    // Si null, on passe une string vide → M4V1Card masque la info-box.
+    const dep = inputs.depositAmount != null ? `${inputs.depositAmount}€` : "";
+    const bon = inputs.bonusAmount != null ? `${inputs.bonusAmount}€` : "";
     if (c1 && c1.type === "fsnCardM4") {
       c1.imgSrc = inputs.card1Image.url || c1.imgSrc;
       c1.imgAlt = inputs.card1Image.kind;

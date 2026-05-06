@@ -127,11 +127,14 @@ export function V2Keyframes() {
 
 function RenderText({ b, isMobile }: { b: V2TextBlock; isMobile: boolean }) {
   const Tag = (b.tag || "p") as keyof React.JSX.IntrinsicElements;
+  // ATTENTION : on utilise les longhands marginTop/Right/Bottom/Left = 0 (et
+  // pas le shorthand `margin: 0`) sinon ça écrase les marges custom posées
+  // ensuite par commonToStyle (le navigateur normalise margin: 0 → 4 sides 0).
   const baseStyle: React.CSSProperties = {
+    marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0,
     ...commonToStyle(b, isMobile),
     ...effectsToStyle(b),
     ...textStyleTo(b.style, isMobile),
-    margin: 0,
     animation: b.animation && b.animation !== "none" ? animationCss[b.animation] : undefined,
     animationDelay: b.animationDelay,
   };
@@ -289,7 +292,10 @@ function RenderContainer({ b, isMobile, zone, indices }: { b: V2ContainerBlock; 
     width: b.width || "100%",
     height: b.height,
     flexShrink: b.flexShrink,
-    margin: b.width ? undefined : "0 auto",  // si width fixe : ne pas auto-centrer
+    // Centrage horizontal via auto left/right SEULEMENT si aucune largeur ni
+    // marginX n'est défini. On utilise les longhands sinon le shorthand
+    // `margin: "0 auto"` écraserait les marginTop/Bottom de commonToStyle.
+    ...(!b.width && b.marginX === undefined ? { marginLeft: "auto", marginRight: "auto" } : {}),
     justifyContent: b.justify ? justifyMap[b.justify] : undefined,
     alignItems: b.itemsAlign ? itemsMap[b.itemsAlign] : undefined,
     animation: b.animation && b.animation !== "none" ? animationCss[b.animation] : undefined,

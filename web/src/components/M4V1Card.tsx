@@ -235,23 +235,34 @@ export function M4V1Card({
           <span>BONUS <strong>{bonusPct}</strong> AUTOMATIQUE</span>
         </div>
 
-        <div style={infoBox}>
-          <div style={infoTitle}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={V1.brandGold} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="16" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12.01" y2="8"></line>
-            </svg>
-            C'est simple
+        {/* info-box visible uniquement si on a au moins un montant. Si les
+            deux sont vides → on supprime entièrement la boîte (pas d'espace
+            résiduel) pour ne pas afficher "Déposez " / "Recevez " orphelins. */}
+        {(depositAmount && depositAmount.trim()) || (bonusAmount && bonusAmount.trim()) ? (
+          <div style={infoBox}>
+            <div style={infoTitle}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={V1.brandGold} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+              C'est simple
+            </div>
+            <div style={infoSteps}>
+              {depositAmount && depositAmount.trim() ? (
+                <span style={{ color: "#fff" }}>Déposez {depositAmount}</span>
+              ) : null}
+              {depositAmount && depositAmount.trim() && bonusAmount && bonusAmount.trim() ? (
+                <span style={{ color: "#fff", fontSize: "1.1rem" }}>→</span>
+              ) : null}
+              {bonusAmount && bonusAmount.trim() ? (
+                <span style={{ color: V1.brandGold, textShadow: `0 0 10px ${V1.brandGold}` }}>
+                  Recevez {bonusAmount}
+                </span>
+              ) : null}
+            </div>
           </div>
-          <div style={infoSteps}>
-            <span style={{ color: "#fff" }}>Déposez {depositAmount}</span>
-            <span style={{ color: "#fff", fontSize: "1.1rem" }}>→</span>
-            <span style={{ color: V1.brandGold, textShadow: `0 0 10px ${V1.brandGold}` }}>
-              Recevez {bonusAmount}
-            </span>
-          </div>
-        </div>
+        ) : null}
 
         <a href={href || "#"} target="_blank" rel="noreferrer" style={btnJouer}>
           JOUER
