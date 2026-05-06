@@ -155,7 +155,13 @@ export function registerHlsProxy(app: Express) {
 
     // Range passthrough uniquement pour les segments binaires — jamais pour les playlists .m3u8
     // (un Range sur une playlist donne un 206 partiel → M3U8 tronqué → parse fail hls.js)
-    const isPlaylistUrl = target.pathname.toLowerCase().endsWith(".m3u8");
+    // Rumble VOD: les sous-chunklists sont servies via `*.tar?r_file=chunklist.m3u8&r_type=application/vnd.apple.mpegurl`.
+    // Le pathname finit par `.tar` mais c'est en fait une playlist — il faut détecter via la query.
+    const search = target.search.toLowerCase();
+    const isPlaylistUrl =
+      target.pathname.toLowerCase().endsWith(".m3u8") ||
+      /r_file=[^&]*\.m3u8/.test(search) ||
+      /r_type=application%2fvnd\.apple\.mpegurl/.test(search);
     const range = req.headers.range ? String(req.headers.range) : "";
     if (range && !isPlaylistUrl) headers.range = range;
 
