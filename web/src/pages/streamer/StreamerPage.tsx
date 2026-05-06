@@ -46,19 +46,33 @@ function apiBase() {
 }
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
-function pickStreamerAvatarUrlFromStreamer(streamer: any) {
-  // ✅ Utiliser user.avatarUrl du backend = /avatars/u/{id} (comme le header)
-  const userAvatarUrl = streamer?.user?.avatarUrl ?? null;
-  if (userAvatarUrl) {
-    // ✅ Uniquement /avatars/u/... va sur API_BASE
-    if (userAvatarUrl.startsWith("/")) {
-      return `${API_BASE}${userAvatarUrl}`;
-    }
-    return userAvatarUrl;
-  }
+function absolutizeAvatar(url: string | null) {
+  if (!url) return null;
+  const u = String(url);
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  if (u.startsWith("/") && API_BASE) return `${API_BASE}${u}`;
+  return u;
+}
 
-  // ✅ Fallback svgThumb si vraiment rien
-  return svgThumb(streamer?.displayName || "Streamer");
+function pickStreamerAvatarUrlFromStreamer(streamer: any) {
+  const uid = streamer?.ownerUserId ?? streamer?.owner_user_id ?? streamer?.userId
+    ?? streamer?.user_id ?? streamer?.ownerId ?? streamer?.owner_id
+    ?? streamer?.user?.id ?? streamer?.ownerUser?.id ?? null;
+
+  // 1. Avatar uploadé par le user (champ user.avatarUrl rempli par le backend)
+  const userAvatarRaw = streamer?.user?.avatarUrl ?? streamer?.user?.avatar_path ?? null;
+  const userAvatar = userAvatarRaw ? absolutizeAvatar(String(userAvatarRaw)) : null;
+
+  // 2. Anciens champs avatar directs sur le streamer
+  const directRaw = streamer?.avatarUrl ?? streamer?.avatar_url ?? streamer?.avatar
+    ?? streamer?.profilePicUrl ?? streamer?.profile_pic_url ?? streamer?.profile?.avatarUrl ?? null;
+  const direct = directRaw ? absolutizeAvatar(String(directRaw)) : null;
+
+  // 3. Avatar par défaut associé au compte (généré backend) — /avatars/u/{uid}
+  const byUid = uid ? absolutizeAvatar(`/avatars/u/${uid}?v=${Math.floor(Date.now() / 60000)}`) : null;
+
+  // 4. Vraiment rien -> SVG initiales
+  return userAvatar || direct || byUid || svgThumb(streamer?.displayName || "Streamer");
 }
 
 type TabKey = "about" | "clips" | "vod" | "agenda";
