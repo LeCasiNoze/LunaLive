@@ -252,6 +252,9 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
   });
 
   // 2d) "Jouer à Y€"
+  // marginBottom = même valeur que la marginBottom du pseudo box pour que le
+  // bloc "Déposez/Jouer" soit équidistant du pseudo (au-dessus) et des cartes
+  // (en-dessous).
   aboveCards.push({
     id: makeV2BlockId("text"),
     type: "text",
@@ -260,7 +263,7 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
     content: `Jouer à ${inputs.bonusAmount}€`,
     align: "center",
     style: lineStyleToV2(inputs.bonusLineStyle, "#FFD700"),
-    marginBottom: "20px",
+    marginBottom: "40px",
   });
 
   page.zones.aboveCards = aboveCards;
