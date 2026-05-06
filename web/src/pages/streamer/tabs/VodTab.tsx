@@ -1,6 +1,7 @@
 // web/src/pages/streamer/tabs/VodTab.tsx
 // Purple Velvet
 import * as React from "react";
+import { createPortal } from "react-dom";
 import Hls from "hls.js";
 import { getStreamerVods, type ApiVod } from "../../../lib/api_streamer_tabs";
 
@@ -133,7 +134,7 @@ function VodModal({ vod, onClose }: { vod: ApiVod; onClose: () => void }) {
     return () => { try { hls?.destroy(); } catch {} if (video) { video.pause(); video.removeAttribute("src"); video.load(); } };
   }, [vod]);
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       role="presentation"
@@ -175,6 +176,7 @@ function VodModal({ vod, onClose }: { vod: ApiVod; onClose: () => void }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
