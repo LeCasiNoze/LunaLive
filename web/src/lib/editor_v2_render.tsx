@@ -15,13 +15,16 @@ import type {
   V2SpacerBlock,
   V2DividerBlock,
   V2FsnCardM4Block,
+  V2M4V1LowerSectionsBlock,
   V2CommonStyle,
   V2Effects,
   V2TextStyle,
   V2Page,
   V2ZoneKey,
 } from "./editor_v2_types";
+import { v2ZonesForModel } from "./editor_v2_types";
 import { M4V1Card } from "../components/M4V1Card";
+import { M4V1LowerSections } from "../components/M4V1LowerSections";
 
 // ─── Edit mode context — propage onBlockClick + selection ─────────────────────
 //
@@ -328,9 +331,15 @@ function RenderFsnCardM4({ b, isMobile }: { b: V2FsnCardM4Block; isMobile: boole
         href={b.href}
         animationDelay={b.animationDelay}
         isMobile={isMobile}
+        imageAspectRatio={b.imageAspectRatio}
+        imageObjectFit={b.imageObjectFit}
       />
     </div>
   );
+}
+
+function RenderM4V1LowerSections({ b, previewMode }: { b: V2M4V1LowerSectionsBlock; previewMode?: boolean }) {
+  return <M4V1LowerSections affiLink={b.affiLink} brandName={b.brandName} previewMode={previewMode} />;
 }
 
 function RenderDivider({ b, isMobile }: { b: V2DividerBlock; isMobile: boolean }) {
@@ -348,6 +357,8 @@ function RenderDivider({ b, isMobile }: { b: V2DividerBlock; isMobile: boolean }
 export function RenderBlock({ b, isMobile, zone, indices }: { b: V2Block; isMobile: boolean; zone?: V2ZoneKey; indices?: number[] }) {
   const ctx = React.useContext(EditCtx);
   const sel = !!ctx && zone && indices && isPathSelected(ctx, zone, indices);
+  // Mode preview : présent dès qu'on a un editCtx (= rendu dans l'éditeur).
+  const previewMode = !!ctx;
   let inner: React.ReactNode = null;
   switch (b.type) {
     case "text":      inner = <RenderText b={b} isMobile={isMobile} />; break;
@@ -357,6 +368,7 @@ export function RenderBlock({ b, isMobile, zone, indices }: { b: V2Block; isMobi
     case "spacer":    inner = <RenderSpacer b={b} isMobile={isMobile} />; break;
     case "divider":   inner = <RenderDivider b={b} isMobile={isMobile} />; break;
     case "fsnCardM4": inner = <RenderFsnCardM4 b={b} isMobile={isMobile} />; break;
+    case "m4V1LowerSections": inner = <RenderM4V1LowerSections b={b} previewMode={previewMode} />; break;
   }
   // Mode preview publique : aucun overlay, comportement standard
   if (!ctx || !zone || !indices) return <>{inner}</>;
@@ -390,23 +402,33 @@ export function RenderV2Page({ page, isMobile, editCtx }: { page: V2Page; isMobi
     minHeight: "100%",
     width: "100%",
   };
-  const zones = (Object.keys(page.zones) as V2ZoneKey[]).filter((z) => page.zones[z].length > 0);
+  // CRITIQUE : PostgreSQL JSONB ne préserve PAS l'ordre d'insertion des clés
+  // (il les sort par longueur puis lexicographiquement). Donc Object.keys()
+  // après un roundtrip DB renvoie un ordre faux. On utilise l'ordre canonique
+  // défini par le modèle.
+  const canonical = v2ZonesForModel(page.modelKind);
+  const zones = canonical.filter((z) => (page.zones[z] || []).length > 0);
   const tree = (
     <div className="v2-page" style={pageStyle}>
       <V2Keyframes />
-      {zones.map((zk) => (
-        <section key={zk} data-zone={zk} style={{ padding: "16px 12px" }}>
-          {page.zones[zk].map((b, i) => (
-            <RenderBlock
-              key={b.id || i}
-              b={b}
-              isMobile={isMobile}
-              zone={editCtx ? zk : undefined}
-              indices={editCtx ? [i] : undefined}
-            />
-          ))}
-        </section>
-      ))}
+      {zones.map((zk) => {
+        // Si la zone contient un bloc full-bleed (preset V1 lower sections),
+        // on retire la padding du <section> pour qu'il s'étende edge-to-edge.
+        const hasFullBleed = page.zones[zk].some((b) => b.type === "m4V1LowerSections");
+        return (
+          <section key={zk} data-zone={zk} style={{ padding: hasFullBleed ? 0 : "16px 12px" }}>
+            {page.zones[zk].map((b, i) => (
+              <RenderBlock
+                key={b.id || i}
+                b={b}
+                isMobile={isMobile}
+                zone={editCtx ? zk : undefined}
+                indices={editCtx ? [i] : undefined}
+              />
+            ))}
+          </section>
+        );
+      })}
     </div>
   );
   return editCtx ? <EditCtx.Provider value={editCtx}>{tree}</EditCtx.Provider> : tree;

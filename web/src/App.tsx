@@ -44,6 +44,8 @@ const RumbleDebugPage = React.lazy(() => import("./pages/debug/RumbleDebugPage")
 const AffiEditorPage = React.lazy(() => import("./pages/AffiEditorPage"));
 // Affi Editor V2 â€” /editorFSNV2 (totalement isolÃ© du V1, ne touche Ã  rien)
 const EditorV2Page = React.lazy(() => import("./pages/EditorV2Page"));
+// Affi Editor V3 â€” /editorFSNV3 (wizard rapide M1, rÃ©utilise pipeline V2)
+const EditorV3Page = React.lazy(() => import("./pages/EditorV3Page"));
 
 // Overlay OBS — renderer transparent pour /overlay
 const OverlayPage = React.lazy(() => import("./pages/OverlayPage"));
@@ -88,6 +90,7 @@ function AppInner() {
   const hideChrome =
     location.pathname === "/editorFSN" ||
     location.pathname === "/editorFSNV2" ||
+    location.pathname === "/editorFSNV3" ||
     isOverlayRoute ||
     location.pathname.startsWith("/agency") ||
     isStandaloneReferral;
@@ -211,6 +214,15 @@ function AppInner() {
             element={
               <React.Suspense fallback={<LoadingFallback />}>
                 <EditorV2Page />
+              </React.Suspense>
+            }
+          />
+          {/* Affi Editor V3 â€” wizard rapide M1 */}
+          <Route
+            path="/editorFSNV3"
+            element={
+              <React.Suspense fallback={<LoadingFallback />}>
+                <EditorV3Page />
               </React.Suspense>
             }
           />

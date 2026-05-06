@@ -1044,6 +1044,7 @@ export default function FsbBoardPage() {
   const section = normalizeSection(searchParams.get("section"));
   const canAccess = canAccessFsbBoard(user);
   const editorHref = `/editorFSN?returnTo=${encodeURIComponent("/FSB_Board?section=tools")}`;
+  const editorV3Href = `/editorFSNV3?returnTo=${encodeURIComponent("/FSB_Board?section=tools")}`;
 
   const [expenseRows, setExpenseRows] = React.useState<ExpenseVisibleRow[]>([]);
   const [expenseSummary, setExpenseSummary] = React.useState<ExpenseListSummary>({
@@ -1872,14 +1873,17 @@ export default function FsbBoardPage() {
                     <span className="fsb-module-icon fsb-module-icon-indigo">✏️</span>
                     <div>
                       <strong>Editeur des modeles</strong>
-                      <div className="fsb-copy">Acces direct a l outil /editorFSN.</div>
+                      <div className="fsb-copy">Editeur V1 (tous modeles) ou V3 (wizard rapide M1).</div>
                     </div>
                   </div>
                   <span className="fsb-pill">Actif</span>
                 </div>
-                <div className="fsb-actions" style={{ marginTop: "auto" }}>
+                <div className="fsb-actions" style={{ marginTop: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Link className="fsb-btn fsb-btn-primary" to={editorHref}>
-                    Ouvrir l editeur
+                    Editeur V1
+                  </Link>
+                  <Link className="fsb-btn fsb-btn-primary" to={editorV3Href}>
+                    Editeur V3
                   </Link>
                 </div>
               </div>

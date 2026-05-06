@@ -14,7 +14,8 @@ export type V2BlockType =
   | "container"
   | "spacer"
   | "divider"
-  | "fsnCardM4";
+  | "fsnCardM4"
+  | "m4V1LowerSections";
 
 export interface V2BaseBlock {
   id: string;
@@ -187,6 +188,22 @@ export interface V2FsnCardM4Block extends V2BaseBlock, V2CommonStyle {
   bonusPct?: string;         // "100%"
   href: string;              // lien d'affiliation
   animationDelay?: string;   // "0s" / "-3s" pour la 2e card V1
+  /** V3 override : si fourni, force l'aspect ratio de l'image (ex "16/9", "1/1").
+   *  Si absent, comportement V1 (mobile=21/9, desktop=16/9). */
+  imageAspectRatio?: string;
+  /** V3 override : `cover` (remplit la zone, peut cropper) ou `contain` (V1 default). */
+  imageObjectFit?: "cover" | "contain";
+}
+
+// ─── M4 V1 Lower Sections (preset 1:1 du bas de model4.html) ────────────────
+//
+// Bloc preset qui rend EXACTEMENT les sections "reviews", "faq", "footer" et
+// "sticky-cta" du template V1 model4.html. N'est pas composable — c'est un
+// gros bloc figé pour garantir la fidélité visuelle au V1.
+export interface V2M4V1LowerSectionsBlock extends V2BaseBlock {
+  type: "m4V1LowerSections";
+  affiLink: string;
+  brandName?: string;
 }
 
 // ─── Union ───────────────────────────────────────────────────────────────────
@@ -198,7 +215,8 @@ export type V2Block =
   | V2ContainerBlock
   | V2SpacerBlock
   | V2DividerBlock
-  | V2FsnCardM4Block;
+  | V2FsnCardM4Block
+  | V2M4V1LowerSectionsBlock;
 
 // ─── Page complète ───────────────────────────────────────────────────────────
 
@@ -330,5 +348,7 @@ export function newBlockOfType(type: V2BlockType): V2Block {
     case "spacer":    return newSpacerBlock();
     case "divider":   return newDividerBlock();
     case "fsnCardM4": return newFsnCardM4Block();
+    case "m4V1LowerSections":
+      return { id: makeV2BlockId("m4V1LowerSections"), type: "m4V1LowerSections", affiLink: "" };
   }
 }

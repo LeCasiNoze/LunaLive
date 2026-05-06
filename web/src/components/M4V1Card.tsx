@@ -21,6 +21,10 @@ export type M4V1CardProps = {
   href: string;
   animationDelay?: string;   // ex "0s" / "-3s" pour la 2e card V1
   isMobile?: boolean;
+  /** Override aspect-ratio image (ex "16/9", "1/1"). Default V1 = 21/9 mobile, 16/9 desktop. */
+  imageAspectRatio?: string;
+  /** Override object-fit. Default V1 = "contain". */
+  imageObjectFit?: "cover" | "contain";
 };
 
 const V1 = {
@@ -46,6 +50,8 @@ export function M4V1Card({
   href,
   animationDelay = "0s",
   isMobile = false,
+  imageAspectRatio,
+  imageObjectFit,
 }: M4V1CardProps) {
   // .promo-card
   const card: React.CSSProperties = {
@@ -68,7 +74,7 @@ export function M4V1Card({
     backgroundColor: "#000",
     overflow: "hidden",
     borderBottom: `2px solid ${V1.borderColor}`,
-    aspectRatio: isMobile ? "21 / 9" : "16 / 9",
+    aspectRatio: imageAspectRatio || (isMobile ? "21 / 9" : "16 / 9"),
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -76,7 +82,7 @@ export function M4V1Card({
   const imgEl: React.CSSProperties = {
     width: "100%",
     height: "100%",
-    objectFit: "contain",
+    objectFit: imageObjectFit || "contain",
     display: "block",
   };
 
