@@ -134,17 +134,44 @@ function VodModal({ vod, onClose }: { vod: ApiVod; onClose: () => void }) {
   }, [vod]);
 
   return (
-    <div className="chatSheetBackdrop" onClick={onClose} role="presentation" style={{ zIndex:80 }}>
-      <div className="chatSheet" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth:980 }}>
-        <div className="chatSheetTop">
+    <div
+      onClick={onClose}
+      role="presentation"
+      style={{
+        position:"fixed", inset:0, zIndex:9999,
+        background:"rgba(0,0,0,.85)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        padding:"clamp(8px,2vw,24px)",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        role="dialog" aria-modal="true"
+        style={{
+          width:"min(1100px,100%)",
+          maxHeight:"calc(100dvh - 24px)",
+          display:"flex", flexDirection:"column",
+          background:"rgba(17,10,23,.96)",
+          border:"1px solid rgba(255,255,255,.12)",
+          borderRadius:20,
+          overflow:"hidden",
+          boxShadow:"0 24px 80px rgba(0,0,0,.55)",
+        }}
+      >
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, padding:"12px 14px", borderBottom:"1px solid rgba(255,255,255,.08)" }}>
           <div style={{ fontWeight:800, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontFamily:"'Syne',system-ui,sans-serif" }}>{vod.title || "VOD"}</div>
           <button className="iconBtn" onClick={onClose} type="button" aria-label="Fermer">✕</button>
         </div>
-        <div className="chatSheetBody" style={{ padding:14 }}>
+        <div style={{ padding:14, background:"black" }}>
           {!vod.bestHlsUrl ? (
             <div style={{ fontSize:12, color:"rgba(167,139,250,.60)" }}>Aucune URL de lecture trouvée.</div>
           ) : (
-            <video ref={videoRef} controls playsInline style={{ width:"100%", borderRadius:16, background:"black", border:"1px solid rgba(124,92,252,.14)" }} />
+            <video
+              ref={videoRef}
+              controls
+              playsInline
+              style={{ width:"100%", aspectRatio:"16/9", maxHeight:"calc(100dvh - 120px)", borderRadius:12, background:"black", display:"block" }}
+            />
           )}
         </div>
       </div>
