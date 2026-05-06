@@ -33,14 +33,17 @@ async function archiveAndResolveVod(streamerId: number, videoId: string, videoId
   const tryOne = async () => {
     attempt++;
     try {
-      const { mp4Url, hlsUrl } = await resolveRumbleVodFromVid(videoId);
+      const r = await resolveRumbleVodFromVid(videoId);
+      const { mp4Url, hlsUrl } = r;
       await pool.query(
         `UPDATE streamer_rumble_info
          SET vod_resolve_attempts = COALESCE(vod_resolve_attempts, 0) + 1
          WHERE streamer_id = $1`,
         [streamerId]
       ).catch(() => {});
-      if (mp4Url) {
+      // Résolu si on a au moins un HLS VOD permanent ou un MP4 permanent.
+      const resolved = !!(hlsUrl && hlsUrl.includes("/hls-vod/")) || !!mp4Url;
+      if (resolved) {
         await pool.query(
           `UPDATE streamer_rumble_info
            SET vod_mp4_url = $2, vod_hls_url = $3, vod_resolved_at = NOW()
@@ -49,9 +52,15 @@ async function archiveAndResolveVod(streamerId: number, videoId: string, videoId
         );
         await pool.query(
           `UPDATE rumble_vods
-           SET vod_mp4_url = $3, vod_hls_url = $4, vod_resolved_at = NOW()
+           SET vod_mp4_url = COALESCE($3, vod_mp4_url),
+               vod_hls_url = COALESCE($4, vod_hls_url),
+               title = COALESCE(title, $5),
+               thumbnail_url = COALESCE(thumbnail_url, $6),
+               duration_sec = COALESCE(duration_sec, $7),
+               video_id_numeric = COALESCE(video_id_numeric, $8),
+               vod_resolved_at = NOW()
            WHERE streamer_id = $1 AND video_id = $2`,
-          [streamerId, videoId, mp4Url, hlsUrl]
+          [streamerId, videoId, mp4Url, hlsUrl, r.title, r.thumbnailUrl, r.durationSec, r.videoIdNumeric]
         ).catch(() => {});
         console.log(`[rumble-poller] VOD résolu streamerId=${streamerId} videoId=${videoId} attempt=${attempt}`);
         return;

@@ -114,6 +114,7 @@ streamerVodsRouter.get("/streamers/:slug/vods", a(async (req, res) => {
     const s = await pool.query(`SELECT
          s.id,
          s.user_id AS "userId",
+         s.platform,
          pa.channel_slug AS "providerChannelSlug",
          s.dlive_use_linked AS "useLinked",
          s.dlive_link_displayname AS "linkedDisplayname",
@@ -128,16 +129,20 @@ streamerVodsRouter.get("/streamers/:slug/vods", a(async (req, res) => {
     const providerChannelSlug = normalizeDliveHandle(row.providerChannelSlug);
     const linkedChannel = normalizeDliveHandle(row.linkedDisplayname);
     const useLinked = !!row.useLinked;
+    const isRumblePlatform = String(row.platform || "").toLowerCase() === "rumble";
     const canUseLinked = !!linkedChannel;
     const canUseProvider = !!providerChannelSlug;
     // source par défaut:
     // - si cursor force -> force
+    // - sinon si platform=rumble -> branche Rumble (priorité absolue, ignore DLive)
     // - sinon si useLinked ET linked existe -> linked
     // - sinon si provider existe -> provider
     // - sinon linked (si existe)
     let source = forcedSource;
     if (!source) {
-        if (useLinked && canUseLinked)
+        if (isRumblePlatform)
+            source = null;
+        else if (useLinked && canUseLinked)
             source = "linked";
         else if (canUseProvider)
             source = "provider";

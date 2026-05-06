@@ -345,7 +345,12 @@ export async function listScrapedRumbleStreamers(): Promise<Array<{ streamerId: 
  * `u.hls.url` (HLS VOD non-DVR). Pendant le live, ces URLs pointent encore vers le live-hls-dvr.
  * Renvoie les URLs si on a bien obtenu un MP4 permanent (host CDN ≠ rumble.com).
  */
-export async function resolveRumbleVodFromVid(videoIdWithV: string): Promise<{ mp4Url: string | null; hlsUrl: string | null }> {
+export async function resolveRumbleVodFromVid(videoIdWithV: string): Promise<{
+  mp4Url: string | null; hlsUrl: string | null;
+  title: string | null; thumbnailUrl: string | null;
+  durationSec: number | null; videoIdNumeric: string | null;
+}> {
+  const empty = { mp4Url: null, hlsUrl: null, title: null, thumbnailUrl: null, durationSec: null, videoIdNumeric: null };
   const url = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${videoIdWithV}&ad_wt=0`;
   try {
     const r = await fetch(url, {
@@ -356,8 +361,9 @@ export async function resolveRumbleVodFromVid(videoIdWithV: string): Promise<{ m
         origin: "https://rumble.com",
       },
     });
-    if (!r.ok) return { mp4Url: null, hlsUrl: null };
-    const d: any = await r.json();
+    if (!r.ok) return empty;
+    const d: any = await r.json().catch(() => null);
+    if (!d) return empty;
 
     const mp4 = d?.ua?.mp4?.auto?.url
       || d?.ua?.mp4?.["1080"]?.url
@@ -365,21 +371,31 @@ export async function resolveRumbleVodFromVid(videoIdWithV: string): Promise<{ m
       || d?.ua?.mp4?.["480"]?.url
       || d?.u?.mp4?.url
       || null;
-    const hls = d?.u?.hls?.url || d?.ua?.hls?.auto?.url || null;
+    const hls: string | null = d?.u?.hls?.url || d?.ua?.hls?.auto?.url || null;
 
-    // Pendant le live, hls pointe vers `rumble.com/live-hls-dvr/...` — pas un VOD permanent.
-    // On considère qu'on a un VOD valide si on a un MP4 hors rumble.com (CDN 1a-1791.com).
+    // VOD prêt = `live: 0` ET (HLS VOD permanent `hls-vod/` OU MP4 CDN hors rumble.com).
+    // Rumble ne renvoie quasiment plus de MP4 simple — le HLS VOD `rumble.com/hls-vod/{vid}/playlist.m3u8`
+    // est l'URL canonique playable et c'est ça qu'on doit stocker.
+    const isLiveStill = !!d?.live;
+    const isHlsPermanent = !!(hls && hls.includes("/hls-vod/"));
     const isMp4Permanent = !!(mp4 && !mp4.includes("rumble.com/live-hls-dvr"));
-    if (!isMp4Permanent) {
-      console.log(`[rumble][vod] ${videoIdWithV}: VOD pas encore prêt (mp4=${mp4 ? "live-hls" : "absent"})`);
-      return { mp4Url: null, hlsUrl: null };
+    const ready = !isLiveStill && (isHlsPermanent || isMp4Permanent);
+
+    if (!ready) {
+      console.log(`[rumble][vod] ${videoIdWithV}: VOD pas encore prêt (live=${d?.live}, hls=${hls?.includes("/live-hls-dvr/") ? "live-dvr" : (isHlsPermanent ? "vod" : "—")})`);
+      return empty;
     }
 
-    console.log(`[rumble][vod] ${videoIdWithV}: VOD prêt mp4=${mp4}`);
-    return { mp4Url: mp4, hlsUrl: hls };
+    const title = d?.title ? String(d.title) : null;
+    const thumb = d?.i ? String(d.i) : null;
+    const duration = Number(d?.duration) || null;
+    const vidNum = d?.vid != null ? String(d.vid) : null;
+
+    console.log(`[rumble][vod] ${videoIdWithV}: VOD prêt hls=${isHlsPermanent ? "vod" : "n/a"} mp4=${isMp4Permanent ? "yes" : "no"}`);
+    return { mp4Url: mp4 || null, hlsUrl: hls, title, thumbnailUrl: thumb, durationSec: duration, videoIdNumeric: vidNum };
   } catch (e) {
     console.error(`[rumble][vod] resolveRumbleVodFromVid error`, e);
-    return { mp4Url: null, hlsUrl: null };
+    return empty;
   }
 }
 

@@ -20,17 +20,26 @@ async function archiveAndResolveVod(streamerId, videoId, videoIdNumeric, title, 
     const tryOne = async () => {
         attempt++;
         try {
-            const { mp4Url, hlsUrl } = await resolveRumbleVodFromVid(videoId);
+            const r = await resolveRumbleVodFromVid(videoId);
+            const { mp4Url, hlsUrl } = r;
             await pool.query(`UPDATE streamer_rumble_info
          SET vod_resolve_attempts = COALESCE(vod_resolve_attempts, 0) + 1
          WHERE streamer_id = $1`, [streamerId]).catch(() => { });
-            if (mp4Url) {
+            // Résolu si on a au moins un HLS VOD permanent ou un MP4 permanent.
+            const resolved = !!(hlsUrl && hlsUrl.includes("/hls-vod/")) || !!mp4Url;
+            if (resolved) {
                 await pool.query(`UPDATE streamer_rumble_info
            SET vod_mp4_url = $2, vod_hls_url = $3, vod_resolved_at = NOW()
            WHERE streamer_id = $1`, [streamerId, mp4Url, hlsUrl]);
                 await pool.query(`UPDATE rumble_vods
-           SET vod_mp4_url = $3, vod_hls_url = $4, vod_resolved_at = NOW()
-           WHERE streamer_id = $1 AND video_id = $2`, [streamerId, videoId, mp4Url, hlsUrl]).catch(() => { });
+           SET vod_mp4_url = COALESCE($3, vod_mp4_url),
+               vod_hls_url = COALESCE($4, vod_hls_url),
+               title = COALESCE(title, $5),
+               thumbnail_url = COALESCE(thumbnail_url, $6),
+               duration_sec = COALESCE(duration_sec, $7),
+               video_id_numeric = COALESCE(video_id_numeric, $8),
+               vod_resolved_at = NOW()
+           WHERE streamer_id = $1 AND video_id = $2`, [streamerId, videoId, mp4Url, hlsUrl, r.title, r.thumbnailUrl, r.durationSec, r.videoIdNumeric]).catch(() => { });
                 console.log(`[rumble-poller] VOD résolu streamerId=${streamerId} videoId=${videoId} attempt=${attempt}`);
                 return;
             }
@@ -222,7 +231,8 @@ const RADIO_SLUG = "lunalive";
  * ne peut plus jamais redétecter sa source).
  */
 async function rotateRadioTarget(io) {
-    const radioRow = await pool.query(`SELECT s.platform, s.rumble_username, ri.is_live, ri.viewers_count
+    const radioRow = await pool.query(`SELECT s.platform, s.rumble_username, s.updated_at AS rotated_at,
+            ri.is_live, ri.live_id, ri.viewers_count
      FROM streamers s
      LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
      WHERE s.id = $1 LIMIT 1`, [RADIO_STREAMER_ID]);
@@ -236,6 +246,15 @@ async function rotateRadioTarget(io) {
     // (sauf si rumble_username=null, car alors is_live est juste un état figé
     // de la précédente source qui n'est plus polled)
     if (radioIsLive && currentUsername)
+        return;
+    // Grace period : si la radio a été rotated il y a moins de 90s ET qu'on n'a
+    // pas encore de live_id, on attend que le relay push le slug. Sans ça, on
+    // rotate trop vite et on saute la source actuelle avant que le relay ait
+    // eu le temps (relay tick = 60s) de découvrir son slug live.
+    const rotatedAt = radio.rotated_at ? new Date(radio.rotated_at).getTime() : 0;
+    const sinceRotationMs = Date.now() - rotatedAt;
+    const hasLiveId = !!radio.live_id;
+    if (currentUsername && !hasLiveId && sinceRotationMs < 90_000)
         return;
     // La radio rotate parmi des créateurs Rumble externes curated (table
     // rumble_radio_sources) — ekanos, vitapvpey, put4, etc. — qui ne sont PAS
@@ -259,6 +278,13 @@ async function rotateRadioTarget(io) {
     if (newUsername.toLowerCase() === (currentUsername || "").toLowerCase())
         return;
     await pool.query(`UPDATE streamers SET rumble_username = $1, updated_at = NOW() WHERE id = $2`, [newUsername, RADIO_STREAMER_ID]);
+    // Clear stale live_id/HLS de la précédente source — sinon le fallback
+    // dans fetchRumbleLiveInfoFromUsername testerait l'ancien slug qui n'a
+    // rien à voir avec la nouvelle source, et ramènerait offline en boucle.
+    await pool.query(`UPDATE streamer_rumble_info
+     SET live_id = NULL, live_video_id_numeric = NULL, hls_url = NULL,
+         is_live = false, updated_at = NOW()
+     WHERE streamer_id = $1`, [RADIO_STREAMER_ID]).catch(() => { });
     console.log(`[rumble-poller] radio rotation: ${currentUsername || "(aucun)"} → ${newUsername}`);
     void pollOneScraped(RADIO_STREAMER_ID, RADIO_SLUG, newUsername, io);
 }
