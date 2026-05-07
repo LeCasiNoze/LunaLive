@@ -407,6 +407,8 @@ export function FsbTikTokOutreachSection() {
   const [addingPattern, setAddingPattern] = React.useState(false);
   const [enriching, setEnriching] = React.useState(false);
 
+  const [enrichProgress, setEnrichProgress] = React.useState<string | null>(null);
+
   const handleEnrichTop = async () => {
     if (enriching) return;
     setEnriching(true);
@@ -420,6 +422,36 @@ export function FsbTikTokOutreachSection() {
       window.alert(`Enrich: ${err?.message || err}`);
     } finally {
       setEnriching(false);
+    }
+  };
+
+  const handleEnrichAll = async () => {
+    if (enriching) return;
+    setEnriching(true);
+    let totalEnriched = 0;
+    let totalFailed = 0;
+    let rounds = 0;
+    try {
+      while (rounds < 50) {
+        rounds++;
+        setEnrichProgress(
+          `Batch ${rounds} · ${totalEnriched} enrichis, ${totalFailed} échecs…`
+        );
+        const r = await enrichTikTokTopCandidates(50);
+        totalEnriched += r.enriched;
+        totalFailed += r.failed;
+        if (r.total === 0) break;
+        await reloadCandidates();
+      }
+      window.alert(
+        `Tout enrichir terminé en ${rounds} batch(s) : ${totalEnriched} OK, ${totalFailed} échecs`
+      );
+    } catch (err: any) {
+      window.alert(`Enrich all: ${err?.message || err}`);
+    } finally {
+      setEnrichProgress(null);
+      setEnriching(false);
+      await reloadCandidates();
     }
   };
 
@@ -1426,7 +1458,21 @@ export function FsbTikTokOutreachSection() {
             disabled={enriching || candidates.length === 0}
             title="Scrape les profils des 20 meilleurs candidats (followers, bio, vérifié)"
           >
-            {enriching ? <span className="tk-spin" /> : "🔍 Enrichir top 20"}
+            {enriching && !enrichProgress ? <span className="tk-spin" /> : "🔍 Enrichir top 20"}
+          </button>
+          <button
+            type="button"
+            className="fsb-btn"
+            onClick={handleEnrichAll}
+            disabled={enriching || candidates.length === 0}
+            title="Boucle d'enrichissement par batches de 50 jusqu'à ce qu'il n'y ait plus rien à enrichir"
+            style={{ borderColor: "#fbbf24", color: "#fbbf24" }}
+          >
+            {enriching && enrichProgress ? (
+              <span style={{ fontSize: 11 }}>{enrichProgress}</span>
+            ) : (
+              "🚀 Tout enrichir"
+            )}
           </button>
         </div>
 
