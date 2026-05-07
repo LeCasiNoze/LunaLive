@@ -1764,47 +1764,66 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             // STEP A — Make sure the "Commentaires" tab is selected.
             // Use chrome.debugger to dispatch a TRUSTED click (TikTok ignores
             // synthetic clicks on its custom div tabs).
+            const tabDiag = {
+              attached: false,
+              foundTab: false,
+              clicked: false,
+              commentListAfter: false,
+            };
             try {
               await attachDebugger(tab.id);
-            } catch {}
+              tabDiag.attached = true;
+            } catch (err) {
+              tabDiag.attachError = String(err?.message || err);
+            }
             try {
               const rectInfo = await findRect(tab.id, () => {
+                // Only target the actual tabbar-item div with text=Commentaires
                 const spans = Array.from(
-                  document.querySelectorAll(
-                    '[data-testid="tux-web-text"], span, div'
-                  )
+                  document.querySelectorAll('[data-testid="tux-web-text"]')
                 ).filter((el) => {
                   const txt = (el.textContent || "").trim().toLowerCase();
-                  return (
-                    txt === "commentaires" ||
-                    txt === "comments" ||
-                    txt === "commentaire"
-                  );
+                  return /^(commentaires?|comments)$/.test(txt);
                 });
-                if (!spans.length) return { found: false };
+                if (!spans.length) {
+                  // Fallback: any span/div with exact text match
+                  const all = Array.from(
+                    document.querySelectorAll("span,div,button,a")
+                  ).filter((el) => {
+                    const txt = (el.textContent || "").trim().toLowerCase();
+                    if (txt.length > 30) return false;
+                    return /^(commentaires?|comments)$/.test(txt);
+                  });
+                  if (!all.length) return { found: false, spansFound: 0 };
+                  spans.push(...all);
+                }
                 spans.sort(
                   (a, b) =>
                     (a.textContent || "").length - (b.textContent || "").length
                 );
                 let target = spans[0];
+                let walks = 0;
                 for (let depth = 0; depth < 6 && target; depth++) {
+                  walks = depth;
                   const cls = (target.className || "").toString();
                   if (
                     target.tagName === "BUTTON" ||
                     target.tagName === "A" ||
                     target.getAttribute?.("role") === "tab" ||
                     target.getAttribute?.("role") === "button" ||
-                    /tabbar-item|TabBar|Tab\b|TabItem/.test(cls)
+                    /tabbar-item|TabBar/.test(cls)
                   ) {
                     break;
                   }
                   target = target.parentElement;
                 }
-                if (!target) return { found: false };
+                if (!target) return { found: false, spansFound: spans.length };
                 target.scrollIntoView({ block: "center" });
                 const r = target.getBoundingClientRect();
                 return {
                   found: true,
+                  spansFound: spans.length,
+                  walks,
                   rect: {
                     left: r.left,
                     top: r.top,
@@ -1815,11 +1834,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   cls: (target.className || "").toString().slice(0, 60),
                 };
               });
+              tabDiag.foundTab = !!rectInfo?.found;
+              tabDiag.rectInfo = rectInfo;
               if (rectInfo?.found && rectInfo.rect) {
                 await new Promise((r) => setTimeout(r, 400));
-                await trustedClickRect(tab.id, rectInfo.rect);
+                const click = await trustedClickRect(tab.id, rectInfo.rect);
+                tabDiag.clicked = !!click.ok;
+                tabDiag.click = click;
+                // Wait for tab swap then verify comment-list is now in DOM
+                await new Promise((r) => setTimeout(r, 1500));
+                const verifyRes = await chrome.scripting.executeScript({
+                  target: { tabId: tab.id },
+                  func: () => {
+                    const list = document.querySelector(
+                      '[data-e2e="comment-list"]'
+                    );
+                    return {
+                      hasList: !!list,
+                      listVisible: !!(
+                        list &&
+                        list.getBoundingClientRect().height > 50
+                      ),
+                      commentNodes: document.querySelectorAll(
+                        '[data-e2e^="comment-username"], [data-e2e*="comment-author"]'
+                      ).length,
+                    };
+                  },
+                });
+                tabDiag.commentListAfter =
+                  verifyRes && verifyRes[0] && verifyRes[0].result;
               }
-            } catch {}
+            } catch (err) {
+              tabDiag.error = String(err?.message || err);
+            }
             await new Promise((r) => setTimeout(r, 1500));
 
             // STEP B — Scroll the comment list with TRUSTED wheel events.
@@ -2028,12 +2075,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 args: [],
               });
               const out = (results && results[0] && results[0].result) || null;
+              const mergedDiag = {
+                ...(out?.diag || {}),
+                tab: tabDiag,
+              };
               return finish({
                 ok: !!out && out.commenters?.length > 0,
                 error: out && out.commenters?.length > 0 ? undefined : "no_commenters",
                 commenters: out?.commenters || [],
                 desc: out?.desc || "",
-                diag: out?.diag || null,
+                diag: mergedDiag,
               });
             } catch (err) {
               return finish({ ok: false, error: String(err?.message || err) });

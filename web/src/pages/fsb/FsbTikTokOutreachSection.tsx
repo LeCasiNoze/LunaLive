@@ -770,16 +770,33 @@ export function FsbTikTokOutreachSection() {
           resolve({ ok: false, commenters: [], error: "extension_timeout" });
         }, 100_000);
       });
+      // eslint-disable-next-line no-console
+      console.log("[Test commentaires diag]", result);
       const sample = result.commenters.slice(0, 10).join(", ");
+      const tab = result.diag?.tab;
+      const tabStr = tab
+        ? `\n\nDiag onglet "Commentaires" :\n` +
+          `• debugger attaché : ${tab.attached ? "✓" : "✗"}\n` +
+          `• onglet trouvé : ${tab.foundTab ? "✓" : "✗"}` +
+          (tab.rectInfo ? ` (text="${tab.rectInfo.text || ""}")` : "") +
+          `\n` +
+          `• clic trusted : ${tab.clicked ? "✓" : "✗"}\n` +
+          `• comment-list après clic : ${
+            tab.commentListAfter?.hasList
+              ? `✓ (${tab.commentListAfter.commentNodes} commentateurs visibles)`
+              : "✗"
+          }\n(diag complet en console F12)`
+        : "";
       const msg = result.ok
         ? `✅ TEST commentaires\n\n` +
           `${result.commenters.length} commentateurs capturés\n` +
           `Exemple : ${sample}${result.commenters.length > 10 ? "…" : ""}\n` +
-          `Description : ${(result.desc || "").slice(0, 150)}…\n\n` +
-          (result.commenters.length < 5
-            ? "⚠️ Peu — vérifier que le panneau commentaires a bien scrollé"
-            : "👍 Volume OK")
-        : `❌ TEST commentaires ÉCHEC\n\nErreur : ${result.error}\nDiag : ${JSON.stringify(result.diag)}`;
+          `Description : ${(result.desc || "").slice(0, 120)}…` +
+          (result.commenters.length < 10
+            ? "\n⚠️ Peu — le scroll a peut-être stoppé tôt"
+            : "\n👍 Volume OK") +
+          tabStr
+        : `❌ TEST commentaires ÉCHEC\nErreur : ${result.error}${tabStr}`;
       window.alert(msg);
     } finally {
       setEnrichProgress(null);
