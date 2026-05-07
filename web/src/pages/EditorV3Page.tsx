@@ -31,6 +31,11 @@ import {
   listFsbAffiPages, createFsbAffiPage, updateFsbAffiPage, deleteFsbAffiPage,
   type FsbAffiPage,
 } from "../lib/api_affi_pages";
+import {
+  buildM5V1ConfigForSave,
+  M5V1_VARIANTS,
+} from "../lib/m5_v1_apply";
+import { M5V1Preview } from "../components/M5V1Preview";
 
 const FSB_ALLOWED_IDS = new Set([4, 15, 71]);
 
@@ -336,12 +341,26 @@ function WizardQuickView({
   const [savedSlug, setSavedSlug] = React.useState<string | null>(initialSavedSlug);
   const [copyOk, setCopyOk] = React.useState(false);
 
-  const page = React.useMemo(() => buildV3PageFromQuickInputs(inputs), [inputs]);
+  // Page V2 (uniquement M1). Pour M2 on saute la construction.
+  const page = React.useMemo(
+    () => inputs.modelKind === "M1" ? buildV3PageFromQuickInputs(inputs) : null,
+    [inputs]
+  );
+
+  // Slug commun M1/M2 = <code>V3 (collision auto-renommée par l'API).
+  const computedSlug = React.useMemo(() => {
+    try {
+      const u = new URL(inputs.affiLink);
+      const code = (u.pathname.split("/").filter(Boolean).pop() || "")
+        .replace(/[^A-Za-z0-9_-]/g, "");
+      return code ? `${code}V3` : "";
+    } catch { return ""; }
+  }, [inputs.affiLink]);
 
   const update = (patch: Partial<V3QuickInputs>) => setInputs((prev) => ({ ...prev, ...patch }));
   const toggleSection = (k: SectionKey) => setOpenSection((cur) => (cur === k ? null : k));
 
-  const canSave = inputs.affiLink.trim().length > 0 && !!page.slug;
+  const canSave = inputs.affiLink.trim().length > 0 && !!computedSlug;
 
   const publicUrl = savedSlug ? `${window.location.origin}/r/${savedSlug}` : null;
   const handleCopy = async () => {
@@ -363,7 +382,7 @@ function WizardQuickView({
       // aboveCards zone → on remonte au top-level (indices[0]) et on lit le
       // name pour décider quelle section ouvrir.
       if (zone === "aboveCards") {
-        const top = page.zones.aboveCards[indices[0]] as any;
+        const top = page?.zones.aboveCards[indices[0]] as any;
         const name: string = top?.name || "";
         if (name === "Wrapper image profil") setOpenSection("profile");
         else if (name === "Cadre pseudo") setOpenSection("pseudo");
@@ -385,17 +404,50 @@ function WizardQuickView({
     if (!canSave) { setError("Lien d'affiliation requis."); return; }
     setSaving(true); setError(null);
     try {
-      // On stocke les inputs du wizard dans le config pour ré-ouverture.
-      const cfg: any = { ...page, [V3_MARKER]: true, [V3_INPUTS_KEY]: inputs };
-      const payload = {
-        slug: page.slug,
-        model: 4,
-        variant: null,
-        brandName: page.casinoName || page.slug,
-        title: page.pageTitle || page.casinoName || page.slug,
-        config: cfg,
-        editorVersion: 2,
-      };
+      let payload;
+      if (inputs.modelKind === "M1" && page) {
+        // M1 : sauvegarde V2 (zones + blocks) avec marqueurs V3
+        const cfg: any = { ...page, [V3_MARKER]: true, [V3_INPUTS_KEY]: inputs };
+        payload = {
+          slug: computedSlug,
+          model: 4,
+          variant: null,
+          brandName: page.casinoName || computedSlug,
+          title: page.pageTitle || page.casinoName || computedSlug,
+          config: cfg,
+          editorVersion: 2,
+        };
+      } else {
+        // M2 : sauvegarde V1 (Config flat) avec model=5, variant=goldenVariant.
+        // Marqueurs V3 stockés au même niveau (sérialisables JSON).
+        const variant = inputs.m5Variant || "gold";
+        const v1Cfg = buildM5V1ConfigForSave({
+          affiLink: inputs.affiLink,
+          pseudo: inputs.pseudo,
+          depositAmount: inputs.depositAmount,
+          bonusAmount: inputs.bonusAmount,
+          profileImageUrl: inputs.profileImageUrl,
+          chestUrl: inputs.m5ChestUrl,
+          jeuxUrl: inputs.m5JeuxUrl,
+          visualMode: inputs.m5VisualMode,
+          backgroundUrl: inputs.m5BackgroundUrl,
+        });
+        const cfg: any = {
+          ...v1Cfg,
+          [V3_MARKER]: "1",
+          [V3_INPUTS_KEY]: JSON.stringify(inputs),
+        };
+        const brand = inputs.pseudo?.trim() || computedSlug;
+        payload = {
+          slug: computedSlug,
+          model: 5,
+          variant,
+          brandName: brand,
+          title: brand,
+          config: cfg,
+          editorVersion: 1,
+        };
+      }
       const result = initialPageId
         ? await updateFsbAffiPage(token, initialPageId, payload)
         : await createFsbAffiPage(token, payload);
@@ -419,8 +471,8 @@ function WizardQuickView({
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <button onClick={onCancel} style={btnGhost}>← Retour</button>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>Wizard rapide — Modèle M1</div>
-            <div style={{ fontSize: 12, color: T.textMute }}>Slug : <code>{page.slug || "(sans code d'affi)"}</code></div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Wizard rapide — Modèle {inputs.modelKind}</div>
+            <div style={{ fontSize: 12, color: T.textMute }}>Slug : <code>{computedSlug || "(sans code d'affi)"}</code></div>
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -449,8 +501,37 @@ function WizardQuickView({
 
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Modèle</label>
-            <Chip active>M1</Chip>
+            <div style={{ display: "flex", gap: 6 }}>
+              <Chip active={inputs.modelKind === "M1"} onClick={() => update({ modelKind: "M1" })}>M1</Chip>
+              <Chip active={inputs.modelKind === "M2"} onClick={() => update({ modelKind: "M2" })}>M2</Chip>
+            </div>
+            <div style={{ fontSize: 11, color: T.textDim, marginTop: 6 }}>
+              {inputs.modelKind === "M1"
+                ? "M1 = M4 V1 (offre VIP doublée + cards)"
+                : "M2 = M5 V1 (golden chance, 8 variants colorés)"}
+            </div>
           </div>
+
+          {inputs.modelKind === "M2" ? (
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>Variant (couleur)</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {M5V1_VARIANTS.map((v) => (
+                  <Chip
+                    key={v.value}
+                    active={inputs.m5Variant === v.value}
+                    color={v.accent}
+                    onClick={() => update({ m5Variant: v.value })}
+                  >
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: "50%", background: v.accent, display: "inline-block" }} />
+                      {v.label}
+                    </span>
+                  </Chip>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Pseudo (optionnel)</label>
@@ -461,7 +542,7 @@ function WizardQuickView({
             <label style={labelStyle}>Lien d'affiliation *</label>
             <input type="url" value={inputs.affiLink} onChange={(e) => update({ affiLink: e.target.value })} style={inputStyle} placeholder="https://celsius.games/UHyEqTtNlL" />
             <div style={{ fontSize: 11, color: T.textDim, marginTop: 4 }}>
-              Code détecté : <code>{page.affiCode || "(aucun — vérifie l'URL)"}</code>
+              Code détecté : <code>{(computedSlug.replace(/V3$/, "")) || "(aucun — vérifie l'URL)"}</code>
             </div>
           </div>
 
@@ -516,51 +597,108 @@ function WizardQuickView({
             ) : null}
           </Accordion>
 
-          <Accordion
-            sectionRef={(el) => { sectionRefs.current.card1 = el; }}
-            label="Image — Carte 1"
-            hint={V3_GAME_IMAGES.find((g) => g.key === inputs.card1Image.kind)?.label || "Custom"}
-            open={openSection === "card1"} onToggle={() => toggleSection("card1")}
-          >
-            <GameImagePicker value={inputs.card1Image} onChange={(v) => update({ card1Image: v })} />
-            <CardImageFormatControls inputs={inputs} update={update} />
-          </Accordion>
+          {inputs.modelKind === "M1" ? (
+            <>
+              <Accordion
+                sectionRef={(el) => { sectionRefs.current.card1 = el; }}
+                label="Image — Carte 1"
+                hint={V3_GAME_IMAGES.find((g) => g.key === inputs.card1Image.kind)?.label || "Custom"}
+                open={openSection === "card1"} onToggle={() => toggleSection("card1")}
+              >
+                <GameImagePicker value={inputs.card1Image} onChange={(v) => update({ card1Image: v })} />
+                <CardImageFormatControls inputs={inputs} update={update} />
+              </Accordion>
 
-          <Accordion
-            sectionRef={(el) => { sectionRefs.current.card2 = el; }}
-            label="Image — Carte 2"
-            hint={V3_GAME_IMAGES.find((g) => g.key === inputs.card2Image.kind)?.label || "Custom"}
-            open={openSection === "card2"} onToggle={() => toggleSection("card2")}
-          >
-            <GameImagePicker value={inputs.card2Image} onChange={(v) => update({ card2Image: v })} />
-            <CardImageFormatControls inputs={inputs} update={update} />
-          </Accordion>
+              <Accordion
+                sectionRef={(el) => { sectionRefs.current.card2 = el; }}
+                label="Image — Carte 2"
+                hint={V3_GAME_IMAGES.find((g) => g.key === inputs.card2Image.kind)?.label || "Custom"}
+                open={openSection === "card2"} onToggle={() => toggleSection("card2")}
+              >
+                <GameImagePicker value={inputs.card2Image} onChange={(v) => update({ card2Image: v })} />
+                <CardImageFormatControls inputs={inputs} update={update} />
+              </Accordion>
 
-          <h3 style={{ margin: "20px 0 10px", fontSize: 14, color: T.textMute, textTransform: "uppercase", letterSpacing: ".5px" }}>Style des textes</h3>
+              <h3 style={{ margin: "20px 0 10px", fontSize: 14, color: T.textMute, textTransform: "uppercase", letterSpacing: ".5px" }}>Style des textes</h3>
 
-          {inputs.pseudo ? (
-            <Accordion
-              sectionRef={(el) => { sectionRefs.current.pseudo = el; }}
-              label="Pseudo"
-              open={openSection === "pseudo"} onToggle={() => toggleSection("pseudo")}
-            >
-              <LineStylePicker label="" value={inputs.pseudoStyle} onChange={(s) => update({ pseudoStyle: s })} />
-            </Accordion>
+              {inputs.pseudo ? (
+                <Accordion
+                  sectionRef={(el) => { sectionRefs.current.pseudo = el; }}
+                  label="Pseudo"
+                  open={openSection === "pseudo"} onToggle={() => toggleSection("pseudo")}
+                >
+                  <LineStylePicker label="" value={inputs.pseudoStyle} onChange={(s) => update({ pseudoStyle: s })} />
+                </Accordion>
+              ) : null}
+              <Accordion
+                sectionRef={(el) => { sectionRefs.current.deposit = el; }}
+                label="« Déposez X€ »"
+                open={openSection === "deposit"} onToggle={() => toggleSection("deposit")}
+              >
+                <LineStylePicker label="" value={inputs.depositLineStyle} onChange={(s) => update({ depositLineStyle: s })} />
+              </Accordion>
+              <Accordion
+                sectionRef={(el) => { sectionRefs.current.bonus = el; }}
+                label="« Jouer à Y€ »"
+                open={openSection === "bonus"} onToggle={() => toggleSection("bonus")}
+              >
+                <LineStylePicker label="" value={inputs.bonusLineStyle} onChange={(s) => update({ bonusLineStyle: s })} />
+              </Accordion>
+            </>
           ) : null}
-          <Accordion
-            sectionRef={(el) => { sectionRefs.current.deposit = el; }}
-            label="« Déposez X€ »"
-            open={openSection === "deposit"} onToggle={() => toggleSection("deposit")}
-          >
-            <LineStylePicker label="" value={inputs.depositLineStyle} onChange={(s) => update({ depositLineStyle: s })} />
-          </Accordion>
-          <Accordion
-            sectionRef={(el) => { sectionRefs.current.bonus = el; }}
-            label="« Jouer à Y€ »"
-            open={openSection === "bonus"} onToggle={() => toggleSection("bonus")}
-          >
-            <LineStylePicker label="" value={inputs.bonusLineStyle} onChange={(s) => update({ bonusLineStyle: s })} />
-          </Accordion>
+
+          {inputs.modelKind === "M2" ? (
+            <>
+              <h3 style={{ margin: "20px 0 10px", fontSize: 14, color: T.textMute, textTransform: "uppercase", letterSpacing: ".5px" }}>Visuel & images</h3>
+
+              <div style={{ marginBottom: 10 }}>
+                <label style={labelStyle}>Mode visuel</label>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <Chip active={(inputs.m5VisualMode || "chest") === "chest"} onClick={() => update({ m5VisualMode: "chest" })}>Coffre</Chip>
+                  <Chip active={inputs.m5VisualMode === "jeux"} onClick={() => update({ m5VisualMode: "jeux" })}>Jeux</Chip>
+                  <Chip active={inputs.m5VisualMode === "none"} onClick={() => update({ m5VisualMode: "none" })}>Aucun</Chip>
+                </div>
+              </div>
+
+              {(inputs.m5VisualMode || "chest") === "chest" ? (
+                <div style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>URL coffre custom (optionnel)</label>
+                  <input type="url"
+                    value={inputs.m5ChestUrl || ""}
+                    onChange={(e) => update({ m5ChestUrl: e.target.value })}
+                    style={inputStyle}
+                    placeholder="https://… (laisser vide = chest du variant)"
+                  />
+                </div>
+              ) : null}
+
+              {inputs.m5VisualMode === "jeux" ? (
+                <div style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>URL image jeux</label>
+                  <input type="url"
+                    value={inputs.m5JeuxUrl || ""}
+                    onChange={(e) => update({ m5JeuxUrl: e.target.value })}
+                    style={inputStyle}
+                    placeholder="https://… (laisser vide = jeux du variant)"
+                  />
+                </div>
+              ) : null}
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelStyle}>Background hero (optionnel)</label>
+                <input type="url"
+                  value={inputs.m5BackgroundUrl || ""}
+                  onChange={(e) => update({ m5BackgroundUrl: e.target.value })}
+                  style={inputStyle}
+                  placeholder="https://… (laisser vide = background variant)"
+                />
+              </div>
+
+              <div style={{ background: T.bgPanel2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 12, marginTop: 8, fontSize: 12, color: T.textMute }}>
+                💡 Le pseudo, X et Y sont mappés sur les champs M5 V1 (brand, deposit, bonus). Le total = X + Y est calculé automatiquement. Pour fine-tuning avancé (textures, animations, sections custom), ouvrir la page dans <code>/editorFSN</code>.
+              </div>
+            </>
+          ) : null}
         </div>
 
         {/* Preview */}
@@ -580,9 +718,29 @@ function WizardQuickView({
               border: `1px solid ${T.border}`,
               borderRadius: isMobilePreview ? 24 : 8,
               overflow: "hidden",
-              background: page.globals?.bgPage || "#080212",
+              background: inputs.modelKind === "M1" ? (page?.globals?.bgPage || "#080212") : "#0f0d14",
+              // M2 (iframe) a besoin d'une hauteur fixe pour scroller à l'intérieur.
+              height: inputs.modelKind === "M2" ? (isMobilePreview ? 920 : 1100) : undefined,
             }}>
-              <RenderV2Page page={page} isMobile={isMobilePreview} editCtx={editCtx as any} />
+              {inputs.modelKind === "M1" ? (
+                page ? <RenderV2Page page={page} isMobile={isMobilePreview} editCtx={editCtx as any} /> : null
+              ) : (
+                <M5V1Preview
+                  cfg={{
+                    affiLink: inputs.affiLink,
+                    pseudo: inputs.pseudo,
+                    depositAmount: inputs.depositAmount,
+                    bonusAmount: inputs.bonusAmount,
+                    profileImageUrl: inputs.profileImageUrl,
+                    chestUrl: inputs.m5ChestUrl,
+                    jeuxUrl: inputs.m5JeuxUrl,
+                    visualMode: inputs.m5VisualMode,
+                    backgroundUrl: inputs.m5BackgroundUrl,
+                  }}
+                  variant={inputs.m5Variant || "gold"}
+                  isMobile={isMobilePreview}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -594,7 +752,9 @@ function WizardQuickView({
 // ─── Dashboard ──────────────────────────────────────────────────────────────
 
 function isV3Page(p: FsbAffiPage): boolean {
-  return !!p.editorVersion && p.editorVersion >= 2 && !!(p.config && (p.config as any)[V3_MARKER]);
+  // M1 pages : editorVersion=2 + __v3 boolean true
+  // M2 pages : editorVersion=1 + __v3 string "1" (V1 config = string-only par convention)
+  return !!(p.config && (p.config as any)[V3_MARKER]);
 }
 
 function DashboardView({
@@ -646,22 +806,34 @@ function DashboardView({
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
             {v3Pages.map((p) => {
-              const inputs: V3QuickInputs | null = (p.config as any)?.[V3_INPUTS_KEY] || null;
+              const rawInputs = (p.config as any)?.[V3_INPUTS_KEY];
+              let inputs: V3QuickInputs | null = null;
+              if (typeof rawInputs === "string") {
+                try { inputs = JSON.parse(rawInputs); } catch { /* noop */ }
+              } else if (rawInputs && typeof rawInputs === "object") {
+                inputs = rawInputs as V3QuickInputs;
+              }
+              const modelLabel = inputs?.modelKind === "M2" ? "M2" : "M1";
               return (
                 <div key={p.id} style={{
                   background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 12,
                   padding: 16, display: "flex", flexDirection: "column", gap: 8,
                 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 6 }}>
                     <div style={{ fontWeight: 700, fontSize: 15 }}>{p.brandName || p.slug}</div>
-                    <span style={{ fontSize: 10, color: T.gold, background: `${T.gold}22`, padding: "2px 8px", borderRadius: 999, fontWeight: 700 }}>V3</span>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <span style={{ fontSize: 10, color: T.textMute, background: T.bgInput, padding: "2px 6px", borderRadius: 999, fontWeight: 700 }}>{modelLabel}</span>
+                      <span style={{ fontSize: 10, color: T.gold, background: `${T.gold}22`, padding: "2px 8px", borderRadius: 999, fontWeight: 700 }}>V3</span>
+                    </div>
                   </div>
                   <div style={{ fontSize: 12, color: T.textMute }}>
                     /r/<code>{p.slug}</code>
                   </div>
                   {inputs ? (
                     <div style={{ fontSize: 12, color: T.textMute }}>
-                      Déposez {inputs.depositAmount}€ → Jouer à {inputs.bonusAmount}€
+                      {inputs.depositAmount != null ? `Déposez ${inputs.depositAmount}€` : ""}
+                      {inputs.depositAmount != null && inputs.bonusAmount != null ? " → " : ""}
+                      {inputs.bonusAmount != null ? `Jouer à ${inputs.bonusAmount}€` : ""}
                     </div>
                   ) : null}
                   <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -771,8 +943,16 @@ export default function EditorV3Page() {
   };
 
   const handleOpen = (p: FsbAffiPage) => {
-    const stored = (p.config as any)?.[V3_INPUTS_KEY] as V3QuickInputs | undefined;
-    setWizardInputs(stored || defaultV3QuickInputs());
+    const raw = (p.config as any)?.[V3_INPUTS_KEY];
+    let stored: V3QuickInputs | undefined;
+    // M1 (editorVersion=2) : objet directement, M2 (editorVersion=1) : string JSON
+    if (typeof raw === "string") {
+      try { stored = JSON.parse(raw); } catch { stored = undefined; }
+    } else if (raw && typeof raw === "object") {
+      stored = raw as V3QuickInputs;
+    }
+    const fallback = p.editorVersion === 1 ? defaultV3QuickInputs("M2") : defaultV3QuickInputs("M1");
+    setWizardInputs(stored || fallback);
     setWizardPageId(p.id);
     setWizardSavedSlug(p.slug);
     setView("wizard");

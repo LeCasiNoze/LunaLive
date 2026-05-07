@@ -19,6 +19,7 @@ import {
   makeV2BlockId,
 } from "./editor_v2_types";
 import { buildM4V2Starter } from "./editor_v2_starters";
+import type { M5V1Variant } from "./m5_v1_apply";
 
 // ─── Presets style "rapide" ─────────────────────────────────────────────────
 
@@ -107,8 +108,18 @@ export type V3ObjectFit = "cover" | "contain";
 // ─── Inputs du wizard rapide ────────────────────────────────────────────────
 
 export interface V3QuickInputs {
-  /** Modèle utilisé (en V3 : "M1" = M4V1 dupliqué). */
-  modelKind: "M1";
+  /** Modèle utilisé : M1 = duplication M4 V1 / M2 = duplication M5 V1 (variants). */
+  modelKind: "M1" | "M2";
+  /** Variant M5 (uniquement utilisé quand modelKind === "M2"). */
+  m5Variant?: M5V1Variant;
+  /** URL du coffre custom (M2). Vide → garde le default variant-spécifique. */
+  m5ChestUrl?: string;
+  /** URL image jeux custom (M2, si visualMode=jeux). */
+  m5JeuxUrl?: string;
+  /** Mode visuel M2 : chest (default) / jeux / none. */
+  m5VisualMode?: "chest" | "jeux" | "none";
+  /** Background hero custom (M2). */
+  m5BackgroundUrl?: string;
   pseudo?: string;                 // optionnel
   affiLink: string;                // requis
   /** X (en €) — null = champ vidé : on cache la ligne « Déposez X€ ». */
@@ -128,12 +139,12 @@ export interface V3QuickInputs {
   bonusLineStyle?: V3LineStyle;
 }
 
-export function defaultV3QuickInputs(): V3QuickInputs {
+export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInputs {
   return {
-    modelKind: "M1",
+    modelKind,
     pseudo: "",
     affiLink: "",
-    depositAmount: 10,
+    depositAmount: modelKind === "M2" ? 20 : 10,
     bonusAmount: 20,
     profileImageUrl: "",
     card1Image: { kind: "penalty", url: V3_GAME_IMAGES[0].url },
@@ -143,6 +154,12 @@ export function defaultV3QuickInputs(): V3QuickInputs {
     pseudoStyle:      { font: "Inter", color: "#FFD700", size: "m",  weight: "black", glow: true },
     depositLineStyle: { font: "Inter", color: "#ffffff", size: "l",  weight: "black" },
     bonusLineStyle:   { font: "Inter", color: "#FFD700", size: "l",  weight: "black", glow: true },
+    // M2 defaults
+    m5Variant: "gold",
+    m5VisualMode: "chest",
+    m5ChestUrl: "",
+    m5JeuxUrl: "",
+    m5BackgroundUrl: "",
   };
 }
 
