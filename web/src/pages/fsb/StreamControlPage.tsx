@@ -182,7 +182,7 @@ function useStreamInfo(): StreamInfo & { activeSlug: string } {
             try {
               const r = await fetch(`${LUNA_API_BASE}/streamers/${slug}`);
               const j = await r.json().catch(() => null);
-              return j ? { slug, data: j as any, isLive: !!j.isLive } : null;
+              return j ? { slug: slug as string, data: j as any, isLive: !!j.isLive } : null;
             } catch { return null; }
           })
         );
