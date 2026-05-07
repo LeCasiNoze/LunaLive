@@ -50,7 +50,7 @@ const PING_USER_IDS = [
   "406965568755728395", // Fabiozsis
 ];
 
-const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
 const FSB_BOARD_URL = `${PUBLIC_WEB_BASE}/FSB_Board`;
 
 const TICK_INTERVAL_MS = 30 * 60_000; // 30 min
@@ -105,8 +105,7 @@ async function loadAllUnpaidFees(todayParis: string): Promise<FeeRow[]> {
       to_char(date, 'YYYY-MM-DD') AS due_date,
       (date - $1::date)           AS days_until
     FROM expenses
-    WHERE source_type = 'agency_streamer_payout'
-      AND paid_at IS NULL
+    WHERE paid_at IS NULL
     ORDER BY date ASC, id ASC
     `,
     [todayParis]

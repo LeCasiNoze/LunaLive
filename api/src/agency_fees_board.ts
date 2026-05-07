@@ -39,7 +39,7 @@ const FIRST_REFRESH_DELAY_MS = 60_000;
 const PAID_RECENT_LIMIT     = 15;
 const PAID_RECENT_DAYS      = 30;
 
-const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
 const FSB_BOARD_URL = `${PUBLIC_WEB_BASE}/FSB_Board`;
 
 const __filename = fileURLToPath(import.meta.url);
@@ -86,7 +86,7 @@ async function loadUnpaid(todayParis: string): Promise<FeeRow[]> {
            to_char(date, 'YYYY-MM-DD') AS due_date,
            (date - $1::date) AS days_until
     FROM expenses
-    WHERE source_type = 'agency_streamer_payout' AND paid_at IS NULL
+    WHERE paid_at IS NULL
     ORDER BY date ASC, id ASC
     `,
     [todayParis]
@@ -108,8 +108,7 @@ async function loadPaidRecent(): Promise<{ rows: PaidRow[]; totalCount: number; 
     SELECT id::text AS id, description, amount::float AS amount,
            to_char(paid_at AT TIME ZONE 'Europe/Paris', 'YYYY-MM-DD') AS paid_date
     FROM expenses
-    WHERE source_type = 'agency_streamer_payout'
-      AND paid_at IS NOT NULL
+    WHERE paid_at IS NOT NULL
       AND paid_at >= NOW() - ($1 || ' days')::interval
     ORDER BY paid_at DESC
     LIMIT $2
@@ -120,8 +119,7 @@ async function loadPaidRecent(): Promise<{ rows: PaidRow[]; totalCount: number; 
     `
     SELECT COUNT(*)::int AS cnt, COALESCE(SUM(amount), 0)::float AS sum
     FROM expenses
-    WHERE source_type = 'agency_streamer_payout'
-      AND paid_at IS NOT NULL
+    WHERE paid_at IS NOT NULL
       AND paid_at >= NOW() - ($1 || ' days')::interval
     `,
     [String(PAID_RECENT_DAYS)]

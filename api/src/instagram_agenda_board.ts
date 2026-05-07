@@ -35,7 +35,7 @@ const FIRST_REFRESH_DELAY_MS = 90_000;
 const WINDOW_DAYS            = 30;
 const REELS_LIMIT            = 12;
 
-const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirnameLocal = path.dirname(__filename);
@@ -120,6 +120,33 @@ async function loadRecentReels(): Promise<ReelRow[]> {
   }));
 }
 
+type ScheduledRow = { jobId: number; clipTitle: string; streamerSlug: string; scheduledAt: Date };
+
+async function loadScheduled(): Promise<ScheduledRow[]> {
+  const r = await pool.query(
+    `
+    SELECT
+      pj.id::int                 AS job_id,
+      COALESCE(pj.title, ci.title, '(sans titre)') AS clip_title,
+      ci.streamer_slug           AS streamer_slug,
+      pj.scheduled_at            AS scheduled_at
+    FROM publish_jobs pj
+    LEFT JOIN clip_inbox ci ON ci.clip_id = pj.clip_id
+    WHERE pj.platform = 'instagram'
+      AND pj.status IN ('scheduled', 'uploading')
+      AND (pj.scheduled_at IS NULL OR pj.scheduled_at <= NOW() + INTERVAL '60 days')
+    ORDER BY pj.scheduled_at ASC NULLS LAST
+    LIMIT 15
+    `
+  );
+  return r.rows.map((row: any) => ({
+    jobId: Number(row.job_id),
+    clipTitle: String(row.clip_title || ""),
+    streamerSlug: String(row.streamer_slug || ""),
+    scheduledAt: row.scheduled_at ? new Date(row.scheduled_at) : new Date(),
+  }));
+}
+
 async function enrichWithMetaStats(reels: ReelRow[]): Promise<void> {
   // Pour chaque Reel : 1 appel Meta Graph API (parallèle, max 6 simultanés)
   const concurrency = 6;
@@ -154,47 +181,58 @@ function shortCaption(text: string | null | undefined, max = 80): string {
   return out || "_(sans titre)_";
 }
 
-function buildEmbed(reels: ReelRow[], hasLogo: boolean): EmbedBuilder {
+function frenchDateTime(d: Date): string {
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris", weekday: "short", day: "2-digit", month: "short",
+    hour: "2-digit", minute: "2-digit",
+  }).format(d);
+}
+
+function buildEmbed(reels: ReelRow[], scheduled: ScheduledRow[], hasLogo: boolean): EmbedBuilder {
   const totalLikes    = reels.reduce((s, r) => s + (r.likes ?? 0), 0);
   const totalComments = reels.reduce((s, r) => s + (r.comments ?? 0), 0);
   const totalViews    = reels.reduce((s, r) => s + (r.views ?? 0), 0);
 
   const embed = new EmbedBuilder()
-    .setColor(0xE4405F) // rose Insta
+    .setColor(0xE4405F)
     .setAuthor({
-      name: "LunaLive  •  Instagram — Reels publiés",
+      name: "LunaLive  •  Instagram",
       ...(hasLogo ? { iconURL: "attachment://logo.png" } : {}),
       url: "https://www.instagram.com/lunalive_tv",
     })
-    .setTitle(`📸   ${reels.length} Reel${reels.length > 1 ? "s" : ""} publié${reels.length > 1 ? "s" : ""} — ${WINDOW_DAYS} derniers jours`)
-    .setURL("https://www.instagram.com/lunalive_tv")
-    .setDescription(
-      reels.length === 0
-        ? "_Aucun Reel publié sur la période._"
-        : `**${num(totalViews)} vues · ${num(totalLikes)} ❤️ · ${num(totalComments)} 💬** cumulés.\n` +
-          `_Stats récupérées en direct via Meta API à chaque refresh._`
-    );
+    .setTitle(`📸   Agenda Instagram`)
+    .setURL("https://www.instagram.com/lunalive_tv");
 
   if (hasLogo) embed.setThumbnail("attachment://logo.png");
 
-  // Liste des Reels — on group 6 par field (Discord field max 1024 chars)
-  const lines = reels.map(r => {
-    const stats = r.platform_id
-      ? `👁️ ${num(r.views ?? 0)} · ❤️ ${num(r.likes ?? 0)} · 💬 ${num(r.comments ?? 0)}`
-      : "_stats indisponibles_";
-    const slug = r.streamerSlug ? `**@${r.streamerSlug}** — ` : "";
-    return `[${frenchDate(r.finished_at)}]  ${slug}${shortCaption(r.caption)}\n${stats}\n[🔗 Voir le Reel](${r.permalink})`;
+  // ── Stats globales ──────────────────────────────────────────────────────
+  embed.addFields({
+    name: `📊   Stats des ${WINDOW_DAYS} derniers jours`,
+    value: reels.length === 0
+      ? "_Aucun Reel publié sur la période._"
+      : `**${reels.length} Reel${reels.length > 1 ? "s" : ""} publié${reels.length > 1 ? "s" : ""}**\n` +
+        `👁️  **${num(totalViews)}** vues   •   ❤️  **${num(totalLikes)}** likes   •   💬  **${num(totalComments)}** comments`,
+    inline: false,
   });
 
-  // Découpe en blocs de field
-  const chunkSize = 4;
-  for (let i = 0; i < lines.length; i += chunkSize) {
-    const chunk = lines.slice(i, i + chunkSize);
-    const value = chunk.join("\n\n");
-    if (value.length === 0) continue;
+  // ── Sorties prévues ─────────────────────────────────────────────────────
+  if (scheduled.length === 0) {
     embed.addFields({
-      name: i === 0 ? "📋 Détails" : "​",
-      value: value.slice(0, 1024),
+      name: "🗓️   Sorties prévues",
+      value: "_Aucun Reel programmé pour le moment._",
+      inline: false,
+    });
+  } else {
+    const lines = scheduled.map((s) => {
+      const slug = s.streamerSlug ? `**@${s.streamerSlug}** — ` : "";
+      const when = s.scheduledAt
+        ? frenchDateTime(s.scheduledAt)
+        : "_(date non définie)_";
+      return `• \`${when}\`  ·  ${slug}${shortCaption(s.clipTitle)}`;
+    });
+    embed.addFields({
+      name: `🗓️   Sorties prévues  (${scheduled.length})`,
+      value: lines.join("\n").slice(0, 1024),
       inline: false,
     });
   }
@@ -238,11 +276,11 @@ export async function refreshInstagramAgenda(): Promise<void> {
     const channel = await client.channels.fetch(IG_AGENDA_CHANNEL_ID).catch(() => null);
     if (!channel || !channel.isTextBased()) return;
 
-    const reels = await loadRecentReels();
+    const [reels, scheduled] = await Promise.all([loadRecentReels(), loadScheduled()]);
     if (reels.length > 0) await enrichWithMetaStats(reels);
 
     const logoBuf = getLogoBuffer();
-    const embedCreate = buildEmbed(reels, !!logoBuf);
+    const embedCreate = buildEmbed(reels, scheduled, !!logoBuf);
     const row = buildButtons();
     const files: AttachmentBuilder[] = [];
     if (logoBuf) files.push(new AttachmentBuilder(logoBuf, { name: "logo.png" }));
@@ -253,7 +291,7 @@ export async function refreshInstagramAgenda(): Promise<void> {
     if (existingMsgId) {
       try {
         const msg = await (channel as any).messages.fetch(existingMsgId);
-        const editEmbed = buildEmbed(reels, false); // pas de réf attachment en edit
+        const editEmbed = buildEmbed(reels, scheduled, false); // pas de réf attachment en edit
         await msg.edit({ embeds: [editEmbed], components: [row] });
         await pool.query(`UPDATE instagram_agenda_board SET last_refreshed_at = NOW() WHERE id = 1`);
         console.log(`${LOG} ✅ message édité (${existingMsgId}) — ${reels.length} Reels`);

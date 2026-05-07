@@ -41,7 +41,7 @@ const ALLOWED_USER_IDS = new Set([
 
 const QG_CHANNEL_ID = "1501890674620891268";
 
-const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
 
 const eur = (n: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(n);
 
@@ -277,7 +277,7 @@ async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Pr
       // Cartes : présets penalty + mines (mêmes URLs que defaultV3QuickInputs)
       card1Image: { kind: "penalty", url: "https://cdn.phototourl.com/member/2026-04-09-240bb1e8-d188-4130-81ae-8e3f88143efc.png" },
       card2Image: { kind: "mines",   url: "https://cdn.phototourl.com/free/2026-04-09-c5dee0f7-cdad-427c-bd2e-bcbb6f4b24a6.png" },
-      cardAspect: "16/9",
+      cardAspect: "1/1",
       cardObjectFit: "cover",
       pseudoStyle:      { font: "Inter", color: "#FFD700", size: "m",  weight: "black", glow: true },
       depositLineStyle: { font: "Inter", color: "#ffffff", size: "l",  weight: "black" },
@@ -412,7 +412,7 @@ async function handleDette(interaction: ChatInputCommandInteraction): Promise<vo
         COALESCE(SUM(amount) FILTER (WHERE date < CURRENT_DATE), 0)::float AS overdue_sum,
         MIN(date) FILTER (WHERE date >= CURRENT_DATE) AS next_due
       FROM expenses
-      WHERE source_type = 'agency_streamer_payout' AND paid_at IS NULL
+      WHERE paid_at IS NULL
       `
     );
     const t = r.rows[0];
@@ -519,7 +519,7 @@ async function handleMarkPaidOpen(interaction: ButtonInteraction): Promise<void>
              to_char(date, 'YYYY-MM-DD') AS due_date,
              (date - CURRENT_DATE) AS days_until
       FROM expenses
-      WHERE source_type = 'agency_streamer_payout' AND paid_at IS NULL
+      WHERE paid_at IS NULL
       ORDER BY date ASC
       LIMIT 25
       `
