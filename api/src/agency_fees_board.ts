@@ -255,15 +255,22 @@ function buildBoardEmbed(
   return embed;
 }
 
+// CustomId du bouton "Marquer payé" — handler dans discord/admin_commands.ts
+const FEES_BOARD_MARK_PAID_OPEN_CID = "agency_fees_board:mark_paid_open";
+
 function buildButtons() {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
+      .setCustomId(FEES_BOARD_MARK_PAID_OPEN_CID)
+      .setLabel("✅  Marquer comme payé(s)")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
       .setCustomId(FEES_BOARD_REFRESH_CID)
-      .setLabel("🔄  Actualiser maintenant")
+      .setLabel("🔄  Actualiser")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setStyle(ButtonStyle.Link)
-      .setLabel("📊  Ouvrir le FSB Board")
+      .setLabel("📊  FSB Board")
       .setURL(FSB_BOARD_URL),
   );
 }

@@ -132,7 +132,7 @@ export const CID_FABIO_NOTIF_ROLE = "notif_role:"; // + roleId
 // ─────────────────────────────────────────────
 // Slash commands list (guild-scoped)
 // ─────────────────────────────────────────────
-export const SLASH_COMMANDS = [
+export const SLASH_COMMANDS: any[] = [
   { name: "help", description: "Aide LunaLive" },
   { name: "whoami", description: "Afficher votre statut de liaison LunaLive" },
   { name: "link", description: "Lier votre Discord à votre compte LunaLive" },
@@ -150,4 +150,49 @@ export const SLASH_COMMANDS = [
   { name: "profil", description: "Afficher ta fiche profil complète" },
   { name: "succes", description: "Afficher tes récompenses débloquées" },
 
-] as const;
+  // ─── Outils admin AGENCE / FSB (default_member_permissions: "0" =
+  // invisibles à tous sauf admins. Tu peux étendre via Server Settings →
+  // Integrations → LunaBot. Plus check runtime sur le salon QG).
+  {
+    name: "frais",
+    description: "Frais d'agence",
+    default_member_permissions: "0",
+    options: [
+      { name: "ajouter", description: "Ajouter un frais (modal)", type: 1 },
+    ],
+  },
+  {
+    name: "agence",
+    description: "Outils agence",
+    default_member_permissions: "0",
+    options: [
+      { name: "recap", description: "Récap mensuel agence", type: 1, options: [
+        { name: "mois", description: "YYYY-MM (défaut: mois courant)", type: 3, required: false },
+      ]},
+    ],
+  },
+  {
+    name: "landing",
+    description: "Landing pages affiliées",
+    default_member_permissions: "0",
+    options: [
+      { name: "creer", description: "Créer une landing rapide (V3)", type: 1 },
+      { name: "list",  description: "Lister mes landings avec URLs", type: 1 },
+    ],
+  },
+  {
+    name: "dette",
+    description: "Snapshot rapide des frais d'agence impayés",
+    default_member_permissions: "0",
+  },
+  {
+    name: "tiktok",
+    description: "TikTok outreach",
+    default_member_permissions: "0",
+    options: [
+      { name: "influenceur-add", description: "Ajouter un influenceur au réseau", type: 1, options: [
+        { name: "lien", description: "Lien TikTok ou handle (@xxx)", type: 3, required: true },
+      ]},
+    ],
+  },
+];

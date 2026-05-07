@@ -12,6 +12,13 @@ import {
 } from "../agency_fees_board.js";
 
 import {
+  IG_AGENDA_REFRESH_CID,
+  handleIgAgendaRefreshButton,
+} from "../instagram_agenda_board.js";
+
+import { routeAdminInteraction } from "./admin_commands.js";
+
+import {
   Client,
   GatewayIntentBits,
   Partials,
@@ -453,9 +460,18 @@ export async function startDiscordBot(ctx: BotCtx) {
 
   client.on("interactionCreate", async (interaction: Interaction) => {
     try {
+      // ── Admin commands (frais / agence / landing / dette / tiktok +
+      // boutons mark-paid). Routeur retourne true si géré.
+      if (await routeAdminInteraction(interaction)) return;
+
       // ── Agency fees board — bouton refresh ────────────────────────────────
       if (interaction.isButton() && interaction.customId === FEES_BOARD_REFRESH_CID) {
         await handleFeesBoardRefreshButton(interaction); return;
+      }
+
+      // ── Instagram agenda board — bouton refresh ───────────────────────────
+      if (interaction.isButton() && interaction.customId === IG_AGENDA_REFRESH_CID) {
+        await handleIgAgendaRefreshButton(interaction); return;
       }
 
       // ── Fabiozsis — notif rôles (toggle) ──────────────────────────────────
