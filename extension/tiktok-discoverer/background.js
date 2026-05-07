@@ -82,6 +82,65 @@ async function trustedClickRect(tabId, rect) {
   }
 }
 
+// Trusted keyboard event via CDP. Useful when wheel doesn't trigger
+// virtual list loading. Common keys: "PageDown", "End", "ArrowDown".
+async function trustedKey(tabId, key, code) {
+  try {
+    await cdpSend(tabId, "Input.dispatchKeyEvent", {
+      type: "keyDown",
+      key,
+      code: code || key,
+      windowsVirtualKeyCode: KEY_CODES[key] || 0,
+    });
+    await cdpSend(tabId, "Input.dispatchKeyEvent", {
+      type: "keyUp",
+      key,
+      code: code || key,
+      windowsVirtualKeyCode: KEY_CODES[key] || 0,
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+}
+const KEY_CODES = {
+  PageDown: 34,
+  PageUp: 33,
+  End: 35,
+  Home: 36,
+  ArrowDown: 40,
+  ArrowUp: 38,
+};
+
+// Click at coords without re-finding rect (used to focus the panel before keyboard input)
+async function trustedClickAt(tabId, x, y) {
+  try {
+    await cdpSend(tabId, "Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x,
+      y,
+      button: "none",
+    });
+    await cdpSend(tabId, "Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x,
+      y,
+      button: "left",
+      clickCount: 1,
+    });
+    await cdpSend(tabId, "Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x,
+      y,
+      button: "left",
+      clickCount: 1,
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+}
+
 // Trusted wheel scroll at coordinates via CDP. Many TikTok virtual lists only
 // load more content when they receive a real wheel event with isTrusted=true.
 async function trustedWheel(tabId, x, y, deltaY) {
@@ -1869,52 +1928,88 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
             await new Promise((r) => setTimeout(r, 1500));
 
-            // STEP B — Scroll the comment list with TRUSTED wheel events.
-            // We target [data-e2e="comment-list"] and dispatch a CDP wheel
-            // at its center, which forces the virtual list to load more.
+            // STEP B — Scroll the comment list with TRUSTED wheel + keyboard.
+            // Find the EXACT scrollable element and use ITS rect (clamped to
+            // viewport) for the wheel. Also dispatch PageDown as backup.
+            const scrollDiag = { ticks: 0, counts: [] };
             try {
+              // First: click somewhere inside the comment panel to focus it
+              // (required for keyboard events to reach the list).
+              const focusInfo = await findRect(tab.id, () => {
+                const list = document.querySelector('[data-e2e="comment-list"]');
+                if (!list) return { found: false };
+                const r = list.getBoundingClientRect();
+                return {
+                  found: true,
+                  rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+                };
+              });
+              if (focusInfo?.found && focusInfo.rect) {
+                // Clamp to viewport
+                const vw = focusInfo.rect.width;
+                const vh = focusInfo.rect.height;
+                void vw;
+                void vh;
+                const cx = Math.floor(focusInfo.rect.left + focusInfo.rect.width / 2);
+                const cy = Math.floor(
+                  Math.max(50, Math.min(focusInfo.rect.top + 100, 600))
+                );
+                // Click to focus, then a small wait
+                await trustedClickAt(tab.id, cx, cy);
+                await new Promise((r) => setTimeout(r, 300));
+              }
+
               for (let scrollI = 0; scrollI < maxScrollTicks; scrollI++) {
+                // Find the actual SCROLLER (deepest scrollable inside comment-list)
+                // and return ITS rect, clamped to viewport.
                 const rectInfo = await findRect(tab.id, () => {
-                  const list = document.querySelector(
-                    '[data-e2e="comment-list"]'
-                  );
+                  const list = document.querySelector('[data-e2e="comment-list"]');
                   if (!list) return { found: false };
-                  // Programmatic scroll on inner scrollable
+                  // Find deepest scrollable inside or the list itself
                   let target = list;
-                  let node = list;
-                  for (let i = 0; i < 4 && node; i++) {
+                  const all = list.querySelectorAll("*");
+                  let bestDepth = 0;
+                  for (const el of Array.from(all)) {
                     try {
-                      const cs = getComputedStyle(node);
+                      const cs = getComputedStyle(el);
                       if (
-                        (cs.overflowY === "auto" ||
-                          cs.overflowY === "scroll") &&
-                        node.scrollHeight - node.clientHeight > 30
+                        (cs.overflowY === "auto" || cs.overflowY === "scroll") &&
+                        el.scrollHeight - el.clientHeight > 30
                       ) {
-                        target = node;
-                        break;
+                        let d = 0;
+                        let p = el;
+                        while (p && p !== list) {
+                          p = p.parentElement;
+                          d++;
+                        }
+                        if (d > bestDepth) {
+                          target = el;
+                          bestDepth = d;
+                        }
                       }
                     } catch {}
-                    node = node.parentElement;
                   }
                   if (target === list) {
-                    const all = list.querySelectorAll("*");
-                    for (const el of Array.from(all)) {
+                    let node = list;
+                    for (let i = 0; i < 4 && node; i++) {
                       try {
-                        const cs = getComputedStyle(el);
+                        const cs = getComputedStyle(node);
                         if (
                           (cs.overflowY === "auto" ||
                             cs.overflowY === "scroll") &&
-                          el.scrollHeight - el.clientHeight > 30
+                          node.scrollHeight - node.clientHeight > 30
                         ) {
-                          target = el;
+                          target = node;
                           break;
                         }
                       } catch {}
+                      node = node.parentElement;
                     }
                   }
+                  // Programmatic scroll
                   try {
-                    target.scrollBy({ top: 1500 });
-                    target.scrollTop = target.scrollTop + 1500;
+                    target.scrollBy({ top: 2000 });
+                    target.scrollTop = target.scrollTop + 2000;
                     const items = target.querySelectorAll(
                       '[data-e2e^="comment-level"], [data-e2e*="comment-item"]'
                     );
@@ -1922,28 +2017,63 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                       items[items.length - 1].scrollIntoView({ block: "end" });
                     }
                   } catch {}
-                  const r = list.getBoundingClientRect();
+                  // Return SCROLLER rect (not list) clamped to viewport
+                  const r = target.getBoundingClientRect();
+                  const vpW = window.innerWidth;
+                  const vpH = window.innerHeight;
+                  const left = Math.max(0, r.left);
+                  const top = Math.max(0, r.top);
+                  const right = Math.min(vpW, r.right);
+                  const bottom = Math.min(vpH, r.bottom);
                   const count = document.querySelectorAll(
                     '[data-e2e^="comment-username"], [data-e2e*="comment-author"]'
                   ).length;
                   return {
                     found: true,
                     count,
+                    targetClass: (target.className || "").toString().slice(0, 60),
+                    scrollHeight: target.scrollHeight,
+                    clientHeight: target.clientHeight,
+                    scrollTop: target.scrollTop,
                     rect: {
-                      left: r.left,
-                      top: r.top,
-                      width: r.width,
-                      height: r.height,
+                      left,
+                      top,
+                      width: Math.max(50, right - left),
+                      height: Math.max(50, bottom - top),
                     },
                   };
                 });
                 if (!rectInfo?.found || !rectInfo.rect) break;
-                const cx = Math.floor(rectInfo.rect.left + rectInfo.rect.width / 2);
-                const cy = Math.floor(rectInfo.rect.top + rectInfo.rect.height / 2);
-                await trustedWheel(tab.id, cx, cy, 1200);
-                await new Promise((r) => setTimeout(r, 800));
+                const cx = Math.floor(
+                  rectInfo.rect.left + rectInfo.rect.width / 2
+                );
+                const cy = Math.floor(
+                  rectInfo.rect.top + rectInfo.rect.height / 2
+                );
+                // 3 trusted wheels at the SCROLLER center
+                await trustedWheel(tab.id, cx, cy, 2500);
+                await new Promise((r) => setTimeout(r, 200));
+                await trustedWheel(tab.id, cx, cy, 2500);
+                await new Promise((r) => setTimeout(r, 200));
+                // Backup: keyboard PageDown (focus must be on panel)
+                await trustedKey(tab.id, "PageDown");
+                await new Promise((r) => setTimeout(r, 600));
+                scrollDiag.ticks = scrollI + 1;
+                scrollDiag.counts.push(rectInfo.count);
+                scrollDiag.lastTarget = rectInfo.targetClass;
+                scrollDiag.lastScrollTop = rectInfo.scrollTop;
+                scrollDiag.lastScrollHeight = rectInfo.scrollHeight;
+                // Plateau: if last 6 same count, bail
+                const arr = scrollDiag.counts;
+                if (arr.length >= 6) {
+                  const last6 = arr.slice(-6);
+                  if (last6.every((v) => v === last6[0])) break;
+                }
               }
-            } catch {}
+            } catch (err) {
+              scrollDiag.error = String(err?.message || err);
+            }
+            tabDiag.scroll = scrollDiag;
             // Belt-and-braces in-page scroll loop (kept for safety)
             try {
               await chrome.scripting.executeScript({

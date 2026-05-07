@@ -774,6 +774,7 @@ export function FsbTikTokOutreachSection() {
       console.log("[Test commentaires diag]", result);
       const sample = result.commenters.slice(0, 10).join(", ");
       const tab = result.diag?.tab;
+      const scroll = tab?.scroll;
       const tabStr = tab
         ? `\n\nDiag onglet "Commentaires" :\n` +
           `• debugger attaché : ${tab.attached ? "✓" : "✗"}\n` +
@@ -783,9 +784,17 @@ export function FsbTikTokOutreachSection() {
           `• clic trusted : ${tab.clicked ? "✓" : "✗"}\n` +
           `• comment-list après clic : ${
             tab.commentListAfter?.hasList
-              ? `✓ (${tab.commentListAfter.commentNodes} commentateurs visibles)`
+              ? `✓ (${tab.commentListAfter.commentNodes} initial)`
               : "✗"
-          }\n(diag complet en console F12)`
+          }\n` +
+          (scroll
+            ? `• scroll : ${scroll.ticks} ticks · counts ${
+                scroll.counts ? scroll.counts.slice(0, 15).join("→") : "—"
+              }${scroll.counts?.length > 15 ? "…" : ""}\n` +
+              `• scroller class: ${(scroll.lastTarget || "").slice(0, 40)}\n` +
+              `• scrollTop=${scroll.lastScrollTop} / scrollHeight=${scroll.lastScrollHeight}\n`
+            : "") +
+          `(diag complet en console F12)`
         : "";
       const msg = result.ok
         ? `✅ TEST commentaires\n\n` +
