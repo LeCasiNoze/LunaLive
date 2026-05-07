@@ -160,26 +160,46 @@ const EMPTY_STREAM: StreamInfo = {
   rumbleThumbnailUrl: null, channelSlug: null, channelUsername: null, title: null, viewers: 0,
 };
 
-// Toujours le stream de fabiozsis — même logique que sa page streamer
-function useStreamInfo() {
-  const [info, setInfo] = React.useState<StreamInfo>(EMPTY_STREAM);
+// Stream control suit fabiozsis OU lecasinoze : on prend celui qui est live
+// (les deux ne streament jamais simultanément). Fallback fabiozsis si aucun.
+const STREAM_CONTROL_SLUGS = ["fabiozsis", "lecasinoze"] as const;
+
+function pickActiveSlug(infos: Array<{ slug: string; isLive: boolean }>): string {
+  const live = infos.find((x) => x.isLive);
+  return live?.slug ?? STREAM_CONTROL_SLUGS[0];
+}
+
+function useStreamInfo(): StreamInfo & { activeSlug: string } {
+  const [state, setState] = React.useState<StreamInfo & { activeSlug: string }>(
+    { ...EMPTY_STREAM, activeSlug: STREAM_CONTROL_SLUGS[0] }
+  );
 
   React.useEffect(() => {
     const fetch_ = async () => {
       try {
-        const r = await fetch(`${LUNA_API_BASE}/streamers/fabiozsis`);
-        const j = await r.json().catch(() => null);
-        if (!j) return;
-        // Détecter la plateforme — même logique que useStreamerData
+        const responses = await Promise.all(
+          STREAM_CONTROL_SLUGS.map(async (slug) => {
+            try {
+              const r = await fetch(`${LUNA_API_BASE}/streamers/${slug}`);
+              const j = await r.json().catch(() => null);
+              return j ? { slug, data: j as any, isLive: !!j.isLive } : null;
+            } catch { return null; }
+          })
+        );
+        const valid = responses.filter((x): x is { slug: string; data: any; isLive: boolean } => !!x);
+        if (valid.length === 0) return;
+
+        const activeSlug = pickActiveSlug(valid);
+        const j = valid.find((x) => x.slug === activeSlug)!.data;
+
         let platform: "rumble" | "dlive" | null = null;
         if (j.streamProvider === "rumble" || j.platform === "rumble" || j.rumbleConnection?.username) {
           platform = "rumble";
         } else if (j.dliveConnection?.enabled || j.channelSlug || j.channelUsername) {
           platform = "dlive";
         }
-        console.log("[StreamInfo] fabiozsis isLive:", !!j.isLive, "platform:", platform,
-          "rumbleEmbedUrl:", j.rumbleEmbedUrl, "channelSlug:", j.channelSlug);
-        setInfo({
+        console.log(`[StreamInfo] active=${activeSlug} isLive=${!!j.isLive} platform=${platform}`);
+        setState({
           isLive: !!j.isLive,
           platform,
           rumbleEmbedUrl: j.rumbleEmbedUrl ?? null,
@@ -189,6 +209,7 @@ function useStreamInfo() {
           channelUsername: j.channelUsername ?? null,
           title: j.title ?? null,
           viewers: j.viewers ?? 0,
+          activeSlug,
         });
       } catch (e) {
         console.error("[StreamInfo] fetch error:", e);
@@ -199,16 +220,16 @@ function useStreamInfo() {
     return () => clearInterval(id);
   }, []);
 
-  return info;
+  return state;
 }
 
-function useFollowers() {
+function useFollowers(slug: string) {
   const [count, setCount] = React.useState<number | null>(null);
   React.useEffect(() => {
     const fetch_ = async () => {
       try {
         const token = localStorage.getItem("lunalive_token_v1") || "";
-        const r = await fetch(`${LUNA_API_BASE}/me/overlay/followers?slug=fabiozsis`, {
+        const r = await fetch(`${LUNA_API_BASE}/me/overlay/followers?slug=${encodeURIComponent(slug)}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         const j = await r.json().catch(() => null);
@@ -218,7 +239,7 @@ function useFollowers() {
     fetch_();
     const id = setInterval(fetch_, 60_000);
     return () => clearInterval(id);
-  }, []);
+  }, [slug]);
   return count;
 }
 
@@ -1611,7 +1632,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   const socket = useSocket();
   const timer = useStreamTimer();
   const streamInfo = useStreamInfo();
-  const followers = useFollowers();
+  const followers = useFollowers(streamInfo.activeSlug);
 
   // My identity — derived from username, stable (exact match, plus de fallback partagé)
   const mySlug = React.useMemo(() => slugFromUsername(user.username), [user.username]);
@@ -2030,7 +2051,8 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
         {/* Chat — hauteur fixée par bottomRow, scroll interne */}
         <div style={{ ...S.card, flex: "1 1 0", minWidth: 0, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", height: "100%" }}>
           <ChatPanel
-            slug="fabiozsis"
+            slug={streamInfo.activeSlug}
+            key={streamInfo.activeSlug}
             compact={false}
             autoFocus={false}
             visualMode="popup"
