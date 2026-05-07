@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 
-export async function mig111_instagram_agenda_board(pool: Pool) {
+export async function mig112_instagram_agenda_board(pool: Pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS instagram_agenda_board (
       id                INT  PRIMARY KEY,
