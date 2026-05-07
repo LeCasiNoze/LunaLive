@@ -1247,49 +1247,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   const checkRes = await chrome.scripting.executeScript({
                     target: { tabId: tab.id },
                     func: () => {
-                      // Strategy 1: legacy role="dialog"
+                      // Priorité 1: la classe TikTok UserListContainer est
+                      // PREUVE SUFFISANTE qu'on est dans la modale.
                       let scope =
-                        document.querySelector('[role="dialog"]') ||
-                        document.querySelector('div[aria-modal="true"]') ||
+                        document.querySelector(
+                          '[class*="DivUserListContainer"]'
+                        ) ||
+                        document.querySelector(
+                          '[class*="UserListContainer"]'
+                        ) ||
                         null;
-                      // Strategy 2: any div containing both user anchors AND
-                      // follow-buttons (= user list pattern).
+                      let scopeSource = scope ? "class" : null;
+                      // Priorité 2: legacy role=dialog (TikTok ne l'utilise
+                      // plus mais on garde pour compat)
                       if (!scope) {
-                        const followBtns = document.querySelectorAll(
+                        scope =
+                          document.querySelector('[role="dialog"]') ||
+                          document.querySelector('div[aria-modal="true"]') ||
+                          null;
+                        if (scope) scopeSource = "dialog";
+                      }
+                      // Priorité 3: shape — div avec ≥3 follow-buttons + anchors
+                      if (!scope) {
+                        const fb = document.querySelectorAll(
                           '[data-e2e="follow-button"]'
                         );
-                        if (followBtns.length >= 3) {
-                          // Find the lowest common ancestor that contains them all
-                          // and has user anchors too. Walk up from the first.
-                          let node = followBtns[0].parentElement;
+                        if (fb.length >= 3) {
+                          let node = fb[0].parentElement;
                           while (node && node !== document.body) {
-                            const localBtns = node.querySelectorAll(
+                            const lb = node.querySelectorAll(
                               '[data-e2e="follow-button"]'
                             );
-                            const localLinks = node.querySelectorAll(
+                            const ll = node.querySelectorAll(
                               'a[href^="/@"]'
                             );
                             if (
-                              localBtns.length >= 3 &&
-                              localLinks.length >= 3 &&
-                              localBtns.length >= followBtns.length / 2
+                              lb.length >= 3 &&
+                              ll.length >= 3 &&
+                              lb.length >= fb.length / 2
                             ) {
                               scope = node;
+                              scopeSource = "shape";
                               break;
                             }
                             node = node.parentElement;
                           }
                         }
-                      }
-                      // Strategy 3: known TikTok class pattern
-                      if (!scope) {
-                        scope =
-                          document.querySelector(
-                            '[class*="DivUserListContainer"]'
-                          ) ||
-                          document.querySelector(
-                            '[class*="UserListContainer"]'
-                          );
                       }
                       if (!scope) return { open: false };
                       const links = scope.querySelectorAll('a[href^="/@"]');
@@ -1300,15 +1303,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         open: true,
                         anchors: links.length,
                         followBtns: followBtns.length,
-                        scopeClass: (scope.className || "").slice(0, 60),
+                        scopeSource,
+                        scopeClass: (scope.className || "").toString().slice(0, 60),
                       };
                     },
                   });
                   const out = checkRes && checkRes[0] && checkRes[0].result;
                   lastCheck = out;
-                  // Accept if we see the user-list shape (≥3 anchors AND
-                  // ≥3 follow-buttons) — that's a confirmed users list.
-                  if (out?.open && out.anchors >= 3 && out.followBtns >= 3) {
+                  // ACCEPT if:
+                  // - scope detected via class match (truly the modal) AND ≥3 anchors
+                  // - OR scope detected via shape (≥3 follow-buttons by construction)
+                  // - OR legacy dialog AND ≥3 anchors
+                  if (
+                    out?.open &&
+                    out.anchors >= 3 &&
+                    (out.scopeSource === "class" ||
+                      out.scopeSource === "dialog" ||
+                      out.followBtns >= 3)
+                  ) {
                     modalOpened = true;
                     break;
                   }
@@ -1612,12 +1624,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 func: (max, ownHandle) => {
                   const HRE = /^[A-Za-z0-9._]{1,30}$/;
                   const set = new Set();
-                  // Same scope detection: TikTok modale n'a plus role=dialog.
-                  // On exige une zone avec ≥3 anchors + ≥3 follow-buttons.
+                  // Priorité: class match TikTok (preuve = vraie modale)
                   let scope =
-                    document.querySelector('[role="dialog"]') ||
-                    document.querySelector('div[aria-modal="true"]') ||
+                    document.querySelector('[class*="DivUserListContainer"]') ||
+                    document.querySelector('[class*="UserListContainer"]') ||
                     null;
+                  if (!scope) {
+                    scope =
+                      document.querySelector('[role="dialog"]') ||
+                      document.querySelector('div[aria-modal="true"]') ||
+                      null;
+                  }
                   if (!scope) {
                     const fb = document.querySelectorAll(
                       '[data-e2e="follow-button"]'
@@ -1640,11 +1657,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         node = node.parentElement;
                       }
                     }
-                  }
-                  if (!scope) {
-                    scope =
-                      document.querySelector('[class*="DivUserListContainer"]') ||
-                      document.querySelector('[class*="UserListContainer"]');
                   }
                   if (!scope) {
                     return {
