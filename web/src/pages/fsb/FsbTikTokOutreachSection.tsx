@@ -18,6 +18,7 @@ import {
   enrichTikTokTopCandidates,
   postCandidateFollows,
   postSeedFollows,
+  purgeTikTokFollowGraph,
   importSeedNetworkSignals,
   importTikTokBulk,
   importTikTokNetworkHandle,
@@ -613,6 +614,27 @@ export function FsbTikTokOutreachSection() {
       setEnrichProgress(null);
       setEnriching(false);
       await reloadCandidates();
+    }
+  };
+
+  const handlePurgeFollowGraph = async () => {
+    if (
+      !window.confirm(
+        "Purger COMPLÈTEMENT le graphe de follows ?\n\n" +
+          "→ supprime tiktok_seed_follows + tiktok_candidate_follows + signaux 'following' dans network_links\n" +
+          "→ utile si les anciens scrapes ont capturé des suggestions TikTok au lieu des vrais /following\n" +
+          "→ tu devras relancer 📡 Scanner /following seeds après"
+      )
+    )
+      return;
+    try {
+      const r = await purgeTikTokFollowGraph();
+      window.alert(
+        `Purge OK : ${r.deletedSeedFollows} seed_follows, ${r.deletedCandidateFollows} candidate_follows, ${r.deletedFollowingLinks} signaux 'following'`
+      );
+      await reloadCandidates();
+    } catch (err: any) {
+      window.alert(`Purge: ${err?.message || err}`);
     }
   };
 
@@ -1816,6 +1838,16 @@ export function FsbTikTokOutreachSection() {
             style={{ borderColor: "#f04e4e", color: "#f04e4e" }}
           >
             🧹 Auto-dismiss célébrités
+          </button>
+          <button
+            type="button"
+            className="fsb-btn"
+            onClick={handlePurgeFollowGraph}
+            disabled={enriching}
+            title="Vide tiktok_seed_follows et tiktok_candidate_follows (à utiliser si scrape corrompu)"
+            style={{ borderColor: "#94a3b8", color: "#94a3b8" }}
+          >
+            🗑️ Purger graphe follows
           </button>
         </div>
 

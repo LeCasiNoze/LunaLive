@@ -480,6 +480,15 @@ export function listSeedScannedVideos(seedId: string) {
   );
 }
 
+export function purgeTikTokFollowGraph() {
+  return request<{
+    ok: true;
+    deletedSeedFollows: number;
+    deletedCandidateFollows: number;
+    deletedFollowingLinks: number;
+  }>(`/api/fsb/tiktok/network/follow-graph/purge`, { method: "POST" });
+}
+
 export function postSeedFollows(seedHandle: string, follows: string[]) {
   return request<{ ok: true; seedHandle: string; count: number }>(
     `/api/fsb/tiktok/network/seed-follows`,

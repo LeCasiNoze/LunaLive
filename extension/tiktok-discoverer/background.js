@@ -989,31 +989,103 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (tabId !== tab.id || info.status !== "complete") return;
             chrome.tabs.onUpdated.removeListener(onUpdated);
 
-            // Wait a bit longer than usual — focused tab loads heavier content.
-            await new Promise((r) => setTimeout(r, 4000));
+            // Wait for SPA to mount.
+            await new Promise((r) => setTimeout(r, 4500));
 
-            // Click "Following" stat to open modal
-            try {
-              await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                func: () => {
-                  const btn =
-                    document.querySelector('[data-e2e="following-count"]') ||
-                    document.querySelector('[data-e2e="following"]');
-                  if (btn) {
-                    const clickable =
-                      btn.closest("button,a,[role='button']") ||
-                      btn.parentElement ||
-                      btn;
-                    if (clickable && typeof clickable.click === "function") {
-                      clickable.click();
+            // Try opening the modal up to 4 times with different strategies
+            let modalOpened = false;
+            for (let attempt = 0; attempt < 4 && !modalOpened; attempt++) {
+              try {
+                const clickRes = await chrome.scripting.executeScript({
+                  target: { tabId: tab.id },
+                  func: (which) => {
+                    const tried = [];
+                    function tryClick(el) {
+                      if (!el) return false;
+                      try {
+                        // Prefer the closest interactive ancestor
+                        const interactive =
+                          el.closest("button,a,[role='button']") ||
+                          el.closest("strong,span")?.parentElement ||
+                          el.parentElement ||
+                          el;
+                        if (typeof interactive.click === "function") {
+                          interactive.click();
+                          tried.push(interactive.tagName + ":" + (interactive.className || "").slice(0, 30));
+                          return true;
+                        }
+                      } catch {}
+                      return false;
                     }
+                    // Strategy variants
+                    const candidates = [
+                      // primary stat element
+                      document.querySelector('[data-e2e="following-count"]'),
+                      document.querySelector('[data-e2e="following"]'),
+                      // its parent strong/anchor (TikTok wraps the count)
+                      document.querySelector('strong[data-e2e="following-count"]'),
+                      // text-based: button/anchor whose accessible name contains "following"
+                      ...(Array.from(document.querySelectorAll('button,a,[role="button"]')).filter((el) => {
+                        const txt = (el.textContent || "").trim().toLowerCase();
+                        return /(following|abonnements|abonnement\b)/.test(txt) && txt.length < 80;
+                      })),
+                    ].filter(Boolean);
+
+                    let clicked = false;
+                    for (const c of candidates) {
+                      if (tryClick(c)) {
+                        clicked = true;
+                        break;
+                      }
+                    }
+                    return { clicked, tried, candidatesFound: candidates.length, attempt: which };
+                  },
+                  args: [attempt],
+                });
+                // Wait for modal to actually appear (poll up to 4s)
+                for (let pollI = 0; pollI < 8; pollI++) {
+                  await new Promise((r) => setTimeout(r, 500));
+                  const checkRes = await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    func: () => {
+                      const dialog =
+                        document.querySelector('[role="dialog"]') ||
+                        document.querySelector('div[aria-modal="true"]');
+                      if (!dialog) return { open: false };
+                      // Verify it has user anchors (otherwise it's a different dialog)
+                      const links = dialog.querySelectorAll('a[href^="/@"]');
+                      return {
+                        open: true,
+                        anchors: links.length,
+                        title: (dialog.querySelector('h1,h2,[role="heading"]')?.textContent || "").slice(0, 40),
+                      };
+                    },
+                  });
+                  const out = checkRes && checkRes[0] && checkRes[0].result;
+                  if (out?.open && (out.anchors > 0 || /follow|abon/i.test(out.title || ""))) {
+                    modalOpened = true;
+                    break;
                   }
-                },
-                args: [],
+                }
+                // Last resort for next attempt: scroll up to ensure stats bar visible
+                if (!modalOpened) {
+                  await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    func: () => window.scrollTo(0, 0),
+                  });
+                  await new Promise((r) => setTimeout(r, 1500));
+                }
+              } catch {
+                // continue to next attempt
+              }
+            }
+            if (!modalOpened) {
+              return finish({
+                ok: false,
+                error: "modal_not_opened",
+                diag: { handle: cleaned },
               });
-            } catch {}
-            await new Promise((r) => setTimeout(r, 2500));
+            }
 
             // Robust scroll loop: target ONLY the modal/dialog scroller,
             // never the page background.
@@ -1140,8 +1212,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   const dialog =
                     document.querySelector('[role="dialog"]') ||
                     document.querySelector('div[aria-modal="true"]');
-                  const scope = dialog || document;
-                  const links = scope.querySelectorAll('a[href^="/@"]');
+                  // STRICT: if no dialog, return empty + bail. Do NOT fall back
+                  // to document — that's how we used to capture sidebar
+                  // recommendations as if they were /following.
+                  if (!dialog) {
+                    return {
+                      handles: [],
+                      diag: {
+                        modalFound: false,
+                        anchorsInModal: 0,
+                        anchorsTotalPage: document.querySelectorAll('a[href^="/@"]').length,
+                        title: document.title.slice(0, 80),
+                        bail: "no_dialog_at_extract",
+                      },
+                    };
+                  }
+                  const links = dialog.querySelectorAll('a[href^="/@"]');
                   for (const a of Array.from(links)) {
                     const href = a.getAttribute("href") || "";
                     const m = href.match(/^\/@([A-Za-z0-9._]{1,30})/);
@@ -1164,8 +1250,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 args: [maxHandles, cleaned],
               });
               const out = (results && results[0] && results[0].result) || null;
+              // Reject if extraction bailed (no dialog) or got 0 handles
+              const handlesOk = out && out.handles && out.handles.length > 0;
               return finish({
-                ok: !!out,
+                ok: !!handlesOk,
+                error: handlesOk ? undefined : "no_handles_extracted",
                 handle: cleaned,
                 handles: out?.handles || [],
                 total: out?.handles?.length || 0,

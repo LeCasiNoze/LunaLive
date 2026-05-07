@@ -2351,6 +2351,27 @@ tiktokOutreachRouter.post(
   })
 );
 
+// Purge complète du graphe de follows (utilisé après détection de scrape
+// corrompu, ex: capture des recommandations TikTok au lieu des /following).
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/network/follow-graph/purge",
+  a(async (_req, res) => {
+    const a1 = await pool.query(`DELETE FROM tiktok_seed_follows`);
+    const a2 = await pool.query(`DELETE FROM tiktok_candidate_follows`);
+    // Aussi nettoyer les signaux 'following' dans tiktok_network_links car
+    // c'est ce qui a été inséré en miroir lors du dump.
+    const a3 = await pool.query(
+      `DELETE FROM tiktok_network_links WHERE signal_type = 'following'`
+    );
+    return res.json({
+      ok: true,
+      deletedSeedFollows: a1.rowCount || 0,
+      deletedCandidateFollows: a2.rowCount || 0,
+      deletedFollowingLinks: a3.rowCount || 0,
+    });
+  })
+);
+
 // L'extension dump la /following d'un candidat → on stocke pour mutualité.
 const candidateFollowsSchema = z.object({
   candidateHandle: z.string().trim().min(1).max(40),
