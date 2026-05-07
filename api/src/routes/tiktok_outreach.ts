@@ -1739,9 +1739,10 @@ tiktokOutreachRouter.get(
                 ELSE 0
               END
             -- 3) Bonus niche bio (whitelist mots-clés)
+            --    Inclut prank/facecam/irl en plus du casino/streaming
             + CASE
                 WHEN cp.bio IS NULL THEN 0
-                WHEN LOWER(cp.bio) ~ '(casino|slot|bonus|hunt|gambling|streamer|twitch|kick|jeu |jeux |pari|stake|roobet|winamax|betclic|unibet|pmu|freespin|bonanza|rtp|blackjack|roulette|poker|crash|plinko)'
+                WHEN LOWER(cp.bio) ~ '(casino|slot|bonus|hunt|gambling|streamer|twitch|kick|jeu |jeux |pari|stake|roobet|winamax|betclic|unibet|pmu|freespin|bonanza|rtp|blackjack|roulette|poker|crash|plinko|prank|prankster|face cam|facecam|irl|live |stream|gamer|gaming|content creator|créateur de contenu|youtubeur|youtuber|cam ?girl|cam ?boy)'
                   THEN 80
                 ELSE 0
               END
@@ -1762,23 +1763,33 @@ tiktokOutreachRouter.get(
                 WHEN cp.follower_count BETWEEN 200000 AND 500000 THEN 20
                 ELSE 0
               END
-            -- 7) Pénalité célébrité : grosse account + zéro mutuel = 99% non-peer
+            -- 7) Pénalité célébrité DURE : >=2M + zéro mutuel = vraie célébrité
+            --    (Popcorn 8M, Booba 4M, Carrefour officiel 2M+).
+            --    Pas de palier intermédiaire pour éviter faux positifs.
             + CASE
                 WHEN cp.follower_count IS NOT NULL
-                     AND cp.follower_count >= 1000000
+                     AND cp.follower_count >= 2000000
                      AND COALESCE(s2.mutual_count, 0) = 0
                   THEN -300
-                WHEN cp.follower_count IS NOT NULL
-                     AND cp.follower_count >= 500000
-                     AND COALESCE(s2.mutual_count, 0) = 0
-                  THEN -150
                 ELSE 0
               END
-            -- 8) Pénalité bio hors-niche
+            -- 8) Pénalité bio hors-niche LIGHT : musique / humour seul = -50.
+            --    Pas -200 (trop fort, virait des peers qui font aussi pranks).
+            --    Mutual ≥ 1 protège toujours (annule la pénalité).
             + CASE
                 WHEN cp.bio IS NULL THEN 0
-                WHEN LOWER(cp.bio) ~ '(rappeur|chanteur|humoriste|sketch|magasin|supermarch|cuisine|recette|chef cuisinier|tourisme|journaliste|presse|député|depute|ministre)'
-                     AND LOWER(cp.bio) !~ '(casino|slot|bonus|hunt|streamer|jeu |jeux |pari|twitch|kick)'
+                WHEN COALESCE(s2.mutual_count, 0) >= 1 THEN 0
+                WHEN LOWER(cp.bio) ~ '(rappeur|chanteur|musicien|beatmaker|\bdj\b|humoriste|comédien|comedien|sketch|chef cuisinier|recette)'
+                     AND LOWER(cp.bio) !~ '(casino|slot|bonus|hunt|streamer|prank|facecam|face cam|irl|jeu |jeux |pari|twitch|kick)'
+                  THEN -50
+                ELSE 0
+              END
+            -- 9) Pénalité bio hors-niche DURE : que les cas évidents
+            --    (magasin officiel, presse, politique). -200, mais mutual protège.
+            + CASE
+                WHEN cp.bio IS NULL THEN 0
+                WHEN COALESCE(s2.mutual_count, 0) >= 1 THEN 0
+                WHEN LOWER(cp.bio) ~ '(magasin|supermarch|carrefour|leclerc|auchan|monoprix|député|depute|ministre|sénateur|senateur|journaliste|presse|compte officiel|marque officielle)'
                   THEN -200
                 ELSE 0
               END
@@ -1813,22 +1824,22 @@ tiktokOutreachRouter.get(
         cp.avatar_url     AS cand_avatar_url,
         cp.display_name   AS cand_display_name,
         cp.last_enriched_at AS cand_enriched_at,
-        -- Verdict niche pour l'UI
+        -- Verdict niche pour l'UI. Mutual ≥ 1 prime tout (peer confirmé).
         CASE
+          WHEN s2.mutual_count >= 1 THEN 'peer_confirmed'
           WHEN cp.follower_count IS NOT NULL
-               AND cp.follower_count >= 1000000
+               AND cp.follower_count >= 2000000
                AND COALESCE(s2.mutual_count, 0) = 0
             THEN 'celebrity'
           WHEN cp.bio IS NOT NULL
-               AND LOWER(cp.bio) ~ '(rappeur|chanteur|humoriste|sketch|magasin|supermarch|cuisine|recette)'
-               AND LOWER(cp.bio) !~ '(casino|slot|bonus|hunt|streamer)'
+               AND LOWER(cp.bio) ~ '(magasin|supermarch|député|depute|ministre|presse|compte officiel|marque officielle)'
             THEN 'off_niche'
-          WHEN s2.mutual_count >= 1 THEN 'peer_confirmed'
           WHEN cp.bio IS NOT NULL
-               AND LOWER(cp.bio) ~ '(casino|slot|bonus|hunt|gambling|streamer|twitch|kick)'
+               AND LOWER(cp.bio) ~ '(casino|slot|bonus|hunt|gambling|streamer|twitch|kick|prank|facecam|face cam|irl|gaming|youtubeur|youtuber)'
             THEN 'peer_likely'
           WHEN cp.follower_count IS NOT NULL
                AND cp.follower_count < 1000
+               AND COALESCE(s2.mutual_count, 0) = 0
             THEN 'fan'
           ELSE 'unknown'
         END AS niche_verdict
@@ -2460,22 +2471,23 @@ tiktokOutreachRouter.post(
     const dryRun =
       String(req.body?.dryRun ?? "0") === "1" || req.body?.dryRun === true;
 
+    // BLACKLIST DURE — uniquement les comptes qui ne PEUVENT PAS être des
+    // peers du milieu casino/streaming/prank. Pas de musique/humour ici car
+    // beaucoup de créateurs touchent à plusieurs registres.
     const NICHE_BLACKLIST = [
-      "rappeur", "rap ", "musique", "chanteur", "beatmaker",
-      "humour", "humoriste", "sketch", "comédien", "comedien",
-      "actu", "actualite", "actualité", "journaliste", "presse",
-      "député", "depute", "politique", "ministre",
-      "magasin", "supermarché", "supermarche", "carrefour",
-      "boutique", "marque officielle", "compte officiel",
-      "cuisine", "recette ", "chef cuisinier",
-      "voyage", "tourisme",
-      "foot ", "football ", "basket ", "mma ", "ufc ",
+      "magasin", "supermarché", "supermarche", "carrefour", "leclerc",
+      "auchan", "monoprix", "intermarché", "intermarche",
+      "député", "depute", "ministre", "sénateur", "senateur",
+      "journaliste", "presse", "compte officiel", "marque officielle",
     ];
+    // WHITELIST — protège de l'auto-dismiss + boost dans le score
     const NICHE_WHITELIST = [
       "casino", "slot", "bonus", "hunt", "gambling", "streamer",
       "twitch", "kick", "jeu", "jeux d", "pari", "stake", "roobet",
       "winamax", "betclic", "unibet", "pmu", "freespin", "bonanza",
       "rtp", "blackjack", "roulette", "poker", "crash", "plinko",
+      "prank", "prankster", "face cam", "facecam", "irl", "live",
+      "gaming", "gamer", "content creator", "youtuber", "youtubeur",
     ];
 
     // 1) Trouver les candidats avec follower_count >= 500_000 ET aucun mutuel
@@ -2517,25 +2529,27 @@ tiktokOutreachRouter.post(
       const followers = r.follower_count != null ? Number(r.follower_count) : null;
       const mutual = Number(r.mutual_count || 0);
 
-      // Si on a un mutuel, on ne dismiss jamais
+      // Mutuel ≥ 1 → JAMAIS dismiss (signal le plus fort, prime tout)
       if (mutual >= 1) continue;
 
       // Whitelist niche → on protège
       const hasWhitelist = NICHE_WHITELIST.some((kw) => bio.includes(kw));
       if (hasWhitelist) continue;
 
-      // Cas 1: célébrité = grosse follower count, pas mutuel
-      if (followers !== null && followers >= 500_000) {
+      // Cas 1 : célébrité dure = ≥ 2M followers + pas mutuel
+      // (Popcorn 8M, Booba 4M, Carrefour officiel 2M+)
+      if (followers !== null && followers >= 2_000_000) {
         toDismiss.push({ handle, reason: `celebrity_${followers}` });
         continue;
       }
-      // Cas 2: bio explicitement hors-niche
+      // Cas 2 : bio explicitement hors-niche (blacklist DURE seulement)
       const blacklistHit = NICHE_BLACKLIST.find((kw) => bio.includes(kw));
       if (blacklistHit) {
         toDismiss.push({ handle, reason: `niche_blacklist_${blacklistHit.trim()}` });
         continue;
       }
-      // Cas 3: micro-fan certain (followers connu et < 100, pas mutuel)
+      // Cas 3 : micro-fan certain (followers connu et < 100, pas mutuel,
+      // bio vide ou non-niche)
       if (followers !== null && followers < 100) {
         toDismiss.push({ handle, reason: `micro_fan_${followers}` });
         continue;
