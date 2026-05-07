@@ -88,6 +88,31 @@
       return;
     }
 
+    if (data.type === "TEST_VIDEO_COMMENTS") {
+      const requestId = data.requestId;
+      chrome.runtime.sendMessage(
+        { type: "LUNALIVE_TIKTOK_TEST_VIDEO_COMMENTS", payload: data.payload || {} },
+        (resp) => {
+          window.postMessage(
+            {
+              source: "lunalive-tiktok-ext",
+              type: "TEST_VIDEO_COMMENTS_RESULT",
+              requestId,
+              ok: !!resp?.ok,
+              commenters: resp?.commenters || [],
+              desc: resp?.desc || "",
+              diag: resp?.diag || null,
+              error:
+                resp?.error ||
+                (resp ? null : chrome.runtime.lastError?.message || "no_response"),
+            },
+            window.location.origin
+          );
+        }
+      );
+      return;
+    }
+
     if (data.type === "DUMP_FOLLOWING") {
       const requestId = data.requestId;
       chrome.runtime.sendMessage(

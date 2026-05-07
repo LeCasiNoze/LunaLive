@@ -2351,6 +2351,34 @@ tiktokOutreachRouter.post(
   })
 );
 
+// FULL RESET du réseau de découverte. Conserve UNIQUEMENT :
+//   - tiktok_seed_accounts (les seeds = partenaires actuels)
+//   - tiktok_influencers (la DSB existante)
+//   - tiktok_affil_patterns (config affil)
+// Vide tout le reste pour partir sur une base propre.
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/network/full-reset",
+  a(async (_req, res) => {
+    const r1 = await pool.query(`DELETE FROM tiktok_network_links`);
+    const r2 = await pool.query(`DELETE FROM tiktok_seed_follows`);
+    const r3 = await pool.query(`DELETE FROM tiktok_candidate_follows`);
+    const r4 = await pool.query(`DELETE FROM tiktok_candidate_profiles`);
+    const r5 = await pool.query(`DELETE FROM tiktok_dismissed_candidates`);
+    const r6 = await pool.query(`DELETE FROM tiktok_seed_scanned_videos`);
+    return res.json({
+      ok: true,
+      cleared: {
+        network_links: r1.rowCount || 0,
+        seed_follows: r2.rowCount || 0,
+        candidate_follows: r3.rowCount || 0,
+        candidate_profiles: r4.rowCount || 0,
+        dismissed: r5.rowCount || 0,
+        scanned_videos: r6.rowCount || 0,
+      },
+    });
+  })
+);
+
 // Purge complète du graphe de follows (utilisé après détection de scrape
 // corrompu, ex: capture des recommandations TikTok au lieu des /following).
 tiktokOutreachRouter.post(

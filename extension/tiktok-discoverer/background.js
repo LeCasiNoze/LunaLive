@@ -1273,6 +1273,161 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // TEST: scrape commenters of a single TikTok video URL (standalone).
+  // Used by the FSB Board test panel to validate that the comment-list
+  // scrolling works before running the full pipeline.
+  if (message?.type === "LUNALIVE_TIKTOK_TEST_VIDEO_COMMENTS") {
+    (async () => {
+      const { videoUrl = "", maxScrollTicks = 12 } = message.payload || {};
+      if (!/^https?:\/\/(www\.)?tiktok\.com\/.+\/video\/\d+/i.test(videoUrl)) {
+        sendResponse({ ok: false, error: "invalid_video_url" });
+        return;
+      }
+      const senderTabId = sender.tab?.id || null;
+      const result = await new Promise((resolve) => {
+        chrome.tabs.create({ url: videoUrl, active: true }, async (tab) => {
+          if (chrome.runtime.lastError || !tab?.id) {
+            return resolve({
+              ok: false,
+              error: chrome.runtime.lastError?.message || "tab_create_failed",
+            });
+          }
+          let done = false;
+          const finish = (r) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            if (senderTabId)
+              chrome.tabs.update(senderTabId, { active: true }).catch(() => {});
+            chrome.tabs.remove(tab.id).catch(() => {});
+            resolve(r);
+          };
+          const timer = setTimeout(
+            () => finish({ ok: false, error: "video_test_timeout" }),
+            90_000
+          );
+          const onUpdated = async (tabId, info) => {
+            if (tabId !== tab.id || info.status !== "complete") return;
+            chrome.tabs.onUpdated.removeListener(onUpdated);
+            await new Promise((r) => setTimeout(r, 4000));
+            // Scroll the comment panel
+            try {
+              await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: (max) =>
+                  new Promise((resolve) => {
+                    let i = 0;
+                    let last = -1;
+                    let stable = 0;
+                    const tick = () => {
+                      const panels = [
+                        document.querySelector('[data-e2e="comment-list"]'),
+                        document.querySelector('[data-e2e="comment-list-container"]'),
+                        ...Array.from(document.querySelectorAll('[data-e2e*="comment"]')),
+                      ].filter(Boolean);
+                      let scrolled = false;
+                      for (const p of panels) {
+                        try {
+                          // Find the deepest scrollable inside or use the panel itself
+                          let target = p;
+                          const all = p.querySelectorAll("*");
+                          for (const el of Array.from(all)) {
+                            try {
+                              const cs = getComputedStyle(el);
+                              if (
+                                (cs.overflowY === "auto" || cs.overflowY === "scroll") &&
+                                el.scrollHeight - el.clientHeight > 50
+                              ) {
+                                target = el;
+                                break;
+                              }
+                            } catch {}
+                          }
+                          target.scrollBy({ top: 1800 });
+                          target.scrollTop = target.scrollTop + 1800;
+                          scrolled = true;
+                        } catch {}
+                      }
+                      const count = document.querySelectorAll(
+                        '[data-e2e^="comment-username"], [data-e2e*="comment-author"]'
+                      ).length;
+                      if (count === last) stable++;
+                      else {
+                        stable = 0;
+                        last = count;
+                      }
+                      i++;
+                      if (i < max && stable < 4) setTimeout(tick, 800);
+                      else resolve({ ticks: i, finalCount: count, scrolled });
+                    };
+                    tick();
+                  }),
+                args: [maxScrollTicks],
+              });
+            } catch {}
+            try {
+              const results = await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: () => {
+                  const HRE = /^[A-Za-z0-9._]{1,30}$/;
+                  const set = new Set();
+                  const nodes = document.querySelectorAll(
+                    '[data-e2e^="comment-username"] a, [data-e2e*="comment-author"] a, [data-e2e^="comment-username"]'
+                  );
+                  for (const n of Array.from(nodes)) {
+                    const href = (n.getAttribute && n.getAttribute("href")) || "";
+                    const m = href.match(/^\/@([A-Za-z0-9._]{1,30})/);
+                    if (m && HRE.test(m[1])) set.add(m[1].toLowerCase());
+                  }
+                  // Fallback: scan all anchors but only inside comment containers
+                  if (set.size === 0) {
+                    const containers = document.querySelectorAll(
+                      '[data-e2e="comment-list"], [data-e2e*="comment-item"]'
+                    );
+                    for (const c of Array.from(containers)) {
+                      const links = c.querySelectorAll('a[href^="/@"]');
+                      for (const a of Array.from(links)) {
+                        const href = a.getAttribute("href") || "";
+                        const m = href.match(/^\/@([A-Za-z0-9._]{1,30})/);
+                        if (m && HRE.test(m[1])) set.add(m[1].toLowerCase());
+                      }
+                    }
+                  }
+                  const descEl = document.querySelector(
+                    '[data-e2e="browse-video-desc"], [data-e2e="video-desc"]'
+                  );
+                  return {
+                    commenters: Array.from(set),
+                    desc: descEl?.innerText || "",
+                    diag: {
+                      anchorsTotal: document.querySelectorAll('a[href^="/@"]').length,
+                      hasDesc: !!descEl,
+                      title: document.title.slice(0, 80),
+                    },
+                  };
+                },
+                args: [],
+              });
+              const out = (results && results[0] && results[0].result) || null;
+              return finish({
+                ok: !!out && out.commenters?.length > 0,
+                error: out && out.commenters?.length > 0 ? undefined : "no_commenters",
+                commenters: out?.commenters || [],
+                desc: out?.desc || "",
+                diag: out?.diag || null,
+              });
+            } catch (err) {
+              return finish({ ok: false, error: String(err?.message || err) });
+            }
+          };
+          chrome.tabs.onUpdated.addListener(onUpdated);
+        });
+      });
+      sendResponse(result);
+    })();
+    return true;
+  }
+
   return false;
 });
 

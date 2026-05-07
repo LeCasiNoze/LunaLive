@@ -16,6 +16,7 @@ import {
   dismissTikTokCandidate,
   enrichTikTokCandidatesBulk,
   enrichTikTokTopCandidates,
+  fullResetTikTokNetwork,
   postCandidateFollows,
   postSeedFollows,
   purgeTikTokFollowGraph,
@@ -610,6 +611,351 @@ export function FsbTikTokOutreachSection() {
       );
     } catch (err: any) {
       window.alert(`Mutual: ${err?.message || err}`);
+    } finally {
+      setEnrichProgress(null);
+      setEnriching(false);
+      await reloadCandidates();
+    }
+  };
+
+  // ─── FULL RESET ─────────────────────────────────────────────────────────
+  const handleFullReset = async () => {
+    if (
+      !window.confirm(
+        "🚨 RESET COMPLET du réseau de découverte ?\n\n" +
+          "→ Vide : signaux network, seed_follows, candidate_follows, candidate_profiles, dismissed, scanned_videos\n" +
+          "→ Conserve : tes 11 seeds (cards), DSB influencers, patterns affil\n\n" +
+          "Tu repartiras de zéro pour reconstruire le réseau."
+      )
+    )
+      return;
+    if (!window.confirm("Vraiment ? Cette action est irréversible.")) return;
+    try {
+      const r = await fullResetTikTokNetwork();
+      const c = r.cleared;
+      window.alert(
+        `Reset OK :\n` +
+          `• ${c.network_links} signaux network\n` +
+          `• ${c.seed_follows} seed_follows\n` +
+          `• ${c.candidate_follows} candidate_follows\n` +
+          `• ${c.candidate_profiles} profils enrichis\n` +
+          `• ${c.dismissed} dismissed\n` +
+          `• ${c.scanned_videos} scanned_videos`
+      );
+      await reloadCandidates();
+      await reloadSeeds();
+    } catch (err: any) {
+      window.alert(`Reset: ${err?.message || err}`);
+    }
+  };
+
+  // ─── TESTS ISOLÉS ───────────────────────────────────────────────────────
+  const handleTestFollowingScroll = async () => {
+    if (!extensionVersion) {
+      window.alert("Extension TikTok non détectée.");
+      return;
+    }
+    const handle = window.prompt(
+      "Handle TikTok à tester (ex: lecasinoze) :",
+      seeds[0]?.handle || ""
+    );
+    if (!handle) return;
+    setEnriching(true);
+    setEnrichProgress(`Test /following @${handle}…`);
+    try {
+      const r = await dumpFollowingViaExtension(handle);
+      const sample = r.handles.slice(0, 10).join(", ");
+      const msg = r.ok
+        ? `✅ TEST /following @${handle}\n\n` +
+          `${r.handles.length} handles capturés\n` +
+          `Exemple : ${sample}${r.handles.length > 10 ? "…" : ""}\n\n` +
+          (r.handles.length < 30
+            ? "⚠️ Peu de résultats — la modale n'a peut-être pas scrollé tout le long"
+            : "👍 Volume cohérent")
+        : `❌ TEST /following @${handle} ÉCHEC\n\nErreur : ${r.error}`;
+      window.alert(msg);
+    } finally {
+      setEnrichProgress(null);
+      setEnriching(false);
+    }
+  };
+
+  const handleTestVideoComments = async () => {
+    if (!extensionVersion) {
+      window.alert("Extension TikTok non détectée.");
+      return;
+    }
+    const url = window.prompt(
+      "URL TikTok vidéo (ex: https://www.tiktok.com/@xxx/video/1234567890) :",
+      ""
+    );
+    if (!url) return;
+    setEnriching(true);
+    setEnrichProgress(`Test commentaires…`);
+    try {
+      const result = await new Promise<{
+        ok: boolean;
+        commenters: string[];
+        desc?: string;
+        error?: string;
+        diag?: any;
+      }>((resolve) => {
+        const requestId = `tvc-${Date.now()}`;
+        const handler = (event: MessageEvent) => {
+          if (event.source !== window) return;
+          const data: any = event.data;
+          if (!data || data.source !== "lunalive-tiktok-ext") return;
+          if (
+            data.type === "TEST_VIDEO_COMMENTS_RESULT" &&
+            data.requestId === requestId
+          ) {
+            window.removeEventListener("message", handler);
+            resolve({
+              ok: !!data.ok,
+              commenters: data.commenters || [],
+              desc: data.desc,
+              error: data.error,
+              diag: data.diag,
+            });
+          }
+        };
+        window.addEventListener("message", handler);
+        window.postMessage(
+          {
+            source: "lunalive-tiktok-page",
+            type: "TEST_VIDEO_COMMENTS",
+            requestId,
+            payload: { videoUrl: url },
+          },
+          window.location.origin
+        );
+        setTimeout(() => {
+          window.removeEventListener("message", handler);
+          resolve({ ok: false, commenters: [], error: "extension_timeout" });
+        }, 100_000);
+      });
+      const sample = result.commenters.slice(0, 10).join(", ");
+      const msg = result.ok
+        ? `✅ TEST commentaires\n\n` +
+          `${result.commenters.length} commentateurs capturés\n` +
+          `Exemple : ${sample}${result.commenters.length > 10 ? "…" : ""}\n` +
+          `Description : ${(result.desc || "").slice(0, 150)}…\n\n` +
+          (result.commenters.length < 5
+            ? "⚠️ Peu — vérifier que le panneau commentaires a bien scrollé"
+            : "👍 Volume OK")
+        : `❌ TEST commentaires ÉCHEC\n\nErreur : ${result.error}\nDiag : ${JSON.stringify(result.diag)}`;
+      window.alert(msg);
+    } finally {
+      setEnrichProgress(null);
+      setEnriching(false);
+    }
+  };
+
+  const handleTestProfileEnrich = async () => {
+    if (!extensionVersion) {
+      window.alert("Extension TikTok non détectée.");
+      return;
+    }
+    const handle = window.prompt(
+      "Handle TikTok à enrichir en test (ex: popcorn) :",
+      ""
+    );
+    if (!handle) return;
+    setEnriching(true);
+    setEnrichProgress(`Test enrich @${handle}…`);
+    try {
+      const result = await new Promise<{ ok: boolean; profiles: any[]; error?: string }>(
+        (resolve) => {
+          const requestId = `tpe-${Date.now()}`;
+          const handler = (event: MessageEvent) => {
+            if (event.source !== window) return;
+            const data: any = event.data;
+            if (!data || data.source !== "lunalive-tiktok-ext") return;
+            if (
+              data.type === "SCRAPE_PROFILES_RESULT" &&
+              data.requestId === requestId
+            ) {
+              window.removeEventListener("message", handler);
+              resolve({
+                ok: !!data.ok,
+                profiles: data.profiles || [],
+                error: data.error,
+              });
+            }
+          };
+          window.addEventListener("message", handler);
+          window.postMessage(
+            {
+              source: "lunalive-tiktok-page",
+              type: "SCRAPE_PROFILES",
+              requestId,
+              payload: { handles: [handle] },
+            },
+            window.location.origin
+          );
+          setTimeout(() => {
+            window.removeEventListener("message", handler);
+            resolve({ ok: false, profiles: [], error: "extension_timeout" });
+          }, 60_000);
+        }
+      );
+      const p = result.profiles[0];
+      const msg = p
+        ? `✅ TEST enrich @${handle}\n\n` +
+          `displayName: ${p.displayName}\n` +
+          `followers: ${p.followerCount?.toLocaleString() || "?"}\n` +
+          `videos: ${p.videoCount || "?"}\n` +
+          `bio: ${(p.bio || "").slice(0, 120)}\n` +
+          `bioEmail: ${p.bioEmail || "—"}\n` +
+          `verified: ${p.verified ? "✓" : "—"}\n` +
+          `region: ${p.region || "—"}\n` +
+          `source: ${p.source}`
+        : `❌ TEST enrich @${handle} ÉCHEC\n\nErreur : ${result.error}`;
+      window.alert(msg);
+    } finally {
+      setEnrichProgress(null);
+      setEnriching(false);
+    }
+  };
+
+  // ─── PIPELINE COMPLÈTE AUTO ─────────────────────────────────────────────
+  const handleFullPipeline = async () => {
+    if (enriching) return;
+    if (!extensionVersion) {
+      window.alert("Extension TikTok non détectée.");
+      return;
+    }
+    if (
+      !window.confirm(
+        "🚀 LANCER PIPELINE COMPLÈTE\n\n" +
+          "Étapes (séquentiel) :\n" +
+          "1. Scanner /following de tous les seeds → graphe initial\n" +
+          "2. Enrichir profils des candidats (bio, followers)\n" +
+          "3. Vérifier mutualité top 50 candidats\n" +
+          "4. Auto-dismiss célébrités/hors-niche\n" +
+          "5. Reload final\n\n" +
+          `Compte ~${seeds.length * 0.5 + 30} min total. Continuer ?`
+      )
+    )
+      return;
+
+    setEnriching(true);
+    try {
+      // Étape 1: scan /following de tous les seeds
+      setEnrichProgress("Pipeline 1/5 — scan /following seeds…");
+      const activeSeeds = seeds.filter((s) => s.isActive !== false);
+      let seedOk = 0;
+      for (let i = 0; i < activeSeeds.length; i++) {
+        const seed = activeSeeds[i];
+        setEnrichProgress(
+          `1/5 · seed ${i + 1}/${activeSeeds.length} · @${seed.handle}`
+        );
+        const r = await dumpFollowingViaExtension(seed.handle);
+        if (r.ok) {
+          try {
+            await postSeedFollows(seed.handle, r.handles);
+            seedOk++;
+          } catch {}
+        }
+      }
+      await reloadCandidates();
+
+      // Étape 2: enrichir profils des candidats actuels
+      setEnrichProgress("Pipeline 2/5 — enrichir profils…");
+      const toEnrich = candidates
+        .filter((c) => c.profile.followerCount == null)
+        .map((c) => c.handle);
+      let enrichOk = 0;
+      const BATCH = 25;
+      for (let i = 0; i < toEnrich.length; i += BATCH) {
+        const chunk = toEnrich.slice(i, i + BATCH);
+        setEnrichProgress(
+          `2/5 · enrich ${Math.min(i + BATCH, toEnrich.length)}/${toEnrich.length}`
+        );
+        const requestId = `pp-enr-${Date.now()}-${i}`;
+        const result = await new Promise<{ ok: boolean; profiles: any[] }>(
+          (resolve) => {
+            const handler = (event: MessageEvent) => {
+              if (event.source !== window) return;
+              const data: any = event.data;
+              if (!data || data.source !== "lunalive-tiktok-ext") return;
+              if (
+                data.type === "SCRAPE_PROFILES_RESULT" &&
+                data.requestId === requestId
+              ) {
+                window.removeEventListener("message", handler);
+                resolve({ ok: !!data.ok, profiles: data.profiles || [] });
+              }
+            };
+            window.addEventListener("message", handler);
+            window.postMessage(
+              {
+                source: "lunalive-tiktok-page",
+                type: "SCRAPE_PROFILES",
+                requestId,
+                payload: { handles: chunk },
+              },
+              window.location.origin
+            );
+            setTimeout(() => {
+              window.removeEventListener("message", handler);
+              resolve({ ok: false, profiles: [] });
+            }, chunk.length * 15_000 + 60_000);
+          }
+        );
+        if (result.ok && result.profiles.length) {
+          try {
+            const r = await enrichTikTokCandidatesBulk(result.profiles);
+            enrichOk += r.upserted;
+          } catch {}
+        }
+      }
+      await reloadCandidates();
+
+      // Étape 3: mutualité top 50
+      setEnrichProgress("Pipeline 3/5 — mutualité top 50…");
+      const fresh = await reloadCandidates();
+      void fresh;
+      const mutTargets = candidates
+        .filter((c) => c.followOverlap >= 1 && c.mutualCount === 0)
+        .slice(0, 50);
+      let mutOk = 0;
+      for (let i = 0; i < mutTargets.length; i++) {
+        setEnrichProgress(
+          `3/5 · mutual ${i + 1}/${mutTargets.length} · @${mutTargets[i].handle}`
+        );
+        const r = await dumpFollowingViaExtension(mutTargets[i].handle);
+        if (r.ok) {
+          try {
+            await postCandidateFollows(mutTargets[i].handle, r.handles);
+            mutOk++;
+          } catch {}
+        }
+      }
+      await reloadCandidates();
+
+      // Étape 4: auto-dismiss célébrités
+      setEnrichProgress("Pipeline 4/5 — auto-dismiss célébrités…");
+      let dismissed = 0;
+      try {
+        const r = await autoDismissTikTokCelebrities(false);
+        dismissed = r.dismissed;
+      } catch {}
+
+      // Étape 5: reload
+      setEnrichProgress("Pipeline 5/5 — reload final…");
+      await reloadCandidates();
+
+      window.alert(
+        `🚀 Pipeline terminée\n\n` +
+          `1) Seeds /following : ${seedOk}/${activeSeeds.length}\n` +
+          `2) Profils enrichis : ${enrichOk}\n` +
+          `3) Mutualité vérifiée : ${mutOk}/${mutTargets.length}\n` +
+          `4) Auto-dismissed : ${dismissed}\n\n` +
+          `Va voir l'onglet 🟢 Peers — c'est ta liste exploitable.`
+      );
+    } catch (err: any) {
+      window.alert(`Pipeline: ${err?.message || err}`);
     } finally {
       setEnrichProgress(null);
       setEnriching(false);
@@ -1849,6 +2195,92 @@ export function FsbTikTokOutreachSection() {
           >
             🗑️ Purger graphe follows
           </button>
+        </div>
+
+        {/* PANNEAU TESTS + PIPELINE AUTO */}
+        <div
+          style={{
+            marginTop: 12,
+            padding: 14,
+            border: "1px dashed rgba(168,85,247,.4)",
+            borderRadius: 12,
+            background: "rgba(168,85,247,.04)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <strong style={{ color: "#a855f7", fontSize: 14 }}>
+              🧪 Tests d'extension &amp; Pipeline auto
+            </strong>
+            <span style={{ fontSize: 11, color: "var(--muted)" }}>
+              Valide chaque brique avant de lancer la pipeline complète
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="fsb-btn"
+              onClick={handleTestFollowingScroll}
+              disabled={enriching || !extensionVersion}
+              title="Ouvre /user/@handle, ouvre la modale Following, scroll, dump les handles"
+              style={{ borderColor: "#10b981", color: "#10b981" }}
+            >
+              🧪 Test scroll /following
+            </button>
+            <button
+              type="button"
+              className="fsb-btn"
+              onClick={handleTestVideoComments}
+              disabled={enriching || !extensionVersion}
+              title="Ouvre une vidéo TikTok, scroll le panneau commentaires, dump les commentateurs"
+              style={{ borderColor: "#22d3ee", color: "#22d3ee" }}
+            >
+              🧪 Test scroll commentaires
+            </button>
+            <button
+              type="button"
+              className="fsb-btn"
+              onClick={handleTestProfileEnrich}
+              disabled={enriching || !extensionVersion}
+              title="Scrape le profil d'un handle (followers, bio, vérifié, avatar)"
+              style={{ borderColor: "#fbbf24", color: "#fbbf24" }}
+            >
+              🧪 Test enrich profil
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", borderTop: "1px solid var(--bd)", paddingTop: 10 }}>
+            <button
+              type="button"
+              className="fsb-btn"
+              onClick={handleFullReset}
+              disabled={enriching}
+              title="Vide TOUT sauf seeds + DSB influencers + patterns. Action irréversible."
+              style={{ borderColor: "#f04e4e", color: "#f04e4e", fontWeight: 800 }}
+            >
+              🔄 Reset complet réseau
+            </button>
+            <button
+              type="button"
+              className="fsb-btn fsb-btn-primary"
+              onClick={handleFullPipeline}
+              disabled={enriching || seeds.length === 0 || !extensionVersion}
+              title="Enchaîne automatiquement scan follows + enrich + mutualité + auto-dismiss"
+              style={{
+                background: "linear-gradient(135deg,#a855f7,#22d3ee)",
+                border: "none",
+                fontWeight: 800,
+                color: "#0b1020",
+              }}
+            >
+              {enriching && enrichProgress?.startsWith("Pipeline") ? (
+                <span style={{ fontSize: 11 }}>{enrichProgress}</span>
+              ) : (
+                "🚀 Lancer pipeline complète auto"
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Patterns d'affiliation */}
