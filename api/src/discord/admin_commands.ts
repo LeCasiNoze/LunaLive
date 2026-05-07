@@ -31,6 +31,7 @@ import {
 import { pool } from "../db.js";
 import { refreshAgencyFeesBoard } from "../agency_fees_board.js";
 import { buildV3PageFromQuickInputs, type V3QuickInputs } from "../lib/affi_v3_quick_builder.js";
+import { loadUnpaidOccurrences, markExpensePaid } from "../lib/expenses_unpaid.js";
 
 const LOG = "[admin-cmd]";
 
@@ -404,34 +405,27 @@ async function handleDette(interaction: ChatInputCommandInteraction): Promise<vo
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const r = await pool.query(
-      `
-      SELECT
-        COUNT(*)::int AS cnt,
-        COALESCE(SUM(amount), 0)::float AS sum_total,
-        COUNT(*) FILTER (WHERE date < CURRENT_DATE)::int AS overdue_cnt,
-        COALESCE(SUM(amount) FILTER (WHERE date < CURRENT_DATE), 0)::float AS overdue_sum,
-        MIN(date) FILTER (WHERE date >= CURRENT_DATE) AS next_due
-      FROM expenses
-      WHERE paid_at IS NULL
-      `
-    );
-    const t = r.rows[0];
-    const cnt = Number(t.cnt);
-    if (cnt === 0) {
-      await interaction.editReply({ content: "✅ Aucun frais d'agence impayé. Profite." });
+    const todayParis = new Intl.DateTimeFormat("fr-CA", {
+      timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+    const fees = await loadUnpaidOccurrences(todayParis, 365, 90);
+    if (fees.length === 0) {
+      await interaction.editReply({ content: "✅ Aucun frais impayé. Profite." });
       return;
     }
-    const next = t.next_due
-      ? new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "long" }).format(new Date(t.next_due))
+    const total = fees.reduce((s, f) => s + f.amount, 0);
+    const overdue = fees.filter(f => f.days_until < 0);
+    const overdueSum = overdue.reduce((s, f) => s + f.amount, 0);
+    const next = fees.find(f => f.days_until >= 0);
+    const nextStr = next
+      ? new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "long" }).format(new Date(next.due_date + "T12:00:00Z"))
       : "—";
+
     await interaction.editReply({
       content:
-        `💰 **${cnt}** impayé${cnt > 1 ? "s" : ""} • Total : **${eur(Number(t.sum_total))}**` +
-        (Number(t.overdue_cnt) > 0
-          ? ` • 🚨 **${t.overdue_cnt} en retard** : ${eur(Number(t.overdue_sum))}`
-          : "") +
-        ` • Prochaine échéance : ${next}`,
+        `💰 **${fees.length}** impayé${fees.length > 1 ? "s" : ""} • Total : **${eur(total)}**` +
+        (overdue.length > 0 ? ` • 🚨 **${overdue.length} en retard** : ${eur(overdueSum)}` : "") +
+        ` • Prochaine échéance : ${nextStr}`,
     });
   } catch (e: any) {
     await interaction.editReply({ content: `❌ ${e?.message || e}` });
@@ -514,34 +508,30 @@ async function handleMarkPaidOpen(interaction: ButtonInteraction): Promise<void>
   }
 
   try {
-    const r = await pool.query(
-      `
-      SELECT id::text AS id, description, amount::float AS amount,
-             to_char(date, 'YYYY-MM-DD') AS due_date,
-             (date - CURRENT_DATE) AS days_until
-      FROM expenses
-      WHERE paid_at IS NULL
-      ORDER BY date ASC
-      LIMIT 25
-      `
-    );
-    if (r.rowCount === 0) {
+    const todayParis = new Intl.DateTimeFormat("fr-CA", {
+      timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+    const fees = await loadUnpaidOccurrences(todayParis, 365, 90);
+    if (fees.length === 0) {
       await interaction.reply({ ephemeral: true, content: "_Aucun frais impayé._" });
       return;
     }
 
+    const items = fees.slice(0, 25); // Discord StringSelect max 25 options
     const { StringSelectMenuBuilder } = await import("discord.js");
     const select = new StringSelectMenuBuilder()
       .setCustomId(FEES_BOARD_MARK_PAID_SELECT_CID)
       .setPlaceholder("Sélectionner un ou plusieurs frais à marquer payés")
       .setMinValues(1)
-      .setMaxValues(Math.min(r.rowCount ?? r.rows.length, 25))
-      .addOptions(r.rows.map((row: any) => {
-        const lateMark = Number(row.days_until) < 0 ? "⚠️ " : "";
+      .setMaxValues(items.length)
+      .addOptions(items.map((f) => {
+        const lateMark = f.days_until < 0 ? "⚠️ " : "";
+        const recMark = f.is_recurring ? " (mensuel)" : "";
         return {
-          label: `${lateMark}${eur(Number(row.amount))} — ${String(row.description).slice(0, 80)}`.slice(0, 100),
-          description: `Échéance ${row.due_date}`.slice(0, 100),
-          value: String(row.id),
+          label: `${lateMark}${eur(f.amount)} — ${f.description}${recMark}`.slice(0, 100),
+          description: `Échéance ${f.due_date}`.slice(0, 100),
+          // Format value : "<expense_id>:<occurrence_date|>"  — vide si non-récurrent
+          value: `${f.expense_id}:${f.occurrence_date ?? ""}`.slice(0, 100),
         };
       }));
 
@@ -562,22 +552,33 @@ async function handleMarkPaidSelect(interaction: any): Promise<void> {
   }
   await interaction.deferUpdate();
   try {
-    const ids = (interaction.values as string[]).map(v => Number(v)).filter(n => Number.isFinite(n));
-    if (ids.length === 0) return;
+    const values = interaction.values as string[];
+    if (!values?.length) return;
 
-    const r = await pool.query(
-      `UPDATE expenses SET paid_at = NOW() WHERE id = ANY($1::bigint[]) AND paid_at IS NULL
-       RETURNING id, amount::float AS amount, description`,
-      [ids]
-    );
-    const sum = r.rows.reduce((s: number, row: any) => s + Number(row.amount), 0);
+    // Charge les détails (montants) pour le résumé
+    const todayParis = new Intl.DateTimeFormat("fr-CA", {
+      timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+    const allUnpaid = await loadUnpaidOccurrences(todayParis, 365, 90);
+    const byKey = new Map(allUnpaid.map(f => [`${f.expense_id}:${f.occurrence_date ?? ""}`, f]));
+
+    let count = 0;
+    let sum = 0;
+    for (const v of values) {
+      const idx = v.indexOf(":");
+      if (idx < 0) continue;
+      const expenseId = Number(v.slice(0, idx));
+      const occ = v.slice(idx + 1) || null;
+      if (!Number.isFinite(expenseId)) continue;
+      await markExpensePaid(expenseId, occ);
+      const f = byKey.get(v);
+      if (f) { count++; sum += f.amount; }
+    }
 
     await interaction.editReply({
-      content: `✅ ${r.rowCount} frais marqué${r.rowCount! > 1 ? "s" : ""} payé${r.rowCount! > 1 ? "s" : ""} • ${eur(sum)} • Tableau actualisé.`,
+      content: `✅ ${count} frais marqué${count > 1 ? "s" : ""} payé${count > 1 ? "s" : ""} • ${eur(sum)} • Tableau actualisé.`,
       components: [],
     });
-
-    // Refresh du board en arrière-plan
     void refreshAgencyFeesBoard();
   } catch (e: any) {
     try {

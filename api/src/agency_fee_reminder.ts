@@ -95,27 +95,16 @@ type FeeRow = {
 
 const ACTIONABLE_DAYS = new Set([0, 2, 7]); // déclencheurs (en plus du retard)
 
+import { loadUnpaidOccurrences } from "./lib/expenses_unpaid.js";
+
 async function loadAllUnpaidFees(todayParis: string): Promise<FeeRow[]> {
-  const r = await pool.query(
-    `
-    SELECT
-      id::text                    AS id,
-      description,
-      amount::float               AS amount,
-      to_char(date, 'YYYY-MM-DD') AS due_date,
-      (date - $1::date)           AS days_until
-    FROM expenses
-    WHERE paid_at IS NULL
-    ORDER BY date ASC, id ASC
-    `,
-    [todayParis]
-  );
-  return r.rows.map((row: any) => ({
-    id:          Number(row.id),
-    description: String(row.description || ""),
-    amount:      Number(row.amount || 0),
-    due_date:    String(row.due_date),
-    days_until:  Number(row.days_until),
+  const rows = await loadUnpaidOccurrences(todayParis, 365, 90);
+  return rows.map((r) => ({
+    id:          r.expense_id,
+    description: r.description + (r.is_recurring ? " (mensuel)" : ""),
+    amount:      r.amount,
+    due_date:    r.due_date,
+    days_until:  r.days_until,
   }));
 }
 
