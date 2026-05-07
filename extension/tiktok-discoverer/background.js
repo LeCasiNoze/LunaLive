@@ -1905,14 +1905,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const verifyRes = await chrome.scripting.executeScript({
                   target: { tabId: tab.id },
                   func: () => {
-                    const list = document.querySelector(
-                      '[data-e2e="comment-list"]'
-                    );
+                    // Multi-fallback selectors for the comment list container
+                    let list = document.querySelector('[data-e2e="comment-list"]');
+                    let foundVia = list ? "data-e2e" : null;
+                    if (!list) {
+                      list =
+                        document.querySelector('[class*="DivCommentListContainer"]') ||
+                        document.querySelector('[class*="CommentListContainer"]') ||
+                        document.querySelector('[class*="CommentList"]');
+                      if (list) foundVia = "class";
+                    }
+                    if (!list) {
+                      const u = document.querySelectorAll(
+                        '[data-e2e^="comment-username"], [data-e2e*="comment-author"]'
+                      );
+                      if (u.length >= 2) {
+                        let a = u[0].parentElement;
+                        while (a && a !== document.body) {
+                          if (
+                            a.querySelectorAll(
+                              '[data-e2e^="comment-username"]'
+                            ).length >=
+                            u.length / 2
+                          ) {
+                            list = a;
+                            foundVia = "lca";
+                            break;
+                          }
+                          a = a.parentElement;
+                        }
+                      }
+                    }
                     return {
                       hasList: !!list,
+                      foundVia,
+                      listClass: list ? (list.className || "").toString().slice(0, 60) : null,
                       listVisible: !!(
-                        list &&
-                        list.getBoundingClientRect().height > 50
+                        list && list.getBoundingClientRect().height > 50
                       ),
                       commentNodes: document.querySelectorAll(
                         '[data-e2e^="comment-username"], [data-e2e*="comment-author"]'
@@ -1929,18 +1958,46 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             await new Promise((r) => setTimeout(r, 1500));
 
             // STEP B — Scroll the comment list with TRUSTED wheel + keyboard.
-            // Find the EXACT scrollable element and use ITS rect (clamped to
-            // viewport) for the wheel. Also dispatch PageDown as backup.
+            // [data-e2e="comment-list"] selector outdated → on trouve le
+            // conteneur commentaires en remontant depuis les commenter usernames
+            // (lowest common ancestor) ou via class*="CommentList".
             const scrollDiag = { ticks: 0, counts: [] };
             try {
-              // First: click somewhere inside the comment panel to focus it
-              // (required for keyboard events to reach the list).
+              // First: click somewhere inside the comment panel to focus it.
               const focusInfo = await findRect(tab.id, () => {
-                const list = document.querySelector('[data-e2e="comment-list"]');
+                // Strategy 1: data-e2e (legacy)
+                let list = document.querySelector('[data-e2e="comment-list"]');
+                // Strategy 2: class match
+                if (!list) {
+                  list =
+                    document.querySelector('[class*="DivCommentListContainer"]') ||
+                    document.querySelector('[class*="CommentListContainer"]') ||
+                    document.querySelector('[class*="CommentList"]');
+                }
+                // Strategy 3: lowest common ancestor des commenter usernames
+                if (!list) {
+                  const userNodes = document.querySelectorAll(
+                    '[data-e2e^="comment-username"], [data-e2e*="comment-author"]'
+                  );
+                  if (userNodes.length >= 2) {
+                    let ancestor = userNodes[0].parentElement;
+                    while (ancestor && ancestor !== document.body) {
+                      const inside = ancestor.querySelectorAll(
+                        '[data-e2e^="comment-username"], [data-e2e*="comment-author"]'
+                      );
+                      if (inside.length >= userNodes.length / 2) {
+                        list = ancestor;
+                        break;
+                      }
+                      ancestor = ancestor.parentElement;
+                    }
+                  }
+                }
                 if (!list) return { found: false };
                 const r = list.getBoundingClientRect();
                 return {
                   found: true,
+                  cls: (list.className || "").toString().slice(0, 60),
                   rect: { left: r.left, top: r.top, width: r.width, height: r.height },
                 };
               });
@@ -1960,10 +2017,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               }
 
               for (let scrollI = 0; scrollI < maxScrollTicks; scrollI++) {
-                // Find the actual SCROLLER (deepest scrollable inside comment-list)
-                // and return ITS rect, clamped to viewport.
+                // Find the actual SCROLLER and return ITS rect, clamped to viewport.
                 const rectInfo = await findRect(tab.id, () => {
-                  const list = document.querySelector('[data-e2e="comment-list"]');
+                  // Same multi-fallback as focus: data-e2e → class match → LCA
+                  let list = document.querySelector('[data-e2e="comment-list"]');
+                  if (!list) {
+                    list =
+                      document.querySelector('[class*="DivCommentListContainer"]') ||
+                      document.querySelector('[class*="CommentListContainer"]') ||
+                      document.querySelector('[class*="CommentList"]');
+                  }
+                  if (!list) {
+                    const userNodes = document.querySelectorAll(
+                      '[data-e2e^="comment-username"], [data-e2e*="comment-author"]'
+                    );
+                    if (userNodes.length >= 2) {
+                      let ancestor = userNodes[0].parentElement;
+                      while (ancestor && ancestor !== document.body) {
+                        const inside = ancestor.querySelectorAll(
+                          '[data-e2e^="comment-username"], [data-e2e*="comment-author"]'
+                        );
+                        if (inside.length >= userNodes.length / 2) {
+                          list = ancestor;
+                          break;
+                        }
+                        ancestor = ancestor.parentElement;
+                      }
+                    }
+                  }
                   if (!list) return { found: false };
                   // Find deepest scrollable inside or the list itself
                   let target = list;
