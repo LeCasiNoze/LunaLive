@@ -666,15 +666,34 @@ export function FsbTikTokOutreachSection() {
     try {
       const r = await dumpFollowingViaExtension(handle);
       const sample = r.handles.slice(0, 10).join(", ");
-      const diagStr = r.diag ? `\n\nDiag: ${JSON.stringify(r.diag)}` : "";
+      // Toujours logger le diag complet en console pour debug
+      // eslint-disable-next-line no-console
+      console.log("[Test /following diag]", r);
+      const diagShort = r.diag
+        ? `\n\nDiag (résumé) :\n` +
+          (r.diag.preSnap
+            ? `• preSnap: followBtns=${r.diag.preSnap.followBtns}, anchors=${r.diag.preSnap.anchors}, hasUserList=${r.diag.preSnap.hasUserListContainer}\n`
+            : "") +
+          (Array.isArray(r.diag.attempts)
+            ? `• ${r.diag.attempts.length} attempt(s)\n` +
+              r.diag.attempts
+                .map((a: any, i: number) => {
+                  const rectFound = a.rectInfo?.found;
+                  const last = a.lastCheck;
+                  return `  [${i}] rect=${rectFound ? "yes" : "no"} (text="${a.rectInfo?.text?.slice(0, 30) || "-"}") · click=${a.click?.ok ? "ok" : "no"} · lastCheck=${last ? `open=${last.open}, anchors=${last.anchors}, follow=${last.followBtns}` : "null"}`;
+                })
+                .join("\n")
+            : "") +
+          `\n(diag complet en console F12)`
+        : "";
       let msg: string;
       if (!r.ok) {
         if (r.error === "private_account") {
-          msg = `🔒 @${handle} a un COMPTE PRIVÉ\n\nLa /following n'est pas accessible. C'est normal pour beaucoup d'influenceurs.${diagStr}`;
+          msg = `🔒 @${handle} a un COMPTE PRIVÉ\n\nLa /following n'est pas accessible.${diagShort}`;
         } else if (r.error === "modal_not_opened") {
-          msg = `❌ La modale Following ne s'est pas ouverte\n\nPossibles raisons : compte avec /following privé, sélecteurs TikTok ont changé, ou clic intercepté.${diagStr}`;
+          msg = `❌ La modale Following ne s'est pas ouverte${diagShort}`;
         } else {
-          msg = `❌ TEST /following @${handle} ÉCHEC\n\nErreur : ${r.error}${diagStr}`;
+          msg = `❌ TEST /following @${handle} ÉCHEC\nErreur : ${r.error}${diagShort}`;
         }
       } else {
         msg =
@@ -684,7 +703,7 @@ export function FsbTikTokOutreachSection() {
           (r.handles.length < 30
             ? "⚠️ Peu de résultats — la modale a peut-être stoppé tôt"
             : "👍 Volume cohérent") +
-          diagStr;
+          diagShort;
       }
       window.alert(msg);
     } finally {
