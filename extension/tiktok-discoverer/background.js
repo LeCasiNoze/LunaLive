@@ -4,6 +4,112 @@
 
 const PENDING = new Map(); // tabId -> { resolve, reject, timeout }
 
+// ─── chrome.debugger helper for TRUSTED clicks ─────────────────────────────
+// TikTok ignores synthetic clicks (event.isTrusted = false). chrome.debugger
+// uses Chrome DevTools Protocol to dispatch real Input.dispatchMouseEvent
+// which produces isTrusted = true events that React handlers accept.
+const DEBUGGER_ATTACHED = new Set();
+
+async function attachDebugger(tabId) {
+  if (DEBUGGER_ATTACHED.has(tabId)) return;
+  await new Promise((resolve, reject) => {
+    chrome.debugger.attach({ tabId }, "1.3", () => {
+      if (chrome.runtime.lastError) {
+        // Already attached or ignorable
+        const msg = chrome.runtime.lastError.message || "";
+        if (/already attached/i.test(msg)) {
+          DEBUGGER_ATTACHED.add(tabId);
+          resolve();
+        } else {
+          reject(new Error(msg));
+        }
+        return;
+      }
+      DEBUGGER_ATTACHED.add(tabId);
+      resolve();
+    });
+  });
+}
+
+async function detachDebugger(tabId) {
+  if (!DEBUGGER_ATTACHED.has(tabId)) return;
+  await new Promise((resolve) => {
+    chrome.debugger.detach({ tabId }, () => {
+      DEBUGGER_ATTACHED.delete(tabId);
+      resolve();
+    });
+  });
+}
+
+async function cdpSend(tabId, method, params) {
+  return new Promise((resolve, reject) => {
+    chrome.debugger.sendCommand({ tabId }, method, params || {}, (result) => {
+      if (chrome.runtime.lastError)
+        return reject(new Error(chrome.runtime.lastError.message));
+      resolve(result);
+    });
+  });
+}
+
+// Click an element by its bounding rect center via CDP (trusted event).
+async function trustedClickRect(tabId, rect) {
+  const x = Math.floor(rect.left + rect.width / 2);
+  const y = Math.floor(rect.top + rect.height / 2);
+  try {
+    await cdpSend(tabId, "Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x,
+      y,
+      button: "none",
+    });
+    await cdpSend(tabId, "Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x,
+      y,
+      button: "left",
+      clickCount: 1,
+    });
+    await cdpSend(tabId, "Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x,
+      y,
+      button: "left",
+      clickCount: 1,
+    });
+    return { ok: true, x, y };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+}
+
+// Trusted wheel scroll at coordinates via CDP. Many TikTok virtual lists only
+// load more content when they receive a real wheel event with isTrusted=true.
+async function trustedWheel(tabId, x, y, deltaY) {
+  try {
+    await cdpSend(tabId, "Input.dispatchMouseEvent", {
+      type: "mouseWheel",
+      x,
+      y,
+      deltaX: 0,
+      deltaY,
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+}
+
+// Find an element matching a JS finder fn (in page) and return its rect.
+async function findRect(tabId, finderFn, ...args) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: finderFn,
+    args,
+  });
+  return (results && results[0] && results[0].result) || null;
+}
+
+
 function openTabAndScrape(url, options = {}) {
   return new Promise((resolve, reject) => {
     const visible = !!options.visible;
@@ -973,6 +1079,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (done) return;
             done = true;
             clearTimeout(timer);
+            // Detach debugger if still attached (idempotent)
+            detachDebugger(tab.id).catch(() => {});
             // Restore focus to the original (lunalive) tab.
             if (senderTabId) {
               chrome.tabs.update(senderTabId, { active: true }).catch(() => {});
@@ -1034,95 +1142,106 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               }
             } catch {}
 
-            // Try opening the modal up to 4 times with different strategies
-            let modalOpened = false;
-            for (let attempt = 0; attempt < 4 && !modalOpened; attempt++) {
-              try {
-                const clickRes = await chrome.scripting.executeScript({
-                  target: { tabId: tab.id },
-                  func: (which) => {
-                    const tried = [];
-                    function dispatchClick(el) {
-                      if (!el) return false;
-                      try {
-                        const rect = el.getBoundingClientRect();
-                        const opts = {
-                          bubbles: true,
-                          cancelable: true,
-                          view: window,
-                          clientX: rect.left + rect.width / 2,
-                          clientY: rect.top + rect.height / 2,
-                          button: 0,
-                        };
-                        el.dispatchEvent(new MouseEvent("mousedown", opts));
-                        el.dispatchEvent(new MouseEvent("mouseup", opts));
-                        el.dispatchEvent(new MouseEvent("click", opts));
-                        if (typeof el.click === "function") el.click();
-                        tried.push(
-                          el.tagName + ":" + (el.className || "").toString().slice(0, 30)
-                        );
-                        return true;
-                      } catch {}
-                      return false;
-                    }
-                    // Find the "Following" stat element & its clickable parent.
-                    // Walk up to button/a/strong wrapper (TikTok wraps stats in <strong>).
-                    function findClickable(seed) {
-                      if (!seed) return null;
-                      let n = seed;
-                      for (let i = 0; i < 5 && n; i++) {
-                        const cls = (n.className || "").toString();
-                        if (
-                          n.tagName === "BUTTON" ||
-                          n.tagName === "A" ||
-                          n.tagName === "STRONG" ||
-                          n.getAttribute?.("role") === "button" ||
-                          /count-item|stat|FollowInfo/i.test(cls)
-                        ) {
-                          return n;
-                        }
-                        n = n.parentElement;
-                      }
-                      return seed;
-                    }
-                    const seeds = [
-                      document.querySelector('strong[data-e2e="following-count"]'),
-                      document.querySelector('[data-e2e="following-count"]'),
-                      document.querySelector('[data-e2e="following"]'),
-                      ...Array.from(
-                        document.querySelectorAll(
-                          'button,a,[role="button"],div'
-                        )
-                      ).filter((el) => {
-                        const txt = (el.textContent || "").trim().toLowerCase();
-                        if (!txt || txt.length > 50) return false;
-                        return /(\bfollowing\b|\babonnements\b|\babonnement\b|\bsuivis\b)/.test(
-                          txt
-                        );
-                      }),
-                    ].filter(Boolean);
+            // Attach chrome.debugger to send TRUSTED clicks (TikTok's React
+            // handlers ignore synthetic events with isTrusted=false).
+            try {
+              await attachDebugger(tab.id);
+            } catch (err) {
+              return finish({
+                ok: false,
+                error: "debugger_attach_failed",
+                diag: { reason: String(err?.message || err) },
+              });
+            }
 
-                    let clicked = false;
-                    for (const seed of seeds) {
-                      const target = findClickable(seed);
-                      if (dispatchClick(target)) {
-                        clicked = true;
-                        break;
+            // Pre-click DOM snapshot for diagnostics
+            let preSnap = null;
+            try {
+              const snapRes = await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: () => ({
+                  followBtns: document.querySelectorAll(
+                    '[data-e2e="follow-button"]'
+                  ).length,
+                  anchors: document.querySelectorAll('a[href^="/@"]').length,
+                  hasUserListContainer: !!document.querySelector(
+                    '[class*="UserListContainer"]'
+                  ),
+                }),
+              });
+              preSnap = snapRes && snapRes[0] && snapRes[0].result;
+            } catch {}
+
+            // Try opening the modal up to 4 times with TRUSTED clicks
+            let modalOpened = false;
+            const allDiag = { preSnap, attempts: [] };
+            for (let attempt = 0; attempt < 4 && !modalOpened; attempt++) {
+              const attemptDiag = { attempt };
+              try {
+                // Find the rect of the "Following" stat to click via CDP
+                const rectInfo = await findRect(tab.id, () => {
+                  function findClickable(seed) {
+                    if (!seed) return null;
+                    let n = seed;
+                    for (let i = 0; i < 6 && n; i++) {
+                      const cls = (n.className || "").toString();
+                      if (
+                        n.tagName === "BUTTON" ||
+                        n.tagName === "A" ||
+                        n.tagName === "STRONG" ||
+                        n.getAttribute?.("role") === "button" ||
+                        /count-item|stat|FollowInfo|tab/i.test(cls)
+                      ) {
+                        return n;
                       }
+                      n = n.parentElement;
                     }
-                    return {
-                      clicked,
-                      tried,
-                      candidatesFound: seeds.length,
-                      attempt: which,
-                    };
-                  },
-                  args: [attempt],
+                    return seed;
+                  }
+                  const seeds = [
+                    document.querySelector('strong[data-e2e="following-count"]'),
+                    document.querySelector('[data-e2e="following-count"]'),
+                    document.querySelector('[data-e2e="following"]'),
+                    ...Array.from(
+                      document.querySelectorAll('button,a,[role="button"],div,strong,span')
+                    ).filter((el) => {
+                      const txt = (el.textContent || "").trim().toLowerCase();
+                      if (!txt || txt.length > 60) return false;
+                      return /(\bfollowing\b|\babonnements\b|\babonnement\b|\bsuivis\b)/.test(txt);
+                    }),
+                  ].filter(Boolean);
+                  if (!seeds.length) return { found: false, count: 0 };
+                  const target = findClickable(seeds[0]);
+                  if (!target) return { found: false, count: seeds.length };
+                  // Make sure target is in viewport
+                  target.scrollIntoView({ block: "center", behavior: "auto" });
+                  const r = target.getBoundingClientRect();
+                  return {
+                    found: true,
+                    count: seeds.length,
+                    rect: {
+                      left: r.left,
+                      top: r.top,
+                      width: r.width,
+                      height: r.height,
+                    },
+                    text: (target.textContent || "").slice(0, 60),
+                    cls: (target.className || "").toString().slice(0, 60),
+                    tag: target.tagName,
+                  };
                 });
+                attemptDiag.rectInfo = rectInfo;
+                if (rectInfo?.found && rectInfo.rect) {
+                  // Wait briefly for scrollIntoView to settle
+                  await new Promise((r) => setTimeout(r, 400));
+                  const clickRes = await trustedClickRect(tab.id, rectInfo.rect);
+                  attemptDiag.click = clickRes;
+                }
                 // Wait for modal to actually appear (poll up to 4s).
                 // TikTok no longer uses role="dialog". Detect by CONTENT SHAPE:
                 // a container with ≥3 user links AND ≥3 follow-buttons is the
                 // user list (Following or Followers modal).
+                let lastCheck = null;
                 for (let pollI = 0; pollI < 8; pollI++) {
                   await new Promise((r) => setTimeout(r, 500));
                   const checkRes = await chrome.scripting.executeScript({
@@ -1186,6 +1305,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     },
                   });
                   const out = checkRes && checkRes[0] && checkRes[0].result;
+                  lastCheck = out;
                   // Accept if we see the user-list shape (≥3 anchors AND
                   // ≥3 follow-buttons) — that's a confirmed users list.
                   if (out?.open && out.anchors >= 3 && out.followBtns >= 3) {
@@ -1193,6 +1313,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     break;
                   }
                 }
+                attemptDiag.lastCheck = lastCheck;
+                allDiag.attempts.push(attemptDiag);
                 // Last resort for next attempt: scroll up to ensure stats bar visible
                 if (!modalOpened) {
                   await chrome.scripting.executeScript({
@@ -1201,20 +1323,125 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   });
                   await new Promise((r) => setTimeout(r, 1500));
                 }
-              } catch {
-                // continue to next attempt
+              } catch (err) {
+                attemptDiag.error = String(err?.message || err);
+                allDiag.attempts.push(attemptDiag);
               }
             }
             if (!modalOpened) {
+              await detachDebugger(tab.id).catch(() => {});
               return finish({
                 ok: false,
                 error: "modal_not_opened",
-                diag: { handle: cleaned },
+                diag: { handle: cleaned, ...allDiag },
               });
             }
 
-            // Robust scroll loop: target ONLY the modal/dialog scroller,
-            // never the page background.
+            // Robust scroll loop: hybrid — programmatic scroll inside page
+            // + TRUSTED wheel via CDP at modal center to force virtual list.
+            try {
+              for (let scrollI = 0; scrollI < maxScrollTicks; scrollI++) {
+                const rectInfo = await findRect(tab.id, () => {
+                  let scope =
+                    document.querySelector('[role="dialog"]') ||
+                    document.querySelector('div[aria-modal="true"]') ||
+                    document.querySelector('[class*="DivUserListContainer"]') ||
+                    document.querySelector('[class*="UserListContainer"]') ||
+                    null;
+                  if (!scope) {
+                    const fb = document.querySelectorAll(
+                      '[data-e2e="follow-button"]'
+                    );
+                    if (fb.length >= 3) {
+                      let n = fb[0].parentElement;
+                      while (n && n !== document.body) {
+                        const lb = n.querySelectorAll(
+                          '[data-e2e="follow-button"]'
+                        );
+                        const ll = n.querySelectorAll('a[href^="/@"]');
+                        if (lb.length >= 3 && ll.length >= 3) {
+                          scope = n;
+                          break;
+                        }
+                        n = n.parentElement;
+                      }
+                    }
+                  }
+                  if (!scope) return { found: false };
+                  const r = scope.getBoundingClientRect();
+                  // Programmatic scroll on the deepest scrollable inside scope
+                  let target = scope;
+                  let node = scope;
+                  for (let i = 0; i < 5 && node; i++) {
+                    try {
+                      const cs = getComputedStyle(node);
+                      if (
+                        (cs.overflowY === "auto" ||
+                          cs.overflowY === "scroll") &&
+                        node.scrollHeight - node.clientHeight > 30
+                      ) {
+                        target = node;
+                        break;
+                      }
+                    } catch {}
+                    node = node.parentElement;
+                  }
+                  if (target === scope) {
+                    // try inside
+                    const all = scope.querySelectorAll("*");
+                    for (const el of Array.from(all)) {
+                      try {
+                        const cs = getComputedStyle(el);
+                        if (
+                          (cs.overflowY === "auto" ||
+                            cs.overflowY === "scroll") &&
+                          el.scrollHeight - el.clientHeight > 30
+                        ) {
+                          target = el;
+                          break;
+                        }
+                      } catch {}
+                    }
+                  }
+                  try {
+                    target.scrollBy({ top: 2400 });
+                    target.scrollTop = target.scrollTop + 2400;
+                  } catch {}
+                  const links = scope.querySelectorAll('a[href^="/@"]').length;
+                  return {
+                    found: true,
+                    anchors: links,
+                    rect: {
+                      left: r.left,
+                      top: r.top,
+                      width: r.width,
+                      height: r.height,
+                    },
+                  };
+                });
+                if (!rectInfo?.found || !rectInfo.rect) break;
+                // Trusted wheel at modal center
+                const cx = Math.floor(rectInfo.rect.left + rectInfo.rect.width / 2);
+                const cy = Math.floor(rectInfo.rect.top + rectInfo.rect.height / 2);
+                await trustedWheel(tab.id, cx, cy, 1500);
+                await new Promise((r) => setTimeout(r, 800));
+                // Track plateau via the anchors count
+                if (typeof allDiag.scrollAnchors === "undefined") {
+                  allDiag.scrollAnchors = [];
+                  allDiag.scrollStable = 0;
+                }
+                const last =
+                  allDiag.scrollAnchors[allDiag.scrollAnchors.length - 1];
+                allDiag.scrollAnchors.push(rectInfo.anchors);
+                if (last === rectInfo.anchors) {
+                  allDiag.scrollStable++;
+                } else {
+                  allDiag.scrollStable = 0;
+                }
+                if (allDiag.scrollStable >= 6) break;
+              }
+            } catch {}
+            // Old in-page scroll loop kept as belt-and-braces (truncated)
             try {
               await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
@@ -1505,6 +1732,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (done) return;
             done = true;
             clearTimeout(timer);
+            detachDebugger(tab.id).catch(() => {});
             if (senderTabId)
               chrome.tabs.update(senderTabId, { active: true }).catch(() => {});
             chrome.tabs.remove(tab.id).catch(() => {});
@@ -1519,84 +1747,143 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             chrome.tabs.onUpdated.removeListener(onUpdated);
             await new Promise((r) => setTimeout(r, 4500));
 
-            // STEP A — Make sure the "Commentaires" tab is selected, not
-            // "Tu pourrais aimer" / "You may like".
-            // TikTok uses <span data-testid="tux-web-text">Commentaires</span>
-            // inside <div class="tabbar-item-..."> (no role=button). We must
-            // walk up to the tabbar-item and dispatch a MouseEvent.
+            // STEP A — Make sure the "Commentaires" tab is selected.
+            // Use chrome.debugger to dispatch a TRUSTED click (TikTok ignores
+            // synthetic clicks on its custom div tabs).
             try {
-              await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                func: () => {
-                  // Find the span with text "Commentaires" / "Comments"
-                  const spans = Array.from(
-                    document.querySelectorAll(
-                      '[data-testid="tux-web-text"], span, div'
-                    )
-                  ).filter((el) => {
-                    const txt = (el.textContent || "").trim().toLowerCase();
-                    return (
-                      txt === "commentaires" ||
-                      txt === "comments" ||
-                      txt === "commentaire"
-                    );
-                  });
-                  if (!spans.length) {
-                    return { clicked: false, reason: "no_span_found" };
-                  }
-                  // Prefer the smallest (= leaf, the actual text node)
-                  spans.sort(
-                    (a, b) =>
-                      (a.textContent || "").length - (b.textContent || "").length
+              await attachDebugger(tab.id);
+            } catch {}
+            try {
+              const rectInfo = await findRect(tab.id, () => {
+                const spans = Array.from(
+                  document.querySelectorAll(
+                    '[data-testid="tux-web-text"], span, div'
+                  )
+                ).filter((el) => {
+                  const txt = (el.textContent || "").trim().toLowerCase();
+                  return (
+                    txt === "commentaires" ||
+                    txt === "comments" ||
+                    txt === "commentaire"
                   );
-                  const span = spans[0];
-                  // Walk up to find a clickable ancestor: button > a > role=tab
-                  // > class*=tabbar-item > class*=tab > parent button.
-                  let target = span;
-                  for (let depth = 0; depth < 6 && target; depth++) {
-                    const cls = (target.className || "").toString();
-                    if (
-                      target.tagName === "BUTTON" ||
-                      target.tagName === "A" ||
-                      target.getAttribute("role") === "tab" ||
-                      target.getAttribute("role") === "button" ||
-                      /tabbar-item|TabBar|Tab\b|TabItem/.test(cls)
-                    ) {
-                      break;
-                    }
-                    target = target.parentElement;
+                });
+                if (!spans.length) return { found: false };
+                spans.sort(
+                  (a, b) =>
+                    (a.textContent || "").length - (b.textContent || "").length
+                );
+                let target = spans[0];
+                for (let depth = 0; depth < 6 && target; depth++) {
+                  const cls = (target.className || "").toString();
+                  if (
+                    target.tagName === "BUTTON" ||
+                    target.tagName === "A" ||
+                    target.getAttribute?.("role") === "tab" ||
+                    target.getAttribute?.("role") === "button" ||
+                    /tabbar-item|TabBar|Tab\b|TabItem/.test(cls)
+                  ) {
+                    break;
                   }
-                  if (!target) target = span;
-                  try {
-                    // Dispatch real MouseEvent for divs that don't respond to .click()
-                    const rect = target.getBoundingClientRect();
-                    const opts = {
-                      bubbles: true,
-                      cancelable: true,
-                      view: window,
-                      clientX: rect.left + rect.width / 2,
-                      clientY: rect.top + rect.height / 2,
-                      button: 0,
-                    };
-                    target.dispatchEvent(new MouseEvent("mousedown", opts));
-                    target.dispatchEvent(new MouseEvent("mouseup", opts));
-                    target.dispatchEvent(new MouseEvent("click", opts));
-                    if (typeof target.click === "function") target.click();
-                    return {
-                      clicked: true,
-                      tag: target.tagName,
-                      cls: (target.className || "").toString().slice(0, 60),
-                    };
-                  } catch (err) {
-                    return { clicked: false, error: String(err?.message || err) };
-                  }
-                },
+                  target = target.parentElement;
+                }
+                if (!target) return { found: false };
+                target.scrollIntoView({ block: "center" });
+                const r = target.getBoundingClientRect();
+                return {
+                  found: true,
+                  rect: {
+                    left: r.left,
+                    top: r.top,
+                    width: r.width,
+                    height: r.height,
+                  },
+                  text: (target.textContent || "").slice(0, 30),
+                  cls: (target.className || "").toString().slice(0, 60),
+                };
               });
+              if (rectInfo?.found && rectInfo.rect) {
+                await new Promise((r) => setTimeout(r, 400));
+                await trustedClickRect(tab.id, rectInfo.rect);
+              }
             } catch {}
             await new Promise((r) => setTimeout(r, 1500));
 
-            // STEP B — Scroll the comment list aggressively. Target ONLY the
-            // [data-e2e="comment-list"] scrollable; don't fall back to anything else.
+            // STEP B — Scroll the comment list with TRUSTED wheel events.
+            // We target [data-e2e="comment-list"] and dispatch a CDP wheel
+            // at its center, which forces the virtual list to load more.
+            try {
+              for (let scrollI = 0; scrollI < maxScrollTicks; scrollI++) {
+                const rectInfo = await findRect(tab.id, () => {
+                  const list = document.querySelector(
+                    '[data-e2e="comment-list"]'
+                  );
+                  if (!list) return { found: false };
+                  // Programmatic scroll on inner scrollable
+                  let target = list;
+                  let node = list;
+                  for (let i = 0; i < 4 && node; i++) {
+                    try {
+                      const cs = getComputedStyle(node);
+                      if (
+                        (cs.overflowY === "auto" ||
+                          cs.overflowY === "scroll") &&
+                        node.scrollHeight - node.clientHeight > 30
+                      ) {
+                        target = node;
+                        break;
+                      }
+                    } catch {}
+                    node = node.parentElement;
+                  }
+                  if (target === list) {
+                    const all = list.querySelectorAll("*");
+                    for (const el of Array.from(all)) {
+                      try {
+                        const cs = getComputedStyle(el);
+                        if (
+                          (cs.overflowY === "auto" ||
+                            cs.overflowY === "scroll") &&
+                          el.scrollHeight - el.clientHeight > 30
+                        ) {
+                          target = el;
+                          break;
+                        }
+                      } catch {}
+                    }
+                  }
+                  try {
+                    target.scrollBy({ top: 1500 });
+                    target.scrollTop = target.scrollTop + 1500;
+                    const items = target.querySelectorAll(
+                      '[data-e2e^="comment-level"], [data-e2e*="comment-item"]'
+                    );
+                    if (items.length) {
+                      items[items.length - 1].scrollIntoView({ block: "end" });
+                    }
+                  } catch {}
+                  const r = list.getBoundingClientRect();
+                  const count = document.querySelectorAll(
+                    '[data-e2e^="comment-username"], [data-e2e*="comment-author"]'
+                  ).length;
+                  return {
+                    found: true,
+                    count,
+                    rect: {
+                      left: r.left,
+                      top: r.top,
+                      width: r.width,
+                      height: r.height,
+                    },
+                  };
+                });
+                if (!rectInfo?.found || !rectInfo.rect) break;
+                const cx = Math.floor(rectInfo.rect.left + rectInfo.rect.width / 2);
+                const cy = Math.floor(rectInfo.rect.top + rectInfo.rect.height / 2);
+                await trustedWheel(tab.id, cx, cy, 1200);
+                await new Promise((r) => setTimeout(r, 800));
+              }
+            } catch {}
+            // Belt-and-braces in-page scroll loop (kept for safety)
             try {
               await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
