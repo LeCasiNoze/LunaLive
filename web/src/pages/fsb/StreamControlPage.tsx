@@ -327,8 +327,8 @@ function useBroadcaster(
       const iceServers = await ensureIceServers();
       const pc = new RTCPeerConnection({ iceServers });
       peersRef.current.set(viewerId, pc);
-      // Hint motion-heavy content + cap bitrate pour éviter pics qui laggent
-      // les viewers en connexion limitée. Cam 720p → 1.2 Mbps suffit largement.
+      // Hint motion-heavy content + cap bitrate. Cam 1080p30 → 3.5 Mbps cible
+      // (qualité 1080p propre sans saturer les viewers).
       stream.getTracks().forEach((t) => {
         if (t.kind === "video") { try { (t as any).contentHint = "motion"; } catch {} }
         const sender = pc.addTrack(t, stream);
@@ -336,7 +336,7 @@ function useBroadcaster(
           try {
             const params = sender.getParameters();
             if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-            params.encodings[0].maxBitrate = 1_200_000; // 1.2 Mbps
+            params.encodings[0].maxBitrate = 3_500_000; // 3.5 Mbps (1080p30)
             params.encodings[0].maxFramerate = 30;
             params.degradationPreference = "maintain-framerate";
             sender.setParameters(params).catch(() => {});
@@ -1780,8 +1780,8 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
     console.log("[CamControl] activating cam for", mySlug, "slot", mySlot + 1, "device:", selectedDeviceId || "default");
     try {
       const videoConstraints: MediaTrackConstraints = {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
         // Force 30 fps. Sans ça, beaucoup de cams logitech/intégrées plafonnent
         // à 15 fps en interne (mode économie / faible lumière).
         frameRate: { ideal: 30, min: 24 },
