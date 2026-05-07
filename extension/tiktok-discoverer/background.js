@@ -1042,75 +1042,153 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   target: { tabId: tab.id },
                   func: (which) => {
                     const tried = [];
-                    function tryClick(el) {
+                    function dispatchClick(el) {
                       if (!el) return false;
                       try {
-                        // Prefer the closest interactive ancestor
-                        const interactive =
-                          el.closest("button,a,[role='button']") ||
-                          el.closest("strong,span")?.parentElement ||
-                          el.parentElement ||
-                          el;
-                        if (typeof interactive.click === "function") {
-                          interactive.click();
-                          tried.push(interactive.tagName + ":" + (interactive.className || "").slice(0, 30));
-                          return true;
-                        }
+                        const rect = el.getBoundingClientRect();
+                        const opts = {
+                          bubbles: true,
+                          cancelable: true,
+                          view: window,
+                          clientX: rect.left + rect.width / 2,
+                          clientY: rect.top + rect.height / 2,
+                          button: 0,
+                        };
+                        el.dispatchEvent(new MouseEvent("mousedown", opts));
+                        el.dispatchEvent(new MouseEvent("mouseup", opts));
+                        el.dispatchEvent(new MouseEvent("click", opts));
+                        if (typeof el.click === "function") el.click();
+                        tried.push(
+                          el.tagName + ":" + (el.className || "").toString().slice(0, 30)
+                        );
+                        return true;
                       } catch {}
                       return false;
                     }
-                    // Strategy variants
-                    const candidates = [
-                      // primary stat element
+                    // Find the "Following" stat element & its clickable parent.
+                    // Walk up to button/a/strong wrapper (TikTok wraps stats in <strong>).
+                    function findClickable(seed) {
+                      if (!seed) return null;
+                      let n = seed;
+                      for (let i = 0; i < 5 && n; i++) {
+                        const cls = (n.className || "").toString();
+                        if (
+                          n.tagName === "BUTTON" ||
+                          n.tagName === "A" ||
+                          n.tagName === "STRONG" ||
+                          n.getAttribute?.("role") === "button" ||
+                          /count-item|stat|FollowInfo/i.test(cls)
+                        ) {
+                          return n;
+                        }
+                        n = n.parentElement;
+                      }
+                      return seed;
+                    }
+                    const seeds = [
+                      document.querySelector('strong[data-e2e="following-count"]'),
                       document.querySelector('[data-e2e="following-count"]'),
                       document.querySelector('[data-e2e="following"]'),
-                      // its parent strong/anchor (TikTok wraps the count)
-                      document.querySelector('strong[data-e2e="following-count"]'),
-                      // text-based: button/anchor whose accessible name contains "following"
-                      ...(Array.from(document.querySelectorAll('button,a,[role="button"]')).filter((el) => {
+                      ...Array.from(
+                        document.querySelectorAll(
+                          'button,a,[role="button"],div'
+                        )
+                      ).filter((el) => {
                         const txt = (el.textContent || "").trim().toLowerCase();
-                        return /(following|abonnements|abonnement\b)/.test(txt) && txt.length < 80;
-                      })),
+                        if (!txt || txt.length > 50) return false;
+                        return /(\bfollowing\b|\babonnements\b|\babonnement\b|\bsuivis\b)/.test(
+                          txt
+                        );
+                      }),
                     ].filter(Boolean);
 
                     let clicked = false;
-                    for (const c of candidates) {
-                      if (tryClick(c)) {
+                    for (const seed of seeds) {
+                      const target = findClickable(seed);
+                      if (dispatchClick(target)) {
                         clicked = true;
                         break;
                       }
                     }
-                    return { clicked, tried, candidatesFound: candidates.length, attempt: which };
+                    return {
+                      clicked,
+                      tried,
+                      candidatesFound: seeds.length,
+                      attempt: which,
+                    };
                   },
                   args: [attempt],
                 });
-                // Wait for modal to actually appear (poll up to 4s)
+                // Wait for modal to actually appear (poll up to 4s).
+                // TikTok no longer uses role="dialog". Detect by CONTENT SHAPE:
+                // a container with ≥3 user links AND ≥3 follow-buttons is the
+                // user list (Following or Followers modal).
                 for (let pollI = 0; pollI < 8; pollI++) {
                   await new Promise((r) => setTimeout(r, 500));
                   const checkRes = await chrome.scripting.executeScript({
                     target: { tabId: tab.id },
                     func: () => {
-                      const dialog =
+                      // Strategy 1: legacy role="dialog"
+                      let scope =
                         document.querySelector('[role="dialog"]') ||
-                        document.querySelector('div[aria-modal="true"]');
-                      if (!dialog) return { open: false };
-                      // Verify it has user anchors (otherwise it's a different dialog)
-                      const links = dialog.querySelectorAll('a[href^="/@"]');
+                        document.querySelector('div[aria-modal="true"]') ||
+                        null;
+                      // Strategy 2: any div containing both user anchors AND
+                      // follow-buttons (= user list pattern).
+                      if (!scope) {
+                        const followBtns = document.querySelectorAll(
+                          '[data-e2e="follow-button"]'
+                        );
+                        if (followBtns.length >= 3) {
+                          // Find the lowest common ancestor that contains them all
+                          // and has user anchors too. Walk up from the first.
+                          let node = followBtns[0].parentElement;
+                          while (node && node !== document.body) {
+                            const localBtns = node.querySelectorAll(
+                              '[data-e2e="follow-button"]'
+                            );
+                            const localLinks = node.querySelectorAll(
+                              'a[href^="/@"]'
+                            );
+                            if (
+                              localBtns.length >= 3 &&
+                              localLinks.length >= 3 &&
+                              localBtns.length >= followBtns.length / 2
+                            ) {
+                              scope = node;
+                              break;
+                            }
+                            node = node.parentElement;
+                          }
+                        }
+                      }
+                      // Strategy 3: known TikTok class pattern
+                      if (!scope) {
+                        scope =
+                          document.querySelector(
+                            '[class*="DivUserListContainer"]'
+                          ) ||
+                          document.querySelector(
+                            '[class*="UserListContainer"]'
+                          );
+                      }
+                      if (!scope) return { open: false };
+                      const links = scope.querySelectorAll('a[href^="/@"]');
+                      const followBtns = scope.querySelectorAll(
+                        '[data-e2e="follow-button"]'
+                      );
                       return {
                         open: true,
                         anchors: links.length,
-                        title: (dialog.querySelector('h1,h2,[role="heading"]')?.textContent || "").slice(0, 40),
+                        followBtns: followBtns.length,
+                        scopeClass: (scope.className || "").slice(0, 60),
                       };
                     },
                   });
                   const out = checkRes && checkRes[0] && checkRes[0].result;
-                  // STRICTER: require title to mention follow/abon AND have anchors.
-                  // If title mismatch, this is a wrong modal (e.g. "Sign in" or share)
-                  if (
-                    out?.open &&
-                    /follow|abon/i.test(out.title || "") &&
-                    out.anchors >= 1
-                  ) {
+                  // Accept if we see the user-list shape (≥3 anchors AND
+                  // ≥3 follow-buttons) — that's a confirmed users list.
+                  if (out?.open && out.anchors >= 3 && out.followBtns >= 3) {
                     modalOpened = true;
                     break;
                   }
@@ -1143,14 +1221,64 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 func: (max) =>
                   new Promise((resolve) => {
                     function findDialog() {
-                      return (
+                      // Same detection as the open-check (TikTok no longer
+                      // uses role=dialog). Match any container with ≥3
+                      // follow-buttons + user anchors.
+                      let scope =
                         document.querySelector('[role="dialog"]') ||
                         document.querySelector('div[aria-modal="true"]') ||
-                        null
-                      );
+                        null;
+                      if (!scope) {
+                        const fb = document.querySelectorAll(
+                          '[data-e2e="follow-button"]'
+                        );
+                        if (fb.length >= 3) {
+                          let node = fb[0].parentElement;
+                          while (node && node !== document.body) {
+                            const lb = node.querySelectorAll(
+                              '[data-e2e="follow-button"]'
+                            );
+                            const ll = node.querySelectorAll('a[href^="/@"]');
+                            if (
+                              lb.length >= 3 &&
+                              ll.length >= 3 &&
+                              lb.length >= fb.length / 2
+                            ) {
+                              scope = node;
+                              break;
+                            }
+                            node = node.parentElement;
+                          }
+                        }
+                      }
+                      if (!scope) {
+                        scope =
+                          document.querySelector(
+                            '[class*="DivUserListContainer"]'
+                          ) ||
+                          document.querySelector(
+                            '[class*="UserListContainer"]'
+                          );
+                      }
+                      return scope;
                     }
                     function findModalScrollable(dialog) {
                       if (!dialog) return null;
+                      // Walk ancestors first — sometimes the list element
+                      // itself doesn't scroll, but its parent does.
+                      let node = dialog;
+                      for (let i = 0; i < 5 && node; i++) {
+                        try {
+                          const cs = getComputedStyle(node);
+                          if (
+                            (cs.overflowY === "auto" || cs.overflowY === "scroll") &&
+                            node.scrollHeight - node.clientHeight > 30
+                          ) {
+                            return node;
+                          }
+                        } catch {}
+                        node = node.parentElement;
+                      }
                       // Prefer the deepest scrollable child within the dialog
                       const all = dialog.querySelectorAll("*");
                       let best = null;
@@ -1257,25 +1385,56 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 func: (max, ownHandle) => {
                   const HRE = /^[A-Za-z0-9._]{1,30}$/;
                   const set = new Set();
-                  const dialog =
+                  // Same scope detection: TikTok modale n'a plus role=dialog.
+                  // On exige une zone avec ≥3 anchors + ≥3 follow-buttons.
+                  let scope =
                     document.querySelector('[role="dialog"]') ||
-                    document.querySelector('div[aria-modal="true"]');
-                  // STRICT: if no dialog, return empty + bail. Do NOT fall back
-                  // to document — that's how we used to capture sidebar
-                  // recommendations as if they were /following.
-                  if (!dialog) {
+                    document.querySelector('div[aria-modal="true"]') ||
+                    null;
+                  if (!scope) {
+                    const fb = document.querySelectorAll(
+                      '[data-e2e="follow-button"]'
+                    );
+                    if (fb.length >= 3) {
+                      let node = fb[0].parentElement;
+                      while (node && node !== document.body) {
+                        const lb = node.querySelectorAll(
+                          '[data-e2e="follow-button"]'
+                        );
+                        const ll = node.querySelectorAll('a[href^="/@"]');
+                        if (
+                          lb.length >= 3 &&
+                          ll.length >= 3 &&
+                          lb.length >= fb.length / 2
+                        ) {
+                          scope = node;
+                          break;
+                        }
+                        node = node.parentElement;
+                      }
+                    }
+                  }
+                  if (!scope) {
+                    scope =
+                      document.querySelector('[class*="DivUserListContainer"]') ||
+                      document.querySelector('[class*="UserListContainer"]');
+                  }
+                  if (!scope) {
                     return {
                       handles: [],
                       diag: {
                         modalFound: false,
-                        anchorsInModal: 0,
+                        anchorsInScope: 0,
+                        followBtnsTotalPage: document.querySelectorAll(
+                          '[data-e2e="follow-button"]'
+                        ).length,
                         anchorsTotalPage: document.querySelectorAll('a[href^="/@"]').length,
                         title: document.title.slice(0, 80),
-                        bail: "no_dialog_at_extract",
+                        bail: "no_modal_at_extract",
                       },
                     };
                   }
-                  const links = dialog.querySelectorAll('a[href^="/@"]');
+                  const links = scope.querySelectorAll('a[href^="/@"]');
                   for (const a of Array.from(links)) {
                     const href = a.getAttribute("href") || "";
                     const m = href.match(/^\/@([A-Za-z0-9._]{1,30})/);
@@ -1288,9 +1447,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   return {
                     handles: Array.from(set),
                     diag: {
-                      modalFound: !!dialog,
-                      anchorsInModal: links.length,
+                      modalFound: true,
+                      anchorsInScope: links.length,
                       anchorsTotalPage: document.querySelectorAll('a[href^="/@"]').length,
+                      scopeClass: (scope.className || "").slice(0, 80),
                       title: document.title.slice(0, 80),
                     },
                   };
@@ -1361,34 +1521,75 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
             // STEP A — Make sure the "Commentaires" tab is selected, not
             // "Tu pourrais aimer" / "You may like".
+            // TikTok uses <span data-testid="tux-web-text">Commentaires</span>
+            // inside <div class="tabbar-item-..."> (no role=button). We must
+            // walk up to the tabbar-item and dispatch a MouseEvent.
             try {
               await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
                 func: () => {
-                  // Find tabs by text. Click the one that says Commentaires/Comments.
-                  const candidates = Array.from(
+                  // Find the span with text "Commentaires" / "Comments"
+                  const spans = Array.from(
                     document.querySelectorAll(
-                      'button,a,[role="tab"],[role="button"],div'
+                      '[data-testid="tux-web-text"], span, div'
                     )
                   ).filter((el) => {
                     const txt = (el.textContent || "").trim().toLowerCase();
-                    if (!txt || txt.length > 40) return false;
-                    return /(commentaires|comments)\b/.test(txt);
+                    return (
+                      txt === "commentaires" ||
+                      txt === "comments" ||
+                      txt === "commentaire"
+                    );
                   });
-                  // Prefer the most specific (smallest text)
-                  candidates.sort(
+                  if (!spans.length) {
+                    return { clicked: false, reason: "no_span_found" };
+                  }
+                  // Prefer the smallest (= leaf, the actual text node)
+                  spans.sort(
                     (a, b) =>
                       (a.textContent || "").length - (b.textContent || "").length
                   );
-                  for (const c of candidates) {
-                    try {
-                      const interactive =
-                        c.closest("button,a,[role='tab'],[role='button']") || c;
-                      interactive.click();
-                      return { clicked: true, text: interactive.textContent?.slice(0, 30) };
-                    } catch {}
+                  const span = spans[0];
+                  // Walk up to find a clickable ancestor: button > a > role=tab
+                  // > class*=tabbar-item > class*=tab > parent button.
+                  let target = span;
+                  for (let depth = 0; depth < 6 && target; depth++) {
+                    const cls = (target.className || "").toString();
+                    if (
+                      target.tagName === "BUTTON" ||
+                      target.tagName === "A" ||
+                      target.getAttribute("role") === "tab" ||
+                      target.getAttribute("role") === "button" ||
+                      /tabbar-item|TabBar|Tab\b|TabItem/.test(cls)
+                    ) {
+                      break;
+                    }
+                    target = target.parentElement;
                   }
-                  return { clicked: false, found: candidates.length };
+                  if (!target) target = span;
+                  try {
+                    // Dispatch real MouseEvent for divs that don't respond to .click()
+                    const rect = target.getBoundingClientRect();
+                    const opts = {
+                      bubbles: true,
+                      cancelable: true,
+                      view: window,
+                      clientX: rect.left + rect.width / 2,
+                      clientY: rect.top + rect.height / 2,
+                      button: 0,
+                    };
+                    target.dispatchEvent(new MouseEvent("mousedown", opts));
+                    target.dispatchEvent(new MouseEvent("mouseup", opts));
+                    target.dispatchEvent(new MouseEvent("click", opts));
+                    if (typeof target.click === "function") target.click();
+                    return {
+                      clicked: true,
+                      tag: target.tagName,
+                      cls: (target.className || "").toString().slice(0, 60),
+                    };
+                  } catch (err) {
+                    return { clicked: false, error: String(err?.message || err) };
+                  }
                 },
               });
             } catch {}
